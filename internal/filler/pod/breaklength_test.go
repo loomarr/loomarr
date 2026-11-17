@@ -16,7 +16,7 @@ func lengthCatalog() []pod.Clip {
 	for i := 0; i < 12; i++ {
 		id := fmt.Sprintf("c%02d", i)
 		cat = append(cat, pod.Clip{
-			Hash: id, Path: id + ".mp4", Role: pod.Commercial,
+			Hash: id, Path: id + ".mp4", Role: pod.Commercial, Era: 1992, Audience: pod.General,
 			DurationMs: int64(15_000 + i*1_733 + (i*i*317)%977), Category: fmt.Sprintf("cat%d", i%4),
 		})
 	}

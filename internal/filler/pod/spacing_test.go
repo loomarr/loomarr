@@ -74,9 +74,9 @@ func TestPodAdapter_ChannelSpacingNeverEmptiesABreak(t *testing.T) {
 // The channel page names the pool's location limit from coverage, never from its own copy.
 func TestCoverage_ReportsTheLocationBoundaryItCounted(t *testing.T) {
 	clips := []pod.Clip{
-		{Hash: "us", Path: "us.mp4", Role: pod.Commercial, GeographicScope: pod.GeographicNational, Country: "US", DurationMs: 30_000},
-		{Hash: "gb", Path: "gb.mp4", Role: pod.Commercial, GeographicScope: pod.GeographicNational, Country: "GB", DurationMs: 30_000},
-		{Hash: "unknown", Path: "unknown.mp4", Role: pod.Commercial, DurationMs: 30_000},
+		{Hash: "us", Path: "us.mp4", Role: pod.Commercial, Era: 1992, Audience: pod.General, GeographicScope: pod.GeographicNational, Country: "US", DurationMs: 30_000},
+		{Hash: "gb", Path: "gb.mp4", Role: pod.Commercial, Era: 1992, Audience: pod.General, GeographicScope: pod.GeographicNational, Country: "GB", DurationMs: 30_000},
+		{Hash: "unknown", Path: "unknown.mp4", Role: pod.Commercial, Era: 1992, Audience: pod.General, DurationMs: 30_000},
 	}
 	w := pod.Window{ChannelID: "ch-1", GapMs: 600_000, PodMax: 4}
 	report := pod.Coverage(clips, w, pod.Policy{Geography: pod.Geography{Country: "us"}})

@@ -61,13 +61,22 @@ func TestStandingSurplusIsWhatNoChannelNeedsMostAiredFirst(t *testing.T) {
 	}
 }
 
-// A clip from a nearer era is kept ahead of a clip from the audience rung, however little each has
-// aired: the farther one is the surplus.
+// A clip from the decade beside the channel's is kept after the clips in its own era, however
+// little each has aired: the neighbouring one is the surplus.
 func TestStandingKeepsTheNearerEraFirst(t *testing.T) {
+	cat := append(plainAds(80), seasonAd("neighbour", 2004))
+	got := standingOf(t, cat, []pod.PoolChannel{nineties1}, airedTimes(80))
+	if !slices.Equal(got.Surplus, []string{"neighbour"}) {
+		t.Fatalf("surplus = %v, want the 2004 ad on the widened rung, not one of the 80 in era", got.Surplus)
+	}
+}
+
+// A clip further than a decade either side of every channel's era is idle: it fits no channel.
+func TestStandingCallsAClipBeyondTheNeighbouringDecadeIdle(t *testing.T) {
 	cat := append(plainAds(80), seasonAd("far", 1962))
 	got := standingOf(t, cat, []pod.PoolChannel{nineties1}, airedTimes(80))
-	if !slices.Equal(got.Surplus, []string{"far"}) {
-		t.Fatalf("surplus = %v, want the 1962 ad that fills the audience rung, not one of the 80 in era", got.Surplus)
+	if !slices.Equal(got.Idle, []string{"far"}) || len(got.Surplus) != 0 {
+		t.Fatalf("standing = %+v, want only the 1962 ad idle", got)
 	}
 }
 

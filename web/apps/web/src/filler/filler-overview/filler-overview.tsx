@@ -131,7 +131,6 @@ const readinessAction = (readiness: FillerReadinessDTO): ReadinessAction | undef
 const COVERAGE_BADGE: Record<PoolChannelDTOLevel, { label: string; tone: StatusTone }> = {
   exact: { label: "Good match", tone: "ok" },
   widened: { label: "Years loosened", tone: "warn" },
-  audience: { label: "Audience only", tone: "warn" },
   bumper_card: { label: "Bumpers only", tone: "error" },
 };
 

@@ -143,8 +143,7 @@ type MatchLevel string
 
 const (
 	MatchExact      MatchLevel = "exact"       // exact-era + audience matches filled the pod
-	MatchWidened    MatchLevel = "widened"     // era widened to the decade / any-era to fill
-	MatchAudience   MatchLevel = "audience"    // any appropriate-audience clip, era ignored
+	MatchWidened    MatchLevel = "widened"     // era widened to the decade either side
 	MatchBumperCard MatchLevel = "bumper_card" // no ad fits: station material, else the embedded card — never dead air
 )
 
@@ -545,18 +544,25 @@ func clipToEntry(c Clip, w Window, policy Policy) Entry {
 }
 
 // bookendCandidates is every unused, in-season-or-year-round bumper/station-id in the channel's
-// language the window may draw on: the era-matching ones when there are any, else all of them.
+// language the window may draw on, inside the channel's audience ceiling: the era-matching ones
+// when there are any, else all of them. A bookend missing a fact (FactsComplete) is already gone.
 func bookendCandidates(catalog []Clip, w Window, policy Policy, used map[string]bool) []Clip {
+	bumpers := bookendPool(catalog, w, policy, used)
+	if era := filterEraWindows(bumpers, w.eraWindows()); len(era) > 0 {
+		return era
+	}
+	return bumpers
+}
+
+// bookendPool is every bookend the window may air, before the era preference narrows it.
+func bookendPool(catalog []Clip, w Window, policy Policy, used map[string]bool) []Clip {
 	var bumpers []Clip
 	for _, c := range catalog {
 		if c.IsBumper() && !taken(used, c) && !outOfSeason(c, w) && speaksTheChannelsLanguage(c, w, policy) {
 			bumpers = append(bumpers, c)
 		}
 	}
-	if era := filterEraWindows(bumpers, w.eraWindows()); len(era) > 0 {
-		return era
-	}
-	return bumpers
+	return filterAudience(bumpers, w.Audience)
 }
 
 // pickBumper chooses a bumper/station-id for a pod bookend, preferring era match,

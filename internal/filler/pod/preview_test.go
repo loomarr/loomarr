@@ -45,8 +45,8 @@ func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 func TestPreviewAtUsesBreakScopedExposureSnapshot(t *testing.T) {
 	start := time.Date(2026, 8, 23, 12, 0, 0, 123_000_000, time.UTC)
 	cat := []pod.Clip{
-		{Hash: "recent", Path: "recent.mp4", Role: pod.Commercial, DurationMs: 30_000, Category: "one"},
-		{Hash: "new", Path: "new.mp4", Role: pod.Commercial, DurationMs: 30_000, Category: "two"},
+		{Hash: "recent", Path: "recent.mp4", Role: pod.Commercial, Era: 1992, Audience: pod.General, DurationMs: 30_000, Category: "one"},
+		{Hash: "new", Path: "new.mp4", Role: pod.Commercial, Era: 1992, Audience: pod.General, DurationMs: 30_000, Category: "two"},
 	}
 	// "new" first aired AT this break's start: that play belongs to the break itself, so the
 	// snapshot must not see it, or the clip would reshuffle the break it is airing in.
@@ -261,7 +261,7 @@ func TestPreviewEmptyCatalogIsNotAnError(t *testing.T) {
 func TestHasPool_LocalClipNeedsNoTunarrProgramID(t *testing.T) {
 	adapter := pod.NewAdapter(stubCatalog{clips: []pod.Clip{{
 		Hash: "local", Path: "commercials/local.mp4", Name: "Local ad",
-		Role: pod.Commercial, DurationMs: 30_000,
+		Role: pod.Commercial, Era: 1992, Audience: pod.General, DurationMs: 30_000,
 	}}}, nil, nil, discardLogger())
 
 	if !adapter.HasPool(context.Background(), "internal", 42, pod.Selection{}) {

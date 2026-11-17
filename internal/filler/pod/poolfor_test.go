@@ -23,12 +23,13 @@ func (c *countingCatalog) AllClips(context.Context) ([]pod.Clip, error) {
 // reads as a role gap (#749) whatever channels exist.
 func TestPoolCounts_CountsTheBookends(t *testing.T) {
 	catalog := []pod.Clip{
-		{Path: "bump.mp4", Role: pod.Bumper, DurationMs: 5_000},
-		{Path: "ident.mp4", Role: pod.StationID, DurationMs: 4_000},
-		{Path: "ad.mp4", Role: pod.Commercial, DurationMs: 30_000},
+		{Path: "bump.mp4", Role: pod.Bumper, Era: 1992, Audience: pod.General, DurationMs: 5_000},
+		{Path: "ident.mp4", Role: pod.StationID, Era: 1992, Audience: pod.General, DurationMs: 4_000},
+		{Path: "ad.mp4", Role: pod.Commercial, Era: 1992, Audience: pod.General, DurationMs: 30_000},
+		{Path: "undated.mp4", Role: pod.Bumper, Audience: pod.General, DurationMs: 5_000},
 	}
 	if got := pod.PoolCounts(catalog, pod.Policy{}).Bookends; got != 2 {
-		t.Errorf("Bookends = %d, want 2 — the bumper and the station ID, not the commercial", got)
+		t.Errorf("Bookends = %d, want 2 — the bumper and the station ID, not the commercial or the undated bumper", got)
 	}
 	if got := pod.PoolCounts(catalog[2:], pod.Policy{}).Bookends; got != 0 {
 		t.Errorf("Bookends = %d, want 0 for a catalog of commercials only", got)
@@ -65,8 +66,8 @@ func TestOrderWorstFirst_LevelThenNumber(t *testing.T) {
 // and carries the selection each channel was given.
 func TestPoolFor_OneCatalogReadForEveryChannel(t *testing.T) {
 	catalog := &countingCatalog{clips: []pod.Clip{
-		{Hash: "a", Path: "a.mp4", Role: pod.Commercial, DurationMs: 30_000, Era: 1992},
-		{Hash: "i", Path: "i.mp4", Role: pod.StationID, DurationMs: 4_000, Era: 1992},
+		{Hash: "a", Path: "a.mp4", Role: pod.Commercial, DurationMs: 30_000, Era: 1992, Audience: pod.General},
+		{Hash: "i", Path: "i.mp4", Role: pod.StationID, DurationMs: 4_000, Era: 1992, Audience: pod.General},
 	}}
 	adapter := pod.NewAdapter(catalog, nil, nil, slog.New(slog.DiscardHandler))
 

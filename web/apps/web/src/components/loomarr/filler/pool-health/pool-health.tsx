@@ -17,7 +17,6 @@ import type { PoolHealthProps } from "./pool-health.type";
 const LEVEL_LABEL: Record<PoolChannelDTO["level"], string> = {
   exact: "exact match",
   widened: "same decade",
-  audience: "audience only",
   bumper_card: "no commercials",
 };
 

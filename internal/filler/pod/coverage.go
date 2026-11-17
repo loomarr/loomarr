@@ -111,6 +111,10 @@ type CoverageReport struct {
 	DurationMs int64
 	Categories int
 	Brands     int
+	// Bookends is how many bumpers and station IDs this channel may air: in its place, its
+	// roles, its language, in season and inside its audience ceiling. Zero means its breaks open
+	// and close on nothing even when the catalog holds bookends for other channels.
+	Bookends int
 	// EraWindows is the era target the ladder read for this channel (normalized), nil when the
 	// channel takes any era. Acquisition steers by it when the channel has a gap (#749).
 	EraWindows []EraRange
@@ -185,8 +189,10 @@ type PoolReport struct {
 	// AI-tagging work list reads the same predicate); recomputing it in Go here would be a
 	// second definition of the word, free to drift from the job that acts on it.
 	Untagged int
-	// Bookends is the catalog's bumpers and station IDs: the clips a pod opens and closes on
-	// (Clip.IsBumper, what pod assembly picks from). Zero with live channels is a role gap (#749).
+	// Bookends is the catalog's bumpers and station IDs that carry the facts a break needs: the
+	// clips a pod opens and closes on (Clip.IsBumper, what pod assembly picks from). Zero with live
+	// channels is a role gap (#749). Each channel's own count, inside its audience ceiling, is
+	// CoverageReport.Bookends.
 	Bookends int
 	// Channels is per-live-channel coverage, worst first, so the strip's diagnosis line can
 	// name a channel without the caller sorting. Empty on an install with no live channels —
@@ -220,16 +226,14 @@ func levelRank(l MatchLevel) int {
 	switch l {
 	case MatchBumperCard:
 		return 0
-	case MatchAudience:
-		return 1
 	case MatchWidened:
-		return 2
+		return 1
 	case MatchExact:
-		return 3
+		return 2
 	default:
 		// An unknown level sorts BEST, so a future rung nobody taught this function about
 		// cannot silently become "the channel to fix" at the top of the operator's list.
-		return 4
+		return 3
 	}
 }
 
@@ -240,7 +244,7 @@ func levelRank(l MatchLevel) int {
 func PoolCounts(catalog []Clip, policy Policy) PoolReport {
 	report := PoolReport{Clips: len(catalog)}
 	for _, c := range catalog {
-		if c.IsBumper() {
+		if c.IsBumper() && FactsComplete(c) {
 			report.Bookends++ // what pod assembly opens and closes a break on (#749 role gaps)
 		}
 		if c.EffectivePlacement() != PlacementBreakBody {
@@ -288,7 +292,7 @@ func criterionCoverage(catalog []Clip, w Window, policy Policy) []CriterionCover
 		{CriterionLanguage, count(func(c Clip) bool { return speaksTheChannelsLanguage(c, w, policy) })},
 		{CriterionEra, count(func(c Clip) bool { return len(filterEraWindows([]Clip{c}, w.eraWindows())) > 0 })},
 		{CriterionAudience, count(func(c Clip) bool {
-			return len(filterAudienceWithUngrounded([]Clip{c}, w.Audience)) > 0
+			return len(filterAudience([]Clip{c}, w.Audience)) > 0
 		})},
 		{CriterionCategory, count(func(c Clip) bool {
 			return len(filterCategories([]Clip{c}, w.Categories)) > 0
@@ -354,6 +358,7 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 		Criteria:  criteria,
 
 		UndeterminedLanguage: undetermined,
+		Bookends:             len(bookendPool(catalog, w, policy, nil)),
 		Rungs:                make([]RungCoverage, 0, len(pools)),
 		Level:                MatchBumperCard,
 	}

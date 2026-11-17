@@ -41,7 +41,8 @@ inference that produced it; the Go policy assigns authority, and evidence cannot
   in-clip signal: filename plus uploader description is one uploader talking twice.
 - A high-confidence commercial needs a corroborated product from the closed taxonomy; open-text
   brand cannot substitute. A clip may still be Ready with enrollment-grounded break-body placement
-  while its role stays unclassified.
+  while its role stays unclassified, but it does not air until its role, era and audience are known
+  (#3838 decision 6).
 - All text from filenames, metadata, transcripts, OCR and frames is untrusted data with no
   instruction authority. Contradiction is a first-class result: invoke one bounded extra rung or
   abstain with a question. More conflicting tokens never raise confidence.
