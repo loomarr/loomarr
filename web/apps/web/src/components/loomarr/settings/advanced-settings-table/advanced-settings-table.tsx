@@ -193,8 +193,10 @@ const AdvancedSettingsTable = ({
                   {prov.label}
                 </Badge>
                 {pickerOwned ? (
-                  <Link to="/settings/ai" className="text-signal w-fit text-xs underline underline-offset-4">
-                    Choose model
+                  <Link to="/settings/ai" className="w-fit underline underline-offset-4">
+                    <Text as="span" className="block" textRole="hint" tone="signal">
+                      Choose model
+                    </Text>
                   </Link>
                 ) : (
                   <Action

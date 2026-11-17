@@ -132,6 +132,16 @@ Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex abov
   renders under 11px, content stays at 12px or above, and new code takes its size from the
   `--text-*` scale rather than an arbitrary `text-[Npx]`.
 
+- **Display roles (#2147):** the app draws a few sizes once each, 2px or more from every role above,
+  and they are named roles at the size they have, not snapped onto the scale: `monogram` (a channel's
+  letters on its art, 30/36, 600, tracked 0.08em), `numeral` (the info header's channel number, 30/30),
+  `pairCode` (the code typed to pair a device, 32/42.67, tracked 0.3em), `microBadge` (a thumbnail's
+  timecode, 9/13.5), `footnote` (fine print, 11/16.5, muted), and the tuner's `stationName` (28/42, 600,
+  tracked 0.01em) and `stationTag` (17.36/26.04, 500, tracked 0.16em), which are fluid on the web:
+  `clamp(18px, 2.8vw, 28px)` and 0.62 of it. A role's letter spacing is in em (`roleLetterSpacing`), and
+  `Text`'s `leading="none"` sets a line height of 1 for a glyph whose box is its own height. `Design/Typography`
+  shows each at its real values.
+
 ### 2.3 Space, radius, elevation
 
 - 4px grid (`space-1`=4 … `space-8`=32). Density: comfortable default; tables use compact row height (40px).

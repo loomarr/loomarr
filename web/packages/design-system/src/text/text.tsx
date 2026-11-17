@@ -3,7 +3,14 @@ import type { ComponentProps, CSSProperties, ElementType } from "react";
 import { createElement } from "react";
 
 import { TamaguiText } from "../text-base";
-import { type Density, type TextRole, typography } from "../tokens";
+import {
+  type Density,
+  type LeadingStep,
+  leadingSteps,
+  roleLetterSpacing,
+  type TextRole,
+  typography,
+} from "../tokens";
 
 // Text is its own module, apart from the other primitives: it is on nearly every surface, eager
 // code included, and importing it must not also load what the other primitives need (a Tooltip
@@ -47,6 +54,8 @@ type TextProps = Omit<
    * shadow, so the wide layer is a second, hidden copy of the text behind the first.
    */
   halo?: boolean;
+  /** Line height as a multiple of the size (`none` is 1), in place of the role's own height in px. */
+  leading?: LeadingStep;
   /** Uppercase with wide tracking — the section-label voice ("POD · 1:10", a shouted Caption). */
   shout?: boolean;
   /** The role's size at weight 600: a checked or selected choice's label (neutral-pressed, #1909). */
@@ -134,6 +143,12 @@ const dataRoles = new Set<TextRole>([
   "cardTime",
   "mono",
   "guideNumber",
+  "monogram",
+  "numeral",
+  "pairCode",
+  "microBadge",
+  "footnote",
+  "stationTag",
 ]);
 const mutedRoles = new Set<TextRole>([
   "label",
@@ -143,6 +158,7 @@ const mutedRoles = new Set<TextRole>([
   "cardMeta",
   "cardTime",
   "mono",
+  "footnote",
 ]);
 // No role defaults to amber: amber means focus or the primary action (#1909), so a number is
 // foreground at rest, and a display numeral (direct-tune digits, a pairing code) opts in with
@@ -169,20 +185,25 @@ const textTones = {
 } as const;
 
 const roleTracking = (textRole: TextRole, size: number) =>
-  textRole === "display"
-    ? -0.8
-    : textRole === "title"
-      ? -0.25
-      : textRole === "screenTitle"
-        ? size * -0.02
-        : textRole === "section"
-          ? 2
-          : 0;
+  textRole in roleLetterSpacing
+    ? size * roleLetterSpacing[textRole as keyof typeof roleLetterSpacing]
+    : textRole === "display"
+      ? -0.8
+      : textRole === "title"
+        ? -0.25
+        : textRole === "screenTitle"
+          ? size * -0.02
+          : textRole === "section"
+            ? 2
+            : 0;
 
 // Tamagui's web Text hands `accessibilityLiveRegion` to the DOM verbatim, where React rejects it and
 // no screen reader hears it; the web spelling is `aria-live` (RN's "none" is the web's "off").
 const webLiveRegion = (
-  props: Omit<TextProps, "as" | "density" | "halo" | "shout" | "strong" | "textRole" | "tone" | "tracking">,
+  props: Omit<
+    TextProps,
+    "as" | "density" | "halo" | "leading" | "shout" | "strong" | "textRole" | "tone" | "tracking"
+  >,
 ) => {
   if (!isWeb || props.accessibilityLiveRegion === undefined) return props;
   const { accessibilityLiveRegion, ...rest } = props;
@@ -196,6 +217,7 @@ const Text = ({
   as,
   density = "pointer",
   halo,
+  leading,
   shout,
   strong,
   textRole,
@@ -218,13 +240,25 @@ const Text = ({
         ? value.size * SHOUT_TRACKING
         : roleTracking(textRole, value.size)
       : value.size * tracking;
+  // A fluid role (web only) is `value.size` at wide windows and scales down with the window to
+  // `fluid.min`, its letter spacing in em and its line height a multiple of the size, so both follow.
+  const fluid = isWeb && "fluid" in value ? value.fluid : undefined;
+  const trackingEm =
+    tracking ?? (shout ? SHOUT_TRACKING : ((roleLetterSpacing as Record<string, number>)[textRole] ?? 0));
+  const fontSize = fluid ? `clamp(${fluid.min}px, ${fluid.vw}vw, ${value.size}px)` : value.size;
+  const letterSpacing = fluid ? `${trackingEm}em` : resolvedTracking;
+  const lineHeightRatio = leading
+    ? leadingSteps[leading]
+    : fluid
+      ? Math.round((value.lineHeight / value.size) * 1000) / 1000
+      : undefined;
   const face = {
     color: colorToken,
     fontFamily: dataRoles.has(textRole) ? "data" : "body",
-    fontSize: value.size,
+    fontSize: fontSize as number,
     fontWeight: value.weight,
-    letterSpacing: resolvedTracking,
-    lineHeight: lineHeightPx(value.lineHeight),
+    letterSpacing: letterSpacing as number,
+    lineHeight: lineHeightRatio ?? lineHeightPx(value.lineHeight),
     // Only when shouting: `face` spreads after the caller's props, so an always-present key
     // would erase a caller's own `textTransform="uppercase"` (the Guide grid's labels).
     ...(shout && { textTransform: "uppercase" as const }),
@@ -256,10 +290,10 @@ const Text = ({
         }),
         color: themeVal(theme, colorToken),
         fontFamily: dataRoles.has(textRole) ? typography.family.data.web : typography.family.body.web,
-        fontSize: value.size,
+        fontSize,
         fontWeight: value.weight,
-        letterSpacing: resolvedTracking,
-        lineHeight: `${value.lineHeight}px`,
+        letterSpacing,
+        lineHeight: lineHeightRatio ?? `${value.lineHeight}px`,
         textTransform: face.textTransform,
         ...(props as { style?: object }).style,
       },

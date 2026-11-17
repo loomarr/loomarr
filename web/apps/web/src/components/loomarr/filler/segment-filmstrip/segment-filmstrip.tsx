@@ -178,9 +178,9 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                       <Text as="span" className="block" numberOfLines={1} textRole="label" tone="primary">
                         {name}
                       </Text>
-                      <span className="text-static-300 font-mono text-[9px] tabular-nums">
+                      <Text as="span" fontVariant={["tabular-nums"]} textRole="microBadge">
                         {formatClipDuration(item.durationMs)}
-                      </span>
+                      </Text>
                     </span>
                   </MediaTile>
                 </Tooltip>
