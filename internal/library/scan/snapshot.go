@@ -82,7 +82,7 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 // writeVersion changes when what a write produces from the same inputs changes, so every file is
 // written once more with the new shape; its header is kept, so none is opened again. What each
 // version changed is in docs/design/library.md, "Write versions".
-const writeVersion = 88
+const writeVersion = 89
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -117,6 +117,12 @@ func pickedIDs(picked []precedence.Picked[mp.ExternalID]) []mp.ExternalID {
 func externalIDs(picked []precedence.Picked[mp.ExternalID]) []inventory.ExternalID {
 	out := make([]inventory.ExternalID, 0, len(picked))
 	for _, p := range picked {
+		// The store joins files to one title by their ids, so only an id that says which title a
+		// file is goes to it: Sonarr's own episode id is a row number, which a second Sonarr, or a
+		// reinstall's old NFOs, gives another show's episode too.
+		if !p.Value.Namespace.Grounds() || p.Value.Value == "" {
+			continue
+		}
 		out = append(out, inventory.ExternalID{Namespace: string(p.Value.Namespace), Value: p.Value.Value})
 	}
 	return out

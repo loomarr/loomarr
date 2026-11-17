@@ -793,6 +793,49 @@ func TestAnEpisodesCopiesAreOneTitle(t *testing.T) {
 	}
 }
 
+// Two shows' episodes whose NFOs carry one Sonarr id are two titles, found in one pass or two: the
+// id is a Sonarr's own row number, which a second Sonarr, or a reinstall's old NFOs, gives another
+// show's episode too. Only a catalog's id joins files to one title.
+func TestAnArrsOwnIDJoinsNoTitles(t *testing.T) {
+	ep := func(title, tvdb string) string {
+		return `<episodedetails><title>` + title + `</title><season>1</season><episode>1</episode><uniqueid type="tvdb" default="true">` +
+			tvdb + `</uniqueid><uniqueid type="sonarr">100</uniqueid></episodedetails>`
+	}
+	for _, later := range []bool{false, true} {
+		t.Run(strconv.FormatBool(later), func(t *testing.T) {
+			ctx := context.Background()
+			h := newHarness(t)
+			add := func(rel, doc string) {
+				p := h.file(rel, 10)
+				if err := os.WriteFile(p[:len(p)-len(filepath.Ext(p))]+".nfo", []byte(doc), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			add("Quillmoor/Season 1/Quillmoor - S01E01 - Arrival.mkv", ep("Arrival", "90048501"))
+			if later {
+				h.run()
+			}
+			add("Fallow Mere/Season 1/Fallow Mere - S01E01 - Pilot.mkv", ep("Pilot", "90048502"))
+			h.run()
+			h.run()
+			rows, err := h.st.LibraryFiles(ctx, h.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			items := map[string]bool{}
+			for _, r := range rows {
+				if r.ItemID == "" || r.Problem != "" {
+					t.Errorf("%s: item %q, problem %q", r.Path, r.ItemID, r.Problem)
+				}
+				items[r.ItemID] = true
+			}
+			if len(items) != 2 {
+				t.Errorf("two shows' episodes are %d titles; want 2", len(items))
+			}
+		})
+	}
+}
+
 // Two copies of an episode the catalog describes as one entry are one title, whatever their names
 // call it: one kept by Sonarr with its NFO's TVDB id, an older one named another way beside it, or
 // one that runs its title's words together.

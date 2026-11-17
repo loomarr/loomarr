@@ -28,6 +28,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("OriginFollowsIDs", func(t *testing.T) { testInventoryOriginFollowsIDs(t, newStore) })
 		t.Run("EpisodeIDsKeepTheirNumbers", func(t *testing.T) { testInventoryEpisodeIDsKeepTheirNumbers(t, newStore) })
 		t.Run("InferredIDsYieldToCatalogs", func(t *testing.T) { testInventoryInferredIDsYieldToCatalogs(t, newStore) })
+		t.Run("FounderLeavesForAnotherCatalog", func(t *testing.T) { testInventoryFounderLeavesForAnotherCatalog(t, newStore) })
 		t.Run("MeasurementRevision", func(t *testing.T) { testInventoryMeasurementRevision(t, newStore) })
 		t.Run("AnalysisRevision", func(t *testing.T) { testInventoryAnalysisRevision(t, newStore) })
 		t.Run("ExplicitMissing", func(t *testing.T) { testInventoryExplicitMissing(t, newStore) })

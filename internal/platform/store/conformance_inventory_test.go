@@ -201,6 +201,45 @@ func testInventoryInferredIDsYieldToCatalogs(t *testing.T, newStore NewStoreFunc
 	}
 }
 
+// The file that founded a title leaves it once a catalog says it is another title than the one a
+// copy that joined it holds, taking its sources, and stays apart when written again; the copy
+// keeps the title.
+func testInventoryFounderLeavesForAnotherCatalog(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	st := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	folder := inventory.ExternalID{Namespace: inventory.InferredNamespacePrefix + "film", Value: "harrow-fen-2011"}
+	film := func(file string, ids ...inventory.ExternalID) inventory.Snapshot {
+		s := inventorySnapshot("scan-a", file, "file-"+file, "rev-"+file, file, at)
+		s.Kind = "movie"
+		s.ExternalIDs = append(ids, folder)
+		return s
+	}
+	founded, err := st.ApplyInventorySnapshot(ctx, film("founder"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined, err := st.ApplyInventorySnapshot(ctx, film("copy", inventory.ExternalID{Namespace: "tmdb", Value: "90048111"}))
+	if err != nil || joined != founded {
+		t.Fatalf("the copy = (%q, %v), want the founder's %q", joined, err, founded)
+	}
+	other := film("founder", inventory.ExternalID{Namespace: "tmdb", Value: "90048222"})
+	apart, err := st.ApplyInventorySnapshot(ctx, other)
+	if err != nil || apart == founded {
+		t.Fatalf("the founder grounded as another film = (%q, %v), want a title apart from %q", apart, err, founded)
+	}
+	if again, err := st.ApplyInventorySnapshot(ctx, other); err != nil || again != apart {
+		t.Fatalf("written again = (%q, %v), want it to stay at %q", again, err, apart)
+	}
+	for id, want := range map[inventory.ItemID]string{founded: "copy", apart: "founder"} {
+		item, ok, err := st.InventoryItem(ctx, inventory.ItemRef{ID: id})
+		if err != nil || !ok || len(item.Origins) != 1 || item.Origins[0].Key.ExternalItemID != want || len(item.Sources) != 1 {
+			t.Errorf("item %q = %+v (%v, %v), want only %s and its source", id, item, ok, err, want)
+		}
+	}
+}
+
 // An origin written before its ids were known follows them to the item they name, taking its
 // sources, when it is its item's only origin; otherwise it is a conflict. Ids name items of the
 // origin's own kind only.
