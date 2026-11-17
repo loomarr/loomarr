@@ -32,6 +32,12 @@ type PressableRowProps = Omit<ComponentProps<typeof Pressable>, "children" | "st
   /** A hairline under the row, for rows stacked in a list. */
   divided?: boolean;
   /**
+   * How far the content sits from the row's edge, in px, the 2px focus border included. The default
+   * (12 across, 10 down) is a list row's. A row set into dense chrome, such as the app rail's footer,
+   * names its own so it keeps the spacing it was drawn with. Each side is at least 2, the border.
+   */
+  inset?: { x: number; y: number };
+  /**
    * Web: the DOM mousedown on the row, which react-native-web forwards to the element. An option of
    * a combobox listbox calls `preventDefault` here so the input keeps focus while the row is
    * pressed. Native has no mousedown and ignores it.
@@ -49,6 +55,9 @@ type PressableRowProps = Omit<ComponentProps<typeof Pressable>, "children" | "st
 
 type PressableRowRef = ComponentRef<typeof Pressable>;
 
+/** The focus border is always drawn (transparent at rest), so focusing a row never shifts it. */
+const FOCUS_BORDER = 2;
+
 /**
  * A whole row that opens or picks something: the list of incoming clips, a log line, a search
  * result, a place in a picker. The row is one button (or the role the caller names, such as
@@ -65,6 +74,7 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
         children,
         disabled = false,
         divided = false,
+        inset = { x: semanticSpace.control, y: semanticSpace.inline + FOCUS_BORDER },
         onBlur,
         onFocus,
         render,
@@ -87,12 +97,12 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
           <View
             alignItems="center"
             borderColor={focusLook.focused ? "$actionFocus" : "transparent"}
-            borderWidth={2}
+            borderWidth={FOCUS_BORDER}
             flexDirection="row"
             gap={semanticSpace.control}
             minWidth={0}
-            paddingHorizontal={semanticSpace.control - 2}
-            paddingVertical={semanticSpace.inline}
+            paddingHorizontal={Math.max(inset.x - FOCUS_BORDER, 0)}
+            paddingVertical={Math.max(inset.y - FOCUS_BORDER, 0)}
           >
             {typeof children === "function" ? children(state) : children}
           </View>
