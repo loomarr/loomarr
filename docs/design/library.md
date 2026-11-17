@@ -1117,6 +1117,12 @@ header is kept, so no file is opened again. Each version and what it changed:
   catalog ids have, none of which match. So a second film kept in a film's folder is its own title,
   whichever pass finds it, and copies grounded by different catalogs (tmdb only, imdb only) are
   one. Every file is written once more, so a film an earlier build merged with another splits.
+- **89:** only an id that says which title a file is reaches the store (`mp.Namespace.Grounds`:
+  TMDB, TVDB, IMDb), so Sonarr's own episode id, a row number a second Sonarr gives another show's
+  episode too, joins no titles and is no longer listed among a title's ids. The file that founded a
+  title leaves it once its catalog id disagrees with one a joined copy holds, for an item of its
+  own beside its home (`inventoryOwnPlace`), and stays there. Every file is written once more, so
+  titles an earlier build merged either way split.
 
 ## Search
 
