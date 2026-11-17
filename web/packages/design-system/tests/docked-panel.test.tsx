@@ -94,4 +94,10 @@ describe("DockedPanel (web)", () => {
     renderPanel({ meta: "now to next 2h" });
     expect(screen.getByText("now to next 2h").textContent).toBe("now to next 2h");
   });
+
+  it("lays the meta out as a flex box, so a text role in it keeps its own line height", () => {
+    renderPanel({ meta: <span>now to next 2h</span> });
+    const wrapper = screen.getByText("now to next 2h").parentElement as HTMLElement;
+    expect(wrapper.style.display).toBe("flex");
+  });
 });
