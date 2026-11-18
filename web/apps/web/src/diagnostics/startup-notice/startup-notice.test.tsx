@@ -80,7 +80,9 @@ describe("HealthNotice", () => {
     server.use(getGetCurrentHealthMockHandler(report("degraded")));
     renderNotice();
     await waitFor(() =>
-      expect(localStorage.getItem("loomarr.health.signature.startup-1")).toBe("degraded:media_server:warning"),
+      expect(localStorage.getItem("loomarr.health.signature.startup-1")).toBe(
+        "degraded:media_server:warning",
+      ),
     );
     expect(mocks.warning).not.toHaveBeenCalled();
     expect(localStorage.getItem("loomarr.health.ack.startup-1:degraded:media_server:warning")).toBeNull();
