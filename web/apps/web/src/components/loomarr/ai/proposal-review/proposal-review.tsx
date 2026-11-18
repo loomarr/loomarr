@@ -277,6 +277,13 @@ const ProposalReview = ({
         <Text as="p" textRole="compact">
           {availabilitySummary(selectedCount, selectedReady, selectedMissing)}
         </Text>
+        {/* A growth proposal (#4333): the channel found these by itself. The proposal carries the night
+            it grew on but not the line in words, so only the count is said here. */}
+        {proposal.growth ? (
+          <Text as="p" textRole="compact" tone="secondary">
+            {`Grows by itself: would add ${selectedCount === 1 ? "1 title" : `${selectedCount} titles`} that fit this channel's picks.`}
+          </Text>
+        ) : null}
         <ProposalOutlook assessment={assessment} pending={assessmentPending} showDetails={false} />
       </Stack>
 

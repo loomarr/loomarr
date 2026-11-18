@@ -81,6 +81,19 @@ describe("ProposalReview", () => {
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 
+  it("says how many titles a growth proposal would add, and says nothing for any other", () => {
+    const { unmount } = renderReview(
+      <ProposalReview proposal={{ ...proposal, growth: "growth-2026-11-18" }} status="submitted" />,
+    );
+    expect(
+      screen.getByText("Grows by itself: would add 2 titles that fit this channel's picks."),
+    ).toBeInTheDocument();
+    unmount();
+
+    renderReview(<ProposalReview proposal={proposal} status="submitted" />);
+    expect(screen.queryByText(/Grows by itself/)).not.toBeInTheDocument();
+  });
+
   it("turns a request down with the admin's reason, trimmed, or with none when left blank", async () => {
     const onDeny = vi.fn();
     const { unmount } = renderReview(

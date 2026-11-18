@@ -9,8 +9,13 @@ export { ChannelIdent } from "./src/channel-ident";
 export type {
   ChannelAudioOption,
   ChannelAudioSectionProps,
+  ChannelGrowthSectionProps,
   ChannelSeasonalFieldsProps,
   ChannelUnairableProps,
+  GrowthCounts,
+  GrowthJoinedTitle,
+  GrowthOffTitle,
+  GrowthStill,
   SeasonalHoliday,
   SeasonalMode,
   SeasonalOffSeason,
@@ -20,6 +25,7 @@ export type {
 } from "./src/channels";
 export {
   ChannelAudioSection,
+  ChannelGrowthSection,
   ChannelSeasonalFields,
   ChannelUnairable,
   seasonalModeLabel,

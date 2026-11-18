@@ -6,6 +6,7 @@ import { ChannelUnairable } from "@loomarr/ui";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ChannelDefaultAudio } from "@/channels/channel-default-audio";
+import { ChannelGrowth } from "@/channels/channel-growth";
 import { ChannelOnScreenLogo } from "@/channels/channel-on-screen-logo";
 import { ChannelBreaks } from "@/components/loomarr/channels/channel-breaks";
 import { ChannelHero } from "@/components/loomarr/channels/channel-hero";
@@ -107,6 +108,10 @@ const InfoScreen = () => {
       {/* The lineup titles the last reconcile could not air, and why (#4140). Admin-only: the
           fixes (download it, widen the seasons, change the limits) are admin actions. */}
       {isAdmin && <ChannelUnairable titles={ch.policy.unairable ?? []} />}
+
+      {/* What the channel takes in by itself (#4333), admin-only: the take-off, add-back and keep
+          switch are edits to the channel. */}
+      {isAdmin && <ChannelGrowth channel={ch} />}
 
       {/* The On-screen logo (#1659): admin-only like Programming and Filler, autosaving
           policy.watermark like the Programming fields. Members never see it. */}
