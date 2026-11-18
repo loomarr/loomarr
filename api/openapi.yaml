@@ -5315,6 +5315,145 @@ components:
         - title
         - markdown
       type: object
+    GrowthCountsDTO:
+      additionalProperties: false
+      properties:
+        episodes:
+          format: int64
+          type: integer
+        films:
+          format: int64
+          type: integer
+        shows:
+          format: int64
+          type: integer
+      required:
+        - episodes
+        - shows
+        - films
+      type: object
+    GrowthJoinedDTO:
+      additionalProperties: false
+      properties:
+        batch:
+          description: The night it joined, e.g. growth-2026-11-16
+          type: string
+        key:
+          type: string
+        name:
+          type: string
+      required:
+        - key
+        - name
+        - batch
+      type: object
+    GrowthLineDTO:
+      additionalProperties: false
+      properties:
+        fixed:
+          description: "Nothing joins: one seed, or nothing airable to draw a line from"
+          type: boolean
+        genres:
+          items:
+            type: string
+          maxItems: 32
+          type: array
+        maxRating:
+          type: string
+        odd:
+          description: Keys of the channel's own titles that sit outside what most share; they keep airing and do not stretch the line
+          items:
+            type: string
+          maxItems: 200
+          type: array
+        words:
+          description: The line in plain words, e.g. "series from 1986 to 1995, rated up to TV-PG, comedy and family"
+          type: string
+        yearFrom:
+          format: int64
+          type: integer
+        yearTo:
+          format: int64
+          type: integer
+      required:
+        - words
+        - fixed
+        - genres
+        - odd
+      type: object
+    GrowthOffDTO:
+      additionalProperties: false
+      properties:
+        at:
+          description: When the model judged it; absent when a person took it off
+          format: date-time
+          type: string
+        key:
+          type: string
+        name:
+          type: string
+        reason:
+          description: The model's reason when the model took it off; empty when a person did
+          type: string
+      required:
+        - key
+        - name
+        - reason
+      type: object
+    GrowthOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/GrowthOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        carried:
+          $ref: "#/components/schemas/GrowthCountsDTO"
+          description: What the channel airs now
+        joined:
+          items:
+            $ref: "#/components/schemas/GrowthJoinedDTO"
+          maxItems: 2000
+          type: array
+        line:
+          $ref: "#/components/schemas/GrowthLineDTO"
+        "off":
+          items:
+            $ref: "#/components/schemas/GrowthOffDTO"
+          maxItems: 1000
+          type: array
+        short:
+          $ref: "#/components/schemas/GrowthCountsDTO"
+          description: What it lacks of the target; zero when it has enough
+        still:
+          description: Why the channel does not grow; empty when it does. kept = switched to keep as it is; by_hand = made by hand; fixed = its line admits nothing; not_active = not live
+          enum:
+            - ""
+            - kept
+            - by_hand
+            - fixed
+            - not_active
+          type: string
+        target:
+          $ref: "#/components/schemas/GrowthCountsDTO"
+          description: Enough for a week without a repeat and no show dominating a day; zero on a fixed line
+        waiting:
+          description: Unclear fits waiting for the model's verdict before they may join
+          format: int64
+          type: integer
+      required:
+        - still
+        - line
+        - carried
+        - target
+        - short
+        - waiting
+        - joined
+        - "off"
+      type: object
     GrowthPolicy:
       additionalProperties: false
       properties:
@@ -14936,6 +15075,34 @@ paths:
       tags:
         - channels
         - filler
+  /v1/channels/{id}/growth:
+    get:
+      description: "The line the channel's own picks draw, in plain words; what it carries against its target and what it lacks; the titles that joined by themselves, each undone by taking it off the lineup; and the titles taken back off, with the model's reason where the model took one off. Read only: the keep switch is `policy.growth.keep` on the channel PATCH, and a title taken off is added back like any other. 501 when growth isn't wired."
+      operationId: channel-growth
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrowthOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: What a channel takes in by itself
+      tags:
+        - channels
   /v1/channels/{id}/icon:
     post:
       description: Admin only. A raster image under 2 MB in the `file` field (PNG, JPEG, WebP, GIF — SVG is refused because the serve half is public and an SVG can carry script). Ingests the bytes into the image service (§22), points the channel's logo at the content-addressed URL, and reconciles so Tunarr picks it up. Re-uploading the same image yields the same URL; a different image yields a different one, so no cache-bust is needed.
