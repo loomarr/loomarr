@@ -278,10 +278,20 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   stream read the stored pod (`PreviewAtMany`), so the guide shows what airs, and a half-aired
   break keeps its pod and length. A break is keyed by its channel and start: a lineup edit that
   moves a break gives it nothing stored, so it is assembled fresh, and reconcile deletes the
-  breaks behind the anchor and the ones that moved. A break within the run-ahead of now is not
-  planned: it is on air or about to be, and a channel with no stored break assembles live as
-  before, until reconcile has planned it (a window that has just turned airs unplanned breaks
-  until the next reconcile, with the card filling any remainder).
+  breaks behind the anchor and the ones that moved. A stored break assembled to another ceiling
+  (the break length setting changed) is assembled again. A break within the run-ahead of now is
+  **fixed**: it is on air or about to be, so it keeps the length it was stored with, or its slot's
+  when it was never planned, and is never assembled after the fact. Fixing by what was stored, not
+  by the slot's current length, is what makes planning at any instant walk the timeline that aired.
+- **The next window's breaks are planned before it turns.** Once the programme crossing a window's
+  end finishes, the playout airs the next window straight away (#1675), arranged with the same
+  computation reconcile commits, before any reconcile has committed it. So within the hour before
+  the turn, reconcile also plans the next window's breaks from the turn's instant. The playout then
+  only reads their lengths (`Engine.TurnedWindow`), and each break ends with its pod from the
+  window's first minute. Reconcile stays the only writer. Each plan clears stored breaks only in its
+  own stretch: the window on air plans up to its turn and clears everything behind it, and the next
+  window clears only from the turn, so neither deletes the other's. A break whose start the plan
+  ahead missed (the lineup changed between the plan and the turn) airs live, as before.
 - **What "seen this evening" means for a break planned ahead:** the household's real watched airings
   up to now plus this channel's own already-stored breaks, so no ad repeats within the channel's
   evening. Other channels' planned breaks do not count, because what they air depends on viewing

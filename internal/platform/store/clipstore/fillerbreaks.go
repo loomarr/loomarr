@@ -3,6 +3,7 @@ package clipstore
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -72,14 +73,18 @@ func (s *Store) ListFillerBreaks(ctx context.Context, channelID string, from, to
 	return out, rows.Err()
 }
 
-// KeepFillerBreaks deletes a channel's stored breaks other than the ones starting at `starts`:
-// a break whose slot moved or left the window has nothing to air at its old start.
-func (s *Store) KeepFillerBreaks(ctx context.Context, channelID string, starts []time.Time) error {
-	if len(starts) == 0 {
-		if _, err := s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM filler_breaks WHERE channel_id = ?`), channelID); err != nil {
-			return fmt.Errorf("clear filler breaks %s: %w", channelID, err)
-		}
-		return nil
+// KeepFillerBreaks deletes a channel's stored breaks starting in [from, until) other than the ones
+// starting at `starts`: a break whose slot moved or left the window has nothing to air at its old
+// start. A zero bound is open, so zero for both clears the whole channel but `starts`. The range is
+// what lets two plans share a channel: the window on air and the next one, planned ahead, each
+// clear only their own stretch.
+func (s *Store) KeepFillerBreaks(ctx context.Context, channelID string, from, until time.Time, starts []time.Time) error {
+	lo, hi := int64(math.MinInt64), int64(math.MaxInt64)
+	if !from.IsZero() {
+		lo = from.UnixMilli()
+	}
+	if !until.IsZero() {
+		hi = until.UnixMilli()
 	}
 	// The kept starts are one channel's window of breaks, a few hundred at most, so they bind
 	// directly; chunked at 500 to stay under every driver's placeholder limit.
@@ -87,7 +92,8 @@ func (s *Store) KeepFillerBreaks(ctx context.Context, channelID string, starts [
 	for _, t := range starts {
 		keep[t.UnixMilli()] = true
 	}
-	rows, err := s.h.QueryContext(ctx, s.h.Rebind(`SELECT start_ms FROM filler_breaks WHERE channel_id = ?`), channelID)
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(`SELECT start_ms FROM filler_breaks
+		WHERE channel_id = ? AND start_ms >= ? AND start_ms < ?`), channelID, lo, hi)
 	if err != nil {
 		return fmt.Errorf("list filler breaks %s: %w", channelID, err)
 	}

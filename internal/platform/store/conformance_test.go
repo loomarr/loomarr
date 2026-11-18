@@ -78,6 +78,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 
 	t.Run("Channels", func(t *testing.T) {
 		t.Run("ChannelRoundTrip", func(t *testing.T) { testChannelRoundTrip(t, newStore) })
+		t.Run("FillerBreaks", func(t *testing.T) { testFillerBreaks(t, newStore) })
 		t.Run("ChannelRevisionCAS", func(t *testing.T) { testChannelRevisionCAS(t, newStore) })
 		t.Run("ChannelTargetedRevisionWrites", func(t *testing.T) { testChannelTargetedRevisionWrites(t, newStore) })
 		t.Run("ChannelListAndDelete", func(t *testing.T) { testChannelListDelete(t, newStore) })

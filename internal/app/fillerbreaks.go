@@ -44,6 +44,6 @@ func (a fillerBreakAdapter) LoadBreaks(ctx context.Context, channelID string, fr
 	return out, nil
 }
 
-func (a fillerBreakAdapter) KeepBreaks(ctx context.Context, channelID string, starts []time.Time) error {
-	return a.st.KeepFillerBreaks(ctx, channelID, starts)
+func (a fillerBreakAdapter) KeepBreaks(ctx context.Context, channelID string, from, until time.Time, starts []time.Time) error {
+	return a.st.KeepFillerBreaks(ctx, channelID, from, until, starts)
 }

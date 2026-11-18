@@ -17,7 +17,17 @@ type planningPods struct {
 	lengths []time.Duration
 	plans   []pod.BreakPlan
 	from    time.Time
+	bounds  pod.PlanBounds
+	reads   int
 }
+
+func (p *planningPods) PlannedLengths(_ context.Context, _ string, from time.Time, plans []pod.BreakPlan) ([]time.Duration, error) {
+	p.reads++
+	p.plans, p.from = plans, from
+	return p.lengths, nil
+}
+
+var _ BreakPlanner = (*planningPods)(nil)
 
 func (p *planningPods) BuildFillerList(context.Context, string, int64, pod.Selection) ([]string, bool) {
 	return nil, false
@@ -27,8 +37,8 @@ func (p *planningPods) PlayableDurationMs(context.Context, string, int64, pod.Se
 	return 120_000
 }
 func (p *planningPods) PlanBreaks(_ context.Context, _ string, _ pod.Selection, _ func(int64) int64,
-	_, from time.Time, plans []pod.BreakPlan) ([]time.Duration, error) {
-	p.plans, p.from = plans, from
+	bounds pod.PlanBounds, plans []pod.BreakPlan) ([]time.Duration, error) {
+	p.plans, p.from, p.bounds = plans, bounds.From, bounds
 	return p.lengths, nil
 }
 
@@ -48,7 +58,7 @@ func TestPlanBreaksResumesTheProgrammeAtTheRealEndOfTheBreak(t *testing.T) {
 	e := &Engine{pods: pods, now: func() time.Time { return now }}
 	slots := []schedule.Slot{programme("a", 30), breakSlot(), programme("b", 30), breakSlot(), programme("c", 30)}
 
-	got := e.planBreaks(context.Background(), channelstore.Channel{}, anchor, slots)
+	got := e.planBreaks(context.Background(), channelstore.Channel{}, anchor, slots, time.Time{}, time.Time{})
 
 	if len(pods.plans) != 2 || pods.plans[0].Gap != 0 || pods.plans[0].Ceiling != 2*time.Minute ||
 		pods.plans[1].Gap != 30*time.Minute || pods.plans[1].Ceiling != 2*time.Minute {
@@ -71,21 +81,26 @@ func TestPlanBreaksResumesTheProgrammeAtTheRealEndOfTheBreak(t *testing.T) {
 	}
 }
 
-// A break with nothing to air takes no time, and a break already on air or aired keeps its length.
+// A break with nothing to air takes no time. A break already on air or aired is planned too, as
+// fixed: the planner keeps the length it aired at, which may be shorter than the fresh slot a
+// turned window brings, and the programmes after it follow that length.
 func TestPlanBreaksDropsAnEmptyBreakAndKeepsTheBreaksThatHaveStarted(t *testing.T) {
 	anchor := time.Date(2026, 11, 3, 20, 0, 0, 0, time.UTC)
 	now := anchor.Add(45 * time.Minute) // the first break aired, the second is still to come
-	pods := &planningPods{lengths: []time.Duration{0}}
+	pods := &planningPods{lengths: []time.Duration{40 * time.Second, 0}}
 	e := &Engine{pods: pods, now: func() time.Time { return now }}
 	slots := []schedule.Slot{programme("a", 30), breakSlot(), programme("b", 30), breakSlot(), programme("c", 30)}
 
-	got := e.planBreaks(context.Background(), channelstore.Channel{}, anchor, slots)
+	got := e.planBreaks(context.Background(), channelstore.Channel{}, anchor, slots, time.Time{}, time.Time{})
 
-	if len(pods.plans) != 1 || pods.plans[0].Gap != 0 || !pods.from.Equal(anchor.Add(30*time.Minute+120*time.Second+30*time.Minute)) {
-		t.Fatalf("plans = %+v, want only the break still to come", pods.plans)
+	if len(pods.plans) != 2 || !pods.from.Equal(anchor.Add(30*time.Minute)) {
+		t.Fatalf("plans = %+v from %v, want both breaks from the first", pods.plans, pods.from)
 	}
-	if len(got) != 4 || got[1].DurationMs != 120_000 {
-		t.Fatalf("slots = %+v, want the aired break kept at 2 minutes and the empty one dropped", got)
+	if want := now.Add(playout.OnAirLookahead); !pods.bounds.FixedBefore.Equal(want) {
+		t.Fatalf("fixed before %v, want now plus the run-ahead %v", pods.bounds.FixedBefore, want)
+	}
+	if len(got) != 4 || got[1].DurationMs != 40_000 {
+		t.Fatalf("slots = %+v, want the aired break at the 40 seconds it aired and the empty one dropped", got)
 	}
 }
 
@@ -93,7 +108,7 @@ func TestPlanBreaksDropsAnEmptyBreakAndKeepsTheBreaksThatHaveStarted(t *testing.
 func TestPlanBreaksLeavesSlotsAloneWithoutAPlanner(t *testing.T) {
 	e := &Engine{pods: nil, now: time.Now}
 	slots := []schedule.Slot{programme("a", 30), breakSlot()}
-	if got := e.planBreaks(context.Background(), channelstore.Channel{}, time.Now(), slots); len(got) != 2 || got[1].DurationMs != 120_000 {
+	if got := e.planBreaks(context.Background(), channelstore.Channel{}, time.Now(), slots, time.Time{}, time.Time{}); len(got) != 2 || got[1].DurationMs != 120_000 {
 		t.Fatalf("slots = %+v, want them unchanged", got)
 	}
 }

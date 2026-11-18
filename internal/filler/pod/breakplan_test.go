@@ -37,13 +37,14 @@ func (m *memoryBreaks) LoadBreaks(_ context.Context, channelID string, from, to 
 	return out, nil
 }
 
-func (m *memoryBreaks) KeepBreaks(_ context.Context, channelID string, starts []time.Time) error {
+func (m *memoryBreaks) KeepBreaks(_ context.Context, channelID string, from, until time.Time, starts []time.Time) error {
 	keep := map[string]bool{}
 	for _, s := range starts {
 		keep[key(channelID, s)] = true
 	}
 	for k, b := range m.byKey {
-		if b.ChannelID == channelID && !keep[k] {
+		inRange := (from.IsZero() || !b.Start.Before(from)) && (until.IsZero() || b.Start.Before(until))
+		if b.ChannelID == channelID && inRange && !keep[k] {
 			delete(m.byKey, k)
 		}
 	}
@@ -57,7 +58,11 @@ func planner(t *testing.T, catalog []pod.Clip, store *memoryBreaks) *pod.Adapter
 	}, discardLogger()).WithBreaks(store).WithClock(func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) })
 }
 
-var planFrom = time.Date(2026, 11, 3, 20, 0, 0, 0, time.UTC)
+var (
+	planFrom = time.Date(2026, 11, 3, 20, 0, 0, 0, time.UTC)
+	// fromStart plans from planFrom with nothing on air yet, clearing the whole channel.
+	fromStart = pod.PlanBounds{From: planFrom, FixedBefore: planFrom}
+)
 
 func plansOf(n int, gap, ceiling time.Duration) []pod.BreakPlan {
 	out := make([]pod.BreakPlan, n)
@@ -78,7 +83,7 @@ func TestPlanBreaksSizeEachBreakToItsStoredPod(t *testing.T) {
 	adapter := planner(t, append(catalogOf(30, 30, 30), pod.Clip{Hash: "ident", Path: "ident.mp4",
 		Role: pod.StationID, Era: 1992, Audience: pod.General, DurationMs: 5_000}), store)
 
-	lengths, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, planFrom, planFrom,
+	lengths, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart,
 		plansOf(3, 30*time.Minute, 2*time.Minute))
 	if err != nil {
 		t.Fatal(err)
@@ -110,12 +115,12 @@ func TestPlanBreaksAssembleOnlyWhatMoved(t *testing.T) {
 	adapter := planner(t, catalogOf(30, 30, 30, 30, 30, 30, 30, 30), store)
 	plans := plansOf(3, 30*time.Minute, 2*time.Minute)
 
-	first, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, planFrom, planFrom, plans)
+	first, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart, plans)
 	if err != nil {
 		t.Fatal(err)
 	}
 	saved := store.saves
-	again, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, planFrom, planFrom, plans)
+	again, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart, plans)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +131,7 @@ func TestPlanBreaksAssembleOnlyWhatMoved(t *testing.T) {
 	// A lineup edit that moves the first programme by a minute moves every break after it.
 	moved := plansOf(3, 30*time.Minute, 2*time.Minute)
 	moved[0].Gap = time.Minute
-	if _, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, planFrom, planFrom, moved); err != nil {
+	if _, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart, moved); err != nil {
 		t.Fatal(err)
 	}
 	if store.saves != saved+3 {
@@ -137,12 +142,137 @@ func TestPlanBreaksAssembleOnlyWhatMoved(t *testing.T) {
 	}
 }
 
+// A break stored for another ceiling is assembled again: a shorter break setting must not leave
+// a stored pod longer than its slot, and a longer one gets the room it was given.
+func TestPlanBreaksReassembleWhenTheCeilingChanges(t *testing.T) {
+	store := newMemoryBreaks()
+	adapter := planner(t, catalogOf(30, 30, 30, 30, 30, 30, 30, 30), store)
+	if _, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart,
+		plansOf(1, 0, 2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart,
+		plansOf(1, 0, time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0] > time.Minute {
+		t.Fatalf("after the ceiling fell to a minute the break is %v", got[0])
+	}
+	stored, _ := store.LoadBreaks(context.Background(), "ch-1", planFrom, planFrom)
+	if len(stored) != 1 || stored[0].Ceiling != time.Minute {
+		t.Fatalf("stored %+v, want the break re-stored at the one minute ceiling", stored)
+	}
+}
+
+// The window on air and the next, planned ahead from the turn, share a channel: the first stops at
+// the turn and the second clears only from it, so planning either again keeps the other's breaks.
+// The playout reads the next window's lengths without assembling anything.
+func TestPlanBreaksTwoWindowsShareAChannel(t *testing.T) {
+	store := newMemoryBreaks()
+	adapter := planner(t, append(catalogOf(30, 30, 30, 30), pod.Clip{Hash: "ident", Path: "ident.mp4",
+		Role: pod.StationID, Era: 1992, Audience: pod.General, DurationMs: 5_000}), store)
+	turn := planFrom.Add(45 * time.Minute)
+	current := pod.PlanBounds{From: planFrom, FixedBefore: planFrom, Until: turn}
+	next := pod.PlanBounds{From: turn.Add(20 * time.Minute), FixedBefore: planFrom, ClearFrom: turn}
+	// The current cycle runs past the turn: its third break, an hour in, lies beyond it.
+	currentPlans := plansOf(3, 30*time.Minute, 2*time.Minute)
+	nextPlans := plansOf(2, 30*time.Minute, 2*time.Minute)
+
+	for range 2 { // planning each again must not disturb the other
+		if _, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, current, currentPlans); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, next, nextPlans); err != nil {
+			t.Fatal(err)
+		}
+	}
+	saves := store.saves
+	if _, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, current, currentPlans); err != nil {
+		t.Fatal(err)
+	}
+	if store.saves != saves {
+		t.Errorf("planning the window on air again assembled %d breaks: the plans are deleting each other's", store.saves-saves)
+	}
+	all, _ := store.LoadBreaks(context.Background(), "ch-1", planFrom, planFrom.Add(4*time.Hour))
+	var before, after int
+	for _, b := range all {
+		if b.Start.Before(turn) {
+			before++
+		} else {
+			after++
+		}
+	}
+	if before != 2 || after != 2 {
+		t.Fatalf("stored %d breaks before the turn and %d after, want the current window's two and the next's two", before, after)
+	}
+
+	planned, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, next, nextPlans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saves = store.saves
+	read, err := adapter.PlannedLengths(context.Background(), "ch-1", next.From, nextPlans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.saves != saves || len(read) != 2 || read[0] != planned[0] || read[1] != planned[1] {
+		t.Fatalf("read lengths %v (saving %d), want the planned %v and no writes", read, store.saves-saves, planned)
+	}
+	if read[1] >= 2*time.Minute {
+		t.Errorf("second break of the next window = %v, want it cut to its pod for this test to mean anything", read[1])
+	}
+}
+
+// A break already on air is fixed: it keeps the length it was stored with, so planning later in
+// the evening walks the same timeline as planning before it aired. A fixed break that was never
+// stored aired at its slot's length and is not assembled now, after the fact.
+func TestPlanBreaksKeepsAFixedBreakAsItAired(t *testing.T) {
+	store := newMemoryBreaks()
+	adapter := planner(t, append(catalogOf(30, 30), pod.Clip{Hash: "ident", Path: "ident.mp4",
+		Role: pod.StationID, Era: 1992, Audience: pod.General, DurationMs: 5_000}), store)
+	plans := plansOf(2, 30*time.Minute, 2*time.Minute)
+	before, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart, plans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before[0] >= 2*time.Minute {
+		t.Fatalf("first break = %v, want it shorter than its ceiling for this test to mean anything", before[0])
+	}
+
+	// Planning again just after the first break started: it is fixed by the length it was stored with.
+	after, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, pod.PlanBounds{From: planFrom, FixedBefore: planFrom.Add(time.Second)}, plans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after[0] != before[0] || after[1] != before[1] {
+		t.Fatalf("after the first break aired, lengths = %v, want the planned %v", after, before)
+	}
+
+	fresh := newMemoryBreaks()
+	unplanned := planner(t, catalogOf(30, 30, 30, 30), fresh)
+	got, err := unplanned.PlanBreaks(context.Background(), "ch-2", pod.Selection{}, nil, pod.PlanBounds{From: planFrom, FixedBefore: planFrom.Add(time.Second)},
+		[]pod.BreakPlan{{Ceiling: 2 * time.Minute}, {Gap: 30 * time.Minute, Ceiling: 2 * time.Minute}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0] != 2*time.Minute {
+		t.Errorf("a fixed break nobody stored = %v, want its 2 minute slot", got[0])
+	}
+	if stored, _ := fresh.LoadBreaks(context.Background(), "ch-2", planFrom, planFrom); len(stored) != 0 {
+		t.Errorf("a fixed break was assembled after it aired")
+	}
+	if stored, _ := fresh.LoadBreaks(context.Background(), "ch-2", planFrom.Add(32*time.Minute), planFrom.Add(32*time.Minute)); len(stored) != 1 {
+		t.Errorf("the break still to come was not planned after the fixed one's full slot")
+	}
+}
+
 // The guide reads the stored pod: asked for a planned break, the previewer returns what was
 // planned, not a second assembly.
 func TestPreviewAtManyReadsTheStoredBreak(t *testing.T) {
 	store := newMemoryBreaks()
 	adapter := planner(t, catalogOf(30, 30, 30, 30, 30, 30), store)
-	if _, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, planFrom, planFrom,
+	if _, err := adapter.PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart,
 		plansOf(2, 30*time.Minute, 2*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
