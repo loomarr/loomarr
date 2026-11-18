@@ -70,6 +70,12 @@ type Job struct {
 	// that runs fine and has simply never failed; for backup that ambiguity means an
 	// operator believing they are covered when they are not.
 	DisabledReason string
+
+	// Watchdog marks the job whose observations decide readiness (system-health). It runs on a
+	// worker of its own and never waits behind another job: an ordinary job may hold the shared
+	// worker for River's full minute, longer than readiness tolerates a missed observation, and a
+	// stale readiness takes Loomarr off the reverse proxy (2026-11-18). Ordinary work must not set it.
+	Watchdog bool
 }
 
 // Disabled reports whether the job cannot run in this environment.
