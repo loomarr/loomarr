@@ -66,21 +66,6 @@ func sweepCatalog(mix []int64, pool int, bookends []int64) []pod.Clip {
 	return cat
 }
 
-// sweepUnused is the catalog clips a break could still have used: nothing in the pod, whole.
-func sweepUnused(cat []pod.Clip, brk pod.Pod) []pod.Clip {
-	in := map[string]bool{}
-	for _, e := range brk.Entries {
-		in[e.Hash] = true
-	}
-	var out []pod.Clip
-	for _, c := range cat {
-		if !in[c.Hash] {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
 func sweepCheck(t *testing.T, label string, cat []pod.Clip, gapMs int64, brk pod.Pod) {
 	t.Helper()
 	var sum int64
