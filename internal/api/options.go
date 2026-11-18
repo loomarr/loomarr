@@ -189,6 +189,7 @@ type ChannelsOptions struct {
 	TunerRescanner channelsapi.TunerRescanner // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
 	Binder         channelsapi.Binder         // explicit channel intent/number helpers; not the approval gate
 	IdeaLibrary    channelsapi.IdeaLibrary    ///v1/discovery/ideas (#1665); nil ⇒ route 501
+	Growth         channelsapi.GrowthStatus   // /v1/channels/{id}/growth (#4333); nil ⇒ route 501
 	Icons          channelsapi.IconService    ///v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
 	// WatermarkPreview draws a channel's bug for the channel page's preview. Nil ⇒ the route 501s.
 	WatermarkPreview channelsapi.WatermarkPreviewer

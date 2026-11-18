@@ -170,6 +170,8 @@ type Deps struct {
 	Calendar func() schedule.Calendar
 	// Viewing is who is watching what, from the players' own playlist polls; nil reads as nobody.
 	Viewing *viewing.Tracker
+	// Growth reads what a channel took in by itself (#4333); nil answers 501.
+	Growth GrowthStatus
 }
 
 // Handlers serves the channel routes.
@@ -194,6 +196,7 @@ type Handlers struct {
 	approver       ManualLineupResolver
 	calendar       func() schedule.Calendar
 	viewing        *viewing.Tracker
+	growth         GrowthStatus
 }
 
 // New returns the channel handlers over d.
@@ -205,6 +208,7 @@ func New(d Deps) *Handlers {
 		tunerRescanner: d.TunerRescanner, icons: d.Icons, playout: d.Playout, activity: d.Activity,
 		imageRecords: d.ImageRecords, images: d.Images, watermark: d.WatermarkPreview, now: d.Now,
 		ideaLibrary: d.IdeaLibrary, approver: d.Approver, calendar: d.Calendar, viewing: d.Viewing,
+		growth: d.Growth,
 	}
 }
 
@@ -218,6 +222,7 @@ func (s *Handlers) Register(api huma.API) {
 	s.registerHousehold(api)
 	s.registerHouseholdViewing(api)
 	s.registerWatchHistory(api)
+	s.registerGrowth(api)
 }
 
 // holidayCalendar is the engine's holiday calendar, or the default (the US, UTC) without one.

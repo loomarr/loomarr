@@ -54,6 +54,7 @@ type suggestionBuild struct {
 	images           *images.Service
 	imageFetcher     *images.Fetcher
 	timelineThumbs   guideapi.TimelineThumbResolver
+	growth           channelsapi.GrowthStatus
 }
 
 func buildSuggestions(
@@ -150,6 +151,7 @@ func buildSuggestions(
 		return provider != nil
 	}
 	registry.Add(growth.NewFill(st, result.durableWorkflow, approver, hasModel, time.Now, log).Job())
+	result.growth = growth.NewStatusReader(st, hasModel)
 	// The model reviews what channels grew by, in the background, yielding to a person waiting on it.
 	var reconciler edit.Reconciler
 	if r, ok := channelService.(edit.Reconciler); ok {

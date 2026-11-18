@@ -192,6 +192,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 			TunerRescanner:   tunerRescanner,
 			Binder:           chBinder,
 			IdeaLibrary:      deps.suggestions.ideaLibrary,
+			Growth:           deps.suggestions.growth,
 			Icons:            iconSvc,
 			WatermarkPreview: deps.watermarks,
 		},

@@ -113,6 +113,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		TunerRescanner: opts.Channels.TunerRescanner, Icons: opts.Channels.Icons, Playout: opts.Playout.Service, Activity: opts.Activity,
 		Images: opts.Images, WatermarkPreview: opts.Channels.WatermarkPreview, Now: opts.Now,
 		IdeaLibrary: opts.Channels.IdeaLibrary, Approver: opts.Proposals.Approver, Viewing: srv.viewing,
+		Growth:   opts.Channels.Growth,
 		Calendar: func() schedule.Calendar { return srv.holidayCalendar() },
 	}
 	if opts.Images != nil {
