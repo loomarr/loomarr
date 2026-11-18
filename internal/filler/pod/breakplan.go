@@ -103,9 +103,9 @@ func (a *Adapter) PlanBreaks(ctx context.Context, channelID string, sel Selectio
 	if err != nil {
 		return nil, err
 	}
-	inCatalog := make(map[string]bool, len(clips))
+	inCatalog := make(map[string]airWindow, len(clips))
 	for _, c := range clips {
-		inCatalog[c.ID()] = true
+		inCatalog[c.ID()] = airWindow{startMs: c.AirStartMs, lengthMs: c.DurationMs}
 	}
 	history := AiringHistory{}
 	if a.airings != nil {
@@ -225,10 +225,19 @@ func (a *Adapter) PlannedLengths(ctx context.Context, channelID string, from tim
 	return lengths, nil
 }
 
-// podInCatalog reports whether every real clip of a stored pod is still in the catalog.
-func podInCatalog(p Pod, inCatalog map[string]bool) bool {
+// airWindow is how a clip airs now: where it starts in its file and for how long (#3384).
+type airWindow struct{ startMs, lengthMs int64 }
+
+// podInCatalog reports whether every real clip of a stored pod is still in the catalog and still
+// airs as the pod booked it. A clip whose air window was measured after the break was planned
+// makes the break plan again, or its dead air would keep airing from the stored break.
+func podInCatalog(p Pod, inCatalog map[string]airWindow) bool {
 	for _, e := range p.Entries {
-		if e.Path != "" && !inCatalog[e.Hash] {
+		if e.Path == "" {
+			continue
+		}
+		w, ok := inCatalog[e.Hash]
+		if !ok || w.startMs != e.AirStartMs || w.lengthMs != e.DurationMs {
 			return false
 		}
 	}

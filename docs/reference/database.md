@@ -1282,6 +1282,8 @@ One row per filler clip, identified by a hash of its bytes. The folder scan and 
 | `license` | The licence URL the source declared for the clip. Empty means unknown, never public domain. | `TEXT` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
 | `created_at` | When the clip was first added to the catalog, in Unix seconds. | `INTEGER` |
+| `air_start_ms` | Where in the file the clip starts airing, in milliseconds: past black that is also silent at its start, but for a short pad. Set with air_end_ms by the pipeline's air-window sweep. | `BIGINT` |
+| `air_end_ms` | Where in the file the clip stops airing, in milliseconds. 0 means the window has not been measured and the clip airs whole; a break books air_end_ms - air_start_ms. | `BIGINT` |
 
 **What it is.** The facts selection and research read for every clip, one value each. Repeated facts (product tags, defects, research) already live in their own tables.
 

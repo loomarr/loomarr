@@ -339,3 +339,38 @@ func TestPlanBreaksFillsAnEmptyBreakOnceAdsAreReady(t *testing.T) {
 		t.Errorf("once ads are ready the break = %v, want the ads in it", filled[0])
 	}
 }
+
+// A break books each ad by its air window (#3384), carries where the window starts, and plans
+// again once a window is measured, so a stored break never keeps airing the dead air it left out.
+func TestPlanBreaksBooksAdsByTheirAirWindow(t *testing.T) {
+	catalog := catalogOf(30, 30, 30, 30)
+	store := newMemoryBreaks()
+	plans := plansOf(1, 0, 2*time.Minute)
+
+	whole, err := planner(t, catalog, store).PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart, plans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if whole[0] != 120*time.Second {
+		t.Fatalf("unmeasured break = %v, want four whole 30s ads", whole[0])
+	}
+
+	// Each ad opens on 1s of dead air and ends on 1s: it airs 28s from 1s in.
+	for i := range catalog {
+		catalog[i].AirStartMs, catalog[i].AirEndMs = 1_000, 29_000
+	}
+	trimmed, err := planner(t, catalog, store).PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart, plans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trimmed[0] != 112*time.Second {
+		t.Fatalf("break after the windows were measured = %v, want four 28s windows", trimmed[0])
+	}
+	for _, b := range store.byKey {
+		for _, e := range b.Pod.Entries {
+			if e.Path != "" && (e.AirStartMs != 1_000 || e.DurationMs != 28_000) {
+				t.Errorf("stored entry %s airs %dms from %dms, want 28000ms from 1000ms", e.Hash, e.DurationMs, e.AirStartMs)
+			}
+		}
+	}
+}

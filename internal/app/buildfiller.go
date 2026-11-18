@@ -480,6 +480,8 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 		},
 		emitter.FillerClipStage, time.Now, log).
 		WithRewind(storeadapter.NewRewind(st), clipDir).
+		// Each pass measures the air window of airable clips without one (#3384).
+		WithAirWindows(storeadapter.NewPipelineClips(st)).
 		// Idle passes move the airing library onto the current encode profile (#2121).
 		WithLibraryReencode(transcodeStage, storeadapter.NewAiringClips(st))
 	if headroom != nil {

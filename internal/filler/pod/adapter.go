@@ -104,7 +104,27 @@ type Selection struct {
 // ⚠ `policy` is a RESOLVER, called on every assembly, so a settings change takes effect on the
 // next pod rather than at the next restart. Pass nil for "no policy" — the zero value.
 func NewAdapter(catalog CatalogReader, airings AiringReader, policy func() Policy, log *slog.Logger) *Adapter {
-	return &Adapter{catalog: catalog, airings: airings, policy: policy, log: log, now: time.Now}
+	return &Adapter{catalog: airCatalog{catalog}, airings: airings, policy: policy, log: log, now: time.Now}
+}
+
+// airCatalog shows pod assembly each clip as it airs (#3384): DurationMs becomes the air window's
+// length and AirStartMs where it starts, so every rule that sizes a break by a clip's length sizes
+// it by the time it occupies, with no rule having to remember the window.
+//
+// ⚠ Inside pod a clip's AirEndMs is zero: the window has been applied, and DurationMs already is
+// its length. Clip.AirWindow is not for use past this point.
+type airCatalog struct{ CatalogReader }
+
+func (c airCatalog) AllClips(ctx context.Context) ([]Clip, error) {
+	all, err := c.CatalogReader.AllClips(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		all[i].AirStartMs, all[i].DurationMs = all[i].AirWindow()
+		all[i].AirEndMs = 0
+	}
+	return all, nil
 }
 
 // WithClock replaces the wall clock seasonAt falls back to.

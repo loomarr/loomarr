@@ -173,6 +173,11 @@ type Clip struct {
 	// the full expansion would promote derived ancestors into assertions that survive graph edits.
 	AssertedTags []string
 	DurationMs   int64 // from ffprobe (the core probes now — §14 bundles it for playout)
+	// AirStartMs and AirEndMs are the clip's air window (#3384): the part of the file that airs,
+	// leaving out black that is also silent at either edge. AirEndMs zero means not measured, and
+	// the clip airs whole. Read them through AirLengthMs; the file itself is never trimmed.
+	AirStartMs int64
+	AirEndMs   int64
 	// Quality is the resolution label ("1080p", "480p"), derived from the probed video height
 	// at scan time; "" for an audio-only clip or one scanned before quality existed.
 	//
@@ -312,6 +317,22 @@ type Clip struct {
 
 // IsSegment reports whether a clip was split out of a composite (§10 V45) — it has a parent.
 func (c Clip) IsSegment() bool { return c.ParentHash != "" }
+
+// AirWindow is where the clip starts airing in its file and how long it airs (#3384). An
+// unmeasured window, or one that does not fit inside the file, airs the whole file: a bad window
+// must cost the trim, never the ad.
+func (c Clip) AirWindow() (startMs, lengthMs int64) {
+	if c.AirEndMs <= c.AirStartMs || c.AirStartMs < 0 || (c.DurationMs > 0 && c.AirEndMs > c.DurationMs) {
+		return 0, c.DurationMs
+	}
+	return c.AirStartMs, c.AirEndMs - c.AirStartMs
+}
+
+// AirLengthMs is how long the clip occupies a break: its air window's length.
+func (c Clip) AirLengthMs() int64 {
+	_, length := c.AirWindow()
+	return length
+}
 
 // ID returns the clip's identity.
 //

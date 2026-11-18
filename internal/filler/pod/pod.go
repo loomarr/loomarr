@@ -157,7 +157,11 @@ type Entry struct {
 	// it is not a filename (ViewerName).
 	NameSource     clips.NameSource
 	Role           Role
-	DurationMs     int64
+	// DurationMs is how long the entry airs: the clip's air window, not its file (#3384).
+	DurationMs int64
+	// AirStartMs is where in the file the entry starts airing: playout seeks there, so the dead
+	// air the window leaves out never reaches the viewer (#3384). Zero airs from the start.
+	AirStartMs     int64
 	IsFallbackCard bool // the embedded default bumper card (bottom of the ladder)
 	// Era and Quality are carried purely so the guide's hover card can EXPLAIN a break
 	// (§12) — "1994 · 480p" tells a viewer the grain is authentic rather than broken.
@@ -584,7 +588,7 @@ func clipToEntry(c Clip, w Window, policy Policy) Entry {
 	tier, _ := rotationRank(c, w, policy)
 	return Entry{
 		Path: c.Path, Hash: c.Hash, TunarrProgramID: c.TunarrProgramID,
-		Name: c.Name, NameSource: c.NameSource, Role: c.Role, DurationMs: c.DurationMs,
+		Name: c.Name, NameSource: c.NameSource, Role: c.Role, DurationMs: c.DurationMs, AirStartMs: c.AirStartMs,
 		// Display-only passengers (see Entry) — every entry gets them from one place, so
 		// a clip cannot reach the hover card with its metadata mysteriously absent.
 		Era: c.Era, Quality: c.Quality,
