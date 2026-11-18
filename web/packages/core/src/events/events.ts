@@ -112,7 +112,10 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   // (GET /v1/proposal-jobs) carries that live progress — so the Requests card and detail catch
   // up on the frame instead of waiting for their poll.
   suggestion: { prefixes: ["/v1/proposals", "/v1/proposal-jobs"] },
-  llm_pull: { prefixes: ["/v1/system/llm"] },
+  // A download's progress is written into its operation by the screen showing it (useModelPull);
+  // only its end changes what is installed and what is left to download, so only an ended frame
+  // refetches. Every frame refetching would read the provider status several times a second.
+  llm_pull: { prefixes: ["/v1/system/llm"], when: (e) => e.status === "success" || e.status === "error" },
   // A channel started or stopped encoding, so both the telemetry endpoint AND the doctor's
   // answer changed (encoder, cold-start time, GPU contention); the doctor rides the same
   // start/stop cadence as sessions.

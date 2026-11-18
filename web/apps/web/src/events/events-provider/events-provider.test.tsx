@@ -27,6 +27,7 @@ const PAYLOADS: Partial<Record<EventType, unknown>> = {
   filler_ingest: { status: "success" },
   filler_clip: { disposition: "filed" },
   library_scan: { step: "idle" },
+  llm_pull: { jobId: "j", status: "success" },
 };
 const payloadFor = (type: EventType): unknown => PAYLOADS[type] ?? { frame: type };
 
@@ -141,12 +142,14 @@ describe("LoomarrEventsProvider", () => {
     }
   });
 
-  it("invalidates the LLM prefix on an llm_pull frame", () => {
+  it("refetches the LLM reads only once a download ends", () => {
     const { queryClient, stream } = mount(null);
     queryClient.setQueryData(["/v1/system/llm/models"], "models");
 
-    stream.emit("llm_pull", { jobId: "j" });
+    stream.emit("llm_pull", { jobId: "j", status: "pulling manifest" });
+    expect(queryClient.getQueryState(["/v1/system/llm/models"])?.isInvalidated).toBe(false);
 
+    stream.emit("llm_pull", { jobId: "j", status: "error" });
     expect(queryClient.getQueryState(["/v1/system/llm/models"])?.isInvalidated).toBe(true);
   });
 
