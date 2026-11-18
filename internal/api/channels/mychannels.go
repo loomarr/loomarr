@@ -106,7 +106,12 @@ func (s *Handlers) removeFavouriteChannel(ctx context.Context, in *myChannelInpu
 
 func (s *Handlers) recordChannelTune(ctx context.Context, in *myChannelInput) (*myChannelsOutput, error) {
 	return s.writeMyChannels(ctx, func(userID string) error {
-		return s.store.RecordChannelTune(ctx, userID, in.ChannelID, time.Now().UTC())
+		if err := s.store.RecordChannelTune(ctx, userID, in.ChannelID, time.Now().UTC()); err != nil {
+			return err
+		}
+		// The tune is the person's continue-watching channel, which Home reads with the viewings.
+		s.viewing.Changed()
+		return nil
 	})
 }
 

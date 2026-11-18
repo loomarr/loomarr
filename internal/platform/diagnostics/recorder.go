@@ -39,7 +39,8 @@ type Options struct {
 	Now       func() time.Time
 	OnFailure func(error, int)
 	// OnChange runs after events are stored and after verbose capture starts or stops, so a page
-	// showing the log reads it again. It runs on the recorder's worker, so it must not block.
+	// showing the log reads it again. It runs on the recorder's worker or the caller's goroutine,
+	// never under the recorder's locks, and must not block.
 	OnChange func()
 }
 
@@ -126,6 +127,15 @@ func (r *Recorder) RecordDurable(ctx context.Context, event Event) error {
 	if !r.acceptsEvent(event) {
 		return fmt.Errorf("diagnostics severity %q is filtered", event.Level)
 	}
+	err := r.writeDurable(ctx, event)
+	if err == nil {
+		// Outside the admission lock: the listener may log, and a log line takes the lock too.
+		r.changed()
+	}
+	return err
+}
+
+func (r *Recorder) writeDurable(ctx context.Context, event Event) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if r.closed {
@@ -137,9 +147,6 @@ func (r *Recorder) RecordDurable(ctx context.Context, event Event) error {
 	cancel()
 	if err != nil && r.opts.OnFailure != nil {
 		r.opts.OnFailure(err, 1)
-	}
-	if err == nil {
-		r.changed()
 	}
 	return err
 }

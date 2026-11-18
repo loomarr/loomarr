@@ -97,6 +97,14 @@ func (t *Tracker) Observe(v Viewer, channelID string, at time.Time) {
 	t.changed(changed)
 }
 
+// Changed announces a change to what the household-viewing read reports that the tracker does
+// not see itself: a person's tune was recorded, which moves their continue-watching channel.
+func (t *Tracker) Changed() {
+	if t != nil {
+		t.changed(true)
+	}
+}
+
 func (t *Tracker) changed(changed bool) {
 	if changed && t.OnChange != nil {
 		t.OnChange()

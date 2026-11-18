@@ -24,6 +24,8 @@ import { InvitationRoster } from "@/components/loomarr/people/invitation-roster"
 import { PeopleRoster } from "@/components/loomarr/people/people-roster";
 import { PersonDetail } from "@/components/loomarr/people/person-detail";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { useRefetchAt } from "@/lib/use-refetch-at";
+import { soonestExpiry } from "../soonest-expiry";
 
 // UsersPage — the §11 allowlist. You can sign in iff you have a row here, so this screen
 // is the access-control surface: import who may sign in, set what they may spend, and end
@@ -50,8 +52,14 @@ const UsersPage = () => {
   const syncUsers = usersApi.useSyncUsers();
   const createLocal = usersApi.useCreateLocalUser();
   // Invitations change behind the admin too, as a link is redeemed or its email delivered: the
-  // `access` frame reads them again (#3352).
+  // `access` frame reads them again (#3352). A pending link also expires on time alone, with
+  // nothing stored, so the list is read again as the soonest one does.
   const invitations = invitationsApi.useListInvitations();
+  useRefetchAt({
+    deadline: soonestExpiry(unwrap(invitations.data, (body) => body.invitations) ?? []),
+    answeredAt: invitations.dataUpdatedAt,
+    refetch: invitations.refetch,
+  });
   const invalidateInvitations = () =>
     queryClient.invalidateQueries({ queryKey: invitationsApi.getListInvitationsQueryKey() });
   const sendInvitationEmail = invitationsApi.useSendInvitationEmail({

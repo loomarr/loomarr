@@ -1,6 +1,7 @@
 import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import { Action, Card, CompactSelect, Icon, icons, Stack, Text } from "@loomarr/design-system";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useRefetchAt } from "@/lib/use-refetch-at";
 import type { ApplicationFilters } from "../../application-filters";
 import { formatTime } from "../event-format";
 
@@ -12,13 +13,11 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
   const start = diagnosticsApi.useStartDiagnosticVerboseCapture();
   const stop = diagnosticsApi.useStopDiagnosticVerboseCapture();
   const capture = query.data?.status === 200 ? query.data.data : undefined;
-  const endsAt = capture?.active ? capture.endsAt : undefined;
-  const { refetch } = query;
-  useEffect(() => {
-    if (endsAt === undefined) return;
-    const timer = setTimeout(() => void refetch(), Math.max(0, endsAt - Date.now()));
-    return () => clearTimeout(timer);
-  }, [endsAt, refetch]);
+  useRefetchAt({
+    deadline: capture?.active ? capture.endsAt : undefined,
+    answeredAt: query.dataUpdatedAt,
+    refetch: query.refetch,
+  });
   const busy = start.isPending || stop.isPending;
   const startCapture = async () => {
     await start.mutateAsync({

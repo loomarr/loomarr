@@ -286,6 +286,19 @@ func storeFacts(st records.Store) func() (int64, string) {
 func logRequests(log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r)
+		if readsDiagnostics(r) {
+			return
+		}
 		log.Debug("http", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
 	})
+}
+
+// readsDiagnostics reports a request that only reads the diagnostic log or the event stream.
+// Logging it would store an event during verbose capture, whose diagnostic_events frame makes
+// the page read again, which would be logged in turn: reading the log must not write to it.
+func readsDiagnostics(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	return r.URL.Path == "/v1/events" || strings.HasPrefix(r.URL.Path, "/v1/diagnostics/")
 }

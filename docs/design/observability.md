@@ -64,7 +64,8 @@ Active runs are never aged out.
 capture starts or stops, the recorder announces it: an admin-only, empty `diagnostic_events` frame,
 at most once every 2 s with a trailing frame. Each stored run update sends `diagnostic_processes`,
 at most once a second while output is written and at once when a run ends. Each page reads again on
-its frame. A verbose capture that runs out, and a health check whose result goes stale, change on
+its frame. Reads of the log and of the event stream are not themselves logged, so during verbose
+capture a page reading again stores nothing that would announce itself. A verbose capture that runs out, and a health check whose result goes stale, change on
 time alone, with nothing stored and no frame, so the page reads again at the report's `endsAt` or
 `nextRefreshAt`.
 

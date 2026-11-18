@@ -62,8 +62,9 @@ type ProcessOptions struct {
 	Now            func() time.Time
 	Version        func(context.Context, string) string
 	OnFailure      func(error)
-	// OnChange runs after a run's metadata is stored: as it begins, as its output is snapshotted,
-	// and as it ends, when finished is true. It runs on the persisting worker, so it must not block.
+	// OnChange runs after a run's metadata is stored with something new in it: as it begins, as
+	// its output grows, and as it ends, when finished is true. It runs on the persisting worker, so
+	// it must not block.
 	OnChange func(finished bool)
 	Storage  *storagegovernor.Governor
 	// PurgeYield is the pause between retention pages (default 10ms); see ProcessManager.Purge.
@@ -390,6 +391,9 @@ func (m *ProcessManager) enqueue(run ProcessRun) {
 
 func (m *ProcessManager) persist() {
 	defer close(m.done)
+	// announced is each running run as last announced, so a snapshot that only moves its
+	// UpdatedAt (an idle encoder's flush tick) announces nothing.
+	announced := map[string]ProcessRun{}
 	write := func(run ProcessRun) {
 		ctx, cancel := context.WithTimeout(context.Background(), m.opts.WriteTimeout)
 		err := m.sink.UpsertDiagnosticProcessRun(ctx, run)
@@ -398,8 +402,19 @@ func (m *ProcessManager) persist() {
 			m.fail(err)
 			return
 		}
+		finished := run.Status != ProcessRunning
+		shown := run
+		shown.UpdatedAt = 0
+		if previous, ok := announced[run.ID]; ok && previous == shown {
+			return
+		}
+		if finished {
+			delete(announced, run.ID)
+		} else {
+			announced[run.ID] = shown
+		}
 		if m.opts.OnChange != nil {
-			m.opts.OnChange(run.Status != ProcessRunning)
+			m.opts.OnChange(finished)
 		}
 	}
 	for {

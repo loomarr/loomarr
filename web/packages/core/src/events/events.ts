@@ -109,8 +109,8 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   // as the clock passes a programme's end, and a guide window is a view over that same clock.
   channel: { prefixes: ["/v1/channels", "/v1/guide"], fed: [listAndDetail("/v1/channels", ["now-next"])] },
   // A frame also fires as a running request's stage or picks change, and the journey read
-  // (GET /v1/proposal-jobs) carries that live progress — so the Requests card and detail catch
-  // up on the frame instead of waiting for their poll.
+  // (GET /v1/proposal-jobs) carries that live progress — so the Requests card and detail follow
+  // a request on its frames.
   suggestion: { prefixes: ["/v1/proposals", "/v1/proposal-jobs"] },
   // A download's progress is written into its operation by the screen showing it (useModelPull);
   // only its end changes what is installed and what is left to download, so only an ended frame

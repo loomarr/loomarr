@@ -217,7 +217,7 @@ type LibraryFolderEvent struct {
 }
 
 // ViewingEvent announces that who is watching what changed: a viewing started, moved to another
-// channel, or ended (#3352). Empty: Home reads GET /v1/household/viewing again, which scopes the
+// channel, or ended, or a person's tune was recorded, which moves their continue-watching (#3352). Empty: Home reads GET /v1/household/viewing again, which scopes the
 // answer to the caller, so one frame serves admins and members alike. A viewing is seen to end
 // when the tracker next prunes it, within a recorder interval of its TTL.
 type ViewingEvent struct{}

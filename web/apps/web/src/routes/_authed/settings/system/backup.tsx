@@ -26,8 +26,8 @@ const BackupPage = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const list = systemApi.useSystemBackupsList();
-  // A scheduled backup writes a file behind the viewer: the list reads again when the backup job
-  // finishes, and only then, since the job frame also follows every other job.
+  // A scheduled backup writes a file behind the viewer: the list reads again on the backup job's
+  // own frames, not every job's.
   useLoomarrEventListener({
     onJob: (frame) => {
       if (frame.name === "backup")
