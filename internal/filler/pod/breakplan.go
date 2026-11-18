@@ -161,7 +161,10 @@ func (a *Adapter) PlanBreaks(ctx context.Context, channelID string, sel Selectio
 			t = t.Add(lengths[i])
 			continue
 		}
-		if !ok || sb.Ceiling != plan.Ceiling || !podInCatalog(sb.Pod, inCatalog) {
+		// A stored break that found no ad is tried again before it airs: ads may have become ready, or
+		// a rule that left it empty may have changed. It is replaced only when it now holds one.
+		retry := ok && sb.Pod.MatchLevel == MatchBumperCard
+		if !ok || retry || sb.Ceiling != plan.Ceiling || !podInCatalog(sb.Pod, inCatalog) {
 			h := AiringHistory{Airings: append(append([]Airing(nil), history.Airings...), planned...), Settle: history.Settle}
 			seed := start.UnixMilli()
 			if seedAt != nil {
@@ -169,8 +172,12 @@ func (a *Adapter) PlanBreaks(ctx context.Context, channelID string, sel Selectio
 			}
 			assembled := a.assemble(clips, &h, channelID,
 				Break{Seed: seed, Start: start, Length: plan.Ceiling}, sel, pol)
-			sb = StoredBreak{ChannelID: channelID, Start: start, Ceiling: plan.Ceiling, Pod: assembled, PlannedAt: now}
-			fresh = append(fresh, sb)
+			sameEmpty := retry && sb.Ceiling == plan.Ceiling && podInCatalog(sb.Pod, inCatalog) &&
+				assembled.MatchLevel == MatchBumperCard
+			if !sameEmpty {
+				sb = StoredBreak{ChannelID: channelID, Start: start, Ceiling: plan.Ceiling, Pod: assembled, PlannedAt: now}
+				fresh = append(fresh, sb)
+			}
 		}
 		lengths[i] = sb.Length()
 		keep = append(keep, start)

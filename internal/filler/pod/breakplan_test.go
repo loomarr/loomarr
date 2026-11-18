@@ -307,3 +307,35 @@ func TestPreviewAtManyAssemblesLiveWithoutAStoredBreak(t *testing.T) {
 		t.Fatal("no stored break and no live assembly: the break is empty")
 	}
 }
+
+// A break stored with no ad is filled once ads are ready, before it airs; while there are still
+// none, planning again stores nothing.
+func TestPlanBreaksFillsAnEmptyBreakOnceAdsAreReady(t *testing.T) {
+	ident := pod.Clip{Hash: "ident", Path: "ident.mp4", Role: pod.StationID, Era: 1992,
+		Audience: pod.General, DurationMs: 5_000}
+	store := newMemoryBreaks()
+	plans := plansOf(2, 30*time.Minute, 2*time.Minute)
+
+	empty, err := planner(t, []pod.Clip{ident}, store).PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart, plans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty[0] != 5*time.Second {
+		t.Fatalf("with no ads the break = %v, want the station ID alone", empty[0])
+	}
+	saves := store.saves
+	if _, err := planner(t, []pod.Clip{ident}, store).PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart, plans); err != nil {
+		t.Fatal(err)
+	}
+	if store.saves != saves {
+		t.Errorf("planning again with still no ads saved %d breaks, want none", store.saves-saves)
+	}
+
+	filled, err := planner(t, append(catalogOf(30, 30, 30), ident), store).PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart, plans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filled[0] < 90*time.Second {
+		t.Errorf("once ads are ready the break = %v, want the ads in it", filled[0])
+	}
+}
