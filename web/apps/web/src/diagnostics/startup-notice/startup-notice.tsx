@@ -1,8 +1,8 @@
-import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import type { HealthReport } from "@loomarr/api/models/healthReport";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { toast } from "sonner";
+import { useCurrentHealth } from "../use-current-health";
 
 // Below Tailwind's `sm` breakpoint (640 px): the widths the app lays out for a phone.
 const PHONE_QUERY = "(max-width: 639.98px)";
@@ -33,9 +33,7 @@ const healthSignature = (health: HealthReport) => {
 const HealthNotice = ({ enabled }: { enabled: boolean }) => {
   const navigate = useNavigate();
   const onHome = useLocation({ select: (location) => location.pathname === "/" });
-  const healthQuery = diagnosticsApi.useGetCurrentHealth({
-    query: { enabled, retry: false, refetchInterval: 10_000 },
-  });
+  const healthQuery = useCurrentHealth({ enabled });
   const health = healthQuery.data?.status === 200 ? healthQuery.data.data : undefined;
   const signature = health ? healthSignature(health) : "";
   const affected =

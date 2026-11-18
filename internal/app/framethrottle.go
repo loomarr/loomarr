@@ -39,7 +39,7 @@ func (t *frameThrottle) send() {
 	t.publish()
 }
 
-// poke notes a change. It never blocks on the frame's subscribers: the bus drops for a slow one.
+// poke notes a change. It never blocks on the frame's subscribers: the bus cuts off a slow one.
 func (t *frameThrottle) poke(urgent bool) {
 	t.mu.Lock()
 	now := t.now()

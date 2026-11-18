@@ -49,7 +49,9 @@ const UsersPage = () => {
   const importUsers = usersApi.useImportUsers();
   const syncUsers = usersApi.useSyncUsers();
   const createLocal = usersApi.useCreateLocalUser();
-  const invitations = invitationsApi.useListInvitations({ query: { refetchInterval: 5_000 } });
+  // Invitations change behind the admin too, as a link is redeemed or its email delivered: the
+  // `access` frame reads them again (#3352).
+  const invitations = invitationsApi.useListInvitations();
   const invalidateInvitations = () =>
     queryClient.invalidateQueries({ queryKey: invitationsApi.getListInvitationsQueryKey() });
   const sendInvitationEmail = invitationsApi.useSendInvitationEmail({

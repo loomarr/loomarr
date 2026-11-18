@@ -93,6 +93,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		DeviceLimiter: opts.People.DeviceLimiter, DevLogin: opts.People.DevLogin, SSO: opts.People.SSO,
 		Provision: opts.People.Provision, Demo: opts.People.Demo,
 		ConfigInt: setupRoutes.ConfigInt, LibraryUnconfigured: setupRoutes.LibraryUnconfigured,
+		Changed: opts.People.AccessChanged,
 	}, false).Register(humaAPI)
 	system.New(system.Deps{
 		Log: log,

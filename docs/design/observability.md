@@ -60,6 +60,14 @@ per-line timestamps. Writes never apply backpressure; dropped lines are counted 
 exit and output draining have separate lifetimes, so reaping a child never loses buffered media.
 Active runs are never aged out.
 
+**Live pages** (#3352). Diagnostics never polls. Once a batch of events is stored, or verbose
+capture starts or stops, the recorder announces it: an admin-only, empty `diagnostic_events` frame,
+at most once every 2 s with a trailing frame. Each stored run update sends `diagnostic_processes`,
+at most once a second while output is written and at once when a run ends. Each page reads again on
+its frame. A verbose capture that runs out, and a health check whose result goes stale, change on
+time alone, with nothing stored and no frame, so the page reads again at the report's `endsAt` or
+`nextRefreshAt`.
+
 **Retention.** `diagnostic_retained_bytes` keeps one running total per evidence table, adjusted in
 the same transaction as each row change, so the budget check reads two rows instead of scanning
 (#1398). `diagnostics.max_storage_mb` bounds logical payload, not the file: indexes and pages add to

@@ -1,17 +1,24 @@
 import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import { Action, Card, CompactSelect, Icon, icons, Stack, Text } from "@loomarr/design-system";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ApplicationFilters } from "../../application-filters";
 import { formatTime } from "../event-format";
 
 const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => {
   const [duration, setDuration] = useState("5");
-  const query = diagnosticsApi.useGetDiagnosticVerboseCapture({
-    query: { retry: false, refetchInterval: 5_000 },
-  });
+  // A start or stop anywhere reads this again on the `diagnostic_events` frame (#3352). A capture
+  // that runs out stores nothing, so the read is repeated at its end instead.
+  const query = diagnosticsApi.useGetDiagnosticVerboseCapture({ query: { retry: false } });
   const start = diagnosticsApi.useStartDiagnosticVerboseCapture();
   const stop = diagnosticsApi.useStopDiagnosticVerboseCapture();
   const capture = query.data?.status === 200 ? query.data.data : undefined;
+  const endsAt = capture?.active ? capture.endsAt : undefined;
+  const { refetch } = query;
+  useEffect(() => {
+    if (endsAt === undefined) return;
+    const timer = setTimeout(() => void refetch(), Math.max(0, endsAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [endsAt, refetch]);
   const busy = start.isPending || stop.isPending;
   const startCapture = async () => {
     await start.mutateAsync({

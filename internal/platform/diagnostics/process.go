@@ -62,7 +62,10 @@ type ProcessOptions struct {
 	Now            func() time.Time
 	Version        func(context.Context, string) string
 	OnFailure      func(error)
-	Storage        *storagegovernor.Governor
+	// OnChange runs after a run's metadata is stored: as it begins, as its output is snapshotted,
+	// and as it ends, when finished is true. It runs on the persisting worker, so it must not block.
+	OnChange func(finished bool)
+	Storage  *storagegovernor.Governor
 	// PurgeYield is the pause between retention pages (default 10ms); see ProcessManager.Purge.
 	PurgeYield time.Duration
 }
@@ -393,6 +396,10 @@ func (m *ProcessManager) persist() {
 		cancel()
 		if err != nil {
 			m.fail(err)
+			return
+		}
+		if m.opts.OnChange != nil {
+			m.opts.OnChange(run.Status != ProcessRunning)
 		}
 	}
 	for {

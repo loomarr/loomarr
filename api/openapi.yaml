@@ -1,5 +1,8 @@
 components:
   schemas:
+    AccessEvent:
+      additionalProperties: false
+      type: object
     AcquisitionArtifactOutcomeDTO:
       additionalProperties: false
       properties:
@@ -3469,6 +3472,12 @@ components:
         - userCode
         - expiresAt
         - interval
+      type: object
+    DiagnosticEventsEvent:
+      additionalProperties: false
+      type: object
+    DiagnosticProcessesEvent:
+      additionalProperties: false
       type: object
     DiscoverFillerOutputBody:
       additionalProperties: false
@@ -13954,6 +13963,9 @@ components:
         - since
         - you
       type: object
+    ViewingEvent:
+      additionalProperties: false
+      type: object
     Vocabulary:
       additionalProperties: false
       properties:
@@ -16682,6 +16694,24 @@ paths:
                   oneOf:
                     - properties:
                         data:
+                          $ref: "#/components/schemas/AccessEvent"
+                        event:
+                          const: access
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event access
+                      type: object
+                    - properties:
+                        data:
                           $ref: "#/components/schemas/ActivityEvent"
                         event:
                           const: activity
@@ -16733,6 +16763,42 @@ paths:
                         - data
                         - event
                       title: Event database
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/DiagnosticEventsEvent"
+                        event:
+                          const: diagnostic_events
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event diagnostic_events
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/DiagnosticProcessesEvent"
+                        event:
+                          const: diagnostic_processes
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event diagnostic_processes
                       type: object
                     - properties:
                         data:
@@ -16985,6 +17051,24 @@ paths:
                         - data
                         - event
                       title: Event title
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/ViewingEvent"
+                        event:
+                          const: viewing
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event viewing
                       type: object
                 title: Server Sent Events
                 type: array
