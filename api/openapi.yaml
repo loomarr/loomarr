@@ -9905,6 +9905,9 @@ components:
         - status
         - proposal
       type: object
+    ProposalEvent:
+      additionalProperties: false
+      type: object
     ProposalItem:
       additionalProperties: false
       properties:
@@ -16997,6 +17000,24 @@ paths:
                         - data
                         - event
                       title: Event playout
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/ProposalEvent"
+                        event:
+                          const: proposal
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event proposal
                       type: object
                     - properties:
                         data:

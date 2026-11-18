@@ -6,6 +6,10 @@ const DEADLINE_MARGIN_MS = 1_000;
 // has (this clock runs ahead), is tried again this long after, doubling, never more than a minute.
 const SKEW_RETRY_MS = 5_000;
 const SKEW_RETRY_MAX_MS = 60_000;
+// The longest single wait. A timer longer than 2^31-1 ms (about 25 days) fires at once in every
+// browser, which would read a distant deadline again on each answer, without end; a page left
+// open a whole day reads once and waits again.
+const LONGEST_WAIT_MS = 24 * 60 * 60 * 1_000;
 
 interface RefetchAt {
   /** The server's deadline in Unix ms, when the read's answer changes on time alone; none to wait for. */
@@ -30,7 +34,7 @@ const useRefetchAt = ({ deadline, answeredAt, refetch, enabled = true }: Refetch
     let wait: number;
     if (left > 0) {
       passedAnswers.current = 0;
-      wait = left + DEADLINE_MARGIN_MS;
+      wait = Math.min(left + DEADLINE_MARGIN_MS, LONGEST_WAIT_MS);
     } else {
       wait = Math.min(SKEW_RETRY_MS * 2 ** passedAnswers.current, SKEW_RETRY_MAX_MS);
       passedAnswers.current += 1;

@@ -55,19 +55,24 @@ func (e *eventEmitter) setNotifications(coordinator *productNotificationCoordina
 	e.notifications.Store(coordinator)
 }
 
+// The three proposal notices each run after their change is stored, so each also sends the
+// `proposal` frame for open screens.
 func (e *eventEmitter) ProposalSubmitted(ctx context.Context, proposal proposalstore.Proposal) {
+	e.bus.Publish(events.Event{Type: "proposal", Payload: opsapi.ProposalEvent{}})
 	if coordinator := e.notifications.Load(); coordinator != nil {
 		coordinator.ProposalSubmitted(ctx, proposal)
 	}
 }
 
 func (e *eventEmitter) ProposalApproved(ctx context.Context, proposal proposalstore.Proposal, channelID string) {
+	e.bus.Publish(events.Event{Type: "proposal", Payload: opsapi.ProposalEvent{}})
 	if coordinator := e.notifications.Load(); coordinator != nil {
 		coordinator.ProposalApproved(ctx, proposal, channelID)
 	}
 }
 
 func (e *eventEmitter) ProposalDenied(ctx context.Context, proposal proposalstore.Proposal) {
+	e.bus.Publish(events.Event{Type: "proposal", Payload: opsapi.ProposalEvent{}})
 	if coordinator := e.notifications.Load(); coordinator != nil {
 		coordinator.ProposalDenied(ctx, proposal)
 	}

@@ -179,6 +179,7 @@ func TestEveryFrameStreamsWithItsEventName(t *testing.T) {
 		{"title", opsapi.TitleEvent{Key: "movie:tmdb:90000001", State: "available", Name: "Ashgrove Anomaly"}},
 		{"channel", opsapi.ChannelEvent{ChannelID: "ch_1", Status: "live"}},
 		{"suggestion", opsapi.SuggestionEvent{JobID: "j1", Phase: "scoring", Round: 3}},
+		{"proposal", opsapi.ProposalEvent{}},
 		{"job", opsapi.JobEvent{Name: "library-scan"}},
 		{"activity", opsapi.ActivityEvent{}},
 		{"health", opsapi.HealthEvent{}},

@@ -101,7 +101,9 @@ policy. `/v1/events` streams `suggestion` frames (`{jobId, phase, round}`) that 
 refetch, and the Web client reads the Journey on them rather than polling it. Phases are emitted
 inside the tool loop at the transition they describe and may repeat; `done` follows the stored
 proposal and `failed` the stored failure. A stream that misses a frame is reconnected, and the
-reconnect reads the Journey again.
+reconnect reads the Journey again. An empty `proposal` frame follows each stored submission,
+approval and denial, whether a person or an automatic grant decided, so the requester sees a denial
+and every admin's approvals stay current without a reload.
 
 The builder shows one calm status message: no rounds, timers, percentages or checklists. A failure
 replaces progress with one plain explanation and the useful authorised action, and keeps the saved
