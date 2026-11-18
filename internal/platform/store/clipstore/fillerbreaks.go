@@ -102,6 +102,11 @@ func (s *Store) KeepFillerBreaks(ctx context.Context, channelID string, starts [
 			drop = append(drop, ms)
 		}
 	}
+	// A read cut short must not pass for a complete list: that would keep breaks it never saw.
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("list filler breaks %s: %w", channelID, err)
+	}
 	if err := rows.Close(); err != nil {
 		return err
 	}
