@@ -16,6 +16,17 @@ describe("useRefetchAt", () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
+  // A wait past what a timer can hold would fire at once, and each answer would start another.
+  it("waits for a distant deadline a day at a time, not at once", () => {
+    const refetch = vi.fn();
+    renderHook(() => useRefetchAt({ deadline: Date.now() + 4 * 365 * 86_400_000, answeredAt: 1, refetch }));
+
+    vi.advanceTimersByTime(60_000);
+    expect(refetch).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(86_400_000);
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
   it("waits for nothing without a deadline, an answer, or while disabled", () => {
     const refetch = vi.fn();
     renderHook(() => useRefetchAt({ deadline: undefined, answeredAt: 1, refetch }));
