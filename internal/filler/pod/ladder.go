@@ -461,9 +461,15 @@ func filterAudience(clips []Clip, aud Audience) []Clip {
 	}
 	allowed := audienceCeiling(aud)
 	for _, c := range clips {
-		if slices.Contains(allowed, c.Audience) {
-			out = append(out, c)
+		if !slices.Contains(allowed, c.Audience) {
+			continue
 		}
+		// Strict for kids only (#3838 decision 7): a lone model guess does not put a clip in front
+		// of children. Every other ceiling takes the guess.
+		if aud == Kids && c.AudienceGuess {
+			continue
+		}
+		out = append(out, c)
 	}
 	return out
 }

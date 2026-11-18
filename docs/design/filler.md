@@ -206,9 +206,18 @@ where the ones above left a gap. A tag is a fact only when its signal literally 
 | 4 | frame heuristics (black-and-white, aspect ratio) | free | era hints without usable text |
 | 5 | vision LLM over keyframes | expensive | silent adverts and on-screen logos |
 
-- **Era must appear literally** in the filename, sidecar text or transcript. A vision or split guess
-  that does not is recorded only as an uncited Context suggestion (an observation), shown as
-  "Likely" until the operator sets the era (`PATCH /v1/filler/tags`).
+- **Era is relaxed, because it is flavour rather than safety** (#3838 decision 7). A year that
+  appears literally in the filename, sidecar text, transcript or on screen grounds the era. With no
+  literal year, the vision model's decade estimate from picture and sound is kept when it reports
+  high confidence and the clip has no era: it is stored as the decade's first year (1990), as
+  inference-ranked evidence (`frame.era_estimate`), so item metadata, the operator or any literal
+  source replaces it. A low-confidence estimate and a frame-heuristic hint stay an uncited Context
+  suggestion, shown as "Likely" until the operator sets the era (`PATCH /v1/filler/tags`).
+- **Audience is strict for kids** (#3838 decision 7). An audience stands as a rule match, an
+  operator, a listing or a source default (non-inference evidence on the axis), or as one model's
+  answer plus a non-inference cue that agrees. One model's answer alone is a guess: every channel
+  but a kids channel takes it, and a kids channel airs a kids or family clip only when it is backed.
+  A guess that a late-night cue contradicts reads as late-night.
 - **A write names what it changes.** `PATCH /v1/filler/tags` writes `era` and `audience` only when
   the body carries them: omitted leaves the stored value and its evidence alone, an explicit `0` or
   empty string clears. The same holds for the bulk retag.
@@ -740,9 +749,12 @@ report is not a finished encode, so the rung encodes it again.
 
 - At least 90% black or 90% silent is a hard reject, recorded with its coverage.
 - A black or silent span of at least 5 s, or a frozen span of at least 10 s, goes to review.
-  Freeze alone never auto-rejects.
+  Freeze alone never auto-rejects. For a clip Loomarr found, review is a fail (doubt means drop,
+  #3838 decision 18): the clip is rejected as `undecided`, the measured span is its detail, and
+  upkeep lets it go after the reject rest. A clip an operator added keeps the review.
 - Review holds the clip out of rotation before the review row commits; a store failure leaves the
-  row runnable and the persisted report re-emits the verdict without decoding again.
+  row runnable and the persisted report re-emits the verdict without decoding again. A found clip's
+  review is a reject instead (above), recorded through the ordinary reject path.
 - Intervals are unioned and clamped to the probed duration; an open trailing event closes at the
   duration.
 
@@ -910,9 +922,10 @@ inputs. Its verdicts are enforced at admission and on every re-check (see
   override.
 - **Only a fail that stands is acted on.** That is the detectors' own fail or the judge's fail
   ruling. A borderline clip failed only because no judge could rule (none configured, or it
-  abstained) goes to review with its findings: nothing automatic would settle it, so it is the
-  operator's call. An admitted ad in that state keeps airing and keeps its file; the floor rules
-  on it again once a judge can.
+  abstained) goes to review with its findings: nothing automatic would settle it. For a clip
+  Loomarr found that is a fail (decision 18), rejected as `undecided`; only a clip an operator
+  added waits as a review. An admitted ad in that state keeps airing and keeps its file; the floor
+  rules on it again once a judge can.
 - **A failing copy on air is retired.** A held copy is refused at the rung, which settles its
   conveyor row; the floor retires only published copies. Each pass retires every one whose verdict
   fails and stands. In order:

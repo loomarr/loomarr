@@ -414,7 +414,7 @@ tables:
       reject_reason: >
         Why the clip was rejected, as a code: unprobeable, too_short, no_audio, no_video,
         black_content, silent_content, too_quiet, unplayable, defect, language, duplicate,
-        screening, sliver or unidentified. Empty when not rejected.
+        screening, sliver, undecided or unidentified. Empty when not rejected.
       reject_detail: >
         The measurement behind the rejection, such as a duration under the minimum or the language
         heard.

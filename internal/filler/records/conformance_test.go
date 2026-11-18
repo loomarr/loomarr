@@ -49,6 +49,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ClipTopLevelOnly", func(t *testing.T) { testClipTopLevelOnly(t, newStore) })
 		t.Run("ClipCreatedAt", func(t *testing.T) { testClipCreatedAt(t, newStore) })
 		t.Run("FillerProgressiveEnrichment", func(t *testing.T) { testFillerProgressiveEnrichment(t, newStore) })
+		t.Run("AudienceBacking", func(t *testing.T) { testAudienceBacking(t, newStore) })
 		t.Run("VisionRespectsStrongerEvidence", func(t *testing.T) { testVisionRespectsStrongerEvidence(t, newStore) })
 		t.Run("FillerEnrichmentCandidateSelection", func(t *testing.T) { testFillerEnrichmentCandidateSelection(t, newStore) })
 		t.Run("OptInKindProjection", func(t *testing.T) { testOptInKindProjection(t, newStore) })

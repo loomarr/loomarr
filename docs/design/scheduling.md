@@ -378,6 +378,10 @@ guardrail, #3838 decision 8):
 - A `late_night` channel admits everything grounded. A channel that names no audience admits every
   clip whose audience is grounded.
 - A clip with no grounded audience airs on no channel. Doubt resolves to the stricter reading.
+- A `kids` channel airs a kids or family clip only when its audience is backed (a rule cue, an
+  operator, a listing or a second agreeing signal), not when one model's guess is all there is
+  (`Clip.AudienceGuess`, `filler.md` "What Loomarr learns about a clip"). Every other ceiling
+  takes the guess.
 - A new audience value admits nothing until someone decides it should.
 - The ceiling holds for bumpers and station IDs as it does for ads, and a channel's coverage counts
   the bookends its own ceiling admits.
