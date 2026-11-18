@@ -7,6 +7,7 @@ import { useCallback, useState } from "react";
 import { viewerIsAdmin } from "@/auth/me-query";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { BackupPanel } from "@/components/loomarr/settings/backup-panel";
+import { useLoomarrEventListener } from "@/events/events-provider";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 
@@ -25,6 +26,14 @@ const BackupPage = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const list = systemApi.useSystemBackupsList();
+  // A scheduled backup writes a file behind the viewer: the list reads again on the backup job's
+  // own frames, not every job's.
+  useLoomarrEventListener({
+    onJob: (frame) => {
+      if (frame.name === "backup")
+        void queryClient.invalidateQueries({ queryKey: systemApi.getSystemBackupsListQueryKey() });
+    },
+  });
   const entries = useSettingsEntries();
   const [error, setError] = useState<string | null>(null);
 

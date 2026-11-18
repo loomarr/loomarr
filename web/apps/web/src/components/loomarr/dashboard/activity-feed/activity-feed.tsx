@@ -6,8 +6,8 @@ import type { ActivityFeedProps } from "./activity-feed.type";
 // ActivityFeed — "what has Loomarr been doing?" (§12, V32; v2 mock Dashboard § Recent activity).
 //
 // ⚠ **Rendered from the PERSISTED table, never assembled from SSE frames.** The `activity`
-// frame carries no payload precisely so this cannot be tempted: the bus drops frames for a
-// slow subscriber by design, so a list built from them would be silently missing rows — the
+// frame carries no payload precisely so this cannot be tempted: a client misses every frame
+// sent while it reconnects, so a list built from them would be silently missing rows — the
 // exact failure the table exists to prevent. The frame says "something happened"; this
 // refetches (§8).
 //

@@ -56,8 +56,8 @@ const HomePage = () => {
   const hasLife = !loading && !errored && channels.length > 0;
   const stripState = loading ? "loading" : errored ? "error" : channels.length === 0 ? "empty" : "ok";
 
-  // Players report what they're showing every 30 seconds (#1662), so poll at the same cadence.
-  const viewing = dashboardApi.useHouseholdViewing({ query: { enabled: hasLife, refetchInterval: 30_000 } });
+  // Who is watching reads again on its `viewing` frame, as a viewing starts, moves or ends (#3352).
+  const viewing = dashboardApi.useHouseholdViewing({ query: { enabled: hasLife } });
   const highlights = channelsApi.useGuideHighlights(undefined, { query: { enabled: hasLife } });
   const viewingBody = unwrap(viewing.data);
   const since = newSince(nowMs);

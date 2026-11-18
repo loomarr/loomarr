@@ -1,3 +1,9 @@
+import * as authApi from "@loomarr/api/endpoints/auth";
+import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
+import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
+import * as invitationsApi from "@loomarr/api/endpoints/invitations";
+import * as libraryApi from "@loomarr/api/endpoints/library";
+import * as usersApi from "@loomarr/api/endpoints/users";
 import {
   EVENT_INVALIDATIONS,
   EVENT_TYPES,
@@ -151,6 +157,53 @@ describe("LoomarrEventsProvider", () => {
 
     stream.emit("llm_pull", { jobId: "j", status: "error" });
     expect(queryClient.getQueryState(["/v1/system/llm/models"])?.isInvalidated).toBe(true);
+  });
+
+  // Each read is seeded under the key its screen builds, so a screen keyed some other way would
+  // be left out here as it would be live (#3352).
+  it.each([
+    ["viewing", [dashboardApi.getHouseholdViewingQueryKey()]],
+    [
+      "access",
+      [
+        usersApi.getListUsersQueryKey(),
+        invitationsApi.getListInvitationsQueryKey(),
+        authApi.getDeviceListQueryKey(),
+      ],
+    ],
+    [
+      "diagnostic_events",
+      [
+        [...diagnosticsApi.getListDiagnosticEventsQueryKey(), { filters: { range: "1h" }, cursor: "c" }],
+        diagnosticsApi.getGetDiagnosticVerboseCaptureQueryKey(),
+        diagnosticsApi.getListClientCrashesQueryKey(),
+      ],
+    ],
+    [
+      "diagnostic_processes",
+      [
+        [...diagnosticsApi.getListDiagnosticProcessesQueryKey(), { range: "1h", cursor: undefined }],
+        diagnosticsApi.getGetDiagnosticProcessQueryKey("run-1"),
+        diagnosticsApi.getGetDiagnosticProcessOutputQueryKey("run-1"),
+      ],
+    ],
+    ["health", [diagnosticsApi.getListStartupReportsQueryKey()]],
+    [
+      "library_titles",
+      [libraryApi.getListCollectionsQueryKey(), libraryApi.getListLibraryCollectionsQueryKey()],
+    ],
+  ] as const)("a %s frame reads its screens again", (type, keys) => {
+    const { queryClient, stream } = mount(null);
+    const unrelated = ["/v1/channels"];
+    queryClient.setQueryData(unrelated, "channels");
+    for (const key of keys) queryClient.setQueryData([...key], "seeded");
+
+    stream.emit(type, payloadFor(type));
+
+    for (const key of keys) {
+      expect(queryClient.getQueryState([...key])?.isInvalidated, JSON.stringify(key)).toBe(true);
+    }
+    expect(queryClient.getQueryState(unrelated)?.isInvalidated).toBe(false);
   });
 
   it("holds back the conditional frames until their terminal state", () => {

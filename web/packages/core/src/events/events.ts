@@ -109,8 +109,8 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   // as the clock passes a programme's end, and a guide window is a view over that same clock.
   channel: { prefixes: ["/v1/channels", "/v1/guide"], fed: [listAndDetail("/v1/channels", ["now-next"])] },
   // A frame also fires as a running request's stage or picks change, and the journey read
-  // (GET /v1/proposal-jobs) carries that live progress — so the Requests card and detail catch
-  // up on the frame instead of waiting for their poll.
+  // (GET /v1/proposal-jobs) carries that live progress — so the Requests card and detail follow
+  // a request on its frames.
   suggestion: { prefixes: ["/v1/proposals", "/v1/proposal-jobs"] },
   // A download's progress is written into its operation by the screen showing it (useModelPull);
   // only its end changes what is installed and what is left to download, so only an ended frame
@@ -138,10 +138,27 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   // its own listener, so the bus has nothing to invalidate.
   database: { prefixes: [] },
   // A Dashboard feed row was written (§12, V32). The frame is empty on purpose — refetch the
-  // list rather than appending, because this bus drops frames for a slow subscriber and a
-  // locally-assembled list would be missing rows.
+  // list rather than appending, because a client misses every frame sent while it reconnects and
+  // a locally-assembled list would be missing rows.
   activity: { prefixes: ["/v1/activity"], fed: [listAndDetail("/v1/activity")] },
-  health: { prefixes: ["/v1/diagnostics/health"], fed: [/^\/v1\/diagnostics\/health$/] },
+  // A health check changed state. A boot's startup report is written as its checks settle, so
+  // the reports read again with them.
+  health: {
+    prefixes: ["/v1/diagnostics/health", "/v1/diagnostics/startup-reports"],
+    fed: [/^\/v1\/diagnostics\/health$/],
+  },
+  // Who is watching what changed (#3352). Home reads it again; the server scopes it to the viewer.
+  viewing: { prefixes: ["/v1/household/viewing"] },
+  // An invitation, account, session or paired device changed, by an admin, a redeemed link or a
+  // delivered email (#3352). Admin-only, like People.
+  access: { prefixes: ["/v1/users", "/v1/invitations", "/v1/auth/devices"] },
+  // Diagnostic events were stored, or verbose capture started or stopped (#3352). A client crash
+  // report is stored as an event, so its list reads again too. Admin-only.
+  diagnostic_events: {
+    prefixes: ["/v1/diagnostics/events", "/v1/diagnostics/verbose-capture", "/v1/diagnostics/client-crashes"],
+  },
+  // A diagnostic process started, wrote output, or finished (#3352). Admin-only.
+  diagnostic_processes: { prefixes: ["/v1/diagnostics/processes"] },
   // A committed settings write, from any tab or writer. Every read a setting can change
   // refetches here, so no save path lists queries itself: `/v1/setup` is the checklist and wizard
   // state, `/v1/system/llm` the AI provider status, catalog and pull progress, and
@@ -162,9 +179,10 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   },
   // The Library's titles changed (written, ready, or gone). The frame is empty on purpose:
   // the grid, a title's page, the import's strip of titles found and Needs you refetch, because a list assembled from
-  // frames would lose rows this bus drops.
+  // frames would lose the rows a reconnecting client misses. A collection lists only titles still
+  // in the Library, so collections read again too.
   library_titles: {
-    prefixes: ["/v1/library/items", "/v1/library/needs"],
+    prefixes: ["/v1/library/items", "/v1/library/needs", "/v1/collections", "/v1/library/collections"],
     fed: [listAndDetail("/v1/library/items"), /^\/v1\/library\/needs$/],
   },
   // A media folder stopped or started opening, or emptied or filled (a share unmounted or mounted

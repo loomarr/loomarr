@@ -106,6 +106,8 @@ type PeopleOptions struct {
 	SSO people.SSOService
 	// Provision backs /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent.
 	Provision people.Provisioner
+	// AccessChanged runs after a people route stores a change, so People updates live (#3352).
+	AccessChanged func()
 }
 
 // SetupOptions wires first-run setup, the media-server and arr connections, notification routing

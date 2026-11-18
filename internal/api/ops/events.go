@@ -71,8 +71,8 @@ type JobEvent struct {
 //
 // ⚠ **Deliberately EMPTY.** The frame says "something happened"; the page refetches
 // GET /v1/activity, which is the truth on reconnect (§8). Carrying the row would invite a
-// client to build the list from frames — and this bus drops frames for a slow subscriber by
-// design, so that list would be silently missing entries.
+// client to build the list from frames — and a client misses every frame sent while it
+// reconnects, so that list would be silently missing entries.
 type ActivityEvent struct{}
 
 // HealthEvent announces that Current Health changed. The payload is intentionally empty: clients
@@ -197,8 +197,8 @@ type LibraryScanEvent struct {
 // or was marked gone, by a scan or a header read.
 //
 // ⚠ **Deliberately EMPTY**, like ActivityEvent. The page refetches its title list, which stays the
-// truth: this bus drops frames for a slow subscriber, and a list built from frames would silently
-// lose rows. Published at most once every 2 s while titles change, with a trailing frame so the
+// truth: a client misses every frame sent while it reconnects, and a list built from frames would
+// silently lose rows. Published at most once every 2 s while titles change, with a trailing frame so the
 // last change is never missed.
 type LibraryTitlesEvent struct{}
 
@@ -216,10 +216,33 @@ type LibraryFolderEvent struct {
 	library.FolderSummary
 }
 
+// ViewingEvent announces that who is watching what changed: a viewing started, moved to another
+// channel, or ended, or a person's tune was recorded, which moves their continue-watching (#3352). Empty: Home reads GET /v1/household/viewing again, which scopes the
+// answer to the caller, so one frame serves admins and members alike. A viewing is seen to end
+// when the tracker next prunes it, within a recorder interval of its TTL.
+type ViewingEvent struct{}
+
+// AccessEvent announces that who can sign in changed: an invitation, account, session or paired
+// device was created, changed or revoked (#3352). Empty, and admin-only like People, which reads
+// its lists again.
+type AccessEvent struct{}
+
+// DiagnosticEventsEvent announces that the diagnostic event log changed: a batch of events was
+// stored, or verbose capture started or stopped (#3352). Empty and admin-only; published at most
+// once every 2 s while events are recorded, with a trailing frame so the last batch is never
+// missed. Verbose capture ending on its own is not a change the server stores, so the page reads
+// the capture again at its endsAt.
+type DiagnosticEventsEvent struct{}
+
+// DiagnosticProcessesEvent announces that a diagnostic process (an encoder or probe run kept for
+// support) started, wrote output, or finished (#3352). Empty and admin-only; published at once
+// when a run starts or finishes, and at most once a second while one writes output.
+type DiagnosticProcessesEvent struct{}
+
 // adminFrame reports whether a frame's payload is for admins only.
 func adminFrame(payload any) bool {
 	switch payload.(type) {
-	case LibraryScanEvent, LibraryFolderEvent:
+	case LibraryScanEvent, LibraryFolderEvent, AccessEvent, DiagnosticEventsEvent, DiagnosticProcessesEvent:
 		return true
 	}
 	return false
@@ -252,6 +275,11 @@ func EventTypeMap() map[string]any {
 		"library_titles": LibraryTitlesEvent{},
 		"library_roots":  LibraryRootsEvent{},
 		"library_folder": LibraryFolderEvent{},
+		"viewing":        ViewingEvent{},
+		"access":         AccessEvent{},
+		// Diagnostics frames are named for the reads they refresh.
+		"diagnostic_events":    DiagnosticEventsEvent{},
+		"diagnostic_processes": DiagnosticProcessesEvent{},
 	}
 }
 

@@ -107,6 +107,9 @@ device is watching a Channel while its polls continue (`internal/channels/viewin
   [Favourites and recents](#favourites-and-recents), which is also what Watch opens.
 - The tracker is in memory: one replica is the supported topology, and a restart loses nothing
   a poll interval doesn't rebuild.
+- **Live.** Home reads it again on the empty `viewing` frame (#3352), sent as a viewing starts,
+  moves to another Channel, or ends. An end is seen when the tracker next prunes, on the next
+  poll or the recorder's next read, so it reaches Home within 15 s of the 30 s running out.
 
 ### Watch history
 

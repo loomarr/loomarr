@@ -1,4 +1,3 @@
-import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import type { HealthCheck } from "@loomarr/api/models/healthCheck";
 import { HealthCheckStatus } from "@loomarr/api/models/healthCheckStatus";
 import type { HealthReport } from "@loomarr/api/models/healthReport";
@@ -18,6 +17,7 @@ import {
 } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { useCurrentHealth } from "../use-current-health";
 
 const dateTime = (millis?: number) => {
   if (!millis) return "Not checked yet";
@@ -134,9 +134,7 @@ const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
 };
 
 const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
-  const health = diagnosticsApi.useGetCurrentHealth({
-    query: { retry: false, refetchInterval: 10_000 },
-  });
+  const health = useCurrentHealth();
 
   if (health.isError)
     return (

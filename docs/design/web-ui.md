@@ -56,8 +56,10 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
   restrained line motif with the channel's monogram, never a broken-image glyph. Encoder, storage,
   service health and the restart control live in **Settings → This server** (admin-only), linked
   from Home's footer, not duplicated on it.
-- **People** is admins managing other accounts; **Account** (`/account`) is any user's own password
-  and sessions. **Settings** is a searchable task home, with **Advanced settings** as the raw-key
+- **People** is admins managing other accounts. It reads its lists again on the admin-only `access`
+  frame, sent after any stored change to an invitation, account, session or device, including a
+  link redeemed or an email delivered behind the admin. **Account** (`/account`) is any user's own
+  password and sessions. **Settings** is a searchable task home, with **Advanced settings** as the raw-key
   escape hatch. **Help** renders the embedded help pages offline.
 - Global search (⌘K, or Ctrl K; the rail names the one the viewer's platform uses) is a
   design-system inline `Combobox` (an always-open grouped list in a dialog) over `/v1/search`,

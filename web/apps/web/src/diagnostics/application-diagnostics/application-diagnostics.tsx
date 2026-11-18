@@ -75,14 +75,15 @@ const ApplicationDiagnostics = ({
   const listRef = useRef<HTMLElement>(null);
   const cursor = cursorStack.at(-1);
   const query = useQuery({
-    queryKey: ["diagnostic-events-page", filters, cursor],
+    // Keyed by the log's URL, so its `diagnostic_events` frame reads it again (#3352); the window
+    // is not in the key because each read ends it at that read's now.
+    queryKey: [...diagnosticsApi.getListDiagnosticEventsQueryKey(), { filters, cursor }],
     queryFn: ({ signal }) =>
       diagnosticsApi.listDiagnosticEvents(eventParams(filters, cursor), {
         signal,
         headers: { Accept: "application/json" },
       }),
     retry: false,
-    refetchInterval: cursor ? false : 5_000,
   });
   const body = query.data?.status === 200 && "data" in query.data ? query.data.data : undefined;
   const events = body?.items ?? [];
