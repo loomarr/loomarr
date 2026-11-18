@@ -753,7 +753,8 @@ report is not a finished encode, so the rung encodes it again.
   #3838 decision 18): the clip is rejected as `undecided`, the measured span is its detail, and
   upkeep lets it go after the reject rest. A clip an operator added keeps the review.
 - Review holds the clip out of rotation before the review row commits; a store failure leaves the
-  row runnable and the persisted report re-emits the verdict without decoding again.
+  row runnable and the persisted report re-emits the verdict without decoding again. A found clip's
+  review is a reject instead (above), recorded through the ordinary reject path.
 - Intervals are unioned and clamped to the probed duration; an open trailing event closes at the
   duration.
 

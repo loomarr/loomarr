@@ -27,10 +27,11 @@ import (
 // Whisper, often no sidecar text either, so the frame is the only place its brand or era can be
 // grounded.
 //
-// ⚠ **The grounding rule is untouched and must stay that way.** `groundVisionTags` keeps a brand,
-// era or category ONLY when it appears literally in the on-screen text the model claims to have
-// read. Nothing in this phase relaxes that — a pipeline that made a fabricated brand easier to
-// persist would have traded the whole point of §8 for a tidier runner.
+// ⚠ **The grounding rule for brands and literal years holds.** `groundVisionTags` keeps a brand or
+// a literal era year ONLY when it appears in the on-screen text the model claims to have read. The
+// one relaxation is the era estimate (#3838 decision 7): a high-confidence decade from picture and
+// sound, recorded as an inference that every literal source replaces. A fabricated brand is never
+// easier to persist.
 
 // VisionClipStore is the slice of the store the vision stage needs.
 type VisionClipStore interface {
@@ -200,7 +201,7 @@ func (s *VisionStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, e
 }
 
 const visionPromptVersion = "filler-vision-grounding-v3"
-const splitVisionPromptVersion = "filler-split-vision-grounding-v3"
+const splitVisionPromptVersion = "filler-split-vision-grounding-v4"
 
 // VisionPromptVersion is the semantic identity progressive enrichment records for frame catch-up.
 const VisionPromptVersion = visionPromptVersion
@@ -329,8 +330,8 @@ func groundVisionTags(out visionOutput, forest *taxonomy.Forest) visionTags {
 		v.Brand = brand
 	}
 	// ERA — a plausible year that ALSO appears literally in the visibleText. A "1987" read off a
-	// corner grounds the era; a decade inferred from the film stock does not. The frame-heuristic
-	// tier owns "this LOOKS old" suggestions, so an ungrounded vision year is simply dropped.
+	// corner grounds the era; an ungrounded vision year is dropped. A decade the model judges from
+	// the picture is a separate, estimated claim, kept below.
 	if out.Era >= 1930 && out.Era <= 2035 && strings.Contains(v.VisibleText, strconv.Itoa(out.Era)) {
 		v.Era = out.Era
 	}

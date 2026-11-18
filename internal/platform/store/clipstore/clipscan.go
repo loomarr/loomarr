@@ -3,6 +3,7 @@ package clipstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -130,7 +131,7 @@ func (s *Store) attachAudienceBacking(ctx context.Context, clips []Clip, idx map
 	byClip := make(map[string]*backing, len(clips))
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(hashes)), ",")
 	q := `SELECT clip_hash, axis, evidence_rank, value_json FROM filler_enrichment_axes
-		WHERE axis IN ('audience', 'audience-cue') AND clip_hash IN (` + placeholders + `)`
+		WHERE axis IN ('audience', 'audience-cue') AND state = 'complete' AND clip_hash IN (` + placeholders + `)`
 	rows, err := s.h.QueryContext(ctx, s.h.Rebind(q), hashes...)
 	if err != nil {
 		return fmt.Errorf("attach audience backing: %w", err)
@@ -148,14 +149,27 @@ func (s *Store) attachAudienceBacking(ctx context.Context, clips []Clip, idx map
 			byClip[hash] = b
 		}
 		backed := rank >= audienceBackedFromRank
+		var value struct {
+			Text string   `json:"text"`
+			Tags []string `json:"tags"`
+		}
+		if err := json.Unmarshal([]byte(valueJSON), &value); err != nil {
+			return fmt.Errorf("attach audience backing: decode %s %s: %w", hash, axis, err)
+		}
 		if axis == "audience" {
-			b.axisBacked = b.axisBacked || backed
+			// Only the answer the clip carries is backed: a row naming another audience says
+			// nothing about this one.
+			if i, ok := idx[hash]; ok && backed && value.Text == string(clips[i].Audience) {
+				b.axisBacked = true
+			}
 			continue
 		}
-		b.kidsCue = b.kidsCue || (backed && strings.Contains(valueJSON, `"kids-cue"`))
-		b.familyCue = b.familyCue || (backed && strings.Contains(valueJSON, `"family-cue"`))
-		b.lateCue = b.lateCue || (backed && strings.Contains(valueJSON, `"late-night-cue"`))
-		b.lateCueAny = b.lateCueAny || strings.Contains(valueJSON, `"late-night-cue"`)
+		for _, tag := range value.Tags {
+			b.kidsCue = b.kidsCue || (backed && tag == "kids-cue")
+			b.familyCue = b.familyCue || (backed && tag == "family-cue")
+			b.lateCue = b.lateCue || (backed && tag == "late-night-cue")
+			b.lateCueAny = b.lateCueAny || tag == "late-night-cue"
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return err

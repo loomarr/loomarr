@@ -69,11 +69,11 @@ func (s *DefectsStage) Run(ctx context.Context, c clipstore.Clip) (filler.StageR
 		if definitiveFail(rec) {
 			return filler.StageResult{Verdict: pipelinestate.VerdictReject, Reason: pipelinestate.ReasonDefect, Detail: defectDetail(rec)}, nil
 		}
-		// No judge could rule: none is configured, or it would not answer. Nothing automatic will
-		// settle the clip, so it is the operator's call rather than a wait with no end.
-		// For a clip Loomarr found the pipeline reads this as a fail (decision 18); an operator's
-		// own clip waits for the operator.
-		return filler.StageResult{Verdict: pipelinestate.VerdictReview, Doubt: true,
+		// No judge could rule: none is configured, or it would not answer. A judge that looked and abstained could not decide about THIS clip, which the pipeline
+		// reads as a fail for a clip Loomarr found (decision 18). No judge configured is a state of
+		// the install rather than of the clip, so it waits for one and is never a fail.
+		abstained := rec.Judgement != nil && rec.Judgement.Ruling == defects.RulingAbstain
+		return filler.StageResult{Verdict: pipelinestate.VerdictReview, Doubt: abstained,
 			Note: "borderline picture, and no vision model could rule on it: " + defectDetail(rec)}, nil
 	default:
 		return filler.StageResult{Verdict: pipelinestate.VerdictDefer, Note: "waiting for the judge to rule on a borderline picture"}, nil
@@ -82,7 +82,8 @@ func (s *DefectsStage) Run(ctx context.Context, c clipstore.Clip) (filler.StageR
 
 // definitiveFail is a failing verdict that stands: the detectors' own, or the judge's ruling. A
 // borderline clip failed only because no judge could rule (none configured, or it abstained) is
-// ruled on again once one can, so it is held off air but keeps its file.
+// not a definitive fail: with no judge it waits for one, and after an abstention a clip Loomarr
+// found is rejected as undecided while an operator's clip waits for the operator.
 func definitiveFail(rec DefectRecord) bool {
 	if rec.Verdict != defects.VerdictFail {
 		return false

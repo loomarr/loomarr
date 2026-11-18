@@ -53,6 +53,10 @@ func testAudienceBacking(t *testing.T, newStore NewStoreFunc) {
 				state(h, enrichment.AxisAudienceCue, cue("family-cue"), enrichment.EvidenceContent, "vision"),
 			}
 		}, false, clips.Kids},
+		{"a backed row that names another audience says nothing about this one", func(h string) []enrichment.State {
+			return []enrichment.State{state(h, enrichment.AxisAudience, enrichment.Value{Text: "general"},
+				enrichment.EvidenceItem, "deterministic")}
+		}, true, clips.Kids},
 		{"an operator backs it", func(h string) []enrichment.State {
 			return []enrichment.State{state(h, enrichment.AxisAudience, kids, enrichment.EvidenceOperator, "operator")}
 		}, false, clips.Kids},
