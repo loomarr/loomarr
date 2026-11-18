@@ -206,9 +206,18 @@ where the ones above left a gap. A tag is a fact only when its signal literally 
 | 4 | frame heuristics (black-and-white, aspect ratio) | free | era hints without usable text |
 | 5 | vision LLM over keyframes | expensive | silent adverts and on-screen logos |
 
-- **Era must appear literally** in the filename, sidecar text or transcript. A vision or split guess
-  that does not is recorded only as an uncited Context suggestion (an observation), shown as
-  "Likely" until the operator sets the era (`PATCH /v1/filler/tags`).
+- **Era is relaxed, because it is flavour rather than safety** (#3838 decision 7). A year that
+  appears literally in the filename, sidecar text, transcript or on screen grounds the era. With no
+  literal year, the vision model's decade estimate from picture and sound is kept when it reports
+  high confidence and the clip has no era: it is stored as the decade's first year (1990), as
+  inference-ranked evidence (`frame.era_estimate`), so item metadata, the operator or any literal
+  source replaces it. A low-confidence estimate and a frame-heuristic hint stay an uncited Context
+  suggestion, shown as "Likely" until the operator sets the era (`PATCH /v1/filler/tags`).
+- **Audience is strict for kids** (#3838 decision 7). An audience stands as a rule match, an
+  operator, a listing or a source default (non-inference evidence on the axis), or as one model's
+  answer plus a non-inference cue that agrees. One model's answer alone is a guess: every channel
+  but a kids channel takes it, and a kids channel airs a kids or family clip only when it is backed.
+  A guess that a late-night cue contradicts reads as late-night.
 - **A write names what it changes.** `PATCH /v1/filler/tags` writes `era` and `audience` only when
   the body carries them: omitted leaves the stored value and its evidence alone, an explicit `0` or
   empty string clears. The same holds for the bulk retag.

@@ -122,8 +122,13 @@ brand is dropped; no brand is the honest common case.
 
 **Vision** samples keyframes and asks for brand, category and the `visibleText` it read.
 
-- Brand and era must be supported by `visibleText`: they are specific facts, and a model that emits
-  one it did not see has fabricated something checkable.
+- A brand and a literal era year must be supported by `visibleText`: they are specific facts, and a
+  model that emits one it did not see has fabricated something checkable.
+- An era estimate is a separate, relaxed claim (#3838 decision 7). The model also answers an
+  `eraDecade` and an `eraConfidence` (high or low) from picture and sound. At high confidence, with
+  no literal year, the decade's first year is recorded as inference-ranked evidence
+  (`frame.era_estimate`) on a clip that has no era; literal evidence replaces it. The readiness
+  rung does not record it: the progressive vision pass does.
 - Category must resolve to an existing taxon but need not be printed on screen: judging a toy advert
   as toys by seeing toys is what vision is for. (Requiring on-screen text admitted zero categories
   on a real reel and made split auto-confirm impossible.)

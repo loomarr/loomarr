@@ -90,7 +90,11 @@ func (s *VisionStage) Applies(_ context.Context, c clipstore.Clip) (bool, string
 type VisionObservation struct {
 	Brand, VisibleText string
 	Era, SuggestedEra  int
-	Tags               []string
+	// EstimatedDecade is the first year of the decade the model estimated from picture and sound,
+	// kept only when it reported high confidence and no year was read literally (#3838 decision 7).
+	// It is an estimate: literal evidence replaces it.
+	EstimatedDecade int
+	Tags            []string
 }
 
 // Observe extracts keyframes and grounds the answer without persisting it. Progressive catch-up
@@ -158,7 +162,7 @@ func (s *VisionStage) Observe(ctx context.Context, c clipstore.Clip) (StageResul
 		}
 		updated.Category = forest.PrimaryProductLeaf(updated.AssertedTags)
 	}
-	if v.Brand == "" && v.Era == 0 && len(v.Tags) == 0 {
+	if v.Brand == "" && v.Era == 0 && v.EstimatedDecade == 0 && len(v.Tags) == 0 {
 		// Read, but nothing the frames supported. Still stamped — the vision analogue of the
 		// wordless transcript sentinel: an outcome recorded precisely so it is never re-paid-for.
 		return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue, Note: "nothing on the frames could be grounded"},
@@ -166,7 +170,7 @@ func (s *VisionStage) Observe(ctx context.Context, c clipstore.Clip) (StageResul
 	}
 	return StageResult{Clip: updated, Verdict: pipelinestate.VerdictContinue}, VisionObservation{
 		Brand: v.Brand, VisibleText: v.VisibleText, Era: v.Era, SuggestedEra: suggestedEra,
-		Tags: append([]string(nil), v.Tags...),
+		EstimatedDecade: v.EstimatedDecade, Tags: append([]string(nil), v.Tags...),
 	}, nil
 }
 
@@ -195,7 +199,7 @@ func (s *VisionStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, e
 	return result, nil
 }
 
-const visionPromptVersion = "filler-vision-grounding-v2"
+const visionPromptVersion = "filler-vision-grounding-v3"
 const splitVisionPromptVersion = "filler-split-vision-grounding-v3"
 
 // VisionPromptVersion is the semantic identity progressive enrichment records for frame catch-up.
@@ -209,6 +213,9 @@ type visionTags struct {
 	Category    string
 	Era         int
 	VisibleText string
+	// EstimatedDecade is the model's high-confidence decade estimate, 0 when it has none or a
+	// year was read literally.
+	EstimatedDecade int
 }
 
 // visionOutput is the model's raw multimodal answer (untrusted — grounded before use).
@@ -227,6 +234,10 @@ type visionOutput struct {
 	// the live forest.
 	Category string `json:"category"`
 	Era      int    `json:"era"`
+	// EraDecade and EraConfidence are the model's estimate of the era from picture and sound. They
+	// are kept only at high confidence (#3838 decision 7), and only as an estimate.
+	EraDecade     int    `json:"eraDecade"`
+	EraConfidence string `json:"eraConfidence"`
 	// Role is a per-segment semantic judgement used only by the source-structure reducer. It is
 	// not taxonomy and never changes the grounding rules above.
 	Role       string `json:"role"`
@@ -252,6 +263,8 @@ func (v *visionOutput) UnmarshalJSON(data []byte) error {
 	v.Tags = decodeVisionStrings(fields["tags"])
 	v.Category = decodeVisionString(fields["category"])
 	v.Era = decodeVisionInt(fields["era"])
+	v.EraDecade = decodeVisionInt(fields["eraDecade"])
+	v.EraConfidence = strings.ToLower(strings.TrimSpace(decodeVisionString(fields["eraConfidence"])))
 	v.Role = decodeVisionString(fields["role"])
 	v.RoleReason = decodeVisionString(fields["roleReason"])
 	return nil
@@ -321,6 +334,13 @@ func groundVisionTags(out visionOutput, forest *taxonomy.Forest) visionTags {
 	if out.Era >= 1930 && out.Era <= 2035 && strings.Contains(v.VisibleText, strconv.Itoa(out.Era)) {
 		v.Era = out.Era
 	}
+	// ERA ESTIMATE (#3838 decision 7) — relaxed, because an era is flavour rather than safety: a
+	// decade the model judges from picture and sound is kept at high confidence, as the decade's
+	// first year, when no year was read literally. It is stored as an estimate, so literal
+	// evidence replaces it.
+	if v.Era == 0 && out.EraConfidence == "high" && out.EraDecade >= 1930 && out.EraDecade <= 2035 {
+		v.EstimatedDecade = out.EraDecade / 10 * 10
+	}
 	// TAGS — TAXONOMY-grounded (§10 V45a). Deliberately NOT required to appear in visibleText.
 	//
 	// ⚠ **It does not have to appear on the frame (V54b).** The brand/era rule — the claim must be
@@ -379,8 +399,8 @@ func visionPromptFor(forest *taxonomy.Forest, includeTitle bool) string {
 	return fmt.Sprintf(`You are shown a few still frames from one candidate segment in a recording. It may be a commercial, promo, bumper, station ID, PSA, trailer, programme material, other non-filler, ambiguous, or materially unusable.
 First read any TEXT visible in the frames — a logo, a product name, a slogan, a year.
 Return ONLY this JSON, no prose:
-{"visibleText":"<the on-screen text you can read, verbatim; empty if none>"%s,"brand":"<advertiser name or empty>","era":<4-digit year visible in a frame, or 0>,"tags":["<zero or more taxonomy slugs>"],"role":"<commercial|promo|bumper|station_id|psa|trailer|programme_fragment|non_filler|ambiguous|unusable>","roleReason":"<brief visual evidence for that role>"}
-Rules: put in visibleText only text you can actually READ in the frames; give brand ONLY when the advertiser's name is among that visible text — never guess it from the imagery or the products; give era ONLY when a 4-digit year is visible in a frame — never infer a decade from the film stock, colour, or style, use 0 otherwise;%s choose tags only from the live vocabulary below. Vocabulary entries written as "child (under parent)" explain hierarchy; return only the slug, never the annotation. A tag may describe what the imagery shows even when its slug is not printed as text. Return an empty tags array when the frames do not support a choice. Judge role independently from tags and the parent recording. Use commercial for a product/service offer, promo for promotion of a programme or network property, bumper for a brief transition into or out of a break, station_id for station identification, psa for a public-service message, trailer for promotion of a film or release, programme_fragment for material dependent on a larger programme, and non_filler for other independently bounded material that must not air as filler. Use ambiguous rather than guessing. Use unusable only when the frames are materially unassessable. Explain the observed visual evidence; never infer role from the generated filename or duration.
+{"visibleText":"<the on-screen text you can read, verbatim; empty if none>"%s,"brand":"<advertiser name or empty>","era":<4-digit year visible in a frame, or 0>,"eraDecade":<the decade you judge the picture and sound to be from, such as 1990, or 0>,"eraConfidence":"<high only when you are sure of that decade, otherwise low>","tags":["<zero or more taxonomy slugs>"],"role":"<commercial|promo|bumper|station_id|psa|trailer|programme_fragment|non_filler|ambiguous|unusable>","roleReason":"<brief visual evidence for that role>"}
+Rules: put in visibleText only text you can actually READ in the frames; give brand ONLY when the advertiser's name is among that visible text — never guess it from the imagery or the products; give era ONLY when a 4-digit year is visible in a frame, use 0 otherwise; give eraDecade from the picture and sound (film stock, colour, style, music) and mark eraConfidence high only when you are sure, low when you are guessing;%s choose tags only from the live vocabulary below. Vocabulary entries written as "child (under parent)" explain hierarchy; return only the slug, never the annotation. A tag may describe what the imagery shows even when its slug is not printed as text. Return an empty tags array when the frames do not support a choice. Judge role independently from tags and the parent recording. Use commercial for a product/service offer, promo for promotion of a programme or network property, bumper for a brief transition into or out of a break, station_id for station identification, psa for a public-service message, trailer for promotion of a film or release, programme_fragment for material dependent on a larger programme, and non_filler for other independently bounded material that must not air as filler. Use ambiguous rather than guessing. Use unusable only when the frames are materially unassessable. Explain the observed visual evidence; never infer role from the generated filename or duration.
 
 Live taxonomy vocabulary:
 %s`, titleField, titleRule, vocab)

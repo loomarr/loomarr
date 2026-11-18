@@ -110,5 +110,76 @@ func (s *Store) attachTags(ctx context.Context, clips []Clip) error {
 			}
 		}
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return s.attachAudienceBacking(ctx, clips, idx, args)
+}
+
+// audienceBackedFromRank is the evidence rank from which an answer is more than a model's guess:
+// a source default (2) and above in enrichment.EvidenceRank. Inference (1) is a model's own read.
+const audienceBackedFromRank = 2
+
+// attachAudienceBacking sets each clip's AudienceGuess from its audience evidence (#3838 decision
+// 7), in the same batch read as the tags. An audience is backed by non-inference evidence on its
+// own axis, or by a non-inference audience cue that agrees with it; the same model's cue is not a
+// second signal. A guess that a late-night cue contradicts reads as late-night: the stricter
+// reading wins when the evidence disagrees.
+func (s *Store) attachAudienceBacking(ctx context.Context, clips []Clip, idx map[string]int, hashes []any) error {
+	type backing struct{ axisBacked, kidsCue, familyCue, lateCue, lateCueAny bool }
+	byClip := make(map[string]*backing, len(clips))
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(hashes)), ",")
+	q := `SELECT clip_hash, axis, evidence_rank, value_json FROM filler_enrichment_axes
+		WHERE axis IN ('audience', 'audience-cue') AND clip_hash IN (` + placeholders + `)`
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(q), hashes...)
+	if err != nil {
+		return fmt.Errorf("attach audience backing: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var hash, axis, valueJSON string
+		var rank int
+		if err := rows.Scan(&hash, &axis, &rank, &valueJSON); err != nil {
+			return err
+		}
+		b := byClip[hash]
+		if b == nil {
+			b = &backing{}
+			byClip[hash] = b
+		}
+		backed := rank >= audienceBackedFromRank
+		if axis == "audience" {
+			b.axisBacked = b.axisBacked || backed
+			continue
+		}
+		b.kidsCue = b.kidsCue || (backed && strings.Contains(valueJSON, `"kids-cue"`))
+		b.familyCue = b.familyCue || (backed && strings.Contains(valueJSON, `"family-cue"`))
+		b.lateCue = b.lateCue || (backed && strings.Contains(valueJSON, `"late-night-cue"`))
+		b.lateCueAny = b.lateCueAny || strings.Contains(valueJSON, `"late-night-cue"`)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for hash, i := range idx {
+		c := &clips[i]
+		if c.Audience == "" {
+			continue
+		}
+		b := byClip[hash]
+		if b == nil {
+			b = &backing{}
+		}
+		backed := b.axisBacked
+		switch c.Audience {
+		case "kids", "family":
+			backed = backed || b.kidsCue || b.familyCue
+		case "late_night":
+			backed = backed || b.lateCue
+		}
+		c.AudienceGuess = !backed
+		if c.AudienceGuess && b.lateCueAny && c.Audience != "late_night" {
+			c.Audience = "late_night"
+		}
+	}
+	return nil
 }
