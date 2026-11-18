@@ -24,7 +24,7 @@ import (
 // The numbers the maintainer chose from the measured install (#4333, 2026-11-15).
 const (
 	Margin       = 3    // years either side of the seeds' span
-	Bar          = 0.5  // share of the line's genres a clear fit carries
+	Bar          = 0.5  // genre share a clear fit reaches both ways (see Line.Classify)
 	MaxShowShare = 0.15 // the largest share of a day one show may take: 7 shows
 )
 

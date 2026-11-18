@@ -849,11 +849,11 @@ The safety posture mirrors the rest of §4/§8: re-curation can *loosen* content
   - **Kinds:** every kind held by at least a quarter of the seeds and by at least two.
   - **Years:** the seeds' years split into runs wherever neighbours are more than `2 × margin + 1` apart. The line spans the run holding more than half of them, or all of them when no run does, plus `margin` (3) either side.
   - **Genres:** those at least half the seeds carry.
-  - **Rating:** no higher than the highest rating among the seeds that are not odd.
+  - **Rating:** no higher than the highest rating among the seeds that are not odd. NC-17 counts as above R and TV-MA here, though the audience ladder ranks them together: seeds that stop at R don't make an NC-17 channel.
 
   A seed outside the kinds, years or genres is **odd**. It keeps airing, is listed, and does not widen the line.
 - **A title sits against the line** (`Line.Classify`) as one of four fits:
-  - **clear** when it carries at least `bar` (0.5) of the line's genres;
+  - **clear** when it carries at least `bar` (0.5) of the line's genres, and at least `bar` of its own genres are the line's (a crime thriller tagged drama is not a drama, and a clear fit airs before the model sees it);
   - **unclear** when it carries fewer, or has no year;
   - **unrated**, which never joins by itself (decision 29);
   - **outside**, with the reason.
