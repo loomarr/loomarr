@@ -299,12 +299,14 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   prevented: a known limit.
   `FILLER_POD_MAX` is a floor, never the reason a fitting clip is left out: the adapter sizes the
   clip ceiling from the break length over the shortest eligible clip (at most 64).
-- **A break airs only clips the household has not seen this evening** (#3838 decision 1, grill
-  decision 22). An evening is learned from viewing, never a fixed hour: the run of airings on every
-  channel with no silence longer than two hours (`pod.EveningStartBefore`, the rule that sizes the
-  pool). An ad that aired since the evening began is not in a break on any channel. Bookends are
-  exempt, and so are pins. A thin set therefore shortens its breaks, and with nothing unseen the
-  break is its station ID alone. Breaks grow back as the set fills. How far below its recipe a set
+- **A break prefers clips the household has not seen this evening** (#3838 decision 1, grill
+  decision 22, amended 2026-11-18). An evening is learned from viewing, never a fixed hour: the run
+  of airings on every channel with no silence longer than two hours (`pod.EveningStartBefore`, the
+  rule that sizes the pool). An ad that aired since the evening began ranks behind every unseen ad
+  on any channel, so it airs only in what the unseen ads leave, the ones seen longest ago first.
+  Bookends are exempt, and so are pins. A thin set therefore repeats its oldest ads rather than
+  shrinking its breaks: a strict bar emptied breaks to the station ID alone while the sets were
+  below their recipe. Repeats fade as the set fills. How far below its recipe a set
   also takes fewer breaks an hour is a number the loop simulation sets, not a constant here.
 - **A re-size never moves what is on air.** Every airing is found by walking the accepted cycle
   from its anchor, so a break that has aired keeps its length. A catalog change that re-sizes
@@ -350,8 +352,8 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   never aired, then least recently aired outside the channel's commercial spacing. A clip inside its spacing
   ranks behind every rested clip on any rung, so the ladder widens era before a clip repeats, and
   spacing relaxes only when the whole ladder is resting (the pod records `CooldownRelaxed`).
-  Spacing never causes dead air. Within one evening a clip that aired is barred outright (above),
-  so spacing governs repeats across evenings. Pins come first and may repeat. **Each channel sets its own
+  Spacing never causes dead air. Within one evening a clip that aired ranks behind every unseen
+  one (above), so spacing mostly governs repeats across evenings. Pins come first and may repeat. **Each channel sets its own
   spacing (#1670), measured against the household's airings:**
   `policy.commercialSpacing` ("Repeat spacing · same commercial" in the channel's Filler section);
   nil inherits `filler.cooldown_seconds`, which defaults to 4 hours, and a present `0` lets a clip

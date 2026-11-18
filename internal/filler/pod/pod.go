@@ -641,7 +641,8 @@ func pickBumper(catalog []Clip, w Window, policy Policy, used map[string]bool, r
 }
 
 // maxStationClips is how many station clips a break with no ad holds: its station ID, and nothing
-// else (#3838 grill decision 22). A thin set shortens its breaks instead of repeating ads.
+// else (#3838 grill decision 22). A break reaches it only when no ad fits at all: a set whose ads
+// were all seen this evening repeats the oldest of them instead.
 const maxStationClips = 1
 
 // stationBreak fills a break that has no ad with bumpers and idents, in rotation order: never

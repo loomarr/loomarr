@@ -134,19 +134,59 @@ func TestAnEveningEndsAfterSixHoursOfViewing(t *testing.T) {
 	}
 }
 
-// A thin set shortens its breaks: with every ad already aired this evening, the break is its
-// station ID alone, never a repeat and never a stretch of the same ads (#3838 grill decision 22).
-func TestAThinSetShortensItsBreakToTheStationID(t *testing.T) {
+// A thin set still fills its breaks: with every ad already aired this evening, the break repeats
+// the ads aired longest ago rather than shrinking to its station ID (#3838 decision 1, amended
+// 2026-11-18: the sets are below their recipe until fetching fills them).
+func TestAThinSetFillsItsBreakWithTheAdsSeenLongestAgo(t *testing.T) {
 	start := time.Date(2026, 11, 2, 20, 0, 0, 0, time.UTC)
 	var all []string
 	for i := 0; i < 6; i++ {
 		all = append(all, fmt.Sprintf("ad%02d", i))
 	}
+	// ad00 aired first and ad05 last, a minute apart.
 	history := airedOn("other-channel", all, start.Add(-30*time.Minute))
 	for seed := int64(0); seed < 20; seed++ {
 		brk := memoryBreak(t, memoryCatalog(), history, start, seed)
-		if len(brk.Entries) != 1 || brk.Entries[0].Hash != "ident" {
-			t.Fatalf("seed %d: break = %+v, want the station ID alone", seed, brk.Entries)
+		got := map[string]bool{}
+		for _, e := range brk.Entries {
+			got[e.Hash] = true
+		}
+		// The 2 minute break holds three 30 s ads beside its station ID: the three seen longest ago.
+		for _, id := range all[:3] {
+			if !got[id] {
+				t.Fatalf("seed %d: break = %+v, want %s: it is among the ads seen longest ago", seed, hashes(brk), id)
+			}
+		}
+		for _, id := range all[3:] {
+			if got[id] {
+				t.Fatalf("seed %d: break = %+v, has %s though older ads were left out", seed, hashes(brk), id)
+			}
 		}
 	}
+}
+
+// Unseen ads come before any repeat: an ad seen this evening fills only what the unseen ones leave.
+func TestARepeatFillsOnlyWhatTheUnseenAdsLeave(t *testing.T) {
+	start := time.Date(2026, 11, 2, 20, 0, 0, 0, time.UTC)
+	// Five of six seen: the one unseen ad leads, then the two seen longest ago.
+	seen := []string{"ad00", "ad01", "ad02", "ad03", "ad04"}
+	history := airedOn("other-channel", seen, start.Add(-30*time.Minute))
+	for seed := int64(0); seed < 20; seed++ {
+		brk := memoryBreak(t, memoryCatalog(), history, start, seed)
+		got := map[string]bool{}
+		for _, e := range brk.Entries {
+			got[e.Hash] = true
+		}
+		if !got["ad05"] || !got["ad00"] || !got["ad01"] || got["ad04"] {
+			t.Fatalf("seed %d: break = %v, want the unseen ad05 and the oldest repeats ad00 and ad01", seed, hashes(brk))
+		}
+	}
+}
+
+func hashes(p pod.Pod) []string {
+	out := make([]string, 0, len(p.Entries))
+	for _, e := range p.Entries {
+		out = append(out, e.Hash)
+	}
+	return out
 }
