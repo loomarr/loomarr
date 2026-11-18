@@ -45,7 +45,10 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 		// deliberately not catalog-wide. Bumpers are the ladder's floor and the station's own
 		// bookends; excluding them on resolution could leave a break with nothing to open or
 		// close on, trading a cosmetic complaint for a structural one.
-		if c.EffectivePlacement() == PlacementBreakBody && durationEligible(c, policy) && qualityEligible(c, policy) {
+		// A clip the household has seen this evening is not in the break (#3838 decision 1). Bookends
+		// are exempt: there are few, and an ident belongs to its channel.
+		if c.EffectivePlacement() == PlacementBreakBody && durationEligible(c, policy) && qualityEligible(c, policy) &&
+			!airedThisEvening(c, w) {
 			body = append(body, c)
 		}
 	}
@@ -144,6 +147,7 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	loosest := -1
 	lastCat := ""
 	segment := false // a break holds one station segment (#2065)
+	full := false    // the next clip in rotation order does not fit: the break is full
 	// Two passes per BAND (one rung, rested or resting — see ladderBand): first honor category
 	// variety strictly; the fallback pass allows a repeat only if the pod would otherwise be short
 	// of clips. Variety wins WITHIN a band; we don't descend the ladder just to avoid a repeat
@@ -153,7 +157,7 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	// same Category" reads as "don't stack two clips of the same product family" — two beer ads are a
 	// repeat, a beer and a car ad are not. That is the right granularity and the rule is unchanged; a
 	// clip with no product tag ("" Category) is exempt from the repeat check, as an untagged one was.
-	place := func(band []rungClip, allowRepeat bool) {
+	place := func(band []rungClip, allowRepeat, relaxedHalf bool) {
 		for _, c := range band {
 			if len(out) >= podMax {
 				return
@@ -167,10 +171,18 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 			if !allowRepeat && c.Category != "" && c.Category == lastCat {
 				continue // would repeat a category back-to-back
 			}
-			if totalMs+c.DurationMs > budget {
-				continue // does not fit; caller's fallback card is the bounded never-dead-air answer
+			if c.DurationMs > budget {
+				continue // longer than the whole break: it can never lead one, so it never blocks the line
 			}
-			if !share.admits(c.Clip, w) {
+			if totalMs+c.DurationMs > budget {
+				// The break is a ceiling the next clip in rotation order fills. When that clip does not
+				// fit the rest, the break ends: skipping to a shorter clip would hand the leftover to
+				// whichever ads are short, so length would decide what airs. The clip leads the next
+				// break instead.
+				full = true
+				return
+			}
+			if !relaxedHalf && !share.admits(c.Clip, w) {
 				continue // the break already holds its half of in-season clips
 			}
 			share.add(c.Clip, w)
@@ -184,21 +196,32 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 		}
 	}
 	// cands is sorted by ladderLess, so each band is one contiguous run.
-	for start := 0; start < len(cands) && len(out) < podMax; {
+	for start := 0; start < len(cands) && len(out) < podMax && !full; {
 		end := start + 1
 		for end < len(cands) && ladderBand(cands[end], w, policy) == ladderBand(cands[start], w, policy) {
 			end++
 		}
-		place(cands[start:end], false)
-		if len(out) < podMax {
-			place(cands[start:end], true) // top up, accepting a category repeat rather than a shorter pod
+		place(cands[start:end], false, false)
+		if len(out) < podMax && !full {
+			place(cands[start:end], true, false) // top up, accepting a category repeat rather than a shorter pod
 		}
 		start = end
+	}
+	// The half yields only to a break the other clips cannot fill (decision 34): in-season clips
+	// past it take the places left, in rotation order, rather than leaving the break short.
+	if len(out) < podMax && !full {
+		place(cands, true, true)
 	}
 	if len(out) == 0 {
 		return "", nil
 	}
 	return pools[loosest].level, placeLead(out, lead, rng)
+}
+
+// resting reports whether a clip aired inside its cooldown.
+func resting(c Clip, w Window, policy Policy) bool {
+	tier, _ := rotationRank(c, w, policy)
+	return tier == rotationRecent
 }
 
 // placeLead moves the guaranteed in-season commercial from the front of out to a seeded position

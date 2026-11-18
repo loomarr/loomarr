@@ -337,6 +337,9 @@ func (a *Adapter) assemble(clips []Clip, history *AiringHistory, channelID strin
 	if history != nil {
 		w.Exposures = ExposuresBefore(*history, breakStart)
 		w.SnapshotAt = breakStart
+		if !breakStart.IsZero() {
+			w.EveningStart = EveningStartBefore(*history, breakStart)
+		}
 	}
 	w.PodMax = podMaxForDuration(clips, w, pol, podMax, breakDurationMs)
 	return Assemble(clips, w, pol, map[string]bool{})

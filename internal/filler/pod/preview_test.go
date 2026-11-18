@@ -50,7 +50,9 @@ func TestPreviewAtUsesBreakScopedExposureSnapshot(t *testing.T) {
 	}
 	// "new" first aired AT this break's start: that play belongs to the break itself, so the
 	// snapshot must not see it, or the clip would reshuffle the break it is airing in.
-	history := &stubExposures{items: []pod.Airing{aired("recent", start.Add(-time.Minute)), aired("new", start)}}
+	// "recent" aired in the evening before this one, so rotation ranks it behind "new" without
+	// barring it as a repeat within an evening.
+	history := &stubExposures{items: []pod.Airing{aired("recent", start.Add(-5*time.Hour)), aired("new", start)}}
 	adapter := pod.NewAdapter(stubCatalog{clips: cat}, history, func() pod.Policy {
 		return pod.Policy{PodMax: 2, Cooldown: time.Hour}
 	}, discardLogger())

@@ -250,8 +250,8 @@ func TestAssemble_NoAdsFillsWithStationMaterialBeforeTheCard(t *testing.T) {
 		}
 		got = append(got, e.Hash)
 	}
-	if !slices.Equal(got, []string{"id1", "id2"}) {
-		t.Errorf("station break = %v, want both resting idents, the one aired longest ago first", got)
+	if !slices.Equal(got, []string{"id1"}) {
+		t.Errorf("station break = %v, want the one resting ident aired longest ago, alone", got)
 	}
 
 	if p := pod.Assemble([]pod.Clip{{Hash: "long", Path: "long.mp4", Role: pod.StationID,

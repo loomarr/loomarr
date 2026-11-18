@@ -33,7 +33,9 @@ func TestPodAdapter_ChannelSpacingPrefersWidenedEraOverARepeat(t *testing.T) {
 		{Hash: "exact", Path: "exact.mp4", Role: pod.Commercial, Era: 1994, Audience: pod.General, DurationMs: 30_000},
 		{Hash: "widened", Path: "widened.mp4", Role: pod.Commercial, Era: 1984, Audience: pod.General, DurationMs: 30_000},
 	}
-	adapter := spacingAdapter(clips, []pod.Airing{aired("exact", at.Add(-70*time.Minute))})
+	// Aired three hours ago: the household's silence since ended that evening, so the clip is not
+	// barred as a repeat within one and only the channel's spacing decides.
+	adapter := spacingAdapter(clips, []pod.Airing{aired("exact", at.Add(-3*time.Hour))})
 	sel := pod.Selection{Era: pod.EraRange{From: 1989, To: 1999}, Audience: pod.General}
 
 	// Inheriting the 30 minute install default, the exact-era clip is rested and leads.
@@ -45,7 +47,7 @@ func TestPodAdapter_ChannelSpacingPrefersWidenedEraOverARepeat(t *testing.T) {
 	sel.Spacing = &fourHours
 	brk := spacingPod(t, adapter, sel, at)
 	if got := commercialIDs(brk); !reflect.DeepEqual(got, []string{"widened"}) {
-		t.Fatalf("4h spacing pod = %v, want the widened-era clip ahead of a repeat 70 minutes later", got)
+		t.Fatalf("4h spacing pod = %v, want the widened-era clip ahead of a repeat three hours later", got)
 	}
 	if brk.CooldownRelaxed {
 		t.Fatal("a widened-era clip filled the break, so no spacing was relaxed")
@@ -63,7 +65,7 @@ func TestPodAdapter_ChannelSpacingNeverEmptiesABreak(t *testing.T) {
 	clips := []pod.Clip{
 		{Hash: "only", Path: "only.mp4", Role: pod.Commercial, Era: 1994, Audience: pod.General, DurationMs: 30_000},
 	}
-	adapter := spacingAdapter(clips, []pod.Airing{aired("only", at.Add(-10*time.Minute))})
+	adapter := spacingAdapter(clips, []pod.Airing{aired("only", at.Add(-3*time.Hour))})
 	day := 24 * time.Hour
 	brk := spacingPod(t, adapter, pod.Selection{Audience: pod.General, Spacing: &day}, at)
 	if got := commercialIDs(brk); !reflect.DeepEqual(got, []string{"only"}) || !brk.CooldownRelaxed {
