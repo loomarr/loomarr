@@ -45,10 +45,9 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 		// deliberately not catalog-wide. Bumpers are the ladder's floor and the station's own
 		// bookends; excluding them on resolution could leave a break with nothing to open or
 		// close on, trading a cosmetic complaint for a structural one.
-		// A clip the household has seen this evening is not in the break (#3838 decision 1). Bookends
-		// are exempt: there are few, and an ident belongs to its channel.
-		if c.EffectivePlacement() == PlacementBreakBody && durationEligible(c, policy) && qualityEligible(c, policy) &&
-			!airedThisEvening(c, w) {
+		// A clip the household has seen this evening stays a candidate, behind every unseen one
+		// (ladderBand): it fills only what the unseen ads leave.
+		if c.EffectivePlacement() == PlacementBreakBody && durationEligible(c, policy) && qualityEligible(c, policy) {
 			body = append(body, c)
 		}
 	}
@@ -76,7 +75,7 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 //   - COOLDOWN BEFORE RUNG: a clip resting inside its cooldown ranks behind every rested
 //     clip on any rung. Cooldown relaxes only when the whole ladder is resting, which is the
 //     "never leave a break empty" promise the setting makes, and nothing looser. A clip the
-//     household has seen this evening is not a candidate at all (airedThisEvening).
+//     household has seen this evening ranks behind both (airedThisEvening, ladderBand).
 //   - Fills up to w.PodMax clips within w.GapMs, which the caller has already reduced by the
 //     intro/return bumpers it places. The break is a ceiling: when the next clip in rotation
 //     order does not fit, the break ends, and a clip longer than the whole gap is skipped. An ad
@@ -256,13 +255,20 @@ type rungClip struct {
 }
 
 // ladderBand is the placement band a candidate belongs to: its rung, with every clip resting
-// inside its cooldown moved below all rested ones. Bands are what ladderLess orders.
+// inside its cooldown moved below all rested ones, and every clip the household has seen this
+// evening below both (#3838 decision 1, amended 2026-11-18). A break airs no repeat while an unseen
+// ad fits; once the unseen ones run out, the ads seen longest ago fill what is left, so a set below
+// its recipe keeps its breaks full instead of shrinking them to the station ID. Bands are what
+// ladderLess orders.
 func ladderBand(c rungClip, w Window, policy Policy) int {
-	resting := 0
+	seen, resting := 0, 0
+	if airedThisEvening(c.Clip, w) {
+		seen = 1
+	}
 	if tier, _ := rotationRank(c.Clip, w, policy); tier == rotationRecent {
 		resting = 1
 	}
-	return resting<<8 | c.rung // resting dominates; the rung (0-2) orders within it
+	return seen<<9 | resting<<8 | c.rung // seen tonight dominates, then resting; the rung (0-2) orders within
 }
 
 // ladderLess orders ladder candidates: by band (rested before resting, then tightest rung

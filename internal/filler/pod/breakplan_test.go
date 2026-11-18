@@ -75,9 +75,10 @@ func plansOf(n int, gap, ceiling time.Duration) []pod.BreakPlan {
 	return out
 }
 
-// A break with fewer fresh ads than its slot ends early: with three ads and a station ID, the
-// first break airs the ads and the second, in the same evening, is the station ID alone. Each
-// break's length is the media its stored pod holds, and the next break starts when it ends.
+// A break ends when its ads do: with three 30 s ads and a station ID, each 2 minute slot airs
+// 1m35s. The later breaks, in the same evening, repeat the ads seen longest ago rather than
+// shrinking to the station ID. Each break's length is the media its stored pod holds, and the
+// next break starts when it ends.
 func TestPlanBreaksSizeEachBreakToItsStoredPod(t *testing.T) {
 	store := newMemoryBreaks()
 	adapter := planner(t, append(catalogOf(30, 30, 30), pod.Clip{Hash: "ident", Path: "ident.mp4",
@@ -91,8 +92,9 @@ func TestPlanBreaksSizeEachBreakToItsStoredPod(t *testing.T) {
 	if lengths[0] < 90*time.Second || lengths[0] > 2*time.Minute {
 		t.Errorf("first break = %v, want the three ads (and bookends) within the 2 minute ceiling", lengths[0])
 	}
-	if lengths[1] != 5*time.Second || lengths[2] != 5*time.Second {
-		t.Errorf("later breaks = %v, %v, want the station ID alone: the ads aired this evening", lengths[1], lengths[2])
+	if lengths[1] != lengths[0] || lengths[2] != lengths[0] {
+		t.Errorf("later breaks = %v, %v, want %v: a thin set repeats its oldest ads, it does not shrink the break",
+			lengths[1], lengths[2], lengths[0])
 	}
 	stored, _ := store.LoadBreaks(context.Background(), "ch-1", planFrom, planFrom.Add(24*time.Hour))
 	wantStarts := []time.Time{planFrom, planFrom.Add(lengths[0] + 30*time.Minute),
@@ -303,5 +305,37 @@ func TestPreviewAtManyAssemblesLiveWithoutAStoredBreak(t *testing.T) {
 	}
 	if len(got[0].Entries) == 0 {
 		t.Fatal("no stored break and no live assembly: the break is empty")
+	}
+}
+
+// A break stored with no ad is filled once ads are ready, before it airs; while there are still
+// none, planning again stores nothing.
+func TestPlanBreaksFillsAnEmptyBreakOnceAdsAreReady(t *testing.T) {
+	ident := pod.Clip{Hash: "ident", Path: "ident.mp4", Role: pod.StationID, Era: 1992,
+		Audience: pod.General, DurationMs: 5_000}
+	store := newMemoryBreaks()
+	plans := plansOf(2, 30*time.Minute, 2*time.Minute)
+
+	empty, err := planner(t, []pod.Clip{ident}, store).PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart, plans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty[0] != 5*time.Second {
+		t.Fatalf("with no ads the break = %v, want the station ID alone", empty[0])
+	}
+	saves := store.saves
+	if _, err := planner(t, []pod.Clip{ident}, store).PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart, plans); err != nil {
+		t.Fatal(err)
+	}
+	if store.saves != saves {
+		t.Errorf("planning again with still no ads saved %d breaks, want none", store.saves-saves)
+	}
+
+	filled, err := planner(t, append(catalogOf(30, 30, 30), ident), store).PlanBreaks(context.Background(), "ch-1", pod.Selection{}, nil, fromStart, plans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filled[0] < 90*time.Second {
+		t.Errorf("once ads are ready the break = %v, want the ads in it", filled[0])
 	}
 }
