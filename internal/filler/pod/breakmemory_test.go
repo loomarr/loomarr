@@ -55,6 +55,25 @@ func TestABreakAirsNoAdThatAiredThisEvening(t *testing.T) {
 	}
 }
 
+// Versions of one ad are one ad: a cut-down copy of an ad seen this evening is not in the break.
+func TestABreakAirsNoVersionOfAnAdSeenThisEvening(t *testing.T) {
+	start := time.Date(2026, 11, 2, 20, 0, 0, 0, time.UTC)
+	cat := memoryCatalog()
+	for i := range cat {
+		if cat[i].Hash == "ad00" {
+			cat[i].Variants = []string{"ad01"}
+		}
+	}
+	history := airedOn("other-channel", []string{"ad01"}, start.Add(-40*time.Minute))
+	for seed := int64(0); seed < 40; seed++ {
+		for _, e := range memoryBreak(t, cat, history, start, seed).Entries {
+			if e.Hash == "ad00" || e.Hash == "ad01" {
+				t.Fatalf("seed %d: %s aired though its other version aired this evening", seed, e.Hash)
+			}
+		}
+	}
+}
+
 // An evening is learned from viewing, not a clock hour (#3838): a silence longer than the evening
 // gap ends it, and the ads of the last one may air again.
 func TestAnEveningEndsAfterALongSilence(t *testing.T) {

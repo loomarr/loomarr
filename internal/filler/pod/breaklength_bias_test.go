@@ -33,14 +33,16 @@ func watchedBreaks(t *testing.T, catalog []pod.Clip, n int) (map[string]int, int
 	t.Helper()
 	exposures := &stubExposures{}
 	adapter := pod.NewAdapter(stubCatalog{clips: catalog}, exposures, func() pod.Policy {
-		return pod.Policy{BreakDurationMs: 120_000, PodMax: 4, Cooldown: 4 * time.Hour}
+		return pod.Policy{BreakDurationMs: 120_000, PodMax: 4, Cooldown: 30 * time.Minute}
 	}, discardLogger())
 	ctx := context.Background()
 	length := adapter.PlayableDurationMs(ctx, "ch-1", 7, pod.Selection{})
 	counts := map[string]int{}
 	start := time.Date(2026, 11, 2, 18, 0, 0, 0, time.UTC)
 	for i := 0; i < n; i++ {
-		at := start.Add(time.Duration(i) * 25 * time.Minute)
+		// Breaks more than an evening gap apart: each opens its own evening, so the evening bar
+		// never spends the catalog and only the length ceiling decides what airs.
+		at := start.Add(time.Duration(i) * 3 * time.Hour)
 		pods, err := adapter.PreviewAtMany(ctx, "ch-1", pod.Selection{},
 			[]pod.Break{{Seed: int64(1000 + i), Start: at, Length: time.Duration(length) * time.Millisecond}})
 		if err != nil {

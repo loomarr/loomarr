@@ -42,7 +42,7 @@ type AiringHistory struct {
 // strictly before it and was recorded at least Settle before it. A zero cutoff counts all history.
 //
 // ⚠ Both cuts keep a break's snapshot fixed while the break airs, which a rebuild relies on: the
-// pod is assembled again at every clip's resolve, and a changed snapshot would reshuffle its tail.
+// pod is assembled again at every clip's resolve, and a changed snapshot would reshuffle the pod.
 // An airing at or after the break's start is the break's own (or later). An airing recorded after
 // the break's first clip was resolved can come from ANOTHER channel with an earlier start: a viewer
 // who tunes in there mid-clip records that clip, aired minutes ago, now. Playout resolves a break's
@@ -96,8 +96,13 @@ func airedThisEvening(c Clip, w Window) bool {
 	if w.EveningStart.IsZero() {
 		return false
 	}
-	e, ok := w.Exposures[c.ID()]
-	return ok && !e.LastPlayedAt.Before(w.EveningStart)
+	// Versions of one ad rest together (#2033), so a cut-down copy of an ad seen tonight is seen.
+	for _, id := range append([]string{c.ID()}, c.Variants...) {
+		if e, ok := w.Exposures[id]; ok && !e.LastPlayedAt.Before(w.EveningStart) {
+			return true
+		}
+	}
+	return false
 }
 
 // Pod is an assembled ad break (§10): an intro bumper → matched commercials →

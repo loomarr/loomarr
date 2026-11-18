@@ -269,7 +269,8 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   is left the break ends: it is not handed to whichever clip is short enough to fit, which let
   length decide what aired. Fixed from a history-free pod, the length used to favour the short ads
   about two to one over a run of breaks. A clip longer than the whole break is skipped and never
-  blocks the line; it leads a longer break. A break can therefore end short of its slot.
+  blocks the line; it leads a longer break. A break can therefore end short of its slot, and the
+  unfilled remainder plays as the generated card until the programme resumes.
   `FILLER_POD_MAX` is a floor, never the reason a fitting clip is left out: the adapter sizes the
   clip ceiling from the break length over the shortest eligible clip (at most 64).
 - **A break airs only clips the household has not seen this evening** (#3838 decision 1, grill

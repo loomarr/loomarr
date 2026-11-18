@@ -377,8 +377,8 @@ const minBreakDurationMs int64 = 30_000
 // ceiling (up to maxPodClips); pod_max only raises it, for a catalog too sparse to ask for more.
 // Assemble still owns the hard no-repeat and gap invariants — time, not count, bounds the pod.
 //
-// ⚠ It used to size from the MEDIAN clip. That left a fitting short clip out of about 1% of
-// breaks whenever the pool mixed lengths, and the household had asked for fuller breaks.
+// ⚠ It sizes from the shortest clip, not the median: the median left a fitting short clip out of
+// about 1% of breaks whenever the pool mixed lengths.
 //
 // ⚠ The widest rung, because that is what a pod draws from since #1684 (the rungs nest, so it
 // holds every candidate). Sizing from the tightest rung let one long exact-era clip set the

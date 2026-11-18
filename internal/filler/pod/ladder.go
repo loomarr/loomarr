@@ -75,10 +75,12 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 //     and a looser rung only TOPS UP what the tighter rungs cannot fill.
 //   - COOLDOWN BEFORE RUNG: a clip resting inside its cooldown ranks behind every rested
 //     clip on any rung. Cooldown relaxes only when the whole ladder is resting, which is the
-//     "never leave a break empty" promise the setting makes, and nothing looser.
+//     "never leave a break empty" promise the setting makes, and nothing looser. A clip the
+//     household has seen this evening is not a candidate at all (airedThisEvening).
 //   - Fills up to w.PodMax clips within w.GapMs, which the caller has already reduced by the
-//     intro/return bumpers it places. A clip that does not fit whole is skipped for a shorter
-//     one; an ad is never cut to fit.
+//     intro/return bumpers it places. The break is a ceiling: when the next clip in rotation
+//     order does not fit, the break ends, and a clip longer than the whole gap is skipped. An ad
+//     is never cut to fit.
 //
 // ⚠ #1684: every rung with an un-used clip feeds the break, not only the tightest. `used` is per
 // break, so a tight pool is never exhausted by one break, and drawing from the tightest alone
@@ -174,6 +176,9 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 			if c.DurationMs > budget {
 				continue // longer than the whole break: it can never lead one, so it never blocks the line
 			}
+			if !relaxedHalf && !share.admits(c.Clip, w) {
+				continue // the break already holds its half of in-season clips: not next in line
+			}
 			if totalMs+c.DurationMs > budget {
 				// The break is a ceiling the next clip in rotation order fills. When that clip does not
 				// fit the rest, the break ends: skipping to a shorter clip would hand the leftover to
@@ -181,9 +186,6 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 				// break instead.
 				full = true
 				return
-			}
-			if !relaxedHalf && !share.admits(c.Clip, w) {
-				continue // the break already holds its half of in-season clips
 			}
 			share.add(c.Clip, w)
 			out = append(out, c.Clip)
