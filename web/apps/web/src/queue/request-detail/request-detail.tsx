@@ -40,13 +40,8 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const query = proposalJobsApi.useGetProposalJob(jobId, {
-    query: {
-      // A generating request streams its progress; the SSE frame refetches sooner, this is the floor.
-      refetchInterval: (q) =>
-        q.state.data?.status === 200 && q.state.data.data.milestone === "generating" ? 2_000 : false,
-    },
-  });
+  // A generating request follows its suggestion frames: the bus refetches /v1/proposal-jobs on each.
+  const query = proposalJobsApi.useGetProposalJob(jobId);
   const { titles } = useRequests();
   const retryTitle = titlesApi.useEnqueueTitle({
     mutation: {
