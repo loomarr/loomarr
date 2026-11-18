@@ -197,7 +197,7 @@ func TestCertifiedStructureMaterializableUsesDistinctWindowAuthority(t *testing.
 	}
 }
 
-func TestSplitStageAppliesCertifiedWindowPlanWithoutChangingLegacyShadowInput(t *testing.T) {
+func TestSplitStageCertifiedPlanAuthorizesNoCut(t *testing.T) {
 	proposal := certifiedStructureProposal(t)
 	proposal.StructureDecision = passingWindowStructureDecision(t, *proposal.StructureDecision)
 	projected, err := split.ProjectConfirmedDecision(proposal.Source, nil, *proposal.StructureDecision)
@@ -211,41 +211,14 @@ func TestSplitStageAppliesCertifiedWindowPlanWithoutChangingLegacyShadowInput(t 
 	}
 	stage := NewSplitStage(nil, nil).
 		WithAutoConfirm(*certifiedAutoPolicy(), func() time.Duration { return 10 * time.Second })
-	legacy, applied := stage.splitPartitions(proposal, allowCertifiedWindowStructure(t, *proposal.StructureDecision))
+	// Since #4409 a certified plan authorizes nothing: the cut is decided by the look at each whole
+	// cut, and these segments were never looked at, so nothing is cut.
+	legacy, decided := stage.splitPartitions(proposal)
 	if legacy.Verdict() != RejectUntagged || len(legacy.Confirm) != 0 {
 		t.Fatalf("legacy shadow input=%+v", legacy)
 	}
-	if applied.Verdict() != AutoSplitOK || len(applied.Confirm) != 2 || len(applied.Hold) != 0 {
-		t.Fatalf("certified application decision=%+v", applied)
-	}
-}
-
-func TestSplitStageNeverAppliesCompatibilityPartitionWithoutCertifiedAuthority(t *testing.T) {
-	proposal := certifiedStructureProposal(t)
-	stage := NewSplitStage(nil, nil).
-		WithAutoConfirm(*certifiedAutoPolicy(), func() time.Duration { return 10 * time.Second })
-
-	compatibility, application := stage.splitPartitions(proposal, nil)
-	if compatibility.Verdict() != AutoSplitOK || len(compatibility.Confirm) != 2 {
-		t.Fatalf("compatibility comparison = %+v", compatibility)
-	}
-	if application.Reject != RejectStructureUncertified || len(application.Confirm) != 0 || len(application.Hold) != 2 {
-		t.Fatalf("application partition without authority = %+v", application)
-	}
-}
-
-func TestSplitStageNeverAppliesCompatibilityPartitionWithoutDecision(t *testing.T) {
-	proposal := certifiedStructureProposal(t)
-	proposal.StructureDecision = nil
-	stage := NewSplitStage(nil, nil).
-		WithAutoConfirm(*certifiedAutoPolicy(), func() time.Duration { return 10 * time.Second })
-
-	compatibility, application := stage.splitPartitions(proposal, allowCertifiedStructure(t))
-	if compatibility.Verdict() != AutoSplitOK || len(compatibility.Confirm) != 2 {
-		t.Fatalf("compatibility comparison = %+v", compatibility)
-	}
-	if application.Reject != RejectStructureInvalid || len(application.Confirm) != 0 || len(application.Hold) != 2 {
-		t.Fatalf("application partition without decision = %+v", application)
+	if len(decided.Confirm) != 0 || len(decided.Hold) != 2 {
+		t.Fatalf("a certified plan cut segments nobody looked at: %+v", decided)
 	}
 }
 

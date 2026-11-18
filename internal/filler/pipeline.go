@@ -555,6 +555,21 @@ func (p *Pipeline) retireRemoved(ctx context.Context, row pipelinestate.ClipPipe
 	return row.Disposition, p.persist(ctx, row, clip)
 }
 
+// foundByLoomarr reports whether Loomarr fetched this clip itself, which is what makes a doubt a
+// drop rather than a question for a person (decision 18). A piece cut from a fetched reel is found
+// too (#4409): its row carries no acquisition, which stays with the reel, but its sidecar names
+// the reel's. A piece of a reel the operator added is theirs, and their doubts stay with them.
+func (p *Pipeline) foundByLoomarr(row pipelinestate.ClipPipeline, clip clipstore.Clip) bool {
+	if row.AcquisitionID != "" {
+		return true
+	}
+	if !clip.IsSegment() || clip.Path == "" || p.clipDir == "" {
+		return false
+	}
+	tags, ok := asset.ReadSidecarTags(filepath.Join(p.clipDir, filepath.FromSlash(clip.Path)))
+	return ok && tags.AcquisitionID != ""
+}
+
 // advance walks the stages for one clip until it blocks, defers, or reaches a terminal state.
 func (p *Pipeline) advance(ctx context.Context, row pipelinestate.ClipPipeline, s *spend) (pipelinestate.Disposition, error) {
 	clip, found, err := p.clips.GetClip(ctx, row.ClipHash)
@@ -768,7 +783,7 @@ func (p *Pipeline) advance(ctx context.Context, row pipelinestate.ClipPipeline, 
 			row.RejectReason, row.RejectDetail = out.Reason, out.Detail
 			return row.Disposition, p.persist(ctx, row, clip)
 		case pipelinestate.VerdictReview:
-			if out.Doubt && row.AcquisitionID != "" {
+			if out.Doubt && p.foundByLoomarr(row, clip) {
 				// A check that cannot decide is a fail for a clip Loomarr found: nobody is asked,
 				// and the clip rests as a reject until upkeep lets it go (decision 18).
 				row.Record(row.Stage, pipelinestate.StatusDone, out.Note, row.Attempts, p.now().UTC())

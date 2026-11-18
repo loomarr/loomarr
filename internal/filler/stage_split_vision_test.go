@@ -30,6 +30,7 @@ import (
 // extraction to each SEGMENT rather than re-framing the whole compilation N times.
 type spanTools struct {
 	spans  [][2]int64
+	counts []int
 	frames [][]byte
 	err    error
 }
@@ -591,18 +592,29 @@ func TestSplitStage_ResumesOnlyReviewsItCanImprove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, hash := range []string{"duplicate", "short", "unchecked"} {
+	// With splitting on nobody reviews (#4409): a reel the old rule left waiting for a person goes
+	// back to the rung, which cuts or drops it.
+	for _, hash := range []string{"duplicate", "short", "unchecked", "already-ambiguous"} {
 		if _, ok := hashes[hash]; !ok {
 			t.Errorf("%q was not selected for automatic refinement", hash)
 		}
 	}
+
+	// With splitting off the person still decides, so a looked-at reel stays with them.
+	off := NewSplitStage(nil, queue).
+		WithAutoConfirm(AutoSplitPolicy{Enabled: func() bool { return false }}, func() time.Duration { return 10 * time.Second })
+	hashes, err = off.resumableReviewHashes(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, ok := hashes["already-ambiguous"]; ok {
-		t.Error("a segment the model already examined was requeued; it genuinely needs review")
+		t.Error("splitting is off, yet a reel waiting for its person was taken back")
 	}
 }
 
 // A review holding a segment whose duplicate check could not run is offered back to the split stage,
-// at restart and on the slow re-check cadence; checked and duplicate-free reviews are not.
+// at restart and on the slow re-check cadence. The re-check cadence takes nothing else; the restart
+// scan, with splitting on, takes every reel with cuts (#4409).
 func TestSplitStage_RequeuesReviewsHoldingAnUncheckedSegment(t *testing.T) {
 	ready := func(hash string, seg split.Segment) SplitProposal {
 		return SplitProposal{ClipHash: hash, Segments: []split.Segment{seg}}
@@ -624,8 +636,8 @@ func TestSplitStage_RequeuesReviewsHoldingAnUncheckedSegment(t *testing.T) {
 		if _, ok := hashes["unchecked"]; !ok {
 			t.Errorf("%s: the unchecked review was not requeued", name)
 		}
-		if _, ok := hashes["checked"]; ok {
-			t.Errorf("%s: a checked review was requeued", name)
+		if _, ok := hashes["checked"]; ok != (name == "restart scan") {
+			t.Errorf("%s: checked review requeued = %v", name, ok)
 		}
 	}
 }
@@ -702,7 +714,46 @@ func TestSplitStageResumesOtherReviewsPastAnUnreadableShadow(t *testing.T) {
 // VisionKeyframesIn is the ONLY framing a vision call may use: the plain KeyframesIn above is
 // unbounded (up to 1920 px wide), so a call site that regresses to it would send a third more
 // pixels per frame. spanTools.KeyframesIn therefore refuses.
-func (s *spanTools) VisionKeyframesIn(_ context.Context, _ string, startMs, endMs int64, _ int) ([][]byte, error) {
+func (s *spanTools) VisionKeyframesIn(_ context.Context, _ string, startMs, endMs int64, n int) ([][]byte, error) {
 	s.spans = append(s.spans, [2]int64{startMs, endMs})
+	s.counts = append(s.counts, n)
 	return s.frames, s.err
+}
+
+// The split look judges each cut as a whole (#4409): its answer lands on the segment, frames are
+// taken across the whole cut, and a cut looked at before the look asked has no answer and is looked
+// at again.
+func TestSegmentVisionRecordsTheWholeCutJudgement(t *testing.T) {
+	tools := &spanTools{frames: [][]byte{[]byte("opening"), []byte("closing")}}
+	model := &fixedVision{answer: `{"visibleText":"ACME","role":"commercial","roleReason":"offer","whole":"several","wholeReason":"two brands"}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: tools, Provider: model, Taxa: seedTaxa{}, Budget: func() int { return 10 },
+	})
+	segments := twoSegments()
+	segments[1].Looked = true // looked at under the old prompt: no whole answer
+	pass := s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), segments)
+	if pass.Looked != 2 || pass.Pending != 0 {
+		t.Fatalf("ground pass = %+v, want both cuts looked at", pass)
+	}
+	for i, seg := range segments {
+		if seg.Whole != split.WholeSeveral || seg.LookedRole != split.RoleCommercial {
+			t.Errorf("segment %d whole=%q role=%q", i, seg.Whole, seg.LookedRole)
+		}
+	}
+	for _, n := range tools.counts {
+		if n != split.WholeCutKeyframes {
+			t.Errorf("asked for %d frames, want %d across the whole cut", n, split.WholeCutKeyframes)
+		}
+	}
+	if !strings.Contains(model.prompts[0], `"whole"`) {
+		t.Error("the split prompt does not ask about the whole cut")
+	}
+
+	// An answer the model leaves out or garbles is a doubt, and a doubt never cuts.
+	model.answer = `{"role":"commercial","whole":"probably"}`
+	again := twoSegments()
+	s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), again)
+	if again[0].Whole != split.WholeUnsure {
+		t.Errorf("garbled answer recorded as %q, want unsure", again[0].Whole)
+	}
 }

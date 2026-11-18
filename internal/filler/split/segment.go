@@ -87,6 +87,14 @@ type Segment struct {
 	// provider-error path does NOT set it, because a failing backend fails for every segment and
 	// should be retried next pass rather than poisoning the reel.
 	Looked bool `json:"looked,omitempty"`
+	// Whole is the look at the whole cut (#4409): whether its frames show one complete piece of
+	// filler, part of one, several, or cannot tell. Black and silence cannot see a hard cut between
+	// two ads, nor tell a dip inside an ad from a gap between two, so only a cut judged WholeOne may
+	// be cut unattended. "" is not looked at under this question yet.
+	Whole WholeCut `json:"whole,omitempty"`
+	// LookedRole is the role the same look gave the cut (commercial, promo, ...). Only a filler role
+	// may be cut unattended.
+	LookedRole Role `json:"lookedRole,omitempty"`
 	// RoleEvidence is the exact, independently attributable frame judgement for THIS span. It is
 	// intentionally not flattened into Category or copied from the parent: the source-structure
 	// reducer consumes it as a segment_role observation and decides whether the span is keepable.

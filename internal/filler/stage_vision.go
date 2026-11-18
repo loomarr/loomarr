@@ -201,7 +201,7 @@ func (s *VisionStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, e
 }
 
 const visionPromptVersion = "filler-vision-grounding-v3"
-const splitVisionPromptVersion = "filler-split-vision-grounding-v4"
+const splitVisionPromptVersion = "filler-split-vision-grounding-v5"
 
 // VisionPromptVersion is the semantic identity progressive enrichment records for frame catch-up.
 const VisionPromptVersion = visionPromptVersion
@@ -243,6 +243,9 @@ type visionOutput struct {
 	// not taxonomy and never changes the grounding rules above.
 	Role       string `json:"role"`
 	RoleReason string `json:"roleReason"`
+	// Whole is the split look's judgement of the whole cut (#4409); requested only at split time.
+	Whole       string `json:"whole"`
+	WholeReason string `json:"wholeReason"`
 }
 
 // UnmarshalJSON salvages independently valid fields from a model answer. Vision models
@@ -268,6 +271,8 @@ func (v *visionOutput) UnmarshalJSON(data []byte) error {
 	v.EraConfidence = strings.ToLower(strings.TrimSpace(decodeVisionString(fields["eraConfidence"])))
 	v.Role = decodeVisionString(fields["role"])
 	v.RoleReason = decodeVisionString(fields["roleReason"])
+	v.Whole = decodeVisionString(fields["whole"])
+	v.WholeReason = decodeVisionString(fields["wholeReason"])
 	return nil
 }
 
@@ -394,8 +399,11 @@ func visionPromptFor(forest *taxonomy.Forest, includeTitle bool) string {
 	titleField := ""
 	titleRule := ""
 	if includeTitle {
-		titleField = `,"proposedTitle":"<short, friendly clip title grounded in visibleText; empty if none>"`
-		titleRule = " Give proposedTitle only when its identifying product, brand, programme, or subject is literally present in visibleText; a generic label such as commercial is not a title."
+		// The split look also judges the cut as a whole (#4409): the frames run in order from the
+		// cut's start to its end, and black and silence cannot see where one spot ends.
+		titleField = `,"proposedTitle":"<short, friendly clip title grounded in visibleText; empty if none>","whole":"<one|part|several|unsure>","wholeReason":"<brief visual evidence for that answer>"`
+		titleRule = " Give proposedTitle only when its identifying product, brand, programme, or subject is literally present in visibleText; a generic label such as commercial is not a title." +
+			" The frames are in order from the start of the segment to its end. Answer whole with one when they show a single complete spot, one advertiser and one message, that begins and ends inside the segment; part when it looks like only the start, middle or end of a spot, such as no closing card or slate where one would be; several when the frames show more than one spot, such as a change of advertiser, product, setting or style partway through; unsure when you cannot tell. Answer unsure rather than guess."
 	}
 	return fmt.Sprintf(`You are shown a few still frames from one candidate segment in a recording. It may be a commercial, promo, bumper, station ID, PSA, trailer, programme material, other non-filler, ambiguous, or materially unusable.
 First read any TEXT visible in the frames — a logo, a product name, a slogan, a year.
