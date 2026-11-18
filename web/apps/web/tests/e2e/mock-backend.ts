@@ -1339,6 +1339,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
             scheduled: 0,
             inProgress: 0,
             needsDecision: 0,
+            awaitingSplit: 0,
             recoverable: 0,
             admitted: 0,
             rejected: 0,

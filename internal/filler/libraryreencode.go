@@ -81,7 +81,8 @@ func (p *Pipeline) reencodeIdle(ctx context.Context, s *spend) bool {
 	}
 	runCtx := ctx
 	if p.headroom != nil {
-		bctx, cancel := p.headroom.BackgroundContext(ctx)
+		// Never overdue: the clip already airs on its old bytes, so this waits for real room.
+		bctx, cancel := p.headroom.MediaWorkContext(ctx, false)
 		defer cancel()
 		runCtx = bctx
 	}
