@@ -95,6 +95,45 @@ func TestAnEveningEndsAfterALongSilence(t *testing.T) {
 	}
 }
 
+// An evening also ends after six hours of viewing, whichever comes first: a channel left on all
+// night is not one evening of days, and ads air again after the cap.
+func TestAnEveningEndsAfterSixHoursOfViewing(t *testing.T) {
+	start := time.Date(2026, 11, 3, 4, 0, 0, 0, time.UTC)
+	first := start.Add(-8 * time.Hour)
+	// ad00 airs at the start of an unbroken night: another clip every half hour until the break.
+	history := airedOn("other-channel", []string{"ad00"}, first)
+	for at := first.Add(30 * time.Minute); at.Before(start); at = at.Add(30 * time.Minute) {
+		history = append(history, airedOn("other-channel", []string{"night-filler"}, at)...)
+	}
+	// One ad, so rotation has nothing else to prefer: it airs unless the evening bar holds it.
+	oneAd := append(catalogOf(30), memoryCatalog()[len(memoryCatalog())-1])
+	aired := false
+	for seed := int64(0); seed < 40 && !aired; seed++ {
+		for _, e := range memoryBreak(t, oneAd, history, start, seed).Entries {
+			aired = aired || e.Hash == "ad00"
+		}
+	}
+	if !aired {
+		t.Error("ad00 aired eight hours ago, in the first evening of an all-night run, and is still barred")
+	}
+
+	// Inside the cap the same ad stays barred: five hours into the run it is the same evening.
+	soon := first.Add(5 * time.Hour)
+	for seed := int64(0); seed < 40; seed++ {
+		var shortHistory []pod.Airing
+		for _, a := range history {
+			if a.AiredAt.Before(soon) {
+				shortHistory = append(shortHistory, a)
+			}
+		}
+		for _, e := range memoryBreak(t, memoryCatalog(), shortHistory, soon, seed).Entries {
+			if e.Hash == "ad00" {
+				t.Fatalf("seed %d: ad00 aired five hours into the evening that it aired in", seed)
+			}
+		}
+	}
+}
+
 // A thin set shortens its breaks: with every ad already aired this evening, the break is its
 // station ID alone, never a repeat and never a stretch of the same ads (#3838 grill decision 22).
 func TestAThinSetShortensItsBreakToTheStationID(t *testing.T) {

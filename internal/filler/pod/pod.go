@@ -66,12 +66,17 @@ func ExposuresBefore(h AiringHistory, before time.Time) map[string]Exposure {
 	return out
 }
 
+// maxEvening caps an evening: a run of viewing is cut into evenings of at most this long, so a
+// channel left on all night is not one evening of days.
+const maxEvening = 6 * time.Hour
+
 // EveningStartBefore is when the household's evening began, as seen by a break starting at
 // `before`: the earliest airing of the unbroken run that reaches back from `before`, where a
-// silence longer than eveningGap ends an evening (the rule that sizes the pool, SizePool). Zero
-// when the last airing is further back than that gap, or there is none: the break opens a new
-// evening. The airings are those ExposuresBefore counts, on every channel, so a repeat is judged
-// by what the household saw, not what one channel aired.
+// silence longer than eveningGap ends an evening (the rule that sizes the pool, SizePool), and a
+// run longer than maxEvening is cut into evenings of that length from its start. Zero when the
+// last airing is further back than that gap, or there is none: the break opens a new evening. The
+// airings are those ExposuresBefore counts, on every channel, so a repeat is judged by what the
+// household saw, not what one channel aired.
 func EveningStartBefore(h AiringHistory, before time.Time) time.Time {
 	var times []time.Time
 	for _, a := range h.Airings {
@@ -88,7 +93,11 @@ func EveningStartBefore(h AiringHistory, before time.Time) time.Time {
 		}
 		edge, start = at, at
 	}
-	return start
+	if start.IsZero() {
+		return start
+	}
+	// Whole evenings of maxEvening have passed since the run began; this break is in the last.
+	return start.Add(before.Sub(start) / maxEvening * maxEvening)
 }
 
 // airedThisEvening reports whether the household has seen the clip since the evening began.
