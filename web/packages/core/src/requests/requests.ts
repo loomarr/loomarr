@@ -383,9 +383,4 @@ const requestsNeedsYouCount = (snapshot: RequestsSnapshot): number =>
 const requestsInTab = (snapshot: RequestsSnapshot, tab: RequestTab): readonly RequestEntry[] =>
   snapshot.entries.filter((entry) => entry.status.tab === tab);
 
-export {
-  createRequestsController,
-  createRequestsPort,
-  requestsInTab,
-  requestsNeedsYouCount,
-};
+export { createRequestsController, createRequestsPort, requestsInTab, requestsNeedsYouCount };

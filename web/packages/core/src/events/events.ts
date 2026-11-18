@@ -293,8 +293,17 @@ const invalidateSettings = (qc: QueryClient): Promise<void> => invalidateForFram
 // table, whatever its `when`, because which frames went unheard before the stream opened is not
 // known. A scan that started or finished in the gap is why a frozen bar or a stale "All caught
 // up" cannot outlast the open. Only the reads on screen refetch; the rest wait for their next use.
+//
+// Some reads change only across a restart, which no frame can announce because the stream is down
+// for it; a restart always ends in a reconnect, so they read again here. The server's version is
+// one: an open tab learns of an upgrade as the stream comes back.
+const RECONNECT_ONLY_PREFIXES = ["/v1/system/version"];
+
 const invalidateMissedFrames = async (qc: QueryClient): Promise<void> => {
-  const prefixes = new Set(EVENT_TYPES.flatMap((type) => EVENT_INVALIDATIONS[type].prefixes));
+  const prefixes = new Set([
+    ...EVENT_TYPES.flatMap((type) => EVENT_INVALIDATIONS[type].prefixes),
+    ...RECONNECT_ONLY_PREFIXES,
+  ]);
   await Promise.all([...prefixes].map((prefix) => invalidateByPrefix(qc, prefix)));
 };
 

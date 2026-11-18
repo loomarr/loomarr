@@ -5,12 +5,11 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { AppState } from "react-native";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPairedEvents } from "../src/paired-events";
 
 vi.mock("expo-crypto", () => ({ randomUUID: vi.fn() }));
 vi.mock("expo-video", () => ({ createVideoPlayer: vi.fn(), VideoView: vi.fn() }));
 
-const { usePairedRequests } = await import("@loomarr/paired-client");
+const { createPairedEvents, usePairedRequests } = await import("@loomarr/paired-client");
 
 // The app's foreground and background, delivered to whoever listens, as the system would.
 const appListeners = new Set<(state: string) => void>();
