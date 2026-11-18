@@ -24,6 +24,9 @@ import { channel } from "../../src/test/fixtures/channels";
 import { fillerProviders } from "../../src/test/fixtures/filler";
 import { outlook } from "../../src/test/fixtures/outlook";
 
+// How long a mocked suggestion revision runs before its replacement is stored and announced.
+const REVISION_RUN_MS = 800;
+
 // What a provider answers for the one source an address names, with the player the provider builds
 // for each example.
 const ARCHIVE_RESOLVED = {
@@ -378,7 +381,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       {
         intent: Record<string, unknown>;
         previousIntent?: Record<string, unknown>;
-        pendingJourneyReads: number;
+        running: boolean;
         number: number;
       }
     >,
@@ -413,6 +416,14 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
   // silent — this suite is about the setup flow, and a closed stream would have the app
   // reconnect-looping under the snapshots.
   await page.route("**/v1/events**", (route) => route.abort());
+
+  // The frames the mock sends, waiting for the stream to collect them.
+  const pendingFrames: string[] = [];
+  const frameWaiters: Array<() => void> = [];
+  const sendFrame = (type: string, payload: unknown) => {
+    pendingFrames.push(`event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`);
+    for (const wake of frameWaiters.splice(0)) wake();
+  };
 
   await page.route("**/v1/**", async (route) => {
     const req = route.request();
@@ -536,16 +547,21 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       const jobId = path.split("/").at(-2) ?? "";
       const intent = body();
       state.proposalRevisionRequests.push({ jobId, intent });
-      // The first authoritative read after the accepted mutation is still
-      // generating and retains the submitted fallback. A later poll swaps in
-      // the replacement, just as the durable Job does in production.
+      // The Job reads as generating, with the submitted fallback, until its run finishes. The run
+      // then stores the replacement and sends its `suggestion` frame, as the worker does in
+      // production, and the frame is the review's cue to read the Job again.
       const previousRevision = state.proposalRevisions[jobId];
-      state.proposalRevisions[jobId] = {
+      const revision = {
         intent,
         ...(previousRevision ? { previousIntent: previousRevision.intent } : {}),
-        pendingJourneyReads: 1,
+        running: true,
         number: (previousRevision?.number ?? 0) + 1,
       };
+      state.proposalRevisions[jobId] = revision;
+      setTimeout(() => {
+        revision.running = false;
+        sendFrame("suggestion", { jobId, phase: "done", round: 0 });
+      }, REVISION_RUN_MS);
       return json(route, { jobId });
     }
     if (
@@ -659,8 +675,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       }
       if (opts.proposalJourney && submission) {
         const revisionState = state.proposalRevisions[jobId];
-        const revisionRunning = (revisionState?.pendingJourneyReads ?? 0) > 0;
-        if (revisionRunning && revisionState) revisionState.pendingJourneyReads -= 1;
+        const revisionRunning = revisionState?.running ?? false;
         const replacementReady = revisionState !== undefined && !revisionRunning;
         const currentIntent = revisionState?.intent ?? submission;
         const displayedRevision = revisionState
@@ -1653,6 +1668,21 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     // unrelated background query can't fail a flow assertion.
     return json(route, {});
   });
+
+  // The suggestion journey's event stream, registered after the catch-all so it answers first. A
+  // connection is held open and silent, as the server's is, until there is a frame to send; it then
+  // answers with the frame and ends, and the app reconnects as it does after any drop.
+  if (opts.proposalJourney) {
+    await page.route("**/v1/events**", async (route) => {
+      while (pendingFrames.length === 0) await new Promise<void>((wake) => frameWaiters.push(wake));
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        headers: { "cache-control": "no-cache" },
+        body: `retry: 100\n\n${pendingFrames.splice(0).join("")}`,
+      });
+    });
+  }
 
   return { state };
 };
