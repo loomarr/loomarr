@@ -136,8 +136,8 @@ never decides.
   legacy or operator-edited cuts leave it absent.
 
 **Since #4409 the certified plan below decides nothing.** The split rung cuts by `AutoCuttable`
-alone; the complete-timeline decision and its comparison still run and are recorded, and their
-retirement is tracked separately. The rest of this section describes them as built.
+alone; the complete-timeline decision and its comparison still run and are recorded until their
+retirement (#4414). The rest of this section describes them as built.
 
 **Structure authority is not broadcast admission.** A certified `compilation_break`, or the bounded
 filler portion of `programme_with_spots`, may authorize automatic materialization of its complete

@@ -75,7 +75,7 @@ type StructureRuntime struct {
 	Decisioner split.CompleteTimelineDecisioner
 	// Materialization is the certified complete-plan policy the shadow compares against. Since
 	// #4409 it decides nothing: the unattended cut (AutoCuttable) is the split's only gate. Its
-	// retirement, with the decisioner and the shadow, is tracked separately.
+	// retirement, with the decisioner and the shadow, is #4414.
 	Materialization *StructureMaterializationPolicy
 	// Shadow durably records the compatibility comparison beside the complete-plan gate. It is
 	// diagnostic only and never authorizes child materialization.
