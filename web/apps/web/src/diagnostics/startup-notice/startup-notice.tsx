@@ -9,7 +9,6 @@ const PHONE_QUERY = "(max-width: 639.98px)";
 
 const acknowledgedKey = (id: string) => `loomarr.health.ack.${id}`;
 const signatureKey = (generationID: string) => `loomarr.health.signature.${generationID}`;
-const sequenceKey = (generationID: string) => `loomarr.health.sequence.${generationID}`;
 
 // A build stamped with its commit rather than a release tag reports the full 40-character SHA; the
 // notice shows the short form people recognise (#2750). A release tag passes through unchanged.
@@ -28,8 +27,10 @@ const healthSignature = (health: HealthReport) => {
   return `${health.state}:${affected}`;
 };
 
-// One shell-level notice per material health transition. Its generation-local sequence stays
-// stable across ordinary refresh timestamps, so a persistent incident never flickers or repeats.
+// One shell-level notice per set of affected checks in a process generation. Dismissing it holds
+// until that set changes to one not yet seen or Loomarr restarts: a check that flaps between
+// passing and warning re-raised the same notice on every return (2026-11-18: ~1,180 transitions a
+// day). Home's status strip and Diagnostics still show each recurrence.
 const HealthNotice = ({ enabled }: { enabled: boolean }) => {
   const navigate = useNavigate();
   const onHome = useLocation({ select: (location) => location.pathname === "/" });
@@ -45,13 +46,8 @@ const HealthNotice = ({ enabled }: { enabled: boolean }) => {
   useEffect(() => {
     if (!generationID || !state || !version || state === "starting") return;
     const lastSignature = localStorage.getItem(signatureKey(generationID));
-    let sequence = Number.parseInt(localStorage.getItem(sequenceKey(generationID)) ?? "0", 10);
-    if (lastSignature !== signature) {
-      sequence += 1;
-      localStorage.setItem(signatureKey(generationID), signature);
-      localStorage.setItem(sequenceKey(generationID), String(sequence));
-    }
-    const incident = `${generationID}:${sequence}:${signature}`;
+    if (lastSignature !== signature) localStorage.setItem(signatureKey(generationID), signature);
+    const incident = `${generationID}:${signature}`;
     const key = acknowledgedKey(incident);
     if (localStorage.getItem(key)) return;
     // Home's status strip already shows the incident (#2750); the toast would only sit over its

@@ -79,15 +79,17 @@ describe("HealthNotice", () => {
     mocks.location.pathname = "/";
     server.use(getGetCurrentHealthMockHandler(report("degraded")));
     renderNotice();
-    await waitFor(() => expect(localStorage.getItem("loomarr.health.sequence.startup-1")).toBe("1"));
+    await waitFor(() =>
+      expect(localStorage.getItem("loomarr.health.signature.startup-1")).toBe("degraded:media_server:warning"),
+    );
     expect(mocks.warning).not.toHaveBeenCalled();
-    expect(localStorage.getItem("loomarr.health.ack.startup-1:1:degraded:media_server:warning")).toBeNull();
+    expect(localStorage.getItem("loomarr.health.ack.startup-1:degraded:media_server:warning")).toBeNull();
   });
 
   it("keeps an initially healthy shell silent", async () => {
     server.use(getGetCurrentHealthMockHandler(report("healthy")));
     renderNotice();
-    await waitFor(() => expect(localStorage.getItem("loomarr.health.ack.startup-1:1:healthy:")).toBe("1"));
+    await waitFor(() => expect(localStorage.getItem("loomarr.health.ack.startup-1:healthy:")).toBe("1"));
     expect(mocks.success).not.toHaveBeenCalled();
   });
 
@@ -97,7 +99,7 @@ describe("HealthNotice", () => {
     await waitFor(() => expect(mocks.warning).toHaveBeenCalledOnce());
     const options = mocks.warning.mock.calls[0]?.[1];
     expect(options?.duration).toBe(Number.POSITIVE_INFINITY);
-    const key = "loomarr.health.ack.startup-1:1:degraded:media_server:warning";
+    const key = "loomarr.health.ack.startup-1:degraded:media_server:warning";
     expect(localStorage.getItem(key)).toBeNull();
     act(() => options?.onDismiss?.());
     expect(localStorage.getItem(key)).toBe("1");
@@ -172,6 +174,28 @@ describe("HealthNotice", () => {
     await waitFor(() =>
       expect(mocks.success).toHaveBeenCalledWith("Loomarr health recovered", expect.anything()),
     );
+  });
+
+  // A check that flaps re-raised the same notice on every return (2026-11-18: ~1,180 transitions a
+  // day). Once dismissed, the same set of checks stays quiet until Loomarr restarts.
+  it("does not raise a dismissed notice again when the same checks come back", async () => {
+    server.use(getGetCurrentHealthMockHandler(report("degraded", 2)));
+    const { client } = renderNotice();
+    await waitFor(() => expect(mocks.warning).toHaveBeenCalledOnce());
+    act(() => mocks.warning.mock.calls[0]?.[1]?.onDismiss?.());
+
+    server.use(getGetCurrentHealthMockHandler(report("healthy", 3)));
+    await act(() => client.invalidateQueries());
+    await waitFor(() => expect(mocks.success).toHaveBeenCalledOnce());
+    act(() => mocks.success.mock.calls[0]?.[1]?.onAutoClose?.());
+
+    server.use(getGetCurrentHealthMockHandler(report("degraded", 4)));
+    await act(() => client.invalidateQueries());
+    server.use(getGetCurrentHealthMockHandler(report("healthy", 5)));
+    await act(() => client.invalidateQueries());
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(mocks.warning).toHaveBeenCalledOnce();
+    expect(mocks.success).toHaveBeenCalledOnce();
   });
 
   it("does not query or notify for a non-admin shell", async () => {
