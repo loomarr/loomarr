@@ -175,6 +175,14 @@ Its design and measurements are archived in
    floor `max(MinSegmentMs, filler.min_duration)` (3 s sliver floor, 10 s catalog floor by default)
    become explicit discard intervals; `max()` so a `0s` catalog floor still drops fade artefacts.
    Scene-cut detectors were measured and rejected. Detection quality is a property of the source.
+   Both detectors report runs from one frame (0.03 s), so a broadcast gap of a few frames and the
+   black, silent tail of a fade are seen. A run one detector alone saw is a gap only when it is long
+   enough on its own (0.1 s of black, 0.3 s of silence); a shorter one counts only where the other
+   detector agrees, so a pause in speech or a dark frame never cuts an ad (#4409). The split corpus
+   (`internal/filler/splitcorpus_test.go`) stitches known ads with each kind of join and pins what
+   the boundary evidence makes of them. Black and silence cannot see a hard cut between ads, nor tell
+   a dip to black inside an ad from a short gap between two, so the corpus also keeps those joins as
+   cases only a judgement of the whole cut can refuse.
 3. **Rescue.** A segment longer than a typical spot (not only over 120 s) gets transcript (Whisper)
    plus LLM cut points. The LLM must return exactly one entry for a single advert; without that it
    invented round-number cuts inside an infomercial. With no runnable Whisper, an over-long segment

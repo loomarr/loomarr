@@ -121,8 +121,8 @@ func (t *FFmpegTools) Boundaries(ctx context.Context, file string, startMs, endM
 		"-nostdin", "-hide_banner", "-nostats", "-v", "info",
 		"-ss", msToSeconds(startMs), "-t", msToSeconds(endMs-startMs),
 		"-i", file,
-		"-vf", "setpts=PTS-STARTPTS,blackdetect=d=0.1:pix_th=0.20",
-		"-af", "asetpts=PTS-STARTPTS,silencedetect=n=-35dB:d=0.3",
+		"-vf", "setpts=PTS-STARTPTS,blackdetect=d="+boundaryDetectMinSec+":pix_th=0.20",
+		"-af", "asetpts=PTS-STARTPTS,silencedetect=n=-35dB:d="+boundaryDetectMinSec,
 		"-f", "null", "-")
 	cmd.Stderr = &stderr
 	// ffmpeg exits 0 on a successful null-muxer pass; the detector output is on
