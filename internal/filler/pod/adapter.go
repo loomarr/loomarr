@@ -37,7 +37,9 @@ type Adapter struct {
 	// package already resolves per call for exactly this reason. This is the same fix applied one
 	// layer out: the DOMAIN functions still take a plain `Policy` value — they are pure and their
 	// tests stay literal — and only the boundary that owns a settings service resolves it.
-	policy  func() Policy
+	policy func() Policy
+	// breaks keeps each channel's planned breaks; nil assembles every break live.
+	breaks  BreakStore
 	log     *slog.Logger
 	metrics Metrics
 	// now dates the season of a question asked without a break start (seasonAt).
@@ -294,7 +296,13 @@ func (a *Adapter) PreviewAtMany(ctx context.Context, channelID string, sel Selec
 	// ⚠ Resolved ONCE for the whole batch, for the same reason assemble resolves it once per pod:
 	// a concurrent settings write must not size some breaks by one policy and some by another.
 	pol := a.pol()
+	// A break planned ahead is read, not assembled again: the guide shows what airs (#3838).
+	stored := a.storedPods(ctx, channelID, breaks)
 	for i, b := range breaks {
+		if p, ok := stored[b.Start.UnixMilli()]; ok && !b.Start.IsZero() && !b.yearRound {
+			pods[i] = p
+			continue
+		}
 		pods[i] = a.assemble(clips, history, channelID, b, sel, pol)
 	}
 	return pods, nil

@@ -269,8 +269,24 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   is left the break ends: it is not handed to whichever clip is short enough to fit, which let
   length decide what aired. Fixed from a history-free pod, the length used to favour the short ads
   about two to one over a run of breaks. A clip longer than the whole break is skipped and never
-  blocks the line; it leads a longer break. A break can therefore end short of its slot, and the
-  unfilled remainder plays as the generated card until the programme resumes.
+  blocks the line; it leads a longer break. A break can therefore end short of its slot.
+- **Each break is assembled once, ahead of time, and stored** (#3838 step 2, `filler_breaks`).
+  Reconcile plans a channel's breaks in order over its window: it assembles each break not yet
+  stored for its channel and start, and cuts the break's slot to the media its pod holds. The
+  programme after a break therefore resumes when the break's own clips end, and the offline card
+  never fills the gap. A break with nothing to air takes no time. The guide, the previews and the
+  stream read the stored pod (`PreviewAtMany`), so the guide shows what airs, and a half-aired
+  break keeps its pod and length. A break is keyed by its channel and start: a lineup edit that
+  moves a break gives it nothing stored, so it is assembled fresh, and reconcile deletes the
+  breaks behind the anchor and the ones that moved. A break within the run-ahead of now is not
+  planned: it is on air or about to be, and a channel with no stored break assembles live as
+  before, until reconcile has planned it (a window that has just turned airs unplanned breaks
+  until the next reconcile, with the card filling any remainder).
+- **What "seen this evening" means for a break planned ahead:** the household's real watched airings
+  up to now plus this channel's own already-stored breaks, so no ad repeats within the channel's
+  evening. Other channels' planned breaks do not count, because what they air depends on viewing
+  that has not happened. A repeat across channels that follows from future viewing is therefore not
+  prevented: a known limit.
   `FILLER_POD_MAX` is a floor, never the reason a fitting clip is left out: the adapter sizes the
   clip ceiling from the break length over the shortest eligible clip (at most 64).
 - **A break airs only clips the household has not seen this evening** (#3838 decision 1, grill

@@ -557,7 +557,7 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 			// in its season.
 			Calendar: calendar(),
 		}
-	}, log)
+	}, log).WithBreaks(fillerBreakAdapter{st})
 	return podAdapter
 }
 

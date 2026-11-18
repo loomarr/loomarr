@@ -344,6 +344,7 @@ func (e *Engine) planReconcile(
 			})
 		}
 		ch.DealtFrom = dealtFrom
+		desired.Slots = e.planBreaks(ctx, ch, turnAnchor, desired.Slots)
 	}
 	// Building is the durable "this backend must (re)publish the channel list" marker:
 	// it covers first materialization and a backend switch that reuses a historical
