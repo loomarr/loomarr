@@ -37,7 +37,9 @@ type Adapter struct {
 	// package already resolves per call for exactly this reason. This is the same fix applied one
 	// layer out: the DOMAIN functions still take a plain `Policy` value — they are pure and their
 	// tests stay literal — and only the boundary that owns a settings service resolves it.
-	policy  func() Policy
+	policy func() Policy
+	// breaks keeps each channel's planned breaks; nil assembles every break live.
+	breaks  BreakStore
 	log     *slog.Logger
 	metrics Metrics
 	// now dates the season of a question asked without a break start (seasonAt).
@@ -294,7 +296,13 @@ func (a *Adapter) PreviewAtMany(ctx context.Context, channelID string, sel Selec
 	// ⚠ Resolved ONCE for the whole batch, for the same reason assemble resolves it once per pod:
 	// a concurrent settings write must not size some breaks by one policy and some by another.
 	pol := a.pol()
+	// A break planned ahead is read, not assembled again: the guide shows what airs (#3838).
+	stored := a.storedPods(ctx, channelID, breaks)
 	for i, b := range breaks {
+		if p, ok := stored[b.Start.UnixMilli()]; ok && !b.Start.IsZero() && !b.yearRound {
+			pods[i] = p
+			continue
+		}
 		pods[i] = a.assemble(clips, history, channelID, b, sel, pol)
 	}
 	return pods, nil
@@ -337,6 +345,9 @@ func (a *Adapter) assemble(clips []Clip, history *AiringHistory, channelID strin
 	if history != nil {
 		w.Exposures = ExposuresBefore(*history, breakStart)
 		w.SnapshotAt = breakStart
+		if !breakStart.IsZero() {
+			w.EveningStart = EveningStartBefore(*history, breakStart)
+		}
 	}
 	w.PodMax = podMaxForDuration(clips, w, pol, podMax, breakDurationMs)
 	return Assemble(clips, w, pol, map[string]bool{})
@@ -374,8 +385,8 @@ const minBreakDurationMs int64 = 30_000
 // ceiling (up to maxPodClips); pod_max only raises it, for a catalog too sparse to ask for more.
 // Assemble still owns the hard no-repeat and gap invariants — time, not count, bounds the pod.
 //
-// ⚠ It used to size from the MEDIAN clip. That left a fitting short clip out of about 1% of
-// breaks whenever the pool mixed lengths, and the household had asked for fuller breaks.
+// ⚠ It sizes from the shortest clip, not the median: the median left a fitting short clip out of
+// about 1% of breaks whenever the pool mixed lengths.
 //
 // ⚠ The widest rung, because that is what a pod draws from since #1684 (the rungs nest, so it
 // holds every candidate). Sizing from the tightest rung let one long exact-era clip set the

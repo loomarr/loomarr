@@ -565,6 +565,23 @@ tables:
       aired_at_ms: When the clip was scheduled to start, in Unix milliseconds.
       recorded_at_ms: When playout recorded the airing, in Unix milliseconds.
 
+  - name: filler_breaks
+    about: >
+      Each commercial break Loomarr has planned for a channel. Reconcile assembles a break once, ahead
+      of time, and cuts the break's slot to the media its pod holds, so the programme resumes when the
+      break's own clips end. The guide, the previews and the stream read the stored pod, so what the
+      guide shows is what airs.
+    retention: >
+      Reconcile keeps the breaks of the window on air and deletes a channel's other breaks, including
+      those behind the playout anchor and those whose start moved. A channel's breaks go with it.
+    columns:
+      channel_id: The channel the break is on (channels.id).
+      start_ms: When the break starts on the channel's timeline, in Unix milliseconds.
+      ceiling_ms: The slot length the pod was assembled to, in milliseconds.
+      length_ms: The media the pod holds, in milliseconds. The break slot is this long once planned.
+      pod_json: The break's clips in order, as the pod assembler returned them.
+      planned_at: When the break was planned, in Unix seconds.
+
   - name: filler_context_reports
     about: >
       Suggestions about a clip's year, country or station found by researching it online, with the

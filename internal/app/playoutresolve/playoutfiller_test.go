@@ -18,6 +18,10 @@ import (
 // stubCycle returns a fixed lineup: one program then a break gap.
 type stubCycle struct{ slots []schedule.Slot }
 
+func (s stubCycle) TurnedWindow(context.Context, string, time.Time, time.Time) ([]schedule.Slot, error) {
+	return s.slots, nil
+}
+
 func (s stubCycle) CyclePreview(context.Context, string, time.Time) (
 	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
 ) {

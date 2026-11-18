@@ -50,6 +50,10 @@ type CyclePreviewer interface {
 	// exactly as reconcile resolves them, so the resolver turns the window where reconcile will.
 	RollingWindow(policy schedule.ChannelPolicy, at time.Time) (time.Duration, *time.Location)
 	CarriesOver(ctx context.Context, policy schedule.ChannelPolicy) (bool, error)
+	// TurnedWindow is the next window as it airs before reconcile commits it: CyclePreview's
+	// cycle with each break at the length reconcile planned for it ahead of the turn (#3838 step
+	// 2). A read like the rest: reconcile is the only writer of the break plans.
+	TurnedWindow(ctx context.Context, channelID string, at, turnAnchor time.Time) ([]schedule.Slot, error)
 	// Calendar is the holiday calendar the arrangement reads, so the cycle cache keys on it.
 	Calendar() schedule.Calendar
 }
@@ -580,8 +584,8 @@ type airingCycle struct {
 //
 // The one exception is the rolling-window turn (#1675). Once the programme crossing the window
 // boundary has ended, the next window airs from that end whether or not reconcile has run yet to
-// commit it. Until it does, the next window is arranged here with CyclePreview, the computation
-// reconcile commits, so the handoff lands when the programme ends rather than at the next
+// commit it. Until it does, the next window is arranged here with TurnedWindow, the computation
+// reconcile commits, breaks planned included, so the handoff lands when the programme ends rather than at the next
 // reconcile (up to its cooldown later), which would swap the slice in mid-programme. Reconcile
 // applies the same rule (playout.WindowTurn) and commits the same anchor, and from then on this
 // reads Desired again.
@@ -605,7 +609,7 @@ func (r *Resolver) airingCycle(ctx context.Context, ch channelstore.Channel, at 
 	if !turned {
 		return c, nil
 	}
-	_, slots, _, _, err := r.engine.CyclePreview(ctx, ch.ID, at)
+	slots, err := r.engine.TurnedWindow(ctx, ch.ID, at, turnEpoch)
 	if err != nil {
 		return airingCycle{}, fmt.Errorf("arrange channel %s's next window: %w", ch.ID, err)
 	}

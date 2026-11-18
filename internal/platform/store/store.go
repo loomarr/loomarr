@@ -492,6 +492,18 @@ type InteractiveOperationStore interface {
 	PurgeFinishedInteractiveOperations(ctx context.Context, before time.Time) (int, error)
 }
 
+// FillerBreakStore keeps each channel's assembled breaks (#3838 step 2): reconcile plans them ahead
+// and writes them; the guide, the previews and the stream read them.
+type FillerBreakStore interface {
+	// SaveFillerBreaks stores breaks, replacing any at the same channel and start.
+	SaveFillerBreaks(ctx context.Context, breaks []clipstore.FillerBreak) error
+	// ListFillerBreaks returns a channel's stored breaks starting in [from, to], earliest first.
+	ListFillerBreaks(ctx context.Context, channelID string, from, to time.Time) ([]clipstore.FillerBreak, error)
+	// KeepFillerBreaks deletes a channel's stored breaks starting in [from, until) other than those
+	// starting at `starts`; a zero bound is open.
+	KeepFillerBreaks(ctx context.Context, channelID string, from, until time.Time, starts []time.Time) error
+}
+
 // AiringStore records what actually went to air — written from playout only.
 type AiringStore interface {
 	// RecordClipPlay counts a filler clip having AIRED to a viewer on a channel, globally and in
@@ -711,6 +723,7 @@ type Store interface {
 	ClipStore
 	InteractiveOperationStore
 	AiringStore
+	FillerBreakStore
 	ActivityStore
 	InvitationStore
 	PasswordRecoveryStore
