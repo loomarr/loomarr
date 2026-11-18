@@ -114,7 +114,8 @@ const usePairedClient = ({
     refresh();
     void guide.refresh();
   }, [guide, refresh]);
-  useEventStream({ credential, onReload: reloadAll, session });
+  const channelFrames = useMemo(() => ({ onChannel: reloadAll }), [reloadAll]);
+  useEventStream({ credential, handlers: channelFrames, onReload: reloadAll, session });
 
   return {
     catalogState,

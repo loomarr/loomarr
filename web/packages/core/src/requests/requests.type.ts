@@ -103,7 +103,10 @@ interface RequestsController {
   dispose: () => void;
   getSnapshot: () => RequestsSnapshot;
   hideIdea: (ideaId: string) => Promise<void>;
-  /** Reads the requests; while one is generating it re-reads every two seconds until none is. */
+  /**
+   * Reads the requests. It never re-reads by itself: the app calls it on the server's request and
+   * title frames, and as the stream comes back (#3352).
+   */
   refresh: () => Promise<void>;
   refreshIdeas: () => Promise<void>;
   requestIdea: (ideaId: string) => Promise<void>;

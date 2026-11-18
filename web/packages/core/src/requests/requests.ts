@@ -46,8 +46,6 @@ import type {
   SubmitBriefResult,
 } from "./requests.type";
 
-/** A generating request is re-read this often, as Web's list does. */
-const GENERATING_POLL_MS = 2_000;
 // GET /v1/titles is a single-state filter, so every acquisition state is fetched and merged.
 const TITLE_STATES = Object.values(TitleDTOState);
 
@@ -165,7 +163,6 @@ const createRequestsController = ({ port }: { port: RequestsPort }): RequestsCon
   let disposed = false;
   let request: AbortController | undefined;
   let ideasRequest: AbortController | undefined;
-  let timer: ReturnType<typeof setTimeout> | undefined;
   let snapshot: RequestsSnapshot = {
     approvals: [],
     deciding: [],
@@ -188,7 +185,6 @@ const createRequestsController = ({ port }: { port: RequestsPort }): RequestsCon
 
   const refresh = async () => {
     if (disposed) return;
-    clearTimeout(timer);
     request?.abort();
     const current = new AbortController();
     request = current;
@@ -217,8 +213,6 @@ const createRequestsController = ({ port }: { port: RequestsPort }): RequestsCon
         status: "ready",
         titles,
       });
-      if (entries.some(({ journey }) => journey.milestone === "generating"))
-        timer = setTimeout(() => void refresh(), GENERATING_POLL_MS);
     } catch (error) {
       if (request === current && !current.signal.aborted)
         publish({
@@ -320,7 +314,6 @@ const createRequestsController = ({ port }: { port: RequestsPort }): RequestsCon
     dispose: () => {
       if (disposed) return;
       disposed = true;
-      clearTimeout(timer);
       request?.abort();
       ideasRequest?.abort();
       listeners.clear();
@@ -393,7 +386,6 @@ const requestsInTab = (snapshot: RequestsSnapshot, tab: RequestTab): readonly Re
 export {
   createRequestsController,
   createRequestsPort,
-  GENERATING_POLL_MS,
   requestsInTab,
   requestsNeedsYouCount,
 };

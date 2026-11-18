@@ -5,7 +5,8 @@ import {
   type RequestsController,
   requestsNeedsYouCount,
 } from "@loomarr/core/requests";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEventStream } from "../use-event-stream";
 
 import type { PairedRequests, PairedRequestsOptions } from "./paired-requests.type";
 
@@ -27,6 +28,14 @@ const usePairedRequests = ({ credential, session }: PairedRequestsOptions): Pair
     void controller.refresh();
     return () => controller.dispose();
   }, [controller]);
+  // A request moves on the server, so it is read again on the frames that announce it (#3352): a
+  // run's progress and outcome, a title or approval changing, and an approved request's channel.
+  const reload = useCallback(() => void controller.refresh(), [controller]);
+  const requestFrames = useMemo(
+    () => ({ onChannel: reload, onSuggestion: reload, onTitle: reload }),
+    [reload],
+  );
+  useEventStream({ credential, handlers: requestFrames, onReload: reload, session });
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   return { controller, needsYouCount: requestsNeedsYouCount(snapshot) };
 };

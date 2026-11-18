@@ -5,8 +5,21 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+type Handlers = Partial<Record<"onChannel" | "onSuggestion" | "onTitle", () => void>>;
+// The streams the hook opens, each with the frames it follows and the callback for every open.
+const streams = vi.hoisted(() => [] as { closed: boolean; handlers: Handlers; onOpen?: () => void }[]);
+
 vi.mock("expo-crypto", () => ({ randomUUID: vi.fn() }));
 vi.mock("expo-video", () => ({ createVideoPlayer: vi.fn(), VideoView: vi.fn() }));
+vi.mock("@loomarr/core/events", () => ({
+  openEventStream: (handlers: Handlers, _url: string, _createStream: unknown, onOpen?: () => void) => {
+    const stream = { closed: false, handlers, onOpen };
+    streams.push(stream);
+    return () => {
+      stream.closed = true;
+    };
+  },
+}));
 
 const { usePairedRequests } = await import("@loomarr/paired-client");
 
@@ -75,7 +88,13 @@ const mount = async () => {
   };
 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  streams.length = 0;
+});
+
+const journeyReads = (calls: { path: string }[]) =>
+  calls.filter(({ path }) => path === "/v1/proposal-jobs").length;
 
 describe("paired requests", () => {
   it("counts an admin's pending decisions and failed requests before Requests is opened", async () => {
@@ -99,6 +118,34 @@ describe("paired requests", () => {
     expect(paths).toContain("/v1/auth/me");
     expect(paths).not.toContain("/v1/proposals");
     expect(paths).not.toContain("/v1/filler/pulls");
+    await requests.unmount();
+  });
+
+  // A request moves on the server: the phone reads it again on the frames that announce it, not
+  // on a timer (#3352).
+  it.each(["onSuggestion", "onTitle", "onChannel"] as const)(
+    "reads the requests again on %s",
+    async (frame) => {
+      const calls = serve("member");
+      const requests = await mount();
+      const before = journeyReads(calls);
+
+      await act(async () => streams[0]?.handlers[frame]?.());
+      expect(journeyReads(calls)).toBe(before + 1);
+      await requests.unmount();
+      expect(streams[0]?.closed).toBe(true);
+    },
+  );
+
+  it("reads the requests again when the stream comes back, not when it first opens", async () => {
+    const calls = serve("member");
+    const requests = await mount();
+    const before = journeyReads(calls);
+
+    await act(async () => streams[0]?.onOpen?.());
+    expect(journeyReads(calls)).toBe(before);
+    await act(async () => streams[0]?.onOpen?.());
+    expect(journeyReads(calls)).toBe(before + 1);
     await requests.unmount();
   });
 });
