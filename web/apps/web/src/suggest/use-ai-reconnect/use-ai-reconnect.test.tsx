@@ -2,7 +2,7 @@ import { getSettingsListMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LoomarrEventsProvider } from "@/events/events-provider";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { server } from "@/test/msw/server";
@@ -90,11 +90,16 @@ describe("useAiReconnect", () => {
   });
 
   it("does not poll between writes", async () => {
-    const features = stubFeatures(false);
-    renderHook(() => useAiReconnect(true), { wrapper: makeWrapper() });
-    await waitFor(() => expect(features.reads).toBe(1));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const features = stubFeatures(false);
+      renderHook(() => useAiReconnect(true), { wrapper: makeWrapper() });
+      await waitFor(() => expect(features.reads).toBe(1));
 
-    await act(() => new Promise((resolve) => setTimeout(resolve, 1_200)));
-    expect(features.reads).toBe(1);
+      await act(() => vi.advanceTimersByTimeAsync(5 * 60_000));
+      expect(features.reads).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
