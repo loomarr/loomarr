@@ -324,10 +324,16 @@ routes Web already uses; no native-only route exists and no authority is added.
   Web's edit-at-the-gate: the admin unticks titles and adds a note, and both ride the one
   `POST /v1/proposals/{id}/approve` body (`drop`, `note`). Adding a title needs search and stays on Web.
 - **Touch and orientation.** Portrait only, touch density, every target at least 44 pt.
-- **Live updates.** Requests follows `/v1/events` while the app is in the foreground. It reads again
-  on a `suggestion` frame (a run's progress and outcome), a `title` frame (titles and approvals) and
-  a `channel` frame (an approved request's channel), and whenever the stream comes back. Nothing
-  re-reads on a timer (#3352).
+- **Live updates.** The device keeps one `/v1/events` stream while the app is in the foreground;
+  the player and Requests both follow it. Requests reads again on:
+  - a `proposal` frame: a proposal now waits for a decision, or was approved or denied, by anyone
+    or by an automatic grant;
+  - a `suggestion` frame for one of the person's own runs (another member's progress is ignored);
+  - a `title` frame (a title settles available or unavailable);
+  - a `channel` frame (an approved request's channel builds);
+  - the stream coming back, and the app returning to the foreground.
+
+  Nothing re-reads on a timer (#3352).
 - **Tab position (approved mock, #1840).** Requests is a fourth tab between Guide and Surf (Watching ·
   Guide · Requests · Surf) with Web's count badge: an admin's pending decisions plus anyone's failed
   requests. "Request a channel" is an icon button in the Requests app bar on both phones; Android has no

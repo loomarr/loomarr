@@ -5,8 +5,8 @@ import {
   type RequestsController,
   requestsNeedsYouCount,
 } from "@loomarr/core/requests";
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
-import { useEventStream } from "../use-event-stream";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { AppState } from "react-native";
 
 import type { PairedRequests, PairedRequestsOptions } from "./paired-requests.type";
 
@@ -15,8 +15,14 @@ import type { PairedRequests, PairedRequestsOptions } from "./paired-requests.ty
  * the tab's badge and the journey read the same snapshot. It loads on mount, not on first visit, so
  * an admin's badge is already counting when the app opens. The role comes from `/v1/auth/me` inside
  * the controller; a paired admin device is an admin (#1835), a member's never sees the admin lists.
+ *
+ * A request moves on the server, so the controller reads again when the device's stream announces
+ * a change (#3352): a proposal waiting, approved or denied; a title or channel it brought settling;
+ * and the progress of the person's own runs. Another member's run in progress is not this phone's
+ * business until its proposal frame. It also reads again as the app returns to the foreground and
+ * as the stream comes back, since the frames sent meanwhile are gone.
  */
-const usePairedRequests = ({ credential, session }: PairedRequestsOptions): PairedRequests => {
+const usePairedRequests = ({ credential, events, session }: PairedRequestsOptions): PairedRequests => {
   const controller: RequestsController = useMemo(
     () =>
       createRequestsController({
@@ -28,14 +34,29 @@ const usePairedRequests = ({ credential, session }: PairedRequestsOptions): Pair
     void controller.refresh();
     return () => controller.dispose();
   }, [controller]);
-  // A request moves on the server, so it is read again on the frames that announce it (#3352): a
-  // run's progress and outcome, a title or approval changing, and an approved request's channel.
-  const reload = useCallback(() => void controller.refresh(), [controller]);
-  const requestFrames = useMemo(
-    () => ({ onChannel: reload, onSuggestion: reload, onTitle: reload }),
-    [reload],
-  );
-  useEventStream({ credential, handlers: requestFrames, onReload: reload, session });
+  useEffect(() => {
+    const reload = () => void controller.refresh();
+    const ownRun = (jobId: string) =>
+      controller.getSnapshot().entries.some(({ journey }) => journey.jobId === jobId);
+    const unsubscribe = events.subscribe({
+      handlers: {
+        onChannel: reload,
+        onProposal: reload,
+        onSuggestion: ({ jobId }) => {
+          if (ownRun(jobId)) reload();
+        },
+        onTitle: reload,
+      },
+      onResync: reload,
+    });
+    const foreground = AppState.addEventListener("change", (state) => {
+      if (state === "active") reload();
+    });
+    return () => {
+      unsubscribe();
+      foreground.remove();
+    };
+  }, [controller, events]);
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   return { controller, needsYouCount: requestsNeedsYouCount(snapshot) };
 };

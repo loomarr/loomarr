@@ -4,4 +4,5 @@ export type { LastChannelStorage, LastChannelStore } from "./src/last-channel";
 export { createLastChannelStore } from "./src/last-channel";
 export * from "./src/paired-account";
 export * from "./src/paired-client";
+export type { PairedEventSubscriber, PairedEvents } from "./src/paired-events";
 export * from "./src/paired-requests";

@@ -40,6 +40,11 @@ type TitleEvent struct {
 	Name  string `json:"name,omitempty" example:"Ashgrove Anomaly"`
 }
 
+// ProposalEvent announces that a proposal was stored as waiting for a decision, approved or
+// denied, by a person or by an automatic grant. Empty: clients read GET /v1/proposals and
+// /v1/proposal-jobs again, so a requester sees a denial and an admin's approvals stay current.
+type ProposalEvent struct{}
+
 // SuggestionEvent is one generation-progress frame (§8) so the workspace's progress strip
 // advances searching→reasoning→scoring→done/failed live.
 type SuggestionEvent struct {
@@ -261,6 +266,7 @@ func EventTypeMap() map[string]any {
 		"title":          TitleEvent{},
 		"channel":        ChannelEvent{},
 		"suggestion":     SuggestionEvent{},
+		"proposal":       ProposalEvent{},
 		"job":            JobEvent{},
 		"activity":       ActivityEvent{},
 		"health":         HealthEvent{},

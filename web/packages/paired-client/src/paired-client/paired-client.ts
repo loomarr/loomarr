@@ -5,6 +5,7 @@ import { createServerVersionSource } from "@loomarr/core/system-version";
 import { createNativePlayerLifecycle } from "@loomarr/player/native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
+import { createPairedEvents } from "../paired-events";
 import { useEventStream } from "../use-event-stream";
 import { useGuide } from "../use-guide";
 import { useMyChannels } from "../use-my-channels";
@@ -114,14 +115,21 @@ const usePairedClient = ({
     refresh();
     void guide.refresh();
   }, [guide, refresh]);
-  const channelFrames = useMemo(() => ({ onChannel: reloadAll }), [reloadAll]);
-  useEventStream({ credential, handlers: channelFrames, onReload: reloadAll, session });
+  // The device's one stream to the server; Requests and anything else that follows it subscribe to
+  // `events` rather than opening another.
+  const events = useMemo(createPairedEvents, []);
+  useEventStream({ credential, onFrame: events.onFrame, onReconnect: events.resync, session });
+  useEffect(
+    () => events.subscribe({ handlers: { onChannel: reloadAll }, onResync: reloadAll }),
+    [events, reloadAll],
+  );
 
   return {
     catalogState,
     channelAudio,
     channelSubtitles,
     controller,
+    events,
     guide,
     guideSnapshot,
     myChannels,

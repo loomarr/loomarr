@@ -104,8 +104,8 @@ interface RequestsController {
   getSnapshot: () => RequestsSnapshot;
   hideIdea: (ideaId: string) => Promise<void>;
   /**
-   * Reads the requests. It never re-reads by itself: the app calls it on the server's request and
-   * title frames, and as the stream comes back (#3352).
+   * Reads the requests. It never re-reads by itself: the app calls it on the frames that announce a
+   * request moving, as the stream comes back and on a return to the foreground (#3352).
    */
   refresh: () => Promise<void>;
   refreshIdeas: () => Promise<void>;

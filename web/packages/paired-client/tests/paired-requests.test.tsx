@@ -3,25 +3,26 @@
 import type { PairingCredential, PairingSession } from "@loomarr/core/pairing";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-type Handlers = Partial<Record<"onChannel" | "onSuggestion" | "onTitle", () => void>>;
-// The streams the hook opens, each with the frames it follows and the callback for every open.
-const streams = vi.hoisted(() => [] as { closed: boolean; handlers: Handlers; onOpen?: () => void }[]);
+import { AppState } from "react-native";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createPairedEvents } from "../src/paired-events";
 
 vi.mock("expo-crypto", () => ({ randomUUID: vi.fn() }));
 vi.mock("expo-video", () => ({ createVideoPlayer: vi.fn(), VideoView: vi.fn() }));
-vi.mock("@loomarr/core/events", () => ({
-  openEventStream: (handlers: Handlers, _url: string, _createStream: unknown, onOpen?: () => void) => {
-    const stream = { closed: false, handlers, onOpen };
-    streams.push(stream);
-    return () => {
-      stream.closed = true;
-    };
-  },
-}));
 
 const { usePairedRequests } = await import("@loomarr/paired-client");
+
+// The app's foreground and background, delivered to whoever listens, as the system would.
+const appListeners = new Set<(state: string) => void>();
+beforeEach(() => {
+  vi.spyOn(AppState, "addEventListener").mockImplementation(((
+    _type: string,
+    listener: (state: string) => void,
+  ) => {
+    appListeners.add(listener);
+    return { remove: () => appListeners.delete(listener) };
+  }) as never);
+});
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -71,9 +72,10 @@ const serve = (role: "admin" | "member") => {
 };
 
 const mount = async () => {
+  const events = createPairedEvents();
   const seen: ReturnType<typeof usePairedRequests>[] = [];
   const Probe = () => {
-    seen.push(usePairedRequests({ credential, session }));
+    seen.push(usePairedRequests({ credential, events, session }));
     return null;
   };
   const container = (
@@ -83,14 +85,17 @@ const mount = async () => {
   await act(async () => root.render(createElement(Probe)));
   await act(async () => undefined);
   return {
+    events,
     latest: () => seen[seen.length - 1] as ReturnType<typeof usePairedRequests>,
+    rerender: () => act(async () => root.render(createElement(Probe))),
     unmount: () => act(async () => root.unmount()),
   };
 };
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
-  streams.length = 0;
+  appListeners.clear();
 });
 
 const journeyReads = (calls: { path: string }[]) =>
@@ -123,29 +128,64 @@ describe("paired requests", () => {
 
   // A request moves on the server: the phone reads it again on the frames that announce it, not
   // on a timer (#3352).
-  it.each(["onSuggestion", "onTitle", "onChannel"] as const)(
-    "reads the requests again on %s",
-    async (frame) => {
+  it.each(["proposal", "title", "channel"] as const)(
+    "reads the requests again on a %s frame",
+    async (type) => {
       const calls = serve("member");
       const requests = await mount();
       const before = journeyReads(calls);
 
-      await act(async () => streams[0]?.handlers[frame]?.());
+      await act(async () => requests.events.onFrame(type, {} as never));
       expect(journeyReads(calls)).toBe(before + 1);
       await requests.unmount();
-      expect(streams[0]?.closed).toBe(true);
+      await act(async () => requests.events.onFrame(type, {} as never));
+      expect(journeyReads(calls)).toBe(before + 1);
     },
   );
 
-  it("reads the requests again when the stream comes back, not when it first opens", async () => {
+  // Every phone hears every member's run; only the person's own runs are worth a read each step.
+  it("reads again on the progress of the person's own run, not another member's", async () => {
     const calls = serve("member");
     const requests = await mount();
     const before = journeyReads(calls);
 
-    await act(async () => streams[0]?.onOpen?.());
+    await act(async () =>
+      requests.events.onFrame("suggestion", { jobId: "someone-else", phase: "scoring", round: 1 }),
+    );
     expect(journeyReads(calls)).toBe(before);
-    await act(async () => streams[0]?.onOpen?.());
+    await act(async () =>
+      requests.events.onFrame("suggestion", { jobId: "bad", phase: "scoring", round: 1 }),
+    );
     expect(journeyReads(calls)).toBe(before + 1);
+    await requests.unmount();
+  });
+
+  it("reads again as the stream comes back and as the app returns to the foreground", async () => {
+    const calls = serve("member");
+    const requests = await mount();
+    const before = journeyReads(calls);
+
+    await act(async () => requests.events.resync());
+    expect(journeyReads(calls)).toBe(before + 1);
+    await act(async () => {
+      for (const listener of [...appListeners]) listener("background");
+    });
+    expect(journeyReads(calls)).toBe(before + 1);
+    await act(async () => {
+      for (const listener of [...appListeners]) listener("active");
+    });
+    expect(journeyReads(calls)).toBe(before + 2);
+    await requests.unmount();
+  });
+
+  it("stays subscribed once across renders", async () => {
+    serve("member");
+    const requests = await mount();
+    const subscribe = vi.spyOn(requests.events, "subscribe");
+
+    await requests.rerender();
+    await requests.rerender();
+    expect(subscribe).not.toHaveBeenCalled();
     await requests.unmount();
   });
 });

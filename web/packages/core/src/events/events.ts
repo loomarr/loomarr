@@ -112,6 +112,9 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   // (GET /v1/proposal-jobs) carries that live progress — so the Requests card and detail follow
   // a request on its frames.
   suggestion: { prefixes: ["/v1/proposals", "/v1/proposal-jobs"] },
+  // A proposal now waits for a decision, or was approved or denied, perhaps by someone else or
+  // by an automatic grant: the admins' approvals and the requester's journey read again.
+  proposal: { prefixes: ["/v1/proposals", "/v1/proposal-jobs"] },
   // A download's progress is written into its operation by the screen showing it (useModelPull);
   // only its end changes what is installed and what is left to download, so only an ended frame
   // refetches. Every frame refetching would read the provider status several times a second.
