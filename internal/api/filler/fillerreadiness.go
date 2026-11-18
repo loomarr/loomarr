@@ -41,6 +41,7 @@ type PipelineOverviewDTO struct {
 	InProgress    int `json:"inProgress"`
 	Scheduled     int `json:"scheduled"`
 	NeedsDecision int `json:"needsDecision"`
+	AwaitingSplit int `json:"awaitingSplit" doc:"Reels held until splitting is certified; nobody needs to act"`
 	Ready         int `json:"ready"`
 	Complete      int `json:"complete"`
 	Rejected      int `json:"rejected"`
@@ -220,7 +221,7 @@ func fillerReadinessDTO(readiness filler.Readiness) FillerReadinessDTO {
 func pipelineOverviewDTO(overview pipelinestate.PipelineOverview) PipelineOverviewDTO {
 	return PipelineOverviewDTO{
 		Runnable: overview.Runnable, InProgress: overview.InProgress, Scheduled: overview.Scheduled,
-		NeedsDecision: overview.NeedsDecision, Ready: overview.Ready, Complete: overview.Complete,
+		NeedsDecision: overview.NeedsDecision, AwaitingSplit: overview.AwaitingSplit, Ready: overview.Ready, Complete: overview.Complete,
 		Rejected: overview.Rejected, Dismissed: overview.Dismissed, Recoverable: overview.Recoverable,
 	}
 }

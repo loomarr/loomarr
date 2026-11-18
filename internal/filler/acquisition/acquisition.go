@@ -181,7 +181,8 @@ func OutcomeFrom(rows []pipelinestate.ClipPipeline, at time.Time) Outcome {
 	for _, row := range rows {
 		out.Enrolled++
 		switch row.Lifecycle(at).State {
-		case pipelinestate.LifecycleRunnable, pipelinestate.LifecycleInProgress, pipelinestate.LifecycleScheduled:
+		case pipelinestate.LifecycleRunnable, pipelinestate.LifecycleInProgress, pipelinestate.LifecycleScheduled,
+			pipelinestate.LifecycleAwaitingSplit:
 			out.Preparing++
 		case pipelinestate.LifecycleNeedsDecision:
 			out.NeedsDecision++

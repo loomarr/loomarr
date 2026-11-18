@@ -751,7 +751,9 @@ report is not a finished encode, so the rung encodes it again.
 - A black or silent span of at least 5 s, or a frozen span of at least 10 s, goes to review.
   Freeze alone never auto-rejects. For a clip Loomarr found, review is a fail (doubt means drop,
   #3838 decision 18): the clip is rejected as `undecided`, the measured span is its detail, and
-  upkeep lets it go after the reject rest. A clip an operator added keeps the review.
+  upkeep lets it go after the reject rest. A clip an operator added keeps the review. A found clip
+  held under the earlier rule is re-judged once per start from the report in its sidecar, through
+  the same evaluation, so nothing re-encodes.
 - Review holds the clip out of rotation before the review row commits; a store failure leaves the
   row runnable and the persisted report re-emits the verdict without decoding again. A found clip's
   review is a reject instead (above), recorded through the ordinary reject path.

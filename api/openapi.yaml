@@ -8987,6 +8987,10 @@ components:
     PipelineOverviewDTO:
       additionalProperties: false
       properties:
+        awaitingSplit:
+          description: Reels held until splitting is certified; nobody needs to act
+          format: int64
+          type: integer
         complete:
           format: int64
           type: integer
@@ -9020,6 +9024,7 @@ components:
         - inProgress
         - scheduled
         - needsDecision
+        - awaitingSplit
         - ready
         - complete
         - rejected

@@ -57,6 +57,11 @@ func TestClipPipelineLifecycle(t *testing.T) {
 			want: PipelineLifecycle{State: LifecycleNeedsDecision},
 		},
 		{
+			name: "a reel held at the split waits for splitting, not a person",
+			row:  ClipPipeline{Disposition: DispositionReview, Stage: StageSplit, Status: StatusDone},
+			want: PipelineLifecycle{State: LifecycleAwaitingSplit},
+		},
+		{
 			name: "ready is playable",
 			row:  ClipPipeline{Disposition: DispositionReady, Stage: StageFinish, Status: StatusDone},
 			want: PipelineLifecycle{State: LifecycleReady},
