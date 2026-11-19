@@ -32,7 +32,7 @@ func scanClip(sc scannable) (Clip, error) {
 		createdAt int64
 	)
 	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &c.NameSource, &kind, &c.Placement, &c.Era, &audience, &c.Category,
-		&c.DurationMs, &c.GeographicScope, &c.Country, &c.Network, &c.Station, &c.AirDate, &c.GeoEvidence,
+		&c.DurationMs, &c.AirStartMs, &c.AirEndMs, &c.GeographicScope, &c.Country, &c.Network, &c.Station, &c.AirDate, &c.GeoEvidence,
 		&c.Source, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
 		&c.ThumbImageHash, &c.HoverImageHash, &c.Language,
 		&c.Transcript, &c.Brand, &c.VisibleText,

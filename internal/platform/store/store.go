@@ -386,6 +386,10 @@ type ClipStore interface {
 	// ONLY writer of `is_composite`; UpsertClip omits it so a re-sync cannot flip a confirmed
 	// composite back to an airable clip. Keyed by hash.
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
+	// ClipsWithoutAirWindow and SetClipAirWindow back the air-window sweep (#3384). The setter is
+	// the ONLY writer of `air_start_ms`/`air_end_ms`; UpsertClip leaves them alone.
+	ClipsWithoutAirWindow(ctx context.Context) ([]clipstore.Clip, error)
+	SetClipAirWindow(ctx context.Context, hash string, startMs, endMs int64, at time.Time) error
 	// SetClipArtworkImages records the image-service identities of a clip's still and hover loop
 	// (§22, V52 phase 6). Sole writer of those columns — they are omitted from UpsertClip's
 	// DO UPDATE so a folder re-sync cannot blank them.

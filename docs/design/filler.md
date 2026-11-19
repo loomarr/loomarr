@@ -754,6 +754,15 @@ report is not a finished encode, so the rung encodes it again.
   upkeep lets it go after the reject rest. A clip an operator added keeps the review. A found clip
   held under the earlier rule is re-judged once per start from the report in its sidecar, through
   the same evaluation, so nothing re-encodes.
+- **Dead air at the edges is left off the air, not cut from the file (#3384).** Black that is also
+  silent and touches a clip's start or end is dead air; each pipeline pass gives every airable clip
+  without one an **air window** from its playback report, leaving 0.2 s of the dead air at a
+  trimmed edge. Pod assembly books the window's length and playout seeks to its start, so a break
+  shows no seconds of black between spots. Black under sound is a voice-over or closing line and
+  stays; a report not on the clip's timeline, or a window under half the clip, airs it whole. A
+  stored break whose clip's window changed plans again. On one install this left 87 s of dead air
+  in 80 of 169 ready clips off the air. The file stays as it is: most ready clips have released
+  their original, and a library re-encode (#2121) would otherwise have to carry each trim forward.
 - Review holds the clip out of rotation before the review row commits; a store failure leaves the
   row runnable and the persisted report re-emits the verdict without decoding again. A found clip's
   review is a reject instead (above), recorded through the ordinary reject path.

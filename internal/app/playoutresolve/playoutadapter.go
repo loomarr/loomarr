@@ -698,8 +698,10 @@ func (r *Resolver) airingFiller(
 				RecentRepeat:     e.RecentRepeat,
 				RotationPinned:   e.RotationPinned,
 				Title:            e.Name,
-				Offset:           into,
-				Remaining:        remaining,
+				// The entry airs from its window's start (#3384): the file's leading dead air is
+				// seeked past, never shown.
+				Offset:    time.Duration(e.AirStartMs)*time.Millisecond + into,
+				Remaining: remaining,
 			}, full, nil
 		}
 		into -= d

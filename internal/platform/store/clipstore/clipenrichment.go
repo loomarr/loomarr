@@ -262,3 +262,41 @@ func (s *Store) SetClipComposite(ctx context.Context, hash string, composite boo
 	}
 	return nil
 }
+
+// ClipsWithoutAirWindow lists the airable clips whose air window has not been measured (#3384):
+// present, unheld, not a compilation. Tags are not loaded: the air-window sweep reads only the row.
+func (s *Store) ClipsWithoutAirWindow(ctx context.Context) ([]Clip, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(clipSelect+
+		` WHERE air_end_ms = 0 AND removed_at = 0 AND held = FALSE AND is_composite = FALSE ORDER BY hash`))
+	if err != nil {
+		return nil, fmt.Errorf("list clips without an air window: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []Clip
+	for rows.Next() {
+		c, err := scanClip(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan clip without an air window: %w", err)
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// SetClipAirWindow records the part of a clip's file that airs (#3384). The window is measured
+// from the file's own quality report; it never changes the file or its duration.
+func (s *Store) SetClipAirWindow(ctx context.Context, hash string, startMs, endMs int64, at time.Time) error {
+	if startMs < 0 || endMs <= startMs {
+		return fmt.Errorf("set clip air window %s: [%d, %d) is not a window", hash, startMs, endMs)
+	}
+	res, err := s.h.ExecContext(ctx,
+		s.h.Rebind(`UPDATE clips SET air_start_ms = ?, air_end_ms = ?, updated_at = ? WHERE hash = ?`),
+		startMs, endMs, epoch(at), hash)
+	if err != nil {
+		return fmt.Errorf("set clip air window %s: %w", hash, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

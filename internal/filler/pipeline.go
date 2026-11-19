@@ -236,11 +236,13 @@ type Pipeline struct {
 	// a stage does not need them, and `Rewind` refuses rather than half-working without them.
 	rewind  RewindStore
 	clipDir string
-	stages  map[pipelinestate.StageID]Stage
-	budget  Budget
-	notify  Notifier
-	now     func() time.Time
-	log     *slog.Logger
+	// airWindows backs the air-window sweep (airwindow.go). nil measures none, and clips air whole.
+	airWindows AirWindowStore
+	stages     map[pipelinestate.StageID]Stage
+	budget     Budget
+	notify     Notifier
+	now        func() time.Time
+	log        *slog.Logger
 	// failures suppresses a clip's repeated identical failure warning across passes.
 	failures *logchange.Throttle
 	// splitReviewsResumed gates the once-per-process scan that returns review proposals the split
@@ -361,6 +363,15 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 		if p.log != nil {
 			p.log.Warn("filler pipeline: enrolment failed", "err", err)
 		}
+	}
+	// Every pass, and cheap when there is nothing to do: one query for clips with no window yet.
+	// Not fatal, like enrolment: a clip without a window airs whole until the next pass.
+	if measured, err := p.measureAirWindows(ctx); err != nil {
+		if p.log != nil {
+			p.log.Warn("filler pipeline: measuring air windows failed", "err", err)
+		}
+	} else if measured > 0 && p.log != nil {
+		p.log.Info("filler pipeline: measured air windows", "clips", measured)
 	}
 	if !p.doubtsRejudged {
 		n, rejudgeErr := p.rejudgeDoubtfulReviews(ctx)

@@ -35,6 +35,12 @@ tables:
       audience: >
         Who the clip suits: kids, family, general or late_night. Empty when not yet tagged.
       duration_ms: Length of the clip in milliseconds, measured from the file.
+      air_start_ms: >
+        Where in the file the clip starts airing, in milliseconds: past black that is also silent at
+        its start, but for a short pad. Set with air_end_ms by the pipeline's air-window sweep.
+      air_end_ms: >
+        Where in the file the clip stops airing, in milliseconds. 0 means the window has not been
+        measured and the clip airs whole; a break books air_end_ms - air_start_ms.
       source: >
         Where the clip came from: the id of the registered filler source that downloaded it (such
         as archive:<collection>), or filler-dir for a file dropped into the clip folder.
@@ -110,7 +116,7 @@ tables:
       - group: The file
         why: >
           One file per clip, and every read of a clip needs it; the hash is the clip's identity.
-        columns: [hash, path, tunarr_program_id, duration_ms, quality, source, license, created_at, updated_at]
+        columns: [hash, path, tunarr_program_id, duration_ms, air_start_ms, air_end_ms, quality, source, license, created_at, updated_at]
       - group: What it is
         why: >
           The facts selection and research read for every clip, one value each. Repeated facts
