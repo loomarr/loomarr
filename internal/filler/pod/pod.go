@@ -155,8 +155,8 @@ type Entry struct {
 	Name            string
 	// NameSource is the catalogue provenance of Name (#1988): viewer routes show Name only when
 	// it is not a filename (ViewerName).
-	NameSource     clips.NameSource
-	Role           Role
+	NameSource clips.NameSource
+	Role       Role
 	// DurationMs is how long the entry airs: the clip's air window, not its file (#3384).
 	DurationMs int64
 	// AirStartMs is where in the file the entry starts airing: playout seeks there, so the dead
