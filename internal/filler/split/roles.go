@@ -23,6 +23,20 @@ func CertifiedFillerRole(role Role) bool {
 	}
 }
 
+// LookRole reads the role the split look gave a cut (#4418). The look shares the clip vision
+// prompt, and a model that recognises a campaign ad answers `political`, a clip kind (#2037) that is
+// a kind of commercial rather than a split role. Measured: 6 of 20 whole spots were refused for it.
+// The cut-out clip is classified again, and only channels that accept political ads air it.
+//
+// `news` is NOT mapped: inside a reel it may be a newscast, which is not filler.
+func LookRole(answer string) Role {
+	role := Role(strings.ToLower(strings.TrimSpace(answer)))
+	if role == "political" {
+		return RoleCommercial
+	}
+	return role
+}
+
 // WholeCut is the look at a whole cut (#4409): whether its frames show one complete piece of filler.
 type WholeCut string
 
