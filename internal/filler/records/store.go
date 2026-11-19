@@ -210,6 +210,10 @@ type FillerPipelineStore interface {
 	// RetireReadyClip removes and reaps a fetched, unpinned Ready clip and marks its row's files
 	// deleted, in one transaction, so a full budget can evict it; false when it no longer qualifies.
 	RetireReadyClip(ctx context.Context, hash string, at time.Time) (bool, error)
+	// ListSettledReels and RetireSettledReel let go of a split reel Loomarr fetched once every piece
+	// cut from it is settled (#4421): the row is reaped and kept, its files go to quarantine.
+	ListSettledReels(ctx context.Context) ([]string, error)
+	RetireSettledReel(ctx context.Context, hash string, at time.Time) (bool, error)
 	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first, with a
 	// total order so one clip cannot starve while another is worked repeatedly.
 	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]pipelinestate.ClipPipeline, error)

@@ -308,7 +308,8 @@ Confirm keeps the compilation as a composite and gives each child a `parent_hash
 [0017](decisions/0017-composites-keep-the-parent.md)). That buys provenance ("which break did this
 air in?"), re-splitting when detection improves, and inherited broadcast context. The parent stays
 in the store and on disk, marked composite and never airable; `parent_hash` is null for a
-hand-dropped clip.
+hand-dropped clip. A reel Loomarr fetched leaves the disk once every piece cut from it is settled
+([0049](decisions/0049-a-settled-reel-lets-go-of-its-recording.md)); its row stays.
 
 - Full confirmation files the parent and releases its hold as one operation; an upgrade pass
   releases stale holds only for filed composites with no surviving proposal.
@@ -322,7 +323,7 @@ hand-dropped clip.
   clips. The catalog row survives with `clips.reaped_at` (written before the unlink, and skipped by
   `DeleteClipsNotIn`), so provenance and inherited context survive while re-splitting does not. The
   pipeline row is set to `filed` so the reel is not re-detected. The operator guide
-  (`docs/guides/filler.md`) does not say so yet: it tells operators the original file is kept.
+  (`docs/guides/filler.md`) says so, and that a fetched reel goes once its pieces are settled.
 
 **Splitting keys on identity, not location (V51a).** A proposal carries the compilation's hash
 (`clipHash`) and derives its file location. A segment is hashed as soon as it is cut and filed at
