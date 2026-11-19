@@ -28,6 +28,14 @@ func (a Upkeep) RetireReadyClip(ctx context.Context, hash string, at time.Time) 
 	return a.st.RetireReadyClip(ctx, hash, at)
 }
 
+func (a Upkeep) ListSettledReels(ctx context.Context) ([]string, error) {
+	return a.st.ListSettledReels(ctx)
+}
+
+func (a Upkeep) RetireSettledReel(ctx context.Context, hash string, at time.Time) (bool, error) {
+	return a.st.RetireSettledReel(ctx, hash, at)
+}
+
 func (a Upkeep) GetClip(ctx context.Context, hash string) (clipstore.Clip, bool, error) {
 	return NewSync(a.st).GetClip(ctx, hash)
 }

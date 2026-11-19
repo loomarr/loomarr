@@ -601,6 +601,14 @@ The hourly `filler-upkeep` job (#3855) has fixed numbers and no setting (decisio
   another clip still names stays until the last of them is released, and while any clip's sidecar
   cannot be read no original is released. The release, the defect floor's evidence release
   and a rewind's hold share one lock per sidecar, so none of them undoes another's change.
+- **A split reel Loomarr fetched lets go of its recording once every piece cut from it is settled**
+  ([0049](decisions/0049-a-settled-reel-lets-go-of-its-recording.md), #4421). Settled means every
+  piece still in the catalog is Ready, rejected, dismissed or complete, the reel is off the belt and
+  no split proposal is left. In one transaction the reel is reaped and its pipeline row records
+  `files_deleted_at`; then its playback file and sidecar go to quarantine, and a crash between the
+  two is finished by the next pass. The row stays present, so every piece's `parent_hash` resolves
+  and the sync's prune spares it. A reel added by hand is kept. Splitting a let-go reel is refused
+  with a 409 until a re-split can fetch it again.
 - The server projects one capacity snapshot with a state (`healthy`, `approaching`, `paused`,
   `unknown`) and the actions `free_disposable_space`, `choose_another_folder` and
   `change_storage_limit`. `approaching` starts at the smaller of 1 GiB and 20% of the allowance.
