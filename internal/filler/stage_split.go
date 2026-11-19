@@ -346,7 +346,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string
 		}
 		// An unreadable answer parses as WholeUnsure: doubt never cuts.
 		segs[i].Whole = split.ParseWholeCut(out.Whole)
-		segs[i].LookedRole = split.Role(strings.ToLower(strings.TrimSpace(out.Role)))
+		segs[i].LookedRole = split.LookRole(out.Role)
 		v := groundVisionTags(out, forest)
 		var roleEvidence *split.RoleEvidence
 		var roleErr error

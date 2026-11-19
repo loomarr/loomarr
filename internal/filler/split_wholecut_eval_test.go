@@ -52,6 +52,8 @@ type wholeCutTally struct {
 	// made ("ok" when made).
 	Answers  map[string]int `json:"answers"`
 	Verdicts map[string]int `json:"verdicts"`
+	// Roles is the role the look gave ("" when none).
+	Roles map[string]int `json:"roles"`
 	// SoundClean counts cuts whose sound alone says one whole spot.
 	SoundClean int `json:"soundClean"`
 	WouldCut   int `json:"wouldCut"`
@@ -96,7 +98,7 @@ func TestSplitWholeCutEval(t *testing.T) {
 	for n, c := range cases {
 		tally := report.Kinds[c.kind]
 		if tally == nil {
-			tally = &wholeCutTally{Answers: map[string]int{}, Verdicts: map[string]int{}}
+			tally = &wholeCutTally{Answers: map[string]int{}, Verdicts: map[string]int{}, Roles: map[string]int{}}
 			report.Kinds[c.kind] = tally
 		}
 		tally.Cases++
@@ -129,7 +131,8 @@ func TestSplitWholeCutEval(t *testing.T) {
 				report.FalseCut++
 			}
 		}
-		t.Logf("case %d/%d %-7s -> %-7s sound=%v cut=%v", n+1, len(cases), c.kind, s.Whole, s.Sound.Clean(), cut)
+		tally.Roles[string(s.LookedRole)]++
+		t.Logf("case %d/%d %-7s -> %-7s role=%q sound=%v cut=%v", n+1, len(cases), c.kind, s.Whole, s.LookedRole, s.Sound.Clean(), cut)
 	}
 	report.ElapsedSecond = int(time.Since(started).Seconds())
 	if report.NotOneCases > 0 {
