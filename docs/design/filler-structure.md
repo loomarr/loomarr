@@ -238,11 +238,16 @@ dropped. Switched off, a proposal waits for a person as before.
 - **Measured, not assumed** (`TestSplitWholeCutEval`, tag `eval`). One install's single ads were
   set inside reels between other ads as 20 whole spots, 20 halves and 20 joined pairs. The look
   alone called 13 of the 40 cuts that were not one spot `one`; the sound passed none of them and 12
-  of the 20 whole spots. With every refusal, 0 of the 40 would be cut and 4 of the 20 whole spots
+  of the 20 whole spots. With every refusal, 0 of the 40 would be cut and 8 of the 20 whole spots
   would. The gate is on what would be cut: at most 5% of cuts that are not one spot. Forty cases
   bound that rate only to about 7.5%, so the eval is re-run when the look's prompt or model changes.
-  Most whole spots the sound passes are refused because the look gives no filler role, so a reel
-  yields few clips for now: that costs inventory, never a bad cut.
+  Whole spots are mostly lost to the sound (8 of 20: an ad with a pause inside it reads as two) and
+  to a look that sees a programme (3 of 20). That costs inventory, never a bad cut.
+- **A campaign ad is a commercial to the split** (#4418). The look shares the clip prompt, and a
+  model that recognises a campaign ad answers the clip kind `political`. The split reads that as a
+  commercial; the cut-out clip is classified again and airs only where political ads are accepted.
+  `news` is not read so: inside a reel it may be a newscast. Before this, 6 of 20 whole spots were
+  refused as not break material.
 - **No vision, no compilations.** Without a vision model every cut is dropped. With one that is
   failing, the reel waits for it rather than dropping what it could not judge. With splitting on,
   the pipeline sends every reel waiting in review back to the rung, which decides it.
