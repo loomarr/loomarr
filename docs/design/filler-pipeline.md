@@ -9,6 +9,9 @@ classification docs; this doc covers how work flows.
 
 `probe → transcode → split → screen → defects → language → transcribe → vision → finish`.
 
+No `screen` stage is registered since #4409, so that rung is always skipped: a piece cut from a
+compilation runs the same rungs as a single ad.
+
 `finish` does no work of its own: it always applies and always continues, so every published ladder
 ends with a completed terminal rung that the ready commit validates against.
 

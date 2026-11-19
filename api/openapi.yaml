@@ -2968,6 +2968,27 @@ components:
         - label
         - axis
       type: object
+    CutSound:
+      additionalProperties: false
+      properties:
+        endDb:
+          format: double
+          type: number
+        insideDb:
+          format: double
+          type: number
+        medianDb:
+          format: double
+          type: number
+        startDb:
+          format: double
+          type: number
+      required:
+        - medianDb
+        - startDb
+        - endDb
+        - insideDb
+      type: object
     CycleSlotDTO:
       additionalProperties: false
       properties:
@@ -12589,12 +12610,16 @@ components:
           type: string
         looked:
           type: boolean
+        lookedRole:
+          type: string
         name:
           type: string
         nameEvidence:
           type: string
         nameOrigin:
           type: string
+        sound:
+          $ref: "#/components/schemas/CutSound"
         startEvidence:
           type: string
         startMs:
@@ -12612,6 +12637,8 @@ components:
           type: string
         unsplittable:
           type: boolean
+        whole:
+          type: string
       required:
         - index
         - startMs
@@ -12655,12 +12682,16 @@ components:
           type: string
         looked:
           type: boolean
+        lookedRole:
+          type: string
         name:
           type: string
         nameEvidence:
           type: string
         nameOrigin:
           type: string
+        sound:
+          $ref: "#/components/schemas/CutSound"
         startEvidence:
           type: string
         startMs:
@@ -12678,6 +12709,8 @@ components:
           type: string
         unsplittable:
           type: boolean
+        whole:
+          type: string
       required:
         - index
         - startMs

@@ -923,7 +923,7 @@ inputs. Its verdicts are enforced at admission and on every re-check (see
 
 ### Enforcement (#2036)
 
-- **Admission waits for a verdict.** The `defects` rung runs after screening and before
+- **Admission waits for a verdict.** The `defects` rung runs after split and before
   enrichment, so a copy that fails costs no transcription or hosted look. It measures nothing
   itself: it waits, spending no attempt, until the floor job has a current record for the clip's
   bytes and era. The floor measures a held clip only once its conveyor reaches this rung, so the

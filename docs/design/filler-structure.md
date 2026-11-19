@@ -135,6 +135,10 @@ never decides.
   decision. A child cut on a confirmed `keep` interval carries its SHA-256 in conditioning lineage;
   legacy or operator-edited cuts leave it absent.
 
+**Since #4409 the certified plan below decides nothing.** The split rung cuts by `AutoCuttable`
+alone; the complete-timeline decision and its comparison still run and are recorded until their
+retirement (#4414). The rest of this section describes them as built.
+
 **Structure authority is not broadcast admission.** A certified `compilation_break`, or the bounded
 filler portion of `programme_with_spots`, may authorize automatic materialization of its complete
 keep plan into held, non-airable children that enter the ordinary ingest ladder. That needs exact
@@ -209,21 +213,48 @@ splits for long clips, so review can happen later and survive restarts. Nothing 
 
 ## Auto-split and boundary confidence
 
-`filler.autosplit.enabled` (default on) confirms confident segments without a click, gated on
-`filler.autosplit.min_confidence`, a separate dial from tagging: a mis-cut plays half an advert.
+`filler.autosplit.enabled` (default on) splits a compilation without anyone reviewing it (#3838
+decisions 10, 11 and 19; #4409). A cut that is one clean piece of filler is cut; every other cut is
+dropped. Switched off, a proposal waits for a person as before.
 
-- **Per segment.** A segment is cut when it passes every refusal and clears the threshold; the rest
-  stay in a shrunken proposal (a reel of 52 becomes 47 clips and 5 cuts to review).
-- **Refusals first, then the threshold.** A suggested era, `unsplittable`, a duplicate, an over-long
-  or a sub-floor span refuses at any score. `boundaryScore` cannot see tag facts, so nothing
-  launders a refusal into a score.
+- **Per segment.** One doubtful cut drops that cut, never the reel's other cuts. A reel where no
+  cut passes is settled as a non-airable compilation with nothing cut.
+- **Refusals, in order** (`AutoCuttable`): `unsplittable`, a duplicate, an unchecked duplicate
+  comparison, longer than one advert or under the clip floor, a boundary under
+  `filler.autosplit.min_confidence` (85: both edges a chapter, the reel's edge, or black and silence
+  that agree), **sound** that does not say one whole spot, a role from the look that is not break
+  material, and a look that did not see **one whole spot**. Era, audience and category are not
+  refusals here: the cut-out clip meets them on the same rungs a single downloaded ad does.
+- **The cut's sound.** Ads are mastered to open and close on near-silence. Each cut's loudness is
+  measured in 200 ms windows, with 0.4 s of the reel either side, relative to its own median. It
+  passes only when both edges dip at least 12 dB, nothing more than 1.5 s inside either edge dips 20
+  dB, and there is sound at all. A cut inside a spot meets a running sound bed at one edge; two
+  spots joined go quiet where they meet. Measuring costs one audio decode, is not part of the vision
+  budget, and is kept on the proposal. A cut whose sound was not measured is never made.
+- **The look at the whole cut.** The split-time vision call sees eight frames in order from the
+  cut's start to its end and answers `one`, `part`, `several` or `unsure`. Only `one` cuts; an
+  answer it cannot read is `unsure`. A cut looked at before the look asked this has no answer and
+  is looked at again.
+- **Measured, not assumed** (`TestSplitWholeCutEval`, tag `eval`). One install's single ads were
+  set inside reels between other ads as 20 whole spots, 20 halves and 20 joined pairs. The look
+  alone called 13 of the 40 cuts that were not one spot `one`; the sound passed none of them and 12
+  of the 20 whole spots. With every refusal, 0 of the 40 would be cut and 4 of the 20 whole spots
+  would. The gate is on what would be cut: at most 5% of cuts that are not one spot. Forty cases
+  bound that rate only to about 7.5%, so the eval is re-run when the look's prompt or model changes.
+  Most whole spots the sound passes are refused because the look gives no filler role, so a reel
+  yields few clips for now: that costs inventory, never a bad cut.
+- **No vision, no compilations.** Without a vision model every cut is dropped. With one that is
+  failing, the reel waits for it rather than dropping what it could not judge. With splitting on,
+  the pipeline sends every reel waiting in review back to the rung, which decides it.
+- **A cut piece is found if its reel was.** Its sidecar names the reel's acquisition, so a check that
+  cannot decide drops it, as it would a downloaded ad (decision 18).
 - **A partial duplicate check is not a clean one.** A segment is marked `dedupUnchecked`, and held
   from unattended confirmation, when its fingerprint could not be read, the catalog could not be
   listed, or any catalog clip could not be fingerprinted so the segment was compared with only part
   of the catalog. A copy found against the readable clips stands. The pipeline's re-check clears the
-  mark once the check can be made in full; a person can still confirm such a segment by hand.
-- **A confirmed segment is not airable.** It is a held child that still goes through conditioning,
-  classification, screening and terminal readiness.
+  mark once the check can be made in full.
+- **A cut segment is not airable yet.** It is a held child that still goes through conditioning,
+  classification and terminal readiness, the ladder a single ad runs.
 
 **Boundary confidence** (0–100 per segment) answers "did we cut in the right place?". It is
 distinct from a clip's tagging confidence ("do we know what this is?"), and the split gate reads

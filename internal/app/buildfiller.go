@@ -27,7 +27,6 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
-	"github.com/loomarr/loomarr/internal/filler/screening"
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
 	"github.com/loomarr/loomarr/internal/filler/station"
@@ -332,10 +331,6 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 	// skipped ("vision tagging is off", "no language backend is configured"), which is the same
 	// visible-but-idle contract the Tasks page rows use.
 	clipDir := layout.ClipDir()
-	screeningRuntime, screeningErr := buildQualificationSegmentScreeningRuntime(st, layout)
-	if screeningErr != nil {
-		log.Error("rendered-child screening qualification runtime was not activated", "err", screeningErr)
-	}
 	transcribeStage := filler.NewTranscribeStage(fillerTools, storeadapter.NewTranscribe(st), clipDir, fillerDrop,
 		func() bool { return settings.FillerTranscribeEnabled.Get(set) }, time.Now)
 	visionStage := filler.NewVisionStage(fillerTools, visionProvider, storeadapter.NewVision(st), clipDir,
@@ -365,11 +360,8 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 			func() int64 { return settings.FillerMinDuration.Get(set).Milliseconds() },
 			func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) }, time.Now),
 		transcodeStage,
-		// Rendered compilation children must not reach enrichment or the compatibility score gate
-		// until the five certified authorities are wired. The qualification runtime records the
-		// exact rights and playback answers plus explicit holds for the three uncertified safety
-		// axes. Terminal release remains nil, so no qualification aggregate can authorize airplay.
-		screening.NewSegmentScreeningStage(screeningRuntime, nil, clipDir),
+		// No screen rung (#4409): a cut piece meets the same bar as a single downloaded ad — the
+		// defect, language, transcript and vision rungs below — so a row at `screen` is skipped.
 		defectfloor.NewDefectsStage(storeadapter.NewDefects(st)),
 		filler.NewLanguageStage(langDetect, storeadapter.NewLanguage(st), clipDir, wantLanguages, time.Now),
 		transcribeStage,
@@ -451,6 +443,7 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 			// keeps "is Loomarr sending my frames to a model" answerable in one place.
 			WithSegmentVision(&filler.SegmentVision{
 				Tools:    fillerTools,
+				Loudness: fillerTools,
 				Provider: visionProvider,
 				Taxa:     storeadapter.NewVision(st),
 				ClipDir:  clipDir,

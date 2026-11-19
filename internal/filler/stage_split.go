@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
@@ -72,8 +73,9 @@ type StructureRuntime struct {
 	// Decisioner independently assesses the complete retained source once. nil leaves detector
 	// structure in place and makes no provider request.
 	Decisioner split.CompleteTimelineDecisioner
-	// Materialization verifies the only gate that can materialize held children. A nil policy
-	// holds the proposal; compatibility is never application authority.
+	// Materialization is the certified complete-plan policy the shadow compares against. Since
+	// #4409 it decides nothing: the unattended cut (AutoCuttable) is the split's only gate. Its
+	// retirement, with the decisioner and the shadow, is #4414.
 	Materialization *StructureMaterializationPolicy
 	// Shadow durably records the compatibility comparison beside the complete-plan gate. It is
 	// diagnostic only and never authorizes child materialization.
@@ -164,7 +166,10 @@ type SegmentVision struct {
 	// a role. nil leaves the span unresolved; it never weakens the publication gate.
 	RoleEscalator SegmentRoleEscalator
 	Taxa          TaxaLister
-	ClipDir       string
+	// Loudness measures a cut's sound (#4409). nil measures nothing, and an unmeasured cut is
+	// never made unattended.
+	Loudness LoudnessMeter
+	ClipDir  string
 	// Budget caps how many segments ONE pass will look at (`filler.pipeline.max_split_vision`).
 	//
 	// ⚠ It is a per-pass cost bound, and §10 V51g is why it is not optional: a rung's cost must
@@ -174,6 +179,35 @@ type SegmentVision struct {
 	// grounding persists and resumes and a large reel is judged over several passes; a segment
 	// still ungrounded when the gate runs is held back on its own rather than sinking the reel.
 	Budget func() int
+}
+
+// LoudnessMeter is the RMS level, in dB, of each winMs window of a file's audio over a span.
+type LoudnessMeter interface {
+	LoudnessWindows(ctx context.Context, file string, startMs, endMs, winMs int64) ([]float64, error)
+}
+
+// measureSound sets the sound of each cut that has none. It is cheap (one audio decode of the cut
+// and a little either side) and not part of the vision budget. A cut whose sound cannot be read
+// stays unmeasured, which never cuts; the next pass tries again.
+func (s *SplitStage) measureSound(ctx context.Context, file string, segs []split.Segment) (measured, failed int) {
+	if s.vision == nil || s.vision.Loudness == nil {
+		return 0, 0
+	}
+	for i := range segs {
+		if segs[i].Sound != nil || segs[i].EndMs <= segs[i].StartMs || ctx.Err() != nil {
+			continue
+		}
+		origin := max(0, segs[i].StartMs-split.SoundPadMs)
+		levels, err := s.vision.Loudness.LoudnessWindows(ctx, file, origin, segs[i].EndMs+split.SoundPadMs, split.SoundWindowMs)
+		if err != nil {
+			failed++
+			continue
+		}
+		sound := split.MeasureCutSound(levels, origin, segs[i].StartMs, segs[i].EndMs)
+		segs[i].Sound = &sound
+		measured++
+	}
+	return measured, failed
 }
 
 // TaxaLister reads the taxonomy the grounder resolves categories against — the SAME read the
@@ -200,15 +234,11 @@ func (s *SplitStage) groundFromSource(ctx context.Context, c clipstore.Clip, sou
 	return s.groundAt(ctx, c, file, source, segs)
 }
 
-func countPendingGrounding(segs []split.Segment) int {
-	n := 0
-	for i := range segs {
-		if !segs[i].Looked {
-			n++
-		}
-	}
-	return n
-}
+func countPendingGrounding(segs []split.Segment) int { return countPending(segs) }
+
+// needsLook reports whether a segment still needs the split look. A segment looked at before the
+// look judged the whole cut (#4409) has no Whole answer, and is looked at again.
+func needsLook(s split.Segment) bool { return !s.Looked || s.Whole == "" }
 
 func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string, source split.SourceAsset, segs []split.Segment) groundPass {
 	pending := func() int {
@@ -217,6 +247,11 @@ func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string
 	if s.vision == nil || s.vision.Provider == nil || s.vision.Tools == nil {
 		s.groundSkipped(ctx, c, "vision is not wired on this install")
 		return groundPass{Pending: pending()}
+	}
+	measured, failed := s.measureSound(ctx, file, segs)
+	if failed > 0 && s.log != nil {
+		s.log.Warn("filler split: some cuts' sound could not be measured; they are not cut until it is",
+			"clip", c.Hash, "cuts", failed)
 	}
 	// ⚠ The budget bounds ATTEMPTS THIS PASS, not an index into the segment list. It was
 	// `if i >= budget { return }`, which is absolute — with resume that stops at the same segment
@@ -229,7 +264,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string
 	}
 	if budget == 0 {
 		s.groundSkipped(ctx, c, "the per-pass vision budget is zero (filler.pipeline.max_split_vision)")
-		return groundPass{Pending: pending()}
+		return groundPass{Pending: pending(), Measured: measured}
 	}
 	var forest *taxonomy.Forest
 	if s.vision.Taxa != nil {
@@ -238,7 +273,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string
 			// No vocabulary to ground against ⇒ ground nothing, and the gate refuses. Reported as
 			// zero looked, which is what stops the caller deferring on a pass that achieved nothing.
 			s.groundSkipped(ctx, c, "the taxonomy could not be read", "err", err)
-			return groundPass{Pending: pending()}
+			return groundPass{Pending: pending(), Measured: measured}
 		}
 		forest = taxonomy.New(taxa)
 	}
@@ -251,12 +286,13 @@ func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string
 		if looked >= budget {
 			break
 		}
-		if segs[i].Looked {
+		if !needsLook(segs[i]) {
 			continue // ⚠ THE RESUME: an earlier pass already spent a look on this one.
 		}
-		frames, err := s.vision.Tools.VisionKeyframesIn(ctx, file, segs[i].StartMs, segs[i].EndMs, split.VisionKeyframes)
+		frames, err := s.vision.Tools.VisionKeyframesIn(ctx, file, segs[i].StartMs, segs[i].EndMs, split.WholeCutKeyframes)
 		if err != nil || len(frames) == 0 {
-			segs[i].Looked, looked = true, looked+1
+			// No frames, no judgement of the whole cut: a doubt, and doubt never cuts.
+			segs[i].Looked, segs[i].Whole, looked = true, split.WholeUnsure, looked+1
 			noFrames++
 			if evidence, attempted, escalationErr := s.escalateSegmentRole(ctx, source, file, segs[i]); attempted {
 				videoAttempts++
@@ -287,9 +323,12 @@ func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string
 					providerErr = errors.Join(err, escalationErr)
 					break
 				}
-				segs[i].Looked, looked = true, looked+1
+				// The video route settles the role only; the whole cut was not judged, so it is a
+				// doubt. Marking it keeps the resume bounded while the image route keeps failing.
+				segs[i].Looked, segs[i].Whole, looked = true, split.WholeUnsure, looked+1
 				if evidence != nil {
 					segs[i].RoleEvidence = evidence
+					segs[i].LookedRole = evidence.Role
 					roles, videoRoles, learned = roles+1, videoRoles+1, learned+1
 				} else {
 					unresolvedRoles++
@@ -305,6 +344,9 @@ func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string
 		if !parsed {
 			unreadable++
 		}
+		// An unreadable answer parses as WholeUnsure: doubt never cuts.
+		segs[i].Whole = split.ParseWholeCut(out.Whole)
+		segs[i].LookedRole = split.Role(strings.ToLower(strings.TrimSpace(out.Role)))
 		v := groundVisionTags(out, forest)
 		var roleEvidence *split.RoleEvidence
 		var roleErr error
@@ -325,6 +367,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string
 		}
 		if roleErr == nil && roleEvidence != nil {
 			segs[i].RoleEvidence = roleEvidence
+			segs[i].LookedRole = roleEvidence.Role // the validated role wins over the raw answer
 			roles++
 		} else {
 			unresolvedRoles++
@@ -354,7 +397,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string
 		videoAttempts: videoAttempts, videoRoles: videoRoles, videoErrors: videoErrors,
 		providerErr: providerErr,
 	})
-	return groundPass{Looked: looked, Pending: pending()}
+	return groundPass{Looked: looked, Pending: pending(), Measured: measured}
 }
 
 // groundTally is one pass's outcome, counted so the pass can be reported in a single line.
@@ -440,7 +483,7 @@ func (s *SplitStage) pendingFor(ctx context.Context, hash string) (*SplitProposa
 func countPending(segs []split.Segment) int {
 	n := 0
 	for i := range segs {
-		if !segs[i].Looked {
+		if needsLook(segs[i]) {
 			n++
 		}
 	}
@@ -457,6 +500,9 @@ func countPending(segs []split.Segment) int {
 type groundPass struct {
 	Looked  int
 	Pending int
+	// Measured counts cuts whose sound this pass measured. It is persisted like a look, but it is
+	// not progress toward a verdict: only looks bound the deferral.
+	Measured int
 }
 
 type splitDiscards struct {
@@ -626,7 +672,7 @@ func (s *SplitStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, er
 	pass := s.groundFromSource(ctx, c, p.Source, p.Segments)
 
 	// Persist what this pass learned, so the next one resumes instead of starting over.
-	if pass.Looked > 0 {
+	if pass.Looked > 0 || pass.Measured > 0 {
 		merged, rerr := s.splitter.Reground(ctx, p.ID, p.Segments)
 		switch {
 		case errors.Is(rerr, ErrProposalGone):
@@ -648,14 +694,21 @@ func (s *SplitStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, er
 		return StageResult{Verdict: pipelinestate.VerdictDefer, Note: fmt.Sprintf(
 			"looked at %d of %d cuts so far", len(p.Segments)-pass.Pending, len(p.Segments))}, nil
 	}
+	// A pass that looked at nothing while cuts wait, on an install that HAS a vision model, met a
+	// failing model or a missing derivative: the reel waits for it rather than dropping every cut
+	// it could not judge. Without a vision model nothing is waited for, and every unjudged cut is
+	// dropped below: no AI, no compilations (#3838 decision 11).
+	if pass.Pending > 0 && s.visionWired() {
+		return StageResult{Verdict: pipelinestate.VerdictDefer, Note: fmt.Sprintf(
+			"waiting for the vision model to look at %s", pluralizeCuts(pass.Pending))}, nil
+	}
 
-	// ⚠ Auto-confirm is decided HERE, not inside `Propose`. The manual path runs the same Propose
-	// from a button an operator just pressed — a human is already present and about to review, so
-	// confirming under them would take the decision they came to make.
+	// ⚠ The cut is decided HERE, not inside `Propose`. The manual path runs the same Propose from a
+	// button an operator just pressed — a human is already present, so cutting under them would take
+	// the decision they came to make.
 	//
-	// ⚠ **PER SEGMENT (V54).** One doubtful cut in 52 must not send all 52 back, or the operator's
-	// work never shrinks.
-	legacy, part := s.splitPartitions(*p, rt.Materialization)
+	// ⚠ **PER SEGMENT (V54).** One doubtful cut in 52 drops that cut, never the other 51.
+	legacy, part := s.splitPartitions(*p)
 	if rt.Shadow != nil {
 		if err := rt.Shadow.ObserveStructureSplit(ctx, *p, legacy); err != nil {
 			return StageResult{}, err
@@ -679,72 +732,63 @@ func (s *SplitStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, er
 		}
 		return StageResult{Verdict: pipelinestate.VerdictReview, Note: note}, nil
 	}
+	// The dropped cuts, in aggregate: "3 of 7 cuts: the cut is not one whole spot". Recorded on the
+	// ladder so what a reel lost is readable without a review screen (#3838 decision 10).
+	var lost []string
+	if held := holdNote(part); held != "" {
+		lost = append(lost, held)
+	}
+	if d := discardNote(discarded); d != "" {
+		lost = append(lost, d)
+	}
+	dropped := strings.Join(lost, "; ")
 	if len(part.Confirm) == 0 {
-		// Nothing cleared the gate. The reason is RECORDED on the ladder, not just logged: "it
-		// didn't auto-confirm" is unactionable for an operator deciding whether to lower a
-		// threshold.
-		//
-		// ⚠ **With the COUNT, because the bare reason was actively misleading.** The note used to
-		// be one segment's reason presented as the reel's, and on a real reel that was the reason
-		// for 1 cut out of 37 — sending the operator to a threshold that was never consulted.
-		note := holdNote(part)
-		if d := discardNote(discarded); d != "" {
-			note += "; " + d
-		}
-		// Persist the per-segment reasons too. The ladder note explains the reel in aggregate, but
-		// the review screen has to tell the operator which cut needs classification, a grounded
-		// era, or a closer look at its boundary. Partial confirmation persists these through
-		// ConfirmSome; this all-held path writes them here.
-		if err := s.persistHeldReasons(ctx, p.ID, part.Hold); err != nil {
-			if errors.Is(err, ErrProposalGone) {
-				return StageResult{Verdict: pipelinestate.VerdictContinue, Note: "already resolved"}, nil
-			}
+		// Nothing is one clean spot: the reel is settled with nothing cut, never held for a person.
+		// It stays a non-airable compilation in the catalog, as a reel whose cuts were all
+		// discarded deterministically does.
+		p.Segments = nil
+		if err := s.splitter.saveProposal(ctx, *p); err != nil {
 			return StageResult{}, err
 		}
-		return StageResult{Verdict: pipelinestate.VerdictReview, Note: note}, nil
+		if err := s.splitter.resolveEmpty(ctx, p.ID); err != nil {
+			return StageResult{}, err
+		}
+		return StageResult{Verdict: pipelinestate.VerdictContinue, Note: "dropped " + dropped}, nil
 	}
 
-	// ⚠ `ConfirmSome`, not `Confirm`: the held segments must SURVIVE in the proposal. Calling the
-	// manual path here would delete the reel's remaining cuts along with the confirmed ones — the
-	// five a human still needs to see would simply vanish.
-	spawned, err := s.splitter.ConfirmSome(ctx, p.ID, part.Confirm, part.Hold)
+	// The cuts that are one clean spot are cut; nothing is left behind for a person (no hold).
+	spawned, err := s.splitter.ConfirmSome(ctx, p.ID, part.Confirm, nil)
 	if err != nil {
-		// The proposal survives, so the operator can still review it by hand — a failed
-		// auto-confirm degrades to the manual path rather than losing the detection work. Returned
-		// as an error so the runner retries with backoff.
+		// Returned as an error so the runner retries with backoff; the proposal is intact.
 		//
 		// ⚠ Exhausting the retries does NOT leave the pipeline row in review: `split` is not in
 		// `fatalStages`, so `onFailure` resolves and the row STEPS ONWARD, through rungs the
-		// composite guard skips, landing at `complete`. The reel is still reviewable — its proposal
-		// is intact and Incoming lists it — but the pipeline row says finished, not waiting.
+		// composite guard skips, landing at `complete`.
 		return StageResult{}, err
 	}
 	pipelinestate.ReportProgress(ctx, pipelinestate.StageSplit, 100)
 
 	// ⚠ The segments are SPAWNED, so each one is enrolled at `probe` and runs the whole ladder for
-	// itself — transcoded, heard, transcribed, tagged and scored like any other arrival. Before
-	// this, a freshly cut segment had to wait for whichever of six sweeps happened to reach it.
+	// itself — transcoded, heard, transcribed, tagged and scored like any other arrival.
 	note := fmt.Sprintf("cut into %d adverts", len(spawned))
 	if len(spawned) == 1 {
 		note = "cut into one advert"
 	}
-	if d := discardNote(discarded); d != "" {
-		note += "; " + d
-	}
-
-	// ⚠ **A PARTIAL confirm keeps the reel in review, with only the doubtful cuts left.** The
-	// proposal has already been shrunk to `part.Hold` by `Confirm`; the row must follow it there,
-	// or a reel with five unresolved cuts would report itself finished and the operator would
-	// never be told the five exist.
-	if len(part.Hold) > 0 {
-		return StageResult{
-			Verdict: pipelinestate.VerdictReview,
-			Spawned: spawned,
-			Note: fmt.Sprintf("%s; %s to review (%s)", note,
-				pluralizeCuts(len(part.Hold)), part.Verdict()),
-		}, nil
+	if dropped != "" {
+		note += "; dropped " + dropped
 	}
 	return StageResult{Verdict: pipelinestate.VerdictContinue, Spawned: spawned, Note: note}, nil
+}
+
+// visionWired reports whether this install can look at a cut at all. Without it no cut can be
+// judged one whole spot, so no compilation is cut (#3838 decision 11).
+func (s *SplitStage) visionWired() bool {
+	if s.vision == nil || s.vision.Provider == nil || s.vision.Tools == nil {
+		return false
+	}
+	// The budget is a per-pass setting (filler.pipeline.max_split_vision), not a daily allowance:
+	// zero is the operator switching split looks off, never a spent quota.
+	return s.vision.Budget == nil || s.vision.Budget() > 0
 }
 
 func (s *SplitStage) persistHeldReasons(ctx context.Context, proposalID string, held []split.Segment) error {
@@ -752,10 +796,11 @@ func (s *SplitStage) persistHeldReasons(ctx context.Context, proposalID string, 
 	return err
 }
 
-func (s *SplitStage) splitPartitions(proposal SplitProposal, materialization *StructureMaterializationPolicy) (SplitPartition, SplitPartition) {
-	compatibility := AutoConfirmable(proposal, s.autoConfirm, s.minClipFloor())
-	application := CertifiedStructureMaterializable(proposal, s.autoConfirm, materialization, s.minClipFloor())
-	return compatibility, application
+// splitPartitions returns the legacy partition, which only the shadow records, and the partition
+// that decides: the unattended cut (#4409).
+func (s *SplitStage) splitPartitions(proposal SplitProposal) (SplitPartition, SplitPartition) {
+	return AutoConfirmable(proposal, s.autoConfirm, s.minClipFloor()),
+		AutoCuttable(proposal, s.autoConfirm, s.minClipFloor())
 }
 
 // minClipFloor resolves the clip-duration floor, defaulting to zero (no floor check).
@@ -792,11 +837,7 @@ func (s *SplitStage) reviewHashes(ctx context.Context, uncheckedOnly bool) (map[
 		}
 		return out, nil
 	}
-	canGround := s.autoConfirm != nil && s.autoConfirm.Enabled != nil && s.autoConfirm.Enabled() &&
-		s.vision != nil && s.vision.Provider != nil && s.vision.Tools != nil
-	if canGround && s.vision.Budget != nil && s.vision.Budget() <= 0 {
-		canGround = false
-	}
+	autoOn := s.autoConfirm != nil && s.autoConfirm.Enabled != nil && s.autoConfirm.Enabled()
 	rt := s.currentStructureRuntime()
 	out := make(map[string]struct{})
 	for _, p := range proposals {
@@ -836,13 +877,11 @@ func (s *SplitStage) reviewHashes(ctx context.Context, uncheckedOnly bool) (map[
 			out[p.ClipHash] = struct{}{}
 			continue
 		}
-		if canGround {
-			for _, seg := range p.Segments {
-				if !seg.Looked {
-					out[p.ClipHash] = struct{}{}
-					break
-				}
-			}
+		// With splitting on, the rung decides every reel that has cuts: it cuts, drops or waits for
+		// the vision model, and never holds one for a person (#4409). So a reel left in review by
+		// the old rule, or one with a cut still to look at, goes back to the rung.
+		if autoOn && len(p.Segments) > 0 {
+			out[p.ClipHash] = struct{}{}
 		}
 	}
 	return out, nil
