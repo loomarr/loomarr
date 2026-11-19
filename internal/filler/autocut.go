@@ -22,6 +22,10 @@ const (
 	// could not tell. Black and silence cannot see a hard cut between ads, nor tell a dip inside an
 	// ad from a gap between two (the split corpus), so this look is what keeps both off the air.
 	RejectNotOneSpot AutoSplitReject = "the cut is not one whole spot"
+	// RejectSoundNotClean is a cut whose sound does not say one whole spot: it does not open and
+	// close on quiet, goes quiet inside, has no sound, or was not measured. Measured, the vision
+	// look alone called 16 of 40 cuts that were not one spot `one`; this is the check that holds.
+	RejectSoundNotClean AutoSplitReject = "the cut's sound is not one whole spot"
 )
 
 // AutoCuttable partitions a proposal into the cuts made unattended (Confirm) and the cuts dropped
@@ -74,6 +78,8 @@ func cutVerdict(s split.Segment, pol *AutoSplitPolicy, minClipDuration, maxDur t
 		// Both edges corroborated at the default 85: a chapter, the reel's own edge, or black and
 		// silence that agree.
 		return RejectBoundaryUncertain
+	case !s.Sound.Clean():
+		return RejectSoundNotClean
 	case !split.CertifiedFillerRole(s.LookedRole):
 		return RejectNotFiller
 	case s.Whole != split.WholeOne:

@@ -413,6 +413,9 @@ func mergeGrounding(onto, from []split.Segment) []split.Segment {
 		if g.LookedRole != "" {
 			out[i].LookedRole = g.LookedRole
 		}
+		if g.Sound != nil {
+			out[i].Sound = g.Sound
+		}
 		if g.Category != "" {
 			out[i].Category = g.Category
 		}

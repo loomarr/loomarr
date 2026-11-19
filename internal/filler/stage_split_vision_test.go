@@ -757,3 +757,65 @@ func TestSegmentVisionRecordsTheWholeCutJudgement(t *testing.T) {
 		t.Errorf("garbled answer recorded as %q, want unsure", again[0].Whole)
 	}
 }
+
+// scriptedMeter answers each span with a sound bed that is quiet at the span's own edges, except
+// the spans listed as running through (no quiet at the end), and fails the spans listed as broken.
+type scriptedMeter struct {
+	through, broken map[int64]bool // keyed by the cut's start
+	calls           int
+}
+
+func (m *scriptedMeter) LoudnessWindows(_ context.Context, _ string, from, to, win int64) ([]float64, error) {
+	m.calls++
+	start := from + split.SoundPadMs
+	if from == 0 {
+		start = 0
+	}
+	if m.broken[start] {
+		return nil, errors.New("no audio stream")
+	}
+	levels := make([]float64, (to-from)/win)
+	for i := range levels {
+		levels[i] = -20
+	}
+	levels[(start-from)/win] = -60
+	if !m.through[start] {
+		levels[(to-split.SoundPadMs-from)/win] = -60
+	}
+	return levels, nil
+}
+
+// The split look measures each cut's sound (#4409) without spending the vision budget: a cut
+// already looked at gets it too, a cut whose sound cannot be read stays unmeasured (and so is never
+// made), and a measured cut is not measured again.
+func TestSegmentVisionMeasuresEachCutsSound(t *testing.T) {
+	meter := &scriptedMeter{through: map[int64]bool{30_000: true}}
+	model := &fixedVision{answer: `{"role":"commercial","whole":"one"}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: &spanTools{frames: [][]byte{[]byte("f")}}, Loudness: meter, Provider: model, Taxa: seedTaxa{},
+		Budget: func() int { return 0 }, // no looks this pass: the sound is measured anyway
+	})
+	segs := twoSegments()
+	pass := s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), segs)
+	if pass.Measured != 2 || pass.Looked != 0 {
+		t.Fatalf("pass = %+v, want both cuts measured and none looked at", pass)
+	}
+	if !segs[0].Sound.Clean() {
+		t.Errorf("a cut quiet at both edges reads %+v", segs[0].Sound)
+	}
+	if segs[1].Sound.Clean() {
+		t.Errorf("a cut whose sound runs through its end reads clean: %+v", segs[1].Sound)
+	}
+
+	again := s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), segs)
+	if again.Measured != 0 || meter.calls != 2 {
+		t.Errorf("a measured cut was measured again: pass %+v, %d calls", again, meter.calls)
+	}
+
+	broken := twoSegments()
+	meter.broken = map[int64]bool{0: true}
+	s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), broken)
+	if broken[0].Sound != nil || broken[1].Sound == nil {
+		t.Errorf("unreadable sound = %+v, readable = %+v; want only the readable one measured", broken[0].Sound, broken[1].Sound)
+	}
+}

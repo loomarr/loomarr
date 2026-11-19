@@ -95,6 +95,9 @@ type Segment struct {
 	// LookedRole is the role the same look gave the cut (commercial, promo, ...). Only a filler role
 	// may be cut unattended.
 	LookedRole Role `json:"lookedRole,omitempty"`
+	// Sound is the cut's loudness at its edges and inside (#4409), measured from the reel. nil is
+	// not measured, and an unmeasured cut is never made unattended.
+	Sound *CutSound `json:"sound,omitempty"`
 	// RoleEvidence is the exact, independently attributable frame judgement for THIS span. It is
 	// intentionally not flattened into Category or copied from the parent: the source-structure
 	// reducer consumes it as a segment_role observation and decides whether the span is keepable.

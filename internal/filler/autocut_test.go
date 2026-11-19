@@ -7,12 +7,18 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
-// One clean spot, judged so by the look, cut at corroborated edges: the only shape cut unattended.
+// One clean spot, judged so by the look and by its sound, cut at corroborated edges: the only
+// shape cut unattended.
 func cleanCut() split.Segment {
 	return split.Segment{
 		StartMs: 0, EndMs: 30_000, Looked: true, BoundaryConfidence: 90,
-		Whole: split.WholeOne, LookedRole: split.RoleCommercial,
+		Whole: split.WholeOne, LookedRole: split.RoleCommercial, Sound: cleanSound(),
 	}
+}
+
+// cleanSound is a cut that opens and closes on quiet with sound throughout.
+func cleanSound() *split.CutSound {
+	return &split.CutSound{MedianDb: -22, StartDb: -40, EndDb: -40, InsideDb: -6}
 }
 
 func TestAutoCuttable_EachRefusalDropsOnlyItsCut(t *testing.T) {
@@ -33,6 +39,12 @@ func TestAutoCuttable_EachRefusalDropsOnlyItsCut(t *testing.T) {
 		{"too long", func(s *split.Segment) { s.EndMs = 121_000 }, RejectTooLong},
 		{"too short", func(s *split.Segment) { s.EndMs = 9_000 }, RejectTooShort},
 		{"one detector", func(s *split.Segment) { s.BoundaryConfidence = 65 }, RejectBoundaryUncertain},
+		{"sound unmeasured", func(s *split.Segment) { s.Sound = nil }, RejectSoundNotClean},
+		{"sound runs through an edge", func(s *split.Segment) { s.Sound.EndDb = -3 }, RejectSoundNotClean},
+		{"quiet inside", func(s *split.Segment) { s.Sound.InsideDb = -30 }, RejectSoundNotClean},
+		{"no sound", func(s *split.Segment) { s.Sound.MedianDb = split.SoundSilentDb }, RejectSoundNotClean},
+		// The look still decides: clean sound never makes a cut the look did not see as one spot.
+		{"clean sound, look saw part", func(s *split.Segment) { s.Whole = split.WholePart }, RejectNotOneSpot},
 		{"programme", func(s *split.Segment) { s.LookedRole = split.RoleProgrammeFragment }, RejectNotFiller},
 		{"never looked", func(s *split.Segment) { s.LookedRole, s.Whole = "", "" }, RejectNotFiller},
 		{"part", func(s *split.Segment) { s.Whole = split.WholePart }, RejectNotOneSpot},

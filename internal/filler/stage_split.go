@@ -166,7 +166,10 @@ type SegmentVision struct {
 	// a role. nil leaves the span unresolved; it never weakens the publication gate.
 	RoleEscalator SegmentRoleEscalator
 	Taxa          TaxaLister
-	ClipDir       string
+	// Loudness measures a cut's sound (#4409). nil measures nothing, and an unmeasured cut is
+	// never made unattended.
+	Loudness LoudnessMeter
+	ClipDir  string
 	// Budget caps how many segments ONE pass will look at (`filler.pipeline.max_split_vision`).
 	//
 	// ⚠ It is a per-pass cost bound, and §10 V51g is why it is not optional: a rung's cost must
@@ -176,6 +179,35 @@ type SegmentVision struct {
 	// grounding persists and resumes and a large reel is judged over several passes; a segment
 	// still ungrounded when the gate runs is held back on its own rather than sinking the reel.
 	Budget func() int
+}
+
+// LoudnessMeter is the RMS level, in dB, of each winMs window of a file's audio over a span.
+type LoudnessMeter interface {
+	LoudnessWindows(ctx context.Context, file string, startMs, endMs, winMs int64) ([]float64, error)
+}
+
+// measureSound sets the sound of each cut that has none. It is cheap (one audio decode of the cut
+// and a little either side) and not part of the vision budget. A cut whose sound cannot be read
+// stays unmeasured, which never cuts; the next pass tries again.
+func (s *SplitStage) measureSound(ctx context.Context, file string, segs []split.Segment) (measured, failed int) {
+	if s.vision == nil || s.vision.Loudness == nil {
+		return 0, 0
+	}
+	for i := range segs {
+		if segs[i].Sound != nil || segs[i].EndMs <= segs[i].StartMs || ctx.Err() != nil {
+			continue
+		}
+		origin := max(0, segs[i].StartMs-split.SoundPadMs)
+		levels, err := s.vision.Loudness.LoudnessWindows(ctx, file, origin, segs[i].EndMs+split.SoundPadMs, split.SoundWindowMs)
+		if err != nil {
+			failed++
+			continue
+		}
+		sound := split.MeasureCutSound(levels, origin, segs[i].StartMs, segs[i].EndMs)
+		segs[i].Sound = &sound
+		measured++
+	}
+	return measured, failed
 }
 
 // TaxaLister reads the taxonomy the grounder resolves categories against — the SAME read the
@@ -216,6 +248,11 @@ func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string
 		s.groundSkipped(ctx, c, "vision is not wired on this install")
 		return groundPass{Pending: pending()}
 	}
+	measured, failed := s.measureSound(ctx, file, segs)
+	if failed > 0 && s.log != nil {
+		s.log.Warn("filler split: some cuts' sound could not be measured; they are not cut until it is",
+			"clip", c.Hash, "cuts", failed)
+	}
 	// ⚠ The budget bounds ATTEMPTS THIS PASS, not an index into the segment list. It was
 	// `if i >= budget { return }`, which is absolute — with resume that stops at the same segment
 	// on every pass forever, so a 142-segment reel would ground its first 60 and then loop.
@@ -227,7 +264,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string
 	}
 	if budget == 0 {
 		s.groundSkipped(ctx, c, "the per-pass vision budget is zero (filler.pipeline.max_split_vision)")
-		return groundPass{Pending: pending()}
+		return groundPass{Pending: pending(), Measured: measured}
 	}
 	var forest *taxonomy.Forest
 	if s.vision.Taxa != nil {
@@ -236,7 +273,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string
 			// No vocabulary to ground against ⇒ ground nothing, and the gate refuses. Reported as
 			// zero looked, which is what stops the caller deferring on a pass that achieved nothing.
 			s.groundSkipped(ctx, c, "the taxonomy could not be read", "err", err)
-			return groundPass{Pending: pending()}
+			return groundPass{Pending: pending(), Measured: measured}
 		}
 		forest = taxonomy.New(taxa)
 	}
@@ -360,7 +397,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string
 		videoAttempts: videoAttempts, videoRoles: videoRoles, videoErrors: videoErrors,
 		providerErr: providerErr,
 	})
-	return groundPass{Looked: looked, Pending: pending()}
+	return groundPass{Looked: looked, Pending: pending(), Measured: measured}
 }
 
 // groundTally is one pass's outcome, counted so the pass can be reported in a single line.
@@ -463,6 +500,9 @@ func countPending(segs []split.Segment) int {
 type groundPass struct {
 	Looked  int
 	Pending int
+	// Measured counts cuts whose sound this pass measured. It is persisted like a look, but it is
+	// not progress toward a verdict: only looks bound the deferral.
+	Measured int
 }
 
 type splitDiscards struct {
@@ -632,7 +672,7 @@ func (s *SplitStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, er
 	pass := s.groundFromSource(ctx, c, p.Source, p.Segments)
 
 	// Persist what this pass learned, so the next one resumes instead of starting over.
-	if pass.Looked > 0 {
+	if pass.Looked > 0 || pass.Measured > 0 {
 		merged, rerr := s.splitter.Reground(ctx, p.ID, p.Segments)
 		switch {
 		case errors.Is(rerr, ErrProposalGone):

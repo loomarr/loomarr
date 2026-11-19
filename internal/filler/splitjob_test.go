@@ -1789,6 +1789,8 @@ func dropsCutJudged(t *testing.T, whole split.WholeCut) {
 		Segments: []split.Segment{{
 			Index: 0, StartMs: 0, EndMs: 30_000, Name: "a cut", Looked: true,
 			Whole: whole, LookedRole: split.RoleCommercial,
+			// Clean sound, so the look's answer is the one that drops it.
+			Sound:              &split.CutSound{MedianDb: -22, StartDb: -40, EndDb: -40, InsideDb: -6},
 			BoundaryConfidence: 90, StartEvidence: "reel edge", EndEvidence: "black + silence",
 		}},
 	}

@@ -222,14 +222,27 @@ dropped. Switched off, a proposal waits for a person as before.
 - **Refusals, in order** (`AutoCuttable`): `unsplittable`, a duplicate, an unchecked duplicate
   comparison, longer than one advert or under the clip floor, a boundary under
   `filler.autosplit.min_confidence` (85: both edges a chapter, the reel's edge, or black and silence
-  that agree), a role from the look that is not break material, and a look that did not see **one
-  whole spot**. Era, audience and category are not refusals here: the cut-out clip meets them on the
-  same rungs a single downloaded ad does.
+  that agree), **sound** that does not say one whole spot, a role from the look that is not break
+  material, and a look that did not see **one whole spot**. Era, audience and category are not
+  refusals here: the cut-out clip meets them on the same rungs a single downloaded ad does.
+- **The cut's sound.** Ads are mastered to open and close on near-silence. Each cut's loudness is
+  measured in 200 ms windows, with 0.4 s of the reel either side, relative to its own median. It
+  passes only when both edges dip at least 12 dB, nothing more than 1.5 s inside either edge dips 20
+  dB, and there is sound at all. A cut inside a spot meets a running sound bed at one edge; two
+  spots joined go quiet where they meet. Measuring costs one audio decode, is not part of the vision
+  budget, and is kept on the proposal. A cut whose sound was not measured is never made.
 - **The look at the whole cut.** The split-time vision call sees eight frames in order from the
   cut's start to its end and answers `one`, `part`, `several` or `unsure`. Only `one` cuts; an
-  answer it cannot read is `unsure`. This is what refuses a hard cut between two ads and a dip to
-  black inside one, which black and silence cannot see (the split corpus). A cut looked at before
-  the look asked this has no answer and is looked at again.
+  answer it cannot read is `unsure`. A cut looked at before the look asked this has no answer and
+  is looked at again.
+- **Measured, not assumed** (`TestSplitWholeCutEval`, tag `eval`). One install's single ads were
+  set inside reels between other ads as 20 whole spots, 20 halves and 20 joined pairs. The look
+  alone called 13 of the 40 cuts that were not one spot `one`; the sound passed none of them and 12
+  of the 20 whole spots. With every refusal, 0 of the 40 would be cut and 4 of the 20 whole spots
+  would. The gate is on what would be cut: at most 5% of cuts that are not one spot. Forty cases
+  bound that rate only to about 7.5%, so the eval is re-run when the look's prompt or model changes.
+  Most whole spots the sound passes are refused because the look gives no filler role, so a reel
+  yields few clips for now: that costs inventory, never a bad cut.
 - **No vision, no compilations.** Without a vision model every cut is dropped. With one that is
   failing, the reel waits for it rather than dropping what it could not judge. With splitting on,
   the pipeline sends every reel waiting in review back to the rung, which decides it.

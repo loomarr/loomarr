@@ -443,6 +443,7 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 			// keeps "is Loomarr sending my frames to a model" answerable in one place.
 			WithSegmentVision(&filler.SegmentVision{
 				Tools:    fillerTools,
+				Loudness: fillerTools,
 				Provider: visionProvider,
 				Taxa:     storeadapter.NewVision(st),
 				ClipDir:  clipDir,
