@@ -449,7 +449,8 @@ Changes to `api`, `core`, `fixtures`, `player`, `design-system`, or `ui` select 
 native platforms because those packages are transitive inputs to both. The shared player package
 also selects Web, Tuner, Image, and Android TV because its browser and native adapters share one
 transport contract. Browser-only client-proof and Turborepo contract changes select the shared
-JavaScript gate without spending a native runner.
+JavaScript gate without spending a native runner. A `web/turbo.json` change selects Web as well,
+because the Frontend job's typecheck and package tests run through Turbo.
 The committed OpenAPI document is a schema input rather than a native binary input. An OpenAPI-only
 change regenerates the client, then the shared-client gate typechecks, tests, and bundles the browser,
 iOS, Android, and TV JavaScript consumers. A mobile or TV app change, a shared native/runtime package,
@@ -461,8 +462,15 @@ Apple mobile, Apple TV, and Expo Android mobile are active. The mobile Android j
 seven days. Expo Android TV remains a classifier decision until its independently required job and
 current-main evidence exist.
 
-The shared-client lanes keep Turbo's task cache in the Turbo Remote Cache, not the Actions cache.
-Artifacts are signed (`remoteCache.signature` in `web/turbo.json`). `TURBO_CACHE` sets `merge_group`
+The shared-client lanes and the Frontend job keep Turbo's task cache in the Turbo Remote Cache, not
+the Actions cache. Frontend entry 8 runs `make fe-typecheck fe-packages`: Turbo's `typecheck` for
+`@loomarr/web` and every package it uses, then `test` for those packages. They are the same tasks
+with the same hashes as in `make clients-tests`, so a package tested in one workflow is a cache hit in
+the other. Both run in one entry because `test` depends on each package's `typecheck`, and two
+entries that miss would both typecheck the packages. Never pass `--only` to share the work out: it
+drops the dependency hashes, so a package change no longer invalidates `@loomarr/web`'s typecheck.
+The only environment variable a shared task declares is `JAVA_HOME` (on `test`), which both
+workflows take unchanged from the `ubuntu-latest` image. Artifacts are signed (`remoteCache.signature` in `web/turbo.json`). `TURBO_CACHE` sets `merge_group`
 runs and runs on `main` to write, and every other run, pull requests included, to read
 (`local:rw,remote:r`). The setting lives in the client, so it is not an access control: a same-repo
 pull request run holds the same token. The merge queue may write here, unlike the Actions cache

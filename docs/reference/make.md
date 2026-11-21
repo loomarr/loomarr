@@ -257,9 +257,10 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make fe-lint` |  | Biome lint + format check, import and boundary gates (web/; needs codegen first) |
 | `make knip` |  | unused files, exports and dependencies in web/ (config: web/knip.ts) |
 | `make fe-lint-fix` |  | Biome autofix — format + safe lint fixes (web/) |
-| `make fe` |  | biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery <br>*runs:* `fe-checks` `fe-packages` `fe-unit` |
-| `make fe-checks` | ✅ | everything in fe except the tests: biome, knip, typecheck, SPA, storybook <br>*runs:* `fe-codegen` |
-| `make fe-packages` | ✅ | unit tests of the packages the web app uses, after codegen <br>*runs:* `fe-codegen` |
+| `make fe` |  | biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery <br>*runs:* `fe-checks` `fe-typecheck` `fe-packages` `fe-unit` |
+| `make fe-checks` | ✅ | everything in fe except the typecheck and tests: biome, knip, SPA, storybook <br>*runs:* `fe-codegen` |
+| `make fe-typecheck` | ✅ | typecheck the web app and the packages it uses (Turbo), after codegen <br>*runs:* `fe-codegen` |
+| `make fe-packages` | ✅ | unit tests of the packages the web app uses (Turbo), after codegen <br>*runs:* `fe-codegen` |
 | `make fe-unit` | ✅ | web unit tests after codegen (FE_SHARD=n/m runs one shard) <br>*runs:* `fe-codegen` |
 | `make clients` |  | lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold <br>*runs:* `clients-checks` `clients-tests` `clients-bundles` |
 | `make clients-checks` | ✅ | everything in clients except the mobile and TV tests and bundles <br>*runs:* `brand-assets-verify` `knip` |
@@ -301,7 +302,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients-bundles` · `clients-checks` · `clients-tests` · `compose-verify` · `config-docs-verify` · `db-docs-verify` · `dev-docs-verify` · `diagrams-verify` · `e2e-update` · `e2e` · `eval-contract` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-packages` · `fe-tokens-verify` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `lint` · `observability-verify` · `openapi-verify` · `playout-bench` · `privacy-verify` · `release-verify` · `retired-verify` · `route-timing-e2e-host` · `rust-check` · `scan-scale` · `shellcheck` · `tags-verify` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet-tags` · `vet` · `vuln`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients-bundles` · `clients-checks` · `clients-tests` · `compose-verify` · `config-docs-verify` · `db-docs-verify` · `dev-docs-verify` · `diagrams-verify` · `e2e-update` · `e2e` · `eval-contract` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-packages` · `fe-tokens-verify` · `fe-typecheck` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `lint` · `observability-verify` · `openapi-verify` · `playout-bench` · `privacy-verify` · `release-verify` · `retired-verify` · `route-timing-e2e-host` · `rust-check` · `scan-scale` · `shellcheck` · `tags-verify` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet-tags` · `vet` · `vuln`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

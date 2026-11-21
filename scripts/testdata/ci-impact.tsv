@@ -57,7 +57,7 @@ demo-titles-visual-spec	web/apps/web/tests/visual/identity-contract.spec.ts	cont
 demo-titles-tv-emulator	web/scripts/tv-emulator-fixture-server.mjs	contracts,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 shared-player-browser	web/packages/player/src/browser/browser.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,tuner,image,android
 shared-player-native	web/packages/player/src/native/native.tsx	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,tuner,image,android
-client-tooling	web/turbo.json	clients
+client-tooling	web/turbo.json	web,clients
 client-browser-proof	web/apps/web/src/client-platform-proof/client-platform-proof.tsx	clients
 apple-client-script	web/scripts/test-apple-client.sh	contracts,apple_mobile,apple_tv
 apple-client-xcconfig	web/scripts/apple-simulator.xcconfig	contracts,apple_mobile,apple_tv

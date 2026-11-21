@@ -62,7 +62,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 
 		{workflow: "ci-clients.yml", job: "run"}:             {name: "Shared clients — ${{ matrix.lane }}", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{lanes: []string{"checks", "mobile-tests", "tv-tests", "mobile", "tv"}}},
 		{workflow: "ci-docs.yml", job: "run"}:                {name: "Docs — links + structure + prose", runsOn: "ubuntu-latest"},
-		{workflow: "ci-frontend.yml", job: "run"}:            {name: "Frontend — ${{ matrix.shard == 7 && 'biome + typecheck + build' || matrix.shard == 8 && 'package tests' || format('web unit ({0}/6)', matrix.shard) }}", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2, 3, 4, 5, 6, 7, 8}}},
+		{workflow: "ci-frontend.yml", job: "run"}:            {name: "Frontend — ${{ matrix.shard == 7 && 'biome + build' || matrix.shard == 8 && 'typecheck + package tests' || format('web unit ({0}/6)', matrix.shard) }}", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2, 3, 4, 5, 6, 7, 8}}},
 		{workflow: "ci-go-contracts.yml", job: "run"}:        {name: "Go — repository contracts (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2}}},
 		{workflow: "ci-go-cache-warm.yml", job: "run"}:       {name: "Warm Go build cache (${{ matrix.lane }})", runsOn: "ubuntu-latest", timeoutMinutes: 30, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/3", "certification-2/3", "certification-3/3", "postgres"}}},
 		{workflow: "ci-go-cache-warm.yml", job: "contracts"}: {name: "Warm Go contracts cache", runsOn: "ubuntu-latest", timeoutMinutes: 30},
