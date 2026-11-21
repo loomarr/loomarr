@@ -36,7 +36,8 @@ type Store struct {
 	project Projector
 }
 
-// New builds the inventory cluster on h. project receives the items each write changed.
+// New builds the inventory cluster on h. project receives the items each write changed and must
+// not be nil.
 func New(h storedb.Handle, project Projector) *Store { return &Store{h: h, project: project} }
 
 func (s *Store) ApplyInventorySnapshot(ctx context.Context, snapshot inventory.Snapshot) (inventory.ItemID, error) {
@@ -121,7 +122,6 @@ func (s *Store) ApplyInventorySnapshot(ctx context.Context, snapshot inventory.S
 	if _, err := tx.ExecContext(ctx, s.h.Rebind(`
 		INSERT INTO inventory_items (id, kind, created_at, updated_at) VALUES (?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, updated_at=excluded.updated_at`),
-
 		string(itemID), string(clean.Kind), storedb.Epoch(at), storedb.Epoch(at)); err != nil {
 		return "", fmt.Errorf("upsert inventory item: %w", err)
 	}
@@ -129,7 +129,6 @@ func (s *Store) ApplyInventorySnapshot(ctx context.Context, snapshot inventory.S
 		// The origin moved: its sources go with it.
 		if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE inventory_sources SET item_id = ? WHERE id IN
 			(SELECT source_id FROM inventory_source_origins WHERE authority_id = ? AND external_item_id = ?)`),
-
 			string(itemID), string(clean.Origin.Authority), clean.Origin.ExternalItemID); err != nil {
 			return "", fmt.Errorf("move inventory sources: %w", err)
 		}
@@ -145,7 +144,6 @@ func (s *Store) ApplyInventorySnapshot(ctx context.Context, snapshot inventory.S
 		ON CONFLICT(authority_id, external_item_id) DO UPDATE SET
 		  item_id=excluded.item_id, observation_json=excluded.observation_json,
 		  observed_at=excluded.observed_at, last_seen_at=excluded.last_seen_at, missing_at=NULL`),
-
 		string(clean.Origin.Authority), clean.Origin.ExternalItemID, string(itemID), string(observationJSON),
 		storedb.Epoch(at), storedb.Epoch(at)); err != nil {
 		return "", fmt.Errorf("upsert inventory item origin: %w", err)
@@ -160,7 +158,6 @@ func (s *Store) ApplyInventorySnapshot(ctx context.Context, snapshot inventory.S
 			INSERT INTO inventory_external_ids
 			  (item_id, authority_id, external_item_id, namespace, external_id)
 			VALUES (?, ?, ?, ?, ?)`),
-
 			string(itemID), string(clean.Origin.Authority), clean.Origin.ExternalItemID,
 			externalID.Namespace, externalID.Value); err != nil {
 			return "", fmt.Errorf("insert inventory external id: %w", err)
@@ -182,7 +179,6 @@ func (s *Store) ApplyInventorySnapshot(ctx context.Context, snapshot inventory.S
 		if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM inventory_items WHERE id = ?
 			AND NOT EXISTS (SELECT 1 FROM inventory_item_origins WHERE item_id = ?)
 			AND NOT EXISTS (SELECT 1 FROM inventory_sources WHERE item_id = ?)`),
-
 			string(orphan), string(orphan), string(orphan)); err != nil {
 			return "", fmt.Errorf("delete followed inventory item: %w", err)
 		}
@@ -221,7 +217,6 @@ func (s *Store) applyInventorySource(
 	var sourceID inventory.SourceID
 	err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT source_id FROM inventory_source_origins
 		WHERE authority_id = ? AND external_item_id = ? AND external_source_id = ?`),
-
 		string(origin.Authority), origin.ExternalItemID, source.ExternalSourceID).Scan(&sourceID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("find inventory source origin: %w", err)
@@ -241,7 +236,6 @@ func (s *Store) applyInventorySource(
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET item_id=excluded.item_id, kind=excluded.kind,
 		  revision=excluded.revision, updated_at=excluded.updated_at`),
-
 		string(sourceID), string(itemID),
 		string(source.Kind), source.Revision, storedb.Epoch(source.Observation.ObservedAt), storedb.Epoch(source.Observation.ObservedAt)); err != nil {
 		return fmt.Errorf("upsert inventory source: %w", err)
@@ -271,7 +265,6 @@ func (s *Store) applyInventorySource(
 		  source_id=excluded.source_id, locator_json=excluded.locator_json,
 		  observation_json=excluded.observation_json, observed_at=excluded.observed_at,
 		  last_seen_at=excluded.last_seen_at, missing_at=NULL`),
-
 		string(origin.Authority), origin.ExternalItemID,
 		source.ExternalSourceID, string(sourceID), string(locatorJSON), string(observationJSON),
 		storedb.Epoch(source.Observation.ObservedAt), storedb.Epoch(source.Observation.ObservedAt)); err != nil {
@@ -312,7 +305,6 @@ func (s *Store) keepSameEpisode(ctx context.Context, tx storedb.Tx, snapshot inv
 	for item := range grounded {
 		rows, err := tx.QueryContext(ctx, s.h.Rebind(`SELECT observation_json FROM inventory_item_origins
 			WHERE item_id = ? AND NOT (authority_id = ? AND external_item_id = ?)`),
-
 			string(item), string(snapshot.Origin.Authority), snapshot.Origin.ExternalItemID)
 		if err != nil {
 			return fmt.Errorf("read grounded inventory episodes: %w", err)
@@ -411,7 +403,6 @@ func (s *Store) inventoryCatalogsDisagree(ctx context.Context, tx storedb.Tx, sn
 	}
 	rows, err := tx.QueryContext(ctx, s.h.Rebind(`SELECT namespace, external_id FROM inventory_external_ids
 		WHERE item_id = ? AND NOT (authority_id = ? AND external_item_id = ?)`),
-
 		string(item), string(snapshot.Origin.Authority), snapshot.Origin.ExternalItemID)
 	if err != nil {
 		return false, fmt.Errorf("read inventory item catalogs: %w", err)
@@ -466,7 +457,6 @@ func (s *Store) inventoryItemIDsByExternalIDs(
 			JOIN inventory_items i ON i.id = e.item_id
 			WHERE e.namespace = ? AND e.external_id = ? AND i.kind = ?
 			  AND NOT (e.authority_id = ? AND e.external_item_id = ?)`),
-
 			externalID.Namespace, externalID.Value, string(kind), string(origin.Authority), origin.ExternalItemID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("find grounded inventory identity: %w", err)
@@ -556,7 +546,6 @@ func (s *Store) readInventoryItem(ctx context.Context, tx storedb.Tx, itemID inv
 	originRows, err := tx.QueryContext(ctx, s.h.Rebind(`SELECT authority_id, external_item_id,
 		observation_json, last_seen_at, COALESCE(missing_at, 0)
 		FROM inventory_item_origins WHERE item_id = ? ORDER BY authority_id, external_item_id`),
-
 		string(itemID))
 	if err != nil {
 		return inventory.Item{}, false, fmt.Errorf("read inventory item origins: %w", err)
@@ -635,7 +624,6 @@ func (s *Store) readInventorySourceDetails(ctx context.Context, tx storedb.Tx, s
 	rows, err := tx.QueryContext(ctx, s.h.Rebind(`SELECT authority_id, external_item_id, external_source_id,
 		locator_json, observation_json, last_seen_at, COALESCE(missing_at, 0)
 		FROM inventory_source_origins WHERE source_id = ? ORDER BY authority_id, external_item_id, external_source_id`),
-
 		string(source.ID))
 	if err != nil {
 		return fmt.Errorf("read inventory source origins: %w", err)
@@ -715,7 +703,6 @@ func (s *Store) RecordInventoryMeasurement(ctx context.Context, measurement inve
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT(source_id) DO UPDATE SET source_revision=excluded.source_revision,
 		  observation_json=excluded.observation_json, observed_at=excluded.observed_at`),
-
 		string(clean.SourceID),
 		clean.Revision, string(observationJSON), storedb.Epoch(clean.Observation.ObservedAt)); err != nil {
 		return fmt.Errorf("upsert inventory measurement: %w", err)
@@ -792,7 +779,6 @@ func (s *Store) MarkInventoryUnseen(
 		WHERE authority_id = ? AND missing_at IS NULL AND external_item_id IN (
 		  SELECT external_item_id FROM inventory_item_origins
 		   WHERE authority_id = ? AND missing_at IS NOT NULL)`),
-
 		storedb.Epoch(at), string(authority), string(authority)); err != nil {
 		return fmt.Errorf("mark inventory source origins missing: %w", err)
 	}
@@ -857,7 +843,6 @@ func (s *Store) RecordInventoryAnalysis(ctx context.Context, analysis inventory.
 		  true_peak_dbtp=excluded.true_peak_dbtp, breaks_json=excluded.breaks_json,
 		  active_picture_json=excluded.active_picture_json,
 		  analyzed_at=excluded.analyzed_at`),
-
 		string(clean.SourceID), clean.Revision,
 		inventory.AnalysisSchemaVersion, inventory.EncodeKeyframes(clean.Keyframes), len(clean.Keyframes),
 		clean.IntegratedLUFS, clean.TruePeakDBTP, string(breaks), active, storedb.Epoch(clean.AnalyzedAt)); err != nil {
@@ -887,7 +872,6 @@ func (s *Store) InventoryAnalysis(ctx context.Context, id inventory.SourceID) (i
 		  a.breaks_json, a.active_picture_json, a.analyzed_at, s.revision
 		FROM inventory_source_analysis a JOIN inventory_sources s ON s.id = a.source_id
 		WHERE a.source_id = ?`),
-
 		string(id)).Scan(&a.Revision, &schema, &blob, &lufs, &peak, &breaksJSON, &activeJSON, &analyzedAt, &currentRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return inventory.Analysis{}, false, nil
