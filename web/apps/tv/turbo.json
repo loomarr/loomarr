@@ -1,0 +1,13 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/build-shield-sideload.sh",
+        "$TURBO_ROOT$/../docker/compose.yaml"
+      ]
+    }
+  }
+}
