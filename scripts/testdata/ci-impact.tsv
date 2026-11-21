@@ -1,6 +1,7 @@
 # name	paths separated by semicolons	expected true gates in classifier order
 migration-rehearsal-script	scripts/migration-rehearsal.sh	contracts
 hardware-gate-script	scripts/check-hardware-gate.sh	contracts
+migration-order-check	scripts/check-migration-order.sh;scripts/check-migration-order-test.sh	policy
 leaf-go	internal/proposals/suggest/score.go	contracts,go,postgres,image
 releaseverify-production	internal/platform/releaseverify/ci_container_downloads.go	policy
 releaseverify-red-tests	internal/platform/releaseverify/ci_container_downloads_test.go	contracts,policy

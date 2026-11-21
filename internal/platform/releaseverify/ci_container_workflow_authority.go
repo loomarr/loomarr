@@ -290,7 +290,8 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make go-shard-verify SHARDS=2": exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}, condition: "matrix.shard == 1"}),
 			"make openapi-verify":           exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}, condition: "matrix.shard == 1"}),
 			"make retired-verify":           exactWorkflowStep(8, "Retired identifiers are gone from prose", workflowStepAuthority{targets: []string{"retired-verify"}, condition: "matrix.shard == 2"}),
-			"make observability-verify":     exactWorkflowStep(9, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, condition: "matrix.shard == 2", allowsAcquisition: true})}),
+			"make observability-verify":     exactWorkflowStep(9, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, condition: "matrix.shard == 2", allowsAcquisition: true}),
+			`./scripts/check-migration-order.sh pull_request "$GITHUB_EVENT_PATH"`: exactWorkflowStep(10, "Every added migration is numbered above main's newest", workflowStepAuthority{condition: "matrix.shard == 2 && github.event_name == 'pull_request'"})}),
 		"ci-go-cache-warm.yml": {
 			environment: standardWorkflowEnvironment(),
 			permissions: standardWorkflowPermissions(),
@@ -366,7 +367,8 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			},
 		},
 		"merge-gate.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make vet": exactWorkflowStep(4, "The merged tree compiles, tests included", workflowStepAuthority{
+			`./scripts/check-migration-order.sh merge_group "$GITHUB_EVENT_PATH"`: exactWorkflowStep(1, "Every added migration is numbered above main's newest", workflowStepAuthority{}),
+			"make vet": exactWorkflowStep(5, "The merged tree compiles, tests included", workflowStepAuthority{
 				targets:   []string{"vet"},
 				condition: "steps.go.outputs.changed == 'true'",
 			}),
