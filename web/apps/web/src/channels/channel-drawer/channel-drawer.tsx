@@ -1,7 +1,7 @@
 import { Stack, Text, typography } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import type { ChannelDrawerProps, DrawerChannel } from "./channel-drawer.type";
+import type { ChannelDrawerProps, DrawerBlock, DrawerChannel } from "./channel-drawer.type";
 
 // The search box's type: the compact role's size at a line height of 1.25/0.875 of it, which sets
 // the box's height (a text input is as tall as its line).
@@ -20,6 +20,10 @@ const OFF_AIR_LINE: Record<NonNullable<DrawerChannel["offAir"]>, string> = {
   building: "building — not on air yet",
   paused: "off air",
 };
+
+// A block's name, when the block is wide enough to show it.
+const shownBlockLabel = (block: DrawerBlock, total: number) =>
+  block.label && total > 0 && block.minutes / total > LABEL_SHARE ? block.label : undefined;
 
 const groupHeadingId = (header: string) => `channel-drawer-${header.toLowerCase().replaceAll(" ", "-")}`;
 
@@ -169,16 +173,21 @@ const DrawerRow = ({
 }) => {
   const total = channel.blocks.reduce((sum, block) => sum + block.minutes, 0);
   const line = channel.offAir ? OFF_AIR_LINE[channel.offAir] : channel.now;
+  const shownLabels = channel.blocks.flatMap((block) => shownBlockLabel(block, total) ?? []);
   return (
     <div className="relative mb-[7px]">
       <button
         type="button"
         onClick={() => onTune(channel.id)}
         aria-current={tuned ? "true" : undefined}
-        // The row's text runs together when read as one name ("07Westerns▸ …"); this says it in order,
-        // starting with the visible number and name.
+        // The row's text runs together when read as one name ("07Westerns▸ …"), so the name says it in
+        // order. It holds every word the row shows (WCAG 2.5.3, label in name): the number and name,
+        // the TUNED tag, the schedule strip's block names, what is on and the time left. Each piece of
+        // text below ends in a space, so a tool that joins the row's text nodes reads separate words.
         aria-label={[
           `${channelNumber(channel.number)} ${channel.name}`,
+          tuned ? "tuned" : undefined,
+          ...shownLabels,
           line,
           channel.minutesLeft === undefined ? undefined : `${channel.minutesLeft}m left`,
         ]
@@ -193,14 +202,14 @@ const DrawerRow = ({
       >
         <span className="flex items-center gap-[9px] pr-7">
           <Text as="span" className="w-[26px]" textRole="mono" tone="secondary">
-            {channelNumber(channel.number)}
+            {channelNumber(channel.number)}{" "}
           </Text>
           <Text as="span" className="min-w-0 flex-1 truncate" strong textRole="cardLabel" tone="primary">
-            {channel.name}
+            {channel.name}{" "}
           </Text>
           {tuned && (
             <Text as="span" textRole="mono" tone="secondary">
-              TUNED
+              TUNED{" "}
             </Text>
           )}
         </span>
@@ -220,9 +229,9 @@ const DrawerRow = ({
               )}
               style={{ flex: `${block.minutes} 1 0px` }}
             >
-              {block.label && total > 0 && block.minutes / total > LABEL_SHARE && (
+              {shownBlockLabel(block, total) && (
                 <Text as="span" className="block min-w-0 truncate" textRole="cardMeta" tone="primary">
-                  {block.label}
+                  {block.label}{" "}
                 </Text>
               )}
             </span>
@@ -233,7 +242,7 @@ const DrawerRow = ({
         </Stack>
         <Stack align="center" direction="row" gap="1.75" render="span">
           <Text as="span" className="min-w-0 truncate" textRole="cardMeta" tone="secondary">
-            {line ? `▸ ${line}` : ""}
+            {line ? `▸ ${line}` : ""}{" "}
           </Text>
           <Text as="span" className="ml-auto shrink-0" textRole="mono" tone="secondary">
             {channel.minutesLeft === undefined ? "—" : `${channel.minutesLeft}m left`}

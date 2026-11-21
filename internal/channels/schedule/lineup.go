@@ -263,6 +263,9 @@ type LineupEntry struct {
 	// manual add, or an entry that predates the field). It bounds how long a never-aired
 	// title has been waiting. Internal: never on the wire.
 	AddedAt time.Time `json:"addedAt,omitzero"`
+	// Grown names the growth batch that added this title by itself (#4333), so a batch can be undone
+	// as one; empty means a seed, which the channel's own picks are and which draw its line.
+	Grown string `json:"grown,omitempty"`
 }
 
 // MinFit is the smallest Fit a scored entry stores; a pick scored at (or rounded to) zero

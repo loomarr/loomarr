@@ -190,6 +190,17 @@ describe("a stream that opens", () => {
     for (const key of fed) expect(qc.getQueryState(key)?.isInvalidated, String(key[0])).toBe(true);
     expect(qc.getQueryState(["/v1/auth/me"])?.isInvalidated).toBe(false);
   });
+
+  // An upgrade restarts the server, so its stream drops; coming back is the one cue that the
+  // version may have changed.
+  it("reads the server's version again, which only a restart changes", async () => {
+    const qc = new QueryClient();
+    await qc.prefetchQuery({ queryKey: ["/v1/system/version"], queryFn: () => "1.0.0" });
+
+    await invalidateMissedFrames(qc);
+
+    expect(qc.getQueryState(["/v1/system/version"])?.isInvalidated).toBe(true);
+  });
 });
 
 describe("the browser stream", () => {

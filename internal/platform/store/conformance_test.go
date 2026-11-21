@@ -27,6 +27,8 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("GroundedIdentityOnly", func(t *testing.T) { testInventoryGroundedIdentity(t, newStore) })
 		t.Run("OriginFollowsIDs", func(t *testing.T) { testInventoryOriginFollowsIDs(t, newStore) })
 		t.Run("EpisodeIDsKeepTheirNumbers", func(t *testing.T) { testInventoryEpisodeIDsKeepTheirNumbers(t, newStore) })
+		t.Run("InferredIDsYieldToCatalogs", func(t *testing.T) { testInventoryInferredIDsYieldToCatalogs(t, newStore) })
+		t.Run("FounderLeavesForAnotherCatalog", func(t *testing.T) { testInventoryFounderLeavesForAnotherCatalog(t, newStore) })
 		t.Run("MeasurementRevision", func(t *testing.T) { testInventoryMeasurementRevision(t, newStore) })
 		t.Run("AnalysisRevision", func(t *testing.T) { testInventoryAnalysisRevision(t, newStore) })
 		t.Run("ExplicitMissing", func(t *testing.T) { testInventoryExplicitMissing(t, newStore) })
@@ -48,6 +50,8 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("LibraryCatalogChanges", func(t *testing.T) { testLibraryCatalogChanges(t, newStore) })
 		t.Run("LibraryFilmography", func(t *testing.T) { testLibraryFilmography(t, newStore) })
 		t.Run("LibraryItemFacts", func(t *testing.T) { testLibraryItemFacts(t, newStore) })
+		t.Run("SeriesEpisodeTotals", func(t *testing.T) { testSeriesEpisodeTotals(t, newStore) })
+		t.Run("GrowthReviews", func(t *testing.T) { testGrowthReviews(t, newStore) })
 		t.Run("LibraryEvidence", func(t *testing.T) { testLibraryEvidence(t, newStore) })
 		t.Run("LibraryEpisodes", func(t *testing.T) { testLibraryEpisodes(t, newStore) })
 		t.Run("LibraryTitles", func(t *testing.T) { testLibraryTitles(t, newStore) })
@@ -74,6 +78,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 
 	t.Run("Channels", func(t *testing.T) {
 		t.Run("ChannelRoundTrip", func(t *testing.T) { testChannelRoundTrip(t, newStore) })
+		t.Run("FillerBreaks", func(t *testing.T) { testFillerBreaks(t, newStore) })
 		t.Run("ChannelRevisionCAS", func(t *testing.T) { testChannelRevisionCAS(t, newStore) })
 		t.Run("ChannelTargetedRevisionWrites", func(t *testing.T) { testChannelTargetedRevisionWrites(t, newStore) })
 		t.Run("ChannelListAndDelete", func(t *testing.T) { testChannelListDelete(t, newStore) })

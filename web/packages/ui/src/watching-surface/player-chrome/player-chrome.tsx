@@ -5,7 +5,6 @@ import { CASTING_LIFT, CastingCard } from "./casting-card";
 import { ChannelBand } from "./channel-band";
 import { ChannelCards } from "./channel-cards";
 import { gradientOr, webOnly } from "./flat";
-import { IdentBackdrop } from "./ident-backdrop";
 import { PlayerCaption } from "./player-caption";
 import type { PlayerChromeProps } from "./player-chrome.type";
 import { PlayerKeys } from "./player-keys";
@@ -159,9 +158,6 @@ const ChromeBody = memo(
           // under the keys (the scrim below draws no gradient over it), with its content lifted clear
           // of the band, and it stays when the controls hide.
           <CastingCard {...casting} lift={CASTING_LIFT} top={0} zIndex={29} />
-        ) : null}
-        {card && band.backdrop && frame.width > 0 ? (
-          <IdentBackdrop art={band.backdrop} frame={frame} />
         ) : null}
         {/* The scrim passes touches through to the picture but not its keys: native's "none" would
             silence every key under it whatever they say, where the web lets a child take them back. */}

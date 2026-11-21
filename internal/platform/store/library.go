@@ -50,6 +50,8 @@ type (
 	LibraryItemFacts         = librarystore.LibraryItemFacts
 	LibraryItemChannel       = librarystore.LibraryItemChannel
 	LibraryItemFactsReader   = librarystore.LibraryItemFactsReader
+	SeriesEpisodes           = librarystore.SeriesEpisodes
+	SeriesEpisodesReader     = librarystore.SeriesEpisodesReader
 	LibraryEvidence          = librarystore.LibraryEvidence
 	LibraryEvidenceReader    = librarystore.LibraryEvidenceReader
 	LibraryItemPage          = librarystore.LibraryItemPage

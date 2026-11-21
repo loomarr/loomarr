@@ -52,7 +52,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns bounded external context lookup for publicly sourced filler.
 - **`filler/routine`** · 1 importer · → `filler`, `filler/acquisition`, `filler/clips`, `filler/enrichment`, `filler/fetch`, `filler/pod`, `filler/records`, `filler/research`, `filler/source`, `filler/source/archive`, `filler/station`, `platform/store/channelstore`
   The unattended routines the filler jobs run: the ingest pipeline's driver and its detail pass, the retirement of clips no current place can air, the switching of curated sources for the places' nearby stations, and the open archive search those places gate.
-- **`filler/screening`** · 2 importers · → `filler`, `filler/asset`, `filler/pipelinestate`, `filler/split`, `filler/structure/assessment`, `media/tools`, `platform/store/clipstore`
+- **`filler/screening`** · 1 importer · → `filler`, `filler/asset`, `filler/pipelinestate`, `filler/split`, `filler/structure/assessment`, `media/tools`, `platform/store/clipstore`
   Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
 - **`filler/source`** · 11 importers
   Contract every filler source provider implements: a place filler comes from, such as YouTube or archive.org, or a local folder or library.

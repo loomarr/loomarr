@@ -57,6 +57,11 @@ type Store interface {
 	// RetireReadyClip removes and reaps a fetched, unpinned Ready clip and marks its row's files
 	// deleted, so a full budget can evict it; false when it no longer qualifies.
 	RetireReadyClip(ctx context.Context, hash string, at time.Time) (bool, error)
+	// ListSettledReels lists the split reels Loomarr fetched whose every piece is settled (#4421).
+	ListSettledReels(ctx context.Context) ([]string, error)
+	// RetireSettledReel reaps a settled reel and marks its row's files deleted, in one transaction;
+	// false when it no longer qualifies.
+	RetireSettledReel(ctx context.Context, hash string, at time.Time) (bool, error)
 }
 
 // Bin is the quarantine (quarantine.Bin).
@@ -112,6 +117,7 @@ type Result struct {
 	HeldBack     int   // fetched rejects past their rest that stayed: pinned, or the clip changed within the week
 	Quarantined  int   // clips whose files went to quarantine this pass
 	Originals    int   // Ready clips whose original download was released this pass
+	Reels        int   // split reels let go this pass, every piece cut from them settled (#4421)
 	Leftovers    int   // leftover staging folders removed
 	LeftoverByte int64 // bytes those folders held
 	Evicted      int   // clips taken off the catalog for room this pass, rejects and clips on air together
@@ -148,6 +154,10 @@ func (j *Job) Run(ctx context.Context) (Result, error) {
 	if err := j.releaseOriginals(ctx, &res); err != nil {
 		errs = append(errs, err)
 	}
+	if err := j.releaseReels(ctx, &res); err != nil {
+		j.warn("upkeep: split reels could not be let go; the next pass tries again", "err", err)
+		errs = append(errs, err)
+	}
 	if j.cleaner != nil {
 		cleaned, err := j.cleaner.Clean(ctx)
 		res.Leftovers, res.LeftoverByte = cleaned.RemovedItems, cleaned.RemovedBytes
@@ -162,9 +172,9 @@ func (j *Job) Run(ctx context.Context) (Result, error) {
 	// held_back is what to read when rejects pile up and none go: a clip row something keeps
 	// rewriting is never "unchanged for a week".
 	if j.log != nil && (res.Emptied > 0 || res.LetGo > 0 || res.HeldBack > 0 || res.Quarantined > 0 || res.Originals > 0 ||
-		res.Leftovers > 0 || res.Evicted > 0) {
+		res.Reels > 0 || res.Leftovers > 0 || res.Evicted > 0) {
 		j.log.Info("upkeep: filler let go of what it no longer needs", "rejects", res.LetGo, "held_back", res.HeldBack,
-			"originals", res.Originals,
+			"originals", res.Originals, "reels", res.Reels,
 			"quarantined", res.Quarantined, "emptied", res.Emptied, "leftovers", res.Leftovers,
 			"leftover_bytes", res.LeftoverByte, "evicted", res.Evicted, "evicted_bytes", res.EvictedBytes)
 	}

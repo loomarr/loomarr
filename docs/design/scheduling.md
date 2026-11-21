@@ -264,14 +264,50 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   shortest ad, assembly drops the return bumper, then the intro bumper, before it gives up: a
   30 s break of 30 s ads still airs the ad. Only when no ad fits even alone is the break the 5 s
   card, and the channel then airs no breaks (no playable file).
-- **Breaks use their time.** After the ads, assembly tops the break up with whole clips that fit
-  what is left, longest first: a short ad, a station ID or a bumper, ahead of the return bumper.
-  The top-up draws on the same ladder pools (audience ceiling, era, geography, quality and duration
-  bounds), the same no-repeat set and the same rotation and spacing rules as the ads, with category
-  variety relaxed rather than time left unused. It stops at the first moment nothing unused fits,
-  so a break ends within the shortest unused clip of its slot, not 18 s early. `FILLER_POD_MAX` is
-  a floor, never the reason a fitting clip is left out: the adapter sizes the clip ceiling from the
-  break length over the shortest eligible clip (at most 64). Time, not count, bounds the pod.
+- **The length is a ceiling the least recently aired clips fill** (#3838 step 2). Ads are taken
+  in rotation order (never aired, then least recently aired). When the next one does not fit what
+  is left the break ends: it is not handed to whichever clip is short enough to fit, which let
+  length decide what aired. Fixed from a history-free pod, the length used to favour the short ads
+  about two to one over a run of breaks. A clip longer than the whole break is skipped and never
+  blocks the line; it leads a longer break. A break can therefore end short of its slot.
+- **Each break is assembled once, ahead of time, and stored** (#3838 step 2, `filler_breaks`).
+  Reconcile plans a channel's breaks in order over its window: it assembles each break not yet
+  stored for its channel and start, and cuts the break's slot to the media its pod holds. The
+  programme after a break therefore resumes when the break's own clips end, and the offline card
+  never fills the gap. A break with nothing to air takes no time. The guide, the previews and the
+  stream read the stored pod (`PreviewAtMany`), so the guide shows what airs, and a half-aired
+  break keeps its pod and length. A break is keyed by its channel and start: a lineup edit that
+  moves a break gives it nothing stored, so it is assembled fresh, and reconcile deletes the
+  breaks behind the anchor and the ones that moved. A stored break assembled to another ceiling
+  (the break length setting changed) is assembled again. A break within the run-ahead of now is
+  **fixed**: it is on air or about to be, so it keeps the length it was stored with, or its slot's
+  when it was never planned, and is never assembled after the fact. Fixing by what was stored, not
+  by the slot's current length, is what makes planning at any instant walk the timeline that aired.
+- **The next window's breaks are planned before it turns.** Once the programme crossing a window's
+  end finishes, the playout airs the next window straight away (#1675), arranged with the same
+  computation reconcile commits, before any reconcile has committed it. So within the hour before
+  the turn, reconcile also plans the next window's breaks from the turn's instant. The playout then
+  only reads their lengths (`Engine.TurnedWindow`), and each break ends with its pod from the
+  window's first minute. Reconcile stays the only writer. Each plan clears stored breaks only in its
+  own stretch: the window on air plans up to its turn and clears everything behind it, and the next
+  window clears only from the turn, so neither deletes the other's. A break whose start the plan
+  ahead missed (the lineup changed between the plan and the turn) airs live, as before.
+- **What "seen this evening" means for a break planned ahead:** the household's real watched airings
+  up to now plus this channel's own already-stored breaks, so no ad repeats within the channel's
+  evening. Other channels' planned breaks do not count, because what they air depends on viewing
+  that has not happened. A repeat across channels that follows from future viewing is therefore not
+  prevented: a known limit.
+  `FILLER_POD_MAX` is a floor, never the reason a fitting clip is left out: the adapter sizes the
+  clip ceiling from the break length over the shortest eligible clip (at most 64).
+- **A break prefers clips the household has not seen this evening** (#3838 decision 1, grill
+  decision 22, amended 2026-11-18). An evening is learned from viewing, never a fixed hour: the run
+  of airings on every channel with no silence longer than two hours (`pod.EveningStartBefore`, the
+  rule that sizes the pool). An ad that aired since the evening began ranks behind every unseen ad
+  on any channel, so it airs only in what the unseen ads leave, the ones seen longest ago first.
+  Bookends are exempt, and so are pins. A thin set therefore repeats its oldest ads rather than
+  shrinking its breaks: a strict bar emptied breaks to the station ID alone while the sets were
+  below their recipe. Repeats fade as the set fills. How far below its recipe a set
+  also takes fewer breaks an hour is a number the loop simulation sets, not a constant here.
 - **A re-size never moves what is on air.** Every airing is found by walking the accepted cycle
   from its anchor, so a break that has aired keeps its length. A catalog change that re-sizes
   breaks is a library fact: the window keeps its breaks until it turns, and a smaller catalog's
@@ -313,11 +349,11 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   minutes earlier, at that moment, and the break's pod is assembled again at every clip's resolve.
   Playout resolves a break's first clip no earlier than its run-ahead before the break, so every
   airing a break counts was stored before its first clip was assembled. Within each rung it ranks:
-  never aired, then least recently aired outside the channel's commercial spacing. The end-of-break
-  top-up ranks the same way, the longer clip winning only among equals. A clip inside its spacing
+  never aired, then least recently aired outside the channel's commercial spacing. A clip inside its spacing
   ranks behind every rested clip on any rung, so the ladder widens era before a clip repeats, and
   spacing relaxes only when the whole ladder is resting (the pod records `CooldownRelaxed`).
-  Spacing never causes dead air. Pins come first and may repeat. **Each channel sets its own
+  Spacing never causes dead air. Within one evening a clip that aired ranks behind every unseen
+  one (above), so spacing mostly governs repeats across evenings. Pins come first and may repeat. **Each channel sets its own
   spacing (#1670), measured against the household's airings:**
   `policy.commercialSpacing` ("Repeat spacing · same commercial" in the channel's Filler section);
   nil inherits `filler.cooldown_seconds`, which defaults to 4 hours, and a present `0` lets a clip
@@ -328,17 +364,21 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   the list's runtime). A longer spacing would leave every clip cooling and Tunarr would fall back to
   flex. A larger list earns a longer spacing. Loomarr's own playout ranks by recency instead, so it
   honours the full spacing and relaxes it only when the whole ladder is resting.
-- **Fallback ladder:** exact era → era widened by a decade → any audience-appropriate clip → clips
-  with an ungrounded audience → the channel's station material (bumpers and idents, resting or not,
+- **Fallback ladder:** exact era → era widened by a decade either side → the channel's station
+  material (bumpers and idents, resting or not,
   #2036) → the channel's bumper card. Never dead air. A pod fills from the
   tightest rung first and tops up from the rungs below it, so a small exact rung leads the break
   instead of being the whole break (#1684). The coverage level reports the rung breaks reach.
+  Nothing further away than the decade either side ever airs (#3838 decision 21): once the two
+  rungs are spent, clips resting on those rungs, least recently aired first, come before the
+  station material. Bookends keep their own rule: the channel's era first, then any era.
+- **The station-only fallback holds the same one-station-segment limit as any other break.**
 - **Holidays (#2030).** A clip is seasonal when a tag names a holiday with dates; a holiday is its
   seasonal tag. Out of season it never airs, bumpers and station IDs included. In season, at most
   half of a break's commercials are in-season clips, and at least one when a rested one fits: the
   best rested in-season commercial that fits is placed first, then takes a seeded spot among the
-  commercials that keeps category variety. The half yields only to the card: once no other clip
-  fits, the end-of-break top-up adds in-season commercials past it. A tag counts only where the clip
+  commercials that keeps category variety. The half yields only to a break the other clips cannot
+  fill: in-season commercials past it then take the places left, in rotation order. A tag counts only where the clip
   asserts it, never through a rollup ancestor. The season is the household calendar programming
   reads (`filler.home_country`, the stored holidays, `guide.timezone`), dated at the break's start;
   a question asked without one (the pool check, coverage, a clip's fit, a Tunarr filler list) is
@@ -366,11 +406,26 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   from the shows. The region preference stays the household's: the channel inherits it, less its
   own country.
 
-**Audience is an allowlist and never weakens** (a kids and teen guardrail):
+**Audience is a ceiling, and an unknown audience is in no ceiling** (a kids and teen
+guardrail, #3838 decision 8):
 
-- A `kids` channel admits only clips grounded `kids` or `family`, on every rung.
-- An ungrounded-audience clip is admitted only to `general` or `late_night` channels.
+- A `kids` channel admits clips grounded `kids` or `family`.
+- A `family` or `general` channel admits `kids`, `family` and `general`.
+- A `late_night` channel admits everything grounded. A channel that names no audience admits every
+  clip whose audience is grounded.
+- A clip with no grounded audience airs on no channel. Doubt resolves to the stricter reading.
+- A `kids` channel airs a kids or family clip only when its audience is backed (a rule cue, an
+  operator, a listing or a second agreeing signal), not when one model's guess is all there is
+  (`Clip.AudienceGuess`, `filler.md` "What Loomarr learns about a clip"). Every other ceiling
+  takes the guess.
 - A new audience value admits nothing until someone decides it should.
+- The ceiling holds for bumpers and station IDs as it does for ads, and a channel's coverage counts
+  the bookends its own ceiling admits.
+
+**A clip airs only with its facts** (#3838 decision 6). A clip with no concrete role, no era or no
+audience fits no channel, whatever the channel's settings; the geography boundary already refuses an
+unknown country once the installation has one. The one catalog filter assembly, coverage and per-clip
+fit share enforces it, so a fit note says `facts` rather than blaming a setting.
 
 Loomarr ships an embedded default bumper card and sets it as each Tunarr channel's fallback at
 creation; operators can replace it per channel.

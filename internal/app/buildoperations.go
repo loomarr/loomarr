@@ -148,7 +148,7 @@ func buildOperations(
 			Store: st, Repository: destinationRepository, ProviderAdapters: providerAdapters,
 			PublicURL:   func() string { return settings.AccessPublicURL.Get(set) },
 			Invitations: invitationService, Recovery: recoveryService,
-			Registry: registry, Log: log, NewID: newID,
+			Registry: registry, Log: log, NewID: newID, Delivered: emitter.AccessChanged,
 		})
 	}
 	providerValidators = append(accountDelivery.Validators, providerValidators...)

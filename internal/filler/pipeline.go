@@ -58,6 +58,10 @@ type StageResult struct {
 	Spawned []string
 	// Note is the operator-facing sentence persisted on the ladder for a skip or an oddity.
 	Note string
+	// Doubt marks a VerdictReview that is the check itself failing to reach a verdict about the
+	// clip's content, as opposed to a condition of the stage (a lost race, a compilation waiting
+	// to be split). A doubtful check on a clip Loomarr found is a fail (#3838 decision 18).
+	Doubt bool
 }
 
 // Stage is one rung.
@@ -232,11 +236,13 @@ type Pipeline struct {
 	// a stage does not need them, and `Rewind` refuses rather than half-working without them.
 	rewind  RewindStore
 	clipDir string
-	stages  map[pipelinestate.StageID]Stage
-	budget  Budget
-	notify  Notifier
-	now     func() time.Time
-	log     *slog.Logger
+	// airWindows backs the air-window sweep (airwindow.go). nil measures none, and clips air whole.
+	airWindows AirWindowStore
+	stages     map[pipelinestate.StageID]Stage
+	budget     Budget
+	notify     Notifier
+	now        func() time.Time
+	log        *slog.Logger
 	// failures suppresses a clip's repeated identical failure warning across passes.
 	failures *logchange.Throttle
 	// splitReviewsResumed gates the once-per-process scan that returns review proposals the split
@@ -244,6 +250,11 @@ type Pipeline struct {
 	// markers make the data self-healing across restarts; this bool merely avoids re-reading a
 	// settled queue every pass.
 	splitReviewsResumed bool
+	// doubtsRejudged gates the once-per-process re-judge of reviews held under the rule before
+	// "doubt means drop" (rejudgeDoubtfulReviews) and the retirement of running rows whose clip
+	// was removed (retireRemovedRows). Each leaves the rows it settles terminal, so the data is
+	// settled after one successful run; the bool only spares the re-read.
+	doubtsRejudged bool
 	// nextDedupRecheck is when reviews holding an unchecked duplicate comparison are next offered
 	// back to the split stage (see dedupRecheckEvery).
 	nextDedupRecheck time.Time
@@ -353,6 +364,32 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 			p.log.Warn("filler pipeline: enrolment failed", "err", err)
 		}
 	}
+	// Every pass, and cheap when there is nothing to do: one query for clips with no window yet.
+	// Not fatal, like enrolment: a clip without a window airs whole until the next pass.
+	if measured, err := p.measureAirWindows(ctx); err != nil {
+		if p.log != nil {
+			p.log.Warn("filler pipeline: measuring air windows failed", "err", err)
+		}
+	} else if measured > 0 && p.log != nil {
+		p.log.Info("filler pipeline: measured air windows", "clips", measured)
+	}
+	if !p.doubtsRejudged {
+		n, rejudgeErr := p.rejudgeDoubtfulReviews(ctx)
+		res.Rejected += n
+		retired, retireErr := p.retireRemovedRows(ctx)
+		res.Rejected += retired
+		rejudgeErr = errors.Join(rejudgeErr, retireErr)
+		if rejudgeErr != nil {
+			if p.log != nil {
+				p.log.Warn("filler pipeline: re-judging held reviews failed", "err", rejudgeErr)
+			}
+		} else {
+			p.doubtsRejudged = true
+			if n > 0 && p.log != nil {
+				p.log.Info("filler pipeline: clips held for a person under the old rule are rejected as undecided", "clips", n)
+			}
+		}
+	}
 	if !p.splitReviewsResumed {
 		n, resumeErr := p.requeueResumableSplitReviews(ctx)
 		res.Requeued = n
@@ -453,7 +490,8 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 			"completed", res.Completed, "rejected", res.Rejected, "failed", res.Failed,
 			"deferred", res.Deferred, "reencoded", res.Reencoded, "runnable", res.Overview.Runnable,
 			"in_progress", res.Overview.InProgress, "scheduled", res.Overview.Scheduled,
-			"needs_decision", res.Overview.NeedsDecision, "rejected", res.Overview.Rejected,
+			"needs_decision", res.Overview.NeedsDecision, "awaiting_split", res.Overview.AwaitingSplit,
+			"rejected", res.Overview.Rejected,
 			"ready", res.Overview.Ready, "complete", res.Overview.Complete,
 			"dismissed", res.Overview.Dismissed,
 			"no_advance_reason", res.NoAdvanceReason)
@@ -505,6 +543,33 @@ func (p *Pipeline) enrolMissing(ctx context.Context) (int, error) {
 	return n, nil
 }
 
+// retireRemoved ends a running row whose clip was taken out of rotation while it ran. Publication
+// requires a clip that is not removed, so the finish rung refused it as stale on every attempt and
+// rested it a month at a time, forever (2026-11-18: one row, removed 10-31, parked to 12-18).
+// Nothing on the conveyor can bring it back, so it retires like a clip gone from the catalog.
+func (p *Pipeline) retireRemoved(ctx context.Context, row pipelinestate.ClipPipeline, clip clipstore.Clip) (pipelinestate.Disposition, error) {
+	row.Disposition = pipelinestate.DispositionRejected
+	row.RejectReason = pipelinestate.ReasonUnprobeable
+	row.RejectDetail = "the clip was removed from the catalog while it was being prepared"
+	row.ForceRun = false
+	return row.Disposition, p.persist(ctx, row, clip)
+}
+
+// foundByLoomarr reports whether Loomarr fetched this clip itself, which is what makes a doubt a
+// drop rather than a question for a person (decision 18). A piece cut from a fetched reel is found
+// too (#4409): its row carries no acquisition, which stays with the reel, but its sidecar names
+// the reel's. A piece of a reel the operator added is theirs, and their doubts stay with them.
+func (p *Pipeline) foundByLoomarr(row pipelinestate.ClipPipeline, clip clipstore.Clip) bool {
+	if row.AcquisitionID != "" {
+		return true
+	}
+	if !clip.IsSegment() || clip.Path == "" || p.clipDir == "" {
+		return false
+	}
+	tags, ok := asset.ReadSidecarTags(filepath.Join(p.clipDir, filepath.FromSlash(clip.Path)))
+	return ok && tags.AcquisitionID != ""
+}
+
 // advance walks the stages for one clip until it blocks, defers, or reaches a terminal state.
 func (p *Pipeline) advance(ctx context.Context, row pipelinestate.ClipPipeline, s *spend) (pipelinestate.Disposition, error) {
 	clip, found, err := p.clips.GetClip(ctx, row.ClipHash)
@@ -518,6 +583,9 @@ func (p *Pipeline) advance(ctx context.Context, row pipelinestate.ClipPipeline, 
 		row.RejectReason = pipelinestate.ReasonUnprobeable
 		row.RejectDetail = "the clip is no longer in the catalog"
 		return row.Disposition, p.persist(ctx, row, clip)
+	}
+	if !clip.RemovedAt.IsZero() {
+		return p.retireRemoved(ctx, row, clip)
 	}
 
 	// A running row that is ahead of a rung it has no record for (a ladder that predates a rung
@@ -596,7 +664,8 @@ func (p *Pipeline) advance(ctx context.Context, row pipelinestate.ClipPipeline, 
 
 		// Media-heavy rungs yield to live playback (#1512 G5): wait a bounded while, then leave
 		// the clip queued at this rung — no attempt spent, exactly as for an exhausted budget.
-		if !p.waitForHeadroom(ctx, s, row.Stage, stage.Cost()) {
+		overdue := p.yield.overdue(row.StageQueuedAt, p.now().UTC())
+		if !p.waitForHeadroom(ctx, s, row.Stage, stage.Cost(), overdue) {
 			row.Status = pipelinestate.StatusQueued
 			return row.Disposition, p.persist(ctx, row, clip)
 		}
@@ -609,7 +678,7 @@ func (p *Pipeline) advance(ctx context.Context, row pipelinestate.ClipPipeline, 
 		}
 
 		stageCtx := pipelinestate.WithProgress(ctx, p.stageProgress(ctx, &row, clip))
-		out, runErr := p.runYielding(stageCtx, s, stage, clip)
+		out, runErr := p.runYielding(stageCtx, s, stage, clip, overdue)
 		s.charge(stage.Cost())
 
 		if runErr != nil {
@@ -714,6 +783,15 @@ func (p *Pipeline) advance(ctx context.Context, row pipelinestate.ClipPipeline, 
 			row.RejectReason, row.RejectDetail = out.Reason, out.Detail
 			return row.Disposition, p.persist(ctx, row, clip)
 		case pipelinestate.VerdictReview:
+			if out.Doubt && p.foundByLoomarr(row, clip) {
+				// A check that cannot decide is a fail for a clip Loomarr found: nobody is asked,
+				// and the clip rests as a reject until upkeep lets it go (decision 18).
+				row.Record(row.Stage, pipelinestate.StatusDone, out.Note, row.Attempts, p.now().UTC())
+				row.ForceRun = false
+				row.Disposition = pipelinestate.DispositionRejected
+				row.RejectReason, row.RejectDetail = pipelinestate.ReasonUndecided, out.Note
+				return row.Disposition, p.persist(ctx, row, clip)
+			}
 			row.Record(row.Stage, pipelinestate.StatusDone, out.Note, row.Attempts, p.now().UTC())
 			row.ForceRun = false
 			row.Disposition = pipelinestate.DispositionReview

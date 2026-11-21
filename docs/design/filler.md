@@ -42,6 +42,13 @@ route:
   the filename is a grounding signal for era and brand. The tagger reads it from the sidecar.
 - Loomarr rearranges only its own clip folder. The watch folder is drained (moved, not copied, so
   it never becomes a second copy of the library) and nothing outside the two folders is touched.
+- **The 15-minute sync does not probe unchanged files.** A per-process probe cache keeps what
+  ffprobe reported for each file with the file's size and modification time; a file with both
+  unchanged is not probed again, and one that changed, or whose probe failed, is. The content hash
+  and the sidecar are still read every scan. After a restart the first scan probes every file once.
+- A clip that fails to encode at air time three airings in a row is rejected as `unplayable` and
+  taken out of rotation (`Pipeline.RejectAirFault`); its fetched files go with the other rejects
+  after a week, and a clip added by hand is never deleted.
 - A completed download runs the ordinary catalog sync and nudges the pipeline before its terminal
   success event, so new held clips are already in Incoming. A sync failure is an ingest failure.
 - **The two paths are one layout, applied per application generation.** Changing either persists
@@ -165,6 +172,8 @@ Each clip carries the metadata that lets the scheduler place it:
   `interstitial`, `political` or `news` (the column, the Go field and the wire all say `role`
   since #2323). `unclassified` means no exact role is established; it is
   descriptive, not a lifecycle state, and an unknown filename defaults to it, never to `commercial`.
+  A clip whose role, era or audience is unknown fits no channel and never airs (#3838 decision 6;
+  `scheduling.md` "Breaks and pods"). Country is judged by the geography boundary.
 - **Political ads and news are opt-in** (#2037). `political` is a campaign or issue ad; `news` is a
   news or weather segment, whose format tag sits under `interstitial`. Both download and pass the
   defect floor like any clip, so opting in is instant, but a channel that chose no roles (its policy's
@@ -197,9 +206,25 @@ where the ones above left a gap. A tag is a fact only when its signal literally 
 | 4 | frame heuristics (black-and-white, aspect ratio) | free | era hints without usable text |
 | 5 | vision LLM over keyframes | expensive | silent adverts and on-screen logos |
 
-- **Era must appear literally** in the filename, sidecar text or transcript. A vision or split guess
-  that does not is recorded only as an uncited Context suggestion (an observation), shown as
-  "Likely" until the operator sets the era (`PATCH /v1/filler/tags`).
+- **Era is relaxed, because it is flavour rather than safety** (#3838 decision 7). A year that
+  appears literally in the filename, sidecar text, transcript or on screen grounds the era. With no
+  literal year, the vision model's decade estimate from picture and sound is kept when it reports
+  high confidence and the clip has no era: it is stored as the decade's first year (1990), as
+  inference-ranked evidence (`frame.era_estimate`), so item metadata, the operator or any literal
+  source replaces it. A low-confidence estimate and a frame-heuristic hint stay an uncited Context
+  suggestion, shown as "Likely" until the operator sets the era (`PATCH /v1/filler/tags`).
+- **Audience is strict for kids** (#3838 decision 7). An audience stands as a rule match, an
+  operator, a listing or a source default (non-inference evidence on the axis), or as one model's
+  answer plus a non-inference cue that agrees. One model's answer alone is a guess: every channel
+  but a kids channel takes it, and a kids channel airs a kids or family clip only when it is backed.
+  A guess that a late-night cue contradicts reads as late-night.
+- **A write names what it changes.** `PATCH /v1/filler/tags` writes `era` and `audience` only when
+  the body carries them: omitted leaves the stored value and its evidence alone, an explicit `0` or
+  empty string clears. The same holds for the bulk retag.
+- **A frame read yields to stronger evidence.** The vision pass writes `era` and `brand` only while
+  the axis holds no item-metadata or operator evidence; the rest of the pass (visible text,
+  taxonomy) always lands. An operator who clears an era keeps that choice: the cleared axis holds
+  operator evidence, so no later frame read dates the clip again.
 - **Transcription is selective:** only when the source description is thin or a text-only pass
   left the clip unidentified. It is local by default; a connected service is an explicit opt-in.
   Transcripts persist to the store and the sidecar.
@@ -576,6 +601,14 @@ The hourly `filler-upkeep` job (#3855) has fixed numbers and no setting (decisio
   another clip still names stays until the last of them is released, and while any clip's sidecar
   cannot be read no original is released. The release, the defect floor's evidence release
   and a rewind's hold share one lock per sidecar, so none of them undoes another's change.
+- **A split reel Loomarr fetched lets go of its recording once every piece cut from it is settled**
+  ([0049](decisions/0049-a-settled-reel-lets-go-of-its-recording.md), #4421). Settled means every
+  piece still in the catalog is Ready, rejected, dismissed or complete, the reel is off the belt and
+  no split proposal is left. In one transaction the reel is reaped and its pipeline row records
+  `files_deleted_at`; then its playback file and sidecar go to quarantine, and a crash between the
+  two is finished by the next pass. The row stays present, so every piece's `parent_hash` resolves
+  and the sync's prune spares it. A reel added by hand is kept. Splitting a let-go reel is refused
+  with a 409 until a re-split can fetch it again.
 - The server projects one capacity snapshot with a state (`healthy`, `approaching`, `paused`,
   `unknown`) and the actions `free_disposable_space`, `choose_another_folder` and
   `change_storage_limit`. `approaching` starts at the smaller of 1 GiB and 20% of the allowance.
@@ -724,9 +757,23 @@ report is not a finished encode, so the rung encodes it again.
 
 - At least 90% black or 90% silent is a hard reject, recorded with its coverage.
 - A black or silent span of at least 5 s, or a frozen span of at least 10 s, goes to review.
-  Freeze alone never auto-rejects.
+  Freeze alone never auto-rejects. For a clip Loomarr found, review is a fail (doubt means drop,
+  #3838 decision 18): the clip is rejected as `undecided`, the measured span is its detail, and
+  upkeep lets it go after the reject rest. A clip an operator added keeps the review. A found clip
+  held under the earlier rule is re-judged once per start from the report in its sidecar, through
+  the same evaluation, so nothing re-encodes.
+- **Dead air at the edges is left off the air, not cut from the file (#3384).** Black that is also
+  silent and touches a clip's start or end is dead air; each pipeline pass gives every airable clip
+  without one an **air window** from its playback report, leaving 0.2 s of the dead air at a
+  trimmed edge. Pod assembly books the window's length and playout seeks to its start, so a break
+  shows no seconds of black between spots. Black under sound is a voice-over or closing line and
+  stays; a report not on the clip's timeline, or a window under half the clip, airs it whole. A
+  stored break whose clip's window changed plans again. On one install this left 87 s of dead air
+  in 80 of 169 ready clips off the air. The file stays as it is: most ready clips have released
+  their original, and a library re-encode (#2121) would otherwise have to carry each trim forward.
 - Review holds the clip out of rotation before the review row commits; a store failure leaves the
-  row runnable and the persisted report re-emits the verdict without decoding again.
+  row runnable and the persisted report re-emits the verdict without decoding again. A found clip's
+  review is a reject instead (above), recorded through the ordinary reject path.
 - Intervals are unioned and clamped to the probed duration; an open trailing event closes at the
   duration.
 
@@ -884,7 +931,7 @@ inputs. Its verdicts are enforced at admission and on every re-check (see
 
 ### Enforcement (#2036)
 
-- **Admission waits for a verdict.** The `defects` rung runs after screening and before
+- **Admission waits for a verdict.** The `defects` rung runs after split and before
   enrichment, so a copy that fails costs no transcription or hosted look. It measures nothing
   itself: it waits, spending no attempt, until the floor job has a current record for the clip's
   bytes and era. The floor measures a held clip only once its conveyor reaches this rung, so the
@@ -894,9 +941,10 @@ inputs. Its verdicts are enforced at admission and on every re-check (see
   override.
 - **Only a fail that stands is acted on.** That is the detectors' own fail or the judge's fail
   ruling. A borderline clip failed only because no judge could rule (none configured, or it
-  abstained) goes to review with its findings: nothing automatic would settle it, so it is the
-  operator's call. An admitted ad in that state keeps airing and keeps its file; the floor rules
-  on it again once a judge can.
+  abstained) goes to review with its findings: nothing automatic would settle it. For a clip
+  Loomarr found that is a fail (decision 18), rejected as `undecided`; only a clip an operator
+  added waits as a review. An admitted ad in that state keeps airing and keeps its file; the floor
+  rules on it again once a judge can.
 - **A failing copy on air is retired.** A held copy is refused at the rung, which settles its
   conveyor row; the floor retires only published copies. Each pass retires every one whose verdict
   fails and stands. In order:

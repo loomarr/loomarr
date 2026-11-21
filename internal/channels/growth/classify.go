@@ -22,8 +22,9 @@ type Verdict struct {
 	Reason string // "fixed", "franchise", "kind", "rating", "years", "genres", "year unknown", "few genres"
 }
 
-// Classify sits a library title against the line. bar is the share of the line's genres a title
-// must carry to be a clear fit rather than an unclear one; the simulator sets it (#4140).
+// Classify sits a library title against the line. bar is the share a clear fit reaches both ways:
+// of the line's genres the title carries, and of the title's genres the line holds. Below it the
+// title is unclear rather than clear; the simulator sets it (#4140).
 func (l Line) Classify(t Title, bar float64) Verdict {
 	switch {
 	case l.Fixed:
@@ -36,11 +37,11 @@ func (l Line) Classify(t Title, bar float64) Verdict {
 	case !slices.Contains(l.Kinds, t.Kind):
 		return Verdict{Outside, "kind"}
 	}
-	rank, rated := t.Rating.Rank()
+	rank, rated := lineRank(t.Rating)
 	if !rated {
 		return Verdict{Unrated, "unrated"}
 	}
-	if max, ok := l.MaxRating.Rank(); ok && rank > max {
+	if max, ok := lineRank(l.MaxRating); ok && rank > max {
 		return Verdict{Outside, "rating"}
 	}
 	if l.YearTo != 0 && t.Year != 0 && (t.Year < l.YearFrom || t.Year > l.YearTo) {
@@ -53,6 +54,11 @@ func (l Line) Classify(t Title, bar float64) Verdict {
 			return Verdict{Outside, "genres"}
 		}
 		share = float64(n) / float64(len(l.Genres))
+		// The line must also be most of what the title is: a crime thriller tagged drama carries a
+		// drama line's genre, but is not a drama, and a clear fit airs before the model sees it.
+		if own := float64(overlap(l.Genres, t.Genres)) / float64(len(t.Genres)); own < share {
+			share = own
+		}
 	}
 	switch {
 	case l.YearTo != 0 && t.Year == 0:

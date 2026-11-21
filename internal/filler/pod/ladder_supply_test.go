@@ -16,7 +16,7 @@ import (
 // played that one clip in every break.
 
 // supplyCatalog is the household shape: `grounded` clips on the exact rung (grounded audience,
-// in-era) and `untagged` clips that only the bottom rung admits.
+// in-era) and `untagged` clips a decade away that only the widened rung admits.
 func supplyCatalog(grounded, untagged int) []pod.Clip {
 	var out []pod.Clip
 	for i := 0; i < grounded; i++ {
@@ -27,7 +27,7 @@ func supplyCatalog(grounded, untagged int) []pod.Clip {
 	for i := 0; i < untagged; i++ {
 		id := fmt.Sprintf("untagged-%02d", i)
 		out = append(out, pod.Clip{Hash: id, Path: id + ".mp4", Role: pod.Commercial,
-			Era: 1994, DurationMs: 30_000})
+			Era: 2004, Audience: pod.General, DurationMs: 30_000})
 	}
 	return out
 }
@@ -79,8 +79,8 @@ func TestLadder_TopUpKeepsTheGroundedClipFirst(t *testing.T) {
 	if len(ids) != 4 || ids[0] != "grounded-00" {
 		t.Fatalf("pod = %v, want the grounded clip first and all three untagged clips after it", ids)
 	}
-	if brk.MatchLevel != pod.MatchAudience {
-		t.Fatalf("match level = %s, want audience: the pod reached the bottom rung", brk.MatchLevel)
+	if brk.MatchLevel != pod.MatchWidened {
+		t.Fatalf("match level = %s, want widened: the pod reached the bottom rung", brk.MatchLevel)
 	}
 }
 
@@ -91,8 +91,8 @@ func TestLadder_CoverageLevelIsTheRungBreaksReach(t *testing.T) {
 	w := supplyWindow(time.Time{}, nil)
 	report := pod.Coverage(cat, w, pod.Policy{})
 	brk := pod.Assemble(cat, w, pod.Policy{}, nil)
-	if report.Level != pod.MatchAudience || brk.MatchLevel != report.Level {
-		t.Fatalf("coverage %q, pod %q: want both audience", report.Level, brk.MatchLevel)
+	if report.Level != pod.MatchWidened || brk.MatchLevel != report.Level {
+		t.Fatalf("coverage %q, pod %q: want both widened", report.Level, brk.MatchLevel)
 	}
 	if report.Rungs[0].Clips != 1 || report.Total != 16 {
 		t.Fatalf("rungs %+v total %d, want 1 exact of 16", report.Rungs, report.Total)

@@ -19,7 +19,7 @@ const clipCategoryExpr = `COALESCE((SELECT ct.taxon ` + clipProductLeafFrom + `
 	ORDER BY (SELECT COUNT(*) FROM taxa_closure tc WHERE tc.descendant = ct.taxon) DESC, ct.taxon ASC
 	LIMIT 1), '')`
 
-const clipSelect = `SELECT hash, path, tunarr_program_id, name, name_source, role, placement, era, audience, ` + clipCategoryExpr + `, duration_ms,
+const clipSelect = `SELECT hash, path, tunarr_program_id, name, name_source, role, placement, era, audience, ` + clipCategoryExpr + `, duration_ms, air_start_ms, air_end_ms,
 	geographic_scope, country, network, station, air_date, geo_evidence,
 	source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text,
 	is_composite, parent_hash,

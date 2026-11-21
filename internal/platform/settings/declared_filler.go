@@ -188,10 +188,10 @@ func declaredChannelsAndFiller() []Setting {
 		{
 			// ⚠ The ledger's day is shared: it sums every metered filler model call that day, not
 			// only the judge's, so the doc says "paid filler AI" rather than "these checks".
-			Key: "filler.defects.judge_daily_cents", Label: "Daily ceiling for picture-quality checks (US cents)", EnvVar: "FILLER_DEFECTS_JUDGE_DAILY_CENTS", Group: GroupFiller,
+			Key: "filler.defects.judge_daily_cents", Label: "Daily ceiling for background AI checks (US cents)", EnvVar: "FILLER_DEFECTS_JUDGE_DAILY_CENTS", Group: GroupFiller,
 			Kind: KindInt, Default: 50, Advanced: true,
-			Doc:    "The most picture-quality checks on a paid AI service may cost in one day.",
-			Detail: "Picture-quality checks on a hosted model stop for the day (UTC) once Loomarr's paid filler AI spend that day would pass this. Ads past the limit wait for the next day.",
+			Doc:    "The most Loomarr's background checks on a paid AI service may cost in one day.",
+			Detail: "Picture-quality checks on ads and the review of titles channels took in by themselves stop for the day (UTC) on a hosted model once Loomarr's paid background AI spend that day would pass this. What is past the limit waits for the next day.",
 		},
 
 		// Automatic compilation splitting (§10 V43). Detection ran only on a button press and

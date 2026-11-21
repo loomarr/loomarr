@@ -344,6 +344,7 @@ func (e *Engine) planReconcile(
 			})
 		}
 		ch.DealtFrom = dealtFrom
+		desired.Slots = e.planWindowOnAir(ctx, ch, turnAnchor, desired.Slots)
 	}
 	// Building is the durable "this backend must (re)publish the channel list" marker:
 	// it covers first materialization and a backend switch that reuses a historical
@@ -535,6 +536,8 @@ func (e *Engine) commitReconcile(ctx context.Context, plan *reconcilePlan, run *
 	// Tunarr streams its own way and never reads them.
 	if playsInternally {
 		e.premeasureAhead(ctx, ch)
+		// The next window airs before reconcile commits it, so its breaks are planned now (#3838).
+		e.planNextWindow(ctx, ch)
 	}
 
 	// 7: media-server freshness (best-effort; never fails reconcile). A committed local

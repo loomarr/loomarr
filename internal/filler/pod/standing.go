@@ -82,12 +82,9 @@ func (a *Adapter) StandingFor(ctx context.Context, channels []PoolChannel, airin
 				kept[c.ID()] = true // a pin is the operator's word; a bookend is not drawn from the commercial ladder
 				continue
 			}
-			rung := 2
-			switch fit.Level {
-			case MatchExact:
+			rung := 1
+			if fit.Level == MatchExact {
 				rung = 0
-			case MatchWidened:
-				rung = 1
 			}
 			body = append(body, candidate{hash: c.ID(), rung: rung, plays: played[c.ID()]})
 		}

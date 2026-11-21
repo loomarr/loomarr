@@ -1111,6 +1111,24 @@ header is kept, so no file is opened again. Each version and what it changed:
   X265 EAC3 5.1" beside the copy its NFO grounds, with no catalog record of its own. It also
   rewrites the snapshot-only changes made under 85: an episode's copies joined by the catalog's
   title or their own (`episodeCopyID`), and a film named as its folder before its release's notes.
+- **88:** a film's copies are one title only as far as their catalogs agree. The store joins a file
+  by an id the library infers (`inventory.ExternalID.Inferred`: a film's folder, an episode's
+  copies, a split file's parts) only to a title that holds no catalog id of a kind the file's own
+  catalog ids have, none of which match. So a second film kept in a film's folder is its own title,
+  whichever pass finds it, and copies grounded by different catalogs (tmdb only, imdb only) are
+  one. Every file is written once more, so a film an earlier build merged with another splits.
+- **89:** only an id that says which title a file is reaches the store (`mp.Namespace.Grounds`:
+  TMDB, TVDB, IMDb), so Sonarr's own episode id, a row number a second Sonarr gives another show's
+  episode too, joins no titles and is no longer listed among a title's ids. The file that founded a
+  title leaves it once its catalog id disagrees with one a joined copy holds, for an item of its
+  own beside its home (`inventoryOwnPlace`), and stays there. Every file is written once more, so
+  titles an earlier build merged either way split.
+- **90:** an NFO's or a file name's id that grounds nothing (its record names another title, or
+  the catalog does not know it) joins the file to no title either: the scanner drops it from the
+  snapshot, so a sequel whose NFO carries the first film's id is a title of its own. Before the
+  catalog answers, an NFO whose film the file's own names call a sequel of ("Harrow Fen 2 (2004)"
+  holding Harrow Fen's NFO, copied whole) is set aside the same way (`namesItsSequel`). Every file
+  is written once more.
 
 ## Search
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -119,6 +120,10 @@ type OperatorPolicy struct {
 	// bounded by the quality bar + title cap (global defaults, optionally overridden here).
 	// Rides policy_json (no schema change), so it round-trips like every other policy field.
 	AutoCurate *AutoCurate `json:"autoCurate,omitempty"`
+	// Growth is how the channel grows by itself from the line its seeds draw (#4333). Nil grows:
+	// every channel grows unless kept as it is (decision 6). An operator write that omits it keeps
+	// the saved value, so a client that does not know the field cannot clear what was declined.
+	Growth *GrowthPolicy `json:"growth,omitempty"`
 	// Playout overrides which backend streams THIS channel (§9.1). Nil (the default) =
 	// inherit the `playout.backend` registry setting. Rides policy_json like everything
 	// above it, so there is no schema change and no migration.
@@ -249,6 +254,55 @@ type AutoCurate struct {
 	// MaxTitles overrides recurate.max_titles (the cap on how large this channel may grow).
 	// 0 = inherit the global default.
 	MaxTitles int `json:"maxTitles,omitempty"`
+}
+
+// GrowthPolicy is a channel's growth switches (#4333).
+type GrowthPolicy struct {
+	// Keep is "keep as it is": nothing joins the channel by itself.
+	Keep bool `json:"keep,omitempty"`
+	// Declined are titles taken back off from a growth batch. They never rejoin by themselves; a
+	// person can still add one by hand.
+	Declined []provision.Key `json:"declined,omitempty" maxItems:"1000"`
+}
+
+// Grows reports whether the channel takes titles by itself.
+func (p ChannelPolicy) Grows() bool { return p.Growth == nil || !p.Growth.Keep }
+
+// Declined reports whether a person took key back off a growth batch.
+func (p ChannelPolicy) Declined(key provision.Key) bool {
+	return p.Growth != nil && slices.Contains(p.Growth.Declined, key)
+}
+
+// maxDeclined is the GrowthPolicy.Declined cap; the oldest refusal is forgotten first.
+const maxDeclined = 1000
+
+// WithRemovedGrowthDeclined is p after a person edited the lineup from before to after: a title a
+// growth batch added and the edit took off is declined, so the next night does not add it back.
+// Taking a title off is the undo, whichever control a person used to do it (#4333).
+func (p ChannelPolicy) WithRemovedGrowthDeclined(before, after []LineupEntry) ChannelPolicy {
+	kept := make(map[provision.Key]bool, len(after))
+	for _, e := range after {
+		kept[e.Key] = true
+	}
+	var declined []provision.Key
+	for _, e := range before {
+		if e.Grown != "" && !kept[e.Key] && !p.Declined(e.Key) {
+			declined = append(declined, e.Key)
+		}
+	}
+	if len(declined) == 0 {
+		return p
+	}
+	g := GrowthPolicy{}
+	if p.Growth != nil {
+		g = *p.Growth
+	}
+	g.Declined = append(slices.Clone(g.Declined), declined...)
+	if over := len(g.Declined) - maxDeclined; over > 0 {
+		g.Declined = g.Declined[over:]
+	}
+	p.Growth = &g
+	return p
 }
 
 // FillerSelection is a channel's per-channel filler choice (§10). Every field is

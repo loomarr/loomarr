@@ -81,6 +81,7 @@ type fakeFiller struct {
 	splits                []fakeSplitCall
 	splitUnavailable      bool
 	splitNotFound         bool
+	splitLetGo            bool
 	confirmNotFound       bool
 	confirmInvalid        bool
 	confirmFiled          bool
@@ -304,6 +305,9 @@ func (f *fakeFiller) Split(_ context.Context, clipID string) (string, error) {
 	}
 	if f.splitNotFound {
 		return "", store.ErrNotFound
+	}
+	if f.splitLetGo {
+		return "", operator.ErrReelLetGo
 	}
 	f.splits = append(f.splits, fakeSplitCall{clipID: clipID})
 	return "split-job-1", nil
@@ -1378,6 +1382,14 @@ func TestSplitFiller_Route(t *testing.T) {
 	resp = do(t, srv, http.MethodPost, "/v1/filler/split", adminToken, `{"hash":"comps/1987.mp4"}`)
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("split with no drop-folder → %d, want 409", resp.StatusCode)
+	}
+	ff.splitUnavailable = false
+
+	// A reel whose recording was let go (#4421) → 409 saying so.
+	ff.splitLetGo = true
+	resp = do(t, srv, http.MethodPost, "/v1/filler/split", adminToken, `{"hash":"comps/1987.mp4"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("split of a let-go reel → %d, want 409", resp.StatusCode)
 	}
 }
 

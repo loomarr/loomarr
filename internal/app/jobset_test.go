@@ -29,6 +29,8 @@ import (
 func TestJobSet(t *testing.T) {
 	want := []string{
 		"backup | backup | 0 30 3 * * * | backup.schedule",
+		"channel-growth | channels | 0 5 0 * * * | job.growth.schedule",
+		"channel-growth-review | channels | 0 */5 * * * * | job.growth_review.schedule",
 		"channel-maintenance | channels | 0 */10 * * * * | job.channel_maintenance.schedule",
 		"channel-recurate | channels | 0 0 4 * * 0 | job.recurate.schedule",
 		// ⚠ Auto-fetch (§10 V38b) is the first job that reaches OUT to the internet unattended.

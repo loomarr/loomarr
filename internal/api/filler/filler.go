@@ -451,9 +451,12 @@ type patchClipInput struct {
 		// Name is an operator's rename (#1990). Pointer semantics: omission leaves the name alone,
 		// and an empty name is rejected rather than read as "clear", since a clip always has one.
 		// Its length is checked after trimming, in the handler, so no schema maxLength.
-		Name     *string `json:"name,omitempty" doc:"A name for viewers: 1–120 characters after trimming. Recorded as curated and written to the clip's sidecar, so a rescan keeps it. Omit to leave unchanged; an empty name is rejected (#1990)."`
-		Era      int     `json:"era,omitempty"`
-		Audience string  `json:"audience,omitempty" enum:"kids,family,general,late_night,"`
+		Name *string `json:"name,omitempty" doc:"A name for viewers: 1–120 characters after trimming. Recorded as curated and written to the clip's sidecar, so a rescan keeps it. Omit to leave unchanged; an empty name is rejected (#1990)."`
+		// Era and Audience are pointers so an omitted field leaves the stored value and its
+		// evidence alone; only a field the caller names is written, including an explicit 0 or
+		// empty string, which clears it.
+		Era      *int    `json:"era,omitempty" doc:"The clip's era (a year). Omit to leave unchanged; send 0 to clear."`
+		Audience *string `json:"audience,omitempty" enum:"kids,family,general,late_night," doc:"Omit to leave unchanged; send an empty string to clear."`
 		// Tags is the operator's chosen taxonomy tag set (§10 V45a) — REPLACES the old single
 		// `category` string. Each is grounded against the live taxonomy on write (an unknown slug is
 		// rejected), and `category` is DERIVED from the accepted set (the primary product leaf). A nil
@@ -566,11 +569,22 @@ func (s *Handlers) patchFillerClip(ctx context.Context, in *patchClipInput) (*cl
 	}
 	// Setting an era makes any era guess moot: the Context suggestion hides its era once the clip
 	// has a verified one (clipContextSuggestionDTO).
-	if err := s.store.UpdateClipClassification(ctx, clip.Hash, in.Body.Era, in.Body.Audience, now); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return nil, httpcore.NotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
+	// Only the fields the edit names are written: the columns carry the clip's stored values for
+	// the rest, so a role-only or rename-only edit never blanks the era or audience.
+	if in.Body.Era != nil || in.Body.Audience != nil {
+		era, audience := clip.Era, string(clip.Audience)
+		if in.Body.Era != nil {
+			era = *in.Body.Era
 		}
-		return nil, err
+		if in.Body.Audience != nil {
+			audience = *in.Body.Audience
+		}
+		if err := s.store.UpdateClipClassification(ctx, clip.Hash, era, audience, now); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return nil, httpcore.NotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
+			}
+			return nil, err
+		}
 	}
 	// Kind is a separate write because the AI tagging job shares UpdateClipClassification and must
 	// never touch kind. Both are idempotent single-row updates, so the same PATCH is
@@ -597,11 +611,15 @@ func (s *Handlers) patchFillerClip(ctx context.Context, in *patchClipInput) (*cl
 		}
 	}
 	evidence := operatorEvidence{s: s, clipHash: clip.Hash, reference: "operator.clip_edit", at: now}
-	if err := evidence.record(ctx, enrichment.AxisEra, enrichment.Value{Year: in.Body.Era}); err != nil {
-		return nil, err
+	if in.Body.Era != nil {
+		if err := evidence.record(ctx, enrichment.AxisEra, enrichment.Value{Year: *in.Body.Era}); err != nil {
+			return nil, err
+		}
 	}
-	if err := evidence.record(ctx, enrichment.AxisAudience, enrichment.Value{Text: in.Body.Audience}); err != nil {
-		return nil, err
+	if in.Body.Audience != nil {
+		if err := evidence.record(ctx, enrichment.AxisAudience, enrichment.Value{Text: *in.Body.Audience}); err != nil {
+			return nil, err
+		}
 	}
 	if in.Body.Role != "" {
 		if err := evidence.record(ctx, enrichment.AxisRole, enrichment.Value{Text: in.Body.Role}); err != nil {
@@ -719,13 +737,13 @@ type ChannelFitDTO struct {
 	// ⚠ `bumper_card` here means "this clip is not a candidate", NOT "this channel falls back to
 	// the card" — the same word carries both meanings because it is the bottom of one ladder.
 	// `reason` disambiguates: a rejected clip always carries one, a PINNED clip never does.
-	Level string `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The rung this clip would be drawn from; bumper_card means it is not a candidate (see reason)"`
+	Level string `json:"level" enum:"exact,widened,bumper_card" doc:"The rung this clip would be drawn from; bumper_card means it is not a candidate (see reason)"`
 	// Reason names the predicate that rejected the clip, absent when it was not rejected.
 	//
 	// ⚠ A CODE, never a sentence: the frontend owns the wording (the §11 refusal-code
 	// precedent), because a server sentence cannot be translated and cannot link to the setting
 	// that caused it.
-	Reason string `json:"reason,omitempty" enum:"role,duration,quality,category,audience,geography,excluded,season,language" doc:"Why the clip is not a candidate; absent when it is one"`
+	Reason string `json:"reason,omitempty" enum:"facts,era,role,duration,quality,category,audience,geography,excluded,season,language" doc:"Why the clip is not a candidate; absent when it is one"`
 	// Pinned / Excluded are the operator's explicit override for this clip on this channel.
 	//
 	// ⚠ Both can be true, and EXCLUDED WINS — assembly seeds excluded ids into the used-set

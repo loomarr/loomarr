@@ -5,8 +5,8 @@ import "github.com/loomarr/loomarr/internal/channels/schedule"
 // Holidays in a break (§10, #2030 decision 5). A clip is seasonal when a tag names a holiday with
 // dates (Window.Season). Out of season it never airs, bookends included; in season at most half of
 // a break's commercials are in-season clips, and at least one is when one is rested. The half
-// yields only to the card: the tail's last passes add in-season clips once nothing else fits
-// (decision 34). Pins skip both rules, as they skip every matching rule, but an in-season pin counts
+// yields only to a break the other clips cannot fill: a last pass in fillCommercials adds in-season
+// clips past it in rotation order (decision 34). Pins skip both rules, as they skip every matching rule, but an in-season pin counts
 // toward the half.
 
 // seasonOf reports whether c names a holiday with a season, and whether one it names is in season.

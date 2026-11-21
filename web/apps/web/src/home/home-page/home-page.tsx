@@ -56,8 +56,8 @@ const HomePage = () => {
   const hasLife = !loading && !errored && channels.length > 0;
   const stripState = loading ? "loading" : errored ? "error" : channels.length === 0 ? "empty" : "ok";
 
-  // Players report what they're showing every 30 seconds (#1662), so poll at the same cadence.
-  const viewing = dashboardApi.useHouseholdViewing({ query: { enabled: hasLife, refetchInterval: 30_000 } });
+  // Who is watching reads again on its `viewing` frame, as a viewing starts, moves or ends (#3352).
+  const viewing = dashboardApi.useHouseholdViewing({ query: { enabled: hasLife } });
   const highlights = channelsApi.useGuideHighlights(undefined, { query: { enabled: hasLife } });
   const viewingBody = unwrap(viewing.data);
   const since = newSince(nowMs);
@@ -71,7 +71,13 @@ const HomePage = () => {
       <Stack flexBasis="0%" flexGrow={1} flexShrink={1}>
         {/* 16px padding at phone, 24px from `sm` up (the geometry table's "16px padding"). Below
             `md` the bottom bar replaced the 56px rail the table assumed, so 390px leaves 358px. */}
-        <Stack className="p-4 sm:p-6" gap={{ base: "6", sm: "8" }} marginHorizontal="auto" maxWidth={1120}>
+        <Stack
+          className="p-4 sm:p-6"
+          gap={{ base: "6", sm: "8" }}
+          marginHorizontal="auto"
+          maxWidth={1120}
+          width="100%"
+        >
           <HomeStrip state={stripState} isAdmin={isAdmin} onRetry={() => void guide.refetch()} />
           {hasLife && layout && (
             <ChannelWall

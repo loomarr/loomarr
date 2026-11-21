@@ -290,6 +290,7 @@ const appHandlers = (): RequestHandler[] => [
       inProgress: 0,
       scheduled: 0,
       needsDecision: 0,
+      awaitingSplit: 0,
       recoverable: 0,
       ready: 0,
       complete: 0,

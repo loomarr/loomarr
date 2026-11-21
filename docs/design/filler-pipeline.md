@@ -9,6 +9,9 @@ classification docs; this doc covers how work flows.
 
 `probe → transcode → split → screen → defects → language → transcribe → vision → finish`.
 
+No `screen` stage is registered since #4409, so that rung is always skipped: a piece cut from a
+compilation runs the same rungs as a single ad.
+
 `finish` does no work of its own: it always applies and always continues, so every published ladder
 ends with a completed terminal rung that the ready commit validates against.
 
@@ -37,6 +40,7 @@ ends with a completed terminal rung that the ready commit validates against.
   an explicit force flag because it replaces playable bytes.
 - **Lifecycle is a domain answer.** `filler.Pipeline` projects persisted state into one vocabulary for
   the runner, Incoming and telemetry: `runnable`, `in_progress`, `scheduled`, `needs_decision`,
+  `awaiting_split` (a reel held at the split until splitting is certified; nobody is asked),
   `ready`, `complete` (a processed composite container, not playable), `rejected`, `dismissed`. A
   failed rung carries a stable failure code, the retryable rung and one sanctioned recovery action.
   Retrying a terminal execution failure and clearing its tombstone is one transaction, and the clip is
@@ -92,11 +96,17 @@ encodes, because its input is the conditioned cut, not the master. Recipes are `
 the libx264 v1 records written before this change still validate, so no stored clip's lineage
 breaks.
 
-**A tune stops an encode.** The transcode rung runs under the playout budget's background context.
-When a live transcode is admitted, the encode stops at once. The rung yields as a deferral: no
-attempt is spent, and no other encode starts in that pass while playback runs. Transcription and
-splitting only wait before they start. A long recording's transcription interrupted at every tune
-would never finish.
+**A tune that leaves no room stops an encode.** Media rungs wait only while playout is near its
+measured capacity (see [playout.md](playout.md)), so a household that always has one stream on
+still gets its filler prepared. The transcode rung runs under the playout budget's media-work
+context. When a live transcode is admitted and leaves playout tight, the encode stops at once. The
+rung yields as a deferral: no attempt is spent, and no other encode starts in that pass while
+playout stays tight. Transcription and splitting only wait before they start. A long recording's
+transcription interrupted at every tune would never finish.
+
+**A clip waits a day at most.** A clip queued at a media rung for 24 hours stops waiting and starts
+beside playback, and it still yields to a tune that leaves no room. The clock is the rung's queued
+time, which a deferral does not reset.
 
 **A Proposal Job goes before background vision** (#1508). On a small AI server, one slot's long vision
 prefill slows decoding on every other slot. An Add a channel request running beside the vision

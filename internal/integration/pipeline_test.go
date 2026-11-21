@@ -32,6 +32,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library/provision"
@@ -228,9 +229,27 @@ func seedFillerClips(t *testing.T, st store.Store) {
 		{Hash: strings.Repeat("3", 64), TunarrProgramID: "ad-2", Name: "Toy ad", Role: clips.Commercial, Era: 1992, Audience: clips.Kids, Category: "toys", DurationMs: 30000, Source: "tunarr-local"},
 		{Hash: strings.Repeat("4", 64), TunarrProgramID: "ad-3", Name: "Snack ad", Role: clips.Commercial, Era: 1992, Audience: clips.Kids, Category: "snacks", DurationMs: 30000, Source: "tunarr-local"},
 		{Hash: strings.Repeat("5", 64), TunarrProgramID: "ad-adult", Name: "Late-night ad", Role: clips.Commercial, Era: 1992, Audience: clips.LateNight, Category: "alcohol", DurationMs: 30000, Source: "tunarr-local"},
+		// Kids by one model's guess alone: no listing, rule or operator stands behind it.
+		{Hash: strings.Repeat("6", 64), TunarrProgramID: "ad-guess", Name: "Guessed ad", Role: clips.Commercial, Era: 1992, Audience: clips.Kids, Category: "toys", DurationMs: 30000, Source: "tunarr-local"},
 	}
 	for _, c := range clips {
 		if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: c, UpdatedAt: time.Unix(1_800_000_000, 0)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A kids channel airs a kids or family clip only when its audience is backed (#3838 decision 7).
+	// The listing backs the first four, the way a fetched clip's item metadata does.
+	enriched, ok := st.(records.Store)
+	if !ok {
+		t.Fatalf("store %T cannot record enrichment evidence", st)
+	}
+	at := time.Unix(1_800_000_000, 0).UTC()
+	for _, c := range clips[:4] {
+		state := enrichment.State{ClipHash: c.Hash, Axis: enrichment.AxisAudience, Status: enrichment.StatusComplete,
+			Value: enrichment.Value{Text: string(c.Audience)},
+			Evidence: enrichment.Evidence{Kind: enrichment.EvidenceItem, Reference: "listing.rating",
+				Confidence: 100, Producer: "deterministic", ProducerVersion: "1", ObservedAt: at}}
+		if _, _, err := enriched.ApplyFillerEnrichment(context.Background(), state, at); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -416,6 +435,9 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	for _, id := range pool {
 		if id == "ad-adult" {
 			t.Fatal("late-night commercial reached a TV-Y7 kids Channel filler list")
+		}
+		if id == "ad-guess" {
+			t.Fatal("a kids ad backed by one model's guess alone reached a kids Channel filler list")
 		}
 		if !strings.HasPrefix(id, "ad-") && !strings.HasPrefix(id, "bump-") {
 			t.Errorf("filler-list has an ungrounded clip id %q", id)
