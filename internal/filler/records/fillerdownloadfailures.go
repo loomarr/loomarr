@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
@@ -14,6 +15,13 @@ import (
 
 const downloadFailureSelect = `SELECT item_key, provider, source_id, remote_id, url, duration_ms, height, gap,
 	failures, first_failed_at, last_failed_at, retry_at, last_error FROM filler_download_failures`
+
+// An item's key separates its parts with NUL, which Postgres text cannot hold, so the row stores
+// the key with the unit separator instead (migration 00246). Every read and write goes through
+// these two, and callers only ever see DownloadItem.Key().
+func storedKey(key string) string { return strings.ReplaceAll(key, "\x00", "\x1f") }
+
+func itemKey(stored string) string { return strings.ReplaceAll(stored, "\x1f", "\x00") }
 
 func scanDownloadFailure(sc scannable) (acquisition.DownloadFailure, error) {
 	var f acquisition.DownloadFailure
@@ -36,7 +44,7 @@ func (s *sqlStore) RecordDownloadFailure(ctx context.Context, item acquisition.D
 		return acquisition.DownloadFailure{}, fmt.Errorf("begin record download failure: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	key := item.Key()
+	key := storedKey(item.Key())
 	failure, err := scanDownloadFailure(tx.QueryRowContext(ctx, s.ph(storedb.LockRows(s.dialect, downloadFailureSelect+` WHERE item_key = ?`)), key))
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -68,7 +76,7 @@ func (s *sqlStore) DeferDownload(ctx context.Context, item acquisition.DownloadI
 		return fmt.Errorf("begin defer download: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	key := item.Key()
+	key := storedKey(item.Key())
 	failure, err := scanDownloadFailure(tx.QueryRowContext(ctx, s.ph(storedb.LockRows(s.dialect, downloadFailureSelect+` WHERE item_key = ?`)), key))
 	if errors.Is(err, sql.ErrNoRows) {
 		failure = acquisition.DownloadFailure{}
@@ -110,7 +118,7 @@ func (s *sqlStore) writeDownloadFailure(ctx context.Context, tx store.Tx, key st
 
 // ClearDownload forgets an item that downloaded. An unknown key is not an error.
 func (s *sqlStore) ClearDownload(ctx context.Context, key string) error {
-	if _, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM filler_download_failures WHERE item_key = ?`), key); err != nil {
+	if _, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM filler_download_failures WHERE item_key = ?`), storedKey(key)); err != nil {
 		return fmt.Errorf("clear download failure: %w", err)
 	}
 	return nil
@@ -130,7 +138,7 @@ func (s *sqlStore) RestingDownloads(ctx context.Context, at time.Time) (map[stri
 		if err := rows.Scan(&key, &retry); err != nil {
 			return nil, fmt.Errorf("scan resting download: %w", err)
 		}
-		out[key] = fromEpoch(retry)
+		out[itemKey(key)] = fromEpoch(retry)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("list resting downloads: %w", err)
@@ -170,7 +178,7 @@ func (s *sqlStore) ClaimDueDownloads(ctx context.Context, at, until time.Time, l
 	_ = rows.Close()
 	for _, f := range due {
 		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_download_failures SET retry_at = ? WHERE item_key = ?`),
-			epoch(until), f.Key()); err != nil {
+			epoch(until), storedKey(f.Key())); err != nil {
 			return nil, fmt.Errorf("claim download: %w", err)
 		}
 	}
