@@ -2,20 +2,30 @@ import { View } from "@tamagui/core";
 import type { ReactNode } from "react";
 import { Pressable } from "react-native";
 
+import { useFocusLook } from "../focus-look";
 import { Icon } from "../icon";
 import { icons } from "../icons";
 import { Action, ChoiceGroup } from "../interaction";
+import { boxFocusRing } from "../interaction/box-focus-ring";
 import { Surface } from "../primitives";
 import { Text } from "../text";
 import { type Density, semanticRadius, semanticSpace, semanticTargets } from "../tokens";
 
 type TabOption<Value extends string> = {
+  /** A count beside the label ("3,412"), drawn by the `underline` appearance only. */
+  count?: string;
   disabled?: boolean;
   label: string;
   value: Value;
 };
 
 interface TabsProps<Value extends string> {
+  /**
+   * `action`, the default, draws each tab as an outlined Action. `underline` sets the words on a
+   * shared rule with the selected one underlined in the foreground colour, for a page's sections
+   * (the Library's All, Movies, Shows). Amber stays the focus ring only.
+   */
+  appearance?: "action" | "underline";
   density?: Density;
   label: string;
   onValueChange: (value: Value) => void;
@@ -23,33 +33,103 @@ interface TabsProps<Value extends string> {
   value: Value;
 }
 
+// One `underline` tab: the label and its count on a 2px rule that is the foreground colour when
+// selected and clear otherwise. The rule overlaps the list's own 1px rule, so the two read as one.
+const UnderlineTab = <Value extends string>({
+  density,
+  onPress,
+  option,
+  selected,
+}: {
+  density: Density;
+  onPress: () => void;
+  option: TabOption<Value>;
+  selected: boolean;
+}) => {
+  const { focused, ...focusHandlers } = useFocusLook();
+  const disabled = option.disabled ?? false;
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ disabled, selected }}
+      aria-disabled={disabled || undefined}
+      aria-selected={selected}
+      disabled={disabled}
+      {...focusHandlers}
+      onPress={onPress}
+      style={{ marginBottom: -1, opacity: disabled ? 0.55 : 1, outlineStyle: "solid", outlineWidth: 0 }}
+      tabIndex={disabled ? -1 : selected ? 0 : -1}
+    >
+      <View
+        borderBottomColor={selected ? "contentPrimary" : "transparent"}
+        borderBottomWidth={2}
+        justifyContent="flex-end"
+        minHeight={semanticTargets[density]}
+        paddingBottom={semanticSpace.inline}
+        {...boxFocusRing(focused, density)}
+      >
+        {/* The count is nested in the label's line, so the two share a baseline and one name. */}
+        <Text density={density} strong textRole="body" tone={selected ? "primary" : "secondary"}>
+          {option.label}
+          {option.count ? (
+            <Text density={density} textRole="caption" tone="secondary">
+              {` ${option.count}`}
+            </Text>
+          ) : null}
+        </Text>
+      </View>
+    </Pressable>
+  );
+};
+
 const Tabs = <Value extends string>({
+  appearance = "action",
   density = "pointer",
   label,
   onValueChange,
   options,
   value,
-}: TabsProps<Value>) => (
-  <View aria-label={label} flexDirection="row" gap="inline" role="tablist">
-    {options.map((option) => {
-      const selected = option.value === value;
-      return (
-        <Action
-          accessibilityRole="tab"
+}: TabsProps<Value>) =>
+  appearance === "underline" ? (
+    <View
+      aria-label={label}
+      borderBottomColor="borderDecorative"
+      borderBottomWidth={1}
+      flexDirection="row"
+      gap={semanticSpace.section}
+      role="tablist"
+    >
+      {options.map((option) => (
+        <UnderlineTab
           density={density}
-          disabled={option.disabled}
           key={option.value}
           onPress={() => onValueChange(option.value)}
-          selected={selected}
-          tabIndex={selected ? 0 : -1}
-          tone="secondary"
-        >
-          {option.label}
-        </Action>
-      );
-    })}
-  </View>
-);
+          option={option}
+          selected={option.value === value}
+        />
+      ))}
+    </View>
+  ) : (
+    <View aria-label={label} flexDirection="row" gap="inline" role="tablist">
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <Action
+            accessibilityRole="tab"
+            density={density}
+            disabled={option.disabled}
+            key={option.value}
+            onPress={() => onValueChange(option.value)}
+            selected={selected}
+            tabIndex={selected ? 0 : -1}
+            tone="secondary"
+          >
+            {option.label}
+          </Action>
+        );
+      })}
+    </View>
+  );
 
 type MenuItem<Value extends string> = {
   disabled?: boolean;
