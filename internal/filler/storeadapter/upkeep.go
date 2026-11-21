@@ -52,6 +52,10 @@ func (a Upkeep) AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipH
 	return a.st.AcquisitionArtifactForClip(ctx, mediaPath, clipHash)
 }
 
+func (a Upkeep) AcquisitionHasArtifacts(ctx context.Context, acquisitionID string) (bool, error) {
+	return a.st.AcquisitionHasArtifacts(ctx, acquisitionID)
+}
+
 func (a Upkeep) ListClipPaths(ctx context.Context) ([]string, error) {
 	return NewDefects(a.st).ListClipPaths(ctx)
 }

@@ -77,6 +77,8 @@ type FillerAcquisitionStore interface {
 	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []acquisition.Artifact) error
 	// AcquisitionArtifactForClip resolves provenance and recovery state for a discovered clip.
 	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (acquisition.Artifact, bool, error)
+	// AcquisitionHasArtifacts reports whether any artifact row records the acquisition.
+	AcquisitionHasArtifacts(ctx context.Context, acquisitionID string) (bool, error)
 	// ListRecoverableAcquisitionArtifacts exposes bounded staged/published/repair work.
 	ListRecoverableAcquisitionArtifacts(ctx context.Context, limit int) ([]acquisition.Artifact, error)
 	// ListRecoverableAcquisitionArtifactsAfter continues a stable bounded recovery scan.
