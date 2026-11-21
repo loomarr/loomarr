@@ -67,3 +67,8 @@ jobs:
       - name: Observability artifacts are provisionable
         if: matrix.shard == 2
         run: make observability-verify
+      # The pull request's view, against the main it was opened on. merge-gate.yml checks each
+      # queued candidate again against the main it joins.
+      - name: Every added migration is numbered above main's newest
+        if: matrix.shard == 2 && github.event_name == 'pull_request'
+        run: ./scripts/check-migration-order.sh pull_request "$GITHUB_EVENT_PATH"

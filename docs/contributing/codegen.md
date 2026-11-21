@@ -40,8 +40,12 @@ to drift against. That's also why a fresh clone typechecks red until codegen has
 Goose migrations under `internal/platform/store/migrations/{sqlite,postgres}` are hand-written and applied
 at boot. Never edit an applied migration; add a new one.
 
-Two long-lived branches will both take the next free number and goose silently skips the second.
-Check the highest number on `main` first.
+Number a new migration one above the highest on `main`, in both dialects. A database that already ran
+a newer migration refuses to start when it meets an unapplied lower one, and two branches can both take
+the same next number. `make migration-order-verify` checks a branch against `origin/main`; the Go repository
+contracts job checks a pull request, and the merge gate checks each queued candidate against the main
+it joins (#4450). Renumbering a migration that has not merged is safe: rename it in both dialects and fix every
+reference to the old number.
 
 ## Two things generation doesn't give you
 

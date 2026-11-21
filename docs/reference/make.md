@@ -199,6 +199,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make openapi-verify` | ✅ | regenerated spec must match committed (CI red on drift) <br>*runs:* `openapi` |
 | `make ci-lint` | ✅ | actionlint over .github/workflows — catches what YAML parsing cannot |
 | `make retired-verify` | ✅ | retired identifiers must not appear as live instructions (CI red on drift) |
+| `make migration-order-verify` |  | every migration this branch adds is numbered above BASE's newest (default origin/main) |
+| `make migration-order-test` |  | the migration order check's contract, on throwaway repositories |
 
 ## Config docs (settings registry)
 
