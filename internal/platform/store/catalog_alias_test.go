@@ -14,20 +14,15 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
-// The store re-exports the catalog cluster's sentinels as the same values. errors.Is compares by
-// identity, so a copy that merely prints the same text would make every caller matching the other
-// name silently false.
+// The store's not-found sentinel is the catalog cluster's value. errors.Is compares by identity, so
+// a copy that merely prints the same text would make every caller matching the other name silently
+// false.
 func TestCatalogSentinelsAreTheCatalogstoreValues(t *testing.T) {
 	for _, c := range []struct {
 		name         string
 		store, inner error
 		message      string
 	}{
-		{"ErrConditionedClipMismatch", ErrConditionedClipMismatch, clipstore.ErrConditionedClipMismatch, "store: conditioned clip does not match the catalog"},
-		{"ErrTaxonConflict", ErrTaxonConflict, clipstore.ErrTaxonConflict, "store: taxonomy conflict"},
-		{"ErrCorruptClipDefects", ErrCorruptClipDefects, clipstore.ErrCorruptClipDefects, "corrupt clip defect records"},
-		{"ErrInferiorCopyMismatch", ErrInferiorCopyMismatch, clipstore.ErrInferiorCopyMismatch, "store: inferior copy must name two different existing clips"},
-		{"ErrUnknownClipSort", ErrUnknownClipSort, clipstore.ErrUnknownClipSort, "unknown clip sort"},
 		{"ErrNotFound", ErrNotFound, clipstore.ErrNotFound, "store: not found"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -47,21 +42,22 @@ func TestCatalogSentinelsAreTheCatalogstoreValues(t *testing.T) {
 	}
 }
 
-// Real read paths: each sentinel is produced inside clipstore and must match the store's name.
+// Real read paths: each sentinel is produced inside clipstore and reaches the store's caller as
+// that value.
 func TestCatalogErrorsMatchTheStoreSentinels(t *testing.T) {
 	ctx := context.Background()
 	st := newSQLiteStore(t)
 	if _, err := st.GetClip(ctx, "nobody"); !errors.Is(err, ErrNotFound) || !errors.Is(err, clipstore.ErrNotFound) {
 		t.Fatalf("GetClip miss = %v, want store.ErrNotFound and clipstore.ErrNotFound", err)
 	}
-	if _, err := st.ListClips(ctx, ClipFilter{Sort: "bogus"}); !errors.Is(err, ErrUnknownClipSort) || !errors.Is(err, clipstore.ErrUnknownClipSort) {
-		t.Fatalf("ListClips with an unknown sort = %v, want store.ErrUnknownClipSort", err)
+	if _, err := st.ListClips(ctx, ClipFilter{Sort: "bogus"}); !errors.Is(err, clipstore.ErrUnknownClipSort) {
+		t.Fatalf("ListClips with an unknown sort = %v, want clipstore.ErrUnknownClipSort", err)
 	}
-	if _, err := st.PreviewTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: "halloween"}); !errors.Is(err, ErrTaxonConflict) || !errors.Is(err, clipstore.ErrTaxonConflict) {
-		t.Fatalf("deleting a dated holiday's taxon = %v, want store.ErrTaxonConflict", err)
+	if _, err := st.PreviewTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: "halloween"}); !errors.Is(err, clipstore.ErrTaxonConflict) {
+		t.Fatalf("deleting a dated holiday's taxon = %v, want clipstore.ErrTaxonConflict", err)
 	}
-	if err := st.MergeInferiorCopy(ctx, InferiorCopy{}); !errors.Is(err, ErrInferiorCopyMismatch) {
-		t.Fatalf("MergeInferiorCopy with no hashes = %v, want store.ErrInferiorCopyMismatch", err)
+	if err := st.MergeInferiorCopy(ctx, InferiorCopy{}); !errors.Is(err, clipstore.ErrInferiorCopyMismatch) {
+		t.Fatalf("MergeInferiorCopy with no hashes = %v, want clipstore.ErrInferiorCopyMismatch", err)
 	}
 }
 
@@ -70,24 +66,15 @@ func TestCatalogErrorsMatchTheStoreSentinels(t *testing.T) {
 var (
 	_ clipstore.Clip               = Clip{}
 	_ clipstore.ClipFilter         = ClipFilter{}
-	_ clipstore.ClipSort           = ClipSortName
-	_ ClipSort                     = clipstore.ClipSortPlays
 	_ clipstore.ClipTx             = ClipTx{}
-	_ clipstore.ClipGeography      = ClipGeography{}
-	_ clipstore.ClipPublication    = ClipPublication{}
 	_ clipstore.ClipArtworkPending = ClipArtworkPending{}
 	_ clipstore.WantedCopy         = WantedCopy{}
 	_ clipstore.InferiorCopy       = InferiorCopy{}
 	_ clipstore.ClipDefectRecord   = ClipDefectRecord{}
 	_ clipstore.ClipDefectLabel    = ClipDefectLabel{}
-	_ clipstore.StoreTaxon         = StoreTaxon{}
 	_ clipstore.TaxonomyEdit       = TaxonomyEdit{}
 	_ clipstore.TaxonomyEditImpact = TaxonomyEditImpact{}
-	_ clipstore.TaxonUsage         = TaxonUsage{}
 	_ clipstore.TaxonomyUsage      = TaxonomyUsage{}
-	_ clipstore.Image              = Image{}
-	_ clipstore.ImageRef           = ImageRef{}
-	_ clipstore.ImageDerivative    = ImageDerivative{}
 )
 
 // The embedded cluster is what satisfies the image role and the catalog methods: the aggregate store

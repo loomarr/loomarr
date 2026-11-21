@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Every series' playable episodes and their runtime together, counted through the present files
@@ -22,14 +24,14 @@ func testSeriesEpisodeTotals(t *testing.T, newStore NewStoreFunc) {
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	file := func(path, item, series string) LibraryFile {
-		return LibraryFile{Path: path, Root: "/t", Size: 1, ModifiedNs: 1, Kind: "episode", Header: LibraryHeaderRead,
+	file := func(path, item, series string) librarystore.LibraryFile {
+		return librarystore.LibraryFile{Path: path, Root: "/t", Size: 1, ModifiedNs: 1, Kind: "episode", Header: librarystore.LibraryHeaderRead,
 			SeenAt: at, ItemID: item, SeriesID: series}
 	}
 	missing := file("/t/empty/x1.mkv", "x1", "empty")
 	missing.MissingAt = at
 	second := file("/t/show/e1.copy.mkv", "e1", "show") // a second copy is still one episode
-	if err := st.SaveLibraryFiles(ctx, []LibraryFile{
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
 		file("/t/show/e1.mkv", "e1", "show"), second, file("/t/show/e2.mkv", "e2", "show"),
 		file("/t/show/e3.mkv", "e3", "show"), missing,
 	}); err != nil {
@@ -39,7 +41,7 @@ func testSeriesEpisodeTotals(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got["show"] != (SeriesEpisodes{Episodes: 3, RuntimeMs: 4_100_000}) {
+	if len(got) != 1 || got["show"] != (librarystore.SeriesEpisodes{Episodes: 3, RuntimeMs: 4_100_000}) {
 		t.Fatalf("totals %+v, want the show's 3 episodes, 4,100,000 ms", got)
 	}
 }

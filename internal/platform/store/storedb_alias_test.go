@@ -38,10 +38,9 @@ func TestMissingRowMatchesBothNotFoundNames(t *testing.T) {
 	}
 }
 
-// Querier, Tx, Dialect and Scannable are aliases: values of the storedb types satisfy the store's
-// names with no conversion.
+// Tx, Dialect and Scannable are aliases: values of the storedb types satisfy the store's names with
+// no conversion.
 var (
-	_ Querier   = storedb.Querier(nil)
 	_ Tx        = storedb.Tx(nil)
 	_ Scannable = storedb.Scannable(nil)
 	_ Dialect   = storedb.DialectSQLite
