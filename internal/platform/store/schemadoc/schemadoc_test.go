@@ -74,9 +74,10 @@ func TestShippedAreasLoad(t *testing.T) {
 }
 
 func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
-	savedGaps, savedFree := KnownGaps, FreeForm
-	t.Cleanup(func() { KnownGaps, FreeForm = savedGaps, savedFree })
+	savedGaps, savedFree, savedNonKeys := KnownGaps, FreeForm, NonKeys
+	t.Cleanup(func() { KnownGaps, FreeForm, NonKeys = savedGaps, savedFree, savedNonKeys })
 	FreeForm = map[string]string{"events.app_status": "another app's words", "jobs.kind": "now checked"}
+	NonKeys = map[string]string{"jobs.vendor_id": "another system's id", "jobs.parent_id": "since keyed"}
 	KnownGaps = map[string]string{
 		"check jobs.status":           "listed, still a gap",
 		"fk-index jobs.old_id":        "listed, since fixed",
@@ -108,6 +109,10 @@ func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
 			{Name: "tags", Type: "TEXT", Default: "'[]'"},                 // a gap: a JSON default, not declared
 			{Name: "meta", Type: "TEXT", Default: "'{}'", JSON: true},     // declared JSON
 			{Name: "notes_json", Type: "TEXT", Checked: true, JSON: true}, // declared JSON
+			{Name: "owner_ref", Type: "TEXT"},                             // a gap: named for a row, no key
+			{Name: "parent_id", Type: "TEXT", References: "jobs.id"},      // a key: listed in NonKeys by mistake
+			{Name: "vendor_id", Type: "TEXT"},                             // listed in NonKeys
+			{Name: "user_id", Type: "TEXT", References: "users.id"},       // a key
 		},
 			ForeignKeys: [][]string{
 				{"user_id"},               // only second in an index: a gap
@@ -126,8 +131,10 @@ func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
 		"fk-index jobs.old_id is fixed: remove it from KnownGaps (was: listed, since fixed)",
 		"fk-index jobs.user_id: add an index whose first column is this foreign key",
 		"jobs.kind is listed in FreeForm but is no longer an unchecked state column",
+		"jobs.parent_id is listed in NonKeys but is a foreign key now, or gone",
 		"json jobs.steps_json: declare it JSON: CHECK (json_valid(column)) in SQLite, jsonb in Postgres",
 		"json jobs.tags: declare it JSON: CHECK (json_valid(column)) in SQLite, jsonb in Postgres",
+		"reference jobs.owner_ref: make it a foreign key, or list it in NonKeys with why it must not be one",
 		"retention notes: add a retention line to its table in internal/platform/store/schemadoc/areas/",
 		"unbounded events: delete old rows (housekeeping or a retention setting), then say how long they're kept",
 		"unit jobs.ran_at: " + unitFix,
