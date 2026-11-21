@@ -5,7 +5,14 @@ import type { CreateInvitationInputBody } from "@loomarr/api/models/createInvita
 import type { InvitationBody } from "@loomarr/api/models/invitationBody";
 import type { IssueInvitationGrantInputBodyConveyance } from "@loomarr/api/models/issueInvitationGrantInputBodyConveyance";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@loomarr/design-system";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Stack,
+} from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -17,6 +24,8 @@ import { InvitationRoster } from "@/components/loomarr/people/invitation-roster"
 import { PeopleRoster } from "@/components/loomarr/people/people-roster";
 import { PersonDetail } from "@/components/loomarr/people/person-detail";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { useRefetchAt } from "@/lib/use-refetch-at";
+import { soonestExpiry } from "../soonest-expiry";
 
 // UsersPage — the §11 allowlist. You can sign in iff you have a row here, so this screen
 // is the access-control surface: import who may sign in, set what they may spend, and end
@@ -42,7 +51,15 @@ const UsersPage = () => {
   const importUsers = usersApi.useImportUsers();
   const syncUsers = usersApi.useSyncUsers();
   const createLocal = usersApi.useCreateLocalUser();
-  const invitations = invitationsApi.useListInvitations({ query: { refetchInterval: 5_000 } });
+  // Invitations change behind the admin too, as a link is redeemed or its email delivered: the
+  // `access` frame reads them again (#3352). A pending link also expires on time alone, with
+  // nothing stored, so the list is read again as the soonest one does.
+  const invitations = invitationsApi.useListInvitations();
+  useRefetchAt({
+    deadline: soonestExpiry(unwrap(invitations.data, (body) => body.invitations) ?? []),
+    answeredAt: invitations.dataUpdatedAt,
+    refetch: invitations.refetch,
+  });
   const invalidateInvitations = () =>
     queryClient.invalidateQueries({ queryKey: invitationsApi.getListInvitationsQueryKey() });
   const sendInvitationEmail = invitationsApi.useSendInvitationEmail({
@@ -128,12 +145,12 @@ const UsersPage = () => {
   const selected = rows?.find((user) => user.id === selectedId);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack height="100%" minHeight={0}>
       <PageHeader
         title="People"
-        description="Who may sign in, what they may spend, and what they may approve. An account grants no access until you add it here: by importing a media-server account, or creating a local one."
+        description="Who can sign in, and what they can ask for."
         actions={
-          <div className="flex flex-wrap gap-2">
+          <Stack direction="row" flexShrink={1} gap="inline" minWidth={0} wrap>
             <InvitationDialog
               libraryAvailable={importAvailable}
               candidates={
@@ -175,11 +192,19 @@ const UsersPage = () => {
                 await Promise.all([invalidate(), candidates.refetch()]);
               }}
             />
-          </div>
+          </Stack>
         }
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
+      <Stack
+        className="overflow-auto"
+        flexBasis="0%"
+        flexGrow={1}
+        flexShrink={1}
+        gap="6"
+        minHeight={0}
+        padding={24}
+      >
         {patch.error != null && <ErrorState error={patch.error} />}
         {revoke.error != null && <ErrorState error={revoke.error} />}
         {invitations.error != null && (
@@ -266,8 +291,8 @@ const UsersPage = () => {
             </DialogContent>
           )}
         </Dialog>
-      </div>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 

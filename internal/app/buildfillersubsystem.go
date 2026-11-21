@@ -26,6 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/identity"
 	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/filler/quarantine"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/routine"
@@ -34,6 +35,7 @@ import (
 	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
 	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/filler/storeadapter"
+	"github.com/loomarr/loomarr/internal/filler/upkeep"
 	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
@@ -142,6 +144,10 @@ func buildFillerSubsystem(
 	result.taxonomy = operator.NewTaxonomyEditor(st, wake, holidaysChanged)
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)
 	fetcher := buildFetcher(set, layout, log, st, storageGovernor)
+	if fetcher != nil {
+		// A download that fails or waits is remembered per item, so it retries on its own.
+		fetcher.WithLedger(st)
+	}
 	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder, storageGovernor, imageService)
 	ytDlpPath := resolveTool(settings.IngestYtdlpPath.Get(set), "yt-dlp")
 	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler
@@ -296,6 +302,16 @@ func buildFillerSubsystem(
 
 	registry.Add(fillerPipelineJob(routine.NewPipelineDriver(pipeline, details, log)))
 	adapter.pipeline = pipeline
+	if playoutResolver != nil {
+		// A filler clip that keeps failing to encode at air time is rejected and taken off air.
+		playoutResolver.Faults.SetReporter(func(ctx context.Context, hash, detail string) error {
+			err := pipeline.RejectAirFault(ctx, hash, detail)
+			if err != nil {
+				log.Warn("playout: could not feed a failing clip back to the catalog", "clip", hash, "err", err)
+			}
+			return err
+		})
+	}
 	adapter.afterIngest = func(ctx context.Context) error {
 		if _, err := syncer.Sync(ctx); err != nil {
 			return err
@@ -322,6 +338,22 @@ func buildFillerSubsystem(
 		}, time.Now, log,
 	)))
 	registry.Add(fillerDefectsJob(defectFloor))
+	bin := quarantine.New(layout.ClipDir(), time.Now)
+	var guideTimeline fillerRoomTimeline
+	if playoutResolver != nil {
+		guideTimeline = playoutResolver
+	}
+	registry.Add(fillerUpkeepJob(upkeep.New(storeadapter.NewUpkeep(st),
+		bin, fetch.NewAcquisitionCleaner(layout.WatchDir(), st, time.Now).WithDisposal(bin.Dispose),
+		layout.ClipDir(), time.Now, log).WithReencode(pipeline.NeedsReencode, func() bool {
+		// The library re-encode targets the operator's pinned encoder, else the detected one. A
+		// detection that fell back to software on a host that encoded in hardware this week is not
+		// settled: its GPU may only be late.
+		return settings.PlayoutEncoder.Get(set) != "" ||
+			playoutResolver != nil && playoutResolver.DetectReady() && !playoutResolver.HardwareMissing()
+	}).WithRoom(fillerRoom(storageGovernor, layout.ClipDir(), st, operator.NewPodPreview(st, pods), guideTimeline,
+		func() time.Duration { return time.Duration(settings.FillerCooldownSeconds.Get(set)) * time.Second },
+		time.Now))))
 	autoFetch := acquisition.NewFetcher(
 		storeadapter.NewFetch(
 			st,
@@ -372,6 +404,8 @@ func buildFillerSubsystem(
 	})
 	autoFetch.WithOpenSearch(routine.NewOpenArchiveSearch(fetch.NewArchiveDownloader(), st,
 		placePolicy, stations, result.intakeLanguages))
+	// The scheduled pass skips an item that failed and rests, and retries one whose time has come.
+	autoFetch.WithDownloads(st)
 	adapter.autoFetch = autoFetch
 	result.service = adapter
 	registry.Add(fillerFetchJob(autoFetch, routine.NewLocalCuratedSources(st, placePolicy, log)))

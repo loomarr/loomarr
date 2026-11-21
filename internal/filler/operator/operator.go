@@ -43,6 +43,11 @@ var ErrIngestUnavailable = errors.New("ingest tooling not present in this image"
 // configuration remedy: Settings → Filler opens it (§10, V34).
 var ErrSplitUnavailable = errors.New("splitting needs the filler drop-folder (filler.dir)")
 
+// ErrReelLetGo refuses to split a reel whose recording upkeep let go once every piece cut from it
+// was settled (#4421). Checked before the job starts, so the answer is a 409, not a missing-file
+// error frame minutes later.
+var ErrReelLetGo = errors.New("this reel's recording was let go once every ad cut from it was settled, so there is nothing left to split")
+
 // Launcher starts one request-launched operation under the generation that owns it: the work runs
 // to completion or until that generation shuts down, whatever happens to the request.
 type Launcher func(timeout time.Duration, run func(context.Context) error, done func(context.Context, error)) error
@@ -416,7 +421,9 @@ func (a *Operator) ingest(
 		a.persistAcquisition(operationCtx, run)
 		a.publishIngest(jobID, "starting", fetch.Result{}, "")
 		res = plan.Run(operationCtx)
-		run.Fetched, run.Skipped = res.Fetched, res.Skipped
+		// An item that waits for room is not a failure: the run records it as skipped, and the
+		// item's own record tries it again.
+		run.Fetched, run.Skipped = res.Fetched, res.Skipped+res.Deferred
 		run.Failed, run.Empty = res.Failed, res.Empty
 		if err := operationCtx.Err(); err != nil {
 			return err
@@ -509,6 +516,11 @@ func (a *Operator) Split(ctx context.Context, clipID string) (string, error) {
 	} else if !found {
 		return "", store.ErrNotFound
 	}
+	if row, found, err := a.c.SplitClips.GetClipPipeline(ctx, clipID); err != nil {
+		return "", err
+	} else if found && !row.FilesDeletedAt.IsZero() {
+		return "", ErrReelLetGo
+	}
 	jobID := a.c.NewID()
 	now := a.clock()
 	operation := store.InteractiveOperation{
@@ -540,13 +552,11 @@ func (a *Operator) Split(ctx context.Context, clipID string) (string, error) {
 		// the same reel concurrently. A failed detection (above) returns before reaching here, so
 		// the row keeps its original state.
 		//
-		// ⚠ The error is DROPPED, per this adapter's convention: it
-		// has no logger and reports through the event bus, whose `filler_split` frames describe
-		// DETECTION — publishing "error" here would report a detection that in fact succeeded and
-		// whose proposal is saved. `Requeue` logs its own outcome, and the failure mode is the
-		// state the reel was already in: parked, reviewable by hand, nothing lost.
+		// ⚠ A failed requeue is logged, not published: the event bus's `filler_split` frames
+		// describe DETECTION, and "error" here would report a detection that in fact succeeded and
+		// whose proposal is saved. The reel stays parked and reviewable by hand, nothing lost.
 		if a.c.Pipeline != nil {
-			_, _ = a.c.Pipeline.Requeue(operationCtx, clipID)
+			a.requeueAfterDetect(operationCtx, a.c.Pipeline, clipID)
 		}
 		return nil
 	}, func(completionCtx context.Context, runErr error) {
@@ -631,13 +641,29 @@ func (a *Operator) rememberSources(ctx context.Context, urls []string) {
 		now := a.clock()
 		// Upsert by id: re-adding a source an operator already has is not an error, and
 		// UpsertFillerSource deliberately leaves last_fetched_at alone (see the store).
-		// ⚠ The error is deliberately DROPPED, not logged: this adapter has no logger (it
-		// reports through the event bus, which is for the download itself), and inventing a
-		// second channel for bookkeeping noise would be worse than the silence. The download
-		// proceeds either way, which is the property that matters.
+		// A failure is logged and the download proceeds, which is the property that matters. The
+		// event bus is for the download itself, so it does not carry this bookkeeping.
 		// NewFillerSource, not a struct literal: `Enabled` is a bool, so a literal that omits
 		// it registers the source SWITCHED OFF (see the store).
-		_ = a.c.Sources.UpsertFillerSource(ctx, records.NewFillerSource(id, string(fetch.Archive), u, id, now()))
+		if err := a.c.Sources.UpsertFillerSource(ctx, records.NewFillerSource(id, string(fetch.Archive), u, id, now())); err != nil && a.c.Log != nil {
+			a.c.Log.Warn("filler source could not be registered; the download proceeds but the Sources tab will not list it",
+				"source", id, "err", err)
+		}
+	}
+}
+
+// requeuer is the pipeline's un-park of a reel returned to the belt.
+type requeuer interface {
+	Requeue(ctx context.Context, hash string) (bool, error)
+}
+
+// requeueAfterDetect returns a re-detected reel to the belt. The proposal is already saved, so a
+// failure does not fail the detection: it is logged, because the reel then waits at review until
+// someone moves it by hand.
+func (a *Operator) requeueAfterDetect(ctx context.Context, pipeline requeuer, clipID string) {
+	if _, err := pipeline.Requeue(ctx, clipID); err != nil && a.c.Log != nil {
+		a.c.Log.Warn("split: the re-detected reel could not be returned to the belt; it waits at review until moved by hand",
+			"clip", clipID, "err", err)
 	}
 }
 

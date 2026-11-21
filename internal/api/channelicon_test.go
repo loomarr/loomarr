@@ -580,7 +580,7 @@ func TestUploadChannelWatermark_ReconcilesWithoutATunerRescan(t *testing.T) {
 		Store:    st,
 		Auth:     testAuthorizer{},
 		Images:   newFakeImageService(),
-		Channels: chSvc,
+		Channels: api.ChannelsOptions{Service: chSvc},
 		Log:      slog.New(slog.DiscardHandler),
 	}))
 	t.Cleanup(srv.Close)

@@ -122,16 +122,14 @@ func newIdeasHarnessNotifying(t *testing.T, lib *fakeIdeaLibrary, now time.Time,
 		service := suggest.NewService(defaults.Store, flow, nil, suggest.Config{}, func() time.Time { return now }, defaults.Log).
 			WithProposalNotifier(notify)
 		return api.Router(defaults.Log, api.Options{
-			Suggest:          service,
-			ProposalWorkflow: flow,
-			Store:            defaults.Store,
-			Auth:             sessionAuth(mgr, "break-glass-token"),
-			Log:              defaults.Log,
-			Login:            auth.NewLoginService(mediaServer, defaults.Store, mgr, nil, time.Now),
-			Sessions:         mgr,
-			CookieSecure:     "false",
-			IdeaLibrary:      lib,
-			Now:              func() time.Time { return now },
+			Proposals:    api.ProposalsOptions{Suggest: service, Workflow: flow},
+			Store:        defaults.Store,
+			Auth:         sessionAuth(mgr, "break-glass-token"),
+			Log:          defaults.Log,
+			People:       api.PeopleOptions{Login: auth.NewLoginService(mediaServer, defaults.Store, mgr, nil, time.Now), Sessions: mgr},
+			CookieSecure: "false",
+			Channels:     api.ChannelsOptions{IdeaLibrary: lib},
+			Now:          func() time.Time { return now },
 		})
 	})
 }
@@ -375,18 +373,14 @@ func newManualChannelHarness(
 		approver := accept.NewApprover(defaults.Store, chBinder, func() time.Time { return now }).
 			WithApprovalAdditionResolver(resolver)
 		return api.Router(defaults.Log, api.Options{
-			Suggest:          service,
-			Approver:         approver,
-			Binder:           chBinder,
-			ProposalWorkflow: flow,
-			Store:            defaults.Store,
-			Auth:             sessionAuth(mgr, "break-glass-token"),
-			Log:              defaults.Log,
-			Login:            auth.NewLoginService(mediaServer, defaults.Store, mgr, nil, time.Now),
-			Sessions:         mgr,
-			CookieSecure:     "false",
-			IdeaLibrary:      &fakeIdeaLibrary{},
-			Now:              func() time.Time { return now },
+			Proposals:    api.ProposalsOptions{Suggest: service, Approver: approver, Workflow: flow},
+			Store:        defaults.Store,
+			Auth:         sessionAuth(mgr, "break-glass-token"),
+			Log:          defaults.Log,
+			People:       api.PeopleOptions{Login: auth.NewLoginService(mediaServer, defaults.Store, mgr, nil, time.Now), Sessions: mgr},
+			CookieSecure: "false",
+			Channels:     api.ChannelsOptions{Binder: chBinder, IdeaLibrary: &fakeIdeaLibrary{}},
+			Now:          func() time.Time { return now },
 		})
 	})
 }

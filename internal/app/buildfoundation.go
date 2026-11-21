@@ -103,12 +103,17 @@ func buildFoundation(
 	}
 	result.ready = result.startup.Ready
 	result.log = log
+	// The bus comes first: the diagnostics recorder announces what it stores from its first batch.
+	result.eventBus = events.NewBus()
+	result.emitter = &eventEmitter{bus: result.eventBus}
+	diagnosticEventsChanged, diagnosticProcessesChanged := diagnosticFramesFor(result.emitter)
 	if st != nil {
 		// Startup retention is available as soon as the migrated store is available. Building it
 		// before settings means a later settings/generated-secret failure is still retained.
 		instanceID = instanceDeviceID(rootCtx, st)
 		result.instanceID = instanceID
 		result.diagnostics = diagnostics.New(st, diagnostics.Options{
+			OnChange: diagnosticEventsChanged,
 			OnFailure: func(err error, count int) {
 				fallbackLog.Error("diagnostics: persistence failed", "err", err, "records", count)
 			},
@@ -208,8 +213,6 @@ func buildFoundation(
 			ctx, store.DialectOf(st), result.secrets, secret, result.refreshSecretRedactor,
 		)
 	}
-	result.eventBus = events.NewBus()
-	result.emitter = &eventEmitter{bus: result.eventBus}
 	result.startup.SetHealthNotifier(result.emitter.HealthChanged)
 	result.jobs = jobs.NewRegistry()
 	if st != nil {
@@ -230,6 +233,7 @@ func buildFoundation(
 		result.processDiagnostics = diagnostics.NewProcessManager(st, result.diagnostics, diagnostics.ProcessOptions{
 			OutputDirFunc: diagnosticsDir, InstanceID: instanceID,
 			Storage:   result.storageGovernor,
+			OnChange:  diagnosticProcessesChanged,
 			OnFailure: func(err error) { fallbackLog.Error("diagnostics: process recorder failed", "err", err) },
 		})
 		result.diagnosticProcesses = diagnostics.NewProcessLog(st, diagnostics.ProcessReadOptions{

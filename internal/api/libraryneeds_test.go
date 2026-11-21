@@ -30,7 +30,7 @@ func TestLibraryNeedsYou(t *testing.T) {
 	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		lib = newScanLibrary(t, defaults.Store)
 		return api.Router(defaults.Log, api.Options{
-			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, Images: imgs, LibraryRoots: lib,
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, Images: imgs, Library: api.LibraryOptions{Roots: lib},
 		})
 	})
 	ctx := context.Background()
@@ -104,6 +104,14 @@ func TestLibraryNeedsYou(t *testing.T) {
 	if best.ExternalID != (externalID{"tmdb", "90000101"}) || !best.NameMatches || best.YearMatches || !best.LengthMatches ||
 		best.Poster == nil || other.Poster != nil {
 		t.Fatalf("candidates = %+v, want the fetched poster only", got.Needs[0].Candidates)
+	}
+	// Only the poster never seen is adopted, once: the list's next load only reads.
+	if imgs.adopts != 1 {
+		t.Fatalf("adopts after one load = %d, want 1 (the pending poster)", imgs.adopts)
+	}
+	decode(t, h.Do(http.MethodGet, "/v1/library/needs", adminToken, ""), &got)
+	if imgs.adopts != 1 || got.Needs[0].Candidates[0].Poster == nil {
+		t.Fatalf("adopts after a second load = %d, want still 1, and the poster still shown", imgs.adopts)
 	}
 	if len(got.Problems) != 1 || got.Problems[0].Item.ID != "90000003" || got.Problems[0].Item.Unplayable != 1 ||
 		got.Problems[0].Item.ExtraCopies != 0 || got.Problems[0].ExtraBytes != 0 {

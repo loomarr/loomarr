@@ -7,8 +7,8 @@ import type { ChannelSeasonalProps } from "./channel-seasonal.type";
 // ChannelSeasonal — holiday-aware programming (programming-design.md §6, schedule.SeasonalPolicy).
 //
 // The screen is `ChannelSeasonalFields` in @loomarr/ui; this file only maps the channel policy onto
-// it. The scheduler has always benched out-of-season titles and boosted in-season ones; the
-// operator now chooses it. `builtinCalendar` (schedule/seasonal.go) is a FIXED list whose ids
+// it. The scheduler benches out-of-season titles and boosts in-season ones; this is where the
+// operator chooses how. `builtinCalendar` (schedule/seasonal.go) is a FIXED list whose ids
 // already reach the frontend through the rule vocabulary, so the holiday picker is a checkbox
 // list over a closed set.
 

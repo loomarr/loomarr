@@ -68,11 +68,18 @@ describe("ChannelWall — every channel as a live tile (#2764)", () => {
   it("shows the channel number, the programme and the time left on one tile", async () => {
     await renderWall([live("c1", 7)]);
     const tile = tiles()[0] as HTMLElement;
-    expect(tile).toHaveTextContent("07");
+    expect(tile).toHaveTextContent(/(?<!0)7Channel c1/);
     expect(tile).toHaveTextContent("Channel c1");
     expect(within(tile).getByRole("heading", { level: 3, name: "Programme c1" })).toBeInTheDocument();
     expect(tile).toHaveTextContent("30 min left");
     expect(tile).toHaveAttribute("href", "/watch/c1");
+  });
+
+  it("prints a channel numbered 5 as 5, as the guide and player do, never 05", async () => {
+    await renderWall([live("c1", 5)]);
+    const tile = tiles()[0] as HTMLElement;
+    expect(tile).toHaveTextContent(/(?<!0)5Channel c1/);
+    expect(tile).not.toHaveTextContent("05");
   });
 
   it("lists every channel, not just six, in number order", async () => {
@@ -101,6 +108,38 @@ describe("ChannelWall — every channel as a live tile (#2764)", () => {
       expect(tiles()[0]).toHaveAttribute("href", "/watch/c2");
       expect(tiles()[0]).toHaveTextContent("Last");
       expect(screen.queryByText("You were here")).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps the episode code on desktop and drops it on the phone caption, which is the name and time left", async () => {
+    const episodic = (): GuideChannelTimeline =>
+      live("c1", 3, {
+        airings: [
+          {
+            episode: 8,
+            kind: "program",
+            scheduleBlockId: "b-c1",
+            season: 10,
+            startMs: 0,
+            stopMs: 22 * MIN,
+            title: "Programme c1",
+          },
+        ],
+      });
+    await renderWall([episodic()]);
+    expect(tiles()[0]).toHaveTextContent("S10E08 · 22 min left");
+    document.body.replaceChildren();
+    vi.stubGlobal("matchMedia", () => ({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    try {
+      await renderWall([episodic()]);
+      expect(tiles()[0]).toHaveTextContent("Channel c1 · 22 min left");
+      expect(tiles()[0]).not.toHaveTextContent(/S10/);
     } finally {
       vi.unstubAllGlobals();
     }

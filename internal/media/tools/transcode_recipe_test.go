@@ -114,6 +114,48 @@ func TestVerifyPreservedMediaRejectsUndeclaredSignalChanges(t *testing.T) {
 	}
 }
 
+// A source with uneven timestamps measures an average rate off its nominal one: on prod, 29.97
+// fps material read avg 13485000/449947 and 50 fps material 7555/151. Re-encoded frame for
+// frame, the output's average is its nominal rate, so the average moved and the cadence did not.
+// Matching nominal rates are preserved; a nominal change, 29.97 to 30 included, still fails.
+func TestVerifyPreservedMediaReadsTheNominalRate(t *testing.T) {
+	for name, tc := range map[string]struct {
+		in, out Probed
+		ok      bool
+	}{
+		"29.97 with uneven timestamps": {
+			in:  Probed{Cadence: "13485000/449947", NominalCadence: "30000/1001"},
+			out: Probed{Cadence: "30000/1001", NominalCadence: "30000/1001"}, ok: true,
+		},
+		"50 with uneven timestamps": {
+			in:  Probed{Cadence: "7555/151", NominalCadence: "50/1"},
+			out: Probed{Cadence: "50/1", NominalCadence: "50/1"}, ok: true,
+		},
+		"29.97 made 30": {
+			in:  Probed{Cadence: "13485000/449947", NominalCadence: "30000/1001"},
+			out: Probed{Cadence: "30/1", NominalCadence: "30/1"},
+		},
+		"variable rate whose timing changed": {
+			in:  Probed{Cadence: "60/7", NominalCadence: "30/1"},
+			out: Probed{Cadence: "30/1", NominalCadence: "30/1"},
+		},
+		"no nominal rate on record keeps the exact average": {
+			in:  Probed{Cadence: "13485000/449947"},
+			out: Probed{Cadence: "30000/1001", NominalCadence: "30000/1001"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := verifyPreservedMedia(tc.in, tc.out)
+			if tc.ok && err != nil {
+				t.Fatalf("verify = %v, want the cadence preserved", err)
+			}
+			if !tc.ok && (err == nil || !strings.Contains(err.Error(), "cadence changed")) {
+				t.Fatalf("verify = %v, want a cadence change", err)
+			}
+		})
+	}
+}
+
 func containsArgumentPair(args []string, first, second string) bool {
 	for index := 0; index+1 < len(args); index++ {
 		if args[index] == first && args[index+1] == second {

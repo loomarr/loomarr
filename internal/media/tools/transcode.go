@@ -427,12 +427,20 @@ func verifyPreservedMedia(input, output Probed) error {
 	if (input.Width > 0 && output.Width != input.Width) || (input.Height > 0 && output.Height != input.Height) {
 		return fmt.Errorf("geometry changed from %dx%d to %dx%d", input.Width, input.Height, output.Width, output.Height)
 	}
+	// A constant-rate source with uneven timestamps measures an average just off its nominal rate,
+	// and its re-encode writes even ones, so the two files' nominal rates are compared instead.
+	// ⚠ Only when BOTH files run at their nominal rate. A variable-frame-rate file's average sits
+	// far from it, and that average is what catches an encode that changed its frame timing.
+	cadenceBefore, cadenceAfter := input.Cadence, output.Cadence
+	if nearNominalCadence(input) && nearNominalCadence(output) {
+		cadenceBefore, cadenceAfter = input.NominalCadence, output.NominalCadence
+	}
 	for _, value := range []struct {
 		name   string
 		before string
 		after  string
 	}{
-		{name: "cadence", before: input.Cadence, after: output.Cadence},
+		{name: "cadence", before: cadenceBefore, after: cadenceAfter},
 		{name: "sample aspect", before: input.SampleAspect, after: output.SampleAspect},
 		{name: "display aspect", before: input.DisplayAspect, after: output.DisplayAspect},
 	} {
@@ -459,6 +467,32 @@ func verifyPreservedMedia(input, output Probed) error {
 		}
 	}
 	return nil
+}
+
+// nominalCadenceSlack is how far a constant-rate file's measured average may sit from its nominal
+// rate. Prod's uneven sources read 0.0006–0.1% off; a variable-rate file reads tens of percent.
+// 29.97 against 30 fps is a nominal difference, so this slack never hides it.
+const nominalCadenceSlack = 0.005
+
+// nearNominalCadence reports whether p's measured average is within nominalCadenceSlack of its
+// nominal rate: a constant-rate stream, whatever its timestamps' jitter.
+func nearNominalCadence(p Probed) bool {
+	avg, avgOK := mediaRatio(p.Cadence)
+	nominal, nominalOK := mediaRatio(p.NominalCadence)
+	if !avgOK || !nominalOK {
+		return false
+	}
+	a, _ := avg.Float64()
+	n, _ := nominal.Float64()
+	return math.Abs(a/n-1) <= nominalCadenceSlack
+}
+
+func mediaRatio(value string) (*big.Rat, bool) {
+	if value == "" {
+		return nil, false
+	}
+	ratio, ok := new(big.Rat).SetString(strings.ReplaceAll(value, ":", "/"))
+	return ratio, ok && ratio.Sign() > 0
 }
 
 func equivalentMediaRatio(before, after string) bool {

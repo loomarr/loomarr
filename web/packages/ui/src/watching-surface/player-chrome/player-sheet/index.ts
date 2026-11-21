@@ -1,1 +1,1 @@
-export { PlayerSheet } from "./player-sheet";
+export { PlayerSheet, sheetWidth } from "./player-sheet";

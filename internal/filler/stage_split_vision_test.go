@@ -30,6 +30,7 @@ import (
 // extraction to each SEGMENT rather than re-framing the whole compilation N times.
 type spanTools struct {
 	spans  [][2]int64
+	counts []int
 	frames [][]byte
 	err    error
 }
@@ -591,13 +592,53 @@ func TestSplitStage_ResumesOnlyReviewsItCanImprove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, hash := range []string{"duplicate", "short", "unchecked"} {
+	// With splitting on nobody reviews (#4409): a reel the old rule left waiting for a person goes
+	// back to the rung, which cuts or drops it.
+	for _, hash := range []string{"duplicate", "short", "unchecked", "already-ambiguous"} {
 		if _, ok := hashes[hash]; !ok {
 			t.Errorf("%q was not selected for automatic refinement", hash)
 		}
 	}
+
+	// With splitting off the person still decides, so a looked-at reel stays with them.
+	off := NewSplitStage(nil, queue).
+		WithAutoConfirm(AutoSplitPolicy{Enabled: func() bool { return false }}, func() time.Duration { return 10 * time.Second })
+	hashes, err = off.resumableReviewHashes(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, ok := hashes["already-ambiguous"]; ok {
-		t.Error("a segment the model already examined was requeued; it genuinely needs review")
+		t.Error("splitting is off, yet a reel waiting for its person was taken back")
+	}
+}
+
+// A review holding a segment whose duplicate check could not run is offered back to the split stage,
+// at restart and on the slow re-check cadence. The re-check cadence takes nothing else; the restart
+// scan, with splitting on, takes every reel with cuts (#4409).
+func TestSplitStage_RequeuesReviewsHoldingAnUncheckedSegment(t *testing.T) {
+	ready := func(hash string, seg split.Segment) SplitProposal {
+		return SplitProposal{ClipHash: hash, Segments: []split.Segment{seg}}
+	}
+	queue := proposalQueue{proposals: []SplitProposal{
+		ready("unchecked", split.Segment{StartMs: 0, EndMs: 30_000, Looked: true, DedupUnchecked: true}),
+		ready("checked", split.Segment{StartMs: 0, EndMs: 30_000, Looked: true}),
+	}}
+	s := NewSplitStage(nil, queue).WithAutoConfirm(*gatePolicy(), func() time.Duration { return 10 * time.Second })
+
+	for name, pick := range map[string]func(context.Context) (map[string]struct{}, error){
+		"restart scan":    s.resumableReviewHashes,
+		"recheck cadence": s.uncheckedReviewHashes,
+	} {
+		hashes, err := pick(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := hashes["unchecked"]; !ok {
+			t.Errorf("%s: the unchecked review was not requeued", name)
+		}
+		if _, ok := hashes["checked"]; ok != (name == "restart scan") {
+			t.Errorf("%s: checked review requeued = %v", name, ok)
+		}
 	}
 }
 
@@ -634,10 +675,147 @@ func TestSplitStageResumesExistingReviewForOneMissingShadowObservation(t *testin
 	}
 }
 
+type failingStructureShadow struct {
+	pendingStructureShadow
+	failing string
+}
+
+func (s failingStructureShadow) NeedsStructureSplitObservation(ctx context.Context, proposal SplitProposal) (bool, error) {
+	if proposal.ClipHash == s.failing {
+		return false, errors.New("shadow store unavailable")
+	}
+	return s.pendingStructureShadow.NeedsStructureSplitObservation(ctx, proposal)
+}
+
+// One proposal whose shadow state cannot be read stays in review; it does not stop every other
+// proposal from being requeued.
+func TestSplitStageResumesOtherReviewsPastAnUnreadableShadow(t *testing.T) {
+	queue := proposalQueue{proposals: []SplitProposal{
+		{ClipHash: "unreadable", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
+		{ClipHash: "unobserved", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
+	}}
+	stage := NewSplitStage(nil, queue).WithFixedStructureRuntime(StructureRuntime{Shadow: failingStructureShadow{
+		pendingStructureShadow: pendingStructureShadow{pending: map[string]bool{"unobserved": true}},
+		failing:                "unreadable",
+	}})
+
+	hashes, err := stage.resumableReviewHashes(t.Context())
+	if err != nil {
+		t.Fatalf("one unreadable shadow failed the whole requeue: %v", err)
+	}
+	if _, ok := hashes["unobserved"]; !ok {
+		t.Fatal("the readable unobserved proposal was not requeued")
+	}
+	if _, ok := hashes["unreadable"]; ok {
+		t.Fatal("the proposal whose shadow could not be read was requeued; it stays in review")
+	}
+}
+
 // VisionKeyframesIn is the ONLY framing a vision call may use: the plain KeyframesIn above is
 // unbounded (up to 1920 px wide), so a call site that regresses to it would send a third more
 // pixels per frame. spanTools.KeyframesIn therefore refuses.
-func (s *spanTools) VisionKeyframesIn(_ context.Context, _ string, startMs, endMs int64, _ int) ([][]byte, error) {
+func (s *spanTools) VisionKeyframesIn(_ context.Context, _ string, startMs, endMs int64, n int) ([][]byte, error) {
 	s.spans = append(s.spans, [2]int64{startMs, endMs})
+	s.counts = append(s.counts, n)
 	return s.frames, s.err
+}
+
+// The split look judges each cut as a whole (#4409): its answer lands on the segment, frames are
+// taken across the whole cut, and a cut looked at before the look asked has no answer and is looked
+// at again.
+func TestSegmentVisionRecordsTheWholeCutJudgement(t *testing.T) {
+	tools := &spanTools{frames: [][]byte{[]byte("opening"), []byte("closing")}}
+	model := &fixedVision{answer: `{"visibleText":"ACME","role":"commercial","roleReason":"offer","whole":"several","wholeReason":"two brands"}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: tools, Provider: model, Taxa: seedTaxa{}, Budget: func() int { return 10 },
+	})
+	segments := twoSegments()
+	segments[1].Looked = true // looked at under the old prompt: no whole answer
+	pass := s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), segments)
+	if pass.Looked != 2 || pass.Pending != 0 {
+		t.Fatalf("ground pass = %+v, want both cuts looked at", pass)
+	}
+	for i, seg := range segments {
+		if seg.Whole != split.WholeSeveral || seg.LookedRole != split.RoleCommercial {
+			t.Errorf("segment %d whole=%q role=%q", i, seg.Whole, seg.LookedRole)
+		}
+	}
+	for _, n := range tools.counts {
+		if n != split.WholeCutKeyframes {
+			t.Errorf("asked for %d frames, want %d across the whole cut", n, split.WholeCutKeyframes)
+		}
+	}
+	if !strings.Contains(model.prompts[0], `"whole"`) {
+		t.Error("the split prompt does not ask about the whole cut")
+	}
+
+	// An answer the model leaves out or garbles is a doubt, and a doubt never cuts.
+	model.answer = `{"role":"commercial","whole":"probably"}`
+	again := twoSegments()
+	s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), again)
+	if again[0].Whole != split.WholeUnsure {
+		t.Errorf("garbled answer recorded as %q, want unsure", again[0].Whole)
+	}
+}
+
+// scriptedMeter answers each span with a sound bed that is quiet at the span's own edges, except
+// the spans listed as running through (no quiet at the end), and fails the spans listed as broken.
+type scriptedMeter struct {
+	through, broken map[int64]bool // keyed by the cut's start
+	calls           int
+}
+
+func (m *scriptedMeter) LoudnessWindows(_ context.Context, _ string, from, to, win int64) ([]float64, error) {
+	m.calls++
+	start := from + split.SoundPadMs
+	if from == 0 {
+		start = 0
+	}
+	if m.broken[start] {
+		return nil, errors.New("no audio stream")
+	}
+	levels := make([]float64, (to-from)/win)
+	for i := range levels {
+		levels[i] = -20
+	}
+	levels[(start-from)/win] = -60
+	if !m.through[start] {
+		levels[(to-split.SoundPadMs-from)/win] = -60
+	}
+	return levels, nil
+}
+
+// The split look measures each cut's sound (#4409) without spending the vision budget: a cut
+// already looked at gets it too, a cut whose sound cannot be read stays unmeasured (and so is never
+// made), and a measured cut is not measured again.
+func TestSegmentVisionMeasuresEachCutsSound(t *testing.T) {
+	meter := &scriptedMeter{through: map[int64]bool{30_000: true}}
+	model := &fixedVision{answer: `{"role":"commercial","whole":"one"}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: &spanTools{frames: [][]byte{[]byte("f")}}, Loudness: meter, Provider: model, Taxa: seedTaxa{},
+		Budget: func() int { return 0 }, // no looks this pass: the sound is measured anyway
+	})
+	segs := twoSegments()
+	pass := s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), segs)
+	if pass.Measured != 2 || pass.Looked != 0 {
+		t.Fatalf("pass = %+v, want both cuts measured and none looked at", pass)
+	}
+	if !segs[0].Sound.Clean() {
+		t.Errorf("a cut quiet at both edges reads %+v", segs[0].Sound)
+	}
+	if segs[1].Sound.Clean() {
+		t.Errorf("a cut whose sound runs through its end reads clean: %+v", segs[1].Sound)
+	}
+
+	again := s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), segs)
+	if again.Measured != 0 || meter.calls != 2 {
+		t.Errorf("a measured cut was measured again: pass %+v, %d calls", again, meter.calls)
+	}
+
+	broken := twoSegments()
+	meter.broken = map[int64]bool{0: true}
+	s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), broken)
+	if broken[0].Sound != nil || broken[1].Sound == nil {
+		t.Errorf("unreadable sound = %+v, readable = %+v; want only the readable one measured", broken[0].Sound, broken[1].Sound)
+	}
 }

@@ -47,7 +47,7 @@ func (s *sqlStore) StreamBackup(ctx context.Context, w io.Writer) error {
 // never occupies the store's single pooled connection. See WriteBackup for why that matters.
 func (s *sqlStore) vacuumInto(ctx context.Context, path string) error {
 	snapshotter, err := sql.Open("sqlite", fmt.Sprintf(
-		"file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)", s.path))
+		"file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)", sqliteURIPath(s.path)))
 	if err != nil {
 		return fmt.Errorf("open snapshot handle: %w", err)
 	}

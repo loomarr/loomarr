@@ -84,12 +84,11 @@ func newPlayoutGuideHarness(t *testing.T, guide playoutapi.PlayoutGuide) *playou
 			"playout.backend":   "internal",
 		}
 		return api.Router(defaults.Log, api.Options{
-			Store:         defaults.Store,
-			Auth:          httpcore.NewTokenAuthorizer(adminToken),
-			Log:           defaults.Log,
-			PlayoutSecret: func() string { return playoutToken },
-			PlayoutGuide:  guide,
-			LiveSettings:  stringSettings(func(key string) string { return cfg[key] }),
+			Store:        defaults.Store,
+			Auth:         httpcore.NewTokenAuthorizer(adminToken),
+			Log:          defaults.Log,
+			Playout:      api.PlayoutOptions{Secret: func() string { return playoutToken }, Guide: guide},
+			LiveSettings: stringSettings(func(key string) string { return cfg[key] }),
 		})
 	})
 	return &playoutGuideHarness{apiHarness: base}

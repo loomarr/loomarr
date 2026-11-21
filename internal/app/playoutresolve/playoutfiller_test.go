@@ -18,6 +18,10 @@ import (
 // stubCycle returns a fixed lineup: one program then a break gap.
 type stubCycle struct{ slots []schedule.Slot }
 
+func (s stubCycle) TurnedWindow(context.Context, string, time.Time, time.Time) ([]schedule.Slot, error) {
+	return s.slots, nil
+}
+
 func (s stubCycle) CyclePreview(context.Context, string, time.Time) (
 	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
 ) {
@@ -242,6 +246,38 @@ func TestAiringNow_BreakWalksThePodByOffset(t *testing.T) {
 	firstBlockID := playout.ScheduledBlockID("ch1", base, schedule.SlotFiller, string(schedule.SlotFiller))
 	if airing.ScheduleBlockID != firstBlockID {
 		t.Errorf("second commercial block id = %q, want break identity %q", airing.ScheduleBlockID, firstBlockID)
+	}
+}
+
+// An ad airs from its air window's start (#3384): playout seeks past the leading dead air, and the
+// break's clock moves on the window's length, so the next ad starts where the window ends.
+func TestAiringNow_AnAdAirsFromItsWindowStart(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	brk := pod.Pod{Entries: []pod.Entry{
+		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000, AirStartMs: 1500},
+		{Path: clipAt("1994/cereal.mp4"), Name: "cereal", DurationMs: 8000, AirStartMs: 700},
+	}}
+	r := fillerResolver(t, dir, brk)
+	base := testPlayoutAnchor()
+
+	for _, tc := range []struct {
+		at         time.Duration
+		title      string
+		wantOffset time.Duration
+	}{
+		{at: 0, title: "toys", wantOffset: 1500 * time.Millisecond},
+		{at: 3 * time.Second, title: "toys", wantOffset: 4500 * time.Millisecond},
+		{at: 9 * time.Second, title: "cereal", wantOffset: 1700 * time.Millisecond},
+	} {
+		r.now = func() time.Time { return base.Add(tc.at) }
+		airing, _, err := r.AiringNow(context.Background(), "ch1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if airing.Title != tc.title || airing.Offset != tc.wantOffset {
+			t.Errorf("%v into the break: %q at %v, want %q at %v", tc.at, airing.Title, airing.Offset, tc.title, tc.wantOffset)
+		}
 	}
 }
 

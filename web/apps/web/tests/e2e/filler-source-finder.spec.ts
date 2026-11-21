@@ -8,6 +8,9 @@ import { installMockBackend } from "./mock-backend";
 // renders the placeholder. The shot is soft: a changed state still fails the test, but the flow
 // goes on, so one CI run reports every changed state's actual PNG instead of only the first.
 const sourceReadinessShot = async (page: Page, name: string) => {
+  // The phone header and bottom bar are lazy; a shot taken while either Suspense placeholder shows
+  // captures an empty bar.
+  await expect(page.getByTestId("phone-header-placeholder")).toHaveCount(0);
   await expect(page.getByTestId("phone-bottom-bar-placeholder")).toHaveCount(0);
   await page.evaluate(() => document.fonts.ready);
   await expect.soft(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
@@ -61,9 +64,16 @@ test("Archive source search stays in flow and registers only after confirmation"
     const resultsBox = await page.getByRole("listbox").boundingBox();
     expect(inputBox).not.toBeNull();
     expect(resultsBox).not.toBeNull();
-    expect(resultsBox?.y ?? 0, `${viewport.name} results stay below the field`).toBeGreaterThanOrEqual(
-      (inputBox?.y ?? 0) + (inputBox?.height ?? 0),
-    );
+    // The design-system Combobox floats its list and flips it above the field when the field sits
+    // near the bottom of a short window, so what matters is that the list never covers the field.
+    const fieldTop = inputBox?.y ?? 0;
+    const fieldBottom = fieldTop + (inputBox?.height ?? 0);
+    const listTop = resultsBox?.y ?? 0;
+    const listBottom = listTop + (resultsBox?.height ?? 0);
+    expect(
+      listTop >= fieldBottom || listBottom <= fieldTop,
+      `${viewport.name} results never cover the field`,
+    ).toBe(true);
     expect(registrations).toHaveLength(registrationsBeforeSearch);
 
     await input.press("ArrowDown");
@@ -505,7 +515,8 @@ test("registered sources stay compact and open a scalable source workspace", asy
     await providerSwitch.click();
     await expect.poll(() => archiveProviderEnabled).toBe(false);
     await expect(providerSwitch).not.toBeChecked();
-    const childList = provider.locator('ul[aria-label="Sources under Archive.org"]');
+    // A DS ListGroup (#2920): a list by role, not a <ul>. Hidden while the provider is off.
+    const childList = provider.getByRole("list", { name: "Sources under Archive.org", includeHidden: true });
     await expect(childList).toBeHidden();
     // The design-system switch is a pressable, so it says disabled in ARIA rather than natively.
     await expect(
@@ -683,7 +694,8 @@ for (const viewport of [
     await expect(page).toHaveURL(/\/settings\/access$/);
     const location = page.getByRole("combobox", { name: "Location" });
     await location.fill("New York");
-    await page.getByRole("option", { name: "New York City, United States" }).click();
+    // The option leads with the city; its region and country are the description.
+    await page.getByRole("option", { name: /^New York City\b/ }).click();
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByRole("alert")).toContainText("Location wasn't saved");
     await expect(page.getByRole("region", { name: "Unsaved changes" })).toContainText("2 unsaved changes");

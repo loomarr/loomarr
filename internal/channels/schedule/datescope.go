@@ -30,14 +30,6 @@ func (d *DateScope) Era() (Range, bool) {
 	return d.MovieRelease[0], true
 }
 
-func datesEqual(a, b *DateScope) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return sameRanges(a.MovieRelease, b.MovieRelease) && sameRanges(a.SeriesPremiere, b.SeriesPremiere) &&
-		sameRanges(a.SeriesAiring, b.SeriesAiring)
-}
-
 // FillerEra is the filler era a channel's date scope implies (§10): a single window as
 // an era range (which may be open-ended, as the era shortcut always could), or a
 // disjoint union as windows. Both nil when the scope has no dates.

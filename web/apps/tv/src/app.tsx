@@ -1,3 +1,4 @@
+import { formatGuideTime } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
   createPairingCredentialStore,
@@ -15,17 +16,25 @@ import {
   usePairingBreadcrumbs,
   useShellCrashReporting,
 } from "@loomarr/native-app";
-import { createLastChannelStore, retryPairedClient, usePairedClient } from "@loomarr/paired-client";
+import {
+  createLastChannelStore,
+  retryPairedClient,
+  useChannelAudio,
+  usePairedClient,
+  usePairedSubtitles,
+} from "@loomarr/paired-client";
 import { createPlaybackMarks, NativePlayerView, PairedNativeImage } from "@loomarr/player/native";
 import {
   clientBackDestination,
   GuideJourney,
   PairingShell,
   pairingBackAvailable,
+  playerChromeFromGuide,
   SurfJourney,
+  surfCardsFromGuide,
   useClientDestination,
+  type WatchingLayer,
   WatchingSurface,
-  watchingScheduleFromGuide,
   watchingScheduleTimeMs,
 } from "@loomarr/ui";
 import {
@@ -54,7 +63,7 @@ import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { TVEventControl, useTVEventHandler } from "react-native";
+import { BackHandler, TVEventControl, useTVEventHandler } from "react-native";
 import appConfig from "../app.json";
 import { useTvRemote } from "./use-tv-remote";
 
@@ -84,11 +93,10 @@ const autoTuneSetting = createTvAutoTuneSetting({
   setItem: SecureStore.setItemAsync,
 });
 
-// The channel last watched (#23): a relaunch resumes it instead of the first channel.
-const lastChannel = createLastChannelStore({
-  getItem: SecureStore.getItemAsync,
-  setItem: SecureStore.setItemAsync,
-});
+// What the device remembers: the channel last watched (#23), so a relaunch resumes it instead of the
+// first channel, and the viewer's subtitles.
+const deviceStorage = { getItem: SecureStore.getItemAsync, setItem: SecureStore.setItemAsync };
+const lastChannel = createLastChannelStore(deviceStorage);
 
 // Crash capture installs here, before the first render, so a crash while the app starts is reported too.
 const nativeApp = createNativeApp({ clientVersion });
@@ -107,6 +115,8 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   const lastKeyAtMs = useRef<number | undefined>(undefined);
   const {
     catalogState,
+    channelAudio,
+    channelSubtitles,
     controller,
     guide,
     guideSnapshot,
@@ -138,16 +148,43 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   const guideFocusRegistry = useMemo(createTvGuideFocusRegistry, []);
   const surfFocusRegistry = useMemo(createTvSurfFocusRegistry, []);
   const [autoTuneMs, changeAutoTune] = useTvAutoTune(autoTuneSetting);
-  useTvMenuKey(clientBackDestination(active) !== null, { control: TVEventControl });
+  // Watching's open layer (§9.5): the Audio or More menu, or Info. It goes when the controls do, and when
+  // Watching does; the remote reads it, and Menu or Back closes it.
+  const [layer, setLayer] = useState<WatchingLayer | undefined>(undefined);
+  const layerOpen = layer !== undefined && active === "watching" && controls.visible;
+  useEffect(() => {
+    if (!controls.visible || active !== "watching") setLayer(undefined);
+  }, [active, controls.visible]);
+  useEffect(() => {
+    if (!layerOpen) return undefined;
+    // Android TV's Back: the newest listener runs first, so it closes the layer before Back leaves.
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      setLayer(undefined);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [layerOpen]);
+  // tvOS gives the app its Menu key only while it is enabled: while a layer is open, so Menu closes it.
+  useTvMenuKey(clientBackDestination(active) !== null || layerOpen, { control: TVEventControl });
   // Pending crash reports (last launch's included) go to this server once paired.
   useShellCrashReporting(credential, session, active);
   const [remote, remoteState] = useTvRemote(autoTuneMs, (event, { handled, intent }) => {
     if (certMarks.enabled && event.key !== "timeout") lastKeyAtMs.current = certMarks.now();
     if (handled) controls.showForActivity();
-    runTvRemoteIntent(intent, controller, setActive);
+    runTvRemoteIntent(intent, controller, setActive, () => setLayer(undefined));
   });
+  // Audio and More are menus: the arrows stay in them rather than tuning, and Menu closes them.
+  const remoteFocus = !controls.visible
+    ? "picture"
+    : layerOpen
+      ? layer === "info"
+        ? "info"
+        : "menu"
+      : "controls";
+  const audioOptions = useChannelAudio(channelAudio, snapshot.channel?.id, layerOpen && layer === "audio");
+  const subtitles = usePairedSubtitles(channelSubtitles, deviceStorage, snapshot);
   useTVEventHandler(({ eventKeyAction, eventType }) =>
-    remote.nativeKey(eventType, keyActionOf(eventKeyAction), active === "watching"),
+    remote.nativeKey(eventType, keyActionOf(eventKeyAction), active === "watching", remoteFocus),
   );
   const { note: favouriteNote, toggle: toggleFavourite } = useTvFavourites(myChannels, snapshot.catalog);
   const tuneFromList = createTvListTune(remote, controller, controls.showForActivity, setActive);
@@ -171,10 +208,11 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     const timer = setInterval(() => setClockMs(Date.now()), 30_000);
     return () => clearInterval(timer);
   }, []);
-  const schedule = watchingScheduleFromGuide(
-    guideSnapshot.layout,
-    snapshot.channel?.id,
-    watchingScheduleTimeMs(snapshot, clockMs),
+  const chrome = playerChromeFromGuide({ layout: guideSnapshot.layout, nowMs: clockMs, snapshot });
+  // The cards a flip shows in the band's place (§9.2): the catalog Up and Down step through.
+  const surfCards = useMemo(
+    () => surfCardsFromGuide(snapshot.catalog, guideSnapshot.layout, clockMs),
+    [snapshot.catalog, guideSnapshot.layout, clockMs],
   );
   const markSwitchShown = useCallback(
     (what: "osd" | "still") => certMarks.held(controller.getSnapshot().attemptId, what),
@@ -185,23 +223,37 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
       active={active}
       watching={
         <WatchingSurface
-          channelDigits={remoteHasDigits}
+          audioOptions={audioOptions}
+          chrome={chrome}
           chromeVisible={active === "watching"}
           controlsActivityKey={controls.activityKey}
           controlsVisible={controls.visible}
+          formatTime={(ms) => formatGuideTime(ms, guideSnapshot.layout?.timezone)}
+          layer={layerOpen ? layer : undefined}
           loading={catalogState.loading}
           loadError={catalogState.error}
           onChangeServer={() => session.chooseServer()}
           onDismissControls={controls.dismiss}
           onGoLive={() => void controller.goLive()}
+          onLayer={(next) => {
+            controls.showForActivity();
+            setLayer(next);
+          }}
           onOpenGuide={remote.select}
-          onPlay={() => void controller.play()}
+          onOpenSurf={() => setActive("surf")}
           onRetry={() => retryPairedClient({ catalogState, controller, refresh })}
+          onSeek={(wallClockMs) => void controller.seek(wallClockMs)}
           onSwitchShown={certMarks.enabled ? markSwitchShown : undefined}
+          onTuneChannel={(channelId) => {
+            controls.showForActivity();
+            void controller.tuneChannel(channelId);
+          }}
           numberEntry={tvNumberEntryPresentation(remoteState, snapshot.catalog)}
+          playheadMs={watchingScheduleTimeMs(snapshot, clockMs)}
           player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
-          schedule={schedule}
           snapshot={snapshot}
+          subtitles={subtitles}
+          surfCards={surfCards}
         />
       }
       overlay={

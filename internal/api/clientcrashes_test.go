@@ -35,15 +35,19 @@ func newCrashHarness(t *testing.T) *apiHarness {
 		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
 		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
 		return api.Router(defaults.Log, api.Options{
-			Events:        events.NewBus(),
-			Store:         defaults.Store,
-			Auth:          api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
-			Log:           defaults.Log,
-			Login:         auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
-			Sessions:      mgr,
-			Devices:       devices,
-			CookieSecure:  "false",
-			ClientCrashes: diagnostics.NewClientCrashes(defaults.Store, time.Now),
+			Store:        defaults.Store,
+			Auth:         api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
+			Log:          defaults.Log,
+			CookieSecure: "false",
+			People: api.PeopleOptions{
+				Login:    auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+				Sessions: mgr,
+				Devices:  devices,
+			},
+			Ops: api.OpsOptions{
+				Events:        events.NewBus(),
+				ClientCrashes: diagnostics.NewClientCrashes(defaults.Store, time.Now),
+			},
 		})
 	})
 }

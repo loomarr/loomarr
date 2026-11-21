@@ -66,7 +66,7 @@ func TestNotificationProvidersUseOneRedactedAdminWorkflow(t *testing.T) {
 		func() string { return "destination-1" }, func() time.Time { return now },
 	).WithTester(acceptingDestinationTester{})
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: notificationAuthorizer{}, NotificationDestinations: manager,
+		Store: st, Auth: notificationAuthorizer{}, Setup: api.SetupOptions{NotificationDestinations: manager},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -197,8 +197,8 @@ func TestNotificationProvidersBindBrowserPushToTheAuthenticatedMember(t *testing
 		return fmt.Sprintf("browser-%d", nextID)
 	}, time.Now)
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: notificationAuthorizer{}, NotificationDestinations: manager,
-		WebPushPublicKey: "public-vapid-key",
+		Store: st, Auth: notificationAuthorizer{},
+		Setup: api.SetupOptions{NotificationDestinations: manager, WebPushPublicKey: "public-vapid-key"},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

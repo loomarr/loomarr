@@ -68,9 +68,19 @@ func PickAudioTrack(tracks []AudioTrack, prefer string) int {
 		return 0
 	}
 	for i, t := range tracks {
-		if langcode.Normalize(t.Language) == prefer {
+		if sameLanguage(langcode.Normalize(t.Language), prefer) {
 			return i
 		}
 	}
 	return 0
+}
+
+// sameLanguage matches a track's normalized tag to the preference. `und` (ISO 639's "undetermined")
+// is how the Audio sheet saves a track that carries no language (#3409), so it matches an untagged
+// track as well as one tagged `und`.
+func sameLanguage(track, prefer string) bool {
+	if prefer == "und" {
+		return track == "" || track == "und"
+	}
+	return track == prefer
 }

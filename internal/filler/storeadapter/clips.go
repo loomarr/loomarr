@@ -94,6 +94,12 @@ func (a PipelineClips) HoldClips(ctx context.Context, paths []string, at time.Ti
 func (a PipelineClips) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
 	return a.st.SetClipComposite(ctx, hash, composite, at)
 }
+func (a PipelineClips) ClipsWithoutAirWindow(ctx context.Context) ([]clipstore.Clip, error) {
+	return a.st.ClipsWithoutAirWindow(ctx)
+}
+func (a PipelineClips) SetClipAirWindow(ctx context.Context, hash string, startMs, endMs int64, at time.Time) error {
+	return a.st.SetClipAirWindow(ctx, hash, startMs, endMs, at)
+}
 
 // AiringClips lists the clips on air for the library re-encode (#2121): the default
 // filter leaves out held, removed and composite clips.

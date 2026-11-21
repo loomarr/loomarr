@@ -3,6 +3,7 @@
 
 export * from "./channel-policy";
 export * from "./client-platform";
+export * from "./paired-server";
 export * from "./people";
 export * from "./requests";
 export * from "./rule-vocabulary";

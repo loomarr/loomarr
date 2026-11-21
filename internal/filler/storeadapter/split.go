@@ -37,6 +37,9 @@ func NewSplit(st records.Store, wake Wake) Split { return Split{st: st, wake: wa
 func (a Split) GetClip(ctx context.Context, id string) (clipstore.Clip, bool, error) {
 	return Sync{st: a.st}.GetClip(ctx, id)
 }
+func (a Split) GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error) {
+	return a.st.GetClipPipeline(ctx, hash)
+}
 func (a Split) ListClips(ctx context.Context) ([]clipstore.Clip, error) {
 	return a.st.ListClips(ctx, clipstore.ClipFilter{})
 }

@@ -21,6 +21,7 @@ func TestFillerMediaJobsDeclareALongTimeout(t *testing.T) {
 		"filler-split-sweep": fillerSplitSweepJob(nil),
 		"filler-identity":    fillerIdentityJob(nil),
 		"filler-defects":     fillerDefectsJob(nil),
+		"filler-upkeep":      fillerUpkeepJob(nil),
 	}
 	for name, job := range cases {
 		if job.Timeout != jobs.LongJobTimeout {

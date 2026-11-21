@@ -104,7 +104,7 @@ const useNeedsYou = (isAdmin: boolean): NeedsLineItem[] => {
   const jobs = unwrap(jobsApi.useJobsList({ query: admin }).data)?.jobs ?? [];
   const readiness = unwrap(fillerApi.useFillerReadiness({ query: admin }).data);
   // The shell reads the same status for Library's nav badge, so this is one request, not two.
-  const library = unwrap(libraryApi.useLibraryStatus({ query: { ...admin, staleTime: 30_000 } }).data);
+  const library = unwrap(libraryApi.useLibraryStatus({ query: admin }).data);
   if (!isAdmin) return [];
 
   return needsYouItems({

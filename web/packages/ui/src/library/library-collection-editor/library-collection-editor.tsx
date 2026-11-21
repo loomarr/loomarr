@@ -35,7 +35,7 @@ const Thumb = ({ member }: { member: LibraryCollectionMember }) => (
 );
 
 const NameYear = ({ member }: { member: LibraryCollectionMember }) => (
-  <Stack flexBasis={0} flexGrow={1} minWidth={0}>
+  <Stack flexBasis={0} flexGrow={1} flexShrink={1} minWidth={0}>
     <Text textRole="body">{member.name}</Text>
     {member.year ? (
       <Text textRole="compact" tone="secondary">
@@ -97,8 +97,8 @@ const AddTitle = ({
   onSearch,
   onAdd,
 }: Pick<LibraryCollectionEditorProps, "members" | "onSearch" | "onAdd">) => {
-  const [typed, setTyped] = useState("");
-  const query = useSettled(typed.trim());
+  const [search, setSearch] = useState("");
+  const query = useSettled(search.trim());
   const [found, setFound] = useState<Found>({ query: "" });
   useEffect(() => {
     if (query === "") return;
@@ -116,7 +116,7 @@ const AddTitle = ({
   const list = searched ? (found.results ?? []).filter((r) => !inIt.has(r.id)) : [];
   return (
     <Stack gap="inline">
-      <Field label="Add a title" onChangeText={setTyped} placeholder="Search your library" value={typed} />
+      <Field label="Add a title" onChangeText={setSearch} placeholder="Search your library" value={search} />
       {searched && found.failed ? (
         <Text textRole="body" tone="secondary">
           Couldn't search just now. Try again in a moment.
@@ -176,7 +176,7 @@ const Footer = ({
       />
       <Line alignItems="flex-start" justifyContent="space-between" rowGap="control">
         {saved ? (
-          <Stack gap={4}>
+          <Stack flexShrink={1} gap={4}>
             <Line>
               <Action disabled={used || busy} onPress={() => setAsking(true)} tone="danger" variant="outline">
                 Delete collection

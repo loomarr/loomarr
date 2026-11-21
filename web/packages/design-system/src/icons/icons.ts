@@ -1,4 +1,5 @@
 import Activity from "lucide-react-native/icons/activity";
+import Airplay from "lucide-react-native/icons/airplay";
 import Archive from "lucide-react-native/icons/archive";
 import ArrowLeft from "lucide-react-native/icons/arrow-left";
 import ArrowLeftRight from "lucide-react-native/icons/arrow-left-right";
@@ -54,6 +55,7 @@ import PanelRightClose from "lucide-react-native/icons/panel-right-close";
 import PanelRightOpen from "lucide-react-native/icons/panel-right-open";
 import Pause from "lucide-react-native/icons/pause";
 import Pencil from "lucide-react-native/icons/pencil";
+import PictureInPicture2 from "lucide-react-native/icons/picture-in-picture-2";
 import Play from "lucide-react-native/icons/play";
 import Plus from "lucide-react-native/icons/plus";
 import Radio from "lucide-react-native/icons/radio";
@@ -89,6 +91,8 @@ const icons = {
   account: CircleUserRound,
   // Diagnostics' live activity pulse.
   activity: Activity,
+  // An iPhone player's AirPlay utility (§9.3).
+  airplay: Airplay,
   // A caution the reader should act on or know about, drawn as a triangle: `warning` is the round
   // mark of a status, this is the banner's.
   alert: TriangleAlert,
@@ -175,6 +179,8 @@ const icons = {
   person: UserRound,
   pending: Circle,
   people: Users,
+  // The player's picture-in-picture utility (§9.3).
+  pictureInPicture: PictureInPicture2,
   // A table row's disclosure: closed points at the row's details, open points down into them.
   rowCollapse: ChevronDown,
   rowExpand: ChevronRight,

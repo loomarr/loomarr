@@ -124,8 +124,11 @@ describe("Help page", () => {
     stubHelp();
     const router = renderAt("/help?page=quickstart&section=upgrading");
     await waitFor(() => expect(router.state.location.search).toEqual({ page: "upgrade" }));
-    expect(await screen.findByText("Pull the new image.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Upgrade", current: "page" })).toBeInTheDocument();
+    // The moved section's answer renders first, then the route's own read of the new page renders
+    // the same markdown again with fresh nodes, so a node found on the first render can be detached
+    // by the time it is asserted. Query the settled DOM instead of holding a node.
+    expect(await screen.findByRole("link", { name: "Upgrade", current: "page" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Pull the new image.")).toBeInTheDocument());
   });
 
   it("filters the page list", async () => {
@@ -153,12 +156,23 @@ describe("Command palette", () => {
   // (`const [, setCommandOpen] = useState(false)`), so clicking it did nothing at all.
   // Both entry points now drive one piece of state.
   it("opens from the shell's Search button", async () => {
-    stubHelp();
-    renderAt("/help");
-    await screen.findByRole("link", { name: "Troubleshooting" });
+    // The rail is hidden below `md`, and a window with no matchMedia reads as the narrowest width.
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      addEventListener: vi.fn(),
+      matches: true,
+      media: query,
+      removeEventListener: vi.fn(),
+    }));
+    try {
+      stubHelp();
+      renderAt("/help");
+      await screen.findByRole("link", { name: "Troubleshooting" });
 
-    await userEvent.click(screen.getByRole("button", { name: /search/i }));
-    expect(await screen.findByRole("dialog", { name: /search loomarr/i })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: /search/i }));
+      expect(await screen.findByRole("dialog", { name: /search loomarr/i })).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   // #2751: below `md` the rail (and its Search button) is gone; the phone header's Search icon,
@@ -174,8 +188,7 @@ describe("Command palette", () => {
       stubHelp();
       renderAt("/help");
 
-      // Exactly "Search": the rail's own button (CSS-hidden here, still in jsdom's tree) is named
-      // "Search…" plus its shortcut.
+      // Exactly "Search": the rail's own button (hidden here) is named "Search…" plus its shortcut.
       await userEvent.click(await screen.findByRole("button", { name: "Search" }));
       const dialog = await screen.findByRole("dialog", { name: /search loomarr/i });
       expect(dialog.style.inset).toBe("0px");

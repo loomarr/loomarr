@@ -14,6 +14,7 @@ const NewCollectionScreen = () => {
   );
 };
 
+// no-loader: a new collection has nothing saved to read
 const Route = createFileRoute("/_authed/library/collections/new")({
   component: NewCollectionScreen,
 });

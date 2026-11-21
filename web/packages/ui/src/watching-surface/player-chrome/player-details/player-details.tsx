@@ -1,8 +1,16 @@
-import { type Density, Icon, icons, playerChrome, Text, useFocusLook } from "@loomarr/design-system";
+import {
+  type Density,
+  Icon,
+  icons,
+  NonModalDialog,
+  playerChrome,
+  Text,
+  useFocusLook,
+} from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 
-import { raised, webOnly } from "../flat";
+import { nativeFocus, raised, webOnly } from "../flat";
 
 // Playback details (§9.5): the one place technical terms are allowed. Mono values for what the player
 // really knows, one row each, and Copy details for a bug report. A row the player has no figure for
@@ -59,6 +67,7 @@ const CopyKey = ({ density, onPress }: { density: Density; onPress: () => void }
           outlineWidth: 2,
           transition: "background-color 120ms ease",
         }),
+        ...nativeFocus(focused),
       }}
     >
       <Icon color={playerChrome.text} decorative glyph={copied ? icons.success : icons.copy} size="compact" />
@@ -106,9 +115,8 @@ const PlayerDetailsPanel = ({ onClose, ...body }: PlayerDetailsProps & { onClose
   const [hovered, setHovered] = useState(false);
   const { focused, ...focusHandlers } = useFocusLook();
   return (
-    <View
-      aria-label="Playback details"
-      role="dialog"
+    <NonModalDialog
+      label="Playback details"
       style={{
         backgroundColor: playerChrome.surface,
         borderColor: playerChrome.hairline,
@@ -147,13 +155,14 @@ const PlayerDetailsPanel = ({ onClose, ...body }: PlayerDetailsProps & { onClose
               outlineWidth: 2,
               transition: "background-color 120ms ease",
             }),
+            ...nativeFocus(focused),
           }}
         >
           <Icon color={playerChrome.text} decorative glyph={icons.close} size="compact" />
         </Pressable>
       </View>
       <PlayerDetails {...body} />
-    </View>
+    </NonModalDialog>
   );
 };
 

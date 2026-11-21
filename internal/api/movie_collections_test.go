@@ -31,10 +31,10 @@ func TestMovieCollections_ResolvesVisibleMoviesAsOneMemberReadableRequest(t *tes
 	}
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
-		Auth:             testAuthorizer{},
-		Log:              log,
-		MovieCollections: resolver,
-		LiveSettings:     mapSettings{"tmdb.api_key": "key"},
+		Auth:         testAuthorizer{},
+		Log:          log,
+		Library:      api.LibraryOptions{MovieCollections: resolver},
+		LiveSettings: mapSettings{"tmdb.api_key": "key"},
 	})
 
 	req := httptest.NewRequest(http.MethodGet,
@@ -69,10 +69,10 @@ func TestMovieCollections_RejectsMissingOrInvalidMovieKeysBeforeCallingService(t
 	resolver := &testkit.MovieCollectionService[libraryapi.MovieCollectionRequest, libraryapi.MovieCollectionResolution]{}
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
-		Auth:             testAuthorizer{},
-		Log:              log,
-		MovieCollections: resolver,
-		LiveSettings:     mapSettings{"tmdb.api_key": "key"},
+		Auth:         testAuthorizer{},
+		Log:          log,
+		Library:      api.LibraryOptions{MovieCollections: resolver},
+		LiveSettings: mapSettings{"tmdb.api_key": "key"},
 	})
 
 	for _, target := range []string{
@@ -107,7 +107,7 @@ func TestMovieCollections_DistinguishesUnavailableConfigurationAndUpstreamFailur
 		{name: "tmdb failed", service: &testkit.MovieCollectionService[libraryapi.MovieCollectionRequest, libraryapi.MovieCollectionResolution]{Err: errors.New("tmdb down")}, live: mapSettings{"tmdb.api_key": "key"}, wantStatus: http.StatusBadGateway},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, MovieCollections: tc.service, LiveSettings: tc.live})
+			handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, Library: api.LibraryOptions{MovieCollections: tc.service}, LiveSettings: tc.live})
 			req := httptest.NewRequest(http.MethodGet, "/v1/movie-collections?key=movie:tmdb:90000671", nil)
 			req.Header.Set("Authorization", "Bearer "+memberToken)
 			resp := httptest.NewRecorder()
@@ -125,7 +125,7 @@ func TestMovieCollections_NormalizesEmptyCollectionsToJSONArray(t *testing.T) {
 	}
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
-		Auth: testAuthorizer{}, Log: log, MovieCollections: resolver,
+		Auth: testAuthorizer{}, Log: log, Library: api.LibraryOptions{MovieCollections: resolver},
 		LiveSettings: mapSettings{"tmdb.api_key": "key"},
 	})
 	req := httptest.NewRequest(http.MethodGet, "/v1/movie-collections?key=movie:tmdb:90000550", nil)
@@ -149,7 +149,7 @@ func TestMovieCollections_BoundsVisibleKeys(t *testing.T) {
 	resolver := &testkit.MovieCollectionService[libraryapi.MovieCollectionRequest, libraryapi.MovieCollectionResolution]{}
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
-		Auth: testAuthorizer{}, Log: log, MovieCollections: resolver,
+		Auth: testAuthorizer{}, Log: log, Library: api.LibraryOptions{MovieCollections: resolver},
 		LiveSettings: mapSettings{"tmdb.api_key": "key"},
 	})
 	target := "/v1/movie-collections?"
@@ -175,7 +175,7 @@ func TestMovieCollections_RequiresAuthentication(t *testing.T) {
 	resolver := &testkit.MovieCollectionService[libraryapi.MovieCollectionRequest, libraryapi.MovieCollectionResolution]{}
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
-		Auth: testAuthorizer{}, Log: log, MovieCollections: resolver,
+		Auth: testAuthorizer{}, Log: log, Library: api.LibraryOptions{MovieCollections: resolver},
 		LiveSettings: mapSettings{"tmdb.api_key": "key"},
 	})
 	req := httptest.NewRequest(http.MethodGet, "/v1/movie-collections?key=movie:tmdb:90000671", nil)

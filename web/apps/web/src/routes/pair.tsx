@@ -40,6 +40,7 @@ const PairRoute = () => {
   return <PairDevice initialCode={code} />;
 };
 
+// no-loader: approving a code is a mutation; the page reads nothing
 const Route = createFileRoute("/pair")({
   validateSearch: (search: Record<string, unknown>): PairSearch => ({
     code: safeUserCode(search.code),

@@ -9,7 +9,7 @@ One area of the [package map](../package-map.md#start-here).
 ## Imports from other areas
 
 - **platform** · 8 imports — the diagnostics process manager that runs every encoder, the store behind a backend transition, start-up configuration, Tunarr's HTTP client and metrics, the address check that keeps LAN discovery answering only the household's network, and the language codes an audio track is chosen by
-- **media** · 5 imports — the encoder choice, loudness, media facts and process-tree control the stream is built from
+- **media** · 6 imports — the encoder choice, loudness, media facts and process-tree control the stream is built from
 - **channels** · 5 imports — the `channels/schedule` programming a backend plays
 - **library** · 2 imports — the media server's Live TV API that channels are published to, and `library/provision` keys naming what a slot plays
 
@@ -29,6 +29,8 @@ One area of the [package map](../package-map.md#start-here).
   Publishes Loomarr's channels to the media server's Live TV (§6, §9.1): it registers, verifies, refreshes and retires the one tuner + guide pair Loomarr owns, and wires the media server as Tunarr's media source.
 - **`playout/packager`** · 2 importers
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
+- **`playout/subtitles`** · 3 importers · → `media/bgexec`
+  Serves a channel's soft subtitles beside its stream (#2088 decision 5): the text subtitle tracks the programme on air carries, and the chosen track's cues on the channel's wall clock.
 - **`playout/tunarr`** · 5 importers · → `channels/schedule`, `platform/httpx`, `platform/metrics`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
 - **`playout/tunarr/tunarrtest`** · → `channels/schedule`, `playout/tunarr`

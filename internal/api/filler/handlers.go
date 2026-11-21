@@ -74,7 +74,7 @@ type Deps struct {
 	Filler Service
 	// FillerLayout is the clip folder topology this server generation runs on.
 	FillerLayout cliplibrary.Layout
-	// The Filler prefix matches the api.Options fields these are copied from.
+	// The Filler* fields are copied from api.FillerOptions (Layout, Research, Defects).
 	FillerResearch ResearchService
 	FillerDefects  *defectfloor.DefectReports
 	// Channels reconciles the channels a catalog change touches.

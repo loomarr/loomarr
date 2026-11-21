@@ -138,13 +138,12 @@ func newGuideHarness(t *testing.T, config guideHarnessConfig) *guideHarness {
 	t.Helper()
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		opts := api.Options{
-			Store:          defaults.Store,
-			Auth:           defaults.Auth,
-			Log:            defaults.Log,
-			PlayoutGuide:   config.Guide,
-			Pods:           config.Pods,
-			TimelineThumbs: config.TimelineThumbs,
-			Images:         config.Images,
+			Store:   defaults.Store,
+			Auth:    defaults.Auth,
+			Log:     defaults.Log,
+			Playout: api.PlayoutOptions{Guide: config.Guide},
+			Guide:   api.GuideOptions{Pods: config.Pods, TimelineThumbs: config.TimelineThumbs},
+			Images:  config.Images,
 		}
 		live := mapSettings{}
 		if config.Timezone != "" {

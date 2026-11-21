@@ -273,3 +273,36 @@ func TestCIFFmpegWorkflowUsesVerifiedPair(t *testing.T) {
 		}
 	}
 }
+
+// The warm job seeds the key the lanes restore, so it must fetch the archive through the same
+// verified script; only the download is conditional, on the seed being missing.
+func TestCIFFmpegWarmJobUsesVerifiedPair(t *testing.T) {
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(readRepositoryWorkflow(t, "ci-go-cache-warm.yml")), &document); err != nil {
+		t.Fatal(err)
+	}
+	steps := mappingValueMust(t, workflowJobNode(t, document.Content[0], "ffmpeg"), "steps")
+	commands := map[int]struct{ run, condition string }{
+		1: {run: `./scripts/ci-ffmpeg.sh metadata >> "$GITHUB_OUTPUT"`},
+		3: {run: `./scripts/ci-ffmpeg.sh download "$HOME/.cache/loomarr-ffmpeg"`, condition: "steps.warm.outputs.cache-hit != 'true'"},
+	}
+	for index, want := range commands {
+		if index >= len(steps.Content) {
+			t.Fatalf("missing warm FFmpeg step %d", index)
+		}
+		step := steps.Content[index]
+		run, ok := mappingValue(step, "run")
+		if !ok || strings.TrimSpace(run.Value) != want.run {
+			t.Fatalf("warm FFmpeg step %d no longer uses verified production pair", index)
+		}
+		condition, hasCondition := mappingValue(step, "if")
+		if (want.condition == "") == hasCondition || (hasCondition && condition.Value != want.condition) {
+			t.Fatalf("warm FFmpeg step %d condition changed", index)
+		}
+		for _, key := range []string{"continue-on-error", "env", "shell", "working-directory"} {
+			if _, ok := mappingValue(step, key); ok {
+				t.Fatalf("warm FFmpeg step %d overrides %s", index, key)
+			}
+		}
+	}
+}

@@ -1,12 +1,12 @@
-import { Action, Icon, icons, Tooltip } from "@loomarr/design-system";
+import { Action, Icon, icons, PressableRow, SkipLink, Stack, Text, Tooltip } from "@loomarr/design-system";
+import { SearchButton } from "@loomarr/ui";
 import { Link, useLocation } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { channelNavHighlight } from "@/channels/channel-nav-highlight";
 import { commandShortcutAria, commandShortcutLabel } from "@/lib/platform";
 import { usePhoneWidth } from "@/lib/use-phone-width";
-import { cn } from "@/lib/utils";
 import { BrandLockup } from "../brand-lockup";
-import type { AppShellProps, NavItem, WatchNavItem } from "./app-shell.type";
+import type { AppShellProps, NavItem, NavTo, WatchNavItem } from "./app-shell.type";
 
 // Lazy, not a static import: PhoneBottomBar is @loomarr/design-system's only consumer of
 // TabBar/BottomSheet, which only ever render below `md`. A static import here made AppShell —
@@ -38,19 +38,19 @@ const PHONE_HEADER_HEIGHT = 49;
 // the product soul; nostalgia stays in the margins (§1).
 // TWO AUTHORED NAVS, not one list filtered by role (§12).
 //
-// This used to be `NAV.filter(i => !i.admin || isAdmin)`, which can only ever present a
-// member with the admin's product minus some entries. A member is not a diminished admin —
-// they arrive to watch and to ask for things — and the same two routes need DIFFERENT NAMES
-// for them: `/suggest` was "Request a channel", `/settings/notifications` is "Notifications". A
-// filter cannot rename, so the shape of the old code made the right IA inexpressible.
+// A role filter (`NAV.filter(i => !i.admin || isAdmin)`) can only ever present a member with
+// the admin's product minus some entries. A member is not a diminished admin — they arrive to
+// watch and to ask for things — and the same routes need DIFFERENT NAMES for them
+// (`/settings/notifications` is "Notifications"). A filter cannot rename, so it cannot express
+// the right IA.
 const ADMIN_NAV: NavItem[] = [
   // Home leads the admin rail, named and drawn as in the #1659 web mock (its screen id is still
   // `dashboard`, and so is the route, so bookmarks keep working).
   { to: "/dashboard", label: "Home", icon: "home" },
   // Guide IS the channels surface (headed "Channels"): "what do I have" and "what is on" are
-  // one grid. The fold completed when the grid grew the origination affordance the mock always
-  // specified — `✦ Add a channel` in its header — so `/channels` and `/suggest` are now
-  // redirects here rather than doors of their own. `Suggest` needs no admin entry because that
+  // one grid. The grid carries the origination affordance the mock specifies — `✦ Add a channel`
+  // in its header — so `/channels` and `/suggest` are redirects here rather than doors of their
+  // own. `Suggest` needs no admin entry because that
   // exact describe→approve path is inline on this page; the MEMBER nav keeps it, since members
   // have no Guide-header affordance. Seven entries, matching the v2 mock's `navDefs`.
   { to: "/guide", label: "Guide", icon: "schedule" },
@@ -102,9 +102,8 @@ const navItemsFor = (isAdmin: boolean, watchChannelId: string | undefined): (Nav
 
 const MAIN_ID = "main-content";
 
-// The one focus style: the amber ring the design system's controls draw. Without it a rail
-// control gets the browser's white rectangular outline.
-const FOCUS_RING = "focus-visible:ring-signal focus-visible:ring-2 focus-visible:outline-none";
+// The link is the row's frame: the current-page edge is positioned against its left side.
+const ROW_FRAME = { position: "relative" } as const;
 
 const AppShell = ({
   children,
@@ -127,11 +126,14 @@ const AppShell = ({
   const { pathname } = useLocation();
   const highlight = channelNavHighlight(pathname);
   const accountInitials = userName.slice(0, 2).toUpperCase();
+  const versionTextStyle = { color: "inherit" } as const;
   // The footer's version line, inside a link to About for an admin and plain text for a member.
   const versionLabel = (
     <>
       <Icon decorative glyph={icons.info} size="compact" tone="inherit" />
-      <span className="truncate">{isAdmin ? serverVersion : `Loomarr ${serverVersion}`}</span>
+      <Text as="span" numberOfLines={1} style={versionTextStyle} textRole="mono">
+        {isAdmin ? serverVersion : `Loomarr ${serverVersion}`}
+      </Text>
     </>
   );
   return (
@@ -143,33 +145,36 @@ const AppShell = ({
     <div className="bg-background text-foreground flex h-screen flex-col overflow-hidden md:grid md:grid-cols-[auto_1fr]">
       {/* WCAG 2.4.1: the rail puts nine-plus stops before any page content, so the first Tab stop
           jumps past it. Absolute, so it never takes a grid cell; visible only while focused. */}
-      <a
-        href={`#${MAIN_ID}`}
-        className="focus:bg-signal focus:text-static-950 sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:px-3 focus:py-2 focus:text-sm focus:font-medium"
-      >
-        Skip to content
-      </a>
-      {/* `hidden md:flex`, not a width that collapses to icons: below `md` the rail is replaced
+      <SkipLink href={`#${MAIN_ID}`}>Skip to content</SkipLink>
+      {/* Hidden below `md`, not a width that collapses to icons: below `md` the rail is replaced
           outright by PhoneBottomBar, not shrunk — that collapse is what this PR removes. */}
-      <aside className="border-border bg-card hidden flex-col gap-1 border-r px-3 py-4 md:flex md:w-56">
-        <nav aria-label="Primary" className="flex w-56 flex-col gap-1">
-          <div className="mb-4 px-2">
+      <Stack
+        backgroundColor="$surfaceRaised"
+        borderColor="$borderDecorative"
+        borderRightWidth={1}
+        gap="1"
+        hidden={{ base: true, md: false }}
+        paddingHorizontal={12}
+        paddingVertical={16}
+        render="aside"
+        width={224}
+      >
+        <Stack aria-label="Primary" gap="1" render="nav" width={224}>
+          <Stack marginBottom={16} paddingHorizontal={8}>
             <BrandLockup variant="compact" />
-          </div>
+          </Stack>
 
-          <button
-            type="button"
-            onClick={onOpenCommand}
-            aria-keyshortcuts={commandShortcutAria()}
-            className={cn(
-              "border-input text-muted-foreground hover:bg-accent mb-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors",
-              FOCUS_RING,
-            )}
-          >
-            <Icon decorative glyph={icons.search} size="compact" tone="inherit" />
-            <span>Search…</span>
-            <kbd className="text-static-400 ml-auto font-mono text-xs">{commandShortcutLabel()}</kbd>
-          </button>
+          {/* The shell's search is the SearchField's press-only form (maintainer: field look, as a
+              button): a press opens the command search, and the shortcut hint says how to reach it
+              from the keyboard. */}
+          <Stack marginBottom={8}>
+            <SearchButton
+              hint={commandShortcutLabel()}
+              keyShortcuts={commandShortcutAria()}
+              onPress={() => onOpenCommand?.()}
+              placeholder="Search…"
+            />
+          </Stack>
 
           {navItemsFor(isAdmin, watchChannelId).map((item) => {
             const { label, icon } = item;
@@ -186,91 +191,147 @@ const AppShell = ({
                   : undefined;
             // "You are here" is neutral, as on the phone bar (#1909 Q1): elevated fill, foreground
             // text at 500 and a 2px foreground edge. Amber is focus only.
-            const linkClassName = cn(
-              "text-static-400 hover:bg-accent hover:text-foreground flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-              FOCUS_RING,
-              forcedActive === undefined
-                ? "data-[status=active]:bg-static-800 data-[status=active]:text-foreground data-[status=active]:font-medium data-[status=active]:shadow-[inset_2px_0_0_var(--color-static-100)]"
-                : forcedActive &&
-                    "bg-static-800 text-foreground font-medium shadow-[inset_2px_0_0_var(--color-static-100)]",
-            );
-            const content = (
+            const isCurrent = ({ isActive }: { isActive: boolean }) => forcedActive ?? isActive;
+            // The label is the compact role, at the role's strong weight while "you are here".
+            const content = (current: boolean) => (
               <>
-                <Icon decorative glyph={icons[icon]} size="compact" tone="inherit" />
-                <span>{label}</span>
+                {current && (
+                  <Stack
+                    aria-hidden
+                    backgroundColor="$contentPrimary"
+                    bottom={0}
+                    left={0}
+                    position="absolute"
+                    top={0}
+                    width={2}
+                  />
+                )}
+                <Icon
+                  decorative
+                  glyph={icons[icon]}
+                  size="compact"
+                  tone={current ? "content" : "secondary"}
+                />
+                <Text as="span" strong={current} textRole="compact" tone={current ? "primary" : "secondary"}>
+                  {label}
+                </Text>
                 {/* The v2 mock hangs a `suggest` count off the entry whose surface holds work
                     waiting on the viewer. Absent at zero: a permanent "0" would train the eye to
                     ignore it. Watch has no badge key (its `to` isn't a stable `NavTo` literal). */}
                 {item.to !== "/watch/$id" && (badges?.[item.to] ?? 0) > 0 && (
-                  <span
+                  <Text
+                    as="span"
                     data-testid={`nav-badge-${item.to}`}
-                    className="bg-suggest-tint-15 text-2xs text-suggest-300 ml-auto rounded-full px-[7px] py-px font-mono"
+                    className="bg-suggest-tint-15 ml-auto rounded-full px-[7px] py-px"
+                    textRole="mono"
+                    tone="suggest"
                   >
                     {badges?.[item.to]}
-                  </span>
+                  </Text>
                 )}
               </>
             );
             return item.to === "/watch/$id" ? (
-              <Link
+              <PressableRow
                 key={`watch-${item.channelId}`}
-                to="/watch/$id"
-                params={{ id: item.channelId }}
-                className={linkClassName}
+                aria-current={forcedActive ? "page" : undefined}
+                render={<Link to="/watch/$id" params={{ id: item.channelId }} style={ROW_FRAME} />}
+                selected={isCurrent}
               >
-                {content}
-              </Link>
+                {(state) => content(isCurrent(state))}
+              </PressableRow>
             ) : (
-              <Link key={item.to} to={item.to} className={linkClassName}>
-                {content}
-              </Link>
+              <PressableRow
+                aria-current={forcedActive ? "page" : undefined}
+                key={item.to}
+                render={<Link to={item.to} style={ROW_FRAME} />}
+                selected={isCurrent}
+              >
+                {(state) => content(isCurrent(state))}
+              </PressableRow>
             );
           })}
-        </nav>
+        </Stack>
 
         {serverVersion && (
           <Tooltip content={`Loomarr ${serverVersion}`} side="right">
             {isAdmin ? (
-              <Link
-                to="/settings/system/about"
-                aria-label={`Loomarr ${serverVersion} — About`}
-                className={cn(
-                  "text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs transition-colors",
-                  FOCUS_RING,
-                )}
-              >
-                {versionLabel}
-              </Link>
+              <Stack marginTop="auto" minWidth={0}>
+                <PressableRow
+                  aria-label={`Loomarr ${serverVersion} — About`}
+                  // The member's plain version line below sits at the same 12/6, so the two agree.
+                  inset={{ x: 12, y: 6 }}
+                  render={<Link to="/settings/system/about" />}
+                >
+                  <Text as="span" textRole="mono" tone="secondary">
+                    <Stack align="center" direction="row" flexShrink={1} gap="2" minWidth={0} render="span">
+                      {versionLabel}
+                    </Stack>
+                  </Text>
+                </PressableRow>
+              </Stack>
             ) : (
-              <span className="text-static-400 mt-auto flex min-w-0 items-center gap-2 px-3 py-1.5 font-mono text-xs">
-                {versionLabel}
-              </span>
+              <Stack
+                align="center"
+                direction="row"
+                flexShrink={1}
+                gap="inline"
+                marginTop="auto"
+                minWidth={0}
+                paddingHorizontal={12}
+                paddingVertical={6}
+                render="span"
+              >
+                <Text as="span" textRole="mono" tone="secondary">
+                  {versionLabel}
+                </Text>
+              </Stack>
             )}
           </Tooltip>
         )}
 
-        <div
-          className={`${serverVersion ? "mt-1" : "mt-auto"} border-border flex flex-row gap-2 border-t px-2 pt-3 text-sm`}
+        <Stack
+          borderColor="borderDecorative"
+          borderTopWidth={1}
+          direction="row"
+          gap="inline"
+          marginTop={serverVersion ? 4 : "auto"}
+          paddingHorizontal={8}
+          paddingTop={12}
         >
           {/* The footer identity is the way into Your account (§11) — where the mock puts
               it, and where someone looks for "my settings" rather than the app's. Not a
               NAV item: it isn't a section of the app, it's you. */}
-          <Link
-            to="/account"
-            className={cn(
-              "hover:bg-accent flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors",
-              FOCUS_RING,
-            )}
-            // The name holds every visible word, the avatar initials included (WCAG 2.5.3).
-            aria-label={`Your account: ${accountInitials} ${userName}`}
-          >
-            <div className="bg-static-800 flex size-7 shrink-0 items-center justify-center rounded-full font-mono text-xs">
-              {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
-                  between, so "KB" + "Kira" would otherwise read as one word against the label. */}
-              {accountInitials}{" "}
-            </div>
-            <span className="text-muted-foreground truncate">{userName}</span>
-          </Link>
+          <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+            <PressableRow
+              // The name holds every visible word, the avatar initials included (WCAG 2.5.3).
+              aria-label={`Your account: ${accountInitials} ${userName}`}
+              // Tight, so the avatar lines up under the rail's icons and the footer stays compact.
+              inset={{ x: 4, y: 4 }}
+              render={<Link to="/account" />}
+            >
+              <Stack align="center" direction="row" gap="2" minWidth={0}>
+                <Stack
+                  align="center"
+                  backgroundColor="$surfaceElevated"
+                  borderRadius={999}
+                  flexShrink={0}
+                  height={28}
+                  justify="center"
+                  width={28}
+                >
+                  <Text as="span" textRole="mono" tone="primary">
+                    {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
+                      between, so "KB" + "Kira" would otherwise read as one word against the label. */}
+                    {accountInitials}{" "}
+                  </Text>
+                </Stack>
+                <Text as="span" numberOfLines={1} textRole="compact" tone="secondary">
+                  {userName}
+                </Text>
+              </Stack>
+            </PressableRow>
+          </Stack>
           {onLogout && (
             <Tooltip content="Sign out">
               <Action compact icon="signOut" layout="icon" onPress={onLogout} variant="ghost">
@@ -278,8 +339,8 @@ const AppShell = ({
               </Action>
             </Tooltip>
           )}
-        </div>
-      </aside>
+        </Stack>
+      </Stack>
 
       {/* `flex flex-col`, not a plain block. A block child is not a flex item, so a page using
           the `min-h-0 flex-1` idiom to fill the viewport gets no constraint from here and grows
@@ -291,7 +352,7 @@ const AppShell = ({
           viewport instead of being added to main's scrollable content (a second scroller at phone
           width). `overscroll-contain` stops a scroll that reaches main's end from chaining into
           the document and dragging the whole shell off-screen. */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1}>
         {/* Below `md` the rail and its Search button are gone, so Search moves to a header row,
             top right on every page (#2751). It opens the same search the rail's button does. */}
         {phoneWidth && (
@@ -302,14 +363,18 @@ const AppShell = ({
           </Suspense>
         )}
         {banner}
-        <main
+        <Stack
+          className="overflow-auto overscroll-contain focus:outline-none"
+          flexBasis="0%"
+          flexGrow={1}
+          flexShrink={1}
           id={MAIN_ID}
+          render="main"
           tabIndex={-1}
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto overscroll-contain focus:outline-none"
         >
           {children}
-        </main>
-      </div>
+        </Stack>
+      </Stack>
       {/* Below `md`, PhoneBottomBar takes this row (#1785): a normal flex sibling of `main`, not
           `position: fixed`, so it reserves real space rather than floating over content. Lazy
           (above): the Suspense fallback holds that row at the bar's own height so layout doesn't
@@ -333,4 +398,8 @@ const AppShell = ({
   );
 };
 
-export { AppShell };
+// The paths of the main nav for a role, for warming their routes. Read from the authored lists
+// above so the warmed set cannot drift from what the rail shows.
+const navPaths = (isAdmin: boolean): NavTo[] => (isAdmin ? ADMIN_NAV : MEMBER_NAV).map((item) => item.to);
+
+export { AppShell, navPaths };

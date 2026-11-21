@@ -1,8 +1,7 @@
 import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import { pluralize } from "@loomarr/core/format";
-import { Action, Text } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import type { PoolHealthProps } from "./pool-health.type";
 
 // Library-local coverage context, below the stable workspace navigation. Acquisition belongs
@@ -18,7 +17,6 @@ import type { PoolHealthProps } from "./pool-health.type";
 const LEVEL_LABEL: Record<PoolChannelDTO["level"], string> = {
   exact: "exact match",
   widened: "same decade",
-  audience: "audience only",
   bumper_card: "no commercials",
 };
 
@@ -35,16 +33,24 @@ const Stat = ({
   note: string;
   tone?: "warn";
 }) => (
-  <div className="flex min-w-0 flex-col gap-0.5">
+  <Stack flexShrink={1} gap="0.5" minWidth={0}>
     <Text as="span" textRole="metadata">
       {label}
     </Text>
     {/* A warning is caution-yellow. It was `text-lock`, the green that means "good" (#1659). */}
-    <span className={cn("text-lg font-semibold tabular-nums", tone === "warn" && "text-caution")}>
+    <Text
+      as="span"
+      fontVariant={["tabular-nums"]}
+      strong
+      textRole="headline"
+      tone={tone === "warn" ? "warning" : "primary"}
+    >
       {value}
-    </span>
-    <span className="text-muted-foreground text-xs">{note}</span>
-  </div>
+    </Text>
+    <Text as="span" textRole="hint" tone="secondary">
+      {note}
+    </Text>
+  </Stack>
 );
 
 const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
@@ -65,28 +71,46 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
 
   if (folded && !expanded) {
     return (
-      <section
+      <Stack
+        align="center"
         aria-label="Catalog health"
-        className={cn("border-border flex items-center gap-2 rounded-lg border px-3 py-2.5", className)}
+        borderColor="$borderDecorative"
+        borderRadius={8}
+        borderWidth={1}
+        className={className}
+        direction="row"
+        gap="inline"
+        paddingHorizontal={12}
+        paddingVertical={10}
+        render="section"
       >
-        <p className="min-w-0 flex-1 text-sm">
-          {`${pool.clips.toLocaleString()} ${pool.clips === 1 ? "clip" : "clips"}`}
-          {channels.length > 0 ? ` · ${covered}/${channels.length} channels covered` : ""}
-        </p>
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+          <Text as="p" textRole="compact" tone="primary">
+            {`${pool.clips.toLocaleString()} ${pool.clips === 1 ? "clip" : "clips"}`}
+            {channels.length > 0 ? ` · ${covered}/${channels.length} channels covered` : ""}
+          </Text>
+        </Stack>
         <Action aria-expanded={false} onPress={() => setExpanded(true)} variant="outline">
           Details
         </Action>
-      </section>
+      </Stack>
     );
   }
 
   return (
-    <section
+    <Stack
+      align="center"
       aria-label="Catalog health"
-      className={cn(
-        "border-border flex flex-wrap items-center gap-x-8 gap-y-4 rounded-lg border p-4",
-        className,
-      )}
+      borderColor="$borderDecorative"
+      borderRadius={8}
+      borderWidth={1}
+      className={className}
+      columnGap="8"
+      direction="row"
+      padding={16}
+      render="section"
+      rowGap="4"
+      wrap
     >
       {folded ? (
         <div className="order-last">
@@ -153,7 +177,7 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
           tone="warn"
         />
       )}
-    </section>
+    </Stack>
   );
 };
 

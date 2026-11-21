@@ -273,9 +273,9 @@ func TestSeason_ARollupAncestorIsNotTheClipsHoliday(t *testing.T) {
 	}
 }
 
-// Decision 34 at the end of the break: long plain ads leave a tail only short Christmas ads fit, so
-// the top-up spends it on them rather than leaving it to the card, and the plain ads still air.
-func TestSeason_TopUpSpendsATailOnlyHolidayAdsFit(t *testing.T) {
+// Long plain ads end the break when the next one in rotation does not fit: the leftover is not
+// handed to short Christmas ads, so length never decides what airs. The plain ads still air.
+func TestSeason_ALongAdEndsTheBreakRatherThanYieldingToShortOnes(t *testing.T) {
 	var cat []pod.Clip
 	for i := range 6 {
 		c := seasonAd(fmt.Sprintf("plain%02d", i), 1994)
@@ -298,8 +298,8 @@ func TestSeason_TopUpSpendsATailOnlyHolidayAdsFit(t *testing.T) {
 		if body-in != 2 {
 			t.Fatalf("seed %d: %d plain ads aired, want the 2 that fit", seed, body-in)
 		}
-		if left := 120_000 - brk.TotalMs; left >= 7_000 {
-			t.Fatalf("seed %d: %d ms left unfilled with Christmas ads that fit", seed, left)
+		if brk.TotalMs > 120_000 {
+			t.Fatalf("seed %d: the break runs %d ms past its 120 s slot", seed, brk.TotalMs-120_000)
 		}
 	}
 }
@@ -346,41 +346,6 @@ func TestSeason_TheGuaranteedAdKeepsCategoryVariety(t *testing.T) {
 	}
 }
 
-// The half yields only when nothing else fits, and a station ID fits: the tail spends its time on
-// them before it adds Christmas ads past the half.
-func TestSeason_StationIDsFillTheTailBeforeTheHalfYields(t *testing.T) {
-	var cat []pod.Clip
-	for i := range 6 {
-		c := seasonAd(fmt.Sprintf("plain%02d", i), 1994)
-		c.DurationMs = 40_000
-		cat = append(cat, c)
-		x := seasonAd(fmt.Sprintf("xmas%02d", i), 1994, "christmas")
-		x.DurationMs = 7_000
-		cat = append(cat, x)
-		cat = append(cat, pod.Clip{Hash: fmt.Sprintf("ident%02d", i), Path: fmt.Sprintf("ident%02d.mp4", i),
-			Role: pod.StationID, Era: 1994, Audience: pod.General, DurationMs: 5_000})
-	}
-	a := seasonAdapter(cat, nil, schedule.Calendar{Country: "US"}, seasonDec20)
-	for seed := range int64(100) {
-		brk, err := a.PreviewAt(context.Background(), "ch", seed, seasonSel, seasonDec20)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if in, body := inSeasonCount(brk, christmasHashes(cat)); in > max(1, body/2) {
-			t.Fatalf("seed %d: %d of %d commercials are Christmas ads while station IDs fit: %+v", seed, in, body, brk.Entries)
-		}
-		idents := 0
-		for _, e := range brk.Entries {
-			if e.Role == pod.StationID {
-				idents++
-			}
-		}
-		if idents < 4 { // two bookends, and the tail's 23 s holds at least two more
-			t.Fatalf("seed %d: only %d station IDs aired: %+v", seed, idents, brk.Entries)
-		}
-	}
-}
-
 // Bumpers and station IDs are not commercials: an in-season station ID never uses up the half.
 func TestSeason_InSeasonBookendsDoNotCountTowardTheHalf(t *testing.T) {
 	cat := []pod.Clip{seasonAd("plain00", 1994), seasonAd("plain01", 1994),
@@ -401,16 +366,16 @@ func TestSeason_InSeasonBookendsDoNotCountTowardTheHalf(t *testing.T) {
 		if in, body := inSeasonCount(brk, xmas); body != 4 || in != 2 {
 			t.Fatalf("seed %d: %d Christmas ads of %d commercials, want 2 of 4: %+v", seed, in, body, brk.Entries)
 		}
-		// And the half never refuses a bookend: the top-up spends the spare time on the two
-		// Christmas idents the bookends left, though the commercials already hold their half.
+		// And the half never refuses a bookend: both bookends are Christmas idents, though the
+		// commercials already hold their half.
 		idents := 0
 		for _, e := range brk.Entries {
 			if e.Role == pod.StationID {
 				idents++
 			}
 		}
-		if idents != 4 {
-			t.Fatalf("seed %d: %d Christmas idents aired, want all 4: %+v", seed, idents, brk.Entries)
+		if idents != 2 {
+			t.Fatalf("seed %d: %d Christmas idents aired, want the 2 bookends: %+v", seed, idents, brk.Entries)
 		}
 	}
 }

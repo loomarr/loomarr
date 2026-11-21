@@ -37,10 +37,24 @@ var ErrSkipped = errors.New("scan: source not configured")
 
 // Disk is what discovery needs from the local filesystem.
 type Disk interface {
-	// Readable reports whether a directory can be opened and listed.
-	Readable(ctx context.Context, path string) bool
+	// Look opens and lists a directory, and says whether it could and whether anything was in it.
+	Look(ctx context.Context, path string) Folder
 	// Mounts lists the mount points a folder named by another machine may live under.
 	Mounts() []string
+}
+
+// Folder is what one look at a directory found.
+type Folder struct {
+	// Readable: it opened and listed.
+	Readable bool
+	// Empty: it opened and held nothing, which for a mount point usually means the share behind
+	// it isn't mounted.
+	Empty bool
+}
+
+// check is a root's Folder as the store records it.
+func (f Folder) check(path string) librarystore.LibraryRootCheck {
+	return librarystore.LibraryRootCheck{Path: path, Readable: f.Readable, Empty: f.Readable && f.Empty}
 }
 
 // SourceResult is how one source answered a discovery pass.
@@ -60,10 +74,19 @@ type Roots struct {
 	PathMap func() mediaserver.PathMap
 	Disk    Disk
 	Now     func() time.Time
+	// Summarized hears each folder the browser counted (Browse); nil hears nothing.
+	Summarized func(FolderSummary)
 
 	// mu serializes discovery with the maintainer's edits, so a pass never applies stale checks
 	// over an edit that landed while it ran.
 	mu sync.Mutex
+
+	// sumMu guards the browser's summaries: those counted, those being counted, and the slots
+	// that bound how many are counted at once.
+	sumMu    sync.Mutex
+	sums     map[string]summaryAt
+	counting map[string]bool
+	sumSlots chan struct{}
 }
 
 // Health is the library's one-line state for the status strip.
@@ -74,16 +97,18 @@ const (
 	HealthNeedsFolders Health = "needs_folders"
 	// HealthFolderOffline: a folder in use could not be opened at its last check.
 	HealthFolderOffline Health = "folder_offline"
-	// HealthOK: every folder in use opened at its last check.
+	// HealthFolderEmpty: every folder in use opened, but one held nothing at its last check.
+	HealthFolderEmpty Health = "folder_empty"
+	// HealthOK: every folder in use opened, with something in it, at its last check.
 	HealthOK Health = "ok"
 )
 
 // Status counts the roots for the status strip.
 type Status struct {
 	Health Health
-	// InUse and Offline count confirmed folders; ToConfirm counts discovered folders that map to
-	// a readable local folder and wait for the maintainer.
-	InUse, Offline, ToConfirm int
+	// InUse, Offline and Empty count confirmed folders; ToConfirm counts discovered folders that
+	// map to a readable local folder and wait for the maintainer.
+	InUse, Offline, Empty, ToConfirm int
 }
 
 // StatusOf summarizes recorded roots.
@@ -94,6 +119,9 @@ func StatusOf(all librarystore.LibraryRoots) Status {
 		case root.InUse && !root.Readable:
 			s.InUse++
 			s.Offline++
+		case root.InUse && root.Empty:
+			s.InUse++
+			s.Empty++
 		case root.InUse:
 			s.InUse++
 		case root.Readable:
@@ -105,6 +133,8 @@ func StatusOf(all librarystore.LibraryRoots) Status {
 		s.Health = HealthNeedsFolders
 	case s.Offline > 0:
 		s.Health = HealthFolderOffline
+	case s.Empty > 0:
+		s.Health = HealthFolderEmpty
 	default:
 		s.Health = HealthOK
 	}
@@ -176,7 +206,7 @@ func (r *Roots) Discover(ctx context.Context) (librarystore.LibraryRoots, []Sour
 		}
 	}
 	for path := range candidates {
-		d.Checks = append(d.Checks, librarystore.LibraryRootCheck{Path: path, Readable: r.Disk.Readable(ctx, path)})
+		d.Checks = append(d.Checks, r.Disk.Look(ctx, path).check(path))
 	}
 	slices.SortFunc(d.Checks, func(a, b librarystore.LibraryRootCheck) int { return strings.Compare(a.Path, b.Path) })
 
@@ -187,18 +217,56 @@ func (r *Roots) Discover(ctx context.Context) (librarystore.LibraryRoots, []Sour
 	return after, results, err
 }
 
-// Add records a folder the maintainer typed, confirmed. It must be absolute and readable.
+// Add records a folder the maintainer typed, confirmed. It must be absolute and readable. An empty
+// one is added, and recorded as empty so its card asks whether the drive is connected. A folder
+// inside one in use, or holding some, is refused with a *RootOverlap: the scan reads a nested
+// folder once, as part of the outer one, so the list would name a folder it never walks. Replace
+// takes the outer one.
 func (r *Roots) Add(ctx context.Context, path string) error {
+	return r.add(ctx, path, false)
+}
+
+// Replace is Add for a folder holding folders in use: it is added, and they stop being used, in
+// one step. Their files are the outer folder's from the next pass. A folder inside one in use is
+// still refused.
+func (r *Roots) Replace(ctx context.Context, path string) error {
+	return r.add(ctx, path, true)
+}
+
+func (r *Roots) add(ctx context.Context, path string, replace bool) error {
 	path, err := absoluteFolder(path)
 	if err != nil {
 		return err
 	}
-	if !r.Disk.Readable(ctx, path) {
+	look := r.Disk.Look(ctx, path)
+	if !look.Readable {
 		return ErrUnreadable
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.Store.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: path, Readable: true}, r.Now())
+	all, err := r.Store.LibraryRoots(ctx)
+	if err != nil {
+		return err
+	}
+	var inUse []string
+	for _, root := range all.Roots {
+		if root.InUse {
+			inUse = append(inUse, root.Path)
+		}
+	}
+	within, holds := overlapOf(path, inUse)
+	if within != "" || len(holds) > 0 && !replace {
+		return &RootOverlap{Within: within, Holds: holds}
+	}
+	if err := r.Store.AddLibraryRoot(ctx, look.check(path), r.Now()); err != nil {
+		return err
+	}
+	for _, held := range holds {
+		if err := r.Store.SetLibraryRootInUse(ctx, held, false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SetInUse confirms or releases a root.
@@ -227,7 +295,7 @@ func (r *Roots) SetMapping(ctx context.Context, authority, authorityPath, local 
 		return nil
 	}
 	return r.Store.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{
-		Checks: []librarystore.LibraryRootCheck{{Path: local, Readable: r.Disk.Readable(ctx, local)}},
+		Checks: []librarystore.LibraryRootCheck{r.Disk.Look(ctx, local).check(local)},
 	}, at)
 }
 
@@ -240,11 +308,11 @@ func (r *Roots) derive(ctx context.Context, folder string, mounts []string) stri
 	// The path map first: the maintainer wrote it for this folder. In Docker the media server's
 	// own name (/data/tv) can also exist here as something else (Loomarr's data folder is /data).
 	if r.PathMap != nil {
-		if local, ok := r.PathMap().Apply(folder); ok && filepath.IsAbs(local) && r.Disk.Readable(ctx, filepath.Clean(local)) {
+		if local, ok := r.PathMap().Apply(folder); ok && filepath.IsAbs(local) && r.Disk.Look(ctx, filepath.Clean(local)).Readable {
 			return filepath.Clean(local)
 		}
 	}
-	if filepath.IsAbs(folder) && r.Disk.Readable(ctx, folder) {
+	if filepath.IsAbs(folder) && r.Disk.Look(ctx, folder).Readable {
 		return folder
 	}
 	names := strings.Split(strings.Trim(folder, "/"), "/")
@@ -258,7 +326,7 @@ func (r *Roots) derive(ctx context.Context, folder string, mounts []string) stri
 				candidates = append(candidates, mount)
 			}
 			for _, c := range candidates {
-				if c != folder && !slices.Contains(hits, c) && r.Disk.Readable(ctx, c) {
+				if c != folder && !slices.Contains(hits, c) && r.Disk.Look(ctx, c).Readable {
 					hits = append(hits, c)
 				}
 			}

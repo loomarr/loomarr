@@ -1,7 +1,7 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import { unwrap } from "@loomarr/api/unwrap";
 import { devicePairApproveSchema } from "@loomarr/core/schemas";
-import { Action, Field } from "@loomarr/design-system";
+import { Action, Field, Stack, Text } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -73,29 +73,46 @@ const ApproveDevice = () => {
   });
 
   return (
-    <section className="border-border rounded-lg border p-4">
-      <h2 className="text-sm font-medium">Add a TV or streaming box</h2>
-      <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-        Open Loomarr on the device. It will show a short code — type it here to let it sign in as you. The
-        device acts with your access and role, and you can remove it at any time.
-      </p>
+    <Stack
+      borderColor="borderDecorative"
+      borderRadius="cardCompact"
+      borderWidth={1}
+      padding={16}
+      render="section"
+    >
+      <Text as="h2" textRole="cardLabel">
+        Add a TV or streaming box
+      </Text>
+      <Stack marginTop={4}>
+        <Text as="p" textRole="compact" tone="secondary">
+          Open Loomarr on the device. It will show a short code — type it here to let it sign in as you. The
+          device acts with your access and role, and you can remove it at any time.
+        </Text>
+      </Stack>
       {/* The address to put ON the television. This panel is for an operator already in Settings;
           the device itself cannot direct anyone here, so it names the short route instead. */}
-      <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-        Your TV will point at <span className="font-mono">/pair</span> — that page does the same thing and is
-        easier to reach from a phone.
-      </p>
-      <form
-        className="mt-3 flex flex-wrap items-start gap-2"
+      <Stack marginTop={4}>
+        <Text as="p" textRole="compact" tone="secondary">
+          Your TV will point at <span className="font-mono">/pair</span> — that page does the same thing and
+          is easier to reach from a phone.
+        </Text>
+      </Stack>
+      <Stack
+        align="start"
+        direction="row"
+        gap="2"
+        marginTop={12}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
           void form.handleSubmit();
         }}
+        render="form"
+        wrap
       >
         <form.Field name="userCode">
           {(field) => (
-            <div className="w-44">
+            <Stack width={176}>
               <Field
                 accessibilityLabel="Code shown on the device"
                 autoCapitalize="characters"
@@ -107,7 +124,7 @@ const ApproveDevice = () => {
                 style={{ letterSpacing: 1.4, textTransform: "uppercase" }}
                 value={field.state.value}
               />
-            </div>
+            </Stack>
           )}
         </form.Field>
         <form.Subscribe selector={(state) => state.values.userCode}>
@@ -117,32 +134,62 @@ const ApproveDevice = () => {
             </Action>
           )}
         </form.Subscribe>
-      </form>
+      </Stack>
       {approve.isError ? (
-        <p className="text-destructive mt-2 text-sm">
-          That code is wrong or has expired. Codes last ten minutes — check the device and try again.
-        </p>
+        <Stack marginTop={8}>
+          <Text as="p" textRole="compact" tone="danger">
+            That code is wrong or has expired. Codes last ten minutes — check the device and try again.
+          </Text>
+        </Stack>
       ) : null}
       {approved ? (
-        <p className="mt-2 text-sm">
-          <span className="font-medium">{approved}</span> is approved. It should start playing in a few
-          seconds.
-        </p>
+        <Stack marginTop={8}>
+          <Text as="p" textRole="compact">
+            <Text as="span" textRole="cardLabel">
+              {approved}
+            </Text>{" "}
+            is approved. It should start playing in a few seconds.
+          </Text>
+        </Stack>
       ) : null}
-    </section>
+    </Stack>
   );
 };
 
 // Removing signs the device out for good (it has to pair again), so the first press only asks.
-const DeviceRow = ({ device, onRevoke, busy }: { device: Device; onRevoke: () => void; busy: boolean }) => {
+const DeviceRow = ({
+  device,
+  onRevoke,
+  busy,
+  divided,
+}: {
+  device: Device;
+  onRevoke: () => void;
+  busy: boolean;
+  divided: boolean;
+}) => {
   const [confirming, setConfirming] = useState(false);
   const name = device.deviceName || "Device";
   return (
-    <li className="border-border flex flex-wrap items-center justify-between gap-2 border-b py-3 last:border-b-0">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{name}</p>
-        <p className="text-muted-foreground text-xs">Last used {relativeAge(device.lastSeenAt)}</p>
-      </div>
+    <Stack
+      align="center"
+      borderBottomColor="borderDecorative"
+      borderBottomWidth={divided ? 1 : 0}
+      direction="row"
+      gap="inline"
+      justify="between"
+      paddingVertical={12}
+      render="li"
+      wrap
+    >
+      <Stack flexShrink={1} minWidth={0}>
+        <Text as="p" numberOfLines={1} textRole="cardLabel">
+          {name}
+        </Text>
+        <Text as="p" textRole="hint" tone="secondary">
+          Last used {relativeAge(device.lastSeenAt)}
+        </Text>
+      </Stack>
       {confirming ? (
         <ConfirmStep
           confirmLabel="Remove device"
@@ -159,7 +206,7 @@ const DeviceRow = ({ device, onRevoke, busy }: { device: Device; onRevoke: () =>
           {busy ? "Removing…" : "Remove"}
         </Action>
       )}
-    </li>
+    </Stack>
   );
 };
 
@@ -180,28 +227,33 @@ const PairedDevices = () => {
   return (
     <>
       <ApproveDevice />
-      <section className="border-border rounded-lg border p-4">
-        <h2 className="text-sm font-medium">Your devices</h2>
-        <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-          Devices signed in as you. Removing one signs it out immediately; your other devices keep working.
-        </p>
+      <Stack borderColor="$borderDecorative" borderRadius={8} borderWidth={1} padding={16} render="section">
+        <Text as="h2" textRole="cardLabel">
+          Your devices
+        </Text>
+        <Stack marginTop={4}>
+          <Text as="p" textRole="compact" tone="secondary">
+            Devices signed in as you. Removing one signs it out immediately; your other devices keep working.
+          </Text>
+        </Stack>
         {query.isError ? <ErrorState error={query.error} /> : null}
         {!query.isError && devices.length === 0 ? (
           <EmptyState description="Approve a code above to add your first TV." title="No devices yet" />
         ) : null}
         {devices.length > 0 ? (
-          <ul className="mt-2">
-            {devices.map((device) => (
+          <Stack marginTop={8} render="ul">
+            {devices.map((device, index) => (
               <DeviceRow
                 busy={revoke.isPending && revoke.variables?.id === device.id}
                 device={device}
+                divided={index < devices.length - 1}
                 key={device.id}
                 onRevoke={() => revoke.mutate({ id: device.id })}
               />
             ))}
-          </ul>
+          </Stack>
         ) : null}
-      </section>
+      </Stack>
     </>
   );
 };

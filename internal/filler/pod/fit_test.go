@@ -1,6 +1,9 @@
 package pod
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // Per-clip fit (V35 item 1.7).
 //
@@ -26,7 +29,7 @@ func TestFitFor_AgreesWithTheLadder(t *testing.T) {
 		commercial("other-era", 1975, Kids),
 		commercial("general-aud", 1992, General),
 		commercial("wrong-aud", 1992, LateNight),
-		{Hash: "bumper", Path: "bumper", Role: Bumper, Era: 1992, Audience: General, DurationMs: 5_000},
+		{Hash: "bumper", Path: "bumper", Role: Bumper, Era: 1992, Audience: Kids, DurationMs: 5_000},
 	}
 	// ⚠ The varied dimension is the era RANGE, which is the thing that actually varies in the wild —
 	// and a single year, a span and "any" put these clips in genuinely different rungs, so this is
@@ -239,6 +242,49 @@ func TestFitFor_GeneralAudienceDoesNotFitAKidsChannel(t *testing.T) {
 	}
 }
 
+// The widened rung is strictly wider than the exact one: it admits every year the exact windows
+// admit. An open-ended window (To 0 is "onwards") must keep its open end when widening merges it
+// into an earlier window, so a channel set to the 1980s and 2000 onwards still reaches 2005.
+func TestWidenEraWindows_KeepsAnOpenEnd(t *testing.T) {
+	exact := []EraRange{{From: 1980, To: 1989}, {From: 2000, To: 0}}
+	widened := widenEraWindows(exact)
+
+	for _, year := range []int{1980, 1985, 1989, 2000, 2005, 2020} {
+		if !anyContains(exact, year) {
+			t.Fatalf("setup: exact windows %v should admit %d", exact, year)
+		}
+		if !anyContains(widened, year) {
+			t.Errorf("widened windows %v drop %d, which the exact windows %v admit", widened, year, exact)
+		}
+	}
+	if !anyContains(widened, 1975) || !anyContains(widened, 1995) {
+		t.Errorf("widened windows %v should reach a decade either side (1975) and the gap (1995)", widened)
+	}
+}
+
+func TestNormalizeEraWindows_OpenEndAbsorbsLaterWindows(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   []EraRange
+		want []EraRange
+	}{
+		{"open end overlaps an earlier window", []EraRange{{1970, 1999}, {1990, 0}}, []EraRange{{1970, 0}}},
+		{"open end absorbs a later window", []EraRange{{2000, 0}, {2010, 2015}}, []EraRange{{2000, 0}}},
+		{"disjoint windows stay apart", []EraRange{{1980, 1989}, {2000, 0}}, []EraRange{{1980, 1989}, {2000, 0}}},
+		{"open start sorts first", []EraRange{{1990, 1999}, {0, 1985}}, []EraRange{{0, 1985}, {1990, 1999}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := NormalizeEraWindows(tc.in); !slices.Equal(got, tc.want) {
+				t.Errorf("NormalizeEraWindows(%v) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func anyContains(windows []EraRange, year int) bool {
+	return slices.ContainsFunc(windows, func(r EraRange) bool { return r.Contains(year) })
+}
+
 // ⚠ Narrowing the RANGE is how a channel gets strictness, and it moves a clip between rungs in a
 // way the operator can see and undo; this pins that.
 func TestFitFor_NarrowingTheRangeMovesAClipDownTheLadder(t *testing.T) {
@@ -251,16 +297,22 @@ func TestFitFor_NarrowingTheRangeMovesAClipDownTheLadder(t *testing.T) {
 	}{
 		{"inside the range", EraRange{From: 1990, To: 1999}, MatchExact},
 		{"a decade either side", Year(1992), MatchWidened},
-		// ⚠ 1975–1980 widens to 1965–1990, which still does not reach 1995 — so the clip falls to
-		// the audience rung. Under the old decade-BUCKET rule there was no way to express this:
-		// widening always snapped to one decade, so a range could never be too far away.
-		{"outside even the widened range", EraRange{From: 1975, To: 1980}, MatchAudience},
+		// 1975–1980 widens to 1965–1990, which does not reach 1995: the clip is further than a
+		// decade either side and is no candidate (#3838 decision 21).
+		{"outside even the widened range", EraRange{From: 1975, To: 1980}, ""},
 		{"any era", EraRange{}, MatchExact},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := Window{Era: tc.era, Audience: Kids}
-			if got := FitFor(c, w, Policy{}).Level; got != tc.want {
-				t.Errorf("era %+v: level = %s, want %s", tc.era, got, tc.want)
+			got := FitFor(c, w, Policy{})
+			if tc.want == "" {
+				if got.Reason != FitEra {
+					t.Errorf("era %+v: fit = %s, want the era reason", tc.era, got)
+				}
+				return
+			}
+			if got.Level != tc.want || got.Reason != "" {
+				t.Errorf("era %+v: fit = %s, want level %s", tc.era, got, tc.want)
 			}
 		})
 	}

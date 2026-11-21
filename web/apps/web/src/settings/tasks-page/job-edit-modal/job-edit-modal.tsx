@@ -9,6 +9,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Stack,
+  Text,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -56,13 +58,15 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <form
-          className="flex flex-col gap-4"
+        <Stack
+          flexShrink={0}
+          gap="4"
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
             void form.handleSubmit();
           }}
+          render="form"
         >
           <DialogHeader>
             <DialogTitle>Modify {job.title}</DialogTitle>
@@ -85,14 +89,14 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
           <form.Subscribe selector={(state) => state.values.choice === CUSTOM_VALUE}>
             {(advanced) =>
               advanced && (
-                <div className="flex flex-col gap-1.5">
+                <Stack gap="1.5">
                   <form.AppField name="advancedCron">
                     {(field) => <field.TextField label="Cron expression" placeholder="0 */5 * * * *" />}
                   </form.AppField>
-                  <p className="text-muted-foreground text-xs">
+                  <Text as="p" textRole="hint" tone="secondary">
                     6-field, seconds first (e.g. <code>0 */5 * * * *</code> = every 5 minutes).
-                  </p>
-                </div>
+                  </Text>
+                </Stack>
               )
             }
           </form.Subscribe>
@@ -107,7 +111,7 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
               {patch.isPending ? "Saving…" : "Save"}
             </Action>
           </DialogFooter>
-        </form>
+        </Stack>
       </DialogContent>
     </Dialog>
   );

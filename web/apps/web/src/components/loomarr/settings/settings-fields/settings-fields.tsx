@@ -1,9 +1,8 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingKind } from "@loomarr/api/models/settingKind";
 import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
-import { Action } from "@loomarr/design-system";
+import { Action, Grid, GridItem } from "@loomarr/design-system";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import { SettingField } from "../setting-field";
 import type { SettingsFieldsProps } from "./settings-fields.type";
 
@@ -13,7 +12,7 @@ import type { SettingsFieldsProps } from "./settings-fields.type";
 // saves one group per step, whereas a Settings page has several blocks (Connections alone
 // has media server, requester, Tunarr and TMDB) behind ONE sticky save bar, because
 // connection settings change together and half-saved pairs mid-test are a footgun. A
-// component that owned its own form could not serve both, so ownership moved out.
+// component that owned its own form could not serve both, so the caller owns the form.
 //
 // Advanced keys stay behind a per-group toggle (§5) — that is a property of the group's
 // presentation, so it does belong here.
@@ -63,9 +62,10 @@ const SettingsFields = ({
   return (
     // A responsive 2-col field grid (was a single-column stack): compact controls pair up,
     // wide ones (secrets/urls/lists) span both columns. gap-x for columns, gap-y for rows.
-    <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
-      {visible.map((entry) =>
-        entry.advanced && !showAdvanced ? null : (
+    <Grid className={className} columnGap="4" columns={{ base: 1, sm: 2 }} rowGap="5">
+      {visible.map((entry) => {
+        if (entry.advanced && !showAdvanced) return null;
+        const field = (
           <SettingField
             key={entry.key}
             entry={entry}
@@ -75,15 +75,19 @@ const SettingsFields = ({
             disabledReason={disabledReasons?.[entry.key]}
             descriptionId={descriptionIds?.[entry.key]}
             onEnvOverride={onEnvOverride ? (enabled) => onEnvOverride(entry.key, enabled) : undefined}
-            className={
-              spansFullWidth(entry.kind, entry.secret, entry.presentation) ? "sm:col-span-2" : undefined
-            }
           />
-        ),
-      )}
+        );
+        return spansFullWidth(entry.kind, entry.secret, entry.presentation) ? (
+          <GridItem key={entry.key} span={{ base: 1, sm: "full" }}>
+            {field}
+          </GridItem>
+        ) : (
+          field
+        );
+      })}
 
       {advancedCount > 0 && (
-        <div className="sm:col-span-2">
+        <GridItem span={{ base: 1, sm: "full" }}>
           <Action
             layout="text"
             onPress={() => setShowAdvanced((v) => !v)}
@@ -92,9 +96,9 @@ const SettingsFields = ({
           >
             {showAdvanced ? "Hide advanced" : `Show advanced (${advancedCount})`}
           </Action>
-        </div>
+        </GridItem>
       )}
-    </div>
+    </Grid>
   );
 };
 

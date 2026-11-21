@@ -143,6 +143,43 @@ func TestDeadlineGiveUp(t *testing.T) {
 	}
 }
 
+// A last look that fails is not a last look. The title keeps its state and its request, and the
+// next claim after the lease looks again.
+func TestAFailedLibraryCheckDoesNotGiveTheTitleUp(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	req := &testkit.Requester{}
+	lib := libraryfixture.NewLookup(nil)
+	clock := now
+	rc := New(st, req, lib, nil, Config{
+		RequestTTL: 48 * time.Hour, DownloadingTTL: 12 * time.Hour, Batch: 50, Lease: 2 * time.Minute,
+	}, func() time.Time { return clock }, slog.New(slog.DiscardHandler))
+	lib.Results = map[string]libraryfixture.LookupResult{"90016153": {Err: errors.New("library read failed")}}
+	put(t, st, "movie:tmdb:90016153", provision.Downloading, 90016153, now.Add(-time.Hour))
+
+	if _, err := rc.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	rec, _ := st.GetTitle(context.Background(), "movie:tmdb:90016153")
+	if rec.State != provision.Downloading {
+		t.Errorf("after a failed library check the title is %s, want it still downloading", rec.State)
+	}
+	if req.CancelCount() != 0 {
+		t.Errorf("the request was cancelled %d time(s) on a failed library check", req.CancelCount())
+	}
+
+	// The library answers again, and the title is there after all.
+	lib.Results = nil
+	presentIn(lib, "90016153")
+	clock = now.Add(3 * time.Minute) // past the lease
+	if _, err := rc.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	rec, _ = st.GetTitle(context.Background(), "movie:tmdb:90016153")
+	if rec.State != provision.Available {
+		t.Errorf("once the library answered, the title is %s, want available", rec.State)
+	}
+}
+
 func TestReconcilerRecordsTerminalAcquisitionQualityAfterCommit(t *testing.T) {
 	rc, st, req, ms := setup(t)
 	sink := &testkit.QualityRecorder{}

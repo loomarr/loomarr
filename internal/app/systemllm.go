@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
@@ -57,7 +58,7 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 	// keep_alive is watched too: it is a property of how the provider is BUILT
 	// (WithKeepAlive at construction), so without it here an operator's change would
 	// sit in the store, apply to nothing, and appear to have been ignored until restart.
-	go func() {
+	owner.goRun(func(ctx context.Context) {
 		ch := set.svc.Watch(settings.LLMProvider.Key(), settings.LLMURL.Key(), settings.LLMModel.Key(),
 			settings.LLMAPIKey.Key(), settings.LLMKeepAlive.Key())
 		for {
@@ -73,7 +74,7 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 				selection.Warm(ctx, sw, log)
 			}
 		}
-	}()
+	})
 
 	return sw, &systemLLMService{picker: picker.New(picker.Config{
 		Swap:         sw,
@@ -81,7 +82,7 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 		SaveSettings: llmSettingsSaver(set, st, bus),
 		Settings:     st,
 		Secrets:      llmSecrets{store: st, protection: set.protection},
-		Events:       llmPullEvents{bus: bus},
+		Events:       newLLMPullEvents(bus),
 		Log:          log,
 		NewID:        newID,
 		Start:        owner.startInteractiveOperation,
@@ -135,12 +136,56 @@ func (s llmSecrets) WriteKey(ctx context.Context, key, value string) error {
 	return protectedsettings.Write(ctx, s.store, s.protection, key, value)
 }
 
+// llmPullFrameGap is the least time between two llm_pull frames for one download while its status
+// stays the same. Ollama reports progress many times a second, for a bar that moves by fractions.
+const llmPullFrameGap = time.Second
+
 // llmPullEvents publishes a model pull's progress on the SSE bus (§7, type=llm_pull). The FE
 // shows "X of Y GB" and derives rate/ETA from successive frames (§8.1).
-type llmPullEvents struct{ bus *events.Bus }
+//
+// A change of status (a layer starting, verifying, success, error) always publishes; progress
+// within one status publishes at most once per llmPullFrameGap. The frame is latest-wins and
+// GET /v1/system/llm/pull-operations/{jobId} is the truth on reconnect, so a skipped sample costs
+// a bar that moves a little later.
+type llmPullEvents struct {
+	bus *events.Bus
+	now func() time.Time
 
-func (e llmPullEvents) PullProgress(jobID, model, status string, percent int, completed, total int64, errMsg string) {
-	if e.bus == nil {
+	mu sync.Mutex
+	// seen is the last frame published for each running download, by job id. A terminal frame
+	// removes its entry, so the map holds only downloads in progress.
+	seen map[string]llmPullFrameMark
+}
+
+// llmPullFrameMark is the last llm_pull frame published for one download.
+type llmPullFrameMark struct {
+	at     time.Time
+	status string
+}
+
+func newLLMPullEvents(bus *events.Bus) *llmPullEvents {
+	return &llmPullEvents{bus: bus, now: time.Now, seen: map[string]llmPullFrameMark{}}
+}
+
+// due reports whether a sample is worth a frame, and records it when it is.
+func (e *llmPullEvents) due(jobID, status string) bool {
+	now := e.now()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if status == string(store.InteractiveOperationSuccess) || status == string(store.InteractiveOperationError) {
+		delete(e.seen, jobID)
+		return true
+	}
+	last, seen := e.seen[jobID]
+	if seen && last.status == status && now.Sub(last.at) < llmPullFrameGap {
+		return false
+	}
+	e.seen[jobID] = llmPullFrameMark{at: now, status: status}
+	return true
+}
+
+func (e *llmPullEvents) PullProgress(jobID, model, status string, percent int, completed, total int64, errMsg string) {
+	if e.bus == nil || !e.due(jobID, status) {
 		return
 	}
 	e.bus.Publish(events.Event{

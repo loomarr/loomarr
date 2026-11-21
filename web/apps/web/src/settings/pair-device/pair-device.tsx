@@ -2,7 +2,7 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { devicePairApproveSchema } from "@loomarr/core/schemas";
-import { Action, Field } from "@loomarr/design-system";
+import { Action, Field, Stack, Text } from "@loomarr/design-system";
 import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -27,13 +27,21 @@ type PairDeviceProps = {
 const SignInFirst = ({ code }: { code: string }) => {
   const here = `/pair${code ? `?code=${encodeURIComponent(code)}` : ""}`;
   return (
-    <div className="max-w-focused mx-auto px-6 py-16 text-center">
-      <h1 className="text-2xl font-semibold">Add a device</h1>
-      <p className="text-md text-muted-foreground mt-3 leading-relaxed">
-        Sign in first, then we'll bring you straight back here to finish adding your device.
-      </p>
-      {code ? <p className="mt-6 font-mono text-2xl tracking-[0.3em]">{code}</p> : null}
-      <div className="mt-8 flex justify-center">
+    <Stack marginHorizontal="auto" maxWidth={512} paddingHorizontal={24} paddingVertical={64} width="100%">
+      <Text as="h1" strong textAlign="center" textRole="display">
+        Add a device
+      </Text>
+      <Stack marginTop={12}>
+        <Text as="p" textAlign="center" textRole="reading" tone="secondary">
+          Sign in first, then we'll bring you straight back here to finish adding your device.
+        </Text>
+      </Stack>
+      {code ? (
+        <Stack align="center" marginTop={24}>
+          <p className="font-mono text-2xl tracking-[0.3em]">{code}</p>
+        </Stack>
+      ) : null}
+      <Stack direction="row" justify="center" marginTop={32}>
         <Action
           accessibilityRole="link"
           density="touch"
@@ -41,8 +49,8 @@ const SignInFirst = ({ code }: { code: string }) => {
         >
           Sign in
         </Action>
-      </div>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 
@@ -104,19 +112,25 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
   if (!user) return <SignInFirst code={initialCode ?? ""} />;
 
   return (
-    <div className="max-w-focused mx-auto px-6 py-16">
-      <h1 className="text-2xl font-semibold">Add a device</h1>
-      <p className="text-md text-muted-foreground mt-3 leading-relaxed">
-        Your TV, streaming box or phone is showing a short code. Enter it here and it signs in as you.
-      </p>
+    <Stack marginHorizontal="auto" maxWidth={512} paddingHorizontal={24} paddingVertical={64} width="100%">
+      <Text as="h1" strong textRole="display">
+        Add a device
+      </Text>
+      <Stack marginTop={12}>
+        <Text as="p" textRole="reading" tone="secondary">
+          Your TV, streaming box or phone is showing a short code. Enter it here and it signs in as you.
+        </Text>
+      </Stack>
 
-      <form
-        className="mt-8 space-y-4"
+      <Stack
+        gap="4"
+        marginTop={32}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
           void form.handleSubmit();
         }}
+        render="form"
       >
         <form.Field name="userCode">
           {(field) => (
@@ -157,54 +171,65 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
             </Action>
           )}
         </form.Subscribe>
-      </form>
+      </Stack>
 
       {approve.isError
         ? (() => {
             const failure = classifyApproveFailure(approve.error);
             if (failure === "invalid-code")
               return (
-                <p className="text-destructive text-md mt-4 text-center">
-                  That code is wrong or has expired. Codes last ten minutes — check the screen and try again.
-                </p>
+                <Stack marginTop={16}>
+                  <Text as="p" textAlign="center" textRole="reading" tone="danger">
+                    That code is wrong or has expired. Codes last ten minutes — check the screen and try
+                    again.
+                  </Text>
+                </Stack>
               );
             if (failure === "rate-limited")
               return (
-                <p className="text-caution text-md mt-4 text-center">
-                  Too many pairing codes tried. Wait a moment and try again.
-                </p>
+                <Stack marginTop={16}>
+                  <Text as="p" textAlign="center" textRole="reading" tone="warning">
+                    Too many pairing codes tried. Wait a moment and try again.
+                  </Text>
+                </Stack>
               );
             return (
-              <div className="mt-4 text-center">
-                <p className="text-caution text-md">
+              <Stack marginTop={16}>
+                <Text as="p" textAlign="center" textRole="reading" tone="warning">
                   Couldn't reach Loomarr. Check your connection and try again.
-                </p>
-                <div className="mt-3 flex justify-center">
+                </Text>
+                <Stack direction="row" justify="center" marginTop={12}>
                   <Action onPress={retry} variant="outline">
                     Try again
                   </Action>
-                </div>
-              </div>
+                </Stack>
+              </Stack>
             );
           })()
         : null}
 
       {approved ? (
-        <div className="border-border mt-8 rounded-lg border p-5 text-center">
-          <p className="text-md font-medium">{approved} is ready</p>
-          <p className="text-muted-foreground mt-1 leading-relaxed">
-            It should start playing in a few seconds. You can remove it any time from Settings → Access and
-            devices.
-          </p>
-        </div>
+        <Stack borderColor="$borderDecorative" borderRadius={8} borderWidth={1} marginTop={32} padding={20}>
+          <Text as="p" textAlign="center" textRole="heading">
+            {approved} is ready
+          </Text>
+          <Stack marginTop={4}>
+            <Text as="p" textAlign="center" textRole="body" tone="secondary">
+              It should start playing in a few seconds. You can remove it any time from Settings → Access and
+              devices.
+            </Text>
+          </Stack>
+        </Stack>
       ) : null}
 
       {/* A paired device acts as the person who approved it, with their real role (ADR 0043), so an
           admin's TV is an admin. */}
-      <p className="text-muted-foreground mt-10 text-center text-sm leading-relaxed">
-        The device acts with your access and role. Removing it later signs out only that device.
-      </p>
-    </div>
+      <Stack marginTop={40}>
+        <Text as="p" textAlign="center" textRole="compact" tone="secondary">
+          The device acts with your access and role. Removing it later signs out only that device.
+        </Text>
+      </Stack>
+    </Stack>
   );
 };
 

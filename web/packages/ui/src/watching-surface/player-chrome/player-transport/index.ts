@@ -1,1 +1,1 @@
-export { ClipTransport } from "./player-transport";
+export { ClipTransport, VolumeSlider } from "./player-transport";

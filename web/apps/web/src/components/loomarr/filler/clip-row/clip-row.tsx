@@ -1,4 +1,5 @@
 import { formatClipDuration } from "@loomarr/core/format";
+import { Grid, InlineAction, MediaTile, Stack, Text } from "@loomarr/design-system";
 import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { cn } from "@/lib/utils";
@@ -16,17 +17,22 @@ import type { ClipRowProps } from "./clip-row.type";
 //
 // Titles and thumbnails open the same inspection panel as Grid, without extra action rows.
 const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowProps) => (
-  <div
+  <Grid
+    align="center"
     className={cn(
-      "border-border grid grid-cols-[auto_54px_1fr_auto] items-center gap-3 border-b px-3 py-2 last:border-b-0",
-      // The wider steps add the tag columns back. Below `md` they would each be a few
-      // characters wide, which is unreadable rather than dense.
-      "md:grid-cols-[auto_54px_1fr_88px_60px_auto]",
-      "lg:grid-cols-[auto_54px_1fr_88px_60px_84px_auto_190px]",
+      "border-border border-b px-3 py-2 last:border-b-0",
       // Selection is neutral (#1909): amber is for focus and the primary action.
       selected && "bg-static-800",
       className,
     )}
+    // The wider steps add the tag columns back. Below `md` they would each be a few characters
+    // wide, which is unreadable rather than dense.
+    columns={{
+      base: ["auto", "54px", "1fr", "auto"],
+      lg: ["auto", "54px", "1fr", "88px", "60px", "84px", "auto", "190px"],
+      md: ["auto", "54px", "1fr", "88px", "60px", "auto"],
+    }}
+    gap="3"
   >
     {onToggleSelect ? (
       <ClipSelect
@@ -42,18 +48,19 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
     {/* ⚠ Fixed 54×30 box whether or not a frame exists, unlike the card. In a LIST the
         thumbnail is a column: omitting the element for clips without one would ragged the
         name column against its neighbours. An empty box is the honest "no frame" here. */}
-    <button
-      type="button"
+    <MediaTile
+      bordered={false}
       disabled={!onOpen}
-      onClick={onOpen}
-      aria-label={`Preview ${clip.name}`}
-      className="bg-static-800 focus-visible:ring-ring h-[30px] w-[54px] overflow-hidden rounded-sm focus-visible:ring-2 focus-visible:outline-none"
+      height={30}
+      label={`Preview ${clip.name}`}
+      onPress={onOpen}
+      width={54}
     >
-      {/* ⚠ ONE path since V52 phase 8 — the legacy `/v1/filler/thumb/{hash}` fallback retired with
-          its route. A clip whose artwork the adoption job has not reached yet renders the empty
+      {/* ⚠ ONE path (V52 phase 8): the artwork is an image-service image, with no thumbnail-route
+          fallback. A clip whose artwork the adoption job has not reached yet renders the empty
           box above, which is the same honest "no frame" state as a clip that never had one. */}
       {clip.thumbImage && <ServedImage image={clip.thumbImage} alt="" sizes="54px" />}
-    </button>
+    </MediaTile>
 
     {/* ⚠ `min-w-0` is what makes the truncate work. A grid item's default `min-width:auto`
         refuses to shrink below its content, so a long clip name pushes the tag columns off
@@ -62,56 +69,63 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
         every assertion still passed while the name was being crushed. */}
     <div className="min-w-0">
       {onOpen ? (
-        <button
-          type="button"
-          onClick={onOpen}
-          aria-label={`View details for ${clip.name}`}
-          // `-my-0.5 py-0.5`: a 24 px tap area for a 20 px line, drawn where it was (#1785). The
-          // shared `data-touch-target` box can't be used here: `truncate` clips it.
-          className="hover:text-signal focus-visible:ring-ring -my-0.5 block w-full truncate rounded-sm py-0.5 text-left text-sm focus-visible:ring-2 focus-visible:outline-none"
-          title={clip.name}
-        >
-          {clip.name}
-        </button>
+        // The name is the DS's truncating text action: its 24 px tap area is its own padding (#1785),
+        // since the usual `::after` target is clipped by the ellipsis.
+        <Text as="div" textRole="compact" tone="primary">
+          <InlineAction
+            aria-label={`View details for ${clip.name}`}
+            onPress={onOpen}
+            title={clip.name}
+            truncate
+          >
+            {clip.name}
+          </InlineAction>
+        </Text>
       ) : (
-        <p className="truncate text-sm" title={clip.name}>
-          {clip.name}
-        </p>
+        <div title={clip.name}>
+          <Text as="p" numberOfLines={1} textRole="compact" tone="primary">
+            {clip.name}
+          </Text>
+        </div>
       )}
       {clip.brand ? (
-        <p className="text-muted-foreground truncate text-xs" title={`Brand: ${clip.brand}`}>
-          {clip.brand}
-        </p>
+        <div title={`Brand: ${clip.brand}`}>
+          <Text as="p" numberOfLines={1} textRole="hint" tone="secondary">
+            {clip.brand}
+          </Text>
+        </div>
       ) : null}
       {/* Phone only, as the mock draws it: below `md` the tag columns are gone, so the row has no
           other way to say this commercial is missing one. */}
       {clip.needsDetails && !clip.held && !clip.isComposite ? (
-        <div className="mt-0.5 flex md:hidden">
+        <Stack direction="row" hidden={{ base: false, md: true }} marginTop={2}>
           <NeedsDetailsChip />
-        </div>
+        </Stack>
       ) : null}
     </div>
 
-    <span className="text-static-400 hidden font-mono text-xs md:inline">
+    <Text as="span" className="hidden md:inline" textRole="mono">
       {clip.role === "unclassified" ? "" : ROLE_LABEL[clip.role]}
-    </span>
-    <span className="text-static-400 hidden font-mono text-xs tabular-nums md:inline">
+    </Text>
+    <Text as="span" className="hidden md:inline" fontVariant={["tabular-nums"]} textRole="mono">
       {clip.era ? (clip.era % 10 === 0 ? `${clip.era}s` : String(clip.era)) : "—"}
-    </span>
-    <span className="text-static-400 hidden font-mono text-xs lg:inline">
+    </Text>
+    <Text as="span" className="hidden lg:inline" textRole="mono">
       {(clip.audience && AUDIENCE_LABEL[clip.audience]) || "—"}
-    </span>
+    </Text>
 
-    <span className="text-static-400 font-mono text-xs tabular-nums">
+    <Text as="span" fontVariant={["tabular-nums"]} textRole="mono">
       {formatClipDuration(clip.durationMs)}
-    </span>
+    </Text>
 
     {/* The same three-branch rule the card renders — shared, because the `playsCounted:false`
         branch is a claim about what this install can OBSERVE, and two copies drift. */}
-    <span className="text-2xs text-static-400 hidden truncate font-mono lg:inline" title={playsLine(clip)}>
-      {playsLine(clip)}
-    </span>
-  </div>
+    <div className="hidden lg:block" title={playsLine(clip)}>
+      <Text as="div" numberOfLines={1} textRole="mono" tone="secondary">
+        {playsLine(clip)}
+      </Text>
+    </div>
+  </Grid>
 );
 
 export { ClipRow };

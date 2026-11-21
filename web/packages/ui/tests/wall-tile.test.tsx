@@ -155,6 +155,85 @@ describe("WallTile", () => {
   });
 });
 
+const oneLine = /(?=.*\b_to-)(?=.*\b_ws-)/;
+
+describe("WallTile over a picture (#3407)", () => {
+  const Still = () => <div data-testid="still" />;
+  const nameOf = (text: string) =>
+    Array.from(doc.body.querySelectorAll("*")).find(
+      (n) => n.textContent === text && n.getAttribute("data-testid") === null && !n.querySelector("*"),
+    ) as Node;
+
+  it("draws a top scrim behind the number and name whenever it has a picture", async () => {
+    await mount(<WallTile art={<Still />} channelName="Coast 90s" number="7" title="Coastline" />);
+    const scrim = doc.body.querySelector('[data-testid="wall-tile-top-scrim"]');
+    expect(scrim).not.toBeNull();
+    // It needs a height of its own: an absolute layer with none draws nothing, which is how the
+    // first version of this scrim shipped invisible.
+    expect(scrim?.getAttribute("class")).toMatch(/\b_h-/);
+    doc.body.replaceChildren();
+    await mount(<WallTile art={null} channelName="Coast 90s" number="7" title="Coastline" />);
+    expect(doc.body.querySelector('[data-testid="wall-tile-top-scrim"]')).toBeNull();
+  });
+
+  it("sets the channel name in the light over-picture tone, not the muted one", async () => {
+    await mount(<WallTile art={<Still />} channelName="Coast 90s" number="7" title="Coastline" />);
+    expect(computed(nameOf("Coast 90s")).color.toLowerCase()).toBe("var(--contentprimary)");
+  });
+
+  it("keeps the name on one truncating line so the last-watched pill never covers it", async () => {
+    await mount(
+      <WallTile art={<Still />} channelName="A very long channel name indeed" last number="7" title="T" />,
+    );
+    const name = nameOf("A very long channel name indeed");
+    // numberOfLines={1} is Tamagui's text-overflow ellipsis (`_to-`) on a no-wrap line (`_ws-`).
+    expect(name.getAttribute("class") ?? "").toMatch(oneLine);
+    // The pill is a sibling of the name in the same row, so a long name shrinks rather than runs under it.
+    expect((nameOf("You were here").parentElement as Node).parentElement).toBe(name.parentElement);
+  });
+});
+
+describe("WallTile compact (#3407)", () => {
+  it("follows the mock: the number alone on the top row, the title on one line, one caption line with the name first", async () => {
+    await mount(
+      <WallTile
+        art={<div data-testid="still" />}
+        channelName="Nature Hour"
+        compact
+        detail="13 min left"
+        last
+        number="12"
+        title="Heron Country"
+      />,
+    );
+    const tile = doc.body.querySelector("button") as Node;
+    const text = tile.textContent ?? "";
+    const number = Array.from(doc.body.querySelectorAll("span")).find((n) => n.textContent === "12") as Node;
+    const row = (number.parentElement as Node).parentElement as Node;
+    // The top row holds the number block and the "Last" pill, and no channel name or title.
+    expect(row.textContent).toContain("12");
+    expect(row.textContent).toContain("Last");
+    expect(row.textContent).not.toContain("Nature Hour");
+    expect(row.textContent).not.toContain("Heron Country");
+    // The title is one clipped line (an h3, so the clip is inline style).
+    const title = doc.body.querySelector("h3") as Node;
+    expect(title.getAttribute("style") ?? "").toMatch(/white-space:\s*nowrap/);
+    expect(title.getAttribute("style") ?? "").toMatch(/text-overflow:\s*ellipsis/);
+    // Exactly one caption line, truncating, carrying the name first and then the time left.
+    const caption = Array.from(doc.body.querySelectorAll("*")).filter(
+      (n) => !n.querySelector("*") && n.textContent === "Nature Hour · 13 min left",
+    );
+    expect(caption).toHaveLength(1);
+    expect(caption[0]?.getAttribute("class") ?? "").toMatch(oneLine);
+    // The caption is the name and the time left only: no episode code (the wall hands the phone just the time).
+    expect(text).not.toMatch(/S\d+ ?E\d+/);
+    expect(text.split("Nature Hour").length - 1).toBe(1);
+    expect(text.indexOf("Heron Country")).toBeLessThan(text.indexOf("Nature Hour"));
+    // WallTile never draws a monogram itself: the picture slot is the only thing behind the words.
+    expect(text).not.toMatch(/\bNH\b/);
+  });
+});
+
 describe("WallTile in the light theme", () => {
   it("keeps its words in the dark scope, light on the scrim, as the player does", async () => {
     const container = doc.createElement("div");

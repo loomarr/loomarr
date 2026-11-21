@@ -79,13 +79,14 @@ func QualityFromHeight(h int) string {
 // unread names the subtrees the walk could not read (slash paths relative to dir). It is not the
 // same as skipped: a clip in an unreadable subtree was not rejected, it was never seen, so the
 // catalog's rows under it say nothing about whether the files still exist (#2673).
-func scanDir(ctx context.Context, dir, watchDir string, probe tools.Prober, minMs int64) (found []RawClip, skipped int, unread []string, err error) {
+func scanDir(ctx context.Context, dir, watchDir string, probe tools.Prober, probes *ProbeCache, minMs int64) (found []RawClip, skipped int, unread []string, err error) {
 	if dir == "" {
 		return nil, 0, nil, nil
 	}
 	if probe == nil {
 		probe = FFprobe
 	}
+	pass := probes.begin()
 	watchInside := ""
 	if rel, relErr := filepath.Rel(dir, watchDir); watchDir != "" && relErr == nil && rel != "." &&
 		!filepath.IsAbs(rel) && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -145,7 +146,8 @@ func scanDir(ctx context.Context, dir, watchDir string, probe tools.Prober, minM
 		}
 		rel = filepath.ToSlash(rel)
 
-		pr, probeErr := probe(ctx, path)
+		info, _ := d.Info() // a failed stat only means this file is probed rather than remembered
+		pr, probeErr := pass.probe(ctx, path, info, probe)
 		if probeErr != nil || pr.DurationMs <= 0 {
 			// No usable duration means the pod assembler cannot place it: it fills a break to
 			// a target length, so a zero-duration clip would either be skipped downstream or
@@ -279,6 +281,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe tools.Prober, minM
 		// would present as "filler mysteriously does nothing".
 		return nil, skipped, nil, fmt.Errorf("scan filler dir %s: %w", dir, walkErr)
 	}
+	pass.finish()
 	return found, skipped, unread, nil
 }
 
@@ -382,7 +385,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (tools.Probed, error) {
 	// wrong answer. Height necessarily comes from the streams, hence both sections.
 	out, err := bgexec.Tool(ctx, bin,
 		"-v", "error",
-		"-show_entries", "format=duration:stream=width,height,codec_type,avg_frame_rate,sample_aspect_ratio,display_aspect_ratio,field_order,start_time,duration",
+		"-show_entries", "format=duration:stream=width,height,codec_type,avg_frame_rate,r_frame_rate,sample_aspect_ratio,display_aspect_ratio,field_order,start_time,duration",
 		"-of", "json",
 		path,
 	).Output()
@@ -399,6 +402,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (tools.Probed, error) {
 			Height             int    `json:"height"`
 			CodecType          string `json:"codec_type"`
 			AverageFrameRate   string `json:"avg_frame_rate"`
+			RealFrameRate      string `json:"r_frame_rate"`
 			SampleAspectRatio  string `json:"sample_aspect_ratio"`
 			DisplayAspectRatio string `json:"display_aspect_ratio"`
 			FieldOrder         string `json:"field_order"`
@@ -423,7 +427,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (tools.Probed, error) {
 	// The VIDEO stream's height specifically. Taking streams[0] would read the audio track on
 	// any file that lists audio first — which reports height 0 and silently downgrades a 1080p
 	// clip to "no quality". An audio-only clip legitimately has none.
-	// ⚠ No `break` on the video match any more: the loop now answers TWO questions, and stopping
+	// ⚠ No `break` on the video match: the loop answers TWO questions, and stopping
 	// at the first video stream would report `HasAudio: false` for every file that happens to
 	// list its video track first — which is most of them. The whole stream list is cheap.
 	result := tools.Probed{DurationMs: int64(secs * 1000)}
@@ -435,6 +439,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (tools.Probed, error) {
 				selectedVideo = true
 				result.Width, result.Height = s.Width, s.Height
 				result.Cadence = observedFFprobeValue(s.AverageFrameRate)
+				result.NominalCadence = observedFFprobeValue(s.RealFrameRate)
 				result.SampleAspect = observedFFprobeValue(s.SampleAspectRatio)
 				result.DisplayAspect = observedFFprobeValue(s.DisplayAspectRatio)
 				result.FieldOrder = observedFFprobeValue(s.FieldOrder)
@@ -548,6 +553,9 @@ type DirSource struct {
 	Layout Layout
 	// Probe reads durations; nil ⇒ FFprobeDuration.
 	Probe tools.Prober
+	// Probes, when non-nil, spares ffprobe the files that have not changed since an earlier scan.
+	// Nil probes every file on every scan.
+	Probes *ProbeCache
 	// Tunarr, when non-nil, supplies program uuids for clips it knows. Nil is a fully
 	// supported configuration — an install with no Tunarr — not a degraded one.
 	Tunarr TunarrClipSource
@@ -617,7 +625,7 @@ func (d DirSource) ScanLocalClips(ctx context.Context) (LocalScan, error) {
 	if d.MinDuration != nil {
 		minMs = d.MinDuration().Milliseconds()
 	}
-	clips, rejected, unread, err := scanDir(ctx, d.Layout.ClipDir(), d.Layout.WatchDir(), d.Probe, minMs)
+	clips, rejected, unread, err := scanDir(ctx, d.Layout.ClipDir(), d.Layout.WatchDir(), d.Probe, d.Probes, minMs)
 	if err != nil {
 		return LocalScan{}, err
 	}

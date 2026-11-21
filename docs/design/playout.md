@@ -40,7 +40,13 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
   item has defined the init; the tune-in item gets `FirstItemWait` (10 s). The wait is bounded by
   `StartDeadline` (`FirstItemWait` + `SlateRetry` + `FirstManifest`, 24 s), so a tune-in item that fails
   once still rejoins. Past it, the master fails the start with the item's last failure, such as a source
-  file the server can't read, and the client shows the shared start-failure problem. Web clients set
+  file the server can't read, and the client shows the shared start-failure problem. A tune-in that
+  lands on a **card** (a break with no ads, the generated bumper card) has no item until the card
+  ends, and its slate leads by only `RunAhead`. So the packager opens the first item after the card
+  just until its first fragment, takes that encoder's init, and closes it (`probeInit`, at most
+  `InitLookAhead` past the card, #3960). The card's slate then makes the first manifest, and the item
+  opens again when it airs. Without this, a card with more than `RunAhead` + `StartDeadline` left
+  failed the start. Web clients set
   `liveSyncDuration` to the same 6 s, so the playhead lands on the wall clock.
 - **Slate and rejoin.** An empty slot, a failed schedule lookup or an item that is not producing by its
   deadline is filled with house-format slate. The slate is shared per (host, output) and starts only
@@ -56,6 +62,12 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
   Reopening a clip at its last frame started an encoder that produced nothing and failed, which on
   VAAPI reads as a GPU fault (`A hardware frames reference is required`, 2026-10-24). Any other
   early end, including a stream that ended on a bad fragment, rejoins at once.
+  An item that cannot be opened, or whose encoder ends without a frame, reports `Item.Faulted`; a
+  late item, a decoder mismatch and a stopped channel do not, since they say nothing about the
+  item's own bytes. For a filler clip the app counts these per clip: three airings in a row feed
+  the clip back to the filler pipeline, which rejects it as `unplayable` with the cause and takes
+  it out of rotation ([filler](filler.md#filler-lets-go-on-its-own)); an airing that puts frames on
+  the channel starts the count again. The count is per process.
   A slot with **less than half a frame** left, an item or a card alike, airs nothing: the schedule is
   asked what airs at its end instead. For a card this is not cosmetic. Its slate would round to no
   frames, the timeline would never pass the boundary, and the packager would ask for that same
@@ -468,8 +480,11 @@ tone-mapping. A new stream **drops a rung before it is refused**, and a live ses
   CPU, and a step up applies only if it fits beside the other leases.
 - **CPU cost is learned from delivered media.** An item's encoder CPU is divided by the frames it put on
   the timeline, not by its slot, so an early close cannot over-count.
-- **Background media work yields to playback.** While any live transcode runs
-  (`PlaybackNeedsHeadroom`), capped background work such as filler processing waits.
+- **Background media work yields when playout is near capacity.** Filler media work waits while
+  live playout could not take two more streams like the ones running: one for the filler work, one
+  for the next viewer (`PlaybackBusy`). Each measured limit is checked: encoder sessions, GPU share
+  and CPU allowance. An install with no measurement keeps the older rule and waits while any live
+  transcode runs. The boot capacity probe still yields to any live transcode.
 
 The dashboard's `capacity` and the status endpoint's `budget` read this ledger. The ledger still has a
 `copy` class that costs nothing, but packager items are always transcoded, so it is unused there.
@@ -526,14 +541,27 @@ it plays. So:
 - The per-**title** decision (a subtitled original vs a dub, one programme at a time) remains a
   separate, unscoped feature.
 
-**Subtitles are soft renditions, with GPU burn-in only for image formats (#2088; not yet built).** The
-track probe reports what the current item carries; today the encoder maps video plus one audio
-stream and drops subtitles (the inert V55-era burn-in controls were retired). The decided shape:
+**Subtitles are soft, served beside the stream, with GPU burn-in only for image formats (#2088
+decision 5).** The encoder maps video plus one audio stream and never carries subtitles; a player
+draws them over the picture:
 
-- **Text subtitles** (SRT, ASS, mov_text, WebVTT) are extracted to one **WebVTT rendition per
-  language** per channel, in the master playlist's subtitle group. Each viewer turns them on or off
-  and picks the language in the player, and the choice is remembered per viewer. The cost is a cheap
-  text extraction per channel, never a video re-encode.
+- **Text subtitles** (SRT, ASS/SSA, mov_text, WebVTT, inside the file or in a file beside it) are
+  served by `GET /v1/channels/{id}/subtitles?from=&to=&track=`, not as an HLS rendition: a player
+  reads the master playlist once per tune, while a channel's languages change programme by
+  programme. The answer is the text tracks of the programme on air at `from` (from the Library's
+  `library_streams`, so no probe at request time) and the chosen track's cues on the channel's wall
+  clock from `from` to `to` (at most ten minutes). The cues are placed by walking the accepted cycle
+  the encoder airs (`internal/app/playoutresolve/subtitles.go`): a programme part airs its media from
+  its source offset, a break has none, and a cue cut by a break never airs.
+- A track is chosen by **key** (the language, then `-sdh` and `-forced`), so a viewer's remembered
+  choice picks each programme's matching track; a programme without that key plays the language's
+  first unforced track. Each viewer turns subtitles on or off in the player.
+- Each track is read **once**: `internal/playout/subtitles` runs one low-priority ffmpeg
+  (`-map 0:<stream> -f webvtt`) per track on a single worker, keeps the cues in memory for the tracks
+  in use and as WebVTT under `<playout.state_dir>/subtitles/` across restarts (unread for 60 days, a
+  file is removed). Until a track has been read, the answer says `pending` and the player asks again.
+  Reading a track demuxes the whole file, so a large film over a network share takes minutes the
+  first time; nothing about the video encode changes.
 - **Image subtitles** (PGS, VOBSUB) cannot become text cheaply, so they are **not offered** by default.
   An admin can set a channel to **always burn in** an image track. That is a GPU overlay in the
   video graph, and it applies to everyone on the channel. Where the GPU path cannot do it, the track

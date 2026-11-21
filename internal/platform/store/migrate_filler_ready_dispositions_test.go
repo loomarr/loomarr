@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +16,7 @@ import (
 func TestFillerReadyDispositionsMigrationSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "ready-dispositions.db"))
+	s, err := openSQLite(ctx, sqliteFileAt(t, 107, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +70,7 @@ func testFillerReadyDispositionsMigration(t *testing.T, s *sqlStore, migrationDi
 func TestRemoveFillerAdmissionRungMigrationSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "remove-admission-rung.db"))
+	s, err := openSQLite(ctx, sqliteFileAt(t, 108, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +136,7 @@ func testRemoveFillerAdmissionRungMigration(t *testing.T, s *sqlStore, migration
 func TestRetireFillerTaggingPathMigrationSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "retire-tagging-path.db"))
+	s, err := openSQLite(ctx, sqliteFileAt(t, 114, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

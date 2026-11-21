@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"path/filepath"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
@@ -14,7 +13,8 @@ import (
 const finishRungMigration = 169
 
 func TestFinishRungMigration(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "finish-rung.db")+"?_pragma=foreign_keys(on)")
+	t.Parallel()
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, finishRungMigration-1, foreignKeyConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

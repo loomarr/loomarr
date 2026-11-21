@@ -3,12 +3,12 @@ import type { SnowTile } from "./snow-tile.type";
 
 // The analog snow, rasterised ONCE per page into small repeating bitmaps.
 //
-// It used to be an inline SVG filter over a 200% × 200% layer, so the browser ran two
-// feTurbulence passes across four viewports' worth of device pixels — on a 3× phone, ~12 million
-// pixels of noise — in the same frame as the sign-in form, and again whenever the layer re-painted.
-// In the iPhone Simulator that frame landed about a second after the page's first paint. Now the
-// same noise renders once into tiles (at the device pixel ratio, so the grain is the same size), the
-// bitmaps are handed to CSS as repeating backgrounds, and the existing stepped transform moves them.
+// Not an inline SVG filter: over a 200% × 200% layer that makes the browser run two feTurbulence
+// passes across four viewports' worth of device pixels — on a 3× phone, ~12 million pixels of
+// noise — in the same frame as the sign-in form, and again whenever the layer re-paints (in the
+// iPhone Simulator that frame lands about a second after the page's first paint). Instead the
+// noise renders once into tiles (at the device pixel ratio, so the grain is the same size), the
+// bitmaps are handed to CSS as repeating backgrounds, and the stepped transform moves them.
 // Painting a cached bitmap is cheap; the noise is computed once per page.
 //
 // The snow is the analog snow the maintainer approved for the docs art ("E1", #1620): sharp,

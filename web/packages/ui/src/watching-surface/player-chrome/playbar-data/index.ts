@@ -1,1 +1,1 @@
-export { playbarFromTimeline } from "./playbar-data";
+export { playbarFromTimeline, playerChromeFromGuide } from "./playbar-data";

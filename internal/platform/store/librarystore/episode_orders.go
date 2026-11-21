@@ -110,14 +110,22 @@ func (s *Store) SaveLibraryEpisodeOrder(ctx context.Context, a LibraryEpisodeOrd
 	return nil
 }
 
+// hasPresentFile is item e having a present file of its own.
+const hasPresentFile = `EXISTS (SELECT 1 FROM library_files f WHERE f.inventory_item_id = e.id AND ` + presentFile + `)`
+
 // presentEpisodeFile is episode e having a present file.
-const presentEpisodeFile = `e.kind = 'episode'
-	AND EXISTS (SELECT 1 FROM library_files f WHERE f.inventory_item_id = e.id AND ` + presentFile + `)`
+const presentEpisodeFile = `e.kind = 'episode' AND ` + hasPresentFile
 
 // waitingShows is each series with an unnumbered present episode, and how many it has. It is
 // driven by the partial index on unnumbered episodes, so a library where nothing waits reads none.
+// Only an episode is ever unnumbered, so it names no kind: an equality on kind is one the planner
+// prefers, and it then walks every episode in the library for the few that wait.
 const waitingShows = `SELECT e.series_id AS id, COUNT(*) AS n FROM library_items e
-	WHERE e.unnumbered AND e.series_id <> '' AND ` + presentEpisodeFile + ` GROUP BY e.series_id`
+	WHERE e.unnumbered AND e.series_id <> '' AND ` + hasPresentFile + ` GROUP BY e.series_id`
+
+// WaitingShowsQuery is the read that finds the shows waiting for an episode order, for a test that
+// holds it to its index.
+func WaitingShowsQuery() string { return waitingShows }
 
 func (s *Store) LibraryOrderNeedCount(ctx context.Context) (int, error) {
 	var n int
@@ -140,8 +148,8 @@ func (s *Store) LibraryOrderNeeds(ctx context.Context) ([]LibraryOrderNeed, erro
 		var n LibraryOrderNeed
 		var catalog, set string
 		if err := rows.Scan(&n.ID, &n.Kind, &n.Name, &n.SortName, &n.Year, &catalog, &n.Match.Basis, &n.Match.App,
-			&n.Match.Page, &set, &n.Poster, &n.Backdrop, &n.Logo, &n.Files, &n.Pending, &n.Unplayable, &n.ExtraBytes,
-			&n.Unnumbered); err != nil {
+			&n.Match.Page, &set, &n.Poster, &n.Backdrop, &n.Logo, &n.Files, &n.Pending, &n.Unplayable, &n.ExtraCopies,
+			&n.ExtraBytes, &n.Unnumbered); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("library order needs: %w", err)
 		}

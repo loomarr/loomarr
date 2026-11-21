@@ -1,5 +1,8 @@
+import * as setupApi from "@loomarr/api/endpoints/setup";
+import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { createFileRoute } from "@tanstack/react-router";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { AiModelSettings } from "@/settings/ai-model-settings";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -64,6 +67,14 @@ const AiSettings = () => {
 
 const Route = createFileRoute("/_authed/settings/ai")({
   component: AiSettings,
+  // The provider's model catalog, which the lineup picker shows a placeholder for until it lands,
+  // and the standing verdict on the AI setup. The verdict probes the provider, so it is started but
+  // not waited for. Admin-only, like the page.
+  loader: async ({ context: { queryClient } }) => {
+    if (!(await viewerIsAdmin(queryClient))) return;
+    void queryClient.prefetchQuery(setupApi.getSetupStatusQueryOptions());
+    await queryClient.prefetchQuery(systemApi.getSystemLlmStatusQueryOptions({ query: { retry: false } }));
+  },
 });
 
 export { Route };

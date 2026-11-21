@@ -217,6 +217,77 @@ func TestResourceBudget_PlaybackHeadroom(t *testing.T) {
 	}
 }
 
+// Filler media work waits only while playout is near capacity: room for two more streams like the
+// running ones (the media work, and the next viewer). One 1080p SDR stream on NVENC leaves plenty;
+// one HDR 4K tone-map (0.42 of the GPU each) does not, nor do 11 of 12 encoder sessions. With no
+// measurement there is no room to judge, so any transcode keeps the old rule (2026-11-18: 16 clips
+// starved for two weeks while one stream was always on).
+func TestResourceBudget_FillerWaitsOnlyNearCapacity(t *testing.T) {
+	b := NewResourceBudget(nvencFacts)
+	sdr := admitN(t, b, ClassSDR, 1)
+	if busy, why := b.PlaybackBusy(); busy {
+		t.Fatalf("one SDR stream holds back filler: %s", why)
+	}
+	sdr[0].Release()
+	hdr := admitN(t, b, ClassHDR4K, 1)
+	if busy, _ := b.PlaybackBusy(); !busy {
+		t.Fatal("an HDR 4K stream leaves no room for two more, but filler would start")
+	}
+	hdr[0].Release()
+	eleven := admitN(t, b, ClassSDR, 11)
+	if busy, why := b.PlaybackBusy(); !busy || why == "" {
+		t.Fatal("11 of 12 encoder sessions in use, but filler would start")
+	}
+	for _, l := range eleven {
+		l.Release()
+	}
+
+	unmeasured := NewResourceBudget(func() BudgetFacts { return BudgetFacts{} })
+	admitN(t, unmeasured, ClassSDR, 1)
+	if busy, _ := unmeasured.PlaybackBusy(); !busy {
+		t.Fatal("an unmeasured install let filler start beside a live transcode")
+	}
+}
+
+// Filler media work runs beside a roomy stream and is cut only by an admission that leaves playout
+// tight. Overdue work starts even while tight, and still yields to the next admission.
+func TestResourceBudget_MediaWorkYieldsOnlyWhenAnAdmissionLeavesNoRoom(t *testing.T) {
+	b := NewResourceBudget(nvencFacts)
+	admitN(t, b, ClassSDR, 1)
+	work, cancel := b.MediaWorkContext(t.Context(), false)
+	defer cancel()
+	if work.Err() != nil {
+		t.Fatal("media work was born ended beside one SDR stream")
+	}
+	admitN(t, b, ClassSDR, 1)
+	if work.Err() != nil {
+		t.Fatal("a second SDR viewer cut filler work on a roomy GPU")
+	}
+	if _, err := b.Reserve(AdmitRequest{Class: ClassHDR4K}); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(context.Cause(work), ErrYielded) {
+		t.Fatalf("an admission that left playout tight did not cut filler work: %v", context.Cause(work))
+	}
+
+	held, cancelHeld := b.MediaWorkContext(t.Context(), false)
+	defer cancelHeld()
+	if held.Err() == nil {
+		t.Fatal("media work started while playout is tight")
+	}
+	overdue, cancelOverdue := b.MediaWorkContext(t.Context(), true)
+	defer cancelOverdue()
+	if overdue.Err() != nil {
+		t.Fatal("overdue media work did not start while playout is tight")
+	}
+	if _, err := b.Reserve(AdmitRequest{Class: ClassSDR}); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(context.Cause(overdue), ErrYielded) {
+		t.Fatal("overdue media work did not yield to the next admission that left no room")
+	}
+}
+
 func TestClassOf(t *testing.T) {
 	for _, tc := range []struct {
 		f    MediaFormat

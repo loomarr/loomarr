@@ -19,6 +19,11 @@ interface AboutPageProps {
    * want it less prominent than Loomarr's branding, which the large lockup above it is.
    */
   tmdbLogo?: ReactNode;
+  /**
+   * This server is the demo site, so its films, cartoons and ads are the openly licensed demo pack
+   * and About says where their sources are listed (#3409).
+   */
+  demo?: boolean;
 }
 
 export type { AboutDetail, AboutPageProps };

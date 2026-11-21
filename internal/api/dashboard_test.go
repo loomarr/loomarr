@@ -20,10 +20,10 @@ func newDashboardServer(t *testing.T, sessions playoutapi.PlayoutObserver) *http
 	t.Cleanup(func() { _ = st.Close() })
 
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:           st,
-		Auth:            httpcore.NewTokenAuthorizer(adminToken),
-		Log:             slog.New(slog.DiscardHandler),
-		PlayoutObserver: sessions,
+		Store:   st,
+		Auth:    httpcore.NewTokenAuthorizer(adminToken),
+		Log:     slog.New(slog.DiscardHandler),
+		Playout: api.PlayoutOptions{Observer: sessions},
 	}))
 	t.Cleanup(srv.Close)
 	return srv

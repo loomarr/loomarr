@@ -111,13 +111,14 @@ const LoginScreen = () => {
 
 const Route = createFileRoute("/login")({
   // ⚠ `redirect` is VALIDATED here, at the emitter, so a hostile value never reaches the
-  // component or either navigation (§11). `safeRedirectPath` also subsumes the old
+  // component or either navigation (§11). `safeRedirectPath` also covers a
   // typeof-string check: anything that is not a same-app path becomes `undefined`, which is
   // indistinguishable from the param being absent.
   validateSearch: (search: Record<string, unknown>): LoginSearch => ({
     redirect: safeRedirectPath(search.redirect),
     sso: typeof search.sso === "string" ? search.sso : undefined,
   }),
+  // no-loader: the setup state the form reads is ensured by this beforeLoad guard
   beforeLoad: async ({ context, search }) => {
     try {
       await context.queryClient.ensureQueryData(meQueryOptions());
@@ -145,8 +146,8 @@ const Route = createFileRoute("/login")({
       }
       return; // signed out on a claimed install → show the form
     }
-    // ⚠ The signed-in bounce is the path that was exploitable: the router force-commits a
-    // beforeLoad redirect with `replace: true`, so an off-site `href` became a
+    // ⚠ The signed-in bounce is the exploitable path: the router force-commits a beforeLoad
+    // redirect with `replace: true`, so an unvalidated off-site `href` becomes a
     // window.location.replace() straight off the app. Re-validated for the same reason `landing`
     // is — this is the second navigation, not the same one.
     throw redirect({ href: safeRedirectPath(search.redirect) ?? (await landingPath(context.queryClient)) });

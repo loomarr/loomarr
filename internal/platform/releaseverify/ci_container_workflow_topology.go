@@ -30,14 +30,14 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"ci-docs.yml":                {jobs: map[string]int{"run": 8}},
 		"ci-frontend.yml":            {jobs: map[string]int{"run": 10}},
 		"ci-go-contracts.yml":        {jobs: map[string]int{"run": 10}},
-		"ci-go.yml":                  {jobs: map[string]int{"run": 14}},
-		"ci-go-cache-warm.yml":       {jobs: map[string]int{"run": 6, "contracts": 6}},
+		"ci-go.yml":                  {jobs: map[string]int{"run": 13}},
+		"ci-go-cache-warm.yml":       {jobs: map[string]int{"run": 6, "contracts": 6, "pnpm": 6, "ffmpeg": 5}},
 		"ci-image-certification.yml": {jobs: map[string]int{"run": 5}},
 		"ci-image.yml":               {jobs: map[string]int{"run": 7}},
 		"ci-playwright.yml":          {jobs: map[string]int{"run": 10}},
-		"ci-postgres.yml":            {jobs: map[string]int{"run": 6}},
+		"ci-postgres.yml":            {jobs: map[string]int{"run": 5}},
 		"ci-rust-contracts.yml":      {jobs: map[string]int{"run": 3}},
-		"ci-tuner.yml":               {jobs: map[string]int{"run": 10}},
+		"ci-tuner.yml":               {jobs: map[string]int{"run": 12}},
 		"ci-playout-bench.yml":       {jobs: map[string]int{"run": 9}},
 		"playout-bench.yml":          {jobs: map[string]int{"macos": 6, "gpu-t4": 9, "arc": 4, "geforce": 4, "coverage": 2}},
 		"codeql.yml": {jobs: map[string]int{
@@ -55,7 +55,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"merge-gate-cache.yml":        {jobs: map[string]int{"run": 7}},
 		"curated-sources.yml":         {jobs: map[string]int{"check": 2}},
 		"deadcode.yml":                {jobs: map[string]int{"report": 3}},
-		"go-maintenance.yml":          {jobs: map[string]int{"vulnerabilities": 3}},
+		"go-maintenance.yml":          {jobs: map[string]int{"vulnerabilities": 3, "library-scale": 3}},
 		"ffmpeg-pin-refresh.yml":      {jobs: map[string]int{"refresh": 3}},
 		"image-benchmark.yml":         {jobs: map[string]int{"benchmark": 6}},
 		"pages.yml":                   {jobs: map[string]int{"build": 5, "deploy": 1}},
@@ -63,8 +63,8 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"release.yml":                 {jobs: map[string]int{"build": 7, "publish": 9}},
 		"rust-maintenance.yml":        {jobs: map[string]int{"supply-chain": 5, "fuzz": 5}},
 		"staging.yml":                 {jobs: map[string]int{"build-image": 4, "control": 2}},
-		"visual-baselines.yml":        {jobs: map[string]int{"resolve": 1, "render": 1, "commit": 4, "ci": 1}},
-		"visual-baselines-render.yml": {jobs: map[string]int{"render": 10}},
+		"visual-baselines.yml":        {jobs: map[string]int{"resolve": 2, "render": 1, "commit": 4, "release": 1}},
+		"visual-baselines-render.yml": {jobs: map[string]int{"render": 12}},
 	}
 }
 

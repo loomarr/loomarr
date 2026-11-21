@@ -10,8 +10,9 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/platform/store/storetest"
 	"github.com/testcontainers/testcontainers-go"
+
+	"github.com/loomarr/loomarr/internal/platform/store/storetest"
 )
 
 // startPostgres spins up an ephemeral Postgres via testcontainers (§14, §19) and

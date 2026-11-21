@@ -38,7 +38,7 @@ func TestFillerResearchRoutesAreAdminOnlyAndNeverEchoSecrets(t *testing.T) {
 		LastSuccessAt: time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC),
 	}}
 	server := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Auth: testAuthorizer{}, FillerResearch: service,
+		Auth: testAuthorizer{}, Filler: api.FillerOptions{Research: service},
 	}))
 	defer server.Close()
 

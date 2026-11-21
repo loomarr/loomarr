@@ -97,19 +97,21 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 		chBinder := approval.New(defaults.Store, nil, nil, defaults.Log)
 		flow := workflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now, suggest.IntentHash)
 		return api.Router(defaults.Log, api.Options{
-			Store:            defaults.Store,
-			Auth:             defaults.Auth,
-			Log:              defaults.Log,
-			Suggest:          fs,
-			Search:           search,
-			Events:           events.NewBus(),
-			ProposalWorkflow: flow,
-			DecisionQuality:  config.DecisionQuality,
-			// No Reconciler wired here (channels isn't under test) — mirrors the
-			// composition root's nil-guard: the bind still creates/patches the
-			// channel row and just skips the immediate Tunarr reconcile push.
-			Approver: accept.NewApprover(defaults.Store, chBinder, time.Now),
-			Binder:   chBinder,
+			Store: defaults.Store,
+			Auth:  defaults.Auth,
+			Log:   defaults.Log,
+			Proposals: api.ProposalsOptions{
+				Suggest:         fs,
+				Workflow:        flow,
+				DecisionQuality: config.DecisionQuality,
+				// No Reconciler wired here (channels isn't under test) — mirrors the
+				// composition root's nil-guard: the bind still creates/patches the
+				// channel row and just skips the immediate Tunarr reconcile push.
+				Approver: accept.NewApprover(defaults.Store, chBinder, time.Now),
+			},
+			Library:  api.LibraryOptions{Search: search},
+			Ops:      api.OpsOptions{Events: events.NewBus()},
+			Channels: api.ChannelsOptions{Binder: chBinder},
 			Settings: config.Settings,
 		})
 	})

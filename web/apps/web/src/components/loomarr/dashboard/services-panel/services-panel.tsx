@@ -1,4 +1,4 @@
-import { Action, ActivityIndicator, StatusWord } from "@loomarr/design-system";
+import { Action, ActivityIndicator, Stack, StatusWord, Text } from "@loomarr/design-system";
 import { ListGroup, PanelRow } from "@loomarr/ui";
 import { cn } from "@/lib/utils";
 import type { ServicesPanelProps } from "./services-panel.type";
@@ -45,13 +45,25 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
 
   return (
     <section className={cn("border-border overflow-hidden rounded-lg border", className)}>
-      <div className="border-border flex items-baseline gap-2.5 border-b px-4 py-3.5">
-        <h2 className="text-sm font-medium">Services</h2>
-        <span className="text-muted-foreground ml-auto flex items-center gap-1.5 font-mono text-xs">
-          {refreshing ? <ActivityIndicator decorative size="compact" tone="inherit" /> : null}
-          checked every 30s · the same checks Settings runs
-        </span>
-      </div>
+      <Stack
+        align="baseline"
+        borderBottomWidth={1}
+        borderColor="borderDecorative"
+        direction="row"
+        gap="2.5"
+        paddingHorizontal={16}
+        paddingVertical={14}
+      >
+        <Text as="h2" textRole="cardLabel">
+          Services
+        </Text>
+        <Stack align="center" direction="row" gap="1.5" marginLeft="auto" render="span">
+          {refreshing ? <ActivityIndicator decorative size="compact" tone="secondary" /> : null}
+          <Text as="span" textRole="mono">
+            checked every 30s · the same checks Settings runs
+          </Text>
+        </Stack>
+      </Stack>
 
       <ListGroup framed={false}>
         {[view.loomarr, ...rows].filter(Boolean).map((row) => (
@@ -87,20 +99,30 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
               </>
             }
           >
-            <div className="flex items-center gap-3">
-              <span className="w-32 shrink-0 text-sm">{serviceLabel(row.name)}</span>
-              <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
-                {/* An unconfigured integration has no target. Saying so beats an empty cell,
+            <Stack align="center" direction="row" gap="control">
+              <Stack flexShrink={0}>
+                <Text as="span" className="w-32" textRole="compact">
+                  {serviceLabel(row.name)}
+                </Text>
+              </Stack>
+              <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+                <Text as="span" className="truncate" textRole="mono">
+                  {/* An unconfigured integration has no target. Saying so beats an empty cell,
                     which reads as a rendering bug rather than an answer. ⚠ A PASSING row with
                     no target is not unconfigured: TMDB has no target by design (#2734). */}
-                {row.target || (row.ok ? "" : "not configured")}
-              </span>
+                  {row.target || (row.ok ? "" : "not configured")}
+                </Text>
+              </Stack>
               {/* The server's actionable detail ("connection refused"), under the row where a
                   failed check sits — the panel's job is to explain, not just to flag. */}
               {!row.ok && row.hint ? (
-                <p className="text-muted-foreground mt-1 basis-full text-xs">{row.hint}</p>
+                <Stack flexBasis="100%" marginTop={4}>
+                  <Text as="p" textRole="hint" tone="secondary">
+                    {row.hint}
+                  </Text>
+                </Stack>
               ) : null}
-            </div>
+            </Stack>
           </PanelRow>
         ))}
       </ListGroup>

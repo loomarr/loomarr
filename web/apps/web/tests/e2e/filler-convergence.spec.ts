@@ -121,6 +121,7 @@ test("a fetched arrival becomes playable automatically after its checks complete
           scheduled: 0,
           inProgress: 0,
           needsDecision: 0,
+          awaitingSplit: 0,
           recoverable: 0,
           ready: readyCommitted ? 1 : 0,
           rejected: 0,

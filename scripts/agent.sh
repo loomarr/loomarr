@@ -443,8 +443,8 @@ doctor() {
 	echo
 	worktree_count="$(git -C "$ROOT" worktree list --porcelain | grep -c '^worktree ')"
 	echo "Registered worktrees: $worktree_count"
-	if [ "$worktree_count" -gt 16 ]; then
-		echo '  WARNING: 16 or more secondary worktrees; run make agent-gc'
+	if [ "$worktree_count" -gt 24 ]; then
+		echo '  WARNING: 24 or more secondary worktrees; run make agent-gc'
 	fi
 	git -C "$ROOT" worktree list --porcelain | awk '
 		/^worktree / { path=$2 }
@@ -482,7 +482,7 @@ worktree() {
 	depends_on="${4:-}"
 	valid_name "$topic" || { echo 'agent-worktree: TOPIC is required' >&2; exit 2; }
 	primary="$(git -C "$ROOT" worktree list --porcelain | sed -n 's/^worktree //p' | head -1)"
-	worktree_limit="${AGENT_WORKTREE_LIMIT:-16}"
+	worktree_limit="${AGENT_WORKTREE_LIMIT:-24}"
 	case "$worktree_limit" in ''|*[!0-9]*) echo 'agent-worktree: AGENT_WORKTREE_LIMIT must be an integer' >&2; exit 2 ;; esac
 	secondary_count="$(git -C "$ROOT" worktree list --porcelain | grep -c '^worktree ' || true)"
 	secondary_count=$((secondary_count - 1))

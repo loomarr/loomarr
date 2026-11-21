@@ -61,6 +61,8 @@ var (
 	ASRModel                            = StringKey{"asr.model"}
 	SuggestMaxAcquisitions              = IntKey{"suggest.max_acquisitions"}
 	JobRecurateSchedule                 = StringKey{"job.recurate.schedule"}
+	JobGrowthSchedule                   = StringKey{"job.growth.schedule"}
+	JobGrowthReviewSchedule             = StringKey{"job.growth_review.schedule"}
 	RecurateMinScorePct                 = IntKey{"recurate.min_score_pct"}
 	RecurateMaxTitles                   = IntKey{"recurate.max_titles"}
 	ChannelReconcileEvery               = DurationKey{"channel.reconcile_every"}
@@ -127,7 +129,7 @@ var (
 	FillerLanguageModel                 = StringKey{"filler.language_model"}
 	SessionTTL                          = DurationKey{"session.ttl"}
 	CookieSecure                        = StringKey{"cookie.secure"}
-	SecurityTrustProxy                  = BoolKey{"security.trust_proxy"}
+	SecurityTrustedProxies              = StringListKey{"security.trusted_proxies"}
 	AuthSSOEnabled                      = BoolKey{"auth.sso.enabled"}
 	AuthSSOIssuer                       = StringKey{"auth.sso.issuer"}
 	AuthSSOClientID                     = StringKey{"auth.sso.client_id"}

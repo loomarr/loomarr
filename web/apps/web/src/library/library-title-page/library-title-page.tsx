@@ -2,7 +2,7 @@ import * as libraryApi from "@loomarr/api/endpoints/library";
 import { LibraryDetailsFromDTODescription } from "@loomarr/api/models/libraryDetailsFromDTODescription";
 import { LibraryMatchDTOApp } from "@loomarr/api/models/libraryMatchDTOApp";
 import { unwrap } from "@loomarr/api/unwrap";
-import { LibraryTitle, StatePanel } from "@loomarr/ui";
+import { LibraryTitle } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -38,7 +38,8 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
   useDocumentTitle(body?.item.name ?? "Library");
 
   if (detail.error) return <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />;
-  if (!body) return <StatePanel kind="loading" title="Loading this title" />;
+  // The route's loader ensured the title, so it is here before this page mounts.
+  if (!body) return null;
 
   // An answer moves the title in and out of Needs you and can rename it on the shelf.
   const refresh = () =>

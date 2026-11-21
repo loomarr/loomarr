@@ -14,10 +14,12 @@ mocks are the authority on layout.
   a compile error. `@loomarr/api` re-exports DTOs type-only and only the enum objects the UI uses at
   run time.
 - Live updates come from SSE `/v1/events`, which only invalidates queries; the API stays authoritative.
-  Frames sent while the stream is down are gone, so when it opens again every read a frame feeds
-  refetches. The browser retries a dropped connection itself, but a refused response (a proxy's 502
-  while the server restarts) closes an `EventSource` for good, so the web client opens a new one
-  after 3 seconds.
+  A screen never polls for state the server changes: each such change has a frame, published after
+  the change is stored, and the screen reads again on it (#3352). Frames sent while the stream is
+  down are gone, so when it opens again every read a frame feeds refetches. A client too slow to take
+  a frame is disconnected rather than left with a gap, so it reconnects and refetches the same way.
+  The browser retries a dropped connection itself, but a refused response (a proxy's 502 while the
+  server restarts) closes an `EventSource` for good, so the web client opens a new one after 3 seconds.
 - The UI hides admin-only actions from members. Loomarr is not meant to be exposed publicly.
 
 ## Navigation
@@ -54,11 +56,14 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
   restrained line motif with the channel's monogram, never a broken-image glyph. Encoder, storage,
   service health and the restart control live in **Settings → This server** (admin-only), linked
   from Home's footer, not duplicated on it.
-- **People** is admins managing other accounts; **Account** (`/account`) is any user's own password
-  and sessions. **Settings** is a searchable task home, with **Advanced settings** as the raw-key
+- **People** is admins managing other accounts. It reads its lists again on the admin-only `access`
+  frame, sent after any stored change to an invitation, account, session or device, including a
+  link redeemed or an email delivered behind the admin. **Account** (`/account`) is any user's own
+  password and sessions. **Settings** is a searchable task home, with **Advanced settings** as the raw-key
   escape hatch. **Help** renders the embedded help pages offline.
 - Global search (⌘K, or Ctrl K; the rail names the one the viewer's platform uses) is a
-  hand-rolled combobox over `/v1/search`, channels and help.
+  design-system inline `Combobox` (an always-open grouped list in a dialog) over `/v1/search`,
+  channels and help.
 
 ## Cross-view rules
 

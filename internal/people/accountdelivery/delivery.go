@@ -318,7 +318,8 @@ func (m invitationEmailMaterializer) Materialize(
 	}, nil
 }
 
-func notificationDeliveryJob(service *notifications.Service) jobs.Job {
+// notificationDeliveryJob sends queued messages, calling delivered after each one it settles.
+func notificationDeliveryJob(service *notifications.Service, delivered func()) jobs.Job {
 	return jobs.Job{
 		Name: "notification-delivery", Group: jobs.GroupSystem, Title: "Deliver account messages",
 		Description: "Sends queued invitation and recovery messages through their configured delivery means.",
@@ -331,6 +332,9 @@ func notificationDeliveryJob(service *notifications.Service) jobs.Job {
 				}
 				if !ran {
 					return nil
+				}
+				if delivered != nil {
+					delivered()
 				}
 			}
 			return nil
@@ -392,6 +396,9 @@ type Config struct {
 	Registry *jobs.Registry
 	Log      *slog.Logger
 	NewID    func() string
+	// Delivered runs after the delivery job settles a message, so an invitation's email outcome
+	// reaches People as it is stored. Nil announces nothing.
+	Delivered func()
 }
 
 // Build assembles the delivery stack. Without a store, an invitation service or a recovery
@@ -414,7 +421,7 @@ func Build(c Config) Delivery {
 		product: notifications.NewDestinationRouter(c.Repository, currentNotificationEligibility{users: c.Store}),
 	}, adapters, c.NewID, time.Now)
 	if c.Registry != nil {
-		c.Registry.Add(notificationDeliveryJob(service))
+		c.Registry.Add(notificationDeliveryJob(service, c.Delivered))
 	}
 	return Delivery{
 		Invitations: &InvitationDelivery{invitations: c.Invitations, notifications: service},
@@ -423,7 +430,7 @@ func Build(c Config) Delivery {
 		Validators:  []notifications.DestinationValidator{adapter},
 		Recovery: &PasswordRecovery{
 			recovery: c.Recovery, notifications: service,
-			requestLimiter: auth.NewRateLimiter(0.05, 3), redeemLimiter: auth.NewRateLimiter(0.1, 5),
+			requestLimiter: newRecoveryRequestLimiter(), redeemLimiter: auth.NewRateLimiter(0.1, 5),
 			log: c.Log,
 		},
 	}

@@ -3,6 +3,7 @@ import {
   getApproveProposalMockHandler,
   getGetProposalJobMockHandler,
   getGetProposalOutlookMockHandler,
+  getHouseholdMockHandler,
   getListChannelIdeasMockHandler,
   getMeMockHandler,
   getResolveMovieCollectionsMockHandler,
@@ -12,7 +13,6 @@ import {
   getSubmitManualChannelMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
-import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
@@ -20,13 +20,14 @@ import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { LoomarrEventsProvider } from "@/events/events-provider";
+import { FakeEventSource } from "@/test/fake-event-source";
 import { outlook } from "@/test/fixtures/outlook";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { parseOriginationSearch } from "../origination-flow";
-import { POLL_MS } from "../use-ai-reconnect";
 import { useOriginationFlow } from "../use-origination-flow";
 import type { SuggestionRun, SuggestionRunJob } from "../use-suggestion-run/use-suggestion-run.type";
 import { ChannelSuggestPanel } from "./channel-suggest-panel";
@@ -198,6 +199,7 @@ const renderPanel = (onCreated: (id: string) => void) => {
 describe("ChannelSuggestPanel", () => {
   beforeEach(() => {
     server.use(
+      getHouseholdMockHandler({ timeZone: "" }),
       getResolveMovieCollectionsMockHandler({ collections: [], complete: true }),
       getGetProposalOutlookMockHandler(
         outlook({
@@ -322,47 +324,42 @@ describe("ChannelSuggestPanel", () => {
   // The resume banner with nothing picked yet (#1817): there is no lineup to keep, so "Try AI
   // suggestions" leaves the builder for the describe form, carrying the description over.
   it("returns an empty manual build to the describe form when AI comes back", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      stubSuggest();
-      const features = { suggestions: false, reads: 0 };
-      server.use(
-        getListChannelIdeasMockHandler({ ideas: [] }),
-        getSettingsListMockHandler(() => {
-          features.reads += 1;
-          return { settings: [], features: { suggestions: features.suggestions } };
-        }),
-      );
-      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-      render(
-        <RouterHarness
-          initialPath="/requests/new?manual=1"
-          content={
-            <LoomarrProvider theme="dark">
-              <QueryClientProvider client={client}>
+    const user = userEvent.setup();
+    stubSuggest();
+    const features = { suggestions: false, reads: 0 };
+    server.use(
+      getListChannelIdeasMockHandler({ ideas: [] }),
+      getSettingsListMockHandler(() => {
+        features.reads += 1;
+        return { settings: [], features: { suggestions: features.suggestions } };
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <RouterHarness
+        initialPath="/requests/new?manual=1"
+        content={
+          <LoomarrProvider theme="dark">
+            <QueryClientProvider client={client}>
+              <LoomarrEventsProvider>
                 <FlowPanel onCreated={() => {}} />
-              </QueryClientProvider>
-            </LoomarrProvider>
-          }
-        />,
-      );
-      await user.click(await screen.findByRole("button", { name: /cozy mystery nights/i }));
-      await waitFor(() => expect(features.reads).toBe(1));
+              </LoomarrEventsProvider>
+            </QueryClientProvider>
+          </LoomarrProvider>
+        }
+      />,
+    );
+    await user.type(await screen.findByLabelText("Channel name"), "Cozy Mystery Nights");
+    await waitFor(() => expect(features.reads).toBe(1));
 
-      features.suggestions = true;
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(POLL_MS);
-      });
-      await user.click(await screen.findByRole("button", { name: "Try AI suggestions" }));
+    // A settings write turns AI on, and the backend announces it.
+    features.suggestions = true;
+    act(() => FakeEventSource.broadcast("settings", {}));
+    await user.click(await screen.findByRole("button", { name: "Try AI suggestions" }));
 
-      expect(await screen.findByLabelText("Channel intent")).toHaveValue(
-        CHANNEL_TEMPLATES.find((t) => t.label === "Cozy Mystery Nights")?.description,
-      );
-      expect(screen.queryByText(/No AI service is connected yet/)).not.toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+    // With no description from an idea, the name is the brief that carries over.
+    expect(await screen.findByLabelText("Channel intent")).toHaveValue("Cozy Mystery Nights");
+    expect(screen.queryByText(/No AI service is connected yet/)).not.toBeInTheDocument();
   });
 
   it("keeps configured AI truthful and routes a missing grounding key to TMDB", async () => {
@@ -877,11 +874,9 @@ describe("ChannelSuggestPanel", () => {
     });
     view.rerenderPanel();
 
-    expect(
-      await screen.findByText(
-        "Loomarr didn’t find any new strong matches this time. Your existing options are still here.",
-      ),
-    ).toHaveAttribute("role", "status");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Loomarr didn’t find any new strong matches this time. Your existing options are still here.",
+    );
     expect(screen.getByText("1 option")).toBeVisible();
     expect(screen.getByRole("button", { name: "Add Lemon Tree Heist" })).toBeVisible();
   });

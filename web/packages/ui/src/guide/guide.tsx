@@ -271,11 +271,12 @@ const GuideExperience = (props: GuideExperienceProps) => {
   if (!props.state || props.state === "ready") return <GuideSurface {...props} />;
   const copy = unavailableGuideCopy[props.state];
   const onRetry = "onRetry" in props ? props.onRetry : undefined;
+  const retrying = "retrying" in props && props.retrying === true;
   return (
     <StatePanel
       action={
         onRetry && (props.state === "error" || props.state === "offline")
-          ? { label: "Try again", onPress: onRetry }
+          ? { label: retrying ? "Trying again…" : "Try again", onPress: retrying ? () => undefined : onRetry }
           : undefined
       }
       density={props.density}

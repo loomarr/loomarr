@@ -21,7 +21,12 @@ const AppRestartOverlay = () => {
   return <RestartOverlay restarting={restarting} justCameBack={justCameBack} failed={failed} />;
 };
 
-const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+const Route = createRootRouteWithContext<{
+  queryClient: QueryClient;
+  // Set by the app's own router (main.tsx): once the shell is up, the main nav's routes are warmed
+  // at idle. Absent in a test's router, which would otherwise fetch every nav page's data unasked.
+  warmNavAtIdle?: boolean;
+}>()({
   component: RootLayout,
 });
 

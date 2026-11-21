@@ -3,9 +3,9 @@ import type { ReactElement, ReactNode } from "react";
 interface WallTileProps {
   /** The picture: fills the tile and crops to 16:9. */
   art: ReactNode;
-  /** The channel's name. Shown on the tile at desktop width; the phone tile folds it into the second line. */
+  /** The channel's name: on the top row beside the number (one line, ellipsis before any pill); the compact tile puts it first on the caption line instead. */
   channelName: string;
-  /** The compact tile for a phone's two columns: smaller text, no channel name on the top row. */
+  /** The compact tile for a phone's two columns: smaller text, the number alone on the top row, the title on one line, then one "name · detail" caption line. */
   compact?: boolean;
   /** The channel's era decade from the API (1980 for the 1980s): it colours the number block. Absent is neutral. */
   decade?: number;
@@ -15,7 +15,7 @@ interface WallTileProps {
   last?: boolean;
   /** Who is watching this channel now, by name (an admin's view only, #2785): a pill in the top-right corner. The last-tuned tile shows its own pill instead. */
   watchers?: string[];
-  /** The channel number, zero-padded as the guide shows it ("07"). */
+  /** The channel number as the guide and player print it, unpadded ("7"). */
   number: string;
   onClick?: () => void;
   /** 0 to 100: how far through its programme the channel is, as a thin line along the foot. */

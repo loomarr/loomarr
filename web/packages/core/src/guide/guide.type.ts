@@ -9,6 +9,8 @@ type GuideWindowArgs = {
   windowMinutes: number;
   hourShift: number;
   startHour: number | null;
+  /** The household's zone, whose wall clock the days and start hour are read on; the device's if unset. */
+  timeZone?: string;
 };
 
 type GuideWindow = {

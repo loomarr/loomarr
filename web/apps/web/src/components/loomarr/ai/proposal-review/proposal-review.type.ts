@@ -15,6 +15,8 @@ interface ProposalReviewProps {
   expansionAdded?: number;
   assessment?: Assessment;
   assessmentPending?: boolean;
+  // The household's timezone, for when the assessment was checked; undefined is the device's own.
+  assessmentTimeZone?: string;
   edit?: ApprovalEditDTO;
   status?: ProposalStatus;
   selfService?: boolean;

@@ -19,6 +19,8 @@ import (
 type invitationHarnessConfig struct {
 	PublicURL string
 	Delivery  people.InvitationDeliveryService
+	// AccessChanged is the people routes' change announcement.
+	AccessChanged func()
 }
 
 type invitationHarness struct {
@@ -44,8 +46,11 @@ func newInvitationHarness(t *testing.T, config invitationHarnessConfig) *invitat
 		)
 		return api.Router(defaults.Log, api.Options{
 			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log,
-			Invitations: service, InvitationDelivery: config.Delivery,
-			AccessPublicURL: func() string { return config.PublicURL },
+			People: api.PeopleOptions{
+				Invitations: service, InvitationDelivery: config.Delivery,
+				AccessPublicURL: func() string { return config.PublicURL },
+				AccessChanged:   config.AccessChanged,
+			},
 		})
 	})
 	return &invitationHarness{apiHarness: base, Bearer: bearer}
@@ -65,6 +70,32 @@ func (f *fakeInvitationDelivery) SendEmail(_ context.Context, invitationID, requ
 
 func (f *fakeInvitationDelivery) LatestEmail(context.Context, string) (notifications.DeliverySummary, error) {
 	return f.result, nil
+}
+
+// People updates live (#3352): each stored change to an invitation is announced once it answers,
+// and a read or a refused write announces nothing.
+func TestInvitations_AStoredChangeIsAnnounced(t *testing.T) {
+	changes := 0
+	harness := newInvitationHarness(t, invitationHarnessConfig{
+		PublicURL: "https://loomarr.example.test/", AccessChanged: func() { changes++ },
+	})
+	srv := harness.Server
+	step := func(method, path, token, body string, wantStatus, wantChanges int) {
+		t.Helper()
+		resp := do(t, srv, method, path, token, body)
+		if resp.StatusCode != wantStatus {
+			t.Fatalf("%s %s = %d, want %d", method, path, resp.StatusCode, wantStatus)
+		}
+		if changes != wantChanges {
+			t.Fatalf("after %s %s: %d announcements, want %d", method, path, changes, wantChanges)
+		}
+	}
+
+	step(http.MethodPost, "/v1/invitations", memberToken, `{"kind":"local","username":"Ada"}`, http.StatusForbidden, 0)
+	step(http.MethodPost, "/v1/invitations", adminToken, `{"kind":"local","username":"Ada"}`, http.StatusCreated, 1)
+	step(http.MethodGet, "/v1/invitations", adminToken, "", http.StatusOK, 1)
+	step(http.MethodDelete, "/v1/invitations/invitation-1", adminToken, "", http.StatusNoContent, 2)
+	step(http.MethodDelete, "/v1/invitations/unknown", adminToken, "", http.StatusNotFound, 2)
 }
 
 func TestInvitations_AdminLifecycleAndBearerMinimization(t *testing.T) {

@@ -443,6 +443,22 @@ func TestResolve_NFODetailsFillGaps(t *testing.T) {
 	}
 }
 
+// A catalog's text filled from English (#3231) yields to any source's text in the installation's
+// language, and still beats having none.
+func TestResolve_FilledTextYieldsToOwnLanguage(t *testing.T) {
+	filled := mp.Record{Source: tmdbCat, Kind: mp.KindMovie, Descriptive: &mp.Descriptive{
+		Title: "Leuchtturm", Overview: "In English.", OverviewLanguage: "en-US", Tagline: "English line.", TaglineLanguage: "en-US",
+	}}
+	german := mp.Record{Source: nfoTMDB, Kind: mp.KindMovie, Descriptive: &mp.Descriptive{Overview: "Auf Deutsch."}}
+	got := resolver(t).Resolve(precedence.Input{Kind: mp.KindMovie, Records: []mp.Record{filled, german}})
+	if got.Overview.Value != "Auf Deutsch." || got.Overview.From != nfoTMDB {
+		t.Errorf("overview = %+v, want the NFO's German over the catalog's English fallback", got.Overview)
+	}
+	if got.Tagline.Value != "English line." || got.Tagline.From != tmdbCat {
+		t.Errorf("tagline = %+v, want the English fallback where nothing else has one", got.Tagline)
+	}
+}
+
 func TestResolve_NothingKnownIsUnknown(t *testing.T) {
 	got := resolver(t).Resolve(precedence.Input{Kind: mp.KindMovie})
 	if got.Title.Known() || got.Certification.Known() || got.Technical.Duration.Known() || got.IDs != nil || got.Numbering.Known() {

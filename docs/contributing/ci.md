@@ -258,8 +258,9 @@ schemas. It rejects
 job containers, services, unaudited reusable-workflow delegation, container-acquiring actions, unknown keys,
 metadata-only or malformed steps, multiple execution mechanisms, and unapproved environment,
 defaults, condition, error-tolerance, shell, working-directory, or `MAKEFLAGS` controls. The root
-tool-version environment and the cache-save condition are admitted only at their exact current
-values. Its only permitted shell steps are the exact cache-epoch command and the suite's `make test-pg`; this
+tool-version environment is admitted only at its exact current values. The suite only restores its Go
+cache, which the Go cache warm workflow writes, so a cache save or any conditional action step is
+rejected. Its only permitted shell steps are the exact cache-epoch command and the suite's `make test-pg`; this
 closes dry-run, variable, wrapper, and quoting indirection without parsing arbitrary shell. Every
 repository workflow is also parsed structurally. Any service or job container or `docker://` action
 is rejected. Workflow shell is not interpreted: route-shaped steps are classified from the raw
@@ -342,7 +343,23 @@ actions, commands, or family registrations and colliding absolute step identitie
 The cache-cleanup workflow is one such run authority: its complete deletion command, step name and
 environment, exact `Cache cleanup` workflow name, closed `pull_request` trigger with only the
 `closed` type, workflow permissions, job name and runner, and absence of alternate execution context
-are source-bound rather than inferred from its one-step topology.
+are source-bound rather than inferred from its one-step topology. It deletes the closed PR's
+merge-ref and merge-queue caches. It also deletes the caches of the PR's head branch, which a
+manual dispatch on that branch saves, but only for a same-repository PR whose head is not the
+default branch.
+
+Shared caches are written on `main` only, because a cache is readable only from its own ref and the
+default branch (#1679). The Go cache warm workflow runs on every push to `main` and seeds each key
+when it is missing:
+
+- the race-lane and Postgres Go build caches, once per ISO week and `go.sum`;
+- the Go contracts cache;
+- the pnpm store, per lockfile;
+- the production ffmpeg archive, per pin.
+
+The race lanes and Postgres conformance only restore. Frontend and Playwright save the pnpm store,
+and the Go lanes and the playout bench save the ffmpeg archive, only on a `main` dispatch that finds
+the key missing.
 
 Make execution is closed over the checked-in root `Makefile` and every `mk/*.mk`: each module must be
 included exactly once, and non-recipe syntax is limited to the current plain assignments, targets,
@@ -744,10 +761,16 @@ parallel tests only competed for the same cores. So the store package (now `inte
 serial lane, where one package at a time owns the runner, and the playout/capacity set shares the
 first. There, workflow-dispatch run 36366596157 measured it at 171s, which left it too light to
 balance the first lane's 405s, so `internal/integration`, whose tests are serial, shares its lane.
-The serial lanes keep their `certification-1/2` and `certification-2/2` identities (the
-workflow matrix, cache keys and release-verifier pins name them), but they now hold two kinds of
-package: media certification that must not compete for a worker while asserting latency, and
-CPU-heavy packages whose own parallelism needs a runner to themselves.
+The serial lanes hold two kinds of package: media certification that must not compete for a
+worker while asserting latency, and CPU-heavy packages whose own parallelism needs a runner to
+themselves.
+
+Since #2716 there are three serial lanes, `certification-1/3` to `certification-3/3`. The highest
+lane number in `scripts/go-certification-lanes.tsv` is the count, and the workflow matrix, cache
+keys and release-verifier pins name each lane. Two lanes passed the 15-minute job limit once
+`internal/channels/schedule` and `internal/demolibrary` joined them. Four lanes could not balance:
+merge-group run 43037503041 measured store alone at 291s, and no four-way split of the rest stayed
+inside the 125% balance budget. The three lanes model 322s, 336s and 378s.
 
 `make go-shard-verify SHARDS=2` rejects missing or duplicated packages, a package above the
 per-package cap, an ordinary aggregate or a bounded-worker or serial-certification makespan above
@@ -809,11 +832,13 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
 - **`actions/cache` never overwrites an existing key.** A cache whose contents track something
   its key doesn't gets written once and frozen. Use a rolling key with `restore-keys`.
 - **The 10GB cap evicts LRU across all refs**, so closed PRs' caches push out live ones.
-  `cache-cleanup.yml` deletes both `refs/pull/N/merge` and matching merge-queue caches on close.
+  `cache-cleanup.yml` deletes `refs/pull/N/merge`, matching merge-queue caches and the same-repo
+  head branch's caches on close.
 - **Default-branch cache writes require a trusted trigger.** GitHub permits a default-branch writer
   from `push` or `workflow_dispatch`, but `merge_group` and `workflow_run` cannot promote their
-  outputs into that scope. The Go cache-save conditions therefore remain useful only for a deliberate
-  manual run on `main`; ordinary PR and queue runs are restore-only. Android is the bounded exception
+  outputs into that scope. Shared caches are therefore written by the `CI / Go cache warm` workflow on
+  `main` pushes, plus the pnpm and ffmpeg saves on a manual run on `main`; ordinary PR and queue
+  runs are restore-only. Android is the bounded exception
   justified by the measured 25m54s cold queue build: the admitted queue run emits an immutable
   compiler-cache transfer, and the queue-produced `push` validates and saves it without repeating any
   compilation. A `workflow_run` writer or a `push` warmer that rebuilds the product remains forbidden.
@@ -859,6 +884,25 @@ Don't — a warning printed by a job that exits 0 is one nobody reads.
 The CI path filter includes `scripts/`, so a PR editing only a guard still runs the job that
 executes it.
 
+## Screenshot baselines render on every frontend push
+
+`visual-baselines.yml` is outside the required PR gate. It runs on every `pull_request` push
+(opened, synchronize, reopened) from a branch of this repository that touches `web/`, and by manual
+dispatch. Its resolve job feeds the pull request's changed files to `scripts/ci-impact.sh` and renders
+only when the visual or e2e gate is selected, so it follows the same classifier as the Playwright
+job. The render (`visual-baselines-render.yml`, dispatched at the branch, read-only) regenerates the
+visual and e2e snapshots in the pinned Playwright image. The push job commits only PNGs under a
+`tests/visual/` or `tests/e2e/` snapshot directory. It has a workflow-level `paths:` filter, which a
+required check must never have; this workflow is not one.
+
+The bot's push starts `pull_request` runs whose actor is `github-actions[bot]`. The repository's
+fork-run approval policy is "first-time contributors", and the bot counts as one, so GitHub parks
+those runs at `action_required` and the parked CI keeps the pull request out of the merge queue. The
+workflow's release job approves exactly the parked runs on the commit it pushed, which needs only
+`actions: write`. Forks are untouched: their runs keep the approval rule, and the resolve job refuses
+a fork before any job holds a write token. A newer push cancels the older head's run, and the bot's
+own commit never starts a render. [Testing](testing.md#updating-visual-baselines) has the full flow.
+
 ## Scheduled Go dead code report
 
 `deadcode.yml` is also outside the required PR gate. On the first of each month, and on manual
@@ -873,6 +917,11 @@ vulnerability a Loomarr call path reaches, standard library included. It is week
 gate because a newly published advisory would otherwise fail every Go PR regardless of its content.
 A red run is the prompt to bump the module, or go.mod's `toolchain` line together with the
 Dockerfile's golang image.
+
+The same workflow runs `make scan-scale`: the library scanner's scale guard over a 33k-file library,
+the household's size. It checks that step 2 counts each file once, and that passes made while the
+header stage waits for playback leave nothing held. The PR suite runs the same guard at 2k files.
+At 33k it takes about a minute, which is too long for every PR.
 
 ## Scheduled ffmpeg pin refresh
 

@@ -4,11 +4,11 @@ import type { RunButtonProps } from "./run-button.type";
 // RunButton — "do this now" with visible, honest feedback that it is happening.
 //
 // ⚠ **The reason this is a component and not three inline props.** On the Tasks page a plain
-// button driven by the server's own `running` flag showed NOTHING: `POST /run` returns 202 in
+// button driven by the server's own `running` flag shows NOTHING: `POST /run` returns 202 in
 // milliseconds and the flag is true for only ~250ms, both of which close before the list
-// refetch lands. Measured by sampling the button 120 times over 6 seconds and observing exactly
-// one state — "Run now", enabled, for the entire run. Any surface with a "run it now" affordance
-// over a queued backend hits the same thing, so the fix belongs here rather than being
+// refetch lands (sampling the button 120 times over 6 seconds observes exactly one state —
+// "Run now", enabled, for the entire run). Any surface with a "run it now" affordance over a
+// queued backend hits the same thing, so the answer belongs here rather than being
 // rediscovered per page.
 //
 // The caller owns `busy`; `useRunFeedback` is the hook that computes it correctly.
@@ -18,7 +18,7 @@ import type { RunButtonProps } from "./run-button.type";
 // Everything else — filler sync, AI tagging, every settings PATCH — answers 200 when the work
 // is DONE, so the mutation's own `isPending` is already true for exactly as long as the work
 // takes. Wrapping one of those in RunButton would add this component's 600ms visibility floor
-// to an operation that was reporting its duration honestly, which is a regression, not an
+// to an operation that already reports its duration honestly, which is a regression, not an
 // adoption. A spinner is not evidence that this component is missing.
 //
 // (system-restart has its own richer answer in `useRestartWatch` — it polls /v1/healthz because

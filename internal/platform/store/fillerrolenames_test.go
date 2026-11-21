@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -15,7 +14,7 @@ const fillerRoleNamesMigration = 173
 
 func TestFillerRoleNamesMigration_SQLite(t *testing.T) {
 	t.Parallel()
-	s, err := openSQLite(context.Background(), filepath.Join(t.TempDir(), "role-names.db"))
+	s, err := openSQLite(context.Background(), sqliteFileAt(t, fillerRoleNamesMigration-1, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,8 @@
 import type { PlayerController } from "../player-controller";
 
 interface NativeLifecycleTransport {
+  /** A picture out of the app as picture in picture keeps playing when the app goes to the background. */
+  inPictureInPicture?: () => boolean;
   resume: () => void;
   suspend: () => void;
 }
@@ -27,6 +29,7 @@ const createNativePlayerLifecycle = ({
   return {
     enterBackground: () => {
       transition += 1;
+      if (transport.inPictureInPicture?.()) return;
       controller.pause();
       transport.suspend();
     },

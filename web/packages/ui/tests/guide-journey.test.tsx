@@ -1,9 +1,31 @@
+// @vitest-environment jsdom
+
 import { createGuideController } from "@loomarr/core/guide";
 import { LoomarrProvider } from "@loomarr/design-system";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GuideJourney } from "../index";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// This package has no DOM lib (it targets React Native too), so the slice of the jsdom document
+// the test touches is typed here.
+type Node = { click(): void; focus(): void; textContent: string | null };
+type Doc = {
+  activeElement: unknown;
+  body: {
+    append(node: unknown): void;
+    replaceChildren(): void;
+    textContent: string | null;
+    querySelector(s: string): Node | null;
+    querySelectorAll(s: string): ArrayLike<Node>;
+  };
+  createElement(tag: string): Parameters<typeof createRoot>[0];
+};
+const doc = (globalThis as unknown as { document: Doc }).document;
 
 const sourceGuide = {
   channels: [
@@ -27,6 +49,16 @@ const sourceGuide = {
   fromMs: 0,
   timezone: "UTC",
   toMs: 3_600_000,
+};
+
+afterEach(() => {
+  doc.body.replaceChildren();
+});
+
+// Where a remote's focus goes on purpose: the Guide's selected programme.
+const home = {
+  kind: "airing",
+  selection: expect.objectContaining({ channelId: "cartoons", scheduleBlockId: "teapot" }),
 };
 
 const markup = (controller: ReturnType<typeof createGuideController>) =>
@@ -115,5 +147,356 @@ describe("GuideJourney", () => {
     await failed.refresh();
     expect(markup(failed)).toContain("Guide unavailable");
     expect(markup(failed)).toContain("Try again");
+  });
+
+  it("says so when a refresh fails over a shown Guide, and drops it once a refresh works", async () => {
+    const load = vi
+      .fn()
+      .mockResolvedValueOnce(sourceGuide)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue(sourceGuide);
+    const controller = createGuideController({ now: () => 900_000, source: { load } });
+    await controller.refresh("cartoons");
+    expect(markup(controller)).not.toContain("Couldn't refresh the Guide");
+
+    // Mounting refreshes the Guide; that read fails, so the grid stays but is no longer current.
+    const container = doc.createElement("div");
+    doc.body.append(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <LoomarrProvider>
+          <GuideJourney controller={controller} onTune={vi.fn()} preferredChannelId="cartoons" />
+        </LoomarrProvider>,
+      );
+    });
+
+    const notice = doc.body.querySelector('[role="status"]');
+    expect(notice?.textContent).toContain("Couldn't refresh the Guide");
+    expect(notice?.textContent).toContain("Showing what Loomarr had a moment ago.");
+    expect(doc.body.textContent).toContain("Cartoon Classics");
+
+    const before = load.mock.calls.length;
+    const retry = Array.from(doc.body.querySelectorAll('[role="button"]')).find(
+      (node) => node.textContent?.trim() === "Try again",
+    );
+    await act(async () => {
+      retry?.click();
+    });
+
+    expect(load.mock.calls.length).toBe(before + 1);
+    expect(doc.body.textContent).not.toContain("Couldn't refresh the Guide");
+    expect(controller.getSnapshot().error).toBeUndefined();
+  });
+
+  it("says so when a refresh fails over an empty Guide too", async () => {
+    const load = vi
+      .fn()
+      .mockResolvedValueOnce({ ...sourceGuide, channels: [] })
+      .mockRejectedValue(new Error("offline"));
+    const controller = createGuideController({ now: () => 900_000, source: { load } });
+    await controller.refresh();
+    expect(controller.getSnapshot().status).toBe("empty");
+
+    const container = doc.createElement("div");
+    doc.body.append(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <LoomarrProvider>
+          <GuideJourney controller={controller} onTune={vi.fn()} preferredChannelId="cartoons" />
+        </LoomarrProvider>,
+      );
+    });
+
+    expect(controller.getSnapshot()).toMatchObject({ error: "offline", status: "empty" });
+    expect(doc.body.querySelector('[role="status"]')?.textContent).toContain("Couldn't refresh the Guide");
+    expect(doc.body.textContent).toContain("No channels on air");
+  });
+
+  // The notice's button is where the viewer's focus (a TV remote's) sits when they press it. If the
+  // retry unmounted the notice, focus fell to the page and a remote lost its place; a retry that
+  // fails brought the notice back with nothing focused.
+  describe("retrying from the notice", () => {
+    const retryButton = () =>
+      Array.from(doc.body.querySelectorAll('[role="button"]')).find((node) =>
+        /^(Try again|Trying again…)$/.test(node.textContent?.trim() ?? ""),
+      );
+
+    // A TV's focus registry: `request` is where a remote's focus is sent on purpose.
+    const tvRegistry = () => ({ register: vi.fn(), request: vi.fn() });
+    // `firstLoadFails`: the Guide never answered, so the retry is from the error panel, not the notice.
+    const mountFailed = async ({
+      firstLoadFails = false,
+      focusRegistry,
+    }: {
+      firstLoadFails?: boolean;
+      focusRegistry?: ReturnType<typeof tvRegistry>;
+    } = {}) => {
+      let answer: (outcome: "ok" | "fail") => void = () => undefined;
+      const load = vi.fn();
+      // Over a shown Guide the first read answers and the mount's read fails; with no Guide yet, the
+      // mount's read is the first and fails.
+      if (!firstLoadFails) load.mockResolvedValueOnce(sourceGuide);
+      load.mockRejectedValueOnce(new Error("offline")).mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            answer = (outcome) => (outcome === "ok" ? resolve(sourceGuide) : reject(new Error("offline")));
+          }),
+      );
+      const controller = createGuideController({ now: () => 900_000, source: { load } });
+      if (!firstLoadFails) await controller.refresh("cartoons");
+      const container = doc.createElement("div");
+      doc.body.append(container);
+      await act(async () => {
+        createRoot(container).render(
+          <LoomarrProvider>
+            <GuideJourney
+              controller={controller}
+              focusRegistry={focusRegistry}
+              onTune={vi.fn()}
+              preferredChannelId="cartoons"
+            />
+          </LoomarrProvider>,
+        );
+      });
+      focusRegistry?.request.mockClear();
+      const button = retryButton();
+      button?.focus();
+      return { answer: (o: "ok" | "fail") => answer(o), button, controller, load };
+    };
+
+    it("keeps focus on the button while the retry is in flight, and says it is trying", async () => {
+      const { button, load } = await mountFailed();
+      expect(doc.activeElement).toBe(button);
+      const before = load.mock.calls.length;
+
+      await act(async () => {
+        button?.click();
+      });
+
+      expect(load.mock.calls.length).toBe(before + 1);
+      expect(doc.body.querySelector('[role="status"]')?.textContent).toContain("Couldn't refresh the Guide");
+      expect(retryButton()).toBe(button);
+      expect(button?.textContent).toContain("Trying again…");
+      expect(doc.activeElement).toBe(button);
+    });
+
+    it("reads a second press during the retry as the same retry, not another request", async () => {
+      const { button, load } = await mountFailed();
+      await act(async () => {
+        button?.click();
+      });
+      const during = load.mock.calls.length;
+
+      await act(async () => {
+        button?.click();
+        button?.click();
+      });
+
+      expect(load.mock.calls.length).toBe(during);
+    });
+
+    it("keeps focus on the button when the retry fails again, and offers it once more", async () => {
+      const { answer, button, load } = await mountFailed();
+      await act(async () => {
+        button?.click();
+      });
+
+      await act(async () => {
+        answer("fail");
+      });
+
+      expect(retryButton()).toBe(button);
+      expect(button?.textContent).toContain("Try again");
+      expect(button?.textContent).not.toContain("Trying");
+      expect(doc.activeElement).toBe(button);
+
+      const before = load.mock.calls.length;
+      await act(async () => {
+        button?.click();
+      });
+      expect(load.mock.calls.length).toBe(before + 1);
+      expect(doc.activeElement).toBe(button);
+    });
+
+    it("drops the notice when the retry works", async () => {
+      const { answer, button } = await mountFailed();
+      await act(async () => {
+        button?.click();
+      });
+
+      await act(async () => {
+        answer("ok");
+      });
+
+      expect(doc.body.textContent).not.toContain("Couldn't refresh the Guide");
+    });
+
+    // The notice goes when the retry works, and the focus on its button goes with it. A remote is
+    // sent to the Guide's home, the selected programme, instead of to nothing.
+    it("sends the remote to the selected programme when the retry works", async () => {
+      const focusRegistry = tvRegistry();
+      const { answer, button } = await mountFailed({ focusRegistry });
+      await act(async () => {
+        button?.click();
+      });
+      expect(focusRegistry.request).not.toHaveBeenCalled();
+
+      await act(async () => {
+        answer("ok");
+      });
+
+      expect(focusRegistry.request).toHaveBeenCalledWith(home);
+    });
+
+    it("does not send the remote anywhere while the retry is still failing", async () => {
+      const focusRegistry = tvRegistry();
+      const { answer, button } = await mountFailed({ focusRegistry });
+      await act(async () => {
+        button?.click();
+      });
+
+      await act(async () => {
+        answer("fail");
+      });
+
+      expect(focusRegistry.request).not.toHaveBeenCalled();
+    });
+
+    // The press was for that one retry. When it fails, a later recovery nobody pressed for (a
+    // channel frame's refresh, a tune) must not pull the remote from wherever it has gone.
+    it("sends the remote nowhere when a background refresh recovers after a retry that failed", async () => {
+      const focusRegistry = tvRegistry();
+      const { answer, button, controller } = await mountFailed({ focusRegistry });
+      await act(async () => {
+        button?.click();
+      });
+      await act(async () => {
+        answer("fail");
+      });
+
+      await act(async () => {
+        void controller.refresh("cartoons");
+      });
+      await act(async () => {
+        answer("ok");
+      });
+
+      expect(doc.body.textContent).not.toContain("Couldn't refresh the Guide");
+      expect(focusRegistry.request).not.toHaveBeenCalled();
+    });
+
+    it("still sends the remote home when a later press recovers after one that failed", async () => {
+      const focusRegistry = tvRegistry();
+      const { answer, button } = await mountFailed({ focusRegistry });
+      await act(async () => {
+        button?.click();
+      });
+      await act(async () => {
+        answer("fail");
+      });
+      await act(async () => {
+        button?.click();
+      });
+      await act(async () => {
+        answer("ok");
+      });
+
+      expect(focusRegistry.request).toHaveBeenCalledTimes(1);
+      expect(focusRegistry.request).toHaveBeenCalledWith(home);
+    });
+  });
+
+  // The error panel is the first load's "notice": its Try again used to swap to the loading panel,
+  // taking the button (and the viewer's focus) with it.
+  describe("retrying from the error panel", () => {
+    const retryButton = () =>
+      Array.from(doc.body.querySelectorAll('[role="button"]')).find((node) =>
+        /^(Try again|Trying again…)$/.test(node.textContent?.trim() ?? ""),
+      );
+
+    const mountNeverAnswered = async (focusRegistry?: { register: () => void; request: () => void }) => {
+      let answer: (outcome: "ok" | "fail") => void = () => undefined;
+      const load = vi.fn().mockRejectedValueOnce(new Error("offline"));
+      load.mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            answer = (outcome) => (outcome === "ok" ? resolve(sourceGuide) : reject(new Error("offline")));
+          }),
+      );
+      const controller = createGuideController({ now: () => 900_000, source: { load } });
+      const container = doc.createElement("div");
+      doc.body.append(container);
+      await act(async () => {
+        createRoot(container).render(
+          <LoomarrProvider>
+            <GuideJourney
+              controller={controller}
+              focusRegistry={focusRegistry}
+              onTune={vi.fn()}
+              preferredChannelId="cartoons"
+            />
+          </LoomarrProvider>,
+        );
+      });
+      const button = retryButton();
+      button?.focus();
+      return { answer: (o: "ok" | "fail") => answer(o), button, load };
+    };
+
+    it("keeps focus on the button while the retry is in flight, and says it is trying", async () => {
+      const { button, load } = await mountNeverAnswered();
+      expect(doc.body.textContent).toContain("Guide unavailable");
+      expect(doc.activeElement).toBe(button);
+      const before = load.mock.calls.length;
+
+      await act(async () => {
+        button?.click();
+      });
+
+      expect(load.mock.calls.length).toBe(before + 1);
+      expect(doc.body.textContent).toContain("Guide unavailable");
+      expect(retryButton()).toBe(button);
+      expect(button?.textContent).toContain("Trying again…");
+      expect(doc.activeElement).toBe(button);
+
+      // A second press is the same retry.
+      await act(async () => {
+        button?.click();
+      });
+      expect(load.mock.calls.length).toBe(before + 1);
+    });
+
+    it("keeps focus on the button when the retry fails again", async () => {
+      const { answer, button } = await mountNeverAnswered();
+      await act(async () => {
+        button?.click();
+      });
+
+      await act(async () => {
+        answer("fail");
+      });
+
+      expect(retryButton()).toBe(button);
+      expect(button?.textContent).toContain("Try again");
+      expect(doc.activeElement).toBe(button);
+    });
+
+    it("sends the remote to the selected programme when the retry works", async () => {
+      const focusRegistry = { register: vi.fn(), request: vi.fn() };
+      const { answer, button } = await mountNeverAnswered(focusRegistry);
+      await act(async () => {
+        button?.click();
+      });
+      expect(focusRegistry.request).not.toHaveBeenCalled();
+
+      await act(async () => {
+        answer("ok");
+      });
+
+      expect(doc.body.textContent).toContain("Cartoon Classics");
+      expect(focusRegistry.request).toHaveBeenCalledWith(home);
+    });
   });
 });

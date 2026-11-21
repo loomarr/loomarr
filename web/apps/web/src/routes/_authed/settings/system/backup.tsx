@@ -1,10 +1,13 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
+import { Card, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { BackupPanel } from "@/components/loomarr/settings/backup-panel";
+import { useLoomarrEventListener } from "@/events/events-provider";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 
@@ -23,6 +26,14 @@ const BackupPage = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const list = systemApi.useSystemBackupsList();
+  // A scheduled backup writes a file behind the viewer: the list reads again on the backup job's
+  // own frames, not every job's.
+  useLoomarrEventListener({
+    onJob: (frame) => {
+      if (frame.name === "backup")
+        void queryClient.invalidateQueries({ queryKey: systemApi.getSystemBackupsListQueryKey() });
+    },
+  });
   const entries = useSettingsEntries();
   const [error, setError] = useState<string | null>(null);
 
@@ -61,14 +72,18 @@ const BackupPage = () => {
         },
       ]}
       footer={
-        <div className="flex flex-col gap-3">
-          <aside className="border-caution/40 bg-caution/5 rounded-lg border p-4 text-sm">
-            <h2 className="font-medium">The image volume is separate</h2>
-            <p className="text-muted-foreground mt-1">
-              This backup contains the database, including settings, channels, people, and generated secrets.
-              It does not copy image files or operator-uploaded artwork.
-            </p>
-          </aside>
+        <Stack gap="control">
+          <Card borderRadius={8} padding={16} render="aside" tone="caution">
+            <Stack gap="1">
+              <Text as="h2" textRole="cardLabel">
+                The image volume is separate
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
+                This backup contains the database, including settings, channels, people, and generated
+                secrets. It does not copy image files or operator-uploaded artwork.
+              </Text>
+            </Stack>
+          </Card>
           <BackupPanel
             list={list.data.data}
             onBackUpNow={handleBackUpNow}
@@ -77,7 +92,7 @@ const BackupPage = () => {
             pending={backUpNow.isPending}
             error={error}
           />
-        </div>
+        </Stack>
       }
     />
   );
@@ -85,6 +100,11 @@ const BackupPage = () => {
 
 const Route = createFileRoute("/_authed/settings/system/backup")({
   component: BackupPage,
+  // The backups on disk, so the page opens on its list. Admin-only like the page.
+  loader: async ({ context: { queryClient } }) => {
+    if (!(await viewerIsAdmin(queryClient))) return;
+    await queryClient.ensureQueryData(systemApi.getSystemBackupsListQueryOptions());
+  },
 });
 
 export { Route };

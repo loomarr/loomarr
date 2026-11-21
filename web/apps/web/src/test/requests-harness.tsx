@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
+import { vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
@@ -130,7 +131,18 @@ const stub = ({ me, journeys = [], proposals = [], pulls = [], titles = {} }: Fi
 };
 
 const renderAt = (path: string) => {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // The shell's rail is a Stack hidden below `md`, and a Stack reads the width from matchMedia, which
+  // jsdom lacks (it reads as the narrowest). A desktop window matches the min-width queries and
+  // nothing else, as a real one does.
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    addEventListener: vi.fn(),
+    matches: query.includes("min-width"),
+    media: query,
+    removeEventListener: vi.fn(),
+  }));
+  // staleTime as the app sets it (lib/query-client): a page opened by a route's loader reads what
+  // the loader fetched instead of asking again on mount.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 15_000 } } });
   const router = settleOnTeardown(
     createRouter({
       routeTree,

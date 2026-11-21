@@ -16,4 +16,11 @@
 // The other branches (an explicit start hour, a non-today day) are already derived from midnight
 // and so are stable without help.
 
-export { DEFAULT_WINDOW_MINUTES, defaultGuideWindow, guideWindow } from "@loomarr/core/guide";
+export {
+  DEFAULT_WINDOW_MINUTES,
+  defaultGuideWindow,
+  guideDayOffset,
+  guideDayStart,
+  guideHourOf,
+  guideWindow,
+} from "@loomarr/core/guide";

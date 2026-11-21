@@ -19,12 +19,10 @@ const Exact: Story = { args: { entries: podEntries, matchLevel: "exact" } };
 
 const EraWidened: Story = { args: { entries: podEntries, matchLevel: "widened" } };
 
-const EraIgnored: Story = { args: { entries: podEntries, matchLevel: "audience" } };
-
 // Nothing matched — the embedded card stands in rather than dead air (§10).
 const BumperCardOnly: Story = {
   args: { entries: [fallbackCardEntry], matchLevel: "bumper_card" },
 };
 
 export default meta;
-export { BumperCardOnly, EraIgnored, EraWidened, Exact };
+export { BumperCardOnly, EraWidened, Exact };

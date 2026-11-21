@@ -481,6 +481,12 @@ func (s *Service) Pull(ctx context.Context, model string) (string, error) {
 			operation.Percent, operation.Completed, operation.Total = pp.Percent(), pp.Completed, pp.Total
 			operation.UpdatedAt = now().UTC()
 			s.persistPullOperation(operationCtx, operation)
+			// Ollama's last line says "success" while the operation is still running here: the
+			// completion below stores the outcome and only then announces it, so a client that
+			// reads the operation on that frame sees what the frame says.
+			if pp.Status == string(store.InteractiveOperationSuccess) {
+				return
+			}
 			s.publishPull(jobID, model, pp.Status, pp.Percent(), pp.Completed, pp.Total, "")
 		})
 	}, func(completionCtx context.Context, runErr error) {

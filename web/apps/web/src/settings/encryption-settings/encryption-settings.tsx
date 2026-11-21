@@ -1,5 +1,5 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
-import { Action } from "@loomarr/design-system";
+import { Action, Grid, Stack, Text } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -27,14 +27,18 @@ const EncryptionSettings = () => {
   };
 
   return (
-    <section className="border-border rounded-lg border p-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <Stack borderColor="$borderDecorative" borderRadius={8} borderWidth={1} padding={16} render="section">
+      <Stack align="start" direction="row" gap="4" justify="between" wrap>
         <div>
-          <h2 className="text-sm font-medium">Database secret encryption</h2>
-          <p className="text-muted-foreground mt-1 max-w-2xl text-sm leading-relaxed">
-            Credentials saved in Loomarr are encrypted before they enter the database. Keep the installation
-            key with your host or secrets manager—it is not included in database backups.
-          </p>
+          <Text as="h2" textRole="cardLabel">
+            Database secret encryption
+          </Text>
+          <Stack marginTop={4} maxWidth={672}>
+            <Text as="p" textRole="compact" tone="secondary">
+              Credentials saved in Loomarr are encrypted before they enter the database. Keep the installation
+              key with your host or secrets manager—it is not included in database backups.
+            </Text>
+          </Stack>
         </div>
         {confirming ? (
           <ConfirmStep
@@ -57,37 +61,53 @@ const EncryptionSettings = () => {
             {rotate.isPending ? "Rotating…" : "Rotate data key"}
           </Action>
         )}
-      </div>
+      </Stack>
       {status.error != null && (
-        <div className="mt-3">
+        <Stack marginTop={12}>
           <ErrorState error={status.error} />
-        </div>
+        </Stack>
       )}
       {rotate.error != null && (
-        <div className="mt-3">
+        <Stack marginTop={12}>
           <ErrorState error={rotate.error} />
-        </div>
+        </Stack>
       )}
       {encryption != null && (
-        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+        <Grid columns={{ base: 1, sm: 3 }} gap="3" marginTop={16} render="dl">
           <div>
-            <dt className="text-muted-foreground">Status</dt>
-            <dd className="font-medium">{encryption.enabled ? "Encrypted" : "Unavailable"}</dd>
+            <Text as="dt" textRole="compact" tone="secondary">
+              Status
+            </Text>
+            <Text as="dd" textRole="cardLabel">
+              {encryption.enabled ? "Encrypted" : "Unavailable"}
+            </Text>
           </div>
           <div>
-            <dt className="text-muted-foreground">Installation key fingerprint</dt>
-            <dd className="font-mono text-xs break-all">
+            <Text as="dt" textRole="compact" tone="secondary">
+              Installation key fingerprint
+            </Text>
+            <Text as="dd" textRole="mono" tone="primary" wordBreak="break-all">
               {encryption.installationKeyFingerprint || "Unavailable"}
-            </dd>
+            </Text>
           </div>
           <div>
-            <dt className="text-muted-foreground">Readable data keys</dt>
-            <dd className="font-medium">{encryption.dataKeyCount}</dd>
+            <Text as="dt" textRole="compact" tone="secondary">
+              Readable data keys
+            </Text>
+            <Text as="dd" textRole="cardLabel">
+              {encryption.dataKeyCount}
+            </Text>
           </div>
-        </dl>
+        </Grid>
       )}
-      {message != null && <p className="text-muted-foreground mt-3 text-sm">{message}</p>}
-    </section>
+      {message != null && (
+        <Stack marginTop={12}>
+          <Text as="p" textRole="compact" tone="secondary">
+            {message}
+          </Text>
+        </Stack>
+      )}
+    </Stack>
   );
 };
 

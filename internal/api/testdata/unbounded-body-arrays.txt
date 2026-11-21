@@ -1,0 +1,4 @@
+# Request-body arrays with no maxItems, held by TestEveryCallerSuppliedArrayDeclaresMaxItems.
+# This list only shrinks: give a field its ceiling (a maxItems tag) and delete its line here.
+# It is empty: every caller-supplied array now declares its ceiling, so a new one without a
+# maxItems tag fails the test and does not belong here.

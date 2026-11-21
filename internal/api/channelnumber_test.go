@@ -43,11 +43,13 @@ func newServerWithNumbers(t *testing.T, nums *fakeNumberSource) (*httptest.Serve
 	log := slog.New(slog.DiscardHandler)
 	chSvc := &fakeChannelSvc{}
 	h := api.Router(log, api.Options{
-		Store:    st,
-		Auth:     testAuthorizer{},
-		Log:      log,
-		Channels: chSvc,
-		Binder:   approval.New(st, chSvc, nil, log).WithChannelNumbers(nums),
+		Store: st,
+		Auth:  testAuthorizer{},
+		Log:   log,
+		Channels: api.ChannelsOptions{
+			Service: chSvc,
+			Binder:  approval.New(st, chSvc, nil, log).WithChannelNumbers(nums),
+		},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

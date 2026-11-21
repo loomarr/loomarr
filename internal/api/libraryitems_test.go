@@ -106,7 +106,7 @@ func TestLibraryItemsCarryPosters(t *testing.T) {
 	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
 			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, Images: imgs,
-			LibraryRoots: newScanLibrary(t, defaults.Store),
+			Library: api.LibraryOptions{Roots: newScanLibrary(t, defaults.Store)},
 		})
 	})
 	ctx := context.Background()

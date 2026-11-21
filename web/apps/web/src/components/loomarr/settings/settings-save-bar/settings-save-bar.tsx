@@ -1,4 +1,4 @@
-import { Action } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { SettingsSaveBarProps } from "./settings-save-bar.type";
 
@@ -17,23 +17,24 @@ const SettingsSaveBar = ({
   if (dirtyCount === 0) return null;
 
   return (
-    <section
+    <Stack
+      align="center"
       aria-label="Unsaved changes"
-      className={cn(
-        "border-border bg-card sticky bottom-0 flex items-center gap-3 border-t px-6 py-3",
-        className,
-      )}
+      className={cn("border-border bg-card sticky bottom-0 border-t px-6 py-3", className)}
+      direction="row"
+      gap="control"
+      render="section"
     >
-      <p className="flex-1 text-sm">
+      <Text as="p" className="flex-1" textRole="compact">
         {dirtyCount} unsaved {dirtyCount === 1 ? "change" : "changes"}
-      </p>
+      </Text>
       <Action disabled={saving} onPress={onDiscard} variant="ghost">
         Discard
       </Action>
       <Action disabled={saving} onPress={onSave}>
         {saving ? "Saving…" : "Save changes"}
       </Action>
-    </section>
+    </Stack>
   );
 };
 

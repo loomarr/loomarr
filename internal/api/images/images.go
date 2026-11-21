@@ -34,6 +34,8 @@ type ImageService interface {
 	// Adopt records a remote https image for the fetch job and returns at once; the image has its
 	// bytes only once the job fetched them.
 	Adopt(ctx context.Context, srcURL string, req images.IngestRequest) (images.Image, error)
+	// Lookup reads the image Adopt made of a URL, without writing; ErrNotFound when there is none.
+	Lookup(ctx context.Context, srcURL string) (images.Image, error)
 	PathFor(hash string, width int, f images.Format) string
 	URLFor(hash string, width int, f images.Format) string
 	SrcSet(hash string, role images.Role, f images.Format, sourceWidth int) string
@@ -275,15 +277,20 @@ func (s *Handlers) LibraryImage(ctx context.Context, hash string) *httpcore.Imag
 const libraryCandidateImageOwner = "library_candidate"
 
 // CandidatePoster adopts a candidate's poster, so the image service fetches it, and renders it once
-// its bytes are here. Until then, or when it cannot be adopted, the card shows the name.
+// its bytes are here. Until then, or when it cannot be adopted, the card shows the name. A poster
+// adopted before is only read: Needs you lists every candidate's on each load, and a write each
+// would cost a large, messy library thousands per visit.
 func (s *Handlers) CandidatePoster(ctx context.Context, itemID, url string) *httpcore.ImageDTO {
 	if s.images == nil || url == "" {
 		return nil
 	}
-	rec, err := s.images.Adopt(ctx, url, images.IngestRequest{
-		Role: images.RolePoster, Visibility: images.VisibilityMember,
-		OwnerKind: libraryCandidateImageOwner, OwnerID: itemID,
-	})
+	rec, err := s.images.Lookup(ctx, url)
+	if errors.Is(err, images.ErrNotFound) {
+		rec, err = s.images.Adopt(ctx, url, images.IngestRequest{
+			Role: images.RolePoster, Visibility: images.VisibilityMember,
+			OwnerKind: libraryCandidateImageOwner, OwnerID: itemID,
+		})
+	}
 	if err != nil || !rec.HasBytes() {
 		return nil
 	}

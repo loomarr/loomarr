@@ -1,4 +1,4 @@
-import { Action, StatusLabel } from "@loomarr/design-system";
+import { Action, Card, Grid, Stack, StatusLabel, Text } from "@loomarr/design-system";
 import type { InvitationRosterProps } from "./invitation-roster.type";
 
 const deliveryCopy = {
@@ -31,28 +31,26 @@ const outcomeHint = (outcome?: string) => {
 };
 
 const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: InvitationRosterProps) => (
-  <section aria-labelledby="invitation-roster-title" className="flex flex-col gap-3">
+  <Stack aria-labelledby="invitation-roster-title" gap="control" render="section">
     <div>
-      <h2 id="invitation-roster-title" className="text-lg font-semibold">
+      <Text as="h2" id="invitation-roster-title" strong textRole="headline">
         Invitations
-      </h2>
-      <p className="text-muted-foreground text-sm">
-        Pending admission decisions and the latest attempt to deliver each one.
-      </p>
+      </Text>
+      <Text as="p" textRole="compact" tone="secondary">
+        Invitations you've sent and whether they arrived.
+      </Text>
     </div>
 
     {invitations === undefined ? (
-      <div
-        className="border-border bg-card h-24 animate-pulse rounded-lg border"
-        role="status"
-        aria-label="Loading invitations"
-      />
+      <Card aria-label="Loading invitations" className="animate-pulse" height={96} role="status" />
     ) : invitations.length === 0 ? (
-      <div className="border-border bg-card text-muted-foreground rounded-lg border p-5 text-sm">
-        No invitations yet. Directly created and imported people continue to appear below.
-      </div>
+      <Card padding={20}>
+        <Text as="p" textRole="compact" tone="secondary">
+          No invitations yet. Directly created and imported people continue to appear below.
+        </Text>
+      </Card>
     ) : (
-      <ul className="grid gap-3">
+      <Grid gap="3" render="ul">
         {invitations.map((value) => {
           const name = value.displayName || value.username || value.libraryUserId || "Reserved person";
           const delivery = value.emailDelivery;
@@ -68,11 +66,18 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
           const hint = outcomeHint(delivery?.outcome) ?? copy?.hint;
 
           return (
-            <li key={value.id} className="border-border bg-card rounded-lg border p-4">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{name}</span>
+            <Card key={value.id} padding={16} render="li">
+              <Stack
+                align={{ base: "stretch", sm: "start" }}
+                direction={{ base: "column", sm: "row" }}
+                gap="4"
+                justify={{ base: "start", sm: "between" }}
+              >
+                <Stack flexShrink={1} gap="2" minWidth={0}>
+                  <Stack align="center" direction="row" gap="inline" wrap>
+                    <Text as="span" textRole="cardLabel">
+                      {name}
+                    </Text>
                     <StatusLabel tone={value.role === "admin" ? "notice" : "off"}>
                       {value.role === "admin" ? "Admin" : "Member"}
                     </StatusLabel>
@@ -86,15 +91,19 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
                         {copy.label}
                       </StatusLabel>
                     )}
-                  </div>
-                  <p className="text-static-400 text-sm">
+                  </Stack>
+                  <Text as="p" textRole="compact" tone="secondary">
                     {value.contactAddress?.email ?? "Add a contact address before sending email."}
-                  </p>
-                  {hint && <p className="text-muted-foreground max-w-3xl text-sm">{hint}</p>}
-                </div>
+                  </Text>
+                  {hint && (
+                    <Text as="p" className="max-w-3xl" textRole="compact" tone="secondary">
+                      {hint}
+                    </Text>
+                  )}
+                </Stack>
 
                 {pending && (
-                  <div className="flex flex-wrap gap-2">
+                  <Stack direction="row" flexShrink={1} gap="inline" wrap>
                     {canSend && (
                       <Action
                         accessibilityLabel={`${action} to ${name}`}
@@ -112,15 +121,15 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
                     <Action onPress={() => onShare(value)} variant="ghost">
                       Share QR or link
                     </Action>
-                  </div>
+                  </Stack>
                 )}
-              </div>
-            </li>
+              </Stack>
+            </Card>
           );
         })}
-      </ul>
+      </Grid>
     )}
-  </section>
+  </Stack>
 );
 
 export { InvitationRoster };

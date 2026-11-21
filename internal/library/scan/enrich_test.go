@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -13,16 +14,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
+	"github.com/loomarr/loomarr/internal/media/header"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
-// fakeCatalog answers fetches from a table; an unknown key is not found, and err fails every fetch.
+// fakeCatalog answers fetches from a table; an unknown key is not found, err fails every fetch, and
+// errFor fails the fetch of one id.
 type fakeCatalog struct {
 	records map[string]mp.Record
 	err     error
+	errFor  map[string]error
 	fetched []string
 }
 
@@ -37,6 +43,9 @@ func (f *fakeCatalog) Capabilities() mp.Capabilities {
 var fakeCatalogKeys = CatalogKeys{
 	{Kind: mp.KindMovie, Namespace: mp.NamespaceTMDB},
 	{Kind: mp.KindSeries, Namespace: mp.NamespaceTMDB},
+	{Kind: mp.KindSeries, Namespace: mp.NamespaceTVDB},
+	{Kind: mp.KindSeries, Namespace: mp.NamespaceIMDB},
+	{Kind: mp.KindMovie, Namespace: mp.NamespaceIMDB},
 	{Kind: mp.KindEpisode, Namespace: mp.NamespaceTVDB},
 	{Kind: mp.KindCollection, Namespace: mp.NamespaceTMDBCollection},
 	{Kind: mp.KindSeason, Namespace: mp.NamespaceTMDB},
@@ -47,6 +56,9 @@ func (f *fakeCatalog) Fetch(_ context.Context, ref mp.Ref) (mp.Record, error) {
 	f.fetched = append(f.fetched, string(ref.Kind)+":"+ref.ID.Value)
 	if f.err != nil {
 		return mp.Record{}, f.err
+	}
+	if err := f.errFor[ref.ID.Value]; err != nil {
+		return mp.Record{}, err
 	}
 	rec, ok := f.records[ref.ID.Value]
 	if !ok {
@@ -140,6 +152,84 @@ func TestEnricherWritesTheCatalogsDetails(t *testing.T) {
 	e.Now = func() time.Time { return time.Now().Add(enrichRetry + time.Minute) }
 	if err := e.Tick(ctx); err != nil || len(catalog.fetched) != before+1 {
 		t.Fatalf("after the hold the title was not fetched: %v, %v", catalog.fetched[before:], err)
+	}
+}
+
+// A title whose details can't be looked up is never silent: the Library says how many wait, why,
+// and when the next try is. A catalog that can't be used (no key, a key turned down, out of reach)
+// holds no title back, so every one is looked up as soon as it's fixed; a title the catalog
+// answers badly for waits on its own, and the rest go on.
+func TestDetailsSayWhyTitlesWait(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	h.file("Juliet (2016) {tmdb-90000204}/Juliet (2016) {tmdb-90000204}.mkv", 10)
+	h.file("Kilo (2017) {tmdb-90000205}/Kilo (2017) {tmdb-90000205}.mkv", 10)
+	h.file("Lima (2018) {tmdb-90000206}/Lima (2018) {tmdb-90000206}.mkv", 10)
+	h.run()
+	now := time.Now()
+	catalog := &fakeCatalog{records: map[string]mp.Record{}}
+	e := &Enricher{Store: h.st, Provider: catalog, Now: func() time.Time { return now }}
+	lib := &Library{Enricher: e, Now: func() time.Time { return now }}
+	details := func() Details {
+		t.Helper()
+		d, err := lib.Details(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+
+	nextTick := now.Add(EnrichInterval)
+	if got := details(); got.Waiting != 3 || got.State != LookupsOK || !got.RetryAt.IsZero() {
+		t.Fatalf("before any lookup: %+v, want 3 waiting, ok, no retry", got)
+	}
+
+	// As the TMDB provider says it with no key set.
+	catalog.err = fmt.Errorf("tmdb: %w", mp.ErrNotConfigured)
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := details(); got.Waiting != 3 || got.State != LookupsNoKey || !got.RetryAt.IsZero() {
+		t.Fatalf("with no key: %+v, want 3 waiting, no_key, no retry", got)
+	}
+
+	catalog.err = &httpx.StatusError{Method: "GET", Path: "/3/movie/90000204", Status: 401}
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := details(); got.Waiting != 3 || got.State != LookupsKeyRefused || !got.RetryAt.Equal(nextTick) {
+		t.Fatalf("with the key turned down: %+v, want 3 waiting, key_refused, retry at the next tick", got)
+	}
+
+	catalog.err = &httpx.StatusError{Method: "GET", Path: "/3/movie/90000204", Status: 503}
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := details(); got.Waiting != 3 || got.State != LookupsUnreachable || !got.RetryAt.Equal(nextTick) {
+		t.Fatalf("with the catalog down: %+v, want 3 waiting, unreachable, retry at the next tick", got)
+	}
+
+	// The catalog is back but answers one title badly: that one waits its retry, held, and the
+	// other two are looked up in the same tick, held back by nothing that came before.
+	catalog.err = nil
+	catalog.errFor = map[string]error{"90000204": errors.New("a record that doesn't parse")}
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	held := now.Add(enrichRetry).Truncate(time.Millisecond)
+	if got := details(); got.Waiting != 1 || got.State != LookupsOK || !got.RetryAt.Equal(held) {
+		t.Fatalf("with one title answered badly: %+v, want 1 waiting, ok, retry at its hold %v", got, held)
+	}
+
+	// Past its hold it is looked up, and nothing waits.
+	catalog.errFor = nil
+	now = now.Add(enrichRetry + time.Minute)
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := details(); got.Waiting != 0 || got.State != LookupsOK || !got.RetryAt.IsZero() {
+		t.Fatalf("once looked up: %+v, want nothing waiting, ok, no retry", got)
 	}
 }
 
@@ -258,6 +348,62 @@ func TestEnricherDescribesAnEpisodeByItsTVDBID(t *testing.T) {
 	}
 }
 
+// A show its tvshow.nfo knows only by a TVDB id is looked up by it, and once found is keyed by the
+// catalog's own id, so its episodes take their season's entries. One whose id the catalog doesn't
+// know is the household's to say: it is in Needs you, not matched in silence.
+func TestAShowItsNFOKnowsByAnotherIDIsLookedUpByIt(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	for show, tvdb := range map[string]string{"Harbour Lights": "90000911", "Quay Street": "90000912"} {
+		h.file(show+"/Season 01/"+show+" S01E01.mkv", 10)
+		doc := `<tvshow><title>` + show + `</title><uniqueid type="tvdb" default="true">` + tvdb + `</uniqueid></tvshow>`
+		if err := os.WriteFile(filepath.Join(h.root, show, "tvshow.nfo"), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run()
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000911": {Source: src, Kind: mp.KindSeries,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000901"}, {Namespace: mp.NamespaceTVDB, Value: "90000911"}},
+			Descriptive: &mp.Descriptive{Title: "Harbour Lights", Overview: "A lighthouse keeps its town.",
+				Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 1}}}},
+		"90000901/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000921"}},
+			Numbering: &mp.Numbering{Season: 1, Episode: 1}, Descriptive: &mp.Descriptive{Title: "Lamp Lit"},
+		}}},
+	}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 3 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !slices.Contains(catalog.fetched, "series:90000911") {
+		t.Fatalf("fetched %v, want the show by its NFO's TVDB id", catalog.fetched)
+	}
+	episode := fileOrigin(h.root, "Harbour Lights/Season 01/Harbour Lights S01E01.mkv")
+	if got := h.origin(h.item(episode), episode).Observation.Facts.Name; got != "Lamp Lit" {
+		t.Fatalf("the episode = %q, want its season's entry, Lamp Lit", got)
+	}
+	needs, err := h.st.LibraryNeeds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, n := range needs {
+		names = append(names, n.Name)
+	}
+	if !slices.Equal(names, []string{"Quay Street"}) {
+		t.Fatalf("Needs you = %v, want only the show the catalog doesn't know", names)
+	}
+}
+
 // An episode with no TVDB id takes TMDB's entry for its season and number, but only when TMDB
 // numbers the series as the disk does: no other ordering, and each season on disk ends at TMDB's
 // count for it (decision 53). Otherwise its season is never asked for, and it keeps its file's
@@ -335,6 +481,690 @@ func TestEnricherNumbersAnEpisodeByItsSeasonOnlyWhenTMDBAgrees(t *testing.T) {
 			}
 		})
 	}
+}
+
+// In a show TMDB numbers as the disk does, a file whose name gives the title of another of the
+// season's episodes was named by another order: Sonarr named it before the season was renumbered,
+// and its NFO, rewritten since, carries the id and title of the episode now at its mark. It goes to
+// Needs you unnumbered, named as its file names it, rather than as the episode at its mark. A
+// title written another way ("Low Watter") keeps the entry at its mark.
+func TestAFileTitledAsAnotherEpisodeOfItsSeasonIsUnnumbered(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000083" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title, Overview: title + "."},
+		}
+	}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	dir := "Quillmoor (2011) {tmdb-90000831}/Season 01/"
+	names := []string{"Quillmoor (2011) - S01E01 - Low Watter", "Quillmoor (2011) - S01E02 - Saltmarsh", "Quillmoor (2011) - S01E03 - Copper Gate"}
+	order := []string{"Low Water", "Copper Gate", "Saltmarsh"} // TMDB's, and the NFOs' since the renumber
+	recs := map[string]mp.Record{
+		"90000831": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000831"}},
+			Descriptive: &mp.Descriptive{Title: "Quillmoor", Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 3}}}},
+	}
+	var children []mp.Record
+	for i, n := range names {
+		h.file(dir+n+".mkv", 10)
+		tvdb := "9009083" + strconv.Itoa(i+1)
+		doc := `<episodedetails><title>` + order[i] + `</title><season>1</season><episode>` + strconv.Itoa(i+1) +
+			`</episode><uniqueid type="tvdb" default="true">` + tvdb + `</uniqueid></episodedetails>`
+		if err := os.WriteFile(filepath.Join(h.root, dir, n+".nfo"), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		e := entry(i+1, order[i])
+		children = append(children, e)
+		recs[tvdb] = mp.Record{Source: src, Kind: mp.KindEpisode, Descriptive: e.Descriptive, Numbering: e.Numbering,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: tvdb}, e.IDs[0]}}
+	}
+	recs["90000831/1"] = mp.Record{Source: src, Kind: mp.KindSeason, Children: children}
+	h.run()
+	e := &Enricher{Store: h.st, Provider: &fakeCatalog{records: recs}, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, want := range []struct {
+		name       string
+		unnumbered bool
+	}{{"Low Water", false}, {"Saltmarsh", true}, {"Copper Gate", true}} {
+		o := fileOrigin(h.root, dir+names[i]+".mkv")
+		it, ok := ProjectLibraryItem(h.item(o))
+		if !ok {
+			t.Fatalf("%s: not a library item", names[i])
+		}
+		facts := h.origin(h.item(o), o).Observation.Facts
+		if facts.Name != want.name || it.Unnumbered != want.unnumbered {
+			t.Errorf("%s = %q unnumbered %v, want %q unnumbered %v", names[i], facts.Name, it.Unnumbered, want.name, want.unnumbered)
+		}
+	}
+}
+
+// A file whose title is another episode's of its show, whichever season holds it, however the
+// title spaces its words, and however the file is numbered, keeps its own details, unnumbered;
+// one whose title is its own entry's written another way takes the entry.
+func TestAFileTitledAsAnotherEpisodeOfItsShowIsUnnumbered(t *testing.T) {
+	type file struct {
+		rel, name  string
+		unnumbered bool
+	}
+	cases := []struct {
+		name    string
+		seasons [][]string // TMDB's titles, season by season
+		files   []file
+	}{
+		{"across a season line", [][]string{{"Lantern Hill", "Copper Gate", "Saltmarsh"}, {"Weir Road", "Gull Tower"}}, []file{
+			{"Season 01/Quillmoor - S01E01 - Lantern Hill.mkv", "Lantern Hill", false},
+			{"Season 01/Quillmoor - S01E03 - Weir Road.mkv", "Weir Road", true},
+			{"Season 02/Quillmoor - S02E01 - Saltmarsh.mkv", "Saltmarsh", true},
+			{"Season 02/Quillmoor - S02E02 - Gull Tower.mkv", "Gull Tower", false},
+		}},
+		{"words run together", [][]string{{"Lantern Hill", "Salt Marsh", "Copper Gate"}}, []file{
+			{"Season 01/Quillmoor - S01E02 - Copper Gate.mkv", "Copper Gate", true},
+			{"Season 01/Quillmoor - S01E03 - Saltmarsh.mkv", "Saltmarsh", true},
+		}},
+		{"numbered across the show", [][]string{{"Lantern Hill", "Copper Gate", "Saltmarsh"}, {"Weir Road"}}, []file{
+			{"Quillmoor - 001 - Lantern Hill.mkv", "Lantern Hill", false},
+			{"Quillmoor - 002 - Saltmarsh.mkv", "Saltmarsh", true},
+			{"Quillmoor - 003 - Copper Gate.mkv", "Copper Gate", true},
+			{"Quillmoor - 004 - Weir Road.mkv", "Weir Road", false},
+		}},
+		{"its own title spelled otherwise", [][]string{{"Lantern Hill", "Mr. Fenwick's Boat"}}, []file{
+			{"Season 01/Quillmoor - S01E02 - Mister Fenwicks Boat.mkv", "Mr. Fenwick's Boat", false},
+		}},
+	}
+	for i, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ctx := context.Background()
+			id := "9000085" + strconv.Itoa(i)
+			src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+			recs := map[string]mp.Record{}
+			var sizes []mp.SeasonSize
+			for s, titles := range c.seasons {
+				var children []mp.Record
+				for e, title := range titles {
+					children = append(children, mp.Record{
+						Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: id + strconv.Itoa(s+1) + strconv.Itoa(e+1)}},
+						Numbering: &mp.Numbering{Season: s + 1, Episode: e + 1}, Descriptive: &mp.Descriptive{Title: title, Overview: title + "."},
+					})
+				}
+				recs[id+"/"+strconv.Itoa(s+1)] = mp.Record{Source: src, Kind: mp.KindSeason, Children: children}
+				sizes = append(sizes, mp.SeasonSize{Number: s + 1, Episodes: len(titles)})
+			}
+			recs[id] = mp.Record{Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: id}},
+				Descriptive: &mp.Descriptive{Title: "Quillmoor", Orders: []mp.EpisodeOrder{}, Seasons: sizes}}
+			h := newHarness(t)
+			h.im.Catalog = h.st
+			dir := "Quillmoor {tmdb-" + id + "}/"
+			for _, f := range c.files {
+				h.file(dir+f.rel, 10)
+			}
+			h.run()
+			e := &Enricher{Store: h.st, Provider: &fakeCatalog{records: recs}, Rewrite: func(root string, dirs ...string) {
+				if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+					t.Fatal(err)
+				}
+			}}
+			for range 4 {
+				if err := e.Tick(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, f := range c.files {
+				o := fileOrigin(h.root, dir+f.rel)
+				it, ok := ProjectLibraryItem(h.item(o))
+				if !ok {
+					t.Fatalf("%s: not a library item", f.rel)
+				}
+				if name := h.origin(h.item(o), o).Observation.Facts.Name; name != f.name || it.Unnumbered != f.unnumbered {
+					t.Errorf("%s = %q unnumbered %v, want %q unnumbered %v", f.rel, name, it.Unnumbered, f.name, f.unnumbered)
+				}
+			}
+		})
+	}
+}
+
+// A season on disk that ends before TMDB's count, one still airing or collected in part, is
+// numbered by TMDB episode by episode: an episode whose name gives the title of TMDB's entry at its
+// mark takes the entry, and one whose name gives another title keeps its file's details, unnumbered.
+func TestASeasonThatEndsBeforeTMDBsCountIsNumberedWhereTheTitlesAgree(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000081" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title, Overview: title + "."},
+		}
+	}
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000801": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000801"}},
+			Descriptive: &mp.Descriptive{Title: "Larch Row", Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 4}}}},
+		"90000801/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(1, "Tee Off"), entry(2, "The Back Nine"), entry(3, "Sudden Death"), entry(4, "Clubhouse"),
+		}},
+	}}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	dir := "Larch Row {tmdb-90000801}/Season 01/"
+	files := []string{dir + "Larch Row - S01E01 - Tee Off.mkv", dir + "Larch Row - S01E02 - Back Nine.mkv", dir + "Larch Row - S01E03 - Clubhouse.mkv"}
+	for _, f := range files {
+		h.file(f, 10)
+	}
+	h.run()
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 3 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, want := range []struct {
+		name       string
+		unnumbered bool
+	}{{"Tee Off", false}, {"The Back Nine", false}, {"Clubhouse", true}} {
+		o := fileOrigin(h.root, files[i])
+		it, ok := ProjectLibraryItem(h.item(o))
+		if !ok {
+			t.Fatalf("%s: not a library item", files[i])
+		}
+		facts := h.origin(h.item(o), o).Observation.Facts
+		if facts.Name != want.name || it.Unnumbered != want.unnumbered || facts.EpisodeNumber != i+1 {
+			t.Errorf("%s = %q E%d unnumbered %v, want %q unnumbered %v", files[i], facts.Name, facts.EpisodeNumber, it.Unnumbered, want.name, want.unnumbered)
+		}
+	}
+}
+
+// An NFO's episode id can be another episode's: a scraper copied it beside the wrong file, or the
+// catalog's TVDB mapping points one along. When the file's own mark places it, and its show's
+// catalog numbers the show as the disk does, the catalog's entry at that mark is what it is. The
+// id's record is another episode's, so the file is described by its own number, and it stays its
+// own title beside the episode the id names.
+func TestAnEpisodeIDThatNamesAnotherEpisodeGivesWayToTheFilesNumber(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000079" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title, Overview: title + "."},
+		}
+	}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	season := filepath.Join(h.root, "Golf Show {tmdb-90000701}", "Season 01")
+	nfo := func(name, title string, episode int, tvdb string) {
+		doc := `<episodedetails><title>` + title + `</title><season>1</season><episode>` + strconv.Itoa(episode) +
+			`</episode><uniqueid type="tvdb" default="true">` + tvdb + `</uniqueid></episodedetails>`
+		if err := os.WriteFile(filepath.Join(season, name+".nfo"), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.file("Golf Show {tmdb-90000701}/Season 01/Golf Show S01E01 - Tee Off.mkv", 10)
+	h.file("Golf Show {tmdb-90000701}/Season 01/Golf Show S01E02 - The Back Nine.mkv", 10)
+	h.file("Golf Show {tmdb-90000701}/Season 01/Golf Show S01E03 - Sudden Death.mkv", 10)
+	nfo("Golf Show S01E02 - The Back Nine", "The Back Nine", 2, "90090903") // the 3rd's id
+	nfo("Golf Show S01E03 - Sudden Death", "Sudden Death", 3, "90090903")
+	h.run()
+	third := entry(3, "Sudden Death")
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000701": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
+			Descriptive: &mp.Descriptive{Title: "Golf Show", Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 3}}}},
+		"90000701/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{entry(1, "Tee Off"), entry(2, "The Back Nine"), third}},
+		"90090903": {Source: src, Kind: mp.KindEpisode, Descriptive: third.Descriptive,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90090903"}, third.IDs[0]}},
+	}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 3 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	second := fileOrigin(h.root, "Golf Show {tmdb-90000701}/Season 01/Golf Show S01E02 - The Back Nine.mkv")
+	thirdFile := fileOrigin(h.root, "Golf Show {tmdb-90000701}/Season 01/Golf Show S01E03 - Sudden Death.mkv")
+	facts := h.origin(h.item(second), second).Observation.Facts
+	if facts.Name != "The Back Nine" || facts.Overview != "The Back Nine." || facts.SeasonNumber != 1 || facts.EpisodeNumber != 2 {
+		t.Fatalf("the 2nd = %q (%q) S%dE%d, want its own entry, The Back Nine S1E2", facts.Name, facts.Overview, facts.SeasonNumber, facts.EpisodeNumber)
+	}
+	if got := h.origin(h.item(thirdFile), thirdFile).Observation.Facts.Name; got != "Sudden Death" {
+		t.Fatalf("the 3rd = %q, want Sudden Death by its id", got)
+	}
+	if h.item(second).ID == h.item(thirdFile).ID {
+		t.Fatal("the 2nd and 3rd are one title")
+	}
+}
+
+// An episode's NFO that numbers it as another episode than its name does is that episode's, copied
+// beside the wrong file: the name's number stands, and so does the name's title, not the NFO's.
+func TestAnNFONumberingAnotherEpisodeDoesNotNameTheFile(t *testing.T) {
+	h := newHarness(t)
+	rel := "Iron Shore/Season 02/Iron Shore - S02E06 - Cathedrals.mkv"
+	h.file(rel, 10)
+	doc := `<episodedetails><title>Tunnels</title><plot>Below the yard.</plot><season>2</season><episode>7</episode>` +
+		`<uniqueid type="tvdb" default="true">90090907</uniqueid></episodedetails>`
+	if err := os.WriteFile(filepath.Join(h.root, "Iron Shore", "Season 02", "Iron Shore - S02E06 - Cathedrals.nfo"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	o := fileOrigin(h.root, rel)
+	facts := h.origin(h.item(o), o).Observation.Facts
+	if facts.Name != "Cathedrals" || facts.Overview != "" || facts.SeasonNumber != 2 || facts.EpisodeNumber != 6 {
+		t.Fatalf("= %q (%q) S%dE%d, want Cathedrals S2E6 with no other episode's overview", facts.Name, facts.Overview, facts.SeasonNumber, facts.EpisodeNumber)
+	}
+}
+
+// An episode's copies are one title from the first pass, with no ids to join them: a 720p beside a
+// 1080p, and a copy kept in "Season 1" beside "Season 01". Two files numbered alike but titled apart
+// are two episodes, one misnumbered, never one title's copies.
+func TestAnEpisodesCopiesAreOneTitle(t *testing.T) {
+	h := newHarness(t)
+	for _, rel := range []string{
+		"Hollin Reach (2005)/Season 01/Hollin Reach (2005) - S01E02 - The Pit [HDTV-720p].mkv",
+		"Hollin Reach (2005)/Season 01/Hollin Reach (2005) - S01E02 - The Pit [WEBDL-1080p].mkv",
+		"Hollin Reach (2005)/Season 1/Hollin Reach - S01E02 - The Pit.avi",
+		"Hollin Reach (2005)/Season 01/Hollin Reach (2005) - S01E03 - Low Ground [HDTV-720p].mkv",
+		"Hollin Reach (2005)/Season 1/Hollin Reach - S01E03 - High Water.avi",
+	} {
+		h.file(rel, 10)
+	}
+	h.run()
+	item := func(rel string) string { return string(h.item(fileOrigin(h.root, rel)).ID) }
+	pit := item("Hollin Reach (2005)/Season 01/Hollin Reach (2005) - S01E02 - The Pit [HDTV-720p].mkv")
+	if item("Hollin Reach (2005)/Season 01/Hollin Reach (2005) - S01E02 - The Pit [WEBDL-1080p].mkv") != pit ||
+		item("Hollin Reach (2005)/Season 1/Hollin Reach - S01E02 - The Pit.avi") != pit {
+		t.Error("The Pit's three copies are not one title")
+	}
+	if item("Hollin Reach (2005)/Season 01/Hollin Reach (2005) - S01E03 - Low Ground [HDTV-720p].mkv") ==
+		item("Hollin Reach (2005)/Season 1/Hollin Reach - S01E03 - High Water.avi") {
+		t.Error("two episodes numbered alike but titled apart are one title")
+	}
+}
+
+// A file manager's duplicate of an episode is a copy of it, named as it is: Windows' "- Copy",
+// "- Copy (2)", macOS's "copy" after the mark. A title that ends in the word ("Carbon Copy") is
+// that episode's own, and a part's number ("Equinox (1)") is its title's.
+func TestAnEpisodesDuplicatesAreItsCopies(t *testing.T) {
+	for _, c := range []struct {
+		original string
+		copies   []string
+	}{
+		{"Brackwater - S01E01.mkv", []string{"Brackwater - S01E01 - Copy.mkv", "Brackwater - S01E01 (1).mkv", "Brackwater - S01E01 copy.mkv", "Brackwater - S01E01 copy 2.mkv"}},
+		{"Brackwater - S01E02 - Low Tide.mkv", []string{"Brackwater - S01E02 - Low Tide - Copy.mkv", "Brackwater - S01E02 - Low Tide - Copy (2).mkv"}},
+		{"Brackwater - S01E03 - Ebb Line (1).mkv", []string{"Brackwater - S01E03 - Ebb Line (1) - Copy.mkv"}},
+	} {
+		t.Run(c.original, func(t *testing.T) {
+			h := newHarness(t)
+			dir := "Brackwater/Season 1/"
+			for _, rel := range append([]string{c.original}, c.copies...) {
+				h.file(dir+rel, 10)
+			}
+			h.run()
+			original := h.item(fileOrigin(h.root, dir+c.original))
+			want, _ := ProjectLibraryItem(original)
+			for _, rel := range c.copies {
+				if got := h.item(fileOrigin(h.root, dir+rel)); got.ID != original.ID {
+					it, _ := ProjectLibraryItem(got)
+					t.Errorf("%s is the title %q; want a copy of %q", rel, it.Name, want.Name)
+				}
+			}
+		})
+	}
+	h := newHarness(t)
+	for rel, want := range map[string]string{
+		"Brackwater/Season 1/Brackwater - S01E05 - Carbon Copy.mkv":  "Carbon Copy",
+		"Brackwater/Season 1/Brackwater - S01E06 - Ebb Line (2).mkv": "Ebb Line 2",
+	} {
+		h.file(rel, 10)
+		h.run()
+		if it, _ := ProjectLibraryItem(h.item(fileOrigin(h.root, rel))); it.Name != want {
+			t.Errorf("%s is named %q; want %q", rel, it.Name, want)
+		}
+	}
+}
+
+// Two shows' episodes whose NFOs carry one Sonarr id are two titles, found in one pass or two: the
+// id is a Sonarr's own row number, which a second Sonarr, or a reinstall's old NFOs, gives another
+// show's episode too. Only a catalog's id joins files to one title.
+func TestAnArrsOwnIDJoinsNoTitles(t *testing.T) {
+	ep := func(title, tvdb string) string {
+		return `<episodedetails><title>` + title + `</title><season>1</season><episode>1</episode><uniqueid type="tvdb" default="true">` +
+			tvdb + `</uniqueid><uniqueid type="sonarr">100</uniqueid></episodedetails>`
+	}
+	for _, later := range []bool{false, true} {
+		t.Run(strconv.FormatBool(later), func(t *testing.T) {
+			ctx := context.Background()
+			h := newHarness(t)
+			add := func(rel, doc string) {
+				p := h.file(rel, 10)
+				if err := os.WriteFile(p[:len(p)-len(filepath.Ext(p))]+".nfo", []byte(doc), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			add("Quillmoor/Season 1/Quillmoor - S01E01 - Arrival.mkv", ep("Arrival", "90048501"))
+			if later {
+				h.run()
+			}
+			add("Fallow Mere/Season 1/Fallow Mere - S01E01 - Pilot.mkv", ep("Pilot", "90048502"))
+			h.run()
+			h.run()
+			rows, err := h.st.LibraryFiles(ctx, h.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			items := map[string]bool{}
+			for _, r := range rows {
+				if r.ItemID == "" || r.Problem != "" {
+					t.Errorf("%s: item %q, problem %q", r.Path, r.ItemID, r.Problem)
+				}
+				items[r.ItemID] = true
+			}
+			if len(items) != 2 {
+				t.Errorf("two shows' episodes are %d titles; want 2", len(items))
+			}
+		})
+	}
+}
+
+// Two copies of an episode the catalog describes as one entry are one title, whatever their names
+// call it: one kept by Sonarr with its NFO's TVDB id, an older one named another way beside it, or
+// one that runs its title's words together.
+func TestCopiesTheCatalogDescribesAsOneEpisodeAreOneTitle(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000087" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title, Overview: title + "."},
+		}
+	}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	show := "Fallow Mere (2017) {tmdb-90000871}/"
+	kept := show + "Season 01/Fallow Mere (2017) - S01E02 - The Ebb [WEBDL-1080p]"
+	older := show + "Season 1/Fallow Mere - S01E02 - Low Tide.mkv"
+	together := show + "Season 1/Fallow Mere - S01E03 - Gate Ways.mkv"
+	sonarr := show + "Season 01/Fallow Mere (2017) - S01E03 - Gateways [WEBDL-1080p].mkv"
+	h.file(kept+".mkv", 10)
+	for _, rel := range []string{older, together, sonarr} {
+		h.file(rel, 10)
+	}
+	doc := `<episodedetails><title>The Ebb</title><season>1</season><episode>2</episode>` +
+		`<uniqueid type="tvdb" default="true">90090872</uniqueid></episodedetails>`
+	if err := os.WriteFile(filepath.Join(h.root, kept+".nfo"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	second := entry(2, "The Ebb")
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000871": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000871"}},
+			Descriptive: &mp.Descriptive{Title: "Fallow Mere", Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 3}}}},
+		"90000871/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{entry(1, "Still Water"), second, entry(3, "Gateways")}},
+		"90090872": {Source: src, Kind: mp.KindEpisode, Descriptive: second.Descriptive, Numbering: second.Numbering,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90090872"}}},
+	}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	item := func(rel string) inventory.ItemID { return h.item(fileOrigin(h.root, rel)).ID }
+	if item(kept+".mkv") != item(older) {
+		t.Error("an episode's copies the catalog describes alike are two titles")
+	}
+	if item(together) != item(sonarr) {
+		t.Error("copies whose titles run their words together apart are two titles")
+	}
+	if item(kept+".mkv") == item(sonarr) {
+		t.Error("two episodes are one title")
+	}
+}
+
+// A show the catalog numbers unlike the disk, here a season missing its last episode, has no entry
+// at a file's mark to weigh an episode id against, so the file's own title does. An id whose record
+// the title doesn't name gives way to TMDB's entry at the mark that the title does name; an id whose
+// record it names stands, wherever TMDB numbers that episode.
+func TestAnEpisodeIDItsFilesTitleDoesNotNameGivesWayInAShowNumberedOtherwise(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000089" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title, Overview: title + "."},
+		}
+	}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	dir := "Pine Links (2010) {tmdb-90000801}/Season 01/"
+	nfo := func(name string, episode int, tvdb string) {
+		doc := `<episodedetails><title>Stale</title><season>1</season><episode>` + strconv.Itoa(episode) +
+			`</episode><uniqueid type="tvdb" default="true">` + tvdb + `</uniqueid></episodedetails>`
+		if err := os.WriteFile(filepath.Join(h.root, dir, name+".nfo"), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, second := "Pine Links (2010) - S01E01 - Tee Off [HDTV-720p]", "Pine Links (2010) - S01E02 - The Back Nine [HDTV-720p]"
+	h.file(dir+first+".mkv", 10)
+	h.file(dir+second+".mkv", 10)
+	nfo(second, 2, "90090803") // the 3rd's id
+	nfo(first, 1, "90090805")  // its own, which TMDB numbers 5th
+	h.run()
+	third, fifth := entry(3, "Sudden Death"), entry(5, "Tee Off")
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000801": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000801"}},
+			Descriptive: &mp.Descriptive{Title: "Pine Links", Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 5}}}},
+		"90000801/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(1, "Opening Drive"), entry(2, "The Back Nine"), third, entry(4, "Clubhouse"), fifth}},
+		"90090803": {Source: src, Kind: mp.KindEpisode, Descriptive: third.Descriptive, Numbering: third.Numbering,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90090803"}, third.IDs[0]}},
+		"90090805": {Source: src, Kind: mp.KindEpisode, Descriptive: fifth.Descriptive, Numbering: fifth.Numbering,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90090805"}, fifth.IDs[0]}},
+	}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct{ file, name string }{{second, "The Back Nine"}, {first, "Tee Off"}} {
+		o := fileOrigin(h.root, dir+c.file+".mkv")
+		facts := h.origin(h.item(o), o).Observation.Facts
+		if facts.Name != c.name || facts.Overview != c.name+"." {
+			t.Errorf("%s = %q (%q), want %q with the catalog's overview", c.file, facts.Name, facts.Overview, c.name)
+		}
+	}
+}
+
+// An NFO copied beside the wrong file carries another episode's id, title and overview but the
+// file's own number. With nothing at the mark to weigh the id against (a name with no title in a
+// show TMDB numbers otherwise, or a show whose season TMDB has no entry for), the id's record must
+// not name the file: the file keeps its own name, and the first goes to Needs you unnumbered. An
+// NFO whose id the catalog does not know, and whose title the name does not give, is set aside too.
+func TestAnEpisodeIDNothingAtItsMarkSettlesGivesWay(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000099" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title, Overview: title + "."},
+		}
+	}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	nfo := func(rel, title string, episode int, tvdb string) {
+		doc := `<episodedetails><title>` + title + `</title><season>1</season><episode>` + strconv.Itoa(episode) +
+			`</episode><uniqueid type="tvdb" default="true">` + tvdb + `</uniqueid></episodedetails>`
+		if err := os.WriteFile(filepath.Join(h.root, rel+".nfo"), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Otherwise numbered: TMDB's season 1 runs to 5, the disk's to 2; the name has no title.
+	untitled := "Marsh Lanes (2011) {tmdb-90000901}/Season 01/Marsh Lanes - S01E02"
+	h.file("Marsh Lanes (2011) {tmdb-90000901}/Season 01/Marsh Lanes - S01E01.mkv", 10)
+	h.file(untitled+".mkv", 10)
+	nfo(untitled, "Gutter Ball", 2, "90090903") // the 3rd's
+	// Numbered like the disk, but TMDB has no season 1 entry to weigh the id against.
+	unseasoned := "Kettle Row (1994) {tmdb-90000902}/Season 01/Kettle Row (1994) - S01E01 - Copper Pot"
+	h.file(unseasoned+".mkv", 10)
+	h.file("Kettle Row (1994) {tmdb-90000902}/Season 01/Kettle Row (1994) - S01E02 - Iron Lid.mkv", 10)
+	nfo(unseasoned, "Iron Lid", 1, "90090912") // the 2nd's
+	// An NFO whose id the catalog doesn't know, written for another episode at the same number.
+	unknown := "Reed Hollow {tmdb-90000903}/Season 01/Reed Hollow - S01E01 - Lantern Night"
+	h.file(unknown+".mkv", 10)
+	nfo(unknown, "Fog Bank", 1, "90090931")
+	// One whose title the name agrees with keeps it, with its overview.
+	agreed := "Reed Hollow {tmdb-90000903}/Season 01/Reed Hollow - S01E02 - Low Tide"
+	h.file(agreed+".mkv", 10)
+	if err := os.WriteFile(filepath.Join(h.root, agreed+".nfo"), []byte(`<episodedetails><title>Low Tide</title><plot>Low Tide.</plot>`+
+		`<season>1</season><episode>2</episode><uniqueid type="tvdb" default="true">90090932</uniqueid></episodedetails>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	third, lid := entry(3, "Gutter Ball"), entry(2, "Iron Lid")
+	lid.IDs = []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "900009122"}}
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000901": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000901"}},
+			Descriptive: &mp.Descriptive{Title: "Marsh Lanes", Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 5}}}},
+		"90000901/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(1, "Spare"), entry(2, "Strike"), third, entry(4, "Split"), entry(5, "Turkey")}},
+		"90090903": {Source: src, Kind: mp.KindEpisode, Descriptive: third.Descriptive, Numbering: third.Numbering,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90090903"}, third.IDs[0]}},
+		"90000902": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000902"}},
+			Descriptive: &mp.Descriptive{Title: "Kettle Row", Year: 1994, Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 2}}}},
+		"90090912": {Source: src, Kind: mp.KindEpisode, Descriptive: lid.Descriptive, Numbering: lid.Numbering,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90090912"}, lid.IDs[0]}},
+	}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 5 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct {
+		rel, name, overview string
+		unnumbered          bool
+	}{
+		{untitled, "Marsh Lanes S01E02", "", true},
+		{unseasoned, "Copper Pot", "", false},
+		{unknown, "Lantern Night", "", false},
+		{agreed, "Low Tide", "Low Tide.", false},
+	} {
+		o := fileOrigin(h.root, c.rel+".mkv")
+		item := h.item(o)
+		facts := h.origin(item, o).Observation.Facts
+		it, ok := ProjectLibraryItem(item)
+		if !ok {
+			t.Fatalf("%s: not a library item", c.rel)
+		}
+		if facts.Name != c.name || facts.Overview != c.overview || it.Unnumbered != c.unnumbered || it.Season != 1 {
+			t.Errorf("%s = %q (%q) S%dE%d unnumbered %v, want %q (%q), unnumbered %v",
+				c.rel, facts.Name, facts.Overview, it.Season, it.Episode, it.Unnumbered, c.name, c.overview, c.unnumbered)
+		}
+	}
+}
+
+// #3565: the Enricher runs beside the scanner, so it can fetch a season while the pass that asked
+// for it is still writing: after the episodes are written without it, before their file rows are
+// saved. The rewrite it asks for must still name them. The pass saved each row's identity as final,
+// over the Enricher's reset, and every later pass, a full scan included, left them as their files
+// name them: `make demo-seed` waited out its ten minutes on the first show.
+func TestEnricherNamesEpisodesWhoseSeasonArrivesWhileTheirPassWrites(t *testing.T) {
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000079" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title},
+		}
+	}
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000701": {
+			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
+			Descriptive: &mp.Descriptive{Title: "Golf Show", Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 3}}},
+		},
+		"90000701/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(1, "Tee Off"), entry(2, "The Back Nine"), entry(3, "Sudden Death"),
+		}},
+	}}
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	for n := 1; n <= 3; n++ {
+		h.file(fmt.Sprintf("Golf Show {tmdb-90000701}/Season 01/Golf Show S01E0%d.mkv", n), 10)
+	}
+	h.run()
+	// The rewrites are queued, as the scanner queues them, and passed over in turn.
+	var queued [][]string
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		queued = append(queued, append([]string{root}, dirs...))
+	}}
+	passQueued := func() {
+		for len(queued) > 0 {
+			q := queued[0]
+			queued = queued[1:]
+			if err := h.im.RunFolders(ctx, q[0], q[1:]); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// The series' record arrives, and the pass over its folders asks for season 1. The Enricher,
+	// woken meanwhile, fetches it before that pass saves its file rows.
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	h.im.Store = &savingFiles{ImportStore: h.im.Store, before: func() {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	passQueued()
+	if !slices.Contains(catalog.fetched, "season:90000701/1") {
+		t.Fatalf("fetched %v, want season 1 fetched during the pass", catalog.fetched)
+	}
+	passQueued()
+	origin := fileOrigin(h.root, "Golf Show {tmdb-90000701}/Season 01/Golf Show S01E02.mkv")
+	if facts := h.origin(h.item(origin), origin).Observation.Facts; facts.Name != "The Back Nine" {
+		t.Fatalf("episode = %q, want TMDB's \"The Back Nine\"", facts.Name)
+	}
+}
+
+// savingFiles runs before once, just before the first file rows are saved: the moment a pass has
+// written its titles and not yet recorded what it wrote them from.
+type savingFiles struct {
+	ImportStore
+	before func()
+}
+
+func (s *savingFiles) SaveLibraryFiles(ctx context.Context, files []librarystore.LibraryFile) error {
+	if f := s.before; f != nil {
+		s.before = nil
+		f()
+	}
+	return s.ImportStore.SaveLibraryFiles(ctx, files)
 }
 
 // A show TMDB numbers in more than one order is numbered as the household said its files follow
@@ -442,6 +1272,277 @@ func TestEnricherNumbersAShowByTheOrderTheHouseholdPicked(t *testing.T) {
 				t.Errorf("fetched %v, want TMDB's other order asked for", catalog.fetched)
 			}
 		})
+	}
+}
+
+// A show named by air date (a daily or weekly show: "Golf Hour - 2013-02-15 - February 15,
+// 2013.mkv", loose in its folder) is an episode of that folder's show, never a movie, and TMDB's
+// season entry that aired that day says which episode it is. Its NFO's numbering, which may be
+// another catalog's, does not stand over the date.
+func TestAShowNamedByAirDateIsPlacedByTheDay(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(season, n int, aired, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode,
+			IDs:       []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: fmt.Sprintf("900008%d%d", season, n)}},
+			Numbering: &mp.Numbering{Season: season, Episode: n}, Descriptive: &mp.Descriptive{Title: title, PremiereDate: aired},
+		}
+	}
+	records := map[string]mp.Record{
+		"90000801": {
+			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000801"}},
+			Descriptive: &mp.Descriptive{
+				Title: "Golf Hour", Seasons: []mp.SeasonSize{{Number: 1, Episodes: 2}, {Number: 2, Episodes: 2}},
+				Orders: []mp.EpisodeOrder{},
+			},
+		},
+		"90000801/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(1, 1, "2012-02-10", "First Drive"), entry(1, 2, "2012-02-17", "Second Drive"),
+		}},
+		"90000801/2": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(2, 1, "2013-02-08", "The Long Putt"), entry(2, 2, "2013-02-15", "Into the Rough"),
+		}},
+	}
+	h := newHarness(t)
+	h.im.Catalog, h.im.Answers = h.st, h.st
+	rel := "Golf Hour {tmdb-90000801}/Golf Hour - 2013-02-15 - February 15, 2013.mkv"
+	path := h.file(rel, 10)
+	doc := "<episodedetails><title>February 15, 2013</title><season>11</season><episode>5</episode>" +
+		"<aired>2013-02-15</aired></episodedetails>"
+	if err := os.WriteFile(path[:len(path)-len(".mkv")]+".nfo", []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	catalog := &fakeCatalog{records: records}
+	e := &Enricher{
+		Store: h.st, Provider: catalog,
+		Rewrite: func(root string, dirs ...string) {
+			if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	origin := fileOrigin(h.root, rel)
+	item := h.item(origin)
+	if item.Kind != kindEpisode {
+		t.Fatalf("kind = %q, want an episode", item.Kind)
+	}
+	facts := h.origin(item, origin).Observation.Facts
+	if facts.Name != "Into the Rough" || facts.SeasonNumber != 2 || facts.EpisodeNumber != 2 {
+		t.Fatalf("episode = %q S%dE%d, want \"Into the Rough\" S2E2 (fetched %v)", facts.Name, facts.SeasonNumber,
+			facts.EpisodeNumber, catalog.fetched)
+	}
+	movies, err := h.st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Kind: "movie"})
+	if err != nil || len(movies.Items) != 0 {
+		t.Fatalf("movies = %+v, %v; want none", movies.Items, err)
+	}
+}
+
+// A day a lone file writes so it reads either way, "11-05-2019", is read day first, as Plex
+// writes it, unless the show aired nothing that day and did the other way round: the catalog says
+// which way the name is written. A day first one the catalog agrees with stays as it is.
+func TestADayThatReadsEitherWayIsTheOneTheShowAired(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, aired, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode,
+			IDs:       []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: fmt.Sprintf("9000096%d", n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title, PremiereDate: aired},
+		}
+	}
+	series := func(id, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: id}},
+			Descriptive: &mp.Descriptive{Title: title, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 2}}, Orders: []mp.EpisodeOrder{}},
+		}
+	}
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000961": series("90000961", "Velvet Hour"),
+		"90000961/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(1, "2019-11-05", "Election Night"), entry(2, "2019-11-12", "Recount"),
+		}},
+		"90000962": series("90000962", "Ash Lane"),
+		"90000962/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(3, "2019-05-11", "Spring Fair"), entry(4, "2019-05-18", "Fete"),
+		}},
+	}}
+	h := newHarness(t)
+	h.im.Catalog, h.im.Answers = h.st, h.st
+	monthFirst := "Velvet Hour {tmdb-90000961}/Velvet Hour - 11-05-2019.mkv"
+	dayFirst := "Ash Lane {tmdb-90000962}/Ash Lane - 11-05-2019.mkv"
+	h.file(monthFirst, 10)
+	h.file(dayFirst, 10)
+	h.run()
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct{ rel, name, aired string }{
+		{monthFirst, "Election Night", "2019-11-05"},
+		{dayFirst, "Spring Fair", "2019-05-11"},
+	} {
+		origin := fileOrigin(h.root, c.rel)
+		facts := h.origin(h.item(origin), origin).Observation.Facts
+		if facts.Name != c.name || facts.PremiereDate != c.aired {
+			t.Errorf("%s = %q aired %s, want %q aired %s", c.rel, facts.Name, facts.PremiereDate, c.name, c.aired)
+		}
+	}
+}
+
+// An anime release numbered across its whole show ("Show - 013", as Sonarr names an anime's, or
+// "[Group] Show - 13") is placed by its series' catalog: the seasons hold the episodes one after
+// another, specials aside, so the 13th of two 12-episode seasons is season 2's first. One past the
+// catalog's last stays where its file put it, unplaced.
+func TestAnAbsoluteEpisodeIsPlacedByItsShowsSeasons(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(season, n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode,
+			IDs:       []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: fmt.Sprintf("900009%02d%02d", season, n)}},
+			Numbering: &mp.Numbering{Season: season, Episode: n}, Descriptive: &mp.Descriptive{Title: title},
+		}
+	}
+	season := func(n int) mp.Record {
+		rec := mp.Record{Source: src, Kind: mp.KindSeason}
+		for e := 1; e <= 12; e++ {
+			rec.Children = append(rec.Children, entry(n, e, fmt.Sprintf("Tide %d-%d", n, e)))
+		}
+		return rec
+	}
+	records := map[string]mp.Record{
+		"90000901": {
+			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000901"}},
+			Descriptive: &mp.Descriptive{
+				Title:   "Sora no Kettle",
+				Seasons: []mp.SeasonSize{{Number: 0, Episodes: 3}, {Number: 2, Episodes: 12}, {Number: 1, Episodes: 12}},
+				Orders:  []mp.EpisodeOrder{},
+			},
+		},
+		"90000901/1": season(1), "90000901/2": season(2),
+	}
+	h := newHarness(t)
+	h.im.Catalog, h.im.Answers = h.st, h.st
+	dir := "Sora no Kettle {tmdb-90000901}/"
+	files := map[string]string{
+		dir + "Sora no Kettle - 013 - Tidewater [HDTV-1080p].mkv": "S2E1 Tide 2-1",
+		dir + "[Kumo] Sora no Kettle - 05 [1080p].mkv":            "S1E5 Tide 1-5",
+		dir + "Sora no Kettle - 025.mkv":                          "S0E0",
+	}
+	for rel := range files {
+		h.file(rel, 10)
+	}
+	h.run()
+	e := &Enricher{
+		Store: h.st, Provider: &fakeCatalog{records: records},
+		Rewrite: func(root string, dirs ...string) {
+			if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for rel, want := range files {
+		origin := fileOrigin(h.root, rel)
+		item := h.item(origin)
+		facts := h.origin(item, origin).Observation.Facts
+		got := fmt.Sprintf("S%dE%d", facts.SeasonNumber, facts.EpisodeNumber)
+		if facts.SeasonNumber+facts.EpisodeNumber > 0 {
+			got += " " + facts.Name
+		}
+		if item.Kind != kindEpisode || got != want {
+			t.Errorf("%s = %s %s, want episode %s", rel, item.Kind, got, want)
+		}
+	}
+}
+
+// Three digits read two ways, and the show's catalog says which. Kodi's "Show - 214 - Title" reads
+// as season 2's 14th: a show whose second season holds no 14th episode, but whose seasons hold a
+// 214th, numbers it across the show; one whose second season holds a 14th keeps the reading.
+// "Show - 101" reads as the show's 101st: a show too short for one, whose first season holds a
+// first, ran its season and episode together.
+func TestThreeDigitsAreConfirmedByTheCatalog(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	season := func(show string, n, episodes int) mp.Record {
+		rec := mp.Record{Source: src, Kind: mp.KindSeason}
+		for e := 1; e <= episodes; e++ {
+			rec.Children = append(rec.Children, mp.Record{
+				Source: src, Kind: mp.KindEpisode,
+				IDs:         []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: fmt.Sprintf("%s%02d%03d", show, n, e)}},
+				Numbering:   &mp.Numbering{Season: n, Episode: e},
+				Descriptive: &mp.Descriptive{Title: fmt.Sprintf("Tide %d-%d", n, e)},
+			})
+		}
+		return rec
+	}
+	series := func(id, title string, sizes ...mp.SeasonSize) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: id}},
+			Descriptive: &mp.Descriptive{Title: title, Seasons: sizes, Orders: []mp.EpisodeOrder{}},
+		}
+	}
+	records := map[string]mp.Record{
+		// A long first season of 210 and a second of 10: season 2 has no 14th, and the show's 214th
+		// is season 2's 4th.
+		"90001101":   series("90001101", "Cutters Run", mp.SeasonSize{Number: 1, Episodes: 210}, mp.SeasonSize{Number: 2, Episodes: 10}),
+		"90001101/1": season("90001101", 1, 210), "90001101/2": season("90001101", 2, 10),
+		// Seasons of 5 and 14, as its files end: season 2 holds a 14th.
+		"90001102":   series("90001102", "Brindle Point", mp.SeasonSize{Number: 1, Episodes: 5}, mp.SeasonSize{Number: 2, Episodes: 14}),
+		"90001102/1": season("90001102", 1, 5), "90001102/2": season("90001102", 2, 14),
+		// Two seasons of 10: no 101st.
+		"90001103":   series("90001103", "Orrin Vale", mp.SeasonSize{Number: 1, Episodes: 10}, mp.SeasonSize{Number: 2, Episodes: 10}),
+		"90001103/1": season("90001103", 1, 10), "90001103/2": season("90001103", 2, 10),
+	}
+	h := newHarness(t)
+	h.im.Catalog, h.im.Answers = h.st, h.st
+	files := map[string]string{
+		"Cutters Run {tmdb-90001101}/Cutters Run - 214 - Late.mkv":     "S2E4 Tide 2-4",
+		"Brindle Point {tmdb-90001102}/Brindle Point - 214 - Late.mkv": "S2E14 Tide 2-14",
+		"Brindle Point {tmdb-90001102}/Brindle Point - 105 - Dew.mkv":  "S1E5 Tide 1-5",
+		"Orrin Vale {tmdb-90001103}/Disc 1/Orrin Vale - 101.mkv":       "S1E1 Tide 1-1",
+		"Orrin Vale {tmdb-90001103}/Disc 2/Orrin Vale - 203.mkv":       "S2E3 Tide 2-3",
+	}
+	for rel := range files {
+		h.file(rel, 10)
+	}
+	h.run()
+	e := &Enricher{
+		Store: h.st, Provider: &fakeCatalog{records: records},
+		Rewrite: func(root string, dirs ...string) {
+			if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for rel, want := range files {
+		origin := fileOrigin(h.root, rel)
+		facts := h.origin(h.item(origin), origin).Observation.Facts
+		if got := fmt.Sprintf("S%dE%d %s", facts.SeasonNumber, facts.EpisodeNumber, facts.Name); got != want {
+			t.Errorf("%s = %s, want %s", rel, got, want)
+		}
 	}
 }
 
@@ -682,4 +1783,196 @@ func TestEnricherWakeNeverBlocks(t *testing.T) {
 	}
 	var none *Enricher
 	none.Wake()
+}
+
+// An id a movie's name or NFO gives, or a show's folder, whose record is another title than the
+// files name (another title and more than a year off) grounds nothing: an NFO copied from another
+// film's folder, or an id typed wrong, puts the title in Needs you rather than naming it as the
+// other. A remake shares its title, and a title the catalog knows in another language its year:
+// both stand.
+func TestAnIDWhoseRecordIsAnotherTitleGroundsNothing(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	movie := func(id, title, original string, year int) mp.Record {
+		return mp.Record{Source: src, Kind: mp.KindMovie, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: id}},
+			Descriptive: &mp.Descriptive{Title: title, OriginalTitle: original, Year: year}}
+	}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	typed := "Movies/Hollow Pines (2004) {tmdb-9100002}/Hollow Pines (2004) [Bluray-1080p].mkv"
+	copied := "Movies/Hollow Pines (2004)/Hollow Pines (2004).mkv"
+	remake := "Movies/Ferrow Lane (2019) {tmdb-9100003}/Ferrow Lane (2019).mkv"
+	foreign := "Movies/The Quiet Mill (1984) {tmdb-9100004}/The Quiet Mill (1984).mkv"
+	show := "TV/Brindle Cove (2019) {tmdb-90000951}/Season 01/Brindle Cove (2019) - S01E01 - Gulls.mkv"
+	for _, rel := range []string{typed, copied, remake, foreign, show} {
+		h.file(rel, 10)
+	}
+	if err := os.WriteFile(filepath.Join(h.root, "Movies/Hollow Pines (2004)/Hollow Pines (2004).nfo"),
+		[]byte(`<movie><title>Hollow Pines</title><year>2004</year><uniqueid type="tmdb" default="true">9100002</uniqueid></movie>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"9100002": movie("9100002", "Ferrow Lane", "", 2019),
+		"9100003": movie("9100003", "Ferrow Lane", "", 1962),
+		"9100004": movie("9100004", "Moulin Silencieux", "Le Moulin Silencieux", 1985),
+		"90000951": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000951"}},
+			Descriptive: &mp.Descriptive{Title: "Orrin Vale", Year: 1987, Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 1}}}},
+	}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct {
+		rel     string
+		matched bool
+	}{{typed, false}, {copied, false}, {remake, true}, {foreign, true}} {
+		o := fileOrigin(h.root, c.rel)
+		it, ok := ProjectLibraryItem(h.item(o))
+		if !ok {
+			t.Fatalf("%s: not a library item", c.rel)
+		}
+		if matched := it.Match.Basis != ""; matched != c.matched || !c.matched && it.Name == "Ferrow Lane" {
+			t.Errorf("%s = %q %d matched %v, want matched %v", c.rel, it.Name, it.Year, matched, c.matched)
+		}
+	}
+	o := seriesOrigin(h.root, "TV/Brindle Cove (2019) {tmdb-90000951}")
+	if s, ok := ProjectLibraryItem(h.item(o)); !ok || s.Name == "Orrin Vale" || s.Match.Basis != "" {
+		t.Errorf("show = %q matched %q, want Brindle Cove in Needs you", s.Name, s.Match.Basis)
+	}
+}
+
+// A sequel whose NFO carries the first film's id is a title of its own once the catalog answers:
+// an id that grounds nothing joins the sequel to no title either. One copied whole from the first
+// film's folder is apart before the answer too, its folder naming a sequel of the film its NFO
+// names; one whose own title is right and id typed wrong cannot be told until the catalog answers.
+func TestASequelsNFOWithTheFirstFilmsIDJoinsNoTitle(t *testing.T) {
+	ctx := context.Background()
+	first := "Movies/Harrow Fen (2001)/Harrow Fen (2001).mkv"
+	sequel := "Movies/Harrow Fen 2 (2004)/Harrow Fen 2 (2004).mkv"
+	doc := func(title, year string) string {
+		return `<movie><title>` + title + `</title><year>` + year + `</year><uniqueid type="tmdb" default="true">9100031</uniqueid></movie>`
+	}
+	for _, c := range []struct {
+		name, sequelDoc string
+		apartBefore     bool
+	}{
+		{"copied whole", doc("Harrow Fen", "2001"), true},
+		{"typed wrong", doc("Harrow Fen 2", "2004"), false},
+	} {
+		sequelDoc := c.sequelDoc
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.im.Catalog = h.st
+			for rel, d := range map[string]string{first: doc("Harrow Fen", "2001"), sequel: sequelDoc} {
+				p := h.file(rel, 10)
+				if err := os.WriteFile(p[:len(p)-len(".mkv")]+".nfo", []byte(d), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			apart := func(when string) {
+				a, b := h.item(fileOrigin(h.root, first)), h.item(fileOrigin(h.root, sequel))
+				if a.ID == "" || a.ID == b.ID {
+					t.Errorf("%s: the sequel is item %q, the first film %q; want two titles", when, b.ID, a.ID)
+				}
+			}
+			h.run()
+			if c.apartBefore {
+				apart("before the catalog answers")
+			}
+			catalog := &fakeCatalog{records: map[string]mp.Record{"9100031": {
+				Source: mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB},
+				Kind:   mp.KindMovie, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9100031"}},
+				Descriptive: &mp.Descriptive{Title: "Harrow Fen", Year: 2001},
+			}}}
+			e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+				if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+					t.Fatal(err)
+				}
+			}}
+			for range 4 {
+				if err := e.Tick(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			h.run()
+			apart("after")
+			if it, _ := ProjectLibraryItem(h.item(fileOrigin(h.root, first))); it.Match.Basis == "" {
+				t.Errorf("the first film = %q, want it matched by its NFO", it.Name)
+			}
+		})
+	}
+}
+
+// A movie id whose record is another film of its year grounds nothing either: one no name of the
+// files shares a word with that runs another length, a sequel's (an NFO copied from the next film's folder), or one far
+// longer or shorter than the file whose title the folder does not give (a film's tag naming the
+// short special of its name). A long cut named word for word stands, as do a sequel numbered
+// another way and a title the files give in another language that runs as long as the file.
+func TestAMovieIDNamingAnotherFilmOfItsYearGroundsNothing(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	movie := func(id, title, original string, year int, runtime time.Duration) mp.Record {
+		return mp.Record{Source: src, Kind: mp.KindMovie, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: id}},
+			Descriptive: &mp.Descriptive{Title: title, OriginalTitle: original, Year: year, Runtime: runtime}}
+	}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	copied := "Movies/Hollow Pines (2004)/Hollow Pines (2004).mkv"
+	sequel := "Movies/Tansy Reach (2004)/Tansy Reach (2004) [tmdbid-9100013].mkv"
+	special := "Movies/Grey Harbor (2000)/Grey Harbor The Lighthouse Watch (2001) [tmdbid-9100014] - [Remux-2160p].mkv"
+	extended := "Movies/Moss Hollow (1990) {tmdb-9100015}/Moss Hollow (1990) - Extended Cut.mkv"
+	numbered := "Movies/Tansy Reach 2 (2005) {tmdb-9100016}/Tansy Reach 2 (2005).mkv"
+	foreign := "Movies/Kaze no Oka (1988) {tmdb-9100017}/Kaze no Oka (1988).mkv"
+	length := map[string]time.Duration{special: 104 * time.Minute, extended: 170 * time.Minute, foreign: 95 * time.Minute}
+	for _, rel := range []string{copied, sequel, special, extended, numbered, foreign} {
+		h.file(rel, 10)
+	}
+	if err := os.WriteFile(filepath.Join(h.root, "Movies/Hollow Pines (2004)/Hollow Pines (2004).nfo"),
+		[]byte(`<movie><title>Hollow Pines</title><year>2004</year><uniqueid type="tmdb" default="true">9100012</uniqueid></movie>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.im.Header = func(_ context.Context, p string) (header.Header, error) {
+		rel, _ := filepath.Rel(h.root, p)
+		return header.Header{Container: "matroska,webm", DurationMillis: cmp.Or(length[filepath.ToSlash(rel)], 100*time.Minute).Milliseconds(),
+			Streams: []inventory.Stream{{Index: 0, Kind: inventory.StreamVideo, Codec: "h264", Width: 1920, Height: 1080}}}, nil
+	}
+	h.run()
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"9100012": movie("9100012", "Ferrow Lane", "", 2004, 130*time.Minute),
+		"9100013": movie("9100013", "Tansy Reach II", "", 2005, 0),
+		"9100014": movie("9100014", "Grey Harbor: The Lighthouse Watch", "", 2000, 22*time.Minute),
+		"9100015": movie("9100015", "Moss Hollow", "", 1990, 2*time.Hour),
+		"9100016": movie("9100016", "Tansy Reach II", "", 2005, 0),
+		"9100017": movie("9100017", "Hill of Wind", "風の丘", 1988, 96*time.Minute),
+	}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct {
+		rel     string
+		matched bool
+	}{{copied, false}, {sequel, false}, {special, false}, {extended, true}, {numbered, true}, {foreign, true}} {
+		o := fileOrigin(h.root, c.rel)
+		it, ok := ProjectLibraryItem(h.item(o))
+		if !ok {
+			t.Fatalf("%s: not a library item", c.rel)
+		}
+		if matched := it.Match.Basis != ""; matched != c.matched {
+			t.Errorf("%s = %q %d matched %v, want matched %v", c.rel, it.Name, it.Year, matched, c.matched)
+		}
+	}
 }

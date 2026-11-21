@@ -63,7 +63,7 @@ func holidayCalendarSeed() []Taxon {
 // the old model still resolves: `toys`, `cars`, `tech`, `fast_food`, `cereal`, `candy` are product
 // leaves; `psa`, `ident`, and `bumper` are formats; `movie_trailer` lives under the `movies`
 // product/topic branch; `games` is a product; `general` is deliberately NOT a taxon (it meant
-// "untagged", which is now the empty tag set).
+// "untagged", which the empty tag set expresses).
 
 // SeedForest returns the default taxonomy. Build it into a *Forest with New.
 func SeedForest() []Taxon {

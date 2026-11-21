@@ -64,6 +64,11 @@ func StageIndex(id StageID) int {
 	return -1
 }
 
+// FailureRest is how long failed work rests once it has used its attempts (decision 12 of #3838):
+// a download that failed three times in a day, and a clip whose terminal commit keeps being refused
+// as stale, are tried again no sooner. Nothing is rejected or deleted for resting.
+const FailureRest = 30 * 24 * time.Hour
+
 // StageStatus is how the CURRENT stage is going.
 type StageStatus string
 
@@ -173,6 +178,9 @@ type ClipPipeline struct {
 	Stages         []StageRecord
 	EnrolledAt     time.Time
 	UpdatedAt      time.Time
+	// FilesDeletedAt is when Loomarr deleted a rejected clip's files (#3855). The row stays as the
+	// record of why; with the bytes gone there is nothing to retry or restore. Zero while kept.
+	FilesDeletedAt time.Time
 }
 
 // RestoreRefusal returns a refused row — a machine rejection or an operator dismissal — to review:
@@ -182,6 +190,9 @@ type ClipPipeline struct {
 func (p *ClipPipeline) RestoreRefusal(at time.Time) bool {
 	if p.Disposition != DispositionRejected && p.Disposition != DispositionDismissed {
 		return false
+	}
+	if !p.FilesDeletedAt.IsZero() {
+		return false // nothing left to restore; the row is the record of why it went
 	}
 	p.Disposition = DispositionReview
 	p.RejectReason, p.RejectDetail = "", ""

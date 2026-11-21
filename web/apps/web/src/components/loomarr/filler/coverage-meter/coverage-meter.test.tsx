@@ -46,8 +46,7 @@ const full: CoverageDTO = {
   ...NO_LIMIT,
   rungs: [
     { level: "exact", clips: 4 },
-    { level: "widened", clips: 5 },
-    { level: "audience", clips: 9 },
+    { level: "widened", clips: 9 },
   ],
 };
 
@@ -64,13 +63,12 @@ describe("CoverageMeter", () => {
     renderMeter(<CoverageMeter coverage={full} />);
     expect(await screen.findByText("Exact era + audience")).toBeInTheDocument();
     expect(screen.getByText("A decade either side")).toBeInTheDocument();
-    expect(screen.getByText("Any era, right audience")).toBeInTheDocument();
     expect(screen.getByText("4")).toBeInTheDocument();
-    expect(screen.getByText("5")).toBeInTheDocument();
+    expect(screen.getAllByText("9").length).toBeGreaterThan(0);
   });
 
-  // ⚠ The total is the widest rung, not a sum. 4+5+9 would claim 18 eligible commercials for a
-  // catalog holding 9 — the rungs nest, so adding them counts one clip up to three times.
+  // ⚠ The total is the widest rung, not a sum. 4+9 would claim 13 eligible commercials for a
+  // catalog holding 9 — the rungs nest, so adding them counts one clip twice.
   it("reports the widest rung as the total, not the sum", async () => {
     renderMeter(<CoverageMeter coverage={full} />);
     expect(await screen.findByText("9 eligible commercials")).toBeInTheDocument();
@@ -93,10 +91,7 @@ describe("CoverageMeter", () => {
           total: 9,
           criteria: HEALTHY,
           ...NO_LIMIT,
-          rungs: [
-            { level: "exact", clips: 4 },
-            { level: "audience", clips: 9 },
-          ],
+          rungs: [{ level: "exact", clips: 4 }],
         }}
       />,
     );
@@ -310,5 +305,39 @@ describe("CoverageMeter", () => {
     );
     await screen.findByText("Widened the era");
     expect(screen.queryByText(/ruling out every commercial/)).not.toBeInTheDocument();
+  });
+
+  // #3412: with no clips at all, every setting counts zero. That is an empty catalogue, not eight
+  // settings each to blame, so the meter is one line and the way to Filler.
+  it("says there are no clips yet instead of blaming every setting", async () => {
+    renderMeter(
+      <CoverageMeter
+        coverage={{
+          level: "bumper_card",
+          total: 0,
+          rungs: [
+            { level: "exact", clips: 0 },
+            { level: "widened", clips: 0 },
+          ],
+          ...NO_LIMIT,
+          criteria: [
+            { criterion: "geography", clips: 0 },
+            { criterion: "language", clips: 0 },
+            { criterion: "era", clips: 0 },
+            { criterion: "audience", clips: 0 },
+            { criterion: "category", clips: 0 },
+            { criterion: "role", clips: 0 },
+            { criterion: "duration", clips: 0 },
+            { criterion: "quality", clips: 0 },
+          ],
+        }}
+      />,
+    );
+    expect(await screen.findByText("No clips yet")).toBeInTheDocument();
+    expect(screen.getByText("Breaks show the channel card until some arrive.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add filler" })).toBeInTheDocument();
+    expect(screen.queryByText(/ruling out every commercial/)).not.toBeInTheDocument();
+    expect(screen.queryByText("nothing matches")).not.toBeInTheDocument();
+    expect(screen.queryByText("Exact era + audience")).not.toBeInTheDocument();
   });
 });

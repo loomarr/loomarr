@@ -382,6 +382,14 @@ debugged with its failing focused command before one final rerun. CI owns expens
 matrices.
 Never run `make smoke*` from an agent session; those commands drive the maintainer's live stack.
 
+Screenshot baselines render on their own. Every push to a pull request that touches `web/` starts the
+**Visual baselines** workflow, which commits the visual and e2e PNGs that changed as
+`github-actions[bot]` and approves the checks GitHub holds on that commit. Don't dispatch it after a
+push, don't copy PNGs out of failure artifacts, and don't approve held runs by hand. Wait for its run
+on the head before you arm auto-merge, then read the bot's PNGs in the diff. A red render pushes
+nothing; its `playwright-render-failures` artifact holds the images. See
+[Updating visual baselines](../contributing/testing.md#updating-visual-baselines).
+
 ## Finish and clean up
 
 After the PR is merged and its required evidence is complete, release its claims and audit the
@@ -421,7 +429,7 @@ The audit requires an authenticated GitHub CLI because squash-merge evidence is 
 local branch ancestry. If GitHub or `origin/main` cannot be verified, the command exits without
 removing anything.
 
-Creating another worktree fails when the secondary-worktree count has reached 16. That is a backlog
+Creating another worktree fails when the secondary-worktree count has reached 24. That is a backlog
 tripwire, not a concurrency target: run the audit and resolve its findings first. A maintainer may
 set `ALLOW_WORKTREE_BACKLOG=1` for an intentional exception.
 

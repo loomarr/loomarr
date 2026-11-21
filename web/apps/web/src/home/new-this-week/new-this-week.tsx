@@ -1,5 +1,5 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
-import { SectionHeader } from "@loomarr/design-system";
+import { PressableRow, SectionHeader, Stack, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
@@ -8,6 +8,12 @@ import type { NewThisWeekProps } from "./new-this-week.type";
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const POSTERS = 5;
+
+// The new-channel row's frame at the values it has always drawn (static 900 and 700, a 1px border).
+const LEAD_FRAME = {
+  backgroundColor: "var(--color-static-900)",
+  border: "1px solid var(--color-static-700)",
+} as const;
 
 // The start of "this week", quantised to the hour so the titles query key holds still between
 // renders (the same reason the guide window is quantised).
@@ -38,8 +44,8 @@ const freshChannels = (channels: readonly ChannelDTO[], since: number) =>
 
 // NewThisWeek — Home's "New this week" (#1822 evidence): the channels that arrived this week, then
 // the newest titles and the channel each landed on (#1663). Titles carry no poster yet, so every
-// poster is the restrained line motif, with the landing channel's monogram when one is known
-// (#1822 evidence: "a restrained line motif with a channel monogram where available").
+// poster is the generated art: the landing channel's monogram when one is known, else the title's
+// own letters, so none is blank (#2762).
 const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisWeekProps) => {
   const fresh = freshChannels(channels, since);
   if (titles.length === 0 && fresh.length === 0) return null;
@@ -59,42 +65,74 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
     // `@container`: the poster grid's one-column step is measured against this section's own
     // width, not the viewport — what sits beside Home's content (the md+ rail, nothing above the
     // phone's bottom bar) is the shell's business, not this grid's.
-    <section aria-labelledby="home-new" className="@container flex flex-col gap-3">
+    <Stack aria-labelledby="home-new" className="@container" gap="control" render="section">
       <SectionHeader id="home-new" title="New this week" meta={meta} />
       {/* A separate row, never a grid column beside the posters (#1822 evidence geometry table):
           sharing a track with five poster columns is what left phone poster slivers in the first
           place. It wraps its own text and action instead. */}
       {fresh.map((lead) => (
-        <Link
-          key={lead.id}
-          to="/watch/$id"
-          params={{ id: lead.id }}
-          className="border-static-700 bg-static-900 text-foreground hover:border-static-500 focus-visible:ring-ring flex flex-wrap items-center gap-3 rounded-md border p-3.5 focus-visible:ring-2 focus-visible:outline-none"
-        >
-          <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={44} />
-          <div className="min-w-0 flex-1">
-            <span className="text-static-400 block text-xs">New channel</span>
-            <span className="mt-0.5 block text-[15px] font-semibold break-words">
-              <span className="text-foreground font-mono">{lead.number}</span> {lead.name}
-            </span>
-            <span className="text-static-400 mt-0.5 block text-xs">
-              {addedLine(lead, viewerName, timeZone)}
-            </span>
-          </div>
-          <span className="border-static-500 inline-flex h-7 shrink-0 items-center self-start rounded-md border px-2.5 text-xs font-medium">
-            Watch
-          </span>
-        </Link>
+        // The resting look is the row's own, unchanged: the static 900 fill, 1px static 700 border and 6px
+        // corner. Only hover changed, to the PressableRow's elevated fill.
+        <Stack key={lead.id} overflow="hidden" borderRadius={6} style={LEAD_FRAME}>
+          <PressableRow render={<Link to="/watch/$id" params={{ id: lead.id }} />}>
+            {/* 14px all round in all: the row adds 12px across and 10px down. */}
+            <Stack
+              align="center"
+              direction="row"
+              flexGrow={1}
+              gap="3"
+              paddingHorizontal={2}
+              paddingVertical={4}
+              wrap
+            >
+              <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={44} />
+              <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="0.5" minWidth={0}>
+                <Text as="span" textRole="hint" tone="secondary">
+                  New channel
+                </Text>
+                <Text as="span" overflowWrap="break-word" textRole="cardTitle" tone="primary">
+                  <Text as="span" textRole="mono" tone="primary">
+                    {lead.number}
+                  </Text>{" "}
+                  {lead.name}
+                </Text>
+                <Text as="span" textRole="hint" tone="secondary">
+                  {addedLine(lead, viewerName, timeZone)}
+                </Text>
+              </Stack>
+              <Stack
+                align="center"
+                alignSelf="flex-start"
+                borderColor="borderControl"
+                borderRadius={8}
+                borderWidth={1}
+                height={28}
+                justify="center"
+                paddingHorizontal={10}
+                render="span"
+              >
+                <Text as="span" textRole="label" tone="primary">
+                  Watch
+                </Text>
+              </Stack>
+            </Stack>
+          </PressableRow>
+        </Stack>
       ))}
       {titles.length > 0 && (
         // Two columns at phone width; one below 284px of content width — the geometry table's rule,
         // as a container query so it holds whatever chrome shares the viewport.
         <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-5 @max-[284px]:grid-cols-1">
           {titles.slice(0, POSTERS).map((t) => (
-            <div key={t.key} className="flex min-w-0 flex-col gap-1.5">
-              <div
+            <Stack flexShrink={1} gap="1.5" key={t.key} minWidth={0}>
+              <Stack
+                aspectRatio={2 / 3}
+                borderColor="borderDecorative"
+                borderRadius={8}
+                borderWidth={1}
                 data-home-poster-art=""
-                className="border-static-700 aspect-[2/3] w-full overflow-hidden rounded-md border"
+                overflow="hidden"
+                width="100%"
               >
                 <ArtworkFallback
                   channel={
@@ -103,16 +141,20 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
                   label={t.name ?? t.key}
                   seed={seedOf(t.key)}
                 />
-              </div>
-              <span className="text-sm font-medium break-words">{t.name ?? t.key}</span>
+              </Stack>
+              <Text as="span" overflowWrap="break-word" textRole="cardLabel">
+                {t.name ?? t.key}
+              </Text>
               {t.channels?.[0] && (
-                <span className="text-static-400 truncate text-xs">{t.channels[0].name}</span>
+                <Text as="span" numberOfLines={1} textRole="hint" tone="secondary">
+                  {t.channels[0].name}
+                </Text>
               )}
-            </div>
+            </Stack>
           ))}
         </div>
       )}
-    </section>
+    </Stack>
   );
 };
 

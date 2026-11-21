@@ -55,19 +55,18 @@ func TestMigrationProviderIsDialectLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Changing the legacy process-global dialect must not affect this provider.
+	// Changing the legacy process-global dialect must not affect this provider. Its version table
+	// and first migration prove it; replaying all of them adds a minute under -race (#2716) and is
+	// what every fresh Open already exercises.
 	if err := goose.SetDialect("postgres"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.Up(context.Background()); err != nil {
+	const want = 1
+	if _, err := provider.UpTo(context.Background(), want); err != nil {
 		t.Fatalf("migrate SQLite after changing legacy dialect: %v", err)
 	}
 
 	got, err := provider.GetDBVersion(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	want, err := highestMigration("migrations/sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,8 +101,9 @@ func TestMigrationProviderScopesEmbeddedMigrations(t *testing.T) {
 }
 
 func TestUserMediaServerLinkedMigrationBackfillsOldImportedRows(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "user-linkage.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 74, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,8 +145,9 @@ func TestUserMediaServerLinkedMigrationBackfillsOldImportedRows(t *testing.T) {
 }
 
 func TestUserContactAddressMigrationLeavesExistingUsersContactless(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "user-contacts.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 75, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,8 +181,9 @@ func TestUserContactAddressMigrationLeavesExistingUsersContactless(t *testing.T)
 }
 
 func TestNotificationMigrationAddsEmptyDurableQueueWithoutChangingUsers(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "notifications.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 76, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,8 +228,9 @@ func TestNotificationMigrationAddsEmptyDurableQueueWithoutChangingUsers(t *testi
 }
 
 func TestNotificationProductVocabularyMigrationPreservesAccountDelivery(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "notification-product-vocabulary.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 80, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +280,8 @@ func TestNotificationProductVocabularyMigrationPreservesAccountDelivery(t *testi
 
 func TestFillerAdmissionDecisionTablesAreRetired(t *testing.T) {
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "retired-decisions.db"))
+	// The migrated template is the latest schema; Up below finds nothing pending.
+	db, err := sql.Open("sqlite", "file:"+migratedSQLiteFile(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,8 +310,9 @@ func TestFillerAdmissionDecisionTablesAreRetired(t *testing.T) {
 }
 
 func TestUniqueChannelIntentRefMigrationPreservesDuplicateChannels(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "intent-ref.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 54, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,8 +390,9 @@ func TestUniqueChannelIntentRefMigrationPreservesDuplicateChannels(t *testing.T)
 }
 
 func TestChannelRevisionMigrationBackfillsExistingRows(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "channel-revision.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 55, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,8 +426,9 @@ func TestChannelRevisionMigrationBackfillsExistingRows(t *testing.T) {
 }
 
 func TestChannelPlayoutAnchorMigrationSeedsExistingRows(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "channel-anchor.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 61, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

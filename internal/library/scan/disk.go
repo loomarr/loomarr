@@ -23,32 +23,39 @@ type OSDisk struct {
 	MountInfo string
 }
 
-// Readable opens the directory and lists one entry, within readableTimeout.
-func (d OSDisk) Readable(ctx context.Context, path string) bool {
+// Look opens the directory and lists one entry, within readableTimeout.
+func (d OSDisk) Look(ctx context.Context, path string) Folder {
 	ctx, cancel := context.WithTimeout(ctx, readableTimeout)
 	defer cancel()
-	done := make(chan bool, 1)
-	go func() { done <- listable(path) }()
+	done := make(chan Folder, 1)
+	go func() { done <- look(path) }()
 	select {
-	case ok := <-done:
-		return ok
+	case f := <-done:
+		return f
 	case <-ctx.Done():
-		return false
+		return Folder{}
 	}
 }
 
-func listable(path string) bool {
+func look(path string) Folder {
 	f, err := os.Open(path) //nolint:gosec // the path is a folder the maintainer or an authority named
 	if err != nil {
-		return false
+		return Folder{}
 	}
 	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil || !info.IsDir() {
-		return false
+		return Folder{}
 	}
 	_, err = f.ReadDir(1)
-	return err == nil || errors.Is(err, io.EOF)
+	switch {
+	case err == nil:
+		return Folder{Readable: true}
+	case errors.Is(err, io.EOF):
+		return Folder{Readable: true, Empty: true}
+	default:
+		return Folder{}
+	}
 }
 
 // Mounts lists mount points from the mount table, leaving out the root and system mounts.

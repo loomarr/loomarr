@@ -281,6 +281,13 @@ func TestActivityStoreImportsKernelNotAggregate(t *testing.T) {
 	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/activitystore")
 }
 
+// internal/platform/store/qualitystore is the suggestion-quality ledger cluster (receipts, daily
+// roll-ups, run snapshots). It builds on the storedb kernel like the clusters above, and store
+// embeds it.
+func TestQualityStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/qualitystore")
+}
+
 // internal/platform/store/channeldatastore is the cluster of data that hangs off channels (favourites and
 // recents, hidden ideas, airing history, discovery feedback). It builds on the storedb kernel, in the
 // same direction as the clusters above, and store embeds it and re-exports its types.

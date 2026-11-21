@@ -74,7 +74,7 @@ type PodPoolDTO struct {
 	// Enumerated so orval generates a union the FE can switch on exhaustively. Left
 	// as a bare string, the frontend would hand-mirror these values — and the one
 	// that already did drifted out of sync with the ladder's real levels.
-	MatchLevel string `json:"matchLevel" enum:"exact,widened,audience,bumper_card" doc:"How far down the fallback ladder assembly went (§10)"`
+	MatchLevel string `json:"matchLevel" enum:"exact,widened,bumper_card" doc:"How far down the fallback ladder assembly went (§10)"`
 }
 
 type previewPodsOutput struct {
@@ -121,7 +121,7 @@ type CoverageRungDTO struct {
 	// Same enum as PodPoolDTO.MatchLevel, deliberately: a coverage answer and a pod outcome
 	// describe the same ladder, and the meter's whole claim is that they agree. Two
 	// vocabularies for one concept is how they start disagreeing.
-	Level string `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The ladder rung (§10)"`
+	Level string `json:"level" enum:"exact,widened,bumper_card" doc:"The ladder rung (§10)"`
 	Clips int    `json:"clips" doc:"Eligible clips this rung holds, after the channel's kind/category/exclusion narrowing"`
 }
 
@@ -146,7 +146,7 @@ type CoverageDTO struct {
 	Rungs []CoverageRungDTO `json:"rungs" doc:"Ladder rungs, TIGHTEST FIRST. Always all of them; a rung at 0 means nothing in the catalog reaches it."`
 	// Criteria is the per-setting breakdown — which single setting is emptying the ladder (V51f).
 	Criteria []CoverageCriterionDTO `json:"criteria" doc:"Per-setting counts, each measured independently, so a zero identifies the setting to change."`
-	Level    string                 `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The rung a break would actually be filled from — the tightest non-empty one. bumper_card means no ad matches and breaks run on station material, else the embedded card."`
+	Level    string                 `json:"level" enum:"exact,widened,bumper_card" doc:"The rung a break would actually be filled from — the tightest non-empty one. bumper_card means no ad matches and breaks run on station material, else the embedded card."`
 	Total    int                    `json:"total" doc:"Distinct eligible clips across the widest rung. NOT a sum of the rungs — they nest, so adding them counts one clip up to three times."`
 	// Geography is the location boundary those clips were limited to, so the page can name it.
 	Geography CoverageGeographyDTO `json:"geography" doc:"The location every counted clip must be from: the channel's own, else the installation's. An empty country means no location limit."`
@@ -174,7 +174,7 @@ type channelCoverageOutput struct {
 // buckets inline, with five mutually inconsistent era/audience predicates. Here the answer
 // comes from `pod.Coverage`, which calls the same `candidatePools` that `Assemble` calls,
 // through the same `SelectionForChannel` derivation the previews use. A meter that says
-// "exact" while breaks resolve at "audience" is a confident wrong answer about why a channel
+// "exact" while breaks resolve at "widened" is a confident wrong answer about why a channel
 // sounds the way it does, which is worse than no meter.
 //
 // Read-only, so any authenticated user may call it — same as the pod preview it describes.

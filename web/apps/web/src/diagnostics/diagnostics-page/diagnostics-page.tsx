@@ -1,4 +1,5 @@
-import { Icon, icons } from "@loomarr/design-system";
+import { Icon, icons, Stack } from "@loomarr/design-system";
+import { NavTabs } from "@loomarr/ui";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { ApplicationDiagnostics } from "../application-diagnostics";
@@ -33,12 +34,24 @@ const DiagnosticsPage = ({
   onOpenRelated?: (kind: "channel" | "job", id: string) => void;
 }) => {
   const tabs = [
-    { id: "logs" as const, label: "Logs", icon: icons.activity },
-    { id: "health" as const, label: "Current Health", icon: icons.health },
-    { id: "process" as const, label: "Media processes", icon: icons.process },
+    {
+      id: "logs" as const,
+      label: "Logs",
+      icon: <Icon decorative glyph={icons.activity} size="compact" tone="inherit" />,
+    },
+    {
+      id: "health" as const,
+      label: "Current Health",
+      icon: <Icon decorative glyph={icons.health} size="compact" tone="inherit" />,
+    },
+    {
+      id: "process" as const,
+      label: "Media processes",
+      icon: <Icon decorative glyph={icons.process} size="compact" tone="inherit" />,
+    },
   ];
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack height="100%" minHeight={0}>
       <PageHeader
         title="Diagnostics"
         description="Find what happened and check whether this Loomarr server is healthy."
@@ -56,38 +69,30 @@ const DiagnosticsPage = ({
           />
         }
       />
-      <nav
-        className="border-border flex gap-1 overflow-x-auto border-b px-4 pt-2 pb-2 sm:px-6"
-        aria-label="Diagnostics views"
-      >
-        {tabs.map(({ id, label, icon }) => (
-          <button
-            key={id}
-            type="button"
-            aria-current={search.view === id ? "page" : undefined}
-            className={`inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm whitespace-nowrap transition-colors ${
-              // The current view is neutral, like a NavTabs pill (#1909 Q1).
-              search.view === id
-                ? "bg-static-800 text-foreground font-medium"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground"
-            }`}
-            onClick={() =>
-              onSearchChange({ ...search, view: id, ...(id === "process" ? {} : { processId: undefined }) })
-            }
-          >
-            <span className="hidden sm:flex">
-              <Icon decorative glyph={icon} size="compact" tone="inherit" />
-            </span>
-            {label}
-          </button>
-        ))}
-      </nav>
+      <Stack className="px-4 sm:px-6" paddingTop={8}>
+        <NavTabs
+          activeId={search.view}
+          label="Diagnostics views"
+          onSelect={(id) =>
+            onSearchChange({
+              ...search,
+              view: id as DiagnosticsView,
+              ...(id === "process" ? {} : { processId: undefined }),
+            })
+          }
+          tabs={tabs}
+        />
+      </Stack>
       {/* ⚠ `position: relative` is load-bearing: visually-hidden (`sr-only`) text is absolutely
           positioned, and without a positioned scroller it stretches the document instead of
           scrolling in here (#3404, #2724). */}
-      <div
-        className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6"
+      <Stack
+        className="p-4 sm:p-6"
         data-testid="diagnostics-scroller"
+        flex={1}
+        flexShrink={1}
+        minHeight={0}
+        overflowY="auto"
         style={{ position: "relative" }}
       >
         {search.view === "logs" && (
@@ -105,8 +110,8 @@ const DiagnosticsPage = ({
           </>
         )}
         {search.view === "process" && playout}
-      </div>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 

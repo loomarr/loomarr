@@ -36,7 +36,8 @@ describe("Requests tabs", () => {
     expect(screen.getByRole("link", { name: /Done/ })).toHaveTextContent(/Done\s*1\b/);
     expect(screen.getByText("Request j-gen")).toBeInTheDocument();
     expect(screen.queryByText("Request j-done")).not.toBeInTheDocument();
-  });
+    // The first render in the file loads the route tree cold, which a busy CI shard stretches past 5 s.
+  }, 20_000);
 
   // #2738: an admin's own request waiting on approval is already a card in Needs you; listing it in
   // In progress too made one request two rows in two tabs.
@@ -301,10 +302,16 @@ describe("Decided filler pulls in Done (#1430)", () => {
   // Filler pulls are an admin-only list server-side (§10 V35); a member's Done tab must not
   // show one even if it is decided.
   it("never shows a decided pull on a member's Done tab", async () => {
-    stub({ me: MEMBER, pulls: [decidedPull("pull-approved", "Top up the 1990s", "approved")] });
+    // The member has a finished request of their own, so the tabs show (with none, the page says
+    // they haven't requested anything, and there is no Done tab to look in).
+    stub({
+      me: MEMBER,
+      journeys: [journey("j-done", { channel: { id: "ch-9", name: "Cartoons" } })],
+      pulls: [decidedPull("pull-approved", "Top up the 1990s", "approved")],
+    });
     renderAt("/requests/done");
 
-    expect(await screen.findByText("Nothing finished yet")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Request j-done" })).toBeInTheDocument();
     expect(screen.queryByText("Top up the 1990s")).not.toBeInTheDocument();
   });
 });

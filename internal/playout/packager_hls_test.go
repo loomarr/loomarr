@@ -534,6 +534,47 @@ func TestSlateEncodeWaitsForTheFirstItem(t *testing.T) {
 	}
 }
 
+// deadlineSource reports the first ItemAt's deadline: the admission-pricing lookup in start.
+type deadlineSource struct {
+	slowItemSource
+	first chan time.Time
+}
+
+func (s deadlineSource) ItemAt(ctx context.Context, ch string, at time.Time) (PackagerItem, error) {
+	deadline, _ := ctx.Deadline() // zero when unbounded
+	select {
+	case s.first <- deadline:
+	default:
+	}
+	return s.slowItemSource.ItemAt(ctx, ch, at)
+}
+
+// start's first lookup runs under the Origin's lifecycle read lock: unbounded, a stuck store
+// would wedge StopAll and Quiesce, and every tune queued behind them.
+func TestStartBoundsTheFirstItemLookup(t *testing.T) {
+	dir := t.TempDir()
+	ffmpeg := filepath.Join(dir, "ffmpeg")
+	if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\nexec sleep 5\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	source := deadlineSource{first: make(chan time.Time, 1)}
+	m, err := NewPackagerHLS(source, ffmpeg, t.TempDir(), time.Second, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Stop)
+	before := time.Now()
+	lease, err := m.acquirePlaylist("ch", false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.release()
+	deadline := <-source.first
+	if deadline.IsZero() || deadline.After(before.Add(firstItemLookupTimeout+time.Second)) {
+		t.Fatalf("first-item lookup deadline = %v, want within %v of the tune", deadline, firstItemLookupTimeout)
+	}
+}
+
 // hdrItemSource airs one 4K HDR title on a CPU-only host that can tone-map.
 type hdrItemSource struct{}
 

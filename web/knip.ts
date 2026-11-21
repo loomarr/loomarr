@@ -68,20 +68,19 @@ const config: KnipConfig = {
       vite: { config: ["vite.config.ts", "vite.client-platform.config.ts"] },
     },
     "apps/mobile": {
+      // The app's entry test runs under vitest, whose config re-exports one with no `test` block.
+      entry: ["tests/**/*.test.{ts,tsx}"],
       // Metro bundles web/native-stories (which import @loomarr/fixtures) into the app when
       // STORYBOOK_ENABLED is set, resolving from the app. expo-updates: knip assumes it unless
       // app.json sets updates.enabled=false; the app ships no OTA updates.
       // @loomarr/crash-reports-native: the iOS pod links through the app's dependencies; the
       // JavaScript side is imported by @loomarr/native-app.
-      ignoreDependencies: [
-        "@loomarr/crash-reports-native",
-        "@loomarr/fixtures",
-        "expo-updates",
-        ...nativeFontDependencies,
-      ],
+      ignoreDependencies: ["@loomarr/crash-reports-native", "expo-updates", ...nativeFontDependencies],
     },
     "apps/tv": {
-      ignoreDependencies: ["@loomarr/fixtures", "expo-updates", ...nativeFontDependencies],
+      // The app's entry test runs under vitest, whose config re-exports one with no `test` block.
+      entry: ["tests/**/*.test.{ts,tsx}"],
+      ignoreDependencies: ["expo-updates", ...nativeFontDependencies],
     },
     "packages/api": {
       // Used by the Orval-generated client (model-*, endpoint-*, zod-*, msw, generated/), which

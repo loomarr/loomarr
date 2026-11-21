@@ -217,7 +217,7 @@ type Lister interface {
 }
 
 // ChangeFeed reports which items changed since a time. A cursor older than Window cannot be
-// answered from the feed, and the caller refetches everything instead.
+// answered from the feed; the caller relies on its periodic refresh of everything instead.
 type ChangeFeed interface {
 	Window() time.Duration
 	Changes(ctx context.Context, since time.Time) ([]Ref, error)

@@ -64,9 +64,11 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "ci-docs.yml", job: "run"}:                {name: "Docs — links + structure + prose", runsOn: "ubuntu-latest"},
 		{workflow: "ci-frontend.yml", job: "run"}:            {name: "Frontend — ${{ matrix.shard == 7 && 'biome + typecheck + build' || matrix.shard == 8 && 'package tests' || format('web unit ({0}/6)', matrix.shard) }}", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2, 3, 4, 5, 6, 7, 8}}},
 		{workflow: "ci-go-contracts.yml", job: "run"}:        {name: "Go — repository contracts (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2}}},
-		{workflow: "ci-go-cache-warm.yml", job: "run"}:       {name: "Warm Go build cache (${{ matrix.lane }})", runsOn: "ubuntu-latest", timeoutMinutes: 30, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/2", "certification-2/2", "postgres"}}},
+		{workflow: "ci-go-cache-warm.yml", job: "run"}:       {name: "Warm Go build cache (${{ matrix.lane }})", runsOn: "ubuntu-latest", timeoutMinutes: 30, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/3", "certification-2/3", "certification-3/3", "postgres"}}},
 		{workflow: "ci-go-cache-warm.yml", job: "contracts"}: {name: "Warm Go contracts cache", runsOn: "ubuntu-latest", timeoutMinutes: 30},
-		{workflow: "ci-go.yml", job: "run"}:                  {name: "Go — race-policy tests (${{ matrix.lane }})", runsOn: "ubuntu-latest", timeoutMinutes: 15, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/2", "certification-2/2"}}},
+		{workflow: "ci-go-cache-warm.yml", job: "pnpm"}:      {name: "Warm pnpm store", runsOn: "ubuntu-latest", timeoutMinutes: 30},
+		{workflow: "ci-go-cache-warm.yml", job: "ffmpeg"}:    {name: "Warm production FFmpeg archive", runsOn: "ubuntu-latest", timeoutMinutes: 30},
+		{workflow: "ci-go.yml", job: "run"}:                  {name: "Go — race-policy tests (${{ matrix.lane }})", runsOn: "ubuntu-latest", timeoutMinutes: 15, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/3", "certification-2/3", "certification-3/3"}}},
 		{workflow: "ci-image-certification.yml", job: "run"}: {name: "Rust image — runtime certification", runsOn: "ubuntu-latest"},
 		{workflow: "ci-image.yml", job: "run"}: {
 			name: "Image — release build (${{ matrix.platform }})", runsOn: "${{ matrix.runner }}", timeoutMinutes: 45,
@@ -114,14 +116,15 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "merge-gate.yml", job: "run"}:                 {name: "CI", runsOn: "ubuntu-latest", timeoutMinutes: 10},
 		{workflow: "merge-gate-cache.yml", job: "run"}:           {name: "Warm merge gate cache", runsOn: "ubuntu-latest", timeoutMinutes: 15},
 		{workflow: "go-maintenance.yml", job: "vulnerabilities"}: {name: "Reachable known vulnerabilities", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
+		{workflow: "go-maintenance.yml", job: "library-scale"}:   {name: "Library scan at household size", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
 		{workflow: "ffmpeg-pin-refresh.yml", job: "refresh"}:     {name: "Refresh the FFmpeg pin", runsOn: "ubuntu-24.04", timeoutMinutes: 120},
 		{workflow: "rust-maintenance.yml", job: "supply-chain"}:  {name: "Advisories, licences, and sources", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
 		{workflow: "rust-maintenance.yml", job: "fuzz"}:          {name: "Bounded protocol and decoder fuzz", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
 		{workflow: "visual-baselines.yml", job: "resolve"}:       {name: "Resolve the pull request's branch", runsOn: "ubuntu-latest", timeoutMinutes: 5},
-		{workflow: "visual-baselines.yml", job: "render"}:        {name: "Render on the pull request's branch", runsOn: "ubuntu-latest", needs: "resolve", timeoutMinutes: 60},
+		{workflow: "visual-baselines.yml", job: "render"}:        {name: "Render on the pull request's branch", runsOn: "ubuntu-latest", needs: "resolve", timeoutMinutes: 70},
 		{workflow: "visual-baselines.yml", job: "commit"}:        {name: "Commit the changed baselines", runsOn: "ubuntu-latest", needsList: []string{"resolve", "render"}, timeoutMinutes: 10},
-		{workflow: "visual-baselines.yml", job: "ci"}:            {name: "Re-run CI on the new head", runsOn: "ubuntu-latest", needsList: []string{"resolve", "commit"}, timeoutMinutes: 10},
-		{workflow: "visual-baselines-render.yml", job: "render"}: {name: "Render the visual baselines", runsOn: "ubuntu-latest", timeoutMinutes: 45},
+		{workflow: "visual-baselines.yml", job: "release"}:       {name: "Release the checks held on the new head", runsOn: "ubuntu-latest", needsList: []string{"resolve", "commit"}, timeoutMinutes: 10},
+		{workflow: "visual-baselines-render.yml", job: "render"}: {name: "Render the visual and e2e baselines", runsOn: "ubuntu-latest", timeoutMinutes: 60},
 	}
 }
 

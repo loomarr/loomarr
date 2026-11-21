@@ -1,5 +1,7 @@
 import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import { ListFillerAudience } from "@loomarr/api/models/listFillerAudience";
+import type { ListFillerParams } from "@loomarr/api/models/listFillerParams";
+import type { ListFillerRole } from "@loomarr/api/models/listFillerRole";
 import { isTaxonomyAxis, type TaxonomyAxis } from "../taxonomy-axes";
 
 type FillerSearch = {
@@ -46,5 +48,35 @@ const validateCatalogSearch = (search: Record<string, unknown>): FillerSearch =>
   };
 };
 
+// How many clips one page of the catalog holds (§10 V51d).
+//
+// ⚠ **ONE size for both the grid and the list**, deliberately. A per-view size would renumber the
+// pages under the operator the moment they switched rendering — page 3 of the grid and page 3 of
+// the list would be different clips — and `pageSize` is kept out of the URL for the same reason.
+// 60 divides evenly by the grid's 2/3/4 columns, so the last row is never a ragged single card.
+const CATALOG_PAGE_SIZE = 60;
+
+// The one page of the catalog a search asks for. The catalog reads it and the Library route's
+// loader warms it, so both name the same query key.
+//
+// ⚠ The catalog endpoint caps at 500 and defaults to 100 (§10 V51d), so an un-paged read would
+// silently show the first hundred clips and call it the catalog.
+const catalogListParams = (search: Partial<FillerSearch>): ListFillerParams => {
+  const { q, role, audience, taxon, unclassified, withoutAxis, untagged, page = 1, parent } = search;
+  const filtered = Boolean(q || role || audience || taxon || unclassified || withoutAxis || untagged);
+  return {
+    ...(q ? { q } : {}),
+    ...(role ? { role: role as ListFillerRole } : {}),
+    ...(audience ? { audience: audience as never } : {}),
+    ...(taxon ? { taxon } : {}),
+    ...(unclassified ? { unclassified: true } : {}),
+    ...(withoutAxis ? { withoutAxis } : {}),
+    ...(untagged ? { untagged: true } : {}),
+    ...(parent ? { parentHash: parent } : !filtered ? { includeComposites: true, topLevel: true } : {}),
+    limit: CATALOG_PAGE_SIZE,
+    ...(page > 1 ? { offset: (page - 1) * CATALOG_PAGE_SIZE } : {}),
+  };
+};
+
 export type { FillerSearch };
-export { validateCatalogSearch };
+export { CATALOG_PAGE_SIZE, catalogListParams, validateCatalogSearch };

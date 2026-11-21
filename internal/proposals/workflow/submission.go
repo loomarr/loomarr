@@ -37,6 +37,28 @@ func (w *Workflow) Record(
 	return w.repository.RecordProposal(ctx, intent, prop, createdBy)
 }
 
+// RecordForChannel records a Proposal that needed no generation for an existing Channel: the
+// titles growth admitted by themselves (#4333). It lands as a scheduled re-curation does (kind
+// recurate, ownerless, naming the Channel, done and submitted), so approving it changes that
+// Channel and the binder unions it onto the lineup. Every item must carry a grounded identity.
+func (w *Workflow) RecordForChannel(
+	ctx context.Context,
+	channelID string,
+	intent proposals.Intent,
+	prop proposals.Proposal,
+) (CommittedProposal, error) {
+	if channelID == "" {
+		return CommittedProposal{}, fmt.Errorf("%w: a channel Proposal needs a channel", ErrInvalidState)
+	}
+	if len(prop.Lineup) == 0 {
+		return CommittedProposal{}, fmt.Errorf("%w: a recorded Proposal needs a lineup", ErrInvalidState)
+	}
+	if err := validateProposalIdentities(prop); err != nil {
+		return CommittedProposal{}, err
+	}
+	return w.repository.RecordChannelProposal(ctx, channelID, intent, prop)
+}
+
 // Submit creates a fresh caller-owned lifecycle. cacheSince only saves the
 // grounded result activity; identity, ownership, decisions, and history remain fresh.
 func (w *Workflow) Submit(
@@ -147,6 +169,32 @@ func (r *storeRepository) RecordProposal(
 	return CommittedProposal{
 		ID: row.ID, JobID: job.ID, CreatedBy: createdBy, Proposal: prop, CreatedAt: now,
 	}, nil
+}
+
+func (r *storeRepository) RecordChannelProposal(
+	ctx context.Context,
+	channelID string,
+	intent proposals.Intent,
+	prop proposals.Proposal,
+) (CommittedProposal, error) {
+	prop.Intent = intent
+	intentBlob, err := json.Marshal(intent)
+	if err != nil {
+		return CommittedProposal{}, fmt.Errorf("marshal Intent: %w", err)
+	}
+	now := r.now()
+	job := proposalstore.Job{
+		ID: r.newID(), Kind: jobKindRecurate, Status: "done", IntentJSON: string(intentBlob),
+		IntentHash: r.intentHash(intent), ChannelID: channelID,
+		WorkflowVersion: WorkflowVersion1, Deadline: now, CreatedAt: now, UpdatedAt: now,
+	}
+	row := proposalstore.Proposal{
+		ID: r.newID(), JobID: job.ID, Status: "submitted", Body: prop, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := r.store.CreateSuggestionResult(ctx, job, row); err != nil {
+		return CommittedProposal{}, err
+	}
+	return CommittedProposal{ID: row.ID, JobID: job.ID, Proposal: prop, CreatedAt: now}, nil
 }
 
 func (r *storeRepository) SubmitChannelIntent(

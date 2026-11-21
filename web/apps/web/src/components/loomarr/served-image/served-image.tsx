@@ -4,8 +4,8 @@ import type { ServedImageProps } from "./served-image.type";
 
 // ServedImage — THE way this app renders anything served by the image service (§22, V52 phase 4).
 // It fills the box its caller sizes, cropped (`cover`) or letterboxed (`contain`), and takes no
-// classes: every caller wanted exactly that, and a class list was the one thing keeping it on the
-// legacy stack (#970). Native clients load the same images through their own credentialed loader
+// classes: every caller wants exactly that, and a class list would tie it to the legacy stack
+// (#970). Native clients load the same images through their own credentialed loader
 // (the TV app's PairedNativeImage), so this one is the web's.
 //
 // ⚠ **No surface hand-writes an `<img>` against `/v1/images`.** Before this, four different

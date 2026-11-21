@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
@@ -13,7 +12,7 @@ const quarantineLegacyFillerMigration = 101
 
 func TestQuarantineLegacyFillerMigration_SQLite(t *testing.T) {
 	t.Parallel()
-	s, err := openSQLite(context.Background(), filepath.Join(t.TempDir(), "quarantine.db"))
+	s, err := openSQLite(context.Background(), sqliteFileAt(t, quarantineLegacyFillerMigration-1, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

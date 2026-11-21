@@ -7,6 +7,7 @@ import { isSetupCompleted } from "@/wizard/setup-completed";
 // in the first-run wizard instead (config-design §6: until `setup.completed` is set, `/` routes to
 // the wizard). isSetupCompleted fails open, so an ordinary member is never diverted into
 // operator-only setup.
+// no-loader: redirects to Home or the wizard in beforeLoad
 const Route = createFileRoute("/_authed/")({
   beforeLoad: async ({ context }) => {
     // Start the guide request NOW, alongside the setup check, rather than after the redirect

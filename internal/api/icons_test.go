@@ -47,7 +47,7 @@ func newIconsHandlerWithConfig(t *testing.T, cfg map[string]string) (http.Handle
 		Store:        st,
 		Auth:         testAuthorizer{},
 		Log:          slog.New(slog.DiscardHandler),
-		Icons:        fi,
+		Channels:     api.ChannelsOptions{Icons: fi},
 		LiveSettings: liveSettings,
 	})
 	return handler, st, fi

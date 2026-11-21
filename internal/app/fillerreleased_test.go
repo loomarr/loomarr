@@ -111,7 +111,9 @@ func TestPipeline_RunningRowForAlreadyReleasedClipSettlesWithoutRepublishing(t *
 	}
 }
 
-func TestPipeline_RunningRowForRemovedClipStillFailsStale(t *testing.T) {
+// A removed clip must never settle as ready (#1445). Its row used to fail publication as stale
+// on every attempt and rest a month at a time; it now retires as rejected on the first pass.
+func TestPipeline_RunningRowForRemovedClipRetiresInsteadOfSettling(t *testing.T) {
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
 	releasedClipRunningRow(t, st, "removed")
@@ -124,8 +126,11 @@ func TestPipeline_RunningRowForRemovedClipStillFailsStale(t *testing.T) {
 		t.Fatal(err)
 	}
 	row, _, _ := st.GetClipPipeline(ctx, "removed")
-	if res.Failed == 0 || row.Disposition == pipelinestate.DispositionReady {
-		t.Fatalf("a removed clip must not settle as ready: res=%+v row=%+v", res, row)
+	if res.Rejected == 0 || row.Disposition != pipelinestate.DispositionRejected || !row.NextRun.IsZero() {
+		t.Fatalf("a removed clip's row must retire, never settle as ready: res=%+v row=%+v", res, row)
+	}
+	if _, ok, err := st.GetFillerReadyEvent(ctx, "removed"); err != nil || ok {
+		t.Fatalf("a removed clip was published: ready event found=%v err=%v", ok, err)
 	}
 }
 

@@ -1,5 +1,5 @@
 import { pluralize } from "@loomarr/core/format";
-import { Action, Icon, icons } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ServiceControlProps } from "./service-control.type";
@@ -24,7 +24,7 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
 
   // The only consequence worth a confirm step. Everything else a restart does (sessions
   // survive, scans resume, Tunarr keeps playing) is either invisible or reassuring, and
-  // listing it was noise an operator had to read past to find the part that mattered.
+  // listing it is noise an operator has to read past to find the part that mattered.
   const dropWarning =
     cost.streamingChannels > 0
       ? `${pluralize(cost.streamingChannels, "channel")} Loomarr is streaming will cut out for a few seconds, then come back.`
@@ -32,13 +32,17 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
 
   return (
     <section className={cn("border-border rounded-lg border p-4", className)}>
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-medium">Restart Loomarr</h2>
-          <p className="text-muted-foreground mt-0.5 text-sm">
-            {dropWarning ?? "Sessions survive; nobody has to sign in again."}
-          </p>
-        </div>
+      <Stack align="center" direction="row" gap="control">
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+          <Text as="h2" textRole="cardLabel">
+            Restart Loomarr
+          </Text>
+          <Stack marginTop={2}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {dropWarning ?? "Sessions survive; nobody has to sign in again."}
+            </Text>
+          </Stack>
+        </Stack>
         {cost.available ? (
           <Action
             disabled={restarting || confirming}
@@ -49,31 +53,52 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
             Restart...
           </Action>
         ) : null}
-      </div>
+      </Stack>
 
       {/* ⚠ Not a hidden button. A build with no restart loop behind it says so, and says
           what to do instead — hiding the control would leave an operator hunting for a
           feature the docs mention. */}
       {!cost.available && (
-        <p className="border-border text-muted-foreground mt-3 rounded-md border border-dashed p-3 text-sm">
-          This build can't restart itself. Restart the container or service the way you started it.
-        </p>
+        <Stack marginTop={12}>
+          <Text
+            as="p"
+            className="border-border rounded-md border border-dashed p-3"
+            textRole="compact"
+            tone="secondary"
+          >
+            This build can't restart itself. Restart the container or service the way you started it.
+          </Text>
+        </Stack>
       )}
 
       {error ? (
-        <p className="text-danger mt-3 flex items-start gap-2 text-sm" role="alert">
-          <span className="mt-0.5 flex">
-            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
-          </span>
-          {error}
-        </p>
+        <Stack marginTop={12} role="alert">
+          <Stack align="start" direction="row" gap="inline">
+            <Stack direction="row" marginTop={2} render="span">
+              <Icon decorative glyph={icons.alert} size="compact" tone="danger" />
+            </Stack>
+            <Text as="p" textRole="compact" tone="danger">
+              {error}
+            </Text>
+          </Stack>
+        </Stack>
       ) : null}
 
       {confirming && (
-        <div className="border-border mt-3 flex items-center gap-2 border-t pt-3">
-          <p className="min-w-0 flex-1 text-sm">
-            {dropWarning ? `Restart now? ${dropWarning}` : "Restart now?"}
-          </p>
+        <Stack
+          align="center"
+          borderColor="borderDecorative"
+          borderTopWidth={1}
+          direction="row"
+          gap="inline"
+          marginTop={12}
+          paddingTop={12}
+        >
+          <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+            <Text as="p" textRole="compact">
+              {dropWarning ? `Restart now? ${dropWarning}` : "Restart now?"}
+            </Text>
+          </Stack>
           <Action
             disabled={restarting}
             onPress={() => {
@@ -86,7 +111,7 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
           <Action onPress={() => setConfirming(false)} variant="ghost">
             Cancel
           </Action>
-        </div>
+        </Stack>
       )}
     </section>
   );
