@@ -33,7 +33,9 @@ type PhoneDestination = {
 const PRIMARY_ORDER: readonly PhoneDestinationKey[] = ["home", "watch", "guide", "requests"];
 // In the sidebar's order: Library sits after Guide and before Requests, so it leads the overflow.
 const ADMIN_OVERFLOW: readonly PhoneDestinationKey[] = ["library", "filler", "people", "settings", "help"];
-const MEMBER_OVERFLOW: readonly PhoneDestinationKey[] = ["notifications", "help"];
+// PROTOTYPE (#4476 A1, throwaway branch): a member gets Library in the bar; Requests moves to More.
+const MEMBER_PRIMARY: readonly PhoneDestinationKey[] = ["home", "watch", "guide", "library"];
+const MEMBER_OVERFLOW: readonly PhoneDestinationKey[] = ["requests", "notifications", "help"];
 
 const destinationFor = (
   key: PhoneDestinationKey,
@@ -78,8 +80,9 @@ const withBadge = (
 const phoneBarPrimary = (
   watchChannelId: string | undefined,
   badges?: Partial<Record<NavTo, number>>,
+  isAdmin = true,
 ): PhoneDestination[] =>
-  PRIMARY_ORDER.flatMap((key) => {
+  (isAdmin ? PRIMARY_ORDER : MEMBER_PRIMARY).flatMap((key) => {
     const destination = destinationFor(key, watchChannelId);
     return destination ? [withBadge(destination, badges)] : [];
   });

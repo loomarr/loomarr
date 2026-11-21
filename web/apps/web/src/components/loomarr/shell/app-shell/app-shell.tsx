@@ -79,7 +79,9 @@ const MEMBER_NAV: NavItem[] = [
   { to: "/dashboard", label: "Home", icon: "home" },
   { to: "/guide", label: "Guide", icon: "schedule" },
   { to: "/requests", label: "Requests", icon: "requests" },
-  { to: "/settings/notifications", label: "Notifications", icon: "settings" },
+  // PROTOTYPE (#4476 A1, throwaway branch): members browse the Library; Notifications gets its own glyph.
+  { to: "/library", label: "Library", icon: "library" },
+  { to: "/settings/notifications", label: "Notifications", icon: "notifications" },
   { to: "/help", label: "Help", icon: "help" },
 ];
 

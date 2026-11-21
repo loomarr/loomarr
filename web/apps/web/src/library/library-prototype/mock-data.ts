@@ -14,6 +14,7 @@ interface MockTitle {
   added: number;
   /** Stand-in artwork: which token hue tints it, and which of the poster layouts it uses. */
   hue: number;
+  hue2: number;
   layout: number;
 }
 
@@ -90,14 +91,15 @@ const TITLES: MockTitle[] = NAMES.map(([name, year, kind, genre], i) => ({
   kind,
   genres: [genre],
   added: (i * 37) % 400,
-  hue: seed(name) % 6,
-  layout: seed(`${name}#`) % 4,
+  hue: seed(name) % 5,
+  hue2: (seed(name) % 5) + 1 + ((seed(`${name}!`) % 3)),
+  layout: 0,
 }));
 
 // Two home videos: drawn only under the "It's ours" proposal.
 const HOME_VIDEOS: MockTitle[] = [
-  { id: "h1", name: "Summer at the lake", year: 2019, kind: "home", genres: ["Home videos"], added: 3, hue: 2, layout: 0 },
-  { id: "h2", name: "Grandad's 80th", year: 2022, kind: "home", genres: ["Home videos"], added: 5, hue: 4, layout: 0 },
+  { id: "h1", name: "Summer at the lake", year: 2019, kind: "home", genres: ["Home videos"], added: 3, hue: 2, hue2: 4, layout: 0 },
+  { id: "h2", name: "Grandad's 80th", year: 2022, kind: "home", genres: ["Home videos"], added: 5, hue: 4, hue2: 1, layout: 0 },
 ];
 
 // The library the controls are designed for.
@@ -123,7 +125,7 @@ interface NeedsItem {
   file: string;
   folder: string;
   /** The best guess, when there is one. */
-  guess?: { name: string; year: number; why: string; hue: number; layout: number };
+  guess?: { name: string; year: number; why: string; hue: number; hue2: number; layout: number };
   /** The one sentence when there is no guess. */
   none?: string;
   extraFiles?: number;
@@ -134,13 +136,13 @@ const NEEDS: NeedsItem[] = [
     id: "n1",
     file: "Saltmarsh.Lantern.1979.DVDRip.mkv",
     folder: "Movies/Unsorted",
-    guess: { name: "The Saltmarsh Lantern", year: 1979, why: "the name and year match, and so does the length", hue: 3, layout: 1 },
+    guess: { name: "The Saltmarsh Lantern", year: 1979, why: "the name and year match, and so does the length", hue: 3, hue2: 1, layout: 1 },
   },
   {
     id: "n2",
     file: "ferry_night_87.avi",
     folder: "Movies/From old drive",
-    guess: { name: "Night Ferry to Orla", year: 1987, why: "the name is close and the year matches; the length is 4 minutes shorter", hue: 0, layout: 2 },
+    guess: { name: "Night Ferry to Orla", year: 1987, why: "the name is close and the year matches; the length is 4 minutes shorter", hue: 0, hue2: 2, layout: 2 },
   },
   {
     id: "n3",
@@ -159,13 +161,13 @@ const NEEDS: NeedsItem[] = [
     id: "n5",
     file: "Copperline S02E07.mkv",
     folder: "Shows/Copperline",
-    guess: { name: "Copperline", year: 2016, why: "the show matches, but season 2 only has 6 episodes", hue: 1, layout: 3 },
+    guess: { name: "Copperline", year: 2016, why: "the show matches, but season 2 only has 6 episodes", hue: 1, hue2: 3, layout: 3 },
   },
   {
     id: "n6",
     file: "lindworth_extended_cut.mkv",
     folder: "Movies/Unsorted",
-    guess: { name: "Under the Lindworth", year: 1985, why: "the name matches; the year isn't in the file name", hue: 5, layout: 0 },
+    guess: { name: "Under the Lindworth", year: 1985, why: "the name matches; the year isn't in the file name", hue: 5, hue2: 0, layout: 0 },
   },
 ];
 
@@ -183,3 +185,12 @@ const READY_MADE = [
 
 export type { Kind, MockTitle, NeedsItem };
 export { COUNTS, GENRES, HOME_VIDEOS, IGNORED, NEEDS, READY_MADE, TITLES };
+
+// Compositions follow the A–Z order the wall opens on, so no composition repeats more than twice in
+// the first two rows (twelve posters, eight compositions).
+const sortName = (s: string) => s.replace(/^(The|An?) /, "");
+[...TITLES]
+  .sort((a, b) => sortName(a.name).localeCompare(sortName(b.name)))
+  .forEach((t, i) => {
+    t.layout = (i * 3) % 8;
+  });

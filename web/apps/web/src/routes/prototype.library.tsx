@@ -1,21 +1,23 @@
-// PROTOTYPE — throwaway (#4476 A1). /prototype/library draws the redesigned Library wall and Needs
-// you inside the real AppShell from stub data (no backend, no auth). Every view is a URL:
+// PROTOTYPE — throwaway (#4476 A1). /prototype/library draws the redesigned Library wall, Needs you
+// and the title page inside the real AppShell from stub data (no backend, no auth). Every view is a
+// URL:
 //
 //   /prototype/library?screen=wall&state=needs&role=admin&tab=all&device=desktop
 //
-// screen: wall | needs | nav (the phone-navigation proposal)
+// screen: wall | needs | title
 // state (wall): needs | clear | importing | loading | search-empty | home-video
-// state (needs): several | clear | undo | ignored | proposals
+// state (needs): several | undo | folder-undo | ignored | clear
+// state (title): default | fix-open | tech-open | extra | extra-undo | airing | unplayable
+// title (title screen): movie | series | home
 // device=phone frames the same URL in a 390×844 iframe, so the shell switches to its bottom bar.
-import { TabBar, Text } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/loomarr/shell/app-shell";
 import { NEEDS } from "@/library/library-prototype/mock-data";
 import { type NeedsState, NeedsYou } from "@/library/library-prototype/mock-needs";
-import { Proposal } from "@/library/library-prototype/mock-parts";
+import { type TitleKind, TitlePage, type TitleState } from "@/library/library-prototype/mock-title";
 import { LibraryWall, type Role, type Tab, type WallState } from "@/library/library-prototype/mock-wall";
 
-const SCREENS = ["wall", "needs", "nav"] as const;
+const SCREENS = ["wall", "needs", "title"] as const;
 type Screen = (typeof SCREENS)[number];
 
 interface Search {
@@ -23,43 +25,13 @@ interface Search {
   state: string;
   role: Role;
   tab: Tab;
+  title: TitleKind;
   device: "desktop" | "phone";
   framed?: boolean;
 }
 
 const pick = <T extends string>(raw: unknown, allowed: readonly T[], fallback: T): T =>
   allowed.includes(raw as T) ? (raw as T) : fallback;
-
-// PROPOSAL: Library earns a slot in the phone's bar; Requests moves into More, and its count
-// rides on More. A member asks for a title from the Library's empty search ("Ask for it").
-const NavProposal = ({ role }: { role: Role }) => (
-  <div className="bg-static-950 flex min-h-dvh flex-col pb-24">
-    <div className="p-4">
-      <Proposal question="Where Library sits in the phone's navigation (under More today)">
-        <Text textRole="compact" tone="secondary">
-          Home · Watch · Guide · Library · More. Requests moves into More and its count shows on More.
-          Asking for a title starts from a search that finds nothing.
-        </Text>
-      </Proposal>
-    </div>
-    <LibraryWall onReview={() => undefined} phone role={role} state="clear" tab="all" />
-    <div className="fixed inset-x-0 bottom-0 z-30">
-      <TabBar
-        accessibilityLabel="Primary navigation"
-        idiom="ios"
-        items={[
-          { value: "home", label: "Home", icon: "home" },
-          { value: "watch", label: "Watch", icon: "play" },
-          { value: "guide", label: "Guide", icon: "guide" },
-          { value: "library", label: "Library", icon: "library" },
-          { value: "more", label: "More", icon: "more", kind: "disclosure", badge: role === "admin" ? 2 : undefined },
-        ]}
-        onSelect={() => undefined}
-        selected="library"
-      />
-    </div>
-  </div>
-);
 
 const PrototypeLibrary = () => {
   const search = Route.useSearch();
@@ -79,16 +51,29 @@ const PrototypeLibrary = () => {
     );
   }
 
-  if (search.screen === "nav") return <NavProposal role={search.role} />;
-
   const admin = search.role === "admin";
   const phone = search.device === "phone";
+  const toWall = () => set({ screen: "wall", state: "needs" });
   const body =
-    search.screen === "needs" && admin ? (
+    search.screen === "title" ? (
+      <TitlePage
+        admin={admin}
+        key={`${search.title}-${search.state}-${search.role}`}
+        kind={search.title}
+        onBack={toWall}
+        phone={phone}
+        state={pick(
+          search.state,
+          ["default", "fix-open", "tech-open", "extra", "extra-undo", "airing", "unplayable"] as TitleState[],
+          "default",
+        )}
+      />
+    ) : search.screen === "needs" && admin ? (
       <NeedsYou
         key={search.state}
-        onBack={() => set({ screen: "wall", state: "needs" })}
-        state={pick(search.state, ["several", "clear", "undo", "ignored", "proposals"] as NeedsState[], "several")}
+        onBack={toWall}
+        phone={phone}
+        state={pick(search.state, ["several", "undo", "folder-undo", "ignored", "clear"] as NeedsState[], "several")}
       />
     ) : (
       <LibraryWall
@@ -120,6 +105,7 @@ const Route = createFileRoute("/prototype/library")({
     state: typeof raw.state === "string" ? raw.state : "needs",
     role: pick(raw.role, ["admin", "member"] as const, "admin"),
     tab: pick(raw.tab, ["all", "movies", "shows", "collections"] as const, "all"),
+    title: pick(raw.title, ["movie", "series", "home"] as const, "movie"),
     device: pick(raw.device, ["desktop", "phone"] as const, "desktop"),
     framed: raw.framed === true || raw.framed === "true",
   }),

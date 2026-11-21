@@ -2,7 +2,7 @@
 // the status, tabs that read as tabs, and the controls a 3,400-title library needs.
 import {
   Action,
-  CompactSelect,
+
   Field,
   ProgressTrack,
   Skeleton,
@@ -13,7 +13,7 @@ import {
 import { useState } from "react";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { COUNTS, GENRES, HOME_VIDEOS, type MockTitle, NEEDS, READY_MADE, TITLES } from "./mock-data";
-import { JumpRail, PosterArt, Proposal, UnderlineTabs } from "./mock-parts";
+import { JumpRail, Picker, PosterArt, UnderlineTabs } from "./mock-parts";
 
 type WallState = "needs" | "clear" | "importing" | "loading" | "search-empty" | "home-video";
 type Tab = "all" | "movies" | "shows" | "collections";
@@ -21,44 +21,53 @@ type Role = "admin" | "member";
 
 const fmt = (n: number) => n.toLocaleString("en-US");
 
-// The one status line. Needs you rides on it as a count and a link, never a box (decided).
+// The one status line. Needs you rides on it as a count and a link, never a box (decided). Every
+// part sits on one flat row with the same gap and separator; the import's progress bar runs under it.
+const Sep = () => (
+  <span aria-hidden className="text-static-500">
+    ·
+  </span>
+);
+
 const StatusLine = ({ state, onReview }: { state: WallState; onReview: () => void }) => {
   const needs = state === "importing" ? 3 : state === "clear" ? 0 : NEEDS.length;
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-      {state === "importing" ? (
-        <>
-          <span className="flex items-center gap-2">
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {state === "importing" ? (
+          <>
             <StatusDot label="Adding titles" tone="progress" />
             <Text textRole="compact" tone="secondary">
               Adding titles · {fmt(COUNTS.ready)} of {fmt(COUNTS.all)}
             </Text>
-          </span>
-          <div className="w-40">
-            <ProgressTrack label="Adding your titles" percent={(COUNTS.ready / COUNTS.all) * 100} tone="tune" />
-          </div>
-        </>
-      ) : state === "loading" ? (
-        <Skeleton width={180} />
-      ) : (
-        <span className="flex items-center gap-2">
-          <StatusDot label="Up to date" tone="ok" />
-          <Text textRole="compact" tone="secondary">
-            Up to date
-          </Text>
-        </span>
-      )}
-      {needs > 0 ? (
-        <span className="flex items-center gap-2">
-          <span aria-hidden className="text-static-500 hidden sm:inline">
-            ·
-          </span>
-          <StatusDot label="Needs you" tone="warn" />
-          <Text textRole="compact">{needs} need you</Text>
-          <TextLink onPress={onReview} tone="info">
-            Review
-          </TextLink>
-        </span>
+          </>
+        ) : state === "loading" ? (
+          <Skeleton width={120} />
+        ) : (
+          <>
+            <StatusDot label="Up to date" tone="ok" />
+            <Text textRole="compact" tone="secondary">
+              Up to date
+            </Text>
+          </>
+        )}
+        {needs > 0 ? (
+          <>
+            <Sep />
+            <span className="flex items-center gap-2 whitespace-nowrap">
+              <StatusDot label="Needs you" tone="warn" />
+              <Text textRole="compact">{needs} need you</Text>
+              <TextLink onPress={onReview} tone="info">
+                Review
+              </TextLink>
+            </span>
+          </>
+        ) : null}
+      </div>
+      {state === "importing" ? (
+        <div className="w-56">
+          <ProgressTrack label="Adding your titles" percent={(COUNTS.ready / COUNTS.all) * 100} tone="tune" />
+        </div>
       ) : null}
     </div>
   );
@@ -73,7 +82,7 @@ const Tile = ({ title, preparing }: { title: MockTitle; preparing: boolean }) =>
       <Text as="p" numberOfLines={1} strong textRole="label">
         {title.name}
       </Text>
-      <Text as="p" numberOfLines={1} textRole="metadata" tone="secondary">
+      <Text as="p" numberOfLines={1} textRole="compact" tone="secondary">
         {preparing
           ? "Getting ready"
           : title.kind === "home"
@@ -159,7 +168,7 @@ const CollectionsEmpty = ({ role }: { role: Role }) => (
               <div className="relative h-16 w-[68px] shrink-0">
                 {set.hues.map((hue, i) => (
                   <div className="absolute top-0 w-10" key={hue} style={{ left: i * 14, zIndex: 3 - i }}>
-                    <PosterArt small title={{ name: "", year: 0, hue, layout: i }} />
+                    <PosterArt small title={{ name: "", year: 0, hue, hue2: hue + 2, layout: [5, 2, 7][i] ?? 0 }} />
                   </div>
                 ))}
               </div>
@@ -167,7 +176,7 @@ const CollectionsEmpty = ({ role }: { role: Role }) => (
                 <Text as="p" numberOfLines={2} strong textRole="label">
                   {set.name}
                 </Text>
-                <Text as="p" textRole="metadata" tone="secondary">
+                <Text as="p" textRole="compact" tone="secondary">
                   You have {set.have} of {set.of}
                 </Text>
               </div>
@@ -179,7 +188,7 @@ const CollectionsEmpty = ({ role }: { role: Role }) => (
   </div>
 );
 
-// PROPOSAL: a home video answered "It's ours, keep it as is". Its own name, its own genre, a frame
+// A home video answered "It's ours, keep it as is". Its own name, its own genre, a frame
 // from the video for a picture, no catalogue facts.
 const HomeVideoTile = ({ title }: { title: MockTitle }) => (
   <div>
@@ -200,7 +209,7 @@ const HomeVideoTile = ({ title }: { title: MockTitle }) => (
       <Text as="p" numberOfLines={1} strong textRole="label">
         {title.name}
       </Text>
-      <Text as="p" textRole="metadata" tone="secondary">
+      <Text as="p" textRole="compact" tone="secondary">
         {title.year} · Home video
       </Text>
     </div>
@@ -281,31 +290,33 @@ const LibraryWall = ({
                   value={query}
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <CompactSelect
-                  label="Sort"
-                  width={phone ? 112 : undefined}
-                  onValueChange={setSort}
-                  options={[
-                    { value: "az", label: "A–Z" },
-                    { value: "recent", label: "Recently added" },
-                  ]}
-                  value={sort}
-                />
-                <CompactSelect
-                  label="Genre"
-                  width={phone ? 132 : undefined}
-                  onValueChange={setGenre}
-                  options={[
-                    { value: "all", label: "All genres" },
-                    ...(state === "home-video" ? [{ value: "Home videos", label: "Home videos · 2" }] : []),
-                    ...GENRES.map(([g, n]) => ({ value: g, label: `${g} · ${fmt(n)}` })),
-                  ]}
-                  value={genre}
-                />
+              <div className="grid grid-cols-[1fr_1fr_auto] items-center gap-2 sm:flex">
+                <div className="sm:w-40">
+                  <Picker
+                    label="Sort"
+                    onChange={setSort}
+                    options={[
+                      { value: "az", label: "A–Z" },
+                      { value: "recent", label: "Recently added" },
+                    ]}
+                    value={sort}
+                  />
+                </div>
+                <div className="sm:w-44">
+                  <Picker
+                    label="Genre"
+                    onChange={setGenre}
+                    options={[
+                      { value: "all", label: "All genres" },
+                      ...(state === "home-video" ? [{ value: "Home videos", label: "Home videos · 2" }] : []),
+                      ...GENRES.map(([g, n]) => ({ value: g, label: `${g} · ${fmt(n)}` })),
+                    ]}
+                    value={genre}
+                  />
+                </div>
                 {phone && !loading ? (
                   <span className="ml-auto shrink-0 whitespace-nowrap">
-                    <Text as="p" textRole="metadata" tone="secondary">
+                    <Text as="p" textRole="compact" tone="secondary">
                       {fmt(tab === "shows" ? COUNTS.shows : tab === "movies" ? COUNTS.movies : COUNTS.all)} titles
                     </Text>
                   </span>
@@ -323,20 +334,17 @@ const LibraryWall = ({
           <div className="flex gap-2 sm:gap-4">
             <div className="min-w-0 flex-1">
               {state === "home-video" ? (
-                <Proposal
-                  className="mb-6"
-                  question="A third answer, “It's ours, keep it as is”: a home video keeps its own name and lands here"
-                >
+                <div className="mb-6">
                   <div className={GRID}>
                     {HOME_VIDEOS.map((h) => (
                       <HomeVideoTile key={h.id} title={h} />
                     ))}
                   </div>
-                </Proposal>
+                </div>
               ) : null}
               {loading ? <LoadingWall /> : <Wall state={state} titles={shown} />}
             </div>
-            {loading || (phone && sort === "recent") ? null : <JumpRail compact={phone} current={sort === "az" ? "A" : "This week"} sort={sort} />}
+            {loading || phone ? null : <JumpRail current={sort === "az" ? "A" : "This week"} sort={sort} />}
           </div>
         )}
       </div>

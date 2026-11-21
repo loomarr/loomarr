@@ -1,106 +1,103 @@
 // PROTOTYPE — throwaway (#4476 A1). Local stand-ins for the parts the design system does not have
-// yet (each is a design-system gap named in the report): a 2:3 poster with dark, film-like
-// stand-in art; tabs that read as tabs; a letter rail; the PROPOSAL frame. Colours are tokens only.
-import { Badge, Text } from "@loomarr/design-system";
-import type { CSSProperties, ReactNode } from "react";
+// yet (each is a design-system gap named in the report): a 2:3 poster with stand-in art busy enough
+// to test the wall against real posters; tabs that read as tabs; a letter rail; a file name that
+// shortens in the middle; the PROPOSAL frame. Colours are tokens only.
+import { Badge, SelectControl, Text } from "@loomarr/design-system";
+import { type CSSProperties, type ReactNode, useState } from "react";
 import type { MockTitle } from "./mock-data";
 
-// Artwork tints: the broadcast hues at a few percent over the darkest static, so a wall reads as
-// posters without any one of them shouting. Amber (focus, primary) is left out on purpose.
+// Artwork hues. Real posters are loud, so the stand-ins are too: two hues per poster, mixed hard.
 const HUES = [
   "var(--color-tune)",
   "var(--color-lock)",
   "var(--color-onair)",
   "var(--color-suggest)",
-  "var(--color-static-400)",
   "var(--color-caution)",
 ];
+const hue = (i: number) => HUES[((i % HUES.length) + HUES.length) % HUES.length] ?? "var(--color-static-400)";
+const mix = (c: string, pct: number, base = "var(--color-static-950)") => `color-mix(in srgb, ${c} ${pct}%, ${base})`;
+const fade = (c: string, pct: number) => `color-mix(in srgb, ${c} ${pct}%, transparent)`;
+const INK = "var(--color-static-950)";
+const PAPER = "var(--color-static-100)";
 
-const mix = (hue: string, pct: number, base = "var(--color-static-950)") =>
-  `color-mix(in srgb, ${hue} ${pct}%, ${base})`;
-const glow = (hue: string, pct: number) => `color-mix(in srgb, ${hue} ${pct}%, transparent)`;
+type Art = Pick<MockTitle, "name" | "year" | "hue" | "hue2" | "layout">;
 
-// Four poster compositions, so the wall has the rhythm of real, busy artwork: a horizon band, a
-// lit figure, a diagonal split, a framed still. Each is gradients over the darkest static.
-const artStyle = (t: Pick<MockTitle, "hue" | "layout">): CSSProperties => {
-  const h = HUES[t.hue % HUES.length] ?? "var(--color-static-400)";
-  const shade = glow("var(--color-static-950)", 70);
-  switch (t.layout % 4) {
+// Eight compositions, as different as real posters are: a horizon band, a lit face, a diagonal
+// split, a framed still, a light paper poster, giant type, a cast collage, a silhouette at dusk.
+const background = (t: Art): string => {
+  const a = hue(t.hue);
+  const b = hue(t.hue2);
+  switch (t.layout % 8) {
     case 0:
-      return {
-        background: [
-          `radial-gradient(120% 22% at 50% 62%, ${glow(h, 38)}, transparent 70%)`,
-          `linear-gradient(180deg, ${mix(h, 10)} 0%, ${mix(h, 4)} 55%, var(--color-static-950) 100%)`,
-        ].join(","),
-      };
+      return `radial-gradient(130% 18% at 50% 64%, ${fade(a, 90)}, transparent 70%), linear-gradient(180deg, ${mix(b, 35)} 0%, ${mix(a, 12)} 58%, ${INK} 100%)`;
     case 1:
-      return {
-        background: [
-          `radial-gradient(28% 20% at 58% 34%, ${glow("var(--color-static-100)", 22)}, transparent 70%)`,
-          `radial-gradient(60% 45% at 58% 36%, ${glow(h, 30)}, transparent 75%)`,
-          `linear-gradient(200deg, ${mix(h, 16)}, var(--color-static-950) 80%)`,
-        ].join(","),
-      };
+      return `radial-gradient(22% 16% at 55% 34%, ${PAPER}, transparent 75%), radial-gradient(55% 40% at 55% 36%, ${fade(a, 85)}, transparent 75%), linear-gradient(200deg, ${mix(b, 40)}, ${INK} 85%)`;
     case 2:
-      return {
-        background: [
-          `linear-gradient(115deg, transparent 48%, ${shade} 48.5%)`,
-          `linear-gradient(160deg, ${mix(h, 22)} 0%, ${mix(h, 6)} 60%, var(--color-static-950))`,
-        ].join(","),
-      };
+      return `linear-gradient(115deg, ${mix(a, 75)} 0 47%, ${INK} 47% 49%, ${mix(b, 55)} 49%)`;
+    case 3:
+      return `radial-gradient(80% 55% at 35% 35%, ${fade(a, 70)}, transparent 70%), linear-gradient(0deg, ${INK}, ${mix(b, 45, "var(--color-static-900)")})`;
+    case 4:
+      return `radial-gradient(45% 30% at 70% 68%, ${fade(a, 75)}, transparent 72%), linear-gradient(180deg, ${mix(PAPER, 92, a)}, ${mix(PAPER, 70, b)})`;
+    case 5:
+      return `linear-gradient(160deg, ${mix(a, 85)}, ${mix(b, 60)})`;
+    case 6:
+      return `linear-gradient(90deg, ${mix(a, 70)} 0 50%, ${mix(b, 65)} 50%)`;
     default:
-      return {
-        background: [
-          `radial-gradient(90% 60% at 30% 30%, ${glow(h, 24)}, transparent 70%)`,
-          `linear-gradient(0deg, var(--color-static-950), ${mix(h, 12, "var(--color-static-900)")})`,
-        ].join(","),
-      };
+      return `radial-gradient(140% 40% at 50% 108%, ${INK} 60%, transparent 61%), linear-gradient(180deg, ${mix(a, 80)} 0%, ${mix(b, 70)} 70%)`;
   }
 };
 
-// The stand-in art. Decorative: the tile's caption names the title once.
-const PosterArt = ({
-  title,
-  small = false,
-  dim = false,
-}: {
-  title: Pick<MockTitle, "name" | "year" | "hue" | "layout">;
-  small?: boolean;
-  dim?: boolean;
-}) => {
-  const layout = title.layout % 4;
-  const place =
-    layout === 0
-      ? "justify-start text-left"
-      : layout === 1
-        ? "justify-end text-center items-center"
-        : layout === 2
-          ? "justify-end text-left"
-          : "justify-start text-center items-center";
+const titleClass = (layout: number): string =>
+  [
+    "text-[11px] font-semibold tracking-[0.14em] uppercase text-static-0",
+    "text-[13px] font-medium text-static-0",
+    "text-sm font-bold uppercase leading-none text-static-0",
+    "text-[13px] font-medium text-static-100",
+    "text-base font-bold leading-tight text-static-950",
+    "text-[22px] font-black uppercase leading-[0.95] tracking-tight break-words text-static-950",
+    "text-xs font-bold uppercase tracking-[0.2em] text-static-0",
+    "text-[13px] font-semibold tracking-wide text-static-0",
+  ][layout % 8] ?? "";
+
+const placeClass = (layout: number): string =>
+  [
+    "justify-start text-left",
+    "justify-end items-center text-center",
+    "justify-end text-left",
+    "justify-start items-center text-center",
+    "justify-start text-left",
+    "justify-end text-left",
+    "justify-end items-center text-center",
+    "justify-start items-center text-center",
+  ][layout % 8] ?? "";
+
+// The stand-in art. Decorative: whatever holds it names the title once.
+const PosterArt = ({ title, small = false, dim = false }: { title: Art; small?: boolean; dim?: boolean }) => {
+  const layout = title.layout % 8;
+  const style: CSSProperties = { background: background(title) };
   return (
     <div
       aria-hidden
-      className={`relative flex aspect-[2/3] w-full flex-col overflow-hidden rounded-md ${place} ${small ? "p-1.5" : "p-3"} ${dim ? "opacity-50" : ""}`}
-      style={artStyle(title)}
+      className={`relative flex aspect-[2/3] w-full flex-col overflow-hidden rounded-md ${placeClass(layout)} ${small ? "p-1.5" : "p-3"} ${dim ? "opacity-40" : ""}`}
+      style={style}
     >
-      {layout === 3 ? (
-        <div className="border-static-100/15 pointer-events-none absolute inset-2 rounded-sm border" />
+      {layout === 3 ? <div className="border-static-100/30 absolute inset-2 rounded-sm border" /> : null}
+      {layout === 6 ? (
+        <div className="absolute inset-0 grid grid-cols-2 grid-rows-2">
+          <div style={{ background: `radial-gradient(40% 35% at 50% 45%, ${fade(PAPER, 55)}, transparent 70%)` }} />
+          <div style={{ background: `linear-gradient(0deg, ${fade(INK, 60)}, transparent)` }} />
+          <div style={{ background: `linear-gradient(0deg, ${fade(INK, 70)}, ${fade(hue(title.hue2 + 1), 50)})` }} />
+          <div style={{ background: `radial-gradient(40% 35% at 50% 45%, ${fade(PAPER, 40)}, ${fade(INK, 40)})` }} />
+        </div>
       ) : null}
-      {small ? null : (
-        <span
-          className={`text-static-100/80 relative leading-tight ${layout % 2 === 0 ? "text-[11px] font-semibold tracking-[0.14em] uppercase" : "text-[13px] font-medium"}`}
-        >
-          {title.name}
-        </span>
+      {small ? null : <span className={`relative ${titleClass(layout)}`}>{title.name}</span>}
+      {small || (layout !== 2 && layout !== 5) ? null : (
+        <span className={`relative mt-1 text-[11px] ${layout === 5 ? "text-static-950/70" : "text-static-0/70"}`}>{title.year}</span>
       )}
-      {small || layout !== 2 ? null : (
-        <span className="text-static-100/50 relative mt-1 font-mono text-[11px]">{title.year}</span>
-      )}
-      {small || layout === 1 || layout === 2 ? null : (
-        <div className="absolute inset-x-4 bottom-3 flex flex-col items-center gap-1 opacity-30">
-          <div className="bg-static-100 h-px w-full" />
-          <div className="bg-static-100 h-px w-4/5" />
-          <div className="bg-static-100 h-px w-3/5" />
+      {small || ![0, 3, 4].includes(layout) ? null : (
+        <div className={`absolute inset-x-4 bottom-3 flex flex-col items-center gap-1 ${layout === 4 ? "opacity-40" : "opacity-50"}`}>
+          <div className={`h-px w-full ${layout === 4 ? "bg-static-950" : "bg-static-100"}`} />
+          <div className={`h-px w-4/5 ${layout === 4 ? "bg-static-950" : "bg-static-100"}`} />
         </div>
       )}
     </div>
@@ -108,8 +105,8 @@ const PosterArt = ({
 };
 
 // Tabs that read as tabs: words on a shared rule, the current one underlined in the foreground
-// (selection is neutral; amber is only the focus ring). Counts ride along in the data face.
-// GAP: the design system's Tabs draws each tab as an outlined Action.
+// (selection is neutral; amber is only the focus ring). GAP: the design system's Tabs draws each
+// tab as an outlined Action.
 const UnderlineTabs = <V extends string>({
   label,
   options,
@@ -137,23 +134,23 @@ const UnderlineTabs = <V extends string>({
           type="button"
         >
           {o.label}
-          {o.count ? <span className="text-static-400 font-mono text-xs font-normal">{o.count}</span> : null}
+          {o.count ? <span className="text-static-400 text-xs font-normal">{o.count}</span> : null}
         </button>
       );
     })}
   </div>
 );
 
-// Jump by letter (A–Z order) or by when it arrived (Recently added): the same rail, its stops
-// following the sort. GAP: no index rail in the design system.
+// Jump by letter (A–Z) or by when it arrived (Recently added). Desktop only: 24px targets.
+// GAP: no index rail in the design system.
 const LETTERS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const EMPTY = new Set(["#", "Q", "U", "X"]);
-const JumpRail = ({ sort, current, compact = false }: { sort: "az" | "recent"; current: string; compact?: boolean }) => {
+const JumpRail = ({ sort, current }: { sort: "az" | "recent"; current: string }) => {
   const stops = sort === "az" ? LETTERS : ["This week", "This month", "Summer", "Spring", "2025", "2024", "Earlier"];
   return (
     <nav
       aria-label={sort === "az" ? "Jump to a letter" : "Jump to when it arrived"}
-      className={`sticky top-4 flex shrink-0 flex-col items-center self-start ${compact ? "gap-0" : "gap-0.5"}`}
+      className="sticky top-4 flex shrink-0 flex-col self-start"
     >
       {stops.map((s) => {
         const empty = sort === "az" && EMPTY.has(s);
@@ -161,12 +158,12 @@ const JumpRail = ({ sort, current, compact = false }: { sort: "az" | "recent"; c
         return (
           <button
             aria-current={on ? "true" : undefined}
-            className={`focus-visible:outline-signal rounded-sm font-mono leading-none focus-visible:outline-2 ${compact ? "px-1 py-[3px] text-[11px]" : "px-1.5 py-[3px] text-xs"} ${sort === "recent" ? "w-full text-right [writing-mode:horizontal-tb]" : ""} ${on ? "bg-static-800 text-static-0 font-semibold" : empty ? "text-static-500" : "text-static-400 hover:text-static-100"}`}
+            className={`focus-visible:outline-signal flex h-6 min-w-7 items-center justify-center rounded-sm px-1.5 text-xs focus-visible:outline-2 ${on ? "bg-static-800 text-static-0 font-semibold" : empty ? "text-static-500" : "text-static-400 hover:bg-static-900 hover:text-static-100"}`}
             disabled={empty}
             key={s}
             type="button"
           >
-            {sort === "recent" && compact ? s.replace("This ", "").slice(0, 4) : s}
+            {s}
           </button>
         );
       })}
@@ -174,12 +171,51 @@ const JumpRail = ({ sort, current, compact = false }: { sort: "az" | "recent"; c
   );
 };
 
+// A file name that never breaks mid-word: the middle gives way with an ellipsis, and the end of
+// the name and its extension always show. The only text set in the data (mono) face.
+const FileName = ({ name, strong = true }: { name: string; strong?: boolean }) => {
+  const dot = name.lastIndexOf(".");
+  const tailFrom = Math.max(0, (dot > 0 ? dot : name.length) - 8);
+  return (
+    <span className={`flex min-w-0 font-mono text-[13px] ${strong ? "text-static-0 font-semibold" : "text-static-100"}`} title={name}>
+      <span className="truncate whitespace-pre">{name.slice(0, tailFrom)}</span>
+      <span className="shrink-0 whitespace-pre">{name.slice(tailFrom)}</span>
+    </span>
+  );
+};
+
+// A picker that matches the search field: the design system's SelectControl in its field look.
+const Picker = <V extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: V;
+  options: readonly { value: V; label: string }[];
+  onChange: (v: V) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <SelectControl
+      appearance="field"
+      label={label}
+      onOpenChange={setOpen}
+      onValueChange={(v) => {
+        onChange(v);
+        setOpen(false);
+      }}
+      open={open}
+      options={options}
+      value={value}
+    />
+  );
+};
+
 // A drawn-but-undecided part of the mock, marked so nobody mistakes it for the design.
 const Proposal = ({ question, children, className = "" }: { question: string; children: ReactNode; className?: string }) => (
-  <section
-    aria-label={`Proposal: ${question}`}
-    className={`border-tune/60 rounded-lg border border-dashed p-3 ${className}`}
-  >
+  <section aria-label={`Proposal: ${question}`} className={`border-tune/60 rounded-lg border border-dashed p-3 ${className}`}>
     <div className="mb-3 flex flex-wrap items-center gap-2">
       <Badge tone="tune">Proposal</Badge>
       <Text textRole="compact" tone="info">
@@ -190,4 +226,4 @@ const Proposal = ({ question, children, className = "" }: { question: string; ch
   </section>
 );
 
-export { JumpRail, PosterArt, Proposal, UnderlineTabs };
+export { FileName, JumpRail, Picker, PosterArt, Proposal, UnderlineTabs };
