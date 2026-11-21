@@ -143,9 +143,21 @@ func testUserCredentialCapabilities(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// saveMembers saves a member for each id. The people columns are foreign keys to users (#2793), so
+// a name that is no member reads back as no one.
+func saveMembers(t *testing.T, s Store, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		if err := s.UpsertUser(context.Background(), User{ID: id, Name: id, Role: RoleMember}); err != nil {
+			t.Fatalf("save member %s: %v", id, err)
+		}
+	}
+}
+
 func testSettings(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
+	saveMembers(t, s, "matt", "grace", "ana")
 	if _, err := s.GetSetting(ctx, "instance_id"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetSetting(missing) = %v, want ErrNotFound", err)
 	}

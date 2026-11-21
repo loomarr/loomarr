@@ -13,6 +13,17 @@ import (
 // it hides the backend, so every assertion below runs identically on SQLite and Postgres.
 type NewStoreFunc func(t *testing.T) Store
 
+// saveMembers saves a member for each id. A pull's decided_by is a foreign key to users (#2793), so
+// a name that is no member reads back as no one.
+func saveMembers(t *testing.T, s Store, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		if err := s.UpsertUser(context.Background(), store.User{ID: id, Name: id, Role: store.RoleMember}); err != nil {
+			t.Fatalf("save member %s: %v", id, err)
+		}
+	}
+}
+
 // RunConformance is the filler half of the store conformance suite (AGENTS.md: one suite, two
 // backends). It runs against the extended store the app holds, so clip-catalog assertions whose
 // methods still live in the core store run here too, beside the filler state they share tables
