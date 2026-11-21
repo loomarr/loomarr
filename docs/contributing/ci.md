@@ -351,6 +351,7 @@ default branch.
 Shared caches are written on `main` only, because a cache is readable only from its own ref and the
 default branch (#1679). The Go cache warm workflow runs on every push to `main` and seeds each key
 when it is missing:
+
 - the race-lane and Postgres Go build caches, once per ISO week and `go.sum`;
 - the Go contracts cache;
 - the pnpm store, per lockfile;
