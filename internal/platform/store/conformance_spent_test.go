@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 )
 
@@ -41,13 +42,13 @@ func testSpentRowPurges(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// Interactive operations: finished and old go; running, or finished recently, stay.
-	for _, op := range []InteractiveOperation{
-		{ID: "op-done", Status: InteractiveOperationSuccess, CompletedAt: old},
-		{ID: "op-failed", Status: InteractiveOperationError, CompletedAt: old},
-		{ID: "op-running", Status: InteractiveOperationRunning},
-		{ID: "op-fresh", Status: InteractiveOperationSuccess, CompletedAt: recent},
+	for _, op := range []operationstore.InteractiveOperation{
+		{ID: "op-done", Status: operationstore.InteractiveOperationSuccess, CompletedAt: old},
+		{ID: "op-failed", Status: operationstore.InteractiveOperationError, CompletedAt: old},
+		{ID: "op-running", Status: operationstore.InteractiveOperationRunning},
+		{ID: "op-fresh", Status: operationstore.InteractiveOperationSuccess, CompletedAt: recent},
 	} {
-		op.Kind, op.Subject, op.StartedAt, op.UpdatedAt = InteractiveOperationLLMPull, "model", old, old
+		op.Kind, op.Subject, op.StartedAt, op.UpdatedAt = operationstore.InteractiveOperationLLMPull, "model", old, old
 		if err := st.UpsertInteractiveOperation(ctx, op); err != nil {
 			t.Fatal(err)
 		}

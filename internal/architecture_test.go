@@ -273,6 +273,12 @@ func TestViewingStoreImportsKernelNotAggregate(t *testing.T) {
 	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/viewingstore")
 }
 
+// internal/platform/store/operationstore is the interactive-operation cluster. It builds on the
+// storedb kernel, in the same direction as the clusters above, and store embeds it.
+func TestOperationStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/operationstore")
+}
+
 // internal/platform/store/diagnosticsstore is the diagnostics cluster (events, process runs and the
 // retained-byte totals). It builds on the storedb kernel, in the same direction as the clusters
 // above, and store embeds it.

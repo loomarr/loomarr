@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/llm/picker"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 )
 
 // SystemLLMService backs /v1/system/llm* (§8.1 model selection). Implemented in the
@@ -369,7 +370,7 @@ func (s *Handlers) systemLLMPullOperation(
 	if err != nil {
 		return nil, err
 	}
-	if operation.Kind != store.InteractiveOperationLLMPull {
+	if operation.Kind != operationstore.InteractiveOperationLLMPull {
 		return nil, httpcore.NotFound("Model pull not found", "That model-pull operation doesn't exist.")
 	}
 	return &struct{ Body systemLLMPullOperationDTO }{Body: systemLLMPullOperationDTO{

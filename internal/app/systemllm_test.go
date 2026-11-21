@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/llm/picker"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -75,7 +75,7 @@ func TestModelPull_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if operation.Kind != store.InteractiveOperationLLMPull || operation.Status != store.InteractiveOperationError || operation.Error == "" {
+	if operation.Kind != operationstore.InteractiveOperationLLMPull || operation.Status != operationstore.InteractiveOperationError || operation.Error == "" {
 		t.Fatalf("model pull operation = %+v, want durable cancellation", operation)
 	}
 }

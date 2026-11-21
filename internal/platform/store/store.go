@@ -25,6 +25,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
@@ -455,8 +456,8 @@ type ClipStore interface {
 // InteractiveOperationStore is the reconnect truth for request-launched asynchronous work. It
 // stores snapshots only; recurring/distributed scheduling remains owned by ScheduledJobStore.
 type InteractiveOperationStore interface {
-	UpsertInteractiveOperation(ctx context.Context, operation InteractiveOperation) error
-	GetInteractiveOperation(ctx context.Context, id string) (InteractiveOperation, error)
+	UpsertInteractiveOperation(ctx context.Context, operation operationstore.InteractiveOperation) error
+	GetInteractiveOperation(ctx context.Context, id string) (operationstore.InteractiveOperation, error)
 	RecoverInterruptedInteractiveOperations(ctx context.Context, at time.Time) (int, error)
 	PurgeFinishedInteractiveOperations(ctx context.Context, before time.Time) (int, error)
 }
