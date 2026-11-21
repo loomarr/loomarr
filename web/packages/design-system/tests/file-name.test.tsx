@@ -1,14 +1,18 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FileName, LoomarrProvider } from "../index";
 
-// A file name gives way in the middle: the tail (the end of the name and its extension) always
-// shows, the head takes what room is left, and the whole name is read once by assistive tech and
-// shown on hover. Names here are invented.
+// A file name gives way in the middle: the tail (the end of the name and its extension) shows last,
+// the head takes what room is left, and the two together are the name once. The cut prefers a word
+// start; a single last word longer than the tail may be cut, at a character boundary. Names here
+// are invented.
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const parts = (name: string) => {
   const { container } = render(
@@ -23,14 +27,16 @@ const parts = (name: string) => {
   };
 };
 
-describe("FileName", () => {
-  it("keeps the last words and the extension of a long name, breaking at a word", () => {
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+describe("FileName shortening", () => {
+  it("keeps the last words and the extension of a long name, cutting at a word start", () => {
     const { head, tail } = parts("Ashgrove.Station.1974.Remastered.1080p.mkv");
     expect(tail).toBe("Remastered.1080p.mkv");
     expect(head).toBe("Ashgrove.Station.1974.");
   });
 
-  it("starts the tail at a word after a space, underscore or hyphen too", () => {
+  it("prefers a word start after a space, underscore or hyphen too", () => {
     expect(parts("Beacon Moor - Directors Cut - 1080p.mp4").tail).toBe("Cut - 1080p.mp4");
     cleanup();
     expect(parts("cinder_and_vale_s01e04_extended.m2ts").tail).toBe("s01e04_extended.m2ts");
@@ -48,7 +54,7 @@ describe("FileName", () => {
     expect(tail).toBe("The Scenes Reel");
   });
 
-  it("keeps the last eight characters of a name with no separator near its end", () => {
+  it("may cut a single last word longer than the tail, at a character boundary", () => {
     const { head, tail } = parts("ashgrovestationtheextendedcut.mkv");
     expect(head).toBe("ashgrovestationtheext");
     expect(tail).toBe("endedcut.mkv");
@@ -59,25 +65,89 @@ describe("FileName", () => {
     cleanup();
     expect(parts("Calder Pier Holiday.Footage").tail).toBe("Holiday.Footage");
   });
+});
 
-  it("gives assistive tech the whole name once and the pointer a title", () => {
-    const name = "Ashgrove.Station.1974.Remastered.1080p.mkv";
-    const { container } = parts(name);
-    expect(screen.getByText(name)).toBeTruthy();
-    for (const drawn of container.querySelectorAll("[data-part]")) {
-      expect(drawn.getAttribute("aria-hidden")).toBe("true");
-    }
-    expect(container.querySelector(`[title="${name}"]`)).toBeTruthy();
+// Each case runs with Intl.Segmenter and with the fallback that joins code points back into
+// characters where the runtime has none.
+describe.each([
+  ["with Intl.Segmenter", false],
+  ["without Intl.Segmenter", true],
+])("FileName characters, %s", (_, withoutSegmenter) => {
+  const split = (name: string) => {
+    if (withoutSegmenter) vi.stubGlobal("Intl", { ...Intl, Segmenter: undefined });
+    return parts(name);
+  };
+
+  it("never splits an emoji's surrogate pair", () => {
+    const name = "🎬🎞🎥🎬🎞🎥🎬🎞🎥🎬🎞🎥🎬🎞🎥.mkv";
+    const { head, tail } = split(name);
+    expect(head).not.toMatch(LONE_SURROGATE);
+    expect(tail).not.toMatch(LONE_SURROGATE);
+    expect(`${head}${tail}`).toBe(name);
+    // Eight characters, not eight UTF-16 units.
+    expect(Array.from(tail?.replace(".mkv", "") ?? "")).toHaveLength(8);
   });
 
-  it("sets the name on one line in the data face", () => {
+  it("keeps a combining accent with its letter", () => {
+    // The eighth character from the end of the stem, where the cut falls, is "e" plus a combining acute.
+    const accented = `e${String.fromCodePoint(0x0301)}`;
+    const name = `cartographersdau${accented}tudelon.mkv`;
+    const { head, tail } = split(name);
+    expect(tail?.startsWith(accented)).toBe(true);
+    expect(head).toBe("cartographersdau");
+    expect(`${head}${tail}`).toBe(name);
+  });
+
+  it("keeps a joined emoji whole", () => {
+    const joiner = String.fromCodePoint(0x200d);
+    const family = ["👩", "👩", "👧"].join(joiner);
+    const name = `holidayfootagereel${family}${family}x.mkv`;
+    const { head, tail } = split(name);
+    expect(`${head}${tail}`).toBe(name);
+    expect(tail?.startsWith(joiner)).toBe(false);
+    expect(head?.endsWith(joiner)).toBe(false);
+    expect(tail).toContain(family);
+  });
+});
+
+describe("FileName on the page", () => {
+  it("carries the name exactly once, for copy, find and assistive tech", () => {
+    const name = "Ashgrove.Station.1974.Remastered.1080p.mkv";
+    const { container } = parts(name);
+    expect(container.textContent).toBe(name);
+    // Tamagui's own config marker is the only hidden element.
+    expect(container.querySelector("[aria-hidden]:not([data-tamagui-config-revision])")).toBeNull();
+  });
+
+  it("shows the whole name on hover", () => {
+    const name = "Ashgrove.Station.1974.Remastered.1080p.mkv";
+    const { container } = parts(name);
+    expect(container.querySelectorAll(`[title="${name}"]`)).toHaveLength(1);
+  });
+
+  it("follows the name's own direction, so a right-to-left name keeps its ellipsis by its tail", () => {
+    const { container } = parts("فيلم.العائلة.في.الحديقة.الطويل.mkv");
+    expect(container.querySelector('[dir="auto"]')).toBeTruthy();
+  });
+
+  it("sits inline, clips to its own box, and lets the tail give way last", () => {
     const { container } = parts("Ashgrove.Station.1974.Remastered.1080p.mkv");
+    const box = container.querySelector<HTMLElement>('[dir="auto"]');
     const head = container.querySelector<HTMLElement>('[data-part="head"]');
     const tail = container.querySelector<HTMLElement>('[data-part="tail"]');
-    expect(head?.style.whiteSpace).toBe("pre");
+    expect(box?.style.display).toBe("inline-flex");
+    expect(box?.style.overflow).toBe("hidden");
+    expect(box?.style.maxWidth).toBe("100%");
+    expect(head?.style.flexShrink).toBe("1");
     expect(head?.style.textOverflow).toBe("ellipsis");
-    expect(tail?.style.whiteSpace).toBe("pre");
     expect(tail?.style.flexShrink).toBe("0");
+    expect(tail?.style.maxWidth).toBe("100%");
+    expect(tail?.style.textOverflow).toBe("ellipsis");
+    for (const drawn of [head, tail]) expect(drawn?.style.whiteSpace).toBe("pre");
+  });
+
+  it("sets the name in the data face", () => {
+    const { container } = parts("Ashgrove.Station.1974.Remastered.1080p.mkv");
     expect(container.innerHTML).toMatch(/Geist Mono/);
   });
 });

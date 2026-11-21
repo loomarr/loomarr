@@ -89,18 +89,56 @@ describe("Tabs, underline appearance", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("leaves the default appearance as outlined actions", () => {
+  it("accepts a count only where it is drawn, the underline appearance", () => {
+    const counted = [{ count: "9", label: "Guide", value: "guide" }] as const;
+    render(
+      <LoomarrProvider>
+        {/* @ts-expect-error The default appearance draws no count, so it takes none. */}
+        <Tabs label="Viewer sections" onValueChange={vi.fn()} options={counted} value="guide" />
+      </LoomarrProvider>,
+    );
+    expect(screen.getByRole("tab").textContent).toBe("Guide");
+  });
+
+  it("names a tab by its spoken count in place of the bare number", () => {
     render(
       <LoomarrProvider>
         <Tabs
-          label="Viewer sections"
+          appearance="underline"
+          label="Library sections"
           onValueChange={vi.fn()}
-          options={[{ count: "9", label: "Guide", value: "guide" }]}
-          value="guide"
+          options={[
+            { count: "3,412", countLabel: "3,412 titles", label: "All", value: "all" },
+            { count: "2,180", label: "Movies", value: "movies" },
+          ]}
+          value="all"
         />
       </LoomarrProvider>,
     );
-    // The default draws no count: it is the underline appearance's alone.
-    expect(screen.getByRole("tab").textContent).toBe("Guide");
+    expect(screen.getByRole("tab", { name: "All, 3,412 titles" })).toBeTruthy();
+    // The count is still drawn beside the label.
+    expect(screen.getByRole("tab", { name: "All, 3,412 titles" }).textContent).toContain("3,412");
+    expect(screen.getByRole("tab", { name: /Movies/ }).textContent).toContain("2,180");
+  });
+
+  it("lifts an unselected label to the foreground on hover", async () => {
+    render(<Sections />);
+    // A label's tone is its atomic classes: a hovered label takes the selected one's, leaving restores.
+    const labelOf = (name: RegExp) => screen.getByRole("tab", { name }).querySelector("span")?.className;
+    const movies = screen.getByRole("tab", { name: /Movies/ });
+    const resting = labelOf(/Movies/);
+    expect(resting).not.toBe(labelOf(/All/));
+    await userEvent.hover(movies);
+    expect(labelOf(/Movies/)).toBe(labelOf(/All/));
+    await userEvent.unhover(movies);
+    expect(labelOf(/Movies/)).toBe(resting);
+  });
+
+  it("scrolls sideways instead of wrapping when the tabs do not fit", () => {
+    render(<Sections />);
+    const list = screen.getByRole("tablist");
+    // The list sits in a horizontal scroller and lays its tabs on one row.
+    const scroller = list.parentElement?.parentElement;
+    expect(scroller && getComputedStyle(scroller).overflowX).toMatch(/auto|scroll/);
   });
 });

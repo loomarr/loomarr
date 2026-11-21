@@ -1,6 +1,6 @@
 import { View } from "@tamagui/core";
-import type { ReactNode } from "react";
-import { Pressable } from "react-native";
+import { type ReactNode, useState } from "react";
+import { Pressable, ScrollView } from "react-native";
 
 import { useFocusLook } from "../focus-look";
 import { Icon } from "../icon";
@@ -12,29 +12,47 @@ import { Text } from "../text";
 import { type Density, semanticRadius, semanticSpace, semanticTargets } from "../tokens";
 
 type TabOption<Value extends string> = {
-  /** A count beside the label ("3,412"), drawn by the `underline` appearance only. */
-  count?: string;
   disabled?: boolean;
   label: string;
   value: Value;
 };
 
-interface TabsProps<Value extends string> {
+/** An `underline` tab, which may carry a count beside its label. */
+type UnderlineTabOption<Value extends string> = TabOption<Value> & {
+  /** The count as drawn beside the label ("3,412"). */
+  count?: string;
   /**
-   * `action`, the default, draws each tab as an outlined Action. `underline` sets the words on a
-   * shared rule with the selected one underlined in the foreground colour, for a page's sections
-   * (the Library's All, Movies, Shows). Amber stays the focus ring only.
+   * The count as spoken, in place of the bare number ("3,412 titles"): the tab is then named
+   * "All, 3,412 titles". Without it the tab's name is its label and count as drawn.
    */
-  appearance?: "action" | "underline";
+  countLabel?: string;
+};
+
+interface TabsBaseProps<Value extends string> {
   density?: Density;
   label: string;
   onValueChange: (value: Value) => void;
-  options: readonly TabOption<Value>[];
   value: Value;
 }
 
+/**
+ * `action`, the default, draws each tab as an outlined Action. `underline` sets the words on a
+ * shared rule with the selected one underlined in the foreground colour, for a page's sections (the
+ * Library's All, Movies, Shows), and only it draws a count, so only it accepts one. Amber stays the
+ * focus ring only.
+ */
+type TabsProps<Value extends string> = TabsBaseProps<Value> &
+  (
+    | {
+        appearance?: "action";
+        options: readonly (TabOption<Value> & { count?: never; countLabel?: never })[];
+      }
+    | { appearance: "underline"; options: readonly UnderlineTabOption<Value>[] }
+  );
+
 // One `underline` tab: the label and its count on a 2px rule that is the foreground colour when
 // selected and clear otherwise. The rule overlaps the list's own 1px rule, so the two read as one.
+// A hover lifts an unselected label to the foreground, as the dialog's close does.
 const UnderlineTab = <Value extends string>({
   density,
   onPress,
@@ -43,13 +61,20 @@ const UnderlineTab = <Value extends string>({
 }: {
   density: Density;
   onPress: () => void;
-  option: TabOption<Value>;
+  option: UnderlineTabOption<Value>;
   selected: boolean;
 }) => {
   const { focused, ...focusHandlers } = useFocusLook();
+  const [hovered, setHovered] = useState(false);
   const disabled = option.disabled ?? false;
+  const lit = selected || (hovered && !disabled);
   return (
     <Pressable
+      accessibilityLabel={
+        option.count && option.countLabel ? `${option.label}, ${option.countLabel}` : undefined
+      }
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
       accessibilityRole="tab"
       accessibilityState={{ disabled, selected }}
       aria-disabled={disabled || undefined}
@@ -69,7 +94,7 @@ const UnderlineTab = <Value extends string>({
         {...boxFocusRing(focused, density)}
       >
         {/* The count is nested in the label's line, so the two share a baseline and one name. */}
-        <Text density={density} strong textRole="body" tone={selected ? "primary" : "secondary"}>
+        <Text density={density} numberOfLines={1} strong textRole="body" tone={lit ? "primary" : "secondary"}>
           {option.label}
           {option.count ? (
             <Text density={density} textRole="caption" tone="secondary">
@@ -82,20 +107,27 @@ const UnderlineTab = <Value extends string>({
   );
 };
 
-const Tabs = <Value extends string>({
-  appearance = "action",
+// The underline list never wraps: when its tabs do not fit (large type, a TV, a phone) it scrolls
+// sideways, and a tab that takes focus scrolls into view. The shared rule runs the list's full width.
+const UnderlineTabs = <Value extends string>({
   density = "pointer",
   label,
   onValueChange,
   options,
   value,
-}: TabsProps<Value>) =>
-  appearance === "underline" ? (
+}: TabsBaseProps<Value> & { options: readonly UnderlineTabOption<Value>[] }) => (
+  <ScrollView
+    contentContainerStyle={{ flexGrow: 1 }}
+    horizontal
+    showsHorizontalScrollIndicator={false}
+    style={{ flexGrow: 0, width: "100%" }}
+  >
     <View
       aria-label={label}
       borderBottomColor="borderDecorative"
       borderBottomWidth={1}
       flexDirection="row"
+      flexGrow={1}
       gap={semanticSpace.section}
       role="tablist"
     >
@@ -109,7 +141,13 @@ const Tabs = <Value extends string>({
         />
       ))}
     </View>
-  ) : (
+  </ScrollView>
+);
+
+const Tabs = <Value extends string>(props: TabsProps<Value>) => {
+  if (props.appearance === "underline") return <UnderlineTabs {...props} />;
+  const { density = "pointer", label, onValueChange, options, value } = props;
+  return (
     <View aria-label={label} flexDirection="row" gap="inline" role="tablist">
       {options.map((option) => {
         const selected = option.value === value;
@@ -130,6 +168,7 @@ const Tabs = <Value extends string>({
       })}
     </View>
   );
+};
 
 type MenuItem<Value extends string> = {
   disabled?: boolean;
@@ -292,5 +331,14 @@ const Hint = ({ children, content, density = "pointer", visible }: HintProps) =>
   </View>
 );
 
-export type { HintProps, MenuItem, MenuListProps, SelectControlProps, SelectOption, TabOption, TabsProps };
+export type {
+  HintProps,
+  MenuItem,
+  MenuListProps,
+  SelectControlProps,
+  SelectOption,
+  TabOption,
+  TabsProps,
+  UnderlineTabOption,
+};
 export { Hint, MenuList, SelectControl, Tabs };

@@ -163,6 +163,7 @@ export type {
   SelectOption,
   TabOption,
   TabsProps,
+  UnderlineTabOption,
 } from "./src/selection";
 export { Hint, MenuList, RadioGroup, RadioItem, SelectControl, Tabs } from "./src/selection";
 export type { BottomSheetProps } from "./src/sheet";
