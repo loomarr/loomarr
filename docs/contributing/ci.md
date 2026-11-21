@@ -831,11 +831,13 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
 - **`actions/cache` never overwrites an existing key.** A cache whose contents track something
   its key doesn't gets written once and frozen. Use a rolling key with `restore-keys`.
 - **The 10GB cap evicts LRU across all refs**, so closed PRs' caches push out live ones.
-  `cache-cleanup.yml` deletes both `refs/pull/N/merge` and matching merge-queue caches on close.
+  `cache-cleanup.yml` deletes `refs/pull/N/merge`, matching merge-queue caches and the same-repo
+  head branch's caches on close.
 - **Default-branch cache writes require a trusted trigger.** GitHub permits a default-branch writer
   from `push` or `workflow_dispatch`, but `merge_group` and `workflow_run` cannot promote their
-  outputs into that scope. The Go cache-save conditions therefore remain useful only for a deliberate
-  manual run on `main`; ordinary PR and queue runs are restore-only. Android is the bounded exception
+  outputs into that scope. Shared caches are therefore written by the `CI / Go cache warm` workflow on
+  `main` pushes, plus the pnpm and FFmpeg saves on a manual run on `main`; ordinary PR and queue
+  runs are restore-only. Android is the bounded exception
   justified by the measured 25m54s cold queue build: the admitted queue run emits an immutable
   compiler-cache transfer, and the queue-produced `push` validates and saves it without repeating any
   compilation. A `workflow_run` writer or a `push` warmer that rebuilds the product remains forbidden.

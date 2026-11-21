@@ -6,6 +6,8 @@
 # closed or merged PRs. Caches scoped to `refs/pull/N/merge` or the merge queue's
 # `refs/heads/gh-readonly-queue/main/pr-N-*` can never be restored again once that PR is
 # closed, so every byte is pure eviction pressure on caches that ARE still being read.
+# A same-repo PR's head branch (`refs/heads/<branch>`, written by a manual dispatch on it)
+# goes too; the default branch and fork branches never match.
 #
 # GitHub does expire caches after 7 idle days on its own. That is too slow when a single
 # Go build cache is ~470MB and several PRs land in a week — the quota is gone long before
