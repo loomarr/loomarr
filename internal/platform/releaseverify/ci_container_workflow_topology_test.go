@@ -104,6 +104,40 @@ func TestVerifyCIContainerDownloadsBindsTunerCallerInputsExactly(t *testing.T) {
 	})
 }
 
+func TestVerifyCIContainerDownloadsBindsClientsCallerSecretsExactly(t *testing.T) {
+	t.Parallel()
+	const declared = "    secrets:\n" +
+		"      TURBO_API: ${{ secrets.TURBO_API }}\n" +
+		"      TURBO_TEAM: ${{ secrets.TURBO_TEAM }}\n" +
+		"      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}\n" +
+		"      TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}\n"
+	mutations := map[string]string{
+		"inherited secrets": "    secrets: inherit\n",
+		"swapped secret":    strings.Replace(declared, "${{ secrets.TURBO_TOKEN }}", "${{ secrets.GITHUB_TOKEN }}", 1),
+		"extra secret":      declared + "      TMDB_BUNDLED_KEY: ${{ secrets.TMDB_BUNDLED_KEY }}\n",
+		"missing secret":    strings.Replace(declared, "      TURBO_API: ${{ secrets.TURBO_API }}\n", "", 1),
+	}
+	for name, replacement := range mutations {
+		t.Run(name, func(t *testing.T) {
+			root := writeCIContainerDownloadsFixture(t)
+			path := filepath.Join(root, ".github", "workflows", "ci.yml")
+			source := readFixtureFile(t, path)
+			if !strings.Contains(source, declared) {
+				t.Fatal("CI clients caller `secrets` fixture changed")
+			}
+			writeFixtureFile(t, path, strings.Replace(source, declared, replacement, 1))
+			if err := VerifyCIContainerDownloads(root); err == nil {
+				t.Fatal("VerifyCIContainerDownloads accepted a clients caller whose secrets differ from the exact authority")
+			}
+		})
+	}
+	t.Run("declared secrets pass", func(t *testing.T) {
+		if err := VerifyCIContainerDownloads(writeCIContainerDownloadsFixture(t)); err != nil {
+			t.Fatalf("declared clients caller secrets rejected: %v", err)
+		}
+	})
+}
+
 func TestVerifyCIContainerDownloadsBindsCacheCleanupCommandAndContext(t *testing.T) {
 	t.Parallel()
 	tests := map[string]func(*yaml.Node){

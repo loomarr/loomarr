@@ -77,6 +77,9 @@ type reusableWorkflowCallerAuthority struct {
 	// permissions is the exact job-level grant the caller passes down; nil means the caller sets
 	// none and inherits the workflow's contents: read.
 	permissions map[string]string
+	// secrets is the exact set of named secrets the caller passes; nil means the caller passes
+	// none. `secrets: inherit` is never accepted, because it hands over every repository secret.
+	secrets map[string]string
 }
 
 func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerAuthority {
@@ -88,9 +91,14 @@ func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerA
 		"go":                  {name: "Go — race-policy tests", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_go == 'true'"},
 		"store-postgres":      {name: "Store conformance (Postgres)", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_postgres == 'true'"},
 		"frontend":            {name: "Frontend — biome + typecheck + unit + build", condition: "needs.changes.outputs.impact_web == 'true'"},
-		"clients":             {name: "Shared clients — lint + test + browser/iOS/Android/TV bundles", condition: "needs.changes.outputs.impact_clients == 'true'"},
-		"apple-mobile":        {name: "Apple mobile — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'"},
-		"apple-tv":            {name: "Apple TV — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'"},
+		"clients": {name: "Shared clients — lint + test + browser/iOS/Android/TV bundles", condition: "needs.changes.outputs.impact_clients == 'true'", secrets: map[string]string{
+			"TURBO_API":                        "${{ secrets.TURBO_API }}",
+			"TURBO_TEAM":                       "${{ secrets.TURBO_TEAM }}",
+			"TURBO_TOKEN":                      "${{ secrets.TURBO_TOKEN }}",
+			"TURBO_REMOTE_CACHE_SIGNATURE_KEY": "${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}",
+		}},
+		"apple-mobile": {name: "Apple mobile — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'"},
+		"apple-tv":     {name: "Apple TV — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'"},
 
 		"expo-android-mobile": {name: "Expo Android mobile — native build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_expo_android_mobile == 'true'"},
 
@@ -156,8 +164,17 @@ func verifyReusableWorkflowCaller(jobName string, job *yaml.Node) error {
 	if len(authority.permissions) > 0 {
 		allowed = append(allowed, "permissions")
 	}
+	if len(authority.secrets) > 0 {
+		allowed = append(allowed, "secrets")
+	}
 	if !ok || !mappingHasOnlyKeys(job, allowed...) {
 		return fmt.Errorf("reusable-workflow caller keys differ from their exact authority")
+	}
+	if len(authority.secrets) > 0 {
+		got, err := scalarMapping(job, "secrets", "reusable-workflow caller secrets")
+		if err != nil || !equalStringMaps(got, authority.secrets) {
+			return fmt.Errorf("reusable-workflow caller secrets differ from their exact authority")
+		}
 	}
 	if len(authority.permissions) > 0 {
 		got, err := scalarMapping(job, "permissions", "reusable-workflow caller permissions")

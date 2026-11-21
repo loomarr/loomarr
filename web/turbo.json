@@ -1,5 +1,8 @@
 {
   "$schema": "https://turborepo.com/schema.json",
+  "remoteCache": {
+    "signature": true
+  },
   "globalDependencies": [
     "tsconfig.base.json",
     "vitest.universal.config.ts",
