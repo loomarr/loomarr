@@ -442,7 +442,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   is written second. An episode with no rating takes its show's (`rating_from = 'show'`); its
   genres and studios are its show's only (decision 42). `library_sources` has one row per present
   file, with its `edition` and the copy that plays in each edition marked (`plays`, decision 37's
-  rule, shared with the title page).
+  rule, which the title page reads).
   `library_streams` has one row per track, with labels computed once from the raw header values
   (decision 44): resolution by height or, for a picture wider than 16:9, by width; HDR type from
   the transfer; audio format; the channel layout where the container states none (neither
@@ -635,14 +635,37 @@ step 5). Nothing reads the scanner's origins until the cutover.
   (503 when TMDB fails) and writes the title again, so what its arr and sidecars say now is read
   too. Check files again (`POST …/check`) puts its files' headers back to pending and passes over
   their folders, so they are opened and read again.
-- **Technical details** (step 10d, design review point 3). Each scan origin keeps the provider its
-  name, description and rating came from in its observation's `extension` (`{"from": …}`), so
-  the page says "Description and rating from TMDB. Episode names from Sonarr." (a series takes
-  the provider that named most of its episodes). It then says the title match in words
-  ("Recognised from Radarr", "You picked it"), and for each movie file its path, size, and once
-  its header is read the picture (4K, 1080p HD, 720p HD or standard, "extra-rich colour" for
-  HDR), the sound that plays (its default audio stream), each subtitle language, and the
+- **Technical details** (step 10d, design review point 3). The provider each detail came from is
+  its `_from` column, so the page says "Description and rating from TMDB. Episode names from
+  Sonarr." (a series takes the provider that named most of its episodes' `name_from`). It then
+  says the title match in words ("Recognised from Radarr", "You picked it"), and for each movie
+  file its path, size, and once its header is read the picture (4K, 1080p HD, 720p HD or
+  standard, "extra-rich colour" for HDR: a `hdr` label on its first video track), the sound that
+  plays (its own default audio track, else its first), each subtitle track's language, the
+  file's own then each subtitle file beside it (as two-letter codes where one exists), and the
   measured length.
+- **The title page reads the Library's rows** (#4476). `GET /v1/library/items/{id}` reads one
+  title through `LibraryItemDetail`, in one read transaction: its `library_items` row and
+  genres, its own `library_sources` with their `library_streams`, and for a series the rows of
+  the items its present files were written as (#2151 decision 39: features query the tables); a
+  series' episodes' sources are not read. Each write of a title is one transaction: the
+  projector rewrites the whole title inside the inventory write (a pass, a header read, an
+  origin marked unseen; decision 43). The file list (`library_files`) follows the walk and the
+  sources follow the inventory, so the two can disagree while a removal waits, such as a pass
+  that could not hear from an arr and marked no origin unseen, and while a new file waits for
+  its first write. The list can also keep files that are gone from disk: a removal past the hold
+  threshold is held, not marked missing, and nothing is marked missing while an arr does not
+  answer. A listed file is therefore an extra copy only when it has a source row that does not
+  play and another listed file with a source row plays in its place: one in the same edition
+  with the same part, or a whole file of that edition. A file with no source row yet is never an
+  extra and never plays in another's place. So a title's last listed file is never offered for
+  removal. Remove extra copy holds the same rule itself, and before it moves anything it checks
+  on disk that a copy playing in its place is there, refusing (409, "Loomarr can't find the copy
+  that plays right now") when none is. One removal runs at a time, from reading the title to
+  marking the file gone, so two at once cannot take both copies. Each scan origin's observation
+  JSON stays as evidence of what the scan saw, not a source the page reads (decision 40).
+  `library_markers` and `library_trickplay` are stored ahead of use: the player will read them
+  for skipping and scrubbing, and no page reads them.
 - **Editions** (step 14b-1c, decision 54). A movie file can be a labelled version of its title,
   such as a Director's Cut. Its arr's edition counts first (Radarr's, read from the release name),
   then its name's `{edition-…}`, then its NFO's `<edition>`; a catalog never has a say. The label

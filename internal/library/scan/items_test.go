@@ -13,7 +13,8 @@ import (
 )
 
 // A title's page says where its details came from and what its file holds: the picture, the sound
-// that plays (the default audio stream, not the first), each subtitle, and the measured length.
+// that plays (the default audio stream, not the first), each subtitle's language, two-letter where
+// one exists (the file's own, then a subtitle file beside it), and the measured length.
 func TestTitlePageSaysWhereDetailsCameFromAndWhatTheFileHolds(t *testing.T) {
 	h := newHarness(t)
 	h.im.Header = func(context.Context, string) (header.Header, error) {
@@ -27,6 +28,7 @@ func TestTitlePageSaysWhereDetailsCameFromAndWhatTheFileHolds(t *testing.T) {
 		}}, nil
 	}
 	path := h.file("Echo/Echo.mkv", 10)
+	h.file("Echo/Echo.es.srt", 1)
 	doc := `<movie><title>Echo Feature</title><plot>A story.</plot><mpaa>PG</mpaa>` +
 		`<uniqueid type="tmdb" default="true">90000621</uniqueid></movie>`
 	if err := os.WriteFile(filepath.Join(h.root, "Echo", "Echo.nfo"), []byte(doc), 0o644); err != nil {
@@ -49,7 +51,7 @@ func TestTitlePageSaysWhereDetailsCameFromAndWhatTheFileHolds(t *testing.T) {
 	f := d.Files[0]
 	if f.Path != path || f.LengthMillis != 5_880_000 || f.AudioChannels != 6 ||
 		f.Picture == nil || *f.Picture != (Picture{Width: 3840, Height: 2160, HDR: true}) ||
-		!slices.Equal(f.Subtitles, []string{"eng", ""}) {
+		!slices.Equal(f.Subtitles, []string{"en", "", "es"}) {
 		t.Errorf("file = %+v (picture %+v)", f, f.Picture)
 	}
 }

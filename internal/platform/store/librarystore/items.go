@@ -271,6 +271,8 @@ type LibraryItemPage struct {
 
 // LibraryItemStore keeps the Library's list of movies and series.
 type LibraryItemStore interface {
+	// LibraryItemDetailReader reads one title's page.
+	LibraryItemDetailReader
 	// SaveLibraryItems writes items whole, outside any inventory write: for fixtures. The scanner's
 	// rows come from the LibraryProjection, in step with the inventory.
 	SaveLibraryItems(ctx context.Context, items []LibraryItem, at time.Time) error

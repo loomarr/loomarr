@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -96,37 +97,243 @@ func TestRemoveExtraCopyMovesItToTheTrash(t *testing.T) {
 	}
 }
 
+// A copy that plays can go from the file list before its source row does (a pass that could not
+// hear from an arr marks no origin unseen). The extra copy left alone is then the title's last
+// file: it is not an extra, and removing it is refused.
+func TestATitlesLastFileIsNeverAnExtraCopy(t *testing.T) {
+	h := newHarness(t)
+	h.im.Header = func(_ context.Context, path string) (header.Header, error) {
+		w, ht := 1920, 1080
+		if strings.Contains(path, "DVD") {
+			w, ht = 720, 480
+		}
+		return header.Header{Container: "matroska,webm", DurationMillis: 5_000_000, Streams: []inventory.Stream{
+			{Index: 0, Kind: inventory.StreamVideo, Codec: "h264", Width: w, Height: ht},
+		}}, nil
+	}
+	sharp := h.file("Foxtrot (2001) {tmdb-90000631}/Foxtrot.mkv", 10)
+	soft := h.file("Foxtrot (2001) {tmdb-90000631}/Foxtrot DVD.mkv", 20)
+	h.run()
+	id := string(h.item(fileOrigin(h.root, "Foxtrot (2001) {tmdb-90000631}/Foxtrot.mkv")).ID)
+	ctx := context.Background()
+	// Only the file list changes: the sources still say the sharp copy plays.
+	if err := h.st.RemoveLibraryFile(ctx, sharp, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	lib := &Library{ItemStore: h.st, Inventory: h.inv}
+	d, err := lib.Item(ctx, id)
+	if err != nil || len(d.Files) != 1 || d.Files[0].Path != soft {
+		t.Fatalf("title = %+v, %v; want only the soft copy listed", d.Files, err)
+	}
+	if d.Files[0].Extra {
+		t.Error("the title's last file is an extra copy")
+	}
+	if err := lib.RemoveExtraCopy(ctx, id, soft); !errors.Is(err, ErrPlays) {
+		t.Fatalf("removing the title's last file = %v, want ErrPlays", err)
+	}
+	if _, err := os.Stat(soft); err != nil {
+		t.Errorf("the title's last file moved: %v", err)
+	}
+}
+
+// The list can keep a copy that plays after it has gone from disk (a held removal, an arr not
+// answering). Its extra copy still shows as one, but removing it is refused, and it stays.
+func TestRemoveExtraCopyNeedsTheCopyThatPlaysOnDisk(t *testing.T) {
+	h := newHarness(t)
+	h.im.Header = func(_ context.Context, path string) (header.Header, error) {
+		w, ht := 1920, 1080
+		if strings.Contains(path, "DVD") {
+			w, ht = 720, 480
+		}
+		return header.Header{Container: "matroska,webm", DurationMillis: 5_000_000, Streams: []inventory.Stream{
+			{Index: 0, Kind: inventory.StreamVideo, Codec: "h264", Width: w, Height: ht},
+		}}, nil
+	}
+	h.file("Foxtrot (2001) {tmdb-90000631}/Foxtrot.mkv", 10)
+	soft := h.file("Foxtrot (2001) {tmdb-90000631}/Foxtrot DVD.mkv", 20)
+	h.run()
+	id := string(h.item(fileOrigin(h.root, "Foxtrot (2001) {tmdb-90000631}/Foxtrot.mkv")).ID)
+	ctx := context.Background()
+
+	// The disk holds only the soft copy; the list and the sources still hold both.
+	disk := fakeDisk{files: map[string]bool{soft: true}}
+	lib := &Library{Roots: &Roots{Disk: disk}, ItemStore: h.st, Inventory: h.inv}
+	d, err := lib.Item(ctx, id)
+	if err != nil || len(d.Files) != 2 {
+		t.Fatalf("title = %+v, %v; want both files listed", d.Files, err)
+	}
+	for _, f := range d.Files {
+		if f.Extra != (f.Path == soft) {
+			t.Errorf("%s extra = %v, want only the soft copy shown as an extra", f.Path, f.Extra)
+		}
+	}
+	if err := lib.RemoveExtraCopy(ctx, id, soft); !errors.Is(err, ErrPlayingCopyUnseen) {
+		t.Fatalf("removing the copy whose twin is gone from disk = %v, want ErrPlayingCopyUnseen", err)
+	}
+	if _, err := os.Stat(soft); err != nil {
+		t.Errorf("the title's last real file moved: %v", err)
+	}
+}
+
+// gateDisk answers File as its fakeDisk does, holding the first call until release is closed.
+type gateDisk struct {
+	fakeDisk
+	once             *sync.Once
+	entered, release chan struct{}
+}
+
+func (d gateDisk) File(ctx context.Context, path string) bool {
+	d.once.Do(func() {
+		close(d.entered)
+		<-d.release
+	})
+	return d.fakeDisk.File(ctx, path)
+}
+
+// Two removals at once cannot trash both copies of a title. The first is held inside its check
+// while a rescan flips which copy plays, and the second asks for the other copy meanwhile: it
+// waits for the first, then sees its copy as the title's last and is refused. One file remains.
+func TestTwoRemovalsAtOnceKeepOneCopy(t *testing.T) {
+	h := newHarness(t)
+	h.im.Header = func(_ context.Context, path string) (header.Header, error) {
+		w, ht := 1920, 1080
+		if strings.Contains(path, "DVD") {
+			w, ht = 720, 480
+		}
+		return header.Header{Container: "matroska,webm", DurationMillis: 5_000_000, Streams: []inventory.Stream{
+			{Index: 0, Kind: inventory.StreamVideo, Codec: "h264", Width: w, Height: ht},
+		}}, nil
+	}
+	sharp := h.file("Foxtrot (2001) {tmdb-90000631}/Foxtrot.mkv", 10)
+	soft := h.file("Foxtrot (2001) {tmdb-90000631}/Foxtrot DVD.mkv", 20)
+	h.run()
+	item := h.item(fileOrigin(h.root, "Foxtrot (2001) {tmdb-90000631}/Foxtrot.mkv"))
+	id := string(item.ID)
+	ctx := context.Background()
+
+	disk := gateDisk{fakeDisk: fakeDisk{files: map[string]bool{sharp: true, soft: true}}, once: &sync.Once{},
+		entered: make(chan struct{}), release: make(chan struct{})}
+	lib := &Library{Roots: &Roots{Disk: disk}, ItemStore: h.st, Inventory: h.inv}
+	errs := make(chan error, 2)
+	go func() { errs <- lib.RemoveExtraCopy(ctx, id, soft) }()
+	<-disk.entered
+	// A rescan meanwhile: the soft copy plays now, and the sharp one is the extra.
+	row, ok := ProjectLibraryItem(item)
+	if !ok {
+		t.Fatal("the title is not listed")
+	}
+	for i := range row.Sources {
+		row.Sources[i].Plays = !row.Sources[i].Plays
+	}
+	if err := h.st.SaveLibraryItems(ctx, []librarystore.LibraryItem{row}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	go func() { errs <- lib.RemoveExtraCopy(ctx, id, sharp) }()
+	close(disk.release)
+
+	var removed, refused int
+	for range 2 {
+		switch err := <-errs; {
+		case err == nil:
+			removed++
+		case errors.Is(err, ErrPlays):
+			refused++
+		default:
+			t.Fatalf("removal = %v", err)
+		}
+	}
+	if removed != 1 || refused != 1 {
+		t.Errorf("removed %d and refused %d, want one of each", removed, refused)
+	}
+	left := 0
+	for _, p := range []string{sharp, soft} {
+		if _, err := os.Stat(p); err == nil {
+			left++
+		}
+	}
+	if left != 1 {
+		t.Errorf("%d copies left on disk, want 1", left)
+	}
+}
+
+// A listed copy that does not play is an extra only while a listed copy plays in its place: one in
+// its edition with its part, or a whole file of its edition for a part. A file with no source row
+// yet is never an extra, and never plays in another's place.
+func TestAnExtraCopyNeedsAListedCopyPlayingInItsPlace(t *testing.T) {
+	file := func(edition string, part int, plays bool) ItemFile {
+		return ItemFile{Edition: edition, Part: part, sourced: true, plays: plays}
+	}
+	unsourced := func(edition string) ItemFile {
+		f := itemFile(librarystore.LibraryFile{}, librarystore.LibrarySource{}, false)
+		f.Edition = edition
+		return f
+	}
+	for name, tc := range map[string]struct {
+		files  []ItemFile
+		extras []bool
+	}{
+		"a second copy":             {[]ItemFile{file("", 0, true), file("", 0, false)}, []bool{false, true}},
+		"a lone copy":               {[]ItemFile{file("", 0, false)}, []bool{false}},
+		"parts beside a whole":      {[]ItemFile{file("", 0, true), file("", 1, false), file("", 2, false)}, []bool{false, true, true}},
+		"a second copy of a part":   {[]ItemFile{file("", 1, true), file("", 1, false), file("", 2, true)}, []bool{false, true, false}},
+		"a part whose part is gone": {[]ItemFile{file("", 1, false), file("", 2, true)}, []bool{false, false}},
+		"another edition plays": {
+			[]ItemFile{file("Extended", 0, true), file("", 0, false)}, []bool{false, false},
+		},
+		"labels of one edition": {
+			[]ItemFile{file("Directors Cut", 0, true), file("director's cut", 0, false)}, []bool{false, true},
+		},
+		"no source row yet":            {[]ItemFile{unsourced(""), file("", 0, false)}, []bool{false, false}},
+		"unsourced in another edition": {[]ItemFile{unsourced("Extended"), file("", 0, false)}, []bool{false, false}},
+		"two copies both playing":      {[]ItemFile{file("", 0, true), file("", 0, true)}, []bool{false, false}},
+		"none playing":                 {[]ItemFile{file("", 0, false), file("", 0, false)}, []bool{false, false}},
+		"a stale whole beside playing parts": {
+			[]ItemFile{file("", 0, false), file("", 1, true), file("", 2, true)}, []bool{false, false, false},
+		},
+	} {
+		for i, want := range tc.extras {
+			if got := extraCopy(tc.files, i); got != want {
+				t.Errorf("%s: file %d extra = %v, want %v", name, i, got, want)
+			}
+		}
+	}
+}
+
 // The file an arr lists plays, however sharp another copy is; without one, the sharper, then the
 // bigger. A copy under half as long as the longest never plays: a sharp trailer the walk took for a
 // copy loses to the film. One whose length isn't read yet is not held back.
 func TestTheCopyThatPlays(t *testing.T) {
-	hd := &Picture{Width: 1920, Height: 1080}
-	sd := &Picture{Width: 720, Height: 480}
+	type copy struct {
+		managed      bool
+		pixels       int
+		size, length int64
+	}
+	const hd, sd = 1920 * 1080, 720 * 480
 	const film, trailer = 6_000_000, 150_000
+	plays := func(copies []copy) []bool {
+		return playingCopies(len(copies), func(int) string { return "" }, func(int) int { return 0 },
+			func(i int) bool { return copies[i].managed }, func(i int) int { return copies[i].pixels },
+			func(i int) int64 { return copies[i].size }, func(i int) int64 { return copies[i].length })
+	}
 	for name, tc := range map[string]struct {
-		files []ItemFile
-		plays int
+		copies []copy
+		plays  int
 	}{
-		"arr's file": {[]ItemFile{{Picture: hd}, {Picture: sd, managed: true}}, 1},
-		"sharper":    {[]ItemFile{{Picture: sd}, {Picture: hd}}, 1},
-		"bigger":     {[]ItemFile{{LibraryFile: librarystore.LibraryFile{Size: 9}}, {LibraryFile: librarystore.LibraryFile{Size: 3}}}, 0},
-		"a sharp trailer loses to the film": {
-			[]ItemFile{{Picture: hd, LengthMillis: trailer}, {Picture: sd, LengthMillis: film}}, 1,
-		},
-		"even its arr's": {
-			[]ItemFile{{Picture: hd, LengthMillis: trailer, managed: true}, {Picture: sd, LengthMillis: film}}, 1,
-		},
-		"a length not read yet": {[]ItemFile{{Picture: hd}, {Picture: sd, LengthMillis: film}}, 0},
+		"arr's file":                        {[]copy{{pixels: hd}, {pixels: sd, managed: true}}, 1},
+		"sharper":                           {[]copy{{pixels: sd}, {pixels: hd}}, 1},
+		"bigger":                            {[]copy{{size: 9}, {size: 3}}, 0},
+		"a sharp trailer loses to the film": {[]copy{{pixels: hd, length: trailer}, {pixels: sd, length: film}}, 1},
+		"even its arr's":                    {[]copy{{pixels: hd, length: trailer, managed: true}, {pixels: sd, length: film}}, 1},
+		"a length not read yet":             {[]copy{{pixels: hd}, {pixels: sd, length: film}}, 0},
 	} {
-		markExtras(tc.files)
-		for i, f := range tc.files {
-			if f.Extra != (i != tc.plays) {
-				t.Errorf("%s: file %d extra = %v", name, i, f.Extra)
+		for i, p := range plays(tc.copies) {
+			if p != (i == tc.plays) {
+				t.Errorf("%s: copy %d plays = %v", name, i, p)
 			}
 		}
 	}
-	one := []ItemFile{{}}
-	if markExtras(one); one[0].Extra {
-		t.Error("a title's only file is an extra")
+	if one := plays([]copy{{}}); !one[0] {
+		t.Error("a title's only file does not play")
 	}
 }

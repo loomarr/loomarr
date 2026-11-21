@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"cmp"
 	"regexp"
 	"strconv"
 	"strings"
@@ -86,4 +87,36 @@ func playingCopies(n int, edition func(int) string, part func(int) int, managed 
 		plays[g[best]] = true
 	}
 	return plays
+}
+
+// playingCopy is which of a title's n copies plays (decision 37): the file its arr lists, else
+// the sharpest picture, else the biggest file; the first of equals. A copy under half as long as
+// the title's longest never plays while a whole one is there: it is an extra the walk could not
+// tell by its name, such as a 1080p trailer beside a DVD's film. A copy whose length is not yet
+// read is not held back.
+func playingCopy(n int, managed func(int) bool, pixels func(int) int, size func(int) int64, length func(int) int64) int {
+	var longest int64
+	for i := range n {
+		longest = max(longest, length(i))
+	}
+	short := func(i int) bool { return length(i) > 0 && length(i) < longest/2 }
+	best := 0
+	for i := 1; i < n; i++ {
+		if c := cmp.Or(compareBool(!short(i), !short(best)), compareBool(managed(i), managed(best)),
+			cmp.Compare(pixels(i), pixels(best)), cmp.Compare(size(i), size(best))); c > 0 {
+			best = i
+		}
+	}
+	return best
+}
+
+func compareBool(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case a:
+		return 1
+	default:
+		return -1
+	}
 }
