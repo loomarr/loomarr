@@ -152,6 +152,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 								"REPO":             "${{ github.repository }}",
 								"REF":              "refs/pull/${{ github.event.pull_request.number }}/merge",
 								"QUEUE_REF_PREFIX": "refs/heads/gh-readonly-queue/main/pr-${{ github.event.pull_request.number }}-",
+								"HEAD_REF":         "${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref != github.event.repository.default_branch && format('refs/heads/{0}', github.event.pull_request.head.ref) || '' }}",
 							},
 						}),
 					},
@@ -300,6 +301,10 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"contracts": {steps: map[string]workflowStepAuthority{
 					"make vet vet-tags lint": exactWorkflowStep(4, "Compile what the contracts analyse", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
 				}},
+				"pnpm": {steps: map[string]workflowStepAuthority{
+					"make fe-install": exactWorkflowStep(4, "Fill the store from the lockfile", workflowStepAuthority{targets: []string{"fe-install"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
+				}},
+				"ffmpeg": {steps: map[string]workflowStepAuthority{}},
 			},
 		},
 		"ci-go.yml": standardRunWorkflow(map[string]workflowStepAuthority{

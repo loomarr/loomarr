@@ -258,8 +258,9 @@ schemas. It rejects
 job containers, services, unaudited reusable-workflow delegation, container-acquiring actions, unknown keys,
 metadata-only or malformed steps, multiple execution mechanisms, and unapproved environment,
 defaults, condition, error-tolerance, shell, working-directory, or `MAKEFLAGS` controls. The root
-tool-version environment and the cache-save condition are admitted only at their exact current
-values. Its only permitted shell steps are the exact cache-epoch command and the suite's `make test-pg`; this
+tool-version environment is admitted only at its exact current values. The suite only restores its Go
+cache, which the Go cache warm workflow writes, so a cache save or any conditional action step is
+rejected. Its only permitted shell steps are the exact cache-epoch command and the suite's `make test-pg`; this
 closes dry-run, variable, wrapper, and quoting indirection without parsing arbitrary shell. Every
 repository workflow is also parsed structurally. Any service or job container or `docker://` action
 is rejected. Workflow shell is not interpreted: route-shaped steps are classified from the raw
@@ -342,7 +343,23 @@ actions, commands, or family registrations and colliding absolute step identitie
 The cache-cleanup workflow is one such run authority: its complete deletion command, step name and
 environment, exact `Cache cleanup` workflow name, closed `pull_request` trigger with only the
 `closed` type, workflow permissions, job name and runner, and absence of alternate execution context
-are source-bound rather than inferred from its one-step topology.
+are source-bound rather than inferred from its one-step topology. It deletes the closed PR's
+merge-ref and merge-queue caches. It also deletes the caches of the PR's head branch, which a
+manual dispatch on that branch saves, but only for a same-repository PR whose head is not the
+default branch.
+
+Shared caches are written on `main` only, because a cache is readable only from its own ref and the
+default branch (#1679). The Go cache warm workflow runs on every push to `main` and seeds each key
+when it is missing:
+
+- the race-lane and Postgres Go build caches, once per ISO week and `go.sum`;
+- the Go contracts cache;
+- the pnpm store, per lockfile;
+- the production ffmpeg archive, per pin.
+
+The race lanes and Postgres conformance only restore. Frontend and Playwright save the pnpm store,
+and the Go lanes and the playout bench save the ffmpeg archive, only on a `main` dispatch that finds
+the key missing.
 
 Make execution is closed over the checked-in root `Makefile` and every `mk/*.mk`: each module must be
 included exactly once, and non-recipe syntax is limited to the current plain assignments, targets,
@@ -815,11 +832,13 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
 - **`actions/cache` never overwrites an existing key.** A cache whose contents track something
   its key doesn't gets written once and frozen. Use a rolling key with `restore-keys`.
 - **The 10GB cap evicts LRU across all refs**, so closed PRs' caches push out live ones.
-  `cache-cleanup.yml` deletes both `refs/pull/N/merge` and matching merge-queue caches on close.
+  `cache-cleanup.yml` deletes `refs/pull/N/merge`, matching merge-queue caches and the same-repo
+  head branch's caches on close.
 - **Default-branch cache writes require a trusted trigger.** GitHub permits a default-branch writer
   from `push` or `workflow_dispatch`, but `merge_group` and `workflow_run` cannot promote their
-  outputs into that scope. The Go cache-save conditions therefore remain useful only for a deliberate
-  manual run on `main`; ordinary PR and queue runs are restore-only. Android is the bounded exception
+  outputs into that scope. Shared caches are therefore written by the `CI / Go cache warm` workflow on
+  `main` pushes, plus the pnpm and ffmpeg saves on a manual run on `main`; ordinary PR and queue
+  runs are restore-only. Android is the bounded exception
   justified by the measured 25m54s cold queue build: the admitted queue run emits an immutable
   compiler-cache transfer, and the queue-produced `push` validates and saves it without repeating any
   compilation. A `workflow_run` writer or a `push` warmer that rebuilds the product remains forbidden.
