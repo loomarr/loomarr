@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -65,7 +66,8 @@ func validateRecoveredTranscode(ctx context.Context, staged, published, expected
 		return errors.New("existing transformed artifact has missing or corrupt evidence")
 	}
 	if assets != nil && !reflect.DeepEqual(tags.MediaAssets, assets) {
-		return errors.New("existing transformed artifact is not bound to this media asset manifest")
+		return fmt.Errorf("existing transformed artifact is not bound to this media asset manifest (differs in %s)",
+			manifestDifference(tags.MediaAssets, assets))
 	}
 	if evidence != nil && (!reflect.DeepEqual(tags.ConditioningLineage, lineage) ||
 		tags.Conditioning == nil || !reflect.DeepEqual(*tags.Conditioning, *evidence) ||
@@ -73,6 +75,54 @@ func validateRecoveredTranscode(ctx context.Context, staged, published, expected
 		return errors.New("existing transformed artifact is not bound to this child evidence")
 	}
 	return nil
+}
+
+// manifestDifference names the parts of two media asset manifests that differ, so a refused
+// recovery says what changed between attempts. Field names only: no paths or hashes.
+func manifestDifference(published, current *asset.Manifest) string {
+	if published == nil || current == nil {
+		return "presence"
+	}
+	var parts []string
+	if published.Version != current.Version {
+		parts = append(parts, "version")
+	}
+	if published.SourceMaster != current.SourceMaster {
+		parts = append(parts, "sourceMaster")
+	}
+	for _, d := range []struct {
+		name string
+		a, b *asset.DerivativeLineage
+	}{{"evidence", published.Evidence, current.Evidence}, {"playback", published.Playback, current.Playback}} {
+		switch {
+		case (d.a == nil) != (d.b == nil):
+			parts = append(parts, d.name)
+		case d.a != nil:
+			parts = append(parts, lineageDifference(d.name, *d.a, *d.b)...)
+		}
+	}
+	if len(parts) == 0 {
+		return "unknown"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func lineageDifference(name string, a, b asset.DerivativeLineage) []string {
+	var parts []string
+	for _, f := range []struct {
+		field string
+		same  bool
+	}{
+		{"asset", a.Asset == b.Asset}, {"inputSha256", a.InputSHA256 == b.InputSHA256},
+		{"recipe", a.Recipe == b.Recipe && a.RecipeSHA256 == b.RecipeSHA256}, {"tool", a.Tool == b.Tool},
+		{"durationMs", a.DurationMs == b.DurationMs}, {"quality", reflect.DeepEqual(a.Quality, b.Quality)},
+		{"qc", a.QC == b.QC}, {"inputProbe", a.InputProbe == b.InputProbe}, {"outputProbe", a.OutputProbe == b.OutputProbe},
+	} {
+		if !f.same {
+			parts = append(parts, name+"."+f.field)
+		}
+	}
+	return parts
 }
 
 // publishTranscodeReplacement owns the final sidecar/media visibility ordering for one transformed
