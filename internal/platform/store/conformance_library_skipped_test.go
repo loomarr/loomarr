@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // The files a scan skips are listed by why, each reason with its count and its first few paths in
@@ -16,14 +18,14 @@ func testLibrarySkippedFiles(t *testing.T, newStore NewStoreFunc) {
 	if got, err := s.LibrarySkippedFiles(ctx, 2); err != nil || len(got) != 0 {
 		t.Fatalf("empty = %+v, %v", got, err)
 	}
-	file := func(path, problem string, missing bool) LibraryFile {
-		f := LibraryFile{Path: path, Root: "/media/a", Size: 1, ModifiedNs: 1, Problem: problem, SeenAt: at}
+	file := func(path, problem string, missing bool) librarystore.LibraryFile {
+		f := librarystore.LibraryFile{Path: path, Root: "/media/a", Size: 1, ModifiedNs: 1, Problem: problem, SeenAt: at}
 		if missing {
 			f.MissingAt = at
 		}
 		return f
 	}
-	if err := s.SaveLibraryFiles(ctx, []LibraryFile{
+	if err := s.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
 		file("/media/a/kept.mkv", "", false),
 		file("/media/a/c-link.mkv", "broken_link", false),
 		file("/media/a/a-link.mkv", "broken_link", false),
@@ -35,7 +37,7 @@ func testLibrarySkippedFiles(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	got, err := s.LibrarySkippedFiles(ctx, 2)
-	want := []LibrarySkipped{
+	want := []librarystore.LibrarySkipped{
 		{Problem: "broken_link", Total: 3, Paths: []string{"/media/a/a-link.mkv", "/media/a/b-link.mkv"}},
 		{Problem: "disc_image", Total: 1, Paths: []string{"/media/a/disc.iso"}},
 		{Problem: "link_outside", Total: 1, Paths: []string{"/media/a/out.mkv"}},
