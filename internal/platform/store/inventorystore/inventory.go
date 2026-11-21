@@ -742,8 +742,9 @@ func (s *Store) MarkInventoryUnseen(
 		return fmt.Errorf("read inventory authority origins: %w", err)
 	}
 	// missing is each origin that was present until now and this walk did not see. An origin that
-	// was already missing keeps the missing_at it was first marked with (#2446): every walk used to
-	// rewrite every tombstone, a write per tombstone that grew forever and erased when it went.
+	// was already missing keeps the missing_at it was first marked with (#2446): a walk writes only
+	// the origins it newly misses, so its writes do not grow with the tombstones, and missing_at
+	// keeps when the origin went.
 	var missing []string
 	// gone is each item an origin of which was present until now: its library row is projected again.
 	var gone []inventory.ItemID
