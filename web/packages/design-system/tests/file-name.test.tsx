@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, createEvent, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FileName, LoomarrProvider } from "../index";
@@ -141,46 +141,70 @@ describe("FileName on the page", () => {
     expect(container.querySelector('[dir="auto"]')).toBeTruthy();
   });
 
-  it("draws a name that fits as plain inline text, inline in a line and clipped to its box", () => {
+  it("lays the parts in a row that clips: the head gives way first, the tail last", () => {
     const { container } = parts("Ashgrove.Station.1974.Remastered.1080p.mkv");
     const box = container.querySelector<HTMLElement>('[dir="auto"]');
-    expect(box?.style.display).toBe("inline-block");
-    expect(box?.style.overflow).toBe("hidden");
-    expect(box?.style.maxWidth).toBe("100%");
-    expect(box?.style.whiteSpace).toBe("pre");
-    // Plain inline parts: find-in-page searches across them.
-    for (const drawn of container.querySelectorAll<HTMLElement>("[data-part]")) {
-      expect(drawn.getAttribute("style")).toBeNull();
-    }
-  });
-
-  it("shortens only once the name overflows, leaving the tail's length for the tail", () => {
-    // jsdom lays nothing out: the box reports a name twice as wide as itself.
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        constructor(private readonly callback: () => void) {}
-        observe() {
-          this.callback();
-        }
-        disconnect() {}
-      },
-    );
-    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(400);
-    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(200);
-    const { container } = parts("Ashgrove.Station.1974.Remastered.1080p.mkv");
     const head = container.querySelector<HTMLElement>('[data-part="head"]');
     const tail = container.querySelector<HTMLElement>('[data-part="tail"]');
-    expect(container.querySelector("[data-shortened]")).toBeTruthy();
-    expect(head?.style.maxWidth).toBe("calc(100% - 20ch)");
-    // A head never narrower than a pixel: a part with no width drops out of a copied selection.
-    expect(head?.style.minWidth).toBe("1px");
+    expect(box?.style.display).toBe("inline-flex");
+    expect(box?.style.overflow).toBe("hidden");
+    expect(box?.style.maxWidth).toBe("100%");
+    expect(head?.style.flexShrink).toBe("1");
     expect(head?.style.textOverflow).toBe("ellipsis");
+    // The tail is as wide as its own text, so a wide glyph never pushes the extension out.
+    expect(tail?.style.flexShrink).toBe("0");
+    expect(tail?.style.maxWidth).toBe("100%");
     expect(tail?.style.textOverflow).toBe("ellipsis");
-    expect(tail?.style.maxWidth).toBe("calc(100% - 1px)");
-    // Still the name once.
-    expect(container.textContent).toBe("Ashgrove.Station.1974.Remastered.1080p.mkv");
-    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ["Ashgrove.Station.1974.Remastered.1080p.mkv", "ltr", "rtl"],
+    ["الفيلم الطويل للعائلة في الحديقة النسخة الكاملة.mkv", "rtl", "ltr"],
+  ])("gives the tail its ellipsis at its start, so the extension stays: %s", (name, reads, box) => {
+    const { container } = parts(name);
+    const tail = container.querySelector<HTMLElement>('[data-part="tail"]');
+    expect(tail?.style.direction).toBe(box);
+    expect(tail?.firstElementChild?.getAttribute("dir")).toBe(reads);
+  });
+
+  const copy = (container: HTMLElement, select: (range: Range) => void) => {
+    const range = document.createRange();
+    select(range);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    const setData = vi.fn();
+    const target = container.querySelector<HTMLElement>('[data-part="tail"]') as HTMLElement;
+    const event = createEvent.copy(target, { clipboardData: { setData } });
+    fireEvent(target, event);
+    return { prevented: event.defaultPrevented, setData };
+  };
+
+  it("copies the exact name from a selection inside it", () => {
+    const name = "Beacon Moor\nreel two.mkv";
+    const { container } = parts(name);
+    const head = container.querySelector('[data-part="head"]')?.firstChild as Text;
+    const tail = container.querySelector('[data-part="tail"]')?.firstChild?.firstChild as Text;
+    const { prevented, setData } = copy(container, (range) => {
+      range.setStart(head, 2);
+      range.setEnd(tail, 3);
+    });
+    expect(setData).toHaveBeenCalledWith("text/plain", name);
+    expect(prevented).toBe(true);
+  });
+
+  it("leaves a selection reaching past the name to the browser", () => {
+    const { container } = render(
+      <LoomarrProvider>
+        <p>
+          Before <FileName name="Ashgrove.Station.1974.Remastered.1080p.mkv" /> after
+        </p>
+      </LoomarrProvider>,
+    );
+    const paragraph = container.querySelector("p") as HTMLElement;
+    const { prevented, setData } = copy(container, (range) => range.selectNodeContents(paragraph));
+    expect(setData).not.toHaveBeenCalled();
+    expect(prevented).toBe(false);
   });
 
   it("fills a table cell without holding its column open", () => {
@@ -190,7 +214,7 @@ describe("FileName on the page", () => {
       </LoomarrProvider>,
     );
     const box = container.querySelector<HTMLElement>('[dir="auto"]');
-    expect(box?.style.display).toBe("block");
+    expect(box?.style.display).toBe("flex");
     expect(box?.style.width).toBe("0px");
     expect(box?.style.minWidth).toBe("100%");
   });
@@ -200,6 +224,14 @@ describe("FileName on the page", () => {
     const shown = `Beacon Moor${String.fromCodePoint(0x240a)}reel two.mkv`;
     expect(container.textContent).toBe(shown);
     expect(container.querySelector(`[title="${shown}"]`)).toBeTruthy();
+  });
+
+  it("draws a line or paragraph separator as the newline picture", () => {
+    const line = String.fromCodePoint(0x2028);
+    const paragraph = String.fromCodePoint(0x2029);
+    const { container } = parts(`Beacon${line}Moor${paragraph}reel two.mkv`);
+    const picture = String.fromCodePoint(0x2424);
+    expect(container.textContent).toBe(`Beacon${picture}Moor${picture}reel two.mkv`);
   });
 
   it("sets the name in the data face", () => {

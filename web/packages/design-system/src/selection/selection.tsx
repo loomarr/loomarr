@@ -7,9 +7,10 @@ import { Icon } from "../icon";
 import { icons } from "../icons";
 import { Action, ChoiceGroup } from "../interaction";
 import { boxFocusRing } from "../interaction/box-focus-ring";
+import { useReducedMotionPreference } from "../motion/use-reduced-motion";
 import { Surface } from "../primitives";
 import { Text } from "../text";
-import { type Density, iconography, semanticRadius, semanticSpace, semanticTargets } from "../tokens";
+import { type Density, semanticRadius, semanticSpace, semanticTargets } from "../tokens";
 
 type TabOption<Value extends string> = {
   disabled?: boolean;
@@ -50,9 +51,13 @@ type TabsProps<Value extends string> = TabsBaseProps<Value> &
     | { appearance: "underline"; options: readonly UnderlineTabOption<Value>[] }
   );
 
+// Where a tab sits along its list, from the list's start.
+type TabPlace = { width: number; x: number };
+
 // One `underline` tab: the label and its count on a 2px rule that is the foreground colour when
 // selected and clear otherwise. The rule overlaps the list's own 1px rule, so the two read as one.
-// A hover lifts an unselected label to the foreground, as the dialog's close does.
+// A hover lifts an unselected label to the foreground, as the dialog's close does. The focus ring
+// is drawn inside the tab's own box, so the scroller never clips it and nothing makes room for it.
 const UnderlineTab = <Value extends string>({
   density,
   onLayout,
@@ -61,8 +66,8 @@ const UnderlineTab = <Value extends string>({
   selected,
 }: {
   density: Density;
-  /** Where the tab sits in the list, so the list can scroll it into view. */
-  onLayout: (layout: { width: number; x: number }) => void;
+  /** Where the tab sits in the list, so the list can bring it into view. */
+  onLayout: (layout: TabPlace) => void;
   onPress: () => void;
   option: UnderlineTabOption<Value>;
   selected: boolean;
@@ -71,6 +76,7 @@ const UnderlineTab = <Value extends string>({
   const [hovered, setHovered] = useState(false);
   const disabled = option.disabled ?? false;
   const lit = selected || (hovered && !disabled);
+  const ring = boxFocusRing(focused, density);
   return (
     <Pressable
       accessibilityLabel={
@@ -95,7 +101,8 @@ const UnderlineTab = <Value extends string>({
         justifyContent="flex-end"
         minHeight={semanticTargets[density]}
         paddingBottom={semanticSpace.inline}
-        {...boxFocusRing(focused, density)}
+        {...ring}
+        {...("outlineWidth" in ring ? { outlineOffset: -(ring.outlineWidth ?? 0) } : null)}
       >
         {/* The count is nested in the label's line, so the two share a baseline and one name. */}
         <Text density={density} numberOfLines={1} strong textRole="body" tone={lit ? "primary" : "secondary"}>
@@ -111,50 +118,10 @@ const UnderlineTab = <Value extends string>({
   );
 };
 
-// A pointer's way to the tabs past an edge, and the sign that there are more: a chevron on the
-// canvas at that edge, above the rule. A press scrolls most of a view's width. Keyboard and screen
-// reader users move between tabs with the arrow keys, so it is hidden from them.
-// It reaches over the scroller's ring gutter (`inset`), so no clipped text shows beside it.
-const EdgeChevron = ({
-  density,
-  inset,
-  onPress,
-  side,
-}: {
-  density: Density;
-  inset: number;
-  onPress: () => void;
-  side: "end" | "start";
-}) => (
-  <Pressable
-    aria-hidden
-    focusable={false}
-    onPress={onPress}
-    style={{ bottom: 1, position: "absolute", top: 0, [side === "end" ? "right" : "left"]: -inset }}
-    tabIndex={-1}
-  >
-    <View
-      alignItems="center"
-      backgroundColor="surfaceCanvas"
-      height="100%"
-      justifyContent="center"
-      paddingHorizontal={2}
-    >
-      <Icon
-        decorative
-        glyph={side === "end" ? icons.later : icons.earlier}
-        size={density === "tv" ? "control" : "compact"}
-        tone="muted"
-      />
-    </View>
-  </Pressable>
-);
-
 // The underline list never wraps: when its tabs do not fit (large type, a TV, a phone) it scrolls
-// sideways. The selected tab is scrolled into view when it is set, a tab that takes focus scrolls
-// into view, and a chevron at an edge says more tabs lie past it. The shared rule runs the list's
-// full width. The scroller reaches the focus ring's width past the list on every side and pads it
-// back in, so it never clips a tab's ring and the list's place and height do not change.
+// sideways and shows its scroll bar. The shared rule runs the list's full width. The selected tab
+// is brought into view once when the list mounts and once each time the selection changes, and
+// never otherwise: a count, a font or the window changing size leaves the reader's scroll alone.
 const UnderlineTabs = <Value extends string>({
   density = "pointer",
   label,
@@ -162,80 +129,73 @@ const UnderlineTabs = <Value extends string>({
   options,
   value,
 }: TabsBaseProps<Value> & { options: readonly UnderlineTabOption<Value>[] }) => {
-  const ring = (density === "tv" ? 3 : 2) + 2;
-  // An edge chevron's width: its glyph and its side padding.
-  const chevron = iconography.size[density === "tv" ? "control" : "compact"] + 4;
+  const reducedMotion = useReducedMotionPreference();
+  const animated = useRef(false);
+  animated.current = reducedMotion === false;
   const scroller = useRef<ScrollViewInstance>(null);
-  const tabs = useRef(new Map<Value, { width: number; x: number }>());
-  const [view, setView] = useState({ content: 0, viewport: 0, x: 0 });
+  const tabs = useRef(new Map<Value, TabPlace>());
+  const viewport = useRef(0);
+  const offset = useRef(0);
+  // The selection still to bring into view: it waits until both it and the list have been measured.
+  const pending = useRef<Value | null>(value);
 
   const reveal = useCallback(() => {
-    const tab = tabs.current.get(value);
-    if (!tab || view.viewport === 0) return;
-    // Room for the tab, its ring and a chevron beside it at either edge.
-    const start = tab.x - chevron;
-    const end = tab.x + tab.width + 2 * ring + chevron;
-    if (start >= view.x && end <= view.x + view.viewport) return;
-    scroller.current?.scrollTo({ animated: false, x: Math.max(0, end - view.viewport) });
-  }, [chevron, ring, value, view.viewport, view.x]);
-  // Only a change of selection or of the viewport scrolls; the reader's own scrolling does not.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reveal reads the scroll offset but must not run on it.
-  useEffect(reveal, [value, view.viewport]);
-
-  const page = (direction: 1 | -1) =>
-    scroller.current?.scrollTo({ animated: true, x: Math.max(0, view.x + direction * view.viewport * 0.8) });
-  const overflows = view.content > view.viewport + 1;
+    const tab = pending.current === null ? undefined : tabs.current.get(pending.current);
+    if (!tab || viewport.current === 0) return;
+    pending.current = null;
+    const end = tab.x + tab.width;
+    const x =
+      tab.x < offset.current
+        ? tab.x
+        : end > offset.current + viewport.current
+          ? end - viewport.current
+          : null;
+    if (x !== null) scroller.current?.scrollTo({ animated: animated.current, x });
+  }, []);
+  useEffect(() => {
+    pending.current = value;
+    reveal();
+  }, [reveal, value]);
 
   return (
-    <View position="relative">
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1, padding: ring }}
-        horizontal
-        onContentSizeChange={(content) => setView((now) => ({ ...now, content }))}
-        onLayout={(event) => {
-          const viewport = event.nativeEvent.layout.width;
-          setView((now) => ({ ...now, viewport }));
-        }}
-        onScroll={(event) => {
-          const x = event.nativeEvent.contentOffset.x;
-          setView((now) => ({ ...now, x }));
-        }}
-        ref={scroller}
-        scrollEventThrottle={16}
-        showsHorizontalScrollIndicator={false}
-        style={{ flexGrow: 0, margin: -ring }}
+    <ScrollView
+      contentContainerStyle={{ flexGrow: 1 }}
+      horizontal
+      onLayout={(event) => {
+        viewport.current = event.nativeEvent.layout.width;
+        reveal();
+      }}
+      onScroll={(event) => {
+        offset.current = event.nativeEvent.contentOffset.x;
+      }}
+      ref={scroller}
+      scrollEventThrottle={16}
+      style={{ flexGrow: 0 }}
+    >
+      <View
+        aria-label={label}
+        borderBottomColor="borderDecorative"
+        borderBottomWidth={1}
+        flexDirection="row"
+        flexGrow={1}
+        gap={semanticSpace.section}
+        role="tablist"
       >
-        <View
-          aria-label={label}
-          borderBottomColor="borderDecorative"
-          borderBottomWidth={1}
-          flexDirection="row"
-          flexGrow={1}
-          gap={semanticSpace.section}
-          role="tablist"
-        >
-          {options.map((option) => (
-            <UnderlineTab
-              density={density}
-              key={option.value}
-              onLayout={(layout) => {
-                tabs.current.set(option.value, layout);
-                if (option.value === value) reveal();
-              }}
-              onPress={() => onValueChange(option.value)}
-              option={option}
-              selected={option.value === value}
-            />
-          ))}
-        </View>
-      </ScrollView>
-      {overflows && view.x > 1 ? (
-        <EdgeChevron density={density} inset={ring} onPress={() => page(-1)} side="start" />
-      ) : null}
-      {overflows && view.x + view.viewport < view.content - 1 ? (
-        <EdgeChevron density={density} inset={ring} onPress={() => page(1)} side="end" />
-      ) : null}
-    </View>
+        {options.map((option) => (
+          <UnderlineTab
+            density={density}
+            key={option.value}
+            onLayout={(place) => {
+              tabs.current.set(option.value, place);
+              reveal();
+            }}
+            onPress={() => onValueChange(option.value)}
+            option={option}
+            selected={option.value === value}
+          />
+        ))}
+      </View>
+    </ScrollView>
   );
 };
 

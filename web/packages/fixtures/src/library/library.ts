@@ -22,6 +22,10 @@ const libraryFileNames = {
   longLastWord: "Calder.Pier.Lanternwickthistlebrookmeadowmere.mkv",
   // A newline inside the name, as a careless rename leaves it: drawn as a visible picture.
   controlCharacter: "Beacon Moor\nreel two.mkv",
+  // Wide glyphs, which fall back to wider fonts than the data face: the extension still shows.
+  emoji: "🌊🏔️🎬 Calder Pier 🍿🎞️ summer reel 🌅🌙.mkv",
+  // Invented Japanese words ("the long journey of the lighthouse keeper, full edition").
+  cjk: "灯台守の長い旅路と海辺の町の物語完全版.mkv",
 } as const;
 
 /** Tab labels long enough that the underline tabs scroll sideways at TV density or large type. */

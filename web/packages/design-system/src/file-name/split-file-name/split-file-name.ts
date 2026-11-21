@@ -11,12 +11,7 @@ const TAIL_REACH = 16;
 const EXTENSION_MAX = 5;
 const SEPARATOR = /^[\s._-]$/u;
 
-type FileNameParts = {
-  head: string;
-  tail: string;
-  /** The tail's length in characters, which sizes the room the head leaves for it. */
-  tailLength: number;
-};
+type FileNameParts = { head: string; tail: string };
 
 // Named by its code point: the formatter writes an escaped joiner out as the invisible character.
 const ZERO_WIDTH_JOINER = String.fromCodePoint(0x200d);
@@ -58,17 +53,26 @@ const graphemes = (text: string): string[] => {
   return Array.from(segmenter.segment(text), (part) => part.segment);
 };
 
-// A control character (a newline, a tab, an escape) has no glyph and would break the line, so it is
-// drawn as its visible Unicode "control picture" (U+2400 to U+241F, U+2421 for delete).
+// A control character (a newline, a tab, an escape) or a line or paragraph separator has no glyph
+// and would break the line, so it is drawn as a visible picture: its Unicode "control picture"
+// (U+2400 to U+241F, U+2421 for delete), the newline symbol (U+2424) for a separator, and the
+// replacement character for the C1 controls, which have no picture.
 const visibleFileName = (name: string): string =>
-  name.replace(/\p{Cc}/gu, (control) => {
+  name.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, (control) => {
     const code = control.codePointAt(0) ?? 0;
-    return code < 0x20
-      ? String.fromCodePoint(0x2400 + code)
-      : code === 0x7f
-        ? String.fromCodePoint(0x2421)
-        : String.fromCodePoint(0xfffd);
+    if (code < 0x20) return String.fromCodePoint(0x2400 + code);
+    if (code === 0x7f) return String.fromCodePoint(0x2421);
+    if (code === 0x2028 || code === 0x2029) return String.fromCodePoint(0x2424);
+    return String.fromCodePoint(0xfffd);
   });
+
+// The direction a name reads in, from its first letter, as the browser's `dir="auto"` decides it.
+const RIGHT_TO_LEFT =
+  /^[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}\p{Script=Adlam}\p{Script=Mandaic}\p{Script=Samaritan}]$/u;
+const nameDirection = (name: string): "ltr" | "rtl" => {
+  const letter = name.match(/\p{L}/u)?.[0];
+  return letter && RIGHT_TO_LEFT.test(letter) ? "rtl" : "ltr";
+};
 
 // An extension is a run of one to EXTENSION_MAX characters after the last dot, holding no space or
 // dot ("mkv", "m2ts"); a dot that leads the name (".nomedia") starts no extension.
@@ -83,13 +87,9 @@ const extensionStart = (chars: string[]): number => {
 const splitFileName = (name: string): FileNameParts => {
   const chars = graphemes(name);
   const stemEnd = extensionStart(chars);
-  if (stemEnd <= TAIL_MIN) return { head: "", tail: name, tailLength: chars.length };
+  if (stemEnd <= TAIL_MIN) return { head: "", tail: name };
 
-  const at = (cut: number) => ({
-    head: chars.slice(0, cut).join(""),
-    tail: chars.slice(cut).join(""),
-    tailLength: chars.length - cut,
-  });
+  const at = (cut: number) => ({ head: chars.slice(0, cut).join(""), tail: chars.slice(cut).join("") });
   // The earliest word start inside the reach, so the tail keeps as much of the end as it may.
   for (let i = Math.max(1, stemEnd - TAIL_REACH); i < stemEnd; i += 1) {
     if (SEPARATOR.test(chars[i - 1] ?? "") && !SEPARATOR.test(chars[i] ?? "")) return at(i);
@@ -98,4 +98,4 @@ const splitFileName = (name: string): FileNameParts => {
 };
 
 export type { FileNameParts };
-export { splitFileName, visibleFileName };
+export { nameDirection, splitFileName, visibleFileName };
