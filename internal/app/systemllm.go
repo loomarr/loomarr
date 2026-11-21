@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 )
 
 // modelPullTimeout bounds a multi-gigabyte streaming download without imposing an HTTP-client
@@ -172,7 +173,7 @@ func (e *llmPullEvents) due(jobID, status string) bool {
 	now := e.now()
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if status == string(store.InteractiveOperationSuccess) || status == string(store.InteractiveOperationError) {
+	if status == string(operationstore.InteractiveOperationSuccess) || status == string(operationstore.InteractiveOperationError) {
 		delete(e.seen, jobID)
 		return true
 	}
