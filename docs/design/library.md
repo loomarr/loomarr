@@ -1129,6 +1129,10 @@ header is kept, so no file is opened again. Each version and what it changed:
   catalog answers, an NFO whose film the file's own names call a sequel of ("Harrow Fen 2 (2004)"
   holding Harrow Fen's NFO, copied whole) is set aside the same way (`namesItsSequel`). Every file
   is written once more.
+- **91:** a duplicate's mark is no part of an episode's title (`titleIn`): Windows' " - Copy" and
+  " - Copy (2)", and macOS's bare " copy" when it is all that follows the mark. A duplicated
+  episode is named as, and joins, its original. "Carbon Copy" keeps its word, and a part's number
+  ("Equinox (1)") stays its title's, so a browser's " (1)" is not read as a duplicate's.
 
 ## Search
 
