@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"testing"
 	"time"
@@ -11,8 +12,9 @@ import (
 
 // A title's page reads back what was written (#4476): a movie's facts and their providers, each
 // source with its edition, part and whether it plays (an extra copy does not), its tracks in index
-// order with a subtitle file beside it last, a movie in parts, and a series' episodes by the items
-// its present files were written as, an unnumbered one among them and a missing file's left out.
+// order with a subtitle file beside it last, a source that plays though its file has gone from the
+// list, a movie in parts, and a series' episodes by the items its present files were written as
+// (an unnumbered one among them, a missing file's left out), with no episode's sources read.
 func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
@@ -37,6 +39,9 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 			{Path: "/m/parts/parts cd2.mkv", DurationMs: 3_000_000, Part: 2, Plays: true},
 			{Path: "/m/parts/parts cd1.mkv", DurationMs: 3_100_000, Part: 1, Plays: true},
 		}},
+		{ID: "held", Kind: "movie", Name: "Held", Sources: []librarystore.LibrarySource{
+			{Path: "/m/held/a.mkv", Plays: true}, {Path: "/m/held/b.mkv"},
+		}},
 		{ID: "show", Kind: "series", Name: "Show", Overview: "A show.", Genres: []string{"Animation"}},
 		{ID: "ep1", Kind: "episode", Name: "Pilot", Season: 1, Episode: 1, EpisodeEnd: 2,
 			From:    librarystore.LibraryFrom{Name: "tmdb"},
@@ -55,7 +60,10 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 	}
 	gone := file("/t/show/s01e03.mkv", "ep-gone", "show")
 	gone.MissingAt = at
+	heldA := file("/m/held/a.mkv", "held", "")
+	heldA.MissingAt = at
 	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
+		heldA, file("/m/held/b.mkv", "held", ""),
 		file("/m/film/film.mkv", "film", ""), file("/m/film/film dvd.mkv", "film", ""),
 		file("/m/film/film {edition-Extended}.mkv", "film", ""),
 		file("/m/parts/parts cd1.mkv", "parts", ""), file("/m/parts/parts cd2.mkv", "parts", ""),
@@ -88,25 +96,38 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 		}
 		return out
 	}
-	if got, want := sources(film.Sources["film"]), []source{
+	if got, want := sources(film.Sources), []source{
 		{"/m/film/film dvd.mkv", 5_400_000, "", 0, false, 2},
 		{"/m/film/film {edition-Extended}.mkv", 6_000_000, "Extended", 0, true, 0},
 		{"/m/film/film.mkv", 5_432_100, "", 0, true, 5},
 	}; !slices.Equal(got, want) {
 		t.Errorf("film sources = %+v, want %+v", got, want)
 	}
-	if got := film.Sources["film"][2].Streams; !slices.Equal(got, streams) {
+	if got := film.Sources[2].Streams; !slices.Equal(got, streams) {
 		t.Errorf("film streams = %+v, want %+v", got, streams)
 	}
-	if len(film.Episodes) != 0 || len(film.Sources) != 1 {
-		t.Errorf("a movie reads episodes %+v and sources of %d items", film.Episodes, len(film.Sources))
+	if len(film.Episodes) != 0 {
+		t.Errorf("a movie reads episodes %+v", film.Episodes)
+	}
+
+	// The sources are the rows as written: a source that plays is read though its file has gone
+	// from the list, as it does while a removal waits; the page's extra-copy rule covers that.
+	held, err := st.LibraryItemDetail(ctx, "held")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := sources(held.Sources), []source{
+		{"/m/held/a.mkv", 0, "", 0, true, 0},
+		{"/m/held/b.mkv", 0, "", 0, false, 0},
+	}; !slices.Equal(got, want) {
+		t.Errorf("held sources = %+v, want %+v", got, want)
 	}
 
 	parts, err := st.LibraryItemDetail(ctx, "parts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := sources(parts.Sources["parts"]), []source{
+	if got, want := sources(parts.Sources), []source{
 		{"/m/parts/parts cd1.mkv", 3_100_000, "", 1, true, 0},
 		{"/m/parts/parts cd2.mkv", 3_000_000, "", 2, true, 0},
 	}; !slices.Equal(got, want) {
@@ -132,11 +153,12 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 			t.Errorf("episode %s = %+v, want %+v", id, got, want)
 		}
 	}
-	if got := sources(show.Sources["ep1"]); !slices.Equal(got, []source{{"/t/show/s01e01.mkv", 1_320_000, "", 0, true, 0}}) {
-		t.Errorf("episode sources = %+v", got)
+	if len(show.Sources) != 0 {
+		t.Errorf("a series reads sources %+v; its episodes' are not read", show.Sources)
 	}
-	if _, ok := show.Sources["ep-gone"]; ok {
-		t.Error("an episode whose file is missing has its sources read")
+	onDisk, err := st.LibraryDetailEpisodes(ctx, "show")
+	if err != nil || !maps.Equal(onDisk, show.Episodes) {
+		t.Errorf("episodes alone = %+v, %v; want the page's %+v", onDisk, err, show.Episodes)
 	}
 
 	unwritten, err := st.LibraryItemDetail(ctx, "no-row")

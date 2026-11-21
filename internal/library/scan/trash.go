@@ -41,11 +41,12 @@ func (l *Library) RemoveExtraCopy(ctx context.Context, id, path string) error {
 	if err != nil {
 		return err
 	}
-	for _, f := range d.Files {
+	for i, f := range d.Files {
 		if f.Path != path {
 			continue
 		}
-		if !f.Extra {
+		// The rule is held here on its own, not taken from the page's Extra.
+		if !extraCopy(d.Files, i) {
 			return ErrPlays
 		}
 		now := l.now()

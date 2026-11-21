@@ -642,16 +642,24 @@ step 5). Nothing reads the scanner's origins until the cutover.
   file its path, size, and once its header is read the picture (4K, 1080p HD, 720p HD or
   standard, "extra-rich colour" for HDR: a `hdr` label on its first video track), the sound that
   plays (its own default audio track, else its first), each subtitle track's language, the
-  file's own then each subtitle file beside it (as ISO 639-1 codes), and the measured length.
+  file's own then each subtitle file beside it (as two-letter codes where one exists), and the
+  measured length.
 - **The title page reads the Library's rows** (#4476). `GET /v1/library/items/{id}` reads one
-  title through `LibraryItemDetail`: its `library_items` row and genres, its `library_sources`
-  with their `library_streams`, and for a series the rows of the episodes its present files were
-  written as (#2151 decision 39: features query the tables). A file is an extra copy when its
-  source is not marked `plays`. The projector writes the whole title in the inventory's own
-  transaction on every write (a pass, a header read, an origin marked unseen; decision 43), so
-  the page never reads a title half written. Each scan origin's observation JSON stays as
-  evidence of what the scan saw, not a source the page reads (decision 40). `library_markers` and `library_trickplay` are stored ahead of use: the player
-  will read them for skipping and scrubbing, and no page reads them.
+  title through `LibraryItemDetail`, in one read transaction: its `library_items` row and
+  genres, its own `library_sources` with their `library_streams`, and for a series the rows of
+  the items its present files were written as (#2151 decision 39: features query the tables); a
+  series' episodes' sources are not read. Each write of a title is one transaction: the
+  projector rewrites the whole title inside the inventory write (a pass, a header read, an
+  origin marked unseen; decision 43). The file list (`library_files`) follows the walk and the
+  sources follow the inventory, so the two can disagree while a removal waits, such as a pass
+  that could not hear from an arr and marked no origin unseen. A listed file is therefore an
+  extra copy only when its source does not play and another listed file plays in its place: one
+  in the same edition with the same part, or a whole file of that edition. A file with no source
+  row yet plays. So a title's last listed file is never offered for removal, and Remove extra
+  copy holds the same rule itself. Each scan origin's observation JSON stays as evidence of what
+  the scan saw, not a source the page reads (decision 40). `library_markers` and
+  `library_trickplay` are stored ahead of use: the player will read them for skipping and
+  scrubbing, and no page reads them.
 - **Editions** (step 14b-1c, decision 54). A movie file can be a labelled version of its title,
   such as a Director's Cut. Its arr's edition counts first (Radarr's, read from the release name),
   then its name's `{edition-…}`, then its NFO's `<edition>`; a catalog never has a say. The label

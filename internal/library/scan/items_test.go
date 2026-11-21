@@ -13,8 +13,8 @@ import (
 )
 
 // A title's page says where its details came from and what its file holds: the picture, the sound
-// that plays (the default audio stream, not the first), each subtitle by its ISO 639-1 code (the
-// file's own, then a subtitle file beside it), and the measured length.
+// that plays (the default audio stream, not the first), each subtitle's language, two-letter where
+// one exists (the file's own, then a subtitle file beside it), and the measured length.
 func TestTitlePageSaysWhereDetailsCameFromAndWhatTheFileHolds(t *testing.T) {
 	h := newHarness(t)
 	h.im.Header = func(context.Context, string) (header.Header, error) {

@@ -48,9 +48,30 @@ type ItemFile struct {
 	Edition string
 	// Part is which part of a movie in parts it is, from 1; 0 for a whole file.
 	Part int
-	// Extra is a copy that never plays, because another of the title's files in its edition does
-	// (decisions 37, 54): its source row is not marked plays.
+	// Extra is a copy that never plays, because another of the title's listed files plays in its
+	// place (decisions 37, 54); see extraCopy.
 	Extra bool
+	// plays is its source row's plays; a file with no source row yet plays.
+	plays bool
+}
+
+// extraCopy is whether files[i] is an extra copy: its source does not play, and another of the
+// listed files plays in its place, in the same edition and either the same part or as a whole
+// file (an edition with a whole file plays it, not its parts). The source rows follow the
+// inventory and the list follows the walk, and the two disagree while a removal waits (a pass
+// that could not hear from an arr marks no origin unseen), so a copy whose playing file has gone
+// from the list is not an extra: a title's last file is never offered for removal.
+func extraCopy(files []ItemFile, i int) bool {
+	f := files[i]
+	if f.plays {
+		return false
+	}
+	for j, g := range files {
+		if j != i && g.plays && editionKey(g.Edition) == editionKey(f.Edition) && (g.Part == f.Part || g.Part == 0) {
+			return true
+		}
+	}
+	return false
 }
 
 // Picture is a video stream's size and range.
@@ -59,13 +80,14 @@ type Picture struct {
 	HDR           bool
 }
 
-// itemFile is f with what its source row says; a file with no row yet is zero beside f.
+// itemFile is f with what its source row says. A file with no row yet is zero beside f, and plays:
+// the safe side, since a file that plays is never offered for removal.
 func itemFile(f librarystore.LibraryFile, src librarystore.LibrarySource, ok bool) ItemFile {
-	out := ItemFile{LibraryFile: f}
+	out := ItemFile{LibraryFile: f, plays: true}
 	if !ok {
 		return out
 	}
-	out.LengthMillis, out.Edition, out.Part, out.Extra = src.DurationMs, src.Edition, src.Part, !src.Plays
+	out.LengthMillis, out.Edition, out.Part, out.plays = src.DurationMs, src.Edition, src.Part, src.Plays
 	var audio *librarystore.LibraryStream
 	for i, s := range src.Streams {
 		own := s.ExternalRef == ""
@@ -98,9 +120,14 @@ func sourceOf(sources []librarystore.LibrarySource, path string) (librarystore.L
 	return librarystore.LibrarySource{}, false
 }
 
-// detailsFrom is the page's provenance from a library row's _from columns.
+// detailsFrom is the page's provenance from a library row's _from columns. An episode's rating
+// taken from its show (librarystore.RatingFromShow) names no provider.
 func detailsFrom(f librarystore.LibraryFrom) DetailsFrom {
-	return DetailsFrom{Name: mp.ID(f.Name), Description: mp.ID(f.Overview), Rating: mp.ID(f.Rating),
+	rating := mp.ID(f.Rating)
+	if f.Rating == librarystore.RatingFromShow {
+		rating = ""
+	}
+	return DetailsFrom{Name: mp.ID(f.Name), Description: mp.ID(f.Overview), Rating: rating,
 		Year: mp.ID(f.Year), Premiere: mp.ID(f.Premiere), Score: mp.ID(f.Score), Runtime: mp.ID(f.Runtime)}
 }
 
@@ -152,8 +179,11 @@ func (l *Library) Item(ctx context.Context, id string) (ItemDetail, error) {
 	}
 	if summary.Kind != string(kindSeries) {
 		for _, f := range files {
-			src, ok := sourceOf(page.Sources[id], f.Path)
+			src, ok := sourceOf(page.Sources, f.Path)
 			detail.Files = append(detail.Files, itemFile(f, src, ok))
+		}
+		for i := range detail.Files {
+			detail.Files[i].Extra = extraCopy(detail.Files, i)
 		}
 		return detail, nil
 	}
@@ -282,12 +312,12 @@ func seasons(files []librarystore.LibraryFile, episodes map[string]librarystore.
 // hold: what a series search is checked against (decision 57). Specials (season 0) and files
 // without a number are left out, since nothing lays them out the same way twice.
 func (l *Library) EpisodesOnDisk(ctx context.Context, seriesID string) (map[int]int, error) {
-	page, err := l.ItemStore.LibraryItemDetail(ctx, seriesID)
+	episodes, err := l.ItemStore.LibraryDetailEpisodes(ctx, seriesID)
 	if err != nil {
 		return nil, err
 	}
 	highest := map[int]int{}
-	for _, e := range page.Episodes {
+	for _, e := range episodes {
 		if e.Season > 0 && e.Episode > 0 {
 			highest[e.Season] = max(highest[e.Season], e.Episode, e.EpisodeEnd)
 		}

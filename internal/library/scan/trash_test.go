@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/header"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Two files of one movie: the sharper plays and the other is an extra copy. Removing the copy that
@@ -92,6 +93,81 @@ func TestRemoveExtraCopyMovesItToTheTrash(t *testing.T) {
 	}
 	if _, err := os.Stat(keep); err != nil {
 		t.Errorf("emptying removed a folder Loomarr didn't make: %v", err)
+	}
+}
+
+// A copy that plays can go from the file list before its source row does (a pass that could not
+// hear from an arr marks no origin unseen). The extra copy left alone is then the title's last
+// file: it is not an extra, and removing it is refused.
+func TestATitlesLastFileIsNeverAnExtraCopy(t *testing.T) {
+	h := newHarness(t)
+	h.im.Header = func(_ context.Context, path string) (header.Header, error) {
+		w, ht := 1920, 1080
+		if strings.Contains(path, "DVD") {
+			w, ht = 720, 480
+		}
+		return header.Header{Container: "matroska,webm", DurationMillis: 5_000_000, Streams: []inventory.Stream{
+			{Index: 0, Kind: inventory.StreamVideo, Codec: "h264", Width: w, Height: ht},
+		}}, nil
+	}
+	sharp := h.file("Foxtrot (2001) {tmdb-90000631}/Foxtrot.mkv", 10)
+	soft := h.file("Foxtrot (2001) {tmdb-90000631}/Foxtrot DVD.mkv", 20)
+	h.run()
+	id := string(h.item(fileOrigin(h.root, "Foxtrot (2001) {tmdb-90000631}/Foxtrot.mkv")).ID)
+	ctx := context.Background()
+	// Only the file list changes: the sources still say the sharp copy plays.
+	if err := h.st.RemoveLibraryFile(ctx, sharp, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	lib := &Library{ItemStore: h.st, Inventory: h.inv}
+	d, err := lib.Item(ctx, id)
+	if err != nil || len(d.Files) != 1 || d.Files[0].Path != soft {
+		t.Fatalf("title = %+v, %v; want only the soft copy listed", d.Files, err)
+	}
+	if d.Files[0].Extra {
+		t.Error("the title's last file is an extra copy")
+	}
+	if err := lib.RemoveExtraCopy(ctx, id, soft); !errors.Is(err, ErrPlays) {
+		t.Fatalf("removing the title's last file = %v, want ErrPlays", err)
+	}
+	if _, err := os.Stat(soft); err != nil {
+		t.Errorf("the title's last file moved: %v", err)
+	}
+}
+
+// A listed copy that does not play is an extra only while a listed copy plays in its place: one in
+// its edition with its part, or a whole file of its edition for a part. A file with no source row
+// yet plays.
+func TestAnExtraCopyNeedsAListedCopyPlayingInItsPlace(t *testing.T) {
+	file := func(edition string, part int, plays bool) ItemFile {
+		return ItemFile{Edition: edition, Part: part, plays: plays}
+	}
+	for name, tc := range map[string]struct {
+		files  []ItemFile
+		extras []bool
+	}{
+		"a second copy":             {[]ItemFile{file("", 0, true), file("", 0, false)}, []bool{false, true}},
+		"a lone copy":               {[]ItemFile{file("", 0, false)}, []bool{false}},
+		"parts beside a whole":      {[]ItemFile{file("", 0, true), file("", 1, false), file("", 2, false)}, []bool{false, true, true}},
+		"a second copy of a part":   {[]ItemFile{file("", 1, true), file("", 1, false), file("", 2, true)}, []bool{false, true, false}},
+		"a part whose part is gone": {[]ItemFile{file("", 1, false), file("", 2, true)}, []bool{false, false}},
+		"another edition plays": {
+			[]ItemFile{file("Extended", 0, true), file("", 0, false)}, []bool{false, false},
+		},
+		"labels of one edition": {
+			[]ItemFile{file("Directors Cut", 0, true), file("director's cut", 0, false)}, []bool{false, true},
+		},
+		"no source row yet": {
+			[]ItemFile{itemFile(librarystore.LibraryFile{}, librarystore.LibrarySource{}, false), file("", 0, false)},
+			[]bool{false, true},
+		},
+	} {
+		for i, want := range tc.extras {
+			if got := extraCopy(tc.files, i); got != want {
+				t.Errorf("%s: file %d extra = %v, want %v", name, i, got, want)
+			}
+		}
 	}
 }
 
