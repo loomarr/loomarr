@@ -267,6 +267,12 @@ func TestInventoryStoreImportsKernelNotAggregate(t *testing.T) {
 	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/inventorystore")
 }
 
+// internal/platform/store/viewingstore is the watch-history cluster. It builds on the storedb
+// kernel, in the same direction as the clusters above, and store embeds it.
+func TestViewingStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/viewingstore")
+}
+
 // internal/platform/store/diagnosticsstore is the diagnostics cluster (events, process runs and the
 // retained-byte totals). It builds on the storedb kernel, in the same direction as the clusters
 // above, and store embeds it.

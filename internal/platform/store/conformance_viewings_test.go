@@ -5,9 +5,11 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/viewingstore"
 )
 
-func viewingIDs(vs []Viewing) []string {
+func viewingIDs(vs []viewingstore.Viewing) []string {
 	out := make([]string, 0, len(vs))
 	for _, v := range vs {
 		out = append(out, v.ID)
@@ -28,7 +30,7 @@ func testViewings(t *testing.T, newStore NewStoreFunc) {
 	base := time.Unix(1_800_000_000, 0).UTC()
 	at := func(minutes int) time.Time { return base.Add(time.Duration(minutes) * time.Minute) }
 
-	for _, v := range []Viewing{
+	for _, v := range []viewingstore.Viewing{
 		{ID: "v1", UserID: "u-sam", Device: "Living room TV", ChannelID: "ch-cartoons", ChannelName: "Cartoons",
 			Programme: "Bluey", StartedAt: at(0), EndedAt: at(10)},
 		{ID: "v2", UserID: "u-alex", Device: "Firefox on macOS", ChannelID: "ch-movies", ChannelName: "Movies",
@@ -40,11 +42,11 @@ func testViewings(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	if err := s.InsertViewing(ctx, Viewing{ID: "bad", UserID: "u-sam"}); err == nil {
+	if err := s.InsertViewing(ctx, viewingstore.Viewing{ID: "bad", UserID: "u-sam"}); err == nil {
 		t.Error("a viewing with no channel or start was accepted")
 	}
 
-	all, err := s.ListViewings(ctx, ViewingQuery{Limit: 10})
+	all, err := s.ListViewings(ctx, viewingstore.ViewingQuery{Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,12 +58,12 @@ func testViewings(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("v1 read back as %+v", v)
 	}
 
-	page, err := s.ListViewings(ctx, ViewingQuery{Limit: 2})
+	page, err := s.ListViewings(ctx, viewingstore.ViewingQuery{Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
 	last := page[len(page)-1]
-	next, err := s.ListViewings(ctx, ViewingQuery{Limit: 2, AfterStartedAt: last.StartedAt, AfterID: last.ID})
+	next, err := s.ListViewings(ctx, viewingstore.ViewingQuery{Limit: 2, AfterStartedAt: last.StartedAt, AfterID: last.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,12 +71,12 @@ func testViewings(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("two pages = %v, want v3 v2 | v1", got)
 	}
 
-	sam, _ := s.ListViewings(ctx, ViewingQuery{Limit: 10, UserID: "u-sam"})
+	sam, _ := s.ListViewings(ctx, viewingstore.ViewingQuery{Limit: 10, UserID: "u-sam"})
 	if got := viewingIDs(sam); !sameIDs(got, "v3", "v1") {
 		t.Errorf("u-sam's history = %v, want v3 v1", got)
 	}
 	// v1 ends at 10 and v2 starts at 20: a window of [5, 25) overlaps both, not v3.
-	window, _ := s.ListViewings(ctx, ViewingQuery{Limit: 10, From: at(5), To: at(25)})
+	window, _ := s.ListViewings(ctx, viewingstore.ViewingQuery{Limit: 10, From: at(5), To: at(25)})
 	if got := viewingIDs(window); !sameIDs(got, "v2", "v1") {
 		t.Errorf("window [5,25) = %v, want v2 v1", got)
 	}
@@ -90,7 +92,7 @@ func testViewings(t *testing.T, newStore NewStoreFunc) {
 	if found, err := s.ExtendViewing(ctx, "missing", "", at(60)); err != nil || found {
 		t.Errorf("extending a cleared viewing = %v, %v; want not found and no error", found, err)
 	}
-	all, _ = s.ListViewings(ctx, ViewingQuery{Limit: 10})
+	all, _ = s.ListViewings(ctx, viewingstore.ViewingQuery{Limit: 10})
 	if v := all[0]; !v.EndedAt.Equal(at(55)) || v.Programme != "Up" {
 		t.Errorf("v3 after extends = end %v programme %q, want end at 55 and Up kept", v.EndedAt, v.Programme)
 	}
@@ -102,17 +104,17 @@ func testViewings(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || n != 2 {
 		t.Fatalf("clear u-sam = %d, %v; want 2 rows", n, err)
 	}
-	all, _ = s.ListViewings(ctx, ViewingQuery{Limit: 10})
+	all, _ = s.ListViewings(ctx, viewingstore.ViewingQuery{Limit: 10})
 	if got := viewingIDs(all); !sameIDs(got, "v2") {
 		t.Errorf("after clearing u-sam = %v, want only u-alex's v2", got)
 	}
 	if n, err := s.DeleteViewings(ctx, ""); err != nil || n != 1 {
 		t.Errorf("clear all = %d, %v; want 1 row", n, err)
 	}
-	if all, _ = s.ListViewings(ctx, ViewingQuery{Limit: 10}); len(all) != 0 {
+	if all, _ = s.ListViewings(ctx, viewingstore.ViewingQuery{Limit: 10}); len(all) != 0 {
 		t.Errorf("after clearing everyone %d rows remain", len(all))
 	}
-	if _, err := s.ListViewings(ctx, ViewingQuery{}); err == nil {
+	if _, err := s.ListViewings(ctx, viewingstore.ViewingQuery{}); err == nil {
 		t.Error("a zero limit was accepted")
 	}
 }
