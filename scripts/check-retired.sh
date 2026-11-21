@@ -498,7 +498,7 @@ ALLOW_LINE='retired-ok|[Rr]etired|[Ss]uperseded|no longer exist|was deleted|was 
 # product belongs here. docs-site/ is deliberately absent — it renders docs/ and holds no prose
 # of its own (design §13).
 SEARCH=(docs internal docker scripts android web/apps/web/src .github README.md SECURITY.md
-        CODE_OF_CONDUCT.md CLAUDE.md AGENTS.md CONTRIBUTING.md CONTEXT.md CHANGELOG.md
+        CODE_OF_CONDUCT.md CLAUDE.md AGENTS.md CONTRIBUTING.md CONTEXT.md PRODUCT.md CHANGELOG.md
         THIRD_PARTY_NOTICES.md Dockerfile Makefile go.mod .env.example)
 fail=0
 for row in "${RETIRED[@]}"; do

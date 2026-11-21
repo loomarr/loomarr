@@ -494,7 +494,7 @@ classify() {
       select_gate docs
       select_gate agent
       ;;
-    docs/*|project/*|CHANGELOG.md|CODE_OF_CONDUCT.md|CONTRIBUTING.md|SECURITY.md|CLAUDE.md|AGENTS.md|CONTEXT.md|PROGRESS.md|docs-site/*|.agents/*|.claude/*|.vale|.vale/*|.vale.ini|lychee.toml|.markdownlint*|.github/CODEOWNERS|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md)
+    docs/*|project/*|CHANGELOG.md|CODE_OF_CONDUCT.md|CONTRIBUTING.md|SECURITY.md|CLAUDE.md|AGENTS.md|CONTEXT.md|PRODUCT.md|PROGRESS.md|docs-site/*|.agents/*|.claude/*|.vale|.vale/*|.vale.ini|lychee.toml|.markdownlint*|.github/CODEOWNERS|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md)
       known=true
       select_gate docs
       ;;
