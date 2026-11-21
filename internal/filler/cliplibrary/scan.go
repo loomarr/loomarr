@@ -385,7 +385,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (tools.Probed, error) {
 	// wrong answer. Height necessarily comes from the streams, hence both sections.
 	out, err := bgexec.Tool(ctx, bin,
 		"-v", "error",
-		"-show_entries", "format=duration:stream=width,height,codec_type,avg_frame_rate,sample_aspect_ratio,display_aspect_ratio,field_order,start_time,duration",
+		"-show_entries", "format=duration:stream=width,height,codec_type,avg_frame_rate,r_frame_rate,sample_aspect_ratio,display_aspect_ratio,field_order,start_time,duration",
 		"-of", "json",
 		path,
 	).Output()
@@ -402,6 +402,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (tools.Probed, error) {
 			Height             int    `json:"height"`
 			CodecType          string `json:"codec_type"`
 			AverageFrameRate   string `json:"avg_frame_rate"`
+			RealFrameRate      string `json:"r_frame_rate"`
 			SampleAspectRatio  string `json:"sample_aspect_ratio"`
 			DisplayAspectRatio string `json:"display_aspect_ratio"`
 			FieldOrder         string `json:"field_order"`
@@ -438,6 +439,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (tools.Probed, error) {
 				selectedVideo = true
 				result.Width, result.Height = s.Width, s.Height
 				result.Cadence = observedFFprobeValue(s.AverageFrameRate)
+				result.NominalCadence = observedFFprobeValue(s.RealFrameRate)
 				result.SampleAspect = observedFFprobeValue(s.SampleAspectRatio)
 				result.DisplayAspect = observedFFprobeValue(s.DisplayAspectRatio)
 				result.FieldOrder = observedFFprobeValue(s.FieldOrder)
