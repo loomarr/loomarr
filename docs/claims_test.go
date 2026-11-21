@@ -105,6 +105,8 @@ var envVarsOutsideTheRegistry = map[string]string{
 	"LOOMARR_ENCRYPTION_KEY_FILE":          "boot-only installation-key file path read directly by internal/people/secretprotection",
 	"LOOMARR_ENCRYPTION_KEY_PREVIOUS":      "one-boot prior installation key used by internal/people/secretprotection for atomic key replacement",
 	"LOOMARR_ENCRYPTION_KEY_PREVIOUS_FILE": "one-boot prior installation-key file path used by internal/people/secretprotection for atomic key replacement",
+	"LOOMARR_TOKEN":                        "client-side only — the paired-device token the agents guide exports for the person's Restish profile (`env:LOOMARR_TOKEN`); the server never reads it",
+	"LOOMARR_SERVER":                       "client-side only — the default for `loomarr pair --server` (cmd/loomarr/paircmd.go); the server never reads it",
 }
 
 // scanEnvVars checks every backticked SCREAMING_SNAKE token in one document and reports how many
