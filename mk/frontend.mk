@@ -84,7 +84,8 @@ fe-checks: fe-codegen ## everything in fe except the typecheck and tests: biome,
 fe-typecheck: fe-codegen ## typecheck the web app and the packages it uses (Turbo), after codegen
 	cd $(WEB) && pnpm exec turbo run typecheck --filter=@loomarr/web...
 
-# Turbo's `test` depends on each package's `typecheck`, so after fe-typecheck those are cache hits.
+# Turbo's `test` depends on each package's `typecheck`: run after fe-typecheck, those are cache hits,
+# and run alone, fe-packages typechecks the packages first.
 .PHONY: fe-packages
 fe-packages: fe-codegen ## unit tests of the packages the web app uses (Turbo), after codegen
 	cd $(WEB) && pnpm exec turbo run test --filter=@loomarr/web... '--filter=!@loomarr/web'

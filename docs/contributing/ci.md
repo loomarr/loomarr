@@ -470,7 +470,9 @@ the other. Both run in one entry because `test` depends on each package's `typec
 entries that miss would both typecheck the packages. Never pass `--only` to share the work out: it
 drops the dependency hashes, so a package change no longer invalidates `@loomarr/web`'s typecheck.
 The only environment variable a shared task declares is `JAVA_HOME` (on `test`), which both
-workflows take unchanged from the `ubuntu-latest` image. Artifacts are signed (`remoteCache.signature` in `web/turbo.json`). `TURBO_CACHE` sets `merge_group`
+workflows take unchanged from the `ubuntu-latest` image.
+
+Artifacts are signed (`remoteCache.signature` in `web/turbo.json`). `TURBO_CACHE` sets `merge_group`
 runs and runs on `main` to write, and every other run, pull requests included, to read
 (`local:rw,remote:r`). The setting lives in the client, so it is not an access control: a same-repo
 pull request run holds the same token. The merge queue may write here, unlike the Actions cache
