@@ -12,7 +12,6 @@ import (
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/header"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Two files of one movie: the sharper plays and the other is an extra copy. Removing the copy that
@@ -100,33 +99,36 @@ func TestRemoveExtraCopyMovesItToTheTrash(t *testing.T) {
 // bigger. A copy under half as long as the longest never plays: a sharp trailer the walk took for a
 // copy loses to the film. One whose length isn't read yet is not held back.
 func TestTheCopyThatPlays(t *testing.T) {
-	hd := &Picture{Width: 1920, Height: 1080}
-	sd := &Picture{Width: 720, Height: 480}
+	type copy struct {
+		managed      bool
+		pixels       int
+		size, length int64
+	}
+	const hd, sd = 1920 * 1080, 720 * 480
 	const film, trailer = 6_000_000, 150_000
+	plays := func(copies []copy) []bool {
+		return playingCopies(len(copies), func(int) string { return "" }, func(int) int { return 0 },
+			func(i int) bool { return copies[i].managed }, func(i int) int { return copies[i].pixels },
+			func(i int) int64 { return copies[i].size }, func(i int) int64 { return copies[i].length })
+	}
 	for name, tc := range map[string]struct {
-		files []ItemFile
-		plays int
+		copies []copy
+		plays  int
 	}{
-		"arr's file": {[]ItemFile{{Picture: hd}, {Picture: sd, managed: true}}, 1},
-		"sharper":    {[]ItemFile{{Picture: sd}, {Picture: hd}}, 1},
-		"bigger":     {[]ItemFile{{LibraryFile: librarystore.LibraryFile{Size: 9}}, {LibraryFile: librarystore.LibraryFile{Size: 3}}}, 0},
-		"a sharp trailer loses to the film": {
-			[]ItemFile{{Picture: hd, LengthMillis: trailer}, {Picture: sd, LengthMillis: film}}, 1,
-		},
-		"even its arr's": {
-			[]ItemFile{{Picture: hd, LengthMillis: trailer, managed: true}, {Picture: sd, LengthMillis: film}}, 1,
-		},
-		"a length not read yet": {[]ItemFile{{Picture: hd}, {Picture: sd, LengthMillis: film}}, 0},
+		"arr's file":                        {[]copy{{pixels: hd}, {pixels: sd, managed: true}}, 1},
+		"sharper":                           {[]copy{{pixels: sd}, {pixels: hd}}, 1},
+		"bigger":                            {[]copy{{size: 9}, {size: 3}}, 0},
+		"a sharp trailer loses to the film": {[]copy{{pixels: hd, length: trailer}, {pixels: sd, length: film}}, 1},
+		"even its arr's":                    {[]copy{{pixels: hd, length: trailer, managed: true}, {pixels: sd, length: film}}, 1},
+		"a length not read yet":             {[]copy{{pixels: hd}, {pixels: sd, length: film}}, 0},
 	} {
-		markExtras(tc.files)
-		for i, f := range tc.files {
-			if f.Extra != (i != tc.plays) {
-				t.Errorf("%s: file %d extra = %v", name, i, f.Extra)
+		for i, p := range plays(tc.copies) {
+			if p != (i == tc.plays) {
+				t.Errorf("%s: copy %d plays = %v", name, i, p)
 			}
 		}
 	}
-	one := []ItemFile{{}}
-	if markExtras(one); one[0].Extra {
-		t.Error("a title's only file is an extra")
+	if one := plays([]copy{{}}); !one[0] {
+		t.Error("a title's only file does not play")
 	}
 }
