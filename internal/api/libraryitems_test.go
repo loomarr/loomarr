@@ -210,6 +210,9 @@ func TestLibraryItemMatchAndActions(t *testing.T) {
 			Match: librarystore.LibraryMatch{Basis: "manager", App: "sonarr", Page: "http://sonarr.invalid/series/alpha-show"}},
 		{ID: "90000002", Kind: "movie", Name: "Bravo Movie", Match: librarystore.LibraryMatch{Basis: "sidecar", App: "nfo"}},
 		{ID: "90000003", Kind: "movie", Name: "Charlie Movie"},
+		{ID: "90000004", Kind: "movie", Name: "Delta Movie", Sources: []librarystore.LibrarySource{
+			{Path: "/media/delta.mkv", Plays: true}, {Path: "/media/delta-dvd.mkv"},
+		}},
 		{ID: "90000011", Kind: "episode", Name: "Alpha E1", SeriesID: "90000001"},
 	}, at); err != nil {
 		t.Fatal(err)
@@ -222,6 +225,7 @@ func TestLibraryItemMatchAndActions(t *testing.T) {
 		file("/media/alpha/e1.mkv", "90000011", "90000001"),
 		file("/media/bravo.mkv", "90000002", ""),
 		file("/media/charlie.mkv", "90000003", ""),
+		file("/media/delta.mkv", "90000004", ""), file("/media/delta-dvd.mkv", "90000004", ""),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -269,6 +273,16 @@ func TestLibraryItemMatchAndActions(t *testing.T) {
 		if resp := h.Do(http.MethodPost, "/v1/library/items/90000002/remove-copy", adminToken, body); resp.StatusCode != want {
 			t.Errorf("remove %s = %d, want %d", path, resp.StatusCode, want)
 		}
+	}
+	// An extra copy whose playing copy is listed but not on disk is kept, and the answer says why.
+	resp := h.Do(http.MethodPost, "/v1/library/items/90000004/remove-copy", adminToken, `{"path":"/media/delta-dvd.mkv"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("remove an extra whose playing copy is gone = %d, want 409", resp.StatusCode)
+	}
+	kept := decodeProblem(t, resp.Body)
+	_ = resp.Body.Close()
+	if kept.Title != "Kept this copy" || !strings.Contains(kept.Detail, "can't find the copy that plays right now") {
+		t.Errorf("kept copy answer = %+v", kept)
 	}
 	if resp := h.Do(http.MethodPost, "/v1/library/items/90000002/remove-copy", memberToken, `{"path":"/media/bravo.mkv"}`); resp.StatusCode != http.StatusForbidden {
 		t.Errorf("remove by a member = %d, want 403", resp.StatusCode)

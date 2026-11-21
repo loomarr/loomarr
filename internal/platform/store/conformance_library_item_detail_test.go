@@ -68,8 +68,6 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 		file("/m/film/film {edition-Extended}.mkv", "film", ""),
 		file("/m/parts/parts cd1.mkv", "parts", ""), file("/m/parts/parts cd2.mkv", "parts", ""),
 		file("/t/show/s01e01.mkv", "ep1", "show"), file("/t/show/bonus.mkv", "ep-file", "show"), gone,
-		// A file that names the series as both its item and its series is not an episode of it.
-		file("/t/show/show.mkv", "show", "show"),
 	}); err != nil {
 		t.Fatal(err)
 	}

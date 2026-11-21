@@ -46,8 +46,7 @@ type LibraryItemDetailReader interface {
 	// zero.
 	LibraryItemDetail(ctx context.Context, id string) (LibraryItemDetail, error)
 	// LibraryDetailEpisodes reads the items a series' present files were written as, by item id:
-	// its episodes, or whatever else a file under it was written as, never the series itself. Any
-	// other id has none.
+	// its episodes, or whatever else a file under it was written as. Any other id has none.
 	LibraryDetailEpisodes(ctx context.Context, seriesID string) (map[string]LibraryDetailEpisode, error)
 }
 
@@ -102,11 +101,13 @@ func (s *Store) detailGenres(ctx context.Context, q storedb.Querier, id string) 
 }
 
 // detailEpisodes joins from the series' present files (library_files' inventory_series_id index)
-// to the items they were written as, other than the series itself.
+// to the items they were written as. None of them is the series: a file's item is the movie or
+// episode its own file origin writes, and the inventory joins ids only within one kind, so a file
+// is never written as a series.
 func (s *Store) detailEpisodes(ctx context.Context, q storedb.Querier, seriesID string) (map[string]LibraryDetailEpisode, error) {
 	rows, err := q.QueryContext(ctx, s.ph(`SELECT DISTINCT i.id, i.name, i.name_from, i.season, i.episode,
 		i.episode_end, i.unnumbered FROM library_files f JOIN library_items i ON i.id = f.inventory_item_id
-		WHERE f.inventory_series_id = ? AND f.inventory_item_id <> ? AND `+presentFile), seriesID, seriesID)
+		WHERE f.inventory_series_id = ? AND `+presentFile), seriesID)
 	if err != nil {
 		return nil, err
 	}

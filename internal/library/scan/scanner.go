@@ -341,6 +341,8 @@ type Library struct {
 	// Enricher fetches a title's catalog record on request (Update details); nil has no catalog.
 	Enricher *Enricher
 	Now      func() time.Time
+	// removing runs one Remove extra copy at a time.
+	removing sync.Mutex
 }
 
 // Progress is how the scanner's last passes ended; the zero Progress when no scanner runs.

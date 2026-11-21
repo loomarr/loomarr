@@ -29,6 +29,9 @@ const (
 var (
 	// ErrPlays refuses to remove the copy that plays.
 	ErrPlays = errors.New("library: that copy is the one that plays")
+	// ErrPlayingCopyUnseen refuses to remove an extra copy while no copy that plays in its place
+	// is found on disk: it is gone, or its share does not answer.
+	ErrPlayingCopyUnseen = errors.New("library: the copy that plays is not on disk now")
 	// ErrTrash is a copy that could not be moved to the trash: the folder is read-only, or the
 	// share refused.
 	ErrTrash = errors.New("library: couldn't move the copy to the trash")
@@ -36,9 +39,12 @@ var (
 
 // RemoveExtraCopy is "Remove extra copy": path, one of the title's files that never plays, moves to
 // its media folder's trash and leaves the title, and the folder is passed over. store.ErrNotFound
-// when the title has no such present file; ErrPlays when it is the copy that plays, or when no
-// copy that plays in its place is on disk now.
+// when the title has no such present file; ErrPlays when it is the copy that plays;
+// ErrPlayingCopyUnseen when no copy that plays in its place is on disk now. One removal runs at a
+// time, from reading the title to marking the file gone, so a second sees what the first did.
 func (l *Library) RemoveExtraCopy(ctx context.Context, id, path string) error {
+	l.removing.Lock()
+	defer l.removing.Unlock()
 	d, err := l.Item(ctx, id)
 	if err != nil {
 		return err
@@ -50,8 +56,12 @@ func (l *Library) RemoveExtraCopy(ctx context.Context, id, path string) error {
 		// The rule is held here on its own, not taken from the page's Extra. The list can keep a
 		// file that is gone (a held removal, an arr not answering), so the copy in its place must
 		// be on disk too.
-		if !slices.ContainsFunc(playsInPlaceOf(d.Files, i), func(g ItemFile) bool { return l.disk().File(ctx, g.Path) }) {
+		twins := playsInPlaceOf(d.Files, i)
+		if len(twins) == 0 {
 			return ErrPlays
+		}
+		if !slices.ContainsFunc(twins, func(g ItemFile) bool { return l.disk().File(ctx, g.Path) }) {
+			return ErrPlayingCopyUnseen
 		}
 		now := l.now()
 		if err := moveToTrash(f.Root, f.Path, now); err != nil {
@@ -66,6 +76,14 @@ func (l *Library) RemoveExtraCopy(ctx context.Context, id, path string) error {
 		return nil
 	}
 	return store.ErrNotFound
+}
+
+// disk is the folders' Disk; the real filesystem when the Library has none.
+func (l *Library) disk() Disk {
+	if l.Roots != nil && l.Disk != nil {
+		return l.Disk
+	}
+	return OSDisk{}
 }
 
 // moveToTrash moves path, a file under root, to root's trash for the day of now, keeping its

@@ -190,14 +190,6 @@ func (l *Library) rewrite(ctx context.Context, itemID string, origin librarystor
 	return nil
 }
 
-// disk is the folders' Disk; the real filesystem when the Library has none.
-func (l *Library) disk() Disk {
-	if l.Roots != nil && l.Disk != nil {
-		return l.Disk
-	}
-	return OSDisk{}
-}
-
 func (l *Library) now() time.Time {
 	if l.Now != nil {
 		return l.Now()

@@ -660,11 +660,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   with the same part, or a whole file of that edition. A file with no source row yet is never an
   extra and never plays in another's place. So a title's last listed file is never offered for
   removal. Remove extra copy holds the same rule itself, and before it moves anything it checks
-  on disk that a copy playing in its place is there, refusing (409) when none is. Each scan
-  origin's observation JSON stays as evidence of what
-  the scan saw, not a source the page reads (decision 40). `library_markers` and
-  `library_trickplay` are stored ahead of use: the player will read them for skipping and
-  scrubbing, and no page reads them.
+  on disk that a copy playing in its place is there, refusing (409, "Loomarr can't find the copy
+  that plays right now") when none is. One removal runs at a time, from reading the title to
+  marking the file gone, so two at once cannot take both copies. Each scan origin's observation
+  JSON stays as evidence of what the scan saw, not a source the page reads (decision 40).
+  `library_markers` and `library_trickplay` are stored ahead of use: the player will read them
+  for skipping and scrubbing, and no page reads them.
 - **Editions** (step 14b-1c, decision 54). A movie file can be a labelled version of its title,
   such as a Director's Cut. Its arr's edition counts first (Radarr's, read from the release name),
   then its name's `{edition-…}`, then its NFO's `<edition>`; a catalog never has a say. The label

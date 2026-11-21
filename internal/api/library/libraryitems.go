@@ -73,6 +73,9 @@ func (s *Handlers) removeLibraryExtraCopy(ctx context.Context, in *removeLibrary
 		return nil, httpcore.Problem(http.StatusNotFound, "Not one of this title's files", "Check files again, then try again.")
 	case errors.Is(err, scan.ErrPlays):
 		return nil, httpcore.Problem(http.StatusConflict, "That copy is the one that plays", "Only an extra copy can be removed.")
+	case errors.Is(err, scan.ErrPlayingCopyUnseen):
+		return nil, httpcore.Problem(http.StatusConflict, "Kept this copy",
+			"Loomarr can't find the copy that plays right now, so it kept this one. Check that its drive is connected, then try again.")
 	case errors.Is(err, scan.ErrTrash):
 		return nil, httpcore.ProblemWithCause(http.StatusConflict, "Couldn't move the extra copy",
 			"Loomarr may not be allowed to change this folder.", err)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -162,11 +163,97 @@ func TestRemoveExtraCopyNeedsTheCopyThatPlaysOnDisk(t *testing.T) {
 	if err != nil || len(d.Files) != 2 {
 		t.Fatalf("title = %+v, %v; want both files listed", d.Files, err)
 	}
-	if err := lib.RemoveExtraCopy(ctx, id, soft); !errors.Is(err, ErrPlays) {
-		t.Fatalf("removing the copy whose twin is gone from disk = %v, want ErrPlays", err)
+	for _, f := range d.Files {
+		if f.Extra != (f.Path == soft) {
+			t.Errorf("%s extra = %v, want only the soft copy shown as an extra", f.Path, f.Extra)
+		}
+	}
+	if err := lib.RemoveExtraCopy(ctx, id, soft); !errors.Is(err, ErrPlayingCopyUnseen) {
+		t.Fatalf("removing the copy whose twin is gone from disk = %v, want ErrPlayingCopyUnseen", err)
 	}
 	if _, err := os.Stat(soft); err != nil {
 		t.Errorf("the title's last real file moved: %v", err)
+	}
+}
+
+// gateDisk answers File as its fakeDisk does, holding the first call until release is closed.
+type gateDisk struct {
+	fakeDisk
+	once             *sync.Once
+	entered, release chan struct{}
+}
+
+func (d gateDisk) File(ctx context.Context, path string) bool {
+	d.once.Do(func() {
+		close(d.entered)
+		<-d.release
+	})
+	return d.fakeDisk.File(ctx, path)
+}
+
+// Two removals at once cannot trash both copies of a title. The first is held inside its check
+// while a rescan flips which copy plays, and the second asks for the other copy meanwhile: it
+// waits for the first, then sees its copy as the title's last and is refused. One file remains.
+func TestTwoRemovalsAtOnceKeepOneCopy(t *testing.T) {
+	h := newHarness(t)
+	h.im.Header = func(_ context.Context, path string) (header.Header, error) {
+		w, ht := 1920, 1080
+		if strings.Contains(path, "DVD") {
+			w, ht = 720, 480
+		}
+		return header.Header{Container: "matroska,webm", DurationMillis: 5_000_000, Streams: []inventory.Stream{
+			{Index: 0, Kind: inventory.StreamVideo, Codec: "h264", Width: w, Height: ht},
+		}}, nil
+	}
+	sharp := h.file("Foxtrot (2001) {tmdb-90000631}/Foxtrot.mkv", 10)
+	soft := h.file("Foxtrot (2001) {tmdb-90000631}/Foxtrot DVD.mkv", 20)
+	h.run()
+	item := h.item(fileOrigin(h.root, "Foxtrot (2001) {tmdb-90000631}/Foxtrot.mkv"))
+	id := string(item.ID)
+	ctx := context.Background()
+
+	disk := gateDisk{fakeDisk: fakeDisk{files: map[string]bool{sharp: true, soft: true}}, once: &sync.Once{},
+		entered: make(chan struct{}), release: make(chan struct{})}
+	lib := &Library{Roots: &Roots{Disk: disk}, ItemStore: h.st, Inventory: h.inv}
+	errs := make(chan error, 2)
+	go func() { errs <- lib.RemoveExtraCopy(ctx, id, soft) }()
+	<-disk.entered
+	// A rescan meanwhile: the soft copy plays now, and the sharp one is the extra.
+	row, ok := ProjectLibraryItem(item)
+	if !ok {
+		t.Fatal("the title is not listed")
+	}
+	for i := range row.Sources {
+		row.Sources[i].Plays = !row.Sources[i].Plays
+	}
+	if err := h.st.SaveLibraryItems(ctx, []librarystore.LibraryItem{row}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	go func() { errs <- lib.RemoveExtraCopy(ctx, id, sharp) }()
+	close(disk.release)
+
+	var removed, refused int
+	for range 2 {
+		switch err := <-errs; {
+		case err == nil:
+			removed++
+		case errors.Is(err, ErrPlays):
+			refused++
+		default:
+			t.Fatalf("removal = %v", err)
+		}
+	}
+	if removed != 1 || refused != 1 {
+		t.Errorf("removed %d and refused %d, want one of each", removed, refused)
+	}
+	left := 0
+	for _, p := range []string{sharp, soft} {
+		if _, err := os.Stat(p); err == nil {
+			left++
+		}
+	}
+	if left != 1 {
+		t.Errorf("%d copies left on disk, want 1", left)
 	}
 }
 
