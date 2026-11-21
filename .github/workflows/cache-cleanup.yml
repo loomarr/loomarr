@@ -32,14 +32,19 @@ jobs:
           REPO: ${{ github.repository }}
           REF: refs/pull/${{ github.event.pull_request.number }}/merge
           QUEUE_REF_PREFIX: refs/heads/gh-readonly-queue/main/pr-${{ github.event.pull_request.number }}-
+          # The PR's own head branch, where a manual ci.yml dispatch saves its caches. Empty for a
+          # fork PR (that branch is in another repository, and a same-named branch here is not
+          # this PR's) and for a head branch that is the default branch.
+          HEAD_REF: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref != github.event.repository.default_branch && format('refs/heads/{0}', github.event.pull_request.head.ref) || '' }}
         run: |
           set -uo pipefail
           # `|| true` on the list: a PR with no caches is the normal case for docs-only
-          # work, and it must not fail the job.
+          # work, and it must not fail the job. HEAD_REF is read through `env`, never spliced
+          # into the filter, because a branch name may contain quotes.
           ids=$(gh api "repos/$REPO/actions/caches" --paginate \
-                  -q ".actions_caches[] | select(.ref==\"$REF\" or (.ref | startswith(\"$QUEUE_REF_PREFIX\"))) | .id" 2>/dev/null || true)
+                  -q ".actions_caches[] | select(.ref==\"$REF\" or (.ref | startswith(\"$QUEUE_REF_PREFIX\")) or (env.HEAD_REF != \"\" and .ref == env.HEAD_REF)) | .id" 2>/dev/null || true)
           if [ -z "$ids" ]; then
-            echo "no caches for $REF or $QUEUE_REF_PREFIX*"
+            echo "no caches for $REF, $QUEUE_REF_PREFIX* or ${HEAD_REF:-no head branch}"
             exit 0
           fi
           for id in $ids; do

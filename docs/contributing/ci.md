@@ -258,8 +258,9 @@ schemas. It rejects
 job containers, services, unaudited reusable-workflow delegation, container-acquiring actions, unknown keys,
 metadata-only or malformed steps, multiple execution mechanisms, and unapproved environment,
 defaults, condition, error-tolerance, shell, working-directory, or `MAKEFLAGS` controls. The root
-tool-version environment and the cache-save condition are admitted only at their exact current
-values. Its only permitted shell steps are the exact cache-epoch command and the suite's `make test-pg`; this
+tool-version environment is admitted only at its exact current values. The suite only restores its Go
+cache, which the Go cache warm workflow writes, so a cache save or any conditional action step is
+rejected. Its only permitted shell steps are the exact cache-epoch command and the suite's `make test-pg`; this
 closes dry-run, variable, wrapper, and quoting indirection without parsing arbitrary shell. Every
 repository workflow is also parsed structurally. Any service or job container or `docker://` action
 is rejected. Workflow shell is not interpreted: route-shaped steps are classified from the raw
@@ -342,7 +343,22 @@ actions, commands, or family registrations and colliding absolute step identitie
 The cache-cleanup workflow is one such run authority: its complete deletion command, step name and
 environment, exact `Cache cleanup` workflow name, closed `pull_request` trigger with only the
 `closed` type, workflow permissions, job name and runner, and absence of alternate execution context
-are source-bound rather than inferred from its one-step topology.
+are source-bound rather than inferred from its one-step topology. It deletes the closed PR's
+merge-ref and merge-queue caches. It also deletes the caches of the PR's head branch, which a
+manual dispatch on that branch saves, but only for a same-repository PR whose head is not the
+default branch.
+
+Shared caches are written on `main` only, because a cache is readable only from its own ref and the
+default branch (#1679). The Go cache warm workflow runs on every push to `main` and seeds each key
+when it is missing:
+- the race-lane and Postgres Go build caches, once per ISO week and `go.sum`;
+- the Go contracts cache;
+- the pnpm store, per lockfile;
+- the production FFmpeg archive, per pin.
+
+The race lanes and Postgres conformance only restore. Frontend and Playwright save the pnpm store,
+and the Go lanes and the playout bench save the FFmpeg archive, only on a `main` dispatch that finds
+the key missing.
 
 Make execution is closed over the checked-in root `Makefile` and every `mk/*.mk`: each module must be
 included exactly once, and non-recipe syntax is limited to the current plain assignments, targets,

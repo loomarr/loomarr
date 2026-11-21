@@ -57,11 +57,13 @@ jobs:
         run: make fe-tokens-verify
       - if: matrix.shard == 8
         run: make fe-packages
-      # ⚠ Never from the merge queue (#1679). A cache is readable only from its own ref and the
-      # default branch, and every queue batch has a unique `gh-readonly-queue/…` ref, so a queue save
-      # is written once, read by nothing, and spends the 10 GB quota that evicts the Go caches.
-      - name: Save pnpm store (not from the merge queue)
-        if: github.event_name != 'merge_group' && steps.pnpm-cache.outputs.cache-hit != 'true'
+      # ⚠ main only (#1679). A cache is readable only from its own ref and the default branch, and
+      # every queue batch has a unique `gh-readonly-queue/…` ref, so a queue save is written once
+      # and read by nothing. A pull-request or branch save is a ~350 MB per-ref copy too.
+      # The `CI / Go cache warm` workflow seeds the store on main for each lockfile; a PR that changes the
+      # lockfile restores the newest main store through the `pnpm-<os>-` prefix.
+      - name: Save pnpm store (main only)
+        if: github.ref == 'refs/heads/main' && steps.pnpm-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.local/share/pnpm/store
