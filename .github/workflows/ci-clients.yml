@@ -62,11 +62,12 @@ jobs:
             clients-${{ matrix.lane }}-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-
             clients-${{ matrix.lane }}-${{ runner.os }}-
       - run: make fe-install
-      # The Turbo steps below carry the Remote Cache settings; `make fe-install` runs dependency
-      # install scripts and never sees them. Only the merge queue and runs on main write
-      # (TURBO_CACHE remote:rw); every other run, pull requests included, only reads. With no
-      # TURBO_TOKEN, Turbo disables the Remote Cache and runs the tasks. With a token but no
-      # signature key, it uploads nothing and treats every download as a miss.
+      # The three make steps below carry the Remote Cache settings; `make fe-install` runs
+      # dependency install scripts and never sees them. TURBO_CACHE configures only the merge queue
+      # and runs on main to write (remote:rw) and every other run, pull requests included, to read.
+      # That is a client setting, not an access control: a same-repo PR run holds the same token.
+      # With no TURBO_TOKEN, Turbo disables the Remote Cache and runs the tasks. With a token but
+      # no signature key, it uploads nothing and treats every download as a miss.
       - name: Verify the affected client graph
         if: matrix.lane == 'checks'
         env:
@@ -101,7 +102,8 @@ jobs:
           TURBO_CACHE: ${{ (github.event_name == 'merge_group' || github.ref == 'refs/heads/main') && 'local:rw,remote:rw' || 'local:rw,remote:r' }}
         run: make clients-bundles CLIENTS_APP=${{ matrix.lane }}
       # ⚠ Never from the merge queue (#1679): a queue batch's unique ref makes the save unreadable.
-      # This rule is for the Actions cache only; the Turbo Remote Cache has no ref scoping.
+      # The rule is about the Actions cache's ref scoping. Turbo's Remote Cache is keyed by team
+      # and task hash, so the merge queue writes there.
       - name: Save Metro work (not from the merge queue)
         if: github.event_name != 'merge_group' && steps.clients-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
