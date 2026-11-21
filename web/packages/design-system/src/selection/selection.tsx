@@ -1,6 +1,6 @@
 import { View } from "@tamagui/core";
-import { type ReactNode, useState } from "react";
-import { Pressable, ScrollView } from "react-native";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { Pressable, ScrollView, type ScrollViewInstance } from "react-native";
 
 import { useFocusLook } from "../focus-look";
 import { Icon } from "../icon";
@@ -9,7 +9,7 @@ import { Action, ChoiceGroup } from "../interaction";
 import { boxFocusRing } from "../interaction/box-focus-ring";
 import { Surface } from "../primitives";
 import { Text } from "../text";
-import { type Density, semanticRadius, semanticSpace, semanticTargets } from "../tokens";
+import { type Density, iconography, semanticRadius, semanticSpace, semanticTargets } from "../tokens";
 
 type TabOption<Value extends string> = {
   disabled?: boolean;
@@ -55,11 +55,14 @@ type TabsProps<Value extends string> = TabsBaseProps<Value> &
 // A hover lifts an unselected label to the foreground, as the dialog's close does.
 const UnderlineTab = <Value extends string>({
   density,
+  onLayout,
   onPress,
   option,
   selected,
 }: {
   density: Density;
+  /** Where the tab sits in the list, so the list can scroll it into view. */
+  onLayout: (layout: { width: number; x: number }) => void;
   onPress: () => void;
   option: UnderlineTabOption<Value>;
   selected: boolean;
@@ -81,6 +84,7 @@ const UnderlineTab = <Value extends string>({
       aria-selected={selected}
       disabled={disabled}
       {...focusHandlers}
+      onLayout={(event) => onLayout({ width: event.nativeEvent.layout.width, x: event.nativeEvent.layout.x })}
       onPress={onPress}
       style={{ marginBottom: -1, opacity: disabled ? 0.55 : 1, outlineStyle: "solid", outlineWidth: 0 }}
       tabIndex={disabled ? -1 : selected ? 0 : -1}
@@ -107,42 +111,133 @@ const UnderlineTab = <Value extends string>({
   );
 };
 
+// A pointer's way to the tabs past an edge, and the sign that there are more: a chevron on the
+// canvas at that edge, above the rule. A press scrolls most of a view's width. Keyboard and screen
+// reader users move between tabs with the arrow keys, so it is hidden from them.
+// It reaches over the scroller's ring gutter (`inset`), so no clipped text shows beside it.
+const EdgeChevron = ({
+  density,
+  inset,
+  onPress,
+  side,
+}: {
+  density: Density;
+  inset: number;
+  onPress: () => void;
+  side: "end" | "start";
+}) => (
+  <Pressable
+    aria-hidden
+    focusable={false}
+    onPress={onPress}
+    style={{ bottom: 1, position: "absolute", top: 0, [side === "end" ? "right" : "left"]: -inset }}
+    tabIndex={-1}
+  >
+    <View
+      alignItems="center"
+      backgroundColor="surfaceCanvas"
+      height="100%"
+      justifyContent="center"
+      paddingHorizontal={2}
+    >
+      <Icon
+        decorative
+        glyph={side === "end" ? icons.later : icons.earlier}
+        size={density === "tv" ? "control" : "compact"}
+        tone="muted"
+      />
+    </View>
+  </Pressable>
+);
+
 // The underline list never wraps: when its tabs do not fit (large type, a TV, a phone) it scrolls
-// sideways, and a tab that takes focus scrolls into view. The shared rule runs the list's full width.
+// sideways. The selected tab is scrolled into view when it is set, a tab that takes focus scrolls
+// into view, and a chevron at an edge says more tabs lie past it. The shared rule runs the list's
+// full width. The scroller reaches the focus ring's width past the list on every side and pads it
+// back in, so it never clips a tab's ring and the list's place and height do not change.
 const UnderlineTabs = <Value extends string>({
   density = "pointer",
   label,
   onValueChange,
   options,
   value,
-}: TabsBaseProps<Value> & { options: readonly UnderlineTabOption<Value>[] }) => (
-  <ScrollView
-    contentContainerStyle={{ flexGrow: 1 }}
-    horizontal
-    showsHorizontalScrollIndicator={false}
-    style={{ flexGrow: 0, width: "100%" }}
-  >
-    <View
-      aria-label={label}
-      borderBottomColor="borderDecorative"
-      borderBottomWidth={1}
-      flexDirection="row"
-      flexGrow={1}
-      gap={semanticSpace.section}
-      role="tablist"
-    >
-      {options.map((option) => (
-        <UnderlineTab
-          density={density}
-          key={option.value}
-          onPress={() => onValueChange(option.value)}
-          option={option}
-          selected={option.value === value}
-        />
-      ))}
+}: TabsBaseProps<Value> & { options: readonly UnderlineTabOption<Value>[] }) => {
+  const ring = (density === "tv" ? 3 : 2) + 2;
+  // An edge chevron's width: its glyph and its side padding.
+  const chevron = iconography.size[density === "tv" ? "control" : "compact"] + 4;
+  const scroller = useRef<ScrollViewInstance>(null);
+  const tabs = useRef(new Map<Value, { width: number; x: number }>());
+  const [view, setView] = useState({ content: 0, viewport: 0, x: 0 });
+
+  const reveal = useCallback(() => {
+    const tab = tabs.current.get(value);
+    if (!tab || view.viewport === 0) return;
+    // Room for the tab, its ring and a chevron beside it at either edge.
+    const start = tab.x - chevron;
+    const end = tab.x + tab.width + 2 * ring + chevron;
+    if (start >= view.x && end <= view.x + view.viewport) return;
+    scroller.current?.scrollTo({ animated: false, x: Math.max(0, end - view.viewport) });
+  }, [chevron, ring, value, view.viewport, view.x]);
+  // Only a change of selection or of the viewport scrolls; the reader's own scrolling does not.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reveal reads the scroll offset but must not run on it.
+  useEffect(reveal, [value, view.viewport]);
+
+  const page = (direction: 1 | -1) =>
+    scroller.current?.scrollTo({ animated: true, x: Math.max(0, view.x + direction * view.viewport * 0.8) });
+  const overflows = view.content > view.viewport + 1;
+
+  return (
+    <View position="relative">
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1, padding: ring }}
+        horizontal
+        onContentSizeChange={(content) => setView((now) => ({ ...now, content }))}
+        onLayout={(event) => {
+          const viewport = event.nativeEvent.layout.width;
+          setView((now) => ({ ...now, viewport }));
+        }}
+        onScroll={(event) => {
+          const x = event.nativeEvent.contentOffset.x;
+          setView((now) => ({ ...now, x }));
+        }}
+        ref={scroller}
+        scrollEventThrottle={16}
+        showsHorizontalScrollIndicator={false}
+        style={{ flexGrow: 0, margin: -ring }}
+      >
+        <View
+          aria-label={label}
+          borderBottomColor="borderDecorative"
+          borderBottomWidth={1}
+          flexDirection="row"
+          flexGrow={1}
+          gap={semanticSpace.section}
+          role="tablist"
+        >
+          {options.map((option) => (
+            <UnderlineTab
+              density={density}
+              key={option.value}
+              onLayout={(layout) => {
+                tabs.current.set(option.value, layout);
+                if (option.value === value) reveal();
+              }}
+              onPress={() => onValueChange(option.value)}
+              option={option}
+              selected={option.value === value}
+            />
+          ))}
+        </View>
+      </ScrollView>
+      {overflows && view.x > 1 ? (
+        <EdgeChevron density={density} inset={ring} onPress={() => page(-1)} side="start" />
+      ) : null}
+      {overflows && view.x + view.viewport < view.content - 1 ? (
+        <EdgeChevron density={density} inset={ring} onPress={() => page(1)} side="end" />
+      ) : null}
     </View>
-  </ScrollView>
-);
+  );
+};
 
 const Tabs = <Value extends string>(props: TabsProps<Value>) => {
   if (props.appearance === "underline") return <UnderlineTabs {...props} />;

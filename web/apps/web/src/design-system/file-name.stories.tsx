@@ -80,7 +80,7 @@ const InLayouts: Story = {
         <TableBody>
           <TableRow>
             <TableCell>
-              <FileName name={libraryFileNames.long} />
+              <FileName layout="fill" name={libraryFileNames.long} />
             </TableCell>
             <TableCell align="end">8.1 GB</TableCell>
           </TableRow>

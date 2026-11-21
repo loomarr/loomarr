@@ -79,13 +79,24 @@ describe.each([
   };
 
   it("never splits an emoji's surrogate pair", () => {
-    const name = "🎬🎞🎥🎬🎞🎥🎬🎞🎥🎬🎞🎥🎬🎞🎥.mkv";
+    // Twelve emoji, then three letters: counted in UTF-16 units the cut would fall at offset 19,
+    // inside the tenth emoji's pair.
+    const name = `${"🎬".repeat(12)}abc.mkv`;
     const { head, tail } = split(name);
     expect(head).not.toMatch(LONE_SURROGATE);
     expect(tail).not.toMatch(LONE_SURROGATE);
     expect(`${head}${tail}`).toBe(name);
     // Eight characters, not eight UTF-16 units.
-    expect(Array.from(tail?.replace(".mkv", "") ?? "")).toHaveLength(8);
+    expect(tail).toBe(`${"🎬".repeat(5)}abc.mkv`);
+  });
+
+  it("keeps a skin-toned emoji and a flag whole", () => {
+    const thumb = `👍${String.fromCodePoint(0x1f3fd)}`;
+    const flag = String.fromCodePoint(0x1f1e8, 0x1f1e6);
+    const name = `holidayfootagereelparttwo${thumb}${flag}${thumb}${flag}${thumb}${flag}${thumb}${flag}.mkv`;
+    const { head, tail } = split(name);
+    expect(`${head}${tail}`).toBe(name);
+    expect(tail).toBe(`${`${thumb}${flag}`.repeat(4)}.mkv`);
   });
 
   it("keeps a combining accent with its letter", () => {
@@ -130,20 +141,65 @@ describe("FileName on the page", () => {
     expect(container.querySelector('[dir="auto"]')).toBeTruthy();
   });
 
-  it("sits inline, clips to its own box, and lets the tail give way last", () => {
+  it("draws a name that fits as plain inline text, inline in a line and clipped to its box", () => {
     const { container } = parts("Ashgrove.Station.1974.Remastered.1080p.mkv");
     const box = container.querySelector<HTMLElement>('[dir="auto"]');
-    const head = container.querySelector<HTMLElement>('[data-part="head"]');
-    const tail = container.querySelector<HTMLElement>('[data-part="tail"]');
-    expect(box?.style.display).toBe("inline-flex");
+    expect(box?.style.display).toBe("inline-block");
     expect(box?.style.overflow).toBe("hidden");
     expect(box?.style.maxWidth).toBe("100%");
-    expect(head?.style.flexShrink).toBe("1");
+    expect(box?.style.whiteSpace).toBe("pre");
+    // Plain inline parts: find-in-page searches across them.
+    for (const drawn of container.querySelectorAll<HTMLElement>("[data-part]")) {
+      expect(drawn.getAttribute("style")).toBeNull();
+    }
+  });
+
+  it("shortens only once the name overflows, leaving the tail's length for the tail", () => {
+    // jsdom lays nothing out: the box reports a name twice as wide as itself.
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private readonly callback: () => void) {}
+        observe() {
+          this.callback();
+        }
+        disconnect() {}
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(400);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(200);
+    const { container } = parts("Ashgrove.Station.1974.Remastered.1080p.mkv");
+    const head = container.querySelector<HTMLElement>('[data-part="head"]');
+    const tail = container.querySelector<HTMLElement>('[data-part="tail"]');
+    expect(container.querySelector("[data-shortened]")).toBeTruthy();
+    expect(head?.style.maxWidth).toBe("calc(100% - 20ch)");
+    // A head never narrower than a pixel: a part with no width drops out of a copied selection.
+    expect(head?.style.minWidth).toBe("1px");
     expect(head?.style.textOverflow).toBe("ellipsis");
-    expect(tail?.style.flexShrink).toBe("0");
-    expect(tail?.style.maxWidth).toBe("100%");
     expect(tail?.style.textOverflow).toBe("ellipsis");
-    for (const drawn of [head, tail]) expect(drawn?.style.whiteSpace).toBe("pre");
+    expect(tail?.style.maxWidth).toBe("calc(100% - 1px)");
+    // Still the name once.
+    expect(container.textContent).toBe("Ashgrove.Station.1974.Remastered.1080p.mkv");
+    vi.restoreAllMocks();
+  });
+
+  it("fills a table cell without holding its column open", () => {
+    const { container } = render(
+      <LoomarrProvider>
+        <FileName layout="fill" name="Ashgrove.Station.1974.Remastered.1080p.mkv" />
+      </LoomarrProvider>,
+    );
+    const box = container.querySelector<HTMLElement>('[dir="auto"]');
+    expect(box?.style.display).toBe("block");
+    expect(box?.style.width).toBe("0px");
+    expect(box?.style.minWidth).toBe("100%");
+  });
+
+  it("draws a control character as its visible picture, so the name stays on one line", () => {
+    const { container } = parts("Beacon Moor\nreel two.mkv");
+    const shown = `Beacon Moor${String.fromCodePoint(0x240a)}reel two.mkv`;
+    expect(container.textContent).toBe(shown);
+    expect(container.querySelector(`[title="${shown}"]`)).toBeTruthy();
   });
 
   it("sets the name in the data face", () => {

@@ -19,7 +19,9 @@ const libraryFileNames = {
   // A right-to-left name (invented Arabic words: "the long film of the family in the garden").
   rightToLeft: "الفيلم الطويل للعائلة في الحديقة النسخة الكاملة.mkv",
   // A last word longer than the tail: the cut may fall inside it, at a character boundary.
-  longLastWord: "Calder.Pier.Supercalifragilisticexpialidocious.mkv",
+  longLastWord: "Calder.Pier.Lanternwickthistlebrookmeadowmere.mkv",
+  // A newline inside the name, as a careless rename leaves it: drawn as a visible picture.
+  controlCharacter: "Beacon Moor\nreel two.mkv",
 } as const;
 
 /** Tab labels long enough that the underline tabs scroll sideways at TV density or large type. */

@@ -80,8 +80,24 @@ const LongLabelsPhone: Story = {
     canvas.getByRole("tab", { name: /Household collections/ }).focus();
   },
 };
+// Long labels on a phone with a later tab selected when the list mounts: the list starts scrolled
+// so the selected tab and its underline show, and the chevron at the start says more lie before it.
+const LongLabelsLaterSelected: Story = {
+  args: { initial: "shows", long: true },
+  decorators: Phone.decorators,
+};
 // TV density at a desktop width: the type is large enough that the list scrolls.
 const Tv: Story = { args: { density: "tv" } };
 
 export default meta;
-export { Focused, LaterTabSelected, Light, LongLabelsPhone, Phone, Tv, WithCounts, WithoutCounts };
+export {
+  Focused,
+  LaterTabSelected,
+  Light,
+  LongLabelsLaterSelected,
+  LongLabelsPhone,
+  Phone,
+  Tv,
+  WithCounts,
+  WithoutCounts,
+};
