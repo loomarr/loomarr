@@ -121,6 +121,5 @@ for the decisions they cite.
 - There is no file name that shortens in the middle.
 - There is no hero: a backdrop with a scrim and the title over it.
 - There is no person avatar that falls back to initials.
-- `Field` sets typed text in the data (mono) face; fine for paths, odd for a title search.
 - The shell's search field is 12 px wider than the side navigation, so a full-bleed page clips it.
   The mock insets the title page's backdrop to keep clear of it.
