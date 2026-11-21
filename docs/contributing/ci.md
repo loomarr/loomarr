@@ -355,10 +355,10 @@ when it is missing:
 - the race-lane and Postgres Go build caches, once per ISO week and `go.sum`;
 - the Go contracts cache;
 - the pnpm store, per lockfile;
-- the production FFmpeg archive, per pin.
+- the production ffmpeg archive, per pin.
 
 The race lanes and Postgres conformance only restore. Frontend and Playwright save the pnpm store,
-and the Go lanes and the playout bench save the FFmpeg archive, only on a `main` dispatch that finds
+and the Go lanes and the playout bench save the ffmpeg archive, only on a `main` dispatch that finds
 the key missing.
 
 Make execution is closed over the checked-in root `Makefile` and every `mk/*.mk`: each module must be
@@ -837,7 +837,7 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
 - **Default-branch cache writes require a trusted trigger.** GitHub permits a default-branch writer
   from `push` or `workflow_dispatch`, but `merge_group` and `workflow_run` cannot promote their
   outputs into that scope. Shared caches are therefore written by the `CI / Go cache warm` workflow on
-  `main` pushes, plus the pnpm and FFmpeg saves on a manual run on `main`; ordinary PR and queue
+  `main` pushes, plus the pnpm and ffmpeg saves on a manual run on `main`; ordinary PR and queue
   runs are restore-only. Android is the bounded exception
   justified by the measured 25m54s cold queue build: the admitted queue run emits an immutable
   compiler-cache transfer, and the queue-produced `push` validates and saves it without repeating any
