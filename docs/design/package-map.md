@@ -76,7 +76,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `api/httpcore` | `channels/schedule`, `channels/viewing`, `filler/source`, `media/images`, `platform/rating`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout` |
 | `channels` | `channels/schedule`, `filler/clips`, `filler/language`, `filler/pod`, `library/inventory`, `library/provision`, `platform/jobs`, `platform/rating`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `playout`, `playout/tunarr` |
 | `channels/schedule` | `library/inventory`, `library/provision`, `platform/holidayvocab`, `platform/rating` |
-| `channels/viewing` | `platform/store`, `platform/store/channelstore` |
+| `channels/viewing` | `platform/store/channelstore` |
 | `filler` | `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/httpx`, `platform/llm`, `platform/storagegovernor`, `platform/store/clipstore` |
 | `filler/acquisition` | `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/source`, `filler/split` |
 | `filler/asset` | `filler/clips`, `filler/split`, `media/tools`, `platform/storagegovernor` |
