@@ -114,6 +114,10 @@ type Engine struct {
 	// enforces with no library I/O. Optional (nil ⇒ membership never resolves and the filter
 	// admits everything, rather than emptying a lineup).
 	boxSets BoxSetResolver
+	// networks stamps a series' broadcast networks, which a channel's network is derived from
+	// (#4432). Optional (nil ⇒ no network is known, and the channel airs no network's branded
+	// pieces).
+	networks NetworkResolver
 	// notify publishes a UI-facing `channel` SSE frame after a reconcile changes a
 	// channel, so the Channels/detail pages update live without a manual refresh
 	// (§9 self-maintaining; the "no rebuild button" model). Optional: nil ⇒ no emit
@@ -296,6 +300,19 @@ type BoxSetResolver interface {
 // rule). Returns the engine for chaining.
 func (e *Engine) WithBoxSets(r BoxSetResolver) *Engine {
 	e.boxSets = r
+	return e
+}
+
+// NetworkResolver answers a series entry's broadcast networks, first the one it premiered on.
+// ok=false means unresolved this pass; a movie resolves to none.
+type NetworkResolver interface {
+	Networks(ctx context.Context, key provision.Key) (networks []string, ok bool, err error)
+}
+
+// WithNetworks wires the resolver that stamps a series' networks at reconcile (#4432). Returns the
+// engine for chaining.
+func (e *Engine) WithNetworks(r NetworkResolver) *Engine {
+	e.networks = r
 	return e
 }
 

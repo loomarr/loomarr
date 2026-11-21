@@ -92,6 +92,9 @@ type Selection struct {
 	Excluded   []string   // clip ids never used
 	Geography  Geography  // zero country inherits Installation geography from Policy
 	Language   string     // the channel's commercial language; "" inherits Policy.Language
+	// Network is the channel's broadcast network (schedule.DerivedFiller.Network); a branded
+	// network piece airs only on its own network's channels. "" airs no network's.
+	Network string
 	// BreakDurationMs is a per-channel override. Zero inherits Policy.BreakDurationMs.
 	BreakDurationMs int64
 	// Spacing is the per-channel repeat spacing for one commercial. Nil inherits Policy.Cooldown;
@@ -456,6 +459,7 @@ func (a *Adapter) windowFor(channelID string, seed int64, sel Selection, podMax 
 		Season:    season,
 		ChannelID: channelID, Seed: seed,
 		Era: sel.Era, Audience: sel.Audience, Geography: sel.Geography, Language: sel.Language,
+		Network:    sel.Network,
 		EraWindows: append([]EraRange(nil), sel.EraWindows...),
 		// ⚠ The gap IS the break. The scheduler cuts a slot of exactly breakDurationMs and the
 		// playout walks the pod through it by offset, so a pod one second longer loses its tail —

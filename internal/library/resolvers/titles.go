@@ -94,6 +94,36 @@ func (a Ratings) Rating(ctx context.Context, key provision.Key) (string, bool, e
 	return t.Rating, true, nil
 }
 
+// Networks resolves a SERIES entry's broadcast networks by the entry's Key, from the Library's
+// own title, for the reconcile-time stamp a channel's network is read from (#4432). A movie's
+// studios are not networks, so a movie answers none, settled. A series not in the Library yet is
+// unresolved (ok=false) and is asked again next pass.
+type Networks struct {
+	titles librarystore.LibraryTitleReader
+}
+
+// NewNetworks returns the network resolver over the Library's titles.
+func NewNetworks(titles librarystore.LibraryTitleReader) Networks { return Networks{titles: titles} }
+
+func (a Networks) Networks(ctx context.Context, key provision.Key) ([]string, bool, error) {
+	mt, provider, id, ok := provision.ParseKey(key)
+	if !ok {
+		return nil, false, nil
+	}
+	if mt != provision.Series {
+		return nil, true, nil
+	}
+	kind := mediaserver.TMDB
+	if provider == "tvdb" {
+		kind = mediaserver.TVDB
+	}
+	t, ok, err := titlesearch.OwnedTitle(ctx, a.titles, kind, strconv.Itoa(id), mediaserver.Series)
+	if err != nil || !ok {
+		return nil, false, err
+	}
+	return t.Studios, true, nil
+}
+
 // Franchises resolves a MOVIE entry's TMDB collection (franchise) id from the entry's Key, for the
 // reconcile-time heal (§5 franchise ordering). Only a tmdb-keyed movie can be resolved — a
 // tvdb-keyed movie or a series returns ok=false (no lookup), so the entry stays ungrouped

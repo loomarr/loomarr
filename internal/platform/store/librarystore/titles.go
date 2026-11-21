@@ -21,6 +21,9 @@ type LibraryTitle struct {
 	IDs    []LibraryID
 	Rating string
 	Genres []string
+	// Studios are a series' networks or a movie's studios, in the source's order. Like Genres,
+	// only the single-title lookup fills them.
+	Studios []string
 	// SizeBytes is a movie's playing file's size, its parts' together for a movie in parts; the
 	// biggest edition's when it plays several; 0 for a series.
 	SizeBytes int64
@@ -150,11 +153,12 @@ func (s *Store) LibraryTitleByProviderID(ctx context.Context, kind, namespace, v
 		return LibraryTitle{}, false, err
 	}
 	t = one[0]
-	genres, err := s.libraryGenres(ctx, t.ID)
-	if err != nil {
+	if t.Genres, err = s.libraryItemNames(ctx, "library_genres", t.ID); err != nil {
 		return LibraryTitle{}, false, err
 	}
-	t.Genres = genres
+	if t.Studios, err = s.libraryItemNames(ctx, "library_studios", t.ID); err != nil {
+		return LibraryTitle{}, false, err
+	}
 	return t, true, nil
 }
 
@@ -265,22 +269,24 @@ func (s *Store) LibraryTitleArt(ctx context.Context, ids []LibraryProviderID) (m
 	return out, nil
 }
 
-func (s *Store) libraryGenres(ctx context.Context, itemID string) ([]string, error) {
-	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT name FROM library_genres WHERE item_id = ? ORDER BY position`), itemID)
+// libraryItemNames is an item's names in one of the ordered name tables (library_genres,
+// library_studios), in the source's order. table is always one of those constants.
+func (s *Store) libraryItemNames(ctx context.Context, table, itemID string) ([]string, error) {
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT name FROM `+table+` WHERE item_id = ? ORDER BY position`), itemID)
 	if err != nil {
-		return nil, fmt.Errorf("library genres: %w", err)
+		return nil, fmt.Errorf("%s: %w", table, err)
 	}
 	defer func() { _ = rows.Close() }()
 	var out []string
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			return nil, fmt.Errorf("library genres: %w", err)
+			return nil, fmt.Errorf("%s: %w", table, err)
 		}
 		out = append(out, name)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("library genres: %w", err)
+		return nil, fmt.Errorf("%s: %w", table, err)
 	}
 	return out, nil
 }

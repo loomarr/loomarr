@@ -81,7 +81,28 @@ var testLibraryTitles = libraryTitlesFake{
 	{ID: "lib-film", Kind: "movie", Name: "Film", IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000001"}},
 		Rating: "PG", Genres: []string{"Drama"}, SizeBytes: 4_000},
 	{ID: "lib-show", Kind: "series", Name: "Show", IDs: []librarystore.LibraryID{
-		{Namespace: "tmdb", Value: "90000003"}, {Namespace: "tvdb", Value: "90000002"}}, Rating: "TV-Y"},
+		{Namespace: "tmdb", Value: "90000003"}, {Namespace: "tvdb", Value: "90000002"}}, Rating: "TV-Y",
+		Studios: []string{"Kestrel"}},
+}
+
+// A series' networks come from the Library's title; a movie has none, settled, and a series the
+// Library lacks is left for the next pass (#4432).
+func TestNetworksReadTheLibrary(t *testing.T) {
+	ctx := context.Background()
+	networks := NewNetworks(testLibraryTitles)
+	for key, want := range map[provision.Key]struct {
+		networks []string
+		ok       bool
+	}{
+		"series:tvdb:90000002": {networks: []string{"Kestrel"}, ok: true},
+		"movie:tmdb:90000001":  {ok: true},
+		"series:tvdb:90000009": {},
+	} {
+		got, ok, err := networks.Networks(ctx, key)
+		if err != nil || ok != want.ok || !slices.Equal(got, want.networks) {
+			t.Errorf("%s = %v, %v, %v; want %v, %v", key, got, ok, err, want.networks, want.ok)
+		}
+	}
 }
 
 // The availability scan reads the Library's titles, so a title confirms with its library item id

@@ -427,6 +427,14 @@ audience fits no channel, whatever the channel's settings; the geography boundar
 unknown country once the installation has one. The one catalog filter assembly, coverage and per-clip
 fit share enforces it, so a fit note says `facts` rather than blaming a setting.
 
+**A network's own pieces air only on its channels**
+([0050](decisions/0050-a-networks-filler-airs-on-its-own-channels.md), #4432). A clip that presents a
+broadcast network (its station ID, bumper or promo) airs only on a channel whose lineup mostly
+premiered on that network; an ad only taped off a network is neutral. The channel's network is the
+first Library network most of its series share, stamped onto each lineup entry at reconcile; a tie
+or an all-movie lineup has none and airs no network's pieces. Like geography it sits outside the
+pins and the ladder, and a fit note says `network`.
+
 Loomarr ships an embedded default bumper card and sets it as each Tunarr channel's fallback at
 creation; operators can replace it per channel.
 

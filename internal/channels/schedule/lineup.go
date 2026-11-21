@@ -253,6 +253,11 @@ type LineupEntry struct {
 	// forever — the N+1 the stamping exists to avoid. CollectionID's -1 trick does not
 	// transfer to a slice, and nil-vs-empty does not survive a JSON round trip.
 	BoxSetsResolved bool
+	// Networks are a SERIES' broadcast networks from the Library, the one it premiered on first;
+	// a movie has none. Stamped by the reconcile heal like BoxSetIDs, settled by NetworksResolved
+	// for the same reason, so the channel's network (DeriveFiller) is read with no library I/O.
+	Networks         []string `json:"networks,omitempty"`
+	NetworksResolved bool     `json:"networksResolved,omitempty"`
 	// Fit is how well this title serves the channel's intent, in (0, 1]: the confidence of the
 	// suggest or re-curation pick that added or last re-scored it. 0 means unscored (a manual
 	// add, or an entry that predates scoring) and reads as neutral (UnscoredFit) wherever a

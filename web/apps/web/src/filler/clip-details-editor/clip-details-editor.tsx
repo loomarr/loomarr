@@ -273,6 +273,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
                 <Field
                   id="tag-network"
                   label="Network (optional)"
+                  description="Only for a piece that shows its network, like its ID or a promo. It then airs only on that network's channels."
                   maxLength={120}
                   onChangeText={field.handleChange}
                   placeholder="Fox"
