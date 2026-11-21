@@ -26,7 +26,7 @@ export default defineConfig({
   workers: E2E_WORKERS,
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? "github" : "list",
-  use: { ...DETERMINISM.use, baseURL: `http://127.0.0.1:${PORT}` },
+  use: { ...DETERMINISM.use, baseURL: `http://127.0.0.1:${PORT}`, trace: "retain-on-failure" },
   // One viewport: this suite proves the FLOW works and pins each step's layout. Component
   // responsiveness is already covered at both viewports by the visual suite.
   projects: [{ name: "desktop", use: DESKTOP }],
