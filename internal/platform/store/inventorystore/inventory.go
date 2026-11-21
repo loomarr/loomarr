@@ -1,0 +1,923 @@
+// Package inventorystore is the media-inventory cluster (#2151): the items, origins, sources,
+// measurements and analyses the scanner records under inventory_*. It builds on the storedb kernel,
+// and internal/platform/store embeds it. Its one reach outside its own tables is the Library
+// projection, which the aggregate supplies as a Projector.
+package inventorystore
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
+)
+
+// Projector keeps the Library's rows in step with the inventory: each write that changes what an
+// item reads hands the changed items over inside its own transaction.
+type Projector interface {
+	// Projecting reports whether anything is listening, so a write can skip reading the items it
+	// would hand over.
+	Projecting() bool
+	// Project rewrites the library rows of each item in tx.
+	Project(ctx context.Context, tx storedb.Tx, at time.Time, items []inventory.Item) error
+}
+
+// Store is the inventory persistence over one storedb.Handle.
+type Store struct {
+	h       storedb.Handle
+	project Projector
+}
+
+// New builds the inventory cluster on h. project receives the items each write changed.
+func New(h storedb.Handle, project Projector) *Store { return &Store{h: h, project: project} }
+
+func (s *Store) ApplyInventorySnapshot(ctx context.Context, snapshot inventory.Snapshot) (inventory.ItemID, error) {
+	clean, err := inventory.ValidateSnapshot(snapshot)
+	if err != nil {
+		return "", err
+	}
+	tx, err := s.h.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("begin inventory snapshot: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	itemID, exact, err := s.inventoryItemIDByOrigin(ctx, tx, clean.Origin)
+	if err != nil {
+		return "", err
+	}
+	grounded, via, err := s.inventoryItemIDsByExternalIDs(ctx, tx, clean.Kind, clean.Origin, clean.ExternalIDs)
+	if err != nil {
+		return "", err
+	}
+	if clean.ExternalIDs, err = s.keepCatalogsWord(ctx, tx, clean, grounded, via); err != nil {
+		return "", err
+	}
+	if err := s.keepSameEpisode(ctx, tx, clean, grounded); err != nil {
+		return "", err
+	}
+	var orphan inventory.ItemID
+	home := inventory.ItemID(stableInventoryID("item", string(clean.Origin.Authority), clean.Origin.ExternalItemID))
+	// joined is an origin that came to its item by its ids: the item is not the one it founded.
+	joined := exact && itemID != home
+	if exact && len(grounded) == 1 && !grounded[itemID] {
+		// The origin's ids now name another item of its kind. An origin that is its item's only
+		// origin follows them: it was written before its ids were known. So does one that joined
+		// its item by ids it no longer has.
+		var target inventory.ItemID
+		for id := range grounded {
+			target = id
+		}
+		follows, err := s.inventoryOriginCanFollow(ctx, tx, itemID, joined)
+		if err != nil {
+			return "", err
+		}
+		if !follows {
+			return "", inventory.ErrIdentityConflict
+		}
+		orphan, itemID = itemID, target
+	} else if exact && len(grounded) == 0 {
+		// The origin's ids name no other item: it belongs at its own place. One that joined its
+		// item by ids it no longer has goes there, such as a file whose link to another title was
+		// taken back; so does one whose item a catalog names as another title, the copy that
+		// founded a film's item among them, once its NFO says it is another film.
+		own, err := s.inventoryOwnPlace(ctx, tx, clean, home)
+		if err != nil {
+			return "", err
+		}
+		leave := joined
+		if !leave && own != itemID {
+			if leave, err = s.inventoryCatalogsDisagree(ctx, tx, clean, itemID); err != nil {
+				return "", err
+			}
+		}
+		if leave && own != itemID {
+			orphan, itemID = itemID, own
+		}
+	}
+	if len(grounded) > 1 {
+		return "", inventory.ErrIdentityConflict
+	}
+	if !exact {
+		for id := range grounded {
+			itemID = id
+		}
+		if itemID == "" {
+			if itemID, err = s.inventoryOwnPlace(ctx, tx, clean, home); err != nil {
+				return "", err
+			}
+		}
+	}
+
+	at := clean.Observation.ObservedAt
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`
+		INSERT INTO inventory_items (id, kind, created_at, updated_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, updated_at=excluded.updated_at`),
+
+		string(itemID), string(clean.Kind), storedb.Epoch(at), storedb.Epoch(at)); err != nil {
+		return "", fmt.Errorf("upsert inventory item: %w", err)
+	}
+	if orphan != "" {
+		// The origin moved: its sources go with it.
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE inventory_sources SET item_id = ? WHERE id IN
+			(SELECT source_id FROM inventory_source_origins WHERE authority_id = ? AND external_item_id = ?)`),
+
+			string(itemID), string(clean.Origin.Authority), clean.Origin.ExternalItemID); err != nil {
+			return "", fmt.Errorf("move inventory sources: %w", err)
+		}
+	}
+	observationJSON, err := json.Marshal(clean.Observation)
+	if err != nil {
+		return "", fmt.Errorf("marshal inventory item observation: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`
+		INSERT INTO inventory_item_origins
+		  (authority_id, external_item_id, item_id, observation_json, observed_at, last_seen_at, missing_at)
+		VALUES (?, ?, ?, ?, ?, ?, NULL)
+		ON CONFLICT(authority_id, external_item_id) DO UPDATE SET
+		  item_id=excluded.item_id, observation_json=excluded.observation_json,
+		  observed_at=excluded.observed_at, last_seen_at=excluded.last_seen_at, missing_at=NULL`),
+
+		string(clean.Origin.Authority), clean.Origin.ExternalItemID, string(itemID), string(observationJSON),
+		storedb.Epoch(at), storedb.Epoch(at)); err != nil {
+		return "", fmt.Errorf("upsert inventory item origin: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM inventory_external_ids
+		WHERE authority_id = ? AND external_item_id = ?`),
+		string(clean.Origin.Authority), clean.Origin.ExternalItemID); err != nil {
+		return "", fmt.Errorf("replace inventory external ids: %w", err)
+	}
+	for _, externalID := range clean.ExternalIDs {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`
+			INSERT INTO inventory_external_ids
+			  (item_id, authority_id, external_item_id, namespace, external_id)
+			VALUES (?, ?, ?, ?, ?)`),
+
+			string(itemID), string(clean.Origin.Authority), clean.Origin.ExternalItemID,
+			externalID.Namespace, externalID.Value); err != nil {
+			return "", fmt.Errorf("insert inventory external id: %w", err)
+		}
+	}
+	for _, source := range clean.Sources {
+		if err := s.applyInventorySource(ctx, tx, itemID, clean.Origin, source); err != nil {
+			return "", err
+		}
+	}
+	if clean.Observation.Coverage["sources"] == inventory.CoverageEmpty {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE inventory_source_origins SET missing_at = ?
+			WHERE authority_id = ? AND external_item_id = ?`),
+			storedb.Epoch(at), string(clean.Origin.Authority), clean.Origin.ExternalItemID); err != nil {
+			return "", fmt.Errorf("mark empty inventory sources: %w", err)
+		}
+	}
+	if orphan != "" {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM inventory_items WHERE id = ?
+			AND NOT EXISTS (SELECT 1 FROM inventory_item_origins WHERE item_id = ?)
+			AND NOT EXISTS (SELECT 1 FROM inventory_sources WHERE item_id = ?)`),
+
+			string(orphan), string(orphan), string(orphan)); err != nil {
+			return "", fmt.Errorf("delete followed inventory item: %w", err)
+		}
+	}
+	if err := s.projectInventory(ctx, tx, at, itemID, orphan); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("commit inventory snapshot: %w", err)
+	}
+	return itemID, nil
+}
+
+// inventoryOriginCanFollow reports whether the origin may leave item for the one its ids name (always
+// of its own kind: grounding sees no other): item has no origin but this one, or the origin joined
+// item rather than founding it.
+func (s *Store) inventoryOriginCanFollow(ctx context.Context, tx storedb.Tx, item inventory.ItemID, joined bool) (bool, error) {
+	if joined {
+		return true, nil
+	}
+	var origins int
+	if err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT COUNT(*) FROM inventory_item_origins WHERE item_id = ?`),
+		string(item)).Scan(&origins); err != nil {
+		return false, fmt.Errorf("count inventory item origins: %w", err)
+	}
+	return origins == 1, nil
+}
+
+func (s *Store) applyInventorySource(
+	ctx context.Context,
+	tx storedb.Tx,
+	itemID inventory.ItemID,
+	origin inventory.OriginKey,
+	source inventory.SourceSnapshot,
+) error {
+	var sourceID inventory.SourceID
+	err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT source_id FROM inventory_source_origins
+		WHERE authority_id = ? AND external_item_id = ? AND external_source_id = ?`),
+
+		string(origin.Authority), origin.ExternalItemID, source.ExternalSourceID).Scan(&sourceID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("find inventory source origin: %w", err)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		sourceID = inventory.SourceID(stableInventoryID(
+			"source", string(itemID), string(origin.Authority), origin.ExternalItemID, source.ExternalSourceID,
+		))
+	}
+	var previousRevision string
+	err = tx.QueryRowContext(ctx, s.h.Rebind(`SELECT revision FROM inventory_sources WHERE id = ?`), string(sourceID)).Scan(&previousRevision)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("read inventory source revision: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`
+		INSERT INTO inventory_sources (id, item_id, kind, revision, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET item_id=excluded.item_id, kind=excluded.kind,
+		  revision=excluded.revision, updated_at=excluded.updated_at`),
+
+		string(sourceID), string(itemID),
+		string(source.Kind), source.Revision, storedb.Epoch(source.Observation.ObservedAt), storedb.Epoch(source.Observation.ObservedAt)); err != nil {
+		return fmt.Errorf("upsert inventory source: %w", err)
+	}
+	if previousRevision != "" && previousRevision != source.Revision {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM inventory_source_measurements WHERE source_id = ?`), string(sourceID)); err != nil {
+			return fmt.Errorf("invalidate inventory source measurement: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM inventory_source_analysis WHERE source_id = ?`), string(sourceID)); err != nil {
+			return fmt.Errorf("invalidate inventory source analysis: %w", err)
+		}
+	}
+	locatorJSON, err := json.Marshal(source.Locator)
+	if err != nil {
+		return fmt.Errorf("marshal inventory source locator: %w", err)
+	}
+	observationJSON, err := json.Marshal(source.Observation)
+	if err != nil {
+		return fmt.Errorf("marshal inventory source observation: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`
+		INSERT INTO inventory_source_origins
+		  (authority_id, external_item_id, external_source_id, source_id, locator_json,
+		   observation_json, observed_at, last_seen_at, missing_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+		ON CONFLICT(authority_id, external_item_id, external_source_id) DO UPDATE SET
+		  source_id=excluded.source_id, locator_json=excluded.locator_json,
+		  observation_json=excluded.observation_json, observed_at=excluded.observed_at,
+		  last_seen_at=excluded.last_seen_at, missing_at=NULL`),
+
+		string(origin.Authority), origin.ExternalItemID,
+		source.ExternalSourceID, string(sourceID), string(locatorJSON), string(observationJSON),
+		storedb.Epoch(source.Observation.ObservedAt), storedb.Epoch(source.Observation.ObservedAt)); err != nil {
+		return fmt.Errorf("upsert inventory source origin: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) inventoryItemIDByOrigin(
+	ctx context.Context,
+	queryer interface {
+		QueryRowContext(context.Context, string, ...any) *sql.Row
+	},
+	origin inventory.OriginKey,
+) (inventory.ItemID, bool, error) {
+	var itemID inventory.ItemID
+	err := queryer.QueryRowContext(ctx, s.h.Rebind(`SELECT item_id FROM inventory_item_origins
+		WHERE authority_id = ? AND external_item_id = ?`),
+		string(origin.Authority), origin.ExternalItemID).Scan(&itemID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("find inventory item origin: %w", err)
+	}
+	return itemID, true, nil
+}
+
+// keepSameEpisode leaves out of grounded the items another of whose origins numbers a different
+// episode than the snapshot's. An episode id grounds only the same episode: a stale NFO copied
+// beside another episode's file carries its id, and the two files are not one title with an extra
+// copy. An origin with no number yet, either side, agrees with any.
+func (s *Store) keepSameEpisode(ctx context.Context, tx storedb.Tx, snapshot inventory.Snapshot, grounded map[inventory.ItemID]bool) error {
+	own := snapshot.Observation.Facts
+	if snapshot.Kind != "episode" || own.EpisodeNumber <= 0 {
+		return nil
+	}
+	for item := range grounded {
+		rows, err := tx.QueryContext(ctx, s.h.Rebind(`SELECT observation_json FROM inventory_item_origins
+			WHERE item_id = ? AND NOT (authority_id = ? AND external_item_id = ?)`),
+
+			string(item), string(snapshot.Origin.Authority), snapshot.Origin.ExternalItemID)
+		if err != nil {
+			return fmt.Errorf("read grounded inventory episodes: %w", err)
+		}
+		for rows.Next() {
+			var raw string
+			var other inventory.Observation[inventory.ItemFacts]
+			if err := rows.Scan(&raw); err != nil {
+				_ = rows.Close()
+				return fmt.Errorf("scan grounded inventory episode: %w", err)
+			}
+			if json.Unmarshal([]byte(raw), &other) != nil {
+				continue
+			}
+			if n := other.Facts; n.EpisodeNumber > 0 && (n.SeasonNumber != own.SeasonNumber || n.EpisodeNumber != own.EpisodeNumber) {
+				delete(grounded, item)
+			}
+		}
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("close grounded inventory episodes: %w", err)
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("read grounded inventory episode rows: %w", err)
+		}
+	}
+	return nil
+}
+
+// keepCatalogsWord leaves out of grounded each item that only inferred ids ground and that a
+// catalog names as another title: another of its origins carries a catalog id of a namespace the
+// snapshot's catalog ids have too, and none of them matched. A second film kept in a film's folder
+// is its own title, whichever pass finds it. A snapshot no catalog grounds joins as before. It
+// returns the snapshot's ids less the inferred ones that grounded only items left out, so the file
+// does not carry the folder's key to a title of its own.
+func (s *Store) keepCatalogsWord(
+	ctx context.Context,
+	tx storedb.Tx,
+	snapshot inventory.Snapshot,
+	grounded map[inventory.ItemID]bool,
+	via map[inventory.ItemID][]inventory.ExternalID,
+) ([]inventory.ExternalID, error) {
+	dropped := map[inventory.ItemID]bool{}
+	for item := range grounded {
+		if slices.ContainsFunc(via[item], func(id inventory.ExternalID) bool { return !id.Inferred() }) {
+			continue
+		}
+		disagree, err := s.inventoryCatalogsDisagree(ctx, tx, snapshot, item)
+		if err != nil {
+			return nil, err
+		}
+		if disagree {
+			dropped[item] = true
+		}
+	}
+	if len(dropped) == 0 {
+		return snapshot.ExternalIDs, nil
+	}
+	for item := range dropped {
+		delete(grounded, item)
+	}
+	// An inferred id that still grounds a kept item stays; one that grounded only dropped items goes.
+	kept := map[inventory.ExternalID]bool{}
+	for item := range grounded {
+		for _, id := range via[item] {
+			kept[id] = true
+		}
+	}
+	return slices.DeleteFunc(slices.Clone(snapshot.ExternalIDs), func(id inventory.ExternalID) bool {
+		if !id.Inferred() || kept[id] {
+			return false
+		}
+		for item := range dropped {
+			if slices.Contains(via[item], id) {
+				return true
+			}
+		}
+		return false
+	}), nil
+}
+
+// inventoryCatalogsDisagree reports whether a catalog names item as another title than the
+// snapshot's: another of its origins carries a catalog id of a namespace the snapshot's catalog
+// ids have too, and none of the snapshot's matches one of the item's. A snapshot no catalog
+// grounds disagrees with none.
+func (s *Store) inventoryCatalogsDisagree(ctx context.Context, tx storedb.Tx, snapshot inventory.Snapshot, item inventory.ItemID) (bool, error) {
+	catalogs := map[string]bool{}
+	own := map[inventory.ExternalID]bool{}
+	for _, id := range snapshot.ExternalIDs {
+		if !id.Inferred() {
+			catalogs[id.Namespace] = true
+			own[id] = true
+		}
+	}
+	if len(catalogs) == 0 {
+		return false, nil
+	}
+	rows, err := tx.QueryContext(ctx, s.h.Rebind(`SELECT namespace, external_id FROM inventory_external_ids
+		WHERE item_id = ? AND NOT (authority_id = ? AND external_item_id = ?)`),
+
+		string(item), string(snapshot.Origin.Authority), snapshot.Origin.ExternalItemID)
+	if err != nil {
+		return false, fmt.Errorf("read inventory item catalogs: %w", err)
+	}
+	shared, agree := false, false
+	for rows.Next() {
+		var id inventory.ExternalID
+		if err := rows.Scan(&id.Namespace, &id.Value); err != nil {
+			_ = rows.Close()
+			return false, fmt.Errorf("scan inventory item catalog: %w", err)
+		}
+		shared = shared || catalogs[id.Namespace]
+		agree = agree || own[id]
+	}
+	if err := rows.Close(); err != nil {
+		return false, fmt.Errorf("close inventory item catalogs: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("read inventory item catalog rows: %w", err)
+	}
+	return shared && !agree, nil
+}
+
+// inventoryOwnPlace is the item an origin no id joins to another belongs to: the one it founds,
+// home, unless a catalog names home as another title, for a file whose item another copy of a
+// different film still holds. That origin's place is an item of its own beside home.
+func (s *Store) inventoryOwnPlace(ctx context.Context, tx storedb.Tx, snapshot inventory.Snapshot, home inventory.ItemID) (inventory.ItemID, error) {
+	disagree, err := s.inventoryCatalogsDisagree(ctx, tx, snapshot, home)
+	if err != nil || !disagree {
+		return home, err
+	}
+	return inventory.ItemID(stableInventoryID("item", string(snapshot.Origin.Authority), snapshot.Origin.ExternalItemID, "apart")), nil
+}
+
+// inventoryItemIDsByExternalIDs finds the items of kind that carry any of externalIDs, and which
+// of them grounds each. An id grounds only its own kind: TVDB numbers shows and episodes from one
+// sequence, so a show's id can also be some unrelated episode's.
+func (s *Store) inventoryItemIDsByExternalIDs(
+	ctx context.Context,
+	tx storedb.Tx,
+	kind inventory.ItemKind,
+	origin inventory.OriginKey,
+	externalIDs []inventory.ExternalID,
+) (map[inventory.ItemID]bool, map[inventory.ItemID][]inventory.ExternalID, error) {
+	ids := make(map[inventory.ItemID]bool)
+	via := make(map[inventory.ItemID][]inventory.ExternalID)
+	for _, externalID := range externalIDs {
+		// The origin's own ids, as it was last written, are the ones this write replaces: only
+		// another origin's ground it. A copy linked to another title follows that title's item
+		// though its earlier write left an id of its own on the item it founded.
+		rows, err := tx.QueryContext(ctx, s.h.Rebind(`SELECT DISTINCT e.item_id FROM inventory_external_ids e
+			JOIN inventory_items i ON i.id = e.item_id
+			WHERE e.namespace = ? AND e.external_id = ? AND i.kind = ?
+			  AND NOT (e.authority_id = ? AND e.external_item_id = ?)`),
+
+			externalID.Namespace, externalID.Value, string(kind), string(origin.Authority), origin.ExternalItemID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("find grounded inventory identity: %w", err)
+		}
+		for rows.Next() {
+			var id inventory.ItemID
+			if err := rows.Scan(&id); err != nil {
+				_ = rows.Close()
+				return nil, nil, fmt.Errorf("scan grounded inventory identity: %w", err)
+			}
+			ids[id] = true
+			via[id] = append(via[id], externalID)
+		}
+		if err := rows.Close(); err != nil {
+			return nil, nil, fmt.Errorf("close grounded inventory identity rows: %w", err)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, nil, fmt.Errorf("read grounded inventory identity rows: %w", err)
+		}
+	}
+	return ids, via, nil
+}
+
+func (s *Store) InventoryItem(ctx context.Context, ref inventory.ItemRef) (inventory.Item, bool, error) {
+	if err := inventory.ValidateItemRef(ref); err != nil {
+		return inventory.Item{}, false, err
+	}
+	tx, err := s.h.BeginReadOnly(ctx)
+	if err != nil {
+		return inventory.Item{}, false, fmt.Errorf("begin inventory read: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	itemID := ref.ID
+	if ref.Origin != nil {
+		var ok bool
+		itemID, ok, err = s.inventoryItemIDByOrigin(ctx, tx, *ref.Origin)
+		if err != nil || !ok {
+			return inventory.Item{}, false, err
+		}
+	}
+	item, ok, err := s.readInventoryItem(ctx, tx, itemID)
+	if err != nil || !ok {
+		return inventory.Item{}, ok, err
+	}
+	if err := tx.Commit(); err != nil {
+		return inventory.Item{}, false, fmt.Errorf("commit inventory read: %w", err)
+	}
+	item, err = inventory.ValidateItem(item)
+	if err != nil {
+		return inventory.Item{}, false, fmt.Errorf("validate stored inventory item: %w", err)
+	}
+	return item, true, nil
+}
+
+// projectInventory hands the library projector the items ids name, read in tx after the write
+// that changed them. An id the inventory no longer has is skipped. This is the one place the
+// inventory side reaches the library side: the library never reads the inventory back.
+func (s *Store) projectInventory(ctx context.Context, tx storedb.Tx, at time.Time, ids ...inventory.ItemID) error {
+	if !s.project.Projecting() {
+		return nil
+	}
+	items := make([]inventory.Item, 0, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		item, ok, err := s.readInventoryItem(ctx, tx, id)
+		if err != nil {
+			return fmt.Errorf("project library item %s: %w", id, err)
+		}
+		if ok {
+			items = append(items, item)
+		}
+	}
+	return s.project.Project(ctx, tx, at, items)
+}
+
+func (s *Store) readInventoryItem(ctx context.Context, tx storedb.Tx, itemID inventory.ItemID) (inventory.Item, bool, error) {
+	var item inventory.Item
+	err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT id, kind FROM inventory_items WHERE id = ?`), string(itemID)).Scan(&item.ID, &item.Kind)
+	if errors.Is(err, sql.ErrNoRows) {
+		return inventory.Item{}, false, nil
+	}
+	if err != nil {
+		return inventory.Item{}, false, fmt.Errorf("read inventory item: %w", err)
+	}
+	originRows, err := tx.QueryContext(ctx, s.h.Rebind(`SELECT authority_id, external_item_id,
+		observation_json, last_seen_at, COALESCE(missing_at, 0)
+		FROM inventory_item_origins WHERE item_id = ? ORDER BY authority_id, external_item_id`),
+
+		string(itemID))
+	if err != nil {
+		return inventory.Item{}, false, fmt.Errorf("read inventory item origins: %w", err)
+	}
+	for originRows.Next() {
+		var origin inventory.ItemOrigin
+		var observationJSON string
+		var lastSeenAt, missingAt int64
+		if err := originRows.Scan(&origin.Key.Authority, &origin.Key.ExternalItemID, &observationJSON, &lastSeenAt, &missingAt); err != nil {
+			_ = originRows.Close()
+			return inventory.Item{}, false, fmt.Errorf("scan inventory item origin: %w", err)
+		}
+		if err := json.Unmarshal([]byte(observationJSON), &origin.Observation); err != nil {
+			_ = originRows.Close()
+			return inventory.Item{}, false, fmt.Errorf("decode inventory item observation: %w", err)
+		}
+		origin.LastSeenAt, origin.MissingAt = storedb.FromEpoch(lastSeenAt), storedb.FromEpoch(missingAt)
+		item.Origins = append(item.Origins, origin)
+	}
+	if err := originRows.Close(); err != nil {
+		return inventory.Item{}, false, fmt.Errorf("close inventory item origins: %w", err)
+	}
+	if err := originRows.Err(); err != nil {
+		return inventory.Item{}, false, fmt.Errorf("scan inventory item origins: %w", err)
+	}
+	externalRows, err := tx.QueryContext(ctx, s.h.Rebind(`SELECT DISTINCT namespace, external_id
+		FROM inventory_external_ids WHERE item_id = ? ORDER BY namespace, external_id`),
+		string(itemID))
+	if err != nil {
+		return inventory.Item{}, false, fmt.Errorf("read inventory external ids: %w", err)
+	}
+	for externalRows.Next() {
+		var externalID inventory.ExternalID
+		if err := externalRows.Scan(&externalID.Namespace, &externalID.Value); err != nil {
+			_ = externalRows.Close()
+			return inventory.Item{}, false, fmt.Errorf("scan inventory external id: %w", err)
+		}
+		item.ExternalIDs = append(item.ExternalIDs, externalID)
+	}
+	if err := externalRows.Close(); err != nil {
+		return inventory.Item{}, false, fmt.Errorf("close inventory external ids: %w", err)
+	}
+	if err := externalRows.Err(); err != nil {
+		return inventory.Item{}, false, fmt.Errorf("scan inventory external ids: %w", err)
+	}
+	sourceRows, err := tx.QueryContext(ctx, s.h.Rebind(`SELECT id, kind, revision FROM inventory_sources
+		WHERE item_id = ? ORDER BY id`),
+		string(itemID))
+	if err != nil {
+		return inventory.Item{}, false, fmt.Errorf("read inventory sources: %w", err)
+	}
+	for sourceRows.Next() {
+		var source inventory.Source
+		source.ItemID = item.ID
+		if err := sourceRows.Scan(&source.ID, &source.Kind, &source.Revision); err != nil {
+			_ = sourceRows.Close()
+			return inventory.Item{}, false, fmt.Errorf("scan inventory source: %w", err)
+		}
+		item.Sources = append(item.Sources, source)
+	}
+	if err := sourceRows.Close(); err != nil {
+		return inventory.Item{}, false, fmt.Errorf("close inventory sources: %w", err)
+	}
+	if err := sourceRows.Err(); err != nil {
+		return inventory.Item{}, false, fmt.Errorf("scan inventory sources: %w", err)
+	}
+	for i := range item.Sources {
+		if err := s.readInventorySourceDetails(ctx, tx, &item.Sources[i]); err != nil {
+			return inventory.Item{}, false, err
+		}
+	}
+	return item, true, nil
+}
+
+func (s *Store) readInventorySourceDetails(ctx context.Context, tx storedb.Tx, source *inventory.Source) error {
+	rows, err := tx.QueryContext(ctx, s.h.Rebind(`SELECT authority_id, external_item_id, external_source_id,
+		locator_json, observation_json, last_seen_at, COALESCE(missing_at, 0)
+		FROM inventory_source_origins WHERE source_id = ? ORDER BY authority_id, external_item_id, external_source_id`),
+
+		string(source.ID))
+	if err != nil {
+		return fmt.Errorf("read inventory source origins: %w", err)
+	}
+	for rows.Next() {
+		var origin inventory.SourceOrigin
+		var locatorJSON, observationJSON string
+		var lastSeenAt, missingAt int64
+		if err := rows.Scan(&origin.Key.Authority, &origin.Key.ExternalItemID, &origin.ExternalSourceID,
+			&locatorJSON, &observationJSON, &lastSeenAt, &missingAt); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan inventory source origin: %w", err)
+		}
+		if err := json.Unmarshal([]byte(locatorJSON), &origin.Locator); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("decode inventory source locator: %w", err)
+		}
+		if err := json.Unmarshal([]byte(observationJSON), &origin.Observation); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("decode inventory source observation: %w", err)
+		}
+		origin.LastSeenAt, origin.MissingAt = storedb.FromEpoch(lastSeenAt), storedb.FromEpoch(missingAt)
+		source.Origins = append(source.Origins, origin)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close inventory source origins: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("scan inventory source origins: %w", err)
+	}
+	var measurement inventory.Measurement
+	var observationJSON string
+	err = tx.QueryRowContext(ctx, s.h.Rebind(`SELECT source_revision, observation_json
+		FROM inventory_source_measurements WHERE source_id = ?`),
+		string(source.ID)).Scan(&measurement.Revision, &observationJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read inventory source measurement: %w", err)
+	}
+	measurement.SourceID = source.ID
+	if err := json.Unmarshal([]byte(observationJSON), &measurement.Observation); err != nil {
+		return fmt.Errorf("decode inventory source measurement: %w", err)
+	}
+	source.Measurement = &measurement
+	return nil
+}
+
+func (s *Store) RecordInventoryMeasurement(ctx context.Context, measurement inventory.Measurement) error {
+	clean, err := inventory.ValidateMeasurement(measurement)
+	if err != nil {
+		return err
+	}
+	tx, err := s.h.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin inventory measurement: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var revision string
+	err = tx.QueryRowContext(ctx, s.h.Rebind(`SELECT revision FROM inventory_sources WHERE id = ?`), string(clean.SourceID)).Scan(&revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return storedb.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("read measured inventory source: %w", err)
+	}
+	if revision != clean.Revision {
+		return inventory.ErrSourceRevisionGone
+	}
+	observationJSON, err := json.Marshal(clean.Observation)
+	if err != nil {
+		return fmt.Errorf("marshal inventory measurement: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`
+		INSERT INTO inventory_source_measurements (source_id, source_revision, observation_json, observed_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(source_id) DO UPDATE SET source_revision=excluded.source_revision,
+		  observation_json=excluded.observation_json, observed_at=excluded.observed_at`),
+
+		string(clean.SourceID),
+		clean.Revision, string(observationJSON), storedb.Epoch(clean.Observation.ObservedAt)); err != nil {
+		return fmt.Errorf("upsert inventory measurement: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit inventory measurement: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) MarkInventoryUnseen(
+	ctx context.Context,
+	authority inventory.AuthorityID,
+	at time.Time,
+	seen []inventory.OriginKey,
+) error {
+	authority = inventory.AuthorityID(strings.TrimSpace(string(authority)))
+	if authority == "" || at.IsZero() {
+		return inventory.ErrInvalid
+	}
+	seenIDs := make(map[string]bool, len(seen))
+	for _, key := range seen {
+		if key.Authority != authority || strings.TrimSpace(key.ExternalItemID) == "" {
+			return inventory.ErrInvalid
+		}
+		seenIDs[key.ExternalItemID] = true
+	}
+	tx, err := s.h.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin inventory missing reconciliation: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, s.h.Rebind(`SELECT external_item_id, item_id, missing_at IS NULL
+		FROM inventory_item_origins WHERE authority_id = ?`),
+		string(authority))
+	if err != nil {
+		return fmt.Errorf("read inventory authority origins: %w", err)
+	}
+	// missing is each origin that was present until now and this walk did not see. An origin that
+	// was already missing keeps the missing_at it was first marked with (#2446): every walk used to
+	// rewrite every tombstone, a write per tombstone that grew forever and erased when it went.
+	var missing []string
+	// gone is each item an origin of which was present until now: its library row is projected again.
+	var gone []inventory.ItemID
+	for rows.Next() {
+		var externalItemID string
+		var itemID inventory.ItemID
+		var present bool
+		if err := rows.Scan(&externalItemID, &itemID, &present); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan inventory authority origin: %w", err)
+		}
+		if present && !seenIDs[externalItemID] {
+			missing = append(missing, externalItemID)
+			gone = append(gone, itemID)
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close inventory authority origins: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("scan inventory authority origins: %w", err)
+	}
+	for _, externalItemID := range missing {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE inventory_item_origins SET missing_at = ?
+			WHERE authority_id = ? AND external_item_id = ?`),
+			storedb.Epoch(at), string(authority), externalItemID); err != nil {
+			return fmt.Errorf("mark inventory item origin missing: %w", err)
+		}
+	}
+	// A missing item's sources are missing too. One statement over the authority rather than one per
+	// origin: it marks the newly missing ones and leaves every already-marked source alone.
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE inventory_source_origins SET missing_at = ?
+		WHERE authority_id = ? AND missing_at IS NULL AND external_item_id IN (
+		  SELECT external_item_id FROM inventory_item_origins
+		   WHERE authority_id = ? AND missing_at IS NOT NULL)`),
+
+		storedb.Epoch(at), string(authority), string(authority)); err != nil {
+		return fmt.Errorf("mark inventory source origins missing: %w", err)
+	}
+	if err := s.projectInventory(ctx, tx, at, gone...); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func stableInventoryID(parts ...string) string {
+	hash := sha256.New()
+	for _, part := range parts {
+		_, _ = hash.Write([]byte(part))
+		_, _ = hash.Write([]byte{0})
+	}
+	return hex.EncodeToString(hash.Sum(nil)[:16])
+}
+
+// RecordInventoryAnalysis stores the keyframe index, loudness and break candidates measured for
+// one source revision. It fails with ErrSourceRevisionGone when the source has since moved on, so a
+// slow measurement of a replaced file can never be attributed to its successor.
+func (s *Store) RecordInventoryAnalysis(ctx context.Context, analysis inventory.Analysis) error {
+	clean, err := inventory.ValidateAnalysis(analysis)
+	if err != nil {
+		return err
+	}
+	breaks, err := json.Marshal(append([]inventory.Break{}, clean.Breaks...))
+	if err != nil {
+		return fmt.Errorf("marshal inventory analysis breaks: %w", err)
+	}
+	var active sql.NullString
+	if clean.ActivePicture != nil {
+		b, err := json.Marshal(clean.ActivePicture)
+		if err != nil {
+			return fmt.Errorf("marshal inventory analysis active picture: %w", err)
+		}
+		active = sql.NullString{String: string(b), Valid: true}
+	}
+	tx, err := s.h.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin inventory analysis: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var revision string
+	err = tx.QueryRowContext(ctx, s.h.Rebind(`SELECT revision FROM inventory_sources WHERE id = ?`), string(clean.SourceID)).Scan(&revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return storedb.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("read analysed inventory source: %w", err)
+	}
+	if revision != clean.Revision {
+		return inventory.ErrSourceRevisionGone
+	}
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`
+		INSERT INTO inventory_source_analysis (source_id, source_revision, schema_version, keyframes,
+		  keyframe_count, integrated_lufs, true_peak_dbtp, breaks_json, active_picture_json, analyzed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(source_id) DO UPDATE SET source_revision=excluded.source_revision,
+		  schema_version=excluded.schema_version, keyframes=excluded.keyframes,
+		  keyframe_count=excluded.keyframe_count, integrated_lufs=excluded.integrated_lufs,
+		  true_peak_dbtp=excluded.true_peak_dbtp, breaks_json=excluded.breaks_json,
+		  active_picture_json=excluded.active_picture_json,
+		  analyzed_at=excluded.analyzed_at`),
+
+		string(clean.SourceID), clean.Revision,
+		inventory.AnalysisSchemaVersion, inventory.EncodeKeyframes(clean.Keyframes), len(clean.Keyframes),
+		clean.IntegratedLUFS, clean.TruePeakDBTP, string(breaks), active, storedb.Epoch(clean.AnalyzedAt)); err != nil {
+		return fmt.Errorf("upsert inventory analysis: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit inventory analysis: %w", err)
+	}
+	return nil
+}
+
+// InventoryAnalysis returns the stored analysis of a source, or false when it has none for the
+// current revision (never measured, revision changed, or written by a newer schema).
+func (s *Store) InventoryAnalysis(ctx context.Context, id inventory.SourceID) (inventory.Analysis, bool, error) {
+	var (
+		a               = inventory.Analysis{SourceID: id}
+		schema          int
+		blob            []byte
+		lufs, peak      sql.NullFloat64
+		breaksJSON      string
+		activeJSON      sql.NullString
+		analyzedAt      int64
+		currentRevision string
+	)
+	err := s.h.QueryRowContext(ctx, s.h.Rebind(`
+		SELECT a.source_revision, a.schema_version, a.keyframes, a.integrated_lufs, a.true_peak_dbtp,
+		  a.breaks_json, a.active_picture_json, a.analyzed_at, s.revision
+		FROM inventory_source_analysis a JOIN inventory_sources s ON s.id = a.source_id
+		WHERE a.source_id = ?`),
+
+		string(id)).Scan(&a.Revision, &schema, &blob, &lufs, &peak, &breaksJSON, &activeJSON, &analyzedAt, &currentRevision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return inventory.Analysis{}, false, nil
+	}
+	if err != nil {
+		return inventory.Analysis{}, false, fmt.Errorf("read inventory analysis: %w", err)
+	}
+	// Any other schema is absent: a newer one is not guessed at, and an older one is re-measured
+	// (inventory.AnalysisSchemaVersion says what each version changed).
+	if schema != inventory.AnalysisSchemaVersion || a.Revision != currentRevision {
+		return inventory.Analysis{}, false, nil
+	}
+	if a.Keyframes, err = inventory.DecodeKeyframes(blob); err != nil {
+		return inventory.Analysis{}, false, fmt.Errorf("decode inventory keyframes: %w", err)
+	}
+	if err := json.Unmarshal([]byte(breaksJSON), &a.Breaks); err != nil {
+		return inventory.Analysis{}, false, fmt.Errorf("decode inventory breaks: %w", err)
+	}
+	if activeJSON.Valid {
+		a.ActivePicture = &inventory.PictureArea{}
+		if err := json.Unmarshal([]byte(activeJSON.String), a.ActivePicture); err != nil {
+			return inventory.Analysis{}, false, fmt.Errorf("decode inventory active picture: %w", err)
+		}
+	}
+	if lufs.Valid {
+		a.IntegratedLUFS = &lufs.Float64
+	}
+	if peak.Valid {
+		a.TruePeakDBTP = &peak.Float64
+	}
+	a.AnalyzedAt = storedb.FromEpoch(analyzedAt)
+	return a, true, nil
+}
