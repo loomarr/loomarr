@@ -16,7 +16,7 @@ type (
 	Proposal = proposalstore.Proposal
 )
 
-// The proposal and job sentinel errors are the proposalstore values under second names, so
+// The proposal sentinel errors are the proposalstore values under second names, so
 // errors.Is matches an error created in either package.
 var (
 	// ErrProposalNotSubmitted reports a terminal decision that lost the submitted -> decided swap.

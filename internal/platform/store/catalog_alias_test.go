@@ -42,6 +42,26 @@ func TestCatalogSentinelsAreTheCatalogstoreValues(t *testing.T) {
 	}
 }
 
+// The catalog sentinels callers match by their clipstore names print the strings logs and alerts
+// already carry.
+func TestCatalogSentinelMessages(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		err     error
+		message string
+	}{
+		{"ErrConditionedClipMismatch", clipstore.ErrConditionedClipMismatch, "store: conditioned clip does not match the catalog"},
+		{"ErrTaxonConflict", clipstore.ErrTaxonConflict, "store: taxonomy conflict"},
+		{"ErrCorruptClipDefects", clipstore.ErrCorruptClipDefects, "corrupt clip defect records"},
+		{"ErrInferiorCopyMismatch", clipstore.ErrInferiorCopyMismatch, "store: inferior copy must name two different existing clips"},
+		{"ErrUnknownClipSort", clipstore.ErrUnknownClipSort, "unknown clip sort"},
+	} {
+		if got := c.err.Error(); got != c.message {
+			t.Errorf("clipstore.%s message = %q, want %q (a log string must not change)", c.name, got, c.message)
+		}
+	}
+}
+
 // Real read paths: each sentinel is produced inside clipstore and reaches the store's caller as
 // that value.
 func TestCatalogErrorsMatchTheStoreSentinels(t *testing.T) {

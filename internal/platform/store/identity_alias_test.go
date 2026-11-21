@@ -39,6 +39,23 @@ func TestIdentitySentinelsAreTheIdentitystoreValues(t *testing.T) {
 	}
 }
 
+// The identity sentinels callers match by their identitystore names print the strings logs and
+// alerts already carry.
+func TestIdentitySentinelMessages(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		err     error
+		message string
+	}{
+		{"ErrContactAddressConflict", identitystore.ErrContactAddressConflict, "store: contact address conflict"},
+		{"ErrInvitationIdentityConflict", identitystore.ErrInvitationIdentityConflict, "store: invitation identity conflict"},
+	} {
+		if got := c.err.Error(); got != c.message {
+			t.Errorf("identitystore.%s message = %q, want %q (a log string must not change)", c.name, got, c.message)
+		}
+	}
+}
+
 // Real read paths: the sentinel is produced inside identitystore and must match the store's name.
 func TestIdentityMissesMatchTheStoreSentinels(t *testing.T) {
 	ctx := context.Background()
