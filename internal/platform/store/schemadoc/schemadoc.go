@@ -4,8 +4,8 @@
 // COMMENT ON TABLE/COLUMN, so a client shows it beside the data.
 //
 // The text lives in areas/*.yaml, one file per area of the app, rendered in file-name order.
-// Everything structural (column order, types, keys, references) comes from the live schema the
-// caller introspects, never from the YAML, so only the words can drift, and Check catches that:
+// Everything structural (column order, types, keys, references) comes from the live schema, which
+// IntrospectSQLite and IntrospectPostgres read from a running database, never from the YAML, so only the words can drift, and Check catches that:
 // a table or column the migrations create but the YAML doesn't describe, or a description of
 // one that no longer exists.
 package schemadoc

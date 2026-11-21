@@ -25,11 +25,11 @@ func TestSQLiteAndPostgresSchemasMatch(t *testing.T) {
 	}
 	defer func() { _ = pg.Close() }()
 
-	sqliteTables, err := introspectSQLite(ctx, PoolOf(lite))
+	sqliteTables, err := schemadoc.IntrospectSQLite(ctx, PoolOf(lite))
 	if err != nil {
 		t.Fatal(err)
 	}
-	postgresTables, err := introspectPostgres(ctx, pg.(*sqlStore).db)
+	postgresTables, err := schemadoc.IntrospectPostgres(ctx, pg.(*sqlStore).db)
 	if err != nil {
 		t.Fatal(err)
 	}
