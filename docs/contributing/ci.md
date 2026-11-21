@@ -461,6 +461,17 @@ Apple mobile, Apple TV, and Expo Android mobile are active. The mobile Android j
 seven days. Expo Android TV remains a classifier decision until its independently required job and
 current-main evidence exist.
 
+The shared-client lanes keep Turbo's task cache in the Turbo Remote Cache, not the Actions cache.
+Artifacts are signed (`remoteCache.signature` in `web/turbo.json`). `TURBO_CACHE` sets `merge_group`
+runs and runs on `main` to write, and every other run, pull requests included, to read
+(`local:rw,remote:r`). The setting lives in the client, so it is not an access control: a same-repo
+pull request run holds the same token. The merge queue may write here, unlike the Actions cache
+(#1679), because Remote Cache entries are keyed by team and task hash rather than by ref.
+The four optional secrets are `TURBO_TOKEN`, `TURBO_TEAM`, `TURBO_REMOTE_CACHE_SIGNATURE_KEY` and
+`TURBO_API`. Leave `TURBO_API` empty for Vercel, or set it to a self-hosted server. A run without
+`TURBO_TOKEN` uses no remote cache and runs every task. Fork and Dependabot pull requests are such
+runs. A run with a token but no key uploads nothing and treats every download as a miss.
+
 `make client-android-debug` keeps workstation-safe defaults: one Gradle worker, one native job, one
 Metro worker, a 1280 MB Gradle heap, and a 4 GB memory scope. The CI mobile job raises them through
 the environment, the same way the TV producer does: two Gradle workers (the wrapper's ceiling), four

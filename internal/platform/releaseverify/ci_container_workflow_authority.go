@@ -249,28 +249,19 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		"ci-clients.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}}),
 			"make clients-checks": exactWorkflowStep(6, "Verify the affected client graph", workflowStepAuthority{
-				targets:   []string{"clients-checks"},
-				condition: "matrix.lane == 'checks'",
-				environment: map[string]string{
-					"TMPDIR":                   "${{ runner.temp }}",
-					"TURBO_TELEMETRY_DISABLED": "1",
-				},
+				targets:     []string{"clients-checks"},
+				condition:   "matrix.lane == 'checks'",
+				environment: clientsTurboEnvironment(),
 			}),
 			"make clients-tests CLIENTS_APP=${{ matrix.lane == 'tv-tests' && 'tv' || 'mobile' }}": exactWorkflowStep(7, "Typecheck and test the client", workflowStepAuthority{
-				targets:   []string{"clients-tests"},
-				condition: "endsWith(matrix.lane, '-tests')",
-				environment: map[string]string{
-					"TMPDIR":                   "${{ runner.temp }}",
-					"TURBO_TELEMETRY_DISABLED": "1",
-				},
+				targets:     []string{"clients-tests"},
+				condition:   "endsWith(matrix.lane, '-tests')",
+				environment: clientsTurboEnvironment(),
 			}),
 			"make clients-bundles CLIENTS_APP=${{ matrix.lane }}": exactWorkflowStep(8, "Bundle the client", workflowStepAuthority{
-				targets:   []string{"clients-bundles"},
-				condition: "matrix.lane == 'mobile' || matrix.lane == 'tv'",
-				environment: map[string]string{
-					"TMPDIR":                   "${{ runner.temp }}",
-					"TURBO_TELEMETRY_DISABLED": "1",
-				},
+				targets:     []string{"clients-bundles"},
+				condition:   "matrix.lane == 'mobile' || matrix.lane == 'tv'",
+				environment: clientsTurboEnvironment(),
 			}),
 		}),
 		"ci-docs.yml": standardRunWorkflow(map[string]workflowStepAuthority{
@@ -761,6 +752,20 @@ func codeQLWorkflowAuthority() workflowAuthority {
 			"analyze-ruby":                  {condition: "needs.changes.outputs.ruby == 'true'", permissions: analysisPermissions},
 			"analyze-rust":                  {condition: "needs.changes.outputs.rust == 'true'", permissions: analysisPermissions},
 		},
+	}
+}
+
+// clientsTurboEnvironment is the exact environment of every ci-clients.yml step that runs Turbo:
+// the Remote Cache credentials, and TURBO_CACHE, which lets only the merge queue and main write.
+func clientsTurboEnvironment() map[string]string {
+	return map[string]string{
+		"TMPDIR":                           "${{ runner.temp }}",
+		"TURBO_TELEMETRY_DISABLED":         "1",
+		"TURBO_API":                        "${{ secrets.TURBO_API }}",
+		"TURBO_TEAM":                       "${{ secrets.TURBO_TEAM }}",
+		"TURBO_TOKEN":                      "${{ secrets.TURBO_TOKEN }}",
+		"TURBO_REMOTE_CACHE_SIGNATURE_KEY": "${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}",
+		"TURBO_CACHE":                      "${{ (github.event_name == 'merge_group' || github.ref == 'refs/heads/main') && 'local:rw,remote:rw' || 'local:rw,remote:r' }}",
 	}
 }
 
