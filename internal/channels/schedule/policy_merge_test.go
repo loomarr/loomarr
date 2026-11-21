@@ -10,7 +10,8 @@ import (
 // A flat policy_json blob exactly as pre-P3 code wrote it (no operatorSet, no rule source).
 // The embedded sub-structs must read it byte-for-byte the same — wire compatibility, zero
 // migration — and re-marshal to a still-FLAT object (no proposalPolicy/operatorPolicy keys).
-const legacyPolicyJSON = `{"scope":{"era":{"from":1990,"to":1999}},"audience":{"ceiling":"TV-Y7"},` +
+const legacyPolicyJSON = `{"scope":{"dates":{"movieRelease":[{"from":1990,"to":1999}],` +
+	`"seriesPremiere":[{"from":1990,"to":1999}],"seriesAiring":[{"from":1990,"to":1999}]}},"audience":{"ceiling":"TV-Y7"},` +
 	`"separation":{"episodeNoRepeat":"168h"},"ordering":"syndication","seasonal":{"mode":"auto"},` +
 	`"applied":[{"kind":"episodeNoRepeat","from":"168h","to":"84h"}],"filler":{"audience":"kids"},` +
 	`"rules":[{"id":"r1","label":"Weekend","priority":10}],"window":"24h","autoCurate":{"minScorePct":70}}`
@@ -20,10 +21,9 @@ func TestChannelPolicy_LegacyWireRoundTrips(t *testing.T) {
 	if err := json.Unmarshal([]byte(legacyPolicyJSON), &p); err != nil {
 		t.Fatalf("legacy blob must unmarshal into the embedded struct: %v", err)
 	}
-	// Promoted fields must have landed (proof the embeds flatten on read). The legacy era
-	// lands as the era-shaped Dates it always meant.
+	// Promoted fields must have landed (proof the embeds flatten on read).
 	if era, ok := p.Scope.Dates.Era(); !ok || era != (Range{From: 1990, To: 1999}) {
-		t.Errorf("scope.era did not land as dates: %+v", p.Scope.Dates)
+		t.Errorf("scope.dates did not land: %+v", p.Scope.Dates)
 	}
 	if p.Audience.Ceiling != "TV-Y7" {
 		t.Errorf("audience.ceiling did not land: %q", p.Audience.Ceiling)
@@ -50,7 +50,7 @@ func TestChannelPolicy_LegacyWireRoundTrips(t *testing.T) {
 		t.Fatalf("policy_json must stay flat, got nested owner keys: %s", out)
 	}
 	if strings.Contains(string(out), `"era"`) || !strings.Contains(string(out), `"dates"`) {
-		t.Fatalf("the backend must write dates and never era again, got: %s", out)
+		t.Fatalf("the scope must round-trip as dates with no era, got: %s", out)
 	}
 	// And the flat keys survive.
 	for _, key := range []string{`"scope"`, `"audience"`, `"filler"`, `"window"`, `"autoCurate"`, `"applied"`} {

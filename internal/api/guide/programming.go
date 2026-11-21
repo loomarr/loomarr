@@ -225,11 +225,7 @@ func lowerProgrammingDraft(holidays holidayvocab.Vocabulary, stored schedule.Cha
 		draftLineup = entries
 	}
 	// Draft policy: validate it the same way a policy write does (§4 safety). Nil ⇒ saved.
-	// A lone `era` was already folded into Dates on decode; `era` with `dates` is ambiguous.
 	if policy != nil {
-		if err := policy.DateAliasConflict(); err != nil {
-			return nil, nil, httpcore.AmbiguousDatesError(err)
-		}
 		if err := policy.ValidateEditOf(stored, holidays); err != nil {
 			return nil, nil, channelsapi.InvalidPolicyProblem(err)
 		}

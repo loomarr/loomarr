@@ -22,6 +22,15 @@ func TestPostgresDiscoveryFeedbackOrphanCleanupMigration(t *testing.T) {
 	testDiscoveryFeedbackOrphanCleanupMigration(t, db, DialectPostgres, "migrations/postgres")
 }
 
+func TestPostgresFoldScopeEraMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testFoldScopeEraMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
 func TestPostgresProposalDeniedTopicMigration(t *testing.T) {
 	db, err := sql.Open("pgx", startPostgres(t))
 	if err != nil {
