@@ -72,7 +72,7 @@ onwards"); set bounds are 1900–2099.
 An **era** is a shortcut for dates, not a second scope: era R is `scope.dates` with
 `movieRelease = seriesPremiere = seriesAiring = [R]` ("era-shaped"), which filters exactly as the
 retired `scope.era` field did, on a channel scope and on a rule's scope alike. The `era` request
-alias was retired in #2147: migration 00230 folded every stored one into `dates`, and a request
+alias was retired in #2147: migration 00246 folded every stored one into `dates`, and a request
 that sends `era` is refused with 422. A stored scope that carried both was folded to their
 per-axis intersection, which is what the scheduler aired; where an axis's windows missed the era
 entirely the era won, since an empty list means "unconstrained" and cannot express "nothing". A

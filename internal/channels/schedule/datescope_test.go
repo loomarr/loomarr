@@ -71,7 +71,7 @@ func airedIDs(d schedule.DesiredLineup) []string {
 	return slices.Compact(ids)
 }
 
-// Era-shaped dates (what migration 00230 folded a stored `era` into) must air exactly what the
+// Era-shaped dates (what migration 00246 folded a stored `era` into) must air exactly what the
 // scheduler aired when it still evaluated Era. The oracle restates the deleted evaluator
 // independently: a dated title (movie release / series premiere) and a dated episode must each
 // fall in the range, and an unknown year (0) is never excluded.
@@ -102,7 +102,7 @@ func TestEraShapedDatesAirTheEraLineup(t *testing.T) {
 	}
 }
 
-// A stored scope that carried BOTH era and dates was the AND of the two. Migration 00230 folds it
+// A stored scope that carried BOTH era and dates was the AND of the two. Migration 00246 folds it
 // to their per-axis intersection, and that intersection must keep airing exactly the AND.
 func TestFoldedEraAndDatesAirTheirIntersection(t *testing.T) {
 	entries, avail, years, parent := eraCorpus()

@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
-// Migration 00230 folds a stored scope `era` into `dates`, as the retired decode alias did
+// Migration 00246 folds a stored scope `era` into `dates`, as the retired decode alias did
 // (schedule.withEra): ANDed axis by axis, an empty axis becomes [era], an axis the era misses
 // becomes [era], and the any-era range is dropped.
 func TestFoldScopeEraMigration(t *testing.T) {
@@ -61,8 +61,8 @@ func testFoldScopeEraMigration(t *testing.T, db *sql.DB, dialect Dialect, dir st
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.UpTo(ctx, 229); err != nil {
-		t.Fatalf("migrate through 229: %v", err)
+	if _, err := provider.UpTo(ctx, 245); err != nil {
+		t.Fatalf("migrate through 245: %v", err)
 	}
 	ph := placeholder(storedb.Passthrough)
 	if dialect == DialectPostgres {
@@ -87,8 +87,8 @@ func testFoldScopeEraMigration(t *testing.T, db *sql.DB, dialect Dialect, dir st
 		t.Fatal(err)
 	}
 
-	if _, err := provider.UpTo(ctx, 230); err != nil {
-		t.Fatalf("apply 00230: %v", err)
+	if _, err := provider.UpTo(ctx, 246); err != nil {
+		t.Fatalf("apply 00246: %v", err)
 	}
 
 	read := func(query, id string) map[string]json.RawMessage {

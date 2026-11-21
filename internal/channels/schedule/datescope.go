@@ -4,7 +4,7 @@ package schedule
 // Dates{MovieRelease, SeriesPremiere, SeriesAiring = [R]} filters — a movie by its release year,
 // a series by its premiere year, and each episode by its own airing year, with an unknown year (0)
 // failing open on every axis. The scope's `era` alias was folded into stored dates by migration
-// 00230 (#2147) and is retired; EraDates and DateScope.Era are how code still speaks in eras.
+// 00246 (#2147) and is retired; EraDates and DateScope.Era are how code still speaks in eras.
 
 // EraDates is the date scope an era range stands for: the same window on all three
 // axes. The any-era range constrains nothing and returns nil.
