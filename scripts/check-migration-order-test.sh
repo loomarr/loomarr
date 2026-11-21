@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+# An inherited repository location (a git hook, a wrapper, go test's environment) would send every
+# throwaway commit below into that repository instead.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR
+
 ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)"
 CHECK="$ROOT/scripts/check-migration-order.sh"
 WORK="$(mktemp -d)"
@@ -23,6 +27,7 @@ repo() {
   git init --quiet
   git config user.email test@example.invalid
   git config user.name test
+  git config commit.gpgsign false
   for dialect in sqlite postgres; do
     : >"internal/platform/store/migrations/$dialect/00001_first.sql"
     : >"internal/platform/store/migrations/$dialect/00003_third.sql"
@@ -82,8 +87,55 @@ git mv internal/platform/store/migrations/postgres/00002_late.sql internal/platf
 git commit --quiet -m renumber
 passes "$base" || fail 'a migration renumbered above the head was refused'
 
+# A pull request takes its base from the event payload.
+repo pull-request
+add sqlite/00002_late.sql postgres/00002_late.sql
+printf '{"pull_request":{"base":{"sha":"%s"}}}\n' "$base" >"$WORK/pull-request.json"
+"$CHECK" pull_request "$WORK/pull-request.json" >/dev/null 2>&1 &&
+  fail 'a pull request adding a migration below the head passed'
+printf '{"pull_request":{"base":{"sha":"%s"}}}\n' "$(git rev-parse HEAD)" >"$WORK/pull-request.json"
+"$CHECK" pull_request "$WORK/pull-request.json" >/dev/null 2>&1 ||
+  fail 'a pull request adding no migration against its base was refused'
+
+# A queue candidate is one squashed commit on the entry ahead of it. The entry ahead adds 00005,
+# so this entry's 00004 lands below a migration installs have already run, though it is above
+# main's newest.
+# queued writes the payload a candidate's run gets: base_sha is main's tip, below the entry ahead.
+queued() {
+  printf '{"merge_group":{"base_sha":"%s"}}\n' "$base" >"$WORK/merge-group.json"
+  "$CHECK" merge_group "$WORK/merge-group.json" 2>&1
+}
+
+repo queue-behind-higher
+add sqlite/00005_ahead.sql postgres/00005_ahead.sql
+add sqlite/00004_behind.sql postgres/00004_behind.sql
+refusal="$(queued)" && fail 'a queue entry numbered below the entry ahead of it passed'
+[[ "$refusal" == *'00004_behind.sql is numbered 00004'* ]] ||
+  fail "a queue entry below the entry ahead of it was refused for another reason: $refusal"
+
+repo queue-behind-same
+add sqlite/00004_ahead.sql postgres/00004_ahead.sql
+add sqlite/00004_behind.sql postgres/00004_behind.sql
+refusal="$(queued)" && fail 'a queue entry sharing the number of the entry ahead of it passed'
+[[ "$refusal" == *'00004_behind.sql is numbered 00004'* ]] ||
+  fail "a queue entry sharing the entry ahead's number was refused for another reason: $refusal"
+
+repo queue-behind-lower
+add sqlite/00004_ahead.sql postgres/00004_ahead.sql
+add sqlite/00005_behind.sql postgres/00005_behind.sql
+queued >/dev/null || fail 'a queue entry numbered above the entry ahead of it was refused'
+
 repo unusable
 passes 0000000000000000000000000000000000000001 && fail 'an unusable base passed'
 "$CHECK" >/dev/null 2>&1 && fail 'a call without arguments passed'
+
+# A base without the migrations directory means it moved, so nothing would ever be compared.
+repo moved
+git rm --quiet -r internal/platform/store/migrations
+git commit --quiet -m moved
+moved_base="$(git rev-parse HEAD)"
+mkdir -p internal/platform/store/migrations/sqlite
+add sqlite/00001_again.sql
+passes "$moved_base" && fail 'a base without migrations passed'
 
 echo 'check-migration-order-test: ok'

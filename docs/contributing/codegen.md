@@ -42,10 +42,11 @@ at boot. Never edit an applied migration; add a new one.
 
 Number a new migration one above the highest on `main`, in both dialects. A database that already ran
 a newer migration refuses to start when it meets an unapplied lower one, and two branches can both take
-the same next number. `make migration-order-verify` checks a branch against `origin/main`; the Go repository
-contracts job checks a pull request, and the merge gate checks each queued candidate against the main
-it joins (#4450). Renumbering a migration that has not merged is safe: rename it in both dialects and fix every
-reference to the old number.
+the same next number. `make migration-order-verify` checks a branch against your `origin/main`, so
+fetch first. The Go repository contracts job checks a pull request, and the merge gate checks each
+queued candidate against the main it joins, entries queued ahead of it included (#4450). Renumbering
+a migration that has not merged is safe: rename it in both dialects and fix every reference to the
+old number.
 
 ## Two things generation doesn't give you
 
