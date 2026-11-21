@@ -36,7 +36,8 @@ type Channel struct {
 	FillerRoles                []string    // empty: the default roles
 	Lineup                     []LineupTitle
 	// Reported is the lineup keys the channel says it cannot air, with a reason (#4140).
-	Reported map[string]bool
+	Reported   map[string]bool
+	PolicyJSON string // the stored policy, for the filters growth applies first
 }
 
 // LineupTitle is one approved lineup entry and how much of it the library holds.
@@ -166,7 +167,7 @@ func loadChannels(ctx context.Context, db *sql.DB, s *Snapshot) error {
 		if err := json.Unmarshal([]byte(raw), &p); err != nil {
 			return fmt.Errorf("channel %s policy: %w", c.ID, err)
 		}
-		c.Ordering, c.Applied, c.Rules = p.Ordering, p.Applied, len(p.Rules)
+		c.Ordering, c.Applied, c.Rules, c.PolicyJSON = p.Ordering, p.Applied, len(p.Rules), raw
 		for _, u := range p.Unairable {
 			if c.Reported == nil {
 				c.Reported = map[string]bool{}

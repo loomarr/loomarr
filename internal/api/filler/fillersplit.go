@@ -47,6 +47,9 @@ func (s *Handlers) splitFiller(ctx context.Context, in *splitFillerInput) (*spli
 		return nil, httpcore.Conflict("Splitting isn't set up",
 			"Splitting needs the filler drop-folder (filler.dir). Set it in Settings → Filler.")
 	}
+	if errors.Is(err, operator.ErrReelLetGo) {
+		return nil, httpcore.Conflict("This reel's recording is gone", err.Error())
+	}
 	if err != nil {
 		return nil, err
 	}

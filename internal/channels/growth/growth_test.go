@@ -50,6 +50,40 @@ func TestTheSeedsDrawTheLine(t *testing.T) {
 	}
 }
 
+// A film line of dramas and romances rated up to R (the install's first growth night, 2026-11-18:
+// the model took 33 of 154 grown films back off, 23 for genre and 5 for NC-17). A title is a clear
+// fit only when the line is most of what it is, and NC-17 sits above R even though both share the
+// audience ladder's top rank: nothing the seeds were rated says the channel airs NC-17.
+func TestAClearFitIsMostlyTheLine(t *testing.T) {
+	var seeds []growth.Title
+	for i, y := range []int{1989, 1991, 1993, 1995, 1997, 2002} {
+		seeds = append(seeds, film(string(rune('a'+i)), y, "R", 0, "Drama", "Romance"))
+	}
+	l := growth.DrawLine(seeds, 3)
+	if l.MaxRating != "R" || !slices.Equal(l.Genres, []string{"drama", "romance"}) {
+		t.Fatalf("line %+v", l)
+	}
+	for _, tc := range []struct {
+		name string
+		t    growth.Title
+		want growth.Fit
+	}{
+		{"a drama", film("x1", 1996, "R", 0, "Drama"), growth.Clear},
+		{"a romantic comedy-drama", film("x2", 1996, "PG-13", 0, "Romance", "Comedy", "Drama"), growth.Clear},
+		{"a crime thriller with a drama tag", film("x3", 1996, "R", 0, "Crime", "Drama", "Action"), growth.Unclear},
+		{"an action thriller with a drama tag", film("x4", 1996, "R", 0, "Action", "Thriller", "Drama", "Crime"), growth.Unclear},
+		{"an NC-17 drama", film("x5", 1996, "NC-17", 0, "Drama"), growth.Outside},
+	} {
+		if got := l.Classify(tc.t, growth.Bar); got.Fit != tc.want {
+			t.Errorf("%s: %+v, want %s", tc.name, got, tc.want)
+		}
+	}
+	nc17 := growth.DrawLine(append(seeds, film("nc", 1994, "NC-17", 0, "Drama", "Romance")), 3)
+	if nc17.MaxRating != "NC-17" || nc17.Classify(film("x6", 1996, "NC-17", 0, "Drama"), growth.Bar).Fit != growth.Clear {
+		t.Errorf("a line with an NC-17 seed should admit NC-17: %+v", nc17)
+	}
+}
+
 // An odd seed keeps airing but does not stretch the line (decision 5); a seed with nothing airable
 // is ignored.
 func TestAnOddSeedDoesNotStretchTheLine(t *testing.T) {

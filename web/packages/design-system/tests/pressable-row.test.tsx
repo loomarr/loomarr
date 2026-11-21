@@ -127,6 +127,12 @@ describe("PressableRow", () => {
     });
   });
 
+  it("keeps a list row's 12/10 inset by default, and lets dense chrome name its own", () => {
+    const plain = markupOf(<PressableRow>A</PressableRow>);
+    expect(markupOf(<PressableRow inset={{ x: 12, y: 10 }}>A</PressableRow>)).toEqual(plain);
+    expect(markupOf(<PressableRow inset={{ x: 4, y: 4 }}>A</PressableRow>)).not.toEqual(plain);
+  });
+
   it("forwards mousedown so a combobox option can keep the input focused", () => {
     const container = document.createElement("div");
     document.body.append(container);

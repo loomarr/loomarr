@@ -55,19 +55,24 @@ func (e *eventEmitter) setNotifications(coordinator *productNotificationCoordina
 	e.notifications.Store(coordinator)
 }
 
+// The three proposal notices each run after their change is stored, so each also sends the
+// `proposal` frame for open screens.
 func (e *eventEmitter) ProposalSubmitted(ctx context.Context, proposal proposalstore.Proposal) {
+	e.bus.Publish(events.Event{Type: "proposal", Payload: opsapi.ProposalEvent{}})
 	if coordinator := e.notifications.Load(); coordinator != nil {
 		coordinator.ProposalSubmitted(ctx, proposal)
 	}
 }
 
 func (e *eventEmitter) ProposalApproved(ctx context.Context, proposal proposalstore.Proposal, channelID string) {
+	e.bus.Publish(events.Event{Type: "proposal", Payload: opsapi.ProposalEvent{}})
 	if coordinator := e.notifications.Load(); coordinator != nil {
 		coordinator.ProposalApproved(ctx, proposal, channelID)
 	}
 }
 
 func (e *eventEmitter) ProposalDenied(ctx context.Context, proposal proposalstore.Proposal) {
+	e.bus.Publish(events.Event{Type: "proposal", Payload: opsapi.ProposalEvent{}})
 	if coordinator := e.notifications.Load(); coordinator != nil {
 		coordinator.ProposalDenied(ctx, proposal)
 	}
@@ -131,8 +136,8 @@ func (e *eventEmitter) JobChanged(name string) {
 //
 // ⚠ **No payload.** The frame says "something happened"; the page refetches GET /v1/activity,
 // which is the truth on reconnect (§8). Carrying the row itself would invite a client to
-// render a list assembled from frames — and this bus drops frames for a slow subscriber by
-// design, so that list would silently be missing entries.
+// render a list assembled from frames — and a client misses every frame sent while it
+// reconnects, so that list would silently be missing entries.
 func (e *eventEmitter) ActivityRecorded() {
 	// An explicit empty STRUCT rather than a nil payload. `json.Marshal(nil)` yields the
 	// literal `null`, which the browser's JSON.parse accepts today — but the client wraps
@@ -166,6 +171,30 @@ func (e *eventEmitter) LibraryScanChanged(p scan.ProgressSnapshot) {
 // and a page showing them refetches its list. Satisfies libraryFrames, which paces it.
 func (e *eventEmitter) LibraryTitlesChanged() {
 	e.bus.Publish(events.Event{Type: "library_titles", Payload: opsapi.LibraryTitlesEvent{}})
+}
+
+// ViewingChanged publishes an empty `viewing` frame: a viewing started, moved channel or ended, and
+// Home reads who is watching again. The household-viewing tracker's OnChange.
+func (e *eventEmitter) ViewingChanged() {
+	e.bus.Publish(events.Event{Type: "viewing", Payload: opsapi.ViewingEvent{}})
+}
+
+// AccessChanged publishes an empty `access` frame: an invitation, account, session or paired
+// device changed, and People reads its lists again.
+func (e *eventEmitter) AccessChanged() {
+	e.bus.Publish(events.Event{Type: "access", Payload: opsapi.AccessEvent{}})
+}
+
+// DiagnosticEventsChanged publishes an empty `diagnostic_events` frame: diagnostic events were
+// stored, or verbose capture started or stopped. Paced by diagnosticFrames.
+func (e *eventEmitter) DiagnosticEventsChanged() {
+	e.bus.Publish(events.Event{Type: "diagnostic_events", Payload: opsapi.DiagnosticEventsEvent{}})
+}
+
+// DiagnosticProcessesChanged publishes an empty `diagnostic_processes` frame: a diagnostic process
+// started, wrote output or finished. Paced by diagnosticFrames.
+func (e *eventEmitter) DiagnosticProcessesChanged() {
+	e.bus.Publish(events.Event{Type: "diagnostic_processes", Payload: opsapi.DiagnosticProcessesEvent{}})
 }
 
 // LibraryRootsChanged publishes an empty `library_roots` frame: a media folder stopped or started

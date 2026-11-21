@@ -259,6 +259,8 @@ const AppShell = ({
               <Stack marginTop="auto" minWidth={0}>
                 <PressableRow
                   aria-label={`Loomarr ${serverVersion} — About`}
+                  // The member's plain version line below sits at the same 12/6, so the two agree.
+                  inset={{ x: 12, y: 6 }}
                   render={<Link to="/settings/system/about" />}
                 >
                   <Text as="span" textRole="mono" tone="secondary">
@@ -304,6 +306,8 @@ const AppShell = ({
             <PressableRow
               // The name holds every visible word, the avatar initials included (WCAG 2.5.3).
               aria-label={`Your account: ${accountInitials} ${userName}`}
+              // Tight, so the avatar lines up under the rail's icons and the footer stays compact.
+              inset={{ x: 4, y: 4 }}
               render={<Link to="/account" />}
             >
               <Stack align="center" direction="row" gap="2" minWidth={0}>

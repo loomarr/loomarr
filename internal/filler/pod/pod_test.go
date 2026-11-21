@@ -129,25 +129,16 @@ func TestAssemble_NoRepeatInWindow(t *testing.T) {
 func TestAssemble_FallbackLadder(t *testing.T) {
 	cat := sampleCatalog()
 
-	// A 1950s kids window: no exact match and nothing within a decade either, but kids ads
-	// exist → audience level.
-	//
-	// ⚠ **This was 1975 and had to move, because V51f changed what "widened" means.** The old
-	// rule bucketed to the containing DECADE (1975 → 1970–1979), so the catalog's 1985 clip was
-	// out and the window fell to `audience`. Widening now grows the range by ten years at each
-	// end (1975 → 1965–1985), which puts that 1985 clip IN — correctly: it really is within a
-	// decade of 1975. The clip played either way (the audience rung is any-era); only the
-	// reported rung changed. 1955 restores the case this test is actually about — a window with
-	// nothing near it at all.
+	// A 1950s kids window: no exact match and nothing within a decade either. Nothing further
+	// away airs (#3838 decision 21), so the break is the bumper card.
 	w50 := pod.Window{ChannelID: "ch", Seed: 5, Era: pod.Year(1955), Audience: pod.Kids, GapMs: 120000, PodMax: 4}
 	p50 := pod.Assemble(cat, w50, pod.Policy{}, nil)
-	if p50.MatchLevel != pod.MatchAudience {
-		t.Errorf("1955 kids window should fall to audience level, got %s", p50.MatchLevel)
+	if p50.MatchLevel != pod.MatchBumperCard {
+		t.Errorf("1955 kids window should fall to the card, got %s", p50.MatchLevel)
 	}
-	// A late_night window with only one late-night ad still fills; an audience with
-	// NO ads at all → bumper card.
-	wNone := pod.Window{ChannelID: "ch", Seed: 5, Era: pod.Year(1992), Audience: pod.Family, GapMs: 120000, PodMax: 4}
-	pNone := pod.Assemble(catNoFamily(), wNone, pod.Policy{}, nil)
+	// A kids window whose catalog holds only ads above its ceiling → bumper card.
+	wNone := pod.Window{ChannelID: "ch", Seed: 5, Era: pod.Year(1992), Audience: pod.Kids, GapMs: 120000, PodMax: 4}
+	pNone := pod.Assemble(catAboveKids(), wNone, pod.Policy{}, nil)
 	if pNone.MatchLevel != pod.MatchBumperCard {
 		t.Fatalf("a window with no matching ads should be bumper-card-only, got %s", pNone.MatchLevel)
 	}
@@ -259,8 +250,8 @@ func TestAssemble_NoAdsFillsWithStationMaterialBeforeTheCard(t *testing.T) {
 		}
 		got = append(got, e.Hash)
 	}
-	if !slices.Equal(got, []string{"id1", "id2"}) {
-		t.Errorf("station break = %v, want both resting idents, the one aired longest ago first", got)
+	if !slices.Equal(got, []string{"id1"}) {
+		t.Errorf("station break = %v, want the one resting ident aired longest ago, alone", got)
 	}
 
 	if p := pod.Assemble([]pod.Clip{{Hash: "long", Path: "long.mp4", Role: pod.StationID,
@@ -377,11 +368,11 @@ func ids(p pod.Pod) []string {
 	return out
 }
 
-// catNoFamily returns a catalog with no family/general commercials (only kids +
-// late_night), so a Family window finds nothing and hits the bumper card.
-func catNoFamily() []pod.Clip {
+// catAboveKids returns a catalog of only general and late-night commercials, so a kids window
+// finds nothing inside its ceiling and hits the bumper card.
+func catAboveKids() []pod.Clip {
 	return []pod.Clip{
-		{Path: "k1", Role: pod.Commercial, Era: 1992, Audience: pod.Kids, Category: "toys", DurationMs: 30000},
+		{Path: "g1", Role: pod.Commercial, Era: 1992, Audience: pod.General, Category: "toys", DurationMs: 30000},
 		{Path: "l1", Role: pod.Commercial, Era: 1992, Audience: pod.LateNight, Category: "cars", DurationMs: 30000},
 	}
 }

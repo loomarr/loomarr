@@ -1298,8 +1298,90 @@ func TestAFolderReleasedWhileListedIsNotWrittenBack(t *testing.T) {
 }
 
 // A folder released while a full pass lists another is not walked once the pass reaches it: the
-// pass read its roots before the release, and its files are forgotten already.
+// pass read its roots before the release, and its files are forgotten already. A folder never
+// walked yet, released during the household's first import, has no files to forget and is not
+// walked either; nor is one released while it is listed itself.
 func TestAFolderReleasedWhileAnotherIsListedIsNotWalked(t *testing.T) {
+	for _, c := range []struct {
+		name           string
+		walked, itself bool
+	}{
+		{"walked before", true, false},
+		{"first import", false, false},
+		{"first import, while listed itself", false, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ctx := context.Background()
+			h := newHarness(t)
+			other := filepath.Join(filepath.Dir(h.root), "second")
+			h.im.Disk = fakeDisk{readable: map[string]bool{h.root: true, other: true}}
+			if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: other, Readable: true}, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			h.file("Mike (2002)/Mike.mkv", 10)
+			for _, rel := range []string{"Oscar (2004)/Oscar.mkv", "Papa (2005)/Papa.mkv"} {
+				p := filepath.Join(other, filepath.FromSlash(rel))
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, make([]byte, 10), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if c.walked {
+				h.run()
+			}
+			released := ""
+			h.im.listed = func(root string) {
+				h.im.listed = nil
+				// Whichever root the pass lists first, it or the other is released meanwhile.
+				released = root
+				if !c.itself {
+					released = other
+					if root == other {
+						released = h.root
+					}
+				}
+				if err := h.st.SetLibraryRootInUse(ctx, released, false); err != nil {
+					t.Fatal(err)
+				}
+				if err := h.im.ForgetReleased(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			h.run()
+			if released == "" {
+				t.Fatal("the pass never listed a root")
+			}
+			if rows, err := h.st.LibraryFiles(ctx, released); err != nil || len(rows) != 0 {
+				t.Fatalf("the folder released mid-pass has %d rows, %v; want none", len(rows), err)
+			}
+		})
+	}
+}
+
+// releaseAtFirstWrite stops using a root at the first title the import writes for it, and stops
+// its walk as ForgetReleased does at once, before it waits for the import's lock.
+type releaseAtFirstWrite struct {
+	inventory.Service
+	authority inventory.AuthorityID
+	release   func()
+	done      bool
+}
+
+func (r *releaseAtFirstWrite) ApplySnapshot(ctx context.Context, s inventory.Snapshot) (inventory.ItemID, error) {
+	id, err := r.Service.ApplySnapshot(ctx, s)
+	if s.Origin.Authority == r.authority && !r.done {
+		r.done = true
+		r.release()
+	}
+	return id, err
+}
+
+// A folder never walked before, released while the first import writes its titles, keeps none of
+// them: the import writes each title as it goes and the folder's file rows only at its end, so
+// what it wrote is forgotten by the folder, not by its rows.
+func TestAFolderReleasedWhileItsTitlesAreWrittenKeepsNone(t *testing.T) {
 	ctx := context.Background()
 	h := newHarness(t)
 	other := filepath.Join(filepath.Dir(h.root), "second")
@@ -1308,7 +1390,8 @@ func TestAFolderReleasedWhileAnotherIsListedIsNotWalked(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.file("Mike (2002)/Mike.mkv", 10)
-	for _, rel := range []string{"Oscar (2004)/Oscar.mkv", "Papa (2005)/Papa.mkv"} {
+	rels := []string{"Oscar (2004)/Oscar.mkv", "Papa (2005)/Papa.mkv", "Quebec (2006)/Quebec.mkv"}
+	for _, rel := range rels {
 		p := filepath.Join(other, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
@@ -1317,28 +1400,32 @@ func TestAFolderReleasedWhileAnotherIsListedIsNotWalked(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	h.run()
-	released := ""
-	h.im.listed = func(root string) {
-		h.im.listed = nil
-		// Whichever root the pass lists first, the other is released meanwhile.
-		released = other
-		if root == other {
-			released = h.root
+	plain := h.im.Inventory
+	h.im.Inventory = &releaseAtFirstWrite{Service: plain, authority: inventory.AuthorityID(Authority(other)), release: func() {
+		if err := h.st.SetLibraryRootInUse(ctx, other, false); err != nil {
+			t.Error(err)
 		}
-		if err := h.st.SetLibraryRootInUse(ctx, released, false); err != nil {
+		h.im.mu.Lock()
+		if cancel := h.im.walking[other]; cancel != nil {
+			cancel(errReleased)
+		}
+		h.im.mu.Unlock()
+	}}
+	h.run()
+	if err := h.im.ForgetReleased(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range rels {
+		o := fileOrigin(other, rel)
+		item, ok, err := plain.Item(ctx, inventory.ItemRef{Origin: &o})
+		if err != nil {
 			t.Fatal(err)
 		}
-		if err := h.im.ForgetReleased(ctx); err != nil {
-			t.Fatal(err)
+		for _, io := range item.Origins {
+			if ok && io.Key == o && io.MissingAt.IsZero() {
+				t.Errorf("%s is still present in the released folder", rel)
+			}
 		}
-	}
-	h.run()
-	if released == "" {
-		t.Fatal("the pass never listed a root")
-	}
-	if rows, err := h.st.LibraryFiles(ctx, released); err != nil || len(rows) != 0 {
-		t.Fatalf("the folder released mid-pass has %d rows, %v; want none", len(rows), err)
 	}
 }
 

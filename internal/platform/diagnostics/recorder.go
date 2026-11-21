@@ -38,6 +38,10 @@ type Options struct {
 	MinLevel  Level
 	Now       func() time.Time
 	OnFailure func(error, int)
+	// OnChange runs after events are stored and after verbose capture starts or stops, so a page
+	// showing the log reads it again. It runs on the recorder's worker or the caller's goroutine,
+	// never under the recorder's locks, and must not block.
+	OnChange func()
 }
 
 // Recorder accepts events without waiting for persistence and owns one batching worker.
@@ -123,6 +127,15 @@ func (r *Recorder) RecordDurable(ctx context.Context, event Event) error {
 	if !r.acceptsEvent(event) {
 		return fmt.Errorf("diagnostics severity %q is filtered", event.Level)
 	}
+	err := r.writeDurable(ctx, event)
+	if err == nil {
+		// Outside the admission lock: the listener may log, and a log line takes the lock too.
+		r.changed()
+	}
+	return err
+}
+
+func (r *Recorder) writeDurable(ctx context.Context, event Event) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if r.closed {
@@ -136,6 +149,12 @@ func (r *Recorder) RecordDurable(ctx context.Context, event Event) error {
 		r.opts.OnFailure(err, 1)
 	}
 	return err
+}
+
+func (r *Recorder) changed() {
+	if r.opts.OnChange != nil {
+		r.opts.OnChange()
+	}
 }
 
 // Accepts reports whether a severity is eligible for durable recording. Filtering happens before
@@ -186,6 +205,7 @@ func (r *Recorder) StartVerboseCapture(duration time.Duration, subsystem, channe
 	r.captureMu.Lock()
 	r.capture = capture
 	r.captureMu.Unlock()
+	r.changed()
 	return capture, nil
 }
 
@@ -197,6 +217,7 @@ func (r *Recorder) StopVerboseCapture() VerboseCapture {
 	r.captureMu.Lock()
 	r.capture = VerboseCapture{}
 	r.captureMu.Unlock()
+	r.changed()
 	return VerboseCapture{}
 }
 
@@ -256,6 +277,9 @@ func (r *Recorder) run() {
 		cancel()
 		if err != nil && r.opts.OnFailure != nil {
 			r.opts.OnFailure(err, len(batch))
+		}
+		if err == nil {
+			r.changed()
 		}
 		batch = batch[:0]
 	}

@@ -98,8 +98,12 @@ It returns the Intent, bounded Attempt history, safe failure code and message, t
 the intent-bound Channel, the milestone and the server-derived permitted actions (`wait`, `review`,
 `retry`, `edit`, `check_ai`, `open_channel`). The frontend never reconstructs authorization or retry
 policy. `/v1/events` streams `suggestion` frames (`{jobId, phase, round}`) that only trigger a
-refetch; a dropped frame is a latency defect, not a correctness one. Phases are emitted inside the
-tool loop at the transition they describe and may repeat.
+refetch, and the Web client reads the Journey on them rather than polling it. Phases are emitted
+inside the tool loop at the transition they describe and may repeat; `done` follows the stored
+proposal and `failed` the stored failure. A stream that misses a frame is reconnected, and the
+reconnect reads the Journey again. An empty `proposal` frame follows each stored submission,
+approval and denial, whether a person or an automatic grant decided, so the requester sees a denial
+and every admin's approvals stay current without a reload.
 
 The builder shows one calm status message: no rounds, timers, percentages or checklists. A failure
 replaces progress with one plain explanation and the useful authorised action, and keeps the saved

@@ -1682,7 +1682,9 @@ func TestPropose_CatalogFingerprintCacheFailureFallsBackToMedia(t *testing.T) {
 	}
 }
 
-func TestSplitStage_HoldsCandidatesWithoutCertifiedAuthority(t *testing.T) {
+// Without a vision model no cut can be judged one whole spot, so a reel is settled with nothing cut
+// and nothing held for a person: no AI, no compilations (#3838 decision 11, #4409).
+func TestSplitStage_WithoutVisionCutsNothingAndHoldsNothing(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/1987.mp4", 70_000)
 	parent := st.clips[hash]
@@ -1723,17 +1725,17 @@ func TestSplitStage_HoldsCandidatesWithoutCertifiedAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != pipelinestate.VerdictReview || len(out.Spawned) != 0 || len(tools.cutCalls) != 0 {
-		t.Fatalf("result = %+v, cuts = %v; uncertified candidates materialized", out, tools.cutCalls)
+	if out.Verdict != pipelinestate.VerdictContinue || len(out.Spawned) != 0 || len(tools.cutCalls) != 0 {
+		t.Fatalf("result = %+v, cuts = %v; want the reel settled with nothing cut", out, tools.cutCalls)
 	}
-	persisted, err := st.GetSplitProposal(context.Background(), p.ID)
-	if err != nil {
-		t.Fatalf("reload held proposal: %v", err)
+	if !strings.Contains(out.Note, "dropped 1 cut") {
+		t.Errorf("note = %q, want the dropped cut recorded", out.Note)
 	}
-	for _, segment := range persisted.Segments {
-		if segment.HoldReason != string(filler.RejectStructureMissing) {
-			t.Fatalf("persisted segment = %+v, want missing certified assessment hold", segment)
-		}
+	if _, ok := st.proposals[p.ID]; ok {
+		t.Error("the proposal was left for a person to review")
+	}
+	if !st.clips[hash].IsComposite || st.clips[hash].Held {
+		t.Errorf("parent = %+v, want a visible, non-airable compilation", st.clips[hash])
 	}
 }
 
@@ -1771,13 +1773,24 @@ func TestSplitStage_AllDiscardedFinishesWithoutAnEmptyReview(t *testing.T) {
 	}
 }
 
-func TestSplitStage_PersistsWhyEverySegmentNeedsReview(t *testing.T) {
+// A cut the look judged part of a spot, or several, is dropped with its reason on the ladder; it
+// is never held for a person (#4409).
+func TestSplitStage_DropsACutThatIsNotOneWholeSpot(t *testing.T) {
+	for _, whole := range []split.WholeCut{split.WholePart, split.WholeSeveral, split.WholeUnsure} {
+		t.Run(string(whole), func(t *testing.T) { dropsCutJudged(t, whole) })
+	}
+}
+
+func dropsCutJudged(t *testing.T, whole split.WholeCut) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/unclassified.mp4", 30_000)
 	p := filler.SplitProposal{
 		ID: "sp_unclassified", ClipHash: hash, CreatedAt: time.Now(),
 		Segments: []split.Segment{{
-			Index: 0, StartMs: 0, EndMs: 30_000, Name: "unclassified part", Looked: true,
+			Index: 0, StartMs: 0, EndMs: 30_000, Name: "a cut", Looked: true,
+			Whole: whole, LookedRole: split.RoleCommercial,
+			// Clean sound, so the look's answer is the one that drops it.
+			Sound:              &split.CutSound{MedianDb: -22, StartDb: -40, EndDb: -40, InsideDb: -6},
 			BoundaryConfidence: 90, StartEvidence: "reel edge", EndEvidence: "black + silence",
 		}},
 	}
@@ -1797,15 +1810,14 @@ func TestSplitStage_PersistsWhyEverySegmentNeedsReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != pipelinestate.VerdictReview {
-		t.Fatalf("verdict = %v, want review", out.Verdict)
+	if out.Verdict != pipelinestate.VerdictContinue || len(out.Spawned) != 0 {
+		t.Fatalf("result = %+v, want the cut dropped and the reel settled", out)
 	}
-	persisted, err := st.GetSplitProposal(context.Background(), p.ID)
-	if err != nil {
-		t.Fatalf("reload held proposal: %v", err)
+	if !strings.Contains(out.Note, string(filler.RejectNotOneSpot)) {
+		t.Errorf("note = %q, want %q", out.Note, filler.RejectNotOneSpot)
 	}
-	if got := persisted.Segments[0].HoldReason; got != string(filler.RejectStructureMissing) {
-		t.Fatalf("persisted hold reason = %q, want %q", got, filler.RejectStructureMissing)
+	if _, ok := st.proposals[p.ID]; ok {
+		t.Error("the proposal was left for a person to review")
 	}
 }
 

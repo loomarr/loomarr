@@ -43,6 +43,11 @@ var ErrIngestUnavailable = errors.New("ingest tooling not present in this image"
 // configuration remedy: Settings → Filler opens it (§10, V34).
 var ErrSplitUnavailable = errors.New("splitting needs the filler drop-folder (filler.dir)")
 
+// ErrReelLetGo refuses to split a reel whose recording upkeep let go once every piece cut from it
+// was settled (#4421). Checked before the job starts, so the answer is a 409, not a missing-file
+// error frame minutes later.
+var ErrReelLetGo = errors.New("this reel's recording was let go once every ad cut from it was settled, so there is nothing left to split")
+
 // Launcher starts one request-launched operation under the generation that owns it: the work runs
 // to completion or until that generation shuts down, whatever happens to the request.
 type Launcher func(timeout time.Duration, run func(context.Context) error, done func(context.Context, error)) error
@@ -510,6 +515,11 @@ func (a *Operator) Split(ctx context.Context, clipID string) (string, error) {
 		return "", err
 	} else if !found {
 		return "", store.ErrNotFound
+	}
+	if row, found, err := a.c.SplitClips.GetClipPipeline(ctx, clipID); err != nil {
+		return "", err
+	} else if found && !row.FilesDeletedAt.IsZero() {
+		return "", ErrReelLetGo
 	}
 	jobID := a.c.NewID()
 	now := a.clock()

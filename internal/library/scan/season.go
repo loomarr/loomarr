@@ -2,6 +2,7 @@ package scan
 
 import (
 	"context"
+	"maps"
 	"path"
 	"regexp"
 	"slices"
@@ -138,8 +139,24 @@ func namesOther(season *mp.Record, n mp.Numbering, told string) bool {
 		if e.Numbering == nil || e.Numbering.Season == n.Season && e.Numbering.Episode >= n.Episode && e.Numbering.Episode <= max(n.Episode, n.EpisodeEnd) {
 			return false
 		}
-		return titled(&e, told)
+		return e.Descriptive != nil && namesAs(e.Descriptive.Title, told)
 	})
+}
+
+// namesAs says whether a file's title (told) is another entry's, as oneTitle reads them, but for
+// a one-word title within the other's words: "Storm" is not "The Storm Begins", though "Pilot" is
+// "Pilot (1)" and "Copper Gate" is "Copper Gate (2)". A word that short names many episodes' titles
+// in passing, and a file that names its own episode otherwise is no other's.
+func namesAs(title, told string) bool {
+	if !oneTitle(title, told) {
+		return false
+	}
+	a, b := wordsOf(title), wordsOf(told)
+	for _, set := range []map[string]bool{a, b} {
+		maps.DeleteFunc(set, func(w string, _ bool) bool { return digits(w) })
+	}
+	return min(len(a), len(b)) >= 2 || len(a) == len(b) ||
+		strings.ReplaceAll(normName(title), " ", "") == strings.ReplaceAll(normName(told), " ", "")
 }
 
 // apart says whether two titles share no word, small ones aside, and neither runs the other's

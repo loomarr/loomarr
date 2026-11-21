@@ -11,6 +11,7 @@ package pod
 
 import (
 	"math/rand"
+	"slices"
 	"sort"
 	"time"
 
@@ -41,7 +42,7 @@ type AiringHistory struct {
 // strictly before it and was recorded at least Settle before it. A zero cutoff counts all history.
 //
 // ⚠ Both cuts keep a break's snapshot fixed while the break airs, which a rebuild relies on: the
-// pod is assembled again at every clip's resolve, and a changed snapshot would reshuffle its tail.
+// pod is assembled again at every clip's resolve, and a changed snapshot would reshuffle the pod.
 // An airing at or after the break's start is the break's own (or later). An airing recorded after
 // the break's first clip was resolved can come from ANOTHER channel with an earlier start: a viewer
 // who tunes in there mid-clip records that clip, aired minutes ago, now. Playout resolves a break's
@@ -63,6 +64,54 @@ func ExposuresBefore(h AiringHistory, before time.Time) map[string]Exposure {
 		out[a.ClipHash] = e
 	}
 	return out
+}
+
+// maxEvening caps an evening: a run of viewing is cut into evenings of at most this long, so a
+// channel left on all night is not one evening of days.
+const maxEvening = 6 * time.Hour
+
+// EveningStartBefore is when the household's evening began, as seen by a break starting at
+// `before`: the earliest airing of the unbroken run that reaches back from `before`, where a
+// silence longer than eveningGap ends an evening (the rule that sizes the pool, SizePool), and a
+// run longer than maxEvening is cut into evenings of that length from its start. Zero when the
+// last airing is further back than that gap, or there is none: the break opens a new evening. The
+// airings are those ExposuresBefore counts, on every channel, so a repeat is judged by what the
+// household saw, not what one channel aired.
+func EveningStartBefore(h AiringHistory, before time.Time) time.Time {
+	var times []time.Time
+	for _, a := range h.Airings {
+		if !before.IsZero() && (!a.AiredAt.Before(before) || !a.RecordedAt.Before(before.Add(-h.Settle))) {
+			continue
+		}
+		times = append(times, a.AiredAt)
+	}
+	slices.SortFunc(times, func(a, b time.Time) int { return b.Compare(a) }) // newest first
+	edge, start := before, time.Time{}
+	for _, at := range times {
+		if edge.Sub(at) > eveningGap {
+			break
+		}
+		edge, start = at, at
+	}
+	if start.IsZero() {
+		return start
+	}
+	// Whole evenings of maxEvening have passed since the run began; this break is in the last.
+	return start.Add(before.Sub(start) / maxEvening * maxEvening)
+}
+
+// airedThisEvening reports whether the household has seen the clip since the evening began.
+func airedThisEvening(c Clip, w Window) bool {
+	if w.EveningStart.IsZero() {
+		return false
+	}
+	// Versions of one ad rest together (#2033), so a cut-down copy of an ad seen tonight is seen.
+	for _, id := range append([]string{c.ID()}, c.Variants...) {
+		if e, ok := w.Exposures[id]; ok && !e.LastPlayedAt.Before(w.EveningStart) {
+			return true
+		}
+	}
+	return false
 }
 
 // Pod is an assembled ad break (§10): an intro bumper → matched commercials →
@@ -106,9 +155,13 @@ type Entry struct {
 	Name            string
 	// NameSource is the catalogue provenance of Name (#1988): viewer routes show Name only when
 	// it is not a filename (ViewerName).
-	NameSource     clips.NameSource
-	Role           Role
-	DurationMs     int64
+	NameSource clips.NameSource
+	Role       Role
+	// DurationMs is how long the entry airs: the clip's air window, not its file (#3384).
+	DurationMs int64
+	// AirStartMs is where in the file the entry starts airing: playout seeks there, so the dead
+	// air the window leaves out never reaches the viewer (#3384). Zero airs from the start.
+	AirStartMs     int64
 	IsFallbackCard bool // the embedded default bumper card (bottom of the ladder)
 	// Era and Quality are carried purely so the guide's hover card can EXPLAIN a break
 	// (§12) — "1994 · 480p" tells a viewer the grain is authentic rather than broken.
@@ -143,8 +196,7 @@ type MatchLevel string
 
 const (
 	MatchExact      MatchLevel = "exact"       // exact-era + audience matches filled the pod
-	MatchWidened    MatchLevel = "widened"     // era widened to the decade / any-era to fill
-	MatchAudience   MatchLevel = "audience"    // any appropriate-audience clip, era ignored
+	MatchWidened    MatchLevel = "widened"     // era widened to the decade either side
 	MatchBumperCard MatchLevel = "bumper_card" // no ad fits: station material, else the embedded card — never dead air
 )
 
@@ -183,6 +235,10 @@ type Window struct {
 	// SnapshotAt is the break start, not wall-clock planning time, so a rebuild is deterministic.
 	Exposures  map[string]Exposure
 	SnapshotAt time.Time
+	// EveningStart is when the household's current evening began, learned from its viewing
+	// (EveningStartBefore); zero when none is under way. A break airs no ad that aired since then,
+	// on any channel (#3838 decision 1).
+	EveningStart time.Time
 	// Season is the household calendar at the break's start (season.go). The zero value names no
 	// holiday, so every clip is year-round.
 	Season schedule.HolidaySeason
@@ -455,9 +511,8 @@ func assembleBreak(catalog []Clip, w Window, policy Policy, used map[string]bool
 		pod.MatchLevel = MatchExact
 	}
 
-	// Spend what the ads left. A break is a slot of fixed length, and the card/flex that filled
-	// whatever the ads could not was the "commercial breaks feel short" complaint.
-	pod.fillTail(catalog, pools, w, policy, used, rng, w.GapMs-pod.TotalMs-returnMs, len(pinned)+len(commercials), &share)
+	// The slot is a ceiling the ads fill in rotation order (fillCommercials). What they leave is
+	// not handed to whichever clips are short enough to fit: that let length decide what airs.
 	pod.stationSegmentLast()
 
 	if ret != nil {
@@ -533,7 +588,7 @@ func clipToEntry(c Clip, w Window, policy Policy) Entry {
 	tier, _ := rotationRank(c, w, policy)
 	return Entry{
 		Path: c.Path, Hash: c.Hash, TunarrProgramID: c.TunarrProgramID,
-		Name: c.Name, NameSource: c.NameSource, Role: c.Role, DurationMs: c.DurationMs,
+		Name: c.Name, NameSource: c.NameSource, Role: c.Role, DurationMs: c.DurationMs, AirStartMs: c.AirStartMs,
 		// Display-only passengers (see Entry) — every entry gets them from one place, so
 		// a clip cannot reach the hover card with its metadata mysteriously absent.
 		Era: c.Era, Quality: c.Quality,
@@ -545,18 +600,25 @@ func clipToEntry(c Clip, w Window, policy Policy) Entry {
 }
 
 // bookendCandidates is every unused, in-season-or-year-round bumper/station-id in the channel's
-// language the window may draw on: the era-matching ones when there are any, else all of them.
+// language the window may draw on, inside the channel's audience ceiling: the era-matching ones
+// when there are any, else all of them. A bookend missing a fact (FactsComplete) is already gone.
 func bookendCandidates(catalog []Clip, w Window, policy Policy, used map[string]bool) []Clip {
+	bumpers := bookendPool(catalog, w, policy, used)
+	if era := filterEraWindows(bumpers, w.eraWindows()); len(era) > 0 {
+		return era
+	}
+	return bumpers
+}
+
+// bookendPool is every bookend the window may air, before the era preference narrows it.
+func bookendPool(catalog []Clip, w Window, policy Policy, used map[string]bool) []Clip {
 	var bumpers []Clip
 	for _, c := range catalog {
 		if c.IsBumper() && !taken(used, c) && !outOfSeason(c, w) && speaksTheChannelsLanguage(c, w, policy) {
 			bumpers = append(bumpers, c)
 		}
 	}
-	if era := filterEraWindows(bumpers, w.eraWindows()); len(era) > 0 {
-		return era
-	}
-	return bumpers
+	return filterAudience(bumpers, w.Audience)
 }
 
 // pickBumper chooses a bumper/station-id for a pod bookend, preferring era match,
@@ -582,6 +644,11 @@ func pickBumper(catalog []Clip, w Window, policy Policy, used map[string]bool, r
 	return clipToEntry(bumpers[rng.Intn(best)], w, policy), true
 }
 
+// maxStationClips is how many station clips a break with no ad holds: its station ID, and nothing
+// else (#3838 grill decision 22). A break reaches it only when no ad fits at all: a set whose ads
+// were all seen this evening repeats the oldest of them instead.
+const maxStationClips = 1
+
 // stationBreak fills a break that has no ad with bumpers and idents, in rotation order: never
 // aired, then least recently aired, resting ones last but still placed. A short pool is what puts
 // a break here (#2036), and a repeated ident is better than the card. It reports false when no
@@ -593,10 +660,11 @@ func stationBreak(catalog []Clip, w Window, policy Policy, used map[string]bool,
 	pod := Pod{MatchLevel: MatchBumperCard}
 	remainingMs := w.GapMs
 	for _, c := range cands {
-		if len(pod.Entries) >= maxTailClips {
+		if len(pod.Entries) >= maxStationClips {
 			break
 		}
-		if used[c.ID()] || c.DurationMs <= 0 || c.DurationMs > remainingMs {
+		// taken, not used: a placed station segment reserves the break's one slot for it.
+		if taken(used, c) || c.DurationMs <= 0 || c.DurationMs > remainingMs {
 			continue
 		}
 		pod.append(clipToEntry(c, w, policy), used)

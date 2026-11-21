@@ -35,6 +35,12 @@ tables:
       audience: >
         Who the clip suits: kids, family, general or late_night. Empty when not yet tagged.
       duration_ms: Length of the clip in milliseconds, measured from the file.
+      air_start_ms: >
+        Where in the file the clip starts airing, in milliseconds: past black that is also silent at
+        its start, but for a short pad. Set with air_end_ms by the pipeline's air-window sweep.
+      air_end_ms: >
+        Where in the file the clip stops airing, in milliseconds. 0 means the window has not been
+        measured and the clip airs whole; a break books air_end_ms - air_start_ms.
       source: >
         Where the clip came from: the id of the registered filler source that downloaded it (such
         as archive:<collection>), or filler-dir for a file dropped into the clip folder.
@@ -110,7 +116,7 @@ tables:
       - group: The file
         why: >
           One file per clip, and every read of a clip needs it; the hash is the clip's identity.
-        columns: [hash, path, tunarr_program_id, duration_ms, quality, source, license, created_at, updated_at]
+        columns: [hash, path, tunarr_program_id, duration_ms, air_start_ms, air_end_ms, quality, source, license, created_at, updated_at]
       - group: What it is
         why: >
           The facts selection and research read for every clip, one value each. Repeated facts
@@ -414,7 +420,7 @@ tables:
       reject_reason: >
         Why the clip was rejected, as a code: unprobeable, too_short, no_audio, no_video,
         black_content, silent_content, too_quiet, unplayable, defect, language, duplicate,
-        screening, sliver or unidentified. Empty when not rejected.
+        screening, sliver, undecided or unidentified. Empty when not rejected.
       reject_detail: >
         The measurement behind the rejection, such as a duration under the minimum or the language
         heard.
@@ -564,6 +570,23 @@ tables:
       clip_hash: The clip that aired (clips.hash).
       aired_at_ms: When the clip was scheduled to start, in Unix milliseconds.
       recorded_at_ms: When playout recorded the airing, in Unix milliseconds.
+
+  - name: filler_breaks
+    about: >
+      Each commercial break Loomarr has planned for a channel. Reconcile assembles a break once, ahead
+      of time, and cuts the break's slot to the media its pod holds, so the programme resumes when the
+      break's own clips end. The guide, the previews and the stream read the stored pod, so what the
+      guide shows is what airs.
+    retention: >
+      Reconcile keeps the breaks of the window on air and deletes a channel's other breaks, including
+      those behind the playout anchor and those whose start moved. A channel's breaks go with it.
+    columns:
+      channel_id: The channel the break is on (channels.id).
+      start_ms: When the break starts on the channel's timeline, in Unix milliseconds.
+      ceiling_ms: The slot length the pod was assembled to, in milliseconds.
+      length_ms: The media the pod holds, in milliseconds. The break slot is this long once planned.
+      pod_json: The break's clips in order, as the pod assembler returned them.
+      planned_at: When the break was planned, in Unix seconds.
 
   - name: filler_context_reports
     about: >

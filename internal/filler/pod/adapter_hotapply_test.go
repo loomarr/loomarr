@@ -127,8 +127,8 @@ func TestPodAdapter_ChannelBreakDurationOverridesGlobal(t *testing.T) {
 
 func TestPodAdapter_PlayableDurationIsOnlyRealClipMedia(t *testing.T) {
 	clips := []pod.Clip{
-		{Hash: "a", Path: "a.mp4", Role: pod.Commercial, DurationMs: 18_000},
-		{Hash: "b", Path: "b.mp4", Role: pod.Commercial, DurationMs: 22_000},
+		{Hash: "a", Path: "a.mp4", Role: pod.Commercial, Era: 1992, Audience: pod.General, DurationMs: 18_000},
+		{Hash: "b", Path: "b.mp4", Role: pod.Commercial, Era: 1992, Audience: pod.General, DurationMs: 22_000},
 	}
 	adapter := pod.NewAdapter(stubCatalog{clips: clips}, nil, func() pod.Policy {
 		return pod.Policy{BreakDurationMs: 5 * 60_000}

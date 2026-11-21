@@ -367,8 +367,11 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 			results = append(results, RootResult{Root: root.Path, State: RootNested})
 			continue
 		}
-		if im.releasedSince(root.Path, begun) {
-			// Released while the pass listed another root: its files are forgotten already.
+		// Released while the pass listed another root: its files are forgotten already, and one
+		// never walked before has none to forget.
+		if still, err := im.stillScanned(ctx, root.Path); err != nil {
+			return nil, err
+		} else if !still || im.releasedSince(root.Path, begun) {
 			reports[root.Path].close()
 			continue
 		}
@@ -388,6 +391,17 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 		}
 		im.run.Lock()
 		held = true
+		// One released while it was listed, before any of its files were written, is not written.
+		if ok && err == nil {
+			still, serr := im.stillScanned(ctx, root.Path)
+			if serr != nil {
+				cancel(nil)
+				return nil, serr
+			}
+			if !still {
+				err = errReleased
+			}
+		}
 		var waiting []pending
 		if ok && err == nil {
 			result, waiting, err = im.importListed(walk, root.Path, idx, nil, listed, result, since, reports[root.Path])
@@ -401,11 +415,7 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 		if err != nil && ctx.Err() == nil && (errors.Is(err, errReleased) || errors.Is(context.Cause(walk), errReleased)) {
 			// Released while it was walked: what was written of it is forgotten now, and the
 			// other roots go on.
-			now, err := im.Store.LibraryRoots(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if err := im.forgetReleased(ctx, scannedRoots(now.Roots)); err != nil {
+			if err := im.forgetWalked(ctx, root.Path); err != nil {
 				return nil, err
 			}
 			continue
@@ -420,58 +430,6 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 	im.setProgress(func(p *Progress) { p.Roots = results })
 	// The names this pass gave are the ones that stand; a name gone since the last is let go.
 	im.named, im.namedNow = im.namedNow, nil
-	return queue, nil
-}
-
-// RunFolders makes a pass over the named folders of one walked root: the ones a change signal
-// named. It writes and removes only what is under them, under the same removal guard, and does not
-// count as the root's scan. A root that is not walked on its own is left to the full pass.
-func (im *Importer) RunFolders(ctx context.Context, root string, dirs []string) error {
-	if len(dirs) == 0 || (im.Enabled != nil && !im.Enabled()) {
-		return nil
-	}
-	queue, err := im.importFolders(ctx, root, dirs)
-	if err != nil {
-		return err
-	}
-	_, err = im.readHeaders(ctx, queue)
-	return err
-}
-
-// importFolders walks and imports the named folders of one root, and returns the files waiting
-// for their header.
-func (im *Importer) importFolders(ctx context.Context, root string, dirs []string) ([]pending, error) {
-	im.run.Lock()
-	defer im.run.Unlock()
-	all, err := im.Store.LibraryRoots(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if !scannedRoots(all.Roots)[root] {
-		return nil, nil
-	}
-	idx := im.arrIndex(ctx, all.Paths, false)
-	im.setProgress(func(p *Progress) { p.ArrIncomplete = !idx.complete })
-	// A folder pass is a few folders a change named: it is not step 1 of an import, and shows
-	// only the header reads it queues.
-	result, queue, err := im.scanRoot(ctx, root, idx, dirs, nil)
-	if err != nil {
-		return nil, fmt.Errorf("scan %s: %w", root, err)
-	}
-	im.recordReadability(ctx, result)
-	im.setProgress(func(p *Progress) {
-		for i := range p.Roots {
-			if p.Roots[i].Root == root {
-				// The names it could not read outside the folders it walked still stand.
-				for _, rel := range p.Roots[i].Unreadable {
-					if !under(filepath.Join(root, filepath.FromSlash(rel)), dirs) {
-						result.Unreadable = append(result.Unreadable, rel)
-					}
-				}
-				p.Roots[i] = result
-			}
-		}
-	})
 	return queue, nil
 }
 

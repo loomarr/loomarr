@@ -426,7 +426,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
     if (active === "watching" && openingChannelId) void controller.tuneChannel(openingChannelId);
   }, [active, controller, openingChannelId]);
   // Requests loads with the app so an admin's tab badge counts before they open it.
-  const requests = usePairedRequests({ credential, session });
+  const requests = usePairedRequests({ credential, events: client.events, session });
   const haptic = useHaptic();
   const requestsController = useMemo(
     () => withDecisionHaptic(requests.controller, haptic),

@@ -16,7 +16,6 @@ import type { PodTimelineProps } from "./pod-timeline.type";
 const MATCH: Record<PodPoolDTOMatchLevel, { label: string; tone: StatusTone } | null> = {
   exact: null,
   widened: { label: "Era widened", tone: "warn" },
-  audience: { label: "Any era", tone: "warn" },
   bumper_card: { label: "Bumper only", tone: "off" },
 };
 

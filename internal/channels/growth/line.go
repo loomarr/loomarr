@@ -1,12 +1,16 @@
 // Package growth decides what may join a channel by itself (#4140 step 2, #4333): the line its
-// seeds draw, how a library title sits against that line, and how big the channel should be.
+// seeds draw, how a library title sits against that line, how big the channel should be, and the
+// nightly fill that adds the titles that fit.
 //
-// It is pure: no store, no library, no model. The channel's stored scope and audience ceiling are
-// applied by the scheduler's own filter before a title reaches here; the line only narrows that,
-// so growth can never admit a title the channel's limits refuse.
+// The line, the classification, the target and the plan are pure: no store, no library, no model.
+// Fill is the nightly job that reads the library and the channels, and adds what the plan chose
+// through a proposal the binder unions onto the lineup. The channel's stored scope and audience
+// ceiling apply first (schedule.Admitted); the line only narrows them, so growth can never admit a
+// title the channel's limits refuse.
 package growth
 
 import (
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -56,6 +60,36 @@ type Line struct {
 	Odd []OddSeed
 }
 
+// Words is the line in plain words: what the model is asked against, and what a verdict is kept
+// with, so a verdict given against an older line is asked again.
+func (l Line) Words() string {
+	switch {
+	case l.Fixed:
+		return "fixed"
+	case l.Franchise > 0:
+		return fmt.Sprintf("one franchise (collection %d)", l.Franchise)
+	}
+	kinds := make([]string, 0, len(l.Kinds))
+	for _, k := range l.Kinds {
+		if k == Film {
+			kinds = append(kinds, "films")
+		} else {
+			kinds = append(kinds, "series")
+		}
+	}
+	out := strings.Join(kinds, " and ")
+	if l.YearTo != 0 {
+		out += fmt.Sprintf(" from %d to %d", l.YearFrom, l.YearTo)
+	}
+	if l.MaxRating != "" {
+		out += ", rated up to " + string(l.MaxRating)
+	}
+	if len(l.Genres) > 0 {
+		out += ", " + strings.Join(l.Genres, " and ")
+	}
+	return out
+}
+
 // OddSeed is a seed outside what most seeds share, and how.
 type OddSeed struct {
 	Key     provision.Key
@@ -98,11 +132,24 @@ func DrawLine(seeds []Title, margin int) Line {
 			l.Odd = append(l.Odd, OddSeed{Key: s.Key, Reasons: why})
 			continue
 		}
-		if r, ok := s.Rating.Rank(); ok && r > maxRank {
+		if r, ok := lineRank(s.Rating); ok && r > maxRank {
 			maxRank, l.MaxRating = r, s.Rating
 		}
 	}
 	return l
+}
+
+// lineRank is a rating's place for growth: the audience ladder's rank, with NC-17 a step above
+// the R and TV-MA it shares the top rank with. The ladder keeps them together because a TV-MA
+// ceiling must admit any adult film; a line is narrower than a ceiling, and a channel whose seeds
+// stop at R has given no sign it airs NC-17.
+func lineRank(r rating.Rating) (int, bool) {
+	n, ok := r.Rank()
+	n *= 2
+	if r == "NC-17" {
+		n++
+	}
+	return n, ok
 }
 
 // sharedKinds is every kind at least a quarter of the seeds are, and at least two: a mixed channel
