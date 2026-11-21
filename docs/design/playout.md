@@ -480,8 +480,11 @@ tone-mapping. A new stream **drops a rung before it is refused**, and a live ses
   CPU, and a step up applies only if it fits beside the other leases.
 - **CPU cost is learned from delivered media.** An item's encoder CPU is divided by the frames it put on
   the timeline, not by its slot, so an early close cannot over-count.
-- **Background media work yields to playback.** While any live transcode runs
-  (`PlaybackNeedsHeadroom`), capped background work such as filler processing waits.
+- **Background media work yields when playout is near capacity.** Filler media work waits while
+  live playout could not take two more streams like the ones running: one for the filler work, one
+  for the next viewer (`PlaybackBusy`). Each measured limit is checked: encoder sessions, GPU share
+  and CPU allowance. An install with no measurement keeps the older rule and waits while any live
+  transcode runs. The boot capacity probe still yields to any live transcode.
 
 The dashboard's `capacity` and the status endpoint's `budget` read this ledger. The ledger still has a
 `copy` class that costs nothing, but packager items are always transcoded, so it is unused there.

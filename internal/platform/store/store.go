@@ -23,6 +23,7 @@ import (
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/qualitystore"
@@ -121,6 +122,10 @@ type ChannelStore interface {
 	// a targeted revision-checked write used after the lineup is bound.
 	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 	ListChannels(ctx context.Context) ([]Channel, error)
+	// GrowthReviews is the model's verdict on each title it reviewed for the channel (#4333);
+	// SaveGrowthReview replaces one.
+	GrowthReviews(ctx context.Context, channelID string) (map[provision.Key]channelstore.GrowthReview, error)
+	SaveGrowthReview(ctx context.Context, r channelstore.GrowthReview) error
 	// ChannelRequesters maps channel id to the name of the person whose request made it (#1663).
 	ChannelRequesters(ctx context.Context) (map[string]string, error)
 	// DeleteChannel hard-deletes the revision-matched Channel and only its channel-scoped
@@ -381,6 +386,10 @@ type ClipStore interface {
 	// ONLY writer of `is_composite`; UpsertClip omits it so a re-sync cannot flip a confirmed
 	// composite back to an airable clip. Keyed by hash.
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
+	// ClipsWithoutAirWindow and SetClipAirWindow back the air-window sweep (#3384). The setter is
+	// the ONLY writer of `air_start_ms`/`air_end_ms`; UpsertClip leaves them alone.
+	ClipsWithoutAirWindow(ctx context.Context) ([]clipstore.Clip, error)
+	SetClipAirWindow(ctx context.Context, hash string, startMs, endMs int64, at time.Time) error
 	// SetClipArtworkImages records the image-service identities of a clip's still and hover loop
 	// (§22, V52 phase 6). Sole writer of those columns — they are omitted from UpsertClip's
 	// DO UPDATE so a folder re-sync cannot blank them.
@@ -485,6 +494,18 @@ type InteractiveOperationStore interface {
 	GetInteractiveOperation(ctx context.Context, id string) (InteractiveOperation, error)
 	RecoverInterruptedInteractiveOperations(ctx context.Context, at time.Time) (int, error)
 	PurgeFinishedInteractiveOperations(ctx context.Context, before time.Time) (int, error)
+}
+
+// FillerBreakStore keeps each channel's assembled breaks (#3838 step 2): reconcile plans them ahead
+// and writes them; the guide, the previews and the stream read them.
+type FillerBreakStore interface {
+	// SaveFillerBreaks stores breaks, replacing any at the same channel and start.
+	SaveFillerBreaks(ctx context.Context, breaks []clipstore.FillerBreak) error
+	// ListFillerBreaks returns a channel's stored breaks starting in [from, to], earliest first.
+	ListFillerBreaks(ctx context.Context, channelID string, from, to time.Time) ([]clipstore.FillerBreak, error)
+	// KeepFillerBreaks deletes a channel's stored breaks starting in [from, until) other than those
+	// starting at `starts`; a zero bound is open.
+	KeepFillerBreaks(ctx context.Context, channelID string, from, until time.Time, starts []time.Time) error
 }
 
 // AiringStore records what actually went to air — written from playout only.
@@ -706,6 +727,7 @@ type Store interface {
 	ClipStore
 	InteractiveOperationStore
 	AiringStore
+	FillerBreakStore
 	ActivityStore
 	InvitationStore
 	PasswordRecoveryStore

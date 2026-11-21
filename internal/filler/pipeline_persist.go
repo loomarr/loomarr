@@ -46,7 +46,9 @@ func (p *Pipeline) save(ctx context.Context, row pipelinestate.ClipPipeline, cli
 // marked rejected and still airable until the next pass re-saves it — noisy but recoverable, and
 // strictly better than failing the run and losing the reason too.
 func (p *Pipeline) tombstone(ctx context.Context, clip clipstore.Clip) {
-	if clip.Path == "" {
+	// An already-removed clip keeps the time it was removed: re-stamping it would restart anything
+	// timed from that moment.
+	if clip.Path == "" || !clip.RemovedAt.IsZero() {
 		return
 	}
 	if _, err := p.clips.SetClipsRemoved(ctx, []string{clip.Path}, p.now().UTC()); err != nil && p.log != nil {

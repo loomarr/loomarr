@@ -33,10 +33,6 @@ type builder struct {
 	// dirs are the folders, relative to the root, that hold a file the pass identified: a series'
 	// key that is none is a loose show's name (joinShows).
 	dirs map[string]bool
-	// films are the catalog ids each film's folder's copies are one title by (filmCopyID's key):
-	// the first grounded copy the pass writes claims the folder's key with its own, and a copy a
-	// catalog grounds as another film stays its own.
-	films map[string][]inventory.ExternalID
 }
 
 type seriesSeen struct {
@@ -524,39 +520,18 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 		}
 	}
 	// A film's copies in its own folder are one title too, though the catalog grounds only one:
-	// "Harrow Fen (2011) - X265 EAC3 5.1" beside the Radarr copy its NFO names.
+	// "Harrow Fen (2011) - X265 EAC3 5.1" beside the Radarr copy its NFO names. The id is
+	// inferred, so the store joins a copy a catalog grounds as another film to no title by it.
 	if id.kind == mp.KindMovie {
-		if key := filmCopyID(b.root, file.Rel, known.Name, known.ProductionYear); key != "" && b.claimFilm(key, snapshot.ExternalIDs) {
+		if key := filmCopyID(b.root, file.Rel, known.Name, known.ProductionYear); key != "" {
 			snapshot.ExternalIDs = append(snapshot.ExternalIDs, inventory.ExternalID{Namespace: filmCopiesNamespace, Value: key})
 		}
 	}
 	return snapshot, waiting
 }
 
-// claimFilm says whether a film's file with these catalog ids (ids, the scanner's own aside) is
-// one of the copies its folder's key joins. One no catalog grounds is; so is the first grounded
-// one, which claims the key with its ids, and any sharing one of them. One grounded as another
-// film, by ids none of the claim's are, is that film: the catalog's word beats the folder's name.
-func (b *builder) claimFilm(key string, ids []inventory.ExternalID) bool {
-	own := slices.DeleteFunc(slices.Clone(ids), func(id inventory.ExternalID) bool {
-		return id.Namespace == partsNamespace || id.Namespace == copiesNamespace || id.Namespace == filmCopiesNamespace
-	})
-	if len(own) == 0 {
-		return true
-	}
-	if b.films == nil {
-		b.films = map[string][]inventory.ExternalID{}
-	}
-	claim, ok := b.films[key]
-	if !ok {
-		b.films[key] = own
-		return true
-	}
-	return slices.ContainsFunc(own, func(id inventory.ExternalID) bool { return slices.Contains(claim, id) })
-}
-
 // filmCopiesNamespace is copiesNamespace's for a film's copies. It is never listed.
-const filmCopiesNamespace = "loomarr-film"
+const filmCopiesNamespace = inventory.InferredNamespacePrefix + "film"
 
 // filmCopyID is the id a film's copies in its own folder share: the folder, with its title and
 // year, for a file whose name gives that title, small words aside, and that year or none ("Harrow
@@ -590,7 +565,7 @@ func filmCopyID(root, rel, title string, year int) string {
 
 // copiesNamespace is the scanner's own id for an episode's copies: every copy of one episode
 // carries the same value, so they are one title before any catalog names it. It is never listed.
-const copiesNamespace = "loomarr-episode"
+const copiesNamespace = inventory.InferredNamespacePrefix + "episode"
 
 // episodeCopyID is the id an episode's copies share: its series folder, its own mark's season and
 // episodes, and its title (the catalog's, or else the one its name gives after the mark), small
@@ -681,12 +656,32 @@ func (b *builder) resolveNamed(ctx context.Context, origin inventory.OriginKey, 
 	// does one whose record is another title than the files name: an NFO copied from another
 	// film's folder, or an id typed wrong.
 	fromFiles := out.match.Basis == string(mp.BasisSidecar) || out.match.Basis == string(mp.BasisEmbeddedID)
+	setAside := false
 	if ok && titled && fromFiles && namesAnother(out.resolved, named, rec) {
-		ok, rec = false, mp.Record{}
+		ok, rec, setAside = false, mp.Record{}, true
 		out.match, out.catalog = librarystore.LibraryMatch{}, librarystore.LibraryCatalogKey{}
 	}
+	// Before the catalog answers, the NFO's own words are all there is: one that names the first
+	// film inside its sequel's folder is set aside the same way.
+	if !ok && titled && fromFiles && in.Kind == mp.KindMovie {
+		for _, own := range in.Records {
+			if own.Source.Basis == mp.BasisSidecar && own.Descriptive != nil &&
+				namesItsSequel(own.Descriptive.Title, named.name.title, named.folder.title) {
+				setAside = true
+				out.match, out.catalog, out.waiting = librarystore.LibraryMatch{}, librarystore.LibraryCatalogKey{}, false
+				break
+			}
+		}
+	}
 	if !ok && !waiting && titled && fromFiles && b.im.catalogMisses(ctx, out.catalog) {
-		out.match = librarystore.LibraryMatch{}
+		out.match, setAside = librarystore.LibraryMatch{}, true
+	}
+	if setAside {
+		// An id that grounds nothing joins nothing either: the store would make the sequel whose
+		// NFO was copied from the first film's folder a copy of the first film.
+		out.resolved.IDs = slices.DeleteFunc(slices.Clone(out.resolved.IDs), func(id precedence.Picked[mp.ExternalID]) bool {
+			return id.From.Basis == mp.BasisSidecar || id.From.Basis == mp.BasisEmbeddedID
+		})
 	}
 	if ok {
 		out.record = &rec

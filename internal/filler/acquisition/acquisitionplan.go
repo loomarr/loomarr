@@ -283,7 +283,13 @@ func CoverageGapsFrom(pool pod.PoolReport, targets pod.PoolTargets, thisYear int
 		}
 	}
 	gaps := CoverageGaps{Eras: pod.NormalizeEraWindows(eras), Short: short}
-	if len(pool.Channels) > 0 && pool.Bookends == 0 {
+	// A role gap is a live channel whose own audience ceiling admits no bookend, which includes a
+	// catalog with none at all.
+	bookendless := pool.Bookends == 0
+	for _, ch := range pool.Channels {
+		bookendless = bookendless || ch.Report.Bookends == 0
+	}
+	if len(pool.Channels) > 0 && bookendless {
 		gaps.Roles = []clips.Role{clips.Bumper, clips.StationID}
 	}
 	return gaps

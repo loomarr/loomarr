@@ -339,6 +339,9 @@ func (s *Service) runWorkflow(ctx context.Context, work workflow.Work) {
 		s.failWorkflow(ctx, work, fmt.Errorf("persist proposal: %w", err), 0, false)
 		return
 	}
+	// The proposal is stored, so the run is done whatever follows: the done frame goes out even if
+	// settling below panics, and screens waiting on this run read it again.
+	defer s.emitPhase(work.JobID, PhaseDone, 0)
 	s.recordSuggestionQuality(ctx, work.JobID, work.Attempt, duration, completed.Proposal, nil)
 	row := proposalstore.Proposal{
 		ID: completed.ID, JobID: completed.JobID, Status: "submitted", CreatedBy: completed.CreatedBy,
@@ -347,7 +350,6 @@ func (s *Service) runWorkflow(ctx context.Context, work workflow.Work) {
 	s.settleSubmitted(ctx, proposalstore.Job{
 		ID: work.JobID, Kind: work.Kind, CreatedBy: work.CreatedBy, ChannelID: work.ChannelID, Attempts: work.Attempt,
 	}, row)
-	s.emitPhase(work.JobID, PhaseDone, 0)
 }
 
 func (s *Service) failWorkflow(ctx context.Context, work workflow.Work, cause error, measuredDuration time.Duration, measured bool) {

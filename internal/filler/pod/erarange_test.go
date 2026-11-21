@@ -116,7 +116,7 @@ func TestCandidatePools_EraWindowUnionKeepsGapAtEveryRung(t *testing.T) {
 
 // ⚠ A clip whose era Loomarr could not ground (year 0) satisfies NO range — the same shape as the
 // audience rule, and for the same reason: "we could not tell" must never quietly count as "yes".
-// It still reaches the audience rung, so it is not invisible, just not claimed as era-accurate.
+// A clip with no era fits no channel at all (FactsComplete), so it never airs.
 func TestEraRange_UngroundedYearIsNeverInsideARange(t *testing.T) {
 	if (EraRange{From: 1990, To: 1999}).Contains(0) {
 		t.Error("a clip with no grounded era counted as inside 1990–1999")

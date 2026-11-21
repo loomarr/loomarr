@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,8 +30,11 @@ func (s *sqlStore) ApplyInventorySnapshot(ctx context.Context, snapshot inventor
 	if err != nil {
 		return "", err
 	}
-	grounded, err := s.inventoryItemIDsByExternalIDs(ctx, tx, clean.Kind, clean.Origin, clean.ExternalIDs)
+	grounded, via, err := s.inventoryItemIDsByExternalIDs(ctx, tx, clean.Kind, clean.Origin, clean.ExternalIDs)
 	if err != nil {
+		return "", err
+	}
+	if clean.ExternalIDs, err = s.keepCatalogsWord(ctx, tx, clean, grounded, via); err != nil {
 		return "", err
 	}
 	if err := s.keepSameEpisode(ctx, tx, clean, grounded); err != nil {
@@ -56,10 +60,24 @@ func (s *sqlStore) ApplyInventorySnapshot(ctx context.Context, snapshot inventor
 			return "", inventory.ErrIdentityConflict
 		}
 		orphan, itemID = itemID, target
-	} else if joined && len(grounded) == 0 {
-		// The origin joined its item by ids that now name nothing: it goes back to its own item,
-		// such as a file whose link to another title was taken back.
-		orphan, itemID = itemID, home
+	} else if exact && len(grounded) == 0 {
+		// The origin's ids name no other item: it belongs at its own place. One that joined its
+		// item by ids it no longer has goes there, such as a file whose link to another title was
+		// taken back; so does one whose item a catalog names as another title, the copy that
+		// founded a film's item among them, once its NFO says it is another film.
+		own, err := s.inventoryOwnPlace(ctx, tx, clean, home)
+		if err != nil {
+			return "", err
+		}
+		leave := joined
+		if !leave && own != itemID {
+			if leave, err = s.inventoryCatalogsDisagree(ctx, tx, clean, itemID); err != nil {
+				return "", err
+			}
+		}
+		if leave && own != itemID {
+			orphan, itemID = itemID, own
+		}
 	}
 	if len(grounded) > 1 {
 		return "", inventory.ErrIdentityConflict
@@ -69,7 +87,9 @@ func (s *sqlStore) ApplyInventorySnapshot(ctx context.Context, snapshot inventor
 			itemID = id
 		}
 		if itemID == "" {
-			itemID = home
+			if itemID, err = s.inventoryOwnPlace(ctx, tx, clean, home); err != nil {
+				return "", err
+			}
 		}
 	}
 
@@ -282,17 +302,122 @@ func (s *sqlStore) keepSameEpisode(ctx context.Context, tx *sql.Tx, snapshot inv
 	return nil
 }
 
-// inventoryItemIDsByExternalIDs finds the items of kind that carry any of externalIDs. An id grounds
-// only its own kind: TVDB numbers shows and episodes from one sequence, so a show's id can also be
-// some unrelated episode's.
+// keepCatalogsWord leaves out of grounded each item that only inferred ids ground and that a
+// catalog names as another title: another of its origins carries a catalog id of a namespace the
+// snapshot's catalog ids have too, and none of them matched. A second film kept in a film's folder
+// is its own title, whichever pass finds it. A snapshot no catalog grounds joins as before. It
+// returns the snapshot's ids less the inferred ones that grounded only items left out, so the file
+// does not carry the folder's key to a title of its own.
+func (s *sqlStore) keepCatalogsWord(
+	ctx context.Context,
+	tx *sql.Tx,
+	snapshot inventory.Snapshot,
+	grounded map[inventory.ItemID]bool,
+	via map[inventory.ItemID][]inventory.ExternalID,
+) ([]inventory.ExternalID, error) {
+	dropped := map[inventory.ItemID]bool{}
+	for item := range grounded {
+		if slices.ContainsFunc(via[item], func(id inventory.ExternalID) bool { return !id.Inferred() }) {
+			continue
+		}
+		disagree, err := s.inventoryCatalogsDisagree(ctx, tx, snapshot, item)
+		if err != nil {
+			return nil, err
+		}
+		if disagree {
+			dropped[item] = true
+		}
+	}
+	if len(dropped) == 0 {
+		return snapshot.ExternalIDs, nil
+	}
+	for item := range dropped {
+		delete(grounded, item)
+	}
+	// An inferred id that still grounds a kept item stays; one that grounded only dropped items goes.
+	kept := map[inventory.ExternalID]bool{}
+	for item := range grounded {
+		for _, id := range via[item] {
+			kept[id] = true
+		}
+	}
+	return slices.DeleteFunc(slices.Clone(snapshot.ExternalIDs), func(id inventory.ExternalID) bool {
+		if !id.Inferred() || kept[id] {
+			return false
+		}
+		for item := range dropped {
+			if slices.Contains(via[item], id) {
+				return true
+			}
+		}
+		return false
+	}), nil
+}
+
+// inventoryCatalogsDisagree reports whether a catalog names item as another title than the
+// snapshot's: another of its origins carries a catalog id of a namespace the snapshot's catalog
+// ids have too, and none of the snapshot's matches one of the item's. A snapshot no catalog
+// grounds disagrees with none.
+func (s *sqlStore) inventoryCatalogsDisagree(ctx context.Context, tx *sql.Tx, snapshot inventory.Snapshot, item inventory.ItemID) (bool, error) {
+	catalogs := map[string]bool{}
+	own := map[inventory.ExternalID]bool{}
+	for _, id := range snapshot.ExternalIDs {
+		if !id.Inferred() {
+			catalogs[id.Namespace] = true
+			own[id] = true
+		}
+	}
+	if len(catalogs) == 0 {
+		return false, nil
+	}
+	rows, err := tx.QueryContext(ctx, s.ph(`SELECT namespace, external_id FROM inventory_external_ids
+		WHERE item_id = ? AND NOT (authority_id = ? AND external_item_id = ?)`),
+		string(item), string(snapshot.Origin.Authority), snapshot.Origin.ExternalItemID)
+	if err != nil {
+		return false, fmt.Errorf("read inventory item catalogs: %w", err)
+	}
+	shared, agree := false, false
+	for rows.Next() {
+		var id inventory.ExternalID
+		if err := rows.Scan(&id.Namespace, &id.Value); err != nil {
+			_ = rows.Close()
+			return false, fmt.Errorf("scan inventory item catalog: %w", err)
+		}
+		shared = shared || catalogs[id.Namespace]
+		agree = agree || own[id]
+	}
+	if err := rows.Close(); err != nil {
+		return false, fmt.Errorf("close inventory item catalogs: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("read inventory item catalog rows: %w", err)
+	}
+	return shared && !agree, nil
+}
+
+// inventoryOwnPlace is the item an origin no id joins to another belongs to: the one it founds,
+// home, unless a catalog names home as another title, for a file whose item another copy of a
+// different film still holds. That origin's place is an item of its own beside home.
+func (s *sqlStore) inventoryOwnPlace(ctx context.Context, tx *sql.Tx, snapshot inventory.Snapshot, home inventory.ItemID) (inventory.ItemID, error) {
+	disagree, err := s.inventoryCatalogsDisagree(ctx, tx, snapshot, home)
+	if err != nil || !disagree {
+		return home, err
+	}
+	return inventory.ItemID(stableInventoryID("item", string(snapshot.Origin.Authority), snapshot.Origin.ExternalItemID, "apart")), nil
+}
+
+// inventoryItemIDsByExternalIDs finds the items of kind that carry any of externalIDs, and which
+// of them grounds each. An id grounds only its own kind: TVDB numbers shows and episodes from one
+// sequence, so a show's id can also be some unrelated episode's.
 func (s *sqlStore) inventoryItemIDsByExternalIDs(
 	ctx context.Context,
 	tx *sql.Tx,
 	kind inventory.ItemKind,
 	origin inventory.OriginKey,
 	externalIDs []inventory.ExternalID,
-) (map[inventory.ItemID]bool, error) {
+) (map[inventory.ItemID]bool, map[inventory.ItemID][]inventory.ExternalID, error) {
 	ids := make(map[inventory.ItemID]bool)
+	via := make(map[inventory.ItemID][]inventory.ExternalID)
 	for _, externalID := range externalIDs {
 		// The origin's own ids, as it was last written, are the ones this write replaces: only
 		// another origin's ground it. A copy linked to another title follows that title's item
@@ -303,24 +428,25 @@ func (s *sqlStore) inventoryItemIDsByExternalIDs(
 			  AND NOT (e.authority_id = ? AND e.external_item_id = ?)`),
 			externalID.Namespace, externalID.Value, string(kind), string(origin.Authority), origin.ExternalItemID)
 		if err != nil {
-			return nil, fmt.Errorf("find grounded inventory identity: %w", err)
+			return nil, nil, fmt.Errorf("find grounded inventory identity: %w", err)
 		}
 		for rows.Next() {
 			var id inventory.ItemID
 			if err := rows.Scan(&id); err != nil {
 				_ = rows.Close()
-				return nil, fmt.Errorf("scan grounded inventory identity: %w", err)
+				return nil, nil, fmt.Errorf("scan grounded inventory identity: %w", err)
 			}
 			ids[id] = true
+			via[id] = append(via[id], externalID)
 		}
 		if err := rows.Close(); err != nil {
-			return nil, fmt.Errorf("close grounded inventory identity rows: %w", err)
+			return nil, nil, fmt.Errorf("close grounded inventory identity rows: %w", err)
 		}
 		if err := rows.Err(); err != nil {
-			return nil, fmt.Errorf("read grounded inventory identity rows: %w", err)
+			return nil, nil, fmt.Errorf("read grounded inventory identity rows: %w", err)
 		}
 	}
-	return ids, nil
+	return ids, via, nil
 }
 
 func (s *sqlStore) InventoryItem(ctx context.Context, ref inventory.ItemRef) (inventory.Item, bool, error) {

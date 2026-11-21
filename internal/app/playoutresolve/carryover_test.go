@@ -23,6 +23,13 @@ import (
 type windowDecks struct {
 	window time.Duration
 	asked  []time.Time
+	turns  []time.Time // the anchors TurnedWindow was asked to plan from
+}
+
+func (d *windowDecks) TurnedWindow(ctx context.Context, id string, at, turnAnchor time.Time) ([]schedule.Slot, error) {
+	d.turns = append(d.turns, turnAnchor)
+	_, slots, _, _, err := d.CyclePreview(ctx, id, at)
+	return slots, err
 }
 
 func (d *windowDecks) CyclePreview(_ context.Context, _ string, at time.Time) (
@@ -131,6 +138,21 @@ func TestAiringAt_CarriesTheCrossingProgrammeOverTheBoundary(t *testing.T) {
 		if got.LibraryItemID != tc.want || got.Offset != tc.wantOffset {
 			t.Errorf("at +%v: airing %s at offset %v, want %s at %v", tc.at, got.LibraryItemID, got.Offset, tc.want, tc.wantOffset)
 		}
+	}
+}
+
+// Past the turn, the next window airs with its breaks planned from the turn's anchor, the anchor
+// reconcile will commit: a planned break airs its stored pod and ends when the pod does, rather than
+// airing its full slot with the break card filling the rest until reconcile runs (#3838 step 2).
+func TestAiringAt_ATurnedWindowIsPlannedFromTheTurn(t *testing.T) {
+	t.Parallel()
+	r, w0 := carryOverResolver(w0At(70 * time.Minute))
+	if _, _, err := r.acceptedCycle(context.Background(), "ch1", w0.Add(70*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	turns := r.engine.(*windowDecks).turns
+	if len(turns) != 1 || !turns[0].Equal(w0.Add(66*time.Minute)) {
+		t.Fatalf("turned window planned from %v, want once from the turn at 01:06", turns)
 	}
 }
 

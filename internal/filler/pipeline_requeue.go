@@ -9,9 +9,9 @@ import (
 
 // requeueResumableSplitReviews returns review rows to the split stage when it can now progress them
 // without a person — incomplete detection, a missing structure decision or shadow observation, a
-// duplicate or below-floor fragment, an unchecked segment. It is data-selected rather than
-// version-selected: once curated/classified, those markers disappear or become checked, so a restart
-// does not loop a genuinely ambiguous proposal back through the machine.
+// duplicate or below-floor fragment, an unchecked segment, and, with splitting on, any reel with
+// cuts at all (#4409). It cannot loop: with splitting on the rung cuts, drops or defers a reel
+// with cuts and never returns it to review.
 func (p *Pipeline) requeueResumableSplitReviews(ctx context.Context) (int, error) {
 	return p.requeueSplitReviews(ctx, func(s *SplitStage) (map[string]struct{}, error) {
 		return s.resumableReviewHashes(ctx)

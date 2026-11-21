@@ -24,7 +24,7 @@ import (
 // The numbers the maintainer chose from the measured install (#4333, 2026-11-15).
 const (
 	Margin       = 3    // years either side of the seeds' span
-	Bar          = 0.5  // share of the line's genres a clear fit carries
+	Bar          = 0.5  // genre share a clear fit reaches both ways (see Line.Classify)
 	MaxShowShare = 0.15 // the largest share of a day one show may take: 7 shows
 )
 
@@ -38,6 +38,7 @@ type FillStore interface {
 	LibraryTitles(ctx context.Context, since time.Time) ([]librarystore.LibraryTitle, error)
 	LibraryItemFacts(ctx context.Context, ids []string) (map[string]librarystore.LibraryItemFacts, error)
 	SeriesEpisodeTotals(ctx context.Context) (map[string]librarystore.SeriesEpisodes, error)
+	GrowthReviews(ctx context.Context, channelID string) (map[provision.Key]channelstore.GrowthReview, error)
 }
 
 // Recorder records a ready-made proposal for an existing channel (workflow.Workflow).
@@ -93,7 +94,7 @@ type library struct {
 // Run fills every channel that grows. One channel's failure is logged and skipped; a run in which
 // every attempted channel failed returns those failures.
 func (f *Fill) Run(ctx context.Context) (grown int, err error) {
-	lib, err := f.loadLibrary(ctx)
+	lib, err := loadLibrary(ctx, f.store)
 	if err != nil {
 		return 0, err
 	}
@@ -137,7 +138,11 @@ func (f *Fill) fillChannel(ctx context.Context, ch channelstore.Channel, lib lib
 	} else if busy {
 		return 0, nil // a proposal is already in flight for this channel; the next night tries again
 	}
-	picks, items := plan(ch, lib, withUnclear)
+	reviews, err := f.store.GrowthReviews(ctx, ch.ID)
+	if err != nil {
+		return 0, err
+	}
+	picks, items := plan(ch, lib, reviews, withUnclear)
 	if len(picks) == 0 {
 		return 0, nil
 	}
@@ -160,8 +165,44 @@ func (f *Fill) fillChannel(ctx context.Context, ch channelstore.Channel, lib lib
 	return len(picks), nil
 }
 
+// channelView is a channel as growth sees it: the line its seeds draw, what it carries and needs,
+// and the library titles its scope, ceiling and holidays admit that it does not carry yet.
+type channelView struct {
+	line       Line
+	carried    Carried
+	need       Need
+	candidates []Candidate
+	byKey      map[provision.Key]int // a candidate's library title
+}
+
 // plan is what joins ch tonight, as picks and as the proposal items that carry them.
-func plan(ch channelstore.Channel, lib library, withUnclear bool) ([]Pick, []proposals.ProposalItem) {
+func plan(ch channelstore.Channel, lib library, reviews map[provision.Key]channelstore.GrowthReview, withUnclear bool) ([]Pick, []proposals.ProposalItem) {
+	v := view(ch, lib)
+	if v.line.Fixed {
+		return nil, nil
+	}
+	picks := Plan(v.line, v.candidates, v.carried, TargetFor(v.need, MaxShowShare), Bar, ch.Policy.Declined,
+		judgedAgainst(v.line, reviews), withUnclear)
+	items := make([]proposals.ProposalItem, 0, len(picks))
+	for _, p := range picks {
+		t := lib.titles[v.byKey[p.Key]]
+		mt := provision.Movie
+		if t.candidate.Title.Kind == Series {
+			mt = provision.Series
+		}
+		confidence := 0.9
+		if p.Fit == Unclear {
+			confidence = 0.6
+		}
+		items = append(items, proposals.ProposalItem{MediaType: mt, TMDBID: t.tmdb, TVDBID: t.tvdb, Name: t.name,
+			Year: t.candidate.Title.Year, InLibrary: true, LibraryItemID: t.libraryItemID,
+			OfficialRating: string(t.candidate.Title.Rating), Genres: t.candidate.Title.Genres,
+			Confidence: confidence, Source: "growth"})
+	}
+	return picks, items
+}
+
+func view(ch channelstore.Channel, lib library) channelView {
 	carriedKeys := map[int]bool{}
 	var seeds []Title
 	var carried Carried
@@ -190,7 +231,7 @@ func plan(ch channelstore.Channel, lib library, withUnclear bool) ([]Pick, []pro
 	}
 	line := DrawLine(seeds, Margin)
 	if line.Fixed {
-		return nil, nil
+		return channelView{line: line}
 	}
 	need := Need{DailyAirtime: DailyAirtime}
 	if total := seriesMs + filmMs; total > 0 {
@@ -224,28 +265,11 @@ func plan(ch channelstore.Channel, lib library, withUnclear bool) ([]Pick, []pro
 			cands = append(cands, lib.titles[byEntry[e.Key]].candidate)
 		}
 	}
-	picks := Plan(line, cands, carried, TargetFor(need, MaxShowShare), Bar, ch.Policy.Declined, withUnclear)
-	items := make([]proposals.ProposalItem, 0, len(picks))
-	for _, p := range picks {
-		t := lib.titles[byEntry[p.Key]]
-		mt := provision.Movie
-		if t.candidate.Title.Kind == Series {
-			mt = provision.Series
-		}
-		confidence := 0.9
-		if p.Fit == Unclear {
-			confidence = 0.6
-		}
-		items = append(items, proposals.ProposalItem{MediaType: mt, TMDBID: t.tmdb, TVDBID: t.tvdb, Name: t.name,
-			Year: t.candidate.Title.Year, InLibrary: true, LibraryItemID: t.libraryItemID,
-			OfficialRating: string(t.candidate.Title.Rating), Genres: t.candidate.Title.Genres,
-			Confidence: confidence, Source: "growth"})
-	}
-	return picks, items
+	return channelView{line: line, carried: carried, need: need, candidates: cands, byKey: byEntry}
 }
 
-func (f *Fill) loadLibrary(ctx context.Context) (library, error) {
-	titles, err := f.store.LibraryTitles(ctx, time.Time{})
+func loadLibrary(ctx context.Context, st FillStore) (library, error) {
+	titles, err := st.LibraryTitles(ctx, time.Time{})
 	if err != nil {
 		return library{}, fmt.Errorf("growth: library titles: %w", err)
 	}
@@ -253,11 +277,11 @@ func (f *Fill) loadLibrary(ctx context.Context) (library, error) {
 	for _, t := range titles {
 		ids = append(ids, t.ID)
 	}
-	facts, err := f.store.LibraryItemFacts(ctx, ids)
+	facts, err := st.LibraryItemFacts(ctx, ids)
 	if err != nil {
 		return library{}, fmt.Errorf("growth: library facts: %w", err)
 	}
-	totals, err := f.store.SeriesEpisodeTotals(ctx)
+	totals, err := st.SeriesEpisodeTotals(ctx)
 	if err != nil {
 		return library{}, fmt.Errorf("growth: episode totals: %w", err)
 	}
@@ -293,6 +317,18 @@ func (f *Fill) loadLibrary(ctx context.Context) (library, error) {
 		}
 	}
 	return lib, nil
+}
+
+// judgedAgainst is the model's verdict on each title, counting only verdicts given against line:
+// one given against an older line is asked again, and until then the title has none.
+func judgedAgainst(line Line, reviews map[provision.Key]channelstore.GrowthReview) func(provision.Key) Judgement {
+	words := line.Words()
+	return func(k provision.Key) Judgement {
+		if r, ok := reviews[k]; ok && r.Line == words {
+			return Judgement(r.Verdict)
+		}
+		return ""
+	}
 }
 
 func kindOfKey(k provision.Key) Kind {

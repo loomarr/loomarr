@@ -44,6 +44,7 @@ import { PausedCover } from "./paused-cover";
 import { qualityOptionsFor } from "./quality-options";
 import { sheetFor } from "./sheet-for";
 import { StoppedCover } from "./stopped-cover";
+import { untilNowEnds } from "./until-now-ends";
 import { useExpiryNotice } from "./use-expiry-notice";
 import { useStationIdent } from "./use-station-ident";
 import { useVolumeLevel } from "./use-volume-level";
@@ -133,10 +134,10 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   const tracksBody = unwrap(tracks.data);
 
   // The chrome's data — the channel's schedule strip (programmes and the breaks between them, each
-  // with its stills and every spot in a break). Refetched on an interval so the live edge and what's
-  // coming stay current as programmes roll.
+  // with its stills and every spot in a break). A schedule change reads it again on the channel's
+  // frame; time alone changes it as the airing on now ends, so it is read again then (#3352).
   const timeline = channelsApi.useChannelTimeline(channel.id, undefined, {
-    query: { enabled: !paused, retry: false, refetchInterval: 30_000 },
+    query: { enabled: !paused, retry: false },
   });
   const timelineBody = unwrap(timeline.data);
   const airings = timelineBody?.airings ?? [];
@@ -145,6 +146,13 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     serverAtProjection === undefined
       ? undefined
       : serverAtProjection + Math.max(0, Date.now() - timeline.dataUpdatedAt);
+  const nowEndsInMs = untilNowEnds(airings, serverAtProjection);
+  const { refetch: refetchTimeline } = timeline;
+  useEffect(() => {
+    if (paused || nowEndsInMs === undefined) return;
+    const timer = setTimeout(() => void refetchTimeline(), nowEndsInMs);
+    return () => clearTimeout(timer);
+  }, [paused, nowEndsInMs, refetchTimeline]);
   const viewerTimeMs = player.liveTransport.state.viewerTimeMs;
   useWatchTelemetry({
     channelId: channel.id,

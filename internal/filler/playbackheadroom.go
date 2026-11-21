@@ -14,15 +14,16 @@ import (
 //
 // Filler media work is background batch work in the same container as the app and the live
 // streams. A transcode that starts while a channel is playing competes with that stream for CPU,
-// so the pipeline asks before starting one and yields. The interface is deliberately one method:
-// the playout ResourceBudget implements it, busy while a live transcode holds a lease.
+// so the pipeline asks before starting one and yields. The playout ResourceBudget implements it,
+// busy while live playout is near its measured capacity.
 type PlaybackHeadroom interface {
 	// PlaybackBusy reports whether media work should wait, with a short operator-facing reason
 	// for the log line.
 	PlaybackBusy() (busy bool, reason string)
-	// BackgroundContext derives the context a preemptible rung runs under. It ends the moment a
-	// live transcode is admitted, so a viewer's tune never waits on filler work (#2121).
-	BackgroundContext(ctx context.Context) (context.Context, context.CancelFunc)
+	// MediaWorkContext derives the context a preemptible rung runs under. It ends when a live
+	// transcode is admitted and leaves playout tight, so a viewer's tune never waits on filler work
+	// (#2121). Overdue work starts even while playout is tight, and still yields to that admission.
+	MediaWorkContext(ctx context.Context, overdue bool) (context.Context, context.CancelFunc)
 }
 
 // PlaybackYield bounds how long a media rung waits for playback to clear.
@@ -33,13 +34,22 @@ type PlaybackYield struct {
 	// rest of THIS pass is told playback is busy, so a long broadcast day defers work rather than
 	// stalling the scheduler's single media worker.
 	MaxWait time.Duration
+	// Overdue is how long a clip may wait at one media rung before it stops waiting for playback:
+	// it then starts even beside a busy playout, and still yields to a tune that leaves no room.
+	// Without a bound a household that always watches starves filler indefinitely.
+	Overdue time.Duration
 	// Sleep is the wait itself; nil uses a context-aware timer. A seam for tests.
 	Sleep func(context.Context, time.Duration) error
 }
 
-// DefaultPlaybackYield polls every 5 s for up to 2 minutes.
+// DefaultPlaybackYield polls every 5 s for up to 2 minutes, and stops waiting after a day.
 func DefaultPlaybackYield() PlaybackYield {
-	return PlaybackYield{Poll: 5 * time.Second, MaxWait: 2 * time.Minute}
+	return PlaybackYield{Poll: 5 * time.Second, MaxWait: 2 * time.Minute, Overdue: 24 * time.Hour}
+}
+
+// overdue reports whether a clip queued at its rung since `queued` has waited past the bound.
+func (y PlaybackYield) overdue(queued, now time.Time) bool {
+	return y.Overdue > 0 && !queued.IsZero() && now.Sub(queued) >= y.Overdue
 }
 
 func (y PlaybackYield) sleep(ctx context.Context, d time.Duration) error {
@@ -78,11 +88,11 @@ func preemptedByPlayback(c StageCost) bool {
 // runYielding runs a preemptible rung under the playback budget's background context. When that
 // context ends while the pass's own has not, playback took the machine: the rung yields as a
 // deferral (no attempt spent, due next pass) and the rest of this pass starts no media work.
-func (p *Pipeline) runYielding(ctx context.Context, s *spend, stage Stage, clip clipstore.Clip) (StageResult, error) {
+func (p *Pipeline) runYielding(ctx context.Context, s *spend, stage Stage, clip clipstore.Clip, overdue bool) (StageResult, error) {
 	if p.headroom == nil || !preemptedByPlayback(stage.Cost()) {
 		return p.runStage(ctx, stage, clip)
 	}
-	bctx, cancel := p.headroom.BackgroundContext(ctx)
+	bctx, cancel := p.headroom.MediaWorkContext(ctx, overdue)
 	defer cancel()
 	out, err := p.runStage(bctx, stage, clip)
 	if err != nil && bctx.Err() != nil && ctx.Err() == nil {
@@ -96,12 +106,18 @@ func (p *Pipeline) runYielding(ctx context.Context, s *spend, stage Stage, clip 
 
 // waitForHeadroom blocks (bounded) until playback leaves room for a media rung. It returns false
 // when the rung should not start now: playback stayed busy for the whole bound, or the pass ended.
-func (p *Pipeline) waitForHeadroom(ctx context.Context, s *spend, id pipelinestate.StageID, c StageCost) bool {
+// An overdue rung does not wait.
+func (p *Pipeline) waitForHeadroom(ctx context.Context, s *spend, id pipelinestate.StageID, c StageCost, overdue bool) bool {
 	if p.headroom == nil || !yieldsToPlayback(c) {
 		return true
 	}
 	busy, reason := p.headroom.PlaybackBusy()
 	if !busy {
+		return true
+	}
+	if overdue {
+		p.logger().Info("filler pipeline: media work has waited past its bound — starting beside playback",
+			"stage", string(id), "reason", reason, "bound", p.yield.Overdue.String())
 		return true
 	}
 	if s.playbackBusy {

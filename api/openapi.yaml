@@ -1,5 +1,8 @@
 components:
   schemas:
+    AccessEvent:
+      additionalProperties: false
+      type: object
     AcquisitionArtifactOutcomeDTO:
       additionalProperties: false
       properties:
@@ -1347,7 +1350,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         name:
@@ -1360,6 +1362,8 @@ components:
         reason:
           description: Why the clip is not a candidate; absent when it is one
           enum:
+            - facts
+            - era
             - role
             - duration
             - quality
@@ -2760,7 +2764,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         rungs:
@@ -2811,7 +2814,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
       required:
@@ -2965,6 +2967,27 @@ components:
         - slug
         - label
         - axis
+      type: object
+    CutSound:
+      additionalProperties: false
+      properties:
+        endDb:
+          format: double
+          type: number
+        insideDb:
+          format: double
+          type: number
+        medianDb:
+          format: double
+          type: number
+        startDb:
+          format: double
+          type: number
+      required:
+        - medianDb
+        - startDb
+        - endDb
+        - insideDb
       type: object
     CycleSlotDTO:
       additionalProperties: false
@@ -3470,6 +3493,12 @@ components:
         - userCode
         - expiresAt
         - interval
+      type: object
+    DiagnosticEventsEvent:
+      additionalProperties: false
+      type: object
+    DiagnosticProcessesEvent:
+      additionalProperties: false
       type: object
     DiscoverFillerOutputBody:
       additionalProperties: false
@@ -8979,6 +9008,10 @@ components:
     PipelineOverviewDTO:
       additionalProperties: false
       properties:
+        awaitingSplit:
+          description: Reels held until splitting is certified; nobody needs to act
+          format: int64
+          type: integer
         complete:
           format: int64
           type: integer
@@ -9012,6 +9045,7 @@ components:
         - inProgress
         - scheduled
         - needsDecision
+        - awaitingSplit
         - ready
         - complete
         - rejected
@@ -9266,7 +9300,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         totalMs:
@@ -9300,7 +9333,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         name:
@@ -9453,7 +9485,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         totalMs:
@@ -9899,6 +9930,9 @@ components:
         - jobId
         - status
         - proposal
+      type: object
+    ProposalEvent:
+      additionalProperties: false
       type: object
     ProposalItem:
       additionalProperties: false
@@ -11848,6 +11882,7 @@ components:
         - suggest.max_acquisitions
         - job.recurate.schedule
         - job.growth.schedule
+        - job.growth_review.schedule
         - recurate.min_score_pct
         - recurate.max_titles
         - channel.reconcile_every
@@ -12010,6 +12045,7 @@ components:
         - SuggestMaxAcquisitions
         - JobRecurateSchedule
         - JobGrowthSchedule
+        - JobGrowthReviewSchedule
         - RecurateMinScorePct
         - RecurateMaxTitles
         - ChannelReconcileEvery
@@ -12574,12 +12610,16 @@ components:
           type: string
         looked:
           type: boolean
+        lookedRole:
+          type: string
         name:
           type: string
         nameEvidence:
           type: string
         nameOrigin:
           type: string
+        sound:
+          $ref: "#/components/schemas/CutSound"
         startEvidence:
           type: string
         startMs:
@@ -12597,6 +12637,8 @@ components:
           type: string
         unsplittable:
           type: boolean
+        whole:
+          type: string
       required:
         - index
         - startMs
@@ -12640,12 +12682,16 @@ components:
           type: string
         looked:
           type: boolean
+        lookedRole:
+          type: string
         name:
           type: string
         nameEvidence:
           type: string
         nameOrigin:
           type: string
+        sound:
+          $ref: "#/components/schemas/CutSound"
         startEvidence:
           type: string
         startMs:
@@ -12663,6 +12709,8 @@ components:
           type: string
         unsplittable:
           type: boolean
+        whole:
+          type: string
       required:
         - index
         - startMs
@@ -13955,6 +14003,9 @@ components:
         - channelId
         - since
         - you
+      type: object
+    ViewingEvent:
+      additionalProperties: false
       type: object
     Vocabulary:
       additionalProperties: false
@@ -16684,6 +16735,24 @@ paths:
                   oneOf:
                     - properties:
                         data:
+                          $ref: "#/components/schemas/AccessEvent"
+                        event:
+                          const: access
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event access
+                      type: object
+                    - properties:
+                        data:
                           $ref: "#/components/schemas/ActivityEvent"
                         event:
                           const: activity
@@ -16735,6 +16804,42 @@ paths:
                         - data
                         - event
                       title: Event database
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/DiagnosticEventsEvent"
+                        event:
+                          const: diagnostic_events
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event diagnostic_events
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/DiagnosticProcessesEvent"
+                        event:
+                          const: diagnostic_processes
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event diagnostic_processes
                       type: object
                     - properties:
                         data:
@@ -16936,6 +17041,24 @@ paths:
                       type: object
                     - properties:
                         data:
+                          $ref: "#/components/schemas/ProposalEvent"
+                        event:
+                          const: proposal
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event proposal
+                      type: object
+                    - properties:
+                        data:
                           $ref: "#/components/schemas/SettingsEvent"
                         event:
                           const: settings
@@ -16987,6 +17110,24 @@ paths:
                         - data
                         - event
                       title: Event title
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/ViewingEvent"
+                        event:
+                          const: viewing
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event viewing
                       type: object
                 title: Server Sent Events
                 type: array

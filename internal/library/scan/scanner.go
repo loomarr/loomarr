@@ -190,6 +190,11 @@ func (s *Scanner) ArrChanged(ctx context.Context, authority string, folders []st
 // passFolders passes over each changed folder once it is due, until ctx ends.
 func (s *Scanner) passFolders(ctx context.Context) {
 	var wake <-chan time.Time
+	// A pass's header reads go on in the background, as a full pass's do: the stage waits while
+	// the household watches, and the next folders' titles are not held behind it. A pass that
+	// finds the stage reading hands its files over and is done at once.
+	var reads sync.WaitGroup
+	defer reads.Wait()
 	for {
 		select {
 		case <-ctx.Done():
@@ -199,9 +204,18 @@ func (s *Scanner) passFolders(ctx context.Context) {
 		}
 		due, next := s.dueFolders(time.Now())
 		for _, root := range slices.Sorted(maps.Keys(due)) {
-			if err := s.Importer.RunFolders(ctx, root, due[root]); err != nil && ctx.Err() == nil {
-				s.Importer.log().Warn("library scan: a folder pass failed", "root", root, "err", err)
+			read, err := s.Importer.WalkFolders(ctx, root, due[root])
+			if err != nil {
+				if ctx.Err() == nil {
+					s.Importer.log().Warn("library scan: a folder pass failed", "root", root, "err", err)
+				}
+				continue
 			}
+			reads.Go(func() {
+				if err := read(); err != nil && ctx.Err() == nil {
+					s.Importer.log().Warn("library scan: a folder pass's header reads failed", "root", root, "err", err)
+				}
+			})
 		}
 		if len(due) > 0 {
 			s.mu.Lock()

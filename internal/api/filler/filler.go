@@ -737,13 +737,13 @@ type ChannelFitDTO struct {
 	// ⚠ `bumper_card` here means "this clip is not a candidate", NOT "this channel falls back to
 	// the card" — the same word carries both meanings because it is the bottom of one ladder.
 	// `reason` disambiguates: a rejected clip always carries one, a PINNED clip never does.
-	Level string `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The rung this clip would be drawn from; bumper_card means it is not a candidate (see reason)"`
+	Level string `json:"level" enum:"exact,widened,bumper_card" doc:"The rung this clip would be drawn from; bumper_card means it is not a candidate (see reason)"`
 	// Reason names the predicate that rejected the clip, absent when it was not rejected.
 	//
 	// ⚠ A CODE, never a sentence: the frontend owns the wording (the §11 refusal-code
 	// precedent), because a server sentence cannot be translated and cannot link to the setting
 	// that caused it.
-	Reason string `json:"reason,omitempty" enum:"role,duration,quality,category,audience,geography,excluded,season,language" doc:"Why the clip is not a candidate; absent when it is one"`
+	Reason string `json:"reason,omitempty" enum:"facts,era,role,duration,quality,category,audience,geography,excluded,season,language" doc:"Why the clip is not a candidate; absent when it is one"`
 	// Pinned / Excluded are the operator's explicit override for this clip on this channel.
 	//
 	// ⚠ Both can be true, and EXCLUDED WINS — assembly seeds excluded ids into the used-set

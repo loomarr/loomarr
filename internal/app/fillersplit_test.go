@@ -333,6 +333,30 @@ func TestSplit_NoDropFolderIsUnavailable(t *testing.T) {
 	}
 }
 
+// A reel upkeep let go (#4421) is refused before any job starts: its recording is gone, and the
+// caller gets a 409 saying so rather than a missing-file error frame from a detection pass.
+func TestSplit_ALetGoReelIsRefusedSynchronously(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	a, st := newSplitAdapter(t, events.NewBus(), true)
+	now := time.Now().UTC()
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, AcquisitionID: "run-1", Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusDone,
+		Disposition: pipelinestate.DispositionComplete, EnrolledAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetClipComposite(ctx, compHash, true, now); err != nil {
+		t.Fatal(err)
+	}
+	if retired, err := st.RetireSettledReel(ctx, compHash, now); err != nil || !retired {
+		t.Fatalf("RetireSettledReel = %v, %v; want the reel let go", retired, err)
+	}
+	if _, err := a.Split(ctx, compHash); !errors.Is(err, operator.ErrReelLetGo) {
+		t.Errorf("Split of a let-go reel = %v, want ErrReelLetGo", err)
+	}
+}
+
 // A missing clip is a SYNCHRONOUS not-found: the caller gets its 404 in the
 // response, not as an SSE error frame seconds later.
 func TestSplit_MissingClipFailsSynchronously(t *testing.T) {

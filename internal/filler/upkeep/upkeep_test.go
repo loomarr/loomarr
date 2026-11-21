@@ -38,6 +38,8 @@ type fakeStore struct {
 	retires int
 	// artifacts is each fetched clip's acquisition, by clip hash.
 	artifacts map[string]acquisition.Artifact
+	// reaped and proposals are a reel's tombstone and whether a split proposal is left for it.
+	reaped, proposals map[string]bool
 }
 
 func (f *fakeStore) AcquisitionArtifactForClip(_ context.Context, _, clipHash string) (acquisition.Artifact, bool, error) {
@@ -67,6 +69,48 @@ func (f *fakeStore) RetireReadyClip(_ context.Context, hash string, at time.Time
 	r.FilesDeletedAt = at
 	c.RemovedAt = at
 	f.rows[hash], f.clips[hash] = r, c
+	return true, nil
+}
+
+// settledReel applies the SQL store's rule (records.settledReelWhere): a fetched composite off the
+// belt, not let go, with no proposal left and every present piece in a final state.
+func (f *fakeStore) settledReel(hash string) bool {
+	r, c := f.rows[hash], f.clips[hash]
+	if r.Disposition != pipelinestate.DispositionComplete || r.AcquisitionID == "" || !r.FilesDeletedAt.IsZero() ||
+		!c.IsComposite || !c.RemovedAt.IsZero() || f.reaped[hash] || f.proposals[hash] {
+		return false
+	}
+	for _, k := range f.clips {
+		if k.ParentHash != hash || !k.RemovedAt.IsZero() {
+			continue
+		}
+		kr, ok := f.rows[k.Hash]
+		if !ok || !slices.Contains([]pipelinestate.Disposition{pipelinestate.DispositionReady, pipelinestate.DispositionRejected,
+			pipelinestate.DispositionDismissed, pipelinestate.DispositionComplete}, kr.Disposition) {
+			return false
+		}
+	}
+	return true
+}
+
+func (f *fakeStore) ListSettledReels(context.Context) ([]string, error) {
+	var out []string
+	for hash := range f.clips {
+		if f.settledReel(hash) {
+			out = append(out, hash)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) RetireSettledReel(_ context.Context, hash string, at time.Time) (bool, error) {
+	if !f.settledReel(hash) {
+		return false, nil
+	}
+	f.retires++
+	r := f.rows[hash]
+	r.FilesDeletedAt = at
+	f.rows[hash], f.reaped[hash] = r, true
 	return true, nil
 }
 
@@ -118,7 +162,7 @@ type fixture struct {
 func newFixture(t *testing.T) *fixture {
 	return &fixture{dir: t.TempDir(), store: &fakeStore{
 		rows: map[string]pipelinestate.ClipPipeline{}, clips: map[string]clipstore.Clip{}, pinned: map[string]bool{},
-		artifacts: map[string]acquisition.Artifact{},
+		artifacts: map[string]acquisition.Artifact{}, reaped: map[string]bool{}, proposals: map[string]bool{},
 	}}
 }
 

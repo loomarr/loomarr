@@ -9,11 +9,12 @@ import (
 // channel that names one does. A station's own news is station material, so it airs wherever the
 // station's idents do, but only from a station within the channel's radius.
 func TestFilterKinds_PoliticalAndNewsAreOptIn(t *testing.T) {
-	ad := Clip{Hash: "ad", Path: "ad", Role: Commercial, DurationMs: 30_000}
-	campaign := Clip{Hash: "campaign", Path: "campaign", Role: Political, DurationMs: 30_000}
-	network := Clip{Hash: "network", Path: "network", Role: News, GeographicScope: GeographicNational, DurationMs: 60_000}
-	local := Clip{Hash: "local", Path: "local", Role: News, GeographicScope: GeographicLocal, Station: "wxyz", DurationMs: 60_000}
-	unknown := Clip{Hash: "unknown", Path: "unknown", Role: Unclassified, Placement: PlacementBreakBody, DurationMs: 30_000}
+	ad := Clip{Hash: "ad", Path: "ad", Role: Commercial, Era: 1992, Audience: General, DurationMs: 30_000}
+	campaign := Clip{Hash: "campaign", Path: "campaign", Role: Political, Era: 1992, Audience: General, DurationMs: 30_000}
+	network := Clip{Hash: "network", Path: "network", Role: News, Era: 1992, Audience: General, GeographicScope: GeographicNational, DurationMs: 60_000}
+	local := Clip{Hash: "local", Path: "local", Role: News, Era: 1992, Audience: General, GeographicScope: GeographicLocal, Station: "wxyz", DurationMs: 60_000}
+	// A clip whose role is unknown fits no channel, whatever the selection (#3838 decision 6).
+	unknown := Clip{Hash: "unknown", Path: "unknown", Role: Unclassified, Era: 1992, Audience: General, Placement: PlacementBreakBody, DurationMs: 30_000}
 	catalog := []Clip{ad, campaign, network, local, unknown}
 
 	inRadius := map[string]bool{"wxyz": true}
@@ -24,15 +25,15 @@ func TestFilterKinds_PoliticalAndNewsAreOptIn(t *testing.T) {
 		local map[string]bool
 		want  []string
 	}{
-		{name: "no kinds chosen", kinds: nil, local: inRadius, want: []string{"ad", "local", "unknown"}},
+		{name: "no kinds chosen", kinds: nil, local: inRadius, want: []string{"ad", "local"}},
 		{name: "the default ticked plus political", kinds: append(DefaultRoles(), "political"), local: inRadius, want: []string{"ad", "campaign", "local"}},
 		{name: "news opted in", kinds: []string{"commercial", "news"}, local: inRadius, want: []string{"ad", "network", "local"}},
 		{name: "commercials only", kinds: []string{"commercial"}, local: inRadius, want: []string{"ad"}},
 		{name: "station idents without news", kinds: []string{"station_id"}, local: inRadius, want: []string{"local"}},
 		// An installation with no location admits every clip geographically, so the radius check
 		// has to be here: a station that is nobody's neighbour gets no exception.
-		{name: "no location set", kinds: nil, local: nil, want: []string{"ad", "unknown"}},
-		{name: "a station outside the radius", kinds: nil, local: map[string]bool{"kabc": true}, want: []string{"ad", "unknown"}},
+		{name: "no location set", kinds: nil, local: nil, want: []string{"ad"}},
+		{name: "a station outside the radius", kinds: nil, local: map[string]bool{"kabc": true}, want: []string{"ad"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var got []string

@@ -98,15 +98,17 @@ type HealthCheck struct {
 
 // HealthReport is a caller-owned snapshot of the running generation's Current Health.
 type HealthReport struct {
-	GenerationID      string        `json:"generationId"`
-	Generation        int           `json:"generation"`
-	Version           string        `json:"version"`
-	ProcessStartedAt  int64         `json:"processStartedAt"`
-	GenerationStarted int64         `json:"generationStartedAt"`
-	UpdatedAt         int64         `json:"updatedAt"`
-	NextRefreshAt     int64         `json:"nextRefreshAt,omitempty"`
-	State             HealthState   `json:"state" enum:"starting,healthy,degraded,unhealthy"`
-	Checks            []HealthCheck `json:"checks"`
+	GenerationID      string `json:"generationId"`
+	Generation        int    `json:"generation"`
+	Version           string `json:"version"`
+	ProcessStartedAt  int64  `json:"processStartedAt"`
+	GenerationStarted int64  `json:"generationStartedAt"`
+	UpdatedAt         int64  `json:"updatedAt"`
+	// NextRefreshAt is the soonest a fresh continuous check's result runs out, when the report can
+	// change with nothing stored; zero when no check can.
+	NextRefreshAt int64         `json:"nextRefreshAt,omitempty"`
+	State         HealthState   `json:"state" enum:"starting,healthy,degraded,unhealthy"`
+	Checks        []HealthCheck `json:"checks"`
 }
 
 // HealthObservation is the small caller interface for updating a continuous check. Immediate
@@ -649,7 +651,9 @@ func (s *Startup) deriveHealthLocked(now int64) {
 		check := &s.health.Checks[i]
 		status := check.Status
 		if check.Mode == HealthCheckContinuous && check.FreshUntil > 0 {
-			if nextRefresh == 0 || check.FreshUntil < nextRefresh {
+			// The next time the report can change on its own: a check already stale has no
+			// such time left, until a fresh result for it arrives with a frame of its own.
+			if check.FreshUntil > now && (nextRefresh == 0 || check.FreshUntil < nextRefresh) {
 				nextRefresh = check.FreshUntil
 			}
 			if now > check.FreshUntil && status != HealthPending && status != HealthSkipped {

@@ -97,11 +97,11 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
   const [follow, setFollow] = useState(run.status === "running");
   const [timestamps, setTimestamps] = useState(true);
   const scrollRef = useRef<HTMLPreElement>(null);
+  // The output is plain text, read by hand, but keyed by its URL so the run's frames reach it.
   const query = useQuery({
-    queryKey: ["diagnostic-process-output", run.id],
+    queryKey: diagnosticsApi.getGetDiagnosticProcessOutputQueryKey(run.id),
     queryFn: () => readOutput(run.id),
     retry: false,
-    refetchInterval: run.status === "running" ? 5_000 : false,
   });
   const visible = useMemo(() => {
     const lines = (query.data?.text ?? "").split("\n");
@@ -213,9 +213,7 @@ const ProcessDetail = ({
   run: ProcessRunView;
   onOpenChannel?: (id: string) => void;
 }) => {
-  const query = diagnosticsApi.useGetDiagnosticProcess(run.id, {
-    query: { retry: false, refetchInterval: run.status === "running" ? 5_000 : false },
-  });
+  const query = diagnosticsApi.useGetDiagnosticProcess(run.id, { query: { retry: false } });
   const detail = query.data?.status === 200 ? query.data.data : undefined;
   const latest = detail?.progress.at(-1);
   return (
@@ -357,19 +355,22 @@ const PlayoutDiagnostics = ({
     ...(filters.processChannelId.trim() ? { channelId: filters.processChannelId.trim() } : {}),
     ...(filters.processJobId.trim() ? { jobId: filters.processJobId.trim() } : {}),
   });
+  // Keyed by the list's URL, so its `diagnostic_processes` frame reads it again (#3352); the
+  // window is not in the key because each read ends it at that read's now.
   const query = useQuery({
     queryKey: [
-      "diagnostic-process-page",
-      filters.processRange,
-      filters.processStatus,
-      filters.processPurpose,
-      filters.processChannelId,
-      filters.processJobId,
-      cursor,
+      ...diagnosticsApi.getListDiagnosticProcessesQueryKey(),
+      {
+        range: filters.processRange,
+        status: filters.processStatus,
+        purpose: filters.processPurpose,
+        channelId: filters.processChannelId,
+        jobId: filters.processJobId,
+        cursor,
+      },
     ],
     queryFn: ({ signal }) => diagnosticsApi.listDiagnosticProcesses(processParams(), { signal }),
     retry: false,
-    refetchInterval: cursor ? false : 5_000,
   });
   const body = query.data?.status === 200 ? query.data.data : undefined;
   const runs = body?.items ?? [];

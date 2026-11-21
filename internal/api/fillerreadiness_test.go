@@ -33,7 +33,7 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 			Channels: []pod.ChannelCoverage{{
 				ChannelID: "ch-7", Name: "Saturday Morning", Number: 7,
 				Report: pod.CoverageReport{
-					Level: pod.MatchAudience, Total: 6, DurationMs: 180_000, Categories: 3, Brands: 4,
+					Level: pod.MatchWidened, Total: 6, DurationMs: 180_000, Categories: 3, Brands: 4,
 				},
 			}},
 		},
