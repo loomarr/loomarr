@@ -31,12 +31,16 @@ func TestFitFor_AgreesWithTheLadder(t *testing.T) {
 		commercial("wrong-aud", 1992, LateNight),
 		{Hash: "bumper", Path: "bumper", Role: Bumper, Era: 1992, Audience: Kids, DurationMs: 5_000},
 	}
+	// A promo for the channel's own network is a candidate; another network's never is (#4432).
+	ownPromo, otherPromo := commercial("own-network-promo", 1992, Kids), commercial("other-network-promo", 1992, Kids)
+	ownPromo.Network, otherPromo.Network = "Fox", "CBS"
+	catalog = append(catalog, ownPromo, otherPromo)
 	// ⚠ The varied dimension is the era RANGE, which is the thing that actually varies in the wild —
 	// and a single year, a span and "any" put these clips in genuinely different rungs, so this is
 	// a real cross-check rather than the same assertion run twice.
 	for _, era := range []EraRange{Year(1992), {From: 1990, To: 1999}, {From: 1975, To: 1992}, {}} {
 		policy := Policy{}
-		w := Window{Era: era, Audience: Kids, GapMs: 120_000, PodMax: 4}
+		w := Window{Era: era, Audience: Kids, GapMs: 120_000, PodMax: 4, Network: "FOX"}
 		pools := candidatePools(catalog, w, policy)
 
 		// The rung each clip really lands in: the FIRST (tightest) pool containing it, which is

@@ -166,6 +166,8 @@ func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, deri
 	if sel.Audience == "" {
 		sel.Audience = clips.Audience(derived.Audience)
 	}
+	// The network has no operator setting: it is what the lineup aired on (#4432).
+	sel.Network = derived.Network
 	return sel
 }
 

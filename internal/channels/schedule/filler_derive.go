@@ -1,6 +1,11 @@
 package schedule
 
-import "github.com/loomarr/loomarr/internal/platform/rating"
+import (
+	"strings"
+	"unicode"
+
+	"github.com/loomarr/loomarr/internal/platform/rating"
+)
 
 // DerivedFiller is the filler context a channel implies through its programming, for the
 // fields its operator left unset (§10). It is computed live, never persisted: a stored copy
@@ -9,6 +14,51 @@ import "github.com/loomarr/loomarr/internal/platform/rating"
 type DerivedFiller struct {
 	Audience string // "" = nothing derivable; else kids|family|general
 	Era      *Range // nil = nothing derivable
+	// Network is the broadcast network most of the lineup's series premiered on, as a
+	// NetworkKey (#4432): a channel airs only that network's branded filler. "" = none, which a
+	// tie, an all-movie lineup and unstamped entries all give; such a channel airs no network's.
+	Network string
+}
+
+// NetworkKey is a broadcast network's name reduced to what two sources agree on, so a clip's
+// "CBS" meets a series' "CBS" and "The WB" meets "WB": upper case, without a leading "THE", letters
+// and digits only. "" stays "".
+func NetworkKey(name string) string {
+	name = strings.ToUpper(strings.TrimSpace(name))
+	name = strings.TrimPrefix(name, "THE ")
+	var b strings.Builder
+	for _, r := range name {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// majorityNetwork is the network the most entries premiered on (their first network); "" when
+// none has one or two networks tie for the most.
+func majorityNetwork(lineup []LineupEntry) string {
+	counts := map[string]int{}
+	for _, e := range lineup {
+		if len(e.Networks) > 0 {
+			if k := NetworkKey(e.Networks[0]); k != "" {
+				counts[k]++
+			}
+		}
+	}
+	best, tied := "", false
+	for k, n := range counts {
+		switch {
+		case best == "" || n > counts[best]:
+			best, tied = k, false
+		case n == counts[best]:
+			tied = true
+		}
+	}
+	if tied {
+		return ""
+	}
+	return best
 }
 
 // DeriveFiller reads a channel's programming for the filler context it implies.
@@ -53,5 +103,6 @@ func DeriveFiller(policy ChannelPolicy, lineup []LineupEntry) DerivedFiller {
 	if era.From > 0 {
 		out.Era = &era
 	}
+	out.Network = majorityNetwork(lineup)
 	return out
 }

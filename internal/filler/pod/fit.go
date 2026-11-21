@@ -35,6 +35,7 @@ const (
 	FitCategory  FitReason = "category"  // the channel narrowed to categories this clip is not in
 	FitAudience  FitReason = "audience"  // outside the channel's audience ceiling
 	FitGeography FitReason = "geography" // foreign, out-of-radius local, or unknown geography
+	FitNetwork   FitReason = "network"   // presents a broadcast network this channel's lineup did not air on
 	FitExcluded  FitReason = "excluded"  // the operator excluded it from this channel
 	FitSeason    FitReason = "season"    // a holiday clip outside its season (season.go)
 	FitLanguage  FitReason = "language"  // not in the channel's commercial language (language_boundary.go)
@@ -98,6 +99,10 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 	}
 	if !GeographicallyEligible(c, policy.area(w.Geography)) {
 		fit.Reason = FitGeography
+		return fit
+	}
+	if !networkEligible(c, w.Network) {
+		fit.Reason = FitNetwork
 		return fit
 	}
 

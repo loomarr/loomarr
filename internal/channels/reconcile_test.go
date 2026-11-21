@@ -1242,6 +1242,39 @@ func TestReconcile_BoxSetHealIsOneTimeEvenForNonMembers(t *testing.T) {
 	}
 }
 
+type countingNetworks struct {
+	networks map[provision.Key][]string
+	calls    int
+}
+
+func (c *countingNetworks) Networks(_ context.Context, k provision.Key) ([]string, bool, error) {
+	c.calls++
+	return c.networks[k], true, nil
+}
+
+// A title's networks are stamped at reconcile, persisted, and settled once, so a channel's network
+// is read with no library I/O, and a title with none is not asked again every pass (#4432).
+func TestReconcile_StampsNetworksOnce(t *testing.T) {
+	st := newStore(t)
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
+	res := &countingNetworks{networks: map[provision.Key][]string{"movie:tmdb:90000001": {"FOX"}}}
+	e := newEngine(st, tunarrtest.NewTunarr(), avail, nil).WithNetworks(res)
+
+	seedChannel(t, st, "networks", 8, entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
+	for i := range 2 {
+		if err := e.Reconcile(context.Background(), "networks"); err != nil {
+			t.Fatalf("pass %d: %v", i+1, err)
+		}
+	}
+	got, _ := st.GetChannel(context.Background(), "networks")
+	if !slices.Equal(got.Lineup[0].Networks, []string{"FOX"}) || !got.Lineup[0].NetworksResolved || !got.Lineup[1].NetworksResolved {
+		t.Errorf("lineup = %+v, want FOX stamped and both entries settled", got.Lineup)
+	}
+	if res.calls != 2 {
+		t.Errorf("resolver called %d times across 2 reconciles of 2 entries, want 2 (once each)", res.calls)
+	}
+}
+
 // Backfill: a pending slot is pod-filled, then the title lands and an availability
 // event places the real program IN PLACE, re-pushing the lineup.
 func TestReconcile_BackfillOnAvailabilityEvent(t *testing.T) {

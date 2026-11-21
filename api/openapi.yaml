@@ -1370,6 +1370,7 @@ components:
             - category
             - audience
             - geography
+            - network
             - excluded
             - season
             - language

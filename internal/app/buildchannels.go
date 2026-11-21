@@ -261,6 +261,9 @@ func buildChannels(
 		// library I/O on the scheduling path (programming-design §2.2). Shares the library
 		// client; the reverse index is built once and cached behind a TTL.
 		channelEngine.WithBoxSets(resolvers.NewBoxSets(st, 15*time.Minute))
+		// Stamp a series' broadcast networks: a channel airs only its own network's branded
+		// filler (#4432), and its network is read from these.
+		channelEngine.WithNetworks(resolvers.NewNetworks(st))
 		// Emit a `channel` SSE frame after each reconcile so the UI updates live — the
 		// "no manual rebuild" model (§9). The emitter already fans to the event bus.
 		channelEngine.WithNotifier(emitter)

@@ -348,6 +348,7 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 	geography := effectiveGeography(w.Geography, policy.Geography)
 	area := geography.Resolve(policy.LocalStations)
 	catalog = filterGeography(catalog, area)
+	catalog = filterNetwork(catalog, w.Network)
 	catalog = filterRoles(catalog, w.Roles, area.Stations)
 
 	pools := candidatePools(catalog, w, policy)

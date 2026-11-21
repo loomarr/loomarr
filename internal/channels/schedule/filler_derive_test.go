@@ -30,6 +30,31 @@ func TestDeriveFiller_Audience(t *testing.T) {
 	}
 }
 
+// A channel's network is the one most of its series premiered on (#4432): a series counts its
+// first network once, a movie counts nothing, and a tie or no networks at all derives none.
+func TestDeriveFiller_NetworkIsTheLineupsMajority(t *testing.T) {
+	series := func(networks ...string) LineupEntry { return LineupEntry{Networks: networks} }
+	for _, tc := range []struct {
+		name   string
+		lineup []LineupEntry
+		want   string
+	}{
+		{"one series", []LineupEntry{series("FOX")}, "FOX"},
+		{"the most series win", []LineupEntry{series("NBC"), series("S4C"), series("NBC"), series("FOX")}, "NBC"},
+		{"only the premiere network counts", []LineupEntry{series("ABC", "NBC"), series("NBC", "ABC"), series("ABC")}, "ABC"},
+		{"names agree however they are written", []LineupEntry{series("The WB"), series("WB"), series("UPN")}, "WB"},
+		{"a tie is no network", []LineupEntry{series("ABC"), series("NBC")}, ""},
+		{"movies have none", []LineupEntry{{}, {}, series("CBS")}, "CBS"},
+		{"no networks at all", []LineupEntry{{}, {}}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := DeriveFiller(ChannelPolicy{}, tc.lineup).Network; got != tc.want {
+				t.Errorf("network = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDeriveFiller_EraFromLineupYears(t *testing.T) {
 	lineup := []LineupEntry{{Year: 1993}, {Year: 0}, {Year: 1987}, {Year: 1999}}
 	got := DeriveFiller(ChannelPolicy{}, lineup).Era

@@ -37,6 +37,7 @@ type pool struct {
 // in the window are excluded at fill time (no-repeat), not here.
 func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 	catalog = filterGeography(catalog, policy.area(w.Geography))
+	catalog = filterNetwork(catalog, w.Network)
 	catalog = filterSeason(catalog, w)
 	catalog = filterLanguage(catalog, w, policy)
 	body := make([]Clip, 0, len(catalog))

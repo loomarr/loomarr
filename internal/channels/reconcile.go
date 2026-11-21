@@ -681,6 +681,18 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 				en.BoxSetsResolved = true
 			}
 		}
+		// A series' networks, settled once like box sets, so the channel's network is derived with
+		// no library I/O (#4432).
+		if e.networks != nil && !en.NetworksResolved {
+			if names, ok, err := e.networks.Networks(ctx, en.Key); err != nil {
+				if e.log != nil {
+					e.log.Warn("heal networks (entry unresolved this pass)", "key", en.Key, "err", err)
+				}
+			} else if ok {
+				en.Networks = names
+				en.NetworksResolved = true
+			}
+		}
 		if e.franchises != nil && en.CollectionID == 0 && !en.Key.IsSeries() {
 			if id, ok, err := e.franchises.Collection(ctx, en.Key); err != nil {
 				if e.log != nil {

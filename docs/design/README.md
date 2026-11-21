@@ -115,5 +115,6 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0047](decisions/0047-loomarr-identifies-media-without-the-arrs.md) | 2026-11-08 | Loomarr identifies media without Sonarr or Radarr, and keeps rich facts in queryable tables |
 | [0048](decisions/0048-a-ready-clip-keeps-only-its-airing-copy.md) | 2026-11-12 | A Ready clip Loomarr fetched keeps only its airing copy |
 | [0049](decisions/0049-a-settled-reel-lets-go-of-its-recording.md) | 2026-11-19 | A split reel Loomarr fetched lets go of its recording once its pieces are settled |
+| [0050](decisions/0050-a-networks-filler-airs-on-its-own-channels.md) | 2026-11-21 | A network's branded filler airs only on channels of that network |
 
 Future work that used to live in `design.md` §20 is tracked in #1576.

@@ -215,6 +215,9 @@ type Window struct {
 	Geography  Geography
 	// Language is the channel's commercial language; "" inherits Policy.Language (language_boundary.go).
 	Language string
+	// Network is the channel's broadcast network (network.go): a clip presenting another
+	// network's identity never airs here, pins included.
+	Network string
 	// GapMs is the flex gap to fill.
 	GapMs int64
 	// BreaksMax caps clips per pod (FILLER_POD_MAX, §15).
@@ -324,6 +327,7 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 
 	// The outer boundary: no pin or relaxed ladder rung may bypass geography.
 	catalog = filterGeography(catalog, policy.area(w.Geography))
+	catalog = filterNetwork(catalog, w.Network)
 
 	// Per-channel selection (§10), all no-ops when unset:
 	//  - EXCLUDE: seed the no-repeat set with the excluded ids. Because `used` is
