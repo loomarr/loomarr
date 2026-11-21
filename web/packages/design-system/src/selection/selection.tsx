@@ -1,6 +1,6 @@
-import { View } from "@tamagui/core";
+import { useTheme, View } from "@tamagui/core";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, type ScrollViewInstance } from "react-native";
+import { Platform, Pressable, ScrollView, type ScrollViewInstance, type ViewStyle } from "react-native";
 
 import { useFocusLook } from "../focus-look";
 import { Icon } from "../icon";
@@ -57,7 +57,11 @@ type TabPlace = { width: number; x: number };
 // One `underline` tab: the label and its count on a 2px rule that is the foreground colour when
 // selected and clear otherwise. The rule overlaps the list's own 1px rule, so the two read as one.
 // A hover lifts an unselected label to the foreground, as the dialog's close does. The focus ring
-// is drawn inside the tab's own box, so the scroller never clips it and nothing makes room for it.
+// is drawn inside the tab's own box, so the scroller never clips it, with air at each side
+// (`tabAir`) between the ring and the label; the list's gap gives that air back, so labels keep
+// their spacing.
+const tabAir = (density: Density) => (density === "tv" ? 3 : 2) + 2;
+
 const UnderlineTab = <Value extends string>({
   density,
   onLayout,
@@ -96,23 +100,33 @@ const UnderlineTab = <Value extends string>({
       tabIndex={disabled ? -1 : selected ? 0 : -1}
     >
       <View
-        borderBottomColor={selected ? "contentPrimary" : "transparent"}
-        borderBottomWidth={2}
-        justifyContent="flex-end"
-        minHeight={semanticTargets[density]}
-        paddingBottom={semanticSpace.inline}
+        paddingHorizontal={tabAir(density)}
         {...ring}
         {...("outlineWidth" in ring ? { outlineOffset: -(ring.outlineWidth ?? 0) } : null)}
       >
-        {/* The count is nested in the label's line, so the two share a baseline and one name. */}
-        <Text density={density} numberOfLines={1} strong textRole="body" tone={lit ? "primary" : "secondary"}>
-          {option.label}
-          {option.count ? (
-            <Text density={density} textRole="caption" tone="secondary">
-              {` ${option.count}`}
-            </Text>
-          ) : null}
-        </Text>
+        <View
+          borderBottomColor={selected ? "contentPrimary" : "transparent"}
+          borderBottomWidth={2}
+          justifyContent="flex-end"
+          minHeight={semanticTargets[density]}
+          paddingBottom={semanticSpace.inline}
+        >
+          {/* The count is nested in the label's line, so the two share a baseline and one name. */}
+          <Text
+            density={density}
+            numberOfLines={1}
+            strong
+            textRole="body"
+            tone={lit ? "primary" : "secondary"}
+          >
+            {option.label}
+            {option.count ? (
+              <Text density={density} textRole="caption" tone="secondary">
+                {` ${option.count}`}
+              </Text>
+            ) : null}
+          </Text>
+        </View>
       </View>
     </Pressable>
   );
@@ -138,6 +152,14 @@ const UnderlineTabs = <Value extends string>({
   const offset = useRef(0);
   // The selection still to bring into view: it waits until both it and the list have been measured.
   const pending = useRef<Value | null>(value);
+  // A browser draws a thin bar in the theme's muted colour on a clear track, only while the list
+  // overflows; React Native's own indicator needs no styling.
+  const theme = useTheme();
+  const scrollBar = (
+    Platform.OS === "web"
+      ? { scrollbarColor: `${theme.contentMuted.val} transparent`, scrollbarWidth: "thin" }
+      : {}
+  ) as ViewStyle;
 
   const reveal = useCallback(() => {
     const tab = pending.current === null ? undefined : tabs.current.get(pending.current);
@@ -170,7 +192,7 @@ const UnderlineTabs = <Value extends string>({
       }}
       ref={scroller}
       scrollEventThrottle={16}
-      style={{ flexGrow: 0 }}
+      style={{ flexGrow: 0, ...scrollBar }}
     >
       <View
         aria-label={label}
@@ -178,7 +200,7 @@ const UnderlineTabs = <Value extends string>({
         borderBottomWidth={1}
         flexDirection="row"
         flexGrow={1}
-        gap={semanticSpace.section}
+        gap={semanticSpace.section - 2 * tabAir(density)}
         role="tablist"
       >
         {options.map((option) => (
