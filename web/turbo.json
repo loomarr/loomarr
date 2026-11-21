@@ -28,7 +28,7 @@
       "outputs": []
     },
     "test": {
-      "dependsOn": ["typecheck", "^test"],
+      "dependsOn": ["typecheck"],
       "env": ["JAVA_HOME"],
       "outputs": []
     },

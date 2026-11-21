@@ -273,7 +273,11 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make fe-unit FE_SHARD=${{ matrix.shard }}/6": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-unit"}, condition: "matrix.shard <= 6"}),
 			"make fe-checks":        exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-checks"}, condition: "matrix.shard == 7"}),
 			"make fe-tokens-verify": exactWorkflowStep(7, "Token artifacts are committed and current", workflowStepAuthority{targets: []string{"fe-tokens-verify"}, condition: "matrix.shard == 7"}),
-			"make fe-packages":      exactWorkflowStep(8, "", workflowStepAuthority{targets: []string{"fe-packages"}, condition: "matrix.shard == 8"}),
+			"make fe-typecheck fe-packages": exactWorkflowStep(8, "Typecheck and test the packages", workflowStepAuthority{
+				targets:     []string{"fe-typecheck", "fe-packages"},
+				condition:   "matrix.shard == 8",
+				environment: turboRemoteCacheEnvironment(),
+			}),
 		}),
 		"ci-go-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make vet vet-tags lint": exactWorkflowStep(4, "Static analysis", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "matrix.shard == 1"}),
@@ -755,11 +759,18 @@ func codeQLWorkflowAuthority() workflowAuthority {
 	}
 }
 
-// clientsTurboEnvironment is the exact environment of every ci-clients.yml step that runs Turbo:
-// the Remote Cache credentials, and TURBO_CACHE, which lets only the merge queue and main write.
+// clientsTurboEnvironment is the exact environment of every ci-clients.yml step that runs Turbo.
 func clientsTurboEnvironment() map[string]string {
+	environment := turboRemoteCacheEnvironment()
+	environment["TMPDIR"] = "${{ runner.temp }}"
+	return environment
+}
+
+// turboRemoteCacheEnvironment is the exact Turbo environment of the ci-frontend.yml step that runs
+// Turbo, and the base of clientsTurboEnvironment: the Remote Cache credentials, and TURBO_CACHE,
+// which lets only the merge queue and main write.
+func turboRemoteCacheEnvironment() map[string]string {
 	return map[string]string{
-		"TMPDIR":                           "${{ runner.temp }}",
 		"TURBO_TELEMETRY_DISABLED":         "1",
 		"TURBO_API":                        "${{ secrets.TURBO_API }}",
 		"TURBO_TEAM":                       "${{ secrets.TURBO_TEAM }}",

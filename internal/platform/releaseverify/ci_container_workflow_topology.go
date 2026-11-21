@@ -90,15 +90,10 @@ func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerA
 		"image-certification": {name: "Rust image — runtime certification", condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true')"},
 		"go":                  {name: "Go — race-policy tests", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_go == 'true'"},
 		"store-postgres":      {name: "Store conformance (Postgres)", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_postgres == 'true'"},
-		"frontend":            {name: "Frontend — biome + typecheck + unit + build", condition: "needs.changes.outputs.impact_web == 'true'"},
-		"clients": {name: "Shared clients — lint + test + browser/iOS/Android/TV bundles", condition: "needs.changes.outputs.impact_clients == 'true'", secrets: map[string]string{
-			"TURBO_API":                        "${{ secrets.TURBO_API }}",
-			"TURBO_TEAM":                       "${{ secrets.TURBO_TEAM }}",
-			"TURBO_TOKEN":                      "${{ secrets.TURBO_TOKEN }}",
-			"TURBO_REMOTE_CACHE_SIGNATURE_KEY": "${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}",
-		}},
-		"apple-mobile": {name: "Apple mobile — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'"},
-		"apple-tv":     {name: "Apple TV — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'"},
+		"frontend":            {name: "Frontend — biome + typecheck + unit + build", condition: "needs.changes.outputs.impact_web == 'true'", secrets: turboRemoteCacheSecrets()},
+		"clients":             {name: "Shared clients — lint + test + browser/iOS/Android/TV bundles", condition: "needs.changes.outputs.impact_clients == 'true'", secrets: turboRemoteCacheSecrets()},
+		"apple-mobile":        {name: "Apple mobile — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'"},
+		"apple-tv":            {name: "Apple TV — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'"},
 
 		"expo-android-mobile": {name: "Expo Android mobile — native build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_expo_android_mobile == 'true'"},
 
@@ -110,6 +105,17 @@ func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerA
 		"docs":          {name: "Docs — links + structure + prose", condition: "needs.changes.outputs.impact_docs == 'true'", with: map[string]string{"diagrams": "${{ needs.changes.outputs.impact_diagrams == 'true' }}"}},
 		"android":       {name: "Android TV — React Native Play bundle", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_android == 'true'"},
 		"playout-bench": {name: "Playout bench — software-only pipeline", condition: "needs.changes.outputs.impact_playout_bench == 'true'"},
+	}
+}
+
+// turboRemoteCacheSecrets is the exact set of named secrets ci.yml passes to each reusable workflow
+// that runs Turbo: the four optional Remote Cache settings, never `inherit`.
+func turboRemoteCacheSecrets() map[string]string {
+	return map[string]string{
+		"TURBO_API":                        "${{ secrets.TURBO_API }}",
+		"TURBO_TEAM":                       "${{ secrets.TURBO_TEAM }}",
+		"TURBO_TOKEN":                      "${{ secrets.TURBO_TOKEN }}",
+		"TURBO_REMOTE_CACHE_SIGNATURE_KEY": "${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}",
 	}
 }
 

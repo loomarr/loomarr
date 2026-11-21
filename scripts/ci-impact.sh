@@ -310,7 +310,13 @@ classify() {
       known=true
       select_gate web
       ;;
-    web/.dependency-cruiser.cjs|web/tsconfig.depcruise.json|web/turbo.json|web/.rnstorybook/*|web/apps/web/client-platform-proof.html|web/apps/web/src/client-platform-proof/*|web/apps/web/tests/client-platform-proof.*|web/apps/web/vite.client-platform.config.ts)
+    web/turbo.json)
+      # The Frontend job's typecheck and package tests run through Turbo, as the client lanes' do.
+      known=true
+      select_gate web
+      select_gate clients
+      ;;
+    web/.dependency-cruiser.cjs|web/tsconfig.depcruise.json|web/.rnstorybook/*|web/apps/web/client-platform-proof.html|web/apps/web/src/client-platform-proof/*|web/apps/web/tests/client-platform-proof.*|web/apps/web/vite.client-platform.config.ts)
       known=true
       select_gate clients
       ;;
