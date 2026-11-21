@@ -89,3 +89,6 @@ scratch-*.png
 # The Graphify index is generated on demand (`make graph`) and never committed: a committed
 # copy went stale behind the code and added ~66 MB of history per refresh (#1565).
 /graphify-out/
+
+# Impeccable's launcher downloads its pinned engine binary beside itself; never committed.
+/.agents/skills/impeccable/bin/

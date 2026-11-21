@@ -6,8 +6,6 @@ import "github.com/loomarr/loomarr/internal/platform/store/identitystore"
 // recovery, notifications) lives in internal/platform/store/identitystore. Its types are re-exported here by
 // alias, so importers of this package keep one import and see the same types, not copies.
 type (
-	// Role is a user's authorization level (§11) (identitystore.Role).
-	Role = identitystore.Role
 	// User is a Loomarr account with local role and quota (§11) (identitystore.User).
 	User = identitystore.User
 	// Session is a revocable session row (§11) (identitystore.Session).
@@ -18,11 +16,6 @@ type (
 	DevicePairing = identitystore.DevicePairing
 	// DeviceToken is a paired device's durable credential (identitystore.DeviceToken).
 	DeviceToken = identitystore.DeviceToken
-)
-
-const (
-	RoleAdmin  = identitystore.RoleAdmin
-	RoleMember = identitystore.RoleMember
 )
 
 // bindIdentity gives s its identity cluster, built on s's own kernel handle. Every constructor of

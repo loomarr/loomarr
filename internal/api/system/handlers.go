@@ -10,7 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -22,7 +22,7 @@ type BackupStreamer interface {
 
 // InteractiveOperations reads a recorded long operation, such as a model pull.
 type InteractiveOperations interface {
-	GetInteractiveOperation(ctx context.Context, id string) (store.InteractiveOperation, error)
+	GetInteractiveOperation(ctx context.Context, id string) (operationstore.InteractiveOperation, error)
 }
 
 // SessionObserver counts the live encoders the restart page warns about.

@@ -1,6 +1,7 @@
 # name	paths separated by semicolons	expected true gates in classifier order
 migration-rehearsal-script	scripts/migration-rehearsal.sh	contracts
 hardware-gate-script	scripts/check-hardware-gate.sh	contracts
+migration-order-check	scripts/check-migration-order.sh;scripts/check-migration-order-test.sh	policy
 leaf-go	internal/proposals/suggest/score.go	contracts,go,postgres,image
 releaseverify-production	internal/platform/releaseverify/ci_container_downloads.go	policy
 releaseverify-red-tests	internal/platform/releaseverify/ci_container_downloads_test.go	contracts,policy
@@ -102,6 +103,7 @@ readme-contract	README.md	docs,policy
 embedded-help	docs/get-started.md	contracts,go,go_full,image,docs
 embedded-explanation	docs/explanation/curation.md	contracts,go,go_full,image,docs
 project-records	project/roadmap.md	docs
+product-record	PRODUCT.md	docs
 agent-script	scripts/agent.sh	agent,policy
 agent-make-module	mk/agent.mk	agent,policy
 agent-orca-adapter	orca.yaml	agent,policy

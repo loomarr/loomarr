@@ -19,11 +19,11 @@ import (
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
+	"github.com/loomarr/loomarr/internal/platform/store/viewingstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 )
 
@@ -49,7 +49,7 @@ type Store interface {
 	ListProposalsByStatus(ctx context.Context, status string) ([]proposalstore.Proposal, error)
 	ListUsers(ctx context.Context) ([]identitystore.User, error)
 	// The watch history (#3010), read and cleared by admins.
-	ListViewings(ctx context.Context, q store.ViewingQuery) ([]store.Viewing, error)
+	ListViewings(ctx context.Context, q viewingstore.ViewingQuery) ([]viewingstore.Viewing, error)
 	DeleteViewings(ctx context.Context, userID string) (int, error)
 }
 

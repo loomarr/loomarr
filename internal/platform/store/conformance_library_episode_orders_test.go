@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A show with a present episode its catalog could not number is listed with how many such episodes
@@ -16,9 +18,9 @@ func testLibraryEpisodeOrders(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	show := LibraryCatalogKey{Provider: "tmdb", Kind: "series", ExternalID: "90000701"}
-	harbor := LibraryOrigin{Authority: "scan:test", Key: "series:dir:harbor"}
-	other := LibraryOrigin{Authority: "scan:test", Key: "series:dir:other"}
+	show := librarystore.LibraryCatalogKey{Provider: "tmdb", Kind: "series", ExternalID: "90000701"}
+	harbor := librarystore.LibraryOrigin{Authority: "scan:test", Key: "series:dir:harbor"}
+	other := librarystore.LibraryOrigin{Authority: "scan:test", Key: "series:dir:other"}
 	harborID, otherID := inventorySeries(t, st, harbor, at), inventorySeries(t, st, other, at)
 	episode := func(id string, season, number, end int, unnumbered bool) LibraryItem {
 		return LibraryItem{ID: id, Kind: "episode", Name: id, Series: harbor, Season: season, Episode: number,
@@ -35,13 +37,13 @@ func testLibraryEpisodeOrders(t *testing.T, newStore NewStoreFunc) {
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	file := func(item, series string) LibraryFile {
-		return LibraryFile{Path: "/media/" + item + ".mkv", Root: "/media", Size: 1, ModifiedNs: 1, Identity: "digest",
-			Kind: "episode", Header: LibraryHeaderRead, SeenAt: at, ItemID: item, SeriesID: series}
+	file := func(item, series string) librarystore.LibraryFile {
+		return librarystore.LibraryFile{Path: "/media/" + item + ".mkv", Root: "/media", Size: 1, ModifiedNs: 1, Identity: "digest",
+			Kind: "episode", Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: item, SeriesID: series}
 	}
 	gone := file("e4", harborID)
 	gone.MissingAt = at
-	if err := st.SaveLibraryFiles(ctx, []LibraryFile{
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
 		file("e1", harborID), file("e2", harborID), file("e3", harborID), gone, file("o1", otherID),
 	}); err != nil {
 		t.Fatal(err)
@@ -53,7 +55,7 @@ func testLibraryEpisodeOrders(t *testing.T, newStore NewStoreFunc) {
 	}
 	if len(needs) != 1 || needs[0].ID != harborID || needs[0].Catalog != show || needs[0].Unnumbered != 2 ||
 		!reflect.DeepEqual(needs[0].Last, map[int]int{1: 3, 2: 1}) ||
-		!reflect.DeepEqual(needs[0].Waiting, []LibraryWaitingFile{
+		!reflect.DeepEqual(needs[0].Waiting, []librarystore.LibraryWaitingFile{
 			{Path: "/media/e1.mkv", Season: 1, Episode: 1}, {Path: "/media/e3.mkv", Season: 2, Episode: 1},
 		}) {
 		t.Fatalf("order needs = %+v, want Harbor Show with 2 unnumbered episodes and their files, seasons running to 3 and 1", needs)
@@ -65,21 +67,21 @@ func testLibraryEpisodeOrders(t *testing.T, newStore NewStoreFunc) {
 	if _, ok, err := st.LibraryEpisodeOrderFor(ctx, show); err != nil || ok {
 		t.Fatalf("answer before any = %v, %v; want none", ok, err)
 	}
-	for _, bad := range []LibraryEpisodeOrder{
-		{Series: show, Choice: OrderByOrder},
-		{Series: show, Choice: OrderByFiles, OrderID: "90000799a"},
-		{Series: show, Choice: OrderByCatalog, OrderID: "90000799a"},
+	for _, bad := range []librarystore.LibraryEpisodeOrder{
+		{Series: show, Choice: librarystore.OrderByOrder},
+		{Series: show, Choice: librarystore.OrderByFiles, OrderID: "90000799a"},
+		{Series: show, Choice: librarystore.OrderByCatalog, OrderID: "90000799a"},
 	} {
-		if err := st.SaveLibraryEpisodeOrder(ctx, bad); !errors.Is(err, ErrBadEpisodeOrder) {
+		if err := st.SaveLibraryEpisodeOrder(ctx, bad); !errors.Is(err, librarystore.ErrBadEpisodeOrder) {
 			t.Errorf("save %+v = %v, want ErrBadEpisodeOrder", bad, err)
 		}
 	}
-	if err := st.SaveLibraryEpisodeOrder(ctx, LibraryEpisodeOrder{Series: show, Choice: "aired"}); err == nil {
+	if err := st.SaveLibraryEpisodeOrder(ctx, librarystore.LibraryEpisodeOrder{Series: show, Choice: "aired"}); err == nil {
 		t.Error("an unknown choice was saved")
 	}
-	for _, want := range []LibraryEpisodeOrder{
-		{Series: show, Choice: OrderByOrder, OrderID: "90000799a", AnsweredAt: at},
-		{Series: show, Choice: OrderByFiles, AnsweredAt: at.Add(time.Minute)},
+	for _, want := range []librarystore.LibraryEpisodeOrder{
+		{Series: show, Choice: librarystore.OrderByOrder, OrderID: "90000799a", AnsweredAt: at},
+		{Series: show, Choice: librarystore.OrderByFiles, AnsweredAt: at.Add(time.Minute)},
 	} {
 		if err := st.SaveLibraryEpisodeOrder(ctx, want); err != nil {
 			t.Fatal(err)

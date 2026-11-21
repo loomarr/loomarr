@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A listed file's subtitle tracks, its own and those beside it, answer only while the scanner's
@@ -12,8 +14,8 @@ func testLibrarySubtitleTracks(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_800_000_000_000)
-	item := LibraryItem{ID: "m1", Kind: "movie", Name: "Film", Sources: []LibrarySource{{
-		Path: "/media/film/a.mkv", Plays: true, Streams: []LibraryStream{
+	item := LibraryItem{ID: "m1", Kind: "movie", Name: "Film", Sources: []librarystore.LibrarySource{{
+		Path: "/media/film/a.mkv", Plays: true, Streams: []librarystore.LibraryStream{
 			{Index: 0, Kind: "video", Codec: "h264"},
 			{Index: 1, Kind: "audio", Codec: "ac3", Language: "en"},
 			{Index: 2, Kind: "subtitle", Codec: "subrip", Language: "en", Title: "English"},
@@ -25,8 +27,8 @@ func testLibrarySubtitleTracks(t *testing.T, newStore NewStoreFunc) {
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{item}, at); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SaveLibraryFiles(ctx, []LibraryFile{{Path: "/media/film/a.mkv", Root: "/media", Size: 9,
-		ModifiedNs: 100, Identity: "digest", Kind: "movie", Header: LibraryHeaderRead, SeenAt: at, ItemID: "m1"}}); err != nil {
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{{Path: "/media/film/a.mkv", Root: "/media", Size: 9,
+		ModifiedNs: 100, Identity: "digest", Kind: "movie", Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: "m1"}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -34,7 +36,7 @@ func testLibrarySubtitleTracks(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || !ok {
 		t.Fatalf("ok = %v, %v; want the file's subtitle tracks", ok, err)
 	}
-	want := []LibraryStream{
+	want := []librarystore.LibraryStream{
 		{Index: 2, Kind: "subtitle", Codec: "subrip", Language: "en", Title: "English"},
 		{Index: 3, Kind: "subtitle", Codec: "hdmv_pgs_subtitle", Language: "fr", Forced: true},
 		{Index: 4, Kind: "subtitle", Codec: "subrip", Language: "en", HearingImpaired: true,

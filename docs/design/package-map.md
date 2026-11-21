@@ -76,7 +76,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `api/httpcore` | `channels/schedule`, `channels/viewing`, `filler/source`, `media/images`, `platform/rating`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout` |
 | `channels` | `channels/schedule`, `filler/clips`, `filler/language`, `filler/pod`, `library/inventory`, `library/provision`, `platform/jobs`, `platform/rating`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `playout`, `playout/tunarr` |
 | `channels/schedule` | `library/inventory`, `library/provision`, `platform/holidayvocab`, `platform/rating` |
-| `channels/viewing` | `platform/store`, `platform/store/channelstore` |
+| `channels/viewing` | `platform/store/channelstore` |
 | `filler` | `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/httpx`, `platform/llm`, `platform/storagegovernor`, `platform/store/clipstore` |
 | `filler/acquisition` | `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/source`, `filler/split` |
 | `filler/asset` | `filler/clips`, `filler/split`, `media/tools`, `platform/storagegovernor` |
@@ -124,13 +124,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/rating` | — |
 | `platform/settings` | `library/mediaserver`, `platform/buildinfo`, `platform/config`, `platform/httpx` |
 | `platform/storagegovernor` | — |
-| `platform/store` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `library/inventory`, `library/provision`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/librarystore`, `platform/store/proposalstore`, `platform/store/storedb`, `proposals`, `proposals/quality` |
+| `platform/store` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `library/inventory`, `library/provision`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/librarystore`, `platform/store/operationstore`, `platform/store/proposalstore`, `platform/store/storedb`, `proposals`, `proposals/quality` |
 | `platform/store/activitystore` | `platform/store/storedb` |
 | `platform/store/channeldatastore` | `library/provision`, `platform/store/storedb` |
 | `platform/store/channelstore` | `channels/schedule`, `library/provision`, `platform/store/storedb` |
 | `platform/store/clipstore` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `platform/store/storedb` |
 | `platform/store/identitystore` | `people/access`, `people/contact`, `people/notifications`, `platform/store/storedb` |
 | `platform/store/librarystore` | `platform/store/storedb` |
+| `platform/store/operationstore` | `platform/store/storedb` |
 | `platform/store/proposalstore` | `platform/store/channelstore`, `platform/store/storedb`, `proposals` |
 | `platform/store/storedb` | — |
 | `playout` | `channels/schedule`, `library/provision`, `media/encode`, `platform/diagnostics` |
