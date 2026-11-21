@@ -43,7 +43,7 @@ const Answers = ({ item, phone, onIgnore }: { item: NeedsItem; phone: boolean; o
   </div>
 );
 
-// On a phone the answers get the card's full width, and Ignore is the card's corner icon, so no
+// On a phone the answers get the card's full width, and "Ignore this" sits in the card's corner, so no
 // answer is ever left alone on a row.
 const Card = ({ item, phone, onIgnore }: { item: NeedsItem; phone: boolean; onIgnore: () => void }) => (
   <li className="bg-static-900 flex flex-col gap-3 rounded-lg p-3 sm:p-4">
@@ -53,8 +53,8 @@ const Card = ({ item, phone, onIgnore }: { item: NeedsItem; phone: boolean; onIg
         <div className="flex items-start justify-between gap-2">
           <FileName name={item.file} />
           {phone ? (
-            <span className="-mt-2 -mr-2">
-              <Action icon="conceal" layout="icon" onPress={onIgnore} variant="ghost">
+            <span className="-mt-2 -mr-2 shrink-0 whitespace-nowrap">
+              <Action icon="conceal" onPress={onIgnore} variant="ghost">
                 Ignore this
               </Action>
             </span>

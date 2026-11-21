@@ -7,7 +7,7 @@
 // screen: wall | needs | title
 // state (wall): needs | clear | importing | loading | search-empty | home-video
 // state (needs): several | undo | folder-undo | ignored | clear
-// state (title): default | fix-open | tech-open | extra | extra-undo | airing | unplayable
+// state (title): default | fix-open | tech-open | extra | extra-undo | episode-open | unplayable
 // title (title screen): movie | series | home
 // device=phone frames the same URL in a 390×844 iframe, so the shell switches to its bottom bar.
 import { createFileRoute } from "@tanstack/react-router";
@@ -64,7 +64,7 @@ const PrototypeLibrary = () => {
         phone={phone}
         state={pick(
           search.state,
-          ["default", "fix-open", "tech-open", "extra", "extra-undo", "airing", "unplayable"] as TitleState[],
+          ["default", "fix-open", "tech-open", "extra", "extra-undo", "episode-open", "unplayable"] as TitleState[],
           "default",
         )}
       />

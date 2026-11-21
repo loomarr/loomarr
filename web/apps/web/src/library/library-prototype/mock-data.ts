@@ -96,7 +96,7 @@ const TITLES: MockTitle[] = NAMES.map(([name, year, kind, genre], i) => ({
   layout: 0,
 }));
 
-// Two home videos: drawn only under the "It's ours" proposal.
+// Two home videos, answered "It's ours, keep it as is": drawn at the head of Recently added.
 const HOME_VIDEOS: MockTitle[] = [
   { id: "h1", name: "Summer at the lake", year: 2019, kind: "home", genres: ["Home videos"], added: 3, hue: 2, hue2: 4, layout: 0 },
   { id: "h2", name: "Grandad's 80th", year: 2022, kind: "home", genres: ["Home videos"], added: 5, hue: 4, hue2: 1, layout: 0 },

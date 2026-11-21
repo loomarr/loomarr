@@ -16,11 +16,11 @@ import {
 } from "@loomarr/design-system";
 import { ChannelIdent, ChannelIdentity } from "@loomarr/ui";
 import { type CSSProperties, useState } from "react";
-import { FileName, Proposal, UnderlineTabs } from "./mock-parts";
+import { FileName, UnderlineTabs } from "./mock-parts";
 import { type Episode, HOME, type MockFile, type MockTitlePage, MOVIE, type Person, SERIES } from "./mock-title-data";
 
 type TitleKind = "movie" | "series" | "home";
-type TitleState = "default" | "fix-open" | "tech-open" | "extra" | "extra-undo" | "airing" | "unplayable";
+type TitleState = "default" | "fix-open" | "tech-open" | "extra" | "extra-undo" | "episode-open" | "unplayable";
 
 const HUES = ["var(--color-tune)", "var(--color-lock)", "var(--color-onair)", "var(--color-suggest)", "var(--color-caution)"];
 const hue = (i: number) => HUES[i % HUES.length] ?? "var(--color-static-400)";
@@ -107,10 +107,21 @@ const Row = ({ k, children }: { k: string; children: React.ReactNode }) => (
 
 // Technical details: the plain summary first; "More about this file" opens the rest in place
 // (no second disclosure inside the first, so no card in a card).
-const TechnicalDetails = ({ f, open }: { f: MockFile; open: boolean }) => {
-  const [more, setMore] = useState(open);
+const plainLine = (f: MockFile) =>
+  `${f.picture} · ${f.sound} · ${f.subtitles === "None" ? "No subtitles" : `${f.subtitles} subtitles`}`;
+
+const TechnicalDetails = ({ f, open }: { f: MockFile; open: boolean }) => (
+  <Disclosure defaultExpanded={open} description={plainLine(f)} label="Technical details">
+    <FileFacts f={f} more={open} />
+  </Disclosure>
+);
+
+// One file's facts: the plain summary, then "More about this file" in place. Used by the title's
+// Technical details and by each episode row.
+const FileFacts = ({ f, more: initialMore }: { f: MockFile; more: boolean }) => {
+  const [more, setMore] = useState(initialMore);
   return (
-    <Disclosure defaultExpanded={open} description={`${f.picture} · ${f.sound} · ${f.subtitles === "None" ? "No subtitles" : `${f.subtitles} subtitles`}`} label="Technical details">
+    <>
       <dl className="flex flex-col">
         <Row k="File">
           <FileName name={f.name} strong={false} />
@@ -169,7 +180,7 @@ const TechnicalDetails = ({ f, open }: { f: MockFile; open: boolean }) => {
           </Row>
         </dl>
       ) : null}
-    </Disclosure>
+    </>
   );
 };
 
@@ -226,9 +237,28 @@ const Unplayable = ({ t }: { t: MockTitlePage }) => (
   </section>
 );
 
-const Episodes = ({ t, phone, initial }: { t: MockTitlePage; phone: boolean; initial?: string }) => {
+// An episode's own file, for its details: the series' sample file renamed to the episode.
+const episodeFile = (t: MockTitlePage, season: string, e: Episode): MockFile => {
+  const s = season.startsWith("Season ") ? season.slice(7).padStart(2, "0") : "00";
+  return { ...t.file, name: `Copperline S${s}E${String(e.n).padStart(2, "0")}.mkv`, length: e.length, folder: `Shows/Copperline/${season}` };
+};
+
+const Episodes = ({
+  t,
+  phone,
+  initial,
+  admin,
+  openEpisode,
+}: {
+  t: MockTitlePage;
+  phone: boolean;
+  initial?: string;
+  admin: boolean;
+  openEpisode?: number;
+}) => {
   const seasons = t.seasons ?? [];
   const [season, setSeason] = useState(initial ?? seasons[0]?.label ?? "");
+  const [open, setOpen] = useState<number | undefined>(openEpisode);
   const current = seasons.find((s) => s.label === season);
   return (
     <section className="flex flex-col gap-3">
@@ -243,9 +273,16 @@ const Episodes = ({ t, phone, initial }: { t: MockTitlePage; phone: boolean; ini
           {current.note}
         </Text>
       ) : null}
-      <ol className="flex flex-col">
+      <ol className="divide-static-800 flex flex-col divide-y">
         {current?.episodes.map((e) => (
-          <li className="flex gap-3 py-2.5 sm:gap-4" key={e.n}>
+          <li key={e.n}>
+          <button
+            aria-expanded={admin ? open === e.n : undefined}
+            className="focus-visible:outline-signal hover:bg-static-900 flex w-full gap-3 rounded-md py-2.5 text-left focus-visible:outline-2 sm:gap-4"
+            disabled={!admin}
+            onClick={() => setOpen(open === e.n ? undefined : e.n)}
+            type="button"
+          >
             <Still dim={e.ready === false || e.unplayable} e={e} />
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <div className="flex items-baseline justify-between gap-3">
@@ -275,6 +312,20 @@ const Episodes = ({ t, phone, initial }: { t: MockTitlePage; phone: boolean; ini
                 </Text>
               ) : null}
             </div>
+            {admin ? (
+              <span className="text-static-400 self-center">
+                <Icon decorative glyph={open === e.n ? icons.showLess : icons.showMore} size="compact" tone="inherit" />
+              </span>
+            ) : null}
+          </button>
+          {admin && open === e.n ? (
+            <div className="bg-static-900 mb-3 rounded-lg p-3 sm:ml-44 sm:p-4">
+              <Text as="p" strong textRole="compact">
+                This episode's file
+              </Text>
+              <FileFacts f={episodeFile(t, season, e)} more={!phone} />
+            </div>
+          ) : null}
           </li>
         ))}
       </ol>
@@ -300,10 +351,17 @@ const TitlePage = ({
 
   const top = (
     <div className="flex items-center justify-between gap-2">
-      <Action icon="back" onPress={onBack} variant="ghost">
-        Library
-      </Action>
-      {admin ? <FixMenu open={state === "fix-open"} /> : null}
+      <span className="bg-static-950 inline-flex rounded-md">
+        <Action icon="back" onPress={onBack} variant="ghost">
+          Library
+        </Action>
+      </span>
+      {admin ? (
+        // A solid surface under Fix, so it reads over any backdrop.
+        <span className="bg-static-950 inline-flex rounded-md">
+          <FixMenu open={state === "fix-open"} />
+        </span>
+      ) : null}
     </div>
   );
 
@@ -338,6 +396,12 @@ const TitlePage = ({
       {t.tagline ? (
         <p className="text-static-100 text-base italic">{t.tagline}</p>
       ) : null}
+      {admin ? null : (
+        // The member's one plain technical line, in place of Technical details.
+        <Text as="p" textRole="compact" tone="secondary">
+          {plainLine(t.file)}
+        </Text>
+      )}
     </div>
   );
 
@@ -368,12 +432,21 @@ const TitlePage = ({
             A channel can play it once it's in one of the channel's collections.
           </Text>
         )}
-        {state === "airing" ? (
-          <Proposal className="mt-2" question="Show when it next airs, beside the channels">
-            <Text as="p" textRole="compact">
-              Next on Late Show, tonight at 9:00 · then Mystery Hour, Saturday at 11:30
+        {t.channels.length ? (
+          <p className="flex items-center gap-2">
+            <Icon decorative glyph={icons.schedule} size="compact" tone="muted" />
+            <Text textRole="compact">
+              {t.kind === "show" ? (
+                <>
+                  <strong>Next on Late Show, Thursday at 10:00</strong> · season 1, episode 3
+                </>
+              ) : (
+                <>
+                  <strong>Next on Late Show, tonight at 9:00</strong> · then Mystery Hour, Saturday at 11:30
+                </>
+              )}
             </Text>
-          </Proposal>
+          </p>
         ) : null}
       </div>
     </div>
@@ -395,14 +468,6 @@ const TitlePage = ({
       </dl>
     ) : null;
 
-  const memberSummary = (
-    <Proposal question="Members see a one-line technical summary (recommended), or nothing">
-      <Text as="p" textRole="compact">
-        {t.file.picture} · {t.file.sound.split(",")[0]} · {t.file.subtitles === "None" ? "No subtitles" : `${t.file.subtitles} subtitles`}
-      </Text>
-    </Proposal>
-  );
-
   return (
     <div className="flex flex-col pb-28">
       {phone ? (
@@ -416,7 +481,7 @@ const TitlePage = ({
           </div>
         </>
       ) : (
-        <div className="relative min-h-[400px] w-full" style={backdrop(t)}>
+        <div className="relative mx-3 mt-3 min-h-[400px] overflow-hidden rounded-xl" style={backdrop(t)}>
           <div className="from-static-950 absolute inset-0 bg-gradient-to-t via-transparent" />
           <div className="from-static-950/90 absolute inset-0 bg-gradient-to-r via-static-950/30 to-transparent" />
           <div className="relative flex min-h-[400px] flex-col justify-between px-8 pt-4 pb-6">
@@ -434,7 +499,15 @@ const TitlePage = ({
         )}
         {admin && (state === "extra" || state === "extra-undo") ? <ExtraCopy t={t} /> : null}
         {admin && state === "unplayable" ? <Unplayable t={t} /> : null}
-        {t.seasons ? <Episodes initial={state === "unplayable" ? "Season 2" : undefined} phone={phone} t={t} /> : null}
+        {t.seasons ? (
+          <Episodes
+            admin={admin}
+            initial={state === "unplayable" ? "Season 2" : undefined}
+            openEpisode={state === "episode-open" ? 1 : undefined}
+            phone={phone}
+            t={t}
+          />
+        ) : null}
         {t.cast.length ? (
           <section className="flex flex-col gap-3">
             <Text as="h2" textRole="heading">
@@ -448,7 +521,7 @@ const TitlePage = ({
           </section>
         ) : null}
         {phone && facts ? <section>{facts}</section> : null}
-        {admin ? <TechnicalDetails f={t.file} open={state === "tech-open"} /> : memberSummary}
+        {admin && !t.seasons ? <TechnicalDetails f={t.file} open={state === "tech-open"} /> : null}
       </div>
       {state === "extra-undo" && t.extra ? (
         <div

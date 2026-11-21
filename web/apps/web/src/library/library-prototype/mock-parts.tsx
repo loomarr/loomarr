@@ -1,9 +1,9 @@
 // PROTOTYPE — throwaway (#4476 A1). Local stand-ins for the parts the design system does not have
 // yet (each is a design-system gap named in the report): a 2:3 poster with stand-in art busy enough
 // to test the wall against real posters; tabs that read as tabs; a letter rail; a file name that
-// shortens in the middle; the PROPOSAL frame. Colours are tokens only.
-import { Badge, SelectControl, Text } from "@loomarr/design-system";
-import { type CSSProperties, type ReactNode, useState } from "react";
+// shortens in the middle. Colours are tokens only.
+import { SelectControl } from "@loomarr/design-system";
+import { type CSSProperties, useState } from "react";
 import type { MockTitle } from "./mock-data";
 
 // Artwork hues. Real posters are loud, so the stand-ins are too: two hues per poster, mixed hard.
@@ -49,15 +49,35 @@ const background = (t: Art): string => {
 
 const titleClass = (layout: number): string =>
   [
-    "text-[11px] font-semibold tracking-[0.14em] uppercase text-static-0",
-    "text-[13px] font-medium text-static-0",
-    "text-sm font-bold uppercase leading-none text-static-0",
-    "text-[13px] font-medium text-static-100",
-    "text-base font-bold leading-tight text-static-950",
-    "text-[22px] font-black uppercase leading-[0.95] tracking-tight break-words text-static-950",
-    "text-xs font-bold uppercase tracking-[0.2em] text-static-0",
-    "text-[13px] font-semibold tracking-wide text-static-0",
+    "font-semibold tracking-[0.14em] uppercase text-static-0",
+    "font-medium text-static-0",
+    "font-bold uppercase leading-none text-static-0",
+    "font-medium text-static-100",
+    "font-bold leading-tight text-static-950",
+    "font-black uppercase leading-[0.95] tracking-tight text-static-950",
+    "font-bold uppercase tracking-[0.2em] text-static-0",
+    "font-semibold tracking-wide text-static-0",
   ][layout % 8] ?? "";
+
+// Type sized the way a poster designer sizes it: as large as the layout wants, but never larger than lets
+// the longest word fit across the poster, so a word never breaks in the middle on a small screen.
+// [largest size, width of one letter in em for that face]
+const TYPE: readonly (readonly [string, number])[] = [
+  ["11px", 0.82],
+  ["13px", 0.56],
+  ["14px", 0.68],
+  ["13px", 0.56],
+  ["16px", 0.6],
+  ["16cqw", 0.68],
+  ["12px", 0.9],
+  ["13px", 0.62],
+];
+const titleSize = (layout: number, name: string): string => {
+  const [largest, em] = TYPE[layout % 8] ?? ["13px", 0.6];
+  const longest = Math.max(...name.split(" ").map((w) => w.length));
+  const room = layout === 3 ? 66 : 76;
+  return `min(${largest}, ${(room / (longest * em)).toFixed(1)}cqw)`;
+};
 
 const placeClass = (layout: number): string =>
   [
@@ -78,7 +98,7 @@ const PosterArt = ({ title, small = false, dim = false }: { title: Art; small?: 
   return (
     <div
       aria-hidden
-      className={`relative flex aspect-[2/3] w-full flex-col overflow-hidden rounded-md ${placeClass(layout)} ${small ? "p-1.5" : "p-3"} ${dim ? "opacity-40" : ""}`}
+      className={`@container relative flex aspect-[2/3] w-full flex-col overflow-hidden rounded-md ${placeClass(layout)} ${small ? "p-1.5" : "p-3"} ${dim ? "opacity-40" : ""}`}
       style={style}
     >
       {layout === 3 ? <div className="border-static-100/30 absolute inset-2 rounded-sm border" /> : null}
@@ -90,7 +110,11 @@ const PosterArt = ({ title, small = false, dim = false }: { title: Art; small?: 
           <div style={{ background: `radial-gradient(40% 35% at 50% 45%, ${fade(PAPER, 40)}, ${fade(INK, 40)})` }} />
         </div>
       ) : null}
-      {small ? null : <span className={`relative ${titleClass(layout)}`}>{title.name}</span>}
+      {small ? null : (
+        <span className={`relative ${titleClass(layout)}`} style={{ fontSize: titleSize(layout, title.name) }}>
+          {title.name}
+        </span>
+      )}
       {small || (layout !== 2 && layout !== 5) ? null : (
         <span className={`relative mt-1 text-[11px] ${layout === 5 ? "text-static-950/70" : "text-static-0/70"}`}>{title.year}</span>
       )}
@@ -213,17 +237,5 @@ const Picker = <V extends string>({
   );
 };
 
-// A drawn-but-undecided part of the mock, marked so nobody mistakes it for the design.
-const Proposal = ({ question, children, className = "" }: { question: string; children: ReactNode; className?: string }) => (
-  <section aria-label={`Proposal: ${question}`} className={`border-tune/60 rounded-lg border border-dashed p-3 ${className}`}>
-    <div className="mb-3 flex flex-wrap items-center gap-2">
-      <Badge tone="tune">Proposal</Badge>
-      <Text textRole="compact" tone="info">
-        {question}
-      </Text>
-    </div>
-    {children}
-  </section>
-);
 
-export { FileName, JumpRail, Picker, PosterArt, Proposal, UnderlineTabs };
+export { FileName, JumpRail, Picker, PosterArt, UnderlineTabs };
