@@ -10,28 +10,49 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
-// A title's page reads back what was written (#4476): a movie's facts and their providers, each
-// source with its edition, part and whether it plays (an extra copy does not), its tracks in index
-// order with a subtitle file beside it last, a source that plays though its file has gone from the
-// list, a movie in parts, and a series' episodes by the items its present files were written as
-// (an unnumbered one among them, a missing file's left out), with no episode's sources read.
+// A title's page reads back what was written (#4476): a movie's facts, studios, countries and
+// credits and their providers, each source with its container, bitrate, edition, part and whether
+// it plays (an extra copy does not), every column of its tracks in index order with a subtitle file
+// beside it last, its chapters, a source that plays though its file has gone from the list, a movie
+// in parts, a series' episodes by the items its present files were written as, with their stories
+// and runtimes (an unnumbered one among them, a missing file's left out) and no episode's sources
+// read, and an episode's own page with its file's tracks.
 func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_800_000_000_000)
 	streams := []librarystore.LibraryStream{
-		{Index: 0, Kind: "video", Width: 3840, Height: 2160, HDR: "HDR10"},
-		{Index: 1, Kind: "audio", Channels: 2, Language: "en"},
-		{Index: 2, Kind: "audio", Channels: 6, Language: "en", Default: true},
-		{Index: 3, Kind: "subtitle", Language: "en"},
-		{Index: 4, Kind: "subtitle", Language: "es", ExternalRef: "/m/film/film.es.srt"},
+		{Index: 0, Kind: "video", Codec: "hevc", Profile: "Main 10", Width: 3840, Height: 2160, FrameRate: "24000/1001",
+			PixelFormat: "yuv420p10le", ColorTransfer: "smpte2084", Resolution: "4K", HDR: "HDR10", BitDepth: 10,
+			BitRate: 20_000_000},
+		{Index: 1, Kind: "audio", Codec: "aac", Channels: 2, ChannelLayout: "stereo", SampleRate: 48_000,
+			Language: "en", LanguageName: "English", AudioFormat: "AAC", Title: "Commentary", Commentary: true},
+		{Index: 2, Kind: "audio", Codec: "truehd", Channels: 6, ChannelLayout: "5.1(side)", Language: "en",
+			LanguageName: "English", Default: true, BitDepth: 24, AudioFormat: "Dolby TrueHD"},
+		{Index: 3, Kind: "subtitle", Codec: "subrip", Language: "en", LanguageName: "English", Forced: true},
+		{Index: 4, Kind: "subtitle", Codec: "subrip", Language: "es", LanguageName: "Spanish", HearingImpaired: true,
+			ExternalRef: "/m/film/film.es.srt"},
+		{Index: 5, Kind: "audio", Codec: "ac3", Language: "en", Descriptive: true},
+	}
+	chapters := []librarystore.LibraryChapter{
+		{StartMs: 0, EndMs: 600_000, Title: "Opening"}, {StartMs: 600_000, EndMs: -1},
+	}
+	credits := []librarystore.LibraryCredit{
+		{Name: "Ana Actor", Role: "actor", Character: "Lead", ID: librarystore.LibraryID{Namespace: "tmdb", Value: "1"}},
+		{Name: "Bo Byname", Role: "actor"},
+		{Name: "Ana Actor", Role: "director", ID: librarystore.LibraryID{Namespace: "tmdb", Value: "1"}},
+		{Name: "Cy Writer", Role: "writer"},
 	}
 	items := []LibraryItem{
 		{ID: "film", Kind: "movie", Name: "Film", Overview: "A film.", Rating: "PG", RuntimeMs: 5_400_000,
-			Genres: []string{"Drama", "Comedy"},
-			From:   librarystore.LibraryFrom{Name: "nfo", Overview: "tmdb", Rating: "radarr", Year: "nfo"},
+			OriginalTitle: "Le Film", Tagline: "One line.", PremiereDate: "2001-02-03", Score: 7.5,
+			Genres: []string{"Drama", "Comedy"}, Studios: []string{"North Studio", "South Studio"},
+			Countries: []string{"France"}, Credits: credits,
+			From: librarystore.LibraryFrom{Name: "nfo", Overview: "tmdb", Rating: "radarr", Year: "nfo",
+				Score: "tmdb", Runtime: "radarr"},
 			Sources: []librarystore.LibrarySource{
-				{Path: "/m/film/film.mkv", DurationMs: 5_432_100, Plays: true, Streams: streams},
+				{Path: "/m/film/film.mkv", Container: "matroska,webm", Bitrate: 24_000_000, DurationMs: 5_432_100,
+					Plays: true, Streams: streams, Chapters: chapters},
 				{Path: "/m/film/film dvd.mkv", DurationMs: 5_400_000, Streams: streams[:2]},
 				{Path: "/m/film/film {edition-Extended}.mkv", DurationMs: 6_000_000, Edition: "Extended", Plays: true},
 			}},
@@ -43,9 +64,10 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 			{Path: "/m/held/a.mkv", Plays: true}, {Path: "/m/held/b.mkv"},
 		}},
 		{ID: "show", Kind: "series", Name: "Show", Overview: "A show.", Genres: []string{"Animation"}},
-		{ID: "ep1", Kind: "episode", Name: "Pilot", Season: 1, Episode: 1, EpisodeEnd: 2,
-			From:    librarystore.LibraryFrom{Name: "tmdb"},
-			Sources: []librarystore.LibrarySource{{Path: "/t/show/s01e01.mkv", DurationMs: 1_320_000, Plays: true}}},
+		{ID: "ep1", Kind: "episode", Name: "Pilot", Season: 1, Episode: 1, EpisodeEnd: 2, Overview: "It begins.",
+			RuntimeMs: 1_380_000, From: librarystore.LibraryFrom{Name: "tmdb"},
+			Sources: []librarystore.LibrarySource{{Path: "/t/show/s01e01.mkv", Container: "matroska,webm",
+				DurationMs: 1_320_000, Plays: true, Streams: streams[:2], Chapters: chapters[:1]}}},
 		{ID: "ep-file", Kind: "episode", Name: "show - bonus", Unnumbered: true,
 			Sources: []librarystore.LibrarySource{{Path: "/t/show/bonus.mkv", Plays: true}}},
 		{ID: "ep-gone", Kind: "episode", Name: "Gone", Season: 1, Episode: 3,
@@ -77,9 +99,22 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	if film.Overview != "A film." || film.Rating != "PG" || film.RuntimeMs != 5_400_000 ||
-		!slices.Equal(film.Genres, []string{"Drama", "Comedy"}) ||
-		film.From != (librarystore.LibraryFrom{Name: "nfo", Overview: "tmdb", Rating: "radarr", Year: "nfo"}) {
+		film.OriginalTitle != "Le Film" || film.Tagline != "One line." || film.PremiereDate != "2001-02-03" ||
+		film.Score != 7.5 || !slices.Equal(film.Genres, []string{"Drama", "Comedy"}) ||
+		!slices.Equal(film.Studios, []string{"North Studio", "South Studio"}) ||
+		!slices.Equal(film.Countries, []string{"France"}) ||
+		film.From != (librarystore.LibraryFrom{Name: "nfo", Overview: "tmdb", Rating: "radarr", Year: "nfo",
+			Score: "tmdb", Runtime: "radarr"}) {
 		t.Errorf("film facts = %+v", film)
+	}
+	// Credits read back in billing order with their people's names, one person twice in two roles,
+	// and no photo or catalog id.
+	wantCredits := []librarystore.LibraryCredit{
+		{Name: "Ana Actor", Role: "actor", Character: "Lead"}, {Name: "Bo Byname", Role: "actor"},
+		{Name: "Ana Actor", Role: "director"}, {Name: "Cy Writer", Role: "writer"},
+	}
+	if !slices.Equal(film.Credits, wantCredits) {
+		t.Errorf("film credits = %+v, want %+v", film.Credits, wantCredits)
 	}
 	type source struct {
 		path     string
@@ -99,12 +134,21 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 	if got, want := sources(film.Sources), []source{
 		{"/m/film/film dvd.mkv", 5_400_000, "", 0, false, 2},
 		{"/m/film/film {edition-Extended}.mkv", 6_000_000, "Extended", 0, true, 0},
-		{"/m/film/film.mkv", 5_432_100, "", 0, true, 5},
+		{"/m/film/film.mkv", 5_432_100, "", 0, true, 6},
 	}; !slices.Equal(got, want) {
 		t.Errorf("film sources = %+v, want %+v", got, want)
 	}
+	if got := film.Sources[2]; got.Container != "matroska,webm" || got.Bitrate != 24_000_000 {
+		t.Errorf("film source = %q at %d bit/s, want matroska,webm at 24000000", got.Container, got.Bitrate)
+	}
 	if got := film.Sources[2].Streams; !slices.Equal(got, streams) {
 		t.Errorf("film streams = %+v, want %+v", got, streams)
+	}
+	if got := film.Sources[2].Chapters; !slices.Equal(got, chapters) {
+		t.Errorf("film chapters = %+v, want %+v", got, chapters)
+	}
+	if got := film.Sources[0].Chapters; len(got) != 0 {
+		t.Errorf("a source with no chapters reads %+v", got)
 	}
 	if len(film.Episodes) != 0 {
 		t.Errorf("a movie reads episodes %+v", film.Episodes)
@@ -142,7 +186,8 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("show facts = %+v", show)
 	}
 	wantEpisodes := map[string]librarystore.LibraryDetailEpisode{
-		"ep1":     {Name: "Pilot", NameFrom: "tmdb", Season: 1, Episode: 1, EpisodeEnd: 2},
+		"ep1": {Name: "Pilot", NameFrom: "tmdb", Season: 1, Episode: 1, EpisodeEnd: 2, Overview: "It begins.",
+			RuntimeMs: 1_380_000},
 		"ep-file": {Name: "show - bonus", Unnumbered: true},
 	}
 	if len(show.Episodes) != len(wantEpisodes) {
@@ -159,6 +204,20 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 	onDisk, err := st.LibraryDetailEpisodes(ctx, "show")
 	if err != nil || !maps.Equal(onDisk, show.Episodes) {
 		t.Errorf("episodes alone = %+v, %v; want the page's %+v", onDisk, err, show.Episodes)
+	}
+	if len(show.Credits) != 0 || len(show.Studios) != 0 || show.Score != 0 {
+		t.Errorf("a series with none reads credits %+v, studios %+v, score %v", show.Credits, show.Studios, show.Score)
+	}
+
+	// An episode's own page reads its file with its tracks and chapters.
+	ep, err := st.LibraryItemDetail(ctx, "ep1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ep.Overview != "It begins." || ep.RuntimeMs != 1_380_000 || len(ep.Sources) != 1 ||
+		ep.Sources[0].Container != "matroska,webm" || !slices.Equal(ep.Sources[0].Streams, streams[:2]) ||
+		!slices.Equal(ep.Sources[0].Chapters, chapters[:1]) {
+		t.Errorf("episode page = %+v", ep)
 	}
 
 	unwritten, err := st.LibraryItemDetail(ctx, "no-row")
