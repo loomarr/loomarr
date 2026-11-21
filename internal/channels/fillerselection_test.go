@@ -108,10 +108,10 @@ func TestSelectionForChannel_DerivesAudienceAndEraFromLineup(t *testing.T) {
 // A channel's network is what its lineup aired on, whatever filler answers its operator gave
 // (#4432): there is no setting for it.
 func TestSelectionForChannel_NetworkIsTheLineups(t *testing.T) {
-	ch := channelstore.Channel{Lineup: []schedule.LineupEntry{{Networks: []string{"FOX"}}, {Networks: []string{"FOX"}}, {}}}
+	ch := channelstore.Channel{Lineup: []schedule.LineupEntry{{Networks: []string{"Kestrel"}}, {Networks: []string{"Kestrel"}}, {}}}
 	ch.Policy.Filler = &schedule.FillerSelection{Audience: "general"}
-	if got := channels.SelectionForChannel(ch).Network; got != "FOX" {
-		t.Errorf("network = %q, want FOX", got)
+	if got := channels.SelectionForChannel(ch).Network; got != "KESTREL" {
+		t.Errorf("network = %q, want KESTREL", got)
 	}
 }
 

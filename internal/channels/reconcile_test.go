@@ -1257,7 +1257,7 @@ func (c *countingNetworks) Networks(_ context.Context, k provision.Key) ([]strin
 func TestReconcile_StampsNetworksOnce(t *testing.T) {
 	st := newStore(t)
 	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
-	res := &countingNetworks{networks: map[provision.Key][]string{"movie:tmdb:90000001": {"FOX"}}}
+	res := &countingNetworks{networks: map[provision.Key][]string{"movie:tmdb:90000001": {"Kestrel"}}}
 	e := newEngine(st, tunarrtest.NewTunarr(), avail, nil).WithNetworks(res)
 
 	seedChannel(t, st, "networks", 8, entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
@@ -1267,8 +1267,8 @@ func TestReconcile_StampsNetworksOnce(t *testing.T) {
 		}
 	}
 	got, _ := st.GetChannel(context.Background(), "networks")
-	if !slices.Equal(got.Lineup[0].Networks, []string{"FOX"}) || !got.Lineup[0].NetworksResolved || !got.Lineup[1].NetworksResolved {
-		t.Errorf("lineup = %+v, want FOX stamped and both entries settled", got.Lineup)
+	if !slices.Equal(got.Lineup[0].Networks, []string{"Kestrel"}) || !got.Lineup[0].NetworksResolved || !got.Lineup[1].NetworksResolved {
+		t.Errorf("lineup = %+v, want Kestrel stamped and both entries settled", got.Lineup)
 	}
 	if res.calls != 2 {
 		t.Errorf("resolver called %d times across 2 reconciles of 2 entries, want 2 (once each)", res.calls)

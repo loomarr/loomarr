@@ -7,10 +7,11 @@ import (
 
 // A network's ident airs only on a channel of that network: not on another network's, not on a
 // channel with no network, and not even when pinned, because the boundary sits outside the pins
-// as geography does (#4432). A clip with no network airs on every channel.
+// as geography does (#4432). A clip with no network airs on every channel. Network names are
+// invented, as every fixture's are.
 func TestAssemble_ANetworksPieceAirsOnlyOnItsNetwork(t *testing.T) {
-	ident := Clip{Hash: "cbs-ident", Path: "cbs-ident", Role: StationID, Era: 1992, Audience: Kids,
-		DurationMs: 5_000, Network: "CBS"}
+	ident := Clip{Hash: "lantern-ident", Path: "lantern-ident", Role: StationID, Era: 1992, Audience: Kids,
+		DurationMs: 5_000, Network: "Lantern"}
 	neutral := commercial("neutral-ad", 1992, Kids)
 	catalog := []Clip{ident, neutral}
 
@@ -19,10 +20,10 @@ func TestAssemble_ANetworksPieceAirsOnlyOnItsNetwork(t *testing.T) {
 		pinned  bool
 		airs    bool
 	}{
-		"its own network":         {network: "CBS", airs: true},
-		"its own network, spelt":  {network: "cbs", airs: true},
-		"another network":         {network: "FOX"},
-		"another network, pinned": {network: "FOX", pinned: true},
+		"its own network":         {network: "LANTERN", airs: true},
+		"its own network, spelt":  {network: "The Lantern", airs: true},
+		"another network":         {network: "KESTREL"},
+		"another network, pinned": {network: "KESTREL", pinned: true},
 		"a channel with none":     {network: ""},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -36,7 +37,7 @@ func TestAssemble_ANetworksPieceAirsOnlyOnItsNetwork(t *testing.T) {
 				ids = append(ids, e.Hash)
 			}
 			if slices.Contains(ids, ident.ID()) != tc.airs {
-				t.Fatalf("pod = %v; want the CBS ident aired=%v", ids, tc.airs)
+				t.Fatalf("pod = %v; want the ident aired=%v", ids, tc.airs)
 			}
 			if !slices.Contains(ids, neutral.ID()) {
 				t.Fatalf("pod = %v; want the neutral ad, which airs on any network", ids)

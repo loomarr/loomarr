@@ -24,7 +24,7 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{
-		{ID: "show", Kind: "series", Name: "Show", Rating: "TV-Y", Studios: []string{"FOX", "Syndication"},
+		{ID: "show", Kind: "series", Name: "Show", Rating: "TV-Y", Studios: []string{"Kestrel", "Syndication"},
 			IDs: []LibraryID{{Namespace: "tvdb", Value: "90000002"}, {Namespace: "tmdb", Value: "90000003"}}},
 		{ID: "show-e1", Kind: "episode", Name: "Pilot"},
 	}, recent); err != nil {
@@ -65,7 +65,7 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 	}
 	// A series' networks come back in the source's order: the first is the one it premiered on.
 	if got, ok, err := st.LibraryTitleByProviderID(ctx, "series", "tvdb", "90000002"); err != nil || !ok || got.ID != "show" ||
-		!slices.Equal(got.Studios, []string{"FOX", "Syndication"}) {
+		!slices.Equal(got.Studios, []string{"Kestrel", "Syndication"}) {
 		t.Errorf("show by tvdb = %+v, %v, %v", got, ok, err)
 	}
 	for _, probe := range [][3]string{

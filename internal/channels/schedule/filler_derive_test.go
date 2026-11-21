@@ -39,12 +39,12 @@ func TestDeriveFiller_NetworkIsTheLineupsMajority(t *testing.T) {
 		lineup []LineupEntry
 		want   string
 	}{
-		{"one series", []LineupEntry{series("FOX")}, "FOX"},
-		{"the most series win", []LineupEntry{series("NBC"), series("S4C"), series("NBC"), series("FOX")}, "NBC"},
-		{"only the premiere network counts", []LineupEntry{series("ABC", "NBC"), series("NBC", "ABC"), series("ABC")}, "ABC"},
-		{"names agree however they are written", []LineupEntry{series("The WB"), series("WB"), series("UPN")}, "WB"},
-		{"a tie is no network", []LineupEntry{series("ABC"), series("NBC")}, ""},
-		{"movies have none", []LineupEntry{{}, {}, series("CBS")}, "CBS"},
+		{"one series", []LineupEntry{series("Kestrel")}, "KESTREL"},
+		{"the most series win", []LineupEntry{series("Lantern"), series("Harbor"), series("Lantern"), series("Kestrel")}, "LANTERN"},
+		{"only the premiere network counts", []LineupEntry{series("Harbor", "Lantern"), series("Lantern", "Harbor"), series("Harbor")}, "HARBOR"},
+		{"names agree however they are written", []LineupEntry{series("The Juniper"), series("Juniper"), series("Kestrel")}, "JUNIPER"},
+		{"a tie is no network", []LineupEntry{series("Harbor"), series("Lantern")}, ""},
+		{"movies have none", []LineupEntry{{}, {}, series("Lantern")}, "LANTERN"},
 		{"no networks at all", []LineupEntry{{}, {}}, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -82,7 +82,7 @@ var testLibraryTitles = libraryTitlesFake{
 		Rating: "PG", Genres: []string{"Drama"}, SizeBytes: 4_000},
 	{ID: "lib-show", Kind: "series", Name: "Show", IDs: []librarystore.LibraryID{
 		{Namespace: "tmdb", Value: "90000003"}, {Namespace: "tvdb", Value: "90000002"}}, Rating: "TV-Y",
-		Studios: []string{"FOX"}},
+		Studios: []string{"Kestrel"}},
 }
 
 // A series' networks come from the Library's title; a movie has none, settled, and a series the
@@ -94,7 +94,7 @@ func TestNetworksReadTheLibrary(t *testing.T) {
 		networks []string
 		ok       bool
 	}{
-		"series:tvdb:90000002": {networks: []string{"FOX"}, ok: true},
+		"series:tvdb:90000002": {networks: []string{"Kestrel"}, ok: true},
 		"movie:tmdb:90000001":  {ok: true},
 		"series:tvdb:90000009": {},
 	} {
