@@ -21,7 +21,7 @@ One area of the [package map](../package-map.md#start-here).
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
 - **`platform/backup`** · 1 importer · → `platform/jobs`, `platform/settings`, `platform/store`
   Keeps the SQLite backups on disk: it lists them, opens one for download, writes a new one and prunes to the retention policy, and supplies the scheduled `backup` job (§16, §18.1).
-- **`platform/buildinfo`** · 5 importers
+- **`platform/buildinfo`** · 6 importers
   Carries the version stamped into the binary at build time.
 - **`platform/config`** · 5 importers
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.

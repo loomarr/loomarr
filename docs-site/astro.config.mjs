@@ -67,6 +67,7 @@ export default defineConfig({
             "guides/hardware-encoding",
             "guides/monitoring",
             "guides/agents-cli",
+            "guides/agents-mcp",
             "guides/backup",
             "guides/upgrade",
             "guides/troubleshooting",

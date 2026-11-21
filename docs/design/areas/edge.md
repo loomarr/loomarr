@@ -6,12 +6,14 @@ Where the outside world comes in. The api package is Loomarr's HTTP surface, and
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** any, by design — platform (98), filler (58), library (32), channels (25), proposals (19), media (18), playout (17), people (13)
+**Imports from other areas:** any, by design — platform (99), filler (58), library (32), channels (25), proposals (19), media (18), playout (17), people (14)
 
 ## Packages
 
-- **`api`** · 1 importer · → `api/catalog`, `api/channels`, `api/filler`, `api/guide`, `api/httpcore`, `api/images`, `api/library`, `api/ops`, `api/people`, `api/playout`, `api/proposals`, `api/setup`, `api/system`, `channels/schedule`, `channels/viewing`, `filler/cliplibrary`, `filler/defectfloor`, `filler/records`, `filler/source`, `people/auth`, `platform/activity`, `platform/holidayvocab`, `platform/metrics`, `platform/settings`, `platform/storagegovernor`, `platform/store`, `platform/store/identitystore`, `platform/store/proposalstore`, `platform/web`, `playout`, `proposals`, `proposals/accept`, `proposals/suggest`
+- **`api`** · 1 importer · → `api/agents`, `api/catalog`, `api/channels`, `api/filler`, `api/guide`, `api/httpcore`, `api/images`, `api/library`, `api/ops`, `api/people`, `api/playout`, `api/proposals`, `api/setup`, `api/system`, `channels/schedule`, `channels/viewing`, `filler/cliplibrary`, `filler/defectfloor`, `filler/records`, `filler/source`, `people/auth`, `platform/activity`, `platform/holidayvocab`, `platform/metrics`, `platform/settings`, `platform/storagegovernor`, `platform/store`, `platform/store/identitystore`, `platform/store/proposalstore`, `platform/web`, `playout`, `proposals`, `proposals/accept`, `proposals/suggest`
   Wires Loomarr's inbound HTTP surface (§7).
+- **`api/agents`** · 1 importer · → `api/httpcore`, `people/auth`, `platform/buildinfo`
+  Loomarr's surface for AI agents (#4483): an MCP endpoint whose tools are thin wrappers over the existing HTTP API.
 - **`api/catalog`** · 2 importers · → `api/httpcore`, `channels/schedule`, `library/provision`, `platform/settings`, `platform/store`
   Serves the title catalog: the provisioning titles under /v1/titles and the federated catalog search under /v1/search.
 - **`api/channels`** · 3 importers · → `api/httpcore`, `channels/edit`, `channels/ideas`, `channels/schedule`, `channels/viewing`, `filler/location`, `filler/pod`, `library/provision`, `media/images`, `platform/activity`, `platform/holidayvocab`, `platform/settings`, `platform/store`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/identitystore`, `platform/store/proposalstore`, `platform/store/viewingstore`, `proposals`, `proposals/suggest`
@@ -20,7 +22,7 @@ One area of the [package map](../package-map.md#start-here).
   Serves the filler routes under /v1/filler: the clip catalog and its edits, the Incoming queue, readiness and pool health, the pull approval queue, the header's watch status, clip-detail research status and the defect floor report.
 - **`api/guide`** · 2 importers · → `api/channels`, `api/httpcore`, `channels`, `channels/schedule`, `filler/cliplibrary`, `filler/pod`, `library/provision`, `media/images`, `platform/holidayvocab`, `platform/settings`, `platform/store`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/librarystore`, `playout`
   Serves what is on and what would be on: the time-grid guide and its highlights, each channel's now, next, upcoming and timeline, the programming and cycle previews, the filler pod and coverage previews, the programming vocabulary and the holiday calendar.
-- **`api/httpcore`** · 14 importers · → `channels/schedule`, `channels/viewing`, `filler/source`, `media/images`, `platform/rating`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout`
+- **`api/httpcore`** · 15 importers · → `channels/schedule`, `channels/viewing`, `filler/source`, `media/images`, `platform/rating`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout`
   Plumbing every API area shares and none owns: RFC 7807 problem constructors and the transformer that stamps them with the request id, the request-id and security-header middleware, the caller's role and the authorizer seam, the route-role marker every registration carries, the raw-operation helpers, the wire-JSON never-null format and the docs page.
 - **`api/images`** · 2 importers · → `api/httpcore`, `media/images`
   Serves the image service's HTTP surface (§22): a rendition's bytes, an image's record and uploads.

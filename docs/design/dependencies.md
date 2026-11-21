@@ -48,6 +48,7 @@ exact React Native the app installs.
 | Email | `wneessen/go-mail` | context-aware SMTP with explicit TLS policy and MIME composition, behind the delivery port |
 | Web Push | `SherClockHolmes/webpush-go` | RFC 8291 encryption and VAPID without local crypto code, behind the push adapter |
 | MQTT | `eclipse/paho.mqtt.golang` | the reference MQTT 3.1.1 client, so every broker the notification adapter reaches speaks the same protocol; our own dialer keeps TLS verification and cancellation |
+| AI agent endpoint | `modelcontextprotocol/go-sdk` (official MCP SDK; brings `google/jsonschema-go`, `segmentio/encoding`, `yosida95/uritemplate`) | the MCP wire protocol, Streamable HTTP transport and tool schemas track a spec that revises several times a year; the tools themselves are thin calls into our own routes ([agents guide](../guides/agents-mcp.md)) |
 | Leak detection (tests) | `go.uber.org/goleak` | proves the in-process restart loop leaks no goroutines |
 | Model providers | hand-written clients over plain `net/http` for the Ollama API and OpenAI-compatible endpoints | one compatible client covers hosted providers and local servers; no vendor SDK |
 | Web references, release notes, model discovery | plain `net/http` | public page evidence for Intents; release-note classification; Hugging Face model listing; no SDKs |

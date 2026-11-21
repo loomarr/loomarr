@@ -14,6 +14,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	agentsapi "github.com/loomarr/loomarr/internal/api/agents"
 	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
@@ -189,6 +190,10 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	}
 	opsapi.New(opsDeps, false).Register(humaAPI)
 	setupRoutes.Register(humaAPI)
+	// The MCP endpoint's tools call back into this router as their caller (#4483), so it gets the
+	// finished handler below, once that exists.
+	agentRoutes := agentsapi.New(log)
+	agentRoutes.Register(humaAPI)
 
 	// ⚠ The byte-streaming routes (/v1/backup, the backup download, the clip byte routes, the
 	// channel-icon serve) are registered by their own domain's Handlers as httpcore.RawOp
@@ -245,7 +250,9 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// mux must see that same copy for the mux-populated Pattern to reach the HTTP route label.
 	// WithServerTiming stamps `Server-Timing` (#3399): total time plus any phases a handler names
 	// with httpcore.Phase, readable in the browser's network panel.
-	return httpcore.WithSecurityHeaders(httpcore.WithRequestID(httpcore.WithServerTiming(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux))))))
+	handler := httpcore.WithSecurityHeaders(httpcore.WithRequestID(httpcore.WithServerTiming(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux))))))
+	agentRoutes.SetAPI(handler)
+	return handler
 }
 
 // systemGPU is the GPU name and VRAM the playout status header reads from the language-model
