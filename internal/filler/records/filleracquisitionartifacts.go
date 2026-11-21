@@ -104,6 +104,24 @@ func (s *sqlStore) AcquisitionArtifactForClip(
 	return artifact, true, nil
 }
 
+// AcquisitionHasArtifacts reports whether any artifact row records the acquisition. None means it
+// predates the artifact manifest. An empty id has none.
+func (s *sqlStore) AcquisitionHasArtifacts(ctx context.Context, acquisitionID string) (bool, error) {
+	if acquisitionID == "" {
+		return false, nil
+	}
+	var one int
+	err := s.db.QueryRowContext(ctx, s.ph(
+		`SELECT 1 FROM filler_acquisition_artifacts WHERE acquisition_id = ? LIMIT 1`), acquisitionID).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("look up acquisition %s artifacts: %w", acquisitionID, err)
+	}
+	return true, nil
+}
+
 // ListRecoverableAcquisitionArtifacts returns bounded non-consumed rows for startup and explicit
 // repair. It includes repair rows because they retain bytes and an actionable reason.
 func (s *sqlStore) ListRecoverableAcquisitionArtifacts(ctx context.Context, limit int) ([]acquisition.Artifact, error) {

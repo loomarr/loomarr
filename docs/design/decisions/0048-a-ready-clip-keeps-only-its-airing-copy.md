@@ -23,6 +23,8 @@ not a collection to keep (#3838, decision 14, grilled 2026-11-12).
 - **An original another clip still names stays** until the last clip naming it is released.
 - **An original stays while it is the only way back to the clip:** while the file the clip airs is
   missing or not the bytes its sidecar records, or its acquisition is not consumed (in repair).
+  (2026-11-21: an acquisition from before the artifact manifest, with no rows at all, cannot be in
+  repair, so the airing copy alone decides for it.)
 - **A released clip stays on the encode it has** (maintainer, 2026-11-14). A change of encoder or
   playback recipe never retires it; ads turn over within weeks, so the older encode leaves on its
   own. Loomarr never re-runs the transcode, split or screening of a clip whose original is

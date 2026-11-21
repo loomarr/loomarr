@@ -142,8 +142,11 @@ func TestAnOriginalStaysWhileItsAiringCopyOrAcquisitionIsNotSound(t *testing.T) 
 			a.State, a.RepairReason = acquisition.ArtifactRepair, acquisition.ArtifactMediaMissing
 			f.store.artifacts[hashOf("fetched")] = a
 		},
-		"no acquisition record": func(t *testing.T, f *fixture, _ string) {
+		// The acquisition is recorded, but no row matches this clip: a lookup that missed.
+		"no record of this clip": func(t *testing.T, f *fixture, _ string) {
 			delete(f.store.artifacts, hashOf("fetched"))
+			f.store.artifacts[hashOf("sibling")] = acquisition.Artifact{AcquisitionID: "run-1",
+				ClipHash: hashOf("sibling"), State: acquisition.ArtifactConsumed}
 		},
 	}
 	for name, damage := range cases {
@@ -161,6 +164,34 @@ func TestAnOriginalStaysWhileItsAiringCopyOrAcquisitionIsNotSound(t *testing.T) 
 			}
 			if tags, ok := asset.ReadSidecarTags(full); ok && tags.MediaAssets.SourceMaster.Released() {
 				t.Fatal("the sidecar records the original released")
+			}
+		})
+	}
+}
+
+// An acquisition with no artifact rows at all predates the manifest: nothing can mark it in repair,
+// so a sound airing copy alone lets the original go, and a broken one still keeps it.
+func TestAPreManifestAcquisitionReleasesOnASoundCopyOnly(t *testing.T) {
+	for name, tc := range map[string]struct {
+		damage bool
+		want   int
+	}{"sound copy": {false, 1}, "broken copy": {true, 0}} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			full := f.ready(t, hashOf("fetched"), "run-1", masterRel("fetched"))
+			delete(f.store.artifacts, hashOf("fetched"))
+			if tc.damage {
+				if err := os.WriteFile(full, []byte("damaged"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			now := func() time.Time { return t0 }
+			res, err := New(f.store, quarantine.New(f.dir, now), nil, f.dir, now, nil).Run(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Originals != tc.want || exists(filepath.Join(f.dir, masterRel("fetched"))) != (tc.want == 0) {
+				t.Fatalf("Run = %+v, want %d originals released", res, tc.want)
 			}
 		})
 	}

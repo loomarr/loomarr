@@ -47,6 +47,15 @@ func (f *fakeStore) AcquisitionArtifactForClip(_ context.Context, _, clipHash st
 	return a, ok, nil
 }
 
+func (f *fakeStore) AcquisitionHasArtifacts(_ context.Context, acquisitionID string) (bool, error) {
+	for _, a := range f.artifacts {
+		if acquisitionID != "" && a.AcquisitionID == acquisitionID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (f *fakeStore) ListClipPipelines(_ context.Context, filter pipelinestate.PipelineFilter) ([]pipelinestate.ClipPipeline, error) {
 	var out []pipelinestate.ClipPipeline
 	for _, r := range f.rows {
