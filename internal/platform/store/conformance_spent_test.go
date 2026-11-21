@@ -66,17 +66,17 @@ func testSpentRowPurges(t *testing.T, newStore NewStoreFunc) {
 	mustSaveChannel(t, st, sampleChannel("ch-1", 7, now.Add(time.Hour)))
 	at := func(s int) time.Time { return old.Add(time.Duration(s) * time.Second) }
 	for _, f := range []DiscoveryFeedback{
-		{ID: "a1", Target: "movie:tmdb:90000101", Action: FeedbackKeep, CreatedAt: at(0)},
-		{ID: "a2", Target: "movie:tmdb:90000101", Action: FeedbackNever, CreatedAt: at(1)},
-		{ID: "b1", Target: "movie:tmdb:90000102", Action: FeedbackKeep, CreatedAt: at(0)},
-		{ID: "b2", Target: "movie:tmdb:90000102", Action: FeedbackClear, CreatedAt: at(1)},
-		{ID: "c1", Target: "movie:tmdb:90000103", Action: FeedbackLess, CreatedAt: at(0)},
-		{ID: "d1", Target: "movie:tmdb:90000103", Action: FeedbackClear, CreatedAt: at(2), Scope: FeedbackChannel, ScopeID: "ch-1"},
-		{ID: "e1", Target: "movie:tmdb:90000104", Action: FeedbackKeep, CreatedAt: at(3), Scope: FeedbackChannel, ScopeID: "ch-1"},
+		{ID: "a1", Target: "movie:tmdb:90000101", Action: channeldatastore.FeedbackKeep, CreatedAt: at(0)},
+		{ID: "a2", Target: "movie:tmdb:90000101", Action: channeldatastore.FeedbackNever, CreatedAt: at(1)},
+		{ID: "b1", Target: "movie:tmdb:90000102", Action: channeldatastore.FeedbackKeep, CreatedAt: at(0)},
+		{ID: "b2", Target: "movie:tmdb:90000102", Action: channeldatastore.FeedbackClear, CreatedAt: at(1)},
+		{ID: "c1", Target: "movie:tmdb:90000103", Action: channeldatastore.FeedbackLess, CreatedAt: at(0)},
+		{ID: "d1", Target: "movie:tmdb:90000103", Action: channeldatastore.FeedbackClear, CreatedAt: at(2), Scope: channeldatastore.FeedbackChannel, ScopeID: "ch-1"},
+		{ID: "e1", Target: "movie:tmdb:90000104", Action: channeldatastore.FeedbackKeep, CreatedAt: at(3), Scope: channeldatastore.FeedbackChannel, ScopeID: "ch-1"},
 	} {
 		f.ActorID = "admin"
 		if f.Scope == "" {
-			f.Scope = FeedbackHousehold
+			f.Scope = channeldatastore.FeedbackHousehold
 		}
 		if err := st.AppendDiscoveryFeedback(ctx, f); err != nil {
 			t.Fatal(err)
@@ -84,11 +84,11 @@ func testSpentRowPurges(t *testing.T, newStore NewStoreFunc) {
 	}
 	effective := func() []DiscoveryFeedback {
 		t.Helper()
-		household, err := st.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: FeedbackHousehold})
+		household, err := st.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: channeldatastore.FeedbackHousehold})
 		if err != nil {
 			t.Fatal(err)
 		}
-		channel, err := st.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: FeedbackChannel, ScopeID: "ch-1"})
+		channel, err := st.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: channeldatastore.FeedbackChannel, ScopeID: "ch-1"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -109,7 +109,7 @@ func testSpentRowPurges(t *testing.T, newStore NewStoreFunc) {
 		return
 	}
 	for _, id := range []string{"u-1", "u-2"} {
-		if err := st.UpsertUser(ctx, User{ID: id, Name: id, Role: RoleMember, CreatedAt: old, UpdatedAt: old}); err != nil {
+		if err := st.UpsertUser(ctx, User{ID: id, Name: id, Role: identitystore.RoleMember, CreatedAt: old, UpdatedAt: old}); err != nil {
 			t.Fatal(err)
 		}
 	}

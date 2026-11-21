@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/contact"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 func testInvitationReserveAndList(t *testing.T, newStore NewStoreFunc) {
@@ -18,13 +19,13 @@ func testInvitationReserveAndList(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
 	if err := s.UpsertUser(ctx, User{
-		ID: "existing-local", Name: "Ada", Role: RoleMember, CreatedAt: now, UpdatedAt: now,
+		ID: "existing-local", Name: "Ada", Role: identitystore.RoleMember, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	conflict := localInvitationFixture("conflict", "ada", now)
-	if err := s.CreateInvitation(ctx, conflict, nil); !errors.Is(err, ErrInvitationIdentityConflict) {
+	if err := s.CreateInvitation(ctx, conflict, nil); !errors.Is(err, identitystore.ErrInvitationIdentityConflict) {
 		t.Fatalf("reserve existing local identity = %v, want ErrInvitationIdentityConflict", err)
 	}
 
@@ -37,7 +38,7 @@ func testInvitationReserveAndList(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("get invitation = %+v, %v; want %+v", got, err, created)
 	}
 	duplicate := localInvitationFixture("another", "GRACE", now)
-	if err := s.CreateInvitation(ctx, duplicate, nil); !errors.Is(err, ErrInvitationIdentityConflict) {
+	if err := s.CreateInvitation(ctx, duplicate, nil); !errors.Is(err, identitystore.ErrInvitationIdentityConflict) {
 		t.Fatalf("duplicate pending identity = %v, want ErrInvitationIdentityConflict", err)
 	}
 
@@ -61,8 +62,8 @@ func testInvitationReservationBlocksDirectCreation(t *testing.T, newStore NewSto
 		t.Fatal(err)
 	}
 	if err := s.CreateUserUnlessInvited(ctx, User{
-		ID: "direct-local", Name: " grace ", Role: RoleMember, CreatedAt: now, UpdatedAt: now,
-	}, now); !errors.Is(err, ErrInvitationIdentityConflict) {
+		ID: "direct-local", Name: " grace ", Role: identitystore.RoleMember, CreatedAt: now, UpdatedAt: now,
+	}, now); !errors.Is(err, identitystore.ErrInvitationIdentityConflict) {
 		t.Fatalf("create reserved local user = %v, want ErrInvitationIdentityConflict", err)
 	}
 
@@ -75,14 +76,14 @@ func testInvitationReservationBlocksDirectCreation(t *testing.T, newStore NewSto
 		t.Fatal(err)
 	}
 	if err := s.CreateUserUnlessInvited(ctx, User{
-		ID: "library-user-1", Name: "Katherine", Role: RoleMember, MediaServerLinked: true,
+		ID: "library-user-1", Name: "Katherine", Role: identitystore.RoleMember, MediaServerLinked: true,
 		CreatedAt: now, UpdatedAt: now,
-	}, now); !errors.Is(err, ErrInvitationIdentityConflict) {
+	}, now); !errors.Is(err, identitystore.ErrInvitationIdentityConflict) {
 		t.Fatalf("create reserved Library user = %v, want ErrInvitationIdentityConflict", err)
 	}
 
 	if err := s.CreateUserUnlessInvited(ctx, User{
-		ID: "unreserved", Name: "Dorothy", Role: RoleMember, CreatedAt: now, UpdatedAt: now,
+		ID: "unreserved", Name: "Dorothy", Role: identitystore.RoleMember, CreatedAt: now, UpdatedAt: now,
 	}, now); err != nil {
 		t.Fatalf("create unreserved user: %v", err)
 	}
@@ -110,7 +111,7 @@ func testInvitationContactIsAtomicAndGloballyUnique(t *testing.T, newStore NewSt
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
 	if err := s.UpsertUser(ctx, User{
-		ID: "existing", Name: "Existing", Role: RoleMember, CreatedAt: now, UpdatedAt: now,
+		ID: "existing", Name: "Existing", Role: identitystore.RoleMember, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,7 @@ func testInvitationContactIsAtomicAndGloballyUnique(t *testing.T, newStore NewSt
 		OwnerKind: contact.OwnerInvitation, OwnerID: conflict.ID, Email: email, Normalized: normalized,
 		Status: contact.StatusPending, Provenance: contact.ProvenanceAdmin, CreatedAt: now,
 	}
-	if err := s.CreateInvitation(ctx, conflict, conflictAddress); !errors.Is(err, ErrContactAddressConflict) {
+	if err := s.CreateInvitation(ctx, conflict, conflictAddress); !errors.Is(err, identitystore.ErrContactAddressConflict) {
 		t.Fatalf("duplicate invitation contact = %v, want ErrContactAddressConflict", err)
 	}
 	if _, err := s.GetInvitation(ctx, conflict.ID, now); !errors.Is(err, ErrNotFound) {
@@ -299,7 +300,7 @@ func testInvitationGrantPreviewRejectsEveryUnusableState(t *testing.T, newStore 
 	}
 	redeemAt := now.Add(time.Minute)
 	if _, err := s.RedeemInvitation(ctx, consumedGrant.TokenHash, User{
-		ID: "consumed-user", Name: consumed.Username, Role: RoleMember,
+		ID: "consumed-user", Name: consumed.Username, Role: identitystore.RoleMember,
 		PasswordHash: "$argon2id$prepared", CreatedAt: redeemAt, UpdatedAt: redeemAt,
 	}, Session{
 		TokenHash: "consumed-session", UserID: "consumed-user",
@@ -339,7 +340,7 @@ func testInvitationConcurrentRedemption(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	user := User{
-		ID: "redeemed-user", Name: "Mary", Role: RoleMember, PasswordHash: "$argon2id$prepared",
+		ID: "redeemed-user", Name: "Mary", Role: identitystore.RoleMember, PasswordHash: "$argon2id$prepared",
 		CreatedAt: now.Add(time.Minute), UpdatedAt: now.Add(time.Minute),
 	}
 	var wg sync.WaitGroup
@@ -370,7 +371,7 @@ func testInvitationConcurrentRedemption(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	storedUser, err := s.GetUser(ctx, user.ID)
-	if err != nil || storedUser.Role != RoleMember || storedUser.PasswordHash != user.PasswordHash {
+	if err != nil || storedUser.Role != identitystore.RoleMember || storedUser.PasswordHash != user.PasswordHash {
 		t.Fatalf("redeemed user = %+v, %v", storedUser, err)
 	}
 	sessions, err := s.ListSessionsForUser(ctx, user.ID, now.Add(time.Minute))

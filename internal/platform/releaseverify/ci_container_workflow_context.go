@@ -66,6 +66,8 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "ci-go-contracts.yml", job: "run"}:        {name: "Go — repository contracts (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2}}},
 		{workflow: "ci-go-cache-warm.yml", job: "run"}:       {name: "Warm Go build cache (${{ matrix.lane }})", runsOn: "ubuntu-latest", timeoutMinutes: 30, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/3", "certification-2/3", "certification-3/3", "postgres"}}},
 		{workflow: "ci-go-cache-warm.yml", job: "contracts"}: {name: "Warm Go contracts cache", runsOn: "ubuntu-latest", timeoutMinutes: 30},
+		{workflow: "ci-go-cache-warm.yml", job: "pnpm"}:      {name: "Warm pnpm store", runsOn: "ubuntu-latest", timeoutMinutes: 30},
+		{workflow: "ci-go-cache-warm.yml", job: "ffmpeg"}:    {name: "Warm production FFmpeg archive", runsOn: "ubuntu-latest", timeoutMinutes: 30},
 		{workflow: "ci-go.yml", job: "run"}:                  {name: "Go — race-policy tests (${{ matrix.lane }})", runsOn: "ubuntu-latest", timeoutMinutes: 15, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/3", "certification-2/3", "certification-3/3"}}},
 		{workflow: "ci-image-certification.yml", job: "run"}: {name: "Rust image — runtime certification", runsOn: "ubuntu-latest"},
 		{workflow: "ci-image.yml", job: "run"}: {

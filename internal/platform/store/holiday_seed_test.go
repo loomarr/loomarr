@@ -129,10 +129,10 @@ func TestAGroupsLastMemberIsNotRetiredWithItsTaxon(t *testing.T) {
 		t.Fatal(err)
 	}
 	retire := TaxonomyEdit{Delete: true, Slug: harvest.Slug}
-	if _, err := s.PreviewTaxonomyEdit(ctx, retire); !errors.Is(err, ErrTaxonConflict) {
+	if _, err := s.PreviewTaxonomyEdit(ctx, retire); !errors.Is(err, clipstore.ErrTaxonConflict) {
 		t.Fatalf("preview of retiring a group's last member = %v, want ErrTaxonConflict", err)
 	}
-	if err := s.ApplyTaxonomyEdit(ctx, retire, at); !errors.Is(err, ErrTaxonConflict) {
+	if err := s.ApplyTaxonomyEdit(ctx, retire, at); !errors.Is(err, clipstore.ErrTaxonConflict) {
 		t.Fatalf("retiring a group's last member = %v, want ErrTaxonConflict", err)
 	}
 	if got := holidayByID(t, s, holidayvocab.GenericHoliday).Members; !slices.Equal(got, []string{"harvest-fair"}) {
