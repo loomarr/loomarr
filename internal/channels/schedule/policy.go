@@ -471,8 +471,7 @@ func sameRanges(a, b []Range) bool {
 // ScopePolicy is the "what is allowed on this channel" filter (§2). Ids are
 // resolved provisioning keys, never names.
 //
-// Dates is the only date scope. The retired `era` field is neither read nor written: migration
-// 00246 folded every stored one into Dates.
+// Dates is the only date scope; a scope has no era field (#2147).
 type ScopePolicy struct {
 	Series      []provision.Key `json:"series,omitempty" maxItems:"1000"`     // restrict to these series (resolved ids); no larger than a lineup (1000)
 	Collections []string        `json:"collections,omitempty" maxItems:"100"` // media-server collections; a library has dozens

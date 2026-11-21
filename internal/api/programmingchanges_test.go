@@ -189,12 +189,19 @@ func TestProgrammingChanges_DatesReachTheEngineAndEraIsRefused(t *testing.T) {
 	mkChannel(t, srv, "c1", "Movies", 5)
 
 	decodeChanges(t, do(t, srv, http.MethodPost, changesPath, adminToken,
-		`{"policy":{"scope":{"dates":{"movieRelease":[{"from":1990}],"seriesPremiere":[{"from":1990}],"seriesAiring":[{"from":1990}]}}}}`))
+		`{"policy":{"scope":{"dates":{"movieRelease":[{"from":1990}],"seriesPremiere":[{"from":1990}],"seriesAiring":[{"from":1990}]}},`+
+			`"rules":[{"id":"r","what":{"dates":{"movieRelease":[{"from":1980,"to":1989}],"seriesPremiere":[{"from":1980,"to":1989}],"seriesAiring":[{"from":1980,"to":1989}]}}}]}}`))
 	if chSvc.draftPolicy == nil {
 		t.Fatal("draft policy not passed through")
 	}
 	if era, ok := chSvc.draftPolicy.Scope.Dates.Era(); !ok || era != (schedule.Range{From: 1990}) {
 		t.Errorf("draft scope dates = %+v, want era-shaped 1990 onwards", chSvc.draftPolicy.Scope.Dates)
+	}
+	if len(chSvc.draftPolicy.Rules) != 1 {
+		t.Fatalf("draft rules = %+v, want the one rule sent", chSvc.draftPolicy.Rules)
+	}
+	if era, ok := chSvc.draftPolicy.Rules[0].What.Dates.Era(); !ok || era != (schedule.Range{From: 1980, To: 1989}) {
+		t.Errorf("draft rule dates = %+v, want era-shaped 1980-1989", chSvc.draftPolicy.Rules[0].What.Dates)
 	}
 
 	for _, policy := range []string{

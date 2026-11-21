@@ -12,9 +12,9 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
-// Migration 00246 folds a stored scope `era` into `dates`, as the retired decode alias did
-// (schedule.withEra): ANDed axis by axis, an empty axis becomes [era], an axis the era misses
-// becomes [era], and the any-era range is dropped.
+// Migration 00246 folds a stored scope `era` into `dates`, as the decode alias did (#2147): ANDed
+// axis by axis, an empty axis becomes [era], an axis the era misses becomes [era], and the any-era
+// range is dropped.
 func TestFoldScopeEraMigration(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "fold-scope-era.db"))
 	if err != nil {

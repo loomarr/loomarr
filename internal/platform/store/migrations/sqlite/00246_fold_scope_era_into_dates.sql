@@ -2,7 +2,7 @@
 -- #2147: a scope's `era` is a shortcut for `dates` (#1817, #1877), resolved until now on every
 -- decode. This folds the stored ones into `dates` once, so the decode alias can go. Nothing writes
 -- `era` any more: the API rejects it, the backend marshals no Era field, and the suggester refuses
--- it. The fold is what the alias did (schedule.withEra): the era is ANDed into each date axis, an
+-- it. The fold is what the decode alias did: the era is ANDed into each date axis, an
 -- empty axis becomes [era], an axis the era misses entirely becomes [era], and the any-era range
 -- ({} or 0–0) constrains nothing and is simply removed.
 --
