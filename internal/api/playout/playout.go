@@ -83,9 +83,9 @@ const playoutTokenParam = "token"
 
 // playoutModeParam is an unsigned least-privilege modifier on signed HLS playlists. `warm`
 // permits a bounded live snapshot but forbids reclaiming another Channel's retained session.
-// `prepared` is retired with prepared media (#1512) and always answers 204 for beta.7 TV and
-// mobile installs, whose player probed it first. It is removed in v0.2.0-beta.10 (#1742).
-// Neither expands what the channel-scoped signature authorizes.
+// Any other value (the retired `prepared` included, #1742) is refused by the route's enum before
+// playout is touched, so an unknown mode never starts an encoder for a channel nobody watches.
+// It does not expand what the channel-scoped signature authorizes.
 const playoutModeParam = "mode"
 
 // Playout is the one playback interface used by HTTP transport adapters (§9.1 V56). It hides the
@@ -504,13 +504,6 @@ func (s *Handlers) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mode := r.URL.Query().Get(playoutModeParam)
-	if mode == "prepared" {
-		// Prepared media is retired (#1512): there is never a prepared presentation. A client
-		// built before that still probes with it, and the answer stays "none" — never a live start,
-		// which would run an encoder for a channel nobody is watching (G1).
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
 	viewer, tagged := s.requestViewer(r.Context(), channelID, r.URL.Query())
 	presentation, err := s.playout.Tune(httpcore.WithPlayoutViewer(r.Context(), viewer, tagged), playout.TuneRequest{
 		ChannelID: channelID, Delivery: playout.DeliveryHLS,
@@ -763,7 +756,6 @@ func (s *Handlers) registerPlayout(api huma.API) {
 		Summary: "Channel HLS master playlist (signed-URL authed)", Tags: []string{"playout"},
 	}, "The HLS master playlist for the in-app and native players.",
 		"application/vnd.apple.mpegurl")
-	hlsMaster.Responses["204"] = &huma.Response{Description: "mode=prepared (retired, removed in v0.2.0-beta.10): there is no prepared presentation, and live playout was not started."}
 	streamOp[playoutHLSInput](s, api, hlsMaster, s.hlsPlaylistHandler)
 	// Every asset is a bare file beside the master, so it fits a single `{asset}` segment.
 	//
@@ -797,7 +789,7 @@ type playoutAssetInput struct {
 // avoids claiming that the MPEG-TS route accepts the hint.
 type playoutHLSInput struct {
 	ID   string `path:"id" example:"ch_abc123" doc:"Loomarr channel id"`
-	Mode string `query:"mode" enum:"prepared,warm" doc:"Optional least-privilege lookup: warm permits speculative live startup without reclaiming another Channel; prepared is retired, always answers 204 without starting playout, and is removed in v0.2.0-beta.10"`
+	Mode string `query:"mode" enum:"warm" doc:"Optional least-privilege lookup: warm permits speculative live startup without reclaiming another Channel. Any other value is refused with 422 before playout is touched."`
 }
 
 // streamOp registers one playout streaming route on the Huma API: method + path, the shared playout
