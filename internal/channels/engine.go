@@ -278,11 +278,10 @@ func (e *Engine) WithFranchises(r FranchiseResolver) *Engine {
 	return e
 }
 
-// BoxSetResolver returns the MEDIA-SERVER collections (Emby/Jellyfin BoxSets) a title
-// belongs to, backing scope.collections (programming-design §2.2). An empty slice with
-// ok=true is a real answer — "belongs to no collection" — and is stamped as settled so it
-// is never re-fetched; ok=false means it could not be resolved (media server down, no
-// library wired) and the entry is left for the next pass.
+// BoxSetResolver returns the household collections (library_collections) a title belongs to,
+// backing scope.collections (programming-design §2.2). Every reconcile asks it for every entry,
+// so it must answer from memory. An empty slice with ok=true is a real answer, "belongs to no
+// collection"; ok=false means it could not be resolved, and the entry keeps its last stamp.
 //
 // ⚠ Nothing to do with FranchiseResolver above, which resolves the TMDB franchise id.
 // Same word, different namespaces (programming-design §2.2).
