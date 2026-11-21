@@ -652,11 +652,16 @@ step 5). Nothing reads the scanner's origins until the cutover.
   projector rewrites the whole title inside the inventory write (a pass, a header read, an
   origin marked unseen; decision 43). The file list (`library_files`) follows the walk and the
   sources follow the inventory, so the two can disagree while a removal waits, such as a pass
-  that could not hear from an arr and marked no origin unseen. A listed file is therefore an
-  extra copy only when its source does not play and another listed file plays in its place: one
-  in the same edition with the same part, or a whole file of that edition. A file with no source
-  row yet plays. So a title's last listed file is never offered for removal, and Remove extra
-  copy holds the same rule itself. Each scan origin's observation JSON stays as evidence of what
+  that could not hear from an arr and marked no origin unseen, and while a new file waits for
+  its first write. The list can also keep files that are gone from disk: a removal past the hold
+  threshold is held, not marked missing, and nothing is marked missing while an arr does not
+  answer. A listed file is therefore an extra copy only when it has a source row that does not
+  play and another listed file with a source row plays in its place: one in the same edition
+  with the same part, or a whole file of that edition. A file with no source row yet is never an
+  extra and never plays in another's place. So a title's last listed file is never offered for
+  removal. Remove extra copy holds the same rule itself, and before it moves anything it checks
+  on disk that a copy playing in its place is there, refusing (409) when none is. Each scan
+  origin's observation JSON stays as evidence of what
   the scan saw, not a source the page reads (decision 40). `library_markers` and
   `library_trickplay` are stored ahead of use: the player will read them for skipping and
   scrubbing, and no page reads them.

@@ -51,28 +51,34 @@ type ItemFile struct {
 	// Extra is a copy that never plays, because another of the title's listed files plays in its
 	// place (decisions 37, 54); see extraCopy.
 	Extra bool
-	// plays is its source row's plays; a file with no source row yet plays.
-	plays bool
+	// sourced is true when it has a source row; plays is that row's plays.
+	sourced, plays bool
 }
 
-// extraCopy is whether files[i] is an extra copy: its source does not play, and another of the
-// listed files plays in its place, in the same edition and either the same part or as a whole
-// file (an edition with a whole file plays it, not its parts). The source rows follow the
-// inventory and the list follows the walk, and the two disagree while a removal waits (a pass
-// that could not hear from an arr marks no origin unseen), so a copy whose playing file has gone
-// from the list is not an extra: a title's last file is never offered for removal.
-func extraCopy(files []ItemFile, i int) bool {
+// playsInPlaceOf is the listed files that play in files[i]'s place: each other file with a source
+// row that plays, in the same edition and either the same part or as a whole file (an edition
+// with a whole file plays it, not its parts). It is none when files[i] plays or has no source row
+// yet. The source rows follow the inventory and the list follows the walk, and the two disagree
+// while a removal waits (a pass that could not hear from an arr marks no origin unseen) and while
+// a new file waits for its first write. So a copy whose playing file has gone from the list has
+// none, and a file with no source row is neither removable nor in another's place.
+func playsInPlaceOf(files []ItemFile, i int) []ItemFile {
 	f := files[i]
-	if f.plays {
-		return false
+	if !f.sourced || f.plays {
+		return nil
 	}
+	var out []ItemFile
 	for j, g := range files {
-		if j != i && g.plays && editionKey(g.Edition) == editionKey(f.Edition) && (g.Part == f.Part || g.Part == 0) {
-			return true
+		if j != i && g.sourced && g.plays && editionKey(g.Edition) == editionKey(f.Edition) && (g.Part == f.Part || g.Part == 0) {
+			out = append(out, g)
 		}
 	}
-	return false
+	return out
 }
+
+// extraCopy is whether files[i] is an extra copy: a listed file plays in its place, so a title's
+// last file is never offered for removal.
+func extraCopy(files []ItemFile, i int) bool { return len(playsInPlaceOf(files, i)) > 0 }
 
 // Picture is a video stream's size and range.
 type Picture struct {
@@ -80,13 +86,13 @@ type Picture struct {
 	HDR           bool
 }
 
-// itemFile is f with what its source row says. A file with no row yet is zero beside f, and plays:
-// the safe side, since a file that plays is never offered for removal.
+// itemFile is f with what its source row says; a file with no row yet is zero beside f.
 func itemFile(f librarystore.LibraryFile, src librarystore.LibrarySource, ok bool) ItemFile {
-	out := ItemFile{LibraryFile: f, plays: true}
+	out := ItemFile{LibraryFile: f}
 	if !ok {
 		return out
 	}
+	out.sourced = true
 	out.LengthMillis, out.Edition, out.Part, out.plays = src.DurationMs, src.Edition, src.Part, src.Plays
 	var audio *librarystore.LibraryStream
 	for i, s := range src.Streams {

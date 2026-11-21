@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -35,7 +36,8 @@ var (
 
 // RemoveExtraCopy is "Remove extra copy": path, one of the title's files that never plays, moves to
 // its media folder's trash and leaves the title, and the folder is passed over. store.ErrNotFound
-// when the title has no such present file; ErrPlays when it is the copy that plays.
+// when the title has no such present file; ErrPlays when it is the copy that plays, or when no
+// copy that plays in its place is on disk now.
 func (l *Library) RemoveExtraCopy(ctx context.Context, id, path string) error {
 	d, err := l.Item(ctx, id)
 	if err != nil {
@@ -45,8 +47,10 @@ func (l *Library) RemoveExtraCopy(ctx context.Context, id, path string) error {
 		if f.Path != path {
 			continue
 		}
-		// The rule is held here on its own, not taken from the page's Extra.
-		if !extraCopy(d.Files, i) {
+		// The rule is held here on its own, not taken from the page's Extra. The list can keep a
+		// file that is gone (a held removal, an arr not answering), so the copy in its place must
+		// be on disk too.
+		if !slices.ContainsFunc(playsInPlaceOf(d.Files, i), func(g ItemFile) bool { return l.disk().File(ctx, g.Path) }) {
 			return ErrPlays
 		}
 		now := l.now()
