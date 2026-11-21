@@ -3,8 +3,8 @@ package schedule
 // An era is not a second date scope (#1817, #1877): an era range R filters exactly what
 // Dates{MovieRelease, SeriesPremiere, SeriesAiring = [R]} filters — a movie by its release year,
 // a series by its premiere year, and each episode by its own airing year, with an unknown year (0)
-// failing open on every axis. A scope stores only dates (#2147); EraDates and DateScope.Era are
-// how code speaks in eras.
+// failing open on every axis. A scope stores only dates (#2147); EraDates and (*DateScope).Era
+// are how code speaks in eras.
 
 // EraDates is the date scope an era range stands for: the same window on all three
 // axes. The any-era range constrains nothing and returns nil.
