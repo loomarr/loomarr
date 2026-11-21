@@ -89,7 +89,6 @@ tables:
         How far along it is, 0 to 100. For a model download, -1 means the size isn't known yet.
       completed: For a model download, bytes downloaded so far of the current layer. 0 otherwise.
       total: For a model download, total bytes of the current layer. 0 otherwise.
-      result_id: For filler_split, the id of the split proposal it produced. Empty otherwise.
       error: Why it failed, or empty.
       started_at: When it was started, in Unix seconds.
       completed_at: When it finished, in Unix seconds. 0 while it is still queued or running.
