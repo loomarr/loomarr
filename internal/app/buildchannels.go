@@ -310,7 +310,7 @@ func buildChannels(
 		// ClaimDueChannels lease), driven by River. The Runner's lease/batch are constructed
 		// here; it has no standalone loop.
 		chSweep := channels.NewRunner(channelEngine, st, chEvery, 2*chEvery, 50, time.Now, log)
-		jobReg.Add(channelMaintenanceJob(chSweep, func(ctx context.Context) error {
+		jobReg.Add(channelMaintenanceJob(chSweep, log, func(ctx context.Context) error {
 			return backendController.ApplyCurrent(ctx, resolveDesiredBackend)
 		}, func(ctx context.Context) error {
 			// Same gate as the auto-wire after a save: no Tunarr configured, nothing to wire.
