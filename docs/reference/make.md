@@ -173,7 +173,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make migration-rehearsal` |  | boot IMAGE on a copy of the backup in BACKUP, with no network; run it where the backup lives (RECORD=1 records the pass a final tag needs) |
 | `make hardware-gate` |  | has COMMIT passed the playout bench on Intel and NVIDIA? |
 | `make demo-library` |  | serve the demo library's Emby-compatible stand-in (generates its clips and art on first run) |
-| `make demo-titles-verify` |  | no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI: privacy-verify, whenever ci-impact sees a scanned path) |
+| `make demo-titles-verify` |  | no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI: privacy-verify, in the CI policy job on every run) |
 | `make demo-seed` |  | point this worktree's backend at the running demo library and create the demo channels (idempotent) |
 | `make docs-capture` |  | regenerate the docs screenshots from the demo seed (needs dev-be, dev-fe, demo-library, demo-seed) |
 

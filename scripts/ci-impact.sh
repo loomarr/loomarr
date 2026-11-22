@@ -51,67 +51,15 @@ classify() {
   local path="$1"
   local known=false
 
-  # The public repo's real-titles guard (make demo-titles-verify, run by privacy-verify in the
-  # Go contracts job) scans these seeds, fixtures and the demo catalogue. It adds the gate
-  # without claiming the path, so each path's own classification below still applies. Keep in
-  # step with isFixture and guarded in internal/demolibrary/guard_test.go; a test there fails
-  # when a scanned path would skip this gate (#1587).
-  case "$path" in
-    cmd/seed/*|cmd/demo-library/*|internal/demolibrary/*|web/*.stories.tsx|web/apps/web/tests/e2e/mock-backend.ts|web/scripts/tv-emulator-fixture-server.mjs)
-      select_gate contracts
-      ;;
-    # inventedGoFixtures: Go test fixtures written as invented data.
-    internal/testkit/fixtures/sonarr/*|internal/testkit/fixtures/radarr/*|internal/library/metadataprovider/nfo/testdata/*)
-      select_gate contracts
-      ;;
-    web/packages/fixtures/src/*)
-      [[ "$path" == *.test.* ]] || select_gate contracts
-      ;;
-    # migratedTests: the unit tests #1592 moved onto the demo catalogue.
-    web/apps/web/src/components/loomarr/ai/approval-queue-item/*|web/apps/web/src/components/loomarr/ai/episode-selection-label/*|web/apps/web/src/components/loomarr/ai/proposal-edit/*|web/apps/web/src/components/loomarr/ai/proposal-review/*|web/apps/web/src/components/loomarr/ai/refine-panel/*|web/apps/web/src/components/loomarr/ai/refine-review/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/src/components/loomarr/feedback/generation-progress/*|web/apps/web/src/discovery-feedback/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/src/suggest/approval-queue/*|web/apps/web/src/suggest/intent-form/*|web/apps/web/src/suggest/live-proposal-outlook/*|web/apps/web/src/suggest/movie-collection-choices/*|web/apps/web/src/suggest/suggestion-expansion/*|web/apps/web/src/suggest/suggestion-language/*|web/apps/web/src/suggest/use-channel-refine/*|web/apps/web/src/suggest/use-proposal-review-edit/*|web/apps/web/src/suggest/use-suggestion-run/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/src/components/loomarr/channels/channel-card/*|web/apps/web/src/components/loomarr/channels/channel-collections-scope/*|web/apps/web/src/components/loomarr/channels/channel-cycle-preview/*|web/apps/web/src/components/loomarr/channels/channel-ident/*|web/apps/web/src/components/loomarr/channels/channel-lineup-editor/*|web/apps/web/src/components/loomarr/channels/channel-policy-fields/*|web/apps/web/src/components/loomarr/channels/channel-rules-editor/*|web/apps/web/src/components/loomarr/channels/channel-series-scope/*|web/apps/web/src/components/loomarr/channels/now-next-strip/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/src/components/loomarr/filler/clip-card/*|web/apps/web/src/components/loomarr/filler/clip-row/*|web/apps/web/src/components/loomarr/filler/pod-timeline/*|web/apps/web/src/components/loomarr/filler/split-review-editor/*|web/apps/web/src/components/loomarr/people/import-dialog/*|web/apps/web/src/components/loomarr/people/invitation-join/*|web/apps/web/src/components/loomarr/player/video-player/*|web/apps/web/src/components/loomarr/shell/search-command/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/src/lib/policy-overrides/*|web/apps/web/src/queue/request-detail/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/src/channels/use-channel-lineup/*|web/apps/web/src/channels/use-channel-save/*|web/apps/web/src/filler/channel-filler/*|web/apps/web/src/filler/clip-details/*|web/apps/web/src/filler/incoming/*|web/apps/web/src/filler/sources-panel/*|web/apps/web/src/queue/request-lists/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/src/suggest/channel-suggest-panel/*|web/apps/web/src/suggest/manual-channel-builder/*|web/apps/web/src/test/*|web/packages/core/src/*|web/packages/core/tests/*|web/packages/player/tests/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/tests/e2e/*)
-      [[ "$path" != *.spec.ts ]] || select_gate contracts
-      ;;
-    web/apps/web/src/components/loomarr/dashboard/activity-feed/*|web/packages/ui/tests/*|web/packages/ui-tv/tests/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    # migratedGo trees whose Go routing below skips the contracts job.
-    internal/platform/releaseverify/*_test.go|research/*_test.go)
-      select_gate contracts
-      ;;
-    web/apps/web/tests/visual/*)
-      [[ "$path" != *.spec.ts ]] || select_gate contracts
-      ;;
-  esac
+  # The public repo's real-titles guard (make privacy-verify) needs no routing here: the CI policy
+  # job runs it on every run, whatever changed.
 
   # knip (run by `make fe` for the web gate and by `make clients` for the clients gate) spans the
   # whole web/ workspace, and web/knip.ts makes every web/scripts/*.{mjs,cjs} a knip entry. Those
   # entries are also named by the Apple and Android script rules below, which select native gates
   # but neither web nor clients, so a change there could alter knip's result unchecked (#1838).
-  # Like the guard above, this adds the gate without claiming the path.
+  # This adds the gate without claiming the path, so the path's own classification below still
+  # applies.
   case "$path" in
     web/scripts/*.mjs|web/scripts/*.cjs)
       select_gate clients

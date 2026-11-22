@@ -50,7 +50,15 @@ real consumers. They do not select unrelated Rust, Android, Apple, image, browse
 Postgres, or application-Go builds. The root Make interface and unknown paths still select
 everything.
 
-The Go repository-contract job keeps the stable `make privacy-verify` interface, but its captured
+The CI policy job also runs `make privacy-verify`, the public repository's guard against real media
+titles and captured private fixture literals, on every run. No classifier rule routes it: a story,
+fixture or test that the guard scans is checked whatever else the change selects, and a path the
+classifier has no rule for cannot skip it. A change to only such files therefore does not select
+the Go contracts job, whose vet and lint cannot see them. `TestCIRunsTheGuardOnEveryRun` in
+`internal/demolibrary` holds the three properties this rests on: the policy job is unconditional,
+it runs the target, and the required `CI` check waits for it.
+
+`make privacy-verify` keeps its stable interface, but its captured
 fixture guard is one in-process tracked-tree scan in `releaseverify`. The previous shell loop
 started hashing processes for every unique candidate and measured 54 seconds locally by itself;
 the same case-folded SHA-256 policy now measures about two seconds, reports only labels and digests,
