@@ -1,15 +1,19 @@
 package rustgen_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
 	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/media/images/rustgen"
@@ -154,17 +158,43 @@ func TestDecodeSubtitlesReturnsTypedRefusals(t *testing.T) {
 	}
 }
 
-func TestDecodeSubtitlesRejectsAStillOutsideStaging(t *testing.T) {
-	track := []byte("track")
-	digest := fmt.Sprintf("%x", sha256.Sum256(track))
+func encodePNG(t *testing.T, img image.Image) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	if err := png.Encode(&b, img); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
+
+// stillJSON declares data as the still at name.
+func stillJSON(name string, data []byte) map[string]any {
+	return map[string]any{"relativePath": name, "bytes": len(data), "sha256": fmt.Sprintf("%x", sha256.Sum256(data))}
+}
+
+func stateJSON(start, end int64, still map[string]any) map[string]any {
+	return map[string]any{"startMs": start, "endMs": end, "still": still}
+}
+
+// fakeSubtitleWorker answers every decode-subtitles request with result after running the shell
+// command after, so a test controls exactly what the adapter must verify.
+func fakeSubtitleWorker(t *testing.T, result any, after string) *rustgen.Generator {
+	t.Helper()
+	body, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
 	worker := testkit.Executable(t, "loomarr-image", fmt.Sprintf(`#!/bin/sh
 if [ "$1" = capabilities ]; then
   printf '%%s\n' '{"protocol":1,"release":"test-release","recipe":"loomarr-rendition-v2","formats":["avif","jpeg","webp"],"animation":true,"operations":["decode-subtitles","generate"],"selfTest":true}'
   exit 0
 fi
 cat >/dev/null
-printf '%%s\n' '{"protocol":1,"status":"ok","requestId":"track-1","source":{"codec":"hdmv_pgs_subtitle","sha256":"%s","bytes":5},"width":8,"height":4,"states":[{"startMs":0,"endMs":0,"still":{"relativePath":"../escape.png","bytes":10,"sha256":"%s"}}]}'
-`, digest, digest))
+%s
+cat <<'EOF'
+%s
+EOF
+`, after, body))
 	gen, err := rustgen.Open(worker, rustgen.Contract{
 		Protocol: 1, Release: "test-release", Recipe: "loomarr-rendition-v2",
 		RequiredOperations: []string{"decode-subtitles"},
@@ -172,8 +202,87 @@ printf '%%s\n' '{"protocol":1,"status":"ok","requestId":"track-1","source":{"cod
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := gen.DecodeSubtitles(context.Background(), subtitleRequest(t, track, rustgen.CodecPGS)); err == nil {
-		t.Fatal("DecodeSubtitles accepted a still outside staging")
+	return gen
+}
+
+func TestDecodeSubtitlesAcceptsOnlyAVerifiedResult(t *testing.T) {
+	track := []byte("track bytes")
+	// A transparent NRGBA encodes as 8-bit RGBA, the worker's still format.
+	rgba := encodePNG(t, image.NewNRGBA(image.Rect(0, 0, 8, 4)))
+	tampered := bytes.Clone(rgba)
+	tampered[len(tampered)-1] ^= 0xff
+	opaque := image.NewNRGBA(image.Rect(0, 0, 8, 4))
+	for i := 3; i < len(opaque.Pix); i += 4 {
+		opaque.Pix[i] = 0xff
+	}
+	rgb := encodePNG(t, opaque) // an opaque image encodes as 8-bit RGB
+	deep := encodePNG(t, image.NewNRGBA64(image.Rect(0, 0, 8, 4)))
+	small := encodePNG(t, image.NewNRGBA(image.Rect(0, 0, 4, 4)))
+	shows := func(data []byte) []any {
+		return []any{stateJSON(0, 1000, stillJSON("s0.png", data)), stateJSON(1000, 1000, nil)}
+	}
+	for _, tt := range []struct {
+		name   string
+		states []any
+		// files are written relative to the request's directory, the parent of staging.
+		files map[string][]byte
+		after string
+		want  string
+	}{
+		{name: "valid", states: shows(rgba), files: map[string][]byte{"staging/s0.png": rgba}},
+		{
+			// A real, correctly declared PNG sits at the escaped path, so only containment refuses it.
+			name:   "outside staging",
+			states: []any{stateJSON(0, 0, stillJSON("../escape.png", rgba))},
+			files:  map[string][]byte{"escape.png": rgba},
+			want:   "unsafe still path",
+		},
+		{
+			name:   "out of order",
+			states: []any{stateJSON(1000, 1000, stillJSON("s0.png", rgba)), stateJSON(1000, 1000, nil)},
+			files:  map[string][]byte{"staging/s0.png": rgba},
+			want:   "invalid timeline",
+		},
+		{
+			name:   "unfolded clear",
+			states: []any{stateJSON(0, 1000, nil), stateJSON(1000, 1000, stillJSON("s0.png", rgba))},
+			files:  map[string][]byte{"staging/s0.png": rgba},
+			want:   "unfolded clear",
+		},
+		{name: "hash mismatch", states: shows(rgba), files: map[string][]byte{"staging/s0.png": tampered}, want: "hash mismatch"},
+		{name: "IHDR size", states: shows(small), files: map[string][]byte{"staging/s0.png": small}, want: "canvas-sized RGBA PNG"},
+		{name: "colour type", states: shows(rgb), files: map[string][]byte{"staging/s0.png": rgb}, want: "canvas-sized RGBA PNG"},
+		{name: "bit depth", states: shows(deep), files: map[string][]byte{"staging/s0.png": deep}, want: "canvas-sized RGBA PNG"},
+		{
+			name: "source changed", states: shows(rgba), files: map[string][]byte{"staging/s0.png": rgba},
+			after: "printf 'TRACK BYTES' > \"$TRACK\"", want: "changed during decoding",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			req := subtitleRequest(t, track, rustgen.CodecPGS)
+			dir := filepath.Dir(req.Path)
+			for name, data := range tt.files {
+				if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			result := map[string]any{
+				"protocol": 1, "status": "ok", "requestId": req.RequestID,
+				"source": map[string]any{"codec": rustgen.CodecPGS, "sha256": req.ExpectedSHA256, "bytes": len(track)},
+				"width":  8, "height": 4, "states": tt.states,
+			}
+			gen := fakeSubtitleWorker(t, result, "TRACK='"+req.Path+"'\n"+tt.after)
+			stills, err := gen.DecodeSubtitles(context.Background(), req)
+			if tt.want == "" {
+				if err != nil || len(stills.States) != 2 || stills.States[0].File != "s0.png" {
+					t.Fatalf("DecodeSubtitles = %+v, %v; want the declared still and a clear", stills, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("DecodeSubtitles error = %v, want one containing %q", err, tt.want)
+			}
+		})
 	}
 }
 

@@ -16,8 +16,9 @@ import (
 	"strings"
 )
 
-// The decode-subtitles ceilings of design images.md "Operations beyond renditions". The worker
-// enforces them while decoding; the adapter re-checks every one against the result.
+// The decode-subtitles ceilings of design images.md "Operations beyond renditions" that a result
+// shows. The worker enforces them, and its track-wide work ceilings, while decoding; the adapter
+// re-checks every one of these against the result.
 const (
 	MaxSubtitleInputBytes  = 256 << 20
 	MaxSubtitleWidth       = 3840
@@ -94,7 +95,8 @@ type subtitleManifest struct {
 }
 
 // DecodeSubtitles runs exactly one bounded worker process and accepts only a result whose every
-// still is a complete, declared PNG of the canvas size inside StagingDir.
+// still is a complete, declared 8-bit RGBA PNG of the canvas size inside StagingDir. On any error
+// the staging directory can hold partial or refused stills; the caller removes it.
 func (g *Generator) DecodeSubtitles(ctx context.Context, req SubtitleRequest) (SubtitleStills, error) {
 	if !slices.Contains(g.operations, decodeSubtitlesOperation) {
 		return SubtitleStills{}, fmt.Errorf("images: worker lacks the %s operation", decodeSubtitlesOperation)
@@ -201,8 +203,14 @@ func verifySource(path, expected string, size int64) error {
 
 var pngSignature = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 
+// The IHDR bit depth and colour type of the worker's straight-alpha stills.
+const (
+	pngBitDepth8  = 8
+	pngColourRGBA = 6
+)
+
 // verifyStill accepts only the declared regular file: its size, hash, and a PNG header whose
-// IHDR declares the canvas size.
+// IHDR declares the canvas size, bit depth 8 and colour type 6 (RGBA).
 func verifyStill(path string, size int64, digest string, width, height int) error {
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Size() != size {
@@ -212,7 +220,7 @@ func verifyStill(path string, size int64, digest string, width, height int) erro
 	if err != nil {
 		return fmt.Errorf("images: open worker still: %w", err)
 	}
-	header := make([]byte, 24)
+	header := make([]byte, 26)
 	_, headerErr := io.ReadFull(file, header)
 	hash := sha256.New()
 	_, _ = hash.Write(header)
@@ -225,8 +233,9 @@ func verifyStill(path string, size int64, digest string, width, height int) erro
 		return fmt.Errorf("images: worker still %q hash mismatch", filepath.Base(path))
 	}
 	if !bytes.Equal(header[:8], pngSignature) || string(header[12:16]) != "IHDR" ||
-		binary.BigEndian.Uint32(header[16:20]) != uint32(width) || binary.BigEndian.Uint32(header[20:24]) != uint32(height) { //nolint:gosec // width and height are within the 3840x2160 ceiling
-		return fmt.Errorf("images: worker still %q is not a canvas-sized PNG", filepath.Base(path))
+		binary.BigEndian.Uint32(header[16:20]) != uint32(width) || binary.BigEndian.Uint32(header[20:24]) != uint32(height) || //nolint:gosec // width and height are within the 3840x2160 ceiling
+		header[24] != pngBitDepth8 || header[25] != pngColourRGBA {
+		return fmt.Errorf("images: worker still %q is not a canvas-sized RGBA PNG", filepath.Base(path))
 	}
 	return nil
 }
