@@ -543,8 +543,8 @@ annotates each promotion run with a cache-poisoning warning for that declaration
 build and saves only the generation its validation step has bound to a successful queue run of a
 commit on main. The execution-context authority pins the declaration: a workflow-level cache mode,
 any other job that declares one, or a promotion that declares a different one fails
-`release-verify`. When a save is
-still refused, the promotion run fails at the retire step.
+`release-verify`, and the policy parser rejects YAML merge keys that could splice one in unseen.
+When a save is still refused, the promotion run fails at the retire step.
 
 ## Per-run measurements
 

@@ -180,6 +180,8 @@ func TestVerifyCIContainerDownloadsPinsDeclaredCacheMode(t *testing.T) {
 		workflow string
 		old      string
 		new      string
+		// reason is a fragment of the rejection; empty means "cache-mode".
+		reason string
 	}{
 		"promotion drops write":   {workflow: promotion, old: "    cache-mode: write\n", new: ""},
 		"promotion declares read": {workflow: promotion, old: "cache-mode: write", new: "cache-mode: read"},
@@ -196,6 +198,13 @@ func TestVerifyCIContainerDownloadsPinsDeclaredCacheMode(t *testing.T) {
 			old:      "    name: Release candidate — exact main scope\n",
 			new:      "    name: Release candidate — exact main scope\n    cache-mode: write\n",
 		},
+		"queue job merges write in": {
+			workflow: "ci-android.yml", old: "    runs-on: ubuntu-latest\n", new: "    runs-on: ubuntu-latest\n    <<: {cache-mode: write}\n",
+			reason: "merge keys",
+		},
+		"queue workflow merges write in": {
+			workflow: "ci-android.yml", old: "\njobs:\n", new: "\n<<: {cache-mode: write}\njobs:\n", reason: "merge keys",
+		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -210,7 +219,11 @@ func TestVerifyCIContainerDownloadsPinsDeclaredCacheMode(t *testing.T) {
 			if err == nil {
 				t.Fatal("VerifyCIContainerDownloads accepted a cache mode its authority does not name")
 			}
-			if !strings.Contains(err.Error(), "cache-mode") {
+			reason := test.reason
+			if reason == "" {
+				reason = "cache-mode"
+			}
+			if !strings.Contains(err.Error(), reason) {
 				t.Fatalf("VerifyCIContainerDownloads rejected the mutation for another reason: %v", err)
 			}
 		})
