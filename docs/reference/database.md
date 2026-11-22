@@ -1069,6 +1069,11 @@ One row per piece of artwork (posters, channel icons, clip stills and so on). Th
 | `frame_count` | How many frames the original has; 1 for a still image. | `INTEGER` |
 | `duration_ms` | An animation's length in milliseconds; 0 for a still image. | `INTEGER` |
 | `loop_count` | How many times an animation plays. Empty (NULL) for a still image, 0 for an endless loop. | `INTEGER` · may be empty |
+| `fetch_failures` | How many downloads of a remote image have failed in a row; 0 once one lands. | `INTEGER` |
+| `fetch_failed_at` | When the last failed download was tried, in Unix seconds; 0 for none. | `INTEGER` |
+| `fetch_retry_at` | The earliest time, in Unix seconds, the download is tried again after a failure; 0 for none. Each failure doubles the wait, from five minutes up to a day; a failure that waiting will not fix (the image is gone, its host is refused, it is too large or does not decode) waits a day. | `INTEGER` |
+| `fetch_priority` | The image's class in the download queue, which is served class by class: 0 artwork just adopted, 1 an image the expiry purge put back for a refresh, 2 artwork adopted in bulk to download last (episode stills). | `INTEGER` |
+| `fetch_queued_at` | When the image joined the download queue, in Unix seconds: its adoption, or the expiry purge putting it back. Within a priority the queue is served in this order. | `INTEGER` |
 
 ### clip_images
 

@@ -154,6 +154,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	}
 	if opts.Images != nil {
 		libraryDeps.LibraryImage = imageRoutes.LibraryImage
+		libraryDeps.LibraryImages = imageRoutes.LibraryImages
 		libraryDeps.CandidatePoster = imageRoutes.CandidatePoster
 	}
 	libraryapi.New(libraryDeps).Register(humaAPI)

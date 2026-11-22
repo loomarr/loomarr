@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/loomarr/loomarr/internal/media/images/rustgen"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 )
 
@@ -47,8 +48,15 @@ const maxFetchRedirects = 3
 // method that deletes rows.
 type FetchStore interface {
 	Store
-	// ListAwaitingFetch is the pending queue: remote rows whose bytes have never landed.
-	ListAwaitingFetch(ctx context.Context, limit int) ([]Image, error)
+	// ListAwaitingFetch is the pending queue: remote rows whose bytes have never landed and whose
+	// next attempt is due by now (FetchRetryAt).
+	ListAwaitingFetch(ctx context.Context, now time.Time, limit int) ([]Image, error)
+	// RecordFetchFailure counts a failed download of a never-fetched image at at and holds it off
+	// the queue until retryAt.
+	RecordFetchFailure(ctx context.Context, hash string, at, retryAt time.Time) error
+	// DeferFetch holds a never-fetched image off the queue until retryAt without counting a
+	// failure — the pass found the network down.
+	DeferFetch(ctx context.Context, hash string, retryAt time.Time) error
 	// ListByOrigin is rehydrate's work list — every row of an origin, whatever its fetch state,
 	// because a file can go missing under a row in any state.
 	ListByOrigin(ctx context.Context, origin Origin, limit int) ([]Image, error)
@@ -106,12 +114,73 @@ func (f *Fetcher) FetchPending(ctx context.Context) (FetchResult, error) {
 	if !f.enabled() {
 		return FetchResult{}, nil
 	}
-	pending, err := f.store.ListAwaitingFetch(ctx, fetchBatch)
+	now := f.svc.now()
+	pending, err := f.store.ListAwaitingFetch(ctx, now, fetchBatch)
 	if err != nil {
 		return FetchResult{}, err
 	}
 	res, _ := f.fetchAll(ctx, pending)
 	return res, nil
+}
+
+// fetchBackoffFirst and fetchBackoffMax bound how long a remote image waits after a failed
+// download: the first failure waits five minutes and each further one doubles the wait, up to a
+// day (5m, 10m, 20m … 21h20m, then 24h from the tenth failure on). An image that never downloads
+// costs one attempt a day and never holds the queue's front.
+const (
+	fetchBackoffFirst = 5 * time.Minute
+	fetchBackoffMax   = 24 * time.Hour
+)
+
+// fetchBackoff is the wait after an image's failures-th failure in a row (1 for the first).
+func fetchBackoff(failures int) time.Duration {
+	wait := fetchBackoffFirst
+	for i := 1; i < failures && wait < fetchBackoffMax; i++ {
+		wait *= 2
+	}
+	return min(wait, fetchBackoffMax)
+}
+
+// permanentFetchError is a failed download that waiting will not fix: a URL this install refuses
+// to fetch, an image upstream says is gone, a body over the size cap, or bytes the worker refuses
+// as input. The image waits the longest backoff straight away.
+type permanentFetchError struct{ error }
+
+func (e permanentFetchError) Unwrap() error { return e.error }
+
+// unreachableError is a download that got no response at all: the connection, DNS or TLS failed,
+// or the exchange timed out. When every attempt of a pass ends this way the network is down, and
+// none of the images is to blame.
+type unreachableError struct{ error }
+
+func (e unreachableError) Unwrap() error { return e.error }
+
+// permanentWorkerCodes are the worker refusals that are a property of the bytes themselves.
+var permanentWorkerCodes = map[string]bool{
+	"corrupt_input": true, "decode_failed": true, "unsupported_input": true, "limit_exceeded": true,
+}
+
+func isPermanentFetchError(err error) bool {
+	var p permanentFetchError
+	if errors.As(err, &p) {
+		return true
+	}
+	var w *rustgen.WorkerError
+	return errors.As(err, &w) && permanentWorkerCodes[w.Code]
+}
+
+func isUnreachable(err error) bool {
+	var u unreachableError
+	return errors.As(err, &u) && !isPermanentFetchError(err)
+}
+
+// retryAfter is when a failed image is tried again: a day after a permanent failure, else the
+// backoff for its failures-th failure in a row.
+func retryAfter(now time.Time, failures int, err error) time.Time {
+	if isPermanentFetchError(err) {
+		return now.Add(fetchBackoffMax)
+	}
+	return now.Add(fetchBackoff(failures))
 }
 
 // Rehydrate re-fetches remote images whose files are gone — the post-restore path (§22).
@@ -151,7 +220,9 @@ func (f *Fetcher) Rehydrate(ctx context.Context) (FetchResult, error) {
 }
 
 // FetchNow fetches a work list synchronously for an INTERACTIVE caller and returns the resulting
-// rows keyed by source URL. Anything that does not land inside `budget` is simply absent.
+// rows keyed by source URL. Anything that does not land inside `budget` is simply absent, and so
+// is an image still backing off after a failed download (Image.BackingOff), which is not tried: a
+// caller that needs to tell the two apart checks BackingOff on the record it passed in.
 //
 // ⚠ **Keyed by source URL rather than by hash, and that is the entire reason it returns a map.**
 // fetchOne RE-KEYS: the row `Adopt` created under a hash of the URL is deleted the moment real
@@ -177,13 +248,17 @@ func (f *Fetcher) FetchNow(ctx context.Context, work []Image, budget time.Durati
 	}
 
 	todo := make([]Image, 0, len(work))
+	now := f.svc.now()
 	for _, img := range work {
 		if img.SourceURL == "" {
 			continue
 		}
-		if !img.OriginFetchedAt.IsZero() {
+		if img.HasBytes() {
 			out[img.SourceURL] = img // already warm — nothing to download
 			continue
+		}
+		if img.BackingOff(now) {
+			continue // an interactive caller does not jump the wait; Image.BackingOff tells it why
 		}
 		todo = append(todo, img)
 	}
@@ -226,6 +301,25 @@ func (f *Fetcher) fetchAll(ctx context.Context, work []Image) (FetchResult, map[
 	}
 	_ = g.Wait() // every goroutine returns nil; the outcome is in results
 
+	// A pass in which every attempt that went to the network got no response at all is the network
+	// being down. A permanent failure (a refused URL, an image upstream says is gone) never reached
+	// the question, so it neither makes nor unmakes an outage. In an outage an unreachable image
+	// waits the first backoff step without counting a failure: raising every count would leave the
+	// whole catalogue waiting long after the network returns, and not waiting at all would retry an
+	// image that always times out every minute. A canceled pass says nothing of its images.
+	outage, networked := true, 0
+	for _, r := range results {
+		if r.err != nil && isPermanentFetchError(r.err) {
+			continue
+		}
+		networked++
+		if r.err == nil || !isUnreachable(r.err) {
+			outage = false
+		}
+	}
+	outage = outage && networked > 0
+	record := ctx.Err() == nil
+
 	out := FetchResult{Considered: len(work)}
 	byURL := make(map[string]Image, len(work))
 	for i, r := range results {
@@ -233,6 +327,20 @@ func (f *Fetcher) fetchAll(ctx context.Context, work []Image) (FetchResult, map[
 		case r.err != nil:
 			out.Failed++
 			f.log.Warn("image fetch failed", "hash", work[i].Hash, "url", work[i].SourceURL, "err", r.err)
+			if !record || work[i].HasBytes() {
+				break
+			}
+			now := f.svc.now()
+			if outage && isUnreachable(r.err) {
+				if err := f.store.DeferFetch(ctx, work[i].Hash, now.Add(fetchBackoffFirst)); err != nil {
+					f.log.Warn("image fetch not deferred", "hash", work[i].Hash, "err", err)
+				}
+				break
+			}
+			retry := retryAfter(now, work[i].FetchFailures+1, r.err)
+			if err := f.store.RecordFetchFailure(ctx, work[i].Hash, now, retry); err != nil {
+				f.log.Warn("image fetch failure not recorded", "hash", work[i].Hash, "err", err)
+			}
 		default:
 			out.Fetched++
 			if r.rekeyed {
@@ -268,7 +376,7 @@ type fetchOutcome struct {
 // URL changes — which is the honest outcome, because the bytes really are different.
 func (f *Fetcher) fetchOne(ctx context.Context, img Image) fetchOutcome {
 	if err := f.checkURL(img.SourceURL); err != nil {
-		return fetchOutcome{err: err}
+		return fetchOutcome{err: permanentFetchError{err}}
 	}
 
 	data, err := f.download(ctx, img.SourceURL)
@@ -346,22 +454,31 @@ func (f *Fetcher) download(ctx context.Context, src string) ([]byte, error) {
 	}
 	resp, err := f.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("images: fetch %s: %w", src, err)
+		err = fmt.Errorf("images: fetch %s: %w", src, err)
+		if isPermanentFetchError(err) {
+			return nil, err // a redirect checkRedirect refused
+		}
+		return nil, unreachableError{err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		return nil, permanentFetchError{fmt.Errorf("images: fetch %s: upstream returned %s", src, resp.Status)}
+	}
 	if resp.StatusCode != http.StatusOK {
-		// ⚠ Not retried here and not distinguished by status. A 429 or a 5xx is upstream asking
-		// for less traffic, and the retry that respects that is the NEXT scheduled pass — the row
-		// stays in the work list because origin_fetched_at is untouched, so backing off is the
-		// default behaviour rather than something this code has to implement.
+		// ⚠ Not retried here. A 429 or a 5xx is upstream asking for less traffic, and the retry
+		// that respects that is the image's backoff (fetchAll records the failure).
 		return nil, fmt.Errorf("images: fetch %s: upstream returned %s", src, resp.Status)
 	}
 
 	max := f.svc.cfg.MaxUploadBytes()
 	data, err := readCapped(resp.Body, max)
 	if err != nil {
-		return nil, fmt.Errorf("images: fetch %s: %w", src, err)
+		err = fmt.Errorf("images: fetch %s: %w", src, err)
+		if errors.Is(err, errTooLarge) {
+			return nil, permanentFetchError{err}
+		}
+		return nil, unreachableError{err}
 	}
 	return data, nil
 }
@@ -401,15 +518,15 @@ func (f *Fetcher) checkURL(raw string) error {
 // resolve into a non-public range (httpx.IsPublicIP).
 func (f *Fetcher) checkRedirect(req *http.Request, via []*http.Request) error {
 	if len(via) >= maxFetchRedirects {
-		return fmt.Errorf("images: too many redirects (%d)", len(via))
+		return permanentFetchError{fmt.Errorf("images: too many redirects (%d)", len(via))}
 	}
 	if req.URL.Scheme != "https" {
-		return fmt.Errorf("images: refusing a redirect to %s", req.URL.Scheme)
+		return permanentFetchError{fmt.Errorf("images: refusing a redirect to %s", req.URL.Scheme)}
 	}
 	host := req.URL.Hostname()
 	if ip := net.ParseIP(host); ip != nil {
 		if !httpx.IsPublicIP(ip) {
-			return fmt.Errorf("images: refusing a redirect into a non-public address (%s)", host)
+			return permanentFetchError{fmt.Errorf("images: refusing a redirect into a non-public address (%s)", host)}
 		}
 		return nil
 	}
@@ -419,7 +536,7 @@ func (f *Fetcher) checkRedirect(req *http.Request, via []*http.Request) error {
 	}
 	for _, a := range addrs {
 		if !httpx.IsPublicIP(a.IP) {
-			return fmt.Errorf("images: refusing a redirect into a non-public address (%s -> %s)", host, a.IP)
+			return permanentFetchError{fmt.Errorf("images: refusing a redirect into a non-public address (%s -> %s)", host, a.IP)}
 		}
 	}
 	return nil

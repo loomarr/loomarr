@@ -203,6 +203,39 @@ type Image struct {
 	UpdatedAt time.Time
 	// LastUsedAt drives derivative eviction under the cache budget.
 	LastUsedAt time.Time
+
+	// FetchFailures counts a remote image's downloads that failed in a row, FetchFailedAt is when
+	// the last was tried, and the fetch queue holds the image until FetchRetryAt (fetchBackoff).
+	// Bytes that land clear all three.
+	FetchFailures int
+	FetchFailedAt time.Time
+	FetchRetryAt  time.Time
+	// FetchQueuedAt is when a remote image joined the fetch queue: its adoption, or the expiry
+	// purge's requeue. Within a FetchPriority the queue is served in this order.
+	FetchQueuedAt time.Time
+	// FetchPriority is the remote image's class in the fetch queue, which is served class by
+	// class: adopted artwork, then refreshes, then bulk artwork.
+	FetchPriority FetchPriority
+}
+
+// FetchPriority is a fetch-queue class. Lower is fetched first; the values are stored.
+type FetchPriority int
+
+const (
+	// FetchAdopted is artwork a surface adopted and is waiting to show.
+	FetchAdopted FetchPriority = 0
+	// FetchRefresh is an image the expiry purge requeued: its surfaces showed it before, so a
+	// mass requeue waits behind new artwork.
+	FetchRefresh FetchPriority = 1
+	// FetchBulk is artwork adopted in bulk that no one is waiting on yet (episode stills), fetched
+	// after everything else.
+	FetchBulk FetchPriority = 2
+)
+
+// BackingOff reports whether a remote image's download failed and its next attempt is not due by
+// now (fetchBackoff), so a foreground fetch leaves it to the queue.
+func (i Image) BackingOff(now time.Time) bool {
+	return !i.HasBytes() && i.FetchRetryAt.After(now)
 }
 
 // Ref is what an image decorates. An image can have several (the same poster may be a channel's

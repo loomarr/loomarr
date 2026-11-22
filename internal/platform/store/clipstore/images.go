@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -47,6 +48,20 @@ type Image struct {
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	LastUsedAt      time.Time
+
+	// FetchFailures counts the downloads that failed in a row, FetchFailedAt is when the last was
+	// tried, and FetchRetryAt is when the fetch queue takes the image again; zero for none. A write
+	// whose OriginFetchedAt is set clears all three: the bytes landed.
+	FetchFailures int
+	FetchFailedAt time.Time
+	FetchRetryAt  time.Time
+	// FetchQueuedAt is when the image joined the fetch queue: its adoption, or the expiry purge's
+	// requeue. The queue is served in this order. A pending row written with none joins at its
+	// CreatedAt.
+	FetchQueuedAt time.Time
+	// FetchPriority orders the fetch queue ahead of FetchQueuedAt: 0 adopted artwork, 1 a refresh
+	// the expiry purge requeued, 2 bulk artwork fetched last.
+	FetchPriority int
 }
 
 // ImageRef records what an image decorates. OwnerKind picks the owner's table (imageOwners); a
@@ -104,24 +119,41 @@ type ImageDerivative struct {
 	CreatedAt  time.Time
 }
 
+// ExpiryCursor is a position in the expiry sweep's order: the fetch time and hash of the last row
+// read. The zero cursor is the start.
+type ExpiryCursor struct {
+	FetchedAt time.Time
+	Hash      string
+}
+
 // ImageStore is the image half of the Store contract.
 type ImageStore interface {
 	PutImage(ctx context.Context, img Image) error
 	GetImage(ctx context.Context, hash string) (Image, error)
-	// GetFetchedImageBySourceURL finds the image already downloaded from a source URL, so a
-	// re-adopt reuses it instead of queueing a download for bytes the disk already holds.
-	// ErrNotFound when the URL has never been fetched — which includes the adopted-but-pending
-	// case, since a placeholder row has no bytes to reuse.
-	GetFetchedImageBySourceURL(ctx context.Context, src string) (Image, error)
+	// GetImageBySourceURL finds the image of a source URL, so a re-adopt reuses it instead of
+	// queueing a second download: the row whose bytes have landed if there is one, else the row
+	// still waiting for them (an adopted placeholder, or an image the expiry purge requeued under
+	// its content hash). ErrNotFound when no row has that URL.
+	GetImageBySourceURL(ctx context.Context, src string) (Image, error)
 	DeleteImage(ctx context.Context, hash string) error
 	TouchImage(ctx context.Context, hash string, at time.Time) error
 
-	// ListImagesAwaitingFetch returns remote images whose bytes have not landed. The fetch job's
-	// work list; `origin_fetched_at = 0` is the "never fetched" sentinel.
-	ListImagesAwaitingFetch(ctx context.Context, limit int) ([]Image, error)
+	// ListImagesAwaitingFetch returns remote images whose bytes have not landed, by fetch priority
+	// and then by when each joined the queue. The fetch job's work list; `origin_fetched_at = 0` is
+	// the "never fetched" sentinel. An image whose last download failed waits until its
+	// fetch_retry_at is at or before now.
+	ListImagesAwaitingFetch(ctx context.Context, now time.Time, limit int) ([]Image, error)
+	// RecordImageFetchFailure counts one more failed download of a never-fetched image, at, and
+	// holds it off the fetch queue until retryAt. An image whose bytes have landed is left alone.
+	RecordImageFetchFailure(ctx context.Context, hash string, at, retryAt time.Time) error
+	// DeferImageFetch holds a never-fetched image off the fetch queue until retryAt without
+	// counting a failure: the fetch pass that tried it found the network down.
+	DeferImageFetch(ctx context.Context, hash string, retryAt time.Time) error
 	// ListImagesExpiredBefore returns remote images fetched before a cutoff — the TMDB six-month
-	// compliance sweep.
-	ListImagesExpiredBefore(ctx context.Context, cutoff time.Time, limit int) ([]Image, error)
+	// compliance sweep — in (origin_fetched_at, hash) order, starting after the cursor. The sweep
+	// passes the last row of each page as the next cursor, so a row it failed to purge is passed
+	// over instead of read again.
+	ListImagesExpiredBefore(ctx context.Context, cutoff time.Time, after ExpiryCursor, limit int) ([]Image, error)
 	// ListOrphanImages returns images no longer referenced by anything.
 	ListOrphanImages(ctx context.Context, limit int) ([]Image, error)
 	// ListUnrecoverableImages returns images whose bytes cannot be re-obtained (upload/generated).
@@ -155,6 +187,10 @@ type ImageStore interface {
 	PutImageDerivative(ctx context.Context, d ImageDerivative) error
 	PutImageDerivatives(ctx context.Context, derivatives []ImageDerivative) error
 	ListImageDerivatives(ctx context.Context, hash string) ([]ImageDerivative, error)
+	// ImagesByHash reads the rows of hashes and every derivative of them, in a bounded number of
+	// statements (two per imagesByHashChunk hashes). A hash with no row is absent; the images come
+	// in hash order and the derivatives by image, recipe, format and width.
+	ImagesByHash(ctx context.Context, hashes []string) ([]Image, []ImageDerivative, error)
 	DeleteImageDerivatives(ctx context.Context, hash string) error
 	// DeleteImageDerivative removes one rendition's row. The GC's eviction unit: a derivative is
 	// regenerable, so dropping one costs a re-encode and never data.
@@ -182,12 +218,19 @@ type ImageStore interface {
 
 const imageColumns = `hash, origin, source_url, visibility, role, mime, width, height, bytes,
 	animated, frame_count, duration_ms, loop_count, placeholder, dominant_hex, meta,
-	origin_fetched_at, created_at, updated_at, last_used_at`
+	origin_fetched_at, created_at, updated_at, last_used_at, fetch_failures, fetch_failed_at, fetch_retry_at,
+	fetch_queued_at, fetch_priority`
 
 func (s *Store) PutImage(ctx context.Context, img Image) error {
+	if epoch(img.OriginFetchedAt) > 0 {
+		// Bytes that landed end the failure record.
+		img.FetchFailures, img.FetchFailedAt, img.FetchRetryAt = 0, time.Time{}, time.Time{}
+	} else if img.FetchQueuedAt.IsZero() {
+		img.FetchQueuedAt = img.CreatedAt
+	}
 	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO images (`+imageColumns+`)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (hash) DO UPDATE SET
 		     origin = excluded.origin,
 		     source_url = excluded.source_url,
@@ -205,12 +248,18 @@ func (s *Store) PutImage(ctx context.Context, img Image) error {
 		     dominant_hex = excluded.dominant_hex,
 		     meta = excluded.meta,
 		     origin_fetched_at = excluded.origin_fetched_at,
-		     updated_at = excluded.updated_at`),
+		     updated_at = excluded.updated_at,
+		     fetch_failures = excluded.fetch_failures,
+		     fetch_failed_at = excluded.fetch_failed_at,
+		     fetch_retry_at = excluded.fetch_retry_at,
+		     fetch_queued_at = excluded.fetch_queued_at,
+		     fetch_priority = excluded.fetch_priority`),
 		img.Hash, img.Origin, img.SourceURL, img.Visibility, img.Role, img.MIME,
 		img.Width, img.Height, img.Bytes, img.Animated, stillFrameCount(img.FrameCount), img.DurationMS,
 		img.LoopCount, img.Placeholder, img.DominantHex,
 		metaOrEmpty(img.Meta), epoch(img.OriginFetchedAt), epoch(img.CreatedAt),
-		epoch(img.UpdatedAt), epoch(img.LastUsedAt))
+		epoch(img.UpdatedAt), epoch(img.LastUsedAt),
+		img.FetchFailures, epoch(img.FetchFailedAt), epoch(img.FetchRetryAt), epoch(img.FetchQueuedAt), img.FetchPriority)
 	if err != nil {
 		return fmt.Errorf("put image %s: %w", img.Hash, err)
 	}
@@ -246,13 +295,14 @@ func (s *Store) GetImage(ctx context.Context, hash string) (Image, error) {
 //
 // ORDER BY makes the result deterministic rather than incidentally-single, which is the property a
 // later change to the re-key ordering would otherwise break silently.
-func (s *Store) GetFetchedImageBySourceURL(ctx context.Context, src string) (Image, error) {
+func (s *Store) GetImageBySourceURL(ctx context.Context, src string) (Image, error) {
 	if src == "" {
 		return Image{}, ErrNotFound // every non-remote row has source_url '' — never a match
 	}
+	// A fetched row sorts before a pending one (origin_fetched_at 0), and the latest fetch first.
 	row := s.h.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT `+imageColumns+` FROM images
-		 WHERE source_url = ? AND origin_fetched_at > 0
+		 WHERE source_url = ?
 		 ORDER BY origin_fetched_at DESC, hash LIMIT 1`), src)
 	img, err := scanImage(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -281,20 +331,47 @@ func (s *Store) TouchImage(ctx context.Context, hash string, at time.Time) error
 	return nil
 }
 
-func (s *Store) ListImagesAwaitingFetch(ctx context.Context, limit int) ([]Image, error) {
-	return s.queryImages(ctx,
-		`SELECT `+imageColumns+` FROM images
-		 WHERE origin = 'remote' AND origin_fetched_at = 0
-		 ORDER BY created_at LIMIT ?`, limit)
+// awaitingFetchQuery is the fetch queue's read: by priority, then by when an image joined the
+// queue. idx_images_fetch_queue leads with its two equalities and then this order, so a pass reads
+// the front of the queue instead of sorting every waiting row.
+const awaitingFetchQuery = `SELECT ` + imageColumns + ` FROM images
+	WHERE origin = 'remote' AND origin_fetched_at = 0 AND fetch_retry_at <= ?
+	ORDER BY fetch_priority, fetch_queued_at, hash LIMIT ?`
+
+// AwaitingFetchQuery is the fetch queue's SQL, for the store's query-plan check.
+func AwaitingFetchQuery() string { return awaitingFetchQuery }
+
+func (s *Store) ListImagesAwaitingFetch(ctx context.Context, now time.Time, limit int) ([]Image, error) {
+	return s.queryImages(ctx, awaitingFetchQuery, epoch(now), limit)
 }
 
-func (s *Store) ListImagesExpiredBefore(ctx context.Context, cutoff time.Time, limit int) ([]Image, error) {
+func (s *Store) RecordImageFetchFailure(ctx context.Context, hash string, at, retryAt time.Time) error {
+	if _, err := s.h.ExecContext(ctx, s.h.Rebind(
+		`UPDATE images SET fetch_failures = fetch_failures + 1, fetch_failed_at = ?, fetch_retry_at = ?
+		 WHERE hash = ? AND origin_fetched_at = 0`), epoch(at), epoch(retryAt), hash); err != nil {
+		return fmt.Errorf("record image fetch failure %s: %w", hash, err)
+	}
+	return nil
+}
+
+func (s *Store) DeferImageFetch(ctx context.Context, hash string, retryAt time.Time) error {
+	if _, err := s.h.ExecContext(ctx, s.h.Rebind(
+		`UPDATE images SET fetch_retry_at = ? WHERE hash = ? AND origin_fetched_at = 0`), epoch(retryAt), hash); err != nil {
+		return fmt.Errorf("defer image fetch %s: %w", hash, err)
+	}
+	return nil
+}
+
+func (s *Store) ListImagesExpiredBefore(ctx context.Context, cutoff time.Time, after ExpiryCursor, limit int) ([]Image, error) {
 	// origin_fetched_at > 0 excludes the never-fetched rows, which are the fetch job's business
 	// rather than the expiry sweep's — otherwise every pending image would look infinitely stale.
+	// The zero cursor sorts before every fetched row (origin_fetched_at 0, hash '').
+	at := epoch(after.FetchedAt)
 	return s.queryImages(ctx,
 		`SELECT `+imageColumns+` FROM images
 		 WHERE origin = 'remote' AND origin_fetched_at > 0 AND origin_fetched_at < ?
-		 ORDER BY origin_fetched_at LIMIT ?`, epoch(cutoff), limit)
+		   AND (origin_fetched_at > ? OR (origin_fetched_at = ? AND hash > ?))
+		 ORDER BY origin_fetched_at, hash LIMIT ?`, epoch(cutoff), at, at, after.Hash, limit)
 }
 
 func (s *Store) ListOrphanImages(ctx context.Context, limit int) ([]Image, error) {
@@ -424,13 +501,54 @@ func (s *Store) PutImageDerivatives(ctx context.Context, derivatives []ImageDeri
 
 func (s *Store) ListImageDerivatives(ctx context.Context, hash string) ([]ImageDerivative, error) {
 	rows, err := s.h.QueryContext(ctx, s.h.Rebind(
-		`SELECT image_hash, recipe, format, width, bytes, output_hash, path, animated, created_at
-		 FROM image_derivatives WHERE image_hash = ? ORDER BY recipe, format, width`), hash)
+		`SELECT `+derivativeColumns+` FROM image_derivatives WHERE image_hash = ? ORDER BY recipe, format, width`), hash)
 	if err != nil {
 		return nil, fmt.Errorf("list derivatives %s: %w", hash, err)
 	}
-	defer func() { _ = rows.Close() }()
+	return scanDerivatives(rows)
+}
 
+// imagesByHashChunk bounds one statement's IN list, well under SQLite's 32,766 bound parameters
+// and Postgres's 65,535: a read of n hashes is two statements per chunk.
+const imagesByHashChunk = 500
+
+func (s *Store) ImagesByHash(ctx context.Context, hashes []string) ([]Image, []ImageDerivative, error) {
+	// Sorted and unique, so a hash asked for twice in different chunks comes back once and the
+	// result stays in hash order across chunks.
+	hashes = slices.Compact(slices.Sorted(slices.Values(hashes)))
+	var imgs []Image
+	var derivatives []ImageDerivative
+	for start := 0; start < len(hashes); start += imagesByHashChunk {
+		chunk := hashes[start:min(start+imagesByHashChunk, len(hashes))]
+		in := strings.TrimSuffix(strings.Repeat("?, ", len(chunk)), ", ")
+		args := make([]any, len(chunk))
+		for i, h := range chunk {
+			args[i] = h
+		}
+		got, err := s.queryImages(ctx, `SELECT `+imageColumns+` FROM images WHERE hash IN (`+in+`) ORDER BY hash`, args...)
+		if err != nil {
+			return nil, nil, err
+		}
+		imgs = append(imgs, got...)
+		rows, err := s.h.QueryContext(ctx, s.h.Rebind(`SELECT `+derivativeColumns+` FROM image_derivatives
+			WHERE image_hash IN (`+in+`) ORDER BY image_hash, recipe, format, width`), args...)
+		if err != nil {
+			return nil, nil, fmt.Errorf("list derivatives by hash: %w", err)
+		}
+		ds, err := scanDerivatives(rows)
+		if err != nil {
+			return nil, nil, err
+		}
+		derivatives = append(derivatives, ds...)
+	}
+	return imgs, derivatives, nil
+}
+
+const derivativeColumns = `image_hash, recipe, format, width, bytes, output_hash, path, animated, created_at`
+
+// scanDerivatives scans rows of derivativeColumns and closes them.
+func scanDerivatives(rows *sql.Rows) ([]ImageDerivative, error) {
+	defer func() { _ = rows.Close() }()
 	var out []ImageDerivative
 	for rows.Next() {
 		var d ImageDerivative
@@ -558,16 +676,21 @@ func scanImage(sc scannable) (Image, error) {
 	var (
 		img                             Image
 		fetched, created, updated, used int64
+		failedAt, retryAt, queuedAt     int64
 		loop                            sql.NullInt64
 	)
 	err := sc.Scan(&img.Hash, &img.Origin, &img.SourceURL, &img.Visibility, &img.Role,
 		&img.MIME, &img.Width, &img.Height, &img.Bytes, &img.Animated, &img.FrameCount,
 		&img.DurationMS, &loop, &img.Placeholder,
-		&img.DominantHex, &img.Meta, &fetched, &created, &updated, &used)
+		&img.DominantHex, &img.Meta, &fetched, &created, &updated, &used,
+		&img.FetchFailures, &failedAt, &retryAt, &queuedAt, &img.FetchPriority)
 	if err != nil {
 		return Image{}, err
 	}
-	img.OriginFetchedAt = time.Unix(fetched, 0)
+	img.FetchFailedAt, img.FetchRetryAt, img.FetchQueuedAt = fromEpoch(failedAt), fromEpoch(retryAt), fromEpoch(queuedAt)
+	// 0 is the never-fetched sentinel, read back as the zero time that every caller checks with
+	// IsZero; time.Unix(0, 0) would read as fetched at the epoch.
+	img.OriginFetchedAt = fromEpoch(fetched)
 	img.CreatedAt = time.Unix(created, 0)
 	img.UpdatedAt = time.Unix(updated, 0)
 	img.LastUsedAt = time.Unix(used, 0)

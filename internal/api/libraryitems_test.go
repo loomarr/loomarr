@@ -322,6 +322,13 @@ func TestLibraryItemsCarryPosters(t *testing.T) {
 		list.Items[0].Poster.Height != 30 || list.Items[1].Poster != nil {
 		t.Fatalf("list = %+v", list)
 	}
+	// The page's posters come from one batched read, never one read per row.
+	imgs.mu.Lock()
+	gets, manyReads := imgs.gets, imgs.manyReads
+	imgs.mu.Unlock()
+	if gets != 0 || manyReads != 1 {
+		t.Fatalf("the list read images %d one at a time and %d batched, want 0 and 1", gets, manyReads)
+	}
 	// Alpha also holds a clear logo (#2567).
 	logo := images.Image{Hash: strings.Repeat("c3", 32), Origin: images.OriginExtracted, Role: images.RoleLogo,
 		Width: 800, Height: 310, OriginFetchedAt: at}
