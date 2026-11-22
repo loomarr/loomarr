@@ -14,7 +14,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 	return map[string]workflowTopologyAuthority{
 		"android-ccache-promotion.yml": {jobs: map[string]int{"promote": 6}},
 		"android-beta.yml":             {jobs: map[string]int{"release": 9}},
-		"apple-compilation-cache.yml":  {jobs: map[string]int{"publish": 13}},
+		"apple-compilation-cache.yml":  {jobs: map[string]int{"plan": 3, "publish": 12}},
 		"apple-testflight.yml":         {jobs: map[string]int{"plan": 2, "release": 11}},
 		"cache-cleanup.yml":            {jobs: map[string]int{"cleanup": 1}},
 		"ci-agent.yml":                 {jobs: map[string]int{"run": 3}},
@@ -24,7 +24,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 
 		"ci-expo-android-mobile.yml": {jobs: map[string]int{"run": 9}},
 
-		"ci-apple-cache-validation.yml": {jobs: map[string]int{"producer": 7, "consumer": 7}},
+		"ci-apple-cache-validation.yml": {jobs: map[string]int{"producer": 6, "consumer": 6}},
 
 		"ci-clients.yml":             {jobs: map[string]int{"run": 10}},
 		"ci-docs.yml":                {jobs: map[string]int{"run": 8}},

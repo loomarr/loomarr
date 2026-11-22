@@ -643,9 +643,13 @@ quarantine off, so it measures every test. That non-blocking step is the only so
 workflow policy lets set `continue-on-error` (`nonBlocking` in `internal/platform/releaseverify`).
 
 After that portability proof is green, `Apple compilation cache` is the only workflow authorized to
-publish compiler results. It is manual-only, refuses every ref except `refs/heads/main`, and builds
-the complete mobile and TV Release install-launch-liveness gates before saving. A restored seed is
-hash-validated before use; the candidate CAS and compressed archive are validated again, and a save
+publish compiler results. It refuses every ref except `refs/heads/main`, and builds the complete
+mobile and TV Release install-launch-liveness gates before saving. The fingerprint includes the pnpm
+lockfile and the runner's Xcode and SDKs, so a dependency update or a new runner image leaves the
+Apple jobs with no generation and they build cold. A daily scheduled run therefore fingerprints the
+toolchain in a short `xcode-27` job and looks the fingerprint up on main without downloading it. The
+build runs only when no generation matches. A manual run always builds, and restores the matching
+generation as its seed. A restored seed is hash-validated before use; the candidate CAS and compressed archive are validated again, and a save
 is refused if its size plus a 512 MiB reserve would exceed the repository's 10 GiB cache budget.
 Before installing dependencies or starting either native build, the writer also requires enough
 live headroom for the maximum permitted archive plus that reserve; this conservative preflight
@@ -900,10 +904,11 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
   grows. The Go warm caches carry the ISO week in their key; the merge-gate cache restores only an
   entry of the same UTC day.
 - **Default-branch cache writes require a trusted trigger.** GitHub permits a default-branch writer
-  from `push` or `workflow_dispatch`, but `merge_group` caches land in a disposable queue scope and a
-  `workflow_run` job is read-only by default. Shared caches are therefore written by the
+  from `push`, `schedule` or `workflow_dispatch`, but `merge_group` caches land in a disposable queue
+  scope and a `workflow_run` job is read-only by default. Shared caches are therefore written by the
   `CI / Go cache warm` workflow on `main` pushes, plus the pnpm and ffmpeg saves on a manual run on
-  `main`; ordinary PR and queue runs are restore-only. Android is the bounded exception justified by
+  `main`, and the Apple compilation cache by its daily `schedule` run and a manual one; ordinary PR
+  and queue runs are restore-only. Android is the bounded exception justified by
   the measured 25m54s cold queue build: the admitted queue run emits an immutable compiler-cache
   transfer, and the `workflow_run` promotion, the only job that declares `cache-mode: write`,
   validates and saves it without repeating any compilation. A writer that rebuilds the product,
