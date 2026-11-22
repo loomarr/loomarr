@@ -251,7 +251,10 @@ func TestSubtitleBurns_KeepsTheMostRecentlyAired(t *testing.T) {
 // playoutSafePath mirrors the graph builder's rule for paths it embeds without escaping.
 func playoutSafePath(p string) bool {
 	for _, r := range p {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '/' || r == '.' || r == '_' || r == '-') {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '/', r == '.', r == '_', r == '-':
+		default:
 			return false
 		}
 	}
