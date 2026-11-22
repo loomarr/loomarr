@@ -20,7 +20,7 @@ tuner matrix, or the macOS harness.
 The required `main` merge queue then builds at most eight cumulative candidates concurrently against
 the current base. A queued PR waits only for `merge-gate.yml`, which reports the required `CI` check after proving
 the merged tree compiles and every migration it adds is numbered above the base's newest, so it
-merges in minutes. `merge-gate-cache.yml` refreshes its Go cache from main at most hourly and keeps one entry. Beside it, the `merge_group` run of `ci.yml` is the
+merges in minutes. `merge-gate-cache.yml` refreshes its Go cache from main at most hourly, rebuilds it from nothing once a day, and keeps one entry. Beside it, the `merge_group` run of `ci.yml` is the
 complete integration lane, reported as `CI assurance`: the same fail-closed classifier selects the
 complete affected gate set, and every selected result remains a dependency of that job. It finishes
 after the merge, so its evidence no longer blocks one. When it fails on a commit that reached main it
@@ -521,8 +521,14 @@ artifact. The promotion starts when that merge-group `CI` run completes successf
 because the run can finish after the merge (#2288). It publishes only a commit main already contains,
 and proves the source CI run, Android job, artifact name, commit/run/workflow manifest, and cache-tree digest,
 then saves that generation in the default-branch cache scope without running another product build.
-It deletes the transfer and all superseded Android generations. Android jobs do not run on pull
-requests, and queue jobs restore but never spend time saving an unreachable cache.
+It deletes the transfer and all superseded Android generations, but only once the saved generation
+appears in main's cache listing: a refused save only warns, so the retire step checks the listing
+first and fails without deleting anything when the generation is not there. Android jobs do not run
+on pull requests, and queue jobs restore but never spend time saving an unreachable cache.
+
+GitHub gives a `workflow_run` job a read-only cache (the runner log prints `Cache mode: read`), so
+this save is refused on every run and no Android generation exists on main: each Android TV queue
+build starts cold. The promotion run fails at the retire step when that happens.
 
 ## Per-run measurements
 
@@ -864,6 +870,16 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
 - **The 10GB cap evicts LRU across all refs**, so closed PRs' caches push out live ones.
   `cache-cleanup.yml` deletes `refs/pull/N/merge`, matching merge-queue caches and the same-repo
   head branch's caches on close.
+- **A shared cache family keeps one entry on `main`: the newest.** A family gets a new key when its
+  inputs change (`go.sum`, the ISO week, the hour, the pnpm lockfile, the ffmpeg pin, a CodeQL
+  analysis), and neither `actions/cache` nor the CodeQL action removes the entry it supersedes.
+  `scripts/ci-cache-retention.sh` does, from `merge-gate-cache.yml` after each hourly save. It keeps
+  the newest entry in the listing, never "the key just saved": a failed cache save only warns, and
+  deleting everything but a key that was never written removes the last good entry. A new shared
+  family needs a line in that script's `family` function.
+- **A rolling cache needs an epoch.** One that restores its predecessor and saves the union only
+  grows. The Go warm caches carry the ISO week in their key; the merge-gate cache restores only an
+  entry of the same UTC day.
 - **Default-branch cache writes require a trusted trigger.** GitHub permits a default-branch writer
   from `push` or `workflow_dispatch`, but `merge_group` and `workflow_run` cannot promote their
   outputs into that scope. Shared caches are therefore written by the `CI / Go cache warm` workflow on
