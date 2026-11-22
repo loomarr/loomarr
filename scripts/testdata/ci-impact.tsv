@@ -150,6 +150,7 @@ container-image-acquisition	scripts/ensure-container-image.sh	contracts,postgres
 playwright-container-runner	scripts/run-playwright-container.sh	contracts,visual,e2e,tuner,policy
 tuner-args	scripts/tuner-args.sh;scripts/tuner-args-test.sh	tuner,policy
 merge-queue-policy	scripts/ci-merge-queue-policy.sh;scripts/ci-merge-queue-policy-test.sh	policy
+shared-cache-retention	scripts/ci-cache-retention.sh;scripts/ci-cache-retention-test.sh	policy
 ci-policy-bootstrap	.github/workflows/ci.yml	policy
 ci-tooling-bundle	.github/workflows/ci.yml;internal/platform/releaseverify/ci.go;cmd/releaseverify/main.go;scripts/agent.sh;docs/contributing/ci.md	docs,agent,policy
 dev-compose	docker/compose.dev.yaml	contracts,agent
