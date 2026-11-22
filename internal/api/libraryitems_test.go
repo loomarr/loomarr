@@ -112,7 +112,8 @@ func TestLibraryItemPageCarriesStoredFacts(t *testing.T) {
 		{Index: 0, Kind: "video", Codec: "hevc", Profile: "Main 10", Width: 3840, Height: 2160, FrameRate: "24000/1001",
 			HDR: "Dolby Vision", BitDepth: 10, BitRate: 20_000_000},
 		{Index: 1, Kind: "audio", Codec: "truehd", Channels: 6, ChannelLayout: "5.1(side)", Language: "en",
-			LanguageName: "English", Default: true, BitDepth: 24, Title: "Main", Commentary: true, Descriptive: true},
+			LanguageName: "English", Default: true, BitDepth: 24, Title: "Main", Commentary: true, Descriptive: true,
+			AudioFormat: "Dolby TrueHD", SampleRate: 48_000},
 		{Index: 2, Kind: "subtitle", Codec: "subrip", Language: "es", LanguageName: "Spanish", Forced: true,
 			HearingImpaired: true, ExternalRef: "/media/alpha.es.srt"},
 	}
@@ -124,7 +125,7 @@ func TestLibraryItemPageCarriesStoredFacts(t *testing.T) {
 				{Name: "Ana Actor", Role: "actor", Character: "Lead", Photo: "https://images.example/ana.jpg"},
 				{Name: "Di Director", Role: "director"},
 			},
-			From: librarystore.LibraryFrom{Year: "nfo", Score: "tmdb", Runtime: "radarr"},
+			From: librarystore.LibraryFrom{Year: "nfo", Score: "tmdb", Runtime: "radarr", Premiere: "tmdb"},
 			Sources: []librarystore.LibrarySource{{Path: "/media/alpha.mkv", Container: "matroska,webm",
 				Bitrate: 24_000_000, DurationMs: 5_432_100, Edition: "Extended", Plays: true, Streams: streams,
 				Chapters: []librarystore.LibraryChapter{{StartMs: 0, EndMs: 60_000, Title: "Opening"}, {StartMs: 60_000, EndMs: -1}}}}},
@@ -134,8 +135,10 @@ func TestLibraryItemPageCarriesStoredFacts(t *testing.T) {
 		{ID: "90000011", Kind: "episode", Name: "Bravo E1", SeriesID: "90000002", Season: 1, Episode: 1,
 			Overview: "It begins.", RuntimeMs: 1_380_000,
 			Sources: []librarystore.LibrarySource{{Path: "/media/bravo/e1.mkv", Container: "mov,mp4", Plays: true,
-				Streams: streams[:2]}}},
+				DurationMs: 1_320_000, Streams: streams[:2]}}},
 		{ID: "90000012", Kind: "episode", Name: "Bravo E2", SeriesID: "90000002", Season: 1, Episode: 2},
+		{ID: "90000013", Kind: "episode", Name: "Bravo E3", SeriesID: "90000002", Season: 1, Episode: 3,
+			RuntimeMs: 1_440_000, Sources: []librarystore.LibrarySource{{Path: "/media/bravo/e3.mkv", Plays: true}}},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
@@ -146,6 +149,7 @@ func TestLibraryItemPageCarriesStoredFacts(t *testing.T) {
 	if err := h.Store.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
 		file("/media/alpha.mkv", "90000001", ""), file("/media/charlie.mkv", "90000003", ""),
 		file("/media/bravo/e1.mkv", "90000011", "90000002"), file("/media/bravo/e2.mkv", "90000012", "90000002"),
+		file("/media/bravo/e3.mkv", "90000013", "90000002"),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +172,7 @@ func TestLibraryItemPageCarriesStoredFacts(t *testing.T) {
 		"originalTitle": `"Alpha Original"`, "tagline": `"One line."`, "premiereDate": `"2001-02-03"`, "score": `7.5`,
 		"studios": `["North Studio"]`, "countries": `["France","Spain"]`,
 		"credits":     `[{"character":"Lead","name":"Ana Actor","role":"actor"},{"name":"Di Director","role":"director"}]`,
-		"detailsFrom": `{"runtime":"radarr","score":"tmdb","year":"nfo"}`,
+		"detailsFrom": `{"premiere":"tmdb","runtime":"radarr","score":"tmdb","year":"nfo"}`,
 	} {
 		if got := asJSON(movie[field]); got != want {
 			t.Errorf("movie %s = %s, want %s", field, got, want)
@@ -183,13 +187,14 @@ func TestLibraryItemPageCarriesStoredFacts(t *testing.T) {
 		"edition": `"Extended"`, "container": `"matroska,webm"`, "bitrate": `24000000`,
 		"chapters": `[{"name":"Opening","startMillis":0},{"startMillis":60000}]`,
 		"streams": `[{"bitDepth":10,"bitrate":20000000,"codec":"hevc","commentary":false,"default":false,` +
-			`"descriptive":false,"external":false,"forced":false,"frameRate":"24000/1001","hdr":"Dolby Vision",` +
-			`"hearingImpaired":false,"kind":"video","profile":"Main 10"},` +
-			`{"bitDepth":24,"channelLayout":"5.1(side)","codec":"truehd","commentary":true,"default":true,` +
-			`"descriptive":true,"external":false,"forced":false,"hearingImpaired":false,"kind":"audio",` +
-			`"language":"en","languageName":"English","title":"Main"},` +
+			`"descriptive":false,"dynamicRange":"Dolby Vision","external":false,"forced":false,` +
+			`"frameRate":"24000/1001","hearingImpaired":false,"height":2160,"index":0,"kind":"video",` +
+			`"profile":"Main 10","width":3840},` +
+			`{"audioFormat":"Dolby TrueHD","bitDepth":24,"channelLayout":"5.1(side)","channels":6,"codec":"truehd",` +
+			`"commentary":true,"default":true,"descriptive":true,"external":false,"forced":false,` +
+			`"hearingImpaired":false,"index":1,"kind":"audio","language":"en","languageName":"English","title":"Main"},` +
 			`{"codec":"subrip","commentary":false,"default":false,"descriptive":false,"external":true,"forced":true,` +
-			`"hearingImpaired":true,"kind":"subtitle","language":"es","languageName":"Spanish"}]`,
+			`"hearingImpaired":true,"index":2,"kind":"subtitle","language":"es","languageName":"Spanish"}]`,
 	} {
 		if got := asJSON(alpha[field]); got != want {
 			t.Errorf("movie file %s = %s, want %s", field, got, want)
@@ -228,11 +233,14 @@ func TestLibraryItemPageCarriesStoredFacts(t *testing.T) {
 		}
 	}
 
-	// A series' episodes carry their stories and runtimes; one with none has neither.
+	// A series' episodes carry their stories and lengths: the measured length of a read file (E1)
+	// before the catalog's runtime, the catalog's while the file is unread (E3), neither when
+	// nothing knows it (E2).
 	show := page("90000002")
 	if got, want := asJSON(show["seasons"]), `[{"episodes":[`+
-		`{"fromFile":false,"id":"90000011","name":"Bravo E1","number":1,"overview":"It begins.","ready":true,"runtimeMillis":1380000},`+
-		`{"fromFile":false,"id":"90000012","name":"Bravo E2","number":2,"ready":true}],"number":1}]`; got != want {
+		`{"fromFile":false,"id":"90000011","lengthMillis":1320000,"name":"Bravo E1","number":1,"overview":"It begins.","ready":true},`+
+		`{"fromFile":false,"id":"90000012","name":"Bravo E2","number":2,"ready":true},`+
+		`{"fromFile":false,"id":"90000013","lengthMillis":1440000,"name":"Bravo E3","number":3,"ready":true}],"number":1}]`; got != want {
 		t.Errorf("series seasons = %s, want %s", got, want)
 	}
 
@@ -248,6 +256,12 @@ func TestLibraryItemPageCarriesStoredFacts(t *testing.T) {
 	}
 	if asJSON(ep["overview"]) != `"It begins."` || asJSON(ep["runtimeMillis"]) != `1380000` {
 		t.Errorf("episode page overview %s, runtime %s", asJSON(ep["overview"]), asJSON(ep["runtimeMillis"]))
+	}
+	// An episode's studios, countries and credits are its show's: its own page sends none.
+	for _, field := range []string{"studios", "countries", "credits", "seasons"} {
+		if got := asJSON(ep[field]); got != `[]` {
+			t.Errorf("episode %s = %s, want []", field, got)
+		}
 	}
 }
 

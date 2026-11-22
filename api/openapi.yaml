@@ -7016,6 +7016,14 @@ components:
             - nfo
             - tmdb
           type: string
+        premiere:
+          description: Where its premiere date came from
+          enum:
+            - sonarr
+            - radarr
+            - nfo
+            - tmdb
+          type: string
         rating:
           description: Where its rating came from
           enum:
@@ -7061,6 +7069,10 @@ components:
           type: boolean
         id:
           type: string
+        lengthMillis:
+          description: "How long it plays: measured from its files once each is read, else its catalog's runtime; absent when neither is known"
+          format: int64
+          type: integer
         name:
           type: string
         number:
@@ -7071,10 +7083,6 @@ components:
           type: string
         ready:
           type: boolean
-        runtimeMillis:
-          description: How long it runs, as its catalog says
-          format: int64
-          type: integer
       required:
         - id
         - name
@@ -7255,18 +7263,19 @@ components:
             $ref: "#/components/schemas/LibraryChannelDTO"
           type: array
         countries:
+          description: A movie's or a series' countries; empty for an episode, whose countries are its show's
           items:
             type: string
           type: array
         credits:
-          description: Its cast in billing order, then its key crew
+          description: A movie's or a series' cast in billing order, then its key crew; empty for an episode, whose credits are its show's
           items:
             $ref: "#/components/schemas/LibraryCreditDTO"
           type: array
         detailsFrom:
           $ref: "#/components/schemas/LibraryDetailsFromDTO"
         files:
-          description: A movie's files; empty for a series
+          description: A movie's files, or an episode's; empty for a series
           items:
             $ref: "#/components/schemas/LibraryItemFileDTO"
           type: array
@@ -7287,7 +7296,8 @@ components:
         overview:
           type: string
         premiereDate:
-          description: As the source gives it, such as 2013-05-01
+          description: The day it first aired or was released
+          format: date
           type: string
         rating:
           description: The certification, such as TV-14
@@ -7300,11 +7310,12 @@ components:
           format: double
           type: number
         seasons:
-          description: A series' episodes by season; empty for a movie
+          description: A series' episodes by season; empty for a movie or an episode
           items:
             $ref: "#/components/schemas/LibrarySeasonDTO"
           type: array
         studios:
+          description: A movie's or a series' studios; empty for an episode, whose studios are its show's
           items:
             type: string
           type: array
@@ -7314,6 +7325,9 @@ components:
       required:
         - item
         - genres
+        - studios
+        - countries
+        - credits
         - files
         - seasons
         - match
@@ -7382,6 +7396,8 @@ components:
         - ready
         - subtitles
         - extra
+        - streams
+        - chapters
       type: object
     LibraryMatchDTO:
       additionalProperties: false
@@ -7959,6 +7975,9 @@ components:
     LibraryStreamDTO:
       additionalProperties: false
       properties:
+        audioFormat:
+          description: An audio track's format by name, such as Dolby TrueHD
+          type: string
         bitDepth:
           description: Bits per sample; absent for lossy audio
           format: int64
@@ -7970,6 +7989,10 @@ components:
         channelLayout:
           description: An audio track's layout, such as 5.1(side)
           type: string
+        channels:
+          description: An audio track's channel count
+          format: int64
+          type: integer
         codec:
           type: string
         commentary:
@@ -7979,6 +8002,14 @@ components:
         descriptive:
           description: Audio that describes the picture
           type: boolean
+        dynamicRange:
+          description: A video track's high dynamic range; absent for standard range
+          enum:
+            - Dolby Vision
+            - HDR10
+            - HLG
+            - HDR
+          type: string
         external:
           description: A file beside the media file holds it
           type: boolean
@@ -7987,17 +8018,17 @@ components:
         frameRate:
           description: As the file states it, such as 24000/1001
           type: string
-        hdr:
-          description: A video track's high dynamic range; absent for standard range
-          enum:
-            - Dolby Vision
-            - HDR10
-            - HLG
-            - HDR
-          type: string
         hearingImpaired:
           description: Subtitles for the deaf and hard of hearing
           type: boolean
+        height:
+          description: A video track's height in pixels
+          format: int64
+          type: integer
+        index:
+          description: Its place among the file's tracks, from 0; a track in a file beside it follows the file's own
+          format: int64
+          type: integer
         kind:
           enum:
             - video
@@ -8014,7 +8045,12 @@ components:
           type: string
         title:
           type: string
+        width:
+          description: A video track's width in pixels
+          format: int64
+          type: integer
       required:
+        - index
         - kind
         - default
         - forced

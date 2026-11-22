@@ -32,9 +32,11 @@ type LibraryItemDetail struct {
 	// Sources are the item's own files, in path order; a series has none, and its episodes'
 	// sources are not read. A source carries every column but SizeBytes, with its Streams in
 	// index order (a sidecar track follows the file's own) and its Chapters in order; not its
-	// Trickplay or Markers.
+	// Trickplay or Markers. A stream carries every column but SampleRate, PixelFormat,
+	// ColorTransfer and Resolution, which the page does not show.
 	Sources []LibrarySource
-	// Episodes are what LibraryDetailEpisodes reads for the item.
+	// Episodes are, for a series, the items its present files were written as, by item id: its
+	// episodes, or whatever else a file under it was written as. Any other item has none.
 	Episodes map[string]LibraryDetailEpisode
 }
 
@@ -42,14 +44,21 @@ type LibraryItemDetail struct {
 type LibraryDetailEpisode struct {
 	Name string
 	// NameFrom is the provider its name came from, "" for its file's.
-	NameFrom                    string
-	Season, Episode, EpisodeEnd int
+	NameFrom string
+	LibraryEpisodeNumbers
 	// Unnumbered keeps its file's name and number until its show's order is said (decision 53).
 	Unnumbered bool
-	// Overview is the episode's own story; RuntimeMs the catalog's runtime, 0 unknown. Its files'
-	// measured lengths are not read.
-	Overview  string
-	RuntimeMs int64
+	// Overview is the episode's own story.
+	Overview string
+	// LengthMs is the measured length of the files that play, once each is read, else the
+	// catalog's runtime; 0 when neither is known. Only the sources' durations are read.
+	LengthMs int64
+}
+
+// LibraryEpisodeNumbers numbers an episode: EpisodeEnd is the last episode a multi-episode file
+// holds, 0 for one.
+type LibraryEpisodeNumbers struct {
+	Season, Episode, EpisodeEnd int
 }
 
 // LibraryItemDetailReader reads one title's page.
@@ -57,9 +66,9 @@ type LibraryItemDetailReader interface {
 	// LibraryItemDetail reads the item id names, in one read transaction; an id with no row reads
 	// zero.
 	LibraryItemDetail(ctx context.Context, id string) (LibraryItemDetail, error)
-	// LibraryDetailEpisodes reads the items a series' present files were written as, by item id:
-	// its episodes, or whatever else a file under it was written as. Any other id has none.
-	LibraryDetailEpisodes(ctx context.Context, seriesID string) (map[string]LibraryDetailEpisode, error)
+	// LibraryEpisodeNumbers reads the numbers of the items a series' present files were written
+	// as, by item id, as LibraryItemDetail's Episodes holds them. Any other id has none.
+	LibraryEpisodeNumbers(ctx context.Context, seriesID string) (map[string]LibraryEpisodeNumbers, error)
 }
 
 func (s *Store) LibraryItemDetail(ctx context.Context, id string) (LibraryItemDetail, error) {
@@ -96,12 +105,27 @@ func (s *Store) LibraryItemDetail(ctx context.Context, id string) (LibraryItemDe
 	return out, tx.Commit()
 }
 
-func (s *Store) LibraryDetailEpisodes(ctx context.Context, seriesID string) (map[string]LibraryDetailEpisode, error) {
-	eps, err := s.detailEpisodes(ctx, s.h, seriesID)
+func (s *Store) LibraryEpisodeNumbers(ctx context.Context, seriesID string) (map[string]LibraryEpisodeNumbers, error) {
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT DISTINCT i.id, i.season, i.episode, i.episode_end
+		FROM library_files f JOIN library_items i ON i.id = f.inventory_item_id
+		WHERE f.inventory_series_id = ? AND `+presentFile), seriesID)
 	if err != nil {
-		return nil, fmt.Errorf("library detail episodes %s: %w", seriesID, err)
+		return nil, fmt.Errorf("library episode numbers %s: %w", seriesID, err)
 	}
-	return eps, nil
+	out := map[string]LibraryEpisodeNumbers{}
+	for rows.Next() {
+		var id string
+		var n LibraryEpisodeNumbers
+		if err := rows.Scan(&id, &n.Season, &n.Episode, &n.EpisodeEnd); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("library episode numbers %s: %w", seriesID, err)
+		}
+		out[id] = n
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, fmt.Errorf("library episode numbers %s: %w", seriesID, err)
+	}
+	return out, nil
 }
 
 // detailNames reads an item's names from table, one of library_genres, library_studios and
@@ -145,11 +169,17 @@ func (s *Store) detailCredits(ctx context.Context, q storedb.Querier, id string)
 // detailEpisodes joins from the series' present files (library_files' inventory_series_id index)
 // to the items they were written as. None of them is the series: a file's item is the movie or
 // episode its own file origin writes, and the inventory joins ids only within one kind, so a file
-// is never written as a series.
+// is never written as a series. An episode's length is the title list's (libraryItemFacts): the
+// sum of the playing edition's sources that play once each is measured, keyed by item_id, else
+// its runtime_ms.
 func (s *Store) detailEpisodes(ctx context.Context, q storedb.Querier, seriesID string) (map[string]LibraryDetailEpisode, error) {
 	rows, err := q.QueryContext(ctx, s.ph(`SELECT DISTINCT i.id, i.name, i.name_from, i.season, i.episode,
-		i.episode_end, i.unnumbered, i.overview, i.runtime_ms FROM library_files f
-		JOIN library_items i ON i.id = f.inventory_item_id WHERE f.inventory_series_id = ? AND `+presentFile), seriesID)
+		i.episode_end, i.unnumbered, i.overview,
+		COALESCE(NULLIF((SELECT CAST(CASE WHEN MIN(src.duration_ms) > 0 THEN SUM(src.duration_ms) ELSE 0 END AS BIGINT)
+			FROM library_sources src WHERE src.item_id = i.id AND src.plays AND src.edition = (SELECT e.edition
+			FROM library_sources e WHERE e.item_id = i.id AND e.plays ORDER BY e.edition <> '', e.path LIMIT 1)), 0), i.runtime_ms)
+		FROM library_files f JOIN library_items i ON i.id = f.inventory_item_id
+		WHERE f.inventory_series_id = ? AND `+presentFile), seriesID)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +188,7 @@ func (s *Store) detailEpisodes(ctx context.Context, q storedb.Querier, seriesID 
 		var id string
 		var e LibraryDetailEpisode
 		if err := rows.Scan(&id, &e.Name, &e.NameFrom, &e.Season, &e.Episode, &e.EpisodeEnd, &e.Unnumbered,
-			&e.Overview, &e.RuntimeMs); err != nil {
+			&e.Overview, &e.LengthMs); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
@@ -194,9 +224,9 @@ func (s *Store) detailSources(ctx context.Context, q storedb.Querier, id string)
 		return nil, nil
 	}
 	rows, err = q.QueryContext(ctx, s.ph(`SELECT path, stream_index, kind, codec, profile, title, is_default,
-		forced, language, language_name, channels, channel_layout, sample_rate, audio_format, width, height,
-		frame_rate, pixel_format, color_transfer, resolution, hdr, commentary, hearing_impaired, descriptive,
-		external_ref, bitrate, bit_depth FROM library_streams WHERE item_id = ? ORDER BY path, stream_index`), id)
+		forced, language, language_name, channels, channel_layout, audio_format, width, height, frame_rate, hdr,
+		commentary, hearing_impaired, descriptive, external_ref, bitrate, bit_depth
+		FROM library_streams WHERE item_id = ? ORDER BY path, stream_index`), id)
 	if err != nil {
 		return nil, err
 	}
@@ -204,9 +234,9 @@ func (s *Store) detailSources(ctx context.Context, q storedb.Querier, id string)
 		var path string
 		var st LibraryStream
 		if err := rows.Scan(&path, &st.Index, &st.Kind, &st.Codec, &st.Profile, &st.Title, &st.Default, &st.Forced,
-			&st.Language, &st.LanguageName, &st.Channels, &st.ChannelLayout, &st.SampleRate, &st.AudioFormat,
-			&st.Width, &st.Height, &st.FrameRate, &st.PixelFormat, &st.ColorTransfer, &st.Resolution, &st.HDR,
-			&st.Commentary, &st.HearingImpaired, &st.Descriptive, &st.ExternalRef, &st.BitRate, &st.BitDepth); err != nil {
+			&st.Language, &st.LanguageName, &st.Channels, &st.ChannelLayout, &st.AudioFormat, &st.Width, &st.Height,
+			&st.FrameRate, &st.HDR, &st.Commentary, &st.HearingImpaired, &st.Descriptive, &st.ExternalRef,
+			&st.BitRate, &st.BitDepth); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}

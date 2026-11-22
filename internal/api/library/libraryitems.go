@@ -230,24 +230,27 @@ type libraryItemFileDTO struct {
 	Edition       string               `json:"edition,omitempty" doc:"The labelled version of the title it is, such as Extended; absent for the default"`
 	Container     string               `json:"container,omitempty" doc:"The format its header names, such as matroska,webm"`
 	Bitrate       int64                `json:"bitrate,omitempty" doc:"Its overall bit rate in bit/s"`
-	// Streams and Chapters are always sent, [] for none, but not required in the schema, so a
-	// client written before them still builds this type (#4476).
-	Streams  []libraryStreamDTO  `json:"streams" required:"false" doc:"Every track in order, the file's own then the files beside it; empty while unread"`
-	Chapters []libraryChapterDTO `json:"chapters" required:"false" doc:"Its chapters in order; empty for none or while unread"`
+	Streams       []libraryStreamDTO   `json:"streams" doc:"Every track in order, the file's own then the files beside it; empty while unread"`
+	Chapters      []libraryChapterDTO  `json:"chapters" doc:"Its chapters in order; empty for none or while unread"`
 }
 
 // libraryStreamDTO is one track of a file. A value the file doesn't state is absent.
 type libraryStreamDTO struct {
+	Index           int    `json:"index" doc:"Its place among the file's tracks, from 0; a track in a file beside it follows the file's own"`
 	Kind            string `json:"kind" enum:"video,audio,subtitle"`
 	Codec           string `json:"codec,omitempty"`
 	Profile         string `json:"profile,omitempty"`
 	BitDepth        int    `json:"bitDepth,omitempty" doc:"Bits per sample; absent for lossy audio"`
 	Bitrate         int    `json:"bitrate,omitempty" doc:"The track's own bit rate in bit/s"`
+	Width           int    `json:"width,omitempty" doc:"A video track's width in pixels"`
+	Height          int    `json:"height,omitempty" doc:"A video track's height in pixels"`
 	FrameRate       string `json:"frameRate,omitempty" doc:"As the file states it, such as 24000/1001"`
-	HDR             string `json:"hdr,omitempty" enum:"Dolby Vision,HDR10,HLG,HDR" doc:"A video track's high dynamic range; absent for standard range"`
+	DynamicRange    string `json:"dynamicRange,omitempty" enum:"Dolby Vision,HDR10,HLG,HDR" doc:"A video track's high dynamic range; absent for standard range"`
 	Language        string `json:"language,omitempty" doc:"ISO 639-1 where one exists, else as the file says it"`
 	LanguageName    string `json:"languageName,omitempty" doc:"The language's English name"`
+	Channels        int    `json:"channels,omitempty" doc:"An audio track's channel count"`
 	ChannelLayout   string `json:"channelLayout,omitempty" doc:"An audio track's layout, such as 5.1(side)"`
+	AudioFormat     string `json:"audioFormat,omitempty" doc:"An audio track's format by name, such as Dolby TrueHD"`
 	Title           string `json:"title,omitempty"`
 	Default         bool   `json:"default"`
 	Forced          bool   `json:"forced"`
@@ -286,6 +289,7 @@ type libraryDetailsFromDTO struct {
 	Year         string `json:"year,omitempty" enum:"sonarr,radarr,nfo,tmdb" doc:"Where its year came from"`
 	Score        string `json:"score,omitempty" enum:"sonarr,radarr,nfo,tmdb" doc:"Where its score came from"`
 	Runtime      string `json:"runtime,omitempty" enum:"sonarr,radarr,nfo,tmdb" doc:"Where its runtime came from"`
+	Premiere     string `json:"premiere,omitempty" enum:"sonarr,radarr,nfo,tmdb" doc:"Where its premiere date came from"`
 }
 
 // libraryFileOf is f with what its header says.
@@ -306,9 +310,10 @@ func libraryFileOf(f scan.ItemFile) libraryItemFileDTO {
 	}
 	for _, s := range f.Streams {
 		out.Streams = append(out.Streams, libraryStreamDTO{
-			Kind: s.Kind, Codec: s.Codec, Profile: s.Profile, BitDepth: s.BitDepth, Bitrate: s.BitRate,
-			FrameRate: s.FrameRate, HDR: s.HDR, Language: s.Language, LanguageName: s.LanguageName,
-			ChannelLayout: s.ChannelLayout, Title: s.Title, Default: s.Default, Forced: s.Forced,
+			Index: s.Index, Kind: s.Kind, Codec: s.Codec, Profile: s.Profile, BitDepth: s.BitDepth, Bitrate: s.BitRate,
+			Width: s.Width, Height: s.Height, FrameRate: s.FrameRate, DynamicRange: s.HDR, Language: s.Language,
+			LanguageName: s.LanguageName, Channels: s.Channels, ChannelLayout: s.ChannelLayout,
+			AudioFormat: s.AudioFormat, Title: s.Title, Default: s.Default, Forced: s.Forced,
 			HearingImpaired: s.HearingImpaired, Commentary: s.Commentary, Descriptive: s.Descriptive,
 			External: s.ExternalRef != "",
 		})
@@ -328,8 +333,8 @@ type libraryEpisodeDTO struct {
 	// FromFile waits on the household saying which order the show's files follow (#2151 decision 53).
 	FromFile bool   `json:"fromFile" doc:"Its name and number are its file's, until the show's episode order is said"`
 	Overview string `json:"overview,omitempty" doc:"Its own story"`
-	// RuntimeMillis is the catalog's: a series' page reads none of its episodes' files.
-	RuntimeMillis int64 `json:"runtimeMillis,omitempty" doc:"How long it runs, as its catalog says"`
+	// LengthMillis reads its files' durations only, never their tracks.
+	LengthMillis int64 `json:"lengthMillis,omitempty" doc:"How long it plays: measured from its files once each is read, else its catalog's runtime; absent when neither is known"`
 }
 
 type librarySeasonDTO struct {
@@ -350,18 +355,16 @@ type libraryItemDetailDTO struct {
 	RuntimeMillis int64                 `json:"runtimeMillis,omitempty"`
 	OriginalTitle string                `json:"originalTitle,omitempty" doc:"Its title in its own language, as the source gives it"`
 	Tagline       string                `json:"tagline,omitempty" doc:"Its one-line pitch"`
-	PremiereDate  string                `json:"premiereDate,omitempty" doc:"As the source gives it, such as 2013-05-01"`
+	PremiereDate  string                `json:"premiereDate,omitempty" format:"date" doc:"The day it first aired or was released"`
 	Score         float64               `json:"score,omitempty" doc:"The community score, 0 to 10"`
-	Files         []libraryItemFileDTO  `json:"files" doc:"A movie's files; empty for a series"`
-	Seasons       []librarySeasonDTO    `json:"seasons" doc:"A series' episodes by season; empty for a movie"`
+	Studios       []string              `json:"studios" doc:"A movie's or a series' studios; empty for an episode, whose studios are its show's"`
+	Countries     []string              `json:"countries" doc:"A movie's or a series' countries; empty for an episode, whose countries are its show's"`
+	Credits       []libraryCreditDTO    `json:"credits" doc:"A movie's or a series' cast in billing order, then its key crew; empty for an episode, whose credits are its show's"`
+	Files         []libraryItemFileDTO  `json:"files" doc:"A movie's files, or an episode's; empty for a series"`
+	Seasons       []librarySeasonDTO    `json:"seasons" doc:"A series' episodes by season; empty for a movie or an episode"`
 	Match         libraryMatchDTO       `json:"match"`
 	DetailsFrom   libraryDetailsFromDTO `json:"detailsFrom"`
 	Channels      []libraryChannelDTO   `json:"channels" doc:"The channels whose lineup holds it, by number"`
-	// Studios, Countries and Credits are always sent, [] for none, but not required in the schema,
-	// so a client written before them still builds this type (#4476).
-	Studios   []string           `json:"studios" required:"false"`
-	Countries []string           `json:"countries" required:"false"`
-	Credits   []libraryCreditDTO `json:"credits" required:"false" doc:"Its cast in billing order, then its key crew"`
 }
 
 // libraryChannelDTO is a channel as the Library names it: on a title's page, or using a collection.
@@ -414,6 +417,7 @@ func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*httpcore.ImageDT
 		DetailsFrom: libraryDetailsFromDTO{
 			Description: string(d.From.Description), Rating: string(d.From.Rating), EpisodeNames: string(d.EpisodeNamesFrom),
 			Year: string(d.From.Year), Score: string(d.From.Score), Runtime: string(d.From.Runtime),
+			Premiere: string(d.From.Premiere),
 		},
 	}
 	if out.Genres == nil {
@@ -432,7 +436,7 @@ func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*httpcore.ImageDT
 		dto := librarySeasonDTO{Number: season.Number, Episodes: make([]libraryEpisodeDTO, 0, len(season.Episodes))}
 		for _, ep := range season.Episodes {
 			dto.Episodes = append(dto.Episodes, libraryEpisodeDTO{ID: ep.ID, Name: ep.Name, Number: ep.Number, End: ep.End, Ready: ep.Ready,
-				FromFile: ep.FromFile, Overview: ep.Overview, RuntimeMillis: ep.RuntimeMillis})
+				FromFile: ep.FromFile, Overview: ep.Overview, LengthMillis: ep.LengthMillis})
 		}
 		out.Seasons = append(out.Seasons, dto)
 	}

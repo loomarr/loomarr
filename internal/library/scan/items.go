@@ -165,9 +165,10 @@ type Episode struct {
 	// FromFile is an episode named and numbered by its file until its show's order is said
 	// (#2151 decision 53).
 	FromFile bool
-	// Overview is its own story; RuntimeMillis the catalog's runtime, 0 unknown.
-	Overview      string
-	RuntimeMillis int64
+	// Overview is its own story. LengthMillis is the measured length of its files that play once
+	// each is read, else the catalog's runtime; 0 when neither is known.
+	Overview     string
+	LengthMillis int64
 }
 
 // Items lists the movies and series with a present file.
@@ -310,7 +311,7 @@ func seasons(files []librarystore.LibraryFile, episodes map[string]librarystore.
 		row := episodes[id]
 		bySeason[row.Season] = append(bySeason[row.Season], Episode{
 			ID: id, Name: row.Name, Number: row.Episode, End: row.EpisodeEnd, Ready: ready[id], FromFile: row.Unnumbered,
-			Overview: row.Overview, RuntimeMillis: row.RuntimeMs,
+			Overview: row.Overview, LengthMillis: row.LengthMs,
 		})
 		if row.NameFrom != "" {
 			named[mp.ID(row.NameFrom)]++
@@ -337,7 +338,7 @@ func seasons(files []librarystore.LibraryFile, episodes map[string]librarystore.
 // hold: what a series search is checked against (decision 57). Specials (season 0) and files
 // without a number are left out, since nothing lays them out the same way twice.
 func (l *Library) EpisodesOnDisk(ctx context.Context, seriesID string) (map[int]int, error) {
-	episodes, err := l.ItemStore.LibraryDetailEpisodes(ctx, seriesID)
+	episodes, err := l.ItemStore.LibraryEpisodeNumbers(ctx, seriesID)
 	if err != nil {
 		return nil, err
 	}
