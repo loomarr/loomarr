@@ -5,6 +5,6 @@
 // broadcasts as XMLTV (RenderXMLTV).
 //
 // Every function is pure over a []schedule.Slot and its epoch, so the encoder, the guide and
-// reconcile get one answer from one walk. It knows nothing about stores, settings, encoders or
-// HTTP; internal/playout's packager asks it what is on.
+// reconcile get one answer from one walk. It knows nothing about stores, settings or HTTP; from
+// the encoder it reads only the packager's run-ahead (OnAirLookahead).
 package timeline
