@@ -54,9 +54,12 @@ The CI policy job also runs `make privacy-verify`, the public repository's guard
 titles and captured private fixture literals, on every run. No classifier rule routes it: a story,
 fixture or test that the guard scans is checked whatever else the change selects, and a path the
 classifier has no rule for cannot skip it. A change to only such files therefore does not select
-the Go contracts job, whose vet and lint cannot see them. `TestCIRunsTheGuardOnEveryRun` in
-`internal/demolibrary` holds the three properties this rests on: the policy job is unconditional,
-it runs the target, and the required `CI` check waits for it.
+the Go contracts job: the guard is the only check there that those files need. Two of that job's
+whole-repository checks do read some of them, `retired-verify` (it searches `web/apps/web/src` and
+`internal`) and, for a Go test file, `fmt` and `tags-verify`; drift in either surfaces on the next
+change that selects Go contracts and in every release-candidate run. `TestCIRunsTheGuardOnEveryRun`
+in `internal/demolibrary` holds the four properties this rests on: the policy job is unconditional,
+it runs the target, the required `CI` check waits for it, and the target runs every scan.
 
 `make privacy-verify` keeps its stable interface, but its captured
 fixture guard is one in-process tracked-tree scan in `releaseverify`. The previous shell loop

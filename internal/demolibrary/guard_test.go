@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -676,8 +677,9 @@ func TestSeedsCarryNoRealTitles(t *testing.T) {
 
 // CI runs this guard (make privacy-verify) in the CI policy job, which runs on every run whatever
 // changed. No classifier rule routes it, so a file the guard scans is checked even when the
-// classifier has never heard of its path. Three properties make that true: the job is
-// unconditional, it runs the target, and the required aggregate check waits for it.
+// classifier has never heard of its path. Four properties make that true: the job is
+// unconditional, it runs the target, the required aggregate check waits for it, and the target
+// runs every scan.
 func TestCIRunsTheGuardOnEveryRun(t *testing.T) {
 	var workflow struct {
 		Jobs map[string]struct {
@@ -712,6 +714,30 @@ func TestCIRunsTheGuardOnEveryRun(t *testing.T) {
 	needs, _ := workflow.Jobs["ci-ok"].Needs.([]any)
 	if !slices.Contains(needs, any("ci-policy")) {
 		t.Error("the required CI check does not wait for the CI policy job, so a failing guard would not block a merge")
+	}
+
+	// The workflow names only the make target. What the target runs is the guard: a dry run lists
+	// the commands without running them, so a target that has lost a scan fails here.
+	dryRun := exec.Command("make", "--no-print-directory", "-n", "privacy-verify")
+	dryRun.Dir = repoRoot(t)
+	// A parent make's flags would be inherited by this one.
+	dryRun.Env = append(os.Environ(), "MAKEFLAGS=", "MFLAGS=")
+	plan, err := dryRun.Output()
+	if err != nil {
+		t.Fatalf("make -n privacy-verify: %v", err)
+	}
+	for _, want := range []string{
+		"test ./internal/demolibrary",
+		"TestSeedsCarryNoRealTitles",
+		"TestFixturesCarryNoRealTitles",
+		"TestMigratedFixturesStayInvented",
+		"TestMigratedGoTestsStayInvented",
+		"TestDemoCatalogueIsInvented",
+		"./scripts/check-private-fixtures.sh",
+	} {
+		if !strings.Contains(string(plan), want) {
+			t.Errorf("make privacy-verify does not run %q, so the guard CI names scans less than it claims", want)
+		}
 	}
 }
 
