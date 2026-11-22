@@ -91,12 +91,13 @@ type scriptedVision struct {
 	spanCount          int
 	// hint is what FrameHintsIn measures; hintCalls counts how often the rung asked.
 	hint      tools.FrameHint
+	hintErr   error
 	hintCalls int
 }
 
 func (s *scriptedVision) FrameHintsIn(context.Context, string, int64, int64, int) (tools.FrameHint, error) {
 	s.hintCalls++
-	return s.hint, nil
+	return s.hint, s.hintErr
 }
 
 func (s *scriptedVision) KeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
@@ -353,6 +354,33 @@ func TestVisionStage_FrameHintSuppressedByGroundedEra(t *testing.T) {
 	}
 	if tools.hintCalls != 0 {
 		t.Errorf("frame hints measured %d times, want 0 — a grounded era needs no heuristic decode", tools.hintCalls)
+	}
+}
+
+// A failed frame-hint measurement costs only the hint: the clip the model already read still
+// applies, with no era observation, rather than erroring into a retry of the paid vision call.
+func TestVisionStage_FrameHintFailureRecordsNoEraAndKeepsTheClip(t *testing.T) {
+	st := newFakeVisionStore()
+	tools := &scriptedVision{frames: oneFrame, hint: bw43Hint, hintErr: errors.New("ffmpeg exited 1")}
+	prov := &scriptedProvider{answer: `{"visibleText":"","brand":"","era":0,"category":""}`}
+	if !runVision(t, newVisionStage(st, tools, prov), wordless(visionClip("silent.mp4"))) {
+		t.Fatal("the clip did not apply — a failed frame hint must not fail the vision rung")
+	}
+	if tools.hintCalls != 1 {
+		t.Errorf("frame hints measured %d times, want 1", tools.hintCalls)
+	}
+	if len(st.observed) != 0 {
+		t.Errorf("observations = %+v, want none — a failed measurement suggests nothing", st.observed)
+	}
+	if got := st.tags["silent.mp4"]; got.era != 0 {
+		t.Errorf("era = %d, want 0", got.era)
+	}
+	_, obs, err := newVisionStage(newFakeVisionStore(), tools, prov).Observe(context.Background(), wordless(visionClip("silent.mp4")))
+	if err != nil {
+		t.Fatalf("Observe: %v, want nil — a failed frame hint is not a vision failure", err)
+	}
+	if obs.SuggestedEra != 0 {
+		t.Errorf("Observe SuggestedEra = %d, want 0", obs.SuggestedEra)
 	}
 }
 

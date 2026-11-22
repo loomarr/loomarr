@@ -61,6 +61,22 @@ func TestAnalyzeFrames_BlackAndWhiteDetection(t *testing.T) {
 			wantN:  3,
 		},
 		{
+			// Chroma noise on a B&W transfer: a mean spread of 6, the most a heavily
+			// noised B&W clip measures at FrameHintWidth, stays monochrome.
+			name:   "noisy grey frames read monochrome",
+			frames: []tools.RawFrame{spreadF(t, 6), spreadF(t, 6), spreadF(t, 6)},
+			wantBW: true,
+			wantN:  3,
+		},
+		{
+			// A faint, noised colour clip: a mean spread of 11, just under the least
+			// such a clip measures at FrameHintWidth, is colour.
+			name:   "faint colour frames do not",
+			frames: []tools.RawFrame{spreadF(t, 11), spreadF(t, 11), spreadF(t, 11)},
+			wantBW: false,
+			wantN:  3,
+		},
+		{
 			// The mirror: a majority grey DOES qualify even with a stray colour frame.
 			name:   "majority grey with one colour frame qualifies",
 			frames: []tools.RawFrame{grayF(t, 80), grayF(t, 160), colourF(t)},
@@ -176,6 +192,23 @@ func grayF(t *testing.T, v uint8) tools.RawFrame {
 	return solidFrame(t, fourThreeW, fourThreeH, gray(v))
 }
 func colourF(t *testing.T) tools.RawFrame { return solidFrame(t, fourThreeW, fourThreeH, red()) }
+
+// spreadF builds a 4:3 frame of mid-grey pixels whose channels alternate by ±spread/2
+// around 128, so every pixel's max(R,G,B)-min(R,G,B) — and the frame's mean — is
+// spread. Alternating which channel is high mimics noise rather than a steady tint.
+func spreadF(t *testing.T, spread uint8) tools.RawFrame {
+	t.Helper()
+	lo, hi := 128-spread/2, 128-spread/2+spread
+	pix := make([]byte, 0, 3*fourThreeW*fourThreeH)
+	for i := range fourThreeW * fourThreeH {
+		if i%2 == 0 {
+			pix = append(pix, hi, 128, lo)
+		} else {
+			pix = append(pix, lo, 128, hi)
+		}
+	}
+	return tools.RawFrame{Width: fourThreeW, Height: fourThreeH, RGB: pix}
+}
 
 // The ffmpeg half: FrameHintsIn decodes real encoded video into raw frames and measures them,
 // so the codec's chroma artefacts meet bwChromaThreshold here. A monochrome 4:3 clip hints

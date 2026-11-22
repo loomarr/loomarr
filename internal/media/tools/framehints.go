@@ -43,15 +43,18 @@ type FrameHint struct {
 
 // bwChromaThreshold is the per-pixel colour-spread ceiling below which a frame is
 // called monochrome. A truly grey pixel has R==G==B, so max(R,G,B)-min(R,G,B)==0;
-// lossy chroma subsampling in the source codec leaves a few points of spread even on a
-// genuine black-and-white transfer, so the ceiling is a small tolerance rather than zero.
+// codec chroma noise leaves a few points of spread even on a genuine black-and-white
+// transfer, so the ceiling is a small tolerance rather than zero.
 //
-// ⚠ Measured against codec artefacts, not chosen for elegance. 12 (of 255) admits
-// the ringing a real B&W scan shows around high-contrast edges while still
-// rejecting any frame with actual colour in it — a skin tone or a red logo spreads
-// far past this. It is a per-pixel mean, so one coloured object cannot by itself
-// flip a mostly-grey frame; the FRAME is B&W only if the average pixel is grey.
-const bwChromaThreshold = 12.0
+// ⚠ Calibrated on the FrameHintsIn measurement: 128 px rgb24 frames ffmpeg scales
+// from mpeg4 clips. Downscaling averages chroma noise, so the spread a raw frame
+// shows is lower than the source's. A heavily noised B&W clip measures at most 6.4;
+// a faint, noised colour clip (saturation 0.04) measures at least 11.5. 9 (of 255)
+// sits between them with ~2.5 points of margin each side; a muted colour clip (~29),
+// sepia (~46) and full colour (~240) are far above it. It is a per-pixel mean, so
+// one coloured object cannot by itself flip a mostly-grey frame; the FRAME is B&W
+// only if the average pixel is grey.
+const bwChromaThreshold = 9.0
 
 // bwFrameFraction is how many of the sampled frames must read monochrome for the
 // CLIP to count as black-and-white. A single grey frame (a fade, a title card on
