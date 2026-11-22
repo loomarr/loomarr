@@ -38,6 +38,7 @@ func TestSubtitleWorkerDecoder_DecodesATrackThroughTheImageWorker(t *testing.T) 
 	var track testkit.PGSTrack
 	track.Show(1000, 100, 900)
 	track.Clear(4000)
+	track.Show(6000, 200, 900) // the last still holds until the programme ends
 	dir := t.TempDir()
 	sup := filepath.Join(dir, "track.sup")
 	if err := os.WriteFile(sup, track.Bytes(), 0o600); err != nil {
@@ -56,17 +57,23 @@ func TestSubtitleWorkerDecoder_DecodesATrackThroughTheImageWorker(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stills.Width != 1920 || stills.Height != 1080 || len(stills.States) != 2 {
-		t.Fatalf("stills = %dx%d with %d states, want 1920x1080 with a still then a clear", stills.Width, stills.Height, len(stills.States))
+	if stills.Width != 1920 || stills.Height != 1080 || len(stills.States) != 3 {
+		t.Fatalf("stills = %dx%d with %d states, want 1920x1080 with a still, a clear and a last still", stills.Width, stills.Height, len(stills.States))
 	}
-	shown, cleared := stills.States[0], stills.States[1]
-	if shown.StartMs != 1000 || shown.EndMs != 4000 || cleared.StartMs != 4000 || cleared.PNG != "" {
-		t.Fatalf("states = %+v, want a still from 1s to 4s, then a clear", stills.States)
+	shown, cleared, last := stills.States[0], stills.States[1], stills.States[2]
+	if shown.StartMs != 1000 || shown.EndMs != 4000 || cleared.StartMs != 4000 || cleared.EndMs != 6000 || cleared.PNG != "" {
+		t.Fatalf("states = %+v, want a still from 1s to 4s, then a clear until 6s", stills.States)
 	}
-	if filepath.Dir(shown.PNG) != staging {
-		t.Fatalf("still %q is not an absolute path inside the track's directory %q", shown.PNG, staging)
+	// The last state has no successor: its end equals its start, which burn-in holds to the end.
+	if last.StartMs != 6000 || last.EndMs != 6000 || last.PNG == "" || last.PNG == shown.PNG {
+		t.Fatalf("last state = %+v, want its own still at 6s held to the end", last)
 	}
-	if info, err := os.Stat(shown.PNG); err != nil || !info.Mode().IsRegular() {
-		t.Fatalf("still %q: %v", shown.PNG, err)
+	for _, still := range []string{shown.PNG, last.PNG} {
+		if filepath.Dir(still) != staging {
+			t.Fatalf("still %q is not an absolute path inside the track's directory %q", still, staging)
+		}
+		if info, err := os.Stat(still); err != nil || !info.Mode().IsRegular() {
+			t.Fatalf("still %q: %v", still, err)
+		}
 	}
 }

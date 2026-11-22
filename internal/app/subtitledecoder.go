@@ -32,8 +32,13 @@ func (d *subtitleWorkerDecoder) Decode(ctx context.Context, track playout.Subtit
 	if worker == nil {
 		return playout.SubtitleStills{}, playout.ErrSubtitleDecoderUnavailable
 	}
+	// The track's digest names the request, so the worker's errors say which track they are about.
+	id := "subtitles-" + track.SHA256
+	if len(track.SHA256) > 16 {
+		id = "subtitles-" + track.SHA256[:16]
+	}
 	got, err := worker.DecodeSubtitles(ctx, rustgen.SubtitleRequest{
-		RequestID: filepath.Base(track.Dir), Codec: track.Codec,
+		RequestID: id, Codec: track.Codec,
 		Path: track.Sup, ExpectedSHA256: track.SHA256, StagingDir: track.Dir,
 	})
 	if err != nil {

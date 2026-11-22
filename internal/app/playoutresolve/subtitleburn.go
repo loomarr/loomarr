@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -201,6 +202,12 @@ func (s *SubtitleBurns) do(ctx context.Context, job burnJob) {
 		return
 	}
 	b, err := s.prepare(ctx, job.input, job.stream, job.codec, job.dir)
+	if errors.Is(err, playout.ErrSubtitleDecoderUnavailable) {
+		// The image worker is bound moments after the playout build; a track asked for before then
+		// is asked for again by its next programme rather than held back for burnRetry.
+		s.log.Info("subtitle burn-in: no decoder yet; the track is prepared on its next request", "stream", job.stream)
+		return
+	}
 	if err != nil {
 		s.fail(job.dir, time.Now())
 		s.log.Warn("subtitle burn-in: track not prepared; its programmes air without it",

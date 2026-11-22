@@ -57,9 +57,11 @@ func newImageService(
 	if err != nil {
 		return nil, nil, err
 	}
+	// decode-subtitles is required: burn-in asks this worker for every image track it prepares.
 	renderer, err := rustgen.Open(worker, rustgen.Contract{
 		Protocol: 1, Release: release, Recipe: "loomarr-rendition-v2",
 		RequiredFormats: []string{"avif", "jpeg", "webp"}, Animation: true,
+		RequiredOperations: []string{"decode-subtitles"},
 	})
 	if err != nil {
 		return nil, nil, err
