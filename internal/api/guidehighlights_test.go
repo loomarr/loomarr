@@ -14,11 +14,11 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
-func episodeAt(series string, season, episode int, start time.Time) playout.Broadcast {
-	return playout.Broadcast{Kind: schedule.SlotProgram, SeriesTitle: series, Title: fmt.Sprintf("Episode %d", episode),
+func episodeAt(series string, season, episode int, start time.Time) timeline.Broadcast {
+	return timeline.Broadcast{Kind: schedule.SlotProgram, SeriesTitle: series, Title: fmt.Sprintf("Episode %d", episode),
 		Key: provision.Key("series:tvdb:" + series), Season: season, Episode: episode, Start: start, Stop: start.Add(30 * time.Minute)}
 }
 
@@ -50,7 +50,7 @@ func TestGuideHighlightsOverHTTP(t *testing.T) {
 	t.Parallel()
 	start := time.Now().Add(time.Hour).Truncate(time.Minute)
 	guide := &fakeXMLTVGuide{
-		byChannel: map[string][]playout.Broadcast{
+		byChannel: map[string][]timeline.Broadcast{
 			"ch-comedy": {
 				episodeAt("Office Show", 4, 1, start),
 				episodeAt("Office Show", 4, 2, start.Add(30*time.Minute)),

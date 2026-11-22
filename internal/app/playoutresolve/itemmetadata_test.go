@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 type fakeItemFacts struct {
@@ -53,7 +53,7 @@ func TestItemMetadataAnswersLibraryIDsFromTheTables(t *testing.T) {
 	}
 
 	// The guide reads the same facts with no media server connected (r.lib is nil).
-	bs := []playout.Broadcast{{LibraryItemID: "lib-1", Title: "Film"}, {LibraryItemID: "90000001", Title: "Gone"}}
+	bs := []timeline.Broadcast{{LibraryItemID: "lib-1", Title: "Film"}, {LibraryItemID: "90000001", Title: "Gone"}}
 	(&Resolver{itemFacts: facts}).attachMetadata(context.Background(), bs)
 	if bs[0].Description != "A film." || bs[0].Year != 1999 || bs[0].Rating != "PG" || len(bs[0].Genres) != 1 {
 		t.Errorf("guide entry = %+v, want the Library's facts", bs[0])

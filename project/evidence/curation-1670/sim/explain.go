@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // explain (#1694) attributes every next-day repeat of the `current` mechanism to what the
@@ -68,7 +68,7 @@ func (e *explainer) arranged(opened time.Time, history map[string]time.Time, ful
 	e.windows[opened] = a
 }
 
-func (e *explainer) leg(opened time.Time, bs []playout.Broadcast) {
+func (e *explainer) leg(opened time.Time, bs []timeline.Broadcast) {
 	if e == nil {
 		return
 	}

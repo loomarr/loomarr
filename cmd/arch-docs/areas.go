@@ -89,8 +89,8 @@ var areas = []area{
 			"proposals": "binding an approved proposal into a channel, and re-curating a self-updating " +
 				"channel through the suggester",
 			"filler": "asking the filler engine for the pod that fills a break",
-			"playout": "handing reconciled programming to the backend that plays it: Loomarr's own " +
-				"`playout` engine or `playout/tunarr`",
+			"playout": "handing reconciled programming to `playout/tunarr`, and the `playout/timeline` " +
+				"cycle arithmetic that says what a committed cycle puts on air",
 		},
 	},
 	{
@@ -123,11 +123,12 @@ var areas = []area{
 			"one continuous stream and burns in the channel's logo; Tunarr is the other backend that can " +
 			"play a channel. The Live TV wiring and the backend transition publish channels to the media " +
 			"server, LAN discovery lets TV apps find Loomarr, and the bench measures the pipeline on " +
-			"real hardware.",
+			"real hardware. The timeline is the pure arithmetic over a channel's schedule that the " +
+			"stream, the guide and reconcile all read.",
 		Packages: []string{
 			"playout", "playout/packager", "playout/bench", "playout/watermark", "playout/channelbug", "playout/tunarr",
 			"playout/tunarr/tunarrtest", "playout/livetvpublish", "playout/backendtransition",
-			"playout/landiscovery", "playout/subtitles",
+			"playout/landiscovery", "playout/subtitles", "playout/timeline",
 		},
 		MayImport: map[string]string{
 			"platform": "the diagnostics process manager that runs every encoder, the store behind a " +

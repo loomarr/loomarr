@@ -16,7 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // guideConcurrency bounds how many channel timelines resolve at once. The work is CPU-bound
@@ -458,13 +458,13 @@ func (s *Handlers) channelGuide(ctx context.Context, in *guideInput) (*guideOutp
 	return out, nil
 }
 
-// guideAiringOf projects a playout.Broadcast onto the wire shape.
+// guideAiringOf projects a timeline.Broadcast onto the wire shape.
 //
 // GAPS ARE PRESERVED. Upcoming() drops them (`if e.IsGap() { continue }`), which is right for a
 // "what's on next" strip and fatal for a grid: a dropped block leaves a hole that every later
 // block silently slides into, so the timeline stops matching the clock. V13b's gate names this
 // explicitly — "Upcoming's gap-filtering not reintroduced".
-func guideAiringOf(channelID string, b playout.Broadcast) GuideAiring {
+func guideAiringOf(channelID string, b timeline.Broadcast) GuideAiring {
 	kind := string(b.Kind)
 	if kind == "" {
 		kind = string(schedule.SlotFlex)

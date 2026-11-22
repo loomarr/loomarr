@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // dealtFrom is "<edited>.<dealt>", two fingerprints of a channel's deal (#4140 step 1).
@@ -91,12 +91,12 @@ func (e *Engine) windowDeal(plan windowInputs) ([]schedule.Slot, time.Time) {
 	if unchanged {
 		return healAccepted(plan.accepted, plan.anchor, plan.now, plan.avail), plan.anchor
 	}
-	until := plan.now.Add(playout.OnAirLookahead)
+	until := plan.now.Add(timeline.OnAirLookahead)
 	if !hasProgramme(plan.next) {
 		return plan.next, plan.anchor
 	}
 	aired := map[string]bool{}
-	for _, b := range playout.BroadcastsBetween(plan.accepted, plan.anchor, plan.now, until) {
+	for _, b := range timeline.BroadcastsBetween(plan.accepted, plan.anchor, plan.now, until) {
 		if b.Kind != schedule.SlotProgram {
 			continue
 		}
@@ -109,19 +109,19 @@ func (e *Engine) windowDeal(plan windowInputs) ([]schedule.Slot, time.Time) {
 	if from.IsZero() || from.Before(plan.anchor) {
 		from = plan.anchor
 	}
-	for _, b := range playout.BroadcastsBetween(plan.accepted, plan.anchor, from, plan.now) {
+	for _, b := range timeline.BroadcastsBetween(plan.accepted, plan.anchor, from, plan.now) {
 		if b.Kind == schedule.SlotProgram && b.Start.Before(plan.now) {
 			aired[b.LibraryItemID] = true
 		}
 	}
-	tail := playout.WithoutProgrammes(plan.next, aired)
+	tail := timeline.WithoutProgrammes(plan.next, aired)
 	if !hasProgramme(tail) {
 		tail = plan.next // everything the deal holds aired today: it airs again rather than nothing
 	}
 	// Keep from the anchor when the new cycle airs to the window's end without looping; otherwise
 	// the kept part would air again, so the cycle starts at the programme on air instead.
 	for _, fromAnchor := range []bool{!plan.windowEnds.IsZero(), false} {
-		kept, start := playout.KeepOnAir(plan.accepted, plan.anchor, plan.now, until, fromAnchor)
+		kept, start := timeline.KeepOnAir(plan.accepted, plan.anchor, plan.now, until, fromAnchor)
 		if len(kept) == 0 {
 			return plan.next, plan.anchor
 		}
@@ -130,7 +130,7 @@ func (e *Engine) windowDeal(plan windowInputs) ([]schedule.Slot, time.Time) {
 			kept = withoutBreaksFrom(kept, start, until) // no filler to air: programmes run back to back
 		}
 		spliced := append(kept, tail...)
-		if !fromAnchor || !start.Add(playout.CycleLength(spliced)).Before(plan.windowEnds) {
+		if !fromAnchor || !start.Add(timeline.CycleLength(spliced)).Before(plan.windowEnds) {
 			return spliced, start
 		}
 	}
@@ -158,7 +158,7 @@ type windowInputs struct {
 // flicker, a film that arrived) becomes the programme again in the same way. Timing never
 // changes, so nothing else moves.
 func healAccepted(accepted []schedule.Slot, anchor, now time.Time, avail schedule.Availability) []schedule.Slot {
-	from := playout.FirstUnfinished(accepted, anchor, now)
+	from := timeline.FirstUnfinished(accepted, anchor, now)
 	var out []schedule.Slot
 	for i, s := range accepted {
 		placeholder := s.Kind == schedule.SlotFiller && s.Key != ""
@@ -227,7 +227,7 @@ func hasBreak(slots []schedule.Slot) bool {
 // after `until`: they have not aired and nothing is on air in them.
 func withoutBreaksFrom(kept []schedule.Slot, start, until time.Time) []schedule.Slot {
 	for n := len(kept); n > 0 && isBreak(kept[n-1]); n-- {
-		if start.Add(playout.CycleLength(kept[:n-1])).Before(until) {
+		if start.Add(timeline.CycleLength(kept[:n-1])).Before(until) {
 			return kept[:n]
 		}
 		kept = kept[:n-1]

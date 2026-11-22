@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // stubCycle returns a fixed lineup: one program then a break gap.
@@ -243,7 +244,7 @@ func TestAiringNow_BreakWalksThePodByOffset(t *testing.T) {
 	if airing.StartedAt != base.Add(4*time.Second) {
 		t.Errorf("started at = %v, want second clip boundary %v", airing.StartedAt, base.Add(4*time.Second))
 	}
-	firstBlockID := playout.ScheduledBlockID("ch1", base, schedule.SlotFiller, string(schedule.SlotFiller))
+	firstBlockID := timeline.ScheduledBlockID("ch1", base, schedule.SlotFiller, string(schedule.SlotFiller))
 	if airing.ScheduleBlockID != firstBlockID {
 		t.Errorf("second commercial block id = %q, want break identity %q", airing.ScheduleBlockID, firstBlockID)
 	}

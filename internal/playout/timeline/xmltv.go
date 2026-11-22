@@ -1,4 +1,4 @@
-package playout
+package timeline
 
 import (
 	"encoding/xml"
@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
-// XMLTV listings (§9.1) — the second half of what internal playout serves.
+// XMLTV listings (§9.1): internal playout serves these beside the M3U tuner in internal/playout.
 //
 // The M3U tuner tells a media server WHICH channels exist; this tells it WHAT IS ON. Without
 // it a channel appears in Live TV, tunes, plays — and shows "no information" forever, which
@@ -33,7 +33,7 @@ const xmltvTime = "20060102150405 -0700"
 
 // GuideChannel is one channel's identity in the guide.
 type GuideChannel struct {
-	// ID must equal the M3U entry's `tvg-id`. See the package comment.
+	// ID must equal the M3U entry's `tvg-id`. See the comment at the top of this file.
 	ID     string
 	Name   string
 	Number int

@@ -18,6 +18,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout/packager"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 type fakeHLSOrigin struct {
@@ -400,20 +401,20 @@ func TestPackagerRetriesAFailedGPUTonemapWithTheNextOne(t *testing.T) {
 func TestFillerGainIsFillerOnly(t *testing.T) {
 	lufs, hot, quiet, peaky := -20.0, -12.2, -27.0, -3.0
 	for name, tc := range map[string]struct {
-		a      Airing
+		a      timeline.Airing
 		target string
 		gain   float64
 		noted  bool
 	}{
-		"filler measured": {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "-23", -3, false},
+		"filler measured": {timeline.Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "-23", -3, false},
 		// #2032: the household's most-aired ad, which the old ±6 dB clamp left 4.8 dB hot.
-		"hot clip cut fully": {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &hot}, "-23", -10.8, false},
+		"hot clip cut fully": {timeline.Airing{Source: "/f/clip.mp4", MeasuredLUFS: &hot}, "-23", -10.8, false},
 		// A boost stops where the true peak would pass -1 dBTP.
-		"boost capped by peak": {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &quiet, MeasuredTruePeak: &peaky}, "-23", 2, false},
-		"library title":        {Airing{LibraryItemID: "x", MeasuredLUFS: &lufs}, "-23", 0, false},
-		"filler unmeasured":    {Airing{Source: "/f/clip.mp4"}, "-23", 0, true},
-		"target not a number":  {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "loud", 0, true},
-		"no target":            {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "", 0, false},
+		"boost capped by peak": {timeline.Airing{Source: "/f/clip.mp4", MeasuredLUFS: &quiet, MeasuredTruePeak: &peaky}, "-23", 2, false},
+		"library title":        {timeline.Airing{LibraryItemID: "x", MeasuredLUFS: &lufs}, "-23", 0, false},
+		"filler unmeasured":    {timeline.Airing{Source: "/f/clip.mp4"}, "-23", 0, true},
+		"target not a number":  {timeline.Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "loud", 0, true},
+		"no target":            {timeline.Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "", 0, false},
 	} {
 		gain, note := FillerGain(tc.a, tc.target)
 		if gain != tc.gain || (note != "") != tc.noted {
