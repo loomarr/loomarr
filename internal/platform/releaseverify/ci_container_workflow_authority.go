@@ -377,7 +377,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 						targets:   []string{"vet"},
 						condition: "steps.warm.outputs.cache-hit != 'true'",
 					}),
-					`./scripts/ci-merge-gate-cache-prune.sh "${{ steps.warm.outputs.cache-primary-key }}"`: exactWorkflowStep(6, "Delete older gate caches", workflowStepAuthority{
+					"./scripts/ci-cache-retention.sh apply": exactWorkflowStep(6, "Keep one entry of each shared cache", workflowStepAuthority{
 						condition:   "steps.warm.outputs.cache-hit != 'true'",
 						environment: map[string]string{"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}"},
 					}),

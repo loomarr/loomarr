@@ -1,8 +1,14 @@
 # Keeps the cache merge-gate.yml restores small and fresh. Not a gate: nothing here is a required
 # check. A cache saved on a merge-queue ref is never read again, so main has to save it.
 #
-# One save per hour at most, and each save deletes the one before it, so this holds one entry of the
-# repository's cache quota however often main moves.
+# One save per hour at most. Each save starts from the newest cache of the same UTC day and adds to
+# it, so the first save of a day builds from nothing: Go's build cache only accretes, and a rolling
+# cache with no epoch grows by about half a gigabyte a day.
+#
+# After a save, `scripts/ci-cache-retention.sh` keeps the newest entry of every shared cache family
+# on main (this one, the Go warm caches, the pnpm store, the ffmpeg archive and the CodeQL
+# databases) and deletes the entries they supersede. It runs here because this is the one workflow
+# that runs on every push to main with `actions: write`.
 name: CI / Merge gate cache
 
 on:
@@ -33,10 +39,18 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
+      # One clock reading for both, so the day is always the hour's own day.
       - name: Cache hour
         id: hour
-        run: echo "hour=$(date -u +%Y%m%d%H)" >> "$GITHUB_OUTPUT"
-      - name: Restore the newest gate cache
+        run: |
+          hour=$(date -u +%Y%m%d%H)
+          {
+            echo "hour=${hour}"
+            echo "day=${hour:0:8}"
+          } >> "$GITHUB_OUTPUT"
+      # The day in the restore prefix is the epoch: yesterday's cache is never built upon. The gate
+      # itself (merge-gate.yml) restores the newest entry of any day, so it stays warm across midnight.
+      - name: Restore today's newest gate cache
         id: warm
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -45,7 +59,7 @@ jobs:
             ~/.cache/go-build
           key: merge-gate-go-${{ runner.os }}-${{ steps.hour.outputs.hour }}
           restore-keys: |
-            merge-gate-go-${{ runner.os }}-
+            merge-gate-go-${{ runner.os }}-${{ steps.hour.outputs.day }}
       - name: Compile what the gate compiles
         if: steps.warm.outputs.cache-hit != 'true'
         run: make vet
@@ -57,9 +71,11 @@ jobs:
             ~/go/pkg/mod
             ~/.cache/go-build
           key: ${{ steps.warm.outputs.cache-primary-key }}
-      - name: Delete older gate caches
+      # A failed save only warns. The script keeps the newest entry it finds, not a key this job
+      # believes it saved, so a failed save leaves the previous cache in place.
+      - name: Keep one entry of each shared cache
         if: steps.warm.outputs.cache-hit != 'true'
-        run: ./scripts/ci-merge-gate-cache-prune.sh "${{ steps.warm.outputs.cache-primary-key }}"
+        run: ./scripts/ci-cache-retention.sh apply
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
