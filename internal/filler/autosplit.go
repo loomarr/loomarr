@@ -97,9 +97,9 @@ func pluralizeCuts(n int) string {
 // HoldSummary reports the reason the most held-back segments share, how many share it, and how
 // many are held in total — so a caller can say "36 of 37" rather than implying unanimity.
 //
-// ⚠ **The first held segment's reason is not the summary.** Measured 2026-08-13: 36 of 37 segments
-// were refused for one reason and 1 as boundary-uncertain, but the doubtful one sorted first, so a
-// summary from `Hold[0]` told the operator to lower a threshold that would have released nothing.
+// ⚠ **The first held segment's reason is not the summary.** When most cuts share one reason and a
+// lone boundary doubt sorts first, a summary from `Hold[0]` would tell the operator to lower a
+// threshold that releases nothing.
 //
 // Ties break on the reason text, so one reel always produces one note.
 func (sp SplitPartition) HoldSummary() (reason AutoSplitReject, shared, total int) {
@@ -120,7 +120,7 @@ func (sp SplitPartition) HoldSummary() (reason AutoSplitReject, shared, total in
 
 // holdNote renders the ladder note for a reel where nothing cleared the gate.
 //
-// ⚠ It states the SHARE, not just the reason. "a segment could not be classified" reads as a
+// ⚠ It states the SHARE, not just the reason. "the cut is not break material" reads as a
 // property of the reel; "36 of 37 cuts: …" tells the operator both what to fix and how much of the
 // reel it accounts for — and, when the reasons are mixed, that fixing this one will not release
 // everything.

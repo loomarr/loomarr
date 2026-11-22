@@ -124,11 +124,10 @@ never decides.
   decision. A child cut on a confirmed `keep` interval carries its SHA-256 in conditioning lineage;
   legacy or operator-edited cuts leave it absent.
 
-**The split rung cuts by `AutoCuttable` alone (#4409).** Nothing in a binary runs the
-complete-timeline decision: the certified complete-plan gate, its long-reel authority and
-deployment files, the OpenRouter runtime that called the window assessors, and the shadow
-comparison that recorded the two gates side by side are retired (#4414). A proposal that already
-holds a confirmed decision still projects its roles onto the children cut from it, as above.
+**The split rung cuts by `AutoCuttable` alone (#4409).** No binary runs the complete-timeline
+decision, and no complete plan authorizes a cut: each cut is decided by the look at it, its edges
+and its sound. A proposal that already holds a confirmed decision still projects its roles onto the
+children cut from it, as above.
 
 Children are prepared as **one replacement generation** from the exact reviewed source intervals
 through the V66 publisher. The parent, assessment and prior generation stay until every child and

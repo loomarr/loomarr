@@ -136,8 +136,8 @@ func declaredChannelsAndFiller() []Setting {
 			// model, but the provider was still built from `llm.provider`/`llm.url`/`llm.api_key`
 			// — so naming a LOCAL model while the main LLM was hosted sent an Ollama tag to the
 			// hosted endpoint. Measured: `llava:7b` → `https://openrouter.ai/api/v1` → 401 on every
-			// segment, which `ground` reports as zero looks and the gate refuses as "a segment
-			// could not be classified". The model name is useless without the host that serves it.
+			// segment, which `ground` reports as zero looks and the gate holds as "the cut is not
+			// break material". The model name is useless without the host that serves it.
 			//
 			// Empty ⇒ inherit the main provider.
 			// ⚠ `inherit` is a REAL value, not an empty string: the registry invariant requires

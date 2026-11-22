@@ -65,8 +65,8 @@ func NewSplitStage(splitter *Splitter, store SplitStageStore) *SplitStage {
 // ⚠ **Grounding had SEVEN distinct silent outcomes and no way to tell them apart.** Not wired,
 // zero budget, unreadable taxonomy, no keyframes, a provider that refused, an unparseable answer,
 // and — the one that actually bit — a provider that answered every time and yielded nothing
-// usable. All seven produced the same observable: segments left ungrounded, the gate refusing with
-// "a segment could not be classified", and not one line anywhere saying which.
+// usable. All seven produce the same observable: cuts left unlooked, the gate holding each as
+// "the cut is not break material", and nothing in the cut itself saying which.
 func (s *SplitStage) WithLogger(log *slog.Logger) *SplitStage {
 	s.log = log
 	return s
