@@ -1,6 +1,7 @@
 package playout
 
 import (
+	"io"
 	"log/slog"
 	"math"
 	"sync"
@@ -201,13 +202,40 @@ func (f *itemFaults) record(input string, pl Pipeline, decodeFault bool) bool {
 	return true
 }
 
+// itemBurn writes the item's subtitle list for its seek; remove deletes it. Without a prepared track,
+// or when the list cannot be written (the programme then airs without them), burn is nil.
+func itemBurn(it PackagerItem, subs *ItemSubtitles, log *slog.Logger) (burn *SubtitleBurn, remove func()) {
+	if subs == nil || subs.Track == nil {
+		return nil, func() {}
+	}
+	list, remove, err := subs.Track.WriteList(it.Seek)
+	if err != nil {
+		log.Warn("packager hls: subtitle list not written; the item airs without them", "item", it.Label, "err", err)
+		return nil, func() {}
+	}
+	return &SubtitleBurn{List: list, Width: subs.Track.Width, Height: subs.Track.Height, Kernel: subs.Kernel}, remove
+}
+
+// closeThen runs after once the encoder's stream is closed.
+type closeThen struct {
+	io.ReadCloser
+	after func()
+}
+
+func (c closeThen) Close() error {
+	err := c.ReadCloser.Close()
+	c.after()
+	return err
+}
+
 // packagerItemArgs is one item's encoder command for its slot: the pipeline builder's output on
-// the host less any stage this source faulted, the channel's bug when wm is non-nil (a programme on
-// a host whose overlay passed its self-check), the filler gain in its audio stage, fMP4 out.
-func packagerItemArgs(host encode.HostProfile, out OutputProfile, it PackagerItem, wm *Watermark, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
+// the host less any stage this source faulted, the channel's bug when wm is non-nil and its image
+// subtitles when burn is non-nil (a programme on a host whose overlay passed its self-check), the
+// filler gain in its audio stage, fMP4 out.
+func packagerItemArgs(host encode.HostProfile, out OutputProfile, it PackagerItem, wm *Watermark, burn *SubtitleBurn, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
 	h := fault.apply(host)
-	h.Overlay = wm != nil
-	pl, err := BuildItem(h, it.Format, out, wm)
+	h.Overlay = wm != nil || burn != nil
+	pl, err := BuildItemBurning(h, it.Format, out, wm, burn)
 	if err != nil {
 		return Pipeline{}, nil, err
 	}

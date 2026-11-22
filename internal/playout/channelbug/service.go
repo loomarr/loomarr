@@ -61,6 +61,13 @@ type Service struct {
 	kernel     string // the VAAPI family's blend kernel beside the bugs, written on first use
 }
 
+// OverlayWorks reports whether an encoder's GPU overlay passed its self-check; the first ask
+// starts the check, and until it passes nothing is drawn. Burned-in subtitles share the gate.
+func (c *Service) OverlayWorks(enc encode.Encoder) bool { return c.gate(enc).works.Load() }
+
+// BlendKernel is the VAAPI blend kernel's path (blendKernel), shared by burned-in subtitles.
+func (c *Service) BlendKernel() string { return c.blendKernel() }
+
 // blendKernel is the path of the VAAPI blend kernel, or "" when it could not be written: the VAAPI
 // graph then airs the programme bug-free and says why.
 func (c *Service) blendKernel() string {

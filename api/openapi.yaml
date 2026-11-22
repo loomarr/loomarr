@@ -9378,6 +9378,9 @@ components:
           type: string
         backend:
           type: string
+        burnSubtitles:
+          description: ISO 639-2 language whose image subtitle track (Blu-ray PGS) is burned into this channel's programmes where a programme carries one and the host's GPU can draw it; omitted burns none in. Text subtitles stay each viewer's choice.
+          type: string
       type: object
     PlayoutStatus:
       additionalProperties: false
@@ -13907,6 +13910,9 @@ components:
     TrackDTO:
       additionalProperties: false
       properties:
+        burnable:
+          description: "Subtitles only: an image track (Blu-ray PGS) a channel can burn into its programmes; text tracks are each viewer's choice instead."
+          type: boolean
         index:
           description: Position among tracks of its own type — the N in -map 0:a:N / 0:s:N.
           format: int64

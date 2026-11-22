@@ -180,6 +180,9 @@ type Resolver struct {
 	// until SetSubtitles, which leaves every window empty.
 	librarySubtitles LibrarySubtitleReader
 	subtitleCues     SubtitleCues
+	// burns prepares the image subtitle tracks channels burn in (#2088 step 8; subtitleburn.go).
+	// Nil ⇒ nothing is burned in.
+	burns *SubtitleBurns
 	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil
 	// leaves the guide without descriptions, and any other id has none.
 	itemFacts librarystore.LibraryItemFactsReader

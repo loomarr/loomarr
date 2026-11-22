@@ -563,9 +563,36 @@ draws them over the picture:
   Reading a track demuxes the whole file, so a large film over a network share takes minutes the
   first time; nothing about the video encode changes.
 - **Image subtitles** (PGS, VOBSUB) cannot become text cheaply, so they are **not offered** by default.
-  An admin can set a channel to **always burn in** an image track. That is a GPU overlay in the
-  video graph, and it applies to everyone on the channel. Where the GPU path cannot do it, the track
-  is dropped: never a CPU filter in the playout graph.
+  An admin can set a channel to **burn in** the image track in one language
+  (`policy.playout.burnSubtitles`). That is a GPU overlay in the video graph, and it applies to
+  everyone on the channel. Where the GPU path cannot do it, the track is dropped: never a CPU filter
+  in the playout graph. The tracks route marks such a track `burnable`.
+  - *How (step 8, `internal/playout/burnin.go`):* a track is prepared once, in the background. The
+    programme's streams come from the Library's inventory, so nothing is probed on the tune path,
+    and nothing is looked up at all until the encoder's overlay self-check has passed in a build with
+    a decoder. Go copies the stream out as a `.sup` (at most 256 MiB) and hashes it. The
+    image worker decodes it into the full canvas at each change (`decode-subtitles`,
+    [`images.md`](images.md), *Operations beyond renditions*), behind the
+    `playout.SubtitleStillDecoder` seam; until its adapter is wired the app's decoder refuses every
+    track, so programmes air without them. Go holds the result to the worker's ceilings again (an
+    even canvas of at most 3840×2160, at most 50,000 states, every still inside the worker's staging
+    directory) before it allocates anything. Go owns everything after the stills: one ffmpeg run
+    converts them into one-frame ffv1 files that are already yuva420p BT.709, and each encoder reads
+    an ffconcat list written for its own seek (the still on screen at that moment first, then each
+    change for exactly as long as it shows) through a `movie=` source inside its `-vf`, blended
+    where the bug is blended: `overlay_cuda` on NVENC (cropping the aligned rows before the
+    passthrough scale), the bug's `program_opencl` kernel on VAAPI. Both are gated by the bug's
+    overlay self-check. The canvas is fitted into the output as its own frame, so a cropped film's
+    subtitles land in the letterbox.
+  - *Why not ffmpeg's own route:* `[0:s:N]` into an overlay re-sends and re-converts the whole
+    canvas on every video frame (a quarter of a core per stream); stills cost only at a change
+    (measured ~0.005 cores on the GeForce, ~0.009 on the household Arc). Seeking a sparse stream
+    with `-ss` loses the still already on screen, so the list starts at the seek instead.
+  - *Limits:* the first airing of a title airs without them while its track is prepared
+    (`internal/app/playoutresolve/subtitleburn.go`; the next programme's track is queued as the
+    current one starts, and a track that fails is left alone for an hour); prepared tracks are kept
+    for the 48 most recently aired. PGS only: VOBSUB is dropped like any track a host cannot draw.
+    No HDR10 output (the overlays take 8-bit frames).
 - **Auto-generated subtitles** (#4530) are the one track the server makes itself. Every programme
   with an audio stream offers one per language, labelled **Auto-generated** and keyed
   `<language>-auto` (`und-auto` until the language is known). It is always a separate choice, even
