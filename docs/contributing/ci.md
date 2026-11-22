@@ -472,6 +472,15 @@ drops the dependency hashes, so a package change no longer invalidates `@loomarr
 The only environment variable a shared task declares is `JAVA_HOME` (on `test`), which both
 workflows take unchanged from the `ubuntu-latest` image.
 
+A file outside a package that one of its tasks reads is an input of that task alone, declared with
+`$TURBO_ROOT$` in the package's own `turbo.json`. The native Storybook sources (`native-stories/`,
+`.rnstorybook/`) are inputs of the design-system `test` task, the one Turbo task that reads them: the apps
+bundle the workshop only under `STORYBOOK_ENABLED`, which no Turbo task sets. The Expo config
+plugins (`web/scripts/with-*.cjs`) and the TestFlight config are inputs of the mobile and TV
+`doctor`, `test` and `bundle` tasks. `globalDependencies` in `web/turbo.json` keeps only the shared
+configs and the generated API client, because a change to it changes every task hash and misses the
+whole cache.
+
 Artifacts are signed (`remoteCache.signature` in `web/turbo.json`). `TURBO_CACHE` sets `merge_group`
 runs and runs on `main` to write, and every other run, pull requests included, to read
 (`local:rw,remote:r`). The setting lives in the client, so it is not an access control: a same-repo
