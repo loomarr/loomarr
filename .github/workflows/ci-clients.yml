@@ -93,6 +93,9 @@ jobs:
       - name: Bundle the client
         if: matrix.lane == 'mobile' || matrix.lane == 'tv'
         env:
+          # Expo's Metro config keeps its transform cache in `os.tmpdir()/metro-cache`, the folder
+          # this job restores and saves. Turbo's strict env mode drops TMPDIR from tasks, so the
+          # `bundle` task lists it in `passThroughEnv` (web/turbo.json).
           TMPDIR: ${{ runner.temp }}
           TURBO_TELEMETRY_DISABLED: "1"
           TURBO_API: ${{ secrets.TURBO_API }}
