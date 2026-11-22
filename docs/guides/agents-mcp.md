@@ -77,6 +77,32 @@ Channels are named the way you would say them: a number (`4`, `channel 4`) or a 
 one. If a name matches more than one channel, the tool lists them and asks which you meant. Times
 are in your household's time zone.
 
+## Code Mode: the whole API, for an admin's agent
+
+The tools above cover the common jobs. **Code Mode** gives an admin's agent everything else. It
+adds two tools:
+
+- `search` finds API operations by what they do.
+- `execute` runs a short JavaScript program that calls them, for example to read three lists and
+  join them in one step.
+
+A program can call the API as that admin, through the same routes and permission checks the apps
+use, and nothing else. It cannot reach the network, files or other programs, and it cannot call
+the MCP endpoint, the sign-in routes or the Code Mode switch.
+
+Code Mode is **off for every device**. To turn it on:
+
+1. Sign in to Loomarr in a browser as an admin.
+2. Open **Settings → Access and devices**.
+3. Turn on **Code Mode** for the agent's device.
+
+A device cannot turn it on for itself, and a member's device never gets it.
+
+Every program has limits: 20 seconds, 64 MiB of memory, 50 API calls and 64 KiB of output. Each
+run is recorded in **Diagnostics** with the device, how long it took, and each call's method,
+path and result. What was sent and received is not recorded. A program that changes things
+changes them for real, so the agent is told to check with you first.
+
 ## Revoke
 
 The agent is a paired device like any other: [revoke it](agents-cli.md#revoke) and its next

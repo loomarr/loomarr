@@ -6,13 +6,13 @@ Where the outside world comes in. The api package is Loomarr's HTTP surface, and
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** any, by design — platform (99), filler (58), library (32), channels (25), proposals (19), media (18), playout (17), people (14)
+**Imports from other areas:** any, by design — platform (101), filler (58), library (32), channels (25), proposals (19), media (18), playout (17), people (14)
 
 ## Packages
 
-- **`api`** · 1 importer · → `api/agents`, `api/catalog`, `api/channels`, `api/filler`, `api/guide`, `api/httpcore`, `api/images`, `api/library`, `api/ops`, `api/people`, `api/playout`, `api/proposals`, `api/setup`, `api/system`, `channels/schedule`, `channels/viewing`, `filler/cliplibrary`, `filler/defectfloor`, `filler/records`, `filler/source`, `people/auth`, `platform/activity`, `platform/holidayvocab`, `platform/metrics`, `platform/settings`, `platform/storagegovernor`, `platform/store`, `platform/store/identitystore`, `platform/store/proposalstore`, `platform/web`, `playout`, `proposals`, `proposals/accept`, `proposals/suggest`
+- **`api`** · 1 importer · → `api/agents`, `api/catalog`, `api/channels`, `api/filler`, `api/guide`, `api/httpcore`, `api/images`, `api/library`, `api/ops`, `api/people`, `api/playout`, `api/proposals`, `api/setup`, `api/system`, `channels/schedule`, `channels/viewing`, `filler/cliplibrary`, `filler/defectfloor`, `filler/records`, `filler/source`, `people/auth`, `platform/activity`, `platform/diagnostics`, `platform/holidayvocab`, `platform/metrics`, `platform/settings`, `platform/storagegovernor`, `platform/store`, `platform/store/identitystore`, `platform/store/proposalstore`, `platform/web`, `playout`, `proposals`, `proposals/accept`, `proposals/suggest`
   Wires Loomarr's inbound HTTP surface (§7).
-- **`api/agents`** · 1 importer · → `api/httpcore`, `people/auth`, `platform/buildinfo`
+- **`api/agents`** · 1 importer · → `api/httpcore`, `people/auth`, `platform/buildinfo`, `platform/diagnostics`
   Loomarr's surface for AI agents (#4483): an MCP endpoint whose tools are thin wrappers over the existing HTTP API.
 - **`api/catalog`** · 2 importers · → `api/httpcore`, `channels/schedule`, `library/provision`, `platform/settings`, `platform/store`
   Serves the title catalog: the provisioning titles under /v1/titles and the federated catalog search under /v1/search.

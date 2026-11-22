@@ -195,7 +195,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// finished handler below, once that exists.
 	agentRoutes := agentsapi.New(agentsapi.Deps{
 		Log: log, Devices: opts.People.Devices, DeviceLimiter: opts.People.DeviceLimiter, Origin: srv.origin,
-		PublicURL: agentsPublicURL(opts),
+		PublicURL: agentsPublicURL(opts), Events: opts.Ops.Recorder,
 	})
 	agentRoutes.Register(humaAPI)
 

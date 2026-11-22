@@ -1,13 +1,15 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import { unwrap } from "@loomarr/api/unwrap";
 import { devicePairApproveSchema } from "@loomarr/core/schemas";
-import { Action, Field, Stack, Text } from "@loomarr/design-system";
+import { Action, Field, Stack, Text, Toggle } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { useCodeModeDevices, useSetCodeMode } from "@/settings/code-mode";
 
 // The two halves of device pairing, in the order an operator meets them: approve the code a TV is
 // showing, then manage what is already paired (§11, Shield P1).
@@ -156,17 +158,23 @@ const ApproveDevice = () => {
   );
 };
 
+// An admin's per-device Code Mode switch (#4486): whether an AI agent paired as this device may run
+// scripts against the whole API. Only an admin sees it; the server refuses it to anyone else.
+type CodeModeSwitch = { on: boolean; busy: boolean; onChange: (on: boolean) => void };
+
 // Removing signs the device out for good (it has to pair again), so the first press only asks.
 const DeviceRow = ({
   device,
   onRevoke,
   busy,
   divided,
+  codeMode,
 }: {
   device: Device;
   onRevoke: () => void;
   busy: boolean;
   divided: boolean;
+  codeMode?: CodeModeSwitch;
 }) => {
   const [confirming, setConfirming] = useState(false);
   const name = device.deviceName || "Device";
@@ -189,6 +197,18 @@ const DeviceRow = ({
         <Text as="p" textRole="hint" tone="secondary">
           Last used {relativeAge(device.lastSeenAt)}
         </Text>
+        {codeMode ? (
+          <Stack marginTop={8}>
+            <Toggle
+              checked={codeMode.on}
+              description="Lets an AI agent on this device run scripts that use everything you can in Loomarr. Each run is recorded in Diagnostics."
+              disabled={codeMode.busy}
+              kind="switch"
+              label="Code Mode"
+              onCheckedChange={codeMode.onChange}
+            />
+          </Stack>
+        ) : null}
       </Stack>
       {confirming ? (
         <ConfirmStep
@@ -223,6 +243,19 @@ const PairedDevices = () => {
 
   const body = query.data ? unwrap(query.data) : undefined;
   const devices: Device[] = body?.devices ?? [];
+  const { isAdmin } = useAuth();
+  const codeModeOn = useCodeModeDevices(isAdmin);
+  const setCodeMode = useSetCodeMode();
+  // The switch shows only once the server has said which devices have it on, so it never
+  // flashes "off" for a device that is on.
+  const codeModeFor = (id: string): CodeModeSwitch | undefined =>
+    isAdmin && codeModeOn.data
+      ? {
+          on: codeModeOn.data.has(id),
+          busy: setCodeMode.isPending && setCodeMode.variables?.id === id,
+          onChange: (on) => setCodeMode.mutate({ id, on }),
+        }
+      : undefined;
 
   return (
     <>
@@ -245,6 +278,7 @@ const PairedDevices = () => {
             {devices.map((device, index) => (
               <DeviceRow
                 busy={revoke.isPending && revoke.variables?.id === device.id}
+                codeMode={codeModeFor(device.id)}
                 device={device}
                 divided={index < devices.length - 1}
                 key={device.id}

@@ -238,6 +238,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 			DiagnosticCapture:   deps.foundation.diagnostics,
 			ClientDiagnostics:   deps.foundation.clientDiagnostics,
 			ClientCrashes:       clientCrashService(deps.foundation.clientCrashes),
+			Recorder:            deps.foundation.diagnostics,
 		},
 	})
 }
