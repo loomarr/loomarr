@@ -413,8 +413,10 @@ func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
 		t.Fatalf("got %d clips, want 1", len(body.Clips))
 	}
 	still, hover := body.Clips[0].ThumbImage, body.Clips[0].HoverImage
-	if still == nil || still.Hash != "still-art" || still.Src != "/v1/images/still-art/w780.jpg" {
-		t.Errorf("still image = %+v, want content-addressed image record", still)
+	// A 320-wide clip still is served at the thumb ladder's 300 rung, never upscaled to 780 (#4476).
+	if still == nil || still.Hash != "still-art" || still.Src != "/v1/images/still-art/w300.jpg" ||
+		still.SrcSetWebP != "/v1/images/still-art/w300.webp 300w" {
+		t.Errorf("still image = %+v, want content-addressed image record at its 300 rung", still)
 	}
 	if hover == nil || hover.Hash != "hover-art" || !hover.Animated || hover.SrcSetWebP != "/v1/images/hover-art/w320.webp 320w" {
 		t.Errorf("hover image = %+v, want animated image record", hover)
