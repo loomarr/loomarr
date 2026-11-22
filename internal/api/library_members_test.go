@@ -122,7 +122,10 @@ const (
 	unidentifiedSeries = "90000008" // named from its folder
 	unidentifiedEp     = "90000081" // a numbered episode of the unidentified series
 	fileNamedEpisode   = "90000012" // an identified series' episode still named by its file
+	unmarkedEpisode    = "90000013" // numbered and not marked, but its name is still its file's
+	unnamedMovie       = "90000009" // identified, its catalogue record not read yet: its file's name
 	answeredMovie      = "90000006" // nothing identifies it, but the admin answered it
+	readyMadeSet       = "90000811" // a ready-made set holding the identified movie and hidden ones
 )
 
 // seedMemberLibrary stores an identified movie whose folder name differs from its title, with the
@@ -138,6 +141,8 @@ func seedMemberLibrary(t *testing.T, st records.Store) {
 		return librarystore.LibraryOrigin{Authority: "library:/media", Key: key}
 	}
 	grounded := librarystore.LibraryMatch{Basis: "embedded_id"}
+	named := func(provider string) librarystore.LibraryFrom { return librarystore.LibraryFrom{Name: provider} }
+	set := librarystore.LibraryCatalogKey{Provider: "tmdb_collection", Kind: "collection", ExternalID: readyMadeSet}
 	streams := []librarystore.LibraryStream{
 		{Index: 0, Kind: "video", Codec: "hevc", Width: 3840, Height: 2160, HDR: "HDR10"},
 		{Index: 1, Kind: "audio", Codec: "eac3", Channels: 6, Language: "en", Default: true},
@@ -147,24 +152,37 @@ func seedMemberLibrary(t *testing.T, st records.Store) {
 	}
 	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "90000001", Kind: "movie", Name: "Alpha Movie", Year: 2001, Overview: "A story.",
-			Origin: origin(dir + "alpha.mkv"), Match: grounded,
-			From: librarystore.LibraryFrom{Year: "nfo"},
+			Origin: origin(dir + "alpha.mkv"), Match: grounded, Set: set,
+			From: librarystore.LibraryFrom{Name: "tmdb", Year: "nfo"},
 			Sources: []librarystore.LibrarySource{
 				{Path: dir + "alpha.mkv", Plays: true, DurationMs: 5_400_000, Streams: streams},
 				{Path: dir + "alpha.copy.mkv", Plays: false, DurationMs: 5_400_000},
 			}},
-		{ID: "90000002", Kind: "series", Name: "Bravo Show", Origin: origin("/media/Bravo Folder"), Match: grounded},
-		{ID: "90000011", Kind: "episode", Name: "Bravo E1", SeriesID: "90000002", Season: 1, Episode: 1,
+		{ID: "90000002", Kind: "series", Name: "Bravo Show", Origin: origin("/media/Bravo Folder"), Match: grounded, From: named("tvdb")},
+		{ID: "90000011", Kind: "episode", Name: "Bravo E1", SeriesID: "90000002", Season: 1, Episode: 1, From: named("tvdb"),
 			Sources: []librarystore.LibrarySource{{Path: "/media/Bravo Folder/Season 01/bravo.e1.mkv", Plays: true,
 				Streams: streams[:2]}}},
 		{ID: fileNamedEpisode, Kind: "episode", Name: "bravo.e2 From File", SeriesID: "90000002", Season: 1, Episode: 2,
 			Unnumbered: true},
-		{ID: unidentifiedMovie, Kind: "movie", Name: "Charlie Folder Extras", Origin: origin("/media/Charlie Folder Extras/cast.mkv")},
-		{ID: answeredMovie, Kind: "movie", Name: "Delta Answered", Origin: origin("/media/delta.mkv")},
-		{ID: ignoredMovie, Kind: "movie", Name: "Echo Folder Ignored", Origin: origin("/media/Echo Folder Ignored/echo.mkv"), Match: grounded},
+		{ID: unmarkedEpisode, Kind: "episode", Name: "bravo.e3 Unmarked File", SeriesID: "90000002", Season: 1, Episode: 3},
+		{ID: unidentifiedMovie, Kind: "movie", Name: "Charlie Folder Extras", Origin: origin("/media/Charlie Folder Extras/cast.mkv"), Set: set},
+		{ID: answeredMovie, Kind: "movie", Name: "Delta Answered", Origin: origin("/media/delta.mkv"), From: named("tmdb")},
+		{ID: ignoredMovie, Kind: "movie", Name: "Echo Folder Ignored", Origin: origin("/media/Echo Folder Ignored/echo.mkv"),
+			Match: grounded, From: named("tmdb"), Set: set},
+		{ID: unnamedMovie, Kind: "movie", Name: "Golf Folder Unnamed", Origin: origin("/media/Golf Folder Unnamed/golf.mkv"),
+			Match: grounded, Set: set},
 		{ID: unidentifiedSeries, Kind: "series", Name: "Foxtrot Folder", Origin: origin("/media/Foxtrot Folder")},
-		{ID: unidentifiedEp, Kind: "episode", Name: "Foxtrot Numbered", SeriesID: unidentifiedSeries, Season: 1, Episode: 1},
+		{ID: unidentifiedEp, Kind: "episode", Name: "Foxtrot Numbered", SeriesID: unidentifiedSeries, Season: 1, Episode: 1,
+			From: named("tvdb")},
 	}, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.WantLibraryCatalog(ctx, []librarystore.LibraryCatalogKey{set}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SaveLibraryCatalog(ctx, set, `{"Kind":"collection","Descriptive":{"Title":"The Hotel Set"},"Children":[
+		{"Kind":"movie","IDs":[{"Namespace":"tmdb","Value":"90000812"}]},
+		{"Kind":"movie","IDs":[{"Namespace":"tmdb","Value":"90000813"}]}]}`, 0, "en-US", at); err != nil {
 		t.Fatal(err)
 	}
 	for _, answer := range []librarystore.LibraryAnswer{
@@ -186,6 +204,8 @@ func seedMemberLibrary(t *testing.T, st records.Store) {
 		file(dir+"alpha.held.mkv", "90000001", "", librarystore.LibraryHeaderRead, true),
 		file("/media/Bravo Folder/Season 01/bravo.e1.mkv", "90000011", "90000002", librarystore.LibraryHeaderRead, false),
 		file("/media/Bravo Folder/Season 01/bravo.e2.mkv", fileNamedEpisode, "90000002", librarystore.LibraryHeaderRead, false),
+		file("/media/Bravo Folder/Season 01/bravo.e3.mkv", unmarkedEpisode, "90000002", librarystore.LibraryHeaderRead, false),
+		file("/media/Golf Folder Unnamed/golf.mkv", unnamedMovie, "", librarystore.LibraryHeaderRead, false),
 		file("/media/Charlie Folder Extras/cast.mkv", unidentifiedMovie, "", librarystore.LibraryHeaderRead, false),
 		file("/media/delta.mkv", answeredMovie, "", librarystore.LibraryHeaderRead, false),
 		file("/media/Echo Folder Ignored/echo.mkv", ignoredMovie, "", librarystore.LibraryHeaderRead, false),
@@ -212,8 +232,8 @@ func okBody(t *testing.T, resp *http.Response) string {
 // memberLeaks are pieces of the seeded files' paths and the names files and folders gave the
 // titles a member doesn't read: none may reach a member in any field.
 var memberLeaks = []string{"/media", "Alpha Folder", "Bravo Folder", "Season 01", "alpha.", "bravo.", ".mkv", ".srt",
-	"From File", "Charlie Folder", "Echo Folder", "Foxtrot", unidentifiedMovie, ignoredMovie, unidentifiedSeries,
-	unidentifiedEp, fileNamedEpisode}
+	"From File", "Unmarked File", "Charlie Folder", "Echo Folder", "Foxtrot", "Golf Folder", unidentifiedMovie, ignoredMovie,
+	unidentifiedSeries, unidentifiedEp, fileNamedEpisode, unmarkedEpisode, unnamedMovie}
 
 // adminOnlyKeys are the JSON keys a member's Library responses leave out: a title's file count
 // and files list (both "files"), its match and sources, and the Needs you counts and marks.
@@ -265,8 +285,8 @@ func TestMemberNeverReadsATitleWaitingInNeedsYou(t *testing.T) {
 		{memberToken, "?limit=1", []string{"90000001"}},
 		{memberToken, "?search=folder", []string{}},
 		{memberToken, "?kind=series", []string{"90000002"}},
-		{adminToken, "", []string{"90000001", "90000002", unidentifiedMovie, answeredMovie, unidentifiedSeries}},
-		{adminToken, "?search=folder", []string{unidentifiedMovie, unidentifiedSeries}},
+		{adminToken, "", []string{"90000001", "90000002", unidentifiedMovie, answeredMovie, unidentifiedSeries, unnamedMovie}},
+		{adminToken, "?search=folder", []string{unidentifiedMovie, unidentifiedSeries, unnamedMovie}},
 	} {
 		got, total := listed(tc.token, tc.query)
 		wantTotal := len(tc.want)
@@ -296,7 +316,8 @@ func TestMemberNeverReadsATitleWaitingInNeedsYou(t *testing.T) {
 	if unknownStatus != http.StatusNotFound {
 		t.Fatalf("unknown id = %d", unknownStatus)
 	}
-	for _, id := range []string{unidentifiedMovie, ignoredMovie, unidentifiedSeries, unidentifiedEp, fileNamedEpisode} {
+	for _, id := range []string{unidentifiedMovie, ignoredMovie, unidentifiedSeries, unidentifiedEp, fileNamedEpisode,
+		unmarkedEpisode, unnamedMovie} {
 		if status, body := problemOf(memberToken, id); status != unknownStatus || body != unknown {
 			t.Errorf("member opens %s = %d %q, want the unknown id's %d %q", id, status, body, unknownStatus, unknown)
 		}
@@ -305,7 +326,8 @@ func TestMemberNeverReadsATitleWaitingInNeedsYou(t *testing.T) {
 		}
 	}
 
-	// The identified series stays, its season without the episode its file still names.
+	// The identified series stays, its season without the episodes their files still name: one
+	// marked unnumbered, one the scanner left unmarked.
 	var series struct {
 		Seasons []struct {
 			Episodes []struct {
@@ -318,8 +340,39 @@ func TestMemberNeverReadsATitleWaitingInNeedsYou(t *testing.T) {
 		t.Errorf("member series seasons = %+v", series.Seasons)
 	}
 	admin := okBody(t, h.Do(http.MethodGet, "/v1/library/items/90000002", adminToken, ""))
-	if !strings.Contains(admin, `"id":"`+fileNamedEpisode+`"`) || !strings.Contains(admin, `"fromFile":true`) {
-		t.Errorf("admin series lacks the file-named episode: %s", admin)
+	if !strings.Contains(admin, `"id":"`+fileNamedEpisode+`"`) || !strings.Contains(admin, `"fromFile":true`) ||
+		!strings.Contains(admin, `"id":"`+unmarkedEpisode+`"`) {
+		t.Errorf("admin series lacks the file-named episodes: %s", admin)
+	}
+
+	// A ready-made set holds only the member's titles; the admin's keeps the ones they don't read
+	// (an ignored title is left out of every list, the admin's too).
+	setTitles := func(token string) []string {
+		t.Helper()
+		var got struct {
+			Sets []struct {
+				ID     string `json:"id"`
+				Titles []struct {
+					ID string `json:"id"`
+				} `json:"titles"`
+			} `json:"sets"`
+		}
+		decode(t, h.Do(http.MethodGet, "/v1/collections", token, ""), &got)
+		if len(got.Sets) != 1 || got.Sets[0].ID != readyMadeSet {
+			t.Fatalf("%s sets = %+v, want the one set", token, got.Sets)
+		}
+		ids := []string{}
+		for _, title := range got.Sets[0].Titles {
+			ids = append(ids, title.ID)
+		}
+		slices.Sort(ids)
+		return ids
+	}
+	if got, want := setTitles(memberToken), []string{"90000001"}; !slices.Equal(got, want) {
+		t.Errorf("member set titles = %v, want %v", got, want)
+	}
+	if got, want := setTitles(adminToken), []string{"90000001", unidentifiedMovie, unnamedMovie}; !slices.Equal(got, want) {
+		t.Errorf("admin set titles = %v, want %v", got, want)
 	}
 }
 
@@ -425,7 +478,7 @@ func TestAdminLibraryResponsesKeepZeroFixFacts(t *testing.T) {
 	h := newLibraryHarness(t)
 	seedMemberLibrary(t, h.Store)
 	list := okBody(t, h.Do(http.MethodGet, "/v1/library/items?kind=series", adminToken, ""))
-	if !strings.Contains(list, `"unplayable":0`) || !strings.Contains(list, `"extraCopies":0`) || !strings.Contains(list, `"files":2`) {
+	if !strings.Contains(list, `"unplayable":0`) || !strings.Contains(list, `"extraCopies":0`) || !strings.Contains(list, `"files":3`) {
 		t.Errorf("admin series list = %s", list)
 	}
 	series := okBody(t, h.Do(http.MethodGet, "/v1/library/items/90000002", adminToken, ""))

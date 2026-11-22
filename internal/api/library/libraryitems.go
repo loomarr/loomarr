@@ -480,9 +480,10 @@ func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*httpcore.ImageDT
 	for _, season := range d.Seasons {
 		dto := librarySeasonDTO{Number: season.Number, Episodes: make([]libraryEpisodeDTO, 0, len(season.Episodes))}
 		for _, ep := range season.Episodes {
-			// An episode still named by its file waits on the show's order in Needs you, so a
-			// member's season leaves it out, and a season of only those is left out whole.
-			if !admin && ep.FromFile {
+			// An episode still named by its file, whether it waits on the show's order in Needs
+			// you or on its show's catalogue record, is left out of a member's season, and a
+			// season of only those is left out whole.
+			if !admin && (ep.FromFile || !ep.Named) {
 				continue
 			}
 			episode := libraryEpisodeDTO{ID: ep.ID, Name: ep.Name, Number: ep.Number, End: ep.End, Ready: ep.Ready,

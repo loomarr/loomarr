@@ -470,24 +470,31 @@ step 5). Nothing reads the scanner's origins until the cutover.
   and its answers (link, ignore, unanswer, episode order, search for a different title), a
   title's refresh, check and remove-copy, the hook test, and every collection write and set copy.
   `POST /v1/library/hooks/{app}` stays public and answers only its app's shared secret.
-  **A member reads only an identified title.** A movie or series is one a member reads when a
-  catalogue identifies it (it is grounded) or the maintainer has answered it, and the maintainer
-  has not said it is not a title; an episode is one when its show is and its show's catalog
-  numbers it. Everything waiting in Needs you is left out, because its name is its file's or its
-  folder's:
+  **A member reads only an identified title named by a catalogue.** A movie or series is one a
+  member reads when a catalogue identifies it (it has a match basis) or the maintainer has
+  answered it, the maintainer has not said it is not a title, and its name came from a catalogue
+  or sidecar (`name_from`). An episode is one when its show is, and its show's catalog numbers and
+  names it. Everything waiting in Needs you is left out, because its name is its file's or its
+  folder's. So is an identified title whose catalogue record isn't read yet, and an episode the
+  scanner left unmarked (no number it can parse, a season not on disk, its show's record not
+  cached yet, or a record with no orders). Each becomes the member's when a catalogue names it.
+  The match basis is read rather than the `grounded` flag because a row written before the
+  scanner recorded either reads grounded by the column's default; it fails closed until a scan
+  writes it again:
 
   ```
-  identified(t) = t.kind in {movie, series}
-                  and (t.grounded or answered(t)) and not ignored(t)
+  identified(t) = t.kind in {movie, series} and t.name_from != ''
+                  and (t.match_basis != '' or answered(t)) and not ignored(t)
   member reads t = identified(t)
-                  or (t.kind = episode and not t.unnumbered and identified(t.series))
+                  or (t.kind = episode and not t.unnumbered and t.name_from != ''
+                      and identified(t.series))
   ```
 
   One store predicate applies it to the list, its search and filters, its total, one title, an
   episode's page, and a collection's and a ready-made set's titles. A title a member doesn't
   read answers the same 404 as an id that names nothing; a set with none of their titles is left
-  out. A member's season lists leave out an episode still named by its file, and a season of only
-  those; the series stays. An admin reads every listed title, unchanged.
+  out. A member's season lists leave out an episode still named by its file (unnumbered, or with
+  no catalogue name), and a season of only those; the series stays. An admin reads every listed title, unchanged.
   A member's response is the admin's shape with the admin-only parts left out, decided once in
   the handlers from the caller's role, never by the client: a title leaves out `files` (paths,
   sizes, tracks, chapters), `match` and `detailsFrom`; a list entry, a collection's title and a
@@ -502,7 +509,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   mark), and the picker's sizes on `GET /v1/library/collections`. They read a member view of
   the title reads (`MemberTitles`) or the member list. An admin's calls, the suggester's
   grounding, and the server's own readers (presence, ratings, availability, growth, the guide's
-  art) read every listed title.
+  art) read every listed title. A member's channel ideas are a listing cached for the ideas
+  cache's refresh time (five minutes), so an Ignore leaves them within that. The proposal outlook
+  is one of the server's readers: a member who submits a catalogue id the Library holds under an
+  ignored title can learn it is held, by the catalogue's name only.
 - **Posters, backdrops and logos** (step 10b, #2567). When the importer writes a title it hands
   the resolved poster, fanart and clear logo to the image service, and the title owns each
   through a `library_item_images` row (role `poster`, `backdrop` or `logo`); that

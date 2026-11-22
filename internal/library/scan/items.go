@@ -188,6 +188,8 @@ type Episode struct {
 	// FromFile is an episode named and numbered by its file until its show's order is said
 	// (#2151 decision 53).
 	FromFile bool
+	// Named is true when a catalogue or sidecar gave its name; false while it is its file's.
+	Named bool
 	// Overview is its own story. LengthMillis is the measured length of its files that play once
 	// each is read, else the catalog's runtime; 0 when neither is known.
 	Overview     string
@@ -339,7 +341,7 @@ func seasons(files []librarystore.LibraryFile, episodes map[string]librarystore.
 		row := episodes[id]
 		bySeason[row.Season] = append(bySeason[row.Season], Episode{
 			ID: id, Name: row.Name, Number: row.Episode, End: row.EpisodeEnd, Ready: ready[id], FromFile: row.Unnumbered,
-			Overview: row.Overview, LengthMillis: row.LengthMs,
+			Named: row.NameFrom != "", Overview: row.Overview, LengthMillis: row.LengthMs,
 		})
 		if row.NameFrom != "" {
 			named[mp.ID(row.NameFrom)]++

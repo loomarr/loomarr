@@ -392,21 +392,25 @@ var (
 const extraCopies = `library_sources s WHERE s.item_id = i.id AND NOT s.plays`
 
 // memberReads keeps a title a household member reads (#4476, library.md "Who reads the
-// Library"): a movie or series that a catalogue identifies (grounded) or that the maintainer
-// answered, and never one they said is not a title; and an episode its show's catalog numbers,
-// of such a show. A title waiting in Needs you carries the name its file or folder gave it, so
-// it is left out whole. Every member read of the list, a title and a collection's or set's titles
-// goes through it. An episode's show is the one its present file is listed under, as the show's
-// page groups it.
+// Library"): a movie or series that a catalogue identifies or that the maintainer answered, never
+// one they said is not a title, named by a catalogue; and an episode its show's catalog numbers
+// and names, of such a show. A title waiting in Needs you, and one whose catalogue record isn't
+// read yet, carries the name its file or folder gave it, so it is left out whole. Every member
+// read of the list, a title and a collection's or set's titles goes through it. An episode's
+// show is the one its present file is listed under, as the show's page groups it.
 var memberReads = `(` + titleIdentified("i") + ` OR (i.kind = 'episode' AND i.unnumbered = FALSE
+	AND i.name_from <> ''
 	AND EXISTS (SELECT 1 FROM library_files f JOIN library_items s ON s.id = f.inventory_series_id
 		WHERE f.inventory_item_id = i.id AND ` + presentFile + ` AND ` + titleIdentified("s") + `)))`
 
-// titleIdentified is memberReads for the movie or series t.
+// titleIdentified is memberReads for the movie or series t. Identified is read from the match
+// basis, not the grounded flag: a row written before the scanner recorded either reads grounded
+// by the column's default but has no basis, so it fails closed until a scan writes it again.
 func titleIdentified(t string) string {
 	answer := `SELECT 1 FROM library_answers a WHERE a.origin_authority = ` + t + `.origin_authority
 		AND a.origin_key = ` + t + `.origin_key`
-	return `(` + t + `.kind IN ('movie', 'series') AND (` + t + `.grounded = TRUE OR EXISTS (` + answer + `))
+	return `(` + t + `.kind IN ('movie', 'series') AND ` + t + `.name_from <> ''
+		AND (` + t + `.match_basis <> '' OR EXISTS (` + answer + `))
 		AND NOT EXISTS (` + answer + ` AND a.ignored = TRUE))`
 }
 

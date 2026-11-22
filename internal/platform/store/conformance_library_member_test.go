@@ -23,20 +23,40 @@ func testLibraryMemberReads(t *testing.T, newStore NewStoreFunc) {
 		return librarystore.LibraryOrigin{Authority: "library:/m", Key: key}
 	}
 	grounded := librarystore.LibraryMatch{Basis: "embedded_id"}
+	// named is a name a catalogue gave; a row without it carries its file's or folder's.
+	named := func(provider string) librarystore.LibraryFrom { return librarystore.LibraryFrom{Name: provider} }
 	set := librarystore.LibraryCatalogKey{Provider: "tmdb_collection", Kind: "collection", ExternalID: "90000811"}
+	unnamedFilm := librarystore.LibraryItem{ID: "n", Kind: "movie", Name: "november.film.2001", Origin: origin("/m/n.mkv"),
+		Match: grounded, IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000815"}}}
 	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
-		{ID: "g", Kind: "movie", Name: "Grounded Film", Origin: origin("/m/g.mkv"), Match: grounded, Set: set,
+		{ID: "g", Kind: "movie", Name: "Grounded Film", Origin: origin("/m/g.mkv"), Match: grounded, Set: set, From: named("tmdb"),
 			IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000813"}}},
 		{ID: "u", Kind: "movie", Name: "unknown folder name", Origin: origin("/m/unknown folder name/u.mkv"), Set: set},
-		{ID: "a", Kind: "movie", Name: "Answered Film", Origin: origin("/m/a.mkv")},
-		{ID: "i", Kind: "movie", Name: "ignored folder name", Origin: origin("/m/i.mkv"), Match: grounded,
+		{ID: "a", Kind: "movie", Name: "Answered Film", Origin: origin("/m/a.mkv"), From: named("tmdb")},
+		{ID: "i", Kind: "movie", Name: "ignored folder name", Origin: origin("/m/i.mkv"), Match: grounded, From: named("tmdb"),
 			IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000814"}}},
-		{ID: "s", Kind: "series", Name: "Grounded Show", Origin: origin("/m/s"), Match: librarystore.LibraryMatch{Basis: "manager", App: "sonarr"}},
-		{ID: "s1", Kind: "episode", Name: "Pilot", SeriesID: "s", Season: 1, Episode: 1},
+		// Identified, but its catalogue record isn't read yet: its name is still its file's.
+		unnamedFilm,
+		// A row from before the scanner recorded a match: grounded by the column's default (below),
+		// no basis.
+		{ID: "l", Kind: "movie", Name: "Legacy Film", Origin: origin("/m/l.mkv"), From: named("tmdb")},
+		{ID: "s", Kind: "series", Name: "Grounded Show", Origin: origin("/m/s"), From: named("tvdb"),
+			Match: librarystore.LibraryMatch{Basis: "manager", App: "sonarr"}},
+		{ID: "s1", Kind: "episode", Name: "Pilot", SeriesID: "s", Season: 1, Episode: 1, From: named("tvdb")},
 		{ID: "s2", Kind: "episode", Name: "s.s01e02.file name", SeriesID: "s", Season: 1, Episode: 2, Unnumbered: true},
+		// Numbered, but the scanner left it unmarked (its show's record isn't cached yet): its name
+		// is its file's.
+		{ID: "s3", Kind: "episode", Name: "s.s01e03.file name", SeriesID: "s", Season: 1, Episode: 3},
 		{ID: "x", Kind: "series", Name: "unknown show folder", Origin: origin("/m/x")},
-		{ID: "x1", Kind: "episode", Name: "Numbered", SeriesID: "x", Season: 1, Episode: 1},
+		{ID: "x1", Kind: "episode", Name: "Numbered", SeriesID: "x", Season: 1, Episode: 1, From: named("tvdb")},
 	}, at); err != nil {
+		t.Fatal(err)
+	}
+	sqlSt, ok := st.(*sqlStore)
+	if !ok {
+		t.Skip("needs the SQL store")
+	}
+	if _, err := sqlSt.db.ExecContext(ctx, sqlSt.ph(`UPDATE library_items SET grounded = TRUE WHERE id = ?`), "l"); err != nil {
 		t.Fatal(err)
 	}
 	file := func(path, item, series string) librarystore.LibraryFile {
@@ -46,7 +66,7 @@ func testLibraryMemberReads(t *testing.T, newStore NewStoreFunc) {
 	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
 		file("/m/g.mkv", "g", ""), file("/m/unknown folder name/u.mkv", "u", ""), file("/m/a.mkv", "a", ""),
 		file("/m/i.mkv", "i", ""), file("/m/s/e1.mkv", "s1", "s"), file("/m/s/e2.mkv", "s2", "s"),
-		file("/m/x/e1.mkv", "x1", "x"),
+		file("/m/s/e3.mkv", "s3", "s"), file("/m/x/e1.mkv", "x1", "x"), file("/m/n.mkv", "n", ""), file("/m/l.mkv", "l", ""),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +99,8 @@ func testLibraryMemberReads(t *testing.T, newStore NewStoreFunc) {
 		total int
 	}{
 		{"member list", librarystore.LibraryItemQuery{Member: true, Limit: 10}, []string{"a", "g", "s"}, 3},
-		{"admin list", librarystore.LibraryItemQuery{Limit: 10}, []string{"a", "g", "s", "u", "x"}, 5},
+		{"admin list", librarystore.LibraryItemQuery{Limit: 10}, []string{"a", "g", "l", "n", "s", "u", "x"}, 7},
+		{"member search, file-named", librarystore.LibraryItemQuery{Member: true, Search: "film", Limit: 10}, []string{"a", "g"}, 2},
 		{"member search", librarystore.LibraryItemQuery{Member: true, Search: "folder", Limit: 10}, []string{}, 0},
 		{"admin search", librarystore.LibraryItemQuery{Search: "folder", Limit: 10}, []string{"u", "x"}, 2},
 		{"member set", librarystore.LibraryItemQuery{Member: true, Kind: "movie", InSet: true}, []string{"g"}, 1},
@@ -96,9 +117,10 @@ func testLibraryMemberReads(t *testing.T, newStore NewStoreFunc) {
 			t.Errorf("member reads %s = %+v, %v", id, got.ID, err)
 		}
 	}
-	// Waiting in Needs you, ignored, of a show waiting in Needs you, still named by its file, or
-	// nothing at all: each is the same not found.
-	for _, id := range []string{"u", "i", "x", "x1", "s2", "nope"} {
+	// Waiting in Needs you, ignored, of a show waiting in Needs you, still named by its file
+	// (unmarked or not), identified but not yet named, a legacy row, or nothing at all: each is the
+	// same not found.
+	for _, id := range []string{"u", "i", "x", "x1", "s2", "s3", "n", "l", "nope"} {
 		if _, err := st.MemberLibraryItem(ctx, id); !errors.Is(err, ErrNotFound) {
 			t.Errorf("member reads %s: err = %v, want ErrNotFound", id, err)
 		}
@@ -130,7 +152,7 @@ func testLibraryMemberReads(t *testing.T, newStore NewStoreFunc) {
 		want []string
 	}{
 		{"member titles", titleIDs(member.LibraryTitles(ctx, time.Time{})), []string{"a", "g", "s"}},
-		{"server titles", titleIDs(st.LibraryTitles(ctx, time.Time{})), []string{"a", "g", "i", "s", "u", "x"}},
+		{"server titles", titleIDs(st.LibraryTitles(ctx, time.Time{})), []string{"a", "g", "i", "l", "n", "s", "u", "x"}},
 		{"member title search", titleIDs(member.SearchLibraryTitles(ctx, "folder name", 10)), []string{}},
 		{"server title search", titleIDs(st.SearchLibraryTitles(ctx, "folder name", 10)), []string{"i", "u"}},
 		{"member title search, identified", titleIDs(member.SearchLibraryTitles(ctx, "film", 10)), []string{"a", "g"}},
@@ -153,5 +175,17 @@ func testLibraryMemberReads(t *testing.T, newStore NewStoreFunc) {
 		if err != nil || ok != (tc.want != "") || got.ID != tc.want {
 			t.Errorf("%s by tmdb %s = %q, %v, %v; want %q", tc.name, tc.tmdb, got.ID, ok, err, tc.want)
 		}
+	}
+
+	// The window closes when the catalogue names it: the title is the member's from then on.
+	unnamedFilm.Name, unnamedFilm.From = "November Film", named("tmdb")
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{unnamedFilm}, at); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := st.MemberLibraryItem(ctx, "n"); err != nil || got.Name != "November Film" {
+		t.Errorf("member reads n once named = %+v, %v", got.Name, err)
+	}
+	if got, _, err := member.LibraryTitleByProviderID(ctx, "movie", "tmdb", "90000815"); err != nil || got.ID != "n" {
+		t.Errorf("member title by tmdb once named = %q, %v", got.ID, err)
 	}
 }

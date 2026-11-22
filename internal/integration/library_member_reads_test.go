@@ -32,18 +32,19 @@ func seedMemberRuleLibrary(t *testing.T, h *harness) {
 		return librarystore.LibraryOrigin{Authority: "library:/movies", Key: key}
 	}
 	grounded := librarystore.LibraryMatch{Basis: "embedded_id"}
+	tmdbNamed := librarystore.LibraryFrom{Name: "tmdb"}
 	animation := []string{"Animation"}
 	var items []librarystore.LibraryItem
 	for n := 1; n <= 6; n++ {
 		items = append(items, librarystore.LibraryItem{
 			ID: "lib-q" + strconv.Itoa(n), Kind: "movie", Name: "Quill Harbor " + strconv.Itoa(n), Year: 1990 + n,
-			Genres: animation, Origin: origin("/movies/q" + strconv.Itoa(n) + ".mkv"), Match: grounded,
+			Genres: animation, Origin: origin("/movies/q" + strconv.Itoa(n) + ".mkv"), Match: grounded, From: tmdbNamed,
 			IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: strconv.Itoa(firstIdentifiedID - 1 + n)}},
 		})
 	}
 	items = append(items,
 		librarystore.LibraryItem{ID: ignoredItem, Kind: "movie", Name: "Marigold Protocol", Year: 1999, Genres: animation,
-			Origin: origin("/movies/ignored.mkv"), Match: grounded,
+			Origin: origin("/movies/ignored.mkv"), Match: grounded, From: tmdbNamed,
 			IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: strconv.Itoa(ignoredTMDB)}}},
 		librarystore.LibraryItem{ID: unidentifiedItem, Kind: "movie", Name: "marigold extras folder", Genres: animation,
 			Origin: origin("/movies/marigold extras folder/x.mkv")},
