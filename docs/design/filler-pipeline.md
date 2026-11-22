@@ -40,7 +40,7 @@ ends with a completed terminal rung that the ready commit validates against.
   an explicit force flag because it replaces playable bytes.
 - **Lifecycle is a domain answer.** `filler.Pipeline` projects persisted state into one vocabulary for
   the runner, Incoming and telemetry: `runnable`, `in_progress`, `scheduled`, `needs_decision`,
-  `awaiting_split` (a reel held at the split until splitting is certified; nobody is asked),
+  `awaiting_split` (a reel held at the split, its cuts not confirmed; nobody is asked),
   `ready`, `complete` (a processed composite container, not playable), `rejected`, `dismissed`. A
   failed rung carries a stable failure code, the retryable rung and one sanctioned recovery action.
   Retrying a terminal execution failure and clearing its tombstone is one transaction, and the clip is

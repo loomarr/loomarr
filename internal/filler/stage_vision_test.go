@@ -248,8 +248,7 @@ func TestVisionStage_ParsesFencedJSON(t *testing.T) {
 	//
 	// ⚠ This asserted category was DROPPED until V54b, on the grounds that "a car ad rarely prints
 	// the word 'cars'". That observation was correct and was the whole problem: it made the field
-	// nearly unfillable, and `segmentVerdict` refuses an untagged segment before it ever consults
-	// boundary confidence. Category is now taxonomy-grounded rather than frame-text-grounded
+	// nearly unfillable. Category is now taxonomy-grounded rather than frame-text-grounded
 	// (§10 V54b); brand and era are unchanged and still require the frame — see
 	// TestVisionStage_DropsBrandNotInVisibleText, which must stay green.
 	prov := &scriptedProvider{answer: "```json\n{\"visibleText\":\"VENTOR STALLION\",\"brand\":\"Ventor\",\"era\":0,\"category\":\"cars\"}\n```"}

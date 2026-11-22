@@ -9236,7 +9236,7 @@ components:
       additionalProperties: false
       properties:
         awaitingSplit:
-          description: Reels held until splitting is certified; nobody needs to act
+          description: Reels held at the split, their cuts not confirmed; nobody needs to act
           format: int64
           type: integer
         complete:
@@ -12128,8 +12128,6 @@ components:
         - filler.autosplit.enabled
         - filler.autosplit.min_confidence
         - filler.autosplit.max_duration
-        - filler.structure_window_authority_path
-        - filler.structure_window_deployment_path
         - filler.pipeline.max_clips
         - filler.transcode.max_per_run
         - filler.pipeline.max_whisper
@@ -12291,8 +12289,6 @@ components:
         - FillerAutosplitEnabled
         - FillerAutosplitMinConfidence
         - FillerAutosplitMaxDuration
-        - FillerStructureWindowAuthorityPath
-        - FillerStructureWindowDeploymentPath
         - FillerPipelineMaxClips
         - FillerTranscodeMaxPerRun
         - FillerPipelineMaxWhisper

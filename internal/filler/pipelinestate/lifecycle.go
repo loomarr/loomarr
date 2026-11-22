@@ -12,8 +12,8 @@ const (
 	LifecycleInProgress    LifecycleState = "in_progress"
 	LifecycleScheduled     LifecycleState = "scheduled"
 	LifecycleNeedsDecision LifecycleState = "needs_decision"
-	// LifecycleAwaitingSplit is a reel held at the split: machine-owned, waiting until splitting
-	// is certified to air its cuts (#3838 step 6). Nobody is asked to look at it.
+	// LifecycleAwaitingSplit is a reel held at the split: machine-owned, its cuts not confirmed by
+	// `AutoCuttable` (#3838 step 6). Nobody is asked to look at it.
 	LifecycleAwaitingSplit LifecycleState = "awaiting_split"
 	LifecycleReady         LifecycleState = "ready"
 	LifecycleComplete      LifecycleState = "complete"
