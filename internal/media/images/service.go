@@ -38,6 +38,9 @@ type Store interface {
 	PutRef(ctx context.Context, ref Ref) error
 	PutDerivatives(ctx context.Context, derivatives []Derivative) error
 	ListDerivatives(ctx context.Context, hash string) ([]Derivative, error)
+	// ImagesByHash reads many images and their derivatives in a bounded number of statements; a
+	// hash with no row is absent.
+	ImagesByHash(ctx context.Context, hashes []string) ([]Image, []Derivative, error)
 }
 
 // IngestRequest is everything about an image that its bytes do not say.
@@ -169,6 +172,46 @@ func (s *Service) HasFormat(ctx context.Context, hash string, f Format) (bool, e
 		}
 	}
 	return false, nil
+}
+
+// Listed is an image as a page lists it: its record and whether its AVIF ladder exists (HasFormat).
+type Listed struct {
+	Image
+	AVIF bool
+}
+
+// GetMany reads the images of hashes with their AVIF state, by hash, in one store read
+// (ImagesByHash) rather than two point reads each. A hash with no image is absent.
+func (s *Service) GetMany(ctx context.Context, hashes []string) (map[string]Listed, error) {
+	valid := make([]string, 0, len(hashes))
+	seen := make(map[string]bool, len(hashes))
+	for _, h := range hashes {
+		if validHash(h) && !seen[h] {
+			seen[h] = true
+			valid = append(valid, h)
+		}
+	}
+	out := make(map[string]Listed, len(valid))
+	if len(valid) == 0 {
+		return out, nil
+	}
+	imgs, derivatives, err := s.store.ImagesByHash(ctx, valid)
+	if err != nil {
+		return nil, err
+	}
+	for _, img := range imgs {
+		out[img.Hash] = Listed{Image: img}
+	}
+	if !s.Produces(FormatAVIF) {
+		return out, nil
+	}
+	for _, d := range derivatives {
+		if l, ok := out[d.ImageHash]; ok && d.Recipe == renditionRecipe && d.Format == FormatAVIF {
+			l.AVIF = true
+			out[d.ImageHash] = l
+		}
+	}
+	return out, nil
 }
 
 // Ingest stores bytes and returns the canonical record.

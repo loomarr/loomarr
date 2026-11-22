@@ -40,8 +40,24 @@ func (f *fakeStore) PutImage(_ context.Context, img Image) error {
 	if existing, ok := f.images[img.Hash]; ok {
 		img.CreatedAt = existing.CreatedAt
 	}
+	// Bytes that landed end the failure record, as the real upsert does.
+	if !img.OriginFetchedAt.IsZero() {
+		img.FetchFailures, img.FetchRetryAt = 0, time.Time{}
+	}
 	f.images[img.Hash] = img
 	return nil
+}
+
+func (f *fakeStore) ImagesByHash(_ context.Context, hashes []string) ([]Image, []Derivative, error) {
+	var imgs []Image
+	var derivatives []Derivative
+	for _, h := range hashes {
+		if img, ok := f.images[h]; ok {
+			imgs = append(imgs, img)
+			derivatives = append(derivatives, f.derivatives[h]...)
+		}
+	}
+	return imgs, derivatives, nil
 }
 
 func (f *fakeStore) GetImage(_ context.Context, hash string) (Image, error) {

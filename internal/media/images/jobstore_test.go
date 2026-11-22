@@ -15,10 +15,21 @@ import (
 // runs the real queries against BOTH dialects, so these predicates are checked in one place and
 // exercised in another rather than being the only statement of the rule.
 
-func (f *fakeStore) ListAwaitingFetch(_ context.Context, limit int) ([]Image, error) {
+func (f *fakeStore) ListAwaitingFetch(_ context.Context, now time.Time, limit int) ([]Image, error) {
 	return f.pick(limit, func(img Image) bool {
-		return img.Origin == OriginRemote && img.OriginFetchedAt.IsZero()
+		return img.Origin == OriginRemote && img.OriginFetchedAt.IsZero() && !img.FetchRetryAt.After(now)
 	}), nil
+}
+
+func (f *fakeStore) RecordFetchFailure(_ context.Context, hash string, _, retryAt time.Time) error {
+	img, ok := f.images[hash]
+	if !ok || !img.OriginFetchedAt.IsZero() {
+		return nil
+	}
+	img.FetchFailures++
+	img.FetchRetryAt = retryAt
+	f.images[hash] = img
+	return nil
 }
 
 func (f *fakeStore) ListByOrigin(_ context.Context, origin Origin, limit int) ([]Image, error) {

@@ -182,20 +182,17 @@ func libraryItemOf(it librarystore.LibraryItemSummary, posters map[string]*httpc
 // libraryPosters renders the items' posters, by hash. An image whose bytes have not arrived is
 // left out, so the grid shows the title's name rather than a broken image.
 func (s *Handlers) libraryPosters(ctx context.Context, items []librarystore.LibraryItemSummary) map[string]*httpcore.ImageDTO {
-	out := map[string]*httpcore.ImageDTO{}
-	if s.libraryImageFn == nil {
-		return out
+	if s.libraryImagesFn == nil {
+		return map[string]*httpcore.ImageDTO{}
 	}
+	hashes := make([]string, 0, len(items))
 	for _, it := range items {
-		if it.Poster == "" {
-			continue
+		if it.Poster != "" {
+			hashes = append(hashes, it.Poster)
 		}
-		if _, seen := out[it.Poster]; seen {
-			continue
-		}
-		out[it.Poster] = s.libraryImage(ctx, it.Poster)
 	}
-	return out
+	// One read for the page's posters, not one per title.
+	return s.libraryImagesFn(ctx, hashes)
 }
 
 type listLibraryItemsInput struct {

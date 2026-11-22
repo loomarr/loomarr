@@ -194,6 +194,17 @@ the database only.
 - **Expiry deletes, then requeues.** The original and every derivative are deleted and the row goes
   back on `images-fetch`'s list (every minute). Re-fetching first would put compliance inside an error
   branch: an unreachable TMDB would keep expired bytes forever.
+- **One GC run purges everything due.** It reads expired images 500 at a time and keeps reading
+  until none are left. A requeued row leaves the expired set, so each read returns the next batch.
+  Images are purged one at a time, each a file delete and then a row write, so a run that has a large
+  backlog takes longer but never adds load in parallel. A batch in which nothing could be purged ends
+  the run, and the next daily run tries again.
+- **A failed download backs off.** Each failure is recorded on the row (`fetch_failures`,
+  `fetch_failed_at`) and holds the image off `images-fetch`'s list until `fetch_retry_at`. The wait
+  doubles from five minutes (5m, 10m, 20m … 21h20m after the ninth failure) and is a day from the
+  tenth failure on. A failing image therefore never holds the front of the queue. The download that
+  lands clears all three fields. An image is never dropped for failing: it is retried once a day for
+  as long as something references it.
 - **Orphans are collected before expiry,** so an unreferenced expired image is never queued for a
   pointless download.
 - **Attribution:** the TMDB logo, less prominent than Loomarr's branding, with the notice "This

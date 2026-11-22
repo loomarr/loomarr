@@ -132,6 +132,16 @@ func TestPostgresRetireFillerRuntimeRightsMigration(t *testing.T) {
 	testRetireFillerRuntimeRightsMigration(t, s, "migrations/postgres")
 }
 
+func TestPostgresImageFetchBackoffMigration(t *testing.T) {
+	ctx := context.Background()
+	s, err := openPostgres(ctx, startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	testImageFetchBackoffMigration(t, s, "migrations/postgres")
+}
+
 func TestPostgresClipNameSourceMigration(t *testing.T) {
 	ctx := context.Background()
 	dsn := startPostgres(t)

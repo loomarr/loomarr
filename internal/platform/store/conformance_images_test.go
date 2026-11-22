@@ -409,7 +409,7 @@ func testImageFetchQueueAndExpirySweepAreDisjoint(t *testing.T, newStore NewStor
 		}
 	}
 
-	queue, err := s.ListImagesAwaitingFetch(ctx, 10)
+	queue, err := s.ListImagesAwaitingFetch(ctx, now, 10)
 	if err != nil {
 		t.Fatal(err)
 	}

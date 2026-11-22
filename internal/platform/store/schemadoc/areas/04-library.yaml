@@ -591,6 +591,12 @@ tables:
       origin_fetched_at: >
         When a remote image's bytes were downloaded, in Unix seconds; 0 means not downloaded yet. Drives
         the six-month expiry for TMDB artwork.
+      fetch_failures: >
+        How many downloads of a remote image have failed in a row; 0 once one lands.
+      fetch_failed_at: When the last failed download was tried, in Unix seconds; 0 for none.
+      fetch_retry_at: >
+        The earliest time, in Unix seconds, the download is tried again after a failure; 0 for none.
+        Each failure doubles the wait, from five minutes up to a day.
       created_at: When the image was first stored, in Unix seconds.
       updated_at: When the row last changed, in Unix seconds.
       last_used_at: When the image was last used, in Unix seconds. Older images lose their resized copies first when space runs short.

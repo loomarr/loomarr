@@ -20,8 +20,9 @@ import (
 // TTL is the one that genuinely must not be skipped, because it is a compliance ceiling rather
 // than a tuning knob.
 
-// gcBatch bounds each sweep's work list. The GC is daily and its passes are idempotent, so a
-// backlog larger than this drains over successive days rather than blocking one long run.
+// gcBatch bounds each read of a sweep's work list. The GC is daily and its passes are idempotent,
+// so an orphan backlog larger than this drains over successive days; the expiry sweep reads batch
+// after batch until nothing due is left (enforceTTL).
 const gcBatch = 500
 
 // GCStore is the persistence the collector needs on top of the serve path's.
@@ -133,26 +134,41 @@ func (g *GC) enforceTTL(ctx context.Context, out *GCResult) error {
 		return nil
 	}
 	cutoff := g.svc.now().Add(-ttl)
-	expired, err := g.store.ListExpiredBefore(ctx, cutoff, gcBatch)
-	if err != nil {
-		return err
-	}
-	for _, img := range expired {
-		if err := g.purgeBytes(ctx, img); err != nil {
-			g.log.Warn("expired image purge failed", "hash", img.Hash, "err", err)
-			continue
-		}
-		// ⚠ Zero is the fetch job's "never fetched" sentinel, so this is a requeue rather than a
-		// flag: the row rejoins ListAwaitingFetch by construction and no second queue exists to
-		// keep in step with this one.
-		img.OriginFetchedAt = time.Time{}
-		img.UpdatedAt = g.svc.now()
-		if err := g.store.PutImage(ctx, img); err != nil {
+	// Every image due is purged in this run, a batch of gcBatch at a time: thousands fetched on one
+	// day all expire on one day, and a batch a day would leave the last of them months past the
+	// ceiling. One image is purged at a time (its files, then its row), so the run's load on the
+	// disk and the database is one delete and one write after another, never a burst. A requeued
+	// row leaves the expired set, so each batch reads only what is still due; a batch that purged
+	// nothing (every one of its images failed) ends the run, and they are tried tomorrow.
+	for {
+		expired, err := g.store.ListExpiredBefore(ctx, cutoff, gcBatch)
+		if err != nil {
 			return err
 		}
-		out.Expired++
+		purged := 0
+		for _, img := range expired {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := g.purgeBytes(ctx, img); err != nil {
+				g.log.Warn("expired image purge failed", "hash", img.Hash, "err", err)
+				continue
+			}
+			// ⚠ Zero is the fetch job's "never fetched" sentinel, so this is a requeue rather than a
+			// flag: the row rejoins ListAwaitingFetch by construction and no second queue exists to
+			// keep in step with this one.
+			img.OriginFetchedAt = time.Time{}
+			img.UpdatedAt = g.svc.now()
+			if err := g.store.PutImage(ctx, img); err != nil {
+				return err
+			}
+			out.Expired++
+			purged++
+		}
+		if len(expired) < gcBatch || purged == 0 {
+			return nil
+		}
 	}
-	return nil
 }
 
 // deleteOrphans removes images nothing references any more.

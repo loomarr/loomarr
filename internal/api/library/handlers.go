@@ -33,6 +33,9 @@ type Deps struct {
 	// LibraryImage renders one title image by hash, or nil while its bytes have not arrived.
 	// nil leaves every poster and logo out.
 	LibraryImage func(ctx context.Context, hash string) *httpcore.ImageDTO
+	// LibraryImages renders many title images by hash in one read, leaving out any whose bytes
+	// have not arrived. nil leaves every poster of a list out.
+	LibraryImages func(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO
 	// CandidatePoster adopts a candidate's poster and renders it once its bytes are here.
 	CandidatePoster func(ctx context.Context, itemID, url string) *httpcore.ImageDTO
 }
@@ -46,6 +49,7 @@ type Handlers struct {
 	collections       CollectionService
 	movieCollections  MovieCollectionService
 	libraryImageFn    func(ctx context.Context, hash string) *httpcore.ImageDTO
+	libraryImagesFn   func(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO
 	candidatePosterFn func(ctx context.Context, itemID, url string) *httpcore.ImageDTO
 }
 
@@ -71,7 +75,7 @@ func New(d Deps) *Handlers {
 	return &Handlers{
 		store: d.Store, liveSettings: d.LiveSettings, libraryRoots: d.LibraryRoots, libraryHooks: d.LibraryHooks,
 		collections: d.Collections, movieCollections: d.MovieCollections,
-		libraryImageFn: d.LibraryImage, candidatePosterFn: d.CandidatePoster,
+		libraryImageFn: d.LibraryImage, libraryImagesFn: d.LibraryImages, candidatePosterFn: d.CandidatePoster,
 	}
 }
 

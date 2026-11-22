@@ -54,7 +54,8 @@ func (o Origin) Recoverable() bool {
 // HasBytes reports whether the image's bytes have arrived: an adopted remote image has none until
 // the fetch job pulls them, and its renditions cannot be served before then.
 func (i Image) HasBytes() bool {
-	return i.Origin != OriginRemote || !i.OriginFetchedAt.IsZero()
+	// A row read from the store carries time.Unix(0, 0), not the zero time, for never fetched.
+	return i.Origin != OriginRemote || (!i.OriginFetchedAt.IsZero() && i.OriginFetchedAt.Unix() > 0)
 }
 
 // Visibility is a property of the IMAGE, not of the route that serves it (§22).
@@ -203,6 +204,11 @@ type Image struct {
 	UpdatedAt time.Time
 	// LastUsedAt drives derivative eviction under the cache budget.
 	LastUsedAt time.Time
+
+	// FetchFailures counts a remote image's downloads that failed in a row; the fetch queue holds
+	// it until FetchRetryAt (fetchBackoff). Bytes that land clear both.
+	FetchFailures int
+	FetchRetryAt  time.Time
 }
 
 // Ref is what an image decorates. An image can have several (the same poster may be a channel's

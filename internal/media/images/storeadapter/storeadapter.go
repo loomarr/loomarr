@@ -33,7 +33,9 @@ type Store interface {
 	PutImageDerivative(ctx context.Context, d clipstore.ImageDerivative) error
 	PutImageDerivatives(ctx context.Context, rows []clipstore.ImageDerivative) error
 	ListImageDerivatives(ctx context.Context, hash string) ([]clipstore.ImageDerivative, error)
-	ListImagesAwaitingFetch(ctx context.Context, limit int) ([]clipstore.Image, error)
+	ImagesByHash(ctx context.Context, hashes []string) ([]clipstore.Image, []clipstore.ImageDerivative, error)
+	ListImagesAwaitingFetch(ctx context.Context, now time.Time, limit int) ([]clipstore.Image, error)
+	RecordImageFetchFailure(ctx context.Context, hash string, at, retryAt time.Time) error
 	ListImagesByOrigin(ctx context.Context, origin string, limit int) ([]clipstore.Image, error)
 	ListImagesExpiredBefore(ctx context.Context, cutoff time.Time, limit int) ([]clipstore.Image, error)
 	ListOrphanImages(ctx context.Context, limit int) ([]clipstore.Image, error)
@@ -106,6 +108,14 @@ func (a Images) ListDerivatives(ctx context.Context, hash string) ([]images.Deri
 	return fromStoreDerivatives(rows), nil
 }
 
+func (a Images) ImagesByHash(ctx context.Context, hashes []string) ([]images.Image, []images.Derivative, error) {
+	rows, derivatives, err := a.st.ImagesByHash(ctx, hashes)
+	if err != nil {
+		return nil, nil, err
+	}
+	return fromStoreImages(rows), fromStoreDerivatives(derivatives), nil
+}
+
 // --- The background jobs' half of the contract (V52 phase 3b) ---
 //
 // ⚠ The domain names these methods for what they DO to images (ListOrphans, ListExpiredBefore)
@@ -115,9 +125,13 @@ func (a Images) ListDerivatives(ctx context.Context, hash string) ([]images.Deri
 // its own subject, and `internal/platform/store` reads as a schema, because neither had to compromise to
 // match the other.
 
-func (a Images) ListAwaitingFetch(ctx context.Context, limit int) ([]images.Image, error) {
-	rows, err := a.st.ListImagesAwaitingFetch(ctx, limit)
+func (a Images) ListAwaitingFetch(ctx context.Context, now time.Time, limit int) ([]images.Image, error) {
+	rows, err := a.st.ListImagesAwaitingFetch(ctx, now, limit)
 	return fromStoreImages(rows), err
+}
+
+func (a Images) RecordFetchFailure(ctx context.Context, hash string, at, retryAt time.Time) error {
+	return a.st.RecordImageFetchFailure(ctx, hash, at, retryAt)
 }
 
 func (a Images) ListByOrigin(ctx context.Context, origin images.Origin, limit int) ([]images.Image, error) {
@@ -251,6 +265,8 @@ func toStoreImage(img images.Image) clipstore.Image {
 		CreatedAt:       img.CreatedAt,
 		UpdatedAt:       img.UpdatedAt,
 		LastUsedAt:      img.LastUsedAt,
+		FetchFailures:   img.FetchFailures,
+		FetchRetryAt:    img.FetchRetryAt,
 	}
 }
 
@@ -276,5 +292,7 @@ func fromStoreImage(rec clipstore.Image) images.Image {
 		CreatedAt:       rec.CreatedAt,
 		UpdatedAt:       rec.UpdatedAt,
 		LastUsedAt:      rec.LastUsedAt,
+		FetchFailures:   rec.FetchFailures,
+		FetchRetryAt:    rec.FetchRetryAt,
 	}
 }

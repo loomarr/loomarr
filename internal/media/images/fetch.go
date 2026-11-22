@@ -47,8 +47,12 @@ const maxFetchRedirects = 3
 // method that deletes rows.
 type FetchStore interface {
 	Store
-	// ListAwaitingFetch is the pending queue: remote rows whose bytes have never landed.
-	ListAwaitingFetch(ctx context.Context, limit int) ([]Image, error)
+	// ListAwaitingFetch is the pending queue: remote rows whose bytes have never landed and whose
+	// next attempt is due by now (FetchRetryAt).
+	ListAwaitingFetch(ctx context.Context, now time.Time, limit int) ([]Image, error)
+	// RecordFetchFailure counts a failed download of a never-fetched image at at and holds it off
+	// the queue until retryAt.
+	RecordFetchFailure(ctx context.Context, hash string, at, retryAt time.Time) error
 	// ListByOrigin is rehydrate's work list — every row of an origin, whatever its fetch state,
 	// because a file can go missing under a row in any state.
 	ListByOrigin(ctx context.Context, origin Origin, limit int) ([]Image, error)
@@ -106,12 +110,31 @@ func (f *Fetcher) FetchPending(ctx context.Context) (FetchResult, error) {
 	if !f.enabled() {
 		return FetchResult{}, nil
 	}
-	pending, err := f.store.ListAwaitingFetch(ctx, fetchBatch)
+	now := f.svc.now()
+	pending, err := f.store.ListAwaitingFetch(ctx, now, fetchBatch)
 	if err != nil {
 		return FetchResult{}, err
 	}
 	res, _ := f.fetchAll(ctx, pending)
 	return res, nil
+}
+
+// fetchBackoffFirst and fetchBackoffMax bound how long a remote image waits after a failed
+// download: the first failure waits five minutes and each further one doubles the wait, up to a
+// day (5m, 10m, 20m … 21h20m, then 24h from the tenth failure on). An image that never downloads
+// costs one attempt a day and never holds the queue's front.
+const (
+	fetchBackoffFirst = 5 * time.Minute
+	fetchBackoffMax   = 24 * time.Hour
+)
+
+// fetchBackoff is the wait after an image's failures-th failure in a row (1 for the first).
+func fetchBackoff(failures int) time.Duration {
+	wait := fetchBackoffFirst
+	for i := 1; i < failures && wait < fetchBackoffMax; i++ {
+		wait *= 2
+	}
+	return min(wait, fetchBackoffMax)
 }
 
 // Rehydrate re-fetches remote images whose files are gone — the post-restore path (§22).
@@ -233,6 +256,14 @@ func (f *Fetcher) fetchAll(ctx context.Context, work []Image) (FetchResult, map[
 		case r.err != nil:
 			out.Failed++
 			f.log.Warn("image fetch failed", "hash", work[i].Hash, "url", work[i].SourceURL, "err", r.err)
+			// A canceled pass says nothing of the image, so only a real failure backs it off.
+			if ctx.Err() == nil && !work[i].HasBytes() {
+				now := f.svc.now()
+				retry := now.Add(fetchBackoff(work[i].FetchFailures + 1))
+				if err := f.store.RecordFetchFailure(ctx, work[i].Hash, now, retry); err != nil {
+					f.log.Warn("image fetch failure not recorded", "hash", work[i].Hash, "err", err)
+				}
+			}
 		default:
 			out.Fetched++
 			if r.rekeyed {

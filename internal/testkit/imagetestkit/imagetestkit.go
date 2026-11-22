@@ -37,6 +37,9 @@ func NewMemStore() *MemStore {
 func (m *MemStore) PutImage(_ context.Context, img images.Image) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if !img.OriginFetchedAt.IsZero() {
+		img.FetchFailures, img.FetchRetryAt = 0, time.Time{}
+	}
 	m.images[img.Hash] = img
 	return nil
 }
@@ -107,12 +110,39 @@ func (m *MemStore) ListDerivatives(_ context.Context, hash string) ([]images.Der
 	return m.derivs[hash], nil
 }
 
-func (m *MemStore) ListAwaitingFetch(_ context.Context, limit int) ([]images.Image, error) {
+// ImagesByHash is the images of hashes that exist, with their derivatives.
+func (m *MemStore) ImagesByHash(_ context.Context, hashes []string) ([]images.Image, []images.Derivative, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var imgs []images.Image
+	var derivatives []images.Derivative
+	for _, h := range hashes {
+		if img, ok := m.images[h]; ok {
+			imgs = append(imgs, img)
+			derivatives = append(derivatives, m.derivs[h]...)
+		}
+	}
+	return imgs, derivatives, nil
+}
+
+// RecordFetchFailure counts a failed download of a never-fetched image and holds it until retryAt.
+func (m *MemStore) RecordFetchFailure(_ context.Context, hash string, _, retryAt time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if img, ok := m.images[hash]; ok && img.OriginFetchedAt.IsZero() {
+		img.FetchFailures++
+		img.FetchRetryAt = retryAt
+		m.images[hash] = img
+	}
+	return nil
+}
+
+func (m *MemStore) ListAwaitingFetch(_ context.Context, now time.Time, limit int) ([]images.Image, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]images.Image, 0, limit)
 	for _, img := range m.images {
-		if img.Origin == images.OriginRemote && img.OriginFetchedAt.IsZero() {
+		if img.Origin == images.OriginRemote && img.OriginFetchedAt.IsZero() && !img.FetchRetryAt.After(now) {
 			out = append(out, img)
 			if len(out) >= limit {
 				break
