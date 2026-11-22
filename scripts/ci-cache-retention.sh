@@ -69,21 +69,28 @@ plan() {
 }
 
 apply() {
-  local repository="${REPO:?}" id
+  local repository="${REPO:?}" id refusal failed=0
   # Not local: the EXIT trap runs after this function has returned.
-  listing=$(mktemp)
-  trap 'rm -f -- "${listing}"' EXIT
+  workdir=$(mktemp -d)
+  trap 'rm -rf -- "${workdir}"' EXIT
   gh api "repos/${repository}/actions/caches?ref=refs/heads/main&per_page=100" --paginate |
-    jq -s '{actions_caches: (map(.actions_caches) | add)}' >"${listing}"
-  # An entry can vanish between the listing and its delete (GitHub's own eviction, or
-  # cache-cleanup.yml). One refused delete must not strand the rest.
-  plan "${listing}" | while read -r id; do
-    if gh api -X DELETE "repos/${repository}/actions/caches/${id}" >/dev/null 2>&1; then
+    jq -s '{actions_caches: (map(.actions_caches) | add)}' >"${workdir}/listing.json"
+  # The whole plan is written before the first delete, so a listing it rejects deletes nothing.
+  plan "${workdir}/listing.json" >"${workdir}/ids"
+  while read -r id; do
+    if refusal=$(gh api -X DELETE "repos/${repository}/actions/caches/${id}" 2>&1 >/dev/null); then
       printf 'ci-cache-retention: deleted superseded cache %s\n' "${id}"
+    elif [[ "${refusal}" == *'HTTP 404'* ]]; then
+      # It vanished between the listing and the delete: GitHub's own eviction, or cache-cleanup.yml.
+      printf 'ci-cache-retention: cache %s is already gone\n' "${id}"
     else
-      printf 'ci-cache-retention: could not delete cache %s; it may already be gone\n' "${id}" >&2
+      # Every id is still attempted, then the run fails: a refusal for any other reason (no
+      # `actions: write`, a server error) means nothing is being pruned.
+      printf 'ci-cache-retention: could not delete cache %s: %s\n' "${id}" "${refusal}" >&2
+      failed=1
     fi
-  done
+  done <"${workdir}/ids"
+  return "${failed}"
 }
 
 case "${1:-}" in

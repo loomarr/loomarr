@@ -114,6 +114,10 @@ case "$*" in
     echo 'gh: Not Found (HTTP 404)' >&2
     exit 1
     ;;
+  "api -X DELETE repos/loomarr/loomarr/actions/caches/${GH_FORBIDDEN:-none}")
+    echo 'gh: Resource not accessible by integration (HTTP 403)' >&2
+    exit 1
+    ;;
   "api -X DELETE repos/loomarr/loomarr/actions/caches/"*) ;;
   *)
     echo "unexpected gh call: $*" >&2
@@ -136,8 +140,25 @@ fi
 
 # An entry that is already gone when its delete arrives does not strand the ones after it.
 : >"${test_root}/gh.log"
-GH_LOG="${test_root}/gh.log" GH_LISTING="${test_root}/caches.json" GH_GONE=1 REPO=loomarr/loomarr \
-  PATH="${test_root}/bin:${PATH}" "${retention}" apply >/dev/null 2>&1
+if ! GH_LOG="${test_root}/gh.log" GH_LISTING="${test_root}/caches.json" GH_GONE=1 REPO=loomarr/loomarr \
+  PATH="${test_root}/bin:${PATH}" "${retention}" apply >/dev/null 2>&1; then
+  echo 'ci-cache-retention-test: apply failed on a cache that was already gone' >&2
+  exit 1
+fi
+attempted=$(grep -c -- '-X DELETE' "${test_root}/gh.log")
+if [[ "${attempted}" != 6 ]]; then
+  printf 'ci-cache-retention-test: after a missing cache, apply attempted %s deletes, want 6\n' "${attempted}" >&2
+  exit 1
+fi
+
+# A delete refused for any other reason still lets every delete be attempted, then fails the run:
+# a job without `actions: write` must not stay green while pruning nothing.
+: >"${test_root}/gh.log"
+if GH_LOG="${test_root}/gh.log" GH_LISTING="${test_root}/caches.json" GH_FORBIDDEN=1 REPO=loomarr/loomarr \
+  PATH="${test_root}/bin:${PATH}" "${retention}" apply >/dev/null 2>&1; then
+  echo 'ci-cache-retention-test: apply succeeded although a delete was refused' >&2
+  exit 1
+fi
 attempted=$(grep -c -- '-X DELETE' "${test_root}/gh.log")
 if [[ "${attempted}" != 6 ]]; then
   printf 'ci-cache-retention-test: after a refused delete, apply attempted %s deletes, want 6\n' "${attempted}" >&2
