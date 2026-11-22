@@ -51,7 +51,9 @@ fe-lint-fix: ## Biome autofix — format + safe lint fixes (web/)
 # fe-typecheck and fe-packages run Turbo's `typecheck` and `test` tasks with the same task hashes as
 # `make clients-tests`, so the Frontend job and the client lanes share results through the Remote
 # Cache. Never add `--only`: it drops the dependency hashes, so @loomarr/web's typecheck would hit
-# the cache after a change to a package it imports. Without TURBO_TOKEN, Turbo caches in web/.turbo.
+# the cache after a change to a package it imports. Without TURBO_TOKEN, Turbo caches on disk only:
+# in web/.turbo, or, from a linked git worktree, in the main checkout's .turbo, which every worktree
+# on the machine shares.
 #
 # FE_SHARD is a CI-only passthrough (`make fe-unit FE_SHARD=1/2`), with the same empty-by-default
 # contract as GO_SHARD and the visual suite's separately validated shard input. A local `make fe`
