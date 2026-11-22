@@ -28,6 +28,8 @@ const (
 
 	// CodecPGS is the Blu-ray image subtitle codec, an extracted `.sup` track.
 	CodecPGS = "hdmv_pgs_subtitle"
+	// CodecVOBSUB is the DVD image subtitle codec, an extracted `.idx`/`.sub` pair.
+	CodecVOBSUB = "dvd_subtitle"
 
 	decodeSubtitlesOperation = "decode-subtitles"
 	// A result lists up to 50,000 states of about 150 bytes each.
@@ -35,13 +37,21 @@ const (
 )
 
 // SubtitleRequest names one extracted image subtitle track and the private staging directory the
-// worker writes its stills into.
+// worker writes its stills into. Path is the `.sup` of a PGS track or the `.sub` of a VOBSUB pair;
+// Index is the pair's `.idx`, required for CodecVOBSUB and refused for CodecPGS.
 type SubtitleRequest struct {
 	RequestID      string
 	Codec          string
 	Path           string
 	ExpectedSHA256 string
+	Index          *SubtitleIndex
 	StagingDir     string
+}
+
+// SubtitleIndex names a VOBSUB pair's `.idx` and its SHA-256.
+type SubtitleIndex struct {
+	Path           string
+	ExpectedSHA256 string
 }
 
 // SubtitleStills is a decoded track: the canvas its compositions declare and its display states
@@ -67,7 +77,13 @@ type subtitleRequest struct {
 }
 
 type subtitleSource struct {
-	Codec          string `json:"codec"`
+	Codec          string         `json:"codec"`
+	Path           string         `json:"path"`
+	ExpectedSHA256 string         `json:"expectedSha256"`
+	Index          *subtitleIndex `json:"index,omitempty"`
+}
+
+type subtitleIndex struct {
 	Path           string `json:"path"`
 	ExpectedSHA256 string `json:"expectedSha256"`
 }
@@ -101,9 +117,12 @@ func (g *Generator) DecodeSubtitles(ctx context.Context, req SubtitleRequest) (S
 	if !slices.Contains(g.operations, decodeSubtitlesOperation) {
 		return SubtitleStills{}, fmt.Errorf("images: worker lacks the %s operation", decodeSubtitlesOperation)
 	}
+	source := subtitleSource{Codec: req.Codec, Path: req.Path, ExpectedSHA256: req.ExpectedSHA256}
+	if req.Index != nil {
+		source.Index = &subtitleIndex{Path: req.Index.Path, ExpectedSHA256: req.Index.ExpectedSHA256}
+	}
 	payload, err := json.Marshal(subtitleRequest{
-		Protocol: g.contract.Protocol, RequestID: req.RequestID, StagingDir: req.StagingDir,
-		Source: subtitleSource{Codec: req.Codec, Path: req.Path, ExpectedSHA256: req.ExpectedSHA256},
+		Protocol: g.contract.Protocol, RequestID: req.RequestID, StagingDir: req.StagingDir, Source: source,
 	})
 	if err != nil {
 		return SubtitleStills{}, fmt.Errorf("images: worker request JSON: %w", err)
