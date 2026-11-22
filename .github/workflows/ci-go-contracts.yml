@@ -17,8 +17,8 @@ jobs:
     # Two runners for wall clock: this job sets PR time for Go changes. Shard 1 owns the compile-heavy
     # analysis, shard 2 the repository contracts, and every check runs in exactly one of them. The
     # follow-up checks are placed to even the shards. ci-lint, release-verify, agent-harness-test,
-    # shellcheck, privacy-verify, and the generated-docs checks are not here: CI policy runs them on
-    # every PR.
+    # shellcheck, retired-verify, and the generated-docs checks are not here: CI policy runs them on
+    # every run. privacy-verify runs in CI's own privacy job on every run.
     strategy:
       fail-fast: false # one shard's failures must not hide the other's
       matrix:
@@ -62,9 +62,6 @@ jobs:
       - name: OpenAPI spec is committed and current
         if: matrix.shard == 1
         run: make openapi-verify
-      - name: Retired identifiers are gone from prose
-        if: matrix.shard == 2
-        run: make retired-verify
       - name: Observability artifacts are provisionable
         if: matrix.shard == 2
         run: make observability-verify

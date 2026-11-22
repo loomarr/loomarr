@@ -51,7 +51,7 @@ classify() {
   local path="$1"
   local known=false
 
-  # The public repo's real-titles guard (make privacy-verify) needs no routing here: the CI policy
+  # The public repo's real-titles guard (make privacy-verify) needs no routing here: CI's privacy
   # job runs it on every run, whatever changed.
 
   # knip (run by `make fe` for the web gate and by `make clients` for the clients gate) spans the
@@ -635,7 +635,8 @@ classify() {
         scripts/go-race-weights-refresh.sh) select_gate contracts ;;
         scripts/check-compose.sh) select_gate contracts ;;
         scripts/check-release-image-absence.sh) select_gate contracts ;;
-        scripts/check-retired.sh) select_gate contracts ;;
+        # The CI policy job runs and shellchecks it on every run.
+        scripts/check-retired.sh) select_gate policy ;;
         # Run by the curated-sources workflow against live providers; contracts shellchecks it.
         scripts/check-curated-sources.sh) select_gate contracts ;;
         # The docs gate's inline-path check (ci-docs.yml, `make docs-lint-paths`) and its allowlist.

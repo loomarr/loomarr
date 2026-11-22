@@ -90,9 +90,10 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "codeql.yml", job: "analyze-rust"}:                  {name: "CodeQL — Rust", runsOn: "ubuntu-latest", needs: "changes"},
 		{workflow: "ci.yml", job: "ci-policy"}:                         {name: "CI policy — workflow, harness, and docs contracts", runsOn: "ubuntu-latest", needs: "changes"},
 		{workflow: "ci.yml", job: "changes"}:                           {name: "What changed", runsOn: "ubuntu-latest"},
+		{workflow: "ci.yml", job: "privacy"}:                           {name: "Privacy — real titles and private fixtures", runsOn: "ubuntu-latest"},
 		{workflow: "ci.yml", job: "ci-ok"}: {
 			name: "${{ github.event_name == 'merge_group' && 'CI assurance' || 'CI' }}", runsOn: "ubuntu-latest",
-			needsList: []string{"changes", "release-candidate-scope", "full-manual-scope", "ci-policy", "agent-harness-macos", "rust-contracts", "go-contracts", "image-certification", "go", "store-postgres", "frontend", "clients", "apple-mobile", "apple-tv", "apple-cache-validation", "expo-android-mobile", "playwright", "tuner", "image", "docs", "android", "playout-bench"},
+			needsList: []string{"changes", "release-candidate-scope", "full-manual-scope", "ci-policy", "privacy", "agent-harness-macos", "rust-contracts", "go-contracts", "image-certification", "go", "store-postgres", "frontend", "clients", "apple-mobile", "apple-tv", "apple-cache-validation", "expo-android-mobile", "playwright", "tuner", "image", "docs", "android", "playout-bench"},
 		},
 		{workflow: "image-benchmark.yml", job: "benchmark"}: {
 			name: "AVIF ladders (${{ matrix.platform }})", runsOn: "${{ matrix.runner }}", timeoutMinutes: 30,

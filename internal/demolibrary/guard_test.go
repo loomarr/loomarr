@@ -675,45 +675,55 @@ func TestSeedsCarryNoRealTitles(t *testing.T) {
 	}
 }
 
-// CI runs this guard (make privacy-verify) in the CI policy job, which runs on every run whatever
+// CI runs this guard (make privacy-verify) in its own privacy job, which runs on every run whatever
 // changed. No classifier rule routes it, so a file the guard scans is checked even when the
-// classifier has never heard of its path. Four properties make that true: the job is
-// unconditional, it runs the target, the required aggregate check waits for it, and the target
-// runs every scan.
+// classifier has never heard of its path. Four properties make that true: the job has no condition
+// and no needs (a job whose need fails is skipped, and the aggregate accepts a skipped job), it
+// runs the target, the required aggregate check waits for it, and the target runs every scan.
 func TestCIRunsTheGuardOnEveryRun(t *testing.T) {
+	type step struct {
+		If              string `yaml:"if"`
+		ContinueOnError any    `yaml:"continue-on-error"`
+		Run             string `yaml:"run"`
+	}
 	var workflow struct {
 		Jobs map[string]struct {
 			If string `yaml:"if"`
 			// One job name or a list of them.
-			Needs any `yaml:"needs"`
-			Steps []struct {
-				Run string `yaml:"run"`
-			} `yaml:"steps"`
+			Needs           any    `yaml:"needs"`
+			ContinueOnError any    `yaml:"continue-on-error"`
+			Steps           []step `yaml:"steps"`
 		} `yaml:"jobs"`
 	}
 	raw := mustRead(t, filepath.Join(repoRoot(t), ".github/workflows/ci.yml"))
 	if err := yaml.Unmarshal([]byte(raw), &workflow); err != nil {
 		t.Fatalf("ci.yml: %v", err)
 	}
-	policy, ok := workflow.Jobs["ci-policy"]
+	privacy, ok := workflow.Jobs["privacy"]
 	if !ok {
-		t.Fatal("ci.yml has no ci-policy job, so nothing runs the real-titles guard on every run")
+		t.Fatal("ci.yml has no privacy job, so nothing runs the real-titles guard on every run")
 	}
-	if policy.If != "always()" {
-		t.Errorf("the CI policy job runs if %q, want always(): a skipped policy job lets a real title merge unchecked", policy.If)
+	if privacy.If != "" {
+		t.Errorf("the privacy job runs only if %q: a skipped privacy job lets a real title merge unchecked", privacy.If)
 	}
-	runsGuard := slices.ContainsFunc(policy.Steps, func(step struct {
-		Run string `yaml:"run"`
-	}) bool {
-		fields := strings.Fields(step.Run)
-		return len(fields) > 0 && fields[0] == "make" && slices.Contains(fields, "privacy-verify")
+	if privacy.Needs != nil {
+		t.Errorf("the privacy job needs %v: a failed need skips it, and a skipped privacy job lets a real title merge unchecked", privacy.Needs)
+	}
+	if privacy.ContinueOnError != nil {
+		t.Errorf("the privacy job sets continue-on-error %v, so a failing guard would still pass", privacy.ContinueOnError)
+	}
+	// The guard step itself must also run unconditionally and block on failure.
+	runsGuard := slices.ContainsFunc(privacy.Steps, func(s step) bool {
+		fields := strings.Fields(s.Run)
+		return len(fields) > 0 && fields[0] == "make" && slices.Contains(fields, "privacy-verify") &&
+			s.If == "" && s.ContinueOnError == nil
 	})
 	if !runsGuard {
-		t.Error("the CI policy job does not run make privacy-verify, so a real title would merge unchecked")
+		t.Error("the privacy job has no unconditional, blocking make privacy-verify step, so a real title would merge unchecked")
 	}
 	needs, _ := workflow.Jobs["ci-ok"].Needs.([]any)
-	if !slices.Contains(needs, any("ci-policy")) {
-		t.Error("the required CI check does not wait for the CI policy job, so a failing guard would not block a merge")
+	if !slices.Contains(needs, any("privacy")) {
+		t.Error("the required CI check does not wait for the privacy job, so a failing guard would not block a merge")
 	}
 
 	// The workflow names only the make target. What the target runs is the guard: a dry run lists
