@@ -3,7 +3,8 @@
 -- queue takes the image again only once fetch_retry_at has passed, so an image that keeps failing
 -- costs one attempt a day instead of holding a slot of every pass. A download that lands clears
 -- all three.
-ALTER TABLE images ADD COLUMN fetch_failures INTEGER NOT NULL DEFAULT 0 CHECK (fetch_failures >= 0);
+-- Every integer is bigint, SQLite's 64-bit INTEGER twin (00190; schema_parity_postgres_test.go).
+ALTER TABLE images ADD COLUMN fetch_failures BIGINT NOT NULL DEFAULT 0 CHECK (fetch_failures >= 0);
 ALTER TABLE images ADD COLUMN fetch_failed_at BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE images ADD COLUMN fetch_retry_at BIGINT NOT NULL DEFAULT 0;
 
@@ -11,7 +12,7 @@ ALTER TABLE images ADD COLUMN fetch_retry_at BIGINT NOT NULL DEFAULT 0;
 -- artwork a surface just adopted, 1 an image the expiry purge requeued for a refresh, 2 artwork
 -- adopted in bulk to fetch last (episode stills), so new artwork never waits behind a mass
 -- requeue. Rows already waiting are adoptions that joined when they were created.
-ALTER TABLE images ADD COLUMN fetch_priority INTEGER NOT NULL DEFAULT 0 CHECK (fetch_priority IN (0, 1, 2));
+ALTER TABLE images ADD COLUMN fetch_priority BIGINT NOT NULL DEFAULT 0 CHECK (fetch_priority IN (0, 1, 2));
 ALTER TABLE images ADD COLUMN fetch_queued_at BIGINT NOT NULL DEFAULT 0;
 UPDATE images SET fetch_queued_at = created_at;
 
