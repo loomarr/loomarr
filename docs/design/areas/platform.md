@@ -17,7 +17,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`platform/activity`** · 6 importers · → `platform/store/activitystore`
+- **`platform/activity`** · 7 importers · → `platform/store/activitystore`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
 - **`platform/backup`** · 1 importer · → `platform/jobs`, `platform/settings`, `platform/store`
   Keeps the SQLite backups on disk: it lists them, opens one for download, writes a new one and prunes to the retention policy, and supplies the scheduled `backup` job (§16, §18.1).
@@ -67,7 +67,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
 - **`platform/store`** · 35 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `library/inventory`, `library/provision`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/crashstore`, `platform/store/diagnosticsstore`, `platform/store/identitystore`, `platform/store/inventorystore`, `platform/store/jobstore`, `platform/store/librarystore`, `platform/store/operationstore`, `platform/store/proposalstore`, `platform/store/qualitystore`, `platform/store/schemadoc`, `platform/store/storedb`, `platform/store/viewingstore`, `proposals`, `proposals/quality`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
-- **`platform/store/activitystore`** · 9 importers · → `platform/store/storedb`
+- **`platform/store/activitystore`** · 10 importers · → `platform/store/storedb`
   Persists the Dashboard's Recent activity feed (§5, §12, V32): one append-only table, newest first, purged by age.
 - **`platform/store/channeldatastore`** · 6 importers · → `library/provision`, `platform/store/storedb`
   Persists what hangs off channels without being the channel itself: a person's favourite and recent channels (#1666), the channel ideas they hid (#1665), the airing history placement ranks on (§5), and the household's and channels' discovery feedback.
