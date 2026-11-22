@@ -371,6 +371,46 @@ func testLastSeen(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// testDeviceCodeMode: a device's Code Mode switch (#4486) starts off, is set only by the device's
+// owner (the WHERE clause is the authorisation), and is read back by both device reads.
+func testDeviceCodeMode(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_700_000_000, 0).UTC()
+	for _, u := range []User{{ID: "u-admin", Name: "Ada", Role: identitystore.RoleAdmin}, {ID: "u-other", Name: "Grace", Role: identitystore.RoleMember}} {
+		if err := s.UpsertUser(ctx, u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.CreateDeviceToken(ctx, DeviceToken{TokenHash: "d-agent", UserID: "u-admin", DeviceName: "Agent", CreatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if d, err := s.GetDeviceToken(ctx, "d-agent"); err != nil || d.CodeMode {
+		t.Fatalf("new device = %+v (err %v), want Code Mode off", d, err)
+	}
+	if ok, err := s.SetDeviceCodeMode(ctx, "d-agent", "u-other", true); err != nil || ok {
+		t.Fatalf("another user turning it on = %v, %v, want false", ok, err)
+	}
+	if ok, err := s.SetDeviceCodeMode(ctx, "d-agent", "u-admin", true); err != nil || !ok {
+		t.Fatalf("the owner turning it on = %v, %v, want true", ok, err)
+	}
+	if d, err := s.GetDeviceToken(ctx, "d-agent"); err != nil || !d.CodeMode {
+		t.Fatalf("after turning it on, GetDeviceToken = %+v (err %v)", d, err)
+	}
+	if list, err := s.ListDeviceTokensForUser(ctx, "u-admin"); err != nil || len(list) != 1 || !list[0].CodeMode {
+		t.Fatalf("after turning it on, ListDeviceTokensForUser = %+v (err %v)", list, err)
+	}
+	if ok, err := s.SetDeviceCodeMode(ctx, "d-agent", "u-admin", false); err != nil || !ok {
+		t.Fatalf("turning it off = %v, %v", ok, err)
+	}
+	if d, _ := s.GetDeviceToken(ctx, "d-agent"); d.CodeMode {
+		t.Fatal("Code Mode still on after turning it off")
+	}
+	if ok, err := s.SetDeviceCodeMode(ctx, "d-missing", "u-admin", true); err != nil || ok {
+		t.Fatalf("an unknown device = %v, %v, want false", ok, err)
+	}
+}
+
 func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()

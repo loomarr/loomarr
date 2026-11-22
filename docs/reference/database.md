@@ -157,6 +157,7 @@ One row per paired device, such as a TV app. The device acts as the person who a
 | `device_name` | The device's name, shown in the person's list of devices. Empty if it gave none. | `TEXT` |
 | `created_at` | When the device was paired, in Unix seconds. | `BIGINT` |
 | `last_seen_at` | When the device last used Loomarr, in Unix seconds, updated at most once a minute. | `BIGINT` |
+| `code_mode` | Whether the device may run scripts against the API through an AI agent's execute tool. Off until its owner turns it on, and used only while the owner is an admin. | `BOOLEAN` |
 
 ### invitations
 

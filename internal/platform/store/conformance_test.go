@@ -225,6 +225,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("DiscoveryQualityLedger", func(t *testing.T) { testDiscoveryQualityLedger(t, newStore) })
 		t.Run("SettingsKV", func(t *testing.T) { testSettings(t, newStore) })
 		t.Run("SessionLifecycle", func(t *testing.T) { testSessionLifecycle(t, newStore) })
+		t.Run("DeviceCodeMode", func(t *testing.T) { testDeviceCodeMode(t, newStore) })
 		t.Run("RedeemDevicePairing", func(t *testing.T) { testRedeemDevicePairing(t, newStore) })
 		t.Run("RedeemDevicePairingConcurrent", func(t *testing.T) { testRedeemDevicePairingConcurrent(t, newStore) })
 		t.Run("LastSeen", func(t *testing.T) { testLastSeen(t, newStore) })

@@ -325,6 +325,9 @@ const appHandlers = (): RequestHandler[] => [
       headers: { "Content-Type": "image/png", "X-Loomarr-Watermark-Drawable": "false" },
     }),
   ),
+  // Settings → Access and devices reads an admin's Code Mode devices (#4486). The route is hidden
+  // from the OpenAPI document, so there is no generated handler. None are on.
+  http.get("*/v1/agents/code-mode", () => HttpResponse.json({ devices: [] })),
 ];
 
 export { appHandlers };

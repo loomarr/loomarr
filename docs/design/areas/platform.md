@@ -29,7 +29,7 @@ One area of the [package map](../package-map.md#start-here).
   Runs Loomarr's health checks: the startup report's integration checks, and the continuous Current Health probes the scheduler and the manual refresh share.
 - **`platform/databasemigration`** · 2 importers · → `platform/config`, `platform/store`
   SQLite→PostgreSQL migration stepper's backend (§18, V11): it preflights a target, takes the backup the migration requires, and admits one atomic migrate-and-restart request.
-- **`platform/diagnostics`** · 12 importers · → `platform/storagegovernor`
+- **`platform/diagnostics`** · 14 importers · → `platform/storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`platform/events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).

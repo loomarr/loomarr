@@ -272,6 +272,7 @@ type UserStore interface {
 	TouchDeviceToken(ctx context.Context, tokenHash string, at time.Time) error
 	ListDeviceTokensForUser(ctx context.Context, userID string) ([]DeviceToken, error)
 	DeleteDeviceToken(ctx context.Context, tokenHash, userID string) (bool, error)
+	SetDeviceCodeMode(ctx context.Context, tokenHash, userID string, on bool) (bool, error)
 }
 
 // ClipStore is the filler clip catalog (§10).
