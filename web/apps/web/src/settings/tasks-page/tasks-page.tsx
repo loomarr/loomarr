@@ -256,6 +256,9 @@ const TasksPage = () => {
       </Stack>
     );
   }
+  // The route's loader ensured the job list, and its error view takes a first read that fails, so
+  // the page always opens on its rows. A failed refresh after that is the branch above.
+  if (jobs.data === undefined) return null;
 
   return (
     <Stack height="100%">
@@ -432,7 +435,7 @@ const TasksPage = () => {
           );
         })}
 
-        {list.length === 0 && !jobs.isLoading && (
+        {list.length === 0 && (
           <Card paddingHorizontal={16} paddingVertical={24}>
             <Text as="p" textAlign="center" textRole="body" tone="secondary">
               No scheduled tasks.
