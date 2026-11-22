@@ -34,6 +34,7 @@
     },
     "bundle": {
       "dependsOn": ["typecheck", "^typecheck"],
+      "passThroughEnv": ["TMPDIR"],
       "outputs": ["dist/**"]
     },
     "client-proof": {
