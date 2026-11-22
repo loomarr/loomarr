@@ -244,6 +244,14 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	subtitleReader := subtitles.NewExtractor(ffmpegBin, filepath.Join(stateDir, "subtitles"), log)
 	playoutRes.SetSubtitles(st, subtitleReader)
 	owner.goRun(subtitleReader.Run)
+	// Image subtitles a channel burns in (#2088 step 8), gated by the bug's GPU overlay self-check
+	// and blended by its kernel. This build has no image subtitle decoder, so every track is
+	// refused and its programmes air without it.
+	if burnDir, err := filepath.Abs(filepath.Join(stateDir, "subtitle-burn")); err == nil && deps.watermarks != nil {
+		playoutRes.SetSubtitleBurns(playoutresolve.NewSubtitleBurns(rootCtx, burnDir,
+			playout.FFmpegBurnInWith(ffmpegBin, deps.processDiagnostics, playout.UnavailableSubtitleDecoder{}),
+			deps.watermarks.OverlayWorks, deps.watermarks.BlendKernel, log))
+	}
 	playoutResolverSvc = playoutRes
 
 	// Broadcast-codec backfill (§9.1 V50), run on EVERY boot. The migration defaults every
