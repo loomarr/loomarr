@@ -209,6 +209,68 @@ func TestImportEpisodeStills(t *testing.T) {
 	}
 }
 
+// An episode an earlier build wrote, which imported no stills, takes its still once write version
+// 92 writes it again (#4476): an unchanged file whose identity is the old version's is rewritten
+// with no header read, and its still is imported then. One already at this version is left alone.
+func TestEpisodesWrittenAtAnOlderVersionTakeTheirStills(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Art = localart.New()
+	h.file("Hotel Show/Season 01/Hotel Show S01E01.mkv", 10)
+	h.file("Hotel Show/Season 01/Hotel Show S01E01-thumb.jpg", 3)
+	h.run() // the earlier build: no still imported
+	art := &fakeArtwork{}
+	h.im.Artwork = art
+	ep := filepath.Join(h.root, "Hotel Show", "Season 01", "Hotel Show S01E01.mkv")
+	reads := h.reads.Load()
+
+	h.run()
+	if len(art.held[mp.KindThumb]) != 0 {
+		t.Fatalf("an episode at this version was written again: %v", art.held)
+	}
+
+	rows, err := h.st.LibraryFiles(ctx, h.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range rows {
+		rows[i].Identity = "digest-at-write-version-91"
+	}
+	if err := h.st.SaveLibraryFiles(ctx, rows); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	if got := art.held[mp.KindThumb][h.fileRow(ep).ItemID]; got != "Hotel Show S01E01-thumb.jpg" {
+		t.Fatalf("still after the rewrite = %q, want the file beside it", got)
+	}
+	if got := h.reads.Load(); got != reads {
+		t.Errorf("headers read %d times by the rewrite, want none", got-reads)
+	}
+}
+
+// A movie the walk writes while its catalog record is still to come is written again by the header
+// stage once the record is cached; the poster that record names is imported then, with no later
+// pass needed.
+func TestImportPosterOfARecordThatArrivesBeforeTheHeaderRead(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	art := &fakeArtwork{}
+	h.im.Artwork = art
+	h.file("Alpha (2001) {tmdb-90000901}/Alpha (2001) {tmdb-90000901}.mkv", 10)
+	key := librarystore.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000901"}
+	h.im.Store = &savingFiles{ImportStore: h.im.Store, before: func() {
+		if _, err := h.st.SaveLibraryCatalog(ctx, key, `{"Source":{"Provider":"tmdb","Basis":"catalog","Catalog":"tmdb"},"Kind":"movie","Descriptive":{"Title":"Alpha"},
+			"Artwork":[{"Kind":"poster","Ref":"https://image.invalid/alpha.jpg"}]}`, catalogVersions[key.Kind], "", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	h.run()
+	if got := h.posters(art)["Alpha"]; got != "alpha.jpg" {
+		t.Fatalf("poster = %q, want the record's alpha.jpg from the header stage's write", got)
+	}
+}
+
 // A folder holding several videos says nothing of any one of them: its poster is no one's.
 func TestImportFolderPosterNeedsASoleVideo(t *testing.T) {
 	h := newHarness(t)

@@ -363,8 +363,12 @@ func (im *Importer) readOne(ctx context.Context, job pending) (librarystore.Libr
 		// with it and no later pass need write it again.
 		if row.Identity == waitingFor(job.id.digest) {
 			row.Identity = job.id.digest
-			// The record can name the episode's still, which the walk's write had not.
-			if snapshot.Kind == kindEpisode {
+			// The record can name a movie's poster, fanart, logo and set, or an episode's still,
+			// which the walk's write had not.
+			switch snapshot.Kind {
+			case kindMovie:
+				job.b.listed(ctx, itemID, snapshot)
+			case kindEpisode:
 				job.b.artwork(ctx, itemID, EpisodeArt, snapshot.Observation.Facts.Artwork)
 			}
 		}

@@ -532,7 +532,8 @@ step 5). Nothing reads the scanner's origins until the cutover.
   ref, and a title with none lets it go. An artwork file beside the media is one of its sidecars,
   so adding or changing one rewrites the title; a folder's own art (`poster.jpg`) counts only for
   the folder's one video. A poster that fails to import leaves the title as it was, and the next
-  write tries again.
+  write tries again. A movie the walk wrote while its catalog record was still to come takes the
+  record's artwork when the header stage writes it with that record.
 - **Episode stills** (#4476). When the importer writes an episode it hands the resolved still
   (artwork kind `thumb`) to the image service the same way, and the episode owns it through a
   `library_item_images` row of role `backdrop`, the role the image service names for episode
@@ -541,7 +542,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   catalogue record names is imported when that record arrives. A new still replaces the old ref,
   and an episode with none lets it go. A provider's still is only adopted during the pass: the
   image fetch job pulls the bytes, at most 64 images a minute under its fixed concurrency cap,
-  so writing a series of hundreds of episodes fetches nothing in the pass. Each episode row of a
+  so writing a series of hundreds of episodes fetches nothing in the pass. The job takes an image
+  only episodes own after every other image waiting (`ListImagesAwaitingFetch`), so a title's
+  poster, fanart or logo never waits behind tens of thousands of stills; the job does not wait
+  for a channel to stop being watched, as the header stage does. Each episode row of a
   series' page carries `still`, and an episode's own page carries `still` in place of
   `backdropImage`, each absent when it has none or while its bytes are being fetched; the page's
   one read of its episodes reads each still's hash with its row. A member is sent the still of an
@@ -1233,6 +1237,14 @@ header is kept, so no file is opened again. Each version and what it changed:
   " - Copy (2)", and macOS's bare " copy" when it is all that follows the mark. A duplicated
   episode is named as, and joins, its original. "Carbon Copy" keeps its word, and a part's number
   ("Equinox (1)") stays its title's, so a browser's " (1)" is not read as a duplicate's.
+- **92:** an episode's still is imported when it is written (#4476, "Episode stills"), so an
+  episode an earlier build wrote takes its still. Every file is written once more with no header
+  read: one inventory write per file (about 33,000 on a library that size), each episode's still
+  file beside it read, hashed and ingested, each provider still recorded for the fetch job, and
+  each movie's and series' artwork handed over again: an artwork file beside the media is read and
+  hashed again but not ingested when the service holds its bytes, an adopted URL is one lookup,
+  and either rewrites its ref row. The fetch job then works through the adopted stills, 64 a
+  minute, behind every title's artwork.
 
 ## Search
 
