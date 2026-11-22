@@ -792,3 +792,7 @@ func TestSplit_FailedDetectionLeavesTheReelParked(t *testing.T) {
 func (f splitFakeTools) VisionKeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
 	return nil, nil
 }
+
+func (f splitFakeTools) FrameHintsIn(context.Context, string, int64, int64, int) (tools.FrameHint, error) {
+	return tools.FrameHint{}, nil
+}

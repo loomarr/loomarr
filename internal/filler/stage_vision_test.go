@@ -89,6 +89,14 @@ type scriptedVision struct {
 	calls, spanCalls   int
 	spanStart, spanEnd int64
 	spanCount          int
+	// hint is what FrameHintsIn measures; hintCalls counts how often the rung asked.
+	hint      tools.FrameHint
+	hintCalls int
+}
+
+func (s *scriptedVision) FrameHintsIn(context.Context, string, int64, int64, int) (tools.FrameHint, error) {
+	s.hintCalls++
+	return s.hint, nil
 }
 
 func (s *scriptedVision) KeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
@@ -304,13 +312,13 @@ func TestVisionStage_DropsWrongTypedFieldWithoutDiscardingAnswer(t *testing.T) {
 
 // ⚠ THE tier-is-wired test: the free frame-heuristic tier must actually be INVOKED by the rung, not
 // merely exist. A monochrome 4:3 keyframe + a model that grounded NO era must produce a
-// 1960 ("pre-1970s?") era observation. Without the AnalyzeFrames/SuggestedEraFrom call in Run this
+// 1960 ("pre-1970s?") era observation. Without the FrameHintsIn/SuggestedEraFrom call in Run this
 // goes RED — which is the point, because a tier that is built and tested but never called is a dead
-// capability (the frames are decoded here for real, unlike oneFrame elsewhere).
+// capability.
 func TestVisionStage_FrameHintRecordsAnEraObservationWhenModelGroundsNoEra(t *testing.T) {
 	st := newFakeVisionStore()
-	// A REAL black-and-white 4:3 JPEG — grayF is the same helper the framehints tests use.
-	tools := &scriptedVision{frames: [][]byte{grayF(t, 128)}}
+	// The frames measure black-and-white 4:3, the one combination the heuristic fires on.
+	tools := &scriptedVision{frames: oneFrame, hint: bw43Hint}
 	// The model read nothing datable off the frame — no visible year, era 0. The pixels are the only
 	// era signal left, and B&W + 4:3 is the one combination the heuristic fires on.
 	prov := &scriptedProvider{answer: `{"visibleText":"","brand":"","era":0,"category":""}`}
@@ -330,7 +338,7 @@ func TestVisionStage_FrameHintRecordsAnEraObservationWhenModelGroundsNoEra(t *te
 // question to ask, so the frame hint must not also fire.
 func TestVisionStage_FrameHintSuppressedByGroundedEra(t *testing.T) {
 	st := newFakeVisionStore()
-	tools := &scriptedVision{frames: [][]byte{grayF(t, 128)}} // B&W 4:3, would hint pre-1970s alone
+	tools := &scriptedVision{frames: oneFrame, hint: bw43Hint} // would hint pre-1970s alone
 	// The model read "©1985" off the frame and it is in the visibleText, so the era grounds.
 	prov := &scriptedProvider{answer: `{"visibleText":"PIXELWICK ©1985","brand":"Pixelwick","era":1985,"category":"games"}`}
 	if !runVision(t, newVisionStage(st, tools, prov), wordless(visionClip("silent.mp4"))) {
@@ -343,7 +351,13 @@ func TestVisionStage_FrameHintSuppressedByGroundedEra(t *testing.T) {
 	if len(st.observed) != 0 {
 		t.Errorf("observations = %+v, want none — a grounded era suppresses the frame hint", st.observed)
 	}
+	if tools.hintCalls != 0 {
+		t.Errorf("frame hints measured %d times, want 0 — a grounded era needs no heuristic decode", tools.hintCalls)
+	}
 }
+
+// bw43Hint is a black-and-white 4:3 measurement, the frame hint that suggests pre-1970s.
+var bw43Hint = tools.FrameHint{BlackAndWhite: true, AspectRatio: 4.0 / 3, Frames: 1}
 
 // Grounding is case-insensitive (a logo has a case a year does not): "VENTOR" on the car grounds a
 // model that answered "Ventor".

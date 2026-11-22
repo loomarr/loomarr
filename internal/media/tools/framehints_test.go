@@ -1,62 +1,54 @@
 package tools_test
 
 import (
-	"bytes"
-	"image"
+	"context"
 	"image/color"
-	"image/jpeg"
+	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // The frame-heuristic tier (§10 V44) is deterministic and LLM-free, so it is
-// tested on SYNTHETIC frames we JPEG-encode here — no ffmpeg, no network (§19).
-// Encoding through image/jpeg is deliberate, not just convenient: it exercises the
-// real decode path AnalyzeFrames uses AND puts the lossy chroma artefacts a genuine
-// keyframe carries in front of bwChromaThreshold, so a threshold too tight to
-// survive JPEG would fail here rather than silently in production.
+// tested on SYNTHETIC raw rgb24 frames built here — no ffmpeg, no network (§19).
+// TestFrameHintsIn_MeasuresRawFramesFromFFmpeg covers the ffmpeg half, with the
+// real decoder's chroma artefacts, against bwChromaThreshold.
 
-// solidFrame builds a w×h JPEG filled with one colour. A grey fill (r==g==b) is the
-// monochrome case; anything else is a colour frame.
-func solidFrame(t *testing.T, w, h int, c color.Color) []byte {
+// solidFrame builds a w×h rgb24 frame filled with one colour. A grey fill (r==g==b)
+// is the monochrome case; anything else is a colour frame.
+func solidFrame(t *testing.T, w, h int, c color.RGBA) tools.RawFrame {
 	t.Helper()
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			img.Set(x, y, c)
-		}
+	pix := make([]byte, 0, 3*w*h)
+	for range w * h {
+		pix = append(pix, c.R, c.G, c.B)
 	}
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90}); err != nil {
-		t.Fatalf("encode frame: %v", err)
-	}
-	return buf.Bytes()
+	return tools.RawFrame{Width: w, Height: h, RGB: pix}
 }
 
 // grey/colour/dimension helpers, so the table rows read as intent not arithmetic.
-func gray(v uint8) color.Color { return color.RGBA{v, v, v, 255} }
-func red() color.Color         { return color.RGBA{200, 30, 30, 255} }
+func gray(v uint8) color.RGBA { return color.RGBA{v, v, v, 255} }
+func red() color.RGBA         { return color.RGBA{200, 30, 30, 255} }
 
-const fourThreeW, fourThreeH = 320, 240     // 1.333…
-const sixteenNineW, sixteenNineH = 320, 180 // 1.777…
+const fourThreeW, fourThreeH = 128, 96     // 1.333…
+const sixteenNineW, sixteenNineH = 128, 72 // 1.777…
 
 func TestAnalyzeFrames_BlackAndWhiteDetection(t *testing.T) {
 	tests := []struct {
 		name   string
-		frames [][]byte
+		frames []tools.RawFrame
 		wantBW bool
 		wantN  int
 	}{
 		{
 			name:   "all grey frames read monochrome",
-			frames: [][]byte{grayF(t, 40), grayF(t, 128), grayF(t, 210)},
+			frames: []tools.RawFrame{grayF(t, 40), grayF(t, 128), grayF(t, 210)},
 			wantBW: true,
 			wantN:  3,
 		},
 		{
 			name:   "all colour frames do not",
-			frames: [][]byte{colourF(t), colourF(t), colourF(t)},
+			frames: []tools.RawFrame{colourF(t), colourF(t), colourF(t)},
 			wantBW: false,
 			wantN:  3,
 		},
@@ -64,21 +56,21 @@ func TestAnalyzeFrames_BlackAndWhiteDetection(t *testing.T) {
 			// A single grey fade in a colour spot must NOT make the clip B&W — the
 			// majority rule (bwFrameFraction) exists for exactly this.
 			name:   "one grey frame among colour is not enough",
-			frames: [][]byte{grayF(t, 128), colourF(t), colourF(t)},
+			frames: []tools.RawFrame{grayF(t, 128), colourF(t), colourF(t)},
 			wantBW: false,
 			wantN:  3,
 		},
 		{
 			// The mirror: a majority grey DOES qualify even with a stray colour frame.
 			name:   "majority grey with one colour frame qualifies",
-			frames: [][]byte{grayF(t, 80), grayF(t, 160), colourF(t)},
+			frames: []tools.RawFrame{grayF(t, 80), grayF(t, 160), colourF(t)},
 			wantBW: true,
 			wantN:  3,
 		},
 		{
-			// A corrupt frame is skipped, not fatal, and does not count toward N.
+			// A truncated frame is skipped, not fatal, and does not count toward N.
 			name:   "undecodable frames are ignored",
-			frames: [][]byte{grayF(t, 100), []byte("not a jpeg"), grayF(t, 150)},
+			frames: []tools.RawFrame{grayF(t, 100), {Width: fourThreeW, Height: fourThreeH, RGB: []byte("short")}, grayF(t, 150)},
 			wantBW: true,
 			wantN:  2,
 		},
@@ -105,18 +97,18 @@ func TestAnalyzeFrames_BlackAndWhiteDetection(t *testing.T) {
 func TestAnalyzeFrames_AspectRatio(t *testing.T) {
 	tests := []struct {
 		name   string
-		frames [][]byte
+		frames []tools.RawFrame
 		wantLo float64 // aspect ratio band [wantLo, wantHi]
 		wantHi float64
 	}{
 		{
 			name:   "4:3 frames average ~1.333",
-			frames: [][]byte{solidFrame(t, fourThreeW, fourThreeH, gray(128))},
+			frames: []tools.RawFrame{solidFrame(t, fourThreeW, fourThreeH, gray(128))},
 			wantLo: 1.30, wantHi: 1.36,
 		},
 		{
 			name:   "16:9 frames average ~1.778",
-			frames: [][]byte{solidFrame(t, sixteenNineW, sixteenNineH, gray(128))},
+			frames: []tools.RawFrame{solidFrame(t, sixteenNineW, sixteenNineH, gray(128))},
 			wantLo: 1.74, wantHi: 1.82,
 		},
 	}
@@ -134,15 +126,15 @@ func TestAnalyzeFrames_AspectRatio(t *testing.T) {
 // other combination suggests nothing. The suggestion is never a grounded Era — the
 // caller records it as an uncited era observation, which matching never reads.
 func TestSuggestedEraFrom(t *testing.T) {
-	bw43 := tools.AnalyzeFrames([][]byte{
+	bw43 := tools.AnalyzeFrames([]tools.RawFrame{
 		solidFrame(t, fourThreeW, fourThreeH, gray(60)),
 		solidFrame(t, fourThreeW, fourThreeH, gray(140)),
 	})
-	colour43 := tools.AnalyzeFrames([][]byte{
+	colour43 := tools.AnalyzeFrames([]tools.RawFrame{
 		solidFrame(t, fourThreeW, fourThreeH, red()),
 		solidFrame(t, fourThreeW, fourThreeH, red()),
 	})
-	bw169 := tools.AnalyzeFrames([][]byte{
+	bw169 := tools.AnalyzeFrames([]tools.RawFrame{
 		solidFrame(t, sixteenNineW, sixteenNineH, gray(60)),
 		solidFrame(t, sixteenNineW, sixteenNineH, gray(140)),
 	})
@@ -170,7 +162,7 @@ func TestSuggestedEraFrom(t *testing.T) {
 // grounding rules would accept as a fact. It is a decade sentinel a human confirms,
 // exactly as validateTags demotes an ungrounded LLM year to SuggestedEra.
 func TestSuggestedEraFrom_IsSuggestionNotGroundedTag(t *testing.T) {
-	bw43 := tools.AnalyzeFrames([][]byte{
+	bw43 := tools.AnalyzeFrames([]tools.RawFrame{
 		solidFrame(t, fourThreeW, fourThreeH, gray(70)),
 		solidFrame(t, fourThreeW, fourThreeH, gray(150)),
 	})
@@ -180,5 +172,51 @@ func TestSuggestedEraFrom_IsSuggestionNotGroundedTag(t *testing.T) {
 	}
 }
 
-func grayF(t *testing.T, v uint8) []byte { return solidFrame(t, fourThreeW, fourThreeH, gray(v)) }
-func colourF(t *testing.T) []byte        { return solidFrame(t, fourThreeW, fourThreeH, red()) }
+func grayF(t *testing.T, v uint8) tools.RawFrame {
+	return solidFrame(t, fourThreeW, fourThreeH, gray(v))
+}
+func colourF(t *testing.T) tools.RawFrame { return solidFrame(t, fourThreeW, fourThreeH, red()) }
+
+// The ffmpeg half: FrameHintsIn decodes real encoded video into raw frames and measures them,
+// so the codec's chroma artefacts meet bwChromaThreshold here. A monochrome 4:3 clip hints
+// pre-1970s; a colour 16:9 clip measures widescreen colour and hints nothing.
+func TestFrameHintsIn_MeasuresRawFramesFromFFmpeg(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	dir := t.TempDir()
+	clip := func(name, size, vf string) string {
+		path := filepath.Join(dir, name)
+		args := []string{"-nostdin", "-v", "error", "-f", "lavfi",
+			"-i", "testsrc2=size=" + size + ":rate=10:duration=6"}
+		if vf != "" {
+			args = append(args, "-vf", vf)
+		}
+		args = append(args, "-c:v", "mpeg4", "-pix_fmt", "yuv420p", "-y", path)
+		if out, err := exec.Command(ffmpeg, args...).CombinedOutput(); err != nil {
+			t.Fatalf("build fixture %s: %v: %s", name, err, out)
+		}
+		return path
+	}
+	ft := tools.NewFFmpegTools(ffmpeg, "", "", "", "")
+
+	bw, err := ft.FrameHintsIn(context.Background(), clip("bw.mp4", "640x480", "hue=s=0"), 0, 6000, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bw.Frames != 3 || !bw.BlackAndWhite || bw.AspectRatio < 1.30 || bw.AspectRatio > 1.36 {
+		t.Fatalf("B&W 4:3 hint = %+v, want 3 monochrome frames at ~1.333", bw)
+	}
+	if tools.SuggestedEraFrom(bw) == 0 {
+		t.Errorf("B&W 4:3 clip suggests no era")
+	}
+
+	colour, err := ft.FrameHintsIn(context.Background(), clip("colour.mp4", "1280x720", ""), 0, 6000, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if colour.Frames != 3 || colour.BlackAndWhite || colour.AspectRatio < 1.74 || colour.AspectRatio > 1.82 {
+		t.Fatalf("colour 16:9 hint = %+v, want 3 colour frames at ~1.778", colour)
+	}
+}

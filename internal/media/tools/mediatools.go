@@ -38,7 +38,7 @@ type MediaTools interface {
 	// when the file has no audio stream.
 	Fingerprint(ctx context.Context, file string, startMs, endMs int64) (creative.Fingerprint, error)
 	// Keyframes samples n viewable JPEG frames spread across the clip — the vision
-	// tier's input (§10 V44) and the frame-heuristic tier's (framehints.go).
+	// tier's input (§10 V44). The frame-heuristic tier reads FrameHintsIn instead.
 	//
 	// ⚠ **Deliberately NOT Fingerprint.** Fingerprint reads 9x8 grayscale frames —
 	// it has thrown away colour (so it cannot see a B&W transfer) and resolution
@@ -58,6 +58,9 @@ type MediaTools interface {
 	// VisionKeyframesIn is KeyframesIn scaled to VisionFrameScale — what a multimodal model
 	// is sent. Every call site that attaches images to an LLM prompt must use this one.
 	VisionKeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error)
+	// FrameHintsIn measures the free frame-heuristic signals (black-and-white, aspect ratio) over
+	// the same windows VisionKeyframesIn picks, from raw frames ffmpeg decodes (framehints.go).
+	FrameHintsIn(ctx context.Context, file string, startMs, endMs int64, n int) (FrameHint, error)
 	// Cut writes [startMs,endMs) to out with stream copy (no re-encode — §10).
 	Cut(ctx context.Context, file string, startMs, endMs int64, out string) error
 }
@@ -265,7 +268,47 @@ func (t *FFmpegTools) VisionKeyframesIn(ctx context.Context, file string, startM
 // own contracts.
 const VisionFrameScale = "9/10"
 
+// FrameHintsIn measures the frame-heuristic signals (framehints.go) over the same representative
+// windows VisionKeyframesIn picks. ffmpeg decodes each pick and scales it to FrameHintWidth as raw
+// rgb24, so Go measures pixels ffmpeg already decoded and never decodes an encoded image.
+func (t *FFmpegTools) FrameHintsIn(ctx context.Context, file string, startMs, endMs int64, n int) (FrameHint, error) {
+	frames, err := t.semanticFrames(ctx, file, startMs, endMs, n,
+		fmt.Sprintf("scale=w=%d:h=-2", FrameHintWidth),
+		[]string{"-pix_fmt", "rgb24", "-f", "rawvideo", "-"},
+		func(out []byte) ([]byte, bool) { return out, len(out) > 0 })
+	if err != nil {
+		return FrameHint{}, err
+	}
+	raw := make([]RawFrame, 0, len(frames))
+	for _, pix := range frames {
+		raw = append(raw, RawFrame{Width: FrameHintWidth, Height: len(pix) / (3 * FrameHintWidth), RGB: pix})
+	}
+	return AnalyzeFrames(raw), nil
+}
+
+// FrameHintWidth is the fixed width of a frame-heuristic frame. Colourfulness is not a
+// high-frequency property, and 128 px gives 4:3 and 16:9 exact even heights (96 and 72), far
+// from the 1.555 boundary isFourThree draws between them.
+const FrameHintWidth = 128
+
 func (t *FFmpegTools) keyframesIn(ctx context.Context, file string, startMs, endMs int64, n int, widthExpr string) ([][]byte, error) {
+	return t.semanticFrames(ctx, file, startMs, endMs, n,
+		fmt.Sprintf("scale=w='%s':h=-2", widthExpr),
+		[]string{"-q:v", "4", "-f", "image2pipe", "-c:v", "mjpeg", "-"},
+		func(out []byte) ([]byte, bool) {
+			decoded := splitJPEGs(out)
+			if len(decoded) == 0 {
+				return nil, false
+			}
+			return decoded[0], true
+		})
+}
+
+// semanticFrames runs one ffmpeg per representative window, applies scale after the window's
+// thumbnail pick, writes it with output, and keeps what pick returns from each window's stdout.
+func (t *FFmpegTools) semanticFrames(ctx context.Context, file string, startMs, endMs int64, n int,
+	scale string, output []string, pick func([]byte) ([]byte, bool),
+) ([][]byte, error) {
 	if n <= 0 {
 		return nil, nil
 	}
@@ -292,23 +335,22 @@ func (t *FFmpegTools) keyframesIn(ctx context.Context, file string, startMs, end
 		// output at the window's end without ever ending the filter's input, so a window with
 		// fewer frames than that (any 3 s window below 30 fps) returned nothing unless it ran
 		// into the end of the file. Bounding the input ends it, and the filter flushes its pick.
-		cmd := bgexec.FFmpeg(ctx, t.FFmpegPath,
+		args := append([]string{
 			"-nostdin",
 			"-ss", fmt.Sprintf("%.3f", float64(seekMs)/1000),
 			"-t", fmt.Sprintf("%.3f", float64(windowMs)/1000),
 			"-i", file,
 			"-an",
-			"-vf", fmt.Sprintf("%s,thumbnail=n=%d,scale=w='%s':h=-2", ColorTagRepair, semanticThumbnailFrames, widthExpr),
+			"-vf", fmt.Sprintf("%s,thumbnail=n=%d,%s", ColorTagRepair, semanticThumbnailFrames, scale),
 			"-frames:v", "1",
-			"-q:v", "4",
-			"-f", "image2pipe", "-c:v", "mjpeg", "-")
+		}, output...)
+		cmd := bgexec.FFmpeg(ctx, t.FFmpegPath, args...)
 		cmd.Stdout = &stdout
 		if err := cmd.Run(); err != nil {
 			return nil, fmt.Errorf("ffmpeg semantic frame %s at %d/%dms: %w", file, seekMs-startMs, spanMs, err)
 		}
-		decoded := splitJPEGs(stdout.Bytes())
-		if len(decoded) > 0 {
-			frames = append(frames, decoded[0])
+		if frame, ok := pick(stdout.Bytes()); ok {
+			frames = append(frames, frame)
 		}
 	}
 	return frames, nil
