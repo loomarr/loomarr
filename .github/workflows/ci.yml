@@ -393,12 +393,22 @@ jobs:
     needs: changes
     if: needs.changes.outputs.impact_web == 'true'
     uses: ./.github/workflows/ci-frontend.yml
+    secrets:
+      TURBO_API: ${{ secrets.TURBO_API }}
+      TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
 
   clients:
     name: Shared clients — lint + test + browser/iOS/Android/TV bundles
     needs: changes
     if: needs.changes.outputs.impact_clients == 'true'
     uses: ./.github/workflows/ci-clients.yml
+    secrets:
+      TURBO_API: ${{ secrets.TURBO_API }}
+      TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
 
   apple-mobile:
     name: Apple mobile — native build + launch

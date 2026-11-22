@@ -20,9 +20,11 @@ const DiagnosticsPager = ({
   <Stack
     align="center"
     aria-label={label}
-    className="border-border bg-card rounded-lg border px-2 py-1.5"
+    className="border-border bg-card rounded-lg border"
     direction="row"
     justify="between"
+    paddingHorizontal={8}
+    paddingVertical={6}
     render="nav"
   >
     <Tooltip content="Go toward the newest matching results">

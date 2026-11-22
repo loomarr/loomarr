@@ -12,6 +12,9 @@ const (
 	LifecycleInProgress    LifecycleState = "in_progress"
 	LifecycleScheduled     LifecycleState = "scheduled"
 	LifecycleNeedsDecision LifecycleState = "needs_decision"
+	// LifecycleAwaitingSplit is a reel held at the split: machine-owned, waiting until splitting
+	// is certified to air its cuts (#3838 step 6). Nobody is asked to look at it.
+	LifecycleAwaitingSplit LifecycleState = "awaiting_split"
 	LifecycleReady         LifecycleState = "ready"
 	LifecycleComplete      LifecycleState = "complete"
 	LifecycleRejected      LifecycleState = "rejected"
@@ -56,6 +59,7 @@ type PipelineOverview struct {
 	InProgress    int
 	Scheduled     int
 	NeedsDecision int
+	AwaitingSplit int
 	Ready         int
 	Complete      int
 	Rejected      int
@@ -84,6 +88,8 @@ func (o PipelineOverview) NoAdvanceReason(advanced int) string {
 		return "waiting_for_decisions"
 	case o.Recoverable > 0:
 		return "waiting_for_recovery"
+	case o.AwaitingSplit > 0:
+		return "waiting_for_split"
 	default:
 		return "idle"
 	}
@@ -100,6 +106,8 @@ func (o *PipelineOverview) Add(state LifecycleState, count int) {
 		o.Scheduled += count
 	case LifecycleNeedsDecision:
 		o.NeedsDecision += count
+	case LifecycleAwaitingSplit:
+		o.AwaitingSplit += count
 	case LifecycleReady:
 		o.Ready += count
 	case LifecycleComplete:
@@ -129,6 +137,9 @@ func (p ClipPipeline) Lifecycle(at time.Time) PipelineLifecycle {
 	switch p.Disposition {
 	case DispositionReview:
 		out.State = LifecycleNeedsDecision
+		if p.Stage == StageSplit {
+			out.State = LifecycleAwaitingSplit
+		}
 	case DispositionReady:
 		out.State = LifecycleReady
 	case DispositionComplete:

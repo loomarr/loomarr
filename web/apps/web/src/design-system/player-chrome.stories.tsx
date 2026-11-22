@@ -707,6 +707,31 @@ const PortraitLongChannel: Story = {
   },
   render: (args) => <PhoneFrame {...args} />,
 };
+// Casting to an AirPlay receiver (#4131): the picture is on the TV, so the strip says where it went
+// and gives the way back, and the AirPlay key is lit. The band and keys stay: the phone is the remote.
+// The system's route picker is native only, so a plain element stands in over the key.
+const castingArgs = {
+  casting: { routePicker: <span /> },
+  utilities: { ...touchArgs.utilities, airPlayPicker: <span />, onPictureInPicture: fn() },
+};
+const PortraitCasting: Story = {
+  args: {
+    ...portraitArgs,
+    ...castingArgs,
+    utilities: { ...portraitArgs.utilities, ...castingArgs.utilities },
+  },
+  render: (args) => <PhoneFrame {...args} />,
+};
+// On its side the card fills the screen, its content lifted clear of the band.
+const SIDE = { height: 390, width: 844 } as const;
+const PhoneSideCasting: Story = {
+  args: { ...touchArgs, ...castingArgs, layout: "overlay" as const },
+  render: (args) => (
+    <div style={{ ...SIDE, background: "#000", margin: "0 auto", overflow: "hidden", position: "relative" }}>
+      <PlayerChrome {...args} />
+    </div>
+  ),
+};
 const PortraitUnmute: Story = {
   args: { ...portraitArgs, unmute: fn() },
   render: (args) => <PhoneFrame {...args} />,
@@ -883,6 +908,7 @@ export {
   NoStrip,
   NoSuchChannel,
   OffAir,
+  PhoneSideCasting,
   PictureMenu,
   PlaybackDetails,
   PlaybackDetailsBare,
@@ -891,6 +917,7 @@ export {
   Portrait,
   PortraitAudio,
   PortraitBehind,
+  PortraitCasting,
   PortraitCommercials,
   PortraitInfo,
   PortraitLongChannel,

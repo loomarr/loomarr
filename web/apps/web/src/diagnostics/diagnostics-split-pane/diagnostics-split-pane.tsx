@@ -121,7 +121,16 @@ const DiagnosticsSplitPane = ({
               Hide details
             </Action>
           </Tooltip>
-          <div className="group relative flex min-h-24 flex-1 items-center justify-center self-stretch">
+          <Stack
+            align="center"
+            className="group relative self-stretch"
+            direction="row"
+            flexBasis="0%"
+            flexGrow={1}
+            flexShrink={1}
+            justify="center"
+            minHeight={96}
+          >
             <hr
               aria-label="Resize details"
               aria-orientation="vertical"
@@ -147,7 +156,7 @@ const DiagnosticsSplitPane = ({
             >
               <Icon decorative glyph={icons.dragHandle} size="compact" tone="inherit" />
             </Stack>
-          </div>
+          </Stack>
         </div>
       )}
       <div

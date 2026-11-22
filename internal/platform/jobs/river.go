@@ -277,6 +277,10 @@ func (s *Scheduler) StartRiver(ctx context.Context, dialect store.Dialect, db *s
 // longQueue holds the jobs that do real media or network work.
 const longQueue = "long"
 
+// watchdogQueue holds only the health watchdog. Its worker spends its time on a ten-second probe,
+// so on SQLite it shares the store's one connection for moments, never for an ordinary job's minute.
+const watchdogQueue = "watchdog"
+
 // queueFor decides which queue a job runs on, DERIVED from its declared ceiling.
 //
 // ⚠ **A queue is a group of jobs that agree to wait for each other, and the group's identity is
@@ -289,6 +293,10 @@ const longQueue = "long"
 // River's default is long. The rule remains derived rather than accepting hand-set queue names, so
 // `riverQueues` always creates a producer for every possible result.
 func queueFor(j Job) string {
+	// The watchdog's observations decide readiness, so it agrees to wait for nobody (Job.Watchdog).
+	if j.Watchdog {
+		return watchdogQueue
+	}
 	if j.Timeout > river.JobTimeoutDefault {
 		return longQueue
 	}

@@ -14,8 +14,11 @@ import (
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/edit"
+	"github.com/loomarr/loomarr/internal/channels/growth"
 	"github.com/loomarr/loomarr/internal/channels/recurate"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/resolvers"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
@@ -31,7 +34,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
@@ -56,7 +58,7 @@ type suggestionBuild struct {
 
 func buildSuggestions(
 	rootCtx context.Context,
-	st store.Store,
+	st records.Store,
 	set resolved,
 	overrides Overrides,
 	eventBus *events.Bus,
@@ -106,13 +108,26 @@ func buildSuggestions(
 	catalogService := titlesearch.New(titlesearch.LibrarySearch{Titles: st, Facts: st}, tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
 		return titlesearch.LibraryOwnership{Titles: st}
 	}).WithEvidence(st)
-	result.search = searchAdapter{catalogService}
+	// A household member's search, collection rosters and channel ideas read only the titles a
+	// member reads (docs/design/library.md "Who reads the Library"); the suggester, recurate and
+	// every server-side reader keep catalogService and st.
+	memberTitles := st.MemberTitles()
+	memberCatalog := titlesearch.New(titlesearch.LibrarySearch{Titles: memberTitles, Facts: st}, tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
+		return titlesearch.LibraryOwnership{Titles: memberTitles}
+	}).WithEvidence(st)
+	result.search = searchAdapter{cat: catalogService, member: memberCatalog}
 	collectionResolver := tmdb.NewCollectionResolver(tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
 		return titlesearch.LibraryOwnership{Titles: st}
 	})
-	result.movieCollections = movieCollectionAdapter{resolver: collectionResolver}
-	result.collections = libraryCollections{own: st}
-	result.ideaLibrary = &libraryIdeaItems{lib: libraryIdeaTitles{titles: st, facts: st}, now: time.Now}
+	memberCollectionResolver := tmdb.NewCollectionResolver(tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
+		return titlesearch.LibraryOwnership{Titles: memberTitles}
+	})
+	result.movieCollections = movieCollectionAdapter{resolver: collectionResolver, member: memberCollectionResolver}
+	result.collections = libraryCollections{own: st, items: st}
+	result.ideaLibrary = ideaAudiences{
+		all:    &libraryIdeaItems{lib: libraryIdeaTitles{titles: st, facts: st}, now: time.Now},
+		member: &libraryIdeaItems{lib: libraryIdeaTitles{titles: memberTitles, facts: st}, now: time.Now},
+	}
 	result.icons = iconAdapter{
 		store: st, tmdb: tmdbClient, images: result.images, fetch: result.imageFetcher, log: log,
 	}
@@ -139,6 +154,23 @@ func buildSuggestions(
 	))
 	service = service.WithAutoCurate(recurate.NewCurator(st, approver, recurate.NewSettingsThresholds(set), log))
 	registry.Add(recurate.NewRunner(st, service, log).WithAdjacency(catalogService).Job())
+	// Channels grow from the line their seeds draw (#4333), through the same approve → bind path.
+	// A model is configured when the live selection names one; then unclear fits wait for review.
+	hasModel := func() bool {
+		if sw, ok := provider.(*llm.Swappable); ok {
+			return sw.Model() != ""
+		}
+		return provider != nil
+	}
+	registry.Add(growth.NewFill(st, result.durableWorkflow, approver, hasModel, time.Now, log).Job())
+	// The model reviews what channels grew by, in the background, yielding to a person waiting on it.
+	var reconciler edit.Reconciler
+	if r, ok := channelService.(edit.Reconciler); ok {
+		reconciler = r
+	}
+	if review, ok := growthReview(st, provider, reconciler, interactiveLLM.Busy, set, log); ok {
+		registry.Add(review.Job())
+	}
 
 	result.suggest = service
 	result.progress = service

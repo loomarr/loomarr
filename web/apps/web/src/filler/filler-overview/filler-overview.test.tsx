@@ -197,7 +197,6 @@ describe("FillerOverview", () => {
   it.each([
     ["exact", "Good match", "ok"],
     ["widened", "Years loosened", "warn"],
-    ["audience", "Audience only", "warn"],
     ["bumper_card", "Bumpers only", "error"],
   ] as const)("badges a %s channel %s in the %s tone", async (level, label, tone) => {
     show(

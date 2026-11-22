@@ -10,6 +10,7 @@ import {
   semanticThemes,
   spaceSteps,
   typography,
+  washes,
 } from "../tokens";
 
 const themeColors = (mode: keyof typeof semanticThemes) => ({
@@ -67,6 +68,8 @@ const themeColors = (mode: keyof typeof semanticThemes) => ({
   decade1980: semanticThemes[mode].decade["1980"],
   decade1990: semanticThemes[mode].decade["1990"],
   decadeInk: semanticThemes[mode].decade.ink,
+  // Alpha washes of a surface or brand hue, the same in both themes.
+  ...washes,
 });
 
 const tamaguiTheme = (mode: keyof typeof semanticThemes) => {

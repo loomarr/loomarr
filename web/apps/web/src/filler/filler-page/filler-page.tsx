@@ -63,7 +63,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
 
   if (configurationPending && tab !== "settings") {
     return (
-      <Stack className="h-full min-h-0">
+      <Stack height="100%" minHeight={0}>
         <FillerHeader />
         <div className="min-h-0 flex-1 p-6" role="status">
           <Text as="p" textRole="compact" tone="secondary">
@@ -76,7 +76,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
 
   if (!fillerConfigured && tab !== "settings") {
     return (
-      <Stack className="h-full min-h-0">
+      <Stack height="100%" minHeight={0}>
         <FillerHeader />
         <div className="min-h-0 flex-1 overflow-auto p-6">
           <EmptyState
@@ -111,9 +111,9 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
     : "";
 
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <FillerHeader status={watch && <WatchLine status={statusLine} health={watch.health} />} />
-      <Stack className="min-h-0 flex-1 overflow-auto p-6" gap="section">
+      <Stack className="flex-1 overflow-auto" flexShrink={1} gap="section" minHeight={0} padding={24}>
         {/* The web mock's three sections. Sources and Incoming open from the Manage hub, so their
             pages light Manage, as Settings and Tags already did. */}
         <NavTabs
@@ -159,14 +159,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
         {pool && tab === "library" ? <PoolHealth pool={pool} folded={phone} /> : null}
 
         {watch?.autoFetch?.stoppedBy === "catalog" && tab === "library" ? (
-          <Card
-            alignItems="center"
-            className="border-caution/40! bg-caution/5!"
-            flexDirection="row"
-            flexWrap="wrap"
-            gap={12}
-            padding={16}
-          >
+          <Card alignItems="center" flexDirection="row" flexWrap="wrap" gap={12} padding={16} tone="caution">
             <div className="min-w-0 flex-1">
               <Text as="p" textRole="cardLabel">
                 Automatic fetching is paused

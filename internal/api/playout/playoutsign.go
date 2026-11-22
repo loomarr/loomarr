@@ -45,15 +45,12 @@ const signQueryParam = "sig"
 // is this value.
 const playURLTTL = 8 * time.Hour
 
-// signPlayout builds the "channel:exp:sig" capability string for a channel, valid until `exp`.
+// signPlayoutWithKey builds the "channel:exp:sig" capability string for a channel, valid until
+// `exp`, keyed by the playout token `key`.
 //
 // Returns "" when there is no token to key the HMAC with — the same "not configured" signal
 // the device-token path uses, so a caller renders "playout isn't set up" rather than minting a
 // capability that can never verify.
-func (s *Handlers) signPlayout(channelID string, exp time.Time) string {
-	return signPlayoutWithKey(s.playoutToken(), channelID, exp)
-}
-
 func signPlayoutWithKey(key, channelID string, exp time.Time) string {
 	if key == "" {
 		return ""
@@ -63,18 +60,14 @@ func signPlayoutWithKey(key, channelID string, exp time.Time) string {
 	return fmt.Sprintf("%s:%d:%s", channelID, unix, mac)
 }
 
-// verifyPlayoutSignature checks a "channel:exp:sig" capability against `channelID` and the
-// current time. Constant-time on the MAC, like the device-token check, and for the same reason:
-// this is a credential comparison on a LAN-reachable route.
+// verifyPlayoutSignatureWithKey checks a "channel:exp:sig" capability against `channelID`, the
+// current time and the playout token `key`. Constant-time on the MAC, like the device-token
+// check, and for the same reason: this is a credential comparison on a LAN-reachable route.
 //
 // Every failure returns false with no distinction between "malformed", "wrong channel",
 // "expired", and "bad signature" — the caller renders one 404, because telling an attacker
 // WHICH check failed (does this channel exist? is this the right shape?) is exactly the
 // enumeration the device path's 404 already refuses to give.
-func (s *Handlers) verifyPlayoutSignature(raw, channelID string, now time.Time) bool {
-	return verifyPlayoutSignatureWithKey(s.playoutToken(), raw, channelID, now)
-}
-
 func verifyPlayoutSignatureWithKey(key, raw, channelID string, now time.Time) bool {
 	if key == "" {
 		return false
@@ -117,7 +110,8 @@ func playoutSignature(key, channelID string, exp int64) string {
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
-// playoutHLSURL builds the absolute, signed HLS playlist URL a browser/native player loads.
+// playoutHLSURLWithKey builds the absolute, signed HLS playlist URL a browser/native player
+// loads, signed with the playout token `key`.
 //
 // Built on the same base + escaping as playoutURL (the device-token URLs), but carries `sig`
 // instead of `token`: the segment URLs the playlist references inherit the same signature, so
@@ -125,12 +119,8 @@ func playoutSignature(key, channelID string, exp int64) string {
 //
 // ABSOLUTE, from `server.public_url` — this is the form a NATIVE app or a media server needs: a
 // client with no "current origin" that fetches the URL cold. The web browser uses the RELATIVE
-// form (playoutHLSPathURL) instead, because it is already on Loomarr's origin. Returns "" when the
-// base or the signature is unavailable.
-func (s *Handlers) playoutHLSURL(channelID string, quality string, exp time.Time) string {
-	return s.playoutHLSURLWithKey(s.playoutToken(), channelID, quality, exp)
-}
-
+// form (playoutHLSPathURLWithKey) instead, because it is already on Loomarr's origin. Returns ""
+// when the base or the signature is unavailable.
 func (s *Handlers) playoutHLSURLWithKey(key, channelID string, quality string, exp time.Time) string {
 	base := s.playoutBaseURL()
 	path := s.playoutHLSPathURLWithKey(key, channelID, quality, exp)
@@ -140,18 +130,14 @@ func (s *Handlers) playoutHLSURLWithKey(key, channelID string, quality string, e
 	return base + path
 }
 
-// playoutHLSPathURL is the RELATIVE (same-origin) signed master-playlist URL, for the in-app WEB
-// player (§9.1 Watch, V46).
+// playoutHLSPathURLWithKey is the RELATIVE (same-origin) signed master-playlist URL, for the in-app
+// WEB player (§9.1 Watch, V46).
 //
 // Same-origin is strictly better for the browser: the page already runs on Loomarr's origin, so a
 // relative `/v1/playout/hls/...` needs no CORS (hls.js fetches by XHR, which a cross-origin absolute
 // URL would trip) AND does not depend on `server.public_url` being set or reachable. Native apps
 // cannot use this — they have no origin to be relative to — which is exactly why the absolute form
 // above still exists. Returns "" only when the signature can't be minted (no token).
-func (s *Handlers) playoutHLSPathURL(channelID string, quality string, exp time.Time) string {
-	return s.playoutHLSPathURLWithKey(s.playoutToken(), channelID, quality, exp)
-}
-
 func (s *Handlers) playoutHLSPathURLWithKey(key, channelID string, quality string, exp time.Time) string {
 	sig := signPlayoutWithKey(key, channelID, exp)
 	if sig == "" {

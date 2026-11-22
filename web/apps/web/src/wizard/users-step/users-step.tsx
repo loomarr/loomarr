@@ -75,10 +75,12 @@ const UsersStep = () => {
           return (
             <Stack
               align="center"
-              className="border-border bg-card rounded-md border px-3 py-2.5"
+              className="border-border bg-card rounded-md border"
               direction="row"
               gap="control"
               key={c.id}
+              paddingHorizontal={12}
+              paddingVertical={10}
               render="li"
             >
               <div className="flex-1">

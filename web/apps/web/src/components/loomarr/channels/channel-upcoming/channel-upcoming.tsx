@@ -32,9 +32,11 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
   // when it started.
   return (
     <Stack className={className} gap="1.5" render="section">
-      <Text as="h3" className="mb-1" textRole="hint" tone="secondary">
-        What's on
-      </Text>
+      <Stack paddingBottom={4}>
+        <Text as="h3" textRole="hint" tone="secondary">
+          What's on
+        </Text>
+      </Stack>
       {entries.length === 0 ? (
         // The API deliberately lowers no guide, an empty schedule, and a backend read failure to
         // the same empty list. Do not infer broadcast state from a response that cannot prove it.
@@ -63,7 +65,8 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
               >
                 <Text
                   as="span"
-                  className="w-16 shrink-0 tabular-nums"
+                  fontVariant={["tabular-nums"]}
+                  style={{ flexShrink: 0, width: 64 }}
                   textRole="mono"
                   tone={onNow ? "primary" : "secondary"}
                 >

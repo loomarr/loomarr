@@ -49,6 +49,13 @@ func (s PackagerSource) ItemAt(ctx context.Context, channelID string, at time.Ti
 	item.Input, item.Seek = streamURL, airing.Seek()
 	item.Watermark = s.WatermarkFor(channelID, airing)
 	item.RecordAiringServed = func(ctx context.Context) { s.Res.RecordAiringServed(ctx, channelID, airing, at) }
+	if airing.Source != "" {
+		// A filler clip that keeps failing to encode is fed back to the catalog; the identity of a
+		// filler airing is its clip's hash.
+		hash := airing.Identity
+		item.Faulted = func(err error) { s.Res.Faults.Faulted(hash, err) }
+		item.Healthy = func() { s.Res.Faults.Healthy(hash) }
+	}
 	t1 := time.Now()
 	item.AudioTrack = s.Res.AudioTrackFor(ctx, channelID, airing.LibraryItemID, streamURL)
 	t2 := time.Now()

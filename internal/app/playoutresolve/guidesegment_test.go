@@ -33,6 +33,11 @@ func (c *rotatingCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bo
 	return !c.tunarr, nil
 }
 
+func (c *rotatingCycle) TurnedWindow(ctx context.Context, id string, at, _ time.Time) ([]schedule.Slot, error) {
+	_, slots, _, _, err := c.CyclePreview(ctx, id, at)
+	return slots, err
+}
+
 func (c *rotatingCycle) CyclePreview(_ context.Context, _ string, at time.Time) (
 	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
 ) {

@@ -1,10 +1,9 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Badge, Grid, type GridTrack, Stack, Text, TextLink } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
-import { cn } from "@/lib/utils";
 import { destinationForOwner } from "@/settings/settings-destinations";
 import { SettingField } from "../setting-field";
 import type { AdvancedSettingsTableProps } from "./advanced-settings-table.type";
@@ -27,6 +26,9 @@ import type { AdvancedSettingsTableProps } from "./advanced-settings-table.type"
 // way of already knowing what you want: the key when you read it in a config file, the group
 // when you remember roughly where it lives, and the value when you are hunting for whichever
 // setting is pointing at the wrong URL.
+// Key, value, owner, provenance, action: the header and every row share these tracks.
+const SETTING_COLUMNS: readonly GridTrack[] = ["1.5fr", "1.2fr", "110px", "128px", "88px"];
+
 const matches = (entry: SettingEntry, q: string): boolean => {
   if (q === "") return true;
   const haystack = `${entry.key} ${entry.group} ${entry.value ?? ""}`.toLowerCase();
@@ -39,19 +41,15 @@ const matches = (entry: SettingEntry, q: string): boolean => {
 // enum has exactly env/db/default. Rendering a fourth state would mean inventing a value the
 // backend never sends. Those secrets live under Access and devices, where view/copy/
 // regenerate belong.
-const PROVENANCE: Record<
-  string,
-  { label: string; className: string; tone: "info" | "secondary" | "success" }
-> = {
+const PROVENANCE: Record<string, { label: string; tone: "tune" | "lock" | "neutral" }> = {
   [SettingEntryProvenance.env]: {
     label: "SET VIA ENV",
     // The only one that is not merely informational: an env-pinned key cannot be edited in the
     // UI at all (§3), so it reads as a lock rather than a note.
-    className: "bg-tune-tint-15",
-    tone: "info",
+    tone: "tune",
   },
-  [SettingEntryProvenance.db]: { label: "DATABASE", className: "bg-lock-tint-15", tone: "success" },
-  [SettingEntryProvenance.default]: { label: "DEFAULT", className: "bg-static-800", tone: "secondary" },
+  [SettingEntryProvenance.db]: { label: "DATABASE", tone: "lock" },
+  [SettingEntryProvenance.default]: { label: "DEFAULT", tone: "neutral" },
 };
 
 const AdvancedSettingsTable = ({
@@ -70,7 +68,7 @@ const AdvancedSettingsTable = ({
   return (
     <Stack className={className} gap="control">
       <Stack align="center" direction="row" gap="control" wrap>
-        <div className="relative min-w-64 flex-1">
+        <Stack flexBasis="0%" flexGrow={1} minWidth={256}>
           <SearchField
             label="Search settings"
             labelHidden
@@ -78,7 +76,7 @@ const AdvancedSettingsTable = ({
             placeholder="Search by key, group, or value…"
             value={query}
           />
-        </div>
+        </Stack>
         {/* The count is the feedback that a search DID something — without it, a query that
             matches nothing looks identical to a page that failed to load. */}
         <Text as="span" textRole="mono">
@@ -86,30 +84,38 @@ const AdvancedSettingsTable = ({
         </Text>
       </Stack>
 
-      <div className="border-border overflow-x-auto rounded-lg border">
-        <div className="min-w-[780px]">
-          <div className="border-border grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] gap-3 border-b px-4 py-2">
+      <Stack borderColor="$borderDecorative" borderRadius={8} borderWidth={1} style={{ overflowX: "auto" }}>
+        <Stack minWidth={780}>
+          <Grid
+            borderBottomWidth={1}
+            borderColor="$borderDecorative"
+            columns={SETTING_COLUMNS}
+            gap="3"
+            paddingHorizontal={16}
+            paddingVertical={8}
+          >
             {["Key", "Value", "Owner", "Provenance", "Action"].map((heading) => (
               <Text as="div" key={heading} textRole="label" tone="secondary">
                 {heading}
               </Text>
             ))}
-          </div>
+          </Grid>
 
           {rows.length === 0 && (
-            <Text as="p" className="px-4 py-6 text-center" textRole="compact" tone="secondary">
-              {`No setting matches “${query}”.`}
-            </Text>
+            <Stack paddingHorizontal={16} paddingVertical={24}>
+              <Text as="p" textAlign="center" textRole="compact" tone="secondary">
+                {`No setting matches “${query}”.`}
+              </Text>
+            </Stack>
           )}
 
-          {rows.map((entry) => {
+          {rows.map((entry, index) => {
             // A key this page owns has no other home: a link back to this page says nothing.
             const owner = destinationForOwner(entry.owner);
             const home = owner?.id === "advanced" ? undefined : owner;
             const prov = PROVENANCE[entry.provenance] ?? {
               label: entry.provenance.toUpperCase(),
-              className: "bg-static-800",
-              tone: "secondary" as const,
+              tone: "neutral" as const,
             };
             // llm.model is committed through the model-selection action, which also
             // verifies capability, persists provider metadata, and hot-swaps the client.
@@ -117,41 +123,47 @@ const AdvancedSettingsTable = ({
             // for OpenRouter, so keep the key searchable but route edits to its owner.
             const pickerOwned = entry.key === SettingKey.LLMModel;
             return (
-              <div
+              <Grid
+                align="center"
+                borderBottomWidth={index === rows.length - 1 ? 0 : 1}
+                borderColor="$borderDecorative"
                 key={entry.key}
-                className="border-border grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] items-center gap-3 border-b px-4 py-2 last:border-b-0"
+                columns={SETTING_COLUMNS}
+                gap="3"
+                paddingHorizontal={16}
+                paddingVertical={8}
               >
-                <Stack align="center" className="min-w-0" direction="row" gap="inline">
+                <Stack align="center" direction="row" flexShrink={1} gap="inline" minWidth={0}>
                   {/* The visible label for this row's control (see `labelledBy` below) — which is
                     why it carries an id. A table row already shows the name; a <label> beside
                     the input would duplicate it on screen for no one's benefit. */}
-                  <Text
-                    as="span"
-                    className="truncate"
-                    id={`${entry.key}-label`}
-                    textRole="mono"
-                    tone="primary"
-                  >
+                  <Text as="span" id={`${entry.key}-label`} numberOfLines={1} textRole="mono" tone="primary">
                     {entry.key}
                   </Text>
                   {/* ADV marks a key that is hidden behind its home page's disclosure. It belongs
                     HERE especially: this is the surface someone reaches precisely because the
                     key was not where they looked, and "it's advanced" is the answer. */}
                   {entry.advanced && (
-                    <span
-                      title="advanced: also shown behind its home page's disclosure"
-                      className="border-border shrink-0 rounded-sm border px-1"
-                    >
-                      <Text as="span" textRole="mono" tone="secondary">
-                        ADV
-                      </Text>
+                    <span title="advanced: also shown behind its home page's disclosure">
+                      <Stack
+                        borderColor="$borderDecorative"
+                        borderRadius={4}
+                        borderWidth={1}
+                        flexShrink={0}
+                        paddingHorizontal={4}
+                        render="span"
+                      >
+                        <Text as="span" textRole="mono" tone="secondary">
+                          ADV
+                        </Text>
+                      </Stack>
                     </span>
                   )}
                 </Stack>
                 {/* The control, not a rendering of the value. A secret still never shows its
                   value (§4) — SettingField's compact mode keeps the masked-preview flow. */}
                 {pickerOwned ? (
-                  <Text as="span" className="truncate" textRole="mono">
+                  <Text as="span" numberOfLines={1} textRole="mono">
                     {(values[entry.key] ?? entry.value) || "Not selected"}
                   </Text>
                 ) : (
@@ -165,24 +177,21 @@ const AdvancedSettingsTable = ({
                   />
                 )}
                 {home ? (
-                  <a
-                    href={home.path}
-                    className="text-muted-foreground hover:text-foreground truncate text-xs underline-offset-4 hover:underline"
-                  >
-                    {home.label}
-                  </a>
+                  <Text as="span" numberOfLines={1} textRole="hint">
+                    <TextLink href={home.path} tone="muted" underline="hover">
+                      {home.label}
+                    </TextLink>
+                  </Text>
                 ) : (
                   // A key with no page but this one: say so in words, not the server's group id
                   // or a link to the page already open (#3411). The group stays searchable.
-                  <Text as="span" className="truncate" textRole="hint" tone="secondary">
+                  <Text as="span" numberOfLines={1} textRole="hint" tone="secondary">
                     Only here
                   </Text>
                 )}
-                <span className={cn("w-fit rounded-sm px-1.5 py-0.5", prov.className)}>
-                  <Text as="span" textRole="mono" tone={prov.tone}>
-                    {prov.label}
-                  </Text>
-                </span>
+                <Badge shape="square" tone={prov.tone}>
+                  {prov.label}
+                </Badge>
                 {pickerOwned ? (
                   <Link to="/settings/ai" className="text-signal w-fit text-xs underline underline-offset-4">
                     Choose model
@@ -198,11 +207,11 @@ const AdvancedSettingsTable = ({
                     Use default
                   </Action>
                 )}
-              </div>
+              </Grid>
             );
           })}
-        </div>
-      </div>
+        </Stack>
+      </Stack>
     </Stack>
   );
 };

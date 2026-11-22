@@ -16,7 +16,6 @@ func postgresWorkflowActionAuthorities() map[string]map[string]struct{} {
 		"actions/checkout":      {},
 		"actions/setup-go":      {"cache": {}, "go-version": {}},
 		"actions/cache/restore": {"path": {}, "key": {}, "restore-keys": {}},
-		"actions/cache/save":    {"path": {}, "key": {}},
 	}
 }
 
@@ -193,10 +192,10 @@ func verifyPostgresWorkflowStep(step *yaml.Node, index int) error {
 	if !found || !allowed || !fullCommitSHA.MatchString(revision) {
 		return fmt.Errorf("%s uses unaudited or unpinned action %s", label, uses.Value)
 	}
-	if condition, ok := mappingValue(step, "if"); ok {
-		if !nonEmptyScalar(condition) || condition.Value != "always() && github.ref == 'refs/heads/main'" || action != "actions/cache/save" {
-			return fmt.Errorf("%s has an unaudited condition", label)
-		}
+	// The suite only restores its Go cache (the Go cache warm workflow writes it), so no action
+	// step is conditional.
+	if _, ok := mappingValue(step, "if"); ok {
+		return fmt.Errorf("%s has an unaudited condition", label)
 	}
 	with, hasWith := mappingValue(step, "with")
 	if len(inputs) == 0 {

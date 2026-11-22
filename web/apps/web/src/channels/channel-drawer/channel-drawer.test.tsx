@@ -87,6 +87,56 @@ describe("ChannelDrawer", () => {
     expect(onFavourite).toHaveBeenCalledWith("b", false);
   });
 
+  // WCAG 2.5.3, label in name, as axe checks it: the row's visible text, its text nodes joined as
+  // they are with nothing between them, split into words, must run unbroken through the name's words.
+  describe("a row's name holds every word the row shows", () => {
+    const words = (text: string) =>
+      text
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter(Boolean);
+    const visibleText = (row: HTMLElement) => {
+      const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+      let text = "";
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) text += node.nodeValue ?? "";
+      return text;
+    };
+    const holdsInOrder = (name: string, shown: string) => {
+      const have = words(name);
+      const want = words(shown);
+      return have.some((_, start) => want.every((word, i) => have[start + i] === word));
+    };
+
+    it("for a tuned row with a schedule strip, what is on and the time left", () => {
+      renderDrawer({
+        channels: [
+          row("a", 3, "Westerns", {
+            now: "A western",
+            minutesLeft: 12,
+            blocks: [
+              { key: "1", label: "High Noon Hour", minutes: 60, pod: false },
+              { key: "2", minutes: 5, pod: true },
+              { key: "3", label: "Dusty Trails", minutes: 55, pod: false },
+            ],
+          }),
+        ],
+        favourites: [],
+        recent: [],
+        tunedId: "a",
+      });
+      const rowButton = screen.getAllByRole("button", { current: true })[0] as HTMLElement;
+      const name = rowButton.getAttribute("aria-label") ?? "";
+      expect(name).toBe("03 Westerns, tuned, High Noon Hour, Dusty Trails, A western, 12m left");
+      expect(holdsInOrder(name, visibleText(rowButton))).toBe(true);
+    });
+
+    it("for an off-air row, which has no time left", () => {
+      renderDrawer({ tunedId: "a" });
+      const rowButton = screen.getAllByRole("button", { name: /^12 Nature/ })[0] as HTMLElement;
+      expect(holdsInOrder(rowButton.getAttribute("aria-label") ?? "", visibleText(rowButton))).toBe(true);
+    });
+  });
+
   it("closes on Escape and from its close button", async () => {
     const onClose = vi.fn();
     renderDrawer({ onClose });

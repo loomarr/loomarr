@@ -59,6 +59,7 @@ var scannedWhole = map[string]string{
 	"DELETE filler_clip_pipeline":          "orphan sweep: pipeline rows of deleted clips",
 	"DELETE filler_clip_variants":          "orphan sweep: variant pairs of deleted clips",
 	"DELETE filler_context_reports":        "retention sweep: superseded reports and reports of deleted clips",
+	"DELETE filler_download_failures":      "retention sweep: failed downloads of deleted sources",
 	"DELETE filler_enrichment_axes":        "retention sweep: axes of deleted clips",
 	"DELETE filler_enrichment_passes":      "retention sweep: passes of deleted clips",
 	"DELETE filler_split_proposals":        "orphan sweep: proposals of deleted clips",

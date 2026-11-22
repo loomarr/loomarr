@@ -1,6 +1,6 @@
 import { clipMediaURL } from "@loomarr/core/clip-thumb";
 import { formatMmSs } from "@loomarr/core/format";
-import { Stack, Text } from "@loomarr/design-system";
+import { MediaTile, Stack, Text } from "@loomarr/design-system";
 import { useRef, useState } from "react";
 import { VideoPlayer } from "@/components/loomarr/player/video-player";
 import { ServedImage } from "@/components/loomarr/served-image";
@@ -51,12 +51,15 @@ const SegmentPreview = ({
   const player = failed ? (
     <Stack
       align="center"
-      className="bg-static-900 aspect-video rounded-md p-6"
+      aspectRatio={16 / 9}
+      backgroundColor="$surfaceRaised"
+      borderRadius={6}
       direction="row"
       justify="center"
+      padding={24}
       role="alert"
     >
-      <Text as="span" className="text-center" textRole="compact" tone="secondary">
+      <Text as="span" textAlign="center" textRole="compact" tone="secondary">
         This preview couldn’t be played. The original recording may be unavailable.
       </Text>
     </Stack>
@@ -97,9 +100,8 @@ const SegmentPreview = ({
         if (panelRef.current?.contains(document.activeElement)) buttonRef.current?.focus();
       }}
     >
-      <button
+      <MediaTile
         ref={buttonRef}
-        type="button"
         // The mock's tooltip, verbatim (`loomarr-prototype-desktop-v2.dc.html:2209`).
         title="Preview this segment"
         // ⚠ The name is composed from a fixed verb plus the VISIBLE "#N" marker, never from the
@@ -114,20 +116,15 @@ const SegmentPreview = ({
           .join(" ")}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        onClick={() => {
+        // Open is a pressed state, so it is neutral (#1909); the amber outline is focus.
+        current={open}
+        height={64}
+        onPress={() => {
           if (!open) setFailedSource(undefined);
           onOpenChange(!open);
         }}
-        className={cn(
-          "border-border relative h-16 w-28 shrink-0 cursor-pointer overflow-hidden rounded-md border p-0",
-          "flex items-center justify-center",
-          // ⚠ A visible focus ring the mock does not have — the same gap the filmstrip's blocks
-          // already record fixing. Keyboard users would otherwise have no idea which tile they are on.
-          "focus-visible:outline-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1",
-          "bg-static-900",
-          // Open is a pressed state, so it is neutral (#1909); the amber outline above is focus.
-          open && "ring-foreground ring-1",
-        )}
+        radius="medium"
+        width={112}
       >
         <span id={verbId} className="sr-only">
           Preview segment
@@ -135,19 +132,33 @@ const SegmentPreview = ({
         {artwork ? (
           <ServedImage image={artwork} alt="" sizes="112px" />
         ) : (
-          <span id={unavailableId} className="text-muted-foreground px-2 text-center text-[10px]">
+          <Text
+            as="span"
+            className="px-2"
+            id={unavailableId}
+            textAlign="center"
+            textRole="guideCell"
+            tone="secondary"
+          >
             Preview unavailable
-          </span>
+          </Text>
         )}
         <Stack
           align="center"
           aria-hidden
-          className="bg-static-950/25 absolute inset-0 text-sm text-white"
+          bottom={0}
+          className="bg-static-950/25"
           direction="row"
           justify="center"
+          left={0}
+          position="absolute"
           render="span"
+          right={0}
+          top={0}
         >
-          ▶
+          <Text as="span" style={{ color: "var(--color-static-0)" }} textRole="compact">
+            ▶
+          </Text>
         </Stack>
         {/* ⚠ `formatMmSs` ("00:30"), NOT `formatClipDuration` ("30s"). The row already renders the
             span as "30s", and a second "30s" inside the same region makes the editor's existing
@@ -162,7 +173,7 @@ const SegmentPreview = ({
             {formatMmSs(span)}
           </span>
         )}
-      </button>
+      </MediaTile>
 
       {open && (
         <div

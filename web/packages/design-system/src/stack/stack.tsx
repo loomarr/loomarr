@@ -1,6 +1,13 @@
 import { isWeb, View } from "@tamagui/core";
-import type { ComponentProps, FormHTMLAttributes, ReactNode } from "react";
-import { useSyncExternalStore } from "react";
+import type { ComponentProps, FormHTMLAttributes, ReactElement, ReactNode } from "react";
+import {
+  Children,
+  cloneElement,
+  createContext,
+  isValidElement,
+  useContext,
+  useSyncExternalStore,
+} from "react";
 import { Dimensions } from "react-native";
 
 import { breakpoints, type semanticSpace, type spaceSteps } from "../tokens";
@@ -64,6 +71,7 @@ type StackOwnProps = Omit<
   | "flexDirection"
   | "flexWrap"
   | "gap"
+  | "hidden"
   | "justifyContent"
   | "render"
   | "rowGap"
@@ -85,11 +93,46 @@ type StackOwnProps = Omit<
    * (Tailwind's `gap-x-*`). Left out, the spacing is `gap`.
    */
   columnGap?: StackResponsive<StackGap>;
+  /**
+   * Take the Stack out of the layout (`display: none`, so it is out of the accessibility tree
+   * too). Responsive, so `hidden md:flex` is `hidden={{ base: true, md: false }}` and `flex
+   * md:hidden` is `hidden={{ base: false, md: true }}`. Left out, the Stack shows.
+   */
+  hidden?: StackResponsive<boolean>;
   /** Main-axis distribution. Left out, children pack at the start. */
   justify?: StackResponsive<StackJustify>;
   /** Let a row break onto further lines instead of overflowing. The gap also separates the lines. */
   wrap?: boolean;
+  /**
+   * Draw a hairline (the decorative border) between children, as Tailwind's `divide-y` does down a
+   * column and `divide-x` along a row: on the leading edge of every child but the first, so a
+   * child that renders nothing leaves no stray line. Each child must be a DOM element or a
+   * Stack, Card or Surface (anything that takes `style` or the border props); a custom component
+   * that does not forward them draws no line. A line is one pixel, so leave `gap` out.
+   */
+  divided?: boolean;
 };
+
+/**
+ * The hairline on a child's leading edge. A DOM element takes it as a CSS border (web only; native
+ * has no DOM children); a Tamagui child takes it as border props, in the theme's decorative colour.
+ */
+const withLeadingHairline = (child: ReactElement<Record<string, unknown>>, direction: "column" | "row") => {
+  if (typeof child.type === "string") {
+    const style = child.props.style as Record<string, unknown> | undefined;
+    const edge = direction === "column" ? "borderTop" : "borderLeft";
+    return cloneElement(child, { style: { ...style, [edge]: "1px solid var(--borderDecorative)" } });
+  }
+  return cloneElement(
+    child,
+    direction === "column"
+      ? { borderTopColor: "$borderDecorative", borderTopWidth: 1 }
+      : { borderLeftColor: "$borderDecorative", borderLeftWidth: 1 },
+  );
+};
+
+/** The direction of the nearest Stack above, which sets whether a Stack shrinks by default. */
+const StackDirection = createContext<"column" | "row" | undefined>(undefined);
 
 type Active = "base" | StackBreakpoint;
 const breakpointNames = Object.keys(breakpoints) as StackBreakpoint[];
@@ -181,19 +224,33 @@ type StackProps = StackOwnProps &
  * own (no colour, border or padding), so a call site keeps what it is for in its own element and
  * hands the arrangement here. Web and native share one implementation (Tamagui's View maps to a
  * flex <div> on web and a View on native), so a row reads the same on both.
+ *
+ * Whether a Stack shrinks as a flex item follows the Stack around it. In a column it does not
+ * (`flexShrink` 0, as in React Native): a Stack that shrank there collapsed below its content in a
+ * height-capped column. In a row it does (1), so a text cell wraps or truncates beside its
+ * neighbours. A Stack with no Stack above it shrinks (1), as a `<div>` does. A `flexShrink` prop
+ * always wins, so a flex-1 child of a column that must give way sets `flexShrink={1}`.
+ *
+ * "Around it" is the nearest Stack above it in the tree, however many elements sit between: the
+ * direction travels through a React context, which a `<div>`, `Card` or `Surface` does not reset.
+ * A Stack inside a flex container that is not a Stack, under a Stack of the other direction, sets
+ * `flexShrink` itself. A responsive `direction` counts as the one in force at the current width.
  */
 const Stack = ({
   align = "stretch",
   direction = "column",
+  children,
   columnGap,
+  divided = false,
   gap = "none",
+  hidden = false,
   justify = "start",
   rowGap,
   wrap = false,
   ...props
 }: StackProps) => {
   const active = useActiveBreakpoint(
-    [align, direction, gap, justify, rowGap, columnGap].some((value) => isResponsive<string>(value)),
+    [align, direction, gap, hidden, justify, rowGap, columnGap].some((value) => isResponsive<unknown>(value)),
   );
   const space = (value: StackGap) => (value === "none" ? 0 : value);
   const resolvedGap = resolve(gap, active);
@@ -208,20 +265,33 @@ const Stack = ({
           columnGap: space(resolvedColumnGap ?? resolvedGap),
           rowGap: space(resolvedRowGap ?? resolvedGap),
         };
+  const parentDirection = useContext(StackDirection);
+  const resolvedDirection = resolve(direction, active);
   return (
-    // Tamagui's View never shrinks as a flex item (flex-shrink 0), unlike the <div> a call site moves
-    // from, so a Stack in a flex row would overflow rather than give way. A caller can still set it.
-    <View
-      flexShrink={1}
-      {...props}
-      alignItems={alignItems[resolve(align, active)]}
-      flexDirection={resolve(direction, active)}
-      flexWrap={wrap ? "wrap" : "nowrap"}
-      justifyContent={justifyContent[resolve(justify, active)]}
-      {...spacing}
-    />
+    <StackDirection.Provider value={resolvedDirection}>
+      {/* In a column a Stack keeps its height (flex-shrink 0); anywhere else it gives way. */}
+      <View
+        flexShrink={parentDirection === "column" ? 0 : 1}
+        {...props}
+        alignItems={alignItems[resolve(align, active)]}
+        flexDirection={resolvedDirection}
+        flexWrap={wrap ? "wrap" : "nowrap"}
+        justifyContent={justifyContent[resolve(justify, active)]}
+        {...(resolve(hidden, active) ? { display: "none" as const } : undefined)}
+        {...spacing}
+      >
+        {divided
+          ? Children.toArray(children).map((child, index) =>
+              index > 0 && isValidElement<Record<string, unknown>>(child)
+                ? withLeadingHairline(child, resolvedDirection)
+                : child,
+            )
+          : children}
+      </View>
+    </StackDirection.Provider>
   );
 };
 
 export type { StackAlign, StackBreakpoint, StackGap, StackJustify, StackProps, StackResponsive };
-export { Stack };
+// The responsive machinery, for the Grid beside it: one breakpoint listener and one resolution rule.
+export { alignItems, isResponsive, resolve, Stack, useActiveBreakpoint };

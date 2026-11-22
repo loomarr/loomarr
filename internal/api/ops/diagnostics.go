@@ -141,7 +141,8 @@ type clientDiagnosticsInput struct {
 
 type clientDiagnosticsOutput struct {
 	Body struct {
-		Accepted int `json:"accepted"`
+		Accepted   int `json:"accepted"`
+		Vocabulary int `json:"vocabulary" minimum:"1" doc:"The client-event vocabulary version this server accepts. A client sends only the events and fields that version defines; a server that omits this is version 0."`
 	}
 }
 
@@ -412,6 +413,7 @@ func (s *Handlers) ingestClientDiagnostics(
 	}
 	out := &clientDiagnosticsOutput{}
 	out.Body.Accepted = accepted
+	out.Body.Vocabulary = diagnostics.ClientVocabulary
 	return out, nil
 }
 

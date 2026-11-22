@@ -67,9 +67,14 @@ const PickRow = ({
   return (
     <Stack
       align="center"
-      className="border-border bg-card rounded-md border px-2.5 py-1.5"
+      backgroundColor="$surfaceRaised"
+      borderColor="$borderDecorative"
+      borderRadius={6}
+      borderWidth={1}
       direction="row"
       gap="inline"
+      paddingHorizontal={10}
+      paddingVertical={6}
       render="li"
       wrap
     >
@@ -94,7 +99,7 @@ const PickRow = ({
           {episodeSelectionLabel(item)}
         </Badge>
       )}
-      {renderFeedback && <div className="ml-auto">{renderFeedback(item)}</div>}
+      {renderFeedback && <Stack marginLeft="auto">{renderFeedback(item)}</Stack>}
     </Stack>
   );
 };
@@ -151,7 +156,7 @@ const ApprovalQueueItem = ({
         direction={{ base: "column", sm: "row" }}
         gap={{ base: "3", sm: "4" }}
       >
-        <div className="min-w-0 flex-1">
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
           <Stack align="center" direction="row" gap="inline" wrap>
             <Text as="p" textRole="cardLabel">
               {title}
@@ -172,24 +177,25 @@ const ApprovalQueueItem = ({
             )}
           </Stack>
           {summary && (
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-              {summary}
-            </Text>
+            <Stack marginTop={4}>
+              <Text as="p" textRole="compact" tone="secondary">
+                {summary}
+              </Text>
+            </Stack>
           )}
           {requestedBy && (
-            <Text
-              as="p"
-              className="mt-1"
-              textRole="mono"
-              tone="secondary"
-            >{`Requested by ${requestedBy}`}</Text>
+            <Stack marginTop={4}>
+              <Text as="p" textRole="mono" tone="secondary">{`Requested by ${requestedBy}`}</Text>
+            </Stack>
           )}
           {denied && denyReason && (
-            <Text as="p" className="mt-1" textRole="compact" tone="danger">
-              {denyReason}
-            </Text>
+            <Stack marginTop={4}>
+              <Text as="p" textRole="compact" tone="danger">
+                {denyReason}
+              </Text>
+            </Stack>
           )}
-        </div>
+        </Stack>
 
         {!denied && !denying && (
           <Stack direction="row" flexShrink={0} gap="inline">
@@ -218,13 +224,15 @@ const ApprovalQueueItem = ({
           stops a member from re-submitting the same intent, having learned nothing. */}
       {denying && (
         <Stack
-          className="border-border border-t pt-2"
+          borderColor="$borderDecorative"
+          borderTopWidth={1}
           gap="2"
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
             void form.handleSubmit();
           }}
+          paddingTop={8}
           render="form"
         >
           <form.AppField name="reason">
@@ -263,7 +271,7 @@ const ApprovalQueueItem = ({
           changes the meaning of the button is not detail behind a toggle. */}
       {refused && refused.length > 0 && (
         // A warning takes `caution` (#1909 Q5); amber is focus and the primary action.
-        <Stack className="border-caution-tint-40 bg-caution-tint-8 rounded-md border px-3 py-2" gap="1.5">
+        <Card borderRadius={6} gap={6} paddingHorizontal={12} paddingVertical={8} tone="caution">
           <Stack align="center" direction="row" gap="1.5" render="p">
             <Icon decorative glyph={icons.risk} size="compact" tone="warning" />
             <Text as="span" textRole="cardLabel">
@@ -312,7 +320,7 @@ const ApprovalQueueItem = ({
               </Action>
             </Surface>
           )}
-        </Stack>
+        </Card>
       )}
 
       {/* Beside the refusals for the same reason: approving gets a channel that doesn't follow the
@@ -332,7 +340,7 @@ const ApprovalQueueItem = ({
       {outlook?.(() => setOpen(true))}
 
       {hasPicks && (
-        <div className="border-border border-t pt-2">
+        <Stack borderColor="$borderDecorative" borderTopWidth={1} paddingTop={8}>
           <Action
             aria-expanded={open}
             icon={open ? "showLess" : "showMore"}
@@ -347,21 +355,22 @@ const ApprovalQueueItem = ({
             // with drop/add/note. Without one it stays read-only, so every other caller and the
             // member-facing views are unchanged.
             (onEdit ? (
-              <ProposalEdit
-                className="mt-2"
-                lineup={lineup ?? []}
-                acquisitions={acquisitionItems ?? []}
-                alternates={alternates ?? []}
-                episodeSelectionPreview={episodeSelectionPreview}
-                value={edit}
-                disabled={status === "approving"}
-                // The title editor knows drops, adds and the note; a raised limit is kept across.
-                onChange={(next) => onEdit(withAudience(next, edit?.audience))}
-                showNote
-                renderFeedback={renderFeedback}
-              />
+              <Stack marginTop={8}>
+                <ProposalEdit
+                  lineup={lineup ?? []}
+                  acquisitions={acquisitionItems ?? []}
+                  alternates={alternates ?? []}
+                  episodeSelectionPreview={episodeSelectionPreview}
+                  value={edit}
+                  disabled={status === "approving"}
+                  // The title editor knows drops, adds and the note; a raised limit is kept across.
+                  onChange={(next) => onEdit(withAudience(next, edit?.audience))}
+                  showNote
+                  renderFeedback={renderFeedback}
+                />
+              </Stack>
             ) : (
-              <Stack className="mt-2" gap="1.5" render="ul">
+              <Stack gap="1.5" marginTop={8} render="ul">
                 {lineup?.map((it) => (
                   <PickRow key={`lib-${it.name}`} item={it} kind="lineup" renderFeedback={renderFeedback} />
                 ))}
@@ -370,7 +379,7 @@ const ApprovalQueueItem = ({
                 ))}
               </Stack>
             ))}
-        </div>
+        </Stack>
       )}
     </Card>
   );

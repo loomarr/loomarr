@@ -41,7 +41,8 @@ inference that produced it; the Go policy assigns authority, and evidence cannot
   in-clip signal: filename plus uploader description is one uploader talking twice.
 - A high-confidence commercial needs a corroborated product from the closed taxonomy; open-text
   brand cannot substitute. A clip may still be Ready with enrollment-grounded break-body placement
-  while its role stays unclassified.
+  while its role stays unclassified, but it does not air until its role, era and audience are known
+  (#3838 decision 6).
 - All text from filenames, metadata, transcripts, OCR and frames is untrusted data with no
   instruction authority. Contradiction is a first-class result: invoke one bounded extra rung or
   abstain with a question. More conflicting tokens never raise confidence.
@@ -121,8 +122,15 @@ brand is dropped; no brand is the honest common case.
 
 **Vision** samples keyframes and asks for brand, category and the `visibleText` it read.
 
-- Brand and era must be supported by `visibleText`: they are specific facts, and a model that emits
-  one it did not see has fabricated something checkable.
+- A brand and a literal era year must be supported by `visibleText`: they are specific facts, and a
+  model that emits one it did not see has fabricated something checkable.
+- An era estimate is a separate, relaxed claim (#3838 decision 7). The model also answers an
+  `eraDecade` and an `eraConfidence` (high or low) from picture and sound. At high confidence, with
+  no literal year, the decade's first year is recorded as inference-ranked evidence
+  (`frame.era_estimate`) on a clip that has no era; literal evidence replaces it. The readiness
+  rung does not record it: the progressive vision pass does. An estimate sets the clip's era, so it
+  also picks the era the defect floor measures the clip against. The prompt change is a new
+  prompt version, so each clip's frame pass runs once more.
 - Category must resolve to an existing taxon but need not be printed on screen: judging a toy advert
   as toys by seeing toys is what vision is for. (Requiring on-screen text admitted zero categories
   on a real reel and made split auto-confirm impossible.)
@@ -202,6 +210,11 @@ behaviour live on the Filler page. Text and inherited vision resolve one active 
 availability.
 
 ## Child screening (V67)
+
+**Off the ladder since #4409.** No screen rung is registered: a cut piece meets the same bar as a
+single downloaded ad (defects, language, transcript, vision), and a row at `screen` is skipped. The
+qualification runtime only ever held, so no child could air. The package and its stored evidence
+types remain until their retirement (#4414); what follows describes them as built.
 
 Every materialized child is screened after its final playback derivative exists; a result over the
 parent span, a stream-copy cut or a preflight rendition cannot prove the bytes that will air.

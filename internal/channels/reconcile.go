@@ -190,10 +190,11 @@ type reconcilePlan struct {
 	chDomain        schedule.Channel
 	fillerIDs       []string
 	// acceptedSlots and acceptedAnchor are what the channel airs right now, as the encoder walks
-	// it; turnAnchor is where the rolling window leaves the anchor.
+	// it; turned says the rolling window turned in this reconcile, so the new cycle starts a slice
+	// of its own.
 	acceptedSlots  []schedule.Slot
 	acceptedAnchor time.Time
-	turnAnchor     time.Time
+	turned         bool
 	// desiredChangedLocally and channelListChangedLocally stay attempt-local so a stale commit
 	// publishes no freshness; the retry recomputes them from the winning row.
 	desiredChangedLocally     bool
@@ -302,9 +303,10 @@ func (e *Engine) planReconcile(
 	// from its own clock and has no way to be told where a window starts (#1691).
 	turnAnchor := ch.PlayoutAnchor
 	var accepted []schedule.Slot
+	turned := false
 	if playsInternally {
 		window, zone := e.RollingWindow(ch.Policy, e.now())
-		chDomain.WindowOpened, turnAnchor, _ = playout.WindowTurn(ch.Desired, ch.PlayoutAnchor, window, zone, e.now())
+		chDomain.WindowOpened, turnAnchor, turned = playout.WindowTurn(ch.Desired, ch.PlayoutAnchor, window, zone, e.now())
 		e.recordScheduled(ctx, ch, e.now()) // #1677: what the accepted cycle aired, watched or not
 		accepted = ch.Desired
 	}
@@ -326,17 +328,23 @@ func (e *Engine) planReconcile(
 	acceptedSlots, acceptedAnchor := ch.Desired, ch.PlayoutAnchor
 	if playsInternally {
 		desired.Slots = capCommercialBreaks(desired.Slots, playableFillerMs)
-		// A re-sized break must not move what has aired (2026-10-24: each re-size threw the viewer
-		// back into the programme, or into the same break again). Breaks that have aired or air
-		// within the freeze horizon keep their accepted length; a turned window starts a new slice
-		// from its own anchor, so there is nothing to hold.
-		if !acceptedAnchor.IsZero() && turnAnchor.Equal(acceptedAnchor) {
-			desired.Slots = playout.KeepAcceptedBreaks(acceptedSlots, desired.Slots, acceptedAnchor,
-				e.now().Add(MidRollFreezeHorizon))
-			// The hold never outlasts the operator's break length: a shorter setting is an edit and
-			// applies to every break at once. A smaller catalog stays held; its breaks air what fits.
-			desired.Slots = capCommercialBreaks(desired.Slots, chDomain.BreakDurationMs)
+		dealtFrom := e.dealtFrom(ch, chDomain.BreaksPerHour, desired.Slots)
+		// Nothing that has aired moves inside a window (#4140): a library change keeps the window
+		// and heals a vanished item in place, and an edit re-deals after the programme on air. A
+		// turned window starts a new slice from its own anchor, so there is nothing to hold.
+		if !acceptedAnchor.IsZero() && len(acceptedSlots) > 0 && !turned {
+			var windowEnds time.Time
+			if window, zone := e.RollingWindow(ch.Policy, e.now()); window > 0 {
+				windowEnds = schedule.NextWindowStart(acceptedAnchor, window, zone)
+			}
+			desired.Slots, turnAnchor = e.windowDeal(windowInputs{
+				accepted: acceptedSlots, anchor: acceptedAnchor, next: desired.Slots, now: e.now(),
+				windowOpened: chDomain.WindowOpened, windowEnds: windowEnds,
+				acceptedFrom: ch.DealtFrom, dealtFrom: dealtFrom, eligible: desired.EligibleKeys, avail: avail,
+			})
 		}
+		ch.DealtFrom = dealtFrom
+		desired.Slots = e.planWindowOnAir(ctx, ch, turnAnchor, desired.Slots)
 	}
 	// Building is the durable "this backend must (re)publish the channel list" marker:
 	// it covers first materialization and a backend switch that reuses a historical
@@ -351,7 +359,8 @@ func (e *Engine) planReconcile(
 	// channel's policy so the UI surfaces them; recomputed from scratch each
 	// reconcile, so a recovered pool automatically un-relaxes to an empty list.
 	// WithApplied is the reconcile-only writer — it touches Applied and nothing else (§2.1).
-	ch.Policy = ch.Policy.WithApplied(desired.Applied)
+	// The titles that cannot air are recorded the same way, for the channel page (#4140).
+	ch.Policy = ch.Policy.WithApplied(desired.Applied).WithUnairable(desired.Unairable)
 
 	// Filler is not inlined into desired. An internal encoder resolves each SlotFiller
 	// at airtime; Tunarr receives it as FLEX and fills it from the attached list below.
@@ -369,8 +378,9 @@ func (e *Engine) planReconcile(
 	}
 	nextStatus := e.statusFor(desired, drifted)
 	// Anchor a new channel at the instant its first playable deck becomes live. After that the
-	// anchor moves only when the rolling window turns: to the end of the programme that
-	// crossed the boundary (#1675), which is where the newly accepted slice starts airing.
+	// anchor moves when the rolling window turns, to the end of the programme that crossed the
+	// boundary (#1675), which is where the newly accepted slice starts airing; and when an edit
+	// re-deals inside the window, to the start of the programme on air, which opens the new cycle.
 	ch.PlayoutAnchor = turnAnchor
 	if ch.PlayoutAnchor.IsZero() && (nextStatus == schedule.StatusLive || nextStatus == schedule.StatusDrifted) {
 		ch.PlayoutAnchor = e.now().UTC().Truncate(time.Second)
@@ -386,7 +396,7 @@ func (e *Engine) planReconcile(
 	return &reconcilePlan{
 		ch: ch, previousStatus: previousStatus, nextStatus: nextStatus, playsInternally: playsInternally,
 		desired: desired, chDomain: chDomain, fillerIDs: fillerIDs,
-		acceptedSlots: acceptedSlots, acceptedAnchor: acceptedAnchor, turnAnchor: turnAnchor,
+		acceptedSlots: acceptedSlots, acceptedAnchor: acceptedAnchor, turned: turned,
 		desiredChangedLocally: desiredChangedLocally, channelListChangedLocally: channelListChangedLocally,
 	}, nil
 }
@@ -485,7 +495,7 @@ func (e *Engine) projectToTunarr(ctx context.Context, plan *reconcilePlan, run *
 func (e *Engine) commitReconcile(ctx context.Context, plan *reconcilePlan, run *reconcileRun) error {
 	ch, desired, channelID := plan.ch, plan.desired, plan.ch.ID
 	nextStatus, previousStatus, playsInternally := plan.nextStatus, plan.previousStatus, plan.playsInternally
-	acceptedSlots, acceptedAnchor, turnAnchor := plan.acceptedSlots, plan.acceptedAnchor, plan.turnAnchor
+	acceptedSlots, acceptedAnchor, turned := plan.acceptedSlots, plan.acceptedAnchor, plan.turned
 	desiredChangedLocally, channelListChangedLocally := plan.desiredChangedLocally, plan.channelListChangedLocally
 
 	// 6: persist. Status reflects drift; a channel with any real program is live.
@@ -514,7 +524,7 @@ func (e *Engine) commitReconcile(ctx context.Context, plan *reconcilePlan, run *
 	// reconcile computes again, so it keeps the stop-on-change rule. Postgres lifecycle
 	// invalidations apply the same rule on peer replicas (playout.OnAirChanged).
 	onAirChanged := desiredChangedLocally
-	if !acceptedAnchor.IsZero() && turnAnchor.Equal(acceptedAnchor) {
+	if !acceptedAnchor.IsZero() && !turned {
 		onAirChanged = playout.OnAirChanged(acceptedSlots, acceptedAnchor, ch.Desired, ch.PlayoutAnchor,
 			e.now(), e.now().Add(playout.OnAirLookahead))
 	}
@@ -526,6 +536,8 @@ func (e *Engine) commitReconcile(ctx context.Context, plan *reconcilePlan, run *
 	// Tunarr streams its own way and never reads them.
 	if playsInternally {
 		e.premeasureAhead(ctx, ch)
+		// The next window airs before reconcile commits it, so its breaks are planned now (#3838).
+		e.planNextWindow(ctx, ch)
 	}
 
 	// 7: media-server freshness (best-effort; never fails reconcile). A committed local

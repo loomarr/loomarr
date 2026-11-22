@@ -50,6 +50,10 @@ type CyclePreviewer interface {
 	// exactly as reconcile resolves them, so the resolver turns the window where reconcile will.
 	RollingWindow(policy schedule.ChannelPolicy, at time.Time) (time.Duration, *time.Location)
 	CarriesOver(ctx context.Context, policy schedule.ChannelPolicy) (bool, error)
+	// TurnedWindow is the next window as it airs before reconcile commits it: CyclePreview's
+	// cycle with each break at the length reconcile planned for it ahead of the turn (#3838 step
+	// 2). A read like the rest: reconcile is the only writer of the break plans.
+	TurnedWindow(ctx context.Context, channelID string, at, turnAnchor time.Time) ([]schedule.Slot, error)
 	// Calendar is the holiday calendar the arrangement reads, so the cycle cache keys on it.
 	Calendar() schedule.Calendar
 }
@@ -98,6 +102,9 @@ type Resolver struct {
 	engine  CyclePreviewer
 	now     func() time.Time
 	metrics *metrics.Recorder
+	// Faults counts the airings of each filler clip that failed to encode and feeds a clip that
+	// keeps failing back to the catalog (#3855).
+	Faults AirFaults
 	// titles resolves a block's acquisition record for the grid's provenance line. Nil ⇒ the
 	// line is simply absent, which is the right degradation: a guide without provenance is
 	// still a guide.
@@ -432,13 +439,15 @@ const servedWriteTimeout = 5 * time.Second
 // and recording on a read rested ads on channels nobody watched.
 //
 // A programme is recorded under its provisioning key (§5, programming-design §3.1), the input
-// recency-aware placement ranks on. It is stamped with its START (`resolvedAt - Offset`), not with
-// the serve time, so the value means "when did this programme begin airing" however late anyone
-// tuned in. The row is an upsert holding the last airing, so the packager re-resolving after an
-// encoder restart is idempotent. It is also stamped with when it was observed, never earlier than
-// the start, because placement reads history as of a window's start (#1674): the packager resolves
-// up to its run-ahead early, and a programme that opens a window must not count toward that
-// window's arrangement.
+// recency-aware placement ranks on. It is stamped with its START (Airing.ProgramStartedAt), not
+// with the serve time, so the value means "when did this programme begin airing" however late
+// anyone tuned in, and in whichever segment of a programme split at natural breaks: one watched
+// airing is one row (#4140). `resolvedAt - Offset` is not that start: Offset is a source position
+// and leaves out the mid-roll breaks. The row is an upsert holding the last airing, so the
+// packager re-resolving after an encoder restart is idempotent. It is also stamped with when it
+// was observed, never earlier than the start, because placement reads history as of a window's
+// start (#1674): the packager resolves up to its run-ahead early, and a programme that opens a
+// window must not count toward that window's arrangement.
 //
 // A filler clip is counted by HASH (`RecordClipPlay` is `WHERE hash = ?`; keyed by path every
 // counter stayed at zero) at its SCHEDULED start, which the store makes idempotent; an entry with
@@ -469,7 +478,7 @@ func (r *Resolver) RecordAiringServed(ctx context.Context, channelID string, air
 			r.metrics.FillerRotationAired(airing.RecentRepeat, airing.RecentRepeat && !airing.RotationPinned, airing.RotationPinned)
 		}
 	case r.airings != nil && airing.Key != "":
-		startedAt := resolvedAt.Add(-airing.Offset)
+		startedAt := airing.ProgramStartedAt
 		recordedAt := r.now()
 		if startedAt.After(recordedAt) {
 			recordedAt = startedAt
@@ -575,8 +584,8 @@ type airingCycle struct {
 //
 // The one exception is the rolling-window turn (#1675). Once the programme crossing the window
 // boundary has ended, the next window airs from that end whether or not reconcile has run yet to
-// commit it. Until it does, the next window is arranged here with CyclePreview, the computation
-// reconcile commits, so the handoff lands when the programme ends rather than at the next
+// commit it. Until it does, the next window is arranged here with TurnedWindow, the computation
+// reconcile commits, breaks planned included, so the handoff lands when the programme ends rather than at the next
 // reconcile (up to its cooldown later), which would swap the slice in mid-programme. Reconcile
 // applies the same rule (playout.WindowTurn) and commits the same anchor, and from then on this
 // reads Desired again.
@@ -600,7 +609,7 @@ func (r *Resolver) airingCycle(ctx context.Context, ch channelstore.Channel, at 
 	if !turned {
 		return c, nil
 	}
-	_, slots, _, _, err := r.engine.CyclePreview(ctx, ch.ID, at)
+	slots, err := r.engine.TurnedWindow(ctx, ch.ID, at, turnEpoch)
 	if err != nil {
 		return airingCycle{}, fmt.Errorf("arrange channel %s's next window: %w", ch.ID, err)
 	}
@@ -689,8 +698,10 @@ func (r *Resolver) airingFiller(
 				RecentRepeat:     e.RecentRepeat,
 				RotationPinned:   e.RotationPinned,
 				Title:            e.Name,
-				Offset:           into,
-				Remaining:        remaining,
+				// The entry airs from its window's start (#3384): the file's leading dead air is
+				// seeked past, never shown.
+				Offset:    time.Duration(e.AirStartMs)*time.Millisecond + into,
+				Remaining: remaining,
 			}, full, nil
 		}
 		into -= d

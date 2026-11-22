@@ -103,9 +103,13 @@ type Channel struct {
 	// not probed at runtime. One of BroadcastCodecH264 / BroadcastCodecHEVC; empty
 	// (an un-backfilled row read before the DDL default applies) reads as H264.
 	BroadcastCodec string
-	// PlayoutAnchor is the immutable wall-clock origin of this channel's accepted
-	// broadcast cycle. Building/empty channels may be zero until first activation.
+	// PlayoutAnchor is the wall-clock origin of this channel's accepted broadcast cycle, to the
+	// millisecond: playout_anchor holds its Unix seconds and playout_anchor_ms the rest. Building/empty
+	// channels may be zero until first activation.
 	PlayoutAnchor time.Time
+	// DealtFrom fingerprints what an operator had decided when Desired was dealt (#4140): reconcile
+	// keeps the window on air while it is unchanged. "" until a reconcile records it.
+	DealtFrom string
 	// ReconcileDeadline: the channel is due for a sweep reconcile at/before this
 	// time. Leased forward on claim (§9/§18).
 	ReconcileDeadline time.Time
@@ -289,7 +293,8 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 	args := []any{storedb.OptionalID(ch.IntentRef), ch.FromRequest, storedb.OptionalJSON(ch.IntentJSON), storedb.OptionalID(ch.RequestedBy), ch.Name, ch.Number, ch.Group, ch.Logo,
 		string(ch.Strategy), ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
 		string(desiredBlob), string(policyBlob), broadcastCodec,
-		storedb.Epoch(ch.PlayoutAnchor), storedb.Epoch(ch.ReconcileDeadline), ch.UpdatedAt}
+		storedb.Epoch(ch.PlayoutAnchor), storedb.Epoch(ch.ReconcileDeadline), ch.UpdatedAt, ch.DealtFrom,
+		anchorMillis(ch.PlayoutAnchor)}
 	invalidation := ""
 	if s.inv != nil {
 		invalidation, err = s.inv.Saved(ch)
@@ -306,8 +311,8 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 			`INSERT INTO channels
 			   (id, intent_ref, from_request, intent_json, requested_by, name, number, grp, logo, strategy,
 			    tunarr_id, status, shuffle_seed, desired_json, policy_json, broadcast_codec,
-			    playout_anchor, reconcile_deadline, updated_at, revision, created_at)
-			 VALUES (?, ` + intentJobValue + `, ?, ?, ` + requesterValue + `, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+			    playout_anchor, reconcile_deadline, updated_at, dealt_from, playout_anchor_ms, revision, created_at)
+			 VALUES (?, ` + intentJobValue + `, ?, ?, ` + requesterValue + `, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 			 RETURNING revision`
 		queryArgs := append(append([]any{ch.ID}, args...), storedb.Epoch(ch.CreatedAt))
 		if s.inv != nil {
@@ -332,7 +337,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 		   intent_ref=` + intentJobValue + `, from_request=?, intent_json=?, requested_by=` + requesterValue + `, name=?, number=?, grp=?, logo=?, strategy=?,
 		   tunarr_id=?, status=?, shuffle_seed=?, desired_json=?,
 		   policy_json=?, broadcast_codec=?, playout_anchor=?, reconcile_deadline=?, updated_at=?,
-		   revision=revision+1
+		   dealt_from=?, playout_anchor_ms=?, revision=revision+1
 		 WHERE id=? AND revision=?
 		 RETURNING revision`
 	queryArgs := append(args, ch.ID, expected)
@@ -508,7 +513,7 @@ func ColumnsAs(alias, lineup string) string {
 	head := []string{"id", "intent_ref", "from_request", "intent_json", "requested_by", "name", "number",
 		"grp", "logo", "strategy", "tunarr_id", "status", "shuffle_seed"}
 	tail := []string{"desired_json", "policy_json", "broadcast_codec", "playout_anchor", "reconcile_deadline",
-		"updated_at", "revision", "created_at"}
+		"updated_at", "revision", "created_at", "dealt_from", "playout_anchor_ms"}
 	qualify := func(cols []string) string {
 		if alias != "" {
 			for i, c := range cols {
@@ -610,12 +615,12 @@ func ScanChannel(sc storedb.Scannable) (Channel, error) {
 		strategy, status                    string
 		lineupBlob, desiredBlob, policyBlob string
 		seed, anchor, deadline, updatedAt   int64
-		createdAt                           int64
+		createdAt, anchorMs                 int64
 	)
 	err := sc.Scan(&ch.ID, (*storedb.OptionalID)(&ch.IntentRef), &ch.FromRequest, (*storedb.OptionalJSON)(&ch.IntentJSON), (*storedb.OptionalID)(&ch.RequestedBy), &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
 		&strategy, &ch.TunarrID, &status, &seed,
 		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &anchor, &deadline, &updatedAt, &ch.Revision,
-		&createdAt)
+		&createdAt, &ch.DealtFrom, &anchorMs)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Channel{}, storedb.ErrNotFound
 	}
@@ -626,6 +631,9 @@ func ScanChannel(sc storedb.Scannable) (Channel, error) {
 	ch.Status = schedule.ChannelStatus(status)
 	ch.Shuffle.Seed = seed
 	ch.PlayoutAnchor = storedb.FromEpoch(anchor)
+	if !ch.PlayoutAnchor.IsZero() {
+		ch.PlayoutAnchor = ch.PlayoutAnchor.Add(time.Duration(anchorMs) * time.Millisecond)
+	}
 	if err := json.Unmarshal([]byte(lineupBlob), &ch.Lineup); err != nil {
 		return Channel{}, fmt.Errorf("unmarshal lineup %s: %w", ch.ID, err)
 	}
@@ -651,6 +659,14 @@ func ScanChannels(rows *sql.Rows) ([]Channel, error) {
 		out = append(out, ch)
 	}
 	return out, rows.Err()
+}
+
+// anchorMillis is the playout_anchor_ms column: the anchor's milliseconds past its whole second.
+func anchorMillis(anchor time.Time) int64 {
+	if anchor.IsZero() {
+		return 0
+	}
+	return int64(anchor.Nanosecond()) / int64(time.Millisecond)
 }
 
 // orEmptySlots ensures a nil slice serializes to `[]` not `null`, so the stored JSON round-trips

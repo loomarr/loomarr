@@ -19,8 +19,8 @@ builds, runtime image certification, Apple mobile, Apple TV, Android TV, Expo An
 tuner matrix, or the macOS harness.
 The required `main` merge queue then builds at most eight cumulative candidates concurrently against
 the current base. A queued PR waits only for `merge-gate.yml`, which reports the required `CI` check after proving
-the merged tree compiles, so it merges in minutes. `merge-gate-cache.yml` refreshes its Go cache from
-main at most hourly and keeps one entry. Beside it, the `merge_group` run of `ci.yml` is the
+the merged tree compiles and every migration it adds is numbered above the base's newest, so it
+merges in minutes. `merge-gate-cache.yml` refreshes its Go cache from main at most hourly and keeps one entry. Beside it, the `merge_group` run of `ci.yml` is the
 complete integration lane, reported as `CI assurance`: the same fail-closed classifier selects the
 complete affected gate set, and every selected result remains a dependency of that job. It finishes
 after the merge, so its evidence no longer blocks one. When it fails on a commit that reached main it
@@ -258,8 +258,9 @@ schemas. It rejects
 job containers, services, unaudited reusable-workflow delegation, container-acquiring actions, unknown keys,
 metadata-only or malformed steps, multiple execution mechanisms, and unapproved environment,
 defaults, condition, error-tolerance, shell, working-directory, or `MAKEFLAGS` controls. The root
-tool-version environment and the cache-save condition are admitted only at their exact current
-values. Its only permitted shell steps are the exact cache-epoch command and the suite's `make test-pg`; this
+tool-version environment is admitted only at its exact current values. The suite only restores its Go
+cache, which the Go cache warm workflow writes, so a cache save or any conditional action step is
+rejected. Its only permitted shell steps are the exact cache-epoch command and the suite's `make test-pg`; this
 closes dry-run, variable, wrapper, and quoting indirection without parsing arbitrary shell. Every
 repository workflow is also parsed structurally. Any service or job container or `docker://` action
 is rejected. Workflow shell is not interpreted: route-shaped steps are classified from the raw
@@ -342,7 +343,23 @@ actions, commands, or family registrations and colliding absolute step identitie
 The cache-cleanup workflow is one such run authority: its complete deletion command, step name and
 environment, exact `Cache cleanup` workflow name, closed `pull_request` trigger with only the
 `closed` type, workflow permissions, job name and runner, and absence of alternate execution context
-are source-bound rather than inferred from its one-step topology.
+are source-bound rather than inferred from its one-step topology. It deletes the closed PR's
+merge-ref and merge-queue caches. It also deletes the caches of the PR's head branch, which a
+manual dispatch on that branch saves, but only for a same-repository PR whose head is not the
+default branch.
+
+Shared caches are written on `main` only, because a cache is readable only from its own ref and the
+default branch (#1679). The Go cache warm workflow runs on every push to `main` and seeds each key
+when it is missing:
+
+- the race-lane and Postgres Go build caches, once per ISO week and `go.sum`;
+- the Go contracts cache;
+- the pnpm store, per lockfile;
+- the production ffmpeg archive, per pin.
+
+The race lanes and Postgres conformance only restore. Frontend and Playwright save the pnpm store,
+and the Go lanes and the playout bench save the ffmpeg archive, only on a `main` dispatch that finds
+the key missing.
 
 Make execution is closed over the checked-in root `Makefile` and every `mk/*.mk`: each module must be
 included exactly once, and non-recipe syntax is limited to the current plain assignments, targets,
@@ -432,7 +449,8 @@ Changes to `api`, `core`, `fixtures`, `player`, `design-system`, or `ui` select 
 native platforms because those packages are transitive inputs to both. The shared player package
 also selects Web, Tuner, Image, and Android TV because its browser and native adapters share one
 transport contract. Browser-only client-proof and Turborepo contract changes select the shared
-JavaScript gate without spending a native runner.
+JavaScript gate without spending a native runner. A `web/turbo.json` change selects Web as well,
+because the Frontend job's typecheck and package tests run through Turbo.
 The committed OpenAPI document is a schema input rather than a native binary input. An OpenAPI-only
 change regenerates the client, then the shared-client gate typechecks, tests, and bundles the browser,
 iOS, Android, and TV JavaScript consumers. A mobile or TV app change, a shared native/runtime package,
@@ -443,6 +461,35 @@ Apple mobile, Apple TV, and Expo Android mobile are active. The mobile Android j
 `impact_expo_android_mobile`, builds `CLIENT_APP=mobile`, and retains its standalone debug APK for
 seven days. Expo Android TV remains a classifier decision until its independently required job and
 current-main evidence exist.
+
+The shared-client lanes and the Frontend job keep Turbo's task cache in the Turbo Remote Cache, not
+the Actions cache. Frontend entry 8 runs `make fe-typecheck fe-packages`: Turbo's `typecheck` for
+`@loomarr/web` and every package it uses, then `test` for those packages. They are the same tasks
+with the same hashes as in `make clients-tests`, so a package tested in one workflow is a cache hit in
+the other. Both run in one entry because `test` depends on each package's `typecheck`, and two
+entries that miss would both typecheck the packages. Never pass `--only` to share the work out: it
+drops the dependency hashes, so a package change no longer invalidates `@loomarr/web`'s typecheck.
+The only environment variable a shared task declares is `JAVA_HOME` (on `test`), which both
+workflows take unchanged from the `ubuntu-latest` image.
+
+A file outside a package that one of its tasks reads is an input of that task alone, declared with
+`$TURBO_ROOT$` in the package's own `turbo.json`. The native Storybook sources (`native-stories/`,
+`.rnstorybook/`) are inputs of the design-system `test` task, the one Turbo task that reads them: the apps
+bundle the workshop only under `STORYBOOK_ENABLED`, which no Turbo task sets. The Expo config
+plugins (`web/scripts/with-*.cjs`) and the TestFlight config are inputs of the mobile and TV
+`doctor`, `test` and `bundle` tasks. `globalDependencies` in `web/turbo.json` keeps only the shared
+configs and the generated API client, because a change to it changes every task hash and misses the
+whole cache.
+
+Artifacts are signed (`remoteCache.signature` in `web/turbo.json`). `TURBO_CACHE` sets `merge_group`
+runs and runs on `main` to write, and every other run, pull requests included, to read
+(`local:rw,remote:r`). The setting lives in the client, so it is not an access control: a same-repo
+pull request run holds the same token. The merge queue may write here, unlike the Actions cache
+(#1679), because Remote Cache entries are keyed by team and task hash rather than by ref.
+The four optional secrets are `TURBO_TOKEN`, `TURBO_TEAM`, `TURBO_REMOTE_CACHE_SIGNATURE_KEY` and
+`TURBO_API`. Leave `TURBO_API` empty for Vercel, or set it to a self-hosted server. A run without
+`TURBO_TOKEN` uses no remote cache and runs every task. Fork and Dependabot pull requests are such
+runs. A run with a token but no key uploads nothing and treats every download as a miss.
 
 `make client-android-debug` keeps workstation-safe defaults: one Gradle worker, one native job, one
 Metro worker, a 1280 MB Gradle heap, and a 4 GB memory scope. The CI mobile job raises them through
@@ -815,11 +862,13 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
 - **`actions/cache` never overwrites an existing key.** A cache whose contents track something
   its key doesn't gets written once and frozen. Use a rolling key with `restore-keys`.
 - **The 10GB cap evicts LRU across all refs**, so closed PRs' caches push out live ones.
-  `cache-cleanup.yml` deletes both `refs/pull/N/merge` and matching merge-queue caches on close.
+  `cache-cleanup.yml` deletes `refs/pull/N/merge`, matching merge-queue caches and the same-repo
+  head branch's caches on close.
 - **Default-branch cache writes require a trusted trigger.** GitHub permits a default-branch writer
   from `push` or `workflow_dispatch`, but `merge_group` and `workflow_run` cannot promote their
-  outputs into that scope. The Go cache-save conditions therefore remain useful only for a deliberate
-  manual run on `main`; ordinary PR and queue runs are restore-only. Android is the bounded exception
+  outputs into that scope. Shared caches are therefore written by the `CI / Go cache warm` workflow on
+  `main` pushes, plus the pnpm and ffmpeg saves on a manual run on `main`; ordinary PR and queue
+  runs are restore-only. Android is the bounded exception
   justified by the measured 25m54s cold queue build: the admitted queue run emits an immutable
   compiler-cache transfer, and the queue-produced `push` validates and saves it without repeating any
   compilation. A `workflow_run` writer or a `push` warmer that rebuilds the product remains forbidden.

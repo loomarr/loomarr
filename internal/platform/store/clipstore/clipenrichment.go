@@ -74,6 +74,10 @@ func (s *Store) SetClipBrand(ctx context.Context, path, brand string, at time.Ti
 	return nil
 }
 
+// visionYieldsFromRank is the evidence rank at which an axis answer outranks a frame read:
+// item metadata (5) and operator (6) in enrichment.EvidenceRank. A test pins both kinds.
+const visionYieldsFromRank = 5
+
 // ApplyClipVision records one semantic vision pass (§10 V44/V55): the on-screen text it saw, a
 // grounded brand and era, and the taxonomy assertions supported by the frames. The facts, direct
 // assertions and rollups commit together.
@@ -87,6 +91,9 @@ func (s *Store) SetClipBrand(ctx context.Context, path, brand string, at time.Ti
 //
 // A blank vision brand preserves a brand grounded by the text tier. Era behaves the same way. Tags
 // are additive: vision can contribute evidence without erasing an operator or the text classifier.
+//
+// A frame read yields to stronger evidence: when the era or brand axis holds item-metadata or
+// operator evidence (visionYieldsFromRank and above), the column keeps that answer.
 func (s *Store) ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era int, leaves []string, at time.Time) error {
 	tx, err := s.h.Begin(ctx)
 	if err != nil {
@@ -99,13 +106,17 @@ func (s *Store) ApplyClipVision(ctx context.Context, hash, path, brand, visibleT
 	result, err := tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE clips SET
 		   enrichment_revision = CASE WHEN visible_text <> ? THEN enrichment_revision + 1 ELSE enrichment_revision END,
-		   brand = CASE WHEN ? <> '' THEN ? ELSE brand END,
+		   brand = CASE WHEN ? <> '' AND NOT EXISTS (
+		       SELECT 1 FROM filler_enrichment_axes WHERE clip_hash = ? AND axis = 'brand' AND evidence_rank >= ?)
+		     THEN ? ELSE brand END,
 		   visible_text = ?,
-		   era = CASE WHEN ? > 0 THEN ? ELSE era END,
+		   era = CASE WHEN ? > 0 AND NOT EXISTS (
+		       SELECT 1 FROM filler_enrichment_axes WHERE clip_hash = ? AND axis = 'era' AND evidence_rank >= ?)
+		     THEN ? ELSE era END,
 		   updated_at = ? WHERE hash = ? AND path = ?`),
 		visibleText,
-		brand, brand, visibleText,
-		era, era,
+		brand, hash, visionYieldsFromRank, brand, visibleText,
+		era, hash, visionYieldsFromRank, era,
 		epoch(at), hash, path)
 	if err != nil {
 		return fmt.Errorf("apply clip vision %s: %w", path, err)
@@ -245,6 +256,44 @@ func (s *Store) SetClipComposite(ctx context.Context, hash string, composite boo
 		composite, epoch(at), hash)
 	if err != nil {
 		return fmt.Errorf("set clip composite %s: %w", hash, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ClipsWithoutAirWindow lists the airable clips whose air window has not been measured (#3384):
+// present, unheld, not a compilation. Tags are not loaded: the air-window sweep reads only the row.
+func (s *Store) ClipsWithoutAirWindow(ctx context.Context) ([]Clip, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(clipSelect+
+		` WHERE air_end_ms = 0 AND removed_at = 0 AND held = FALSE AND is_composite = FALSE ORDER BY hash`))
+	if err != nil {
+		return nil, fmt.Errorf("list clips without an air window: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []Clip
+	for rows.Next() {
+		c, err := scanClip(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan clip without an air window: %w", err)
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// SetClipAirWindow records the part of a clip's file that airs (#3384). The window is measured
+// from the file's own quality report; it never changes the file or its duration.
+func (s *Store) SetClipAirWindow(ctx context.Context, hash string, startMs, endMs int64, at time.Time) error {
+	if startMs < 0 || endMs <= startMs {
+		return fmt.Errorf("set clip air window %s: [%d, %d) is not a window", hash, startMs, endMs)
+	}
+	res, err := s.h.ExecContext(ctx,
+		s.h.Rebind(`UPDATE clips SET air_start_ms = ?, air_end_ms = ?, updated_at = ? WHERE hash = ?`),
+		startMs, endMs, epoch(at), hash)
+	if err != nil {
+		return fmt.Errorf("set clip air window %s: %w", hash, err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound

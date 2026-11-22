@@ -152,6 +152,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 								"REPO":             "${{ github.repository }}",
 								"REF":              "refs/pull/${{ github.event.pull_request.number }}/merge",
 								"QUEUE_REF_PREFIX": "refs/heads/gh-readonly-queue/main/pr-${{ github.event.pull_request.number }}-",
+								"HEAD_REF":         "${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref != github.event.repository.default_branch && format('refs/heads/{0}', github.event.pull_request.head.ref) || '' }}",
 							},
 						}),
 					},
@@ -248,28 +249,19 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		"ci-clients.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}}),
 			"make clients-checks": exactWorkflowStep(6, "Verify the affected client graph", workflowStepAuthority{
-				targets:   []string{"clients-checks"},
-				condition: "matrix.lane == 'checks'",
-				environment: map[string]string{
-					"TMPDIR":                   "${{ runner.temp }}",
-					"TURBO_TELEMETRY_DISABLED": "1",
-				},
+				targets:     []string{"clients-checks"},
+				condition:   "matrix.lane == 'checks'",
+				environment: clientsTurboEnvironment(),
 			}),
 			"make clients-tests CLIENTS_APP=${{ matrix.lane == 'tv-tests' && 'tv' || 'mobile' }}": exactWorkflowStep(7, "Typecheck and test the client", workflowStepAuthority{
-				targets:   []string{"clients-tests"},
-				condition: "endsWith(matrix.lane, '-tests')",
-				environment: map[string]string{
-					"TMPDIR":                   "${{ runner.temp }}",
-					"TURBO_TELEMETRY_DISABLED": "1",
-				},
+				targets:     []string{"clients-tests"},
+				condition:   "endsWith(matrix.lane, '-tests')",
+				environment: clientsTurboEnvironment(),
 			}),
 			"make clients-bundles CLIENTS_APP=${{ matrix.lane }}": exactWorkflowStep(8, "Bundle the client", workflowStepAuthority{
-				targets:   []string{"clients-bundles"},
-				condition: "matrix.lane == 'mobile' || matrix.lane == 'tv'",
-				environment: map[string]string{
-					"TMPDIR":                   "${{ runner.temp }}",
-					"TURBO_TELEMETRY_DISABLED": "1",
-				},
+				targets:     []string{"clients-bundles"},
+				condition:   "matrix.lane == 'mobile' || matrix.lane == 'tv'",
+				environment: clientsTurboEnvironment(),
 			}),
 		}),
 		"ci-docs.yml": standardRunWorkflow(map[string]workflowStepAuthority{
@@ -281,7 +273,11 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make fe-unit FE_SHARD=${{ matrix.shard }}/6": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-unit"}, condition: "matrix.shard <= 6"}),
 			"make fe-checks":        exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-checks"}, condition: "matrix.shard == 7"}),
 			"make fe-tokens-verify": exactWorkflowStep(7, "Token artifacts are committed and current", workflowStepAuthority{targets: []string{"fe-tokens-verify"}, condition: "matrix.shard == 7"}),
-			"make fe-packages":      exactWorkflowStep(8, "", workflowStepAuthority{targets: []string{"fe-packages"}, condition: "matrix.shard == 8"}),
+			"make fe-typecheck fe-packages": exactWorkflowStep(8, "Typecheck and test the packages", workflowStepAuthority{
+				targets:     []string{"fe-typecheck", "fe-packages"},
+				condition:   "matrix.shard == 8",
+				environment: turboRemoteCacheEnvironment(),
+			}),
 		}),
 		"ci-go-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make vet vet-tags lint": exactWorkflowStep(4, "Static analysis", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "matrix.shard == 1"}),
@@ -289,7 +285,8 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make go-shard-verify SHARDS=2": exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}, condition: "matrix.shard == 1"}),
 			"make openapi-verify":           exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}, condition: "matrix.shard == 1"}),
 			"make retired-verify":           exactWorkflowStep(8, "Retired identifiers are gone from prose", workflowStepAuthority{targets: []string{"retired-verify"}, condition: "matrix.shard == 2"}),
-			"make observability-verify":     exactWorkflowStep(9, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, condition: "matrix.shard == 2", allowsAcquisition: true})}),
+			"make observability-verify":     exactWorkflowStep(9, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, condition: "matrix.shard == 2", allowsAcquisition: true}),
+			`./scripts/check-migration-order.sh pull_request "$GITHUB_EVENT_PATH"`: exactWorkflowStep(10, "Every added migration is numbered above main's newest", workflowStepAuthority{condition: "matrix.shard == 2 && github.event_name == 'pull_request'"})}),
 		"ci-go-cache-warm.yml": {
 			environment: standardWorkflowEnvironment(),
 			permissions: standardWorkflowPermissions(),
@@ -300,6 +297,10 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"contracts": {steps: map[string]workflowStepAuthority{
 					"make vet vet-tags lint": exactWorkflowStep(4, "Compile what the contracts analyse", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
 				}},
+				"pnpm": {steps: map[string]workflowStepAuthority{
+					"make fe-install": exactWorkflowStep(4, "Fill the store from the lockfile", workflowStepAuthority{targets: []string{"fe-install"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
+				}},
+				"ffmpeg": {steps: map[string]workflowStepAuthority{}},
 			},
 		},
 		"ci-go.yml": standardRunWorkflow(map[string]workflowStepAuthority{
@@ -361,7 +362,8 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			},
 		},
 		"merge-gate.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make vet": exactWorkflowStep(4, "The merged tree compiles, tests included", workflowStepAuthority{
+			`./scripts/check-migration-order.sh merge_group "$GITHUB_EVENT_PATH"`: exactWorkflowStep(1, "Every added migration is numbered above main's newest", workflowStepAuthority{}),
+			"make vet": exactWorkflowStep(5, "The merged tree compiles, tests included", workflowStepAuthority{
 				targets:   []string{"vet"},
 				condition: "steps.go.outputs.changed == 'true'",
 			}),
@@ -754,6 +756,27 @@ func codeQLWorkflowAuthority() workflowAuthority {
 			"analyze-ruby":                  {condition: "needs.changes.outputs.ruby == 'true'", permissions: analysisPermissions},
 			"analyze-rust":                  {condition: "needs.changes.outputs.rust == 'true'", permissions: analysisPermissions},
 		},
+	}
+}
+
+// clientsTurboEnvironment is the exact environment of every ci-clients.yml step that runs Turbo.
+func clientsTurboEnvironment() map[string]string {
+	environment := turboRemoteCacheEnvironment()
+	environment["TMPDIR"] = "${{ runner.temp }}"
+	return environment
+}
+
+// turboRemoteCacheEnvironment is the exact Turbo environment of the ci-frontend.yml step that runs
+// Turbo, and the base of clientsTurboEnvironment: the Remote Cache credentials, and TURBO_CACHE,
+// which lets only the merge queue and main write.
+func turboRemoteCacheEnvironment() map[string]string {
+	return map[string]string{
+		"TURBO_TELEMETRY_DISABLED":         "1",
+		"TURBO_API":                        "${{ secrets.TURBO_API }}",
+		"TURBO_TEAM":                       "${{ secrets.TURBO_TEAM }}",
+		"TURBO_TOKEN":                      "${{ secrets.TURBO_TOKEN }}",
+		"TURBO_REMOTE_CACHE_SIGNATURE_KEY": "${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}",
+		"TURBO_CACHE":                      "${{ (github.event_name == 'merge_group' || github.ref == 'refs/heads/main') && 'local:rw,remote:rw' || 'local:rw,remote:r' }}",
 	}
 }
 

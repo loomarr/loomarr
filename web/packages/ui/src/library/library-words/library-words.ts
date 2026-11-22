@@ -3,6 +3,7 @@ import type { StatusDot } from "@loomarr/design-system";
 import type { ComponentProps } from "react";
 import type {
   LibraryDetails,
+  LibraryFolderSummary,
   LibraryHeldRemoval,
   LibraryScan,
   LibrarySkipped,
@@ -80,6 +81,12 @@ const SKIPPED_KINDS = [
     title: (n: number) => count(n, "disc image Loomarr can't play", "disc images Loomarr can't play"),
     body: (names: string, n: number) =>
       `Loomarr plays video files, not whole discs. Rip ${names} to ${n === 1 ? "a video file" : "video files"}, then check again.`,
+  },
+  {
+    reasons: ["empty_file"],
+    title: (n: number) => count(n, "video file is empty", "video files are empty"),
+    body: (names: string, n: number) =>
+      `${names} ${n === 1 ? "has" : "have"} nothing in ${n === 1 ? "it" : "them"} — a copy that never finished. Copy ${n === 1 ? "it" : "them"} again or delete ${n === 1 ? "it" : "them"}, then check again.`,
   },
   {
     reasons: ["identity_conflict", "invalid_facts"],
@@ -214,9 +221,24 @@ const detailsWaiting = (details: LibraryDetails | undefined, scan: LibraryScan, 
   return { title, line: `${title} — ${retry}`, reason };
 };
 
+// What the folder browser says a folder holds, one look inside it (#2151):
+//   "12 folders · 340 videos", "3 folders", "1 video", "Empty", "Slow to answer",
+//   "Loomarr can't open this", and "…" while it is being counted.
+const folderSummary = (summary: LibraryFolderSummary | undefined) => {
+  if (!summary) return "…";
+  if (summary.state === "slow") return "Slow to answer";
+  if (summary.state === "unreadable") return "Loomarr can't open this";
+  const parts = [
+    summary.folders ? count(summary.folders, "folder", "folders") : "",
+    summary.videos ? count(summary.videos, "video", "videos") : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "Empty";
+};
+
 export {
   detailsWaiting,
   folderName,
+  folderSummary,
   heldNames,
   heldTitle,
   joinNames,

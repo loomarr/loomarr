@@ -1,6 +1,16 @@
-import { Action, Badge, Field, StatusDot, Surface, Tabs, Text, useWindowWidth } from "@loomarr/design-system";
+import {
+  Action,
+  Badge,
+  Field,
+  StatusDot,
+  Surface,
+  Tabs,
+  Text,
+  useReducedMotionPreference,
+  useWindowWidth,
+} from "@loomarr/design-system";
 import { type ComponentProps, useState } from "react";
-import { Pressable } from "react-native";
+import { Pressable, View } from "react-native";
 
 import { StatePanel } from "../../state-panel";
 import { LibraryGrid } from "../library-grid";
@@ -111,8 +121,25 @@ const subtitle = (title: LibraryShelfTitle) => {
   return title.year ? `${title.year} · ${kind}` : kind;
 };
 
+// A poster grows a little under the pointer, so a household sees it opens (the maintainer's call,
+// 2026-11-21: an exception to #2789's motion rule, for the Library's posters only). It grows over
+// the base interaction time and not at all with reduced motion.
+const HOVER_SCALE = 1.04;
+const HOVER_MS = 200;
+
 const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void }) => {
   const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const reduced = useReducedMotionPreference();
+  const grow =
+    reduced === false
+      ? {
+          transform: [{ scale: hovered ? HOVER_SCALE : 1 }],
+          transitionDuration: `${HOVER_MS}ms`,
+          transitionProperty: "transform",
+          transitionTimingFunction: "ease-out",
+        }
+      : {};
   return (
     // ⚠ Named by what it shows (the badge or dot, the title, its year and kind), not a label of its
     // own: a label that leaves out visible words fails WCAG 2.5.3, and voice control users say
@@ -121,40 +148,44 @@ const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void 
       accessibilityRole="button"
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
       onPress={onOpen}
       style={{ minWidth: 0, width: "100%" }}
     >
       <Stack gap="inline">
-        <Surface
-          backgroundColor="transparent"
-          borderColor={focused ? "actionFocus" : "transparent"}
-          borderRadius="control"
-          borderWidth={2}
-        >
-          <LibraryPoster art={title.poster} dim={!title.ready} name={title.name}>
-            {title.ready ? null : (
-              <Line flexWrap="nowrap" left={8} position="absolute" top={8}>
-                <Badge tone="neutral">Getting ready</Badge>
-                <Twirl />
-              </Line>
-            )}
-            {title.ready && title.attention ? (
-              // A dot, not a badge: a three-across phone grid has no room for a word on the poster.
-              <Surface
-                backgroundColor="surfaceCanvas"
-                borderRadius="round"
-                borderWidth={0}
-                padding={6}
-                position="absolute"
-                right={8}
-                top={8}
-              >
-                <StatusDot label="Needs a look" tone="warn" />
-              </Surface>
-            ) : null}
-          </LibraryPoster>
-        </Surface>
-        <Stack gap={2} minHeight={56} minWidth={0}>
+        <View style={grow as object}>
+          <Surface
+            backgroundColor="transparent"
+            borderColor={focused ? "actionFocus" : "transparent"}
+            borderRadius="control"
+            borderWidth={2}
+          >
+            <LibraryPoster art={title.poster} dim={!title.ready} name={title.name}>
+              {title.ready ? null : (
+                <Line flexWrap="nowrap" left={8} position="absolute" top={8}>
+                  <Badge tone="neutral">Getting ready</Badge>
+                  <Twirl />
+                </Line>
+              )}
+              {title.ready && title.attention ? (
+                // A dot, not a badge: a three-across phone grid has no room for a word on the poster.
+                <Surface
+                  backgroundColor="surfaceCanvas"
+                  borderRadius="round"
+                  borderWidth={0}
+                  padding={6}
+                  position="absolute"
+                  right={8}
+                  top={8}
+                >
+                  <StatusDot label="Needs a look" tone="warn" />
+                </Surface>
+              ) : null}
+            </LibraryPoster>
+          </Surface>
+        </View>
+        <Stack flexShrink={1} gap={2} minHeight={56} minWidth={0}>
           {/* Left-aligned: on the web the tile is a <button>, which centres its text. */}
           <Text numberOfLines={2} textAlign="left" textRole="label">
             {title.name}
@@ -198,12 +229,12 @@ const Grid = ({
         // A row is layout only; the titles are the list's items.
         <Line alignItems="flex-start" flexWrap="nowrap" gap="control" paddingBottom="section" role="none">
           {row.map((title) => (
-            <Stack flexBasis={0} flexGrow={1} key={title.id} minWidth={0} role="listitem">
+            <Stack flexBasis={0} flexGrow={1} flexShrink={1} key={title.id} minWidth={0} role="listitem">
               <Tile onOpen={() => onOpenTitle(title.id)} title={title} />
             </Stack>
           ))}
           {slots.slice(row.length).map((slot) => (
-            <Stack aria-hidden flexBasis={0} flexGrow={1} key={slot} />
+            <Stack aria-hidden flexBasis={0} flexGrow={1} flexShrink={1} key={slot} />
           ))}
         </Line>
       )}

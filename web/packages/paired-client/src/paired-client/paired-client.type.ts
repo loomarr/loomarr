@@ -13,6 +13,7 @@ import type {
 import type { NativePlayerTransport, PlaybackMarks } from "@loomarr/player/native";
 
 import type { LastChannelStore } from "../last-channel";
+import type { PairedEvents } from "../paired-events";
 
 interface PairedClientOptions {
   credential: PairingCredential;
@@ -49,6 +50,8 @@ interface PairedClient {
   /** The channel's subtitles beside the stream, read with the device's token (see usePairedSubtitles). */
   channelSubtitles: ChannelSubtitlesSource;
   controller: PlayerController;
+  /** The device's one stream to the server, for anything else that follows its frames. */
+  events: PairedEvents;
   guide: GuideController;
   guideSnapshot: GuideControllerSnapshot;
   myChannels: MyChannelsController;

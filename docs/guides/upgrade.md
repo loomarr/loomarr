@@ -3,9 +3,29 @@
 **For:** household admins moving to a new release.
 **You'll get:** a backup you can restore, the new version running, and a way back if it goes wrong.
 
-Migrations only run forward, so: **back up, then pull.**
+Migrations only run forward. On SQLite, Loomarr keeps its own way back: when a new release finds
+migrations to run, it first copies the database, checks the copy, and only then migrates. So on
+SQLite an upgrade is **pull, then restart**, and Loomarr is down for the restart and migrations
+alone, a matter of seconds. On Postgres, **back up, then pull**.
+
+## The copy Loomarr keeps (SQLite)
+
+Before migrating, Loomarr writes `/data/backups/pre-migration/loomarr-pre-<from>-to-<to>-<time>.db`,
+where `<from>` and `<to>` are the schema versions. It runs SQLite's `quick_check` on the copy and
+keeps the newest three.
+
+If the copy can't be made or doesn't check out (most often, too little free disk: it needs about
+the database's size), Loomarr does **not** migrate. It exits, and the log says why. The database
+stays as the previous release left it, so the previous image still starts. Free some space and
+start again.
+
+The copy holds encrypted credentials but not the key that opens them, so keep `/data/encryption.key`
+(or your `LOOMARR_ENCRYPTION_KEY` secret) as you always have.
 
 ## Back up
+
+You can still take a backup of your own, and should keep one off the host. On Postgres, it is
+the only way back.
 
 The simplest way is the admin UI: **Settings → System → Backup**, which downloads a snapshot with
 your signed-in session — no token needed. To script it instead, use the endpoint below.
@@ -81,8 +101,13 @@ once the listener is up, `/v1/readyz` reports runtime readiness.
 
 Restore the backup, then run the older image.
 
-- **SQLite** — stop the container, replace `/data/loomarr.db`, restore ownership to uid/gid 65532,
-  set `LOOMARR_VERSION` to the older version, and start it. Confirm `/v1/readyz`, then sign in and
+- **SQLite, from the copy Loomarr kept** — stop the container. Move `/data/loomarr.db` aside,
+  along with any `loomarr.db-wal` and `loomarr.db-shm` beside it. Copy the newest
+  `/data/backups/pre-migration/loomarr-pre-*.db` to `/data/loomarr.db` and give it uid/gid 65532.
+  Set `LOOMARR_VERSION` to the release you came from, and start it. Anything recorded after the
+  upgrade began is lost; everything before it is there.
+- **SQLite, from your own backup** — stop the container, replace `/data/loomarr.db`, restore
+  ownership to uid/gid 65532, set `LOOMARR_VERSION` to the older version, and start it. Confirm `/v1/readyz`, then sign in and
   inspect a channel before discarding the newer backup.
 - **Postgres** — use the same Compose files as the running stack, stop Loomarr, replace only the
   Loomarr database, set `LOOMARR_VERSION` to the older version, and start with the Postgres

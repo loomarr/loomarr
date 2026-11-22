@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -36,8 +37,13 @@ type ChannelPolicy struct {
 	// It is NOT extracted — enforcement writes it, the API surfaces it. Recomputed
 	// from scratch each reconcile, so it un-relaxes automatically when the pool recovers.
 	// Reconcile-owned: rejected on write, force-preserved by MergeFromOperator.
-	// The ladder descends at most maxLadderSteps (8) steps, so a channel never records more.
+	// Each separation guard relaxes at most once (§7), so a channel records at most four.
 	Applied []AppliedRelaxation `json:"applied,omitempty" maxItems:"8"`
+	// Unairable lists the lineup titles that put nothing into the cycle at the last reconcile,
+	// each with why (#4140): not in the library, no episodes in the chosen seasons, refused by
+	// the ceiling or the scope. Reconcile-owned like Applied: recomputed each reconcile, ignored
+	// on write, and empty once every title airs.
+	Unairable []UnairableTitle `json:"unairable,omitempty" maxItems:"512"`
 	// OperatorSet lists the proposal-owned field paths the operator has explicitly set
 	// ("scope", "audience", "ordering", …). MergeFromProposal skips any field
 	// named here, so an operator edit is STICKY — a later refine/re-curation cannot silently
@@ -114,6 +120,10 @@ type OperatorPolicy struct {
 	// bounded by the quality bar + title cap (global defaults, optionally overridden here).
 	// Rides policy_json (no schema change), so it round-trips like every other policy field.
 	AutoCurate *AutoCurate `json:"autoCurate,omitempty"`
+	// Growth is how the channel grows by itself from the line its seeds draw (#4333). Nil grows:
+	// every channel grows unless kept as it is (decision 6). An operator write that omits it keeps
+	// the saved value, so a client that does not know the field cannot clear what was declined.
+	Growth *GrowthPolicy `json:"growth,omitempty"`
 	// Playout overrides which backend streams THIS channel (§9.1). Nil (the default) =
 	// inherit the `playout.backend` registry setting. Rides policy_json like everything
 	// above it, so there is no schema change and no migration.
@@ -244,6 +254,55 @@ type AutoCurate struct {
 	// MaxTitles overrides recurate.max_titles (the cap on how large this channel may grow).
 	// 0 = inherit the global default.
 	MaxTitles int `json:"maxTitles,omitempty"`
+}
+
+// GrowthPolicy is a channel's growth switches (#4333).
+type GrowthPolicy struct {
+	// Keep is "keep as it is": nothing joins the channel by itself.
+	Keep bool `json:"keep,omitempty"`
+	// Declined are titles taken back off from a growth batch. They never rejoin by themselves; a
+	// person can still add one by hand.
+	Declined []provision.Key `json:"declined,omitempty" maxItems:"1000"`
+}
+
+// Grows reports whether the channel takes titles by itself.
+func (p ChannelPolicy) Grows() bool { return p.Growth == nil || !p.Growth.Keep }
+
+// Declined reports whether a person took key back off a growth batch.
+func (p ChannelPolicy) Declined(key provision.Key) bool {
+	return p.Growth != nil && slices.Contains(p.Growth.Declined, key)
+}
+
+// maxDeclined is the GrowthPolicy.Declined cap; the oldest refusal is forgotten first.
+const maxDeclined = 1000
+
+// WithRemovedGrowthDeclined is p after a person edited the lineup from before to after: a title a
+// growth batch added and the edit took off is declined, so the next night does not add it back.
+// Taking a title off is the undo, whichever control a person used to do it (#4333).
+func (p ChannelPolicy) WithRemovedGrowthDeclined(before, after []LineupEntry) ChannelPolicy {
+	kept := make(map[provision.Key]bool, len(after))
+	for _, e := range after {
+		kept[e.Key] = true
+	}
+	var declined []provision.Key
+	for _, e := range before {
+		if e.Grown != "" && !kept[e.Key] && !p.Declined(e.Key) {
+			declined = append(declined, e.Key)
+		}
+	}
+	if len(declined) == 0 {
+		return p
+	}
+	g := GrowthPolicy{}
+	if p.Growth != nil {
+		g = *p.Growth
+	}
+	g.Declined = append(slices.Clone(g.Declined), declined...)
+	if over := len(g.Declined) - maxDeclined; over > 0 {
+		g.Declined = g.Declined[over:]
+	}
+	p.Growth = &g
+	return p
 }
 
 // FillerSelection is a channel's per-channel filler choice (§10). Every field is
@@ -412,8 +471,7 @@ func sameRanges(a, b []Range) bool {
 // ScopePolicy is the "what is allowed on this channel" filter (§2). Ids are
 // resolved provisioning keys, never names.
 //
-// Dates is the only date scope. The retired `era` field is still read as an alias on
-// decode (see UnmarshalJSON in datescope.go) and is never written.
+// Dates is the only date scope; a scope has no era field (#2147).
 type ScopePolicy struct {
 	Series      []provision.Key `json:"series,omitempty" maxItems:"1000"`     // restrict to these series (resolved ids); no larger than a lineup (1000)
 	Collections []string        `json:"collections,omitempty" maxItems:"100"` // media-server collections; a library has dozens
@@ -421,11 +479,6 @@ type ScopePolicy struct {
 	Dates       *DateScope      `json:"dates,omitempty"`                      // separate movie, premiere, and episode-airing windows
 	Genres      GenreFilter     `json:"genres,omitempty"`                     // include/exclude by genre name
 	RuntimeMax  int             `json:"runtimeMax,omitempty"`                 // seconds; 0 = unbounded ("nothing over an hour")
-
-	// eraAndDates records that the decoded JSON carried both `era` and `dates`. A stored
-	// policy decodes to their intersection; a request with both is ambiguous and the API
-	// rejects it (ChannelPolicy.DateAliasConflict). Decode-only state, never serialised.
-	eraAndDates bool
 }
 
 // DateScope keeps date meanings separate: title metadata supplies movie release and
@@ -606,11 +659,11 @@ type SeasonalPolicy struct {
 	Placement HolidayPlacement `json:"placement,omitempty"` // evenings | anytime; "" = evenings
 }
 
-// AppliedRelaxation records one step the relaxation ladder took (§7), surfaced in
+// AppliedRelaxation records one separation guard that relaxed (§7), surfaced in
 // the UI ("policy relaxed: repeat window 7d → 3d"). Kind is a stable slug; From/To
 // are human-readable values for display.
 type AppliedRelaxation struct {
-	Kind string `json:"kind"` // "episodeNoRepeat" | "seriesMinGap" | "era" | ...
+	Kind string `json:"kind"` // "episodeNoRepeat" | "movieNoRepeat" | "seriesMinGap" | "blockMax"
 	From string `json:"from"`
 	To   string `json:"to"`
 }

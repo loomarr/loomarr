@@ -258,11 +258,6 @@ func (d *DefectFloor) releaseEvidence(ctx context.Context, clips []DefectClip, f
 			d.released[c.Hash] = true
 			continue
 		}
-		// The judge can hold a pass for minutes, and a rewind holds the clip before it reads the
-		// sidecar. Re-read here, so a clip re-entering the conveyor keeps its evidence.
-		if now, found, err := d.store.GetClip(ctx, c.Hash); err != nil || !found || now.Held {
-			continue
-		}
 		if referenced == nil {
 			if referenced, err = d.referenced(ctx); err != nil {
 				d.warn("defects: evidence copies were not released; the catalog could not be listed", "err", err)
@@ -276,10 +271,8 @@ func (d *DefectFloor) releaseEvidence(ctx context.Context, clips []DefectClip, f
 				"sidecars", referenced.Unreadable())
 			return
 		}
-		evidence := tags.MediaAssets.Evidence.Asset.Path // non-nil: checked above
-		tags.MediaAssets.Evidence = nil
-		if err := asset.WriteSidecarTags(full, tags, false); err != nil {
-			d.warn("defects: an admitted clip's evidence copy could not be released", "clip", c.Hash, "err", err)
+		evidence, done := d.dropEvidence(ctx, c, full)
+		if !done {
 			continue
 		}
 		d.released[c.Hash] = true
@@ -291,6 +284,30 @@ func (d *DefectFloor) releaseEvidence(ctx context.Context, clips []DefectClip, f
 			d.warn("defects: a released evidence copy could not be removed", "clip", c.Hash, "file", evidence, "err", err)
 		}
 	}
+}
+
+// dropEvidence stops c's sidecar naming its evidence copy and returns that copy's path. It holds
+// the sidecar lock from the read to the write, so upkeep and a rewind see the sidecar before or
+// after, never halfway. The judge can hold a pass for minutes and a rewind holds the clip before
+// it takes the lock, so the hold is re-read inside it: a clip re-entering the conveyor keeps its
+// evidence.
+func (d *DefectFloor) dropEvidence(ctx context.Context, c DefectClip, full string) (string, bool) {
+	unlock := asset.LockSidecar(full)
+	defer unlock()
+	tags, ok := asset.ReadSidecarTags(full)
+	if !ok || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
+		return "", false
+	}
+	if now, found, err := d.store.GetClip(ctx, c.Hash); err != nil || !found || now.Held {
+		return "", false
+	}
+	evidence := tags.MediaAssets.Evidence.Asset.Path
+	tags.MediaAssets.Evidence = nil
+	if err := asset.WriteSidecarTags(full, tags, false); err != nil {
+		d.warn("defects: an admitted clip's evidence copy could not be released", "clip", c.Hash, "err", err)
+		return "", false
+	}
+	return evidence, true
 }
 
 // retireFailures retires every published copy whose verdict definitively fails; a held one is

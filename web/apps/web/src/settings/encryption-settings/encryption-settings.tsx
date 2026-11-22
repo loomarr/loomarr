@@ -1,5 +1,5 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Grid, Stack, Text } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -27,16 +27,18 @@ const EncryptionSettings = () => {
   };
 
   return (
-    <section className="border-border rounded-lg border p-4">
+    <Stack borderColor="$borderDecorative" borderRadius={8} borderWidth={1} padding={16} render="section">
       <Stack align="start" direction="row" gap="4" justify="between" wrap>
         <div>
           <Text as="h2" textRole="cardLabel">
             Database secret encryption
           </Text>
-          <Text as="p" className="mt-1 max-w-2xl" textRole="compact" tone="secondary">
-            Credentials saved in Loomarr are encrypted before they enter the database. Keep the installation
-            key with your host or secrets manager—it is not included in database backups.
-          </Text>
+          <Stack marginTop={4} maxWidth={672}>
+            <Text as="p" textRole="compact" tone="secondary">
+              Credentials saved in Loomarr are encrypted before they enter the database. Keep the installation
+              key with your host or secrets manager—it is not included in database backups.
+            </Text>
+          </Stack>
         </div>
         {confirming ? (
           <ConfirmStep
@@ -61,17 +63,17 @@ const EncryptionSettings = () => {
         )}
       </Stack>
       {status.error != null && (
-        <div className="mt-3">
+        <Stack marginTop={12}>
           <ErrorState error={status.error} />
-        </div>
+        </Stack>
       )}
       {rotate.error != null && (
-        <div className="mt-3">
+        <Stack marginTop={12}>
           <ErrorState error={rotate.error} />
-        </div>
+        </Stack>
       )}
       {encryption != null && (
-        <dl className="mt-4 grid gap-3 sm:grid-cols-3">
+        <Grid columns={{ base: 1, sm: 3 }} gap="3" marginTop={16} render="dl">
           <div>
             <Text as="dt" textRole="compact" tone="secondary">
               Status
@@ -84,7 +86,7 @@ const EncryptionSettings = () => {
             <Text as="dt" textRole="compact" tone="secondary">
               Installation key fingerprint
             </Text>
-            <Text as="dd" className="break-all" textRole="mono" tone="primary">
+            <Text as="dd" textRole="mono" tone="primary" wordBreak="break-all">
               {encryption.installationKeyFingerprint || "Unavailable"}
             </Text>
           </div>
@@ -96,14 +98,16 @@ const EncryptionSettings = () => {
               {encryption.dataKeyCount}
             </Text>
           </div>
-        </dl>
+        </Grid>
       )}
       {message != null && (
-        <Text as="p" className="mt-3" textRole="compact" tone="secondary">
-          {message}
-        </Text>
+        <Stack marginTop={12}>
+          <Text as="p" textRole="compact" tone="secondary">
+            {message}
+          </Text>
+        </Stack>
       )}
-    </section>
+    </Stack>
   );
 };
 

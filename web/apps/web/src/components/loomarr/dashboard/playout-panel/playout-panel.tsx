@@ -55,35 +55,40 @@ const EncoderRow = ({ capability, gpu }: { capability: PlayoutCapability; gpu: P
   return (
     <Stack
       align="center"
-      className="border-border bg-static-900/40 border-b px-4 py-2.5"
+      borderBottomWidth={1}
+      borderColor="$borderDecorative"
+      className="bg-static-900/40"
       direction="row"
       gap="control"
       justify="between"
+      paddingHorizontal={16}
+      paddingVertical={10}
     >
-      <div className="min-w-0">
+      <Stack minWidth={0}>
         <Text as="p" textRole="hint" tone="secondary">
           Encoder
         </Text>
-        <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
-          {summary}
-        </Text>
-        {!!gpu.vramGiB && (
-          <Text
-            as="p"
-            className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5"
-            textRole="hint"
-            tone="secondary"
-          >
-            <span>{gpu.name ?? "GPU"}</span>
-            <span>{formatVram(gpu.vramGiB)} total</span>
-            {gpu.llmModel && (
-              <span>
-                · {gpu.llmModel} holding {formatVram(gpu.llmVramGiB ?? 0)}
-              </span>
-            )}
+        <Stack marginTop={2}>
+          <Text as="p" textRole="compact" tone="secondary">
+            {summary}
           </Text>
+        </Stack>
+        {!!gpu.vramGiB && (
+          <Stack align="baseline" columnGap="2" direction="row" marginTop={2} render="p" rowGap="0.5" wrap>
+            <Text as="span" textRole="hint" tone="secondary">
+              {gpu.name ?? "GPU"}
+            </Text>
+            <Text as="span" textRole="hint" tone="secondary">
+              {formatVram(gpu.vramGiB)} total
+            </Text>
+            {gpu.llmModel && (
+              <Text as="span" textRole="hint" tone="secondary">
+                · {gpu.llmModel} holding {formatVram(gpu.llmVramGiB ?? 0)}
+              </Text>
+            )}
+          </Stack>
         )}
-      </div>
+      </Stack>
       {/* The whole reason the GPU header exists: a resident LLM sharing VRAM with the encoders is a
           real, silent cause of stutter, and nothing else on the dashboard says so. */}
       {gpu.contended && (
@@ -101,22 +106,27 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
     <PanelRow
       meta={
         <>
-          <div className="text-right">
-            <Text as="p" textRole="mono" tone="primary">
+          <Stack>
+            <Text as="p" textAlign="right" textRole="mono" tone="primary">
               {formatColdStart(channel.coldStartMs)}
             </Text>
-            <Text as="p" className="mt-0.5" textRole="mono">
-              {formatBuffer(channel.bufferedMs)}
+            <Stack marginTop={2}>
+              <Text as="p" textAlign="right" textRole="mono">
+                {formatBuffer(channel.bufferedMs)}
+              </Text>
+            </Stack>
+          </Stack>
+          <Stack render="span" width={56}>
+            <Text
+              as="span"
+              className="tabular-nums"
+              textAlign="right"
+              textRole="mono"
+              tone={slow ? "warning" : "secondary"}
+            >
+              {formatSpeed(channel.speed)}
             </Text>
-          </div>
-          <Text
-            as="span"
-            className="w-14 text-right tabular-nums"
-            textRole="mono"
-            tone={slow ? "warning" : "secondary"}
-          >
-            {formatSpeed(channel.speed)}
-          </Text>
+          </Stack>
           {/* A direct-play channel is REMUXED, not encoded — so "Hardware/Software" (an encoder
               distinction) is meaningless for it; it reads "Copy". Only a transcode has an encoder. */}
           {channel.mode === "direct-play" ? (
@@ -135,7 +145,7 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
       }
     >
       <Stack align="center" direction="row" gap="1.5">
-        <Text as="p" className="truncate" textRole="cardLabel">
+        <Text as="p" numberOfLines={1} textRole="cardLabel">
           {channelLabel(channel)}
         </Text>
         {/* The raw id lives behind an (i) affordance — noise on the row, useful for a support
@@ -154,9 +164,11 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
           </Action>
         </Tooltip>
       </Stack>
-      <Text as="p" className="mt-0.5 truncate" textRole="hint" tone="secondary">
-        {`${channel.target} · ${channel.mode}${channel.mode === "transcode" ? ` · ${channel.encoder}` : ""} · ${pluralize(channel.viewers, "viewer")}`}
-      </Text>
+      <Stack marginTop={2}>
+        <Text as="p" numberOfLines={1} textRole="hint" tone="secondary">
+          {`${channel.target} · ${channel.mode}${channel.mode === "transcode" ? ` · ${channel.encoder}` : ""} · ${pluralize(channel.viewers, "viewer")}`}
+        </Text>
+      </Stack>
     </PanelRow>
   );
 };
@@ -168,10 +180,13 @@ const PlayoutPanel = ({ status, loading, title = "Playout" }: PlayoutPanelProps)
     <Card flexShrink={0} overflow="hidden">
       <Stack
         align="center"
-        className="border-border border-b px-4 py-3"
+        borderBottomWidth={1}
+        borderColor="$borderDecorative"
         direction="row"
         gap="control"
         justify="between"
+        paddingHorizontal={16}
+        paddingVertical={12}
       >
         <Text as="h2" textRole="heading">
           {title}
@@ -184,25 +199,31 @@ const PlayoutPanel = ({ status, loading, title = "Playout" }: PlayoutPanelProps)
       </Stack>
 
       {loading && (
-        <Text as="p" className="px-4 py-6" textRole="compact" tone="secondary">
-          Reading playout status…
-        </Text>
+        <Stack paddingHorizontal={16} paddingVertical={24}>
+          <Text as="p" textRole="compact" tone="secondary">
+            Reading playout status…
+          </Text>
+        </Stack>
       )}
 
       {/* On a Tunarr-backed install there is no internal playout to show, which is not the same as
           every channel being unhealthy. */}
       {!loading && status != null && !status.running && (
-        <Text as="p" className="px-4 py-6" textRole="compact" tone="secondary">
-          Loomarr isn't streaming these channels. Tunarr is.
-        </Text>
+        <Stack paddingHorizontal={16} paddingVertical={24}>
+          <Text as="p" textRole="compact" tone="secondary">
+            Loomarr isn't streaming these channels. Tunarr is.
+          </Text>
+        </Stack>
       )}
 
       {!loading && status?.running && <EncoderRow capability={status.capability} gpu={status.gpu} />}
 
       {!loading && status?.running && channels.length === 0 && (
-        <Text as="p" className="px-4 py-6" textRole="compact" tone="secondary">
-          No channels are streaming right now.
-        </Text>
+        <Stack paddingHorizontal={16} paddingVertical={24}>
+          <Text as="p" textRole="compact" tone="secondary">
+            No channels are streaming right now.
+          </Text>
+        </Stack>
       )}
 
       {status?.running && channels.length > 0 && (

@@ -333,3 +333,66 @@ func TestProcessManagerFollowsLiveOutputDir(t *testing.T) {
 		t.Fatalf("reader dir = %q, want %q", reader.dir(), newDir)
 	}
 }
+
+// A page showing runs reads them again as each one is stored: as it begins (still running), and
+// last as it ends, which says so.
+// An idle encoder's metadata is stored again each flush tick with only its time moved; that
+// tells a page nothing, so it announces nothing. Output growing does.
+func TestProcessManagerAnnouncesOnlyWhatChanged(t *testing.T) {
+	changes := make(chan bool, 8)
+	manager := NewProcessManager(&processSinkMemory{}, nil, ProcessOptions{
+		OnChange: func(finished bool) { changes <- finished },
+	})
+	run := ProcessRun{ID: "run-1", Status: ProcessRunning, UpdatedAt: 1}
+	manager.enqueue(run)
+	run.UpdatedAt = 2
+	manager.enqueue(run)
+	run.UpdatedAt, run.OutputBytes = 3, 120
+	manager.enqueue(run)
+	run.UpdatedAt, run.Status = 4, ProcessSucceeded
+	manager.enqueue(run)
+	if err := manager.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	close(changes)
+	var got []bool
+	for finished := range changes {
+		got = append(got, finished)
+	}
+	if want := []bool{false, false, true}; !slices.Equal(got, want) {
+		t.Fatalf("announcements = %v, want %v (begin, output, end)", got, want)
+	}
+}
+
+func TestProcessManagerAnnouncesEachStoredRun(t *testing.T) {
+	var mu sync.Mutex
+	var changes []bool
+	manager := NewProcessManager(&processSinkMemory{}, nil, ProcessOptions{
+		OutputDir: t.TempDir(), FlushInterval: time.Hour,
+		Version: func(context.Context, string) string { return "" },
+		OnChange: func(finished bool) {
+			mu.Lock()
+			changes = append(changes, finished)
+			mu.Unlock()
+		},
+	})
+	handle := manager.Begin(ProcessSpec{Purpose: "probe", Executable: "ffprobe"})
+	if handle == nil {
+		t.Fatal("Begin returned nil")
+	}
+	handle.RecordOutput("probing")
+	handle.Finish(ProcessResult{})
+	if err := manager.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(changes) < 2 || changes[0] || !changes[len(changes)-1] {
+		t.Fatalf("announcements = %v, want a running run first and the finished run last", changes)
+	}
+	for _, finished := range changes[1 : len(changes)-1] {
+		if finished {
+			t.Fatalf("announcements = %v: only the last says the run finished", changes)
+		}
+	}
+}

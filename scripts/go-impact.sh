@@ -69,20 +69,19 @@ changed_list="$(printf '%s\n' "${changed_imports[@]}" | sort -u)"
 # in a string literal ("internal/library/scan" or "internal/library/scan/hooks.go"); its package
 # is selected with the importers.
 source_readers() {
-  local dir file
-  local -A seen=()
-  for dir in $(printf '%s\n' "${changed_dirs[@]}" | sort -u); do
-    [[ "$dir" == . ]] && continue
-    while IFS= read -r file; do
-      [[ -n "$file" ]] || continue
-      seen["${file%/*}"]=1
-    done < <(cd "$ROOT" && git grep -l -F -e "\"$dir\"" -e "\"$dir/" -- '*_test.go' || true)
-  done
-  ((${#seen[@]})) || return 0
-  local readers=()
-  for dir in "${!seen[@]}"; do
-    readers+=("./$dir")
-  done
+  # No associative array: macOS ships bash 3.2, which has no `local -A`. sort -u dedupes instead.
+  local dir file readers=()
+  while IFS= read -r dir; do
+    readers+=("$dir")
+  done < <(
+    for dir in $(printf '%s\n' "${changed_dirs[@]}" | sort -u); do
+      [[ "$dir" == . ]] && continue
+      (cd "$ROOT" && git grep -l -F -e "\"$dir\"" -e "\"$dir/" -- '*_test.go' || true)
+    done | while IFS= read -r file; do
+      [[ -z "$file" ]] || printf './%s\n' "${file%/*}"
+    done | sort -u
+  )
+  ((${#readers[@]})) || return 0
   (cd "$ROOT" && go list -e -f '{{if .Error}}{{else}}{{.ImportPath}}{{end}}' "${readers[@]}")
 }
 

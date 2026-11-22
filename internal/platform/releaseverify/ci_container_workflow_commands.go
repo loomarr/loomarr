@@ -2,11 +2,12 @@ package releaseverify
 
 const cacheCleanupWorkflowCommand = "set -uo pipefail\n" +
 	"# `|| true` on the list: a PR with no caches is the normal case for docs-only\n" +
-	"# work, and it must not fail the job.\n" +
+	"# work, and it must not fail the job. HEAD_REF is read through `env`, never spliced\n" +
+	"# into the filter, because a branch name may contain quotes.\n" +
 	"ids=$(gh api \"repos/$REPO/actions/caches\" --paginate \\\n" +
-	"        -q \".actions_caches[] | select(.ref==\\\"$REF\\\" or (.ref | startswith(\\\"$QUEUE_REF_PREFIX\\\"))) | .id\" 2>/dev/null || true)\n" +
+	"        -q \".actions_caches[] | select(.ref==\\\"$REF\\\" or (.ref | startswith(\\\"$QUEUE_REF_PREFIX\\\")) or (env.HEAD_REF != \\\"\\\" and .ref == env.HEAD_REF)) | .id\" 2>/dev/null || true)\n" +
 	"if [ -z \"$ids\" ]; then\n" +
-	"  echo \"no caches for $REF or $QUEUE_REF_PREFIX*\"\n" +
+	"  echo \"no caches for $REF, $QUEUE_REF_PREFIX* or ${HEAD_REF:-no head branch}\"\n" +
 	"  exit 0\n" +
 	"fi\n" +
 	"for id in $ids; do\n" +

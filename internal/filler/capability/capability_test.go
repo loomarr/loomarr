@@ -342,6 +342,8 @@ func runDeterministic(t *testing.T, st records.Store, files fstest.MapFS, at tim
 
 func usPod(c clips.Clip) pod.Pod {
 	c.Placement = clips.PlacementBreakBody
+	// Geography is the only fact under test: the rest of what a break needs is present.
+	c.Era, c.Audience = 1992, clips.General
 	return pod.Assemble([]clips.Clip{c}, pod.Window{ChannelID: "ch1", Seed: 1, GapMs: 60000, PodMax: 2},
 		pod.Policy{Geography: pod.Geography{Country: "US"}}, nil)
 }

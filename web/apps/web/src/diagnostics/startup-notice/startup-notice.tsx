@@ -1,15 +1,14 @@
-import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import type { HealthReport } from "@loomarr/api/models/healthReport";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { toast } from "sonner";
+import { useCurrentHealth } from "../use-current-health";
 
 // Below Tailwind's `sm` breakpoint (640 px): the widths the app lays out for a phone.
 const PHONE_QUERY = "(max-width: 639.98px)";
 
 const acknowledgedKey = (id: string) => `loomarr.health.ack.${id}`;
 const signatureKey = (generationID: string) => `loomarr.health.signature.${generationID}`;
-const sequenceKey = (generationID: string) => `loomarr.health.sequence.${generationID}`;
 
 // A build stamped with its commit rather than a release tag reports the full 40-character SHA; the
 // notice shows the short form people recognise (#2750). A release tag passes through unchanged.
@@ -28,14 +27,14 @@ const healthSignature = (health: HealthReport) => {
   return `${health.state}:${affected}`;
 };
 
-// One shell-level notice per material health transition. Its generation-local sequence stays
-// stable across ordinary refresh timestamps, so a persistent incident never flickers or repeats.
+// One shell-level notice per set of affected checks in a process generation. Dismissing it holds
+// until that set changes to one not yet seen or Loomarr restarts: a check that flaps between
+// passing and warning re-raised the same notice on every return (2026-11-18: ~1,180 transitions a
+// day). Home's status strip and Diagnostics still show each recurrence.
 const HealthNotice = ({ enabled }: { enabled: boolean }) => {
   const navigate = useNavigate();
   const onHome = useLocation({ select: (location) => location.pathname === "/" });
-  const healthQuery = diagnosticsApi.useGetCurrentHealth({
-    query: { enabled, retry: false, refetchInterval: 10_000 },
-  });
+  const healthQuery = useCurrentHealth({ enabled });
   const health = healthQuery.data?.status === 200 ? healthQuery.data.data : undefined;
   const signature = health ? healthSignature(health) : "";
   const affected =
@@ -47,13 +46,8 @@ const HealthNotice = ({ enabled }: { enabled: boolean }) => {
   useEffect(() => {
     if (!generationID || !state || !version || state === "starting") return;
     const lastSignature = localStorage.getItem(signatureKey(generationID));
-    let sequence = Number.parseInt(localStorage.getItem(sequenceKey(generationID)) ?? "0", 10);
-    if (lastSignature !== signature) {
-      sequence += 1;
-      localStorage.setItem(signatureKey(generationID), signature);
-      localStorage.setItem(sequenceKey(generationID), String(sequence));
-    }
-    const incident = `${generationID}:${sequence}:${signature}`;
+    if (lastSignature !== signature) localStorage.setItem(signatureKey(generationID), signature);
+    const incident = `${generationID}:${signature}`;
     const key = acknowledgedKey(incident);
     if (localStorage.getItem(key)) return;
     // Home's status strip already shows the incident (#2750); the toast would only sit over its

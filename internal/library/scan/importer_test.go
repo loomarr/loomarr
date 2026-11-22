@@ -29,10 +29,13 @@ import (
 type countingInventory struct {
 	inventory.Service
 	applied atomic.Int32
+	// slow, when set, is how long each write takes.
+	slow atomic.Int64
 }
 
 func (c *countingInventory) ApplySnapshot(ctx context.Context, s inventory.Snapshot) (inventory.ItemID, error) {
 	c.applied.Add(1)
+	time.Sleep(time.Duration(c.slow.Load()))
 	return c.Service.ApplySnapshot(ctx, s)
 }
 
@@ -492,12 +495,14 @@ func TestImportSymlinkedFolderKeepsOnePath(t *testing.T) {
 
 // A show's own tvshow.nfo is part of each episode's identity (#3226): giving it a TMDB id grounds
 // the show on the next pass, a full walk or a folder pass over one season, with no episode file
-// touched and no header read again.
+// touched and no header read again. The folder pass knows the other season only from its row, and
+// still reads the show's folder for the season it walks.
 func TestImportSeriesNFOChangeRewritesTheShow(t *testing.T) {
 	for _, pass := range []string{"full", "season folder"} {
 		t.Run(pass, func(t *testing.T) {
 			h := newHarness(t)
 			h.file("Example Show (2001)/Season 1/Example Show S01E01.mkv", 10)
+			h.file("Example Show (2001)/Season 2/Example Show S02E01.mkv", 10)
 			h.run()
 			origin := seriesOrigin(h.root, "Example Show (2001)")
 			if ids := h.item(origin).ExternalIDs; len(ids) != 0 {
@@ -553,6 +558,32 @@ func TestImportAsksForANewlyConnectedArrsFolders(t *testing.T) {
 	h.run()
 	if asked != 1 {
 		t.Errorf("asked %d times; an arr whose folders are recorded is not asked again", asked)
+	}
+}
+
+// Two episodes whose NFOs carry one TVDB id, one of them copied beside the wrong file, are two
+// titles at their own numbers, not one with an extra copy to remove; a second copy of an episode
+// is still one title.
+func TestEpisodesSharingAnNFOsIDStayApart(t *testing.T) {
+	h := newHarness(t)
+	dir := "Iron Works/Season 02/"
+	for _, name := range []string{"Iron Works - S02E06 - Cathedrals", "Iron Works - S02E18 - Tunnels", "Iron Works - S02E06 - Cathedrals 720p"} {
+		h.file(dir+name+".mkv", 10)
+		episode := strings.TrimPrefix(name[len("Iron Works - S02E"):len("Iron Works - S02E06")], "0")
+		doc := `<episodedetails><title>Tunnels</title><season>2</season><episode>` + episode +
+			`</episode><uniqueid type="tvdb" default="true">90090906</uniqueid></episodedetails>`
+		if err := os.WriteFile(filepath.Join(h.root, filepath.FromSlash(dir+name+".nfo")), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run()
+	item := func(name string) inventory.Item { return h.item(fileOrigin(h.root, dir+name+".mkv")) }
+	sixth, eighteenth := item("Iron Works - S02E06 - Cathedrals"), item("Iron Works - S02E18 - Tunnels")
+	if sixth.ID == eighteenth.ID {
+		t.Fatal("the 6th and the 18th are one title")
+	}
+	if got := item("Iron Works - S02E06 - Cathedrals 720p").ID; got != sixth.ID {
+		t.Fatalf("the 6th's second copy is %q, want the 6th's title %q", got, sixth.ID)
 	}
 }
 
@@ -1150,6 +1181,349 @@ func TestHeaderStageReadsOnPastAFileItCannotOpen(t *testing.T) {
 	}
 }
 
+// A folder that replaces the folders in use inside it keeps the headers they read: its first pass
+// opens only a file whose bytes changed since, not the whole library again.
+func TestReplacingInnerFoldersKeepsTheirReads(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	inner := filepath.Join(h.root, "Films")
+	h.im.Disk = fakeDisk{readable: map[string]bool{h.root: true, inner: true}}
+	if err := h.st.SetLibraryRootInUse(ctx, h.root, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: inner, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	h.file("Films/Mike (2002)/Mike.mkv", 10)
+	changed := h.file("Films/November (2003)/November.mkv", 10)
+	h.run()
+	if got := h.reads.Load(); got != 2 {
+		t.Fatalf("the inner folder read %d headers, want 2", got)
+	}
+
+	// Replace: the outer folder is used, and the inner one stops being.
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: h.root, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.st.SetLibraryRootInUse(ctx, inner, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(changed, make([]byte, 20), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.reads.Store(0)
+	h.run()
+	if got := h.reads.Load(); got != 1 {
+		t.Fatalf("the outer folder read %d headers, want only the changed file's", got)
+	}
+	rows, err := h.st.LibraryFiles(ctx, h.root)
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("outer rows = %d, %v; want 2", len(rows), err)
+	}
+	for _, row := range rows {
+		if row.Header != librarystore.LibraryHeaderRead {
+			t.Errorf("%s header = %q, want read", filepath.Base(row.Path), row.Header)
+		}
+	}
+}
+
+// A full pass lists a root without the import's lock, so a folder pass runs while it lists (one
+// that waited on it would never return here), and the full pass then leaves what that pass wrote
+// as it wrote it: a file deleted since the listing stays gone, one added since stays.
+func TestAFullPassLeavesWhatAFolderPassWroteWhileItListed(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	gone := h.file("Mike (2002)/Mike.mkv", 10)
+	// Enough others that one file gone is under the removal guard's share.
+	for i := range 20 {
+		h.file(fmt.Sprintf("Film %02d (2001)/Film %02d.mkv", i, i), 10)
+	}
+	h.run()
+	var added string
+	var after map[string]librarystore.LibraryFile
+	h.im.listed = func(root string) {
+		h.im.listed = nil
+		if err := os.RemoveAll(filepath.Dir(gone)); err != nil {
+			t.Fatal(err)
+		}
+		added = h.file("Papa (2005)/Papa.mkv", 10)
+		if err := h.im.RunFolders(ctx, root, []string{filepath.Dir(gone), filepath.Dir(added)}); err != nil {
+			t.Fatal(err)
+		}
+		after = map[string]librarystore.LibraryFile{gone: h.fileRow(gone), added: h.fileRow(added)}
+	}
+	h.run()
+	if after == nil {
+		t.Fatal("the pass never listed its root")
+	}
+	if after[added].ItemID == "" {
+		t.Fatalf("the folder pass did not write %s", added)
+	}
+	for path, want := range after {
+		if got := h.fileRow(path); got.ItemID != want.ItemID || got.MissingAt.IsZero() != want.MissingAt.IsZero() {
+			t.Errorf("%s = item %q missing %v after the full pass, want it as the folder pass left it: item %q missing %v",
+				path, got.ItemID, !got.MissingAt.IsZero(), want.ItemID, !want.MissingAt.IsZero())
+		}
+	}
+	// Each file's origin on its item says the same: the deleted one gone, the added one there.
+	for path, gone := range map[string]bool{gone: true, added: false} {
+		rel, _ := filepath.Rel(h.root, path)
+		o := fileOrigin(h.root, filepath.ToSlash(rel))
+		if missing := !h.origin(h.item(o), o).MissingAt.IsZero(); missing != gone {
+			t.Errorf("%s's origin missing = %v, want %v", path, missing, gone)
+		}
+	}
+}
+
+// A folder released while a full pass lists it is not written back once the listing is done.
+func TestAFolderReleasedWhileListedIsNotWrittenBack(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.file("Mike (2002)/Mike.mkv", 10)
+	h.run()
+	h.file("Oscar (2004)/Oscar.mkv", 10)
+	h.im.listed = func(string) {
+		h.im.listed = nil
+		if err := h.st.SetLibraryRootInUse(ctx, h.root, false); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.im.ForgetReleased(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run()
+	if rows, err := h.st.LibraryFiles(ctx, h.root); err != nil || len(rows) != 0 {
+		t.Fatalf("the released folder has %d rows, %v; want none", len(rows), err)
+	}
+}
+
+// A folder released while a full pass lists another is not walked once the pass reaches it: the
+// pass read its roots before the release, and its files are forgotten already. A folder never
+// walked yet, released during the household's first import, has no files to forget and is not
+// walked either; nor is one released while it is listed itself.
+func TestAFolderReleasedWhileAnotherIsListedIsNotWalked(t *testing.T) {
+	for _, c := range []struct {
+		name           string
+		walked, itself bool
+	}{
+		{"walked before", true, false},
+		{"first import", false, false},
+		{"first import, while listed itself", false, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ctx := context.Background()
+			h := newHarness(t)
+			other := filepath.Join(filepath.Dir(h.root), "second")
+			h.im.Disk = fakeDisk{readable: map[string]bool{h.root: true, other: true}}
+			if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: other, Readable: true}, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			h.file("Mike (2002)/Mike.mkv", 10)
+			for _, rel := range []string{"Oscar (2004)/Oscar.mkv", "Papa (2005)/Papa.mkv"} {
+				p := filepath.Join(other, filepath.FromSlash(rel))
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, make([]byte, 10), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if c.walked {
+				h.run()
+			}
+			released := ""
+			h.im.listed = func(root string) {
+				h.im.listed = nil
+				// Whichever root the pass lists first, it or the other is released meanwhile.
+				released = root
+				if !c.itself {
+					released = other
+					if root == other {
+						released = h.root
+					}
+				}
+				if err := h.st.SetLibraryRootInUse(ctx, released, false); err != nil {
+					t.Fatal(err)
+				}
+				if err := h.im.ForgetReleased(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			h.run()
+			if released == "" {
+				t.Fatal("the pass never listed a root")
+			}
+			if rows, err := h.st.LibraryFiles(ctx, released); err != nil || len(rows) != 0 {
+				t.Fatalf("the folder released mid-pass has %d rows, %v; want none", len(rows), err)
+			}
+		})
+	}
+}
+
+// releaseAtFirstWrite stops using a root at the first title the import writes for it, and stops
+// its walk as ForgetReleased does at once, before it waits for the import's lock.
+type releaseAtFirstWrite struct {
+	inventory.Service
+	authority inventory.AuthorityID
+	release   func()
+	done      bool
+}
+
+func (r *releaseAtFirstWrite) ApplySnapshot(ctx context.Context, s inventory.Snapshot) (inventory.ItemID, error) {
+	id, err := r.Service.ApplySnapshot(ctx, s)
+	if s.Origin.Authority == r.authority && !r.done {
+		r.done = true
+		r.release()
+	}
+	return id, err
+}
+
+// A folder never walked before, released while the first import writes its titles, keeps none of
+// them: the import writes each title as it goes and the folder's file rows only at its end, so
+// what it wrote is forgotten by the folder, not by its rows.
+func TestAFolderReleasedWhileItsTitlesAreWrittenKeepsNone(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	other := filepath.Join(filepath.Dir(h.root), "second")
+	h.im.Disk = fakeDisk{readable: map[string]bool{h.root: true, other: true}}
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: other, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	h.file("Mike (2002)/Mike.mkv", 10)
+	rels := []string{"Oscar (2004)/Oscar.mkv", "Papa (2005)/Papa.mkv", "Quebec (2006)/Quebec.mkv"}
+	for _, rel := range rels {
+		p := filepath.Join(other, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, make([]byte, 10), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plain := h.im.Inventory
+	h.im.Inventory = &releaseAtFirstWrite{Service: plain, authority: inventory.AuthorityID(Authority(other)), release: func() {
+		if err := h.st.SetLibraryRootInUse(ctx, other, false); err != nil {
+			t.Error(err)
+		}
+		h.im.mu.Lock()
+		if cancel := h.im.walking[other]; cancel != nil {
+			cancel(errReleased)
+		}
+		h.im.mu.Unlock()
+	}}
+	h.run()
+	if err := h.im.ForgetReleased(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range rels {
+		o := fileOrigin(other, rel)
+		item, ok, err := plain.Item(ctx, inventory.ItemRef{Origin: &o})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, io := range item.Origins {
+			if ok && io.Key == o && io.MissingAt.IsZero() {
+				t.Errorf("%s is still present in the released folder", rel)
+			}
+		}
+	}
+}
+
+// A folder released and then added again keeps the headers it read: its files are forgotten while
+// it is out of use, but the pass that finds them again opens only a file whose bytes changed.
+func TestAFolderAddedAgainKeepsItsReads(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.file("Mike (2002)/Mike.mkv", 10)
+	changed := h.file("November (2003)/November.mkv", 10)
+	h.run()
+	if got := h.reads.Load(); got != 2 {
+		t.Fatalf("the first pass read %d headers, want 2", got)
+	}
+
+	if err := h.st.SetLibraryRootInUse(ctx, h.root, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.im.ForgetReleased(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := h.st.LibraryFiles(ctx, h.root); err != nil || len(rows) != 0 {
+		t.Fatalf("released rows = %d, %v; want none", len(rows), err)
+	}
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: h.root, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(changed, make([]byte, 20), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.reads.Store(0)
+	h.run()
+	if got := h.reads.Load(); got != 1 {
+		t.Fatalf("the folder added again read %d headers, want only the changed file's", got)
+	}
+	rows, err := h.st.LibraryFiles(ctx, h.root)
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("rows = %d, %v; want 2", len(rows), err)
+	}
+	for _, row := range rows {
+		if row.Header != librarystore.LibraryHeaderRead {
+			t.Errorf("%s header = %q, want read", filepath.Base(row.Path), row.Header)
+		}
+	}
+}
+
+// A folder released while its files are read is forgotten for good: the stage reads no more of
+// them, and the reads already done are not saved back, so the files don't return to the Library.
+func TestReleasingAFolderStopsItsReads(t *testing.T) {
+	h := newHarness(t)
+	const files = 6 * headerConcurrency
+	for i := range files {
+		h.file(fmt.Sprintf("Film %02d (2001)/Film %02d.mkv", i, i), 10)
+	}
+	read := h.im.Header
+	var (
+		mu sync.Mutex
+		// after counts the reads begun once the folder was forgotten.
+		reads, after int
+		forgotten    bool
+	)
+	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
+		mu.Lock()
+		reads++
+		first := reads == 1
+		if forgotten {
+			after++
+		}
+		mu.Unlock()
+		if first {
+			// "Stop using" lands, and a pass forgets the folder, while the stage reads.
+			if err := h.st.SetLibraryRootInUse(ctx, h.root, false); err != nil {
+				t.Error(err)
+			}
+			h.im.run.Lock()
+			err := h.im.forgetReleased(ctx, map[string]bool{})
+			h.im.run.Unlock()
+			if err != nil {
+				t.Error(err)
+			}
+			mu.Lock()
+			forgotten = true
+			mu.Unlock()
+		}
+		return read(ctx, path)
+	}
+	h.run()
+	rows, err := h.st.LibraryFiles(context.Background(), h.root)
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("%d of the forgotten folder's files saved back, %v", len(rows), err)
+	}
+	// A reader already past its file's check when the folder was forgotten still reads it; no
+	// other read starts.
+	if after > headerConcurrency-1 {
+		t.Fatalf("%d reads began after the folder was forgotten, of %d files", after, files)
+	}
+}
+
 // A share that gives no file back stops the stage after headerFaultLimit files in a row, so a
 // share that went away is not asked for every file of a library. Every file stays pending.
 func TestHeaderStageStopsWhenTheShareGivesNothingBack(t *testing.T) {
@@ -1208,6 +1582,9 @@ func TestHeaderReadThatNeverReturnsIsGivenUpOn(t *testing.T) {
 	if !h.im.stalled(h.root) {
 		t.Fatal("the root does not read as stalled while the read is still out")
 	}
+	if !h.im.Progress().CompletedAt.IsZero() {
+		t.Fatal("a pass that left its folder unread says it completed")
+	}
 
 	close(release)
 	for deadline := time.Now().Add(5 * time.Second); h.im.stalled(h.root); time.Sleep(time.Millisecond) {
@@ -1218,6 +1595,71 @@ func TestHeaderReadThatNeverReturnsIsGivenUpOn(t *testing.T) {
 	h.run()
 	if got := h.fileRow(stuck).Header; got != librarystore.LibraryHeaderRead {
 		t.Fatalf("header = %q on the pass after, want read", got)
+	}
+}
+
+// One slow read, given up on, holds up its folder only until it returns: the folder's other files
+// wait, then are read in the same pass, the slow one again with them, and the pass completes.
+func TestASlowReadHoldsUpItsFolderOnlyUntilItReturns(t *testing.T) {
+	h := newHarness(t)
+	slow := h.file("Alpha (2001)/Alpha.mkv", 10)
+	const files = 20
+	for i := range files {
+		h.file(fmt.Sprintf("Film %02d (2001)/Film %02d.mkv", i, i), 10)
+	}
+	read := h.im.Header
+	h.im.HeaderStall = 50 * time.Millisecond
+	var once sync.Once
+	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
+		if path == slow {
+			stuck := false
+			once.Do(func() { stuck = true })
+			if stuck {
+				time.Sleep(80 * time.Millisecond) // past the stall, then the share answers within another
+			}
+		}
+		return read(ctx, path)
+	}
+	h.run()
+	rows, err := h.st.LibraryFiles(context.Background(), h.root)
+	if err != nil || len(rows) != files+1 {
+		t.Fatalf("%d rows, %v; want %d", len(rows), err, files+1)
+	}
+	for _, row := range rows {
+		if row.Header != librarystore.LibraryHeaderRead {
+			t.Errorf("%s header = %q, want read in the same pass", filepath.Base(row.Path), row.Header)
+		}
+	}
+	if h.im.Progress().CompletedAt.IsZero() {
+		t.Fatal("the pass read every file, yet does not say it completed")
+	}
+}
+
+// Files an arr renamed between the walk and their reads are gone from a folder still there: a run
+// of them says nothing of the share, and the files after them are read.
+func TestFilesRenamedAwayDoNotStopTheReads(t *testing.T) {
+	h := newHarness(t)
+	const gone, kept = 3 * headerFaultLimit, 10
+	for i := range gone {
+		h.file(fmt.Sprintf("Show/Season 01/Show S01E%02d.mkv", i+1), 10)
+	}
+	// Named after the show, the films are read after the run of gone files.
+	for i := range kept {
+		h.file(fmt.Sprintf("Zulu %02d (2001)/Zulu %02d.mkv", i, i), 10)
+	}
+	read := h.im.Header
+	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
+		if strings.Contains(path, "Season 01") {
+			return header.Header{}, &fs.PathError{Op: "open", Path: path, Err: fs.ErrNotExist}
+		}
+		return read(ctx, path)
+	}
+	h.run()
+	for i := range kept {
+		path := filepath.Join(h.root, fmt.Sprintf("Zulu %02d (2001)/Zulu %02d.mkv", i, i))
+		if got := h.fileRow(path).Header; got != librarystore.LibraryHeaderRead {
+			t.Errorf("%s header = %q, want read", filepath.Base(path), got)
+		}
 	}
 }
 
@@ -1465,3 +1907,139 @@ func TestImportFoldersPassStaysInItsFolders(t *testing.T) {
 }
 
 func twoDigits(n int) string { return fmt.Sprintf("%02d", n) }
+
+// A title waiting for its catalog record is written once: a later pass before the record is cached
+// finds it as the last one wrote it and leaves it, so the header read the first pass queued for it
+// stays its own, not thrown away for a read at the back of the second pass's queue. A pass once
+// the record is cached writes it again (TestEnricherNamesEpisodesWhoseSeasonArrivesWhileTheirPassWrites).
+func TestATitleWaitingForItsRecordIsNotWrittenAgainUntilItComes(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	for i := range 4 {
+		h.file(fmt.Sprintf("Movies/Fen Lark %d (2001) {tmdb-930000%d}/Fen Lark %d (2001).mkv", i, i, i), 10)
+	}
+	read1, err := h.im.Walk(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	written := h.inv.applied.Load()
+	read2, err := h.im.Walk(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again := h.inv.applied.Load() - written; again != 0 {
+		t.Fatalf("a second pass wrote %d waiting titles again", again)
+	}
+	before := h.reads.Load()
+	if err := read1(); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.reads.Load() - before; got != 4 {
+		t.Fatalf("the first pass's queue read %d of its 4 files; the rest were thrown away", got)
+	}
+	if err := read2(); err != nil {
+		t.Fatal(err)
+	}
+	written = h.inv.applied.Load()
+	h.run()
+	if again := h.inv.applied.Load() - written; again != 0 {
+		t.Fatalf("a pass after the reads wrote %d waiting titles again", again)
+	}
+}
+
+// Faults count per share, in a row within it: the faults one root's share ends on and the next
+// root's share begins with are not one run. Each share here fails its first and last
+// headerFaultLimit/2 files, under the limit, so neither stops, and every other file is read.
+func TestOneSharesFaultsCountOnlyAgainstItself(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	other := t.TempDir()
+	h.im.Disk = fakeDisk{readable: map[string]bool{h.root: true, other: true}}
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: other, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	const half, good = headerFaultLimit / 2, 2 * headerFaultLimit
+	for _, root := range []string{h.root, other} {
+		var names []string
+		for i := range half {
+			names = append(names, fmt.Sprintf("A%02d (2001)", i), fmt.Sprintf("Z%02d (2001)", i))
+		}
+		for i := range good {
+			names = append(names, fmt.Sprintf("M%02d (2001)", i))
+		}
+		for _, n := range names {
+			p := filepath.Join(root, n, n+".mkv")
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, make([]byte, 10), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	var read atomic.Int64
+	h.im.Header = func(_ context.Context, path string) (header.Header, error) {
+		// A fault comes back at once and a read takes a while, so the faults at one share's end
+		// and the next's start come back between no reads.
+		if b := filepath.Base(path); b[0] == 'A' || b[0] == 'Z' {
+			return header.Header{}, &fs.PathError{Op: "read", Path: path, Err: syscall.EIO}
+		}
+		time.Sleep(20 * time.Millisecond)
+		read.Add(1)
+		return header.Header{Container: "matroska,webm", DurationMillis: 1_320_000}, nil
+	}
+	h.run()
+	if n := read.Load(); n != 2*good {
+		t.Errorf("read %d of the shares' %d good files: a share was stopped by faults not its own", n, 2*good)
+	}
+}
+
+// A folder released while step 1 walks and writes it stops at once: the import writes no more of
+// it, forgets what it wrote, and goes on to the next folder, rather than walking and writing the
+// released one in full first.
+func TestAFolderReleasedMidWalkStopsAtOnce(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	other := t.TempDir()
+	h.im.Disk = fakeDisk{readable: map[string]bool{h.root: true, other: true}}
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: other, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	const files = 200
+	for i := range files {
+		h.file(fmt.Sprintf("Film %03d (2001)/Film %03d.mkv", i, i), 10)
+	}
+	kept := filepath.Join(other, "Kilo (2010)", "Kilo (2010).mkv")
+	if err := os.MkdirAll(filepath.Dir(kept), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(kept, make([]byte, 10), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.inv.slow.Store(int64(5 * time.Millisecond))
+	released := make(chan error, 1)
+	go func() {
+		for h.inv.applied.Load() < 10 {
+			time.Sleep(time.Millisecond)
+		}
+		if err := h.st.SetLibraryRootInUse(ctx, h.root, false); err != nil {
+			released <- err
+			return
+		}
+		released <- h.im.ForgetReleased(ctx)
+	}()
+	h.run()
+	if err := <-released; err != nil {
+		t.Fatal(err)
+	}
+	if n := h.inv.applied.Load(); n > files/2 {
+		t.Fatalf("wrote %d of the released folder's %d files", n, files)
+	}
+	if rows, err := h.st.LibraryFiles(ctx, h.root); err != nil || len(rows) != 0 {
+		t.Fatalf("%d of the released folder's rows kept, %v", len(rows), err)
+	}
+	if rows, err := h.st.LibraryFiles(ctx, other); err != nil || len(rows) != 1 {
+		t.Fatalf("the other folder has %d rows, %v; want its file", len(rows), err)
+	}
+}

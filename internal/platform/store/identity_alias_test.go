@@ -11,8 +11,8 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
-// The store re-exports the identity cluster by alias and re-declares its sentinels as the same
-// values. errors.Is compares by identity, so a copy that merely prints the same text would make
+// The store re-exports the identity cluster by alias, and its not-found sentinel is the cluster's
+// value. errors.Is compares by identity, so a copy that merely prints the same text would make
 // every caller matching the other name silently false.
 func TestIdentitySentinelsAreTheIdentitystoreValues(t *testing.T) {
 	for _, c := range []struct {
@@ -20,8 +20,6 @@ func TestIdentitySentinelsAreTheIdentitystoreValues(t *testing.T) {
 		store, inner error
 		message      string
 	}{
-		{"ErrContactAddressConflict", ErrContactAddressConflict, identitystore.ErrContactAddressConflict, "store: contact address conflict"},
-		{"ErrInvitationIdentityConflict", ErrInvitationIdentityConflict, identitystore.ErrInvitationIdentityConflict, "store: invitation identity conflict"},
 		{"ErrNotFound", ErrNotFound, identitystore.ErrNotFound, "store: not found"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -38,6 +36,23 @@ func TestIdentitySentinelsAreTheIdentitystoreValues(t *testing.T) {
 	}
 	if !errors.Is(identitystore.ErrNotFound, storedb.ErrNotFound) {
 		t.Fatal("identitystore.ErrNotFound is not the storedb.ErrNotFound value")
+	}
+}
+
+// The identity sentinels callers match by their identitystore names print the strings logs and
+// alerts already carry.
+func TestIdentitySentinelMessages(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		err     error
+		message string
+	}{
+		{"ErrContactAddressConflict", identitystore.ErrContactAddressConflict, "store: contact address conflict"},
+		{"ErrInvitationIdentityConflict", identitystore.ErrInvitationIdentityConflict, "store: invitation identity conflict"},
+	} {
+		if got := c.err.Error(); got != c.message {
+			t.Errorf("identitystore.%s message = %q, want %q (a log string must not change)", c.name, got, c.message)
+		}
 	}
 }
 
@@ -65,8 +80,6 @@ var (
 	_ identitystore.SessionSeen   = SessionSeen{}
 	_ identitystore.DevicePairing = DevicePairing{}
 	_ identitystore.DeviceToken   = DeviceToken{}
-	_ identitystore.Role          = RoleAdmin
-	_ Role                        = identitystore.RoleMember
 )
 
 // The embedded cluster is what satisfies the identity role interfaces: the aggregate store hands

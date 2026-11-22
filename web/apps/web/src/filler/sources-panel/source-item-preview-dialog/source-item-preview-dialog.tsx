@@ -42,9 +42,10 @@ const SourceItemPreviewDialog = ({ item, providerLabel, onClose }: SourceItemPre
         ) : (
           <Stack
             align="center"
-            className="bg-muted aspect-video rounded-md px-6 text-center"
+            className="bg-muted aspect-video rounded-md text-center"
             direction="row"
             justify="center"
+            paddingHorizontal={24}
           >
             <Text as="p" className="text-center" textRole="compact" tone="secondary">
               This provider cannot show the item here. Open the original to preview it.

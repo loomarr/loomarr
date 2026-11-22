@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/research"
 )
 
@@ -95,6 +96,11 @@ func (s *sqlStore) PurgeSpentFillerRecords(ctx context.Context, now time.Time) (
 		{"inference evaluations", `DELETE FROM filler_inference_evaluations WHERE state <> ? AND created_at < ?
 			AND NOT EXISTS (SELECT 1 FROM filler_structure_window_call_ledger l
 			    WHERE l.evaluation_id = filler_inference_evaluations.id)`, []any{string(InferenceReserved), call}},
+		// An item of a source that was deleted has nowhere to be attributed, so it is not retried.
+		{"failed downloads of deleted sources", `DELETE FROM filler_download_failures
+			WHERE source_id <> '' AND source_id <> ?
+			AND NOT EXISTS (SELECT 1 FROM filler_sources s WHERE s.id = filler_download_failures.source_id)`,
+			[]any{acquisition.OpenSearchSourceID}},
 		{"download artifacts", `DELETE FROM filler_acquisition_artifacts WHERE state = 'consumed' AND remote_id = ''
 			AND updated_at < ? AND ` + clipGone("filler_acquisition_artifacts"), []any{download}},
 		{"pull commits", `DELETE FROM filler_pull_commits WHERE acquisition_id IN (

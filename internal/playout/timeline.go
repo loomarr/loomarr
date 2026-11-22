@@ -3,7 +3,6 @@ package playout
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"slices"
 	"strings"
 	"time"
 
@@ -29,6 +28,12 @@ type Airing struct {
 	// stable across retries and mid-program tune-ins, so downstream playout can distinguish a real
 	// transition from reopening the same item.
 	StartedAt time.Time
+	// ProgramStartedAt is when the programme this airing belongs to began on air: StartedAt, unless
+	// the airing is a later segment of a programme split at natural breaks, when it is the first
+	// segment's start. It is the one start a watched airing is recorded under (#4140), whichever
+	// segment the viewer tuned into. Offset cannot give it: Offset is a position in the source,
+	// and the mid-roll breaks between segments are not in the source.
+	ProgramStartedAt time.Time
 	// Identity is the stable content identity within StartedAt: a provisioning key for programmes,
 	// a clip hash for commercials, and the slot kind for an unplayable scheduled card.
 	Identity string
@@ -135,12 +140,24 @@ func AiringAt(slots []schedule.Slot, epoch, now time.Time) Airing {
 	}
 	into := elapsed % total
 
+	// pos is where in the cycle the slot under the loop starts; programmeAt is where the
+	// programme it continues started (its first segment), or -1 before any first segment.
+	var pos time.Duration
+	programmeAt := time.Duration(-1)
 	for _, s := range slots {
 		d := slotDuration(s)
 		if d <= 0 {
 			continue // unknown duration — not airable, see above
 		}
+		if s.Kind == schedule.SlotProgram && s.Segment <= 1 {
+			programmeAt = pos
+		}
 		if into < d {
+			startedAt := now.Add(-into)
+			programmeStartedAt := startedAt
+			if s.Kind == schedule.SlotProgram && s.Segment > 1 && programmeAt >= 0 {
+				programmeStartedAt = startedAt.Add(-(pos - programmeAt))
+			}
 			identity := string(s.Key)
 			if identity == "" {
 				identity = s.LibraryItemID
@@ -149,10 +166,11 @@ func AiringAt(slots []schedule.Slot, epoch, now time.Time) Airing {
 				identity = string(s.Kind)
 			}
 			return Airing{
-				StartedAt:     now.Add(-into),
-				Identity:      identity,
-				Kind:          s.Kind,
-				LibraryItemID: s.LibraryItemID,
+				StartedAt:        startedAt,
+				ProgramStartedAt: programmeStartedAt,
+				Identity:         identity,
+				Kind:             s.Kind,
+				LibraryItemID:    s.LibraryItemID,
 				// Key identifies WHAT aired independently of which library item served it —
 				// the identity airing history is recorded under (§5, programming-design §3.1).
 				// LibraryItemID alone would not do: a re-encoded or replaced file changes it,
@@ -164,6 +182,7 @@ func AiringAt(slots []schedule.Slot, epoch, now time.Time) Airing {
 			}
 		}
 		into -= d
+		pos += d
 	}
 	// Unreachable while total > 0 and the loop uses the same durations, but returning flex
 	// beats an index panic if those ever diverge.
@@ -400,62 +419,6 @@ func CommittedSplits(slots []schedule.Slot, epoch, from, to time.Time) map[strin
 		pins[b.LibraryItemID] = cuts
 	}
 	return pins
-}
-
-// KeepAcceptedBreaks is what a re-size must not change (§10 breaks): the length of every break
-// that, on the accepted cycle walked from epoch, starts before `until`. Every later airing is
-// found by walking the cycle from its anchor, so re-sizing one break that has aired moves the
-// programme on air by the difference, and re-sizing a day of them moved it by up to minutes
-// (2026-10-24). Breaks from `until` on take next's length: nothing there has aired.
-//
-// It holds lengths only, and only up to the first slot whose TIMING differs (a programme removed,
-// added or re-timed): what airs before that edit stays where it was, and the edit and everything
-// after it are committed as computed. A change that moves nothing (a file re-identified, a title
-// healed) does not end the hold; ending it there re-sized every aired break and brought the jump
-// back. A cycle that has aired whole holds every break.
-func KeepAcceptedBreaks(accepted, next []schedule.Slot, epoch, until time.Time) []schedule.Slot {
-	total := cycleDuration(accepted)
-	if total <= 0 || !until.After(epoch) {
-		return next
-	}
-	aired := len(accepted)
-	if elapsed := until.Sub(epoch); elapsed < total {
-		aired = 0
-		for _, s := range accepted {
-			if elapsed <= 0 {
-				break
-			}
-			elapsed -= slotDuration(s)
-			aired++
-		}
-	}
-	hold := min(aired, len(next))
-	for i := range hold {
-		if !sameTiming(accepted[i], next[i]) {
-			hold = i
-			break
-		}
-	}
-	if hold == 0 {
-		return next
-	}
-	out := slices.Clone(next)
-	for i := range hold {
-		if isBreak(out[i]) {
-			out[i].DurationMs = accepted[i].DurationMs
-		}
-	}
-	return out
-}
-
-// sameTiming reports whether two slots occupy the walk alike apart from a break's length: the same
-// kind of slot, and for anything but a break the same length. Identity and display fields move
-// nothing.
-func sameTiming(a, b schedule.Slot) bool {
-	if isBreak(a) || isBreak(b) {
-		return isBreak(a) && isBreak(b)
-	}
-	return a.Kind == b.Kind && slotDuration(a) == slotDuration(b)
 }
 
 // isBreak reports a commercial break slot. A keyed filler slot stands in for an unavailable

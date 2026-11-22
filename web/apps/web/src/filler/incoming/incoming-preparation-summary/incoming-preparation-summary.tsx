@@ -57,16 +57,24 @@ const IncomingPreparationSummary = ({ preparation }: { preparation: IncomingPrep
       className="bg-muted/30 space-y-2.5 rounded-lg p-4"
     >
       <Stack align="baseline" direction="row" gap="control" justify="between">
-        <div className="min-w-0">
+        <Stack flexShrink={1} minWidth={0}>
           <Text as="h3" id="incoming-preparation-heading" textRole="cardLabel">
             {message.title}
           </Text>
-          <Text as="p" className="mt-0.5" textRole="hint" tone="secondary">
-            {message.detail}
-          </Text>
-        </div>
+          <Stack marginTop={2}>
+            <Text as="p" textRole="hint" tone="secondary">
+              {message.detail}
+            </Text>
+          </Stack>
+        </Stack>
         {preparation.percent != null ? (
-          <Text as="span" className="shrink-0 tabular-nums" textRole="hint" tone="secondary">
+          <Text
+            as="span"
+            className="shrink-0"
+            fontVariant={["tabular-nums"]}
+            textRole="hint"
+            tone="secondary"
+          >
             {preparation.percent}%
           </Text>
         ) : null}

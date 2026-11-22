@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -65,7 +66,21 @@ func Open(ctx context.Context, databaseURL string, autoMigrate bool) (Store, err
 				_ = s.Close()
 				return nil, err
 			}
-			if err := migrate(ctx, s.db, "sqlite", "migrations/sqlite"); err != nil {
+			// An upgrade first keeps the database as it was, so it can be undone (#4383).
+			keep := func(ctx context.Context, from, to int64) error {
+				snap, err := snapshotBeforeMigrate(ctx, s.db, path, from, to, time.Now())
+				if err != nil {
+					return err
+				}
+				slog.InfoContext(ctx, "database copied before migrating; to go back, put it in the database's place and start the previous release",
+					"event", "store.premigration_snapshot", "from", from, "to", to, "snapshot", snap)
+				if _, err := prunePreMigrationSnapshots(preMigrationDir(path), PreMigrationSnapshotsKept); err != nil {
+					slog.WarnContext(ctx, "older pre-migration snapshots could not all be removed",
+						"event", "store.premigration_prune_failed", "err", err)
+				}
+				return nil
+			}
+			if err := migrateWith(ctx, s.db, "sqlite", "migrations/sqlite", keep); err != nil {
 				_ = s.Close()
 				return nil, err
 			}

@@ -164,33 +164,34 @@ const ExecutionHistory = ({ name }: { name: string }) => {
       </Stack>
 
       {history.recent.length > 0 && (
-        <Card className="divide-border divide-y" marginTop={8} render="ul">
-          {history.recent.map((run) => {
-            const failed = run.result === "error";
-            return (
-              <Stack
-                flexShrink={0}
-                key={`${run.startedAt}-${run.trigger}`}
-                paddingHorizontal={12}
-                paddingVertical={8}
-                render="li"
-              >
-                <Stack align="center" columnGap="3" direction="row" rowGap="1" wrap>
-                  <StatusDot tone={failed ? "error" : "ok"} label={failed ? "Failed" : "Succeeded"} />
-                  <Text as="span" textRole="label" tone="primary">
-                    {run.trigger === "manual" ? "Manual" : "Scheduled"}
-                  </Text>
-                  <Text as="span" textRole="hint" tone="secondary">
-                    {formatRelative(run.startedAt)}
-                  </Text>
-                  <Text as="span" textRole="mono">
-                    {executionDuration(run.durationMs)}
-                  </Text>
+        <Card marginTop={8}>
+          <Stack divided render="ul">
+            {history.recent.map((run) => {
+              const failed = run.result === "error";
+              return (
+                <Stack
+                  key={`${run.startedAt}-${run.trigger}`}
+                  paddingHorizontal={12}
+                  paddingVertical={8}
+                  render="li"
+                >
+                  <Stack align="center" columnGap="3" direction="row" rowGap="1" wrap>
+                    <StatusDot tone={failed ? "error" : "ok"} label={failed ? "Failed" : "Succeeded"} />
+                    <Text as="span" textRole="label" tone="primary">
+                      {run.trigger === "manual" ? "Manual" : "Scheduled"}
+                    </Text>
+                    <Text as="span" textRole="hint" tone="secondary">
+                      {formatRelative(run.startedAt)}
+                    </Text>
+                    <Text as="span" textRole="mono">
+                      {executionDuration(run.durationMs)}
+                    </Text>
+                  </Stack>
+                  {failed && run.error && <ErrorDetails message={run.error} className="mt-1" />}
                 </Stack>
-                {failed && run.error && <ErrorDetails message={run.error} className="mt-1" />}
-              </Stack>
-            );
-          })}
+              );
+            })}
+          </Stack>
         </Card>
       )}
     </Stack>
@@ -263,7 +264,7 @@ const TasksPage = () => {
         description="Background work grouped by outcome. Expand a group to inspect or control its tasks."
       />
 
-      <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} gap="2" padding={24}>
+      <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} flexShrink={1} gap="2" padding={24}>
         {GROUPS.map((group) => {
           const groupedJobs = list.filter((job) => job.group === group.id);
           if (groupedJobs.length === 0) return null;
@@ -284,7 +285,7 @@ const TasksPage = () => {
                 <Text as="span" textRole="cardLabel">
                   {group.label}
                 </Text>
-                <Stack align="center" direction="row" flexGrow={1} gap="inline" justify="end">
+                <Stack align="center" direction="row" flexGrow={1} flexShrink={1} gap="inline" justify="end">
                   {/* A collapsed group still says it holds an overdue task, with the row's amber dot. */}
                   {overdueTaskCount(groupedJobs) > 0 && <StatusDot tone="warn" label="Overdue" />}
                   <Text as="span" textRole="hint" tone="secondary">
@@ -315,12 +316,10 @@ const TasksPage = () => {
                           <Fragment key={job.name}>
                             <TableRow dimmed={Boolean(job.paused)}>
                               <TableCell rowHeader>
-                                <button
-                                  type="button"
-                                  className="flex items-center gap-2 text-left"
-                                  aria-expanded={jobOpen}
+                                <PressableRow
                                   aria-controls={`task-${job.name}`}
-                                  onClick={() => toggleJob(job.name)}
+                                  aria-expanded={jobOpen}
+                                  onPress={() => toggleJob(job.name)}
                                 >
                                   <span style={{ display: "flex", flexShrink: 0 }} title={dot.label}>
                                     <StatusDot tone={dot.tone} label={job.paused ? "" : dot.label} />
@@ -333,7 +332,7 @@ const TasksPage = () => {
                                       Paused
                                     </Badge>
                                   )}
-                                </button>
+                                </PressableRow>
                               </TableCell>
                               <TableCell>
                                 <span title={job.disabledReason ? undefined : job.schedule}>
@@ -435,7 +434,7 @@ const TasksPage = () => {
 
         {list.length === 0 && !jobs.isLoading && (
           <Card paddingHorizontal={16} paddingVertical={24}>
-            <Text as="p" className="text-center" textRole="body" tone="secondary">
+            <Text as="p" textAlign="center" textRole="body" tone="secondary">
               No scheduled tasks.
             </Text>
           </Card>

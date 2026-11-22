@@ -22,6 +22,10 @@ type SearchRequest struct {
 	Scope     string
 	Limit     int
 	Discovery *SearchDiscovery
+	// Member is true when the caller is not an admin: the Library half, and the in-Library mark
+	// on a TMDB result, read only the titles a member reads (librarystore.MemberTitles). The
+	// suggester's grounding calls the Catalog directly and reads every title.
+	Member bool
 }
 
 // SearchDiscovery is the dependency-light API representation of Catalog's

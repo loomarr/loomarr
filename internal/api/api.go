@@ -14,6 +14,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	agentsapi "github.com/loomarr/loomarr/internal/api/agents"
 	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
@@ -32,6 +33,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/web"
 )
@@ -93,6 +95,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		DeviceLimiter: opts.People.DeviceLimiter, DevLogin: opts.People.DevLogin, SSO: opts.People.SSO,
 		Provision: opts.People.Provision, Demo: opts.People.Demo,
 		ConfigInt: setupRoutes.ConfigInt, LibraryUnconfigured: setupRoutes.LibraryUnconfigured,
+		Changed: opts.People.AccessChanged,
 	}, false).Register(humaAPI)
 	system.New(system.Deps{
 		Log: log,
@@ -189,6 +192,13 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	}
 	opsapi.New(opsDeps, false).Register(humaAPI)
 	setupRoutes.Register(humaAPI)
+	// The MCP endpoint's tools call back into this router as their caller (#4483), so it gets the
+	// finished handler below, once that exists.
+	agentRoutes := agentsapi.New(agentsapi.Deps{
+		Log: log, Devices: opts.People.Devices, DeviceLimiter: opts.People.DeviceLimiter, Origin: srv.origin,
+		PublicURL: agentsPublicURL(opts), Events: opts.Ops.Recorder,
+	})
+	agentRoutes.Register(humaAPI)
 
 	// ⚠ The byte-streaming routes (/v1/backup, the backup download, the clip byte routes, the
 	// channel-icon serve) are registered by their own domain's Handlers as httpcore.RawOp
@@ -245,7 +255,9 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// mux must see that same copy for the mux-populated Pattern to reach the HTTP route label.
 	// WithServerTiming stamps `Server-Timing` (#3399): total time plus any phases a handler names
 	// with httpcore.Phase, readable in the browser's network panel.
-	return httpcore.WithSecurityHeaders(httpcore.WithRequestID(httpcore.WithServerTiming(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux))))))
+	handler := httpcore.WithSecurityHeaders(httpcore.WithRequestID(httpcore.WithServerTiming(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux))))))
+	agentRoutes.SetAPI(handler)
+	return handler
 }
 
 // systemGPU is the GPU name and VRAM the playout status header reads from the language-model
@@ -286,6 +298,37 @@ func storeFacts(st records.Store) func() (int64, string) {
 func logRequests(log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r)
+		if readsDiagnostics(r) {
+			return
+		}
 		log.Debug("http", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
 	})
+}
+
+// readsDiagnostics reports a request that only reads the diagnostic log or the event stream.
+// Logging it would store an event during verbose capture, whose diagnostic_events frame makes
+// the page read again, which would be logged in turn: reading the log must not write to it.
+func readsDiagnostics(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	return r.URL.Path == "/v1/events" || strings.HasPrefix(r.URL.Path, "/v1/diagnostics/")
+}
+
+// agentsPublicURL is the address an OAuth sign-in for an MCP client is issued under: the
+// recipient-facing address (the one invitations use, reachable from outside the home) when set,
+// else the server's own public address. A connector in the Claude apps calls from the internet, so
+// only the first works for it; a client on the LAN works with either.
+func agentsPublicURL(opts Options) func() string {
+	return func() string {
+		if opts.People.AccessPublicURL != nil {
+			if v := strings.TrimSpace(opts.People.AccessPublicURL()); v != "" {
+				return v
+			}
+		}
+		if opts.LiveSettings == nil {
+			return ""
+		}
+		return settings.ServerPublicURL.Get(opts.LiveSettings)
+	}
 }

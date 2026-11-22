@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // RedeemDevicePairing consumes an approved pairing and issues the token in one step. It refuses a
@@ -16,7 +18,7 @@ func testRedeemDevicePairing(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	now := time.Unix(1_700_000_000, 0).UTC()
 	for _, id := range []string{"u1", "u2"} {
-		if err := s.UpsertUser(ctx, User{ID: id, Name: id, Role: RoleMember}); err != nil {
+		if err := s.UpsertUser(ctx, User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -79,7 +81,7 @@ func testRedeemDevicePairingConcurrent(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)
 	now := time.Unix(1_700_000_000, 0).UTC()
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "u1", Role: RoleMember}); err != nil {
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "u1", Role: identitystore.RoleMember}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.CreateDevicePairing(ctx, DevicePairing{DeviceCodeHash: "code", UserCode: "AAAA-AAAA", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {

@@ -185,8 +185,13 @@ func TestCollections(t *testing.T) {
 		t.Fatalf("list %+v", list.Collections)
 	}
 
-	if resp := h.Do(http.MethodGet, "/v1/collections", memberToken, ""); resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("member list = %d, want 403", resp.StatusCode)
+	// A member reads the collections (library_members_test.go pins what they leave out) and
+	// changes none of them.
+	if resp := h.Do(http.MethodGet, "/v1/collections", memberToken, ""); resp.StatusCode != http.StatusOK {
+		t.Fatalf("member list = %d, want 200", resp.StatusCode)
+	}
+	if resp := h.Do(http.MethodPost, "/v1/collections", memberToken, `{"name":"Mine","titles":[]}`); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("member make = %d, want 403", resp.StatusCode)
 	}
 
 	other := decodeCollection(t, h.Do(http.MethodPost, "/v1/collections", adminToken,

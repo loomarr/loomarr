@@ -249,4 +249,40 @@ describe("NavTabs (web)", () => {
 
     expect(link("/filler").getAttribute("data-search")).toBe(JSON.stringify({ view: "list" }));
   });
+
+  // Button mode: views a page keeps in state. The pill is the link pill; the tab is a button that
+  // reports its pick, and the current one carries aria-current like a link tab does.
+  describe("button mode", () => {
+    const views = [
+      { id: "logs", label: "Logs" },
+      { id: "health", label: "Current Health" },
+    ];
+    const button = (name: string) =>
+      Array.from(doc.body.querySelectorAll("button")).find((b) => b.textContent === name) as Node & {
+        click(): void;
+      };
+
+    it("renders a button per tab, current marked, drawn as the same pill", async () => {
+      await mount(<NavTabs activeId="health" label="Diagnostics views" onSelect={vi.fn()} tabs={views} />);
+
+      expect(doc.body.querySelectorAll("a").length).toBe(0);
+      expect(button("Current Health").getAttribute("type")).toBe("button");
+      expect(button("Current Health").getAttribute("aria-current")).toBe("page");
+      expect(button("Logs").hasAttribute("aria-current")).toBe(false);
+      expect(button("Current Health").style.backgroundColor).toBe("var(--surfaceElevated)");
+      expect(button("Current Health").style.color).toBe("var(--contentPrimary)");
+      expect(button("Logs").style.backgroundColor).toBe("transparent");
+      expect(nav().style.overflowX).toBe("auto");
+      expect(nav().style.paddingBottom).toBe("8px");
+    });
+
+    it("reports the picked tab's id", async () => {
+      const onSelect = vi.fn();
+      await mount(<NavTabs activeId="health" label="Diagnostics views" onSelect={onSelect} tabs={views} />);
+
+      await act(async () => button("Logs").click());
+
+      expect(onSelect).toHaveBeenCalledExactlyOnceWith("logs");
+    });
+  });
 });

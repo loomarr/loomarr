@@ -48,7 +48,7 @@ func (w *Watcher) Run(ctx context.Context) {
 		}
 		if err != nil && ctx.Err() == nil {
 			w.log().Warn("library scan: watching stopped; the next walk catches up", "err", err)
-			w.Scanner.Trigger()
+			w.Scanner.PassSoon()
 			t := time.NewTimer(resync)
 			select {
 			case <-ctx.Done():
@@ -129,7 +129,7 @@ func (w *Watcher) watch(ctx context.Context, watched watchedRoots) error {
 			}
 			if errors.Is(err, fsnotify.ErrEventOverflow) {
 				w.log().Warn("library scan: too many changes at once; walking every folder")
-				w.Scanner.Trigger()
+				w.Scanner.PassSoon()
 				continue
 			}
 			return err

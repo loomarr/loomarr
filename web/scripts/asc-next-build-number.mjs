@@ -112,4 +112,4 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   });
 }
 
-export { describeRefusal, nextBuildNumber };
+export { describeRefusal, nextBuildNumber, token };

@@ -27,6 +27,14 @@ import (
 // an optional approval limiter enabled.
 func newDeviceHarness(t *testing.T, limiter *auth.RateLimiter) *apiHarness {
 	t.Helper()
+	return newDeviceHarnessAt(t, limiter, nil)
+}
+
+// newDeviceHarnessAt is newDeviceHarness with a public address, which an app's OAuth sign-in is
+// issued under (internal/api/agents/oauth.go). publicURL is read per request, so a test can point
+// it at the harness's own address once the server has one.
+func newDeviceHarnessAt(t *testing.T, limiter *auth.RateLimiter, publicURL func() string) *apiHarness {
+	t.Helper()
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
 	ms.Accounts = map[string]testkit.Account{
@@ -54,10 +62,11 @@ func newDeviceHarness(t *testing.T, limiter *auth.RateLimiter) *apiHarness {
 			},
 			Channels: api.ChannelsOptions{Binder: chBinder},
 			People: api.PeopleOptions{
-				Login:         auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
-				Sessions:      mgr,
-				Devices:       devices,
-				DeviceLimiter: limiter,
+				Login:           auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+				Sessions:        mgr,
+				Devices:         devices,
+				DeviceLimiter:   limiter,
+				AccessPublicURL: publicURL,
 			},
 		})
 	})

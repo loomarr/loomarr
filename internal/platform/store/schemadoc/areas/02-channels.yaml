@@ -60,6 +60,16 @@ tables:
       playout_anchor: >
         When the channel's current broadcast cycle started, in Unix seconds. The schedule is laid
         out from this moment. 0 for a channel that has not gone on air yet.
+      playout_anchor_ms: >
+        The milliseconds past `playout_anchor`'s second, 0 to 999. A cycle that starts at the
+        programme on air rarely starts on a whole second, and the schedule is laid out from the
+        exact moment.
+      dealt_from: >
+        Two fingerprints, joined by a dot: what an operator had decided when the current cycle was
+        dealt (the lineup, the channel's rules, break and window settings), and the deal itself.
+        While the first is unchanged, a change in the library does not move the window on air; a
+        change to it re-deals the schedule after the programme on air. Empty until the channel is
+        next scheduled.
       created_at: >
         When the channel was created, in Unix seconds. Never changes. 0 when unknown (a hand-made
         channel older than the column).
@@ -87,6 +97,23 @@ tables:
         The rest of the entry: its display name, known runtime, any season range or episode
         selection, the rating, genres and year the channel rules filter on, and its media-server
         box sets.
+
+  - name: growth_reviews
+    about: >
+      The model's verdict on a title for a channel that grows by itself: whether a title growth
+      added, or one it held back as an unclear fit, belongs on the channel. One row per channel and
+      title, asked once and asked again when the channel's line changes.
+    retention: Replaced when the title is reviewed again; goes with its channel.
+    columns:
+      channel_id: The channel (a channels id).
+      title_key: The title (a titles key, such as `movie:tmdb:603`).
+      line: The channel's line the verdict was given against, in growth's own words.
+      verdict: >
+        `fits` (an unclear title may join) or `does_not_fit` (a title growth added is taken off and
+        declined).
+      reason: The model's few words for its verdict, shown with the title.
+      model: The model that gave the verdict.
+      reviewed_at: When the verdict was given (Unix seconds).
 
   - name: airings
     about: >

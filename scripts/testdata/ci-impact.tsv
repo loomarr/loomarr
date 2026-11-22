@@ -1,6 +1,7 @@
 # name	paths separated by semicolons	expected true gates in classifier order
 migration-rehearsal-script	scripts/migration-rehearsal.sh	contracts
 hardware-gate-script	scripts/check-hardware-gate.sh	contracts
+migration-order-check	scripts/check-migration-order.sh;scripts/check-migration-order-test.sh	policy
 leaf-go	internal/proposals/suggest/score.go	contracts,go,postgres,image
 releaseverify-production	internal/platform/releaseverify/ci_container_downloads.go	policy
 releaseverify-red-tests	internal/platform/releaseverify/ci_container_downloads_test.go	contracts,policy
@@ -56,7 +57,7 @@ demo-titles-visual-spec	web/apps/web/tests/visual/identity-contract.spec.ts	cont
 demo-titles-tv-emulator	web/scripts/tv-emulator-fixture-server.mjs	contracts,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 shared-player-browser	web/packages/player/src/browser/browser.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,tuner,image,android
 shared-player-native	web/packages/player/src/native/native.tsx	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,tuner,image,android
-client-tooling	web/turbo.json	clients
+client-tooling	web/turbo.json	web,clients
 client-browser-proof	web/apps/web/src/client-platform-proof/client-platform-proof.tsx	clients
 apple-client-script	web/scripts/test-apple-client.sh	contracts,apple_mobile,apple_tv
 apple-client-xcconfig	web/scripts/apple-simulator.xcconfig	contracts,apple_mobile,apple_tv
@@ -102,6 +103,7 @@ readme-contract	README.md	docs,policy
 embedded-help	docs/get-started.md	contracts,go,go_full,image,docs
 embedded-explanation	docs/explanation/curation.md	contracts,go,go_full,image,docs
 project-records	project/roadmap.md	docs
+product-record	PRODUCT.md	docs
 agent-script	scripts/agent.sh	agent,policy
 agent-make-module	mk/agent.mk	agent,policy
 agent-orca-adapter	orca.yaml	agent,policy

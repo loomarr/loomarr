@@ -78,7 +78,7 @@ var areas = []area{
 			"are re-curated here, Home's channel ideas come from here, and so does who is watching now.",
 		Packages: []string{
 			"channels", "channels/schedule", "channels/edit", "channels/approval", "channels/recurate",
-			"channels/ideas", "channels/recommend", "channels/viewing",
+			"channels/ideas", "channels/recommend", "channels/viewing", "channels/growth",
 		},
 		MayImport: map[string]string{
 			"platform": "the store every channel write goes through, the jobs and settings behind " +
@@ -193,7 +193,7 @@ var areas = []area{
 			"shared vocabularies such as holidays, language codes, the audience rating ladder and " +
 			"whole-word text matching.",
 		Packages: []string{
-			"platform/store", "platform/store/storedb", "platform/store/clipstore", "platform/store/crashstore", "platform/store/diagnosticsstore", "platform/store/jobstore", "platform/store/activitystore", "platform/store/channeldatastore", "platform/store/channelstore", "platform/store/proposalstore", "platform/store/librarystore", "platform/store/qualitystore", "platform/store/schemadoc",
+			"platform/store", "platform/store/storedb", "platform/store/clipstore", "platform/store/crashstore", "platform/store/diagnosticsstore", "platform/store/jobstore", "platform/store/activitystore", "platform/store/channeldatastore", "platform/store/channelstore", "platform/store/proposalstore", "platform/store/librarystore", "platform/store/inventorystore", "platform/store/viewingstore", "platform/store/operationstore", "platform/store/qualitystore", "platform/store/schemadoc",
 			"platform/store/identitystore", "platform/settings", "platform/config", "platform/jobs", "platform/housekeeping",
 			"platform/backup", "platform/databasemigration",
 			"platform/activity", "platform/diagnostics", "platform/currenthealth", "platform/metrics", "platform/httpx",
@@ -223,7 +223,7 @@ var areas = []area{
 			"request ids, roles and the route-role marker. " +
 			"`app/playoutresolve` is the composition root's playout wiring: it reads the stores and " +
 			"settings that `playout` must not know about.",
-		Packages:       []string{"api", "api/catalog", "api/channels", "api/filler", "api/guide", "api/httpcore", "api/images", "api/library", "api/ops", "api/people", "api/playout", "api/proposals", "api/setup", "api/system", "app", "app/connectiontest", "app/nownext", "app/playoutresolve"},
+		Packages:       []string{"api", "api/agents", "api/catalog", "api/channels", "api/filler", "api/guide", "api/httpcore", "api/images", "api/library", "api/ops", "api/people", "api/playout", "api/proposals", "api/setup", "api/system", "app", "app/connectiontest", "app/nownext", "app/playoutresolve"},
 		ImportsAnyArea: true,
 	},
 	{
