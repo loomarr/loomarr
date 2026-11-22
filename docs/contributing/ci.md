@@ -521,8 +521,14 @@ artifact. The promotion starts when that merge-group `CI` run completes successf
 because the run can finish after the merge (#2288). It publishes only a commit main already contains,
 and proves the source CI run, Android job, artifact name, commit/run/workflow manifest, and cache-tree digest,
 then saves that generation in the default-branch cache scope without running another product build.
-It deletes the transfer and all superseded Android generations. Android jobs do not run on pull
-requests, and queue jobs restore but never spend time saving an unreachable cache.
+It deletes the transfer and all superseded Android generations, but only once the saved generation
+appears in main's cache listing: a refused save only warns, so the retire step checks the listing
+first and fails without deleting anything when the generation is not there. Android jobs do not run
+on pull requests, and queue jobs restore but never spend time saving an unreachable cache.
+
+GitHub gives a `workflow_run` job a read-only cache (the runner log prints `Cache mode: read`), so
+this save is refused on every run and no Android generation exists on main: each Android TV queue
+build starts cold. The promotion run fails at the retire step when that happens.
 
 ## Per-run measurements
 
