@@ -2,7 +2,6 @@ package storeadapter_test
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/media/images/storeadapter"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // Through the real store: a remote image still waiting for its bytes reads back with none, its
@@ -17,7 +17,7 @@ import (
 // fakes hold the zero time, so only a store-backed read can show the scan decodes the sentinel.
 func TestPendingImageThroughTheRealStore(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "images.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), false)
 	if err != nil {
 		t.Fatal(err)
 	}
