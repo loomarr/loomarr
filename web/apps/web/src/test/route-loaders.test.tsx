@@ -1,8 +1,10 @@
 import type { JobView } from "@loomarr/api";
+import * as jobsApi from "@loomarr/api/endpoints/jobs";
+import * as libraryApi from "@loomarr/api/endpoints/library";
 import { getJobsListMockHandler, getListLibraryRootsMockHandler, getMeMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,12 +16,14 @@ import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
 
 // A page whose loader ensures the data it is made of (#3399 step 9.2): it opens on that data, and a
-// first read that fails is the route's error view, with a retry, rather than a page of its own that
-// paints around a loading or error panel.
+// first read that fails is the route's error view, with a retry. A refresh that fails once the page
+// is open is the page's own error, beside the data it already has.
 
 const clients: QueryClient[] = [];
 afterEach(async () => {
-  await Promise.all(clients.splice(0).map((c) => vi.waitFor(() => expect(c.isFetching()).toBe(0))));
+  const done = clients.splice(0);
+  await Promise.all(done.map((c) => vi.waitFor(() => expect(c.isFetching()).toBe(0))));
+  for (const c of done) c.clear();
 });
 
 const renderAt = (path: string) => {
@@ -36,6 +40,7 @@ const renderAt = (path: string) => {
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+  return queryClient;
 };
 
 const job: JobView = {
@@ -62,8 +67,8 @@ const folder = {
   foundIn: [{ authority: "radarr" as const, path: "/media/movies" }],
 };
 
-const failing = (endpoint: string) => {
-  const state = { failing: true };
+const failing = (endpoint: string, initially = true) => {
+  const state = { failing: initially };
   const handler = (answer: () => Response) =>
     http.get(endpoint, () =>
       state.failing ? HttpResponse.json({ title: "Server is restarting" }, { status: 503 }) : answer(),
@@ -97,6 +102,29 @@ describe("Settings → Tasks", () => {
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("Acquisitions")).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load this page")).not.toBeInTheDocument();
+  });
+
+  it("shows a refresh that fails once the page is open as the page's own error, with a retry", async () => {
+    const jobs = failing("*/v1/jobs", false);
+    server.use(
+      getMeMockHandler(me()),
+      jobs.handler(() => HttpResponse.json({ jobs: [job] })),
+      ...appHandlers(),
+    );
+    const queryClient = renderAt("/settings/system/tasks");
+    expect(await screen.findByText("Acquisitions")).toBeInTheDocument();
+
+    jobs.state.failing = true;
+    await act(() => queryClient.invalidateQueries({ queryKey: jobsApi.getJobsListQueryKey() }));
+
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText("Server is restarting")).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load this page")).not.toBeInTheDocument();
+
+    jobs.state.failing = false;
+    await userEvent.click(within(alert).getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Acquisitions")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Server is restarting")).not.toBeInTheDocument());
   });
 });
 
@@ -135,5 +163,25 @@ describe("Settings → Library", () => {
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("/media/movies")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("Couldn't load this page")).not.toBeInTheDocument());
+  });
+
+  it("shows a refresh that fails once the page is open above the folders it already has", async () => {
+    const roots = failing("*/v1/library/roots", false);
+    server.use(
+      getMeMockHandler(me()),
+      browse,
+      roots.handler(() => HttpResponse.json({ roots: [folder], pathMap: [] })),
+      ...appHandlers(),
+    );
+    const queryClient = renderAt("/settings/library");
+    expect(await screen.findByText("/media/movies")).toBeInTheDocument();
+
+    roots.state.failing = true;
+    await act(() => queryClient.invalidateQueries({ queryKey: libraryApi.getListLibraryRootsQueryKey() }));
+
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText("Server is restarting")).toBeInTheDocument();
+    expect(screen.getByText("/media/movies")).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load this page")).not.toBeInTheDocument();
   });
 });
