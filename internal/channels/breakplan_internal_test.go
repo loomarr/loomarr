@@ -8,7 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // planningPods is a pod assembler that plans: each break gets the length it is told to, and it
@@ -72,11 +72,11 @@ func TestPlanBreaksResumesTheProgrammeAtTheRealEndOfTheBreak(t *testing.T) {
 	}
 	// Across the playout boundary: the second programme starts when the first break's clips end.
 	at := anchor.Add(30*time.Minute + 90*time.Second)
-	if a := playout.AiringAt(got, anchor, at); a.LibraryItemID != "b" || a.Offset != 0 {
+	if a := timeline.AiringAt(got, anchor, at); a.LibraryItemID != "b" || a.Offset != 0 {
 		t.Fatalf("at the end of the first break the channel airs %+v, want programme b from its start", a)
 	}
 	// And just before it, the break is still on.
-	if a := playout.AiringAt(got, anchor, at.Add(-time.Second)); a.Kind != schedule.SlotFiller {
+	if a := timeline.AiringAt(got, anchor, at.Add(-time.Second)); a.Kind != schedule.SlotFiller {
 		t.Fatalf("a second before the break ends the channel airs %+v, want the break", a)
 	}
 }
@@ -96,7 +96,7 @@ func TestPlanBreaksDropsAnEmptyBreakAndKeepsTheBreaksThatHaveStarted(t *testing.
 	if len(pods.plans) != 2 || !pods.from.Equal(anchor.Add(30*time.Minute)) {
 		t.Fatalf("plans = %+v from %v, want both breaks from the first", pods.plans, pods.from)
 	}
-	if want := now.Add(playout.OnAirLookahead); !pods.bounds.FixedBefore.Equal(want) {
+	if want := now.Add(timeline.OnAirLookahead); !pods.bounds.FixedBefore.Equal(want) {
 		t.Fatalf("fixed before %v, want now plus the run-ahead %v", pods.bounds.FixedBefore, want)
 	}
 	if len(got) != 4 || got[1].DurationMs != 40_000 {

@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // SelectionForChannel translates a channel's persisted filler policy (§10
@@ -88,7 +88,7 @@ func pinnedCutsAt(ch channelstore.Channel, playsInternally bool, at time.Time) m
 	if !playsInternally || ch.PlayoutAnchor.IsZero() || len(ch.Desired) == 0 {
 		return nil
 	}
-	return playout.CommittedSplits(ch.Desired, ch.PlayoutAnchor, at, at.Add(MidRollFreezeHorizon))
+	return timeline.CommittedSplits(ch.Desired, ch.PlayoutAnchor, at, at.Add(MidRollFreezeHorizon))
 }
 
 // naturalBreaksFor is the scene-fade source for one scheduling pass, or nil when the channel does

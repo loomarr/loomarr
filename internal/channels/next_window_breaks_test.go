@@ -8,7 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/pod"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // recordingPlanner plans every break to 30 seconds, remembering each plan's bounds and the lengths
@@ -76,7 +76,7 @@ func TestReconcile_PlansTheNextWindowsBreaksBeforeItTurns(t *testing.T) {
 	seedShuffleChannel(t, st, "nw", entries)
 
 	first := reconcileDesired(t, e, st, "nw")
-	turn := playout.CarryOverEnd(first.Desired, first.PlayoutAnchor, opened.Add(24*time.Hour))
+	turn := timeline.CarryOverEnd(first.Desired, first.PlayoutAnchor, opened.Add(24*time.Hour))
 	if !hasBreak(first.Desired) {
 		t.Fatal("fixture: the channel has no breaks to plan")
 	}

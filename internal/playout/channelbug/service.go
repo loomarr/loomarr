@@ -167,7 +167,7 @@ func (c *Service) holidayCalendar() schedule.Calendar {
 const renderVersion = "1"
 
 // For is the channel packager's resolver: the channel's rendered bug for this output, or nil. at is
-// the airing's start (playout.Airing.StartedAt), which picks the holiday version: stable across a
+// the airing's start (timeline.Airing.StartedAt), which picks the holiday version: stable across a
 // retried open and a mid-programme tune-in, so the version changes only at a programme boundary.
 func (c *Service) For(ctx context.Context, channelID string, enc encode.Encoder, width, height int, at time.Time) *playout.Watermark {
 	gate := c.gate(enc)

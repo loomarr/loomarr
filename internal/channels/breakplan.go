@@ -8,7 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // BreakPlanner is the part of the pod assembler that plans a channel's breaks ahead (#3838 step 2):
@@ -89,7 +89,7 @@ func (e *Engine) turnEnd(ctx context.Context, ch channelstore.Channel, anchor ti
 	if carries, err := e.CarriesOver(ctx, ch.Policy); err != nil || !carries {
 		return time.Time{}, false
 	}
-	return playout.CarryOverEnd(slots, anchor, schedule.NextWindowStart(anchor, window, zone)), true
+	return timeline.CarryOverEnd(slots, anchor, schedule.NextWindowStart(anchor, window, zone)), true
 }
 
 // isCommercialBreak is a break slot: a filler slot with no key. A keyed filler slot stands in for a
@@ -178,7 +178,7 @@ func (e *Engine) planBreaks(ctx context.Context, ch channelstore.Channel, anchor
 	// A break within the run-ahead may already be resolving live, so it is fixed too. Whether a
 	// break has started is judged on the planned timeline, which the stored lengths decide, so the
 	// planner judges it.
-	bounds := pod.PlanBounds{From: from, FixedBefore: e.now().Add(playout.OnAirLookahead), Until: until, ClearFrom: clearFrom}
+	bounds := pod.PlanBounds{From: from, FixedBefore: e.now().Add(timeline.OnAirLookahead), Until: until, ClearFrom: clearFrom}
 	lengths, err := planner.PlanBreaks(ctx, ch.ID, SelectionForChannel(ch), func(ms int64) int64 { return PodSeedAt(ch.ID, ms) },
 		bounds, plans)
 	if err != nil {

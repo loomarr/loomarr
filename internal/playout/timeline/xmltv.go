@@ -1,4 +1,4 @@
-package playout
+package timeline
 
 import (
 	"encoding/xml"
@@ -33,7 +33,7 @@ const xmltvTime = "20060102150405 -0700"
 
 // GuideChannel is one channel's identity in the guide.
 type GuideChannel struct {
-	// ID must equal the M3U entry's `tvg-id`. See the package comment.
+	// ID must equal the M3U entry's `tvg-id`. See the comment at the top of this file.
 	ID     string
 	Name   string
 	Number int
