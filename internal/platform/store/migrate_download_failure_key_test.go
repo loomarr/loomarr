@@ -9,7 +9,7 @@ import (
 
 // downloadFailureKeyMigration rewrites the NUL separators in a download failure's key to the unit
 // separator, which Postgres text can hold.
-const downloadFailureKeyMigration = 247
+const downloadFailureKeyMigration = 249
 
 // A row stored with NUL separators comes out with unit separators and is otherwise unchanged; a
 // key with no NUL is left alone.

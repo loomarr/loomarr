@@ -17,7 +17,7 @@ const downloadFailureSelect = `SELECT item_key, provider, source_id, remote_id, 
 	failures, first_failed_at, last_failed_at, retry_at, last_error FROM filler_download_failures`
 
 // An item's key separates its parts with NUL, which Postgres text cannot hold, so the row stores
-// the key with the unit separator instead (migration 00247). Every read and write goes through
+// the key with the unit separator instead (migration 00249). Every read and write goes through
 // these two, and callers only ever see DownloadItem.Key().
 func storedKey(key string) string { return strings.ReplaceAll(key, "\x00", "\x1f") }
 

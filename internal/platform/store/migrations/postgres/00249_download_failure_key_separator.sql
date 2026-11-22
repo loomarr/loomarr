@@ -1,5 +1,5 @@
 -- +goose Up
--- SQLite's 00247 rewrites NUL separators in filler_download_failures.item_key to the unit
+-- SQLite's 00249 rewrites NUL separators in filler_download_failures.item_key to the unit
 -- separator (0x1F). Postgres text never held a NUL, so the table could not have a row to rewrite:
 -- this keeps the two migration sequences in step.
 SELECT 1;
