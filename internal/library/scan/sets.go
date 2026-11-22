@@ -45,12 +45,13 @@ func (l *Library) record(ctx context.Context, key librarystore.LibraryCatalogKey
 }
 
 // Sets lists the ready-made sets the library has a movie of, by name. A set whose own record has
-// not been fetched yet is left out until it has.
-func (l *Library) Sets(ctx context.Context) ([]Set, error) {
+// not been fetched yet is left out until it has. A member's sets hold only the movies a household
+// member reads, and a set with none of those is left out.
+func (l *Library) Sets(ctx context.Context, member bool) ([]Set, error) {
 	if l.Records == nil {
 		return []Set{}, nil
 	}
-	page, err := l.ItemStore.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Kind: string(kindMovie), InSet: true})
+	page, err := l.ItemStore.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Kind: string(kindMovie), InSet: true, Member: member})
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +81,7 @@ func (l *Library) Sets(ctx context.Context) ([]Set, error) {
 // library's movies of it, in its order. It returns the new collection's id; store.ErrNotFound
 // when the library has no movie of the set.
 func (l *Library) CopySet(ctx context.Context, id string) (string, error) {
-	sets, err := l.Sets(ctx)
+	sets, err := l.Sets(ctx, false)
 	if err != nil {
 		return "", err
 	}

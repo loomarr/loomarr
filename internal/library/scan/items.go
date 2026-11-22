@@ -199,9 +199,14 @@ func (l *Library) Items(ctx context.Context, q librarystore.LibraryItemQuery) (l
 	return l.ItemStore.ListLibraryItems(ctx, q)
 }
 
-// Item is one title's page; store.ErrNotFound when it has no present file.
-func (l *Library) Item(ctx context.Context, id string) (ItemDetail, error) {
-	summary, err := l.ItemStore.LibraryItem(ctx, id)
+// Item is one title's page; store.ErrNotFound when it has no present file, and for a member when
+// a household member doesn't read it (librarystore.MemberLibraryItem).
+func (l *Library) Item(ctx context.Context, id string, member bool) (ItemDetail, error) {
+	read := l.ItemStore.LibraryItem
+	if member {
+		read = l.ItemStore.MemberLibraryItem
+	}
+	summary, err := read(ctx, id)
 	if err != nil {
 		return ItemDetail{}, err
 	}

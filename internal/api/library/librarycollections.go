@@ -108,11 +108,12 @@ func (s *Handlers) listCollections(ctx context.Context, _ *struct{}) (*listColle
 	if err != nil {
 		return nil, err
 	}
-	list, err := svc.Collections(ctx)
+	admin := readsAdminFacts(ctx)
+	list, err := svc.Collections(ctx, !admin)
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read your collections", "Try again in a moment.", err)
 	}
-	sets, err := svc.Sets(ctx)
+	sets, err := svc.Sets(ctx, !admin)
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read your collections", "Try again in a moment.", err)
 	}
@@ -127,7 +128,7 @@ func (s *Handlers) listCollections(ctx context.Context, _ *struct{}) (*listColle
 	for _, set := range sets {
 		titles = append(titles, set.Titles...)
 	}
-	posters, admin := s.libraryPosters(ctx, titles), readsAdminFacts(ctx)
+	posters := s.libraryPosters(ctx, titles)
 	out := &listCollectionsOutput{}
 	out.Body.Collections = make([]collectionDTO, 0, len(list))
 	for _, c := range list {
@@ -240,7 +241,8 @@ func (s *Handlers) collectionResponse(ctx context.Context, id string) (*collecti
 	if err != nil {
 		return nil, err
 	}
-	c, err := svc.Collection(ctx, id)
+	admin := readsAdminFacts(ctx)
+	c, err := svc.Collection(ctx, id, !admin)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, collectionNotFound()
 	}
@@ -251,7 +253,7 @@ func (s *Handlers) collectionResponse(ctx context.Context, id string) (*collecti
 	if err != nil {
 		return nil, err
 	}
-	return &collectionOutput{Body: collectionOf(c, s.libraryPosters(ctx, c.Titles), uses, readsAdminFacts(ctx))}, nil
+	return &collectionOutput{Body: collectionOf(c, s.libraryPosters(ctx, c.Titles), uses, admin)}, nil
 }
 
 func collectionNotFound() error {

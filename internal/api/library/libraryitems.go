@@ -146,11 +146,13 @@ func libraryMatchOf(m librarystore.LibraryMatch) libraryMatchDTO {
 }
 
 type libraryItemDTO struct {
-	ID    string `json:"id"`
-	Kind  string `json:"kind" enum:"movie,series"`
-	Name  string `json:"name"`
-	Year  int    `json:"year,omitempty" doc:"Absent when unknown"`
-	Files int    `json:"files" doc:"Present files; a series counts its episodes' files"`
+	ID   string `json:"id"`
+	Kind string `json:"kind" enum:"movie,series"`
+	Name string `json:"name"`
+	Year int    `json:"year,omitempty" doc:"Absent when unknown"`
+	// Files is present for an admin, zero included: beside the playing copy's line it would say
+	// how many other copies a title has.
+	Files *int `json:"files,omitempty" doc:"Present files; a series counts its episodes' files. Admins only"`
 	// Ready is false while any file's details are unread.
 	Ready  bool               `json:"ready" doc:"False while some of its files' details aren't read yet"`
 	Poster *httpcore.ImageDTO `json:"poster,omitempty" doc:"Its poster; absent when it has none, or while one is still being fetched"`
@@ -160,18 +162,19 @@ type libraryItemDTO struct {
 	ExtraCopies *int `json:"extraCopies,omitempty" doc:"A movie's files that never play, beyond the copy of each edition (or each part) that does. Admins only"`
 }
 
-// libraryItemOf is it as the caller reads it: admin carries the counts that send it to Needs you.
+// libraryItemOf is it as the caller reads it: admin carries its file count and the counts that
+// send it to Needs you.
 func libraryItemOf(it librarystore.LibraryItemSummary, posters map[string]*httpcore.ImageDTO, admin bool) libraryItemDTO {
 	out := libraryItemDTO{
-		ID: it.ID, Kind: it.Kind, Name: it.Name, Year: it.Year, Files: it.Files, Ready: it.Pending == 0,
+		ID: it.ID, Kind: it.Kind, Name: it.Name, Year: it.Year, Ready: it.Pending == 0,
 		Poster: posters[it.Poster],
 	}
 	if admin {
-		unplayable, extra := it.Unplayable, 0
+		files, unplayable, extra := it.Files, it.Unplayable, 0
 		if it.Kind == "movie" {
 			extra = it.ExtraCopies
 		}
-		out.Unplayable, out.ExtraCopies = &unplayable, &extra
+		out.Files, out.Unplayable, out.ExtraCopies = &files, &unplayable, &extra
 	}
 	return out
 }
@@ -216,9 +219,10 @@ func (s *Handlers) listLibraryItems(ctx context.Context, in *listLibraryItemsInp
 	if err != nil {
 		return nil, err
 	}
+	admin := readsAdminFacts(ctx)
 	page, err := svc.Items(ctx, librarystore.LibraryItemQuery{
 		Kind: in.Kind, Search: in.Search, Ready: in.Ready, Recent: in.Sort == "recent",
-		Limit: min(in.Limit, libraryItemsPageMax), Offset: in.Offset,
+		Member: !admin, Limit: min(in.Limit, libraryItemsPageMax), Offset: in.Offset,
 	})
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't list the library", "Try again in a moment.", err)
@@ -226,7 +230,7 @@ func (s *Handlers) listLibraryItems(ctx context.Context, in *listLibraryItemsInp
 	out := &listLibraryItemsOutput{}
 	out.Body.Total = page.Total
 	out.Body.Items = make([]libraryItemDTO, 0, len(page.Items))
-	posters, admin := s.libraryPosters(ctx, page.Items), readsAdminFacts(ctx)
+	posters := s.libraryPosters(ctx, page.Items)
 	for _, it := range page.Items {
 		out.Body.Items = append(out.Body.Items, libraryItemOf(it, posters, admin))
 	}
@@ -433,7 +437,9 @@ func (s *Handlers) getLibraryItem(ctx context.Context, in *getLibraryItemInput) 
 	if err != nil {
 		return nil, err
 	}
-	d, err := svc.Item(ctx, in.ID)
+	admin := readsAdminFacts(ctx)
+	// A title a member doesn't read answers the same 404 as an id that names nothing.
+	d, err := svc.Item(ctx, in.ID, !admin)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.Problem(http.StatusNotFound, "Not in the library", "No file of this title is in your media folders.")
 	}
@@ -441,7 +447,7 @@ func (s *Handlers) getLibraryItem(ctx context.Context, in *getLibraryItemInput) 
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read this title", "Try again in a moment.", err)
 	}
 	posters := s.libraryPosters(ctx, []librarystore.LibraryItemSummary{d.LibraryItemSummary})
-	body := libraryItemDetailOf(d, posters, readsAdminFacts(ctx))
+	body := libraryItemDetailOf(d, posters, admin)
 	body.LogoImage, body.BackdropImage = s.libraryImage(ctx, d.Logo), s.libraryImage(ctx, d.Backdrop)
 	return &getLibraryItemOutput{Body: body}, nil
 }
@@ -474,6 +480,11 @@ func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*httpcore.ImageDT
 	for _, season := range d.Seasons {
 		dto := librarySeasonDTO{Number: season.Number, Episodes: make([]libraryEpisodeDTO, 0, len(season.Episodes))}
 		for _, ep := range season.Episodes {
+			// An episode still named by its file waits on the show's order in Needs you, so a
+			// member's season leaves it out, and a season of only those is left out whole.
+			if !admin && ep.FromFile {
+				continue
+			}
 			episode := libraryEpisodeDTO{ID: ep.ID, Name: ep.Name, Number: ep.Number, End: ep.End, Ready: ep.Ready,
 				Overview: ep.Overview, LengthMillis: ep.LengthMillis}
 			if admin {
@@ -481,7 +492,9 @@ func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*httpcore.ImageDT
 			}
 			dto.Episodes = append(dto.Episodes, episode)
 		}
-		out.Seasons = append(out.Seasons, dto)
+		if admin || len(dto.Episodes) > 0 {
+			out.Seasons = append(out.Seasons, dto)
+		}
 	}
 	if !admin {
 		return out

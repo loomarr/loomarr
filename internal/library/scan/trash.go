@@ -45,7 +45,7 @@ var (
 func (l *Library) RemoveExtraCopy(ctx context.Context, id, path string) error {
 	l.removing.Lock()
 	defer l.removing.Unlock()
-	d, err := l.Item(ctx, id)
+	d, err := l.Item(ctx, id, false)
 	if err != nil {
 		return err
 	}

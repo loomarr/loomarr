@@ -38,7 +38,7 @@ func TestRemoveExtraCopyMovesItToTheTrash(t *testing.T) {
 	day := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
 	lib := &Library{ItemStore: h.st, Inventory: h.inv, Now: func() time.Time { return day }}
 	ctx := context.Background()
-	d, err := lib.Item(ctx, id)
+	d, err := lib.Item(ctx, id, false)
 	if err != nil || len(d.Files) != 2 {
 		t.Fatalf("title = %+v, %v; want one title with both files", d.Files, err)
 	}
@@ -67,7 +67,7 @@ func TestRemoveExtraCopyMovesItToTheTrash(t *testing.T) {
 
 	// Half the movie's files went, which a walk would hold as a likely unplugged drive; Loomarr
 	// moved this one itself, so nothing is held.
-	if d, err = lib.Item(ctx, id); err != nil || len(d.Files) != 1 || d.Files[0].Path != sharp || d.Files[0].Extra {
+	if d, err = lib.Item(ctx, id, false); err != nil || len(d.Files) != 1 || d.Files[0].Path != sharp || d.Files[0].Extra {
 		t.Fatalf("title after removal = %+v, %v; want the copy that plays alone", d.Files, err)
 	}
 	h.run()
@@ -122,7 +122,7 @@ func TestATitlesLastFileIsNeverAnExtraCopy(t *testing.T) {
 	}
 
 	lib := &Library{ItemStore: h.st, Inventory: h.inv}
-	d, err := lib.Item(ctx, id)
+	d, err := lib.Item(ctx, id, false)
 	if err != nil || len(d.Files) != 1 || d.Files[0].Path != soft {
 		t.Fatalf("title = %+v, %v; want only the soft copy listed", d.Files, err)
 	}
@@ -159,7 +159,7 @@ func TestRemoveExtraCopyNeedsTheCopyThatPlaysOnDisk(t *testing.T) {
 	// The disk holds only the soft copy; the list and the sources still hold both.
 	disk := fakeDisk{files: map[string]bool{soft: true}}
 	lib := &Library{Roots: &Roots{Disk: disk}, ItemStore: h.st, Inventory: h.inv}
-	d, err := lib.Item(ctx, id)
+	d, err := lib.Item(ctx, id, false)
 	if err != nil || len(d.Files) != 2 {
 		t.Fatalf("title = %+v, %v; want both files listed", d.Files, err)
 	}

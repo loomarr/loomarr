@@ -7208,7 +7208,7 @@ components:
           format: int64
           type: integer
         files:
-          description: Present files; a series counts its episodes' files
+          description: Present files; a series counts its episodes' files. Admins only
           format: int64
           type: integer
         id:
@@ -7238,7 +7238,6 @@ components:
         - id
         - kind
         - name
-        - files
         - ready
       type: object
     LibraryItemDetailDTO:

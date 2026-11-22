@@ -252,6 +252,9 @@ type LibraryItemQuery struct {
 	Ready bool
 	// Recent lists the titles written last first, instead of by name.
 	Recent bool
+	// Member keeps only the titles a household member reads (memberReads): one waiting in Needs
+	// you is left out of the page and its total.
+	Member bool
 	Limit  int
 	Offset int
 }
@@ -280,6 +283,10 @@ type LibraryItemStore interface {
 	ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error)
 	// LibraryItem reads one item with a present file; ErrNotFound otherwise.
 	LibraryItem(ctx context.Context, id string) (LibraryItemSummary, error)
+	// MemberLibraryItem is LibraryItem as a household member reads it (memberReads): a title
+	// waiting in Needs you, one the maintainer ignored, or an episode still named by its file is
+	// ErrNotFound, the same as an id that names nothing.
+	MemberLibraryItem(ctx context.Context, id string) (LibraryItemSummary, error)
 	// LibraryItemChannels lists the channels whose lineup names the item, by number.
 	LibraryItemChannels(ctx context.Context, id string) ([]LibraryItemChannel, error)
 	// LibraryItemFiles lists an item's present files (a series' episodes), in path order.
@@ -384,6 +391,25 @@ var (
 // extraCopies is title i's files that no edition plays (decision 37), from its rows.
 const extraCopies = `library_sources s WHERE s.item_id = i.id AND NOT s.plays`
 
+// memberReads keeps a title a household member reads (#4476, library.md "Who reads the
+// Library"): a movie or series that a catalogue identifies (grounded) or that the maintainer
+// answered, and never one they said is not a title; and an episode its show's catalog numbers,
+// of such a show. A title waiting in Needs you carries the name its file or folder gave it, so
+// it is left out whole. Every member read of the list, a title and a collection's or set's titles
+// goes through it. An episode's show is the one its present file is listed under, as the show's
+// page groups it.
+var memberReads = `(` + titleIdentified("i") + ` OR (i.kind = 'episode' AND i.unnumbered = FALSE
+	AND EXISTS (SELECT 1 FROM library_files f JOIN library_items s ON s.id = f.inventory_series_id
+		WHERE f.inventory_item_id = i.id AND ` + presentFile + ` AND ` + titleIdentified("s") + `)))`
+
+// titleIdentified is memberReads for the movie or series t.
+func titleIdentified(t string) string {
+	answer := `SELECT 1 FROM library_answers a WHERE a.origin_authority = ` + t + `.origin_authority
+		AND a.origin_key = ` + t + `.origin_key`
+	return `(` + t + `.kind IN ('movie', 'series') AND (` + t + `.grounded = TRUE OR EXISTS (` + answer + `))
+		AND NOT EXISTS (` + answer + ` AND a.ignored = TRUE))`
+}
+
 func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
 	where := []string{}
 	args := []any{}
@@ -411,6 +437,9 @@ func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Libra
 	where = append(where, `NOT EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = i.origin_authority
 		AND a.origin_key = i.origin_key AND a.ignored = TRUE)`)
 	where = append(where, itemListed)
+	if q.Member {
+		where = append(where, memberReads)
+	}
 	if q.Problems {
 		where = append(where, itemProblems)
 	}
@@ -464,8 +493,17 @@ func (s *Store) LibraryItemChannels(ctx context.Context, id string) ([]LibraryIt
 }
 
 func (s *Store) LibraryItem(ctx context.Context, id string) (LibraryItemSummary, error) {
+	return s.libraryItem(ctx, id, itemListed)
+}
+
+func (s *Store) MemberLibraryItem(ctx context.Context, id string) (LibraryItemSummary, error) {
+	return s.libraryItem(ctx, id, itemListed+` AND `+memberReads)
+}
+
+// libraryItem reads item id when where keeps it; ErrNotFound otherwise.
+func (s *Store) libraryItem(ctx context.Context, id, where string) (LibraryItemSummary, error) {
 	items, err := s.scanLibraryItems(ctx, `SELECT `+itemColumns+`
-		FROM library_items i WHERE i.id = ? AND `+itemListed, id)
+		FROM library_items i WHERE i.id = ? AND `+where, id)
 	if err != nil {
 		return LibraryItemSummary{}, err
 	}

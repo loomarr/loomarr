@@ -470,13 +470,31 @@ step 5). Nothing reads the scanner's origins until the cutover.
   and its answers (link, ignore, unanswer, episode order, search for a different title), a
   title's refresh, check and remove-copy, the hook test, and every collection write and set copy.
   `POST /v1/library/hooks/{app}` stays public and answers only its app's shared secret.
+  **A member reads only an identified title.** A movie or series is one a member reads when a
+  catalogue identifies it (it is grounded) or the maintainer has answered it, and the maintainer
+  has not said it is not a title; an episode is one when its show is and its show's catalog
+  numbers it. Everything waiting in Needs you is left out, because its name is its file's or its
+  folder's:
+
+  ```
+  identified(t) = t.kind in {movie, series}
+                  and (t.grounded or answered(t)) and not ignored(t)
+  member reads t = identified(t)
+                  or (t.kind = episode and not t.unnumbered and identified(t.series))
+  ```
+
+  One store predicate applies it to the list, its search and filters, its total, one title, an
+  episode's page, and a collection's and a ready-made set's titles. A title a member doesn't
+  read answers the same 404 as an id that names nothing; a set with none of their titles is left
+  out. A member's season lists leave out an episode still named by its file, and a season of only
+  those; the series stays. An admin reads every listed title, unchanged.
   A member's response is the admin's shape with the admin-only parts left out, decided once in
   the handlers from the caller's role, never by the client: a title leaves out `files` (paths,
   sizes, tracks, chapters), `match` and `detailsFrom`; a list entry, a collection's title and a
-  set's title leave out `unplayable` and `extraCopies`; an episode leaves out `fromFile`. Each of
-  those fields is optional in the schema and says "admins only". "Getting ready" (`ready`) and
-  the file count stay. The list's filters (kind, search, ready, sort) reveal nothing a member
-  can't read, and an episode id opens the episode's page under the same rule.
+  set's title leave out the file count (`files`), `unplayable` and `extraCopies`; an episode
+  leaves out `fromFile`. Each of those fields is optional in the schema and says "admins only".
+  "Getting ready" (`ready`) stays. The list's filters (kind, search, ready, sort) and its total
+  follow the rule above.
 - **Posters, backdrops and logos** (step 10b, #2567). When the importer writes a title it hands
   the resolved poster, fanart and clear logo to the image service, and the title owns each
   through a `library_item_images` row (role `poster`, `backdrop` or `logo`); that

@@ -114,14 +114,30 @@ func TestLibraryListFiltersRevealNoAdminFact(t *testing.T) {
 	t.Fatal("listLibraryItems is not registered")
 }
 
-// seedMemberLibrary stores a movie whose folder name differs from its title, with the copy that
-// plays (its subtitle in a file beside it), an extra copy, a file whose header couldn't be read
-// and a held removal, and a series with one episode in a season folder.
+// The seeded titles a member must never read: each is waiting in Needs you, ignored, or an
+// episode still named by its file, and each is named from its file or folder.
+const (
+	unidentifiedMovie  = "90000005" // named from its folder, nobody has answered it
+	ignoredMovie       = "90000007" // identified, but the admin said it is not a title
+	unidentifiedSeries = "90000008" // named from its folder
+	unidentifiedEp     = "90000081" // a numbered episode of the unidentified series
+	fileNamedEpisode   = "90000012" // an identified series' episode still named by its file
+	answeredMovie      = "90000006" // nothing identifies it, but the admin answered it
+)
+
+// seedMemberLibrary stores an identified movie whose folder name differs from its title, with the
+// copy that plays (its subtitle in a file beside it), an extra copy, a file whose header couldn't
+// be read and a held removal; an identified series with one episode in a season folder and one
+// still named by its file; and the titles waiting in Needs you, ignored, or answered (above).
 func seedMemberLibrary(t *testing.T, st records.Store) {
 	t.Helper()
 	ctx := context.Background()
 	at := time.UnixMilli(1_790_000_000_000).UTC()
 	const dir = "/media/Alpha Folder (2001)/"
+	origin := func(key string) librarystore.LibraryOrigin {
+		return librarystore.LibraryOrigin{Authority: "library:/media", Key: key}
+	}
+	grounded := librarystore.LibraryMatch{Basis: "embedded_id"}
 	streams := []librarystore.LibraryStream{
 		{Index: 0, Kind: "video", Codec: "hevc", Width: 3840, Height: 2160, HDR: "HDR10"},
 		{Index: 1, Kind: "audio", Codec: "eac3", Channels: 6, Language: "en", Default: true},
@@ -131,17 +147,33 @@ func seedMemberLibrary(t *testing.T, st records.Store) {
 	}
 	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "90000001", Kind: "movie", Name: "Alpha Movie", Year: 2001, Overview: "A story.",
+			Origin: origin(dir + "alpha.mkv"), Match: grounded,
 			From: librarystore.LibraryFrom{Year: "nfo"},
 			Sources: []librarystore.LibrarySource{
 				{Path: dir + "alpha.mkv", Plays: true, DurationMs: 5_400_000, Streams: streams},
 				{Path: dir + "alpha.copy.mkv", Plays: false, DurationMs: 5_400_000},
 			}},
-		{ID: "90000002", Kind: "series", Name: "Bravo Show"},
+		{ID: "90000002", Kind: "series", Name: "Bravo Show", Origin: origin("/media/Bravo Folder"), Match: grounded},
 		{ID: "90000011", Kind: "episode", Name: "Bravo E1", SeriesID: "90000002", Season: 1, Episode: 1,
 			Sources: []librarystore.LibrarySource{{Path: "/media/Bravo Folder/Season 01/bravo.e1.mkv", Plays: true,
 				Streams: streams[:2]}}},
+		{ID: fileNamedEpisode, Kind: "episode", Name: "bravo.e2 From File", SeriesID: "90000002", Season: 1, Episode: 2,
+			Unnumbered: true},
+		{ID: unidentifiedMovie, Kind: "movie", Name: "Charlie Folder Extras", Origin: origin("/media/Charlie Folder Extras/cast.mkv")},
+		{ID: answeredMovie, Kind: "movie", Name: "Delta Answered", Origin: origin("/media/delta.mkv")},
+		{ID: ignoredMovie, Kind: "movie", Name: "Echo Folder Ignored", Origin: origin("/media/Echo Folder Ignored/echo.mkv"), Match: grounded},
+		{ID: unidentifiedSeries, Kind: "series", Name: "Foxtrot Folder", Origin: origin("/media/Foxtrot Folder")},
+		{ID: unidentifiedEp, Kind: "episode", Name: "Foxtrot Numbered", SeriesID: unidentifiedSeries, Season: 1, Episode: 1},
 	}, at); err != nil {
 		t.Fatal(err)
+	}
+	for _, answer := range []librarystore.LibraryAnswer{
+		{Origin: origin("/media/delta.mkv"), Kind: "movie", ID: librarystore.LibraryID{Namespace: "tmdb", Value: "90000206"}, AnsweredAt: at},
+		{Origin: origin("/media/Echo Folder Ignored/echo.mkv"), Kind: "movie", Ignored: true, AnsweredAt: at},
+	} {
+		if err := st.SaveLibraryAnswer(ctx, answer); err != nil {
+			t.Fatal(err)
+		}
 	}
 	file := func(path, item, series, header string, held bool) librarystore.LibraryFile {
 		return librarystore.LibraryFile{Path: path, Root: "/media", Size: 7, ModifiedNs: 1, Kind: "movie", Header: header,
@@ -153,6 +185,11 @@ func seedMemberLibrary(t *testing.T, st records.Store) {
 		file(dir+"alpha.broken.mkv", "90000001", "", librarystore.LibraryHeaderFailed, false),
 		file(dir+"alpha.held.mkv", "90000001", "", librarystore.LibraryHeaderRead, true),
 		file("/media/Bravo Folder/Season 01/bravo.e1.mkv", "90000011", "90000002", librarystore.LibraryHeaderRead, false),
+		file("/media/Bravo Folder/Season 01/bravo.e2.mkv", fileNamedEpisode, "90000002", librarystore.LibraryHeaderRead, false),
+		file("/media/Charlie Folder Extras/cast.mkv", unidentifiedMovie, "", librarystore.LibraryHeaderRead, false),
+		file("/media/delta.mkv", answeredMovie, "", librarystore.LibraryHeaderRead, false),
+		file("/media/Echo Folder Ignored/echo.mkv", ignoredMovie, "", librarystore.LibraryHeaderRead, false),
+		file("/media/Foxtrot Folder/e1.mkv", unidentifiedEp, unidentifiedSeries, librarystore.LibraryHeaderRead, false),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -172,12 +209,15 @@ func okBody(t *testing.T, resp *http.Response) string {
 	return string(b)
 }
 
-// memberLeaks are pieces of the seeded files' paths: none may reach a member in any field.
-var memberLeaks = []string{"/media", "Alpha Folder", "Bravo Folder", "Season 01", "alpha.", "bravo.", ".mkv", ".srt"}
+// memberLeaks are pieces of the seeded files' paths and the names files and folders gave the
+// titles a member doesn't read: none may reach a member in any field.
+var memberLeaks = []string{"/media", "Alpha Folder", "Bravo Folder", "Season 01", "alpha.", "bravo.", ".mkv", ".srt",
+	"From File", "Charlie Folder", "Echo Folder", "Foxtrot", unidentifiedMovie, ignoredMovie, unidentifiedSeries,
+	unidentifiedEp, fileNamedEpisode}
 
-// adminOnlyKeys are the JSON keys a member's Library responses leave out. A title's file count
-// is `"files":<n>` and stays; its files list is `"files":[`.
-var adminOnlyKeys = []string{`"files":[`, `"match":`, `"detailsFrom":`, `"unplayable":`, `"extraCopies":`, `"fromFile":`, `"path":`}
+// adminOnlyKeys are the JSON keys a member's Library responses leave out: a title's file count
+// and files list (both "files"), its match and sources, and the Needs you counts and marks.
+var adminOnlyKeys = []string{`"files":`, `"match":`, `"detailsFrom":`, `"unplayable":`, `"extraCopies":`, `"fromFile":`, `"path":`}
 
 func assertMemberSafe(t *testing.T, route, body string) {
 	t.Helper()
@@ -193,6 +233,96 @@ func assertMemberSafe(t *testing.T, route, body string) {
 	}
 }
 
+// A member reads only identified titles (#4476 security review): one waiting in Needs you, one
+// the admin ignored, and an episode still named by its file are absent from the list, its search
+// and total, and the collections, and opening one by id answers exactly what an unknown id does.
+// An answered title is read. An admin reads them all, as before.
+func TestMemberNeverReadsATitleWaitingInNeedsYou(t *testing.T) {
+	h := newLibraryHarness(t)
+	seedMemberLibrary(t, h.Store)
+	type page struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		Total int `json:"total"`
+	}
+	listed := func(token, query string) ([]string, int) {
+		t.Helper()
+		var p page
+		decode(t, h.Do(http.MethodGet, "/v1/library/items"+query, token, ""), &p)
+		out := []string{}
+		for _, it := range p.Items {
+			out = append(out, it.ID)
+		}
+		slices.Sort(out)
+		return out, p.Total
+	}
+	for _, tc := range []struct {
+		token, query string
+		want         []string
+	}{
+		{memberToken, "", []string{"90000001", "90000002", answeredMovie}},
+		{memberToken, "?limit=1", []string{"90000001"}},
+		{memberToken, "?search=folder", []string{}},
+		{memberToken, "?kind=series", []string{"90000002"}},
+		{adminToken, "", []string{"90000001", "90000002", unidentifiedMovie, answeredMovie, unidentifiedSeries}},
+		{adminToken, "?search=folder", []string{unidentifiedMovie, unidentifiedSeries}},
+	} {
+		got, total := listed(tc.token, tc.query)
+		wantTotal := len(tc.want)
+		if tc.query == "?limit=1" {
+			wantTotal = 3
+		}
+		if !slices.Equal(got, tc.want) || total != wantTotal {
+			t.Errorf("%s list%s = %v (total %d), want %v (total %d)", tc.token, tc.query, got, total, tc.want, wantTotal)
+		}
+	}
+
+	// A hidden title's 404 is the unknown id's, word for word.
+	problemOf := func(token, id string) (int, string) {
+		t.Helper()
+		resp := h.Do(http.MethodGet, "/v1/library/items/"+id, token, "")
+		defer func() { _ = resp.Body.Close() }()
+		var p struct {
+			Title  string `json:"title"`
+			Detail string `json:"detail"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+			t.Fatal(err)
+		}
+		return resp.StatusCode, p.Title + " / " + p.Detail
+	}
+	unknownStatus, unknown := problemOf(memberToken, "90000099")
+	if unknownStatus != http.StatusNotFound {
+		t.Fatalf("unknown id = %d", unknownStatus)
+	}
+	for _, id := range []string{unidentifiedMovie, ignoredMovie, unidentifiedSeries, unidentifiedEp, fileNamedEpisode} {
+		if status, body := problemOf(memberToken, id); status != unknownStatus || body != unknown {
+			t.Errorf("member opens %s = %d %q, want the unknown id's %d %q", id, status, body, unknownStatus, unknown)
+		}
+		if resp := h.Do(http.MethodGet, "/v1/library/items/"+id, adminToken, ""); resp.StatusCode != http.StatusOK {
+			t.Errorf("admin opens %s = %d, want 200", id, resp.StatusCode)
+		}
+	}
+
+	// The identified series stays, its season without the episode its file still names.
+	var series struct {
+		Seasons []struct {
+			Episodes []struct {
+				ID string `json:"id"`
+			} `json:"episodes"`
+		} `json:"seasons"`
+	}
+	decode(t, h.Do(http.MethodGet, "/v1/library/items/90000002", memberToken, ""), &series)
+	if len(series.Seasons) != 1 || len(series.Seasons[0].Episodes) != 1 || series.Seasons[0].Episodes[0].ID != "90000011" {
+		t.Errorf("member series seasons = %+v", series.Seasons)
+	}
+	admin := okBody(t, h.Do(http.MethodGet, "/v1/library/items/90000002", adminToken, ""))
+	if !strings.Contains(admin, `"id":"`+fileNamedEpisode+`"`) || !strings.Contains(admin, `"fromFile":true`) {
+		t.Errorf("admin series lacks the file-named episode: %s", admin)
+	}
+}
+
 // A member reads every title fact and the one line about the copy that plays, and nothing that
 // names a file or that a fix needs: not on the list, not on the title, not on an episode's own
 // page, not through a filter, and not through the collections.
@@ -200,7 +330,8 @@ func TestMemberReadsLibraryWithoutFilesOrFixFacts(t *testing.T) {
 	h := newLibraryHarness(t)
 	seedMemberLibrary(t, h.Store)
 	if resp := h.Do(http.MethodPost, "/v1/collections", adminToken,
-		`{"name":"Favourites","titles":["90000001","90000002"]}`); resp.StatusCode != http.StatusCreated {
+		`{"name":"Favourites","titles":["90000001","90000002","`+unidentifiedMovie+`","`+ignoredMovie+`","`+
+			unidentifiedSeries+`","`+answeredMovie+`"]}`); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("make collection = %d", resp.StatusCode)
 	}
 	var made struct {
@@ -215,7 +346,9 @@ func TestMemberReadsLibraryWithoutFilesOrFixFacts(t *testing.T) {
 
 	for _, route := range []string{
 		"/v1/library/items", "/v1/library/items?kind=movie&search=alpha&ready=true&sort=recent",
+		"/v1/library/items?search=folder", "/v1/library/items?kind=series", "/v1/library/items?sort=recent&limit=1&offset=1",
 		"/v1/library/items/90000001", "/v1/library/items/90000002", "/v1/library/items/90000011",
+		"/v1/library/items/" + answeredMovie,
 		"/v1/collections", "/v1/collections/" + made.Collections[0].ID,
 	} {
 		assertMemberSafe(t, route, okBody(t, h.Do(http.MethodGet, route, memberToken, "")))
@@ -226,7 +359,6 @@ func TestMemberReadsLibraryWithoutFilesOrFixFacts(t *testing.T) {
 		Item struct {
 			Name  string `json:"name"`
 			Ready bool   `json:"ready"`
-			Files int    `json:"files"`
 		} `json:"item"`
 		Overview string          `json:"overview"`
 		Playing  json.RawMessage `json:"playing"`
@@ -235,7 +367,7 @@ func TestMemberReadsLibraryWithoutFilesOrFixFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	const playing = `{"picture":{"width":3840,"height":2160,"hdr":true},"audioChannels":6,"subtitleLanguages":["en","es"]}`
-	if movie.Item.Name != "Alpha Movie" || movie.Overview != "A story." || movie.Item.Files == 0 || string(movie.Playing) != playing {
+	if movie.Item.Name != "Alpha Movie" || movie.Overview != "A story." || !movie.Item.Ready || string(movie.Playing) != playing {
 		t.Errorf("member movie = %+v, playing %s", movie, movie.Playing)
 	}
 	var episode struct {
@@ -293,7 +425,7 @@ func TestAdminLibraryResponsesKeepZeroFixFacts(t *testing.T) {
 	h := newLibraryHarness(t)
 	seedMemberLibrary(t, h.Store)
 	list := okBody(t, h.Do(http.MethodGet, "/v1/library/items?kind=series", adminToken, ""))
-	if !strings.Contains(list, `"unplayable":0`) || !strings.Contains(list, `"extraCopies":0`) {
+	if !strings.Contains(list, `"unplayable":0`) || !strings.Contains(list, `"extraCopies":0`) || !strings.Contains(list, `"files":2`) {
 		t.Errorf("admin series list = %s", list)
 	}
 	series := okBody(t, h.Do(http.MethodGet, "/v1/library/items/90000002", adminToken, ""))
@@ -307,8 +439,8 @@ func TestAdminLibraryResponsesKeepZeroFixFacts(t *testing.T) {
 	}
 }
 
-// newLibrarySessionHarness serves the real Library behind the production session authorizer,
-// with an admin ("boss") and a member ("kid") who sign in.
+// newLibrarySessionHarness serves the real Library behind the production session and device
+// authorizer, with an admin ("boss") and a member ("kid") who sign in and pair devices.
 func newLibrarySessionHarness(t *testing.T) *apiHarness {
 	t.Helper()
 	ms := testkit.NewMediaServer(t)
@@ -320,13 +452,16 @@ func newLibrarySessionHarness(t *testing.T) *apiHarness {
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
+		devices := auth.NewDeviceManager(defaults.Store, time.Now)
 		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
 		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
 		return api.Router(defaults.Log, api.Options{
-			Store: defaults.Store, Auth: sessionAuth(mgr, "break-glass-token"), Log: defaults.Log, CookieSecure: "false",
+			Store: defaults.Store, Log: defaults.Log, CookieSecure: "false",
+			Auth: api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
 			People: api.PeopleOptions{
 				Login:     auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
 				Sessions:  mgr,
+				Devices:   devices,
 				Passwords: auth.NewPasswordService(defaults.Store, func() string { return "u-new" }, time.Now),
 				UserSync:  auth.NewUserSync(lib, defaults.Store, time.Now),
 			},
@@ -335,20 +470,35 @@ func newLibrarySessionHarness(t *testing.T) *apiHarness {
 	})
 }
 
-// §19: a signed-in member reads the Library and is refused its fixes; once an admin disables
-// them, their session reads nothing, the list or a title.
-func TestDisabledMembersSessionLosesTheLibrary(t *testing.T) {
+// §19: a signed-in member, and a device they paired, read the Library and are refused its fixes;
+// once an admin disables them, neither the session nor the device reads any of the four
+// member-readable routes.
+func TestDisabledMemberLosesTheLibraryOnSessionAndDevice(t *testing.T) {
 	h := newLibrarySessionHarness(t)
 	seedMemberLibrary(t, h.Store)
 	srv := h.Server
 	admin := login(t, srv, "boss", "pw")
 	member := login(t, srv, "kid", "pw")
+	tv := pairDevice(t, srv, member)
+	code, made := deviceCall(t, srv, http.MethodPost, "/v1/collections", admin, "", `{"name":"Favourites","titles":["90000001"]}`)
+	if code != http.StatusCreated {
+		t.Fatalf("make collection = %d (%v)", code, made)
+	}
+	routes := []string{"/v1/library/items", "/v1/library/items/90000001", "/v1/collections", "/v1/collections/" + made["id"].(string)}
 
-	assertMemberSafe(t, "/v1/library/items/90000001", okBody(t, authed(t, http.MethodGet, srv.URL+"/v1/library/items/90000001", member, "")))
+	for _, route := range routes {
+		assertMemberSafe(t, route, okBody(t, authed(t, http.MethodGet, srv.URL+route, member, "")))
+		if code, body := deviceCall(t, srv, http.MethodGet, route, nil, tv, ""); code != http.StatusOK {
+			t.Errorf("member's device %s = %d (%v), want 200", route, code, body)
+		}
+	}
 	resp := authed(t, http.MethodPost, srv.URL+"/v1/library/items/90000001/check", member, "")
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("signed-in member check = %d, want 403", resp.StatusCode)
+	}
+	if code, _ := deviceCall(t, srv, http.MethodPost, "/v1/library/items/90000001/check", nil, tv, ""); code != http.StatusForbidden {
+		t.Errorf("member's device check = %d, want 403", code)
 	}
 
 	resp = authed(t, http.MethodPatch, srv.URL+"/v1/users/u-kid", admin, `{"disabled":true}`)
@@ -356,11 +506,14 @@ func TestDisabledMembersSessionLosesTheLibrary(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("disable = %d", resp.StatusCode)
 	}
-	for _, route := range []string{"/v1/library/items", "/v1/library/items/90000001", "/v1/collections"} {
+	for _, route := range routes {
 		resp := authed(t, http.MethodGet, srv.URL+route, member, "")
 		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Errorf("disabled member %s = %d, want 401", route, resp.StatusCode)
+		}
+		if code, _ := deviceCall(t, srv, http.MethodGet, route, nil, tv, ""); code != http.StatusUnauthorized {
+			t.Errorf("disabled member's device %s = %d, want 401", route, code)
 		}
 	}
 }

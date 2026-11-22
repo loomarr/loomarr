@@ -38,7 +38,7 @@ func TestTitlePageSaysWhereDetailsCameFromAndWhatTheFileHolds(t *testing.T) {
 	id := string(h.item(fileOrigin(h.root, "Echo/Echo.mkv")).ID)
 
 	lib := &Library{ItemStore: h.st, Inventory: h.inv}
-	d, err := lib.Item(context.Background(), id)
+	d, err := lib.Item(context.Background(), id, false)
 	if err != nil {
 		t.Fatal(err)
 	}
