@@ -9379,6 +9379,7 @@ components:
         backend:
           type: string
         burnSubtitles:
+          description: ISO 639-2 language whose image subtitle track (Blu-ray PGS) is burned into this channel's programmes where a programme carries one and the host's GPU can draw it; omitted burns none in. Text subtitles stay each viewer's choice.
           type: string
       type: object
     PlayoutStatus:

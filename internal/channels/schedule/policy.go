@@ -158,7 +158,7 @@ type PlayoutPolicy struct {
 	// channel burns into its programmes (#2088 step 8), when a programme carries one. Empty = never.
 	// Image subtitles cannot travel beside the stream as text, so burning them in is the only way
 	// to show them; text tracks stay each viewer's own choice (the subtitles sidecar).
-	BurnSubtitles string `json:"burnSubtitles,omitempty"`
+	BurnSubtitles string `json:"burnSubtitles,omitempty" doc:"ISO 639-2 language whose image subtitle track (Blu-ray PGS) is burned into this channel's programmes where a programme carries one and the host's GPU can draw it; omitted burns none in. Text subtitles stay each viewer's choice."`
 }
 
 // BurnSubtitlesLanguage is the language a channel burns image subtitles in, or "" for none.
