@@ -85,10 +85,11 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 const writeVersion = 92
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
-// nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
-// learns more reaches every file. seriesSidecars are an episode's series folder's tvshow.nfo and
-// folder art (#3226); omitted when empty, so a movie's digest is unchanged by them.
-func identityDigest(file File, m managed, embedded mp.Record, reader int, seriesSidecars map[string]Stat) string {
+// nothing else, rewrites the file's inventory item. version is the writeVersion and reader the
+// header.Version, so a writer or a reader that learns more reaches every file. seriesSidecars are
+// an episode's series folder's tvshow.nfo and folder art (#3226); omitted when empty, so a movie's
+// digest is unchanged by them.
+func identityDigest(file File, m managed, embedded mp.Record, version, reader int, seriesSidecars map[string]Stat) string {
 	payload, _ := json.Marshal(struct {
 		Version        int
 		Header         int
@@ -101,7 +102,7 @@ func identityDigest(file File, m managed, embedded mp.Record, reader int, series
 		Notes folderNotes `json:",omitzero"`
 		// Part changes when another part of its movie comes or goes.
 		Part int `json:",omitzero"`
-	}{writeVersion, reader, m.records, m.series, embedded, file.Sidecars, seriesSidecars, file.Notes, file.Part})
+	}{version, reader, m.records, m.series, embedded, file.Sidecars, seriesSidecars, file.Notes, file.Part})
 	digest := sha256.Sum256(payload)
 	return hex.EncodeToString(digest[:16])
 }

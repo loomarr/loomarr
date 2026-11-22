@@ -132,6 +132,8 @@ type Importer struct {
 
 	// readerVersion stands in for header.Version when not zero: tests read as an older reader.
 	readerVersion int
+	// writerVersion stands in for writeVersion when not zero: tests write as an earlier build.
+	writerVersion int
 	// listed, when set, runs once a full pass has listed a root and before it writes it, without
 	// the import's lock: tests act there as a folder pass or a release would.
 	listed func(root string)
@@ -915,6 +917,9 @@ func (im *Importer) lastHeader(ctx context.Context, origin inventory.OriginKey) 
 
 // reader is the header.Version this importer's header reads are recorded under.
 func (im *Importer) reader() int { return cmp.Or(im.readerVersion, header.Version) }
+
+// writer is the writeVersion this importer's writes are digested under.
+func (im *Importer) writer() int { return cmp.Or(im.writerVersion, writeVersion) }
 
 // waitingFor is the identity a file's row keeps while its title waits for a catalog record: never
 // its own digest, so the pass after the record is cached writes it again (#3565), and never empty,

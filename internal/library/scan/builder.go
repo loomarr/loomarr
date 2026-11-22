@@ -18,6 +18,7 @@ import (
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
@@ -134,6 +135,10 @@ func (b *builder) artwork(ctx context.Context, id string, kinds []string, art []
 				ref = a.Ref
 				break
 			}
+		}
+		if kind == mp.KindThumb {
+			// A record cached before stills were fetched small names its still at original.
+			ref = tmdb.SmallStill(ref)
 		}
 		if err := b.im.Artwork.Art(ctx, id, kind, ref); err != nil {
 			b.im.log().Warn("library scan: artwork not imported", "item", id, "kind", kind, "err", err)
@@ -285,7 +290,7 @@ func (b *builder) identify(file File, other bool) identity {
 		b.seen[seriesOrigin(b.root, id.seriesDir)] = true
 	}
 	if !other {
-		id.digest = identityDigest(file, m, embedded, b.im.reader(), seriesSidecars)
+		id.digest = identityDigest(file, m, embedded, b.im.writer(), b.im.reader(), seriesSidecars)
 	}
 	return id
 }

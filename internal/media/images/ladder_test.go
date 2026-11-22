@@ -122,20 +122,20 @@ func TestWidthsForNeverUpscale(t *testing.T) {
 	}
 }
 
-// A still offers no rung wider than its original (#4476): a 300-wide catalogue still is its one
-// 300 rung, asked for at any width, while a clip still, a full frame of its video, keeps every
-// rung its video fills.
+// A still offers no rung wider than its original, except that the smallest rung is always offered
+// (#4476): a 300-wide catalogue still and a 320-wide filler clip still are each the one 300 rung,
+// asked for at any width, while a split proposal's full-size segment still keeps every rung.
 func TestStillWidthsNeverUpscale(t *testing.T) {
 	cases := []struct {
 		source int
 		want   []int
 	}{
 		{0, []int{300, 780, 1280}},    // unknown: the whole ladder
-		{185, []int{300}},             // a small original keeps the first rung
+		{185, []int{300}},             // narrower than the smallest rung: that rung, upscaled
 		{300, []int{300}},             // a catalogue still
+		{320, []int{300}},             // a filler clip's still (tools.PreviewWidth)
 		{1000, []int{300, 780}},       // a 1000-wide arr screenshot
-		{1280, []int{300, 780, 1280}}, // a 720p clip's frame
-		{1920, []int{300, 780, 1280}}, // a 1080p clip's frame
+		{1920, []int{300, 780, 1280}}, // a split proposal's 1080p segment still
 	}
 	for _, c := range cases {
 		if got := RoleThumb.WidthsFor(c.source); !slices.Equal(got, c.want) {
@@ -149,7 +149,7 @@ func TestStillWidthsNeverUpscale(t *testing.T) {
 		t.Errorf("NearestWidthFor(1280, 300) = %d, want 300, never an upscale", got)
 	}
 	if got := RoleThumb.NearestWidthFor(1280, 1920); got != 1280 {
-		t.Errorf("NearestWidthFor(1280, 1920) = %d, want 1280 for a full-size clip still", got)
+		t.Errorf("NearestWidthFor(1280, 1920) = %d, want 1280 for a full-size segment still", got)
 	}
 }
 

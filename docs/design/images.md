@@ -283,10 +283,13 @@ need attribution or provenance read the image row instead of parsing format-spec
   still, an episode's or a filler clip's, on the 300/780/1280 ladder; role `backdrop` is fanart,
   on the ladder to 3840.
 - **A rendition is never an upscale where it would show.** Fanart drops a full-screen rung (1920
-  and up) its original cannot fill. A still drops every rung past the first that is wider than
-  its original: a 300-wide catalogue still is served at 300 alone, and a 2x screen drawing it at
-  300 CSS pixels takes that rung and scales it in the browser. A filler clip's still is a full
-  frame of its video, so a 720p or larger clip keeps all three rungs. The other roles keep their
+  and up) its original cannot fill. A still's rungs are never wider than the original, except
+  that the smallest rung is always offered, so an original narrower than 300 is served at 300. A
+  300-wide catalogue still is served at 300 alone, and a 2x screen drawing it at 300 CSS pixels
+  takes that rung and scales it in the browser. A filler clip's catalogue still is made 320 wide
+  (`tools.PreviewWidth`), so its ladder is `[300]` too: the 780 and 1280 renditions made for clip
+  stills before are no longer served, and budget eviction reclaims them. A split proposal's
+  segment still is a frame up to 1920 wide and keeps the rungs it fills. The other roles keep their
   whole ladder, and an image whose width is not yet known (adopted, bytes not here) lists the
   whole ladder.
 - **Proxied**: a short-TTL pass-through with **no permanent row**, for high-volume ephemeral thumbnails

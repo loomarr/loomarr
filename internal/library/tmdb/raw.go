@@ -37,6 +37,18 @@ func StillURL(path string) string {
 	return imageAt(stillBase, path)
 }
 
+// SmallStill is ref at StillURL's size when ref is a TMDB image URL at original, and ref
+// otherwise. An episode record cached by a build that built its still at original keeps that
+// URL until the record is refreshed, so the importer passes every still through this: a cached
+// record's still is adopted at w300 too, and any other source's ref is unchanged.
+func SmallStill(ref string) string {
+	if rest, ok := strings.CutPrefix(ref, imageBase+"/"); ok {
+		return stillBase + "/" + rest
+	}
+	return ref
+}
+
+// imageAt is path on TMDB's image CDN at base's size.
 func imageAt(base, path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {

@@ -541,7 +541,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   provider's URL (an arr's screenshot, or TMDB's episode still), and a still the header stage's
   catalogue record names is imported when that record arrives. TMDB's still is requested at
   `w300`, the size an episode row draws, where a title's poster, fanart and logo are requested at
-  `original`. A `<file>-thumb` file and an arr's screenshot arrive at whatever size they are,
+  `original`. An episode record cached by an earlier build names its still at `original` until
+  it is refreshed, so the importer moves a TMDB still at `original` to `w300` before handing it
+  over (`tmdb.SmallStill`), and the cached records are not fetched again for it. A `<file>-thumb` file and an arr's screenshot arrive at whatever size they are,
   which Loomarr does not choose; the image service offers no rung of a still wider than its
   original (images.md, "Two modes"). A new still replaces the old ref, and an episode with none
   lets it go. A provider's still is only adopted during the pass: the image fetch job pulls the

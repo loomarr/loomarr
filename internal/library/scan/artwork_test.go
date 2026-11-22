@@ -19,6 +19,7 @@ import (
 type fakeArtwork struct {
 	fail bool
 	held map[string]map[string]string // kind → item → file name
+	refs map[string]string            // item → the last ref it was handed, whole
 }
 
 func (f *fakeArtwork) Art(_ context.Context, itemID, kind, ref string) error {
@@ -36,6 +37,10 @@ func (f *fakeArtwork) Art(_ context.Context, itemID, kind, ref string) error {
 		return nil
 	}
 	f.held[kind][itemID] = filepath.Base(ref)
+	if f.refs == nil {
+		f.refs = map[string]string{}
+	}
+	f.refs[itemID] = ref
 	return nil
 }
 
@@ -210,38 +215,65 @@ func TestImportEpisodeStills(t *testing.T) {
 }
 
 // An episode an earlier build wrote, which imported no stills, takes its still once write version
-// 92 writes it again (#4476): an unchanged file whose identity is the old version's is rewritten
-// with no header read, and its still is imported then. One already at this version is left alone.
+// 92 writes it again (#4476): an unchanged file the earlier build wrote is rewritten with no header
+// read, and its still is imported then, the file beside it or the one its cached catalogue record
+// names. A record cached by the earlier build names its still at TMDB's original size, and it is
+// imported at w300. An episode written at the earlier version and read again by it is left alone,
+// so the test fails unless writeVersion moved past it.
 func TestEpisodesWrittenAtAnOlderVersionTakeTheirStills(t *testing.T) {
+	const stillsImported = 92 // the write version that imports episode stills
 	ctx := context.Background()
-	h := newHarness(t)
-	h.im.Art = localart.New()
-	h.file("Hotel Show/Season 01/Hotel Show S01E01.mkv", 10)
+	sonarr := &fakeLister{}
+	h := newHarness(t, Manager{Authority: "sonarr", Lister: sonarr})
+	if err := h.st.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{
+		Found: []librarystore.LibraryRootPath{{Authority: "sonarr", AuthorityPath: "/tv", RootPath: h.root}}, Complete: []string{"sonarr"},
+	}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	h.im.Art, h.im.Catalog = localart.New(), h.st
+	rel := func(n int) string { return fmt.Sprintf("Hotel Show/Season 01/Hotel Show S01E%02d.mkv", n) }
+	var children []mp.Record
+	for n := 1; n <= 2; n++ {
+		h.file(rel(n), 10)
+		children = append(children, mp.Record{
+			Source: mp.Source{Provider: mp.IDSonarr, Basis: mp.BasisManager}, Kind: mp.KindEpisode,
+			IDs:       []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: fmt.Sprintf("9009300%d", n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n},
+			Files:     []mp.FileRef{{Path: "/tv/" + rel(n)}},
+		})
+	}
+	sonarr.records = []mp.Record{{
+		Source: mp.Source{Provider: mp.IDSonarr, Basis: mp.BasisManager}, Kind: mp.KindSeries,
+		IDs:      []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90093000"}},
+		Children: children,
+	}}
 	h.file("Hotel Show/Season 01/Hotel Show S01E01-thumb.jpg", 3)
+	const cachedStill = "https://image.tmdb.org/t/p/original/hotel-s01e02.jpg"
+	key := librarystore.LibraryCatalogKey{Provider: "tvdb", Kind: "episode", ExternalID: "90093002"}
+	if _, err := h.st.SaveLibraryCatalog(ctx, key, `{"Source":{"Provider":"tmdb","Basis":"catalog","Catalog":"tmdb"},
+		"Kind":"episode","Descriptive":{"Title":"Check Out"},"Artwork":[{"Kind":"thumb","Ref":"`+cachedStill+`"}]}`,
+		catalogVersions[key.Kind], "", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	h.im.writerVersion = stillsImported - 1
 	h.run() // the earlier build: no still imported
 	art := &fakeArtwork{}
 	h.im.Artwork = art
-	ep := filepath.Join(h.root, "Hotel Show", "Season 01", "Hotel Show S01E01.mkv")
 	reads := h.reads.Load()
 
 	h.run()
 	if len(art.held[mp.KindThumb]) != 0 {
-		t.Fatalf("an episode at this version was written again: %v", art.held)
+		t.Fatalf("an episode at the earlier version was written again by it: %v", art.held)
 	}
 
-	rows, err := h.st.LibraryFiles(ctx, h.root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := range rows {
-		rows[i].Identity = "digest-at-write-version-91"
-	}
-	if err := h.st.SaveLibraryFiles(ctx, rows); err != nil {
-		t.Fatal(err)
-	}
+	h.im.writerVersion = 0
 	h.run()
-	if got := art.held[mp.KindThumb][h.fileRow(ep).ItemID]; got != "Hotel Show S01E01-thumb.jpg" {
-		t.Fatalf("still after the rewrite = %q, want the file beside it", got)
+	item := func(n int) string { return h.fileRow(filepath.Join(h.root, filepath.FromSlash(rel(n)))).ItemID }
+	if got := art.held[mp.KindThumb][item(1)]; got != "Hotel Show S01E01-thumb.jpg" {
+		t.Errorf("episode 1 still after the rewrite = %q, want the file beside it", got)
+	}
+	if got, want := art.refs[item(2)], "https://image.tmdb.org/t/p/w300/hotel-s01e02.jpg"; got != want {
+		t.Errorf("episode 2 still after the rewrite = %q, want its cached record's at w300 %q", got, want)
 	}
 	if got := h.reads.Load(); got != reads {
 		t.Errorf("headers read %d times by the rewrite, want none", got-reads)
