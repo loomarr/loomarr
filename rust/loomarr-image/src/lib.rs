@@ -14,6 +14,10 @@ use image::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+mod subtitles;
+
+pub use subtitles::{fuzz_decode_pgs, run_decode_subtitles};
+
 pub const PROTOCOL: u32 = 1;
 pub const RECIPE: &str = "loomarr-rendition-v2";
 const MAX_CONTROL_BYTES: u64 = 1 << 20;
@@ -26,9 +30,11 @@ pub struct Capabilities<'a> {
     pub recipe: &'a str,
     pub formats: [&'a str; 3],
     pub animation: bool,
+    pub operations: [&'a str; 2],
     pub self_test: bool,
 }
 
+/// The self-test passes only when every listed operation's embedded probe passes.
 pub fn capabilities(release: &str) -> Capabilities<'_> {
     Capabilities {
         protocol: PROTOCOL,
@@ -36,7 +42,8 @@ pub fn capabilities(release: &str) -> Capabilities<'_> {
         recipe: RECIPE,
         formats: ["avif", "jpeg", "webp"],
         animation: true,
-        self_test: worker_self_test(),
+        operations: ["decode-subtitles", "generate"],
+        self_test: worker_self_test() && subtitles::self_test(),
     }
 }
 
@@ -166,7 +173,7 @@ pub struct WorkerError {
 }
 
 impl WorkerError {
-    fn new(code: &'static str, message: impl Into<String>) -> Self {
+    pub(crate) fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -190,6 +197,22 @@ pub fn run_generate_with_avif_threads(
             "AVIF threads must be within the benchmark ceiling",
         ));
     }
+    let control = read_control(input)?;
+    let request: GenerateRequest = serde_json::from_slice(&control)
+        .map_err(|err| WorkerError::new("invalid_request", format!("request JSON: {err}")))?;
+    let request_id = request.request_id.clone();
+    match generate(request, avif_threads) {
+        Ok(result) => {
+            serde_json::to_writer(output, &result)
+                .map_err(|err| WorkerError::new("internal", format!("result JSON: {err}")))?;
+            Ok(())
+        }
+        Err(err) => write_error(output, &request_id, err),
+    }
+}
+
+/// Reads one control frame, refusing anything past the protocol's 1 MiB limit.
+pub(crate) fn read_control(input: impl Read) -> Result<Vec<u8>, WorkerError> {
     let mut input = input.take(MAX_CONTROL_BYTES + 1);
     let mut control = Vec::new();
     input
@@ -201,34 +224,29 @@ pub fn run_generate_with_avif_threads(
             "request exceeds control-frame limit",
         ));
     }
-    let request: GenerateRequest = serde_json::from_slice(&control)
-        .map_err(|err| WorkerError::new("invalid_request", format!("request JSON: {err}")))?;
-    let request_id = request.request_id.clone();
-    match generate(request, avif_threads) {
-        Ok(result) => {
-            serde_json::to_writer(output, &result)
-                .map_err(|err| WorkerError::new("internal", format!("result JSON: {err}")))?;
-            Ok(())
-        }
-        Err(err) => {
-            serde_json::to_writer(
-                output,
-                &ErrorResult {
-                    protocol: PROTOCOL,
-                    status: "error",
-                    request_id: &request_id,
-                    error: ErrorBody {
-                        code: err.code,
-                        message: &err.message,
-                    },
-                },
-            )
-            .map_err(|json_err| {
-                WorkerError::new("internal", format!("error result JSON: {json_err}"))
-            })?;
-            Err(err)
-        }
-    }
+    Ok(control)
+}
+
+/// Writes the stable refusal envelope for `err`, then returns it.
+pub(crate) fn write_error(
+    output: impl Write,
+    request_id: &str,
+    err: WorkerError,
+) -> Result<(), WorkerError> {
+    serde_json::to_writer(
+        output,
+        &ErrorResult {
+            protocol: PROTOCOL,
+            status: "error",
+            request_id,
+            error: ErrorBody {
+                code: err.code,
+                message: &err.message,
+            },
+        },
+    )
+    .map_err(|json_err| WorkerError::new("internal", format!("error result JSON: {json_err}")))?;
+    Err(err)
 }
 
 fn generate(request: GenerateRequest, avif_threads: usize) -> Result<GenerateResult, WorkerError> {
@@ -873,7 +891,11 @@ fn mime_for(format: ImageFormat) -> Result<&'static str, WorkerError> {
     }
 }
 
-fn write_complete(staging: &Path, filename: &str, bytes: &[u8]) -> Result<(), WorkerError> {
+pub(crate) fn write_complete(
+    staging: &Path,
+    filename: &str,
+    bytes: &[u8],
+) -> Result<(), WorkerError> {
     let meta = fs::metadata(staging)
         .map_err(|err| WorkerError::new("io_failed", format!("stat staging: {err}")))?;
     if !meta.is_dir() {
@@ -892,7 +914,7 @@ fn write_complete(staging: &Path, filename: &str, bytes: &[u8]) -> Result<(), Wo
         .map_err(|err| WorkerError::new("io_failed", format!("write output: {err}")))
 }
 
-fn hex_digest(bytes: &[u8]) -> String {
+pub(crate) fn hex_digest(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut out = String::with_capacity(digest.len() * 2);
     for byte in digest {
@@ -915,6 +937,7 @@ mod tests {
         assert_eq!(value.recipe, "loomarr-rendition-v2");
         assert_eq!(value.formats, ["avif", "jpeg", "webp"]);
         assert!(value.animation);
+        assert_eq!(value.operations, ["decode-subtitles", "generate"]);
         assert!(value.self_test);
     }
 
