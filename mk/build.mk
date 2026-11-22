@@ -170,7 +170,7 @@ demo-library: ## serve the demo library's Emby-compatible stand-in (generates it
 	@eval "$$(./scripts/dev-env.sh export)"; go run ./cmd/demo-library serve
 
 .PHONY: demo-titles-verify
-demo-titles-verify: ## no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI: privacy-verify, in the CI policy job on every run)
+demo-titles-verify: ## no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI: privacy-verify, in its own job on every run)
 	$(GO) test ./internal/demolibrary -count=1 -run 'TestSeedsCarryNoRealTitles|TestFixturesCarryNoRealTitles|TestMigratedFixturesStayInvented|TestMigratedGoTestsStayInvented|TestGuardCatchesRealTitlesAndIDs|TestDemoCatalogueIsInvented|TestCIRunsTheGuardOnEveryRun'
 
 .PHONY: demo-seed

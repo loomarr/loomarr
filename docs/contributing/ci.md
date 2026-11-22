@@ -50,16 +50,19 @@ real consumers. They do not select unrelated Rust, Android, Apple, image, browse
 Postgres, or application-Go builds. The root Make interface and unknown paths still select
 everything.
 
-The CI policy job also runs `make privacy-verify`, the public repository's guard against real media
-titles and captured private fixture literals, on every run. No classifier rule routes it: a story,
-fixture or test that the guard scans is checked whatever else the change selects, and a path the
-classifier has no rule for cannot skip it. A change to only such files therefore does not select
-the Go contracts job: the guard is the only check there that those files need. Two of that job's
-whole-repository checks do read some of them, `retired-verify` (it searches `web/apps/web/src` and
-`internal`) and, for a Go test file, `fmt` and `tags-verify`; drift in either surfaces on the next
-change that selects Go contracts and in every release-candidate run. `TestCIRunsTheGuardOnEveryRun`
-in `internal/demolibrary` holds the four properties this rests on: the policy job is unconditional,
-it runs the target, the required `CI` check waits for it, and the target runs every scan.
+The **Privacy** job runs `make privacy-verify`, the public repository's guard against real media
+titles and captured private fixture literals, on every run. It has no `needs` and no condition, and
+no classifier rule routes it: a story, fixture or test that the guard scans is checked whatever else
+the change selects, and a path the classifier has no rule for cannot skip it. It runs beside the CI
+policy job rather than inside it, so its scans do not lengthen a docs-only pull request. A change
+to only such files therefore does not select the Go contracts job: the guard is the only check
+there that those files need. The CI policy job runs `retired-verify` on every run too, since it
+searches `web/apps/web/src` and `internal` as well as prose. For a Go test file, the Go contracts
+job's `fmt` and `tags-verify` still read it; drift in either surfaces on the next change that
+selects Go contracts and in every release-candidate run. `TestCIRunsTheGuardOnEveryRun` in
+`internal/demolibrary` holds the four properties the guard rests on: the privacy job has no
+condition and no needs, it runs the target, the required `CI` check waits for it, and the target
+runs every scan.
 
 `make privacy-verify` keeps its stable interface, but its captured
 fixture guard is one in-process tracked-tree scan in `releaseverify`. The previous shell loop
@@ -925,7 +928,7 @@ that fails when it drifts, and all three run in CI:
 | List | Guard | Runs via |
 | --- | --- | --- |
 | `TAGS` in the Makefile | `scripts/check-tags.sh` | `make tags-verify`, part of comprehensive verification |
-| Retired identifiers | `scripts/check-retired.sh` | `make retired-verify`, its own CI step |
+| Retired identifiers | `scripts/check-retired.sh` | `make retired-verify`, in the CI policy job on every run |
 | Release-image source-family probes | `releaseverify.VerifyCIImageInputs` | `make release-verify`, part of comprehensive verification |
 
 `tags-verify` compares the tags in `//go:build` lines against `TAGS` and fails **both ways**:

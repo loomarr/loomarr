@@ -62,9 +62,6 @@ jobs:
       - name: OpenAPI spec is committed and current
         if: matrix.shard == 1
         run: make openapi-verify
-      - name: Retired identifiers are gone from prose
-        if: matrix.shard == 2
-        run: make retired-verify
       - name: Observability artifacts are provisionable
         if: matrix.shard == 2
         run: make observability-verify

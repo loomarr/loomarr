@@ -133,12 +133,10 @@ jobs:
           # This is the legacy broad-family comparison retained in the run summary while the
           # specialized classifier owns every job. Its values never activate a product build.
           #
-          # ⚠ `scripts/` is here because the Go job RUNS scripts from it — `make retired-verify`
-          # is `./scripts/check-retired.sh`, and `make tags-verify` is `./scripts/check-tags.sh`.
-          # Without it a PR that edited only a guard script skipped the one job that executes
-          # it, so a broken guard merged unproven. The help set was already listed for being
-          # retired-verify's INPUT; the script itself was the gap — the guard was covered
-          # against the thing it reads but not against itself.
+          # ⚠ `scripts/` is here because the Go job RUNS scripts from it — `make tags-verify`
+          # is `./scripts/check-tags.sh`. Without it a PR that edited only a guard script
+          # skipped the one job that executes it, so a broken guard merged unproven: the guard
+          # was covered against the thing it reads but not against itself.
           #
           # ⚠ `docs/design.md` is here because the Go job ASSERTS ON IT. Two tests read it:
           # `TestPackageMapListsEveryPackage` (§14.2 lists every package) and
@@ -355,13 +353,36 @@ jobs:
       # Mostly single-threaded shell self-tests, so they run side by side: one after the other they
       # took 2 minutes and set PR time.
       #
-      # privacy-verify is the public repo's real-titles and private-fixture guard. It runs here, on
-      # every run, so no classifier rule decides whether a changed story, fixture or test is
-      # scanned: a path the classifier forgot cannot skip it.
-      - name: Workflow, publication, agent harness, shell, and privacy policy
-        run: make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck privacy-verify
+      # retired-verify searches prose and source across the tree, so it runs on every run rather
+      # than on the classifier's guess at which change could reintroduce a retired identifier.
+      - name: Workflow, publication, agent harness, shell, and retired-identifier policy
+        run: make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck retired-verify
       - name: Documentation contracts read by Go
         run: go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify db-docs-verify
+  # The public repo's real-titles and private-fixture guard. It has no needs and no condition, so
+  # it runs on every run and no classifier rule decides whether a changed story, fixture or test is
+  # scanned: a path the classifier forgot cannot skip it. It is its own job so its scans run beside
+  # the policy job instead of lengthening it.
+  privacy:
+    name: Privacy — real titles and private fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Restore Go caches
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: merge-gate-go-${{ runner.os }}-
+          restore-keys: |
+            merge-gate-go-${{ runner.os }}-
+      - name: Real titles and private fixture literals
+        run: make privacy-verify
   rust-contracts:
     name: Rust — repository contracts
     needs: changes
@@ -497,7 +518,7 @@ jobs:
   ci-ok:
     name: ${{ github.event_name == 'merge_group' && 'CI assurance' || 'CI' }}
     if: always()
-    needs: [changes, release-candidate-scope, full-manual-scope, ci-policy, agent-harness-macos, rust-contracts, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, apple-cache-validation, expo-android-mobile, playwright, tuner, image, docs, android, playout-bench]
+    needs: [changes, release-candidate-scope, full-manual-scope, ci-policy, privacy, agent-harness-macos, rust-contracts, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, apple-cache-validation, expo-android-mobile, playwright, tuner, image, docs, android, playout-bench]
     runs-on: ubuntu-latest
     permissions:
       actions: read
