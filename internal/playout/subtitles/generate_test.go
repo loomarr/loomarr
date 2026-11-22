@@ -410,41 +410,70 @@ func TestGenerator_ALeadAcrossAGridEdgeShowsEachCueUnderOneBlock(t *testing.T) {
 	}
 }
 
-func TestGenerator_AHostedTimeoutBacksOffTheBlockAndIsNotABudgetRefusal(t *testing.T) {
+var firstBlocks = [][2]time.Duration{{0, 30 * s}, {30 * s, 60 * s}, {60 * s, 90 * s}}
+
+func TestGenerator_AHostedTimeoutFallsBackToLocalAndIsNotABudgetRefusal(t *testing.T) {
 	hung := &testkit.SpeechEngine{Respond: speaking("en"), Hold: make(chan struct{})}
+	defer close(hung.Hold)
 	local := &testkit.SpeechEngine{Respond: speaking("en")}
 	budget := &testkit.MediaBudget{}
-	g, c := newGenerator(t, subtitles.Engines{
+	g, _ := newGenerator(t, subtitles.Engines{
 		Local: local, Hosted: func() subtitles.Transcriber { return hung }, Budget: budget,
 	}, "")
-	g.SetBlockTimeout(20 * time.Millisecond)
+	g.SetHostedTimeout(20 * time.Millisecond)
 
-	for range 2 {
-		g.Cues(episode, 0, 10*s)
-		drain(t, g)
+	g.Cues(episode, 0, 10*s)
+	drain(t, g)
+	// Each block waits out the hosted timeout once, then the local engine makes it with a fresh
+	// timeout of its own.
+	if got := spans(hung.Calls()); !slices.Equal(got, firstBlocks) {
+		t.Fatalf("hosted spans = %v, want each block asked once: %v", got, firstBlocks)
 	}
-	// Each block waits out its timeout on the hosted service once; a second request inside
-	// failedRetry does not send it to the hung service again, and no block falls back to local.
-	if got, want := spans(hung.Calls()), [][2]time.Duration{{0, 30 * s}, {30 * s, 60 * s}, {60 * s, 90 * s}}; !slices.Equal(got, want) {
-		t.Fatalf("hosted spans = %v, want each block asked once: %v", got, want)
+	if got, want := spans(local.Calls()), append([][2]time.Duration{{0, 8 * s}}, firstBlocks...); !slices.Equal(got, want) {
+		t.Fatalf("local spans = %v, want the lead and every block: %v", got, want)
 	}
-	if got, want := spans(local.Calls()), [][2]time.Duration{{0, 8 * s}}; !slices.Equal(got, want) {
-		t.Fatalf("local spans = %v, want only the lead: %v", got, want)
+	if n := budget.Admitted(); n != 4 {
+		t.Fatalf("budget admitted %d local transcriptions, want 4", n)
+	}
+	// No refusal is recorded: every block is ready with the local engine's cues.
+	cues, _, state := g.Cues(episode, 30*s, 40*s)
+	if got, want := starts(cues), []time.Duration{35 * s}; state != subtitles.Ready || !slices.Equal(got, want) {
+		t.Fatalf("answer = %v %v, want ready with the local cue %v", state, got, want)
+	}
+}
+
+func TestGenerator_NoBudgetHeadroomForTheLocalFallbackAfterAHostedTimeoutIsARefusal(t *testing.T) {
+	hung := &testkit.SpeechEngine{Respond: speaking("en"), Hold: make(chan struct{})}
+	defer close(hung.Hold)
+	local := &testkit.SpeechEngine{Respond: speaking("en")}
+	budget := &testkit.MediaBudget{}
+	budget.SetTight(true)
+	g, _ := newGenerator(t, subtitles.Engines{
+		Local: local, Hosted: func() subtitles.Transcriber { return hung }, Budget: budget,
+	}, "")
+	g.SetHostedTimeout(20 * time.Millisecond)
+
+	g.Cues(episode, 0, 10*s)
+	drain(t, g)
+	if got := spans(hung.Calls()); !slices.Equal(got, firstBlocks) {
+		t.Fatalf("hosted spans = %v, want each block asked once: %v", got, firstBlocks)
+	}
+	if len(local.Calls()) != 0 {
+		t.Fatalf("local ran %d times past a tight budget", len(local.Calls()))
+	}
+	// Refused, not failed: the blocks wait for the next request, and nothing runs before it.
+	if g.Step(context.Background()) {
+		t.Fatal("refused work was retried without a request")
 	}
 	if _, _, state := g.Cues(episode, 0, 10*s); state != subtitles.Pending {
 		t.Fatalf("state = %v, want pending", state)
 	}
 
-	// Once the back-off has passed, the next request sends the blocks to the service again.
-	close(hung.Hold)
-	c.advance(time.Minute + s)
+	budget.SetTight(false)
 	g.Cues(episode, 0, 10*s)
 	drain(t, g)
 	if _, _, state := g.Cues(episode, 0, 10*s); state != subtitles.Ready {
-		t.Fatalf("state after the back-off = %v, want ready from the hosted service", state)
-	}
-	if n := len(local.Calls()); n != 1 {
-		t.Fatalf("local transcriptions = %d, want only the lead", n)
+		t.Fatalf("state = %v after headroom returned, want ready from the local engine", state)
 	}
 }
 

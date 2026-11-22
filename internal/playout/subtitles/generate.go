@@ -35,8 +35,11 @@ const (
 	// silentShare is the share of a cue inside detected silence at which it is dropped: Whisper
 	// invents lines such as "Thank you." over silence and music.
 	silentShare = 0.8
-	// blockTimeout bounds one block's transcription on either engine.
+	// blockTimeout bounds one block's local transcription.
 	blockTimeout = 2 * time.Minute
+	// hostedTimeout bounds one block's hosted call: a block slower than its own length cannot stay
+	// ahead of playback (#4529 measured the hosted service at p95 10.7 s), so it goes to local.
+	hostedTimeout = BlockLength
 	// failedRetry is how long a block whose transcription failed is left before it is tried again.
 	failedRetry = time.Minute
 	// idleTrack is how long a track nobody asks for keeps its blocks in memory. Its blocks stay on
@@ -113,8 +116,9 @@ type Generator struct {
 	dir string
 	log *slog.Logger
 	now func() time.Time
-	// timeout bounds one block's transcription on each engine, and its silence measure.
-	timeout time.Duration
+	// timeout bounds one block's local transcription and its silence measure; hostedTimeout
+	// bounds its hosted call.
+	timeout, hostedTimeout time.Duration
 
 	wake chan struct{}
 
@@ -162,7 +166,7 @@ func NewGenerator(eng Engines, dir string, log *slog.Logger) *Generator {
 		log = slog.New(slog.DiscardHandler)
 	}
 	return &Generator{
-		eng: eng, dir: dir, log: log, now: time.Now, timeout: blockTimeout,
+		eng: eng, dir: dir, log: log, now: time.Now, timeout: blockTimeout, hostedTimeout: hostedTimeout,
 		wake: make(chan struct{}, 1), tracks: map[string]*autoTrack{},
 	}
 }
@@ -484,28 +488,22 @@ func (g *Generator) run(ctx context.Context, j job) {
 }
 
 // transcribe runs a block on the hosted service when one is configured and takes it, and
-// otherwise on the local engine under the budget. A hosted failure (a busy service's 429
-// included) falls back for this block only and is never retried. A hosted call that runs out its
-// time is a failure of the block, which then waits failedRetry, rather than a local fallback: a
-// hung service would otherwise hold the single worker for both engines' time on every block. A
-// lead block is always local. Each engine has its own timeout. refused reports that the budget
-// had no headroom, or took it back mid-block.
+// otherwise on the local engine under the budget. A hosted failure (a busy service's 429 or no
+// answer within hostedTimeout included) falls back for this block only and is never retried. A
+// lead block is always local. Each engine has its own timeout, so the local fallback starts with
+// all of its time. refused reports that the budget had no headroom, or took it back mid-block.
 func (g *Generator) transcribe(ctx context.Context, j job) (speech Speech, refused bool, err error) {
 	b, file := j.block, j.track.media.Input
 	if b.index >= 0 {
 		if hosted := g.hosted(); hosted != nil {
-			hctx, cancel := context.WithTimeout(ctx, g.timeout)
+			hctx, cancel := context.WithTimeout(ctx, g.hostedTimeout)
 			speech, err := hosted.Transcribe(hctx, file, b.start, b.end, j.language)
-			timedOut := hctx.Err() != nil
 			cancel()
 			if err == nil {
 				return speech, false, nil
 			}
 			if ctx.Err() != nil {
 				return Speech{}, false, err
-			}
-			if timedOut {
-				return Speech{}, false, fmt.Errorf("the hosted speech service did not answer within %v: %w", g.timeout, err)
 			}
 			g.log.Info("subtitles: the hosted speech service did not take a block; it is transcribed locally",
 				"input", file, "start", b.start, "err", err)
