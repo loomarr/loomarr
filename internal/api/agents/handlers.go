@@ -26,17 +26,36 @@ import (
 // is authenticated afresh and gets the tool set of the role the caller has now.
 type Handlers struct {
 	log      *slog.Logger
+	deps     Deps
 	dispatch atomic.Pointer[Dispatcher]
 	schemas  *mcp.SchemaCache
 	stream   *mcp.StreamableHTTPHandler
+	flows    *oauthFlows
+}
+
+// Deps is what the OAuth sign-in needs; the MCP endpoint itself needs only the router (SetAPI).
+type Deps struct {
+	Log *slog.Logger
+	// Devices issues the credential an OAuth sign-in ends in; nil ⇒ OAuth answers "not configured".
+	Devices *auth.DeviceManager
+	// DeviceLimiter is the pairing-start budget a sign-in spends, per client address.
+	DeviceLimiter *auth.RateLimiter
+	Origin        httpcore.Origin
+	// PublicURL is the address a person's browser and a remote client reach this server at, read
+	// per request so a changed setting applies at once. Unset ⇒ OAuth is off.
+	PublicURL func() string
 }
 
 type serverKey struct{}
 
 // New builds the handlers. The API they dispatch into is set later with SetAPI, because it is the
 // router these handlers are themselves mounted on.
-func New(log *slog.Logger) *Handlers {
-	h := &Handlers{log: log, schemas: mcp.NewSchemaCache()}
+func New(d Deps) *Handlers {
+	log := d.Log
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
+	h := &Handlers{log: log, deps: d, schemas: mcp.NewSchemaCache(), flows: newOAuthFlows()}
 	h.stream = mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		s, _ := r.Context().Value(serverKey{}).(*mcp.Server)
 		return s
@@ -48,8 +67,15 @@ func New(log *slog.Logger) *Handlers {
 // route on it. Until it is set the endpoint answers 503.
 func (h *Handlers) SetAPI(api http.Handler) { h.dispatch.Store(NewDispatcher(api)) }
 
-// Register mounts POST /v1/mcp.
+// Register mounts POST /v1/mcp and the OAuth sign-in (oauth.go).
+//
+// The MCP route is RolePublic and refuses an anonymous caller itself, with the 401 the MCP
+// authorization spec requires: a WWW-Authenticate challenge naming the resource metadata, which is
+// how a client discovers where to sign in. The shared middleware's own 401 carries no such header.
+// Every tool still calls routes that check the role again, so this is the endpoint's door, not its
+// permission model.
 func (h *Handlers) Register(api huma.API) {
+	h.registerOAuth(api)
 	httpcore.RawOp[struct{}](api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "mcp",
 		Method:      http.MethodPost,
@@ -66,7 +92,18 @@ func (h *Handlers) Register(api huma.API) {
 		// function nobody should call by hand. It still mounts on huma, so the one authorization
 		// middleware, CSRF guard and request-id stamping cover it like every other route.
 		Hidden: true,
-	}, "A JSON-RPC reply", "application/json"), httpcore.RoleMember, h.serve)
+	}, "A JSON-RPC reply", "application/json"), httpcore.RolePublic, h.serve)
+}
+
+// challenge refuses a request without a usable credential, pointing an OAuth-capable client at
+// the resource metadata when sign-in is configured.
+func (h *Handlers) challenge(w http.ResponseWriter, r *http.Request, detail string) {
+	value := `Bearer realm="loomarr"`
+	if iss := h.issuer(); iss != "" {
+		value += `, resource_metadata="` + iss + `/.well-known/oauth-protected-resource/v1/mcp"`
+	}
+	w.Header().Set("WWW-Authenticate", value)
+	httpcore.WriteProblem(h.log, w, r, http.StatusUnauthorized, "Unauthorized", detail)
 }
 
 func (h *Handlers) serve(w http.ResponseWriter, r *http.Request) {
@@ -79,9 +116,7 @@ func (h *Handlers) serve(w http.ResponseWriter, r *http.Request) {
 	// nested call carries only the Bearer token: two identities in one request, and the tools
 	// listed would not be the tools that work.
 	if bearer(r) == "" {
-		w.Header().Set("WWW-Authenticate", `Bearer realm="loomarr"`)
-		httpcore.WriteProblem(h.log, w, r, http.StatusUnauthorized, "Unauthorized",
-			"The MCP endpoint takes a Bearer token. Pair the agent as a device to get one.")
+		h.challenge(w, r, "The MCP endpoint takes a Bearer token. Pair the agent as a device to get one.")
 		return
 	}
 	if _, err := r.Cookie(auth.CookieName); err == nil {
@@ -89,12 +124,18 @@ func (h *Handlers) serve(w http.ResponseWriter, r *http.Request) {
 			"Send only the Bearer token to the MCP endpoint, without a session cookie.")
 		return
 	}
+	role := httpcore.RoleFrom(r.Context())
+	if role != httpcore.RoleMember && role != httpcore.RoleAdmin {
+		// A Bearer token the server does not know (revoked, mistyped, from another server).
+		h.challenge(w, r, "That token is not valid here. Sign in again or pair the agent again.")
+		return
+	}
 	d := h.dispatch.Load()
 	if d == nil {
 		httpcore.WriteProblem(h.log, w, r, http.StatusServiceUnavailable, "Service Unavailable", "The MCP endpoint is not ready yet.")
 		return
 	}
-	s := h.server(&toolset{d: d, c: CallerFrom(r)}, httpcore.RoleFrom(r.Context()))
+	s := h.server(&toolset{d: d, c: CallerFrom(r)}, role)
 	h.stream.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), serverKey{}, s)))
 }
 

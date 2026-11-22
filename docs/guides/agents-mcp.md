@@ -32,9 +32,24 @@ Then ask, for example, "what's on channel 4 tonight?" or "star the cartoons chan
 MCP client works the same way if it supports the Streamable HTTP transport with a custom
 `Authorization` header: the endpoint is `<your Loomarr address>/v1/mcp`.
 
-The Claude desktop and web apps cannot connect yet. Their connectors reach a server from the
-internet over HTTPS and sign in with OAuth rather than a pasted token, which Loomarr does not offer
-yet.
+## Connect the Claude apps, or any client that signs in
+
+The Claude desktop, web and mobile apps add Loomarr as a **custom connector** and sign in with
+OAuth instead of a pasted token. So does any MCP client that follows the MCP authorization spec.
+
+1. Loomarr must be reachable from the internet over **HTTPS** (for example through your reverse
+   proxy or a tunnel). The apps' connectors call it from Anthropic's servers, not from your
+   network. A client on your LAN only needs an address it can reach.
+2. Set Loomarr's public address: **Recipient-facing Loomarr address** (`ACCESS_PUBLIC_URL`), or the
+   server's public URL if that is the address people use. Sign-in is off until one is set.
+3. In the app, add a custom connector with the URL `https://<your Loomarr address>/v1/mcp`.
+4. The app opens Loomarr's **Add a device** page with the code filled in. Sign in as the person
+   the agent should act as. The page names the app and the address it sends the sign-in to, for
+   example `claude.ai`. Add it only if that is the app you just connected: it can do everything
+   that person can.
+
+The connection is a paired device like any other, named for the app and where it sends its
+sign-in, for example **Claude (claude.ai)**. It does not expire; revoke the device to end it.
 
 ## Tools
 

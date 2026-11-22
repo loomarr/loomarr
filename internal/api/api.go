@@ -33,6 +33,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/web"
 )
@@ -192,7 +193,10 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	setupRoutes.Register(humaAPI)
 	// The MCP endpoint's tools call back into this router as their caller (#4483), so it gets the
 	// finished handler below, once that exists.
-	agentRoutes := agentsapi.New(log)
+	agentRoutes := agentsapi.New(agentsapi.Deps{
+		Log: log, Devices: opts.People.Devices, DeviceLimiter: opts.People.DeviceLimiter, Origin: srv.origin,
+		PublicURL: agentsPublicURL(opts),
+	})
 	agentRoutes.Register(humaAPI)
 
 	// ⚠ The byte-streaming routes (/v1/backup, the backup download, the clip byte routes, the
@@ -308,4 +312,22 @@ func readsDiagnostics(r *http.Request) bool {
 		return false
 	}
 	return r.URL.Path == "/v1/events" || strings.HasPrefix(r.URL.Path, "/v1/diagnostics/")
+}
+
+// agentsPublicURL is the address an OAuth sign-in for an MCP client is issued under: the
+// recipient-facing address (the one invitations use, reachable from outside the home) when set,
+// else the server's own public address. A connector in the Claude apps calls from the internet, so
+// only the first works for it; a client on the LAN works with either.
+func agentsPublicURL(opts Options) func() string {
+	return func() string {
+		if opts.People.AccessPublicURL != nil {
+			if v := strings.TrimSpace(opts.People.AccessPublicURL()); v != "" {
+				return v
+			}
+		}
+		if opts.LiveSettings == nil {
+			return ""
+		}
+		return settings.ServerPublicURL.Get(opts.LiveSettings)
+	}
 }

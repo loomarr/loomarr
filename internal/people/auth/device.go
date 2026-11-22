@@ -185,6 +185,13 @@ func (m *DeviceManager) Redeem(ctx context.Context, deviceCode string) (token st
 	return token, claimed.DeviceName, nil
 }
 
+// Pairing reads a live pairing by its device code, approved or not, without consuming it: the
+// OAuth authorization step (internal/api/agents) checks that the person in front of it approved the
+// pairing before it issues the code a client later redeems.
+func (m *DeviceManager) Pairing(ctx context.Context, deviceCode string) (identitystore.DevicePairing, error) {
+	return m.store.GetDevicePairing(ctx, hashToken(deviceCode), m.now())
+}
+
 // Pending resolves a still-unapproved pairing by the code a human typed, so an approval screen can
 // name the device before granting it anything ("Approve Living Room Shield?"). Read-only.
 func (m *DeviceManager) Pending(ctx context.Context, rawUserCode string) (identitystore.DevicePairing, error) {
