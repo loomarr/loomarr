@@ -12,6 +12,11 @@
 # cache save that fails only warns, and keeping "the key just saved" would then delete the last
 # good entry.
 #
+# Newest is not always current. When main reverts an input (go.sum, the lockfile, the ffmpeg pin)
+# to a value whose entry still exists, the writer finds its key and saves nothing, so the entry
+# main asks for is the older one and is deleted here. The next push to main finds the key missing
+# and saves it again; until then consumers build from the prefix fallback, or cold.
+#
 #   plan CACHES_JSON   print the cache ids to delete, one per line, from a saved listing
 #   apply              list main's caches (REPO, GH_TOKEN), then delete what plan prints
 set -euo pipefail
@@ -70,9 +75,14 @@ apply() {
   trap 'rm -f -- "${listing}"' EXIT
   gh api "repos/${repository}/actions/caches?ref=refs/heads/main&per_page=100" --paginate |
     jq -s '{actions_caches: (map(.actions_caches) | add)}' >"${listing}"
+  # An entry can vanish between the listing and its delete (GitHub's own eviction, or
+  # cache-cleanup.yml). One refused delete must not strand the rest.
   plan "${listing}" | while read -r id; do
-    gh api -X DELETE "repos/${repository}/actions/caches/${id}" >/dev/null
-    printf 'ci-cache-retention: deleted superseded cache %s\n' "${id}"
+    if gh api -X DELETE "repos/${repository}/actions/caches/${id}" >/dev/null 2>&1; then
+      printf 'ci-cache-retention: deleted superseded cache %s\n' "${id}"
+    else
+      printf 'ci-cache-retention: could not delete cache %s; it may already be gone\n' "${id}" >&2
+    fi
   done
 }
 

@@ -110,6 +110,10 @@ case "$*" in
   "api repos/loomarr/loomarr/actions/caches?ref=refs/heads/main&per_page=100 --paginate")
     cat "${GH_LISTING}"
     ;;
+  "api -X DELETE repos/loomarr/loomarr/actions/caches/${GH_GONE:-none}")
+    echo 'gh: Not Found (HTTP 404)' >&2
+    exit 1
+    ;;
   "api -X DELETE repos/loomarr/loomarr/actions/caches/"*) ;;
   *)
     echo "unexpected gh call: $*" >&2
@@ -127,6 +131,28 @@ if [[ "${deleted}" != 6 ]]; then
 fi
 if grep -q 'caches/2$\|caches/8$\|caches/9$\|caches/7$' "${test_root}/gh.log"; then
   echo 'ci-cache-retention-test: apply deleted a cache it must keep' >&2
+  exit 1
+fi
+
+# An entry that is already gone when its delete arrives does not strand the ones after it.
+: >"${test_root}/gh.log"
+GH_LOG="${test_root}/gh.log" GH_LISTING="${test_root}/caches.json" GH_GONE=1 REPO=loomarr/loomarr \
+  PATH="${test_root}/bin:${PATH}" "${retention}" apply >/dev/null 2>&1
+attempted=$(grep -c -- '-X DELETE' "${test_root}/gh.log")
+if [[ "${attempted}" != 6 ]]; then
+  printf 'ci-cache-retention-test: after a refused delete, apply attempted %s deletes, want 6\n' "${attempted}" >&2
+  exit 1
+fi
+
+# A listing that cannot be fetched deletes nothing and fails.
+: >"${test_root}/gh.log"
+if GH_LOG="${test_root}/gh.log" GH_LISTING="${test_root}/missing.json" REPO=loomarr/loomarr \
+  PATH="${test_root}/bin:${PATH}" "${retention}" apply >/dev/null 2>&1; then
+  echo 'ci-cache-retention-test: apply succeeded without a listing' >&2
+  exit 1
+fi
+if grep -q -- '-X DELETE' "${test_root}/gh.log"; then
+  echo 'ci-cache-retention-test: apply deleted caches without a listing' >&2
   exit 1
 fi
 
