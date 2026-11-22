@@ -7,8 +7,10 @@ none bypasses it.
 
 Go owns image identity, policy, jobs, authorization, storage records and publication. The required
 Rust `loomarr-image` worker owns every operation that interprets pixels: validation, inspection,
-static or animated decode, compositing, resize, encode, ThumbHash and dominant colour. There is one
-production renderer and **no Go codec fallback**. The schema lives in the migrations, the width
+static or animated decode, compositing, resize, encode, ThumbHash and dominant colour. It also renders
+the channel bug and decodes image subtitle tracks (see *Operations beyond renditions*). There is one
+production renderer and **no Go codec fallback**. Go may measure a raw pixel buffer that ffmpeg
+decoded itself (frame hints, the watermark overlay self-check); Go never decodes an encoded image. The schema lives in the migrations, the width
 ladders in code, and the image jobs in the scheduler registry. The frontend `Image` contract is in
 [`frontend-design.md`](../frontend-design.md#8-the-image-primitive-formerly-designmd-22s-frontend-contract),
 and the worker's runtime certification in
@@ -109,6 +111,32 @@ produces different but contract-equivalent bytes.
   scheduled AVIF is background and may use at most all-but-one slot, so interactive work always has
   one. Refusals carry stable machine codes, and nothing falls back to Go pixel processing.
 - `--benchmark-avif-threads` exists only for measurement; benchmarks are evidence, never a gate.
+
+### Operations beyond renditions
+
+Two more operations run in the same worker, because both interpret pixels from bytes Loomarr does
+not control. Each is its own subcommand with its own versioned request, and both follow the rules
+above: one bounded JSON request on stdin, one private staging directory, complete relative files
+only, Go publishing all or nothing, stable refusal codes, and the shared worker slots.
+`capabilities` lists every operation the binary supports, and the boot self-test runs an embedded
+probe for each, so a worker without one fails readiness instead of failing the first request.
+
+- **`render-bug --protocol 1` draws a channel's bug** (`internal/playout/channelbug` chooses it,
+  [`playout.md`](playout.md) owns the look). The request names either a custom upload (a
+  content-addressed original and its SHA-256) or a callsign with its resolved look, colour and
+  holiday version, plus the output height. The result is one straight-alpha RGBA PNG at exactly
+  that height. The Geist Bold font is embedded in the binary; no system font is read. The recipe
+  (`loomarr-bug-v1`) fixes the font, supersampling factor, resize kernel and shadow, and is part of
+  Go's cache key. An upload is held to the rendition ceilings above; the output height is at most
+  512 px.
+- **`decode-subtitles --protocol 1` turns an image subtitle track into timed stills** for GPU
+  burn-in ([`playout.md`](playout.md)). The request names the extracted track (`.sup` for
+  `hdmv_pgs_subtitle`; the `.idx`/`.sub` pair for `dvd_subtitle`) and its SHA-256. The result is
+  the canvas size and an ordered list of display states, each with its start and end in
+  milliseconds and either one full-canvas straight-alpha PNG or none (the screen is clear). Every
+  later step (ffv1 conversion, the per-seek ffconcat list, the overlay) is codec-neutral.
+  Ceilings: 256 MiB input, 3840×2160 canvas, 64 objects per state, 50,000 states, 512 MiB output.
+  Rust checks them before allocating each state and while decoding it.
 
 **Format choices.** A JPEG fallback stays because the few percent of browsers without AVIF or WebP
 are exactly a media server's clients (televisions, old tablets, embedded WebViews). Selection uses
