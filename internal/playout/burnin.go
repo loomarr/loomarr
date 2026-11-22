@@ -68,23 +68,14 @@ type SubtitleStillDecoder interface {
 	Decode(ctx context.Context, track SubtitleTrack) (SubtitleStills, error)
 }
 
-// ErrSubtitleDecoderUnavailable is a decoder's refusal when this build has no image subtitle
-// decoder: programmes air without the track.
+// ErrSubtitleDecoderUnavailable is a decoder's refusal when it has no image worker to decode with:
+// programmes air without the track.
 var ErrSubtitleDecoderUnavailable = errors.New("image subtitle decoder unavailable")
 
-// UnavailableSubtitleDecoder refuses every track with ErrSubtitleDecoderUnavailable.
-type UnavailableSubtitleDecoder struct{}
-
-// Decode refuses.
-func (UnavailableSubtitleDecoder) Decode(context.Context, SubtitleTrack) (SubtitleStills, error) {
-	return SubtitleStills{}, ErrSubtitleDecoderUnavailable
-}
-
-// SubtitleDecoderAvailable reports whether d can decode a track at all: false for nil, a typed nil
-// and UnavailableSubtitleDecoder, so a build without a decoder looks nothing up for burn-in.
+// SubtitleDecoderAvailable reports whether d can decode a track at all: false for nil and a typed
+// nil, so a build without a decoder looks nothing up for burn-in.
 func SubtitleDecoderAvailable(d SubtitleStillDecoder) bool {
-	switch d.(type) {
-	case nil, UnavailableSubtitleDecoder, *UnavailableSubtitleDecoder:
+	if d == nil {
 		return false
 	}
 	// A typed nil (a nil pointer in the interface) decodes nothing either.
