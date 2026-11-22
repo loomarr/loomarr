@@ -77,6 +77,7 @@ func (s *Handlers) doSearch(ctx context.Context, in *searchInput) (*searchOutput
 		limit = 20
 	}
 	request.Limit = limit
+	request.Member = httpcore.RoleFrom(ctx) != httpcore.RoleAdmin
 	cands, err := s.search.Search(ctx, request)
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Search failed",

@@ -15,7 +15,7 @@ import (
 )
 
 // Library → Items lists present titles with their readiness, finds them by name, opens a series
-// with its episodes, and is for admins only.
+// with its episodes, and needs a signed-in caller (a member's view is library_members_test.go's).
 func TestLibraryItemsListAndPage(t *testing.T) {
 	h := newLibraryHarness(t)
 	ctx := context.Background()
@@ -94,8 +94,8 @@ func TestLibraryItemsListAndPage(t *testing.T) {
 	if resp := h.Do(http.MethodGet, "/v1/library/items/90000099", adminToken, ""); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown title = %d, want 404", resp.StatusCode)
 	}
-	if resp := h.Do(http.MethodGet, "/v1/library/items", memberToken, ""); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("member = %d, want 403", resp.StatusCode)
+	if resp := h.Do(http.MethodGet, "/v1/library/items", "", ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("anonymous = %d, want 401", resp.StatusCode)
 	}
 }
 

@@ -152,6 +152,51 @@ func UnboundedInputArrays() ([]string, error) {
 	return found, nil
 }
 
+// RegisteredOperation is one mounted operation with the role it requires and its query
+// parameters' names.
+type RegisteredOperation struct {
+	Method, Path, ID string
+	Role             httpcore.Role
+	Query            []string
+}
+
+// RegisteredOperations lists every operation the registry mounts, sorted by path then method, so
+// an authorization test enumerates the routes themselves rather than a list kept by hand. Role is
+// the one the middleware enforces, so an operation that declared none reads as admin.
+func RegisteredOperations() ([]RegisteredOperation, error) {
+	_, humaAPI := schemaOnlyAPI(slog.New(slog.DiscardHandler))
+	spec := humaAPI.OpenAPI()
+	if spec == nil || spec.Paths == nil {
+		return nil, fmt.Errorf("api: no operations registered")
+	}
+	var out []RegisteredOperation
+	for path, item := range spec.Paths {
+		for method, op := range map[string]*huma.Operation{
+			http.MethodGet: item.Get, http.MethodPost: item.Post, http.MethodPut: item.Put,
+			http.MethodPatch: item.Patch, http.MethodDelete: item.Delete,
+		} {
+			if op == nil {
+				continue
+			}
+			reg := RegisteredOperation{Method: method, Path: path, ID: op.OperationID, Role: httpcore.RoleForOperation(op)}
+			for _, p := range op.Parameters {
+				if p != nil && p.In == "query" {
+					reg.Query = append(reg.Query, p.Name)
+				}
+			}
+			sort.Strings(reg.Query)
+			out = append(out, reg)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Path != out[j].Path {
+			return out[i].Path < out[j].Path
+		}
+		return out[i].Method < out[j].Method
+	})
+	return out, nil
+}
+
 // OperationsMissingARole reports every registered operation that declares no required role
 // (§11). Exported so the test in api_test can call it without reaching into the package.
 //

@@ -730,6 +730,7 @@ type Store interface {
 	LibraryArtReader
 	CatalogRetentionStore
 	LibraryTitleSearcher
+	MemberTitleReader
 
 	// Close releases the underlying database handle.
 	Close() error

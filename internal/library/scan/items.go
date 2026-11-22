@@ -89,6 +89,29 @@ func playsInPlaceOf(files []ItemFile, i int) []ItemFile {
 // last file is never offered for removal.
 func extraCopy(files []ItemFile, i int) bool { return len(playsInPlaceOf(files, i)) > 0 }
 
+// PlayingCopy is the file of d that plays when the title airs: of the files whose source row
+// plays, the default edition's before a labelled one, then a whole file or its first part, then
+// list order. ok is false for a series, which lists its episodes instead, and for a title none
+// of whose files plays yet.
+func (d ItemDetail) PlayingCopy() (f ItemFile, ok bool) {
+	rank := func(g ItemFile) int {
+		r := 0
+		if g.Edition != "" {
+			r += 2
+		}
+		if g.Part > 1 {
+			r++
+		}
+		return r
+	}
+	for _, g := range d.Files {
+		if g.sourced && g.plays && (!ok || rank(g) < rank(f)) {
+			f, ok = g, true
+		}
+	}
+	return f, ok
+}
+
 // Picture is a video stream's size and range.
 type Picture struct {
 	Width, Height int
@@ -165,6 +188,8 @@ type Episode struct {
 	// FromFile is an episode named and numbered by its file until its show's order is said
 	// (#2151 decision 53).
 	FromFile bool
+	// Named is true when a catalogue or sidecar gave its name; false while it is its file's.
+	Named bool
 	// Overview is its own story. LengthMillis is the measured length of its files that play once
 	// each is read, else the catalog's runtime; 0 when neither is known.
 	Overview     string
@@ -176,9 +201,14 @@ func (l *Library) Items(ctx context.Context, q librarystore.LibraryItemQuery) (l
 	return l.ItemStore.ListLibraryItems(ctx, q)
 }
 
-// Item is one title's page; store.ErrNotFound when it has no present file.
-func (l *Library) Item(ctx context.Context, id string) (ItemDetail, error) {
-	summary, err := l.ItemStore.LibraryItem(ctx, id)
+// Item is one title's page; store.ErrNotFound when it has no present file, and for a member when
+// a household member doesn't read it (librarystore.MemberLibraryItem).
+func (l *Library) Item(ctx context.Context, id string, member bool) (ItemDetail, error) {
+	read := l.ItemStore.LibraryItem
+	if member {
+		read = l.ItemStore.MemberLibraryItem
+	}
+	summary, err := read(ctx, id)
 	if err != nil {
 		return ItemDetail{}, err
 	}
@@ -311,7 +341,7 @@ func seasons(files []librarystore.LibraryFile, episodes map[string]librarystore.
 		row := episodes[id]
 		bySeason[row.Season] = append(bySeason[row.Season], Episode{
 			ID: id, Name: row.Name, Number: row.Episode, End: row.EpisodeEnd, Ready: ready[id], FromFile: row.Unnumbered,
-			Overview: row.Overview, LengthMillis: row.LengthMs,
+			Named: row.NameFrom != "", Overview: row.Overview, LengthMillis: row.LengthMs,
 		})
 		if row.NameFrom != "" {
 			named[mp.ID(row.NameFrom)]++

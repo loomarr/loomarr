@@ -7065,7 +7065,7 @@ components:
           format: int64
           type: integer
         fromFile:
-          description: Its name and number are its file's, until the show's episode order is said
+          description: Its name and number are its file's, until the show's episode order is said. Admins only
           type: boolean
         id:
           type: string
@@ -7088,7 +7088,6 @@ components:
         - name
         - number
         - ready
-        - fromFile
       type: object
     LibraryFolderEvent:
       additionalProperties: false
@@ -7205,11 +7204,11 @@ components:
       additionalProperties: false
       properties:
         extraCopies:
-          description: A movie's files that never play, beyond the copy of each edition (or each part) that does
+          description: A movie's files that never play, beyond the copy of each edition (or each part) that does. Admins only
           format: int64
           type: integer
         files:
-          description: Present files; a series counts its episodes' files
+          description: Present files; a series counts its episodes' files. Admins only
           format: int64
           type: integer
         id:
@@ -7228,7 +7227,7 @@ components:
           description: False while some of its files' details aren't read yet
           type: boolean
         unplayable:
-          description: "Files that can't be played: their details couldn't be read"
+          description: "Files that can't be played: their details couldn't be read. Admins only"
           format: int64
           type: integer
         year:
@@ -7239,10 +7238,7 @@ components:
         - id
         - kind
         - name
-        - files
         - ready
-        - unplayable
-        - extraCopies
       type: object
     LibraryItemDetailDTO:
       additionalProperties: false
@@ -7274,8 +7270,9 @@ components:
           type: array
         detailsFrom:
           $ref: "#/components/schemas/LibraryDetailsFromDTO"
+          description: Where its details came from. Admins only
         files:
-          description: A movie's files, or an episode's; empty for a series
+          description: A movie's files, or an episode's; empty for a series. Admins only
           items:
             $ref: "#/components/schemas/LibraryItemFileDTO"
           type: array
@@ -7290,11 +7287,15 @@ components:
           description: Its clear logo; absent when it has none, or while one is still being fetched
         match:
           $ref: "#/components/schemas/LibraryMatchDTO"
+          description: What decides which title it is. Admins only
         originalTitle:
           description: Its title in its own language, as the source gives it
           type: string
         overview:
           type: string
+        playing:
+          $ref: "#/components/schemas/LibraryPlayingDTO"
+          description: The copy that plays, in one line; absent for a series, and while none of its files plays
         premiereDate:
           description: The day it first aired or was released
           format: date
@@ -7328,10 +7329,7 @@ components:
         - studios
         - countries
         - credits
-        - files
         - seasons
-        - match
-        - detailsFrom
         - channels
       type: object
     LibraryItemFileDTO:
@@ -7595,6 +7593,24 @@ components:
         - width
         - height
         - hdr
+      type: object
+    LibraryPlayingDTO:
+      additionalProperties: false
+      properties:
+        audioChannels:
+          description: "The channels of the sound that plays: its default audio stream, else its first"
+          format: int64
+          type: integer
+        picture:
+          $ref: "#/components/schemas/LibraryPictureDTO"
+          description: Its first video stream; absent while its details are unread
+        subtitleLanguages:
+          description: "Its subtitles' languages, each once, in order: its own then the files beside it; empty for none, unknown or unread"
+          items:
+            type: string
+          type: array
+      required:
+        - subtitleLanguages
       type: object
     LibraryProblemDTO:
       additionalProperties: false
@@ -15849,7 +15865,7 @@ paths:
         - channels
   /v1/collections:
     get:
-      description: The household's collections, by name, each with its titles in order.
+      description: The household's collections, by name, each with its titles in order. A member's titles leave out the admin-only counts.
       operationId: listCollections
       responses:
         "200":
@@ -15941,6 +15957,7 @@ paths:
       tags:
         - library
     get:
+      description: A member's titles leave out the admin-only counts.
       operationId: getCollection
       parameters:
         - in: path
@@ -19491,7 +19508,7 @@ paths:
         - library
   /v1/library/items:
     get:
-      description: Movies and series Loomarr found in its media folders, by name. A title still getting ready has files whose details aren't read yet.
+      description: Movies and series Loomarr found in its media folders, by name. A title still getting ready has files whose details aren't read yet. A member's titles leave out the admin-only counts.
       operationId: listLibraryItems
       parameters:
         - description: Only movies or only series; both when absent
@@ -19564,7 +19581,7 @@ paths:
         - library
   /v1/library/items/{id}:
     get:
-      description: A movie with its files, or a series with its episodes by season. 404 when no file of it is present.
+      description: A movie with its files, or a series with its episodes by season. 404 when no file of it is present. A member's title leaves out its files, its match and where its details came from.
       operationId: getLibraryItem
       parameters:
         - in: path

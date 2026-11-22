@@ -38,7 +38,7 @@ func TestTitlePageSaysWhereDetailsCameFromAndWhatTheFileHolds(t *testing.T) {
 	id := string(h.item(fileOrigin(h.root, "Echo/Echo.mkv")).ID)
 
 	lib := &Library{ItemStore: h.st, Inventory: h.inv}
-	d, err := lib.Item(context.Background(), id)
+	d, err := lib.Item(context.Background(), id, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,5 +53,33 @@ func TestTitlePageSaysWhereDetailsCameFromAndWhatTheFileHolds(t *testing.T) {
 		f.Picture == nil || *f.Picture != (Picture{Width: 3840, Height: 2160, HDR: true}) ||
 		!slices.Equal(f.Subtitles, []string{"en", "", "es"}) {
 		t.Errorf("file = %+v (picture %+v)", f, f.Picture)
+	}
+}
+
+// The copy that plays is a file whose source row plays: the default edition's before a labelled
+// one, a whole file or the first part before a later part. A file with no source row, or one that
+// never plays, is never it, and a title with none playing has none.
+func TestPlayingCopyIsTheDefaultEditionsFirstPlayingFile(t *testing.T) {
+	file := func(name, edition string, part int, sourced, plays bool) ItemFile {
+		f := ItemFile{Edition: edition, Part: part, sourced: sourced, plays: plays}
+		f.Path = name
+		return f
+	}
+	for _, tc := range []struct {
+		name  string
+		files []ItemFile
+		want  string
+	}{
+		{"extra copy first", []ItemFile{file("extra", "", 0, true, false), file("plays", "", 0, true, true)}, "plays"},
+		{"labelled edition first", []ItemFile{file("extended", "Extended", 0, true, true), file("theatrical", "", 0, true, true)}, "theatrical"},
+		{"later part first", []ItemFile{file("part2", "", 2, true, true), file("part1", "", 1, true, true)}, "part1"},
+		{"only a labelled edition", []ItemFile{file("unsourced", "", 0, false, false), file("extended", "Extended", 0, true, true)}, "extended"},
+		{"none plays", []ItemFile{file("unsourced", "", 0, false, false), file("extra", "", 0, true, false)}, ""},
+		{"a series", nil, ""},
+	} {
+		got, ok := ItemDetail{Files: tc.files}.PlayingCopy()
+		if ok != (tc.want != "") || got.Path != tc.want {
+			t.Errorf("%s: playing copy = %q, %v; want %q", tc.name, got.Path, ok, tc.want)
+		}
 	}
 }
