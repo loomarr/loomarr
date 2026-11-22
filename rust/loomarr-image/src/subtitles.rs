@@ -1,9 +1,10 @@
 //! `decode-subtitles --protocol 1`: an image subtitle track in, timed full-canvas stills out.
 //!
-//! A codec decoder reports each display state to a [`Timeline`] as a start time and a full
-//! straight-alpha RGBA canvas (or `None` when nothing shows). The timeline is codec-neutral: it
-//! folds repeated clears, enforces the state and output ceilings, and writes one PNG per still into
-//! staging. PGS (`hdmv_pgs_subtitle`) is the one decoder; VOBSUB (#2124) adds a second behind the
+//! A codec decoder reports each display state to a [`Timeline`] as a start time and a render step
+//! that draws it onto a full straight-alpha RGBA canvas. The timeline is codec-neutral: it keeps
+//! states in order, folds repeated clears, charges every draw, clear and encode to the work
+//! ceilings before doing it, enforces the state and output ceilings, and writes one PNG per still
+//! into staging. PGS (`hdmv_pgs_subtitle`) is the one decoder; VOBSUB (#2124) adds a second behind the
 //! same timeline.
 
 use std::collections::HashMap;
@@ -26,6 +27,12 @@ pub(crate) struct Limits {
     pub max_objects_per_state: usize,
     pub max_states: usize,
     pub max_output_bytes: u64,
+    /// Object pixels decoded across every display set: each placement charges its object's area
+    /// plus its coded length, before it is drawn.
+    pub max_drawn_pixels: u64,
+    /// Canvas pixels encoded or cleared across every display set, charged before each encode and
+    /// each clear.
+    pub max_canvas_pixels: u64,
 }
 
 pub(crate) const LIMITS: Limits = Limits {
@@ -35,7 +42,16 @@ pub(crate) const LIMITS: Limits = Limits {
     max_objects_per_state: 64,
     max_states: 50_000,
     max_output_bytes: 512 << 20,
+    max_drawn_pixels: DRAWN_PIXELS_CEILING,
+    max_canvas_pixels: CANVAS_PIXELS_CEILING,
 };
+
+// About 4x the heavier track `heavy_realistic_tracks_fit_the_work_ceilings` measures: 3,000
+// display sets of two 3840x400 objects on a 3840x2160 canvas, each cleared, draw 9.45e9 object
+// pixels and encode or clear 4.98e10 canvas pixels in about 26 s of a release build on a shared
+// 24-core machine.
+const DRAWN_PIXELS_CEILING: u64 = 38_000_000_000;
+const CANVAS_PIXELS_CEILING: u64 = 200_000_000_000;
 
 pub const PGS_CODEC: &str = "hdmv_pgs_subtitle";
 
@@ -97,6 +113,60 @@ pub(crate) struct Canvas {
     pub width: u32,
     pub height: u32,
     pub pixels: Vec<u8>,
+    /// Whether any pixel was drawn since the canvas was last cleared.
+    pub dirty: bool,
+}
+
+impl Canvas {
+    pub(crate) fn new(width: u32, height: u32) -> Self {
+        Self {
+            width,
+            height,
+            pixels: vec![0; width as usize * height as usize * 4],
+            dirty: false,
+        }
+    }
+
+    fn area(&self) -> u64 {
+        u64::from(self.width) * u64::from(self.height)
+    }
+}
+
+/// The work a track has cost so far, counted across every display set and charged before the work
+/// is done, so a track that would exceed a ceiling is refused instead of decoded.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Work {
+    pub drawn_pixels: u64,
+    pub canvas_pixels: u64,
+}
+
+pub(crate) struct Budget {
+    limits: Limits,
+    work: Work,
+}
+
+impl Budget {
+    pub(crate) fn draw(&mut self, pixels: u64) -> Result<(), WorkerError> {
+        self.work.drawn_pixels = self.work.drawn_pixels.saturating_add(pixels);
+        if self.work.drawn_pixels > self.limits.max_drawn_pixels {
+            return Err(WorkerError::new(
+                "limit_exceeded",
+                "drawn object pixels exceed the work ceiling",
+            ));
+        }
+        Ok(())
+    }
+
+    fn canvas(&mut self, pixels: u64) -> Result<(), WorkerError> {
+        self.work.canvas_pixels = self.work.canvas_pixels.saturating_add(pixels);
+        if self.work.canvas_pixels > self.limits.max_canvas_pixels {
+            return Err(WorkerError::new(
+                "limit_exceeded",
+                "encoded and cleared canvas pixels exceed the work ceiling",
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Where a still's encoded PNG goes: staging for a request, memory for the self-test.
@@ -116,12 +186,18 @@ impl StillSink for Staging {
 
 /// The codec-neutral display timeline. Each state lasts until the next one starts; the last has
 /// no successor and holds until the programme ends, so its end equals its start. A state at the
-/// same instant as the one before it replaces it, so a PNG is encoded only once its time is final.
+/// same instant as the one before it replaces it, so the canvas keeps the latest state's pixels and
+/// a PNG is encoded only once a later instant makes that state's time final.
 pub(crate) struct Timeline<'a, S: StillSink> {
     limits: Limits,
     sink: &'a mut S,
     states: Vec<StateResult>,
-    pending: Option<(i64, Option<Vec<u8>>)>,
+    /// The latest state, not yet emitted: its start and whether the canvas shows a still.
+    pending: Option<(i64, bool)>,
+    /// The latest start pushed. A replacement can remove a state, so order is checked against
+    /// this rather than against what remains.
+    latest_ms: Option<i64>,
+    budget: Budget,
     output_bytes: u64,
 }
 
@@ -132,42 +208,51 @@ impl<'a, S: StillSink> Timeline<'a, S> {
             sink,
             states: Vec::new(),
             pending: None,
+            latest_ms: None,
+            budget: Budget {
+                limits,
+                work: Work::default(),
+            },
             output_bytes: 0,
         }
     }
 
+    /// Adds the state that starts at `start_ms`. `render` draws it onto the cleared canvas,
+    /// charging what it draws to the budget, and reports whether anything shows.
     pub(crate) fn push(
         &mut self,
         start_ms: i64,
-        canvas: Option<&Canvas>,
+        canvas: &mut Canvas,
+        render: impl FnOnce(&mut Canvas, &mut Budget) -> Result<bool, WorkerError>,
     ) -> Result<(), WorkerError> {
-        if let Some((pending_start, _)) = &self.pending {
-            if start_ms < *pending_start {
-                return Err(WorkerError::new(
-                    "corrupt_input",
-                    "display states go back in time",
-                ));
-            }
-            if start_ms > *pending_start {
-                self.flush()?;
-            } else {
-                self.pending = None;
-            }
+        if self.latest_ms.is_some_and(|latest| start_ms < latest) {
+            return Err(WorkerError::new(
+                "corrupt_input",
+                "display states go back in time",
+            ));
         }
-        let previous_clear = match &self.pending {
-            Some((_, still)) => still.is_none(),
-            None => self.states.last().is_none_or(|state| state.still.is_none()),
-        };
-        if canvas.is_none() && previous_clear {
-            return Ok(());
+        self.latest_ms = Some(start_ms);
+        match self.pending {
+            Some((pending_start, _)) if start_ms > pending_start => self.flush(canvas)?,
+            Some(_) => self.pending = None,
+            None => {}
         }
-        let png = canvas.map(encode_png).transpose()?;
-        self.pending = Some((start_ms, png));
+        if canvas.dirty {
+            self.budget.canvas(canvas.area())?;
+            canvas.pixels.fill(0);
+            canvas.dirty = false;
+        }
+        let drawn = render(canvas, &mut self.budget)?;
+        canvas.dirty = drawn;
+        let previous_clear = self.states.last().is_none_or(|state| state.still.is_none());
+        if drawn || !previous_clear {
+            self.pending = Some((start_ms, drawn));
+        }
         Ok(())
     }
 
-    fn flush(&mut self) -> Result<(), WorkerError> {
-        let Some((start_ms, png)) = self.pending.take() else {
+    fn flush(&mut self, canvas: &Canvas) -> Result<(), WorkerError> {
+        let Some((start_ms, drawn)) = self.pending.take() else {
             return Ok(());
         };
         if self.states.len() >= self.limits.max_states {
@@ -179,23 +264,24 @@ impl<'a, S: StillSink> Timeline<'a, S> {
         if let Some(last) = self.states.last_mut() {
             last.end_ms = start_ms;
         }
-        let still = match png {
-            None => None,
-            Some(png) => {
-                self.output_bytes = self.output_bytes.saturating_add(png.len() as u64);
-                if self.output_bytes > self.limits.max_output_bytes {
-                    return Err(WorkerError::new(
-                        "limit_exceeded",
-                        "stills exceed the output ceiling",
-                    ));
-                }
-                let relative_path = self.sink.write(self.states.len(), &png)?;
-                Some(StillResult {
-                    relative_path,
-                    bytes: png.len() as u64,
-                    sha256: hex_digest(&png),
-                })
+        let still = if drawn {
+            self.budget.canvas(canvas.area())?;
+            let png = encode_png(canvas)?;
+            self.output_bytes = self.output_bytes.saturating_add(png.len() as u64);
+            if self.output_bytes > self.limits.max_output_bytes {
+                return Err(WorkerError::new(
+                    "limit_exceeded",
+                    "stills exceed the output ceiling",
+                ));
             }
+            let relative_path = self.sink.write(self.states.len(), &png)?;
+            Some(StillResult {
+                relative_path,
+                bytes: png.len() as u64,
+                sha256: hex_digest(&png),
+            })
+        } else {
+            None
         };
         self.states.push(StateResult {
             start_ms,
@@ -205,10 +291,18 @@ impl<'a, S: StillSink> Timeline<'a, S> {
         Ok(())
     }
 
-    fn finish(mut self) -> Result<Vec<StateResult>, WorkerError> {
-        self.flush()?;
-        Ok(self.states)
+    fn finish(mut self, canvas: &Canvas) -> Result<(Vec<StateResult>, Work), WorkerError> {
+        self.flush(canvas)?;
+        Ok((self.states, self.budget.work))
     }
+}
+
+/// A decoded track: the canvas size, its states, and the work they cost.
+struct Decoded {
+    width: u32,
+    height: u32,
+    states: Vec<StateResult>,
+    work: Work,
 }
 
 fn encode_png(canvas: &Canvas) -> Result<Vec<u8>, WorkerError> {
@@ -284,7 +378,12 @@ fn decode(request: DecodeRequest, limits: Limits) -> Result<DecodeResult, Worker
         ));
     }
     let mut staging = Staging(request.staging_dir);
-    let (width, height, states) = decode_pgs(&source, limits, &mut staging)?;
+    let Decoded {
+        width,
+        height,
+        states,
+        ..
+    } = decode_pgs(&source, limits, &mut staging)?;
     Ok(DecodeResult {
         protocol: PROTOCOL,
         status: "ok",
@@ -338,7 +437,7 @@ fn decode_pgs<S: StillSink>(
     mut bytes: &[u8],
     limits: Limits,
     sink: &mut S,
-) -> Result<(u32, u32, Vec<StateResult>), WorkerError> {
+) -> Result<Decoded, WorkerError> {
     let mut palettes: HashMap<u8, [[u8; 4]; 256]> = HashMap::new();
     let mut objects: HashMap<u16, Object> = HashMap::new();
     let mut canvas: Option<Canvas> = None;
@@ -380,11 +479,7 @@ fn decode_pgs<S: StillSink>(
                                 "canvas exceeds the ceiling",
                             ));
                         }
-                        canvas = Some(Canvas {
-                            width,
-                            height,
-                            pixels: vec![0; width as usize * height as usize * 4],
-                        });
+                        canvas = Some(Canvas::new(width, height));
                     }
                 }
                 if seg[7] & EPOCH_START != 0 {
@@ -476,8 +571,10 @@ fn decode_pgs<S: StillSink>(
                 let Some(canvas) = canvas.as_mut() else {
                     continue;
                 };
-                let drawn = render(canvas, &placed, &objects, palettes.get(&palette_id))?;
-                timeline.push(start_ms, drawn.then_some(&*canvas))?;
+                let palette = palettes.get(&palette_id);
+                timeline.push(start_ms, canvas, |canvas, budget| {
+                    render(canvas, budget, &placed, &objects, palette)
+                })?;
             }
             _ => {}
         }
@@ -485,17 +582,24 @@ fn decode_pgs<S: StillSink>(
     let Some(canvas) = canvas else {
         return Err(corrupt("track has no compositions"));
     };
-    Ok((canvas.width, canvas.height, timeline.finish()?))
+    let (states, work) = timeline.finish(&canvas)?;
+    Ok(Decoded {
+        width: canvas.width,
+        height: canvas.height,
+        states,
+        work,
+    })
 }
 
-/// Draws one composition onto the cleared canvas; false when nothing shows.
+/// Draws one composition onto the cleared canvas, charging each placement before it decodes;
+/// false when nothing shows.
 fn render(
     canvas: &mut Canvas,
+    budget: &mut Budget,
     placed: &[Placement],
     objects: &HashMap<u16, Object>,
     palette: Option<&[[u8; 4]; 256]>,
 ) -> Result<bool, WorkerError> {
-    canvas.pixels.fill(0);
     let Some(palette) = palette else {
         return Ok(false);
     };
@@ -505,6 +609,8 @@ fn render(
         let Some(object) = objects.get(&placement.object) else {
             continue;
         };
+        budget
+            .draw(u64::from(object.width) * u64::from(object.height) + object.data.len() as u64)?;
         let (x0, y0, x1, y1) = match placement.crop {
             Some((cx0, cy0, cx1, cy1)) => (
                 cx0.min(object.width),
@@ -523,17 +629,20 @@ fn render(
             if canvas_y >= u64::from(canvas.height) {
                 return;
             }
-            let from = from.max(x0);
-            let to = to.min(x1);
-            for x in from..to {
-                let canvas_x = u64::from(placement.x) + u64::from(x - x0);
-                if canvas_x >= u64::from(canvas.width) {
-                    break;
-                }
-                let at = ((canvas_y * u64::from(canvas.width) + canvas_x) * 4) as usize;
-                canvas.pixels[at..at + 4].copy_from_slice(&colour);
-                drawn = true;
+            let (from, to) = (from.max(x0), to.min(x1));
+            if from >= to {
+                return;
             }
+            // The run's span on the canvas row, clipped to the canvas's right edge.
+            let left = u64::from(placement.x) + u64::from(from - x0);
+            let right = (u64::from(placement.x) + u64::from(to - x0)).min(u64::from(canvas.width));
+            if left >= right {
+                return;
+            }
+            let row_at = canvas_y * u64::from(canvas.width);
+            let span = ((row_at + left) * 4) as usize..((row_at + right) * 4) as usize;
+            canvas.pixels[span].as_chunks_mut::<4>().0.fill(colour);
+            drawn = true;
         };
         decode_rle(&object.data, object.width, object.height, &mut draw)?;
     }
@@ -616,11 +725,20 @@ pub fn fuzz_decode_pgs(bytes: &[u8]) -> Result<usize, String> {
         max_height: 256,
         max_states: 64,
         max_output_bytes: 4 << 20,
+        max_drawn_pixels: 1 << 24,
+        max_canvas_pixels: 1 << 23,
         ..LIMITS
     };
-    decode_pgs(bytes, limits, &mut Memory::default())
-        .map(|(_, _, states)| states.len())
-        .map_err(|err| err.code.to_owned())
+    let decoded =
+        decode_pgs(bytes, limits, &mut Memory::default()).map_err(|err| err.code.to_owned())?;
+    // A decoded track never costs more than the ceilings it was charged against.
+    assert!(
+        decoded.work.drawn_pixels <= limits.max_drawn_pixels
+            && decoded.work.canvas_pixels <= limits.max_canvas_pixels,
+        "work {:?} passed its ceilings",
+        decoded.work
+    );
+    Ok(decoded.states.len())
 }
 
 #[derive(Default)]
@@ -648,7 +766,13 @@ pub(crate) fn self_test() -> bool {
     );
     w.clear(360_000, (8, 4));
     let mut memory = Memory::default();
-    let Ok((8, 4, states)) = decode_pgs(&w.0, LIMITS, &mut memory) else {
+    let Ok(Decoded {
+        width: 8,
+        height: 4,
+        states,
+        ..
+    }) = decode_pgs(&w.0, LIMITS, &mut memory)
+    else {
         return false;
     };
     let timing: Vec<_> = states
@@ -725,6 +849,50 @@ pub(crate) mod test_support {
             self.seg(pts, END, &[]);
         }
 
+        /// A display set placing `objects` (each `(x, y, width, height, rle)`, numbered from 1) with
+        /// the same palette as [`Sup::show`], each object fragmented across segments as needed.
+        #[cfg(test)]
+        pub(crate) fn set(
+            &mut self,
+            pts: u32,
+            state: u8,
+            objects: &[(u16, u16, u16, u16, &[u8])],
+            (cw, ch): (u16, u16),
+        ) {
+            let mut pcs = Vec::new();
+            pcs.extend_from_slice(&cw.to_be_bytes());
+            pcs.extend_from_slice(&ch.to_be_bytes());
+            pcs.extend_from_slice(&[0x10, 0, 1, state, 0, 0, objects.len() as u8]);
+            for (id, (x, y, ..)) in (1_u16..).zip(objects) {
+                pcs.extend_from_slice(&id.to_be_bytes());
+                pcs.extend_from_slice(&[0, 0]);
+                pcs.extend_from_slice(&x.to_be_bytes());
+                pcs.extend_from_slice(&y.to_be_bytes());
+            }
+            self.seg(pts, COMPOSITION, &pcs);
+            self.seg(
+                pts,
+                PALETTE,
+                &[0, 0, 1, 235, 128, 128, 255, 2, 16, 128, 128, 128],
+            );
+            for (id, (_, _, ow, oh, rle)) in (1_u16..).zip(objects) {
+                let mut chunks = rle.chunks(60_000);
+                let mut first = id.to_be_bytes().to_vec();
+                first.extend_from_slice(&[0, 0xc0, 0, 0, 0]);
+                first.extend_from_slice(&ow.to_be_bytes());
+                first.extend_from_slice(&oh.to_be_bytes());
+                first.extend_from_slice(chunks.next().unwrap_or_default());
+                self.seg(pts, OBJECT, &first);
+                for chunk in chunks {
+                    let mut next = id.to_be_bytes().to_vec();
+                    next.extend_from_slice(&[0, 0]);
+                    next.extend_from_slice(chunk);
+                    self.seg(pts, OBJECT, &next);
+                }
+            }
+            self.seg(pts, END, &[]);
+        }
+
         pub(crate) fn clear(&mut self, pts: u32, (cw, ch): (u16, u16)) {
             let mut pcs = Vec::new();
             pcs.extend_from_slice(&cw.to_be_bytes());
@@ -734,6 +902,22 @@ pub(crate) mod test_support {
             self.seg(pts, WINDOW, &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
             self.seg(pts, END, &[]);
         }
+    }
+
+    /// Run-length codes one object row from `(length, index)` runs and ends it.
+    #[cfg(test)]
+    pub(crate) fn rle_row(runs: &[(u16, u8)], out: &mut Vec<u8>) {
+        for &(len, index) in runs {
+            match (len, index) {
+                (0, _) => {}
+                (1..=2, 1..) => out.extend(std::iter::repeat_n(index, usize::from(len))),
+                (_, 0) if len < 64 => out.extend_from_slice(&[0, len as u8]),
+                (_, 0) => out.extend_from_slice(&[0, 0x40 | (len >> 8) as u8, len as u8]),
+                _ if len < 64 => out.extend_from_slice(&[0, 0x80 | len as u8, index]),
+                _ => out.extend_from_slice(&[0, 0xc0 | (len >> 8) as u8, len as u8, index]),
+            }
+        }
+        out.extend_from_slice(&[0, 0]);
     }
 }
 
@@ -749,7 +933,12 @@ mod tests {
         limits: Limits,
     ) -> Result<(u32, u32, Vec<StateResult>, Vec<image::RgbaImage>), WorkerError> {
         let mut memory = Memory::default();
-        let (w, h, states) = decode_pgs(bytes, limits, &mut memory)?;
+        let Decoded {
+            width: w,
+            height: h,
+            states,
+            ..
+        } = decode_pgs(bytes, limits, &mut memory)?;
         let images = memory
             .0
             .iter()
@@ -760,6 +949,13 @@ mod tests {
             })
             .collect();
         Ok((w, h, states, images))
+    }
+
+    /// Decodes keeping the stills encoded, returning the work and the number of stills written.
+    fn decode_work(bytes: &[u8], limits: Limits) -> (Result<Decoded, WorkerError>, usize) {
+        let mut memory = Memory::default();
+        let decoded = decode_pgs(bytes, limits, &mut memory);
+        (decoded, memory.0.len())
     }
 
     fn timing(states: &[StateResult]) -> Vec<(i64, i64, bool)> {
@@ -849,6 +1045,206 @@ mod tests {
     }
 
     #[test]
+    fn states_stay_in_order_when_a_replacement_removes_one() {
+        // The clear at 3 s replaces the show at 3 s and folds into the clear at 2 s, leaving
+        // nothing pending; the show at 1.5 s still goes back in time.
+        let mut w = Sup::default();
+        for (ms, show) in [
+            (1000, true),
+            (2000, false),
+            (3000, true),
+            (3000, false),
+            (1500, true),
+            (4000, false),
+        ] {
+            if show {
+                w.show(ms * 90, EPOCH_START, 0, 0, &TWO_ROWS, 4, 2, (8, 4));
+            } else {
+                w.clear(ms * 90, (8, 4));
+            }
+        }
+        let Err(err) = decode_memory(&w.0, LIMITS) else {
+            panic!("a track that goes back in time decoded");
+        };
+        assert_eq!(err.code, "corrupt_input", "{}", err.message);
+    }
+
+    #[test]
+    fn a_replaced_state_is_never_encoded() {
+        let mut w = Sup::default();
+        for _ in 0..64 {
+            w.show(90_000, EPOCH_START, 0, 0, &TWO_ROWS, 4, 2, (8, 4));
+        }
+        w.clear(180_000, (8, 4));
+        let (decoded, stills) = decode_work(&w.0, LIMITS);
+        let decoded = decoded.expect("decode");
+        assert_eq!(
+            timing(&decoded.states),
+            [(1000, 2000, true), (2000, 2000, false)]
+        );
+        assert_eq!(stills, 1);
+        // 63 replacements clear the canvas, one still is encoded, and the final clear clears it.
+        assert_eq!(decoded.work.canvas_pixels, (63 + 1 + 1) * 32);
+        assert_eq!(decoded.work.drawn_pixels, 64 * (8 + TWO_ROWS.len() as u64));
+    }
+
+    #[test]
+    fn clearing_a_clean_canvas_costs_no_work() {
+        let uhd = (3840, 2160);
+        let mut clears = Sup::default();
+        for _ in 0..2000 {
+            clears.clear(0, uhd);
+        }
+        let (decoded, _) = decode_work(&clears.0, LIMITS);
+        let decoded = decoded.expect("decode");
+        assert!(decoded.states.is_empty());
+        assert_eq!(decoded.work, Work::default());
+
+        let mut w = Sup::default();
+        w.show(0, EPOCH_START, 0, 0, &TWO_ROWS, 4, 2, (8, 4));
+        for i in 1..2000 {
+            w.clear(i * 90, (8, 4));
+        }
+        let (decoded, _) = decode_work(&w.0, LIMITS);
+        let decoded = decoded.expect("decode");
+        assert_eq!(timing(&decoded.states), [(0, 1, true), (1, 1, false)]);
+        assert_eq!(decoded.work.canvas_pixels, 2 * 32);
+    }
+
+    #[test]
+    fn work_beyond_a_ceiling_is_refused_before_it_is_done() {
+        // One full-canvas object placed 64 times, then the same placements again at the same
+        // instant: every set replaces the last, so none is ever final.
+        let (side, canvas) = (64_u16, (64, 64));
+        let mut rle = Vec::new();
+        for _ in 0..side {
+            test_support::rle_row(&[(side, 1)], &mut rle);
+        }
+        let placement = (0, 0, side, side, &rle[..]);
+        let mut w = Sup::default();
+        for _ in 0..3 {
+            w.set(0, EPOCH_START, &[placement; 64], canvas);
+        }
+        let per_set = 64 * (u64::from(side) * u64::from(side) + rle.len() as u64);
+        let drawn = Limits {
+            max_drawn_pixels: 2 * per_set + 1,
+            ..LIMITS
+        };
+        let (decoded, stills) = decode_work(&w.0, drawn);
+        let err = decoded.err().expect("over-ceiling drawing decoded");
+        assert_eq!(err.code, "limit_exceeded", "{}", err.message);
+        assert_eq!(stills, 0);
+
+        // Distinct instants: the second encode would pass the canvas ceiling.
+        let mut w = Sup::default();
+        for i in 0..3 {
+            w.set(i * 90_000, EPOCH_START, &[placement], canvas);
+        }
+        let area = 64 * 64;
+        let encoded = Limits {
+            max_canvas_pixels: 2 * area,
+            ..LIMITS
+        };
+        let (decoded, stills) = decode_work(&w.0, encoded);
+        let err = decoded.err().expect("over-ceiling encoding decoded");
+        assert_eq!(err.code, "limit_exceeded", "{}", err.message);
+        assert_eq!(stills, 1);
+    }
+
+    /// A still sink that keeps only the encoded total.
+    #[derive(Default)]
+    struct Discard(u64);
+
+    impl StillSink for Discard {
+        fn write(&mut self, index: usize, png: &[u8]) -> Result<String, WorkerError> {
+            self.0 += png.len() as u64;
+            Ok(format!("s{index:05}.png"))
+        }
+    }
+
+    /// A heavy realistic track: 3,000 display sets of two full-width objects of text strokes, each
+    /// cleared before the next. `scale` 1 is 1920x1080 with 1920x200 objects; 2 is 3840x2160 with
+    /// 3840x400 objects and strokes twice as long.
+    fn heavy_track(scale: u16) -> Sup {
+        let (cw, ch) = (1920 * scale, 1080 * scale);
+        let (ow, oh) = (cw, 200 * scale);
+        let mut seed = 0x9e37_79b9_u32;
+        let mut next = |below: u16| {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            (seed % u32::from(below)) as u16
+        };
+        let mut w = Sup::default();
+        for i in 0..3000_u32 {
+            let objects: Vec<Vec<u8>> = (0..2)
+                .map(|_| {
+                    let mut rle = Vec::new();
+                    for row in 0..oh {
+                        if row < oh * 3 / 10 || row >= oh * 7 / 10 {
+                            test_support::rle_row(&[], &mut rle);
+                            continue;
+                        }
+                        let mut runs = vec![(ow / 4 + next(ow / 8), 0)];
+                        let mut x = runs[0].0;
+                        while x < ow * 3 / 4 {
+                            let stroke = [
+                                (2 * scale, 2),
+                                ((3 + next(4)) * scale, 1),
+                                (2 * scale, 2),
+                                ((20 + next(30)) * scale, 0),
+                            ];
+                            x += stroke.iter().map(|(len, _)| len).sum::<u16>();
+                            runs.extend(stroke);
+                        }
+                        test_support::rle_row(&runs, &mut rle);
+                    }
+                    rle
+                })
+                .collect();
+            let ms = i * 4000;
+            w.set(
+                ms * 90,
+                EPOCH_START,
+                &[
+                    (0, ch - 2 * oh - 20 * scale, ow, oh, &objects[0][..]),
+                    (0, ch - oh - 10 * scale, ow, oh, &objects[1][..]),
+                ],
+                (cw, ch),
+            );
+            w.clear((ms + 2500) * 90, (cw, ch));
+        }
+        w
+    }
+
+    /// The measurement behind `DRAWN_PIXELS_CEILING` and `CANVAS_PIXELS_CEILING`. Run it in a
+    /// release build: `cargo test --release -p loomarr-image -- --ignored --nocapture heavy`.
+    #[test]
+    #[ignore = "a release-build measurement of two full-length tracks"]
+    fn heavy_realistic_tracks_fit_the_work_ceilings() {
+        // The 3840x2160 track writes about 1 GB of stills, past the output ceiling; that ceiling
+        // is lifted here so the work ceilings are measured on their own.
+        let limits = Limits {
+            max_output_bytes: u64::MAX,
+            ..LIMITS
+        };
+        for scale in [1, 2] {
+            let track = heavy_track(scale);
+            let started = std::time::Instant::now();
+            let mut sink = Discard::default();
+            let decoded = decode_pgs(&track.0, limits, &mut sink).expect("decode");
+            println!(
+                "scale {scale}: {} input bytes, {} states, {:?}, {} output bytes, {:?}",
+                track.0.len(),
+                decoded.states.len(),
+                decoded.work,
+                sink.0,
+                started.elapsed(),
+            );
+        }
+    }
+
+    #[test]
     fn malformed_and_over_ceiling_tracks_are_refused_with_stable_codes() {
         let mut backwards = Sup::default();
         backwards.show(180_000, EPOCH_START, 0, 0, &TWO_ROWS, 4, 2, HD);
@@ -900,7 +1296,16 @@ mod tests {
 
     #[test]
     fn the_request_writes_stills_into_staging_and_refuses_other_codecs() {
-        let root = std::env::temp_dir().join(format!("loomarr-subs-{}", std::process::id()));
+        /// Removes the directory when dropped, so a failing assertion leaves nothing behind.
+        struct TempDir(PathBuf);
+        impl Drop for TempDir {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let dir =
+            TempDir(std::env::temp_dir().join(format!("loomarr-subs-{}", std::process::id())));
+        let root = &dir.0;
         let staging = root.join("staging");
         fs::create_dir_all(&staging).expect("staging");
         let mut w = Sup::default();
@@ -931,6 +1336,5 @@ mod tests {
         assert_eq!(err.code, "unsupported_input");
         let refusal: serde_json::Value = serde_json::from_slice(&out).expect("refusal");
         assert_eq!(refusal["error"]["code"], "unsupported_input");
-        fs::remove_dir_all(root).expect("cleanup");
     }
 }
