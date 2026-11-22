@@ -47,10 +47,12 @@ type FrameHint struct {
 // transfer, so the ceiling is a small tolerance rather than zero.
 //
 // ⚠ Calibrated on the FrameHintsIn measurement: 128 px rgb24 frames ffmpeg scales
-// from mpeg4 clips. Downscaling averages chroma noise, so the spread a raw frame
-// shows is lower than the source's. A heavily noised B&W clip measures at most 6.4;
-// a faint, noised colour clip (saturation 0.04) measures at least 11.5. 9 (of 255)
-// sits between them with ~2.5 points of margin each side; a muted colour clip (~29),
+// from synthetic testsrc2 clips encoded with libx264. Downscaling averages chroma
+// noise, so the spread a raw frame shows is lower than the source's. A heavily
+// noised B&W clip measures at most 6.4; a faint, noised colour clip (saturation 0.04)
+// measures at least 11.5. 9 (of 255) sits between them with ~2.5 points of margin
+// each side (an mpeg4 encode of the same clips also separates, with a faint
+// noiseless colour clip ~1 point above); a muted colour clip (~29),
 // sepia (~46) and full colour (~240) are far above it. It is a per-pixel mean, so
 // one coloured object cannot by itself flip a mostly-grey frame; the FRAME is B&W
 // only if the average pixel is grey.
