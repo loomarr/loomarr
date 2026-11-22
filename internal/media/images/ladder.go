@@ -90,8 +90,9 @@ const fullScreenFrom = 1920
 // catalogue still arrives 300 wide, and a 780 or 1280 rung of it would be the same pixels
 // upscaled at several times the bytes, so its set is the one 300 rung, and a 2x screen drawing it
 // at 300 CSS pixels takes that rung and scales it in the browser. A filler clip's catalogue still
-// is made 320 wide (tools.PreviewWidth), so its set is the 300 rung too; its 780 and 1280
-// renditions made before are no longer served, and budget eviction reclaims them. A split
+// is made 320 wide (tools.PreviewWidth), so its set is the 300 rung too; a 780 or 1280 rendition
+// such an image already holds is not listed, and budget eviction reclaims it when the cache is
+// over budget. A split
 // proposal's segment still is a frame up to 1920 wide and keeps the rungs it fills. The other
 // roles keep the whole ladder: they are drawn at card sizes, where a rung slightly wider than a
 // small original is not visible. A sourceWidth of 0 (unknown, for an adopted image whose bytes

@@ -137,7 +137,7 @@ func (b *builder) artwork(ctx context.Context, id string, kinds []string, art []
 			}
 		}
 		if kind == mp.KindThumb {
-			// A record cached before stills were fetched small names its still at original.
+			// A cached record can name its still at original.
 			ref = tmdb.SmallStill(ref)
 		}
 		if err := b.im.Artwork.Art(ctx, id, kind, ref); err != nil {

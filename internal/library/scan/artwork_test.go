@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
-	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	mp"github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
@@ -300,6 +301,57 @@ func TestImportPosterOfARecordThatArrivesBeforeTheHeaderRead(t *testing.T) {
 	h.run()
 	if got := h.posters(art)["Alpha"]; got != "alpha.jpg" {
 		t.Fatalf("poster = %q, want the record's alpha.jpg from the header stage's write", got)
+	}
+}
+
+// An episode the walk writes while its catalog record is still to come is written again by the
+// header stage once the record is cached (#4476), and the still the record names at TMDB's
+// original size is handed over at w300.
+func TestImportStillOfARecordThatArrivesBeforeTheHeaderRead(t *testing.T) {
+	ctx := context.Background()
+	sonarr := &fakeLister{}
+	h := newHarness(t, Manager{Authority: "sonarr", Lister: sonarr})
+	if err := h.st.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{
+		Found: []librarystore.LibraryRootPath{{Authority: "sonarr", AuthorityPath: "/tv", RootPath: h.root}}, Complete: []string{"sonarr"},
+	}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	h.im.Catalog = h.st
+	art := &fakeArtwork{}
+	h.im.Artwork = art
+	const rel = "India Show/Season 01/India Show S01E01.mkv"
+	h.file(rel, 10)
+	sonarr.records = []mp.Record{{
+		Source: mp.Source{Provider: mp.IDSonarr, Basis: mp.BasisManager}, Kind: mp.KindSeries,
+		IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90094000"}},
+		Children: []mp.Record{{
+			Source: mp.Source{Provider: mp.IDSonarr, Basis: mp.BasisManager}, Kind: mp.KindEpisode,
+			IDs:       []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90094001"}},
+			Numbering: &mp.Numbering{Season: 1, Episode: 1},
+			Files:     []mp.FileRef{{Path: "/tv/" + rel}},
+		}},
+	}}
+	// The series' record is cached; the episode's arrives while the walk saves the episode.
+	cache := func(key librarystore.LibraryCatalogKey, record string) {
+		t.Helper()
+		if _, err := h.st.SaveLibraryCatalog(ctx, key, record, catalogVersions[key.Kind], "", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cache(librarystore.LibraryCatalogKey{Provider: "tvdb", Kind: "series", ExternalID: "90094000"},
+		`{"Source":{"Provider":"tmdb","Basis":"catalog","Catalog":"tmdb"},"Kind":"series","Descriptive":{"Title":"India Show"}}`)
+	h.im.Store = &savingFiles{ImportStore: h.im.Store, before: func() {
+		cache(librarystore.LibraryCatalogKey{Provider: "tvdb", Kind: "episode", ExternalID: "90094001"},
+			`{"Source":{"Provider":"tmdb","Basis":"catalog","Catalog":"tmdb"},"Kind":"episode","Descriptive":{"Title":"Arrival"},
+			"Artwork":[{"Kind":"thumb","Ref":"https://image.tmdb.org/t/p/original/india-s01e01.jpg"}]}`)
+	}}
+	h.run()
+	row := h.fileRow(filepath.Join(h.root, filepath.FromSlash(rel)))
+	if strings.HasPrefix(row.Identity, "waiting:") {
+		t.Fatalf("identity = %q: the header stage did not write the episode with its record", row.Identity)
+	}
+	if got, want := art.refs[row.ItemID], "https://image.tmdb.org/t/p/w300/india-s01e01.jpg"; got != want {
+		t.Fatalf("still = %q, want the record's at w300 %q from the header stage's write", got, want)
 	}
 }
 

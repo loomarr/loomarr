@@ -287,8 +287,9 @@ need attribution or provenance read the image row instead of parsing format-spec
   that the smallest rung is always offered, so an original narrower than 300 is served at 300. A
   300-wide catalogue still is served at 300 alone, and a 2x screen drawing it at 300 CSS pixels
   takes that rung and scales it in the browser. A filler clip's catalogue still is made 320 wide
-  (`tools.PreviewWidth`), so its ladder is `[300]` too: the 780 and 1280 renditions made for clip
-  stills before are no longer served, and budget eviction reclaims them. A split proposal's
+  (`tools.PreviewWidth`), so its ladder is `[300]` too: a 780 or 1280 rendition a clip still
+  already holds is not listed, and budget eviction reclaims it when the cache is over budget. A
+  split proposal's
   segment still is a frame up to 1920 wide and keeps the rungs it fills. The other roles keep their
   whole ladder, and an image whose width is not yet known (adopted, bytes not here) lists the
   whole ladder.
