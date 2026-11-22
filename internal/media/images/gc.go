@@ -2,6 +2,7 @@ package images
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
@@ -28,7 +29,9 @@ const gcBatch = 500
 // GCStore is the persistence the collector needs on top of the serve path's.
 type GCStore interface {
 	Store
-	ListExpiredBefore(ctx context.Context, cutoff time.Time, limit int) ([]Image, error)
+	// ListExpiredBefore pages through remote images fetched before cutoff in (fetch time, hash)
+	// order, starting after the cursor.
+	ListExpiredBefore(ctx context.Context, cutoff time.Time, after ExpiryCursor, limit int) ([]Image, error)
 	ListOrphans(ctx context.Context, limit int) ([]Image, error)
 	ListUnrecoverable(ctx context.Context, limit int) ([]Image, error)
 	ListColdestDerivatives(ctx context.Context, limit int) ([]Derivative, error)
@@ -36,6 +39,13 @@ type GCStore interface {
 	DeleteDerivative(ctx context.Context, hash, recipe string, f Format, width int) error
 	DeleteDerivatives(ctx context.Context, hash string) error
 	DeleteImage(ctx context.Context, hash string) error
+}
+
+// ExpiryCursor is a position in the expiry sweep's order: the fetch time and hash of the last image
+// read. The zero cursor is the start.
+type ExpiryCursor struct {
+	FetchedAt time.Time
+	Hash      string
 }
 
 // GCResult is one pass's tally. Every field is surfaced in the job's log line; MissingUnrecoverable
@@ -84,10 +94,11 @@ func NewGC(svc *Service, st GCStore, remoteTTL func() time.Duration, budgetMB fu
 //
 // ⚠ Each duty's failure is logged and the pass continues. They are independent reconciliations,
 // and letting a failed orphan delete skip the TTL sweep would turn a transient disk error into a
-// compliance lapse.
+// compliance lapse. A pass whose context ends (the job's timeout, or shutdown) is the exception:
+// it stops between images, skips the duties it has not reached, and returns an error with what it
+// got done, so the job is recorded as cut short rather than as a clean pass.
 func (g *GC) Run(ctx context.Context) (GCResult, error) {
 	var out GCResult
-
 	// ⚠ **Orphans before the TTL, and the order is load-bearing rather than stylistic.** Both
 	// sweeps can select the same row — an expired image nothing references any more — and running
 	// the TTL first purges its bytes and puts it back on the FETCH queue moments before the orphan
@@ -95,17 +106,24 @@ func (g *GC) Run(ctx context.Context) (GCResult, error) {
 	// instruction for an image no surface will ever show, and if the delete fails for any reason
 	// that instruction is what survives. Collecting first means the TTL only ever looks at images
 	// something is still using.
-	if err := g.deleteOrphans(ctx, &out); err != nil {
-		g.log.Warn("image orphan sweep failed", "err", err)
+	duties := []struct {
+		name string
+		run  func(context.Context, *GCResult) error
+	}{
+		{"orphan sweep", g.deleteOrphans},
+		{"TTL sweep", g.enforceTTL},
+		{"missing-file check", g.warnUnrecoverable},
+		{"cache eviction", g.evict},
 	}
-	if err := g.enforceTTL(ctx, &out); err != nil {
-		g.log.Warn("image TTL sweep failed", "err", err)
-	}
-	if err := g.warnUnrecoverable(ctx, &out); err != nil {
-		g.log.Warn("image missing-file check failed", "err", err)
-	}
-	if err := g.evict(ctx, &out); err != nil {
-		g.log.Warn("image cache eviction failed", "err", err)
+	for _, d := range duties {
+		err := d.run(ctx, &out)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			g.log.Warn("image gc pass cut short", "during", d.name, "expired", out.Expired, "err", ctxErr)
+			return out, fmt.Errorf("images: gc pass cut short during the %s after %d expired: %w", d.name, out.Expired, ctxErr)
+		}
+		if err != nil {
+			g.log.Warn("image "+d.name+" failed", "err", err)
+		}
 	}
 
 	g.log.Info("image gc pass",
@@ -121,8 +139,9 @@ func (g *GC) Run(ctx context.Context) (GCResult, error) {
 // is a term of TMDB's API licence rather than a cache heuristic, so the only implementation that
 // actually honours it is one where no cached byte outlives the TTL — which means the delete cannot
 // be conditional on a successful re-download. Clearing `origin_fetched_at` puts the row straight
-// back on the fetch job's queue, and that job runs every minute, so the operator-visible cost is a
-// placeholder for under a minute per image on the anniversary of an import.
+// back on the fetch job's queue, behind what is already waiting, and that job takes a batch every
+// minute, so the operator-visible cost is a placeholder until its turn on the anniversary of an
+// import.
 //
 // The rejected alternative is worth naming because it is the one that looks obviously nicer:
 // re-fetching in place and deleting only on failure leaves the compliance question entirely inside
@@ -137,35 +156,38 @@ func (g *GC) enforceTTL(ctx context.Context, out *GCResult) error {
 	// Every image due is purged in this run, a batch of gcBatch at a time: thousands fetched on one
 	// day all expire on one day, and a batch a day would leave the last of them months past the
 	// ceiling. One image is purged at a time (its files, then its row), so the run's load on the
-	// disk and the database is one delete and one write after another, never a burst. A requeued
-	// row leaves the expired set, so each batch reads only what is still due; a batch that purged
-	// nothing (every one of its images failed) ends the run, and they are tried tomorrow.
+	// disk and the database is one delete and one write after another, never a burst. The reads
+	// page by a cursor in (fetch time, hash) order, so an image whose purge failed is passed over
+	// for this run and tried tomorrow, never read again or allowed to hold back the ones behind
+	// it. A short page is the end of what is due.
+	var after ExpiryCursor
 	for {
-		expired, err := g.store.ListExpiredBefore(ctx, cutoff, gcBatch)
+		expired, err := g.store.ListExpiredBefore(ctx, cutoff, after, gcBatch)
 		if err != nil {
 			return err
 		}
-		purged := 0
 		for _, img := range expired {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
+			after = ExpiryCursor{FetchedAt: img.OriginFetchedAt, Hash: img.Hash}
 			if err := g.purgeBytes(ctx, img); err != nil {
 				g.log.Warn("expired image purge failed", "hash", img.Hash, "err", err)
 				continue
 			}
 			// ⚠ Zero is the fetch job's "never fetched" sentinel, so this is a requeue rather than a
 			// flag: the row rejoins ListAwaitingFetch by construction and no second queue exists to
-			// keep in step with this one.
+			// keep in step with this one. It joins at the back, behind what is already waiting.
+			now := g.svc.now()
 			img.OriginFetchedAt = time.Time{}
-			img.UpdatedAt = g.svc.now()
+			img.FetchQueuedAt = now
+			img.UpdatedAt = now
 			if err := g.store.PutImage(ctx, img); err != nil {
 				return err
 			}
 			out.Expired++
-			purged++
 		}
-		if len(expired) < gcBatch || purged == 0 {
+		if len(expired) < gcBatch {
 			return nil
 		}
 	}

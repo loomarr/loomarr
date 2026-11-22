@@ -194,17 +194,31 @@ the database only.
 - **Expiry deletes, then requeues.** The original and every derivative are deleted and the row goes
   back on `images-fetch`'s list (every minute). Re-fetching first would put compliance inside an error
   branch: an unreachable TMDB would keep expired bytes forever.
-- **One GC run purges everything due.** It reads expired images 500 at a time and keeps reading
-  until none are left. A requeued row leaves the expired set, so each read returns the next batch.
-  Images are purged one at a time, each a file delete and then a row write, so a run that has a large
-  backlog takes longer but never adds load in parallel. A batch in which nothing could be purged ends
-  the run, and the next daily run tries again.
+- **One GC run purges everything due.** `images-maintenance` runs under the 30-minute long-job
+  timeout. Its purge reads expired images 500 at a time, in (fetch time, hash) order, each read
+  starting after the last image of the one before. It stops at a short page. Images are purged one
+  at a time, each a file delete and then a row write, so a run that has a large backlog takes longer
+  but never adds load in parallel. An image whose purge fails is passed over and tried by the next
+  daily run. It is never read again in the same run, and it never holds back the images behind it.
+  A run that the timeout or a shutdown ends stops between images and skips the steps it has not
+  reached. The job then fails, and the next run carries on.
+- **The fetch queue is first come, first served.** It is ordered by `fetch_queued_at`: an image's
+  adoption, or the purge's requeue. A requeued image goes behind the artwork already waiting,
+  however old the image is. The queue's read follows `idx_images_fetch_queue`, so a pass reads the
+  front of the queue without sorting it.
 - **A failed download backs off.** Each failure is recorded on the row (`fetch_failures`,
   `fetch_failed_at`) and holds the image off `images-fetch`'s list until `fetch_retry_at`. The wait
   doubles from five minutes (5m, 10m, 20m … 21h20m after the ninth failure) and is a day from the
-  tenth failure on. A failing image therefore never holds the front of the queue. The download that
-  lands clears all three fields. An image is never dropped for failing: it is retried once a day for
-  as long as something references it.
+  tenth failure on. A failure that waiting will not fix waits a day straight away: a 404 or 410, a
+  URL or redirect this install refuses, a body over the size cap, or bytes the image worker refuses.
+  A pass in which no attempt got any response is the network being down, and it records nothing,
+  so an outage does not push the whole catalogue's retries back. A foreground fetch skips an image
+  that is still backing off. A failing image therefore never holds the front of the queue. The
+  download that lands clears all three fields. An image is never dropped for failing: it is retried
+  once a day for as long as something references it.
+- **Adopting a URL reuses its row.** Adoption looks the source URL up. It reuses the row with bytes
+  if one exists, else the row still waiting for them: the placeholder, or an image the purge
+  requeued under its content hash. Re-adopting a URL therefore never queues a second download.
 - **Orphans are collected before expiry,** so an unreferenced expired image is never queued for a
   pointless download.
 - **Attribution:** the TMDB logo, less prominent than Loomarr's branding, with the notice "This

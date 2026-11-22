@@ -25,13 +25,23 @@ type fakeStore struct {
 	derivatives       map[string][]Derivative
 	touched           map[string]time.Time
 	putDerivativesErr error
+
+	// failDeleteDerivatives refuses the derivative delete of these hashes, which fails their purge;
+	// deleteDerivativeCalls counts the attempts per hash and expiredReads the expiry sweep's reads.
+	failDeleteDerivatives map[string]bool
+	deleteDerivativeCalls map[string]int
+	expiredReads          int
+	// afterPut, when set, runs after every PutImage.
+	afterPut func(Image)
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		images:      map[string]Image{},
-		derivatives: map[string][]Derivative{},
-		touched:     map[string]time.Time{},
+		images:                map[string]Image{},
+		derivatives:           map[string][]Derivative{},
+		touched:               map[string]time.Time{},
+		failDeleteDerivatives: map[string]bool{},
+		deleteDerivativeCalls: map[string]int{},
 	}
 }
 
@@ -42,9 +52,14 @@ func (f *fakeStore) PutImage(_ context.Context, img Image) error {
 	}
 	// Bytes that landed end the failure record, as the real upsert does.
 	if !img.OriginFetchedAt.IsZero() {
-		img.FetchFailures, img.FetchRetryAt = 0, time.Time{}
+		img.FetchFailures, img.FetchFailedAt, img.FetchRetryAt = 0, time.Time{}, time.Time{}
+	} else if img.FetchQueuedAt.IsZero() {
+		img.FetchQueuedAt = img.CreatedAt
 	}
 	f.images[img.Hash] = img
+	if f.afterPut != nil {
+		f.afterPut(img)
+	}
 	return nil
 }
 
@@ -68,20 +83,18 @@ func (f *fakeStore) GetImage(_ context.Context, hash string) (Image, error) {
 	return img, nil
 }
 
-// ⚠ Mirrors the real store's `origin_fetched_at > 0` predicate rather than matching on source_url
-// alone. A fake that returned the placeholder row would make Adopt look correct here while the
-// SQL one behaved differently — and the placeholder is precisely the row whose hash stops
-// resolving, so accepting it is the bug this method exists to prevent.
-func (f *fakeStore) GetFetchedBySourceURL(_ context.Context, src string) (Image, error) {
+// GetBySourceURL mirrors the real store's order: the latest-fetched row of the URL first, a
+// pending one only when none has bytes, ties by hash.
+func (f *fakeStore) GetBySourceURL(_ context.Context, src string) (Image, error) {
 	if src == "" {
 		return Image{}, ErrNotFound
 	}
-	for _, img := range f.images {
-		if img.SourceURL == src && !img.OriginFetchedAt.IsZero() {
-			return img, nil
-		}
+	rows := f.pick(0, func(img Image) bool { return img.SourceURL == src })
+	if len(rows) == 0 {
+		return Image{}, ErrNotFound
 	}
-	return Image{}, ErrNotFound
+	slices.SortStableFunc(rows, func(a, b Image) int { return b.OriginFetchedAt.Compare(a.OriginFetchedAt) })
+	return rows[0], nil
 }
 
 func (f *fakeStore) TouchImage(_ context.Context, hash string, at time.Time) error {

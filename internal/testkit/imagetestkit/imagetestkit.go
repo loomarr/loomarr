@@ -4,6 +4,8 @@ package imagetestkit
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -38,7 +40,9 @@ func (m *MemStore) PutImage(_ context.Context, img images.Image) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !img.OriginFetchedAt.IsZero() {
-		img.FetchFailures, img.FetchRetryAt = 0, time.Time{}
+		img.FetchFailures, img.FetchFailedAt, img.FetchRetryAt = 0, time.Time{}, time.Time{}
+	} else if img.FetchQueuedAt.IsZero() {
+		img.FetchQueuedAt = img.CreatedAt
 	}
 	m.images[img.Hash] = img
 	return nil
@@ -54,21 +58,29 @@ func (m *MemStore) GetImage(_ context.Context, hash string) (images.Image, error
 	return img, nil
 }
 
-// ⚠ Mirrors the SQL predicate — fetched rows only. A fake that matched on source_url alone would
-// hand back the URL-keyed placeholder, whose hash is about to stop resolving, and every caller
-// would look correct here while breaking against a real store.
-func (m *MemStore) GetFetchedBySourceURL(_ context.Context, src string) (images.Image, error) {
+// GetBySourceURL mirrors the SQL order: the latest-fetched row of the URL, else a pending one, ties
+// broken by hash.
+func (m *MemStore) GetBySourceURL(_ context.Context, src string) (images.Image, error) {
 	if src == "" {
 		return images.Image{}, images.ErrNotFound
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	var best images.Image
+	found := false
 	for _, img := range m.images {
-		if img.SourceURL == src && !img.OriginFetchedAt.IsZero() {
-			return img, nil
+		if img.SourceURL != src {
+			continue
+		}
+		if !found || img.OriginFetchedAt.After(best.OriginFetchedAt) ||
+			(img.OriginFetchedAt.Equal(best.OriginFetchedAt) && img.Hash < best.Hash) {
+			best, found = img, true
 		}
 	}
-	return images.Image{}, images.ErrNotFound
+	if !found {
+		return images.Image{}, images.ErrNotFound
+	}
+	return best, nil
 }
 
 func (m *MemStore) TouchImage(_ context.Context, hash string, at time.Time) error {
@@ -126,30 +138,35 @@ func (m *MemStore) ImagesByHash(_ context.Context, hashes []string) ([]images.Im
 }
 
 // RecordFetchFailure counts a failed download of a never-fetched image and holds it until retryAt.
-func (m *MemStore) RecordFetchFailure(_ context.Context, hash string, _, retryAt time.Time) error {
+func (m *MemStore) RecordFetchFailure(_ context.Context, hash string, at, retryAt time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if img, ok := m.images[hash]; ok && img.OriginFetchedAt.IsZero() {
 		img.FetchFailures++
+		img.FetchFailedAt = at
 		img.FetchRetryAt = retryAt
 		m.images[hash] = img
 	}
 	return nil
 }
 
+// ListAwaitingFetch mirrors the SQL queue: due rows in the order they joined it, ties by hash.
 func (m *MemStore) ListAwaitingFetch(_ context.Context, now time.Time, limit int) ([]images.Image, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]images.Image, 0, limit)
+	var out []images.Image
 	for _, img := range m.images {
 		if img.Origin == images.OriginRemote && img.OriginFetchedAt.IsZero() && !img.FetchRetryAt.After(now) {
 			out = append(out, img)
-			if len(out) >= limit {
-				break
-			}
 		}
 	}
-	return out, nil
+	slices.SortFunc(out, func(a, b images.Image) int {
+		if c := a.FetchQueuedAt.Compare(b.FetchQueuedAt); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Hash, b.Hash)
+	})
+	return out[:min(len(out), limit)], nil
 }
 
 func (m *MemStore) ListByOrigin(_ context.Context, origin images.Origin, limit int) ([]images.Image, error) {

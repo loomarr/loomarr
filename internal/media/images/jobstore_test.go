@@ -2,6 +2,7 @@ package images
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"time"
 )
@@ -15,18 +16,22 @@ import (
 // runs the real queries against BOTH dialects, so these predicates are checked in one place and
 // exercised in another rather than being the only statement of the rule.
 
+// ListAwaitingFetch serves due rows in the order they joined the queue, ties by hash.
 func (f *fakeStore) ListAwaitingFetch(_ context.Context, now time.Time, limit int) ([]Image, error) {
-	return f.pick(limit, func(img Image) bool {
+	due := f.pick(0, func(img Image) bool {
 		return img.Origin == OriginRemote && img.OriginFetchedAt.IsZero() && !img.FetchRetryAt.After(now)
-	}), nil
+	})
+	slices.SortStableFunc(due, func(a, b Image) int { return a.FetchQueuedAt.Compare(b.FetchQueuedAt) })
+	return due[:min(len(due), limit)], nil
 }
 
-func (f *fakeStore) RecordFetchFailure(_ context.Context, hash string, _, retryAt time.Time) error {
+func (f *fakeStore) RecordFetchFailure(_ context.Context, hash string, at, retryAt time.Time) error {
 	img, ok := f.images[hash]
 	if !ok || !img.OriginFetchedAt.IsZero() {
 		return nil
 	}
 	img.FetchFailures++
+	img.FetchFailedAt = at
 	img.FetchRetryAt = retryAt
 	f.images[hash] = img
 	return nil
@@ -36,12 +41,19 @@ func (f *fakeStore) ListByOrigin(_ context.Context, origin Origin, limit int) ([
 	return f.pick(limit, func(img Image) bool { return img.Origin == origin }), nil
 }
 
-func (f *fakeStore) ListExpiredBefore(_ context.Context, cutoff time.Time, limit int) ([]Image, error) {
-	return f.pick(limit, func(img Image) bool {
+func (f *fakeStore) ListExpiredBefore(_ context.Context, cutoff time.Time, after ExpiryCursor, limit int) ([]Image, error) {
+	f.expiredReads++
+	due := f.pick(0, func(img Image) bool {
 		// The `> 0` half matters: a never-fetched row must not look infinitely stale, or the
 		// expiry sweep would purge the fetch job's entire backlog.
-		return img.Origin == OriginRemote && !img.OriginFetchedAt.IsZero() && img.OriginFetchedAt.Before(cutoff)
-	}), nil
+		if img.Origin != OriginRemote || img.OriginFetchedAt.IsZero() || !img.OriginFetchedAt.Before(cutoff) {
+			return false
+		}
+		c := img.OriginFetchedAt.Compare(after.FetchedAt)
+		return c > 0 || (c == 0 && img.Hash > after.Hash)
+	})
+	slices.SortStableFunc(due, func(a, b Image) int { return a.OriginFetchedAt.Compare(b.OriginFetchedAt) })
+	return due[:min(len(due), limit)], nil
 }
 
 func (f *fakeStore) ListOrphans(_ context.Context, limit int) ([]Image, error) {
@@ -104,6 +116,10 @@ func (f *fakeStore) DeleteDerivative(_ context.Context, hash, recipe string, for
 }
 
 func (f *fakeStore) DeleteDerivatives(_ context.Context, hash string) error {
+	f.deleteDerivativeCalls[hash]++
+	if f.failDeleteDerivatives[hash] {
+		return errors.New("fake: derivative delete refused")
+	}
 	delete(f.derivatives, hash)
 	return nil
 }

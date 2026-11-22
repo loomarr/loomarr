@@ -7,6 +7,16 @@ ALTER TABLE images ADD COLUMN fetch_failures INTEGER NOT NULL DEFAULT 0 CHECK (f
 ALTER TABLE images ADD COLUMN fetch_failed_at INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE images ADD COLUMN fetch_retry_at INTEGER NOT NULL DEFAULT 0;
 
+-- The fetch queue is first come, first served by when an image joined it: its adoption, or the
+-- expiry purge's requeue. created_at would put a requeued image ahead of everything adopted since.
+-- Rows already waiting joined when they were created.
+ALTER TABLE images ADD COLUMN fetch_queued_at INTEGER NOT NULL DEFAULT 0;
+UPDATE images SET fetch_queued_at = created_at;
+
+-- Serves the queue's read in order: the equality on origin and origin_fetched_at, then the queue
+-- order, so a pass reads the front of the queue rather than sorting every waiting row.
+CREATE INDEX idx_images_fetch_queue ON images (origin, origin_fetched_at, fetch_queued_at, hash);
+
 -- +goose Down
 -- No down: forward-only (§16).
 SELECT 1;

@@ -118,7 +118,7 @@ func (a timelineThumbResolver) resolve(ctx context.Context, key string, season, 
 	// ⚠ **Adopted but not yet fetched ⇒ warm it now, then use the RETURNED row.** FetchNow re-keys
 	// the URL-placeholder hash to the content hash, so continuing to use `rec` would mint a URL
 	// that 404s as soon as the fetch finishes.
-	if rec.OriginFetchedAt.IsZero() {
+	if !rec.HasBytes() {
 		if a.fetch == nil {
 			return "", "", &thumbFailure{class: "image_fetch", err: errThumbNoFetcher}
 		}

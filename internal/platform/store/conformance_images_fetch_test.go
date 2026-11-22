@@ -19,17 +19,19 @@ func numberedImage(n int, at time.Time) clipstore.Image {
 	return img
 }
 
-// The expiry purge pages through everything due: a purged image is requeued (its fetch sentinel
-// reset), which takes it out of the expired set, so each read returns the next batch until none.
+// The expiry purge pages through everything due by a (fetch time, hash) cursor: each image comes
+// back once, a purged one is requeued (its fetch sentinel reset), and one whose purge failed is
+// passed over rather than read again or allowed to hold back the rows behind it.
 func testImageExpiryPagesThroughEverythingDue(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)
 	now := time.Unix(1_700_000_000, 0)
 	cutoff := now.Add(-180 * 24 * time.Hour)
 	const due, batch = 11, 4
+	// Two pairs share a fetch time, so the hash half of the cursor is exercised.
 	for i := range due {
 		img := numberedImage(i, now)
-		img.OriginFetchedAt = cutoff.Add(-time.Duration(i+1) * time.Hour)
+		img.OriginFetchedAt = cutoff.Add(-time.Duration(12-i/2) * time.Hour)
 		if err := s.PutImage(ctx, img); err != nil {
 			t.Fatal(err)
 		}
@@ -38,41 +40,120 @@ func testImageExpiryPagesThroughEverythingDue(t *testing.T, newStore NewStoreFun
 	if err := s.PutImage(ctx, fresh); err != nil {
 		t.Fatal(err)
 	}
+	failing := numberedImage(0, now).Hash // the oldest: at the front of every read that started over
 
 	var pages []int
 	seen := map[string]bool{}
+	var after clipstore.ExpiryCursor
 	for range due {
-		page, err := s.ListImagesExpiredBefore(ctx, cutoff, batch)
+		page, err := s.ListImagesExpiredBefore(ctx, cutoff, after, batch)
 		if err != nil {
 			t.Fatal(err)
 		}
 		pages = append(pages, len(page))
-		if len(page) == 0 {
-			break
-		}
 		for _, img := range page {
 			if seen[img.Hash] {
-				t.Fatalf("image %s came back after it was requeued", img.Hash)
+				t.Fatalf("image %s came back twice in one sweep", img.Hash)
 			}
 			seen[img.Hash] = true
+			after = clipstore.ExpiryCursor{FetchedAt: img.OriginFetchedAt, Hash: img.Hash}
+			if img.Hash == failing {
+				continue // its purge failed: the row stays expired
+			}
 			img.OriginFetchedAt = time.Time{}
 			if err := s.PutImage(ctx, img); err != nil {
 				t.Fatal(err)
 			}
 		}
+		if len(page) < batch {
+			break
+		}
 	}
-	if want := []int{4, 4, 3, 0}; fmt.Sprint(pages) != fmt.Sprint(want) {
+	if want := []int{4, 4, 3}; fmt.Sprint(pages) != fmt.Sprint(want) {
 		t.Fatalf("expired pages = %v, want %v", pages, want)
 	}
-	if seen[fresh.Hash] {
-		t.Fatal("the purge took an image inside the ceiling")
+	if len(seen) != due || seen[fresh.Hash] {
+		t.Fatalf("the sweep saw %d images (fresh one %v), want the %d due and not the fresh one", len(seen), seen[fresh.Hash], due)
+	}
+	if left, err := s.ListImagesExpiredBefore(ctx, cutoff, clipstore.ExpiryCursor{}, batch); err != nil || len(left) != 1 || left[0].Hash != failing {
+		t.Fatalf("still expired = %d rows, %v; want just the one whose purge failed", len(left), err)
 	}
 	queue, err := s.ListImagesAwaitingFetch(ctx, now, 2*due)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(queue) != due {
-		t.Fatalf("%d purged images awaiting fetch, want %d", len(queue), due)
+	if len(queue) != due-1 {
+		t.Fatalf("%d purged images awaiting fetch, want %d", len(queue), due-1)
+	}
+}
+
+// The fetch queue is served in the order images joined it, not the order they were created: an
+// image the purge requeues goes behind the artwork adopted before the requeue.
+func testImageFetchQueueOrderIsWhenQueued(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Unix(1_700_000_000, 0)
+	old := numberedImage(0, now.Add(-200*24*time.Hour)) // created long ago, requeued just now
+	old.OriginFetchedAt = time.Time{}
+	old.FetchQueuedAt = now
+	adopted := numberedImage(1, now.Add(-time.Hour)) // adopted an hour ago, joined then
+	adopted.OriginFetchedAt = time.Time{}
+	adopted.FetchQueuedAt = now.Add(-time.Hour)
+	unstamped := numberedImage(2, now.Add(-2*time.Hour)) // written with no queue time: joins at creation
+	unstamped.OriginFetchedAt = time.Time{}
+	for _, img := range []clipstore.Image{old, adopted, unstamped} {
+		if err := s.PutImage(ctx, img); err != nil {
+			t.Fatal(err)
+		}
+	}
+	queue, err := s.ListImagesAwaitingFetch(ctx, now, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, img := range queue {
+		got = append(got, img.Hash)
+	}
+	if want := []string{unstamped.Hash, adopted.Hash, old.Hash}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("queue order = %v, want %v: the requeued image goes last", got, want)
+	}
+	if row, _ := s.GetImage(ctx, unstamped.Hash); !row.FetchQueuedAt.Equal(unstamped.CreatedAt) {
+		t.Fatalf("an unstamped pending row joined at %v, want its creation %v", row.FetchQueuedAt, unstamped.CreatedAt)
+	}
+}
+
+// A never-fetched row reads back with the zero fetch time, the sentinel every caller checks with
+// IsZero, not as fetched at the Unix epoch.
+func testImagePendingReadsBackWithNoFetchTime(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Unix(1_700_000_000, 0)
+	pending := numberedImage(0, now)
+	pending.OriginFetchedAt = time.Time{}
+	if err := s.PutImage(ctx, pending); err != nil {
+		t.Fatal(err)
+	}
+	reads := map[string]func() (clipstore.Image, error){
+		"GetImage": func() (clipstore.Image, error) { return s.GetImage(ctx, pending.Hash) },
+		"GetImageBySourceURL": func() (clipstore.Image, error) {
+			return s.GetImageBySourceURL(ctx, pending.SourceURL)
+		},
+		"ImagesByHash": func() (clipstore.Image, error) {
+			imgs, _, err := s.ImagesByHash(ctx, []string{pending.Hash})
+			if err != nil || len(imgs) != 1 {
+				return clipstore.Image{}, fmt.Errorf("ImagesByHash = %d rows, %w", len(imgs), err)
+			}
+			return imgs[0], nil
+		},
+	}
+	for name, read := range reads {
+		got, err := read()
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !got.OriginFetchedAt.IsZero() {
+			t.Errorf("%s read a pending row back as fetched at %v", name, got.OriginFetchedAt)
+		}
 	}
 }
 
@@ -130,6 +211,16 @@ func testImageFetchFailureBacksOff(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got, _ = s.GetImage(ctx, failing.Hash); got.FetchFailures != 2 || !got.FetchRetryAt.Equal(retry.Add(10*time.Minute)) {
 		t.Fatalf("after two failures = %d, retry %v", got.FetchFailures, got.FetchRetryAt)
+	}
+
+	// An ordinary write of the pending row keeps its failure record.
+	got.UpdatedAt = retry.Add(time.Minute)
+	if err := s.PutImage(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+	if kept, _ := s.GetImage(ctx, failing.Hash); kept.FetchFailures != 2 || !kept.FetchFailedAt.Equal(retry) ||
+		!kept.FetchRetryAt.Equal(retry.Add(10*time.Minute)) {
+		t.Fatalf("a pending write lost the failure record: %d, failed %v, retry %v", kept.FetchFailures, kept.FetchFailedAt, kept.FetchRetryAt)
 	}
 
 	got.OriginFetchedAt = retry.Add(10 * time.Minute)
