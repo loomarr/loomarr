@@ -245,12 +245,19 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	playoutRes.SetSubtitles(st, subtitleReader)
 	owner.goRun(subtitleReader.Run)
 	// Image subtitles a channel burns in (#2088 step 8), gated by the bug's GPU overlay self-check
-	// and blended by its kernel. This build has no image subtitle decoder, so every track is
-	// refused and its programmes air without it.
+	// and blended by its kernel. This build has no image subtitle decoder, so nothing is looked up
+	// and programmes air without their image tracks. The preparer is generation-owned, so Shutdown
+	// joins a preparation in flight.
 	if burnDir, err := filepath.Abs(filepath.Join(stateDir, "subtitle-burn")); err == nil && deps.watermarks != nil {
-		playoutRes.SetSubtitleBurns(playoutresolve.NewSubtitleBurns(rootCtx, burnDir,
-			playout.FFmpegBurnInWith(ffmpegBin, deps.processDiagnostics, playout.UnavailableSubtitleDecoder{}),
-			deps.watermarks.OverlayWorks, deps.watermarks.BlendKernel, log))
+		var decoder playout.SubtitleStillDecoder = playout.UnavailableSubtitleDecoder{}
+		burns := playoutresolve.NewSubtitleBurns(playoutresolve.SubtitleBurnsConfig{
+			Dir: burnDir, Prepare: playout.FFmpegBurnInWith(ffmpegBin, deps.processDiagnostics, decoder),
+			Decodes: playout.SubtitleDecoderAvailable(decoder),
+			Works:   deps.watermarks.OverlayWorks, Kernel: deps.watermarks.BlendKernel,
+			Go: owner.goOnDemand, Log: log,
+		})
+		playoutRes.SetSubtitleBurns(burns)
+		owner.goRun(burns.Run)
 	}
 	playoutResolverSvc = playoutRes
 

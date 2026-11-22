@@ -4,6 +4,7 @@ package playout
 
 import (
 	"context"
+	"encoding/binary"
 	"image"
 	"image/color"
 	"image/draw"
@@ -23,10 +24,19 @@ import (
 var burnBox = Rect{X: 760, Y: 900, W: 400, H: 80}
 
 // boxDecoder decodes every track into the box cue, as the image worker hands back a Blu-ray
-// track's stills: one full-canvas PNG in the track's directory and its display window.
-type boxDecoder struct{}
+// track's stills: one full-canvas PNG in the track's directory and its display window. It records
+// the size and digest of the track file it was handed.
+type boxDecoder struct {
+	supBytes int
+	sum      string
+}
 
-func (boxDecoder) Decode(_ context.Context, track SubtitleTrack) (SubtitleStills, error) {
+func (d *boxDecoder) Decode(_ context.Context, track SubtitleTrack) (SubtitleStills, error) {
+	raw, err := os.ReadFile(track.Sup)
+	if err != nil {
+		return SubtitleStills{}, err
+	}
+	d.supBytes, d.sum = len(raw), track.SHA256
 	img := image.NewNRGBA(image.Rect(0, 0, 1920, 1080))
 	draw.Draw(img, image.Rect(burnBox.X, burnBox.Y, burnBox.X+burnBox.W, burnBox.Y+burnBox.H), image.NewUniform(color.White), image.Point{}, draw.Src)
 	path := filepath.Join(track.Dir, "box.png")
@@ -41,15 +51,69 @@ func (boxDecoder) Decode(_ context.Context, track SubtitleTrack) (SubtitleStills
 	return SubtitleStills{Width: 1920, Height: 1080, States: []SubtitleState{{StartMs: 200, EndMs: 800, PNG: path}}}, err
 }
 
-// THE PREPARER CONVERTS THE DECODED STILLS: every still converted to an ffv1 file the list can
-// name, the PNGs gone. Needs no GPU.
+// supSegment is one PGS segment: its magic, presentation time (90 kHz), kind and payload.
+func supSegment(at time.Duration, kind byte, data []byte) []byte {
+	pts := uint32(at * 90000 / time.Second)
+	h := []byte{'P', 'G', 0, 0, 0, 0, 0, 0, 0, 0, kind, 0, 0}
+	binary.BigEndian.PutUint32(h[2:6], pts)
+	binary.BigEndian.PutUint16(h[11:13], uint16(len(data)))
+	return append(h, data...)
+}
+
+// writeSubbedSource muxes a two-display-set PGS track (a 2x2 object shown at 0.2 s, cleared at
+// 0.8 s) into a short programme as its stream 1, as a Blu-ray rip carries one.
+func writeSubbedSource(t *testing.T, ctx context.Context, bin, dir string) string {
+	t.Helper()
+	var sup []byte
+	for _, set := range []struct {
+		at   time.Duration
+		segs [][2][]byte
+	}{
+		{200 * time.Millisecond, [][2][]byte{
+			{{0x16}, {0x07, 0x80, 0x04, 0x38, 0x10, 0, 1, 0x80, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0}},
+			{{0x17}, {1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2}},
+			{{0x14}, {0, 0, 1, 235, 128, 128, 255}},
+			{{0x15}, {0, 1, 0, 0xC0, 0, 0, 8, 0, 2, 0, 2, 1, 1, 0, 0, 1, 1, 0, 0}},
+			{{0x80}, nil},
+		}},
+		{800 * time.Millisecond, [][2][]byte{
+			{{0x16}, {0x07, 0x80, 0x04, 0x38, 0x10, 0, 2, 0, 0, 0, 0}},
+			{{0x17}, {1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2}},
+			{{0x80}, nil},
+		}},
+	} {
+		for _, s := range set.segs {
+			sup = append(sup, supSegment(set.at, s[0][0], s[1])...)
+		}
+	}
+	track := filepath.Join(dir, "track.sup")
+	if err := os.WriteFile(track, sup, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(dir, "subbed.mkv")
+	if b, err := exec.CommandContext(ctx, bin, "-hide_banner", "-loglevel", "error", "-y", "-copyts",
+		"-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25:duration=1.2", "-i", track,
+		"-map", "0:v", "-map", "1:s", "-c:v", "libx264", "-preset", "ultrafast", "-c:s", "copy", src).CombinedOutput(); err != nil {
+		t.Fatalf("mux: %v: %s", err, b)
+	}
+	return src
+}
+
+// THE PREPARER COPIES THE TRACK OUT AND CONVERTS THE DECODED STILLS: the muxed stream reaches the
+// decoder as a .sup, and every still is converted to an ffv1 file the list can name, the PNGs gone.
+// Needs no GPU.
 func TestLive_PrepareBurnIn(t *testing.T) {
 	bin := ffmpegBin(t)
 	ctx := context.Background()
 	dir := t.TempDir()
-	b, err := FFmpegBurnInWith(bin, nil, boxDecoder{})(ctx, filepath.Join(dir, "programme.mkv"), 0, filepath.Join(dir, "track"))
+	src := writeSubbedSource(t, ctx, bin, dir)
+	var dec boxDecoder
+	b, err := FFmpegBurnInWith(bin, nil, &dec)(ctx, src, 1, "hdmv_pgs_subtitle", filepath.Join(dir, "track"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if dec.supBytes == 0 || len(dec.sum) != 64 {
+		t.Errorf("decoder read a %d-byte track with digest %q, want the copied stream", dec.supBytes, dec.sum)
 	}
 	if b.Width != 1920 || b.Height != 1080 || len(b.Cues) != 2 ||
 		b.Cues[0].At != 200*time.Millisecond || b.Cues[1].Still != burnInBlank {
@@ -74,7 +138,9 @@ func TestLive_PrepareBurnIn(t *testing.T) {
 // NVENC under the GPU lock; it skips where NVENC cannot encode.
 func TestLive_PackagerBurnsSubtitles(t *testing.T) {
 	p := newLivePackager(t)
-	track, err := FFmpegBurnInWith(p.bin, nil, boxDecoder{})(p.ctx, p.src, 0, filepath.Join(p.dir, "track"))
+	// The track is prepared from its own muxed source; the stills it gives are the box's.
+	subbed := writeSubbedSource(t, p.ctx, p.bin, t.TempDir())
+	track, err := FFmpegBurnInWith(p.bin, nil, &boxDecoder{})(p.ctx, subbed, 1, "hdmv_pgs_subtitle", filepath.Join(p.dir, "track"))
 	if err != nil {
 		t.Fatal(err)
 	}

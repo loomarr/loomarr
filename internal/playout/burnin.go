@@ -3,6 +3,8 @@ package playout
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,13 +36,15 @@ import (
 // still already on screen, so the list starts from the seek instead (spike: exact on the GeForce
 // and the Arc).
 
-// SubtitleTrack is one image subtitle track to decode: subtitle track Index (per type, `0:s:N`) of
-// Input, and the directory the decoder writes its stills into. The preparer removes Dir.
+// SubtitleTrack is one extracted image subtitle track to decode (docs/design/images.md,
+// decode-subtitles): Sup is the absolute path of the track's raw stream, copied out of its source
+// by Go, and SHA256 its hex digest; Codec is the source stream's codec (hdmv_pgs_subtitle); Dir is
+// the private staging directory the decoder writes its stills into. The preparer removes both.
 type SubtitleTrack struct {
-	Input string
-	Index int
-	Codec string
-	Dir   string
+	Sup    string
+	SHA256 string
+	Codec  string
+	Dir    string
 }
 
 // SubtitleStills is a decoded track: its canvas and its states in time order.
@@ -49,8 +54,8 @@ type SubtitleStills struct {
 }
 
 // SubtitleState is the canvas from StartMs until EndMs (source time). PNG is an absolute path to a
-// full-canvas still, or "" for a clear canvas. An EndMs at or before StartMs holds the state until
-// the next one.
+// full-canvas still inside the track's Dir, or "" for a clear canvas. An EndMs at or before
+// StartMs holds the state until the next one.
 type SubtitleState struct {
 	StartMs, EndMs int64
 	PNG            string
@@ -73,6 +78,13 @@ type UnavailableSubtitleDecoder struct{}
 // Decode refuses.
 func (UnavailableSubtitleDecoder) Decode(context.Context, SubtitleTrack) (SubtitleStills, error) {
 	return SubtitleStills{}, ErrSubtitleDecoderUnavailable
+}
+
+// SubtitleDecoderAvailable reports whether d can decode a track at all: false for nil and for
+// UnavailableSubtitleDecoder, so a build without a decoder looks nothing up for burn-in.
+func SubtitleDecoderAvailable(d SubtitleStillDecoder) bool {
+	_, none := d.(UnavailableSubtitleDecoder)
+	return d != nil && !none
 }
 
 // BurnIn is one image subtitle track prepared for burning in.
@@ -100,6 +112,13 @@ const (
 	// back (setpts): program_opencl drops main frames earlier than a side input's first frame, and a
 	// seek can start the main a few frames below zero.
 	burnInLead = time.Second
+	// The decoder's ceilings (docs/design/images.md, decode-subtitles), held again by Go: the
+	// extracted track's size, the canvas, and the number of states. Go checks them before it
+	// allocates the blank canvas or reads a still.
+	burnInTrackLimit = 256 << 20
+	burnInMaxWidth   = 3840
+	burnInMaxHeight  = 2160
+	burnInMaxStates  = 50_000
 )
 
 // IsBurnableSubtitle reports whether a subtitle codec can be burned in. VOBSUB (dvd_subtitle) keeps
@@ -157,34 +176,110 @@ func LoadBurnIn(dir string) (*BurnIn, bool) {
 	return &b, true
 }
 
-// BurnInPreparer prepares subtitle track N (per type, `0:s:N`) of input into dir.
-type BurnInPreparer func(ctx context.Context, input string, track int, dir string) (*BurnIn, error)
+// BurnInPreparer prepares stream (the source's absolute stream index, `0:N`, as the Library lists
+// it) of input, whose codec is codec, into dir.
+type BurnInPreparer func(ctx context.Context, input string, stream int, codec, dir string) (*BurnIn, error)
 
-// FFmpegBurnInWith prepares with decoder and ffmpeg: the track decoded into stills (reading the
-// whole source, so it runs once per track and the caller caches it), and the stills converted to
-// ffv1 in one run. It builds in a sibling directory and renames it into place, so dir is either
-// complete or absent.
-func FFmpegBurnInWith(ffmpegPath string, observer *diagnostics.ProcessManager, decoder SubtitleStillDecoder) BurnInPreparer {
-	run := func(ctx context.Context, purpose string, args []string) error {
-		cmd := exec.CommandContext(ctx, ffmpegPath, args...)
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		spec, _ := diagnostics.ProcessSpecFromContext(ctx)
-		spec.Purpose, spec.Executable, spec.Args, spec.Target = purpose, ffmpegPath, args, "subtitles"
-		r := observer.Begin(spec)
-		err := cmd.Run()
-		if r != nil {
-			if stderr.Len() > 0 {
-				r.RecordOutput(strings.TrimSpace(stderr.String()))
-			}
-			r.Finish(diagnostics.ProcessResult{Err: err, Cancelled: ctx.Err() != nil})
+// burnRunner runs the preparer's ffmpeg steps under the process observer.
+type burnRunner struct {
+	ffmpeg   string
+	observer *diagnostics.ProcessManager
+}
+
+// run runs one ffmpeg step, its standard output into stdout (discarded when nil).
+func (r burnRunner) run(ctx context.Context, purpose string, args []string, stdout io.Writer) error {
+	cmd := exec.CommandContext(ctx, r.ffmpeg, args...)
+	var stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = stdout, &stderr
+	spec, _ := diagnostics.ProcessSpecFromContext(ctx)
+	spec.Purpose, spec.Executable, spec.Args, spec.Target = purpose, r.ffmpeg, args, "subtitles"
+	rec := r.observer.Begin(spec)
+	err := cmd.Run()
+	if rec != nil {
+		if stderr.Len() > 0 {
+			rec.RecordOutput(strings.TrimSpace(stderr.String()))
 		}
-		if err != nil {
-			return fmt.Errorf("%s: %w: %s", purpose, err, strings.TrimSpace(stderr.String()))
-		}
-		return nil
+		rec.Finish(diagnostics.ProcessResult{Err: err, Cancelled: ctx.Err() != nil})
 	}
-	return func(ctx context.Context, input string, track int, dir string) (*BurnIn, error) {
+	if err != nil {
+		return fmt.Errorf("%s: %w: %s", purpose, err, strings.TrimSpace(stderr.String()))
+	}
+	return nil
+}
+
+// errTrackTooLarge is a cappedWriter's refusal past its limit.
+var errTrackTooLarge = errors.New("track too large")
+
+// cappedWriter passes at most left bytes to w, then refuses, which stops ffmpeg on a broken pipe.
+type cappedWriter struct {
+	w    io.Writer
+	left int64
+	over bool
+}
+
+func (c *cappedWriter) Write(p []byte) (int, error) {
+	if int64(len(p)) > c.left {
+		c.over = true
+		return 0, errTrackTooLarge
+	}
+	c.left -= int64(len(p))
+	return c.w.Write(p)
+}
+
+// extractTrack copies stream of input out as a raw .sup at path, refusing one larger than limit
+// bytes, and returns its SHA-256 in hex.
+func extractTrack(ctx context.Context, r burnRunner, input string, stream int, path string, limit int64) (string, error) {
+	f, err := os.Create(path)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.New()
+	capped := &cappedWriter{w: io.MultiWriter(f, sum), left: limit}
+	err = r.run(ctx, "subtitle_burn_extract", []string{"-v", "error", "-nostdin", "-i", input,
+		"-map", "0:" + strconv.Itoa(stream), "-c:s", "copy", "-f", "sup", "pipe:1"}, capped)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	switch {
+	case capped.over:
+		return "", fmt.Errorf("prepare burn-in: the track is over %d MiB", limit>>20)
+	case err != nil:
+		return "", err
+	case capped.left == limit:
+		return "", errors.New("prepare burn-in: the track is empty")
+	}
+	return hex.EncodeToString(sum.Sum(nil)), nil
+}
+
+// checkStills holds a decoded track to the decoder's ceilings before anything is allocated for
+// it: an even canvas no larger than 3840x2160, at most burnInMaxStates states, and every still a
+// path inside dir, the decoder's staging directory.
+func checkStills(dir string, stills SubtitleStills) error {
+	if w, h := stills.Width, stills.Height; w <= 0 || h <= 0 || w%2 != 0 || h%2 != 0 || w > burnInMaxWidth || h > burnInMaxHeight {
+		return fmt.Errorf("prepare burn-in: canvas %dx%d", w, h)
+	}
+	if n := len(stills.States); n > burnInMaxStates {
+		return fmt.Errorf("prepare burn-in: %d states, over %d", n, burnInMaxStates)
+	}
+	for _, s := range stills.States {
+		if s.PNG == "" {
+			continue
+		}
+		rel, err := filepath.Rel(dir, s.PNG)
+		if !filepath.IsAbs(s.PNG) || err != nil || !filepath.IsLocal(rel) || rel == "." {
+			return fmt.Errorf("prepare burn-in: still %q is outside the decoder's directory", s.PNG)
+		}
+	}
+	return nil
+}
+
+// FFmpegBurnInWith prepares with decoder and ffmpeg: the track copied out as its raw stream
+// (reading the whole source, so it runs once per track and the caller caches it), decoded into
+// stills, and the stills converted to ffv1 in one run. It builds in a sibling directory and
+// renames it into place, so dir is either complete or absent.
+func FFmpegBurnInWith(ffmpegPath string, observer *diagnostics.ProcessManager, decoder SubtitleStillDecoder) BurnInPreparer {
+	r := burnRunner{ffmpeg: ffmpegPath, observer: observer}
+	return func(ctx context.Context, input string, stream int, codec, dir string) (*BurnIn, error) {
 		build := dir + ".building"
 		_ = os.RemoveAll(build)
 		decoded := filepath.Join(build, "decoded")
@@ -192,23 +287,30 @@ func FFmpegBurnInWith(ffmpegPath string, observer *diagnostics.ProcessManager, d
 			return nil, err
 		}
 		defer func() { _ = os.RemoveAll(build) }()
-		stills, err := decoder.Decode(ctx, SubtitleTrack{Input: input, Index: track, Codec: "hdmv_pgs_subtitle", Dir: decoded})
+		sup := filepath.Join(build, "track.sup")
+		sum, err := extractTrack(ctx, r, input, stream, sup, burnInTrackLimit)
+		if err != nil {
+			return nil, err
+		}
+		track := SubtitleTrack{Sup: sup, SHA256: sum, Codec: codec, Dir: decoded}
+		stills, err := decoder.Decode(ctx, track)
 		if err != nil {
 			return nil, fmt.Errorf("prepare burn-in: %w", err)
 		}
-		if w, h := stills.Width, stills.Height; w <= 0 || h <= 0 || w%2 != 0 || h%2 != 0 {
-			return nil, fmt.Errorf("prepare burn-in: canvas %dx%d", w, h)
+		if err := checkStills(decoded, stills); err != nil {
+			return nil, err
 		}
-		b, err := writeStills(build, stills)
+		b, err := writeStills(build, decoded, stills)
 		if err != nil {
 			return nil, err
 		}
 		_ = os.RemoveAll(decoded)
+		_ = os.Remove(sup)
 		// One run converts every still: the image2 sequence in, one intra frame per segment out.
-		if err := run(ctx, "subtitle_burn_convert", []string{"-v", "error", "-nostdin", "-framerate", "1",
+		if err := r.run(ctx, "subtitle_burn_convert", []string{"-v", "error", "-nostdin", "-framerate", "1",
 			"-i", filepath.Join(build, "s%05d.png"), "-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuva420p",
 			"-c:v", "ffv1", "-g", "1", "-f", "segment", "-segment_time", "0.5", "-reset_timestamps", "1",
-			"-segment_format", "nut", filepath.Join(build, "c%05d.nut")}); err != nil {
+			"-segment_format", "nut", filepath.Join(build, "c%05d.nut")}, nil); err != nil {
 			return nil, err
 		}
 		if err := finishStills(build, b); err != nil {
@@ -225,8 +327,15 @@ func FFmpegBurnInWith(ffmpegPath string, observer *diagnostics.ProcessManager, d
 
 // writeStills copies the blank canvas as s00000.png and each distinct still after it, and returns
 // the cues naming the ffv1 files the conversion will give them (cNNNNN.nut for sNNNNN.png). A
-// state that ends before the next begins is followed by a blank cue at its end.
-func writeStills(dir string, stills SubtitleStills) (*BurnIn, error) {
+// state that ends before the next begins is followed by a blank cue at its end. Each still is
+// opened inside decoded (os.Root), so a link out of the decoder's directory is refused; the caller
+// has held stills to checkStills.
+func writeStills(dir, decoded string, stills SubtitleStills) (*BurnIn, error) {
+	from, err := os.OpenRoot(decoded)
+	if err != nil {
+		return nil, fmt.Errorf("prepare burn-in: %w", err)
+	}
+	defer func() { _ = from.Close() }()
 	b := &BurnIn{Width: stills.Width, Height: stills.Height}
 	states := append([]SubtitleState(nil), stills.States...)
 	sort.SliceStable(states, func(i, j int) bool { return states[i].StartMs < states[j].StartMs })
@@ -241,6 +350,7 @@ func writeStills(dir string, stills SubtitleStills) (*BurnIn, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The blank is the one canvas Go allocates, after checkStills bounded it.
 	err = png.Encode(blank, image.NewNRGBA(image.Rect(0, 0, stills.Width, stills.Height)))
 	if cerr := blank.Close(); err == nil {
 		err = cerr
@@ -261,7 +371,7 @@ func writeStills(dir string, stills SubtitleStills) (*BurnIn, error) {
 		still := burnInBlank
 		if s.PNG != "" {
 			if still = names[s.PNG]; still == "" {
-				if still, err = copyStill(s.PNG, stills.Width, stills.Height, next); err != nil {
+				if still, err = copyStill(from, decoded, s.PNG, stills.Width, stills.Height, next); err != nil {
 					return nil, err
 				}
 				names[s.PNG] = still
@@ -275,10 +385,14 @@ func writeStills(dir string, stills SubtitleStills) (*BurnIn, error) {
 	return b, nil
 }
 
-// copyStill copies one decoded still into the image2 sequence, refusing one whose size is not the
-// canvas.
-func copyStill(path string, width, height int, next func() (string, *os.File, error)) (string, error) {
-	src, err := os.Open(path)
+// copyStill copies one decoded still, path inside decoded, into the image2 sequence, refusing one
+// that resolves outside root or whose size is not the canvas.
+func copyStill(root *os.Root, decoded, path string, width, height int, next func() (string, *os.File, error)) (string, error) {
+	rel, err := filepath.Rel(decoded, path)
+	if err != nil {
+		return "", fmt.Errorf("prepare burn-in: %w", err)
+	}
+	src, err := root.Open(rel)
 	if err != nil {
 		return "", fmt.Errorf("prepare burn-in: %w", err)
 	}
@@ -362,10 +476,12 @@ func (b *builder) burning() bool {
 	return true
 }
 
-// subtitleSource is the stills, decoded once per change: the list from the item's seek, shifted
-// back by its lead, and the track's canvas fitted into the output as its own frame and centred.
-// The canvas is the disc's frame, so a cropped encode's subtitles land in the letterbox, where the
-// disc shows them, instead of off the picture.
+// subtitleSource is the stills: the list from the item's seek, shifted back by its lead, and the
+// track's canvas fitted into the output as its own frame and centred. The canvas is the disc's
+// frame, so a cropped encode's subtitles land in the letterbox, where the disc shows them, instead
+// of off the picture. This chain (movie, scale, pad, and the VAAPI kernel's alphaextract) runs on
+// the CPU once per still change, never per video frame: each still is one frame the overlay holds
+// on the GPU until the next.
 func (b *builder) subtitleSource() string {
 	s := fmt.Sprintf("movie=filename=%s:format_name=concat:format_opts=safe=0,setpts=PTS-%s/TB", b.burn.List, seconds(burnInLead))
 	w, h, _ := fitSize(b.burn.Width, b.burn.Height, b.out.Width, b.out.Height)

@@ -1,6 +1,8 @@
 package playout
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"image"
 	"image/png"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/testkit/execfixture"
 )
 
 func testBurnTrack() *BurnIn {
@@ -204,7 +207,7 @@ func TestWriteStills_StatesBecomeCues(t *testing.T) {
 	}
 	a, b := still("a.png", 64, 36), still("b.png", 64, 36)
 	build := t.TempDir()
-	got, err := writeStills(build, SubtitleStills{Width: 64, Height: 36, States: []SubtitleState{
+	got, err := writeStills(build, dir, SubtitleStills{Width: 64, Height: 36, States: []SubtitleState{
 		{StartMs: 5000, EndMs: 9000, PNG: b},
 		{StartMs: 1000, EndMs: 4000, PNG: a},
 		{StartMs: 9000, EndMs: 9500, PNG: a},
@@ -226,9 +229,90 @@ func TestWriteStills_StatesBecomeCues(t *testing.T) {
 	if pngs, _ := filepath.Glob(filepath.Join(build, "s*.png")); len(pngs) != 3 {
 		t.Errorf("sequence %v: want the blank and two stills", pngs)
 	}
-	if _, err := writeStills(t.TempDir(), SubtitleStills{Width: 64, Height: 36, States: []SubtitleState{
+	if _, err := writeStills(t.TempDir(), dir, SubtitleStills{Width: 64, Height: 36, States: []SubtitleState{
 		{StartMs: 0, EndMs: 10, PNG: still("small.png", 32, 18)},
 	}}); err == nil {
 		t.Error("a still smaller than the canvas was accepted")
+	}
+	// A link inside the decoder's directory that resolves outside it is refused.
+	outside := t.TempDir()
+	if err := os.Rename(still("escape.png", 64, 36), filepath.Join(outside, "escape.png")); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.png")
+	if err := os.Symlink(filepath.Join(outside, "escape.png"), link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeStills(t.TempDir(), dir, SubtitleStills{Width: 64, Height: 36, States: []SubtitleState{
+		{StartMs: 0, EndMs: 10, PNG: link},
+	}}); err == nil {
+		t.Error("a still linked from outside the decoder's directory was read")
+	}
+}
+
+// The decoder's result is held to its ceilings before anything is allocated for it.
+func TestCheckStills_HoldsTheDecodersCeilings(t *testing.T) {
+	dir := t.TempDir()
+	in := filepath.Join(dir, "a.png")
+	ok := func(s SubtitleStills) SubtitleStills {
+		if s.Width == 0 && s.Height == 0 {
+			s.Width, s.Height = 1920, 1080
+		}
+		return s
+	}
+	if err := checkStills(dir, ok(SubtitleStills{Width: 3840, Height: 2160, States: []SubtitleState{{PNG: in}, {PNG: ""}}})); err != nil {
+		t.Errorf("a 4K canvas with a still in the directory: %v", err)
+	}
+	if err := checkStills(dir, ok(SubtitleStills{States: make([]SubtitleState, burnInMaxStates)})); err != nil {
+		t.Errorf("exactly %d states: %v", burnInMaxStates, err)
+	}
+	for name, s := range map[string]SubtitleStills{
+		"odd width":     {Width: 1921, Height: 1080},
+		"odd height":    {Width: 1920, Height: 1081},
+		"zero":          {Width: 0, Height: 1080},
+		"negative":      {Width: -2, Height: 1080},
+		"too wide":      {Width: 3842, Height: 1080},
+		"too tall":      {Width: 1920, Height: 2162},
+		"too many":      ok(SubtitleStills{States: make([]SubtitleState, burnInMaxStates+1)}),
+		"sibling":       ok(SubtitleStills{States: []SubtitleState{{PNG: filepath.Join(filepath.Dir(dir), "x.png")}}}),
+		"dot-dot":       ok(SubtitleStills{States: []SubtitleState{{PNG: dir + "/../x.png"}}}),
+		"relative":      ok(SubtitleStills{States: []SubtitleState{{PNG: "a.png"}}}),
+		"the dir":       ok(SubtitleStills{States: []SubtitleState{{PNG: dir}}}),
+		"prefix-shared": ok(SubtitleStills{States: []SubtitleState{{PNG: dir + "x/a.png"}}}),
+	} {
+		if err := checkStills(dir, s); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+// The track is copied out of its source by stream index, hashed as it is written, and refused
+// past the limit or when empty.
+func TestExtractTrack_CopiesHashesAndCaps(t *testing.T) {
+	dir := t.TempDir()
+	argv := filepath.Join(dir, "argv")
+	r := burnRunner{ffmpeg: execfixture.POSIX(t, "ffmpeg", `echo "$@" > `+argv+`
+head -c "${BYTES:-4096}" /dev/zero`)}
+	out := filepath.Join(dir, "track.sup")
+	sum, err := extractTrack(t.Context(), r, "/media/film.mkv", 3, out, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := sha256.Sum256(make([]byte, 4096))
+	if sum != hex.EncodeToString(want[:]) {
+		t.Errorf("sha256 %s, want the written bytes' %x", sum, want)
+	}
+	if fi, err := os.Stat(out); err != nil || fi.Size() != 4096 {
+		t.Errorf("track file %v %v, want 4096 bytes", fi, err)
+	}
+	if raw, _ := os.ReadFile(argv); !strings.Contains(string(raw), "-i /media/film.mkv -map 0:3 -c:s copy -f sup pipe:1") {
+		t.Errorf("ffmpeg ran with %q, want stream 3 copied as sup", raw)
+	}
+	if _, err := extractTrack(t.Context(), r, "/media/film.mkv", 3, out, 1024); err == nil || !strings.Contains(err.Error(), "over") {
+		t.Errorf("a track over the limit: %v, want refused", err)
+	}
+	t.Setenv("BYTES", "0")
+	if _, err := extractTrack(t.Context(), r, "/media/film.mkv", 3, out, 4096); err == nil {
+		t.Error("an empty track was accepted")
 	}
 }

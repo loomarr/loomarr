@@ -2,6 +2,8 @@ package testkit
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,12 +32,17 @@ type SubtitleCue struct {
 // writes one small real PNG per shown cue into the track's directory, a white box on a
 // transparent full canvas, and returns the cues as states, as the image worker hands back a
 // track. It refuses what the worker refuses: a cancelled context, a codec playout cannot burn, a
-// directory that does not exist, and every track when Err is set.
+// track file that is missing or does not match its SHA-256, a directory that does not exist, and
+// every track when Err is set.
 type SubtitleDecoder struct {
-	// Width and Height are the canvas; zero is 64x36.
+	// Width and Height are the canvas; zero is 64x36. Any other value is handed back as it is,
+	// so a caller can test its own ceilings.
 	Width, Height int
 	Cues          []SubtitleCue
 	Err           error
+	// StillDir, when set, is where the stills are written instead of the track's directory: a
+	// decoder that escapes its staging directory.
+	StillDir string
 
 	mu    sync.Mutex
 	calls []playout.SubtitleTrack
@@ -55,18 +62,29 @@ func (d *SubtitleDecoder) Decode(ctx context.Context, track playout.SubtitleTrac
 	if !playout.IsBurnableSubtitle(track.Codec) {
 		return playout.SubtitleStills{}, fmt.Errorf("subtitle decoder: codec %q is not an image track it decodes", track.Codec)
 	}
+	raw, err := os.ReadFile(track.Sup)
+	if err != nil {
+		return playout.SubtitleStills{}, fmt.Errorf("subtitle decoder: track file: %w", err)
+	}
+	if sum := sha256.Sum256(raw); hex.EncodeToString(sum[:]) != track.SHA256 {
+		return playout.SubtitleStills{}, fmt.Errorf("subtitle decoder: track file does not match SHA-256 %q", track.SHA256)
+	}
 	if fi, err := os.Stat(track.Dir); err != nil || !fi.IsDir() {
 		return playout.SubtitleStills{}, fmt.Errorf("subtitle decoder: no directory %q for the stills", track.Dir)
 	}
 	w, h := d.Width, d.Height
-	if w == 0 || h == 0 {
+	if w == 0 && h == 0 {
 		w, h = 64, 36
+	}
+	dir := track.Dir
+	if d.StillDir != "" {
+		dir = d.StillDir
 	}
 	stills := playout.SubtitleStills{Width: w, Height: h}
 	for i, c := range d.Cues {
 		state := playout.SubtitleState{StartMs: c.StartMs, EndMs: c.EndMs}
 		if !c.Clear {
-			state.PNG = filepath.Join(track.Dir, fmt.Sprintf("cue%03d.png", i))
+			state.PNG = filepath.Join(dir, fmt.Sprintf("cue%03d.png", i))
 			if err := writeBoxStill(state.PNG, w, h); err != nil {
 				return playout.SubtitleStills{}, err
 			}
@@ -101,9 +119,11 @@ func writeBoxStill(path string, w, h int) error {
 // BurnInPreparer is the shared counting double for playout.BurnInPreparer. Prepare writes a
 // prepared one-cue 1920x1080 track that playout.LoadBurnIn reads, without ffmpeg, building it
 // beside dir and renaming it into place as the real preparer does, so dir is complete or absent.
-// It refuses a cancelled context and, while SetFail is on, every track.
+// It refuses a cancelled context and, while SetFail is on, every track; while SetHold is on, it
+// holds each call until its context is cancelled, as a long preparation does.
 type BurnInPreparer struct {
 	fail     atomic.Bool
+	hold     atomic.Bool
 	runs     atomic.Int32
 	finished atomic.Int32
 }
@@ -113,9 +133,12 @@ type BurnInPreparer struct {
 const burnInIndex = "burnin.json"
 
 // Prepare writes the prepared track into dir.
-func (p *BurnInPreparer) Prepare(ctx context.Context, _ string, _ int, dir string) (*playout.BurnIn, error) {
+func (p *BurnInPreparer) Prepare(ctx context.Context, _ string, _ int, _, dir string) (*playout.BurnIn, error) {
 	p.runs.Add(1)
 	defer p.finished.Add(1)
+	if p.hold.Load() {
+		<-ctx.Done()
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -150,8 +173,15 @@ func (p *BurnInPreparer) Prepare(ctx context.Context, _ string, _ int, dir strin
 // SetFail makes every later Prepare refuse (true) or succeed (false).
 func (p *BurnInPreparer) SetFail(fail bool) { p.fail.Store(fail) }
 
+// SetHold makes every later Prepare wait for its context's cancellation (true) or return at once
+// (false).
+func (p *BurnInPreparer) SetHold(hold bool) { p.hold.Store(hold) }
+
 // Runs is how many times Prepare was called.
 func (p *BurnInPreparer) Runs() int { return int(p.runs.Load()) }
+
+// Finished is how many calls to Prepare have returned.
+func (p *BurnInPreparer) Finished() int { return int(p.finished.Load()) }
 
 // WaitRuns waits until n calls to Prepare have returned.
 func (p *BurnInPreparer) WaitRuns(t testing.TB, n int) {
