@@ -465,6 +465,7 @@ RETIRED=(
   'CertifiedStructureMaterializable|retired (#4414): the certified complete-plan gate is gone; use AutoCuttable'
   'AutoConfirmable|retired (#4414): the legacy partition is gone; use AutoCuttable'
   'StructureSplitShadow|retired (#4414): the shadow comparison is gone; AutoCuttable is the only gate'
+  'filler_split_shadow_decisions|retired (#4414): the shadow-comparison table was dropped; AutoCuttable is the only gate'
 
 )
 # ⚠ `internal/platform/store/migrations/` is exempt, and it is the one exemption that is forced rather than
