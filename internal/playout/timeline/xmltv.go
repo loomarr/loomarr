@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
-// XMLTV listings (§9.1) — the second half of what internal playout serves.
+// XMLTV listings (§9.1): internal playout serves these beside the M3U tuner in internal/playout.
 //
 // The M3U tuner tells a media server WHICH channels exist; this tells it WHAT IS ON. Without
 // it a channel appears in Live TV, tunes, plays — and shows "no information" forever, which

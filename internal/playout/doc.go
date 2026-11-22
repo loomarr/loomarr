@@ -47,7 +47,7 @@
 //   - NOMINAL TIME IS NEVER AIRTIME. A pending acquisition has no known duration. Giving it one
 //     inside the cycle arithmetic would grow the cycle, shift every later programme, and make
 //     the encoder air silence for an invented length. Display width for such a slot is a
-//     PROJECTION concern (timeline.BroadcastsWithPending), never one of the cycle arithmetic
+//     PROJECTION concern (timeline.BroadcastsWithPending), never part of the cycle arithmetic
 //     in internal/playout/timeline.
 //
 // # What lives here, and what deliberately does not
