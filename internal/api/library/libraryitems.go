@@ -353,7 +353,7 @@ type libraryEpisodeDTO struct {
 	FromFile *bool  `json:"fromFile,omitempty" doc:"Its name and number are its file's, until the show's episode order is said. Admins only"`
 	Overview string `json:"overview,omitempty" doc:"Its own story"`
 	// LengthMillis reads its files' durations only, never their tracks.
-	LengthMillis int64 `json:"lengthMillis,omitempty" doc:"How long it plays: measured from its files once each is read, else its catalog's runtime; absent when neither is known"`
+	LengthMillis int64              `json:"lengthMillis,omitempty" doc:"How long it plays: measured from its files once each is read, else its catalog's runtime; absent when neither is known"`
 	Still        *httpcore.ImageDTO `json:"still,omitempty" doc:"Its still; absent when it has none, or while one is still being fetched"`
 }
 
