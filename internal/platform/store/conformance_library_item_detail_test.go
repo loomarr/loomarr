@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
@@ -15,7 +16,7 @@ import (
 // it plays (an extra copy does not), the columns of its tracks the page shows in index order with
 // a subtitle file beside it last, its chapters, a source that plays though its file has gone from
 // the list, a movie in parts, a series' episodes by the items its present files were written as, with their stories
-// and lengths (an unnumbered one among them, a missing file's left out) and no episode's tracks
+// and lengths and stills (an unnumbered one among them, a missing file's left out) and no episode's tracks
 // read, their numbers alone, and an episode's own page with its file's tracks.
 func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
@@ -190,6 +191,15 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("parts sources = %+v, want %+v", got, want)
 	}
 
+	// An episode's still is its backdrop ref, read with its row (#4476).
+	still := imageAt("ep1-still", at)
+	if err := st.PutImage(ctx, still); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutImageRef(ctx, clipstore.ImageRef{ImageHash: still.Hash, OwnerKind: librarystore.LibraryItemImageOwner,
+		OwnerID: "ep1", Role: "backdrop"}); err != nil {
+		t.Fatal(err)
+	}
 	show, err := st.LibraryItemDetail(ctx, "show")
 	if err != nil {
 		t.Fatal(err)
@@ -201,7 +211,7 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 	// file is unread (ep-file), else unknown (ep-none).
 	wantEpisodes := map[string]librarystore.LibraryDetailEpisode{
 		"ep1": {Name: "Pilot", NameFrom: "tmdb", LibraryEpisodeNumbers: librarystore.LibraryEpisodeNumbers{
-			Season: 1, Episode: 1, EpisodeEnd: 2}, Overview: "It begins.", LengthMs: 1_320_000},
+			Season: 1, Episode: 1, EpisodeEnd: 2}, Overview: "It begins.", LengthMs: 1_320_000, Still: still.Hash},
 		"ep-file": {Name: "show - bonus", Unnumbered: true, LengthMs: 1_500_000},
 		"ep-none": {Name: "Unknown length", LibraryEpisodeNumbers: librarystore.LibraryEpisodeNumbers{Season: 1, Episode: 4}},
 	}

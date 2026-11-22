@@ -194,6 +194,8 @@ type Episode struct {
 	// each is read, else the catalog's runtime; 0 when neither is known.
 	Overview     string
 	LengthMillis int64
+	// Still is the image hash of its still (#4476); "" for none.
+	Still string
 }
 
 // Items lists the movies and series with a present file.
@@ -341,7 +343,7 @@ func seasons(files []librarystore.LibraryFile, episodes map[string]librarystore.
 		row := episodes[id]
 		bySeason[row.Season] = append(bySeason[row.Season], Episode{
 			ID: id, Name: row.Name, Number: row.Episode, End: row.EpisodeEnd, Ready: ready[id], FromFile: row.Unnumbered,
-			Named: row.NameFrom != "", Overview: row.Overview, LengthMillis: row.LengthMs,
+			Named: row.NameFrom != "", Overview: row.Overview, LengthMillis: row.LengthMs, Still: row.Still,
 		})
 		if row.NameFrom != "" {
 			named[mp.ID(row.NameFrom)]++

@@ -53,6 +53,8 @@ type LibraryDetailEpisode struct {
 	// LengthMs is the measured length of the files that play, once each is read, else the
 	// catalog's runtime; 0 when neither is known. Only the sources' durations are read.
 	LengthMs int64
+	// Still is the image hash its still's ref names (role backdrop, #4476); "" for none.
+	Still string
 }
 
 // LibraryEpisodeNumbers numbers an episode: EpisodeEnd is the last episode a multi-episode file
@@ -177,7 +179,8 @@ func (s *Store) detailEpisodes(ctx context.Context, q storedb.Querier, seriesID 
 		i.episode_end, i.unnumbered, i.overview,
 		COALESCE(NULLIF((SELECT CAST(CASE WHEN MIN(src.duration_ms) > 0 THEN SUM(src.duration_ms) ELSE 0 END AS BIGINT)
 			FROM library_sources src WHERE src.item_id = i.id AND src.plays AND src.edition = (SELECT e.edition
-			FROM library_sources e WHERE e.item_id = i.id AND e.plays ORDER BY e.edition <> '', e.path LIMIT 1)), 0), i.runtime_ms)
+			FROM library_sources e WHERE e.item_id = i.id AND e.plays ORDER BY e.edition <> '', e.path LIMIT 1)), 0), i.runtime_ms),
+		`+itemImage("backdrop")+`
 		FROM library_files f JOIN library_items i ON i.id = f.inventory_item_id
 		WHERE f.inventory_series_id = ? AND `+presentFile), seriesID)
 	if err != nil {
@@ -188,7 +191,7 @@ func (s *Store) detailEpisodes(ctx context.Context, q storedb.Querier, seriesID 
 		var id string
 		var e LibraryDetailEpisode
 		if err := rows.Scan(&id, &e.Name, &e.NameFrom, &e.Season, &e.Episode, &e.EpisodeEnd, &e.Unnumbered,
-			&e.Overview, &e.LengthMs); err != nil {
+			&e.Overview, &e.LengthMs, &e.Still); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}

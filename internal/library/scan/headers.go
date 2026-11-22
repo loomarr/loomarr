@@ -363,6 +363,10 @@ func (im *Importer) readOne(ctx context.Context, job pending) (librarystore.Libr
 		// with it and no later pass need write it again.
 		if row.Identity == waitingFor(job.id.digest) {
 			row.Identity = job.id.digest
+			// The record can name the episode's still, which the walk's write had not.
+			if snapshot.Kind == kindEpisode {
+				job.b.artwork(ctx, itemID, EpisodeArt, snapshot.Observation.Facts.Artwork)
+			}
 		}
 	}
 	row.Header = librarystore.LibraryHeaderRead

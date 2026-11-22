@@ -46,7 +46,8 @@ type ImportStore interface {
 }
 
 // Artwork puts a title's artwork in the image service: its poster (#2151 step 10), its fanart as
-// the backdrop and its clear logo (#2567). kind is one of ImportedArt; ref is what precedence
+// the backdrop and its clear logo (#2567), and an episode's still (#4476). kind is one of
+// ImportedArt or EpisodeArt; ref is what precedence
 // resolved for it, an image file beside the media or a provider's https URL, local first; "" is
 // none. The title owns one image per kind: the one it had before is let go.
 type Artwork interface {
@@ -56,6 +57,11 @@ type Artwork interface {
 // ImportedArt is the artwork kinds a title's images are imported for. The rest (banner,
 // landscape, clearart, discart) stay references: nothing shows them yet.
 var ImportedArt = []string{mp.KindPoster, mp.KindFanart, mp.KindClearlogo}
+
+// EpisodeArt is the artwork kinds an episode's images are imported for: its still (#4476). An
+// episode is written with the file that holds it, so its still is imported then, as a movie's
+// poster is.
+var EpisodeArt = []string{mp.KindThumb}
 
 // Importer is the Library's scanner (#2151 step 5). Each pass walks every in-use root, writes each
 // new or changed media file to the inventory as an origin of its root, then reads the headers of
@@ -765,8 +771,11 @@ func (im *Importer) importListed(ctx context.Context, root string, idx managerIn
 		}
 		row.ItemID = itemID
 		written = append(written, row)
-		if snapshot.Kind == kindMovie {
+		switch snapshot.Kind {
+		case kindMovie:
 			b.listed(ctx, itemID, snapshot)
+		case kindEpisode:
+			b.artwork(ctx, itemID, EpisodeArt, snapshot.Observation.Facts.Artwork)
 		}
 		if id.seriesDir != "" {
 			episodes = append(episodes, episodeRow{at: len(save), seriesDir: id.seriesDir})

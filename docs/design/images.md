@@ -270,7 +270,11 @@ need attribution or provenance read the image row instead of parsing format-spec
 
 ### Two modes
 
-- **Owned** (the default): ingested, content-addressed, permanent record, immutable URL.
+- **Owned** (the default): ingested, content-addressed, permanent record, immutable URL. The
+  Library's artwork is owned: a title's poster, fanart (role `backdrop`) and clear logo, and an
+  episode's still (role `backdrop`, #4476), each imported when the scanner writes the title or
+  episode, a file beside the media ingested then and a provider's URL adopted for the fetch job
+  (library.md, "Posters, backdrops and logos" and "Episode stills").
 - **Proxied**: a short-TTL pass-through with **no permanent row**, for high-volume ephemeral thumbnails
   such as source-search results. Ingesting hundreds of thumbnails for a search the operator abandons
   would be the wrong trade; proxying still removes the third-party origin from the browser.

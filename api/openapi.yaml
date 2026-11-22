@@ -7083,6 +7083,9 @@ components:
           type: string
         ready:
           type: boolean
+        still:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Its still; absent when it has none, or while one is still being fetched
       required:
         - id
         - name
@@ -7252,7 +7255,7 @@ components:
           type: string
         backdropImage:
           $ref: "#/components/schemas/ImageDTO"
-          description: Its fanart; absent when it has none, or while one is still being fetched
+          description: Its fanart; absent when it has none, or while one is still being fetched; absent for an episode, whose image is its still
         channels:
           description: The channels whose lineup holds it, by number
           items:
@@ -7315,6 +7318,9 @@ components:
           items:
             $ref: "#/components/schemas/LibrarySeasonDTO"
           type: array
+        still:
+          $ref: "#/components/schemas/ImageDTO"
+          description: An episode's still; absent for a movie or a series, when it has none, or while one is still being fetched
         studios:
           description: A movie's or a series' studios; empty for an episode, whose studios are its show's
           items:

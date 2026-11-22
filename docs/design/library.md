@@ -533,6 +533,20 @@ step 5). Nothing reads the scanner's origins until the cutover.
   so adding or changing one rewrites the title; a folder's own art (`poster.jpg`) counts only for
   the folder's one video. A poster that fails to import leaves the title as it was, and the next
   write tries again.
+- **Episode stills** (#4476). When the importer writes an episode it hands the resolved still
+  (artwork kind `thumb`) to the image service the same way, and the episode owns it through a
+  `library_item_images` row of role `backdrop`, the role the image service names for episode
+  stills; an episode imports no other kind. Its `<file>-thumb` file beside it comes first, then a
+  provider's URL (an arr's screenshot, or TMDB's episode still), and a still the header stage's
+  catalogue record names is imported when that record arrives. A new still replaces the old ref,
+  and an episode with none lets it go. A provider's still is only adopted during the pass: the
+  image fetch job pulls the bytes, at most 64 images a minute under its fixed concurrency cap,
+  so writing a series of hundreds of episodes fetches nothing in the pass. Each episode row of a
+  series' page carries `still`, and an episode's own page carries `still` in place of
+  `backdropImage`, each absent when it has none or while its bytes are being fetched; the page's
+  one read of its episodes reads each still's hash with its row. A member is sent the still of an
+  episode their season lists hold only, so never a raw provider URL and never a hidden
+  episode's.
 - **Catalog details** (decision 20). A movie or series whose ids include a TMDB id takes its
   details from TMDB: the guide text, genres, rating, poster and fanart, ranked by precedence like
   any other source. The walk never calls TMDB. `library_catalog` caches each record by provider,

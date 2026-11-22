@@ -145,6 +145,33 @@ func TestLibraryPosters(t *testing.T) {
 	}
 }
 
+// An episode's still lands as its backdrop, the role the image package names for episode stills
+// (#4476): from the file beside it, or adopted from its provider's URL, the new one replacing the
+// one it had.
+func TestLibraryEpisodeStill(t *testing.T) {
+	ctx, st, svc := artworkFixture(t)
+	art := libraryArtworkOf(svc, st)
+	still := func() string { return libraryItem(t, st).Backdrop }
+	path := filepath.Join(t.TempDir(), "Alpha S01E01-thumb.png")
+	writePoster(t, path, 70)
+	if err := art.Art(ctx, "90000001", metadataprovider.KindThumb, path); err != nil {
+		t.Fatal(err)
+	}
+	if rec, err := svc.Get(ctx, still()); err != nil || rec.Role != images.RoleBackdrop || rec.Origin != images.OriginExtracted {
+		t.Fatalf("imported = %+v, %v; want an extracted backdrop", rec, err)
+	}
+	const remote = "https://image.example.org/t/p/original/alpha-e1.jpg"
+	if err := art.Art(ctx, "90000001", metadataprovider.KindThumb, remote); err != nil {
+		t.Fatal(err)
+	}
+	if rec, err := svc.Get(ctx, still()); err != nil || rec.SourceURL != remote || rec.Role != images.RoleBackdrop {
+		t.Fatalf("adopted = %+v, %v", rec, err)
+	}
+	if owned, err := st.ImagesForOwner(ctx, librarystore.LibraryItemImageOwner, "90000001"); err != nil || len(owned) != 1 {
+		t.Fatalf("owned = %d images, %v; want only the adopted still", len(owned), err)
+	}
+}
+
 // A clear logo keeps its transparency (#2567): its WebP rendition still has see-through pixels,
 // it has no JPEG rendition at all (one would draw it on a black box), and its dominant colour is
 // its ink, not the transparent canvas around it. Setting it leaves the title's poster alone, and

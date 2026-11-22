@@ -29,11 +29,14 @@ type artRefs interface {
 }
 
 // artRoles is the image role each imported artwork kind takes (#2567): fanart is a title's
-// backdrop, and a clear logo keeps its alpha on the logo ladder.
+// backdrop, and a clear logo keeps its alpha on the logo ladder. An episode's still (#4476) is
+// 16:9 and takes the backdrop role the image package names for episode stills; an episode
+// imports no fanart, so the role is its still alone.
 var artRoles = map[string]images.Role{
 	metadataprovider.KindPoster:    images.RolePoster,
 	metadataprovider.KindFanart:    images.RoleBackdrop,
 	metadataprovider.KindClearlogo: images.RoleLogo,
+	metadataprovider.KindThumb:     images.RoleBackdrop,
 }
 
 // libraryArtwork gives the scanner's titles their artwork (#2151 step 10b, #2567). A file beside
