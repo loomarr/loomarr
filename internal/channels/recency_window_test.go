@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -89,9 +89,9 @@ func reconcileDesired(t *testing.T, e *channels.Engine, st store.Store, id strin
 
 // tuneIn does what playoutresolve.Resolver.AiringAt does when a viewer tunes in: resolve the programme on
 // air from the accepted cycle and record its airing, stamped with the programme's start.
-func tuneIn(t *testing.T, st store.Store, ch channelstore.Channel, now time.Time) playout.Airing {
+func tuneIn(t *testing.T, st store.Store, ch channelstore.Channel, now time.Time) timeline.Airing {
 	t.Helper()
-	airing := playout.AiringAt(ch.Desired, ch.PlayoutAnchor, now)
+	airing := timeline.AiringAt(ch.Desired, ch.PlayoutAnchor, now)
 	if airing.Key == "" {
 		t.Fatalf("nothing on air at %v", now)
 	}
@@ -130,7 +130,7 @@ func TestReconcile_TuneInDoesNotRearrangeCurrentWindow(t *testing.T) {
 		t.Fatalf("a tune-in re-arranged the window on air (tuned to %s):\n before %v\n after  %v",
 			onAir.LibraryItemID, programIDs(before.Desired), programIDs(after.Desired))
 	}
-	if got := playout.AiringAt(after.Desired, after.PlayoutAnchor, now); got.LibraryItemID != onAir.LibraryItemID {
+	if got := timeline.AiringAt(after.Desired, after.PlayoutAnchor, now); got.LibraryItemID != onAir.LibraryItemID {
 		t.Fatalf("programme on air changed from %s to %s after a reconcile", onAir.LibraryItemID, got.LibraryItemID)
 	}
 

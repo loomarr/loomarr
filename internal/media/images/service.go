@@ -31,13 +31,18 @@ import (
 type Store interface {
 	PutImage(ctx context.Context, img Image) error
 	GetImage(ctx context.Context, hash string) (Image, error)
-	// GetFetchedBySourceURL finds the row holding the bytes already downloaded from a source URL.
-	// Adopt needs it because the fetch re-key deletes the row Adopt itself created — see there.
-	GetFetchedBySourceURL(ctx context.Context, src string) (Image, error)
+	// GetBySourceURL finds the image of a source URL: the row whose bytes have landed if there is
+	// one, else the row still waiting for them. Adopt needs it because the fetch re-key deletes the
+	// row Adopt itself created, and the expiry purge requeues a row under its content hash — see
+	// there. ErrNotFound when no row has the URL.
+	GetBySourceURL(ctx context.Context, src string) (Image, error)
 	TouchImage(ctx context.Context, hash string, at time.Time) error
 	PutRef(ctx context.Context, ref Ref) error
 	PutDerivatives(ctx context.Context, derivatives []Derivative) error
 	ListDerivatives(ctx context.Context, hash string) ([]Derivative, error)
+	// ImagesByHash reads many images and their derivatives in a bounded number of statements; a
+	// hash with no row is absent.
+	ImagesByHash(ctx context.Context, hashes []string) ([]Image, []Derivative, error)
 }
 
 // IngestRequest is everything about an image that its bytes do not say.
@@ -50,6 +55,9 @@ type IngestRequest struct {
 	OwnerKind string
 	OwnerID   string
 	Meta      string
+	// FetchPriority is the fetch-queue class Adopt queues a new remote image in; the zero value
+	// is FetchAdopted.
+	FetchPriority FetchPriority
 }
 
 // Config is the service's tunables.
@@ -169,6 +177,50 @@ func (s *Service) HasFormat(ctx context.Context, hash string, f Format) (bool, e
 		}
 	}
 	return false, nil
+}
+
+// Listed is an image as a page lists it: its record and whether its AVIF ladder exists (HasFormat).
+type Listed struct {
+	Image
+	AVIF bool
+}
+
+// GetMany reads the images of hashes with their AVIF state, by hash, in one store read
+// (ImagesByHash) rather than two point reads each. A hash with no image is absent.
+//
+// One failed read fails every image of the page, where point reads failed one image at a time.
+// Its callers render the page without those images rather than failing it, which is accepted:
+// the read is a single indexed lookup, and a database that cannot serve it cannot serve the page.
+func (s *Service) GetMany(ctx context.Context, hashes []string) (map[string]Listed, error) {
+	valid := make([]string, 0, len(hashes))
+	seen := make(map[string]bool, len(hashes))
+	for _, h := range hashes {
+		if validHash(h) && !seen[h] {
+			seen[h] = true
+			valid = append(valid, h)
+		}
+	}
+	out := make(map[string]Listed, len(valid))
+	if len(valid) == 0 {
+		return out, nil
+	}
+	imgs, derivatives, err := s.store.ImagesByHash(ctx, valid)
+	if err != nil {
+		return nil, err
+	}
+	for _, img := range imgs {
+		out[img.Hash] = Listed{Image: img}
+	}
+	if !s.Produces(FormatAVIF) {
+		return out, nil
+	}
+	for _, d := range derivatives {
+		if l, ok := out[d.ImageHash]; ok && d.Recipe == renditionRecipe && d.Format == FormatAVIF {
+			l.AVIF = true
+			out[d.ImageHash] = l
+		}
+	}
+	return out, nil
 }
 
 // Ingest stores bytes and returns the canonical record.
@@ -312,41 +364,29 @@ func (s *Service) workerRequest(hash, source, staging string, targets []rustgen.
 // serve — so the frontend shows the placeholder, which is a better first paint than the remote
 // fetch this replaces anyway.
 //
-// The identity problem: the content hash cannot be known before the bytes arrive, so the row is
+// The identity problem: the content hash cannot be known before the bytes arrive, so a new row is
 // keyed on a hash of the SOURCE URL until the fetch replaces it. That is why `hashOfURL` exists and
-// why it is namespaced — see its comment.
+// why it is namespaced — see its comment. An adopted URL is always found again by the URL itself,
+// never by that hash, because the hash stops resolving once the fetch lands.
 func (s *Service) Adopt(ctx context.Context, srcURL string, req IngestRequest) (Image, error) {
 	u, err := url.Parse(srcURL)
 	if err != nil || u.Scheme != "https" || u.Host == "" {
 		return Image{}, fmt.Errorf("images: adopt needs an absolute https URL, got %q", srcURL)
 	}
 
-	// ⚠ **Check the FETCHED row first, and the order is the whole fix.** The placeholder lookup
-	// below cannot find an image that already succeeded: the fetch re-keys the row onto the content
-	// hash and deletes the URL-keyed one, so `GetImage(hashOfURL(src))` misses forever afterwards.
-	// Without this, re-adopting a URL minted a second placeholder and the fetch job re-downloaded
-	// bytes already on disk — once per adopt, forever. Harmless while nothing called Adopt twice;
-	// a per-open cost the moment the icon picker did (V52 phase 7).
-	if existing, err := s.store.GetFetchedBySourceURL(ctx, srcURL); err == nil {
-		if req.OwnerKind != "" && req.OwnerID != "" {
-			if err := s.store.PutRef(ctx, Ref{
-				ImageHash: existing.Hash, OwnerKind: req.OwnerKind, OwnerID: req.OwnerID, Role: existing.Role,
-			}); err != nil {
-				return Image{}, err
-			}
-		}
-		return existing, nil
+	// ⚠ **Look the URL up, never the URL's hash.** A row keyed on hashOfURL exists only until the
+	// first fetch lands: the fetch re-keys the row onto the content hash and deletes the URL-keyed
+	// one, and the expiry purge later requeues that content-hash row with no bytes. A lookup by
+	// hashOfURL misses both, so re-adopting the URL minted a second row and the fetch job
+	// downloaded it again — once per adopt, forever (V52 phase 7). The URL lookup finds the fetched
+	// row, else whichever row is still waiting, and a new owner takes a ref on it either way.
+	if existing, err := s.store.GetBySourceURL(ctx, srcURL); err == nil {
+		return s.refOwner(ctx, srcURL, existing, req)
 	} else if !errors.Is(err, ErrNotFound) {
 		return Image{}, err
 	}
 
 	hash := hashOfURL(srcURL)
-	if existing, err := s.store.GetImage(ctx, hash); err == nil {
-		return existing, nil // adopted and still pending; the fetch job owns it from here
-	} else if !errors.Is(err, ErrNotFound) {
-		return Image{}, err
-	}
-
 	now := s.now()
 	rec := Image{
 		Hash:       hash,
@@ -363,28 +403,53 @@ func (s *Service) Adopt(ctx context.Context, srcURL string, req IngestRequest) (
 		// and it is also why the expiry sweep must exclude zero explicitly — otherwise every
 		// pending image looks infinitely stale and the sweep purges the backlog.
 		OriginFetchedAt: time.Time{},
+		FetchQueuedAt:   now,
+		FetchPriority:   req.FetchPriority,
 	}
 	if err := s.store.PutImage(ctx, rec); err != nil {
 		return Image{}, err
 	}
-	if req.OwnerKind != "" && req.OwnerID != "" {
-		if err := s.store.PutRef(ctx, Ref{
-			ImageHash: hash, OwnerKind: req.OwnerKind, OwnerID: req.OwnerID, Role: rec.Role,
-		}); err != nil {
-			return Image{}, err
-		}
+	return s.refOwner(ctx, srcURL, rec, req)
+}
+
+// refOwner records the adopting owner's ref on the image of srcURL and returns that image.
+//
+// ⚠ A pending row can be re-keyed while this runs: the fetch writes the content-hash row, moves
+// the refs onto it and deletes the row it replaced. A ref put on the old hash after the move is
+// cascaded away with the old row, or refused once the row is gone. So the URL is looked up again
+// after the ref, and when its row has moved the ref is put on the row it moved to.
+func (s *Service) refOwner(ctx context.Context, srcURL string, img Image, req IngestRequest) (Image, error) {
+	if req.OwnerKind == "" || req.OwnerID == "" {
+		return img, nil
 	}
-	return rec, nil
+	ref := func(on Image) error {
+		return s.store.PutRef(ctx, Ref{ImageHash: on.Hash, OwnerKind: req.OwnerKind, OwnerID: req.OwnerID, Role: on.Role})
+	}
+	putErr := ref(img)
+	now, err := s.store.GetBySourceURL(ctx, srcURL)
+	if err != nil {
+		if putErr != nil {
+			return Image{}, putErr
+		}
+		return Image{}, err
+	}
+	if now.Hash == img.Hash {
+		if putErr != nil {
+			return Image{}, putErr
+		}
+		return img, nil
+	}
+	if err := ref(now); err != nil {
+		return Image{}, err
+	}
+	return now, nil
 }
 
 // Lookup finds the image Adopt made of srcURL, fetched or still pending, without writing:
 // ErrNotFound when it was never adopted, or is gone. A page that lists many remote images reads
 // them with it and adopts only the ones it misses.
 func (s *Service) Lookup(ctx context.Context, srcURL string) (Image, error) {
-	if existing, err := s.store.GetFetchedBySourceURL(ctx, srcURL); !errors.Is(err, ErrNotFound) {
-		return existing, err
-	}
-	return s.store.GetImage(ctx, hashOfURL(srcURL))
+	return s.store.GetBySourceURL(ctx, srcURL)
 }
 
 // Get returns a record.

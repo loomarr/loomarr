@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // GET /v1/playout/guide.xml — XMLTV listings (§9.1, V6b).
@@ -16,7 +16,7 @@ import (
 // a channel appears in Live TV, tunes, plays — and shows "no information" forever, which reads
 // as a broken integration rather than a missing feature.
 //
-// The listings come from the SAME cycle arithmetic the encoder uses (playout.BroadcastsBetween
+// The listings come from the SAME cycle arithmetic the encoder uses (timeline.BroadcastsBetween
 // over the channel's computed lineup), so the guide cannot advertise something different from
 // what plays. A guide with its own timeline would eventually drift, and "it says Heat but
 // Predator is playing" is the kind of bug nobody can reproduce on demand.
@@ -27,13 +27,13 @@ type PlayoutGuide interface {
 	// BroadcastsBetween returns the programmes airing on a channel across [from, to), with
 	// absolute wall-clock times. Programmes already in progress at `from` report their REAL
 	// start, so a media server draws the current show from its actual beginning.
-	BroadcastsBetween(ctx context.Context, channelID string, from, to time.Time) ([]playout.Broadcast, error)
+	BroadcastsBetween(ctx context.Context, channelID string, from, to time.Time) ([]timeline.Broadcast, error)
 
 	// BroadcastsWithPending is the same walk plus pending acquisitions as nominal-width
 	// placeholders, for Loomarr's own time grid (V13b). Separate from BroadcastsBetween
 	// because those blocks must never reach a media server's EPG: their times are invented, so
 	// advertising one promises an airing that will not happen.
-	BroadcastsWithPending(ctx context.Context, channelID string, from, to time.Time) ([]playout.Broadcast, error)
+	BroadcastsWithPending(ctx context.Context, channelID string, from, to time.Time) ([]timeline.Broadcast, error)
 }
 
 // guideWindowHours is how far ahead the guide is published.
@@ -70,10 +70,10 @@ func (s *Handlers) guideHandler(w http.ResponseWriter, r *http.Request) {
 	from := now.Add(-guideLookbackHours * time.Hour)
 	to := now.Add(guideWindowHours * time.Hour)
 
-	g := playout.Guide{Programmes: map[string][]playout.Broadcast{}}
+	g := timeline.Guide{Programmes: map[string][]timeline.Broadcast{}}
 	for _, ch := range channels {
 		num, _ := strconv.Atoi(ch.Number) // the tuner already rendered it from an int
-		g.Channels = append(g.Channels, playout.GuideChannel{
+		g.Channels = append(g.Channels, timeline.GuideChannel{
 			ID: ch.ID, Name: ch.Name, Number: num, IconURL: ch.Logo,
 		})
 
@@ -90,7 +90,7 @@ func (s *Handlers) guideHandler(w http.ResponseWriter, r *http.Request) {
 		g.Programmes[ch.ID] = bs
 	}
 
-	doc, err := playout.RenderXMLTV(g, now)
+	doc, err := timeline.RenderXMLTV(g, now)
 	if err != nil {
 		s.log.Warn("playout: guide render failed", "err", err)
 		s.writeProblem(w, r, http.StatusInternalServerError, "Couldn't build the guide",

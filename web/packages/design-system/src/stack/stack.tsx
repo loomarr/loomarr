@@ -29,6 +29,23 @@ type StackBreakpoint = keyof typeof breakpoints;
  */
 type StackResponsive<Value> = Value | ({ base: Value } & { [Breakpoint in StackBreakpoint]?: Value });
 
+/** A padding value, as Tamagui's View takes it: px, or a semantic space (`section`, `control` …). */
+type StackPadding = NonNullable<ComponentProps<typeof View>["padding"]>;
+
+/** The padding props a Stack takes responsively, the same way as its gap. */
+const paddingProps = [
+  "padding",
+  "paddingHorizontal",
+  "paddingVertical",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+] as const;
+type StackPaddingProp = (typeof paddingProps)[number];
+const isPaddingProp = (name: string): name is StackPaddingProp =>
+  (paddingProps as readonly string[]).includes(name);
+
 const alignItems = {
   baseline: "baseline",
   center: "center",
@@ -75,7 +92,15 @@ type StackOwnProps = Omit<
   | "justifyContent"
   | "render"
   | "rowGap"
+  | StackPaddingProp
 > & {
+  /**
+   * Padding on every side, an axis or one side, as on any View. Each one is responsive like `gap`,
+   * so `px-4 sm:px-6` is `paddingHorizontal={{ base: 16, sm: 24 }}`. Where two name the same side,
+   * the later prop wins, as on a View.
+   */
+  [Prop in StackPaddingProp]?: StackResponsive<StackPadding>;
+} & {
   /** Cross-axis alignment. Left out, children stretch (a column fills its width). */
   align?: StackResponsive<StackAlign>;
   children?: ReactNode;
@@ -250,8 +275,25 @@ const Stack = ({
   ...props
 }: StackProps) => {
   const active = useActiveBreakpoint(
-    [align, direction, gap, hidden, justify, rowGap, columnGap].some((value) => isResponsive<unknown>(value)),
+    [
+      align,
+      direction,
+      gap,
+      hidden,
+      justify,
+      rowGap,
+      columnGap,
+      ...paddingProps.map((name) => props[name]),
+    ].some((value) => isResponsive<unknown>(value)),
   );
+  // Each padding prop at the current width, in the caller's order: on a View, the later of two
+  // props that name the same side wins.
+  const viewProps = Object.fromEntries(
+    Object.entries(props).map(([name, value]) => [
+      name,
+      isPaddingProp(name) ? resolve(value as StackResponsive<StackPadding>, active) : value,
+    ]),
+  ) as Omit<typeof props, StackPaddingProp> & { [Prop in StackPaddingProp]?: StackPadding };
   const space = (value: StackGap) => (value === "none" ? 0 : value);
   const resolvedGap = resolve(gap, active);
   const resolvedRowGap = rowGap === undefined ? undefined : resolve(rowGap, active);
@@ -272,7 +314,7 @@ const Stack = ({
       {/* In a column a Stack keeps its height (flex-shrink 0); anywhere else it gives way. */}
       <View
         flexShrink={parentDirection === "column" ? 0 : 1}
-        {...props}
+        {...viewProps}
         alignItems={alignItems[resolve(align, active)]}
         flexDirection={resolvedDirection}
         flexWrap={wrap ? "wrap" : "nowrap"}

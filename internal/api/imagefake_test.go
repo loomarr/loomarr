@@ -35,6 +35,8 @@ type fakeImageService struct {
 	ingests    int
 	// adopts counts Adopt calls: each is a write in the real service.
 	adopts int
+	// gets counts point reads (Get), manyReads batched ones (GetMany).
+	gets, manyReads int
 
 	// ingestErr, when set, makes Ingest fail — for the "storage broke" branch.
 	ingestErr error
@@ -107,9 +109,24 @@ func (f *fakeImageService) Lookup(_ context.Context, srcURL string) (images.Imag
 	return images.Image{}, images.ErrNotFound
 }
 
+// GetMany is one read of many records, as the real service makes it; reads counts them.
+func (f *fakeImageService) GetMany(_ context.Context, hashes []string) (map[string]images.Listed, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.manyReads++
+	out := map[string]images.Listed{}
+	for _, h := range hashes {
+		if img, ok := f.records[h]; ok {
+			out[h] = images.Listed{Image: img, AVIF: f.formats[images.FormatAVIF]}
+		}
+	}
+	return out, nil
+}
+
 func (f *fakeImageService) Get(_ context.Context, hash string) (images.Image, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.gets++
 	img, ok := f.records[hash]
 	if !ok {
 		return images.Image{}, images.ErrNotFound

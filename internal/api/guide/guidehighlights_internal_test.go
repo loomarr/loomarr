@@ -9,7 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 var hlT0 = time.Date(2026, 9, 28, 19, 0, 0, 0, time.UTC)
@@ -17,11 +17,11 @@ var hlT0 = time.Date(2026, 9, 28, 19, 0, 0, 0, time.UTC)
 // lineup builds one channel's airings from a compact script: "S1E1" is an episode of `series`,
 // "M" a movie, "F" a filler break, "X:<series>:S2E1" an episode of another series. Each block is
 // 30 minutes, back to back from hlT0.
-func lineup(series string, script ...string) []playout.Broadcast {
-	var out []playout.Broadcast
+func lineup(series string, script ...string) []timeline.Broadcast {
+	var out []timeline.Broadcast
 	at := hlT0
 	for _, s := range script {
-		b := playout.Broadcast{Start: at, Stop: at.Add(30 * time.Minute)}
+		b := timeline.Broadcast{Start: at, Stop: at.Add(30 * time.Minute)}
 		switch s {
 		case "F":
 			b.Kind = schedule.SlotFiller
@@ -210,7 +210,7 @@ func TestHighlightsInvariantsProperty(t *testing.T) {
 			if p.episodes > 0 {
 				// The run the pick claims: `episodes` programmes of this show from the pick, no other
 				// programme between them, ending at `until`.
-				var bs []playout.Broadcast
+				var bs []timeline.Broadcast
 				for _, ch := range channels {
 					if ch.channelID == p.channelID {
 						bs = ch.broadcasts

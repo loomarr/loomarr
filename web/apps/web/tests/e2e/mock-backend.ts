@@ -297,9 +297,14 @@ interface MockOptions {
   // Serve one channel at /v1/channels/{id}, named long enough to need the whole width of a phone,
   // so its pages (Watch, Channel info, Programming, Filler, Danger zone) render their real layout.
   channelDetail?: boolean;
+  // Hold the event stream open so a test can send frames (sendFrame), as the server does after
+  // it stores a change. The suggestion journeys hold it too.
+  eventStream?: boolean;
 }
 
 interface MockBackend {
+  // Announce a stored change on the held event stream (eventStream or a suggestion journey).
+  sendFrame: (type: string, payload: unknown) => void;
   // What the run recorded — the smoke asserts against these rather than re-reading UI.
   readonly state: {
     authed: boolean;
@@ -1673,7 +1678,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
   // The suggestion journey's event stream, registered after the catch-all so it answers first. A
   // connection is held open and silent, as the server's is, until there is a frame to send; it then
   // answers with the frame and ends, and the app reconnects as it does after any drop.
-  if (opts.proposalJourney) {
+  if (opts.proposalJourney || opts.eventStream) {
     await page.route("**/v1/events**", async (route) => {
       while (pendingFrames.length === 0) await new Promise<void>((wake) => frameWaiters.push(wake));
       await route.fulfill({
@@ -1685,7 +1690,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     });
   }
 
-  return { state };
+  return { state, sendFrame };
 };
 
 export type { MockBackend, MockOptions };

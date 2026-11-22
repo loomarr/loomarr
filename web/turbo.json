@@ -1,15 +1,12 @@
 {
   "$schema": "https://turborepo.com/schema.json",
+  "remoteCache": {
+    "signature": true
+  },
   "globalDependencies": [
     "tsconfig.base.json",
     "vitest.universal.config.ts",
     "react-native-svg-sound-module.web.js",
-    ".rnstorybook/**",
-    "!.rnstorybook/storybook.requires.ts",
-    "native-stories/**",
-    "scripts/apple-testflight-config.cjs",
-    "scripts/with-*.cjs",
-    "!scripts/with-*.test.cjs",
     "packages/api/generated/**",
     "packages/api/endpoint-*.ts",
     "packages/api/model-*.ts",
@@ -25,12 +22,13 @@
       "outputs": []
     },
     "test": {
-      "dependsOn": ["typecheck", "^test"],
+      "dependsOn": ["typecheck"],
       "env": ["JAVA_HOME"],
       "outputs": []
     },
     "bundle": {
       "dependsOn": ["typecheck", "^typecheck"],
+      "passThroughEnv": ["TMPDIR"],
       "outputs": ["dist/**"]
     },
     "client-proof": {

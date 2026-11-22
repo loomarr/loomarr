@@ -39,6 +39,10 @@ encryption.key
 /.agent-data/
 /.artifacts/
 
+# Turbo's local task cache. In a linked worktree Turbo shares the main checkout's cache, and it
+# puts it at the repository root (`.turbo/cache`), not under web/ where web/.gitignore covers it.
+/.turbo/
+
 # Go
 *.test
 *.out

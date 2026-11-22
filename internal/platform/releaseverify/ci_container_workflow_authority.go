@@ -116,23 +116,29 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			environment: standardWorkflowEnvironment(),
 			permissions: map[string]string{"actions": "write", "contents": "read"},
 			jobs: map[string]workflowJobAuthority{
-				"publish": {
+				"plan": {
 					condition: "github.ref == 'refs/heads/main'",
+					steps: map[string]workflowStepAuthority{
+						appleCacheFingerprintCommand: exactWorkflowStep(1, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
+					},
+				},
+				"publish": {
+					condition: "github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || needs.plan.outputs.generation == '')",
 					steps: map[string]workflowStepAuthority{
 						appleCachePublisherPreflightCommand: exactWorkflowStep(1, "Preflight repository cache headroom", workflowStepAuthority{environment: map[string]string{
 							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}",
 						}}),
-						"make fe-install":              exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
-						appleCacheFingerprintCommand:   exactWorkflowStep(6, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
-						appleCachePublisherSeedCommand: exactWorkflowStep(8, "Isolate the optional seed generation", workflowStepAuthority{}),
-						`./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(9, "Build and validate the candidate generation", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{
+						"make fe-install":              exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
+						appleCacheFingerprintCommand:   exactWorkflowStep(5, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
+						appleCachePublisherSeedCommand: exactWorkflowStep(7, "Isolate the optional seed generation", workflowStepAuthority{}),
+						`./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(8, "Build and validate the candidate generation", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{
 							"LOOMARR_APPLE_CACHE_SEED_ARCHIVE":    "${{ steps.seed.outputs.archive }}",
 							"LOOMARR_APPLE_CACHE_VALIDATION_ROOT": "${{ runner.temp }}/apple-cache-publisher",
 						}}),
-						appleCachePublisherAdmissionCommand: exactWorkflowStep(10, "Enforce repository cache headroom", workflowStepAuthority{environment: map[string]string{
+						appleCachePublisherAdmissionCommand: exactWorkflowStep(9, "Enforce repository cache headroom", workflowStepAuthority{environment: map[string]string{
 							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}",
 						}}),
-						appleCachePublisherRetentionCommand: exactWorkflowStep(12, "Retain only the newest generation for this fingerprint", workflowStepAuthority{environment: map[string]string{
+						appleCachePublisherRetentionCommand: exactWorkflowStep(11, "Retain only the newest generation for this fingerprint", workflowStepAuthority{environment: map[string]string{
 							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}", "PREFIX": "${{ steps.apple-toolchain.outputs.fingerprint }}",
 						}}),
 					},
@@ -237,40 +243,31 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			permissions: standardWorkflowPermissions(),
 			jobs: map[string]workflowJobAuthority{
 				"producer": {steps: map[string]workflowStepAuthority{
-					"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
-					`./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(5, "Produce and validate the compilation cache", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{"LOOMARR_APPLE_CACHE_VALIDATION_ROOT": "${{ runner.temp }}/apple-cache-validation-producer"}}),
+					"make fe-install": exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
+					`./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(4, "Produce and validate the compilation cache", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{"LOOMARR_APPLE_CACHE_VALIDATION_ROOT": "${{ runner.temp }}/apple-cache-validation-producer"}}),
 				}},
 				"consumer": {steps: map[string]workflowStepAuthority{
-					"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
-					`./web/scripts/validate-apple-compilation-cache.sh consume "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(6, "Consume and invalidate the compilation cache", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{"LOOMARR_APPLE_CACHE_VALIDATION_ROOT": "${{ runner.temp }}/apple-cache-validation-consumer"}}),
+					"make fe-install": exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
+					`./web/scripts/validate-apple-compilation-cache.sh consume "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(5, "Consume and invalidate the compilation cache", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{"LOOMARR_APPLE_CACHE_VALIDATION_ROOT": "${{ runner.temp }}/apple-cache-validation-consumer"}}),
 				}},
 			},
 		},
 		"ci-clients.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}}),
 			"make clients-checks": exactWorkflowStep(6, "Verify the affected client graph", workflowStepAuthority{
-				targets:   []string{"clients-checks"},
-				condition: "matrix.lane == 'checks'",
-				environment: map[string]string{
-					"TMPDIR":                   "${{ runner.temp }}",
-					"TURBO_TELEMETRY_DISABLED": "1",
-				},
+				targets:     []string{"clients-checks"},
+				condition:   "matrix.lane == 'checks'",
+				environment: clientsTurboEnvironment(),
 			}),
 			"make clients-tests CLIENTS_APP=${{ matrix.lane == 'tv-tests' && 'tv' || 'mobile' }}": exactWorkflowStep(7, "Typecheck and test the client", workflowStepAuthority{
-				targets:   []string{"clients-tests"},
-				condition: "endsWith(matrix.lane, '-tests')",
-				environment: map[string]string{
-					"TMPDIR":                   "${{ runner.temp }}",
-					"TURBO_TELEMETRY_DISABLED": "1",
-				},
+				targets:     []string{"clients-tests"},
+				condition:   "endsWith(matrix.lane, '-tests')",
+				environment: clientsTurboEnvironment(),
 			}),
 			"make clients-bundles CLIENTS_APP=${{ matrix.lane }}": exactWorkflowStep(8, "Bundle the client", workflowStepAuthority{
-				targets:   []string{"clients-bundles"},
-				condition: "matrix.lane == 'mobile' || matrix.lane == 'tv'",
-				environment: map[string]string{
-					"TMPDIR":                   "${{ runner.temp }}",
-					"TURBO_TELEMETRY_DISABLED": "1",
-				},
+				targets:     []string{"clients-bundles"},
+				condition:   "matrix.lane == 'mobile' || matrix.lane == 'tv'",
+				environment: clientsTurboEnvironment(),
 			}),
 		}),
 		"ci-docs.yml": standardRunWorkflow(map[string]workflowStepAuthority{
@@ -282,16 +279,19 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make fe-unit FE_SHARD=${{ matrix.shard }}/6": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-unit"}, condition: "matrix.shard <= 6"}),
 			"make fe-checks":        exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-checks"}, condition: "matrix.shard == 7"}),
 			"make fe-tokens-verify": exactWorkflowStep(7, "Token artifacts are committed and current", workflowStepAuthority{targets: []string{"fe-tokens-verify"}, condition: "matrix.shard == 7"}),
-			"make fe-packages":      exactWorkflowStep(8, "", workflowStepAuthority{targets: []string{"fe-packages"}, condition: "matrix.shard == 8"}),
+			"make fe-typecheck fe-packages": exactWorkflowStep(8, "Typecheck and test the packages", workflowStepAuthority{
+				targets:     []string{"fe-typecheck", "fe-packages"},
+				condition:   "matrix.shard == 8",
+				environment: turboRemoteCacheEnvironment(),
+			}),
 		}),
 		"ci-go-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make vet vet-tags lint": exactWorkflowStep(4, "Static analysis", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "matrix.shard == 1"}),
-			"make fmt privacy-verify tags-verify compose-verify go-race-verify eval-contract": exactWorkflowStep(5, "Repository contracts", workflowStepAuthority{targets: []string{"fmt", "privacy-verify", "tags-verify", "compose-verify", "go-race-verify", "eval-contract"}, condition: "matrix.shard == 2", environment: map[string]string{"MAKEFLAGS": "-j4 --output-sync=target"}}),
-			"make go-shard-verify SHARDS=2": exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}, condition: "matrix.shard == 1"}),
-			"make openapi-verify":           exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}, condition: "matrix.shard == 1"}),
-			"make retired-verify":           exactWorkflowStep(8, "Retired identifiers are gone from prose", workflowStepAuthority{targets: []string{"retired-verify"}, condition: "matrix.shard == 2"}),
-			"make observability-verify":     exactWorkflowStep(9, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, condition: "matrix.shard == 2", allowsAcquisition: true}),
-			`./scripts/check-migration-order.sh pull_request "$GITHUB_EVENT_PATH"`: exactWorkflowStep(10, "Every added migration is numbered above main's newest", workflowStepAuthority{condition: "matrix.shard == 2 && github.event_name == 'pull_request'"})}),
+			"make fmt tags-verify compose-verify go-race-verify eval-contract":     exactWorkflowStep(5, "Repository contracts", workflowStepAuthority{targets: []string{"fmt", "tags-verify", "compose-verify", "go-race-verify", "eval-contract"}, condition: "matrix.shard == 2", environment: map[string]string{"MAKEFLAGS": "-j4 --output-sync=target"}}),
+			"make go-shard-verify SHARDS=2":                                        exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}, condition: "matrix.shard == 1"}),
+			"make openapi-verify":                                                  exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}, condition: "matrix.shard == 1"}),
+			"make observability-verify":                                            exactWorkflowStep(8, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, condition: "matrix.shard == 2", allowsAcquisition: true}),
+			`./scripts/check-migration-order.sh pull_request "$GITHUB_EVENT_PATH"`: exactWorkflowStep(9, "Every added migration is numbered above main's newest", workflowStepAuthority{condition: "matrix.shard == 2 && github.event_name == 'pull_request'"})}),
 		"ci-go-cache-warm.yml": {
 			environment: standardWorkflowEnvironment(),
 			permissions: standardWorkflowPermissions(),
@@ -355,10 +355,13 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"ci-policy": {
 					condition: "always()",
 					steps: map[string]workflowStepAuthority{
-						"make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck":        exactWorkflowStep(4, "Workflow, publication, agent harness, and shell policy", workflowStepAuthority{targets: []string{"ci-lint", "release-verify", "agent-harness-test", "shellcheck"}}),
-						"go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify db-docs-verify": exactWorkflowStep(5, "Documentation contracts read by Go", workflowStepAuthority{targets: []string{"arch-docs-verify", "config-docs-verify", "dev-docs-verify", "db-docs-verify"}}),
+						"make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck retired-verify": exactWorkflowStep(4, "Workflow, publication, agent harness, shell, and retired-identifier policy", workflowStepAuthority{targets: []string{"ci-lint", "release-verify", "agent-harness-test", "shellcheck", "retired-verify"}}),
+						"go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify db-docs-verify":         exactWorkflowStep(5, "Documentation contracts read by Go", workflowStepAuthority{targets: []string{"arch-docs-verify", "config-docs-verify", "dev-docs-verify", "db-docs-verify"}}),
 					},
 				},
+				"privacy": {steps: map[string]workflowStepAuthority{
+					"make privacy-verify": exactWorkflowStep(3, "Real titles and private fixture literals", workflowStepAuthority{targets: []string{"privacy-verify"}}),
+				}},
 				"ci-ok": {
 					condition:   "always()",
 					permissions: map[string]string{"actions": "read", "contents": "read", "issues": "write"},
@@ -382,7 +385,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 						targets:   []string{"vet"},
 						condition: "steps.warm.outputs.cache-hit != 'true'",
 					}),
-					`./scripts/ci-merge-gate-cache-prune.sh "${{ steps.warm.outputs.cache-primary-key }}"`: exactWorkflowStep(6, "Delete older gate caches", workflowStepAuthority{
+					"./scripts/ci-cache-retention.sh apply": exactWorkflowStep(6, "Keep one entry of each shared cache", workflowStepAuthority{
 						condition:   "steps.warm.outputs.cache-hit != 'true'",
 						environment: map[string]string{"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}"},
 					}),
@@ -761,6 +764,27 @@ func codeQLWorkflowAuthority() workflowAuthority {
 			"analyze-ruby":                  {condition: "needs.changes.outputs.ruby == 'true'", permissions: analysisPermissions},
 			"analyze-rust":                  {condition: "needs.changes.outputs.rust == 'true'", permissions: analysisPermissions},
 		},
+	}
+}
+
+// clientsTurboEnvironment is the exact environment of every ci-clients.yml step that runs Turbo.
+func clientsTurboEnvironment() map[string]string {
+	environment := turboRemoteCacheEnvironment()
+	environment["TMPDIR"] = "${{ runner.temp }}"
+	return environment
+}
+
+// turboRemoteCacheEnvironment is the exact Turbo environment of the ci-frontend.yml step that runs
+// Turbo, and the base of clientsTurboEnvironment: the Remote Cache credentials, and TURBO_CACHE,
+// which lets only the merge queue and main write.
+func turboRemoteCacheEnvironment() map[string]string {
+	return map[string]string{
+		"TURBO_TELEMETRY_DISABLED":         "1",
+		"TURBO_API":                        "${{ secrets.TURBO_API }}",
+		"TURBO_TEAM":                       "${{ secrets.TURBO_TEAM }}",
+		"TURBO_TOKEN":                      "${{ secrets.TURBO_TOKEN }}",
+		"TURBO_REMOTE_CACHE_SIGNATURE_KEY": "${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}",
+		"TURBO_CACHE":                      "${{ (github.event_name == 'merge_group' || github.ref == 'refs/heads/main') && 'local:rw,remote:rw' || 'local:rw,remote:r' }}",
 	}
 }
 

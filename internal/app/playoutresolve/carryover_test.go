@@ -8,7 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // Rolling-window carry-over (#1675).
@@ -75,7 +75,7 @@ func TestGuide_ProgrammeCrossingTheWindowBoundaryAirsWhole(t *testing.T) {
 	t.Parallel()
 	r, w0 := carryOverResolver(time.Date(2026, time.August, 15, 0, 30, 0, 0, time.UTC))
 
-	bs, err := r.segmentedBroadcasts(context.Background(), "ch1", w0, w0.Add(3*time.Hour), playout.BroadcastsBetween)
+	bs, err := r.segmentedBroadcasts(context.Background(), "ch1", w0, w0.Add(3*time.Hour), timeline.BroadcastsBetween)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestGuide_WindowOpenedByACarryOverShowsTheCarriedProgramme(t *testing.T) {
 	accepted.ch.Status = schedule.StatusLive
 	r := &Resolver{engine: decks, channels: accepted, now: func() time.Time { return w0.Add(90 * time.Minute) }}
 
-	bs, err := r.segmentedBroadcasts(context.Background(), "ch1", w0.Add(time.Hour), w0.Add(2*time.Hour), playout.BroadcastsBetween)
+	bs, err := r.segmentedBroadcasts(context.Background(), "ch1", w0.Add(time.Hour), w0.Add(2*time.Hour), timeline.BroadcastsBetween)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestAiringAt_CarriesTheCrossingProgrammeOverTheBoundary(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := playout.AiringAt(slots, epoch, w0.Add(tc.at))
+		got := timeline.AiringAt(slots, epoch, w0.Add(tc.at))
 		if got.LibraryItemID != tc.want || got.Offset != tc.wantOffset {
 			t.Errorf("at +%v: airing %s at offset %v, want %s at %v", tc.at, got.LibraryItemID, got.Offset, tc.want, tc.wantOffset)
 		}
@@ -160,7 +160,7 @@ func w0At(d time.Duration) time.Time {
 	return time.Date(2026, time.August, 15, 0, 0, 0, 0, time.UTC).Add(d)
 }
 
-func guideLine(bs []playout.Broadcast) []string {
+func guideLine(bs []timeline.Broadcast) []string {
 	var out []string
 	for _, b := range bs {
 		out = append(out, fmt.Sprintf("%s %s–%s", b.Title, b.Start.Format("15:04"), b.Stop.Format("15:04")))

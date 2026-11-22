@@ -1245,7 +1245,7 @@ func TestEnricherNumbersAShowByTheOrderTheHouseholdPicked(t *testing.T) {
 				t.Fatalf("shows = %+v, %v", shows, err)
 			}
 			lib := &Library{ItemStore: h.st, Inventory: h.inv}
-			detail, err := lib.Item(ctx, shows.Items[0].ID)
+			detail, err := lib.Item(ctx, shows.Items[0].ID, false)
 			if err != nil || len(detail.Seasons) != 1 || len(detail.Seasons[0].Episodes) != 3 {
 				t.Fatalf("detail = %+v, %v", detail.Seasons, err)
 			}

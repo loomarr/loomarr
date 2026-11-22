@@ -82,11 +82,11 @@ done < <(./scripts/apple-compilation-cache.sh retention-plan \
 `
 
 const androidCCachePromotionRetentionCommand = `set -euo pipefail
-gh api -X DELETE "repos/$REPO/actions/artifacts/$ARTIFACT_ID"
 inventory="$RUNNER_TEMP/android-ccache-inventory.json"
 gh api "repos/$REPO/actions/caches?per_page=100&ref=refs/heads/main" > "$inventory"
 ids=$(./scripts/android-ccache-promotion.sh retention-plan \
   "$inventory" refs/heads/main android-tv-ccache-v2-Linux-ccache-4.14- "$KEEP_KEY")
+gh api -X DELETE "repos/$REPO/actions/artifacts/$ARTIFACT_ID"
 while read -r id; do
   [[ -n "$id" ]] || continue
   gh api -X DELETE "repos/$REPO/actions/caches/$id"

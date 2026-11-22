@@ -51,7 +51,7 @@ change per channel.
     air and anything starting within the packager's run-ahead keep their times, with the break
     after each; the rest is the new deal without the programmes that aired since the window opened.
     When the new cycle airs to the window's end without looping, everything that aired is kept
-    ahead of it and the anchor stays (`playout.KeepOnAir`), so the guide still shows the earlier
+    ahead of it and the anchor stays (`timeline.KeepOnAir`), so the guide still shows the earlier
     hours as they aired. Otherwise (a pool shorter than the window) the cycle starts at the
     programme on air, which becomes the anchor. An edit that leaves the programme on air
     ineligible, or the channel nothing to air, takes effect from the anchor at once.
@@ -62,7 +62,7 @@ change per channel.
   (else the container's zone), so a daily window turns at local midnight, and a DST day is 23 or 25
   hours long. The programme on air across the boundary finishes on the arrangement it began in;
   the next window's slice starts at its end, and that end becomes the new anchor. One rule,
-  `playout.WindowTurn`, is shared by reconcile, which commits the new cycle and anchor, and the
+  `timeline.WindowTurn`, is shared by reconcile, which commits the new cycle and anchor, and the
   playout resolver, which airs the next window from that end even before reconcile has run by
   arranging it with `CyclePreview`. The guide chains windows at the same ends, so no block is
   clipped at a boundary. If reconcile missed more than one window, the current window is walked
@@ -318,7 +318,7 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
 - **A schedule change restarts a stream only when it changes what is on air.** The packager reads
   the accepted cycle at every item boundary, so a change from its next lookup on reaches the stream
   by itself. Reconcile stops a channel's packager only when the new cycle airs something different
-  over the packager's run-ahead (`playout.OnAirChanged`), and Postgres peer replicas apply the same
+  over the packager's run-ahead (`timeline.OnAirChanged`), and Postgres peer replicas apply the same
   rule to each committed version. A rolling-window turn keeps stop-on-change.
 - **Previews are the break that airs.** The saved preview, the guide's per-break cards and both
   draft previews (`pods/preview`, `programming/preview`) build their selection through

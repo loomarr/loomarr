@@ -35,4 +35,5 @@ type (
 	LibraryRootStore         = librarystore.LibraryRootStore
 	LibraryTitleReader       = librarystore.LibraryTitleReader
 	LibraryTitleSearcher     = librarystore.LibraryTitleSearcher
+	MemberTitleReader        = librarystore.MemberTitleReader
 )

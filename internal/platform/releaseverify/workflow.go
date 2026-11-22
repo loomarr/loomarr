@@ -804,6 +804,11 @@ func validateNode(node *yaml.Node) error {
 			if key.Kind != yaml.ScalarNode {
 				return errors.New("workflow mapping keys must be scalars")
 			}
+			// A merge key splices another mapping's keys into this one, where a verifier that
+			// looks a key up by name does not see them.
+			if key.ShortTag() == "!!merge" {
+				return errors.New("YAML merge keys are forbidden in release policy files")
+			}
 			if _, exists := seen[key.Value]; exists {
 				return fmt.Errorf("duplicate YAML key %q", key.Value)
 			}

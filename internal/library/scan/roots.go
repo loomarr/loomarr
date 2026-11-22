@@ -39,6 +39,9 @@ var ErrSkipped = errors.New("scan: source not configured")
 type Disk interface {
 	// Look opens and lists a directory, and says whether it could and whether anything was in it.
 	Look(ctx context.Context, path string) Folder
+	// File says whether a regular file is at path now, as Remove extra copy checks the copy that
+	// plays in its place.
+	File(ctx context.Context, path string) bool
 	// Mounts lists the mount points a folder named by another machine may live under.
 	Mounts() []string
 }

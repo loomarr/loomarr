@@ -58,7 +58,7 @@ func TestPostgresPlayoutLifecyclePreservesCommittedPausePayload(t *testing.T) {
 	}
 }
 
-// A peer replica applies reconcile's stop rule (playout.OnAirChanged): a committed cycle restarts
+// A peer replica applies reconcile's stop rule (timeline.OnAirChanged): a committed cycle restarts
 // the channel's stream only when it changes what is on air. A new version that re-sizes a break
 // later in the cycle reaches the packager at its next lookup; restarting on every version re-tuned
 // every viewer at every re-size (2026-10-24).

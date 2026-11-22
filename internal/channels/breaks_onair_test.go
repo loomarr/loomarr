@@ -7,7 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -41,10 +41,10 @@ func TestReconcile_ShorterBreakSettingAppliesAfterTheProgrammeOnAir(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	onAir := playout.AiringAt(got.Desired, got.PlayoutAnchor, now)
+	onAir := timeline.AiringAt(got.Desired, got.PlayoutAnchor, now)
 	onAirEnds := now.Add(onAir.Remaining)
 	shorter := 0
-	for _, b := range playout.BroadcastsBetween(got.Desired, got.PlayoutAnchor, got.PlayoutAnchor, now.Add(12*time.Hour)) {
+	for _, b := range timeline.BroadcastsBetween(got.Desired, got.PlayoutAnchor, got.PlayoutAnchor, now.Add(12*time.Hour)) {
 		if b.Kind != schedule.SlotFiller {
 			continue
 		}
@@ -107,8 +107,8 @@ func TestReconcile_ReSizedBreaksNeverMoveWhatIsOnAir(t *testing.T) {
 	// This channel's window never turns, so the catalog change re-deals after the programme on air:
 	// the third film and the break after it keep the times they air at, and the cycle starts again
 	// at the film, so the breaks that aired are behind the anchor and are never walked again.
-	was := playout.AiringAt(before.Desired, before.PlayoutAnchor, now)
-	is := playout.AiringAt(after.Desired, after.PlayoutAnchor, now)
+	was := timeline.AiringAt(before.Desired, before.PlayoutAnchor, now)
+	is := timeline.AiringAt(after.Desired, after.PlayoutAnchor, now)
 	if was != is {
 		t.Fatalf("on air moved: was %q at %v, now %q at %v", was.Title, was.Offset, is.Title, is.Offset)
 	}

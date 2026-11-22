@@ -27,15 +27,18 @@ import (
 type Store interface {
 	PutImage(ctx context.Context, img clipstore.Image) error
 	GetImage(ctx context.Context, hash string) (clipstore.Image, error)
-	GetFetchedImageBySourceURL(ctx context.Context, src string) (clipstore.Image, error)
+	GetImageBySourceURL(ctx context.Context, src string) (clipstore.Image, error)
 	TouchImage(ctx context.Context, hash string, at time.Time) error
 	PutImageRef(ctx context.Context, ref clipstore.ImageRef) error
 	PutImageDerivative(ctx context.Context, d clipstore.ImageDerivative) error
 	PutImageDerivatives(ctx context.Context, rows []clipstore.ImageDerivative) error
 	ListImageDerivatives(ctx context.Context, hash string) ([]clipstore.ImageDerivative, error)
-	ListImagesAwaitingFetch(ctx context.Context, limit int) ([]clipstore.Image, error)
+	ImagesByHash(ctx context.Context, hashes []string) ([]clipstore.Image, []clipstore.ImageDerivative, error)
+	ListImagesAwaitingFetch(ctx context.Context, now time.Time, limit int) ([]clipstore.Image, error)
+	RecordImageFetchFailure(ctx context.Context, hash string, at, retryAt time.Time) error
+	DeferImageFetch(ctx context.Context, hash string, retryAt time.Time) error
 	ListImagesByOrigin(ctx context.Context, origin string, limit int) ([]clipstore.Image, error)
-	ListImagesExpiredBefore(ctx context.Context, cutoff time.Time, limit int) ([]clipstore.Image, error)
+	ListImagesExpiredBefore(ctx context.Context, cutoff time.Time, after clipstore.ExpiryCursor, limit int) ([]clipstore.Image, error)
 	ListOrphanImages(ctx context.Context, limit int) ([]clipstore.Image, error)
 	ListUnrecoverableImages(ctx context.Context, limit int) ([]clipstore.Image, error)
 	ListImagesMissingFormat(ctx context.Context, recipe, format string, limit int) ([]clipstore.Image, error)
@@ -65,8 +68,8 @@ func (a Images) GetImage(ctx context.Context, hash string) (images.Image, error)
 	return fromStoreImage(rec), nil
 }
 
-func (a Images) GetFetchedBySourceURL(ctx context.Context, src string) (images.Image, error) {
-	rec, err := a.st.GetFetchedImageBySourceURL(ctx, src)
+func (a Images) GetBySourceURL(ctx context.Context, src string) (images.Image, error) {
+	rec, err := a.st.GetImageBySourceURL(ctx, src)
 	if err != nil {
 		return images.Image{}, mapErr(err)
 	}
@@ -106,6 +109,14 @@ func (a Images) ListDerivatives(ctx context.Context, hash string) ([]images.Deri
 	return fromStoreDerivatives(rows), nil
 }
 
+func (a Images) ImagesByHash(ctx context.Context, hashes []string) ([]images.Image, []images.Derivative, error) {
+	rows, derivatives, err := a.st.ImagesByHash(ctx, hashes)
+	if err != nil {
+		return nil, nil, err
+	}
+	return fromStoreImages(rows), fromStoreDerivatives(derivatives), nil
+}
+
 // --- The background jobs' half of the contract (V52 phase 3b) ---
 //
 // ⚠ The domain names these methods for what they DO to images (ListOrphans, ListExpiredBefore)
@@ -115,9 +126,17 @@ func (a Images) ListDerivatives(ctx context.Context, hash string) ([]images.Deri
 // its own subject, and `internal/platform/store` reads as a schema, because neither had to compromise to
 // match the other.
 
-func (a Images) ListAwaitingFetch(ctx context.Context, limit int) ([]images.Image, error) {
-	rows, err := a.st.ListImagesAwaitingFetch(ctx, limit)
+func (a Images) ListAwaitingFetch(ctx context.Context, now time.Time, limit int) ([]images.Image, error) {
+	rows, err := a.st.ListImagesAwaitingFetch(ctx, now, limit)
 	return fromStoreImages(rows), err
+}
+
+func (a Images) RecordFetchFailure(ctx context.Context, hash string, at, retryAt time.Time) error {
+	return a.st.RecordImageFetchFailure(ctx, hash, at, retryAt)
+}
+
+func (a Images) DeferFetch(ctx context.Context, hash string, retryAt time.Time) error {
+	return a.st.DeferImageFetch(ctx, hash, retryAt)
 }
 
 func (a Images) ListByOrigin(ctx context.Context, origin images.Origin, limit int) ([]images.Image, error) {
@@ -125,8 +144,8 @@ func (a Images) ListByOrigin(ctx context.Context, origin images.Origin, limit in
 	return fromStoreImages(rows), err
 }
 
-func (a Images) ListExpiredBefore(ctx context.Context, cutoff time.Time, limit int) ([]images.Image, error) {
-	rows, err := a.st.ListImagesExpiredBefore(ctx, cutoff, limit)
+func (a Images) ListExpiredBefore(ctx context.Context, cutoff time.Time, after images.ExpiryCursor, limit int) ([]images.Image, error) {
+	rows, err := a.st.ListImagesExpiredBefore(ctx, cutoff, clipstore.ExpiryCursor{FetchedAt: after.FetchedAt, Hash: after.Hash}, limit)
 	return fromStoreImages(rows), err
 }
 
@@ -251,6 +270,11 @@ func toStoreImage(img images.Image) clipstore.Image {
 		CreatedAt:       img.CreatedAt,
 		UpdatedAt:       img.UpdatedAt,
 		LastUsedAt:      img.LastUsedAt,
+		FetchFailures:   img.FetchFailures,
+		FetchFailedAt:   img.FetchFailedAt,
+		FetchRetryAt:    img.FetchRetryAt,
+		FetchQueuedAt:   img.FetchQueuedAt,
+		FetchPriority:   int(img.FetchPriority),
 	}
 }
 
@@ -276,5 +300,10 @@ func fromStoreImage(rec clipstore.Image) images.Image {
 		CreatedAt:       rec.CreatedAt,
 		UpdatedAt:       rec.UpdatedAt,
 		LastUsedAt:      rec.LastUsedAt,
+		FetchFailures:   rec.FetchFailures,
+		FetchFailedAt:   rec.FetchFailedAt,
+		FetchRetryAt:    rec.FetchRetryAt,
+		FetchQueuedAt:   rec.FetchQueuedAt,
+		FetchPriority:   images.FetchPriority(rec.FetchPriority),
 	}
 }

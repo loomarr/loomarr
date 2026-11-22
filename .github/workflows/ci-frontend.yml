@@ -2,6 +2,18 @@ name: CI / Frontend
 
 on:
   workflow_call:
+    # Turbo Remote Cache, the same four optional secrets as ci-clients.yml: the typecheck and
+    # package-test tasks here hash the same as the client lanes', so the two workflows share results.
+    # A run without TURBO_TOKEN uses no remote cache.
+    secrets:
+      TURBO_API:
+        required: false
+      TURBO_TEAM:
+        required: false
+      TURBO_TOKEN:
+        required: false
+      TURBO_REMOTE_CACHE_SIGNATURE_KEY:
+        required: false
 
 permissions:
   contents: read
@@ -12,7 +24,7 @@ env:
 
 jobs:
   run:
-    name: Frontend — ${{ matrix.shard == 7 && 'biome + typecheck + build' || matrix.shard == 8 && 'package tests' || format('web unit ({0}/6)', matrix.shard) }}
+    name: Frontend — ${{ matrix.shard == 7 && 'biome + build' || matrix.shard == 8 && 'typecheck + package tests' || format('web unit ({0}/6)', matrix.shard) }}
     runs-on: ubuntu-latest
     # `make fe` was 394s and this job 7.0 min. The jsdom unit suite is the bulk of it ON THIS
     # RUNNER, which is the part worth spelling out: locally the whole suite is 33.5s (measured
@@ -23,10 +35,14 @@ jobs:
     #
     # Eight entries split `make fe` between them. 1-6 each run codegen and a sixth of the web unit
     # tests (`make fe-unit`). 7 runs codegen and the static checks and builds (`make fe-checks`), 8
-    # the package tests (`make fe-packages`, 67s, most of it packages/ui). Only codegen repeats,
-    # because each entry needs the generated files. Repeating the other stages in every shard cost
-    # about 2m20s of a 4m40s job. Expressions have no arithmetic, so the /6 is literal: change it
-    # together with the matrix and the entry 7 and 8 conditions.
+    # the typecheck and the package tests through Turbo (`make fe-typecheck fe-packages`). Only
+    # codegen repeats, because each entry needs the generated files. Repeating the other stages in
+    # every shard cost about 2m20s of a 4m40s job. Expressions have no arithmetic, so the /6 is
+    # literal: change it together with the matrix and the entry 7 and 8 conditions.
+    #
+    # The typecheck and the package tests share entry 8 because Turbo's `test` depends on each
+    # package's `typecheck`: split across two runners, a cache miss would typecheck the packages on
+    # both.
     strategy:
       fail-fast: false # one shard's failures must not hide the others'
       matrix:
@@ -55,8 +71,19 @@ jobs:
       - name: Token artifacts are committed and current
         if: matrix.shard == 7
         run: make fe-tokens-verify
-      - if: matrix.shard == 8
-        run: make fe-packages
+      # The only step that runs Turbo, so the only one with the Remote Cache settings; `make
+      # fe-install` runs dependency install scripts and never sees them. TURBO_CACHE is the
+      # ci-clients.yml expression: the merge queue and main write, every other run reads.
+      - name: Typecheck and test the packages
+        if: matrix.shard == 8
+        env:
+          TURBO_TELEMETRY_DISABLED: "1"
+          TURBO_API: ${{ secrets.TURBO_API }}
+          TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
+          TURBO_CACHE: ${{ (github.event_name == 'merge_group' || github.ref == 'refs/heads/main') && 'local:rw,remote:rw' || 'local:rw,remote:r' }}
+        run: make fe-typecheck fe-packages
       # ⚠ main only (#1679). A cache is readable only from its own ref and the default branch, and
       # every queue batch has a unique `gh-readonly-queue/…` ref, so a queue save is written once
       # and read by nothing. A pull-request or branch save is a ~350 MB per-ref copy too.

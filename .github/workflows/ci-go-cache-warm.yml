@@ -17,7 +17,12 @@
 # prefix (`…-<week>-<lane>-`) when `go.sum` changed mid-week.
 #
 # `contracts` is its own job because it caches a third path, the lint cache, and GitHub versions a
-# cache by its paths. Go contracts and the merge gate restore it, so it compiles what they compile.
+# cache by its paths. Go contracts restores it, so it compiles what they compile. The merge gate has
+# its own cache, written by merge-gate-cache.yml.
+#
+# A changed `go.sum`, a new week, a new lockfile or a new pin saves a new entry and leaves the old
+# one behind. `scripts/ci-cache-retention.sh`, run from merge-gate-cache.yml, deletes the superseded
+# entry of each family.
 #
 # `pnpm` and `ffmpeg` seed the exact keys the consumers restore, and only when that key is missing:
 # one pnpm store per lockfile, one archive per FFmpeg pin. The pnpm seed installs from an empty store

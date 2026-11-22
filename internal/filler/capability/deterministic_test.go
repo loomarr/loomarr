@@ -13,8 +13,9 @@ import (
 )
 
 // This test pins the production brand dictionary (phraseMappings in filler/enrichment's
-// deterministic.go: "hp sauce", "tootsie pop") and its "on Five" network rule end to end, so it
-// keeps their real names. A dictionary phrase is the only text that fires a trusted product mapping.
+// deterministic.go: "hp sauce", "tootsie pop") and its "on Five" rule end to end, so it keeps
+// their real names. A dictionary phrase is the only text that fires a trusted product mapping.
+// "Aired on Five" locates an ad in GB without making it Five's own, so it records no network.
 
 func TestDeterministicFillerEnrichmentProjectsPinnedExamplesWithoutAProvider(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
@@ -45,7 +46,7 @@ func TestDeterministicFillerEnrichmentProjectsPinnedExamplesWithoutAProvider(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hp.Era != 1999 || hp.Brand != "HP Sauce" || hp.Category != "condiments" || hp.Country != "GB" || hp.Network != "Five" {
+	if hp.Era != 1999 || hp.Brand != "HP Sauce" || hp.Category != "condiments" || hp.Country != "GB" || hp.Network != "" {
 		t.Fatalf("HP projection = %+v", hp)
 	}
 	tootsie, err := st.GetClip(t.Context(), "tootsie")
