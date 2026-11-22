@@ -643,8 +643,13 @@ quarantine off, so it measures every test. That non-blocking step is the only so
 workflow policy lets set `continue-on-error` (`nonBlocking` in `internal/platform/releaseverify`).
 
 After that portability proof is green, `Apple compilation cache` is the only workflow authorized to
-publish compiler results. It is manual-only, refuses every ref except `refs/heads/main`, and builds
-the complete mobile and TV Release install-launch-liveness gates before saving. A restored seed is
+publish compiler results. It refuses every ref except `refs/heads/main`, and builds the complete
+mobile and TV Release install-launch-liveness gates before saving. The fingerprint includes the pnpm
+lockfile and the runner's Xcode and SDKs, so a dependency update or a new runner image leaves the
+Apple jobs with no generation and they build cold. A daily scheduled run therefore fingerprints the
+toolchain in a short `xcode-27` job and looks the fingerprint up on main without downloading it. The
+build runs only when no generation matches. A manual run always builds, and restores the matching
+generation as its seed. A restored seed is
 hash-validated before use; the candidate CAS and compressed archive are validated again, and a save
 is refused if its size plus a 512 MiB reserve would exceed the repository's 10 GiB cache budget.
 Before installing dependencies or starting either native build, the writer also requires enough
