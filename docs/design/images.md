@@ -95,7 +95,8 @@ produces different but contract-equivalent bytes.
 ### Required renderer protocol and limits
 
 - **Boot self-test.** `loomarr-image capabilities --protocol 1 --self-test` must agree on release,
-  protocol, recipe, formats and an embedded static-plus-animation probe before readiness.
+  protocol, recipe, formats and an embedded static-plus-animation probe before readiness, and must
+  list every operation the server requires (`decode-subtitles`, which burn-in calls).
 - **One request, one staging directory.** `loomarr-image generate --protocol 1` reads one bounded JSON
   request on stdin (a content-addressed source and its SHA-256, a private staging directory, targets
   and limits) and writes one bounded result on stdout; stderr is bounded diagnostics. Rust writes only

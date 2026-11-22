@@ -573,9 +573,9 @@ draws them over the picture:
     stream out as a `.sup` (at most 256 MiB) and hashes it. The image worker decodes it into the
     full canvas at each change (`decode-subtitles`, [`images.md`](images.md), *Operations beyond
     renditions*), behind the `playout.SubtitleStillDecoder` seam; the app's adapter is the certified
-    worker, which must list `decode-subtitles` to pass its startup check. Go holds the result to the worker's ceilings again (an
-    even canvas of at most 3840×2160, at most 50,000 states, every still inside the worker's staging
-    directory) before it allocates anything. Go owns everything after the stills: one ffmpeg run
+    worker, which must list `decode-subtitles` to pass its startup check. Go holds the result to
+    the worker's ceilings again (an even canvas of at most 3840×2160, at most 50,000 states, every
+    still inside the worker's staging directory) before it allocates anything. Go owns everything after the stills: one ffmpeg run
     converts them into one-frame ffv1 files that are already yuva420p BT.709, and each encoder reads
     an ffconcat list written for its own seek (the still on screen at that moment first, then each
     change for exactly as long as it shows) through a `movie=` source inside its `-vf`, blended
