@@ -178,11 +178,14 @@ func (g *GC) enforceTTL(ctx context.Context, out *GCResult) error {
 			// ⚠ Zero is the fetch job's "never fetched" sentinel, so this is a requeue rather than a
 			// flag: the row rejoins ListAwaitingFetch by construction and no second queue exists to
 			// keep in step with this one. It joins the refresh class at the back, behind every
-			// adopted image and every refresh already waiting.
+			// adopted image and every refresh already waiting. A bulk image (an episode still)
+			// stays in the bulk class: stills are fetched in a burst, so they expire in one, and
+			// tens of thousands of them in the refresh class would hold a purged poster, which
+			// reads as pending until it is fetched again, behind hours of stills.
 			now := g.svc.now()
 			img.OriginFetchedAt = time.Time{}
 			img.FetchQueuedAt = now
-			img.FetchPriority = FetchRefresh // behind adopted artwork, however many are requeued
+			img.FetchPriority = max(img.FetchPriority, FetchRefresh)
 			img.UpdatedAt = now
 			if err := g.store.PutImage(ctx, img); err != nil {
 				return err

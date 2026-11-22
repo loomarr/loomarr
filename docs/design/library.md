@@ -532,7 +532,31 @@ step 5). Nothing reads the scanner's origins until the cutover.
   ref, and a title with none lets it go. An artwork file beside the media is one of its sidecars,
   so adding or changing one rewrites the title; a folder's own art (`poster.jpg`) counts only for
   the folder's one video. A poster that fails to import leaves the title as it was, and the next
-  write tries again.
+  write tries again. A movie the walk wrote while its catalog record was still to come takes the
+  record's artwork when the header stage writes it with that record.
+- **Episode stills** (#4476). When the importer writes an episode it hands the resolved still
+  (artwork kind `thumb`) to the image service the same way, and the episode owns it through a
+  `library_item_images` row of role `thumb`, the image service's 16:9 still on the 300/780/1280
+  ladder; an episode imports no other kind. Its `<file>-thumb` file beside it comes first, then a
+  provider's URL (an arr's screenshot, or TMDB's episode still), and a still the header stage's
+  catalogue record names is imported when that record arrives. TMDB's still is requested at
+  `w300`, the size an episode row draws, where a title's poster, fanart and logo are requested at
+  `original`. An episode record cached by an earlier build names its still at `original` until
+  it is refreshed, so the importer moves a TMDB still at `original` to `w300` before handing it
+  over (`tmdb.SmallStill`), and the cached records are not fetched again for it. A `<file>-thumb` file and an arr's screenshot arrive at whatever size they are,
+  which Loomarr does not choose; the image service offers no rung of a still wider than its
+  original (images.md, "Two modes"). A new still replaces the old ref, and an episode with none
+  lets it go. A provider's still is only adopted during the pass: the image fetch job pulls the
+  bytes, at most 64 images a minute under its fixed concurrency cap, so writing a series of
+  hundreds of episodes fetches nothing in the pass. A still is adopted in the fetch queue's bulk
+  class (`fetch_priority` 2), so it arrives after every title's poster, fanart and logo waiting,
+  including one adopted after it; a still file beside the media is ingested when it is written,
+  as a poster file is. Each episode row of a series' page carries `still`, and an episode's own
+  page carries `still`, each absent when it has none or while its bytes are being fetched. The
+  page's one read of its episodes reads each still's hash with its row, and every image the page
+  draws, its own and its episodes' stills, is rendered from one batched image read. A member is
+  sent the still of an episode their season lists hold only, so never a raw provider URL and
+  never a hidden episode's.
 - **Catalog details** (decision 20). A movie or series whose ids include a TMDB id takes its
   details from TMDB: the guide text, genres, rating, poster and fanart, ranked by precedence like
   any other source. The walk never calls TMDB. `library_catalog` caches each record by provider,
@@ -1219,6 +1243,14 @@ header is kept, so no file is opened again. Each version and what it changed:
   " - Copy (2)", and macOS's bare " copy" when it is all that follows the mark. A duplicated
   episode is named as, and joins, its original. "Carbon Copy" keeps its word, and a part's number
   ("Equinox (1)") stays its title's, so a browser's " (1)" is not read as a duplicate's.
+- **92:** an episode's still is imported when it is written (#4476, "Episode stills"), so an
+  episode an earlier build wrote takes its still. Every file is written once more with no header
+  read: one inventory write per file (about 33,000 on a library that size), each episode's still
+  file beside it read, hashed and ingested, each provider still recorded for the fetch job, and
+  each movie's and series' artwork handed over again: an artwork file beside the media is read and
+  hashed again but not ingested when the service holds its bytes, an adopted URL is one lookup,
+  and either rewrites its ref row. The fetch job then works through the adopted stills, 64 a
+  minute, in the bulk class behind every title's artwork.
 
 ## Search
 

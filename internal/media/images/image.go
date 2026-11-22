@@ -122,9 +122,9 @@ type Role string
 
 const (
 	RolePoster   Role = "poster"   // 2:3 — channel tiles, title art
-	RoleBackdrop Role = "backdrop" // 16:9 — episode stills, hero images
+	RoleBackdrop Role = "backdrop" // 16:9 fanart — a title's backdrop, drawn up to full screen
 	RoleIcon     Role = "icon"     // channel icons and logos
-	RoleThumb    Role = "thumb"    // clip stills in the filler catalog
+	RoleThumb    Role = "thumb"    // 16:9 still — an episode's, or a filler clip's
 	// RoleWatermark is a channel's custom bug (#1512 phase 1d). Its alpha IS the shape, and the
 	// icon rung's JPEG has none, so the bug renderer reads the stored ORIGINAL (Service.Original),
 	// never a rendition; the upload accepts only alpha-capable PNG and WebP.

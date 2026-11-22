@@ -372,6 +372,110 @@ func TestLibraryItemsCarryPosters(t *testing.T) {
 	}
 }
 
+// Each episode row of a series' page carries its still, and an episode's own page carries it as
+// its still rather than a backdrop (#4476). A member is sent the still of an episode they read
+// only: one still named by its file is in no member's season, and neither is its still. Every
+// image a page draws comes from one batched read, never a read per episode.
+func TestLibraryEpisodesCarryTheirStills(t *testing.T) {
+	imgs := newFakeImageService()
+	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, Images: imgs,
+			Library: api.LibraryOptions{Roots: newScanLibrary(t, defaults.Store)},
+		})
+	})
+	seedMemberLibrary(t, h.Store)
+	ctx := context.Background()
+	at := time.UnixMilli(1_790_000_000_000).UTC()
+	stills := map[string]images.Image{}
+	for i, ep := range []string{"90000011", fileNamedEpisode} {
+		img := images.Image{Hash: strings.Repeat(string(rune('d'+i)), 64), Origin: images.OriginExtracted,
+			Role: images.RoleThumb, Width: 300, Height: 169, OriginFetchedAt: at}
+		stills[ep] = img
+		imgs.records[img.Hash] = img
+		if err := h.Store.PutImage(ctx, clipstore.Image{Hash: img.Hash, Origin: string(img.Origin), Role: string(img.Role),
+			Visibility: "member", CreatedAt: at, UpdatedAt: at, LastUsedAt: at}); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.Store.PutImageRef(ctx, clipstore.ImageRef{ImageHash: img.Hash, OwnerKind: librarystore.LibraryItemImageOwner,
+			OwnerID: ep, Role: string(images.RoleThumb)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	type image struct {
+		Hash string `json:"hash"`
+	}
+	type page struct {
+		BackdropImage *image `json:"backdropImage"`
+		Still         *image `json:"still"`
+		Seasons       []struct {
+			Episodes []struct {
+				ID    string `json:"id"`
+				Still *image `json:"still"`
+			} `json:"episodes"`
+		} `json:"seasons"`
+	}
+	// read is the page at id as token reads it, failing unless every image came from one batched read.
+	read := func(id, token string, p any) {
+		t.Helper()
+		imgs.mu.Lock()
+		imgs.gets, imgs.manyReads = 0, 0
+		imgs.mu.Unlock()
+		decode(t, h.Do(http.MethodGet, "/v1/library/items/"+id, token, ""), p)
+		imgs.mu.Lock()
+		defer imgs.mu.Unlock()
+		if imgs.gets != 0 || imgs.manyReads != 1 {
+			t.Fatalf("%s page read images %d one at a time and %d batched; want one batched read", id, imgs.gets, imgs.manyReads)
+		}
+	}
+	sent := func(token string) map[string]string {
+		t.Helper()
+		var p page
+		read("90000002", token, &p)
+		if p.Still != nil || p.BackdropImage != nil {
+			t.Fatalf("series page still %+v, backdrop %+v; want neither", p.Still, p.BackdropImage)
+		}
+		out := map[string]string{}
+		for _, s := range p.Seasons {
+			for _, ep := range s.Episodes {
+				if ep.Still != nil {
+					out[ep.ID] = ep.Still.Hash
+				}
+			}
+		}
+		return out
+	}
+	if got := sent(adminToken); len(got) != 2 || got["90000011"] != stills["90000011"].Hash ||
+		got[fileNamedEpisode] != stills[fileNamedEpisode].Hash {
+		t.Errorf("admin stills = %v", got)
+	}
+	if got := sent(memberToken); len(got) != 1 || got["90000011"] != stills["90000011"].Hash {
+		t.Errorf("member stills = %v, want only the episode a member reads", got)
+	}
+	// An episode with no still has no field, not null.
+	var raw struct {
+		Seasons []struct {
+			Episodes []map[string]json.RawMessage `json:"episodes"`
+		} `json:"seasons"`
+	}
+	decode(t, h.Do(http.MethodGet, "/v1/library/items/90000002", adminToken, ""), &raw)
+	for _, s := range raw.Seasons {
+		for _, ep := range s.Episodes {
+			if v, ok := ep["still"]; ok && string(ep["id"]) == `"`+unmarkedEpisode+`"` {
+				t.Errorf("still = %s on an episode with none, want the field absent", v)
+			}
+		}
+	}
+
+	for _, token := range []string{adminToken, memberToken} {
+		var p page
+		read("90000011", token, &p)
+		if p.Still == nil || p.Still.Hash != stills["90000011"].Hash || p.BackdropImage != nil {
+			t.Errorf("%s episode page still %+v, backdrop %+v; want its still alone", token, p.Still, p.BackdropImage)
+		}
+	}
+}
+
 // A title's page says what decides which title it is, for "Wrong title?"; Check files again puts
 // its files' headers back to read, and Update details writes it again without a catalog.
 func TestLibraryItemMatchAndActions(t *testing.T) {

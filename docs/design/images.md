@@ -234,7 +234,10 @@ the database only.
   surface adopted, 1 for an image the purge requeued for a refresh, and 2 for artwork adopted in
   bulk to fetch last (episode stills). Within a class, `fetch_queued_at` sets the order: the
   adoption, or the requeue. Artwork adopted the day a purge requeues thousands of images therefore
-  goes ahead of all of them. The queue's read follows `idx_images_fetch_queue` (origin,
+  goes ahead of all of them. The purge requeues a bulk image in the bulk class, not the refresh
+  class: stills are fetched in a burst, so they expire in one, and tens of thousands of them in
+  the refresh class would keep a purged poster, which reads as pending until it is fetched again,
+  waiting hours behind them. The queue's read follows `idx_images_fetch_queue` (origin,
   origin_fetched_at, fetch_priority, fetch_queued_at, hash), so a pass reads the front of the queue
   without sorting it.
 - **A failed download backs off.** Each failure is recorded on the row (`fetch_failures`,
@@ -260,7 +263,9 @@ the database only.
   Data sources, and the same line in the README (#2853).
 - **Connections:** well under TMDB's 20 per IP, with jittered backoff on 429 and 5xx.
 - **Fetch `original` once** and build the ladder locally: one origin request per artwork. `profile`
-  sizes use a height token (`h632`), and SVG assets exist only at `original`.
+  sizes use a height token (`h632`), and SVG assets exist only at `original`. An episode's still
+  is the exception: it is fetched at `w300` (#4476), the size an episode row draws, because a
+  library holds tens of thousands of them and no surface draws one larger.
 
 ### Metadata
 
@@ -270,7 +275,24 @@ need attribution or provenance read the image row instead of parsing format-spec
 
 ### Two modes
 
-- **Owned** (the default): ingested, content-addressed, permanent record, immutable URL.
+- **Owned** (the default): ingested, content-addressed, permanent record, immutable URL. The
+  Library's artwork is owned: a title's poster, fanart (role `backdrop`) and clear logo, and an
+  episode's still (role `thumb`, #4476), each imported when the scanner writes the title or
+  episode, a file beside the media ingested then and a provider's URL adopted for the fetch job
+  (library.md, "Posters, backdrops and logos" and "Episode stills"). Role `thumb` is a 16:9
+  still, an episode's or a filler clip's, on the 300/780/1280 ladder; role `backdrop` is fanart,
+  on the ladder to 3840.
+- **A rendition is never an upscale where it would show.** Fanart drops a full-screen rung (1920
+  and up) its original cannot fill. A still's rungs are never wider than the original, except
+  that the smallest rung is always offered, so an original narrower than 300 is served at 300. A
+  300-wide catalogue still is served at 300 alone, and a 2x screen drawing it at 300 CSS pixels
+  takes that rung and scales it in the browser. A filler clip's catalogue still is made 320 wide
+  (`tools.PreviewWidth`), so its ladder is `[300]` too: a 780 or 1280 rendition a clip still
+  already holds is not listed, and budget eviction reclaims it when the cache is over budget. A
+  split proposal's
+  segment still is a frame up to 1920 wide and keeps the rungs it fills. The other roles keep their
+  whole ladder, and an image whose width is not yet known (adopted, bytes not here) lists the
+  whole ladder.
 - **Proxied**: a short-TTL pass-through with **no permanent row**, for high-volume ephemeral thumbnails
   such as source-search results. Ingesting hundreds of thumbnails for a search the operator abandons
   would be the wrong trade; proxying still removes the third-party origin from the browser.

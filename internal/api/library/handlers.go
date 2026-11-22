@@ -30,11 +30,8 @@ type Deps struct {
 	LibraryHooks     LibraryHookService
 	Collections      CollectionService
 	MovieCollections MovieCollectionService
-	// LibraryImage renders one title image by hash, or nil while its bytes have not arrived.
-	// nil leaves every poster and logo out.
-	LibraryImage func(ctx context.Context, hash string) *httpcore.ImageDTO
 	// LibraryImages renders many title images by hash in one read, leaving out any whose bytes
-	// have not arrived. nil leaves every poster of a list out.
+	// have not arrived. nil leaves every poster, logo, fanart and still out.
 	LibraryImages func(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO
 	// CandidatePoster adopts a candidate's poster and renders it once its bytes are here.
 	CandidatePoster func(ctx context.Context, itemID, url string) *httpcore.ImageDTO
@@ -48,18 +45,8 @@ type Handlers struct {
 	libraryHooks      LibraryHookService
 	collections       CollectionService
 	movieCollections  MovieCollectionService
-	libraryImageFn    func(ctx context.Context, hash string) *httpcore.ImageDTO
 	libraryImagesFn   func(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO
 	candidatePosterFn func(ctx context.Context, itemID, url string) *httpcore.ImageDTO
-}
-
-// libraryImage renders one of a title's images by hash: nil for none, or while its bytes have not
-// arrived, so a surface draws without it rather than showing a broken image.
-func (s *Handlers) libraryImage(ctx context.Context, hash string) *httpcore.ImageDTO {
-	if s.libraryImageFn == nil || hash == "" {
-		return nil
-	}
-	return s.libraryImageFn(ctx, hash)
 }
 
 // candidatePoster renders a candidate's poster once the image service has its bytes, or nil.
@@ -75,7 +62,7 @@ func New(d Deps) *Handlers {
 	return &Handlers{
 		store: d.Store, liveSettings: d.LiveSettings, libraryRoots: d.LibraryRoots, libraryHooks: d.LibraryHooks,
 		collections: d.Collections, movieCollections: d.MovieCollections,
-		libraryImageFn: d.LibraryImage, libraryImagesFn: d.LibraryImages, candidatePosterFn: d.CandidatePoster,
+		libraryImagesFn: d.LibraryImages, candidatePosterFn: d.CandidatePoster,
 	}
 }
 

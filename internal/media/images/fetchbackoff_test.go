@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -471,5 +472,50 @@ func TestPurgedImagesWaitBehindNewArtwork(t *testing.T) {
 		if img.FetchPriority != FetchRefresh {
 			t.Fatalf("a purged image queued at priority %d, want the refresh class", img.FetchPriority)
 		}
+	}
+}
+
+// An episode still is adopted in the bulk class (#4476), so a poster adopted after it is fetched
+// first; and when the purge requeues a still it stays in the bulk class, behind a purged poster
+// it expired ahead of.
+func TestStillsWaitBehindEveryOtherImage(t *testing.T) {
+	const ttl = 30 * 24 * time.Hour
+	gc, svc, fs, _ := newTestGC(t, ttl, 0)
+	ctx := context.Background()
+	expired := seedExpired(t, fs, ttl, 2)
+	still := fs.images[expired[0]]
+	still.Role, still.FetchPriority = RoleThumb, FetchBulk
+	if err := fs.PutImage(ctx, still); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gc.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	clock := fixedNow.Add(time.Minute)
+	svc.now = func() time.Time { return clock }
+	newStill, err := svc.Adopt(ctx, "https://image.tmdb.org/t/p/w300/s1e1.jpg",
+		IngestRequest{Role: RoleThumb, FetchPriority: FetchBulk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock = clock.Add(time.Minute)
+	poster, err := svc.Adopt(ctx, "https://image.tmdb.org/t/p/original/later.png", IngestRequest{Role: RolePoster})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue, err := fs.ListAwaitingFetch(ctx, clock, fetchBatch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, img := range queue {
+		got = append(got, img.Hash)
+	}
+	want := []string{poster.Hash, expired[1], still.Hash, newStill.Hash}
+	if !slices.Equal(got, want) {
+		t.Fatalf("queue = %v\nwant the later poster, the purged poster, then the stills: %v", got, want)
+	}
+	if fs.images[still.Hash].FetchPriority != FetchBulk {
+		t.Fatalf("a purged still requeued at priority %d, want the bulk class", fs.images[still.Hash].FetchPriority)
 	}
 }

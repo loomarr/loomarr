@@ -20,8 +20,9 @@ import "slices"
 var (
 	// posterWidthLadder is 2:3 artwork — channel tiles, title art.
 	posterWidthLadder = []int{154, 185, 342, 500, 780}
-	// thumbWidthLadder is 16:9 episode stills. Fewer rungs because these are rendered at a small
-	// number of sizes (a hover chip, a timeline strip) rather than across a fluid grid.
+	// thumbWidthLadder is a 16:9 still, an episode's or a filler clip's. Fewer rungs because these
+	// are rendered at a small number of sizes (an episode row, a hover chip, a timeline strip)
+	// rather than across a fluid grid.
 	thumbWidthLadder = []int{300, 780, 1280}
 	// backdropWidthLadder is 16:9 fanart, which is also drawn full screen: the player's cold-start
 	// hold, the station ident and full-width Home art need at least the screen's width, 1440 to
@@ -83,16 +84,31 @@ const fullScreenFrom = 1920
 
 // WidthsFor is the ladder for an image whose original is sourceWidth pixels wide. A full-screen
 // fanart rung (1920 and up) is only made when the original can fill it, so the server never
-// upscales one (#2774): a 1280 original has no 1920 rung and a 1920 one has no 3840. The smaller
-// rungs, and every other role, keep the whole ladder: they are drawn at card sizes, where a rung
-// slightly wider than a small original is not visible, and a small original must still have one.
-// A sourceWidth of 0 (unknown, for an adopted image whose bytes have not arrived) is the whole ladder.
+// upscales one (#2774): a 1280 original has no 1920 rung and a 1920 one has no 3840. A still's
+// (RoleThumb) rungs are never wider than its original, except that the smallest rung is always
+// offered, so an image always has one (#4476): an original narrower than 300 is served at 300. A
+// catalogue still arrives 300 wide, and a 780 or 1280 rung of it would be the same pixels
+// upscaled at several times the bytes, so its set is the one 300 rung, and a 2x screen drawing it
+// at 300 CSS pixels takes that rung and scales it in the browser. A filler clip's catalogue still
+// is made 320 wide (tools.PreviewWidth), so its set is the 300 rung too; a 780 or 1280 rendition
+// such an image already holds is not listed, and budget eviction reclaims it when the cache is
+// over budget. A split
+// proposal's segment still is a frame up to 1920 wide and keeps the rungs it fills. The other
+// roles keep the whole ladder: they are drawn at card sizes, where a rung slightly wider than a
+// small original is not visible. A sourceWidth of 0 (unknown, for an adopted image whose bytes
+// have not arrived) is the whole ladder.
 func (r Role) WidthsFor(sourceWidth int) []int {
 	ladder := r.Widths()
-	if sourceWidth <= 0 || r != RoleBackdrop {
+	switch {
+	case sourceWidth <= 0:
 		return ladder
+	case r == RoleBackdrop:
+		return slices.DeleteFunc(ladder, func(w int) bool { return w >= fullScreenFrom && w > sourceWidth })
+	case r == RoleThumb:
+		first := ladder[0]
+		return slices.DeleteFunc(ladder, func(w int) bool { return w > first && w > sourceWidth })
 	}
-	return slices.DeleteFunc(ladder, func(w int) bool { return w >= fullScreenFrom && w > sourceWidth })
+	return ladder
 }
 
 // AVIFWidthsFor is WidthsFor without the rungs wider than maxAVIFWidth.

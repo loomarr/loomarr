@@ -122,6 +122,37 @@ func TestWidthsForNeverUpscale(t *testing.T) {
 	}
 }
 
+// A still offers no rung wider than its original, except that the smallest rung is always offered
+// (#4476): a 300-wide catalogue still and a 320-wide filler clip still are each the one 300 rung,
+// asked for at any width, while a split proposal's full-size segment still keeps every rung.
+func TestStillWidthsNeverUpscale(t *testing.T) {
+	cases := []struct {
+		source int
+		want   []int
+	}{
+		{0, []int{300, 780, 1280}},    // unknown: the whole ladder
+		{185, []int{300}},             // narrower than the smallest rung: that rung, upscaled
+		{300, []int{300}},             // a catalogue still
+		{320, []int{300}},             // a filler clip's still (tools.PreviewWidth)
+		{1000, []int{300, 780}},       // a 1000-wide arr screenshot
+		{1920, []int{300, 780, 1280}}, // a split proposal's 1080p segment still
+	}
+	for _, c := range cases {
+		if got := RoleThumb.WidthsFor(c.source); !slices.Equal(got, c.want) {
+			t.Errorf("thumb WidthsFor(%d) = %v, want %v", c.source, got, c.want)
+		}
+		if got := RoleThumb.AVIFWidthsFor(c.source); !slices.Equal(got, c.want) {
+			t.Errorf("thumb AVIFWidthsFor(%d) = %v, want %v", c.source, got, c.want)
+		}
+	}
+	if got := RoleThumb.NearestWidthFor(1280, 300); got != 300 {
+		t.Errorf("NearestWidthFor(1280, 300) = %d, want 300, never an upscale", got)
+	}
+	if got := RoleThumb.NearestWidthFor(1280, 1920); got != 1280 {
+		t.Errorf("NearestWidthFor(1280, 1920) = %d, want 1280 for a full-size segment still", got)
+	}
+}
+
 // AVIF stops at 1920: the 3840 encode is the dearest rendition and a 4K client takes WebP.
 func TestAVIFLadderStopsAt1920(t *testing.T) {
 	if got, want := RoleBackdrop.AVIFWidthsFor(3840), []int{300, 780, 1280, 1920}; !slices.Equal(got, want) {

@@ -353,7 +353,8 @@ type libraryEpisodeDTO struct {
 	FromFile *bool  `json:"fromFile,omitempty" doc:"Its name and number are its file's, until the show's episode order is said. Admins only"`
 	Overview string `json:"overview,omitempty" doc:"Its own story"`
 	// LengthMillis reads its files' durations only, never their tracks.
-	LengthMillis int64 `json:"lengthMillis,omitempty" doc:"How long it plays: measured from its files once each is read, else its catalog's runtime; absent when neither is known"`
+	LengthMillis int64              `json:"lengthMillis,omitempty" doc:"How long it plays: measured from its files once each is read, else its catalog's runtime; absent when neither is known"`
+	Still        *httpcore.ImageDTO `json:"still,omitempty" doc:"Its still; absent when it has none, or while one is still being fetched"`
 }
 
 type librarySeasonDTO struct {
@@ -368,6 +369,7 @@ type libraryItemDetailDTO struct {
 	// (#2567). A logo keeps its transparency: its fallback src is WebP, never JPEG.
 	LogoImage     *httpcore.ImageDTO  `json:"logoImage,omitempty" doc:"Its clear logo; absent when it has none, or while one is still being fetched"`
 	BackdropImage *httpcore.ImageDTO  `json:"backdropImage,omitempty" doc:"Its fanart; absent when it has none, or while one is still being fetched"`
+	Still         *httpcore.ImageDTO  `json:"still,omitempty" doc:"An episode's still; absent for a movie or a series, when it has none, or while one is still being fetched"`
 	Overview      string              `json:"overview,omitempty"`
 	Genres        []string            `json:"genres"`
 	Rating        string              `json:"rating,omitempty" doc:"The certification, such as TV-14"`
@@ -443,17 +445,51 @@ func (s *Handlers) getLibraryItem(ctx context.Context, in *getLibraryItemInput) 
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read this title", "Try again in a moment.", err)
 	}
-	posters := s.libraryPosters(ctx, []librarystore.LibraryItemSummary{d.LibraryItemSummary})
-	body := libraryItemDetailOf(d, posters, admin)
-	body.LogoImage, body.BackdropImage = s.libraryImage(ctx, d.Logo), s.libraryImage(ctx, d.Backdrop)
+	images := s.pageImages(ctx, d, admin)
+	body := libraryItemDetailOf(d, images, admin)
+	body.LogoImage, body.BackdropImage = images[d.Logo], images[d.Backdrop]
+	if d.Still != "" {
+		body.Still = images[d.Still]
+	}
 	return &getLibraryItemOutput{Body: body}, nil
 }
 
+// episodeShown is whether the caller reads ep in its series' season: an episode still named by
+// its file, whether it waits on the show's order in Needs you or on its show's catalogue record,
+// is left out of a member's.
+func episodeShown(ep scan.Episode, admin bool) bool {
+	return admin || (!ep.FromFile && ep.Named)
+}
+
+// pageImages renders, by hash, every image d's page draws in one read (#4476): its poster, logo,
+// fanart and still, and the stills of the episodes the caller reads, whose hashes came with the
+// page's one read of its episodes. A hidden episode's still is not read, so it cannot be sent.
+func (s *Handlers) pageImages(ctx context.Context, d scan.ItemDetail, admin bool) map[string]*httpcore.ImageDTO {
+	if s.libraryImagesFn == nil {
+		return map[string]*httpcore.ImageDTO{}
+	}
+	var hashes []string
+	for _, h := range []string{d.Poster, d.Logo, d.Backdrop, d.Still} {
+		if h != "" {
+			hashes = append(hashes, h)
+		}
+	}
+	for _, season := range d.Seasons {
+		for _, ep := range season.Episodes {
+			if ep.Still != "" && episodeShown(ep, admin) {
+				hashes = append(hashes, ep.Still)
+			}
+		}
+	}
+	return s.libraryImagesFn(ctx, hashes)
+}
+
 // libraryItemDetailOf is d's page as the caller reads it: admin carries its files, its match,
-// where its details came from and each episode's fromFile.
-func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*httpcore.ImageDTO, admin bool) libraryItemDetailDTO {
+// where its details came from and each episode's fromFile. images renders its poster and its
+// episodes' stills by hash.
+func libraryItemDetailOf(d scan.ItemDetail, images map[string]*httpcore.ImageDTO, admin bool) libraryItemDetailDTO {
 	out := libraryItemDetailDTO{
-		Item:     libraryItemOf(d.LibraryItemSummary, posters, admin),
+		Item:     libraryItemOf(d.LibraryItemSummary, images, admin),
 		Overview: d.Facts.Overview, Genres: d.Facts.Genres, Rating: d.Facts.OfficialRating,
 		RuntimeMillis: d.Facts.RuntimeMillis,
 		OriginalTitle: d.Facts.OriginalTitle, Tagline: d.Facts.Tagline, PremiereDate: d.Facts.PremiereDate,
@@ -477,14 +513,15 @@ func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*httpcore.ImageDT
 	for _, season := range d.Seasons {
 		dto := librarySeasonDTO{Number: season.Number, Episodes: make([]libraryEpisodeDTO, 0, len(season.Episodes))}
 		for _, ep := range season.Episodes {
-			// An episode still named by its file, whether it waits on the show's order in Needs
-			// you or on its show's catalogue record, is left out of a member's season, and a
-			// season of only those is left out whole.
-			if !admin && (ep.FromFile || !ep.Named) {
+			// A season of only episodes a member doesn't read is left out of theirs whole.
+			if !episodeShown(ep, admin) {
 				continue
 			}
 			episode := libraryEpisodeDTO{ID: ep.ID, Name: ep.Name, Number: ep.Number, End: ep.End, Ready: ep.Ready,
 				Overview: ep.Overview, LengthMillis: ep.LengthMillis}
+			if ep.Still != "" {
+				episode.Still = images[ep.Still]
+			}
 			if admin {
 				episode.FromFile = &ep.FromFile
 			}
