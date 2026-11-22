@@ -114,8 +114,8 @@ func TestBurnInPreparerWritesALoadableTrackAndRefuses(t *testing.T) {
 		done <- err
 	}()
 	select {
-	case <-done:
-		t.Fatal("a held preparation returned before its context was cancelled")
+	case err := <-done:
+		t.Fatalf("a held preparation returned (%v) before its context was cancelled", err)
 	case <-time.After(20 * time.Millisecond):
 	}
 	release()
