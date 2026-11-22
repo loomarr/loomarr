@@ -67,7 +67,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	// profiler routes are Hidden on both paths anyway (they exist only when a flag is set), and the
 	// exporter has no Options to read the flag from.
 	opsapi.New(opsapi.Deps{}, true).Register(humaAPI)
-	agentsapi.New(log).Register(humaAPI)
+	agentsapi.New(agentsapi.Deps{Log: log}).Register(humaAPI)
 	return srv, humaAPI
 }
 
