@@ -134,9 +134,9 @@ jobs:
           # specialized classifier owns every job. Its values never activate a product build.
           #
           # ⚠ `scripts/` is here because the Go job RUNS scripts from it — `make tags-verify`
-          # is `./scripts/check-tags.sh`. Without it a PR that edited only a guard script
-          # skipped the one job that executes it, so a broken guard merged unproven: the guard
-          # was covered against the thing it reads but not against itself.
+          # is `./scripts/check-tags.sh`. Without it, a PR that edits only a guard script skips
+          # the one job that runs it, so a broken guard merges unproven: the guard is covered
+          # against the thing it reads but not against itself.
           #
           # ⚠ `docs/design.md` is here because the Go job ASSERTS ON IT. Two tests read it:
           # `TestPackageMapListsEveryPackage` (§14.2 lists every package) and
