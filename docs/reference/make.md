@@ -64,7 +64,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make rust-check` | ✅ | format, lint, build, and test the required Rust image worker <br>*runs:* `rust-test-worker` |
 | `make rust-test-worker` |  | build the debug Rust image worker required by Go unit tests |
 | `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
-| `make rust-fuzz` |  | fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz) |
+| `make rust-fuzz` |  | fuzz the bounded Rust image protocol and subtitle decoders; optional FUZZ_SECONDS per target (needs nightly + cargo-fuzz) |
 | `make fmt` | ✅ | gofmt -l (fails if any file needs formatting) |
 | `make shellcheck` | ✅ | shellcheck every repository shell script |
 | `make privacy-verify` | ✅ | captured private fixture literals and real media titles must not re-enter the tracked tree <br>*runs:* `demo-titles-verify` |

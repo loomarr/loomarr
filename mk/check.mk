@@ -27,10 +27,12 @@ rust-audit: ## check Rust advisories, licences, and dependency sources (needs ca
 	$(CARGO) deny check advisories licenses sources
 	$(CARGO) deny --manifest-path rust/loomarr-image/fuzz/Cargo.toml check advisories licenses sources
 
-rust-fuzz: ## fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz)
+rust-fuzz: ## fuzz the bounded Rust image protocol and subtitle decoders; optional FUZZ_SECONDS per target (needs nightly + cargo-fuzz)
 	@seconds="$${FUZZ_SECONDS:-60}"; \
 	  cd rust/loomarr-image; \
-	  $(CARGO) +$(RUST_FUZZ_TOOLCHAIN) fuzz run protocol_decoder -- -max_total_time="$$seconds" -max_len=1048576
+	  for target in protocol_decoder subtitle_decoder; do \
+	    $(CARGO) +$(RUST_FUZZ_TOOLCHAIN) fuzz run "$$target" -- -max_total_time="$$seconds" -max_len=1048576 || exit 1; \
+	  done
 
 .PHONY: fmt
 fmt: ## gofmt -l (fails if any file needs formatting)

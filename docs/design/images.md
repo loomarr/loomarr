@@ -133,10 +133,15 @@ probe for each, so a worker without one fails readiness instead of failing the f
   burn-in ([`playout.md`](playout.md)). The request names the extracted track (`.sup` for
   `hdmv_pgs_subtitle`; the `.idx`/`.sub` pair for `dvd_subtitle`) and its SHA-256. The result is
   the canvas size and an ordered list of display states, each with its start and end in
-  milliseconds and either one full-canvas straight-alpha PNG or none (the screen is clear). Every
-  later step (ffv1 conversion, the per-seek ffconcat list, the overlay) is codec-neutral.
-  Ceilings: 256 MiB input, 3840×2160 canvas, 64 objects per state, 50,000 states, 512 MiB output.
-  Rust checks them before allocating each state and while decoding it.
+  milliseconds and either one full-canvas straight-alpha PNG or none (the screen is clear). Each
+  state ends where the next starts, the last state's end equals its start, and Go refuses a
+  result that breaks either rule. Every later step (ffv1 conversion, the per-seek ffconcat list, the overlay) is codec-neutral.
+  Ceilings: 256 MiB input, 3840×2160 canvas, 64 objects per state, 50,000 states, 512 MiB output,
+  and, across the whole track, 3.8×10¹⁰ drawn object pixels (each placement's object area plus its
+  coded length) and 2×10¹¹ encoded or cleared canvas pixels, about 4× what a heavy 3,000-set track
+  of two 3840×400 objects on a 3840×2160 canvas measures (9.45×10⁹ and 4.98×10¹⁰).
+  Rust checks them before allocating each state, drawing each placement, and clearing or encoding
+  each canvas.
 
 **Format choices.** A JPEG fallback stays because the few percent of browsers without AVIF or WebP
 are exactly a media server's clients (televisions, old tablets, embedded WebViews). Selection uses
