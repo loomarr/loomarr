@@ -645,10 +645,17 @@ step 5). Nothing reads the scanner's origins until the cutover.
   file's own then each subtitle file beside it (as two-letter codes where one exists), and the
   measured length.
 - **The title page reads the Library's rows** (#4476). `GET /v1/library/items/{id}` reads one
-  title through `LibraryItemDetail`, in one read transaction: its `library_items` row and
-  genres, its own `library_sources` with their `library_streams`, and for a series the rows of
-  the items its present files were written as (#2151 decision 39: features query the tables); a
-  series' episodes' sources are not read. Each write of a title is one transaction: the
+  title through `LibraryItemDetail`, in one read transaction: its `library_items` row (with
+  score, tagline, original title, premiere date, and where its year, premiere, score and runtime
+  came from), genres, studios, countries and credits (each person's name, role and character in
+  billing order; no photo yet; an episode has none, they are its show's), its own
+  `library_sources` (container, overall bitrate, edition) with every `library_streams` track (the
+  columns the page shows) and its `library_chapters`, and for a series the rows of the items its
+  present files were written as, with each episode's overview and length: the measured length of
+  its files that play once each is read, else its catalog runtime (#2151 decision 39: features
+  query the tables). A series' episodes' tracks are not read, only their sources' durations; an
+  episode's own file, tracks and chapters are read when its page is asked for by its id. The
+  response sends every list, `[]` for none, and leaves out a value nobody stated. Each write of a title is one transaction: the
   projector rewrites the whole title inside the inventory write (a pass, a header read, an
   origin marked unseen; decision 43). The file list (`library_files`) follows the walk and the
   sources follow the inventory, so the two can disagree while a removal waits, such as a pass

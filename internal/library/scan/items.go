@@ -19,7 +19,9 @@ import (
 // ItemDetail is one title as its page shows it.
 type ItemDetail struct {
 	librarystore.LibraryItemSummary
-	// Facts is what the scanner resolved for it: name, year, overview, genres, rating, runtime.
+	// Facts is what the scanner resolved for it: name, year, original title, overview, tagline,
+	// premiere date, score, genres, studios, countries, rating, runtime, and People (each credit's
+	// name, role and character, in billing order).
 	Facts inventory.ItemFacts
 	// From is where its details came from.
 	From DetailsFrom
@@ -48,6 +50,13 @@ type ItemFile struct {
 	Edition string
 	// Part is which part of a movie in parts it is, from 1; 0 for a whole file.
 	Part int
+	// Container is the header's format name; Bitrate its overall rate in bit/s, 0 unknown.
+	Container string
+	Bitrate   int64
+	// Streams are every track in index order, the file's own then those beside it; Chapters its
+	// chapter marks in order.
+	Streams  []librarystore.LibraryStream
+	Chapters []librarystore.LibraryChapter
 	// Extra is a copy that never plays, because another of the title's listed files plays in its
 	// place (decisions 37, 54); see extraCopy.
 	Extra bool
@@ -94,6 +103,7 @@ func itemFile(f librarystore.LibraryFile, src librarystore.LibrarySource, ok boo
 	}
 	out.sourced = true
 	out.LengthMillis, out.Edition, out.Part, out.plays = src.DurationMs, src.Edition, src.Part, src.Plays
+	out.Container, out.Bitrate, out.Streams, out.Chapters = src.Container, src.Bitrate, src.Streams, src.Chapters
 	var audio *librarystore.LibraryStream
 	for i, s := range src.Streams {
 		own := s.ExternalRef == ""
@@ -155,6 +165,10 @@ type Episode struct {
 	// FromFile is an episode named and numbered by its file until its show's order is said
 	// (#2151 decision 53).
 	FromFile bool
+	// Overview is its own story. LengthMillis is the measured length of its files that play once
+	// each is read, else the catalog's runtime; 0 when neither is known.
+	Overview     string
+	LengthMillis int64
 }
 
 // Items lists the movies and series with a present file.
@@ -177,7 +191,12 @@ func (l *Library) Item(ctx context.Context, id string) (ItemDetail, error) {
 		return ItemDetail{}, err
 	}
 	detail.Facts = inventory.ItemFacts{Name: summary.Name, ProductionYear: summary.Year, Overview: page.Overview,
-		Genres: page.Genres, OfficialRating: page.Rating, RuntimeMillis: page.RuntimeMs}
+		OriginalTitle: page.OriginalTitle, Tagline: page.Tagline, PremiereDate: page.PremiereDate,
+		CommunityScore: page.Score, Genres: page.Genres, Studios: page.Studios, Countries: page.Countries,
+		OfficialRating: page.Rating, RuntimeMillis: page.RuntimeMs}
+	for _, c := range page.Credits {
+		detail.Facts.People = append(detail.Facts.People, inventory.Person{Name: c.Name, Role: c.Role, Character: c.Character})
+	}
 	detail.From = detailsFrom(page.From)
 	files, err := l.ItemStore.LibraryItemFiles(ctx, id)
 	if err != nil {
@@ -292,6 +311,7 @@ func seasons(files []librarystore.LibraryFile, episodes map[string]librarystore.
 		row := episodes[id]
 		bySeason[row.Season] = append(bySeason[row.Season], Episode{
 			ID: id, Name: row.Name, Number: row.Episode, End: row.EpisodeEnd, Ready: ready[id], FromFile: row.Unnumbered,
+			Overview: row.Overview, LengthMillis: row.LengthMs,
 		})
 		if row.NameFrom != "" {
 			named[mp.ID(row.NameFrom)]++
@@ -318,7 +338,7 @@ func seasons(files []librarystore.LibraryFile, episodes map[string]librarystore.
 // hold: what a series search is checked against (decision 57). Specials (season 0) and files
 // without a number are left out, since nothing lays them out the same way twice.
 func (l *Library) EpisodesOnDisk(ctx context.Context, seriesID string) (map[int]int, error) {
-	episodes, err := l.ItemStore.LibraryDetailEpisodes(ctx, seriesID)
+	episodes, err := l.ItemStore.LibraryEpisodeNumbers(ctx, seriesID)
 	if err != nil {
 		return nil, err
 	}
