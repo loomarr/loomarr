@@ -24,7 +24,7 @@ func directCIPolicyShellStepAuthorities() []struct {
 		run  string
 	}{
 		{name: "Repository policy bootstrap outside Make", run: directCIPolicyBootstrap},
-		{name: "Workflow, publication, agent harness, and shell policy", run: "make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck"},
+		{name: "Workflow, publication, agent harness, shell, and privacy policy", run: "make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck privacy-verify"},
 		{name: "Documentation contracts read by Go", run: "go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify db-docs-verify"},
 	}
 }

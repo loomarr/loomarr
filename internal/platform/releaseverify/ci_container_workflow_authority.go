@@ -281,11 +281,11 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		}),
 		"ci-go-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make vet vet-tags lint": exactWorkflowStep(4, "Static analysis", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "matrix.shard == 1"}),
-			"make fmt privacy-verify tags-verify compose-verify go-race-verify eval-contract": exactWorkflowStep(5, "Repository contracts", workflowStepAuthority{targets: []string{"fmt", "privacy-verify", "tags-verify", "compose-verify", "go-race-verify", "eval-contract"}, condition: "matrix.shard == 2", environment: map[string]string{"MAKEFLAGS": "-j4 --output-sync=target"}}),
-			"make go-shard-verify SHARDS=2": exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}, condition: "matrix.shard == 1"}),
-			"make openapi-verify":           exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}, condition: "matrix.shard == 1"}),
-			"make retired-verify":           exactWorkflowStep(8, "Retired identifiers are gone from prose", workflowStepAuthority{targets: []string{"retired-verify"}, condition: "matrix.shard == 2"}),
-			"make observability-verify":     exactWorkflowStep(9, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, condition: "matrix.shard == 2", allowsAcquisition: true}),
+			"make fmt tags-verify compose-verify go-race-verify eval-contract":     exactWorkflowStep(5, "Repository contracts", workflowStepAuthority{targets: []string{"fmt", "tags-verify", "compose-verify", "go-race-verify", "eval-contract"}, condition: "matrix.shard == 2", environment: map[string]string{"MAKEFLAGS": "-j4 --output-sync=target"}}),
+			"make go-shard-verify SHARDS=2":                                        exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}, condition: "matrix.shard == 1"}),
+			"make openapi-verify":                                                  exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}, condition: "matrix.shard == 1"}),
+			"make retired-verify":                                                  exactWorkflowStep(8, "Retired identifiers are gone from prose", workflowStepAuthority{targets: []string{"retired-verify"}, condition: "matrix.shard == 2"}),
+			"make observability-verify":                                            exactWorkflowStep(9, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, condition: "matrix.shard == 2", allowsAcquisition: true}),
 			`./scripts/check-migration-order.sh pull_request "$GITHUB_EVENT_PATH"`: exactWorkflowStep(10, "Every added migration is numbered above main's newest", workflowStepAuthority{condition: "matrix.shard == 2 && github.event_name == 'pull_request'"})}),
 		"ci-go-cache-warm.yml": {
 			environment: standardWorkflowEnvironment(),
@@ -350,8 +350,8 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"ci-policy": {
 					condition: "always()",
 					steps: map[string]workflowStepAuthority{
-						"make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck":        exactWorkflowStep(4, "Workflow, publication, agent harness, and shell policy", workflowStepAuthority{targets: []string{"ci-lint", "release-verify", "agent-harness-test", "shellcheck"}}),
-						"go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify db-docs-verify": exactWorkflowStep(5, "Documentation contracts read by Go", workflowStepAuthority{targets: []string{"arch-docs-verify", "config-docs-verify", "dev-docs-verify", "db-docs-verify"}}),
+						"make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck privacy-verify": exactWorkflowStep(4, "Workflow, publication, agent harness, shell, and privacy policy", workflowStepAuthority{targets: []string{"ci-lint", "release-verify", "agent-harness-test", "shellcheck", "privacy-verify"}}),
+						"go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify db-docs-verify":         exactWorkflowStep(5, "Documentation contracts read by Go", workflowStepAuthority{targets: []string{"arch-docs-verify", "config-docs-verify", "dev-docs-verify", "db-docs-verify"}}),
 					},
 				},
 				"ci-ok": {

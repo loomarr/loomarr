@@ -354,8 +354,12 @@ jobs:
         run: go run ./cmd/releaseverify -root .
       # Mostly single-threaded shell self-tests, so they run side by side: one after the other they
       # took 2 minutes and set PR time.
-      - name: Workflow, publication, agent harness, and shell policy
-        run: make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck
+      #
+      # privacy-verify is the public repo's real-titles and private-fixture guard. It runs here, on
+      # every run, so no classifier rule decides whether a changed story, fixture or test is
+      # scanned: a path the classifier forgot cannot skip it.
+      - name: Workflow, publication, agent harness, shell, and privacy policy
+        run: make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck privacy-verify
       - name: Documentation contracts read by Go
         run: go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify db-docs-verify
   rust-contracts:
