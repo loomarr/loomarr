@@ -32,6 +32,8 @@ var addressRangePredicates = map[string]bool{
 // addressPredicateAllowlist maps a repo-relative file to why its address-range checks are not an
 // "is this safe to fetch?" decision. Anything that is an SSRF gate uses httpx instead.
 var addressPredicateAllowlist = map[string]string{
+	"internal/api/agents/oauthclient.go": "checks an OAuth client's redirect_uri, which allows plain HTTP only to loopback " +
+		"(RFC 8252 §7.3); the server never connects to it, it sends the browser there",
 	"internal/platform/llm/openai.go": "classifies an operator-configured base URL as self-hosted (an ALLOW rule that " +
 		"decides which request fields to send), including CGNAT on purpose; it gates no fetch",
 	"internal/platform/openroutercatalog/openrouter.go": "permits a plain-HTTP base URL only for loopback; it gates no fetch to a stranger-supplied host",
