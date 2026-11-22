@@ -22,6 +22,11 @@ jobs:
     if: github.event.workflow_run.event == 'merge_group' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # GitHub gives a workflow_run job a read-only cache unless the job declares write access, and
+    # annotates the run with a cache-poisoning warning when it does. This job compiles nothing: it
+    # saves only a generation whose producer run, commit on main, manifest and tree digest the
+    # validation step has proved.
+    cache-mode: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Locate the exact merge-queue producer
@@ -53,9 +58,7 @@ jobs:
           "${{ steps.producer.outputs.run-id }}"
           android-tv-ccache-v2-Linux-ccache-4.14-
           >> "$GITHUB_OUTPUT"
-      # ⚠ GitHub gives a workflow_run job a read-only cache ("Cache mode: read" in the runner log).
-      # This save is refused with a warning and the step still succeeds, so the step below is what
-      # reports it.
+      # A refused save only warns and the step still succeeds, so the step below is what reports it.
       - name: Publish the verified generation in the default-branch cache scope
         if: steps.producer.outputs.found == 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6

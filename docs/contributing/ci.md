@@ -537,9 +537,13 @@ appears in main's cache listing: a refused save only warns, so the retire step c
 first and fails without deleting anything when the generation is not there. Android jobs do not run
 on pull requests, and queue jobs restore but never spend time saving an unreachable cache.
 
-GitHub gives a `workflow_run` job a read-only cache (the runner log prints `Cache mode: read`), so
-this save is refused on every run and no Android generation exists on main: each Android TV queue
-build starts cold. The promotion run fails at the retire step when that happens.
+GitHub gives a `workflow_run` job a read-only cache (the runner log prints `Cache mode: read`)
+unless the job declares otherwise, so the promotion job declares `cache-mode: write`. GitHub
+annotates each promotion run with a cache-poisoning warning for that declaration. The job runs no
+build and saves only the generation its validation step has bound to a successful queue run of a
+commit on main. The execution-context authority pins the declaration: any other job that declares
+a cache mode, or a promotion that declares a different one, fails `release-verify`. When a save is
+still refused, the promotion run fails at the retire step.
 
 ## Per-run measurements
 
@@ -892,13 +896,14 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
   grows. The Go warm caches carry the ISO week in their key; the merge-gate cache restores only an
   entry of the same UTC day.
 - **Default-branch cache writes require a trusted trigger.** GitHub permits a default-branch writer
-  from `push` or `workflow_dispatch`, but `merge_group` and `workflow_run` cannot promote their
-  outputs into that scope. Shared caches are therefore written by the `CI / Go cache warm` workflow on
-  `main` pushes, plus the pnpm and ffmpeg saves on a manual run on `main`; ordinary PR and queue
-  runs are restore-only. Android is the bounded exception
-  justified by the measured 25m54s cold queue build: the admitted queue run emits an immutable
-  compiler-cache transfer, and the queue-produced `push` validates and saves it without repeating any
-  compilation. A `workflow_run` writer or a `push` warmer that rebuilds the product remains forbidden.
+  from `push` or `workflow_dispatch`, but `merge_group` caches land in a disposable queue scope and a
+  `workflow_run` job is read-only by default. Shared caches are therefore written by the
+  `CI / Go cache warm` workflow on `main` pushes, plus the pnpm and ffmpeg saves on a manual run on
+  `main`; ordinary PR and queue runs are restore-only. Android is the bounded exception justified by
+  the measured 25m54s cold queue build: the admitted queue run emits an immutable compiler-cache
+  transfer, and the `workflow_run` promotion, the only job that declares `cache-mode: write`,
+  validates and saves it without repeating any compilation. A writer that rebuilds the product,
+  from `workflow_run` or from a `push` warmer, remains forbidden.
 
 Apple compilation caching is a validated artifact protocol, not an unchecked DerivedData restore.
 The fingerprint binds the runner OS and architecture, exact Xcode and Swift identities, both

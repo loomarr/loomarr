@@ -171,6 +171,39 @@ func TestVerifyCIContainerDownloadsRequiresTypedWorkflowJobContext(t *testing.T)
 	}
 }
 
+// Only the Android promotion may override GitHub's read-only cache for its trigger, and only with
+// exactly the mode its authority names.
+func TestVerifyCIContainerDownloadsPinsDeclaredCacheMode(t *testing.T) {
+	t.Parallel()
+	const promotion = "android-ccache-promotion.yml"
+	tests := map[string]struct {
+		workflow string
+		old      string
+		new      string
+	}{
+		"promotion drops write":   {workflow: promotion, old: "    cache-mode: write\n", new: ""},
+		"promotion declares read": {workflow: promotion, old: "cache-mode: write", new: "cache-mode: read"},
+		"promotion write-only":    {workflow: promotion, old: "cache-mode: write", new: "cache-mode: write-only"},
+		"queue job declares write": {
+			workflow: "ci-android.yml", old: "    runs-on: ubuntu-latest\n", new: "    runs-on: ubuntu-latest\n    cache-mode: write\n",
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			root := writeCIContainerDownloadsFixture(t)
+			original := readRepositoryWorkflow(t, test.workflow)
+			workflow := strings.Replace(original, test.old, test.new, 1)
+			if workflow == original {
+				t.Fatalf("%s does not contain %q", test.workflow, test.old)
+			}
+			writeFixtureFile(t, filepath.Join(root, ".github", "workflows", test.workflow), workflow)
+			if err := VerifyCIContainerDownloads(root); err == nil {
+				t.Fatal("VerifyCIContainerDownloads accepted a cache mode its authority does not name")
+			}
+		})
+	}
+}
+
 func TestVerifyCIContainerDownloadsRejectsJobLevelReusableWorkflows(t *testing.T) {
 	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)

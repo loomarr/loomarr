@@ -21,7 +21,10 @@ type workflowJobContextAuthority struct {
 	timeoutMinutes  int
 	environmentName string
 	environmentURL  string
-	strategy        *workflowStrategyAuthority
+	// cacheMode is the job's declared Actions cache access. Empty means the job declares none and
+	// takes GitHub's default for its trigger.
+	cacheMode string
+	strategy  *workflowStrategyAuthority
 }
 
 type workflowStrategyAuthority struct {
@@ -41,7 +44,7 @@ type workflowMatrixEntryAuthority struct {
 
 func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobContextAuthority {
 	return map[workflowJobContextKey]workflowJobContextAuthority{
-		{workflow: "android-ccache-promotion.yml", job: "promote"}: {name: "Promote verified Android compiler cache", runsOn: "ubuntu-latest", timeoutMinutes: 15},
+		{workflow: "android-ccache-promotion.yml", job: "promote"}: {name: "Promote verified Android compiler cache", runsOn: "ubuntu-latest", timeoutMinutes: 15, cacheMode: "write"},
 		{workflow: "android-beta.yml", job: "release"}:             {name: "Verify, sign, and optionally publish Android TV beta", runsOn: "ubuntu-latest", environmentName: "android-beta"},
 		{workflow: "apple-testflight.yml", job: "plan"}:            {name: "Decide which Apple apps this run releases", runsOn: "ubuntu-latest"},
 		{workflow: "apple-testflight.yml", job: "release"}: {
@@ -134,7 +137,7 @@ func verifyWorkflowJobContextAuthority(workflowName, jobName string, job *yaml.N
 		return fmt.Errorf("workflow %s job %s has no declarative execution-context authority", workflowName, jobName)
 	}
 	label := fmt.Sprintf("workflow %s job %s", workflowName, jobName)
-	for key, value := range map[string]string{"name": want.name, "runs-on": want.runsOn} {
+	for key, value := range map[string]string{"name": want.name, "runs-on": want.runsOn, "cache-mode": want.cacheMode} {
 		if err := verifyExactOptionalScalar(job, key, value, label); err != nil {
 			return err
 		}
