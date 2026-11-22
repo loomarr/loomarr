@@ -8,12 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"image"
 	"image/png"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -80,11 +80,16 @@ func (UnavailableSubtitleDecoder) Decode(context.Context, SubtitleTrack) (Subtit
 	return SubtitleStills{}, ErrSubtitleDecoderUnavailable
 }
 
-// SubtitleDecoderAvailable reports whether d can decode a track at all: false for nil and for
-// UnavailableSubtitleDecoder, so a build without a decoder looks nothing up for burn-in.
+// SubtitleDecoderAvailable reports whether d can decode a track at all: false for nil, a typed nil
+// and UnavailableSubtitleDecoder, so a build without a decoder looks nothing up for burn-in.
 func SubtitleDecoderAvailable(d SubtitleStillDecoder) bool {
-	_, none := d.(UnavailableSubtitleDecoder)
-	return d != nil && !none
+	switch d.(type) {
+	case nil, UnavailableSubtitleDecoder, *UnavailableSubtitleDecoder:
+		return false
+	}
+	// A typed nil (a nil pointer in the interface) decodes nothing either.
+	v := reflect.ValueOf(d)
+	return v.Kind() != reflect.Pointer || !v.IsNil()
 }
 
 // BurnIn is one image subtitle track prepared for burning in.
@@ -306,6 +311,12 @@ func FFmpegBurnInWith(ffmpegPath string, observer *diagnostics.ProcessManager, d
 		}
 		_ = os.RemoveAll(decoded)
 		_ = os.Remove(sup)
+		// ffmpeg draws the blank canvas (s00000.png): Go encodes no image (docs/design/images.md).
+		if err := r.run(ctx, "subtitle_burn_blank", []string{"-v", "error", "-nostdin", "-f", "lavfi",
+			"-i", fmt.Sprintf("color=c=black@0:s=%dx%d:d=1,format=rgba", stills.Width, stills.Height),
+			"-frames:v", "1", filepath.Join(build, "s00000.png")}, nil); err != nil {
+			return nil, err
+		}
 		// One run converts every still: the image2 sequence in, one intra frame per segment out.
 		if err := r.run(ctx, "subtitle_burn_convert", []string{"-v", "error", "-nostdin", "-framerate", "1",
 			"-i", filepath.Join(build, "s%05d.png"), "-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuva420p",
@@ -325,7 +336,8 @@ func FFmpegBurnInWith(ffmpegPath string, observer *diagnostics.ProcessManager, d
 	}
 }
 
-// writeStills copies the blank canvas as s00000.png and each distinct still after it, and returns
+// writeStills keeps s00000.png for the blank canvas (ffmpeg draws it), copies each distinct still
+// after it, and returns
 // the cues naming the ffv1 files the conversion will give them (cNNNNN.nut for sNNNNN.png). A
 // state that ends before the next begins is followed by a blank cue at its end. Each still is
 // opened inside decoded (os.Root), so a link out of the decoder's directory is refused; the caller
@@ -339,24 +351,12 @@ func writeStills(dir, decoded string, stills SubtitleStills) (*BurnIn, error) {
 	b := &BurnIn{Width: stills.Width, Height: stills.Height}
 	states := append([]SubtitleState(nil), stills.States...)
 	sort.SliceStable(states, func(i, j int) bool { return states[i].StartMs < states[j].StartMs })
-	n := 0
+	n := 1 // s00000.png is the blank canvas
 	next := func() (string, *os.File, error) {
 		f, err := os.Create(filepath.Join(dir, fmt.Sprintf("s%05d.png", n)))
 		name := fmt.Sprintf("c%05d.nut", n)
 		n++
 		return name, f, err
-	}
-	_, blank, err := next()
-	if err != nil {
-		return nil, err
-	}
-	// The blank is the one canvas Go allocates, after checkStills bounded it.
-	err = png.Encode(blank, image.NewNRGBA(image.Rect(0, 0, stills.Width, stills.Height)))
-	if cerr := blank.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return nil, err
 	}
 	names := map[string]string{}
 	cue := func(at int64, still string) {

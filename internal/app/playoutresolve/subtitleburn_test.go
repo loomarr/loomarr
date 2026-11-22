@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -317,7 +318,7 @@ func TestSubtitleBurns_KeepsTheMostRecentlyAired(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(entries) != burnKeep+1 {
-		t.Errorf("%d entries on disk, want %d tracks and the build", len(entries), burnKeep+1)
+		t.Errorf("%d entries on disk, want %d tracks and the build", len(entries), burnKeep)
 	}
 }
 
@@ -402,9 +403,11 @@ func TestBurnSubtitlesFor_ServesTheProgrammeAndQueuesTheNextAiring(t *testing.T)
 	if got := resolve(encode.EncoderNVENC); got == nil || got.Track == nil {
 		t.Error("the prepared film track was not served")
 	}
+	// Both programmes' tracks come from the inventory. The next airing's lookup runs on its own
+	// goroutine, so the order of the two reads is not fixed.
 	reads := inventory.reads()
-	if len(reads) == 0 || reads[0] != film {
-		t.Errorf("inventory read %v, want the film first", reads)
+	if !slices.Contains(reads, film) || !slices.Contains(reads, next) {
+		t.Errorf("inventory read %v, want both the film and the next programme", reads)
 	}
 }
 

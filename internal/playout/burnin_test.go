@@ -1,6 +1,7 @@
 package playout
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -226,8 +227,10 @@ func TestWriteStills_StatesBecomeCues(t *testing.T) {
 	if fmt.Sprint(got.Cues) != fmt.Sprint(want) || got.Width != 64 || got.Height != 36 {
 		t.Errorf("cues %+v\nwant %+v", got.Cues, want)
 	}
-	if pngs, _ := filepath.Glob(filepath.Join(build, "s*.png")); len(pngs) != 3 {
-		t.Errorf("sequence %v: want the blank and two stills", pngs)
+	// Slot 0 is the blank canvas, which ffmpeg draws; Go writes only the two distinct stills.
+	pngs, _ := filepath.Glob(filepath.Join(build, "s*.png"))
+	if len(pngs) != 2 || filepath.Base(pngs[0]) != "s00001.png" {
+		t.Errorf("sequence %v: want s00001.png and s00002.png, with s00000.png left for ffmpeg", pngs)
 	}
 	if _, err := writeStills(t.TempDir(), dir, SubtitleStills{Width: 64, Height: 36, States: []SubtitleState{
 		{StartMs: 0, EndMs: 10, PNG: still("small.png", 32, 18)},
@@ -315,4 +318,31 @@ head -c "${BYTES:-4096}" /dev/zero`)}
 	if _, err := extractTrack(t.Context(), r, "/media/film.mkv", 3, out, 4096); err == nil {
 		t.Error("an empty track was accepted")
 	}
+}
+
+// A decoder that cannot decode (none, a nil pointer, the refusing stand-in) reads as unavailable,
+// so a build without one looks nothing up for burn-in.
+func TestSubtitleDecoderAvailable(t *testing.T) {
+	var nilPtr *availabilityDecoder
+	for _, c := range []struct {
+		name string
+		d    SubtitleStillDecoder
+		want bool
+	}{
+		{"nil", nil, false},
+		{"refusing stand-in", UnavailableSubtitleDecoder{}, false},
+		{"refusing stand-in pointer", &UnavailableSubtitleDecoder{}, false},
+		{"typed nil", nilPtr, false},
+		{"a decoder", &availabilityDecoder{}, true},
+	} {
+		if got := SubtitleDecoderAvailable(c.d); got != c.want {
+			t.Errorf("%s: available = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+type availabilityDecoder struct{}
+
+func (*availabilityDecoder) Decode(context.Context, SubtitleTrack) (SubtitleStills, error) {
+	return SubtitleStills{}, nil
 }
