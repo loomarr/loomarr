@@ -31,8 +31,10 @@ type fakeStore struct {
 	failDeleteDerivatives map[string]bool
 	deleteDerivativeCalls map[string]int
 	expiredReads          int
-	// afterPut, when set, runs after every PutImage.
-	afterPut func(Image)
+	// afterPut, when set, runs after every PutImage; beforePutRef, when set, runs once, before the
+	// next PutRef writes.
+	afterPut     func(Image)
+	beforePutRef func(Ref)
 }
 
 func newFakeStore() *fakeStore {
@@ -103,6 +105,13 @@ func (f *fakeStore) TouchImage(_ context.Context, hash string, at time.Time) err
 }
 
 func (f *fakeStore) PutRef(_ context.Context, ref Ref) error {
+	if hook := f.beforePutRef; hook != nil {
+		f.beforePutRef = nil
+		hook(ref)
+	}
+	if _, ok := f.images[ref.ImageHash]; !ok {
+		return errors.New("fake: ref on an image with no row") // the real store's foreign key
+	}
 	f.refs = append(f.refs, ref)
 	return nil
 }

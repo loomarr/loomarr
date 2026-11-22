@@ -7,15 +7,19 @@ ALTER TABLE images ADD COLUMN fetch_failures INTEGER NOT NULL DEFAULT 0 CHECK (f
 ALTER TABLE images ADD COLUMN fetch_failed_at BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE images ADD COLUMN fetch_retry_at BIGINT NOT NULL DEFAULT 0;
 
--- The fetch queue is first come, first served by when an image joined it: its adoption, or the
--- expiry purge's requeue. created_at would put a requeued image ahead of everything adopted since.
--- Rows already waiting joined when they were created.
+-- The fetch queue is served by priority, then by when an image joined it. fetch_priority 0 is
+-- artwork a surface just adopted, 1 an image the expiry purge requeued for a refresh, 2 artwork
+-- adopted in bulk to fetch last (episode stills), so new artwork never waits behind a mass
+-- requeue. Rows already waiting are adoptions that joined when they were created.
+ALTER TABLE images ADD COLUMN fetch_priority INTEGER NOT NULL DEFAULT 0 CHECK (fetch_priority IN (0, 1, 2));
 ALTER TABLE images ADD COLUMN fetch_queued_at BIGINT NOT NULL DEFAULT 0;
 UPDATE images SET fetch_queued_at = created_at;
 
--- Serves the queue's read in order: the equality on origin and origin_fetched_at, then the queue
--- order, so a pass reads the front of the queue rather than sorting every waiting row.
-CREATE INDEX idx_images_fetch_queue ON images (origin, origin_fetched_at, fetch_queued_at, hash);
+-- Serves the queue's read in order: the equalities on origin and origin_fetched_at, then the
+-- queue order, so a pass reads the front of the queue rather than sorting every waiting row. Its
+-- (origin, origin_fetched_at) prefix serves what idx_images_origin_fetched did, so that one goes.
+CREATE INDEX idx_images_fetch_queue ON images (origin, origin_fetched_at, fetch_priority, fetch_queued_at, hash);
+DROP INDEX IF EXISTS idx_images_origin_fetched;
 
 -- +goose Down
 -- No down: forward-only (§16).

@@ -54,6 +54,9 @@ type FetchStore interface {
 	// RecordFetchFailure counts a failed download of a never-fetched image at at and holds it off
 	// the queue until retryAt.
 	RecordFetchFailure(ctx context.Context, hash string, at, retryAt time.Time) error
+	// DeferFetch holds a never-fetched image off the queue until retryAt without counting a
+	// failure — the pass found the network down.
+	DeferFetch(ctx context.Context, hash string, retryAt time.Time) error
 	// ListByOrigin is rehydrate's work list — every row of an origin, whatever its fetch state,
 	// because a file can go missing under a row in any state.
 	ListByOrigin(ctx context.Context, origin Origin, limit int) ([]Image, error)
@@ -217,7 +220,9 @@ func (f *Fetcher) Rehydrate(ctx context.Context) (FetchResult, error) {
 }
 
 // FetchNow fetches a work list synchronously for an INTERACTIVE caller and returns the resulting
-// rows keyed by source URL. Anything that does not land inside `budget` is simply absent.
+// rows keyed by source URL. Anything that does not land inside `budget` is simply absent, and so
+// is an image still backing off after a failed download (Image.BackingOff), which is not tried: a
+// caller that needs to tell the two apart checks BackingOff on the record it passed in.
 //
 // ⚠ **Keyed by source URL rather than by hash, and that is the entire reason it returns a map.**
 // fetchOne RE-KEYS: the row `Adopt` created under a hash of the URL is deleted the moment real
@@ -252,8 +257,8 @@ func (f *Fetcher) FetchNow(ctx context.Context, work []Image, budget time.Durati
 			out[img.SourceURL] = img // already warm — nothing to download
 			continue
 		}
-		if img.FetchRetryAt.After(now) {
-			continue // backing off after a failure; an interactive caller does not jump the wait
+		if img.BackingOff(now) {
+			continue // an interactive caller does not jump the wait; Image.BackingOff tells it why
 		}
 		todo = append(todo, img)
 	}
@@ -296,17 +301,24 @@ func (f *Fetcher) fetchAll(ctx context.Context, work []Image) (FetchResult, map[
 	}
 	_ = g.Wait() // every goroutine returns nil; the outcome is in results
 
-	// A pass in which every attempt got no response at all is the network being down, and backing
-	// each image off for it would leave the whole catalogue waiting long after the network returns.
-	// A canceled pass likewise says nothing of its images. Only the other failures are recorded.
-	outage := len(work) > 0
+	// A pass in which every attempt that went to the network got no response at all is the network
+	// being down. A permanent failure (a refused URL, an image upstream says is gone) never reached
+	// the question, so it neither makes nor unmakes an outage. In an outage an unreachable image
+	// waits the first backoff step without counting a failure: raising every count would leave the
+	// whole catalogue waiting long after the network returns, and not waiting at all would retry an
+	// image that always times out every minute. A canceled pass says nothing of its images.
+	outage, networked := true, 0
 	for _, r := range results {
+		if r.err != nil && isPermanentFetchError(r.err) {
+			continue
+		}
+		networked++
 		if r.err == nil || !isUnreachable(r.err) {
 			outage = false
-			break
 		}
 	}
-	record := ctx.Err() == nil && !outage
+	outage = outage && networked > 0
+	record := ctx.Err() == nil
 
 	out := FetchResult{Considered: len(work)}
 	byURL := make(map[string]Image, len(work))
@@ -315,12 +327,19 @@ func (f *Fetcher) fetchAll(ctx context.Context, work []Image) (FetchResult, map[
 		case r.err != nil:
 			out.Failed++
 			f.log.Warn("image fetch failed", "hash", work[i].Hash, "url", work[i].SourceURL, "err", r.err)
-			if record && !work[i].HasBytes() {
-				now := f.svc.now()
-				retry := retryAfter(now, work[i].FetchFailures+1, r.err)
-				if err := f.store.RecordFetchFailure(ctx, work[i].Hash, now, retry); err != nil {
-					f.log.Warn("image fetch failure not recorded", "hash", work[i].Hash, "err", err)
+			if !record || work[i].HasBytes() {
+				break
+			}
+			now := f.svc.now()
+			if outage && isUnreachable(r.err) {
+				if err := f.store.DeferFetch(ctx, work[i].Hash, now.Add(fetchBackoffFirst)); err != nil {
+					f.log.Warn("image fetch not deferred", "hash", work[i].Hash, "err", err)
 				}
+				break
+			}
+			retry := retryAfter(now, work[i].FetchFailures+1, r.err)
+			if err := f.store.RecordFetchFailure(ctx, work[i].Hash, now, retry); err != nil {
+				f.log.Warn("image fetch failure not recorded", "hash", work[i].Hash, "err", err)
 			}
 		default:
 			out.Fetched++

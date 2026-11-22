@@ -202,18 +202,24 @@ the database only.
   daily run. It is never read again in the same run, and it never holds back the images behind it.
   A run that the timeout or a shutdown ends stops between images and skips the steps it has not
   reached. The job then fails, and the next run carries on.
-- **The fetch queue is first come, first served.** It is ordered by `fetch_queued_at`: an image's
-  adoption, or the purge's requeue. A requeued image goes behind the artwork already waiting,
-  however old the image is. The queue's read follows `idx_images_fetch_queue`, so a pass reads the
-  front of the queue without sorting it.
+- **The fetch queue is served by class, then by arrival.** `fetch_priority` is 0 for artwork a
+  surface adopted, 1 for an image the purge requeued for a refresh, and 2 for artwork adopted in
+  bulk to fetch last (episode stills). Within a class, `fetch_queued_at` sets the order: the
+  adoption, or the requeue. Artwork adopted the day a purge requeues thousands of images therefore
+  goes ahead of all of them. The queue's read follows `idx_images_fetch_queue` (origin,
+  origin_fetched_at, fetch_priority, fetch_queued_at, hash), so a pass reads the front of the queue
+  without sorting it.
 - **A failed download backs off.** Each failure is recorded on the row (`fetch_failures`,
   `fetch_failed_at`) and holds the image off `images-fetch`'s list until `fetch_retry_at`. The wait
   doubles from five minutes (5m, 10m, 20m … 21h20m after the ninth failure) and is a day from the
   tenth failure on. A failure that waiting will not fix waits a day straight away: a 404 or 410, a
   URL or redirect this install refuses, a body over the size cap, or bytes the image worker refuses.
-  A pass in which no attempt got any response is the network being down, and it records nothing,
-  so an outage does not push the whole catalogue's retries back. A foreground fetch skips an image
-  that is still backing off. A failing image therefore never holds the front of the queue. The
+  A pass in which every attempt that went to the network got no response is the network being
+  down. A permanent failure never reaches the network, so it neither makes nor unmakes an outage.
+  In an outage each unreachable image waits five minutes and no failure is counted, so an outage
+  does not push the whole catalogue's retries back. An image that never answers still waits five
+  minutes between tries, even when it is alone in its pass. A foreground fetch skips an image
+  that is still backing off, and the caller reports it as backing off, not as failed. A failing image therefore never holds the front of the queue. The
   download that lands clears all three fields. An image is never dropped for failing: it is retried
   once a day for as long as something references it.
 - **Adopting a URL reuses its row.** Adoption looks the source URL up. It reuses the row with bytes

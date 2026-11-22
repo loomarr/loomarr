@@ -600,7 +600,11 @@ tables:
         fix (the image is gone, its host is refused, it is too large or does not decode) waits a day.
       fetch_queued_at: >
         When the image joined the download queue, in Unix seconds: its adoption, or the expiry purge
-        putting it back. The queue is served in this order.
+        putting it back. Within a priority the queue is served in this order.
+      fetch_priority: >
+        The image's class in the download queue, which is served class by class: 0 artwork just
+        adopted, 1 an image the expiry purge put back for a refresh, 2 artwork adopted in bulk to
+        download last (episode stills).
       created_at: When the image was first stored, in Unix seconds.
       updated_at: When the row last changed, in Unix seconds.
       last_used_at: When the image was last used, in Unix seconds. Older images lose their resized copies first when space runs short.

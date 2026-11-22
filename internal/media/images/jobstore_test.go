@@ -10,19 +10,34 @@ import (
 // The job half of the in-memory store, extending fakeStore so one double satisfies FetchStore,
 // AVIFStore and GCStore.
 //
-// ⚠ Every list here re-implements the SQL's selection rule in Go, which is a duplication worth
-// being uneasy about — a fake that disagrees with the real query makes a job look correct against
-// a work list it will never actually be handed. The mitigation is that the store conformance suite
-// runs the real queries against BOTH dialects, so these predicates are checked in one place and
-// exercised in another rather than being the only statement of the rule.
+// ⚠ Every list here re-implements the SQL's selection rule and order in Go, which is a duplication
+// worth being uneasy about — a fake that disagrees with the real query makes a job look correct
+// against a work list it will never actually be handed. The mitigation is that the store
+// conformance suite runs the real queries against BOTH dialects, so these predicates and orders
+// are checked in one place and exercised in another rather than being the only statement of them.
 
-// ListAwaitingFetch serves due rows in the order they joined the queue, ties by hash.
+// ListAwaitingFetch serves due rows by priority, then in the order they joined the queue, ties by
+// hash (pick's order).
 func (f *fakeStore) ListAwaitingFetch(_ context.Context, now time.Time, limit int) ([]Image, error) {
 	due := f.pick(0, func(img Image) bool {
 		return img.Origin == OriginRemote && img.OriginFetchedAt.IsZero() && !img.FetchRetryAt.After(now)
 	})
-	slices.SortStableFunc(due, func(a, b Image) int { return a.FetchQueuedAt.Compare(b.FetchQueuedAt) })
+	slices.SortStableFunc(due, func(a, b Image) int {
+		if a.FetchPriority != b.FetchPriority {
+			return int(a.FetchPriority - b.FetchPriority)
+		}
+		return a.FetchQueuedAt.Compare(b.FetchQueuedAt)
+	})
 	return due[:min(len(due), limit)], nil
+}
+
+// DeferFetch holds a never-fetched image until retryAt without counting a failure.
+func (f *fakeStore) DeferFetch(_ context.Context, hash string, retryAt time.Time) error {
+	if img, ok := f.images[hash]; ok && img.OriginFetchedAt.IsZero() {
+		img.FetchRetryAt = retryAt
+		f.images[hash] = img
+	}
+	return nil
 }
 
 func (f *fakeStore) RecordFetchFailure(_ context.Context, hash string, at, retryAt time.Time) error {

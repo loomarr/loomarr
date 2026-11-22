@@ -150,7 +150,19 @@ func (m *MemStore) RecordFetchFailure(_ context.Context, hash string, at, retryA
 	return nil
 }
 
-// ListAwaitingFetch mirrors the SQL queue: due rows in the order they joined it, ties by hash.
+// DeferFetch holds a never-fetched image until retryAt without counting a failure.
+func (m *MemStore) DeferFetch(_ context.Context, hash string, retryAt time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if img, ok := m.images[hash]; ok && img.OriginFetchedAt.IsZero() {
+		img.FetchRetryAt = retryAt
+		m.images[hash] = img
+	}
+	return nil
+}
+
+// ListAwaitingFetch mirrors the SQL queue: due rows by priority, then in the order they joined
+// it, ties by hash.
 func (m *MemStore) ListAwaitingFetch(_ context.Context, now time.Time, limit int) ([]images.Image, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -161,6 +173,9 @@ func (m *MemStore) ListAwaitingFetch(_ context.Context, now time.Time, limit int
 		}
 	}
 	slices.SortFunc(out, func(a, b images.Image) int {
+		if a.FetchPriority != b.FetchPriority {
+			return int(a.FetchPriority - b.FetchPriority)
+		}
 		if c := a.FetchQueuedAt.Compare(b.FetchQueuedAt); c != 0 {
 			return c
 		}

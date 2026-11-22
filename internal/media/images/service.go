@@ -55,6 +55,9 @@ type IngestRequest struct {
 	OwnerKind string
 	OwnerID   string
 	Meta      string
+	// FetchPriority is the fetch-queue class Adopt queues a new remote image in; the zero value
+	// is FetchAdopted.
+	FetchPriority FetchPriority
 }
 
 // Config is the service's tunables.
@@ -361,9 +364,10 @@ func (s *Service) workerRequest(hash, source, staging string, targets []rustgen.
 // serve — so the frontend shows the placeholder, which is a better first paint than the remote
 // fetch this replaces anyway.
 //
-// The identity problem: the content hash cannot be known before the bytes arrive, so the row is
+// The identity problem: the content hash cannot be known before the bytes arrive, so a new row is
 // keyed on a hash of the SOURCE URL until the fetch replaces it. That is why `hashOfURL` exists and
-// why it is namespaced — see its comment.
+// why it is namespaced — see its comment. An adopted URL is always found again by the URL itself,
+// never by that hash, because the hash stops resolving once the fetch lands.
 func (s *Service) Adopt(ctx context.Context, srcURL string, req IngestRequest) (Image, error) {
 	u, err := url.Parse(srcURL)
 	if err != nil || u.Scheme != "https" || u.Host == "" {
@@ -377,14 +381,7 @@ func (s *Service) Adopt(ctx context.Context, srcURL string, req IngestRequest) (
 	// downloaded it again — once per adopt, forever (V52 phase 7). The URL lookup finds the fetched
 	// row, else whichever row is still waiting, and a new owner takes a ref on it either way.
 	if existing, err := s.store.GetBySourceURL(ctx, srcURL); err == nil {
-		if req.OwnerKind != "" && req.OwnerID != "" {
-			if err := s.store.PutRef(ctx, Ref{
-				ImageHash: existing.Hash, OwnerKind: req.OwnerKind, OwnerID: req.OwnerID, Role: existing.Role,
-			}); err != nil {
-				return Image{}, err
-			}
-		}
-		return existing, nil
+		return s.refOwner(ctx, srcURL, existing, req)
 	} else if !errors.Is(err, ErrNotFound) {
 		return Image{}, err
 	}
@@ -407,18 +404,45 @@ func (s *Service) Adopt(ctx context.Context, srcURL string, req IngestRequest) (
 		// pending image looks infinitely stale and the sweep purges the backlog.
 		OriginFetchedAt: time.Time{},
 		FetchQueuedAt:   now,
+		FetchPriority:   req.FetchPriority,
 	}
 	if err := s.store.PutImage(ctx, rec); err != nil {
 		return Image{}, err
 	}
-	if req.OwnerKind != "" && req.OwnerID != "" {
-		if err := s.store.PutRef(ctx, Ref{
-			ImageHash: hash, OwnerKind: req.OwnerKind, OwnerID: req.OwnerID, Role: rec.Role,
-		}); err != nil {
-			return Image{}, err
-		}
+	return s.refOwner(ctx, srcURL, rec, req)
+}
+
+// refOwner records the adopting owner's ref on the image of srcURL and returns that image.
+//
+// ⚠ A pending row can be re-keyed while this runs: the fetch writes the content-hash row, moves
+// the refs onto it and deletes the row it replaced. A ref put on the old hash after the move is
+// cascaded away with the old row, or refused once the row is gone. So the URL is looked up again
+// after the ref, and when its row has moved the ref is put on the row it moved to.
+func (s *Service) refOwner(ctx context.Context, srcURL string, img Image, req IngestRequest) (Image, error) {
+	if req.OwnerKind == "" || req.OwnerID == "" {
+		return img, nil
 	}
-	return rec, nil
+	ref := func(on Image) error {
+		return s.store.PutRef(ctx, Ref{ImageHash: on.Hash, OwnerKind: req.OwnerKind, OwnerID: req.OwnerID, Role: on.Role})
+	}
+	putErr := ref(img)
+	now, err := s.store.GetBySourceURL(ctx, srcURL)
+	if err != nil {
+		if putErr != nil {
+			return Image{}, putErr
+		}
+		return Image{}, err
+	}
+	if now.Hash == img.Hash {
+		if putErr != nil {
+			return Image{}, putErr
+		}
+		return img, nil
+	}
+	if err := ref(now); err != nil {
+		return Image{}, err
+	}
+	return now, nil
 }
 
 // Lookup finds the image Adopt made of srcURL, fetched or still pending, without writing:

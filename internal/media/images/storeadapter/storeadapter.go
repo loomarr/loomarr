@@ -36,6 +36,7 @@ type Store interface {
 	ImagesByHash(ctx context.Context, hashes []string) ([]clipstore.Image, []clipstore.ImageDerivative, error)
 	ListImagesAwaitingFetch(ctx context.Context, now time.Time, limit int) ([]clipstore.Image, error)
 	RecordImageFetchFailure(ctx context.Context, hash string, at, retryAt time.Time) error
+	DeferImageFetch(ctx context.Context, hash string, retryAt time.Time) error
 	ListImagesByOrigin(ctx context.Context, origin string, limit int) ([]clipstore.Image, error)
 	ListImagesExpiredBefore(ctx context.Context, cutoff time.Time, after clipstore.ExpiryCursor, limit int) ([]clipstore.Image, error)
 	ListOrphanImages(ctx context.Context, limit int) ([]clipstore.Image, error)
@@ -132,6 +133,10 @@ func (a Images) ListAwaitingFetch(ctx context.Context, now time.Time, limit int)
 
 func (a Images) RecordFetchFailure(ctx context.Context, hash string, at, retryAt time.Time) error {
 	return a.st.RecordImageFetchFailure(ctx, hash, at, retryAt)
+}
+
+func (a Images) DeferFetch(ctx context.Context, hash string, retryAt time.Time) error {
+	return a.st.DeferImageFetch(ctx, hash, retryAt)
 }
 
 func (a Images) ListByOrigin(ctx context.Context, origin images.Origin, limit int) ([]images.Image, error) {
@@ -269,6 +274,7 @@ func toStoreImage(img images.Image) clipstore.Image {
 		FetchFailedAt:   img.FetchFailedAt,
 		FetchRetryAt:    img.FetchRetryAt,
 		FetchQueuedAt:   img.FetchQueuedAt,
+		FetchPriority:   int(img.FetchPriority),
 	}
 }
 
@@ -298,5 +304,6 @@ func fromStoreImage(rec clipstore.Image) images.Image {
 		FetchFailedAt:   rec.FetchFailedAt,
 		FetchRetryAt:    rec.FetchRetryAt,
 		FetchQueuedAt:   rec.FetchQueuedAt,
+		FetchPriority:   images.FetchPriority(rec.FetchPriority),
 	}
 }

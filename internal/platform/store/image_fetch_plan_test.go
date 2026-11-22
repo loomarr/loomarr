@@ -8,8 +8,9 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
-// The fetch queue is read from its partial index in queue order, so the every-minute pass reads
-// the front of the queue rather than sorting every waiting row.
+// The fetch queue is read from idx_images_fetch_queue in queue order (priority, then queued time,
+// then hash), so the every-minute pass reads the front of the queue rather than sorting every
+// waiting row.
 func TestImageFetchQueueReadsItsIndex(t *testing.T) {
 	s := newSQLiteStore(t).(*sqlStore)
 	rows, err := s.db.QueryContext(context.Background(), `EXPLAIN QUERY PLAN `+clipstore.AwaitingFetchQuery(), 0, 64)

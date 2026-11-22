@@ -257,14 +257,18 @@ func TestMaintenanceJobHasTheLongJobTimeout(t *testing.T) {
 	}
 }
 
-// When every attempt of a pass gets no response the network is down, and no image is backed off
-// for it; a pass in which upstream answers with an error records the failure.
-func TestAnOutageBacksNothingOff(t *testing.T) {
+// When every attempt of a pass that went to the network got no response, the network is down: each
+// unreachable image waits the first backoff step without a failure counted, and a refused URL in
+// the same pass neither hides the outage nor escapes its own record. A pass in which upstream
+// answers with an error counts the failure.
+func TestAnOutageDefersWithoutCounting(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	t.Cleanup(srv.Close)
 	f, svc, fs := newTestFetcher(t, srv, []string{"127.0.0.1"})
+	clock := fixedNow
+	svc.now = func() time.Time { return clock }
 	ctx := context.Background()
 	var hashes []string
 	for i := range 2 {
@@ -274,17 +278,26 @@ func TestAnOutageBacksNothingOff(t *testing.T) {
 		}
 		hashes = append(hashes, img.Hash)
 	}
+	refused, err := svc.Adopt(ctx, "https://elsewhere.example.test/p.png", IngestRequest{Role: RolePoster})
+	if err != nil {
+		t.Fatal(err)
+	}
 	reachable := f.client.Transport
 	f.client.Transport = unreachableTransport{}
-	if res, err := f.FetchPending(ctx); err != nil || res.Failed != 2 {
-		t.Fatalf("outage pass = %+v, %v; want both failed", res, err)
+	if res, err := f.FetchPending(ctx); err != nil || res.Failed != 3 {
+		t.Fatalf("outage pass = %+v, %v; want all three failed", res, err)
 	}
 	for _, h := range hashes {
-		if got := fs.images[h]; got.FetchFailures != 0 || !got.FetchRetryAt.IsZero() {
-			t.Fatalf("an outage backed an image off: %d failures, retry %v", got.FetchFailures, got.FetchRetryAt)
+		if got := fs.images[h]; got.FetchFailures != 0 || !got.FetchRetryAt.Equal(fixedNow.Add(5*time.Minute)) {
+			t.Fatalf("outage: %d failures, retry %v; want none counted and five minutes on", got.FetchFailures, got.FetchRetryAt)
 		}
 	}
+	if got := fs.images[refused.Hash]; got.FetchFailures != 1 || !got.FetchRetryAt.Equal(fixedNow.Add(24*time.Hour)) {
+		t.Fatalf("refused URL in an outage: %d failures, retry %v; want 1 and a day on", got.FetchFailures, got.FetchRetryAt)
+	}
+
 	f.client.Transport = reachable
+	clock = fixedNow.Add(5 * time.Minute)
 	if _, err := f.FetchPending(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -292,6 +305,36 @@ func TestAnOutageBacksNothingOff(t *testing.T) {
 		if got := fs.images[h]; got.FetchFailures != 1 {
 			t.Fatalf("an upstream error was not recorded: %d failures", got.FetchFailures)
 		}
+	}
+}
+
+// A pass of one image whose download never gets a response is an outage pass every time: the
+// image is not counted as failing, and it waits five minutes between attempts rather than being
+// tried every minute.
+func TestALoneUnreachableImageWaitsBetweenAttempts(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	t.Cleanup(srv.Close)
+	f, svc, fs := newTestFetcher(t, srv, []string{"127.0.0.1"})
+	clock := fixedNow
+	svc.now = func() time.Time { return clock }
+	ctx := context.Background()
+	img, err := svc.Adopt(ctx, srv.URL+"/slow.png", IngestRequest{Role: RolePoster})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.client.Transport = unreachableTransport{}
+	for minute, want := range []int{1, 0, 0, 0, 0, 1} {
+		clock = fixedNow.Add(time.Duration(minute) * time.Minute)
+		res, err := f.FetchPending(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Considered != want {
+			t.Fatalf("minute %d considered %d, want %d", minute, res.Considered, want)
+		}
+	}
+	if got := fs.images[img.Hash]; got.FetchFailures != 0 {
+		t.Fatalf("an unreachable image counted %d failures, want none", got.FetchFailures)
 	}
 }
 
@@ -362,5 +405,71 @@ func TestAdoptFindsARequeuedImage(t *testing.T) {
 	}
 	if again, err := svc.Lookup(ctx, src); err != nil || again.Hash != requeued.Hash {
 		t.Fatalf("lookup = %s, %v; want the requeued row", again.Hash, err)
+	}
+}
+
+// A fetch that re-keys a pending row between Adopt's lookup and its ref does not cost the new
+// owner its ref: Adopt finds where the row moved and puts the ref there.
+func TestAdoptKeepsItsRefWhenTheFetchRekeysTheRow(t *testing.T) {
+	svc, fs := newTestService(t)
+	ctx := context.Background()
+	src := "https://image.tmdb.org/t/p/original/racing.png"
+	pending, err := svc.Adopt(ctx, src, IngestRequest{Role: RolePoster})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetched := pending
+	fetched.Hash = strings.Repeat("cd", 32)
+	fetched.OriginFetchedAt = fixedNow
+	fs.beforePutRef = func(Ref) { // the fetch landing: new row, refs moved, old row deleted
+		if err := fs.PutImage(ctx, fetched); err != nil {
+			t.Fatal(err)
+		}
+		if err := fs.RepointRefs(ctx, pending.Hash, fetched.Hash); err != nil {
+			t.Fatal(err)
+		}
+		if err := fs.DeleteImage(ctx, pending.Hash); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := svc.Adopt(ctx, src, IngestRequest{Role: RolePoster, OwnerKind: "channel", OwnerID: "ch-3"})
+	if err != nil {
+		t.Fatalf("adopt during a re-key: %v", err)
+	}
+	if got.Hash != fetched.Hash {
+		t.Fatalf("adopt returned %s, want the row the fetch moved it to", got.Hash)
+	}
+	if refs := fs.refsFor(fetched.Hash); len(refs) != 1 || refs[0].OwnerID != "ch-3" {
+		t.Fatalf("refs on the fetched row = %+v, want the new owner's", refs)
+	}
+}
+
+// The expiry purge requeues into the refresh class, so artwork adopted afterwards is fetched
+// first however many images the purge put back.
+func TestPurgedImagesWaitBehindNewArtwork(t *testing.T) {
+	const ttl = 30 * 24 * time.Hour
+	gc, svc, fs, _ := newTestGC(t, ttl, 0)
+	ctx := context.Background()
+	seedExpired(t, fs, ttl, fetchBatch+1)
+	if _, err := gc.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	clock := fixedNow.Add(time.Minute)
+	svc.now = func() time.Time { return clock }
+	fresh, err := svc.Adopt(ctx, "https://image.tmdb.org/t/p/original/new.png", IngestRequest{Role: RolePoster})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue, err := fs.ListAwaitingFetch(ctx, clock, fetchBatch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(queue) != fetchBatch || queue[0].Hash != fresh.Hash {
+		t.Fatalf("front of the queue = %s, want the artwork adopted after the purge", queue[0].Hash)
+	}
+	for _, img := range queue[1:] {
+		if img.FetchPriority != FetchRefresh {
+			t.Fatalf("a purged image queued at priority %d, want the refresh class", img.FetchPriority)
+		}
 	}
 }

@@ -87,21 +87,27 @@ func testImageExpiryPagesThroughEverythingDue(t *testing.T, newStore NewStoreFun
 	}
 }
 
-// The fetch queue is served in the order images joined it, not the order they were created: an
-// image the purge requeues goes behind the artwork adopted before the requeue.
+// The fetch queue is served by priority, then in the order images joined it, never the order they
+// were created: artwork adopted after a mass requeue goes ahead of all of it, a refresh goes ahead
+// of bulk artwork, and within a class the earlier arrival goes first.
 func testImageFetchQueueOrderIsWhenQueued(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)
 	now := time.Unix(1_700_000_000, 0)
-	old := numberedImage(0, now.Add(-200*24*time.Hour)) // created long ago, requeued just now
-	old.OriginFetchedAt = time.Time{}
-	old.FetchQueuedAt = now
-	adopted := numberedImage(1, now.Add(-time.Hour)) // adopted an hour ago, joined then
-	adopted.OriginFetchedAt = time.Time{}
-	adopted.FetchQueuedAt = now.Add(-time.Hour)
-	unstamped := numberedImage(2, now.Add(-2*time.Hour)) // written with no queue time: joins at creation
+	pending := func(n int, created, queued time.Time, priority int) clipstore.Image {
+		img := numberedImage(n, created)
+		img.OriginFetchedAt = time.Time{}
+		img.FetchQueuedAt = queued
+		img.FetchPriority = priority
+		return img
+	}
+	bulk := pending(0, now.Add(-3*time.Hour), now.Add(-3*time.Hour), 2)                // a still, waiting longest
+	refreshEarly := pending(1, now.Add(-200*24*time.Hour), now.Add(-time.Hour), 1)     // requeued an hour ago
+	refreshLate := pending(2, now.Add(-300*24*time.Hour), now.Add(-30*time.Minute), 1) // requeued later
+	adoptedAfter := pending(3, now.Add(-time.Minute), now.Add(-time.Minute), 0)        // adopted after the purge
+	unstamped := numberedImage(4, now.Add(-2*time.Hour))                               // no queue time: joins at creation
 	unstamped.OriginFetchedAt = time.Time{}
-	for _, img := range []clipstore.Image{old, adopted, unstamped} {
+	for _, img := range []clipstore.Image{bulk, refreshEarly, refreshLate, adoptedAfter, unstamped} {
 		if err := s.PutImage(ctx, img); err != nil {
 			t.Fatal(err)
 		}
@@ -114,8 +120,12 @@ func testImageFetchQueueOrderIsWhenQueued(t *testing.T, newStore NewStoreFunc) {
 	for _, img := range queue {
 		got = append(got, img.Hash)
 	}
-	if want := []string{unstamped.Hash, adopted.Hash, old.Hash}; fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Fatalf("queue order = %v, want %v: the requeued image goes last", got, want)
+	want := []string{unstamped.Hash, adoptedAfter.Hash, refreshEarly.Hash, refreshLate.Hash, bulk.Hash}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("queue order = %v, want %v: adopted first, then refreshes, then bulk, each by arrival", got, want)
+	}
+	if row, _ := s.GetImage(ctx, bulk.Hash); row.FetchPriority != 2 {
+		t.Fatalf("priority read back as %d, want 2", row.FetchPriority)
 	}
 	if row, _ := s.GetImage(ctx, unstamped.Hash); !row.FetchQueuedAt.Equal(unstamped.CreatedAt) {
 		t.Fatalf("an unstamped pending row joined at %v, want its creation %v", row.FetchQueuedAt, unstamped.CreatedAt)
@@ -236,6 +246,24 @@ func testImageFetchFailureBacksOff(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got, _ := s.GetImage(ctx, fetched.Hash); got.FetchFailures != 0 || !got.FetchRetryAt.IsZero() {
 		t.Fatalf("a failure was recorded against an image with bytes: %d, retry %v", got.FetchFailures, got.FetchRetryAt)
+	}
+
+	// A deferral (the pass found the network down) holds the image without counting a failure,
+	// and leaves an image with bytes alone.
+	if err := s.DeferImageFetch(ctx, behind.Hash, retry); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetImage(ctx, behind.Hash); got.FetchFailures != 0 || !got.FetchRetryAt.Equal(retry) {
+		t.Fatalf("deferred = %d failures, retry %v; want none counted and held until %v", got.FetchFailures, got.FetchRetryAt, retry)
+	}
+	if q := queueAt(now); len(q) != 0 {
+		t.Fatalf("queue while deferred = %v, want empty", q)
+	}
+	if err := s.DeferImageFetch(ctx, fetched.Hash, retry); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetImage(ctx, fetched.Hash); !got.FetchRetryAt.IsZero() {
+		t.Fatalf("an image with bytes was deferred to %v", got.FetchRetryAt)
 	}
 }
 

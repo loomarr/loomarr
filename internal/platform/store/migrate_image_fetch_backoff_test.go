@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// Migration 00248 adds the fetch-failure record with no failures for every existing row, and the
-// queue time as each row's creation: an image still waiting for its download stays on the fetch
-// queue in the order it had, and a fetched one stays off it.
+// Migration 00248 adds the fetch-failure record with no failures for every existing row, the
+// adopted fetch class, and the queue time as each row's creation: an image still waiting for its
+// download stays on the fetch queue in the order it had, and a fetched one stays off it.
 func TestImageFetchBackoffMigrationSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -61,8 +61,9 @@ func testImageFetchBackoffMigration(t *testing.T, s *sqlStore, migrationDir stri
 			t.Fatalf("%s after 248 = %d failures, failed %v, retry %v; want none", hash[:4], img.FetchFailures,
 				img.FetchFailedAt, img.FetchRetryAt)
 		}
-		if img.FetchQueuedAt.Unix() != at {
-			t.Fatalf("%s after 248 joined the queue at %v, want its creation", hash[:4], img.FetchQueuedAt)
+		if img.FetchQueuedAt.Unix() != at || img.FetchPriority != 0 {
+			t.Fatalf("%s after 248 joined the queue at %v with priority %d, want its creation and the adopted class",
+				hash[:4], img.FetchQueuedAt, img.FetchPriority)
 		}
 	}
 }
