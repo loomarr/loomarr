@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
+	agentsapi "github.com/loomarr/loomarr/internal/api/agents"
 	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
@@ -66,6 +67,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	// profiler routes are Hidden on both paths anyway (they exist only when a flag is set), and the
 	// exporter has no Options to read the flag from.
 	opsapi.New(opsapi.Deps{}, true).Register(humaAPI)
+	agentsapi.New(log).Register(humaAPI)
 	return srv, humaAPI
 }
 

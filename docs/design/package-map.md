@@ -109,6 +109,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `media/images` | `platform/httpx`, `platform/jobs`, `platform/settings`, `platform/store/activitystore` |
 | `media/tools` | `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `platform/diagnostics` |
 | `people/access` | `people/contact` |
+| `people/auth` | `library/mediaserver`, `people/access`, `people/contact`, `platform/store`, `platform/store/identitystore` |
 | `people/contact` | — |
 | `people/notifications` | `people/secretprotection`, `platform/httpx` |
 | `people/secretprotection` | `platform/config` |
