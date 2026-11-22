@@ -38,6 +38,10 @@ func (c *rotatingCycle) TurnedWindow(ctx context.Context, id string, at, _ time.
 	return slots, err
 }
 
+func (c *rotatingCycle) WithPlannedBreaks(_ context.Context, _ string, _ time.Time, slots []schedule.Slot) []schedule.Slot {
+	return slots
+}
+
 func (c *rotatingCycle) CyclePreview(_ context.Context, _ string, at time.Time) (
 	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
 ) {

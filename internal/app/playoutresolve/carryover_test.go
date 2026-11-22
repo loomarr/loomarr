@@ -19,43 +19,81 @@ import (
 // the crossing episode was cut and the next one joined part-way through. Live on the demo library
 // a 22-minute episode aired 16 minutes, then the next slice joined another episode 8 minutes in.
 
-// windowDecks arranges three 22-minute episodes per rolling window, named for the window.
+// windowDecks arranges episodes per rolling window, named for the window: three 22-minute ones by
+// default. With breakLen set, a commercial break follows each episode; with planned set, the
+// breaks reconcile planned ahead of a turn are that long, as the pod assembler's stored pods are.
 type windowDecks struct {
-	window time.Duration
-	asked  []time.Time
-	turns  []time.Time // the anchors TurnedWindow was asked to plan from
+	window   time.Duration
+	zone     *time.Location
+	episodes int           // per window; 0 means 3
+	episode  time.Duration // 0 means 22 minutes
+	breakLen time.Duration // the arranged break after each episode; 0 means none
+	planned  time.Duration // each planned break's length; 0 means nothing is planned
+	label    string        // the window opening's layout in episode names; "" means "15h"
+	fixed    bool          // the channel cannot carry over (Tunarr-backed)
+	asked    []time.Time
+	turns    []time.Time // the anchors TurnedWindow was asked to plan from
 }
 
 func (d *windowDecks) TurnedWindow(ctx context.Context, id string, at, turnAnchor time.Time) ([]schedule.Slot, error) {
 	d.turns = append(d.turns, turnAnchor)
 	_, slots, _, _, err := d.CyclePreview(ctx, id, at)
-	return slots, err
+	if err != nil {
+		return nil, err
+	}
+	return d.WithPlannedBreaks(ctx, id, turnAnchor, slots), nil
+}
+
+func (d *windowDecks) WithPlannedBreaks(_ context.Context, _ string, _ time.Time, slots []schedule.Slot) []schedule.Slot {
+	if d.planned <= 0 {
+		return slots
+	}
+	out := append([]schedule.Slot(nil), slots...)
+	for i := range out {
+		if out[i].Kind == schedule.SlotFiller && out[i].Key == "" {
+			out[i].DurationMs = d.planned.Milliseconds()
+		}
+	}
+	return out
 }
 
 func (d *windowDecks) CyclePreview(_ context.Context, _ string, at time.Time) (
 	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
 ) {
 	d.asked = append(d.asked, at)
-	opened := schedule.WindowStart(at, d.window, nil)
+	opened := schedule.WindowStart(at, d.window, d.zone)
+	episodes, episode, label := d.episodes, d.episode, d.label
+	if episodes == 0 {
+		episodes = 3
+	}
+	if episode == 0 {
+		episode = 22 * time.Minute
+	}
+	if label == "" {
+		label = "15h"
+	}
 	var slots []schedule.Slot
-	for ep := 1; ep <= 3; ep++ {
-		id := fmt.Sprintf("%s-e%d", opened.Format("15h"), ep)
+	for ep := 1; ep <= episodes; ep++ {
+		id := fmt.Sprintf("%s-e%d", opened.Format(label), ep)
 		slots = append(slots, schedule.Slot{
 			Kind: schedule.SlotProgram, Key: provision.Key("series:tvdb:90000001"), Title: id, LibraryItemID: id,
-			DurationMs: (22 * time.Minute).Milliseconds(),
+			DurationMs: episode.Milliseconds(),
 		})
+		if d.breakLen > 0 {
+			slots = append(slots, schedule.Slot{Kind: schedule.SlotFiller, DurationMs: d.breakLen.Milliseconds()})
+		}
 	}
 	return at, slots, schedule.ActiveRuleAttribution{}, d.window, nil
 }
 
 func (d *windowDecks) RollingWindow(schedule.ChannelPolicy, time.Time) (time.Duration, *time.Location) {
-	return d.window, nil
+	return d.window, d.zone
 }
 
 func (d *windowDecks) Calendar() schedule.Calendar { return schedule.Calendar{} }
 
 func (d *windowDecks) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
-	return true, nil
+	return !d.fixed, nil
 }
 
 // carryOverResolver has window 00:00–01:00 committed: its slice, walked from the anchor 00:00.
@@ -153,6 +191,106 @@ func TestAiringAt_ATurnedWindowIsPlannedFromTheTurn(t *testing.T) {
 	turns := r.engine.(*windowDecks).turns
 	if len(turns) != 1 || !turns[0].Equal(w0.Add(66*time.Minute)) {
 		t.Fatalf("turned window planned from %v, want once from the turn at 01:06", turns)
+	}
+}
+
+// deckResolver has the window opening at w0 committed: its slice, walked from the anchor w0.
+func deckResolver(decks *windowDecks, w0, now time.Time) *Resolver {
+	_, committed, _, _, _ := decks.CyclePreview(context.Background(), "ch1", w0)
+	accepted := &stubChannels{}
+	accepted.ch.ID, accepted.ch.Desired, accepted.ch.PlayoutAnchor = "ch1", committed, w0
+	accepted.ch.Status = schedule.StatusLive
+	return &Resolver{engine: decks, channels: accepted, now: func() time.Time { return now }}
+}
+
+// guideAgreesWithAir reads the guide over [from, to) at the resolver's now and checks that every
+// programme the guide starts before `until` is what playout airs one second after that start.
+func guideAgreesWithAir(t *testing.T, r *Resolver, from, to, until time.Time) {
+	t.Helper()
+	bs, err := r.segmentedBroadcasts(context.Background(), "ch1", from, to, timeline.BroadcastsBetween)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	for _, b := range bs {
+		if b.Kind != schedule.SlotProgram || !b.Start.Before(until) {
+			continue
+		}
+		checked++
+		at := b.Start.Add(time.Second)
+		slots, epoch, err := r.acceptedCycle(context.Background(), "ch1", at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := timeline.AiringAt(slots, epoch, at)
+		if got.LibraryItemID != b.LibraryItemID || got.Offset != time.Second {
+			t.Errorf("guide starts %s at %s; playout airs %s %v in at that instant (the guide is %v late)",
+				b.Title, b.Start.Format(time.DateTime), got.LibraryItemID, got.Offset-time.Second, got.Offset-time.Second)
+		}
+	}
+	if checked < 4 {
+		t.Fatalf("checked %d programmes, want the turn covered: %v", checked, guideLine(bs))
+	}
+}
+
+// Read before the turn, the guide's next window is the one playout airs after it, breaks at the
+// lengths reconcile planned for them (#4551). Each 5-minute break is planned at 2 minutes, so
+// forecasting the arranged lengths put every programme after the first break late in the guide.
+func TestGuide_NextWindowAirsWithItsPlannedBreaks(t *testing.T) {
+	t.Parallel()
+	w0 := w0At(0)
+	decks := &windowDecks{window: time.Hour, breakLen: 5 * time.Minute, planned: 2 * time.Minute}
+	r := deckResolver(decks, w0, w0.Add(30*time.Minute))
+	guideAgreesWithAir(t, r, w0, w0.Add(3*time.Hour), w0.Add(2*time.Hour))
+}
+
+// With nothing planned, the next window's breaks keep their arranged length on both sides.
+func TestGuide_NextWindowWithNoPlannedBreaksAirsArranged(t *testing.T) {
+	t.Parallel()
+	w0 := w0At(0)
+	decks := &windowDecks{window: time.Hour, breakLen: 5 * time.Minute}
+	r := deckResolver(decks, w0, w0.Add(30*time.Minute))
+	guideAgreesWithAir(t, r, w0, w0.Add(3*time.Hour), w0.Add(2*time.Hour))
+}
+
+// A day window in a DST zone is 25 hours on the night the clocks go back; the planned next day
+// still lines up with what playout airs.
+func TestGuide_NextWindowAirsWithItsPlannedBreaksAcrossADSTDay(t *testing.T) {
+	t.Parallel()
+	zone, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skip("no tzdata:", err)
+	}
+	w0 := time.Date(2026, time.November, 1, 0, 0, 0, 0, zone) // 25 hours to the next midnight
+	decks := &windowDecks{
+		window: 24 * time.Hour, zone: zone, episodes: 24, episode: time.Hour, label: "Jan02",
+		breakLen: 5 * time.Minute, planned: 2 * time.Minute,
+	}
+	r := deckResolver(decks, w0, w0.Add(12*time.Hour))
+	nextMidnight := time.Date(2026, time.November, 2, 0, 0, 0, 0, zone)
+	if got := nextMidnight.Sub(w0); got != 25*time.Hour {
+		t.Fatalf("window length %v, want the 25-hour day", got)
+	}
+	guideAgreesWithAir(t, r, w0, nextMidnight.Add(48*time.Hour), nextMidnight.Add(24*time.Hour))
+}
+
+// A channel that cannot carry over never turns ahead of reconcile, so planned breaks do not move
+// its guide.
+func TestGuide_FixedAnchorChannelIgnoresPlannedBreaks(t *testing.T) {
+	t.Parallel()
+	w0 := w0At(0)
+	read := func(planned time.Duration) []string {
+		decks := &windowDecks{window: time.Hour, breakLen: 5 * time.Minute, planned: planned, fixed: true}
+		r := deckResolver(decks, w0, w0.Add(30*time.Minute))
+		bs, err := r.segmentedBroadcasts(context.Background(), "ch1", w0, w0.Add(3*time.Hour), timeline.BroadcastsBetween)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return guideLine(bs)
+	}
+	arranged, planned := read(0), read(2*time.Minute)
+	if fmt.Sprint(arranged) != fmt.Sprint(planned) {
+		t.Fatalf("fixed-anchor guide moved with planned breaks:\n%v\nwant\n%v", planned, arranged)
 	}
 }
 

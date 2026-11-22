@@ -2,7 +2,6 @@ package channels
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
@@ -32,30 +31,33 @@ const nextWindowLead = time.Hour
 
 // TurnedWindow is what a channel airs once its rolling window has turned, before reconcile commits
 // the new window: the cycle CyclePreview arranges at `at`, walked from the turn's anchor, with each
-// break at the length reconcile planned for it ahead of the turn (planNextWindow). It reads only:
-// a break with nothing planned at its start keeps its slot and is assembled live, as before.
+// break at the length reconcile planned for it ahead of the turn (WithPlannedBreaks).
 func (e *Engine) TurnedWindow(ctx context.Context, channelID string, at, turnAnchor time.Time) ([]schedule.Slot, error) {
-	ch, err := e.store.GetChannel(ctx, channelID)
-	if err != nil {
-		return nil, fmt.Errorf("load channel %s: %w", channelID, err)
-	}
-	r, err := e.PreviewPlannedChannel(ctx, ch, at, e.avail)
+	_, slots, _, _, err := e.CyclePreview(ctx, channelID, at)
 	if err != nil {
 		return nil, err
 	}
+	return e.WithPlannedBreaks(ctx, channelID, turnAnchor, slots), nil
+}
+
+// WithPlannedBreaks is an arranged window walked from turnAnchor with each break at the length
+// reconcile planned for it ahead of the turn (planNextWindow). It reads only and returns a new
+// slice, so a cached arrangement passed in stays as it was: a break with nothing planned at its
+// start keeps its slot and is assembled live, as before.
+func (e *Engine) WithPlannedBreaks(ctx context.Context, channelID string, turnAnchor time.Time, slots []schedule.Slot) []schedule.Slot {
 	planner, ok := e.pods.(BreakPlanner)
 	if !ok {
-		return r.Slots, nil
+		return slots
 	}
-	first, from, plans := breakPlans(turnAnchor, r.Slots)
+	first, from, plans := breakPlans(turnAnchor, slots)
 	if first < 0 {
-		return r.Slots, nil
+		return slots
 	}
-	lengths, err := planner.PlannedLengths(ctx, ch.ID, from, plans)
+	lengths, err := planner.PlannedLengths(ctx, channelID, from, plans)
 	if err != nil {
-		return r.Slots, nil //nolint:nilerr // unplanned breaks air at their slot, assembled live
+		return slots // unplanned breaks air at their slot, assembled live
 	}
-	return withLengths(r.Slots, first, lengths), nil
+	return withLengths(slots, first, lengths)
 }
 
 // planNextWindow plans the breaks of the window after the committed one, from the instant it will

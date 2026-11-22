@@ -2,6 +2,7 @@ package channels_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -125,6 +126,20 @@ func TestReconcile_PlansTheNextWindowsBreaksBeforeItTurns(t *testing.T) {
 	}
 	if breaks == 0 {
 		t.Fatal("the turned window has no breaks")
+	}
+
+	// The guide applies the planned lengths to its cached arrangement, which must come back as
+	// it went in.
+	_, arranged, _, _, err := e.CyclePreview(context.Background(), "nw", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := append([]schedule.Slot(nil), arranged...)
+	if got := e.WithPlannedBreaks(context.Background(), "nw", turn, arranged); !reflect.DeepEqual(got, slots) {
+		t.Fatal("the planned arrangement differs from the turned window playout airs")
+	}
+	if !reflect.DeepEqual(arranged, before) {
+		t.Fatal("applying the planned breaks changed the arrangement passed in")
 	}
 }
 
