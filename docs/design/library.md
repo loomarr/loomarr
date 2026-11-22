@@ -482,7 +482,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   scanner recorded either reads grounded by the column's default; it fails closed until a scan
   writes it again:
 
-  ```
+  ```text
   identified(t) = t.kind in {movie, series} and t.name_from != ''
                   and (t.match_basis != '' or answered(t)) and not ignored(t)
   member reads t = identified(t)
