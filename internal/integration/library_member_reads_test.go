@@ -129,6 +129,25 @@ func TestMemberRoutesReadOnlyIdentifiedLibraryTitles(t *testing.T) {
 			found, in, id, unidentified)
 	}
 
+	// Structured discovery: the presence backfill marks the ignored title only for the admin.
+	discovered := func(cookie *http.Cookie) (found, inLibrary bool, itemID string) {
+		t.Helper()
+		var got searchWire
+		h.getJSON("/v1/search?media_type=movie&genres=Science%20Fiction&scope=all", cookie, &got)
+		for _, c := range got.Candidates {
+			if c.TMDBID == ignoredTMDB {
+				return true, c.InLibrary, c.LibraryItemID
+			}
+		}
+		return false, false, ""
+	}
+	if found, in, id := discovered(admin); !found || !in || id != ignoredItem {
+		t.Errorf("admin discovery: found %v, inLibrary %v, item %q; want the ignored title marked", found, in, id)
+	}
+	if found, in, id := discovered(member); !found || in || id != "" {
+		t.Errorf("member discovery: found %v, inLibrary %v, item %q; want TMDB's title, not in the Library", found, in, id)
+	}
+
 	// Channel ideas: the Animation idea counts the ignored title only for the admin.
 	ideaKeys := func(cookie *http.Cookie) []string {
 		t.Helper()
