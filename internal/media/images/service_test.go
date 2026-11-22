@@ -398,6 +398,26 @@ func TestRenditionSnapsWidthToTheLadder(t *testing.T) {
 	}
 }
 
+// A poster asked for at the ladder's widest rung is served at the widest rung its original fills
+// (#4476): a 185-wide original asked for 780 gets its 185 rung, not an upscale and not a 404.
+func TestRenditionServesASmallPosterAtItsWidestRung(t *testing.T) {
+	ctx := context.Background()
+	svc, fs := newTestService(t)
+
+	rec, err := svc.Ingest(ctx, bytes.NewReader(pngBytes(t, testImage(185, 278))),
+		IngestRequest{Role: RolePoster})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Rendition(ctx, rec.Hash, FormatWebP, 780); err != nil {
+		t.Fatalf("Rendition(780) of a 185-wide poster: %v", err)
+	}
+	ds := fs.derivatives[rec.Hash]
+	if len(ds) != 1 || ds[0].Width != 185 {
+		t.Errorf("derivatives = %+v, want one at the 185 rung", ds)
+	}
+}
+
 // AVIF is job-produced. Asking for one that does not exist is a normal absence, so the caller
 // omits that <source> and the browser takes WebP — never an error, never an inline encode.
 func TestRenditionDoesNotEncodeAVIFInline(t *testing.T) {

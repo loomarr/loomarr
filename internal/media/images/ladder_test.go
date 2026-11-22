@@ -153,6 +153,36 @@ func TestStillWidthsNeverUpscale(t *testing.T) {
 	}
 }
 
+// A poster follows the stills rule (#4476): no rung wider than its original except the smallest,
+// so a 185-wide poster is never offered at 342, 500 or 780.
+func TestPosterWidthsNeverUpscale(t *testing.T) {
+	cases := []struct {
+		source int
+		want   []int
+	}{
+		{0, []int{154, 185, 342, 500, 780}},    // unknown: the whole ladder
+		{100, []int{154}},                      // narrower than the smallest rung: that rung
+		{185, []int{154, 185}},                 // a TMDB w185 poster
+		{300, []int{154, 185}},                 // between rungs: the rungs it fills
+		{500, []int{154, 185, 342, 500}},       // a TMDB w500 poster
+		{2000, []int{154, 185, 342, 500, 780}}, // an original: every rung
+	}
+	for _, c := range cases {
+		if got := RolePoster.WidthsFor(c.source); !slices.Equal(got, c.want) {
+			t.Errorf("poster WidthsFor(%d) = %v, want %v", c.source, got, c.want)
+		}
+		if got := RolePoster.AVIFWidthsFor(c.source); !slices.Equal(got, c.want) {
+			t.Errorf("poster AVIFWidthsFor(%d) = %v, want %v", c.source, got, c.want)
+		}
+	}
+	if got := RolePoster.NearestWidthFor(780, 185); got != 185 {
+		t.Errorf("NearestWidthFor(780, 185) = %d, want 185, never an upscale", got)
+	}
+	if got := RolePoster.NearestWidthFor(160, 185); got != 185 {
+		t.Errorf("NearestWidthFor(160, 185) = %d, want 185", got)
+	}
+}
+
 // AVIF stops at 1920: the 3840 encode is the dearest rendition and a 4K client takes WebP.
 func TestAVIFLadderStopsAt1920(t *testing.T) {
 	if got, want := RoleBackdrop.AVIFWidthsFor(3840), []int{300, 780, 1280, 1920}; !slices.Equal(got, want) {
