@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/subtitles"
 )
 
@@ -64,12 +65,26 @@ func (s SilenceSpans) Silence(context.Context, string, time.Duration, time.Durat
 }
 
 // MediaBudget is the shared double for the playout budget's filler-priority admission
-// (subtitles.Budget). While Tight, every context it gives is born ended, as ResourceBudget's is
-// when playout has no headroom.
+// (subtitles.Budget). While Tight, every context it gives is born ended with cause
+// playout.ErrYielded, as ResourceBudget's is when playout has no headroom; Yield takes the
+// headroom back from work already admitted.
 type MediaBudget struct {
 	mu     sync.Mutex
 	tight  bool
 	admits int
+	live   map[*byte]context.CancelCauseFunc
+}
+
+// Yield leaves playout tight and ends every admitted context with cause playout.ErrYielded, as a
+// live admission that leaves no room does.
+func (b *MediaBudget) Yield() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.tight = true
+	for key, cancel := range b.live {
+		cancel(playout.ErrYielded)
+		delete(b.live, key)
+	}
 }
 
 // SetTight sets whether playout has headroom.
@@ -87,13 +102,23 @@ func (b *MediaBudget) Admitted() int {
 }
 
 func (b *MediaBudget) MediaWorkContext(ctx context.Context, _ bool) (context.Context, context.CancelFunc) {
-	wctx, cancel := context.WithCancel(ctx)
+	wctx, cancel := context.WithCancelCause(ctx)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.tight {
-		cancel()
+		cancel(playout.ErrYielded)
 		return wctx, func() {}
 	}
 	b.admits++
-	return wctx, cancel
+	key := new(byte)
+	if b.live == nil {
+		b.live = map[*byte]context.CancelCauseFunc{}
+	}
+	b.live[key] = cancel
+	return wctx, func() {
+		b.mu.Lock()
+		delete(b.live, key)
+		b.mu.Unlock()
+		cancel(context.Canceled)
+	}
 }

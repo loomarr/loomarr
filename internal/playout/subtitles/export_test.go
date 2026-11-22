@@ -11,3 +11,6 @@ func (g *Generator) Step(ctx context.Context) bool { return g.step(ctx) }
 
 // SetClock replaces the Generator's clock.
 func (g *Generator) SetClock(now func() time.Time) { g.now = now }
+
+// SetBlockTimeout replaces the bound on one block's transcription on each engine.
+func (g *Generator) SetBlockTimeout(d time.Duration) { g.timeout = d }

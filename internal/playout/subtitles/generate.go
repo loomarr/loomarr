@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/langcode"
 )
 
 // The Auto-generated track (#4530, docs/design/playout.md "Transcription is on demand"): blocks
@@ -111,6 +113,8 @@ type Generator struct {
 	dir string
 	log *slog.Logger
 	now func() time.Time
+	// timeout bounds one block's transcription on each engine, and its silence measure.
+	timeout time.Duration
 
 	wake chan struct{}
 
@@ -158,7 +162,7 @@ func NewGenerator(eng Engines, dir string, log *slog.Logger) *Generator {
 		log = slog.New(slog.DiscardHandler)
 	}
 	return &Generator{
-		eng: eng, dir: dir, log: log, now: time.Now,
+		eng: eng, dir: dir, log: log, now: time.Now, timeout: blockTimeout,
 		wake: make(chan struct{}, 1), tracks: map[string]*autoTrack{},
 	}
 }
@@ -172,20 +176,34 @@ func (g *Generator) Cues(m Media, from, to time.Duration) ([]Cue, string, State)
 	if g.eng.Local == nil && g.hosted() == nil {
 		return nil, "", Failed
 	}
-	from = max(from, 0)
-	if m.Duration > 0 {
-		to = min(to, m.Duration)
-	}
 	key := mediaKey(m)
 	now := g.now()
-	first, last := blockIndex(from), blockIndex(max(to-1, from))
-	ahead := last + blocksAhead
-	if m.Duration > 0 {
-		ahead = min(ahead, blockIndex(m.Duration-1))
-	}
 
 	g.mu.Lock()
+	duration := m.Duration
+	known, ok := g.tracks[key]
+	if ok && duration == 0 {
+		duration = known.media.Duration
+	}
+	from = max(from, 0)
+	if duration > 0 {
+		to = min(to, duration)
+	}
+	// An empty window, or one past the file's end, wants nothing.
+	if to <= from {
+		language := ""
+		if ok {
+			language = known.language
+		}
+		g.mu.Unlock()
+		return []Cue{}, language, Ready
+	}
 	t := g.trackLocked(key, m, now)
+	first, last := blockIndex(from), blockIndex(to-1)
+	ahead := last + blocksAhead
+	if duration > 0 {
+		ahead = min(ahead, blockIndex(duration-1))
+	}
 	var probe []*autoBlock
 	for i := first; i <= ahead; i++ {
 		if b := t.blockLocked(i); !b.probed && !b.ready && !b.running {
@@ -211,25 +229,30 @@ func (g *Generator) Cues(m Media, from, to time.Duration) ([]Cue, string, State)
 	defer g.mu.Unlock()
 	t.asked = now
 	t.asks++
+	// A block is missing when a concurrent request learned the file's length and forgot the
+	// blocks past its end: there is nothing to want or show there.
 	for i := first; i <= ahead; i++ {
 		b := t.blocks[i]
+		if b == nil {
+			continue
+		}
 		if now.Sub(b.wanted) > askedWithin || i-first < b.rank {
 			b.rank = i - first
 		}
 		b.wanted = now
 	}
-	if to > from && !t.blocks[first].ready {
-		t.leadAtLocked(from, m.Duration).wanted = now
+	if b := t.blocks[first]; b != nil && !b.ready {
+		t.leadAtLocked(from).wanted = now
 	}
 	g.signal()
 
 	cues := []Cue{}
 	state := Ready
-	if to <= from {
-		return cues, t.language, state
-	}
 	for i := first; i <= last; i++ {
 		b := t.blocks[i]
+		if b == nil {
+			continue
+		}
 		span := Span{Start: max(b.start, from), End: min(b.end, to)}
 		if b.ready {
 			cues = append(cues, overlapping(b.cues, span)...)
@@ -245,7 +268,8 @@ func (g *Generator) Cues(m Media, from, to time.Duration) ([]Cue, string, State)
 	return cues, t.language, state
 }
 
-// trackLocked is m's track, made on the first request, after forgetting tracks idle too long.
+// trackLocked is m's track, made on the first request, after forgetting tracks idle too long. A
+// track made while the file's length was unknown takes it from the first request that knows it.
 func (g *Generator) trackLocked(key string, m Media, now time.Time) *autoTrack {
 	for k, t := range g.tracks {
 		if k != key && now.Sub(t.asked) > idleTrack {
@@ -256,8 +280,30 @@ func (g *Generator) trackLocked(key string, m Media, now time.Time) *autoTrack {
 	if !ok {
 		t = &autoTrack{key: key, media: m, blocks: map[int]*autoBlock{}}
 		g.tracks[key] = t
+	} else if t.media.Duration == 0 && m.Duration > 0 {
+		t.learnDurationLocked(m.Duration)
 	}
 	return t
+}
+
+// learnDurationLocked clips the blocks still to be made to the file's end, and forgets those that
+// start past it.
+func (t *autoTrack) learnDurationLocked(d time.Duration) {
+	t.media.Duration = d
+	for i, b := range t.blocks {
+		switch {
+		case b.running || b.ready:
+		case b.start >= d:
+			delete(t.blocks, i)
+		default:
+			b.end = min(b.end, d)
+		}
+	}
+	for _, lead := range t.leads {
+		if !lead.running && !lead.ready {
+			lead.end = min(lead.end, d)
+		}
+	}
 }
 
 func (t *autoTrack) blockLocked(i int) *autoBlock {
@@ -274,21 +320,29 @@ func (t *autoTrack) blockLocked(i int) *autoBlock {
 	return b
 }
 
-// leadAtLocked is the lead block covering pos, made when none does.
-func (t *autoTrack) leadAtLocked(pos, duration time.Duration) *autoBlock {
+// leadAtLocked is the lead block covering pos, made when none does. It first forgets the leads
+// far from pos that are not running; the filter runs over every lead before one is returned, so
+// each lead is kept exactly once.
+func (t *autoTrack) leadAtLocked(pos time.Duration) *autoBlock {
+	var found *autoBlock
 	kept := t.leads[:0]
 	for _, lead := range t.leads {
-		if lead.start <= pos && pos < lead.end {
-			return lead
+		covers := lead.start <= pos && pos < lead.end
+		if covers && found == nil {
+			found = lead
 		}
-		if lead.running || pos-lead.end < askedWithin && lead.start-pos < askedWithin {
+		if covers || lead.running || pos-lead.end < askedWithin && lead.start-pos < askedWithin {
 			kept = append(kept, lead)
 		}
 	}
+	clear(t.leads[len(kept):])
 	t.leads = kept
+	if found != nil {
+		return found
+	}
 	end := pos + LeadLength
-	if duration > 0 {
-		end = min(end, duration)
+	if t.media.Duration > 0 {
+		end = min(end, t.media.Duration)
 	}
 	lead := &autoBlock{index: -1, start: pos, end: end, probed: true}
 	t.leads = append(t.leads, lead)
@@ -431,20 +485,27 @@ func (g *Generator) run(ctx context.Context, j job) {
 
 // transcribe runs a block on the hosted service when one is configured and takes it, and
 // otherwise on the local engine under the budget. A hosted failure (a busy service's 429
-// included) falls back for this block only and is never retried. A lead block is always local.
-// refused reports that the budget had no headroom, or took it back mid-block.
+// included) falls back for this block only and is never retried. A hosted call that runs out its
+// time is a failure of the block, which then waits failedRetry, rather than a local fallback: a
+// hung service would otherwise hold the single worker for both engines' time on every block. A
+// lead block is always local. Each engine has its own timeout. refused reports that the budget
+// had no headroom, or took it back mid-block.
 func (g *Generator) transcribe(ctx context.Context, j job) (speech Speech, refused bool, err error) {
 	b, file := j.block, j.track.media.Input
-	tctx, cancel := context.WithTimeout(ctx, blockTimeout)
-	defer cancel()
 	if b.index >= 0 {
 		if hosted := g.hosted(); hosted != nil {
-			speech, err := hosted.Transcribe(tctx, file, b.start, b.end, j.language)
+			hctx, cancel := context.WithTimeout(ctx, g.timeout)
+			speech, err := hosted.Transcribe(hctx, file, b.start, b.end, j.language)
+			timedOut := hctx.Err() != nil
+			cancel()
 			if err == nil {
 				return speech, false, nil
 			}
 			if ctx.Err() != nil {
 				return Speech{}, false, err
+			}
+			if timedOut {
+				return Speech{}, false, fmt.Errorf("the hosted speech service did not answer within %v: %w", g.timeout, err)
 			}
 			g.log.Info("subtitles: the hosted speech service did not take a block; it is transcribed locally",
 				"input", file, "start", b.start, "err", err)
@@ -456,13 +517,18 @@ func (g *Generator) transcribe(ctx context.Context, j job) (speech Speech, refus
 	if g.eng.Budget == nil {
 		return Speech{}, true, nil
 	}
-	wctx, release := g.eng.Budget.MediaWorkContext(tctx, false)
+	lctx, cancel := context.WithTimeout(ctx, g.timeout)
+	defer cancel()
+	wctx, release := g.eng.Budget.MediaWorkContext(lctx, false)
 	defer release()
-	if wctx.Err() != nil {
+	// The budget's refusal is its context ending while the one it was given is still live; an
+	// ended lctx is this block's timeout or shutdown, never the budget's.
+	yielded := func() bool { return wctx.Err() != nil && lctx.Err() == nil }
+	if yielded() {
 		return Speech{}, true, nil
 	}
 	speech, err = g.eng.Local.Transcribe(wctx, file, b.start, b.end, j.language)
-	if err != nil && wctx.Err() != nil && tctx.Err() == nil {
+	if err != nil && yielded() {
 		return Speech{}, true, nil
 	}
 	return speech, false, err
@@ -473,7 +539,7 @@ func (g *Generator) transcribe(ctx context.Context, j job) (speech Speech, refus
 func (g *Generator) placed(ctx context.Context, file string, b *autoBlock, cues []Cue) []Cue {
 	var silence []Span
 	if g.eng.Silence != nil {
-		sctx, cancel := context.WithTimeout(ctx, blockTimeout)
+		sctx, cancel := context.WithTimeout(ctx, g.timeout)
 		spans, err := g.eng.Silence.Silence(sctx, file, b.start, b.end)
 		cancel()
 		if err != nil {
@@ -504,19 +570,15 @@ func mostlySilent(start, end time.Duration, silence []Span) bool {
 	return float64(inside) >= silentShare*float64(end-start)
 }
 
-// languageCode is a reported language as a key's language: a lower-case code, or "" for anything
-// else (an engine's "auto", a language name), which leaves the language to be detected later.
+// languageCode is a reported language as a key's language: whisper answers a code, an
+// OpenAI-compatible service a name ("english") or a region tag, and langcode maps each onto one
+// code. Anything it cannot place (an engine's "auto", an unknown name) is "", which leaves the
+// language to be detected on a later block.
 func languageCode(language string) string {
-	language = strings.ToLower(strings.TrimSpace(language))
-	if len(language) < 2 || len(language) > 3 || language == "und" {
+	if !langcode.Valid(language) {
 		return ""
 	}
-	for _, r := range language {
-		if r < 'a' || r > 'z' {
-			return ""
-		}
-	}
-	return language
+	return langcode.Normalize(language)
 }
 
 func blockIndex(at time.Duration) int { return int(max(at, 0) / BlockLength) }
