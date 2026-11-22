@@ -41,7 +41,7 @@ One area of the [package map](../package-map.md#start-here).
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`platform/jobs`** · 10 importers · → `platform/store`, `platform/store/jobstore`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
-- **`platform/langcode`** · 4 importers
+- **`platform/langcode`** · 5 importers
   Maps the ways a language gets written down onto one code per language, so a channel's commercial language, a setting and a detector's answer compare equal (#2030 decision 12).
 - **`platform/llm`** · 14 importers · → `platform/httpx`, `platform/metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
