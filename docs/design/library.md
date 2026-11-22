@@ -455,9 +455,28 @@ step 5). Nothing reads the scanner's origins until the cutover.
   the item it was written as (`item_id`) and an episode's series (`series_id`). A title is listed
   while it has a present, importable file, and is "getting ready" while any of those files'
   headers is unread. A file row from before these columns has no item, so the next pass writes it
-  again. `GET /v1/library/items` pages and searches the list (admin-only);
+  again. `GET /v1/library/items` pages and searches the list;
   `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's
-  files, or a series' episodes by season.
+  files, or a series' episodes by season. Both are member-readable (see **Who reads the
+  Library** below). Every caller's title also carries `playing`, one line about the copy that
+  plays and nothing that names a file: its picture (width, height, high dynamic range), the
+  channels of the sound that plays and its subtitle languages.
+- **Who reads the Library** (#4476, decided 2026-11-21). A household member browses the
+  Library read-only: the wall and a title's page, and the Collections tab. The member-readable
+  routes are `GET /v1/library/items`, `GET /v1/library/items/{id}`, `GET /v1/collections`,
+  `GET /v1/collections/{id}`, and `GET /v1/library/collections` (names and sizes, for the channel
+  scope picker). Everything else under `/v1/library` and `/v1/collections` is admin-only: the
+  folders, path map, discovery and browse, status, scan, refresh and confirm-removal, Needs you
+  and its answers (link, ignore, unanswer, episode order, search for a different title), a
+  title's refresh, check and remove-copy, the hook test, and every collection write and set copy.
+  `POST /v1/library/hooks/{app}` stays public and answers only its app's shared secret.
+  A member's response is the admin's shape with the admin-only parts left out, decided once in
+  the handlers from the caller's role, never by the client: a title leaves out `files` (paths,
+  sizes, tracks, chapters), `match` and `detailsFrom`; a list entry, a collection's title and a
+  set's title leave out `unplayable` and `extraCopies`; an episode leaves out `fromFile`. Each of
+  those fields is optional in the schema and says "admins only". "Getting ready" (`ready`) and
+  the file count stay. The list's filters (kind, search, ready, sort) reveal nothing a member
+  can't read, and an episode id opens the episode's page under the same rule.
 - **Posters, backdrops and logos** (step 10b, #2567). When the importer writes a title it hands
   the resolved poster, fanart and clear logo to the image service, and the title owns each
   through a `library_item_images` row (role `poster`, `backdrop` or `logo`); that
@@ -706,14 +725,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Your collections** (step 12, decision 28). `library_collections` keeps the household's own
   collections and `library_collection_members` their titles in order, as `library_items` ids. A
   title that leaves the library drops out of the list and stays a member, so it comes back in its
-  place. `/v1/collections` (admin) lists, reads, makes, changes (name, description and titles
-  whole) and deletes them; each says which channels use it: a channel's scope or any rule's
+  place. `/v1/collections` lists and reads them for any signed-in member (the Collections tab),
+  and makes, changes (name, description and titles whole) and deletes them for an admin; each says which channels use it: a channel's scope or any rule's
   `what` that names its id. Delete answers 409 while any do. `imported_from` marks one brought
   over from the media server at cutover (step 15). `/v1/library/collections` lists the same
   collections for a different reader: it is member-readable and returns names and sizes only,
   for the channel scope picker, where a member choosing a collection still goes through
-  submit and approve. The two stay separate routes because merging them would either open the
-  titles and the edits to members or close the picker to them. A channel's collection scope
+  submit and approve. The two stay separate routes, one meaning each: `/v1/library/collections`
+  is the picker's light list, `/v1/collections` the Library's own collections with their titles
+  in order and the ready-made sets. A channel's collection scope
   matches through the reconcile's membership index, which holds the household's collections
   under their own ids (`LibraryCollectionMemberIDs`, keyed by each title's TMDB and TVDB ids).
 - **Ready-made sets** (step 12b, decision 28). A movie's TMDB record names the TMDB collection it

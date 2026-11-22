@@ -22,20 +22,22 @@ import (
 // channels use it, and the UI words it.
 //
 // `/v1/library/collections` lists the same collections, names and sizes only, for the channel
-// scope picker.
+// scope picker. These two reads are the Library's Collections tab, and a member reads them
+// without the titles' admin-only counts (#4476); every write is admin-only.
 
 func (s *Handlers) registerLibraryCollections(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "listCollections", Method: http.MethodGet, Path: "/v1/collections",
 		Summary:     "Your collections",
-		Description: "The household's collections, by name, each with its titles in order.",
+		Description: "The household's collections, by name, each with its titles in order. A member's titles leave out the admin-only counts.",
 		Tags:        []string{"library"},
-	}, httpcore.RoleAdmin), s.listCollections)
+	}, httpcore.RoleMember), s.listCollections)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "getCollection", Method: http.MethodGet, Path: "/v1/collections/{id}",
-		Summary: "One collection",
-		Tags:    []string{"library"},
-	}, httpcore.RoleAdmin), s.getCollection)
+		Summary:     "One collection",
+		Description: "A member's titles leave out the admin-only counts.",
+		Tags:        []string{"library"},
+	}, httpcore.RoleMember), s.getCollection)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "createCollection", Method: http.MethodPost, Path: "/v1/collections",
 		Summary:     "Make a collection",
@@ -125,17 +127,17 @@ func (s *Handlers) listCollections(ctx context.Context, _ *struct{}) (*listColle
 	for _, set := range sets {
 		titles = append(titles, set.Titles...)
 	}
-	posters := s.libraryPosters(ctx, titles)
+	posters, admin := s.libraryPosters(ctx, titles), readsAdminFacts(ctx)
 	out := &listCollectionsOutput{}
 	out.Body.Collections = make([]collectionDTO, 0, len(list))
 	for _, c := range list {
-		out.Body.Collections = append(out.Body.Collections, collectionOf(c, posters, uses))
+		out.Body.Collections = append(out.Body.Collections, collectionOf(c, posters, uses, admin))
 	}
 	out.Body.Sets = make([]setDTO, 0, len(sets))
 	for _, set := range sets {
 		dto := setDTO{ID: set.ID, Name: set.Name, Total: set.Total, Titles: make([]libraryItemDTO, 0, len(set.Titles))}
 		for _, it := range set.Titles {
-			dto.Titles = append(dto.Titles, libraryItemOf(it, posters))
+			dto.Titles = append(dto.Titles, libraryItemOf(it, posters, admin))
 		}
 		out.Body.Sets = append(out.Body.Sets, dto)
 	}
@@ -249,14 +251,14 @@ func (s *Handlers) collectionResponse(ctx context.Context, id string) (*collecti
 	if err != nil {
 		return nil, err
 	}
-	return &collectionOutput{Body: collectionOf(c, s.libraryPosters(ctx, c.Titles), uses)}, nil
+	return &collectionOutput{Body: collectionOf(c, s.libraryPosters(ctx, c.Titles), uses, readsAdminFacts(ctx))}, nil
 }
 
 func collectionNotFound() error {
 	return httpcore.Problem(http.StatusNotFound, "No such collection", "It may have been deleted.")
 }
 
-func collectionOf(c scan.Collection, posters map[string]*httpcore.ImageDTO, uses map[string][]libraryChannelDTO) collectionDTO {
+func collectionOf(c scan.Collection, posters map[string]*httpcore.ImageDTO, uses map[string][]libraryChannelDTO, admin bool) collectionDTO {
 	out := collectionDTO{
 		ID: c.ID, Name: c.Name, Description: c.Description, ImportedFrom: c.ImportedFrom,
 		Titles: make([]libraryItemDTO, 0, len(c.Titles)),
@@ -266,7 +268,7 @@ func collectionOf(c scan.Collection, posters map[string]*httpcore.ImageDTO, uses
 		out.UsedBy = []libraryChannelDTO{}
 	}
 	for _, it := range c.Titles {
-		out.Titles = append(out.Titles, libraryItemOf(it, posters))
+		out.Titles = append(out.Titles, libraryItemOf(it, posters, admin))
 	}
 	return out
 }

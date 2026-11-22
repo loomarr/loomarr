@@ -89,6 +89,29 @@ func playsInPlaceOf(files []ItemFile, i int) []ItemFile {
 // last file is never offered for removal.
 func extraCopy(files []ItemFile, i int) bool { return len(playsInPlaceOf(files, i)) > 0 }
 
+// PlayingCopy is the file of d that plays when the title airs: of the files whose source row
+// plays, the default edition's before a labelled one, then a whole file or its first part, then
+// list order. ok is false for a series, which lists its episodes instead, and for a title none
+// of whose files plays yet.
+func (d ItemDetail) PlayingCopy() (f ItemFile, ok bool) {
+	rank := func(g ItemFile) int {
+		r := 0
+		if g.Edition != "" {
+			r += 2
+		}
+		if g.Part > 1 {
+			r++
+		}
+		return r
+	}
+	for _, g := range d.Files {
+		if g.sourced && g.plays && (!ok || rank(g) < rank(f)) {
+			f, ok = g, true
+		}
+	}
+	return f, ok
+}
+
 // Picture is a video stream's size and range.
 type Picture struct {
 	Width, Height int
