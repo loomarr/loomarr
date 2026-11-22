@@ -42,7 +42,7 @@ func (s *Handlers) doResolveMovieCollections(ctx context.Context, in *movieColle
 				"Movie collections require a TMDB movie Key.")
 		}
 	}
-	request := MovieCollectionRequest{Keys: append([]string(nil), in.Keys...)}
+	request := MovieCollectionRequest{Keys: append([]string(nil), in.Keys...), Member: !readsAdminFacts(ctx)}
 	resolution, err := s.movieCollections.ResolveMovieCollections(ctx, request)
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Collection details didn't load",

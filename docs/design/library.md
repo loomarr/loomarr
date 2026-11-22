@@ -495,6 +495,14 @@ step 5). Nothing reads the scanner's origins until the cutover.
   leaves out `fromFile`. Each of those fields is optional in the schema and says "admins only".
   "Getting ready" (`ready`) stays. The list's filters (kind, search, ready, sort) and its total
   follow the rule above.
+  The other routes a member calls that read Library titles follow the same rule, decided from
+  the caller's role at the route: `GET /v1/search` (its Library half, and a TMDB result's
+  in-Library mark, whether a title search or a structured discovery), `GET /v1/discovery/ideas`
+  and the request made from an idea, `GET /v1/movie-collections` (a roster title's in-Library
+  mark), and the picker's sizes on `GET /v1/library/collections`. They read a member view of
+  the title reads (`MemberTitles`) or the member list. An admin's calls, the suggester's
+  grounding, and the server's own readers (presence, ratings, availability, growth, the guide's
+  art) read every listed title.
 - **Posters, backdrops and logos** (step 10b, #2567). When the importer writes a title it hands
   the resolved poster, fanart and clear logo to the image service, and the title owns each
   through a `library_item_images` row (role `poster`, `backdrop` or `logo`); that

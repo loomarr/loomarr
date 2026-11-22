@@ -25,10 +25,12 @@ func testLibraryMemberReads(t *testing.T, newStore NewStoreFunc) {
 	grounded := librarystore.LibraryMatch{Basis: "embedded_id"}
 	set := librarystore.LibraryCatalogKey{Provider: "tmdb_collection", Kind: "collection", ExternalID: "90000811"}
 	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
-		{ID: "g", Kind: "movie", Name: "Grounded Film", Origin: origin("/m/g.mkv"), Match: grounded, Set: set},
+		{ID: "g", Kind: "movie", Name: "Grounded Film", Origin: origin("/m/g.mkv"), Match: grounded, Set: set,
+			IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000813"}}},
 		{ID: "u", Kind: "movie", Name: "unknown folder name", Origin: origin("/m/unknown folder name/u.mkv"), Set: set},
 		{ID: "a", Kind: "movie", Name: "Answered Film", Origin: origin("/m/a.mkv")},
-		{ID: "i", Kind: "movie", Name: "ignored folder name", Origin: origin("/m/i.mkv"), Match: grounded},
+		{ID: "i", Kind: "movie", Name: "ignored folder name", Origin: origin("/m/i.mkv"), Match: grounded,
+			IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000814"}}},
 		{ID: "s", Kind: "series", Name: "Grounded Show", Origin: origin("/m/s"), Match: librarystore.LibraryMatch{Basis: "manager", App: "sonarr"}},
 		{ID: "s1", Kind: "episode", Name: "Pilot", SeriesID: "s", Season: 1, Episode: 1},
 		{ID: "s2", Kind: "episode", Name: "s.s01e02.file name", SeriesID: "s", Season: 1, Episode: 2, Unnumbered: true},
@@ -104,6 +106,52 @@ func testLibraryMemberReads(t *testing.T, newStore NewStoreFunc) {
 	for _, id := range []string{"u", "i", "x", "s1", "s2"} {
 		if got, err := st.LibraryItem(ctx, id); err != nil || got.ID != id {
 			t.Errorf("admin reads %s = %+v, %v", id, got.ID, err)
+		}
+	}
+
+	// The title reads behind a member's search, collection rosters and channel ideas
+	// (MemberTitles) keep the same rule; the Store's own, which the server reads, keep every title.
+	titleIDs := func(titles []librarystore.LibraryTitle, err error) []string {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := []string{}
+		for _, title := range titles {
+			out = append(out, title.ID)
+		}
+		slices.Sort(out)
+		return out
+	}
+	member := st.MemberTitles()
+	for _, tc := range []struct {
+		name string
+		got  []string
+		want []string
+	}{
+		{"member titles", titleIDs(member.LibraryTitles(ctx, time.Time{})), []string{"a", "g", "s"}},
+		{"server titles", titleIDs(st.LibraryTitles(ctx, time.Time{})), []string{"a", "g", "i", "s", "u", "x"}},
+		{"member title search", titleIDs(member.SearchLibraryTitles(ctx, "folder name", 10)), []string{}},
+		{"server title search", titleIDs(st.SearchLibraryTitles(ctx, "folder name", 10)), []string{"i", "u"}},
+		{"member title search, identified", titleIDs(member.SearchLibraryTitles(ctx, "film", 10)), []string{"a", "g"}},
+	} {
+		if !slices.Equal(tc.got, tc.want) {
+			t.Errorf("%s = %v, want %v", tc.name, tc.got, tc.want)
+		}
+	}
+	for _, tc := range []struct {
+		name   string
+		reader librarystore.LibraryTitleReader
+		tmdb   string
+		want   string
+	}{
+		{"member, identified", member, "90000813", "g"},
+		{"member, ignored", member, "90000814", ""},
+		{"server, ignored", st, "90000814", "i"},
+	} {
+		got, ok, err := tc.reader.LibraryTitleByProviderID(ctx, "movie", "tmdb", tc.tmdb)
+		if err != nil || ok != (tc.want != "") || got.ID != tc.want {
+			t.Errorf("%s by tmdb %s = %q, %v, %v; want %q", tc.name, tc.tmdb, got.ID, ok, err, tc.want)
 		}
 	}
 }

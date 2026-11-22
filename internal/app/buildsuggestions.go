@@ -108,13 +108,26 @@ func buildSuggestions(
 	catalogService := titlesearch.New(titlesearch.LibrarySearch{Titles: st, Facts: st}, tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
 		return titlesearch.LibraryOwnership{Titles: st}
 	}).WithEvidence(st)
-	result.search = searchAdapter{catalogService}
+	// A household member's search, collection rosters and channel ideas read only the titles a
+	// member reads (docs/design/library.md "Who reads the Library"); the suggester, recurate and
+	// every server-side reader keep catalogService and st.
+	memberTitles := st.MemberTitles()
+	memberCatalog := titlesearch.New(titlesearch.LibrarySearch{Titles: memberTitles, Facts: st}, tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
+		return titlesearch.LibraryOwnership{Titles: memberTitles}
+	}).WithEvidence(st)
+	result.search = searchAdapter{cat: catalogService, member: memberCatalog}
 	collectionResolver := tmdb.NewCollectionResolver(tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
 		return titlesearch.LibraryOwnership{Titles: st}
 	})
-	result.movieCollections = movieCollectionAdapter{resolver: collectionResolver}
-	result.collections = libraryCollections{own: st}
-	result.ideaLibrary = &libraryIdeaItems{lib: libraryIdeaTitles{titles: st, facts: st}, now: time.Now}
+	memberCollectionResolver := tmdb.NewCollectionResolver(tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
+		return titlesearch.LibraryOwnership{Titles: memberTitles}
+	})
+	result.movieCollections = movieCollectionAdapter{resolver: collectionResolver, member: memberCollectionResolver}
+	result.collections = libraryCollections{own: st, items: st}
+	result.ideaLibrary = ideaAudiences{
+		all:    &libraryIdeaItems{lib: libraryIdeaTitles{titles: st, facts: st}, now: time.Now},
+		member: &libraryIdeaItems{lib: libraryIdeaTitles{titles: memberTitles, facts: st}, now: time.Now},
+	}
 	result.icons = iconAdapter{
 		store: st, tmdb: tmdbClient, images: result.images, fetch: result.imageFetcher, log: log,
 	}
