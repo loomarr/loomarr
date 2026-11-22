@@ -184,7 +184,9 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   switches the rendition and never restarts the encoder. Subtitles are soft and served beside the
   stream (`GET /v1/channels/{id}/subtitles`, [`playout.md`](playout.md)): the player asks for the
   cues of the remembered track key around its playhead, on the channel's wall clock, and draws them
-  over the picture (`C` cycles them).
+  over the picture (`C` cycles them). A server-generated track (`generated: true`, key
+  `<language>-auto`) is labelled **Auto-generated** on every client and listed after the file's own
+  tracks; while its cues are `pending` the player says "Generating subtitles…" and keeps asking.
 - **Leaving `/watch`** stops playback, unless the viewer is in the browser's picture-in-picture
   (`P`; hidden where unsupported). There is no in-app mini-player; the one-`<video>` rule stands.
   The route hides the app nav and has a back arrow in the top left corner.
