@@ -229,6 +229,42 @@ func TestGenerator_NoBudgetHeadroomRefusesLocalWorkAndStaysPending(t *testing.T)
 	}
 }
 
+func TestGenerator_NoBudgetHeadroomStillSendsGridBlocksToTheHostedService(t *testing.T) {
+	busy := errors.New("audio transcription: status 429 Too Many Requests")
+	hosted := &testkit.SpeechEngine{Respond: func(call testkit.SpeechCall) (subtitles.Speech, error) {
+		if call.Start == 30*s {
+			return subtitles.Speech{}, busy
+		}
+		return speaking("en")(call)
+	}}
+	local := &testkit.SpeechEngine{Respond: speaking("en")}
+	budget := &testkit.MediaBudget{}
+	budget.SetTight(true)
+	g, _ := newGenerator(t, subtitles.Engines{
+		Local: local, Hosted: func() subtitles.Transcriber { return hosted }, Budget: budget,
+	}, "")
+
+	for range 2 {
+		g.Cues(episode, 0, 10*s)
+		drain(t, g)
+	}
+	// The local lead is refused; every grid block still goes to the hosted service, once per
+	// request at most, and the one it refused waits for headroom instead of being asked in a loop.
+	want := [][2]time.Duration{{0, 30 * s}, {30 * s, 60 * s}, {60 * s, 90 * s}, {30 * s, 60 * s}}
+	if got := spans(hosted.Calls()); !slices.Equal(got, want) {
+		t.Fatalf("hosted spans = %v, want %v", got, want)
+	}
+	if len(local.Calls()) != 0 {
+		t.Fatalf("local ran %d times past a tight budget", len(local.Calls()))
+	}
+	if _, _, state := g.Cues(episode, 0, 10*s); state != subtitles.Ready {
+		t.Fatalf("state = %v, want ready from the hosted service", state)
+	}
+	if _, _, state := g.Cues(episode, 30*s, 40*s); state != subtitles.Pending {
+		t.Fatalf("refused block state = %v, want pending", state)
+	}
+}
+
 func TestGenerator_DropsCuesMostlyInsideSilenceAndKeepsQuietSpeech(t *testing.T) {
 	local := &testkit.SpeechEngine{Respond: func(testkit.SpeechCall) (subtitles.Speech, error) {
 		return subtitles.Speech{Language: "en", Cues: []subtitles.Cue{

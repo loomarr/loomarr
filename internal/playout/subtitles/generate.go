@@ -122,7 +122,8 @@ type autoTrack struct {
 	key   string
 	media Media
 	// asked is the latest request and asks counts them. refusedAt is the count when the budget
-	// last refused this track's local work, which is not tried again until a later request.
+	// last refused this track's local work: until a later request no block starts on the local
+	// engine, while grid blocks still go to a configured hosted service.
 	asked           time.Time
 	asks, refusedAt int
 	// language is detected on the first block with speech and kept.
@@ -140,11 +141,14 @@ type autoBlock struct {
 	wanted time.Time
 	rank   int
 
-	probed   bool // the disk has been asked for this block
-	running  bool
-	ready    bool
-	failedAt time.Time
-	cues     []Cue
+	probed  bool // the disk has been asked for this block
+	running bool
+	// refusedAt is the track's request count when the budget refused this block's local
+	// fallback; the block waits for a later request.
+	refusedAt int
+	ready     bool
+	failedAt  time.Time
+	cues      []Cue
 }
 
 // NewGenerator transcribes with eng, keeping blocks under dir ("" keeps them in memory only).
@@ -339,10 +343,12 @@ func (g *Generator) step(ctx context.Context) bool {
 }
 
 // next picks the most urgent block and marks it running: a lead block first, then the wanted
-// grid block nearest its request's position. A track nobody asked for within one block's length,
-// or whose local work the budget refused since the last request, is passed over.
+// grid block nearest its request's position. A track nobody asked for within one block's length
+// is passed over. Once the budget has refused a track's local work, until its next request only
+// grid blocks are offered, and only while a hosted service is configured to take them.
 func (g *Generator) next() (job, bool) {
 	now := g.now()
+	hostedOn := g.hosted() != nil
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	var best job
@@ -359,17 +365,20 @@ func (g *Generator) next() (job, bool) {
 		}
 	}
 	for _, t := range g.tracks {
-		if now.Sub(t.asked) > askedWithin || t.refusedAt == t.asks {
+		refused := t.refusedAt == t.asks
+		if now.Sub(t.asked) > askedWithin || refused && !hostedOn {
 			continue
 		}
 		for _, lead := range t.leads {
-			if grid, ok := t.blocks[blockIndex(lead.start)]; ok && grid.ready {
+			if grid, ok := t.blocks[blockIndex(lead.start)]; refused || ok && grid.ready {
 				continue
 			}
 			consider(t, lead, -1)
 		}
 		for _, b := range t.blocks {
-			consider(t, b, b.rank)
+			if b.refusedAt != t.asks {
+				consider(t, b, b.rank)
+			}
 		}
 	}
 	if best.block == nil {
@@ -398,7 +407,7 @@ func (g *Generator) run(ctx context.Context, j job) {
 		g.mu.Unlock()
 		return
 	case refused:
-		t.refusedAt = t.asks
+		t.refusedAt, b.refusedAt = t.asks, t.asks
 		g.mu.Unlock()
 		g.log.Debug("subtitles: no headroom for local transcription; the block waits for the next request",
 			"input", t.media.Input, "start", b.start)
