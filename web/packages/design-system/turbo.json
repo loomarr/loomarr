@@ -1,0 +1,14 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/native-stories/**",
+        "$TURBO_ROOT$/.rnstorybook/**",
+        "!$TURBO_ROOT$/.rnstorybook/storybook.requires.ts"
+      ]
+    }
+  }
+}
