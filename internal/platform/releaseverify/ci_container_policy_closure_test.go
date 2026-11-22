@@ -187,6 +187,15 @@ func TestVerifyCIContainerDownloadsPinsDeclaredCacheMode(t *testing.T) {
 		"queue job declares write": {
 			workflow: "ci-android.yml", old: "    runs-on: ubuntu-latest\n", new: "    runs-on: ubuntu-latest\n    cache-mode: write\n",
 		},
+		"queue workflow declares write": {workflow: "ci-android.yml", old: "\njobs:\n", new: "\ncache-mode: write\njobs:\n"},
+		"promotion workflow declares write": {
+			workflow: promotion, old: "\njobs:\n", new: "\ncache-mode: write\njobs:\n",
+		},
+		"job without a context entry declares write": {
+			workflow: "ci.yml",
+			old:      "    name: Release candidate — exact main scope\n",
+			new:      "    name: Release candidate — exact main scope\n    cache-mode: write\n",
+		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -197,8 +206,12 @@ func TestVerifyCIContainerDownloadsPinsDeclaredCacheMode(t *testing.T) {
 				t.Fatalf("%s does not contain %q", test.workflow, test.old)
 			}
 			writeFixtureFile(t, filepath.Join(root, ".github", "workflows", test.workflow), workflow)
-			if err := VerifyCIContainerDownloads(root); err == nil {
+			err := VerifyCIContainerDownloads(root)
+			if err == nil {
 				t.Fatal("VerifyCIContainerDownloads accepted a cache mode its authority does not name")
+			}
+			if !strings.Contains(err.Error(), "cache-mode") {
+				t.Fatalf("VerifyCIContainerDownloads rejected the mutation for another reason: %v", err)
 			}
 		})
 	}

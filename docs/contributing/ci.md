@@ -541,8 +541,9 @@ GitHub gives a `workflow_run` job a read-only cache (the runner log prints `Cach
 unless the job declares otherwise, so the promotion job declares `cache-mode: write`. GitHub
 annotates each promotion run with a cache-poisoning warning for that declaration. The job runs no
 build and saves only the generation its validation step has bound to a successful queue run of a
-commit on main. The execution-context authority pins the declaration: any other job that declares
-a cache mode, or a promotion that declares a different one, fails `release-verify`. When a save is
+commit on main. The execution-context authority pins the declaration: a workflow-level cache mode,
+any other job that declares one, or a promotion that declares a different one fails
+`release-verify`. When a save is
 still refused, the promotion run fails at the retire step.
 
 ## Per-run measurements

@@ -21,8 +21,8 @@ type workflowJobContextAuthority struct {
 	timeoutMinutes  int
 	environmentName string
 	environmentURL  string
-	// cacheMode is the job's declared Actions cache access. Empty means the job declares none and
-	// takes GitHub's default for its trigger.
+	// cacheMode is the job's declared Actions cache access, which verifyWorkflowTopology checks.
+	// Empty means the job declares none and takes GitHub's default for its trigger.
 	cacheMode string
 	strategy  *workflowStrategyAuthority
 }
@@ -137,7 +137,7 @@ func verifyWorkflowJobContextAuthority(workflowName, jobName string, job *yaml.N
 		return fmt.Errorf("workflow %s job %s has no declarative execution-context authority", workflowName, jobName)
 	}
 	label := fmt.Sprintf("workflow %s job %s", workflowName, jobName)
-	for key, value := range map[string]string{"name": want.name, "runs-on": want.runsOn, "cache-mode": want.cacheMode} {
+	for key, value := range map[string]string{"name": want.name, "runs-on": want.runsOn} {
 		if err := verifyExactOptionalScalar(job, key, value, label); err != nil {
 			return err
 		}

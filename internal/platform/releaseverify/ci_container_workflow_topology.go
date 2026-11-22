@@ -124,6 +124,12 @@ func verifyWorkflowTopology(workflowName string, workflow *yaml.Node) error {
 	if !registered {
 		return fmt.Errorf("workflow %s has no registered topology authority", workflowName)
 	}
+	// A workflow-level cache mode applies to every job that declares none, so only a job's own
+	// execution-context authority may grant one.
+	if _, declared := mappingValue(workflow, "cache-mode"); declared {
+		return fmt.Errorf("workflow %s must not declare a workflow-level cache-mode", workflowName)
+	}
+	jobContexts := workflowJobContextAuthorityEntries()
 	jobs, ok := mappingValue(workflow, "jobs")
 	if !ok || jobs.Kind != yaml.MappingNode || len(jobs.Content)/2 != len(authority.jobs) {
 		return fmt.Errorf("workflow %s job topology differs from its authority", workflowName)
@@ -133,6 +139,12 @@ func verifyWorkflowTopology(workflowName string, workflow *yaml.Node) error {
 		stepCount, expected := authority.jobs[jobName]
 		if !expected || job.Kind != yaml.MappingNode {
 			return fmt.Errorf("workflow %s contains unregistered job %s", workflowName, jobName)
+		}
+		// Every job is checked here, including those with no execution-context entry: a job the
+		// authority does not name may not declare a cache mode at all.
+		cacheMode := jobContexts[workflowJobContextKey{workflow: workflowName, job: jobName}].cacheMode
+		if err := verifyExactOptionalScalar(job, "cache-mode", cacheMode, fmt.Sprintf("workflow %s job %s", workflowName, jobName)); err != nil {
+			return err
 		}
 		if _, reusable := mappingValue(job, "uses"); reusable {
 			if stepCount != 0 {
