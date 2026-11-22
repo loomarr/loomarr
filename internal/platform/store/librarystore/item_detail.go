@@ -26,7 +26,9 @@ type LibraryItemDetail struct {
 	Rating string
 	// RuntimeMs is the catalog's runtime; each source's DurationMs is its measured length.
 	RuntimeMs int64
-	From      LibraryFrom
+	// Still is the image hash of the item's still (role thumb, #4476): an episode's; "" for none.
+	Still string
+	From  LibraryFrom
 	// Credits are in billing order, each with Name, Role and Character; no photo or catalog id.
 	Credits []LibraryCredit
 	// Sources are the item's own files, in path order; a series has none, and its episodes'
@@ -53,7 +55,7 @@ type LibraryDetailEpisode struct {
 	// LengthMs is the measured length of the files that play, once each is read, else the
 	// catalog's runtime; 0 when neither is known. Only the sources' durations are read.
 	LengthMs int64
-	// Still is the image hash its still's ref names (role backdrop, #4476); "" for none.
+	// Still is the image hash its still's ref names (role thumb, #4476); "" for none.
 	Still string
 }
 
@@ -81,11 +83,12 @@ func (s *Store) LibraryItemDetail(ctx context.Context, id string) (LibraryItemDe
 	defer func() { _ = tx.Rollback() }()
 	var out LibraryItemDetail
 	err = tx.QueryRowContext(ctx, s.ph(`SELECT overview, original_title, tagline, premiere_date, score, rating,
-		runtime_ms, name_from, year_from, overview_from, premiere_from, rating_from, score_from, runtime_from
-		FROM library_items WHERE id = ?`), id).
+		runtime_ms, name_from, year_from, overview_from, premiere_from, rating_from, score_from, runtime_from,
+		`+itemImage("thumb")+`
+		FROM library_items i WHERE id = ?`), id).
 		Scan(&out.Overview, &out.OriginalTitle, &out.Tagline, &out.PremiereDate, &out.Score, &out.Rating,
 			&out.RuntimeMs, &out.From.Name, &out.From.Year, &out.From.Overview, &out.From.Premiere,
-			&out.From.Rating, &out.From.Score, &out.From.Runtime)
+			&out.From.Rating, &out.From.Score, &out.From.Runtime, &out.Still)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return LibraryItemDetail{}, fmt.Errorf("library item detail %s: %w", id, err)
 	}
@@ -180,7 +183,7 @@ func (s *Store) detailEpisodes(ctx context.Context, q storedb.Querier, seriesID 
 		COALESCE(NULLIF((SELECT CAST(CASE WHEN MIN(src.duration_ms) > 0 THEN SUM(src.duration_ms) ELSE 0 END AS BIGINT)
 			FROM library_sources src WHERE src.item_id = i.id AND src.plays AND src.edition = (SELECT e.edition
 			FROM library_sources e WHERE e.item_id = i.id AND e.plays ORDER BY e.edition <> '', e.path LIMIT 1)), 0), i.runtime_ms),
-		`+itemImage("backdrop")+`
+		`+itemImage("thumb")+`
 		FROM library_files f JOIN library_items i ON i.id = f.inventory_item_id
 		WHERE f.inventory_series_id = ? AND `+presentFile), seriesID)
 	if err != nil {

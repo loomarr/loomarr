@@ -536,21 +536,25 @@ step 5). Nothing reads the scanner's origins until the cutover.
   record's artwork when the header stage writes it with that record.
 - **Episode stills** (#4476). When the importer writes an episode it hands the resolved still
   (artwork kind `thumb`) to the image service the same way, and the episode owns it through a
-  `library_item_images` row of role `backdrop`, the role the image service names for episode
-  stills; an episode imports no other kind. Its `<file>-thumb` file beside it comes first, then a
+  `library_item_images` row of role `thumb`, the image service's 16:9 still on the 300/780/1280
+  ladder; an episode imports no other kind. Its `<file>-thumb` file beside it comes first, then a
   provider's URL (an arr's screenshot, or TMDB's episode still), and a still the header stage's
-  catalogue record names is imported when that record arrives. A new still replaces the old ref,
-  and an episode with none lets it go. A provider's still is only adopted during the pass: the
-  image fetch job pulls the bytes, at most 64 images a minute under its fixed concurrency cap,
-  so writing a series of hundreds of episodes fetches nothing in the pass. The job takes an image
-  only episodes own after every other image waiting (`ListImagesAwaitingFetch`), so a title's
-  poster, fanart or logo never waits behind tens of thousands of stills; the job does not wait
-  for a channel to stop being watched, as the header stage does. Each episode row of a
-  series' page carries `still`, and an episode's own page carries `still` in place of
-  `backdropImage`, each absent when it has none or while its bytes are being fetched; the page's
-  one read of its episodes reads each still's hash with its row. A member is sent the still of an
-  episode their season lists hold only, so never a raw provider URL and never a hidden
-  episode's.
+  catalogue record names is imported when that record arrives. TMDB's still is requested at
+  `w300`, the size an episode row draws, where a title's poster, fanart and logo are requested at
+  `original`. A `<file>-thumb` file and an arr's screenshot arrive at whatever size they are,
+  which Loomarr does not choose; the image service offers no rung of a still wider than its
+  original (images.md, "Two modes"). A new still replaces the old ref, and an episode with none
+  lets it go. A provider's still is only adopted during the pass: the image fetch job pulls the
+  bytes, at most 64 images a minute under its fixed concurrency cap, so writing a series of
+  hundreds of episodes fetches nothing in the pass. A still is adopted in the fetch queue's bulk
+  class (`fetch_priority` 2), so it arrives after every title's poster, fanart and logo waiting,
+  including one adopted after it; a still file beside the media is ingested when it is written,
+  as a poster file is. Each episode row of a series' page carries `still`, and an episode's own
+  page carries `still`, each absent when it has none or while its bytes are being fetched. The
+  page's one read of its episodes reads each still's hash with its row, and every image the page
+  draws, its own and its episodes' stills, is rendered from one batched image read. A member is
+  sent the still of an episode their season lists hold only, so never a raw provider URL and
+  never a hidden episode's.
 - **Catalog details** (decision 20). A movie or series whose ids include a TMDB id takes its
   details from TMDB: the guide text, genres, rating, poster and fanart, ranked by precedence like
   any other source. The walk never calls TMDB. `library_catalog` caches each record by provider,
@@ -1244,7 +1248,7 @@ header is kept, so no file is opened again. Each version and what it changed:
   each movie's and series' artwork handed over again: an artwork file beside the media is read and
   hashed again but not ingested when the service holds its bytes, an adopted URL is one lookup,
   and either rewrites its ref row. The fetch job then works through the adopted stills, 64 a
-  minute, behind every title's artwork.
+  minute, in the bulk class behind every title's artwork.
 
 ## Search
 

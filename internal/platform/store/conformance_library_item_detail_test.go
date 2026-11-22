@@ -191,14 +191,19 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("parts sources = %+v, want %+v", got, want)
 	}
 
-	// An episode's still is its backdrop ref, read with its row (#4476).
-	still := imageAt("ep1-still", at)
-	if err := st.PutImage(ctx, still); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.PutImageRef(ctx, clipstore.ImageRef{ImageHash: still.Hash, OwnerKind: librarystore.LibraryItemImageOwner,
-		OwnerID: "ep1", Role: "backdrop"}); err != nil {
-		t.Fatal(err)
+	// An episode's still is its thumb ref, read with its row (#4476); a backdrop ref is not it.
+	still, fanart := imageAt("ep1-still", at), imageAt("ep1-fanart", at)
+	for _, owned := range []struct {
+		img  clipstore.Image
+		role string
+	}{{still, "thumb"}, {fanart, "backdrop"}} {
+		if err := st.PutImage(ctx, owned.img); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.PutImageRef(ctx, clipstore.ImageRef{ImageHash: owned.img.Hash, OwnerKind: librarystore.LibraryItemImageOwner,
+			OwnerID: "ep1", Role: owned.role}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	show, err := st.LibraryItemDetail(ctx, "show")
 	if err != nil {
@@ -238,10 +243,17 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("a series with none reads credits %+v, studios %+v, score %v", show.Credits, show.Studios, show.Score)
 	}
 
-	// An episode's own page reads its file with its tracks and chapters.
+	if show.Still != "" {
+		t.Errorf("series still = %q, want none", show.Still)
+	}
+
+	// An episode's own page reads its file with its tracks and chapters, and its still.
 	ep, err := st.LibraryItemDetail(ctx, "ep1")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if ep.Still != still.Hash {
+		t.Errorf("episode page still = %q, want %q", ep.Still, still.Hash)
 	}
 	if ep.Overview != "It begins." || ep.RuntimeMs != 1_380_000 || len(ep.Sources) != 1 ||
 		ep.Sources[0].Container != "matroska,webm" || !slices.Equal(ep.Sources[0].Streams, shown(streams[:2])) ||

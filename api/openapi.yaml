@@ -7255,7 +7255,7 @@ components:
           type: string
         backdropImage:
           $ref: "#/components/schemas/ImageDTO"
-          description: Its fanart; absent when it has none, or while one is still being fetched; absent for an episode, whose image is its still
+          description: Its fanart; absent when it has none, or while one is still being fetched
         channels:
           description: The channels whose lineup holds it, by number
           items:

@@ -368,7 +368,7 @@ type libraryItemDetailDTO struct {
 	// LogoImage and BackdropImage are drawn in place of a typed title and behind the details
 	// (#2567). A logo keeps its transparency: its fallback src is WebP, never JPEG.
 	LogoImage     *httpcore.ImageDTO  `json:"logoImage,omitempty" doc:"Its clear logo; absent when it has none, or while one is still being fetched"`
-	BackdropImage *httpcore.ImageDTO  `json:"backdropImage,omitempty" doc:"Its fanart; absent when it has none, or while one is still being fetched; absent for an episode, whose image is its still"`
+	BackdropImage *httpcore.ImageDTO  `json:"backdropImage,omitempty" doc:"Its fanart; absent when it has none, or while one is still being fetched"`
 	Still         *httpcore.ImageDTO  `json:"still,omitempty" doc:"An episode's still; absent for a movie or a series, when it has none, or while one is still being fetched"`
 	Overview      string              `json:"overview,omitempty"`
 	Genres        []string            `json:"genres"`
@@ -445,15 +445,11 @@ func (s *Handlers) getLibraryItem(ctx context.Context, in *getLibraryItemInput) 
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read this title", "Try again in a moment.", err)
 	}
-	images := s.libraryPosters(ctx, []librarystore.LibraryItemSummary{d.LibraryItemSummary})
-	s.episodeStills(ctx, d.Seasons, admin, images)
+	images := s.pageImages(ctx, d, admin)
 	body := libraryItemDetailOf(d, images, admin)
-	body.LogoImage = s.libraryImage(ctx, d.Logo)
-	// An episode's backdrop role holds its still, not fanart.
-	if d.Kind == "episode" {
-		body.Still = s.libraryImage(ctx, d.Backdrop)
-	} else {
-		body.BackdropImage = s.libraryImage(ctx, d.Backdrop)
+	body.LogoImage, body.BackdropImage = images[d.Logo], images[d.Backdrop]
+	if d.Still != "" {
+		body.Still = images[d.Still]
 	}
 	return &getLibraryItemOutput{Body: body}, nil
 }
@@ -465,19 +461,27 @@ func episodeShown(ep scan.Episode, admin bool) bool {
 	return admin || (!ep.FromFile && ep.Named)
 }
 
-// episodeStills renders into images, by hash, the stills of the episodes the caller reads. The
-// hashes came with the page's one read of its episodes; a hidden episode's still is not rendered.
-func (s *Handlers) episodeStills(ctx context.Context, seasons []scan.Season, admin bool, images map[string]*httpcore.ImageDTO) {
-	for _, season := range seasons {
+// pageImages renders, by hash, every image d's page draws in one read (#4476): its poster, logo,
+// fanart and still, and the stills of the episodes the caller reads, whose hashes came with the
+// page's one read of its episodes. A hidden episode's still is not read, so it cannot be sent.
+func (s *Handlers) pageImages(ctx context.Context, d scan.ItemDetail, admin bool) map[string]*httpcore.ImageDTO {
+	if s.libraryImagesFn == nil {
+		return map[string]*httpcore.ImageDTO{}
+	}
+	var hashes []string
+	for _, h := range []string{d.Poster, d.Logo, d.Backdrop, d.Still} {
+		if h != "" {
+			hashes = append(hashes, h)
+		}
+	}
+	for _, season := range d.Seasons {
 		for _, ep := range season.Episodes {
-			if ep.Still == "" || !episodeShown(ep, admin) {
-				continue
-			}
-			if _, seen := images[ep.Still]; !seen {
-				images[ep.Still] = s.libraryImage(ctx, ep.Still)
+			if ep.Still != "" && episodeShown(ep, admin) {
+				hashes = append(hashes, ep.Still)
 			}
 		}
 	}
+	return s.libraryImagesFn(ctx, hashes)
 }
 
 // libraryItemDetailOf is d's page as the caller reads it: admin carries its files, its match,

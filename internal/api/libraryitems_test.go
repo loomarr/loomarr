@@ -374,7 +374,8 @@ func TestLibraryItemsCarryPosters(t *testing.T) {
 
 // Each episode row of a series' page carries its still, and an episode's own page carries it as
 // its still rather than a backdrop (#4476). A member is sent the still of an episode they read
-// only: one still named by its file is in no member's season, and neither is its still.
+// only: one still named by its file is in no member's season, and neither is its still. Every
+// image a page draws comes from one batched read, never a read per episode.
 func TestLibraryEpisodesCarryTheirStills(t *testing.T) {
 	imgs := newFakeImageService()
 	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
@@ -389,7 +390,7 @@ func TestLibraryEpisodesCarryTheirStills(t *testing.T) {
 	stills := map[string]images.Image{}
 	for i, ep := range []string{"90000011", fileNamedEpisode} {
 		img := images.Image{Hash: strings.Repeat(string(rune('d'+i)), 64), Origin: images.OriginExtracted,
-			Role: images.RoleBackdrop, Width: 1280, Height: 720, OriginFetchedAt: at}
+			Role: images.RoleThumb, Width: 300, Height: 169, OriginFetchedAt: at}
 		stills[ep] = img
 		imgs.records[img.Hash] = img
 		if err := h.Store.PutImage(ctx, clipstore.Image{Hash: img.Hash, Origin: string(img.Origin), Role: string(img.Role),
@@ -397,7 +398,7 @@ func TestLibraryEpisodesCarryTheirStills(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := h.Store.PutImageRef(ctx, clipstore.ImageRef{ImageHash: img.Hash, OwnerKind: librarystore.LibraryItemImageOwner,
-			OwnerID: ep, Role: "backdrop"}); err != nil {
+			OwnerID: ep, Role: string(images.RoleThumb)}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -414,10 +415,23 @@ func TestLibraryEpisodesCarryTheirStills(t *testing.T) {
 			} `json:"episodes"`
 		} `json:"seasons"`
 	}
+	// read is the page at id as token reads it, failing unless every image came from one batched read.
+	read := func(id, token string, p any) {
+		t.Helper()
+		imgs.mu.Lock()
+		imgs.gets, imgs.manyReads = 0, 0
+		imgs.mu.Unlock()
+		decode(t, h.Do(http.MethodGet, "/v1/library/items/"+id, token, ""), p)
+		imgs.mu.Lock()
+		defer imgs.mu.Unlock()
+		if imgs.gets != 0 || imgs.manyReads != 1 {
+			t.Fatalf("%s page read images %d one at a time and %d batched; want one batched read", id, imgs.gets, imgs.manyReads)
+		}
+	}
 	sent := func(token string) map[string]string {
 		t.Helper()
 		var p page
-		decode(t, h.Do(http.MethodGet, "/v1/library/items/90000002", token, ""), &p)
+		read("90000002", token, &p)
 		if p.Still != nil || p.BackdropImage != nil {
 			t.Fatalf("series page still %+v, backdrop %+v; want neither", p.Still, p.BackdropImage)
 		}
@@ -455,7 +469,7 @@ func TestLibraryEpisodesCarryTheirStills(t *testing.T) {
 
 	for _, token := range []string{adminToken, memberToken} {
 		var p page
-		decode(t, h.Do(http.MethodGet, "/v1/library/items/90000011", token, ""), &p)
+		read("90000011", token, &p)
 		if p.Still == nil || p.Still.Hash != stills["90000011"].Hash || p.BackdropImage != nil {
 			t.Errorf("%s episode page still %+v, backdrop %+v; want its still alone", token, p.Still, p.BackdropImage)
 		}

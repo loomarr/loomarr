@@ -33,6 +33,8 @@ type ItemDetail struct {
 	Seasons []Season
 	// Channels are the channels whose lineup holds it, by number.
 	Channels []librarystore.LibraryItemChannel
+	// Still is the image hash of an episode's still (#4476); "" for none, and for a movie or series.
+	Still string
 }
 
 // ItemFile is one of a movie's files, with what its header says once read; zero until then.
@@ -230,6 +232,7 @@ func (l *Library) Item(ctx context.Context, id string, member bool) (ItemDetail,
 		detail.Facts.People = append(detail.Facts.People, inventory.Person{Name: c.Name, Role: c.Role, Character: c.Character})
 	}
 	detail.From = detailsFrom(page.From)
+	detail.Still = page.Still
 	files, err := l.ItemStore.LibraryItemFiles(ctx, id)
 	if err != nil {
 		return ItemDetail{}, err
