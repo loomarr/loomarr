@@ -227,46 +227,52 @@ func (e *Extractor) fromDisk(key string) ([]Cue, bool) {
 }
 
 // prune removes kept files unread for unusedFor.
-func (e *Extractor) prune() {
-	if e.dir == "" {
+func (e *Extractor) prune() { pruneDir(e.dir, e.now().Add(-unusedFor), e.log) }
+
+// pruneDir removes the files in dir last read before cutoff.
+func pruneDir(dir string, cutoff time.Time, log *slog.Logger) {
+	if dir == "" {
 		return
 	}
-	entries, err := os.ReadDir(e.dir)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
-	cutoff := e.now().Add(-unusedFor)
 	for _, entry := range entries {
 		info, err := entry.Info()
 		if err != nil || entry.IsDir() || info.ModTime().After(cutoff) {
 			continue
 		}
-		if err := os.Remove(filepath.Join(e.dir, entry.Name())); err != nil {
-			e.log.Debug("subtitles: unused track not removed", "file", entry.Name(), "err", err)
+		if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil {
+			log.Debug("subtitles: unused track not removed", "file", entry.Name(), "err", err)
 		}
 	}
 }
 
-// toDisk writes a track's WebVTT atomically, so a reader never sees half a file. A failed write
-// only costs a read after the next restart.
+// toDisk writes a track's WebVTT.
 func (e *Extractor) toDisk(key string, doc []byte) {
-	if e.dir == "" {
+	if e.dir != "" {
+		writeAtomic(e.dir, key, doc, e.log)
+	}
+}
+
+// writeAtomic writes dir/name.vtt through a temporary file, so a reader never sees half a file. A
+// failed write only costs a transcription or read after the next restart.
+func writeAtomic(dir, name string, doc []byte, log *slog.Logger) {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		log.Debug("subtitles: cache directory not made", "dir", dir, "err", err)
 		return
 	}
-	if err := os.MkdirAll(e.dir, 0o750); err != nil {
-		e.log.Debug("subtitles: cache directory not made", "dir", e.dir, "err", err)
-		return
-	}
-	tmp, err := os.CreateTemp(e.dir, key+".*.tmp")
+	tmp, err := os.CreateTemp(dir, name+".*.tmp")
 	if err != nil {
-		e.log.Debug("subtitles: track not cached", "err", err)
+		log.Debug("subtitles: track not cached", "err", err)
 		return
 	}
 	_, werr := tmp.Write(doc)
 	cerr := tmp.Close()
-	if werr != nil || cerr != nil || os.Rename(tmp.Name(), filepath.Join(e.dir, key+".vtt")) != nil {
+	if werr != nil || cerr != nil || os.Rename(tmp.Name(), filepath.Join(dir, name+".vtt")) != nil {
 		_ = os.Remove(tmp.Name())
-		e.log.Debug("subtitles: track not cached", "write", werr, "close", cerr)
+		log.Debug("subtitles: track not cached", "write", werr, "close", cerr)
 	}
 }
 

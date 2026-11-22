@@ -146,28 +146,51 @@ func (t *FFmpegTools) Transcribe(ctx context.Context, file string, startMs, endM
 	if t.WhisperPath == "" || t.WhisperModel == "" {
 		return nil, fmt.Errorf("whisper not configured (ingest.whisper_path / ingest.whisper_model, §15)")
 	}
-	dir, err := os.MkdirTemp(t.tmpDir, "loomarr-whisper-")
+	// English is whisper-cli's own default language; it is named so the split pipeline's
+	// transcripts do not depend on the binary's default.
+	speech, err := LocalSpeech{
+		FFmpegPath: t.FFmpegPath, WhisperPath: t.WhisperPath, Model: t.WhisperModel, TmpDir: t.tmpDir,
+	}.TranscribeLanguage(ctx, file, startMs, endMs, "en")
+	return speech.Segments, err
+}
+
+// LocalSpeech is whisper-cli over one span with an explicit model, reporting the language it
+// transcribed in. The playout subtitle generator runs it with the shipped multilingual tiny model.
+type LocalSpeech struct {
+	FFmpegPath, WhisperPath, Model, TmpDir string
+}
+
+// TranscribeLanguage transcribes [startMs,endMs) of file in language, or detects the language
+// (`-l auto`) when it is empty. Segment offsets are relative to startMs.
+func (w LocalSpeech) TranscribeLanguage(ctx context.Context, file string, startMs, endMs int64, language string) (AudioTranscription, error) {
+	if w.WhisperPath == "" || w.Model == "" {
+		return AudioTranscription{}, fmt.Errorf("whisper-cli or its model is not configured")
+	}
+	if language == "" {
+		language = "auto"
+	}
+	dir, err := os.MkdirTemp(w.TmpDir, "loomarr-whisper-")
 	if err != nil {
-		return nil, err
+		return AudioTranscription{}, err
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
 	// whisper.cpp wants 16kHz mono wav; use the shared span extractor so local and hosted
 	// transcription cannot drift on seek/duration semantics.
-	wav := filepath.Join(dir, "span.wav")
-	if err := ExtractSpanWAV(ctx, t.FFmpegPath, file, startMs, endMs, wav); err != nil {
-		return nil, err
+	wav := SpanWAVPath(dir)
+	if err := ExtractSpanWAV(ctx, w.FFmpegPath, file, startMs, endMs, wav); err != nil {
+		return AudioTranscription{}, err
 	}
 	base := filepath.Join(dir, "out")
-	if out, err := bgexec.Whisper(ctx, t.WhisperPath,
-		"-m", t.WhisperModel, "-f", wav, "-oj", "-of", base, "-np").CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("whisper-cli: %w: %s", err, out)
+	if out, err := bgexec.Whisper(ctx, w.WhisperPath,
+		"-m", w.Model, "-f", wav, "-l", language, "-oj", "-of", base, "-np").CombinedOutput(); err != nil {
+		return AudioTranscription{}, fmt.Errorf("whisper-cli: %w: %s", err, out)
 	}
 	raw, err := os.ReadFile(base + ".json")
 	if err != nil {
-		return nil, fmt.Errorf("whisper-cli wrote no JSON: %w", err)
+		return AudioTranscription{}, fmt.Errorf("whisper-cli wrote no JSON: %w", err)
 	}
-	return parseWhisperJSON(raw)
+	return parseWhisperSpeech(raw)
 }
 
 func (t *FFmpegTools) Fingerprint(ctx context.Context, file string, startMs, endMs int64) (creative.Fingerprint, error) {

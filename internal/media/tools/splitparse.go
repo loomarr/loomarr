@@ -192,12 +192,23 @@ type whisperJSON struct {
 		} `json:"offsets"`
 		Text string `json:"text"`
 	} `json:"transcription"`
+	// Result.Language is the language whisper transcribed in: the one it detected under `-l auto`,
+	// else the one it was given.
+	Result struct {
+		Language string `json:"language"`
+	} `json:"result"`
 }
 
 func parseWhisperJSON(out []byte) ([]TranscriptSegment, error) {
+	speech, err := parseWhisperSpeech(out)
+	return speech.Segments, err
+}
+
+// parseWhisperSpeech reads whisper's utterances and the language it transcribed them in.
+func parseWhisperSpeech(out []byte) (AudioTranscription, error) {
 	var w whisperJSON
 	if err := json.Unmarshal(out, &w); err != nil {
-		return nil, fmt.Errorf("whisper output not JSON: %w", err)
+		return AudioTranscription{}, fmt.Errorf("whisper output not JSON: %w", err)
 	}
 	var segs []TranscriptSegment
 	for _, t := range w.Transcription {
@@ -207,5 +218,5 @@ func parseWhisperJSON(out []byte) ([]TranscriptSegment, error) {
 		}
 		segs = append(segs, TranscriptSegment{StartMs: t.Offsets.From, EndMs: t.Offsets.To, Text: text})
 	}
-	return segs, nil
+	return AudioTranscription{Language: strings.ToLower(strings.TrimSpace(w.Result.Language)), Segments: segs}, nil
 }
