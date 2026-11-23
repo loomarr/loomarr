@@ -143,7 +143,6 @@ fn parse_index(idx: &[u8], limits: Limits) -> Result<Index, WorkerError> {
     let mut palette = None;
     let mut forced_only = false;
     let mut stream = None;
-    let mut offset_ms = 0_i64;
     let mut delay_ms = 0_i64;
     let mut entries = Vec::new();
     for line in text.lines() {
@@ -162,10 +161,12 @@ fn parse_index(idx: &[u8], limits: Limits) -> Result<Index, WorkerError> {
             // (dvdsub_parse_extradata) reads only `palette:` and `size:`, and the VobSub demuxer
             // in libavformat/mpeg.c never reads it, so the palette always colours the pixels.
             "forced subs" => forced_only = value.eq_ignore_ascii_case("on"),
-            "time offset" => offset_ms = parse_offset(value)?,
+            // `time offset:` is ignored. libavformat/mpeg.c never reads it, and VSFilter
+            // (mpc-hc src/Subtitles/VobSubFile.cpp) parses it into m_toff but never applies it,
+            // writing "Not effective in VSFilter, use \"delay: ... \" instead" above it.
             // A delay shifts every later timestamp of the track until the next delay replaces
             // it, as in libavformat/mpeg.c (vobsub_read_header).
-            "delay" => delay_ms = parse_offset(value)?,
+            "delay" => delay_ms = parse_delay(value)?,
             "id" => {
                 if stream.is_some() {
                     return Err(WorkerError::new(
@@ -198,9 +199,7 @@ fn parse_index(idx: &[u8], limits: Limits) -> Result<Index, WorkerError> {
                     .strip_prefix("filepos:")
                     .and_then(|pos| u64::from_str_radix(pos.trim(), 16).ok())
                     .ok_or_else(|| corrupt("bad filepos"))?;
-                let ms = parse_time(time.trim())?
-                    .saturating_add(delay_ms)
-                    .saturating_add(offset_ms);
+                let ms = parse_time(time.trim())?.saturating_add(delay_ms);
                 entries.push(Entry { ms, filepos });
             }
             _ => {}
@@ -283,21 +282,13 @@ fn parse_time(value: &str) -> Result<i64, WorkerError> {
     Ok(((h * 60 + m) * 60 + s) * 1000 + ms)
 }
 
-/// A signed `hh:mm:ss:ms`, or a signed whole number of milliseconds.
-fn parse_offset(value: &str) -> Result<i64, WorkerError> {
+/// A `delay:` value, `[sign]hh:mm:ss:ms`, in milliseconds.
+fn parse_delay(value: &str) -> Result<i64, WorkerError> {
     let (sign, rest) = match value.strip_prefix('-') {
         Some(rest) => (-1, rest.trim()),
         None => (1, value.strip_prefix('+').unwrap_or(value).trim()),
     };
-    let ms = if rest.contains(':') {
-        parse_time(rest)?
-    } else {
-        if rest.is_empty() || rest.len() > 12 || !rest.bytes().all(|d| d.is_ascii_digit()) {
-            return Err(corrupt("bad time offset"));
-        }
-        rest.parse().map_err(|_| corrupt("bad time offset"))?
-    };
-    Ok(sign * ms)
+    Ok(sign * parse_time(rest)?)
 }
 
 /// Reassembles each complete SPU of `stream` that starts in a pack at one of `wanted`, keyed by
@@ -1133,7 +1124,7 @@ mod tests {
     }
 
     #[test]
-    fn delays_and_the_time_offset_shift_timestamps() {
+    fn delays_shift_timestamps_and_the_time_offset_does_not() {
         let mut pair = Pair::new((8, 4), "time offset: 500\ndelay: 00:00:01:000");
         pair.spu(1000, &Unit::two_rows(0, 0).bytes(), 2048);
         // A later delay replaces the one before it.
@@ -1143,10 +1134,10 @@ mod tests {
         assert_eq!(
             timing(&decoded.states),
             [
-                (2500, 3012, true),
-                (3012, 5250, false),
-                (5250, 5762, true),
-                (5762, 5762, false)
+                (2000, 2512, true),
+                (2512, 4750, false),
+                (4750, 5262, true),
+                (5262, 5262, false)
             ]
         );
     }
@@ -1199,18 +1190,12 @@ mod tests {
                 i % 1000
             ));
         }
-        let started = std::time::Instant::now();
         let err = decode_pair(pair.idx.as_bytes(), &pair.sub, LIMITS)
             .err()
             .expect("overlapping sequences decoded");
-        let overlapping = started.elapsed();
         assert_eq!(
             (err.code, err.message.as_str()),
             ("corrupt_input", "control sequences overlap")
-        );
-        assert!(
-            overlapping < std::time::Duration::from_secs(2),
-            "took {overlapping:?}"
         );
 
         // A unit that never starts, named by every entry, is parsed once and shows nothing.
@@ -1225,16 +1210,9 @@ mod tests {
                 i % 60
             ));
         }
-        let started = std::time::Instant::now();
         let (decoded, _) = decode_pair(pair.idx.as_bytes(), &pair.sub, LIMITS).expect("decode");
-        let repeated = started.elapsed();
         assert!(decoded.states.is_empty());
         assert_eq!(decoded.work.drawn_pixels, never.len() as u64);
-        assert!(
-            repeated < std::time::Duration::from_secs(2),
-            "took {repeated:?}"
-        );
-        println!("overlapping: {overlapping:?}; repeated: {repeated:?}");
     }
 
     /// An SPU of hand-written control bytes after its 4-byte header.

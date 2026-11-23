@@ -139,7 +139,9 @@ probe for each, so a worker without one fails readiness instead of failing the f
   Go re-reads both after it, refusing a result whose `.sub` or `.idx` changed or was swapped (the
   `.idx` within its 8 MiB ceiling). A pair holds one track (more
   than one `id:` is `unsupported_input`); with `forced subs: ON` only forced subpictures show, and,
-  as in ffmpeg, `custom colors:` is ignored, so the palette always colours the pixels. The result is
+  as in ffmpeg, `custom colors:` is ignored, so the palette always colours the pixels. A `delay:`
+  shifts later timestamps until the next `delay:` replaces it, as in ffmpeg; `time offset:` is
+  ignored, since neither ffmpeg nor VSFilter applies it. The result is
   the canvas size and an ordered list of display states, each with its start and end in
   milliseconds and either one full-canvas straight-alpha PNG or none (the screen is clear). Each
   state ends where the next starts, the last state's end equals its start, and Go refuses a
