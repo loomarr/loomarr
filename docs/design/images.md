@@ -135,7 +135,9 @@ probe for each, so a worker without one fails readiness instead of failing the f
   `source.path` and `source.expectedSha256` name the `.sup` of a `hdmv_pgs_subtitle` track or the
   `.sub` of a `dvd_subtitle` pair, and `source.index` (`{path, expectedSha256}`) names the pair's
   `.idx`. `index` is required for `dvd_subtitle` and refused (`invalid_request`) for
-  `hdmv_pgs_subtitle`; both files are hash-checked (`source_changed`). A pair holds one track (more
+  `hdmv_pgs_subtitle`; the worker hash-checks both files before decoding (`source_changed`), and
+  Go re-reads both after it, refusing a result whose `.sub` or `.idx` changed or was swapped (the
+  `.idx` within its 8 MiB ceiling). A pair holds one track (more
   than one `id:` is `unsupported_input`); with `forced subs: ON` only forced subpictures show, and
   `custom colors: ON` replaces the palette for the four pixel values, a `tridx` digit of 1 making
   that value transparent. The result is

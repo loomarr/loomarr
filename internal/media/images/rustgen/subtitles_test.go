@@ -311,10 +311,17 @@ func TestDecodeSubtitlesAcceptsOnlyAVerifiedResult(t *testing.T) {
 		states []any
 		// files are written relative to the request's directory, the parent of staging.
 		files map[string][]byte
+		// index makes the request a VOBSUB pair with an .idx at $INDEX.
+		index bool
 		after string
 		want  string
 	}{
 		{name: "valid", states: shows(rgba), files: map[string][]byte{"staging/s0.png": rgba}},
+		{name: "valid pair", states: shows(rgba), files: map[string][]byte{"staging/s0.png": rgba}, index: true},
+		{
+			name: "index changed", states: shows(rgba), files: map[string][]byte{"staging/s0.png": rgba}, index: true,
+			after: "printf 'other index' > \"$INDEX\"", want: "changed during decoding",
+		},
 		{
 			// A real, correctly declared PNG sits at the escaped path, so only containment refuses it.
 			name:   "outside staging",
@@ -344,19 +351,31 @@ func TestDecodeSubtitlesAcceptsOnlyAVerifiedResult(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			req := subtitleRequest(t, track, rustgen.CodecPGS)
+			codec := rustgen.CodecPGS
+			if tt.index {
+				codec = rustgen.CodecVOBSUB
+			}
+			req := subtitleRequest(t, track, codec)
 			dir := filepath.Dir(req.Path)
 			for name, data := range tt.files {
 				if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}
+			index := filepath.Join(dir, "track.idx")
+			if tt.index {
+				idx := []byte("size: 8x4\n")
+				if err := os.WriteFile(index, idx, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				req.Index = &rustgen.SubtitleIndex{Path: index, ExpectedSHA256: fmt.Sprintf("%x", sha256.Sum256(idx))}
+			}
 			result := map[string]any{
 				"protocol": 1, "status": "ok", "requestId": req.RequestID,
-				"source": map[string]any{"codec": rustgen.CodecPGS, "sha256": req.ExpectedSHA256, "bytes": len(track)},
+				"source": map[string]any{"codec": codec, "sha256": req.ExpectedSHA256, "bytes": len(track)},
 				"width":  8, "height": 4, "states": tt.states,
 			}
-			gen := fakeSubtitleWorker(t, result, "TRACK='"+req.Path+"'\n"+tt.after)
+			gen := fakeSubtitleWorker(t, result, "TRACK='"+req.Path+"'\nINDEX='"+index+"'\n"+tt.after)
 			stills, err := gen.DecodeSubtitles(context.Background(), req)
 			if tt.want == "" {
 				if err != nil || len(stills.States) != 2 || stills.States[0].File != "s0.png" {

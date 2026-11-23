@@ -21,6 +21,7 @@ import (
 // re-checks every one of these against the result.
 const (
 	MaxSubtitleInputBytes  = 256 << 20
+	MaxSubtitleIndexBytes  = 8 << 20
 	MaxSubtitleWidth       = 3840
 	MaxSubtitleHeight      = 2160
 	MaxSubtitleStates      = 50_000
@@ -163,6 +164,11 @@ func (g *Generator) verifySubtitles(req SubtitleRequest, m subtitleManifest) (Su
 	if err := verifySource(req.Path, req.ExpectedSHA256, m.Source.Bytes); err != nil {
 		return SubtitleStills{}, err
 	}
+	if req.Index != nil {
+		if err := verifyIndex(req.Index.Path, req.Index.ExpectedSHA256); err != nil {
+			return SubtitleStills{}, err
+		}
+	}
 	if m.Width <= 0 || m.Height <= 0 || m.Width > MaxSubtitleWidth || m.Height > MaxSubtitleHeight ||
 		len(m.States) > MaxSubtitleStates {
 		return SubtitleStills{}, fmt.Errorf("images: worker returned an out-of-ceiling subtitle track")
@@ -218,6 +224,16 @@ func verifySource(path, expected string, size int64) error {
 		return fmt.Errorf("images: worker source bytes changed during decoding")
 	}
 	return nil
+}
+
+// verifyIndex re-reads a VOBSUB pair's .idx, which the result does not size, within the index
+// ceiling, so an index that changed or was swapped during decoding is never accepted.
+func verifyIndex(path, expected string) error {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > MaxSubtitleIndexBytes {
+		return fmt.Errorf("images: worker index is not a regular file within the index ceiling")
+	}
+	return verifySource(path, expected, info.Size())
 }
 
 var pngSignature = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
