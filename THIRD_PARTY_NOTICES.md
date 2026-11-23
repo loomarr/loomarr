@@ -167,11 +167,11 @@ in the public domain. The image satisfies the license's notice condition by reta
 
 <!-- ffmpeg-pin:begin -->
 The `ffmpeg` binary is a **GPL-3.0-or-later** BtbN build. The [`Dockerfile`](Dockerfile) pins BtbN
-autobuild `autobuild-2026-10-26-14-25`, build `n9.0.2-36-g6882969ce9`, by per-architecture SHA256, and downloads both archives from
-Loomarr's own source release [`third-party-sources-2026-10-27`](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-10-27). That release also carries the exact FFmpeg source
-(`6882969ce9fd2aa6aa1d0008b2bfe1c838aac11d`), BtbN's build recipe (`937868360a21d711ec94a33f5591d345ad9b7754`) and the build's original dependency download
-cache. [`source-distribution-2026-10-27.json`](project/evidence/source-distribution-2026-10-27.json) binds
-each asset's URL, size and SHA256, and the [pin record](project/evidence/ffmpeg-pin-2026-10-27.md) gives the
+autobuild `autobuild-2026-11-23-12-43`, build `n9.0.2-62-gac1c6e003f`, by per-architecture SHA256, and downloads both archives from
+Loomarr's own source release [`third-party-sources-2026-11-23`](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-11-23). That release also carries the exact FFmpeg source
+(`ac1c6e003f9e298536363e716750abc0c8f25b37`), BtbN's build recipe (`7f2a6b1050d302144de8366afa37a75e46f326aa`) and the build's original dependency download
+cache. [`source-distribution-2026-11-23.json`](project/evidence/source-distribution-2026-11-23.json) binds
+each asset's URL, size and SHA256, and the [pin record](project/evidence/ffmpeg-pin-2026-11-23.md) gives the
 provenance.
 <!-- ffmpeg-pin:end -->
 
