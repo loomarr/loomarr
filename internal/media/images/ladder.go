@@ -85,13 +85,16 @@ const fullScreenFrom = 1920
 // WidthsFor is the ladder for an image whose original is sourceWidth pixels wide. A full-screen
 // fanart rung (1920 and up) is only made when the original can fill it, so the server never
 // upscales one (#2774): a 1280 original has no 1920 rung and a 1920 one has no 3840. A poster's
-// and a still's (RoleThumb) rungs are never wider than the original, except that the smallest
-// rung is always offered, so an image always has one (#4476): a poster narrower than 154 is
-// served at 154 and a still narrower than 300 at 300. A wider rung would be the same pixels
-// upscaled at several times the bytes. A 185-wide poster's set is 154 and 185, and a grid asking
-// for 342 takes the 185 rung and scales it in the browser. A catalogue still arrives 300 wide,
-// so its set is the one 300 rung; a filler clip's catalogue still is made 320 wide
-// (tools.PreviewWidth), so its set is the 300 rung too. A rendition such an image already holds
+// and a still's (RoleThumb) rung is offered only when the original nearly fills it: at least
+// nearFitPercent of the rung's width (#4476). A rung far wider than the original would be the
+// same pixels upscaled at several times the bytes, while one the original nearly fills is
+// stretched by at most about 15%, which is not visible, and leaving it out would serve a 680-wide
+// poster (common for TVDB art) at 500 and make it soft on a 2x screen. The smallest rung is
+// always offered, so an image always has one: a poster narrower than 154 is served at 154 and a
+// still narrower than 300 at 300. A 185-wide poster's set is 154 and 185, and a grid asking for
+// 342 takes the 185 rung and scales it in the browser. A catalogue still arrives 300 wide, so its
+// set is the one 300 rung; a filler clip's catalogue still is made 320 wide (tools.PreviewWidth),
+// so its set is the 300 rung too. A rendition such an image already holds
 // above its set is not listed, and budget eviction reclaims it when the cache is over budget. A
 // split proposal's segment still is a frame up to 1920 wide and keeps the rungs it fills. Icons
 // and logos keep the whole ladder: they are drawn at card sizes, where a rung slightly wider than
@@ -110,10 +113,16 @@ func (r Role) WidthsFor(sourceWidth int) []int {
 	return ladder
 }
 
-// withinSource drops every rung wider than sourceWidth except the smallest, which is always kept.
+// nearFitPercent is how much of a rung's width an original fills for that rung to be offered.
+const nearFitPercent = 85
+
+// withinSource drops every rung the original fills less than nearFitPercent of, except the
+// smallest, which is always kept.
 func withinSource(ladder []int, sourceWidth int) []int {
 	first := ladder[0]
-	return slices.DeleteFunc(ladder, func(w int) bool { return w > first && w > sourceWidth })
+	return slices.DeleteFunc(ladder, func(w int) bool {
+		return w > first && sourceWidth*100 < w*nearFitPercent
+	})
 }
 
 // AVIFWidthsFor is WidthsFor without the rungs wider than maxAVIFWidth.

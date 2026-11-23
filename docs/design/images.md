@@ -271,8 +271,7 @@ the database only.
 - **Fetch `original` once** and build the ladder locally: one origin request per artwork. `profile`
   sizes use a height token (`h632`), and SVG assets exist only at `original`. An episode's still
   is the exception: it is fetched at `w300` (#4476), the size an episode row draws, because a
-  library holds tens of thousands of them and no surface draws one larger. A cast member's photo
-  is the other exception: it is fetched at `w185` (#4476), the widest a cast row draws one.
+  library holds tens of thousands of them and no surface draws one larger.
 
 ### Metadata
 
@@ -290,19 +289,23 @@ need attribution or provenance read the image row instead of parsing format-spec
   still, an episode's or a filler clip's, on the 300/780/1280 ladder; role `backdrop` is fanart,
   on the ladder to 3840.
 - **A rendition is never an upscale where it would show.** Fanart drops a full-screen rung (1920
-  and up) its original cannot fill. A poster's and a still's rungs are never wider than the
-  original, except that the smallest rung is always offered (#4476), so a poster narrower than
-  154 is served at 154 and a still narrower than 300 at 300. A 185-wide poster (a cast photo, or a
-  provider's small poster) is served at 154 and 185 alone; a grid drawing it wider takes the 185
-  rung and scales it in the browser. A 300-wide catalogue still is served at 300 alone, and a 2x
+  and up) its original cannot fill. A poster or a still is offered a rung only when its
+  original is at least 85% of the rung's width (#4476), so the browser stretches it by at most
+  about 15%, which does not show. A rung far wider than the original would be the same pixels
+  upscaled at several times the bytes. A rung the original nearly fills is kept because leaving
+  it out makes the picture soft: a 680-wide poster, common for TVDB art, keeps its 780 rung
+  rather than being served at 500 on a 2x screen. The smallest rung is always offered, so a
+  poster narrower than 154 is served at 154 and a still narrower than 300 at 300. A 185-wide
+  poster (a provider's small poster) is served at 154 and 185 alone, and a grid drawing it wider
+  takes the 185 rung and scales it in the browser. A 300-wide catalogue still is served at 300 alone, and a 2x
   screen drawing it at 300 CSS pixels takes that rung the same way. A filler clip's catalogue
   still is made 320 wide (`tools.PreviewWidth`), so its ladder is `[300]` too. A rendition an
   image already holds above its ladder is not listed, and budget eviction reclaims it when the
   cache is over budget. A split proposal's segment still is a frame up to 1920 wide and keeps the
   rungs it fills. Icons and logos keep their whole ladder, and an image whose width is not yet
   known (adopted, bytes not here) lists the whole ladder. The serve route snaps a requested width
-  to the image's own ladder, so a request for a rung the original cannot fill is served at its
-  widest rung, never upscaled and never a 404.
+  to the image's own ladder, so a request for a rung the image is not offered is served at the
+  image's widest rung, never a 404.
 - **Proxied**: a short-TTL pass-through with **no permanent row**, for high-volume ephemeral thumbnails
   such as source-search results. Ingesting hundreds of thumbnails for a search the operator abandons
   would be the wrong trade; proxying still removes the third-party origin from the browser.
