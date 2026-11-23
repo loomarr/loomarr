@@ -1,7 +1,7 @@
 //! VOBSUB (`dvd_subtitle`): a DVD subpicture track extracted as an `.idx`/`.sub` pair.
 //!
-//! The `.idx` gives the canvas size, the 16-colour palette, optional custom colours, the
-//! forced-only flag and, for each subpicture, a timestamp and the `.sub` offset of the pack it
+//! The `.idx` gives the canvas size, the 16-colour palette, the forced-only flag and, for each
+//! subpicture, a timestamp and the `.sub` offset of the pack it
 //! starts in. The `.sub` is an MPEG-2 program stream whose private stream 1 packets carry each
 //! subpicture unit (SPU) in pieces; one linear pass reassembles them. An SPU's control sequences
 //! say when it starts and stops showing, which palette entries and alphas its four pixel values
@@ -31,24 +31,19 @@ const AREA: u8 = 0x05;
 const FIELDS: u8 = 0x06;
 const CHANGE_COLOUR_CONTRAST: u8 = 0x07;
 const SEQUENCE_END: u8 = 0xff;
+/// Control sequences one unit may hold. A subtitle has two or three (start, stop, perhaps a
+/// colour change); a fade adds one per step. ffmpeg has no count of its own: non-overlapping
+/// sequences already keep a parse linear in the unit, and this bounds it further.
+const MAX_SEQUENCES: usize = 256;
 
 /// A parsed `.idx`: one track's canvas, colours and entries.
 struct Index {
     width: u32,
     height: u32,
     palette: [[u8; 3]; 16],
-    custom: Option<Custom>,
     forced_only: bool,
     stream: u8,
     entries: Vec<Entry>,
-}
-
-/// `custom colors: ON`: the four listed colours replace the palette lookup for pixel values 0..3
-/// (background, pattern, emphasis 1, emphasis 2), and a `1` in the same place in `tridx` makes
-/// that value transparent.
-struct Custom {
-    colours: [[u8; 3]; 4],
-    transparent: [bool; 4],
 }
 
 struct Entry {
@@ -89,26 +84,36 @@ pub(super) fn decode_vobsub<S: StillSink>(
     let index = parse_index(idx, limits)?;
     let wanted = index.entries.iter().map(|entry| entry.filepos).collect();
     let units = reassemble(sub, index.stream, &wanted)?;
-    let mut shown = Vec::new();
+    let mut timeline = Timeline::new(limits, sink);
+    // Each unit is parsed once however many entries name it, its bytes charged to the drawn
+    // budget first, like an object's coded length.
+    let mut pictures = HashMap::new();
     for entry in &index.entries {
+        if pictures.contains_key(&entry.filepos) {
+            continue;
+        }
         let Some(unit) = units.get(&entry.filepos) else {
             return Err(corrupt("an index entry points at no complete subpicture"));
         };
-        let picture = parse_spu(unit)?;
+        timeline.budget.draw(unit.len() as u64)?;
+        pictures.insert(entry.filepos, parse_spu(unit)?);
+    }
+    let mut shown = Vec::new();
+    for entry in &index.entries {
+        let (unit, picture) = (&units[&entry.filepos], &pictures[&entry.filepos]);
         let Some(start) = picture.start else {
             continue;
         };
         if index.forced_only && !picture.forced {
             continue;
         }
-        let start_ms = (entry.ms + ticks_ms(start)).max(0);
+        let start_ms = entry.ms.saturating_add(ticks_ms(start)).max(0);
         let stop_ms = picture
             .stop
-            .map(|stop| (entry.ms + ticks_ms(stop)).max(start_ms));
+            .map(|stop| entry.ms.saturating_add(ticks_ms(stop)).max(start_ms));
         shown.push((start_ms, stop_ms, unit.as_slice(), picture));
     }
     let mut canvas = Canvas::new(index.width, index.height);
-    let mut timeline = Timeline::new(limits, sink);
     for (i, (start_ms, stop_ms, unit, picture)) in shown.iter().enumerate() {
         let colours = colours(&index, picture);
         timeline.push(*start_ms, &mut canvas, |canvas, budget| {
@@ -131,10 +136,11 @@ pub(super) fn decode_vobsub<S: StillSink>(
 }
 
 fn parse_index(idx: &[u8], limits: Limits) -> Result<Index, WorkerError> {
-    let text = std::str::from_utf8(idx).map_err(|_| corrupt("index is not text"))?;
+    // Every key and value the decoder reads is ASCII, so a comment or language name in another
+    // encoding decodes lossily without changing them.
+    let text = String::from_utf8_lossy(idx);
     let mut size = None;
     let mut palette = None;
-    let mut custom = None;
     let mut forced_only = false;
     let mut stream = None;
     let mut offset_ms = 0_i64;
@@ -152,11 +158,14 @@ fn parse_index(idx: &[u8], limits: Limits) -> Result<Index, WorkerError> {
         match key.trim() {
             "size" => size = Some(parse_size(value, limits)?),
             "palette" => palette = Some(parse_palette(value)?),
-            "custom colors" => custom = parse_custom(value)?,
+            // `custom colors:` is ignored, as ffmpeg ignores it: libavcodec/dvdsubdec.c
+            // (dvdsub_parse_extradata) reads only `palette:` and `size:`, and the VobSub demuxer
+            // in libavformat/mpeg.c never reads it, so the palette always colours the pixels.
             "forced subs" => forced_only = value.eq_ignore_ascii_case("on"),
             "time offset" => offset_ms = parse_offset(value)?,
-            // A delay shifts every later timestamp of the track; successive delays add up.
-            "delay" => delay_ms = delay_ms.saturating_add(parse_offset(value)?),
+            // A delay shifts every later timestamp of the track until the next delay replaces
+            // it, as in libavformat/mpeg.c (vobsub_read_header).
+            "delay" => delay_ms = parse_offset(value)?,
             "id" => {
                 if stream.is_some() {
                     return Err(WorkerError::new(
@@ -203,7 +212,6 @@ fn parse_index(idx: &[u8], limits: Limits) -> Result<Index, WorkerError> {
         width,
         height,
         palette,
-        custom,
         forced_only,
         stream: stream.unwrap_or(FIRST_SUBPICTURE),
         entries,
@@ -251,37 +259,6 @@ fn parse_palette(value: &str) -> Result<[[u8; 3]; 16], WorkerError> {
         return Err(corrupt("palette has fewer than 16 colours"));
     }
     Ok(palette)
-}
-
-/// `ON, tridx: 1000, colors: 000000, 828282, 828282, 828282`; `OFF` keeps the palette.
-fn parse_custom(value: &str) -> Result<Option<Custom>, WorkerError> {
-    let mut parts = value.split(',').map(str::trim);
-    if !parts.next().is_some_and(|on| on.eq_ignore_ascii_case("on")) {
-        return Ok(None);
-    }
-    let tridx = parts
-        .next()
-        .and_then(|part| part.strip_prefix("tridx:"))
-        .map(str::trim)
-        .filter(|digits| digits.len() == 4 && digits.bytes().all(|d| d == b'0' || d == b'1'))
-        .ok_or_else(|| corrupt("bad custom colour tridx"))?;
-    let first = parts
-        .next()
-        .and_then(|part| part.strip_prefix("colors:"))
-        .ok_or_else(|| corrupt("bad custom colours"))?;
-    let mut colours = [[0; 3]; 4];
-    colours[0] = parse_rgb(first)?;
-    for slot in &mut colours[1..] {
-        *slot = parse_rgb(parts.next().ok_or_else(|| corrupt("bad custom colours"))?)?;
-    }
-    let mut transparent = [false; 4];
-    for (slot, digit) in transparent.iter_mut().zip(tridx.bytes()) {
-        *slot = digit == b'1';
-    }
-    Ok(Some(Custom {
-        colours,
-        transparent,
-    }))
 }
 
 /// `hh:mm:ss:ms` in milliseconds.
@@ -426,6 +403,7 @@ fn parse_spu(unit: &[u8]) -> Result<Subpicture, WorkerError> {
     }
     let mut picture = Subpicture::default();
     let mut frozen = false;
+    let mut sequences = 0;
     let mut at = control;
     loop {
         if unit.len() < at + 4 {
@@ -445,7 +423,8 @@ fn parse_spu(unit: &[u8]) -> Result<Subpicture, WorkerError> {
             };
             match command {
                 FORCED_START | START => {
-                    picture.forced |= command == FORCED_START && picture.start.is_none();
+                    // Forced in either order, as ffmpeg's `is_menu` (libavcodec/dvdsubdec.c).
+                    picture.forced |= command == FORCED_START;
                     picture.start.get_or_insert(delay);
                 }
                 STOP => {
@@ -504,9 +483,19 @@ fn parse_spu(unit: &[u8]) -> Result<Subpicture, WorkerError> {
             }
         }
         frozen |= picture.start.is_some();
-        // The last sequence points at itself; a pointer backwards also ends the list.
+        // The last sequence points at itself; a pointer backwards also ends the list, as in
+        // libavcodec/dvdsubdec.c (decode_dvd_subtitles).
         if next <= at {
             break;
+        }
+        // Unlike ffmpeg, a sequence must start after the commands before it end: overlapping
+        // sequences re-read each other and make parsing quadratic in the unit.
+        if next < i {
+            return Err(corrupt("control sequences overlap"));
+        }
+        sequences += 1;
+        if sequences >= MAX_SEQUENCES {
+            return Err(corrupt("too many control sequences"));
         }
         at = next;
     }
@@ -515,17 +504,10 @@ fn parse_spu(unit: &[u8]) -> Result<Subpicture, WorkerError> {
 
 /// The straight-alpha RGBA of pixel values 0..3.
 fn colours(index: &Index, picture: &Subpicture) -> [[u8; 4]; 4] {
-    let mut out = [[0; 4]; 4];
-    for (value, slot) in out.iter_mut().enumerate() {
-        let alpha = picture.alpha[value] * 17;
-        let [r, g, b] = match &index.custom {
-            Some(custom) if custom.transparent[value] => continue,
-            Some(custom) => custom.colours[value],
-            None => index.palette[usize::from(picture.colour[value])],
-        };
-        *slot = [r, g, b, alpha];
-    }
-    out
+    std::array::from_fn(|value| {
+        let [r, g, b] = index.palette[usize::from(picture.colour[value])];
+        [r, g, b, picture.alpha[value] * 17]
+    })
 }
 
 /// Draws one subpicture onto the cleared canvas, charging its area and coded length before it
@@ -722,7 +704,9 @@ pub(crate) mod test_support {
         pub rows: Vec<Vec<(u32, u8)>>,
         pub start: u16,
         pub stop: Option<u16>,
-        pub forced: bool,
+        /// The display commands that open the first sequence: `[0x01]` starts, `[0x00]` starts
+        /// forced, and both orders of the two start forced.
+        pub lead: &'static [u8],
         pub alpha: [u8; 2],
     }
 
@@ -737,7 +721,7 @@ pub(crate) mod test_support {
                 rows: vec![vec![(2, 0), (2, 1)], vec![(4, 2)]],
                 start: 0,
                 stop: Some(45),
-                forced: false,
+                lead: &[0x01],
                 alpha: [0x08, 0xf0],
             }
         }
@@ -780,7 +764,7 @@ pub(crate) mod test_support {
             let top_at = 4_u16;
             let bottom_at = top_at + top.len() as u16;
             let control = bottom_at + bottom.len() as u16;
-            let mut first = vec![if self.forced { 0x00 } else { 0x01 }];
+            let mut first = self.lead.to_vec();
             first.extend_from_slice(&[0x03, 0x02, 0x10, 0x04, self.alpha[0], self.alpha[1], 0x05]);
             first.extend_from_slice(&[
                 (self.x >> 4) as u8,
@@ -867,6 +851,74 @@ mod tests {
     const WHITE: [u8; 4] = [255, 255, 255, 255];
     const RED: [u8; 4] = [255, 0, 0, 136];
     const CLEAR: [u8; 4] = [0, 0, 0, 0];
+
+    /// The fixture's PGS source: on a 720x480 canvas, a 40x10 object at (100, 400) from 1 s to
+    /// 2.5 s and a 64x8 object at (200, 300) from 3 s to 4 s, each with opaque white rows over
+    /// opaque black ones.
+    fn fixture_source_sup() -> Vec<u8> {
+        use crate::subtitles::test_support::Sup;
+        let canvas = [720_u16.to_be_bytes(), 480_u16.to_be_bytes()].concat();
+        let mut w = Sup::default();
+        for (show, clear, (x, y), (ow, oh)) in [
+            (1000, 2500, (100_u16, 400_u16), (40_u16, 10_u16)),
+            (3000, 4000, (200, 300), (64, 8)),
+        ] {
+            let at = |ms: u32| ms * 90;
+            let mut rle = Vec::new();
+            for row in 0..oh {
+                let index = if row < oh / 2 { 1 } else { 2 };
+                if ow >= 64 {
+                    rle.extend_from_slice(&[0, 0xc0 | (ow >> 8) as u8, ow as u8, index]);
+                } else {
+                    rle.extend_from_slice(&[0, 0x80 | ow as u8, index]);
+                }
+                rle.extend_from_slice(&[0, 0]);
+            }
+            let mut pcs = canvas.clone();
+            pcs.extend_from_slice(&[0x10, 0, 1, 0x80, 0, 0, 1, 0, 1, 0, 0]);
+            pcs.extend_from_slice(&[x.to_be_bytes(), y.to_be_bytes()].concat());
+            w.seg(at(show), 0x16, &pcs);
+            let window = [ow, oh].map(u16::to_be_bytes).concat();
+            w.seg(
+                at(show),
+                0x17,
+                &[&[1, 0][..], &x.to_be_bytes(), &y.to_be_bytes(), &window].concat(),
+            );
+            w.seg(
+                at(show),
+                0x14,
+                &[0, 0, 1, 235, 128, 128, 255, 2, 16, 128, 128, 255],
+            );
+            let mut ods = vec![0, 1, 0, 0xc0];
+            ods.extend_from_slice(&((rle.len() + 4) as u32).to_be_bytes()[1..]);
+            ods.extend_from_slice(&window);
+            ods.extend_from_slice(&rle);
+            w.seg(at(show), 0x15, &ods);
+            w.seg(at(show), 0x80, &[]);
+            let mut pcs = canvas.clone();
+            pcs.extend_from_slice(&[0x10, 0, 2, 0, 0, 0, 0]);
+            w.seg(at(clear), 0x16, &pcs);
+            w.seg(at(clear), 0x17, &[1, 0, 0, 0, 0, 0, 0, 1, 0, 1]);
+            w.seg(at(clear), 0x80, &[]);
+        }
+        w.0
+    }
+
+    #[test]
+    fn the_fixture_source_is_what_its_writer_builds() {
+        assert_eq!(
+            fixture_source_sup(),
+            include_bytes!("../../testdata/vobsub/source.sup")
+        );
+    }
+
+    /// Rewrites `testdata/vobsub/source.sup`; the README gives the commands that follow.
+    #[test]
+    #[ignore = "writes the checked-in fixture source"]
+    fn write_fixture_source() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/vobsub/source.sup");
+        fs::write(path, fixture_source_sup()).expect("write source.sup");
+    }
 
     /// `testdata/vobsub` holds the pair ffmpeg and mkvextract make from `source.sup` (see its
     /// README): white text rows over black ones, at 1 s and 3 s.
@@ -969,22 +1021,26 @@ mod tests {
 
     #[test]
     fn forced_only_shows_only_forced_subpictures() {
-        let build = |header: &str| {
+        let build = |header: &str, lead: &'static [u8]| {
             let mut pair = Pair::new((8, 4), header);
             pair.spu(1000, &Unit::two_rows(0, 0).bytes(), 2048);
             let forced = Unit {
-                forced: true,
+                lead,
                 ..Unit::two_rows(0, 0)
             };
             pair.spu(3000, &forced.bytes(), 2048);
             pair
         };
-        let (decoded, _) = decode_built(&build("forced subs: ON"));
-        assert_eq!(
-            timing(&decoded.states),
-            [(3000, 3512, true), (3512, 3512, false)]
-        );
-        let (decoded, _) = decode_built(&build("forced subs: OFF"));
+        // The forced start marks the subpicture forced before, after or without a plain start.
+        for lead in [&[0x00][..], &[0x00, 0x01], &[0x01, 0x00]] {
+            let (decoded, _) = decode_built(&build("forced subs: ON", lead));
+            assert_eq!(
+                timing(&decoded.states),
+                [(3000, 3512, true), (3512, 3512, false)],
+                "lead {lead:02x?}"
+            );
+        }
+        let (decoded, _) = decode_built(&build("forced subs: OFF", &[0x00]));
         assert_eq!(
             timing(&decoded.states),
             [
@@ -1042,21 +1098,45 @@ mod tests {
     }
 
     #[test]
-    fn custom_colours_replace_the_palette() {
+    fn custom_colours_leave_the_palette_in_charge() {
+        // The 4x2 probe at (0, 0), byte by byte.
+        #[rustfmt::skip]
+        let probe = [
+            0x00, 0x24, 0x00, 0x06, // size 36, control at 6
+            0x89, // top field: 2 x value 0, 2 x value 1
+            0x12, // bottom field: 4 x value 2
+            0x00, 0x00, 0x00, 0x1e, // sequence at once, next at 30
+            0x01, // start
+            0x03, 0x02, 0x10, // values 0..3 take palette entries 0, 1, 2, 0
+            0x04, 0x08, 0xf0, // alphas 0, 15, 8, 0
+            0x05, 0x00, 0x00, 0x03, 0x00, 0x00, 0x01, // area (0, 0)-(3, 1)
+            0x06, 0x00, 0x04, 0x00, 0x05, // fields at 4 and 5
+            0xff,
+            0x00, 0x2d, 0x00, 0x1e, 0x02, 0xff, // stop 45 ticks later; the last sequence
+        ];
+        assert_eq!(Unit::two_rows(0, 0).bytes(), probe);
         let mut pair = Pair::new(
             (8, 4),
-            "custom colors: ON, tridx: 0010, colors: 000000, 00ff00, 0000ff, 000000",
+            "custom colors: ON, tridx: 1111, colors: 00ff00, 00ff00, 00ff00, 00ff00",
         );
-        pair.spu(0, &Unit::two_rows(0, 0).bytes(), 2048);
+        pair.spu(0, &probe, 2048);
         let (_, images) = decode_built(&pair);
-        // Pattern (1) takes the second custom colour; emphasis 1 (2) is transparent by tridx.
-        assert_pixels(&images[0], &[(2, 0, [0, 255, 0, 255]), (0, 1, CLEAR)]);
+        // As in ffmpeg, the palette (entry 1 ffffff, entry 2 ff0000) colours the pixels.
+        assert_pixels(
+            &images[0],
+            &[
+                (0, 0, CLEAR),
+                (2, 0, [0xff, 0xff, 0xff, 15 * 17]),
+                (0, 1, [0xff, 0, 0, 8 * 17]),
+            ],
+        );
     }
 
     #[test]
     fn delays_and_the_time_offset_shift_timestamps() {
         let mut pair = Pair::new((8, 4), "time offset: 500\ndelay: 00:00:01:000");
         pair.spu(1000, &Unit::two_rows(0, 0).bytes(), 2048);
+        // A later delay replaces the one before it.
         pair.idx.push_str("delay: -00:00:00:250\n");
         pair.spu(5000, &Unit::two_rows(0, 0).bytes(), 2048);
         let (decoded, _) = decode_built(&pair);
@@ -1064,11 +1144,97 @@ mod tests {
             timing(&decoded.states),
             [
                 (2500, 3012, true),
-                (3012, 6250, false),
-                (6250, 6762, true),
-                (6762, 6762, false)
+                (3012, 5250, false),
+                (5250, 5762, true),
+                (5762, 5762, false)
             ]
         );
+    }
+
+    #[test]
+    fn an_index_in_another_encoding_still_decodes() {
+        let mut pair = Pair::new((8, 4), "# Untertitel f\u{fc}r alle");
+        pair.spu(1000, &Unit::two_rows(0, 0).bytes(), 2048);
+        // Latin-1 bytes in a comment and a language name.
+        let idx = pair
+            .idx
+            .replace("f\u{fc}r", "f\u{1}r")
+            .replace("id: en", "id: fran\u{2}ais")
+            .into_bytes()
+            .into_iter()
+            .map(|b| match b {
+                1 => 0xfc,
+                2 => 0xe7,
+                b => b,
+            })
+            .collect::<Vec<u8>>();
+        assert!(std::str::from_utf8(&idx).is_err());
+        let (decoded, _) = decode_pair(&idx, &pair.sub, LIMITS).expect("decode");
+        assert_eq!(
+            timing(&decoded.states),
+            [(1000, 1512, true), (1512, 1512, false)]
+        );
+    }
+
+    /// The reviewer's shape: each sequence's header is the previous sequence's commands (STOP,
+    /// then COLOUR swallowing the next pointer), so every sequence overlaps the rest, and many
+    /// entries name the one unit.
+    #[test]
+    fn overlapping_sequences_and_repeated_entries_are_refused_quickly() {
+        let mut unit = vec![0, 0, 0, 4];
+        while unit.len() < 0xfff0 {
+            let next = (unit.len() + 4) as u16;
+            unit.extend_from_slice(&[STOP, COLOUR]);
+            unit.extend_from_slice(&next.to_be_bytes());
+        }
+        unit.push(SEQUENCE_END);
+        let size = (unit.len() as u16).to_be_bytes();
+        unit[..2].copy_from_slice(&size);
+        let mut pair = Pair::new((8, 4), "");
+        pair.spu(0, &unit, 2000);
+        for i in 1..LIMITS.max_states as u32 {
+            pair.idx.push_str(&format!(
+                "timestamp: 00:00:{:02}:{:03}, filepos: 000000000\n",
+                i / 1000 % 60,
+                i % 1000
+            ));
+        }
+        let started = std::time::Instant::now();
+        let err = decode_pair(pair.idx.as_bytes(), &pair.sub, LIMITS)
+            .err()
+            .expect("overlapping sequences decoded");
+        let overlapping = started.elapsed();
+        assert_eq!(
+            (err.code, err.message.as_str()),
+            ("corrupt_input", "control sequences overlap")
+        );
+        assert!(
+            overlapping < std::time::Duration::from_secs(2),
+            "took {overlapping:?}"
+        );
+
+        // A unit that never starts, named by every entry, is parsed once and shows nothing.
+        let never = raw_unit(&[0, 0, 0, 4, STOP, SEQUENCE_END]);
+        let mut pair = Pair::new((8, 4), "");
+        pair.spu(0, &never, 2048);
+        for i in 1..LIMITS.max_states as u32 {
+            pair.idx.push_str(&format!(
+                "timestamp: {:02}:{:02}:{:02}:000, filepos: 000000000\n",
+                i / 3600,
+                i / 60 % 60,
+                i % 60
+            ));
+        }
+        let started = std::time::Instant::now();
+        let (decoded, _) = decode_pair(pair.idx.as_bytes(), &pair.sub, LIMITS).expect("decode");
+        let repeated = started.elapsed();
+        assert!(decoded.states.is_empty());
+        assert_eq!(decoded.work.drawn_pixels, never.len() as u64);
+        assert!(
+            repeated < std::time::Duration::from_secs(2),
+            "took {repeated:?}"
+        );
+        println!("overlapping: {overlapping:?}; repeated: {repeated:?}");
     }
 
     /// An SPU of hand-written control bytes after its 4-byte header.
@@ -1118,6 +1284,19 @@ mod tests {
         };
         let mut wide_pair = Pair::new((100, 100), "");
         wide_pair.spu(0, &wide.bytes(), 2048);
+        // MAX_SEQUENCES + 1 sequences, each ending where the next begins.
+        let mut control = Vec::new();
+        for i in 0..=MAX_SEQUENCES {
+            let next = if i == MAX_SEQUENCES {
+                4 + control.len()
+            } else {
+                4 + control.len() + 5
+            };
+            control.extend_from_slice(&[0, 0]);
+            control.extend_from_slice(&(next as u16).to_be_bytes());
+            control.push(SEQUENCE_END);
+        }
+        let many_sequences = raw_unit(&control);
         let mut big_canvas = Pair::new((3841, 2160), "");
         big_canvas.spu(0, &probe, 2048);
         // Draws one value-1 run: start, area (0,0)-(3,0), both fields at the trailing zero byte,
@@ -1135,6 +1314,12 @@ mod tests {
             ("MPEG-1 pack", mpeg1, LIMITS, "corrupt_input"),
             ("backwards", backwards, LIMITS, "corrupt_input"),
             ("bad time", bad_time, LIMITS, "corrupt_input"),
+            (
+                "too many sequences",
+                one("", &many_sequences),
+                LIMITS,
+                "corrupt_input",
+            ),
             (
                 "unknown command",
                 one("", &raw_unit(&[0, 0, 0, 4, 0x09, 0xff])),

@@ -138,9 +138,8 @@ probe for each, so a worker without one fails readiness instead of failing the f
   `hdmv_pgs_subtitle`; the worker hash-checks both files before decoding (`source_changed`), and
   Go re-reads both after it, refusing a result whose `.sub` or `.idx` changed or was swapped (the
   `.idx` within its 8 MiB ceiling). A pair holds one track (more
-  than one `id:` is `unsupported_input`); with `forced subs: ON` only forced subpictures show, and
-  `custom colors: ON` replaces the palette for the four pixel values, a `tridx` digit of 1 making
-  that value transparent. The result is
+  than one `id:` is `unsupported_input`); with `forced subs: ON` only forced subpictures show, and,
+  as in ffmpeg, `custom colors:` is ignored, so the palette always colours the pixels. The result is
   the canvas size and an ordered list of display states, each with its start and end in
   milliseconds and either one full-canvas straight-alpha PNG or none (the screen is clear). Each
   state ends where the next starts, the last state's end equals its start, and Go refuses a
