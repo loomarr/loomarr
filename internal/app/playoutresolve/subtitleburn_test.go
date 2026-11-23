@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/images/rustgen"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -216,11 +217,11 @@ func TestSubtitleBurns_RunWaitsForARunningPreparation(t *testing.T) {
 	}
 }
 
-// The wired decoder refuses until the image worker's adapter lands: the preparer copies the track
+// The image worker refuses a track (a corrupt or over-ceiling stream): the preparer copies the track
 // out, the decoder refuses it once, nothing is left on disk, and it is not decoded again at every
 // airing.
 func TestSubtitleBurns_ARefusingDecoderAirsWithout(t *testing.T) {
-	decoder := &testkit.SubtitleDecoder{Err: playout.ErrSubtitleDecoderUnavailable}
+	decoder := &testkit.SubtitleDecoder{Err: &rustgen.WorkerError{Code: "corrupt_input", Message: "truncated segment"}}
 	ffmpeg := execfixture.POSIX(t, "ffmpeg", `printf 'PGtrack'`)
 	s, _ := newTestBurns(t, true, playout.FFmpegBurnInWith(ffmpeg, nil, decoder))
 	for range 3 {
@@ -232,6 +233,26 @@ func TestSubtitleBurns_ARefusingDecoderAirsWithout(t *testing.T) {
 	calls := decoder.Calls()
 	if len(calls) != 1 || calls[0].Codec != "hdmv_pgs_subtitle" || calls[0].SHA256 == "" {
 		t.Errorf("decoder asked for %+v, want the film's PGS track once", calls)
+	}
+	if entries, err := os.ReadDir(s.dir); err != nil || len(entries) != 0 {
+		t.Errorf("left %v on disk (%v)", entries, err)
+	}
+}
+
+// A decoder whose image worker is not bound yet holds nothing back: each programme airs without the
+// track and asks again, so the track is prepared once the worker is there rather than an hour later.
+func TestSubtitleBurns_AnUnboundDecoderIsAskedAgainByTheNextProgramme(t *testing.T) {
+	decoder := &testkit.SubtitleDecoder{Err: playout.ErrSubtitleDecoderUnavailable}
+	ffmpeg := execfixture.POSIX(t, "ffmpeg", `printf 'PGtrack'`)
+	s, _ := newTestBurns(t, true, playout.FFmpegBurnInWith(ffmpeg, nil, decoder))
+	for range 3 {
+		if got := s.serve("/media/film.mkv", burnPGS); got != nil {
+			t.Fatalf("served %+v without a decoder", got)
+		}
+		waitIdle(t, s)
+	}
+	if calls := decoder.Calls(); len(calls) != 3 {
+		t.Errorf("decoder asked %d times, want once per programme (3)", len(calls))
 	}
 	if entries, err := os.ReadDir(s.dir); err != nil || len(entries) != 0 {
 		t.Errorf("left %v on disk (%v)", entries, err)

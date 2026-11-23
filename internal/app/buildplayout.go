@@ -76,6 +76,9 @@ type playoutDeps struct {
 	startup       *diagnostics.Startup
 	// watermarks draws the channel's bug on programme items (#1512).
 	watermarks *channelWatermarks
+	// subtitleDecoder decodes the image subtitle tracks a channel burns in (#2088 step 8); nil
+	// decodes nothing.
+	subtitleDecoder playout.SubtitleStillDecoder
 }
 
 func buildPlayout(deps playoutDeps) (playoutBuild, error) {
@@ -245,11 +248,11 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	playoutRes.SetSubtitles(st, subtitleReader)
 	owner.goRun(subtitleReader.Run)
 	// Image subtitles a channel burns in (#2088 step 8), gated by the bug's GPU overlay self-check
-	// and blended by its kernel. This build has no image subtitle decoder, so nothing is looked up
-	// and programmes air without their image tracks. The preparer is generation-owned, so Shutdown
-	// joins a preparation in flight.
+	// and blended by its kernel. The image worker decodes the track (docs/design/images.md); without
+	// a decoder nothing is looked up and programmes air without their image tracks. The preparer is
+	// generation-owned, so Shutdown joins a preparation in flight.
 	if burnDir, err := filepath.Abs(filepath.Join(stateDir, "subtitle-burn")); err == nil && deps.watermarks != nil {
-		var decoder playout.SubtitleStillDecoder = playout.UnavailableSubtitleDecoder{}
+		decoder := deps.subtitleDecoder
 		burns := playoutresolve.NewSubtitleBurns(playoutresolve.SubtitleBurnsConfig{
 			Dir: burnDir, Prepare: playout.FFmpegBurnInWith(ffmpegBin, deps.processDiagnostics, decoder),
 			Decodes: playout.SubtitleDecoderAvailable(decoder),

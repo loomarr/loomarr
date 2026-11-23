@@ -320,8 +320,8 @@ head -c "${BYTES:-4096}" /dev/zero`)}
 	}
 }
 
-// A decoder that cannot decode (none, a nil pointer, the refusing stand-in) reads as unavailable,
-// so a build without one looks nothing up for burn-in.
+// A decoder that cannot decode (none, a nil pointer) reads as unavailable, so a build without one
+// looks nothing up for burn-in.
 func TestSubtitleDecoderAvailable(t *testing.T) {
 	var nilPtr *availabilityDecoder
 	for _, c := range []struct {
@@ -330,8 +330,6 @@ func TestSubtitleDecoderAvailable(t *testing.T) {
 		want bool
 	}{
 		{"nil", nil, false},
-		{"refusing stand-in", UnavailableSubtitleDecoder{}, false},
-		{"refusing stand-in pointer", &UnavailableSubtitleDecoder{}, false},
 		{"typed nil", nilPtr, false},
 		{"a decoder", &availabilityDecoder{}, true},
 	} {

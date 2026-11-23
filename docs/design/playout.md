@@ -569,14 +569,13 @@ draws them over the picture:
   in the playout graph. The tracks route marks such a track `burnable`.
   - *How (step 8, `internal/playout/burnin.go`):* a track is prepared once, in the background. The
     programme's streams come from the Library's inventory, so nothing is probed on the tune path,
-    and nothing is looked up at all until the encoder's overlay self-check has passed in a build with
-    a decoder. Go copies the stream out as a `.sup` (at most 256 MiB) and hashes it. The
-    image worker decodes it into the full canvas at each change (`decode-subtitles`,
-    [`images.md`](images.md), *Operations beyond renditions*), behind the
-    `playout.SubtitleStillDecoder` seam; until its adapter is wired the app's decoder refuses every
-    track, so programmes air without them. Go holds the result to the worker's ceilings again (an
-    even canvas of at most 3840×2160, at most 50,000 states, every still inside the worker's staging
-    directory) before it allocates anything. Go owns everything after the stills: one ffmpeg run
+    and nothing is looked up at all until the encoder's overlay self-check has passed. Go copies the
+    stream out as a `.sup` (at most 256 MiB) and hashes it. The image worker decodes it into the
+    full canvas at each change (`decode-subtitles`, [`images.md`](images.md), *Operations beyond
+    renditions*), behind the `playout.SubtitleStillDecoder` seam; the app's adapter is the certified
+    worker, which must list `decode-subtitles` to pass its startup check. Go holds the result to
+    the worker's ceilings again (an even canvas of at most 3840×2160, at most 50,000 states, every
+    still inside the worker's staging directory) before it allocates anything. Go owns everything after the stills: one ffmpeg run
     converts them into one-frame ffv1 files that are already yuva420p BT.709, and each encoder reads
     an ffconcat list written for its own seek (the still on screen at that moment first, then each
     change for exactly as long as it shows) through a `movie=` source inside its `-vf`, blended

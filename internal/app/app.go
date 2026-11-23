@@ -169,6 +169,9 @@ func buildHandler(
 	// breaks date holidays alike.
 	calendar := householdCalendar(set, foundation.holidays, log)
 	watermarks := newChannelWatermarks(owner, st, set, calendar, foundation.diagnostics, log)
+	// The image worker decodes burned-in subtitle tracks; it is certified after playout is built and
+	// bound below, before the server takes a request.
+	subtitleDecoder := &subtitleWorkerDecoder{}
 
 	buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
 		foundation.processDiagnostics, log, foundation.metrics)
@@ -177,6 +180,7 @@ func buildHandler(
 		rootCtx, st, set, ov, owner, capturePlayoutResolver, libraryClient, secrets,
 		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, fillerLayout, log,
 		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, watermarks, calendar,
+		subtitleDecoder,
 	)
 	if err != nil {
 		return nil, nil, nil, err
@@ -200,6 +204,7 @@ func buildHandler(
 		return nil, nil, nil, err
 	}
 	watermarks.withOriginals(suggestions.images)
+	subtitleDecoder.bind(suggestions.imageWorker)
 	fillers := buildFillerSubsystem(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
 		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, suggestions.images,
