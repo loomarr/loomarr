@@ -67,7 +67,10 @@ production remains one thread.
 ⚠ Therefore **AVIF coverage is eventually-consistent, and the frontend contract must tolerate it.**
 `<picture>` does this natively: when no AVIF derivative exists the `<source>` is simply not emitted
 and the browser takes WebP. No request ever blocks on AVIF, and no surface has to know whether the
-job has caught up.
+job has caught up. Coverage is per rung, not per image: the AVIF `srcset` lists only the rungs
+whose AVIF exists, because a `<source>` does not fall back on a 404. The job's work list is every
+image that lacks an AVIF rung its current ladder offers it, and it encodes only the missing rungs,
+so an image encoded under an earlier ladder is topped up when the ladder changes.
 
 ### Formats and negotiation
 
@@ -291,7 +294,7 @@ need attribution or provenance read the image row instead of parsing format-spec
 - **A rendition is never an upscale where it would show.** Fanart drops a full-screen rung (1920
   and up) its original cannot fill. A poster or a still is offered a rung only when its
   original is at least 85% of the rung's width (#4476), so the browser stretches it by at most
-  about 15%, which does not show. A rung far wider than the original would be the same pixels
+  1/0.85, about 18%, which does not show. A rung far wider than the original would be the same pixels
   upscaled at several times the bytes. A rung the original nearly fills is kept because leaving
   it out makes the picture soft: a 680-wide poster, common for TVDB art, keeps its 780 rung
   rather than being served at 500 on a 2x screen. The smallest rung is always offered, so a

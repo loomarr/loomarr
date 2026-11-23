@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os"
 	"runtime"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -70,6 +72,49 @@ func TestAVIFJobUsesRustWorkerForWholeLadder(t *testing.T) {
 	second, err := job.Run(context.Background())
 	if err != nil || second.Considered != 0 {
 		t.Errorf("idempotent second pass = %+v, %v", second, err)
+	}
+}
+
+// A still whose AVIF was encoded at [300] under an earlier ladder, and whose set is now [300 780]
+// (#4476), advertises AVIF at 300 only: <picture> does not fall back on a 404. The AVIF job tops
+// it up with 780 alone, and the set then lists both.
+func TestAVIFJobTopsUpAnEarlierLadderAndTheSetListsOnlyWhatExists(t *testing.T) {
+	ctx := context.Background()
+	svc, fs := newTestService(t)
+	rec := seedWithWebP(t, svc, RoleThumb, 700, 394)
+	if got, want := RoleThumb.AVIFWidthsFor(rec.Width), []int{300, 780}; !slices.Equal(got, want) {
+		t.Fatalf("thumb AVIF set of 700 = %v, want %v", got, want)
+	}
+	if err := fs.PutDerivative(ctx, Derivative{
+		ImageHash: rec.Hash, Recipe: renditionRecipe, Format: FormatAVIF, Width: 300, Path: "earlier.avif",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	avifSet := func() string {
+		t.Helper()
+		listed, err := svc.GetMany(ctx, []string{rec.Hash})
+		if err != nil {
+			t.Fatal(err)
+		}
+		l := listed[rec.Hash]
+		return svc.AVIFSrcSet(rec.Hash, l.Role, l.Width, l.AVIFWidths)
+	}
+	if set := avifSet(); !strings.Contains(set, " 300w") || strings.Contains(set, "780w") {
+		t.Fatalf("AVIF srcset = %q, want the 300 rung only until 780 is encoded", set)
+	}
+
+	recorder := &recordingRenderer{next: svc.renderer}
+	svc.renderer = recorder
+	result, err := NewAVIFJob(svc, fs, nil).Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Renditions != 1 || len(recorder.requests) != 1 || len(recorder.requests[0].Targets) != 1 ||
+		recorder.requests[0].Targets[0].Width != 780 {
+		t.Fatalf("Run = %+v, requests = %+v, want one top-up of the 780 rung", result, recorder.requests)
+	}
+	if set := avifSet(); !strings.Contains(set, " 300w") || !strings.Contains(set, " 780w") {
+		t.Errorf("AVIF srcset after the top-up = %q, want 300 and 780", set)
 	}
 }
 

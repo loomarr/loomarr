@@ -50,8 +50,8 @@ const profileBase = "https://image.tmdb.org/t/p/w185"
 
 // ProfileURL is ImageURL for a person's photo (a credit's profile_path), at TMDB's 185-wide size
 // rather than original: a cast row draws a photo at about 185 pixels or less, and an original is
-// a portrait several times that width. The image service offers no poster rung wider than the
-// original, so the photo is never served upscaled.
+// a portrait several times that width. The image service offers a 185-wide poster at 154 and 185
+// alone, since its next rung, 342, is far wider than the original.
 func ProfileURL(path string) string {
 	return imageAt(profileBase, path)
 }

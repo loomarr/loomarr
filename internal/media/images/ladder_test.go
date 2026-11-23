@@ -135,6 +135,8 @@ func TestStillWidthsNeverUpscale(t *testing.T) {
 		{300, []int{300}},             // a catalogue still
 		{320, []int{300}},             // a filler clip's still (tools.PreviewWidth)
 		{1000, []int{300, 780}},       // a 1000-wide arr screenshot: 78% of 1280, too far
+		{1087, []int{300, 780}},       // just under 85% of 1280
+		{1088, []int{300, 780, 1280}}, // exactly 85% of 1280 (1088 = 1280 × 0.85)
 		{1100, []int{300, 780, 1280}}, // 86% of 1280: near enough to stretch
 		{1920, []int{300, 780, 1280}}, // a split proposal's 1080p segment still
 	}
@@ -169,6 +171,8 @@ func TestPosterWidthsNeverUpscale(t *testing.T) {
 		{300, []int{154, 185, 342}},            // 87.7% of 342: near enough
 		{499, []int{154, 185, 342, 500}},       // 64% of 780: too far
 		{500, []int{154, 185, 342, 500}},       // a TMDB w500 poster
+		{662, []int{154, 185, 342, 500}},       // just under 85% of 780
+		{663, []int{154, 185, 342, 500, 780}},  // exactly 85% of 780 (663 = 780 × 0.85)
 		{680, []int{154, 185, 342, 500, 780}},  // a TVDB poster, 87% of 780
 		{2000, []int{154, 185, 342, 500, 780}}, // an original: every rung
 	}

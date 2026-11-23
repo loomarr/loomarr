@@ -39,10 +39,12 @@ type ImageService interface {
 	PathFor(hash string, width int, f images.Format) string
 	URLFor(hash string, width int, f images.Format) string
 	SrcSet(hash string, role images.Role, f images.Format, sourceWidth int) string
-	// HasFormat reports whether a rendition in this format exists RIGHT NOW. Required because
+	// AVIFSrcSet lists only the AVIF rungs of encoded, the widths EncodedWidths read.
+	AVIFSrcSet(hash string, role images.Role, sourceWidth int, encoded []int) string
+	// EncodedWidths is the widths a rendition in this format exists at RIGHT NOW. Required because
 	// advertising a job-produced AVIF that does not exist yet is a broken image, not a missed
 	// optimisation — see the method's own comment in internal/media/images.
-	HasFormat(ctx context.Context, hash string, f images.Format) (bool, error)
+	EncodedWidths(ctx context.Context, hash string, f images.Format) ([]int, error)
 	// GetMany reads many images with their AVIF state in one store read; a list renders through
 	// it rather than Get and HasFormat per image.
 	GetMany(ctx context.Context, hashes []string) (map[string]images.Listed, error)
@@ -234,20 +236,21 @@ func (s *Handlers) imageToDTO(ctx context.Context, rec images.Image) httpcore.Im
 	// it selects by type and does not fall back on a 404, so a job-produced AVIF that has not been
 	// generated yet breaks the image outright rather than degrading to WebP. A lookup failure is
 	// treated as "no AVIF" for the same reason: the safe direction is to under-advertise.
-	hasAVIF := false
+	var avif []int
 	if !rec.Animated {
-		ok, err := s.images.HasFormat(ctx, rec.Hash, images.FormatAVIF)
-		hasAVIF = err == nil && ok
+		if widths, err := s.images.EncodedWidths(ctx, rec.Hash, images.FormatAVIF); err == nil {
+			avif = widths
+		}
 	}
-	return s.listedToDTO(images.Listed{Image: rec, AVIF: hasAVIF})
+	return s.listedToDTO(images.Listed{Image: rec, AVIFWidths: avif})
 }
 
 // listedToDTO is imageToDTO for an image whose AVIF state is already read (Service.GetMany).
 func (s *Handlers) listedToDTO(l images.Listed) httpcore.ImageDTO {
 	rec := l.Image
 	avif := ""
-	if !rec.Animated && l.AVIF {
-		avif = s.images.SrcSet(rec.Hash, rec.Role, images.FormatAVIF, rec.Width)
+	if !rec.Animated {
+		avif = s.images.AVIFSrcSet(rec.Hash, rec.Role, rec.Width, l.AVIFWidths)
 	}
 	webp := s.images.SrcSet(rec.Hash, rec.Role, images.FormatWebP, rec.Width)
 	if rec.Animated {

@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -355,9 +357,12 @@ func testImagesMissingFormat(t *testing.T, newStore NewStoreFunc) {
 	at := time.Unix(1_700_000_000, 0)
 
 	webpOnly := imageAt("theta", at)
-	bothFormats := imageAt("iota", at)
-	untouched := imageAt("kappa", at) // no derivatives at all
-	for _, img := range []clipstore.Image{webpOnly, bothFormats, untouched} {
+	bothFormats := imageAt("iota", at) // AVIF at every rung it is owed
+	untouched := imageAt("kappa", at)  // no derivatives at all
+	topUp := imageAt("lambda", at)     // AVIF at 500 only, owed 780 too
+	small := imageAt("mu", at)         // AVIF at 500 only, too narrow to be owed 780
+	small.Width = 600
+	for _, img := range []clipstore.Image{webpOnly, bothFormats, untouched, topUp, small} {
 		if err := s.PutImage(ctx, img); err != nil {
 			t.Fatal(err)
 		}
@@ -371,18 +376,34 @@ func testImagesMissingFormat(t *testing.T, newStore NewStoreFunc) {
 	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: webpOnly.Hash, Format: "webp", Width: 500, Path: "a", CreatedAt: at}))
 	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: bothFormats.Hash, Format: "webp", Width: 500, Path: "b", CreatedAt: at}))
 	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: bothFormats.Hash, Format: "avif", Width: 500, Path: "c", CreatedAt: at}))
+	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: bothFormats.Hash, Format: "avif", Width: 780, Path: "d", CreatedAt: at}))
+	for i, img := range []clipstore.Image{topUp, small} {
+		must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: img.Hash, Format: "webp", Width: 500, Path: fmt.Sprintf("e%d", i), CreatedAt: at}))
+		must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: img.Hash, Format: "avif", Width: 500, Path: fmt.Sprintf("f%d", i), CreatedAt: at}))
+	}
 
-	got, err := s.ListImagesMissingFormat(ctx, "legacy-go-v1", "avif", 10)
+	rungs := []clipstore.ImageRung{
+		{Role: "poster", Width: 500, MinSourceWidth: 0},
+		{Role: "poster", Width: 780, MinSourceWidth: 663},
+		{Role: "thumb", Width: 1000, MinSourceWidth: 0}, // another role's rung owes a poster nothing
+	}
+	got, err := s.ListImagesMissingFormat(ctx, "legacy-go-v1", "avif", rungs, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Hash != webpOnly.Hash {
-		hashes := make([]string, len(got))
-		for i, g := range got {
-			hashes[i] = g.Hash
-		}
-		t.Fatalf("ListImagesMissingFormat(avif) = %v, want just the webp-only image %s "+
-			"(an image with NO derivatives must not be picked up)", hashes, webpOnly.Hash)
+	hashes := make([]string, len(got))
+	for i, g := range got {
+		hashes[i] = g.Hash
+	}
+	slices.Sort(hashes)
+	want := []string{webpOnly.Hash, topUp.Hash}
+	slices.Sort(want)
+	if !slices.Equal(hashes, want) {
+		t.Fatalf("ListImagesMissingFormat(avif) = %v, want the webp-only image and the one owed a 780 rung %v "+
+			"(an image with NO derivatives, a complete one and one too narrow for 780 must not be picked up)", hashes, want)
+	}
+	if none, err := s.ListImagesMissingFormat(ctx, "legacy-go-v1", "avif", nil, 10); err != nil || len(none) != 0 {
+		t.Fatalf("ListImagesMissingFormat with no rungs = %v, %v, want none", none, err)
 	}
 }
 

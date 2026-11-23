@@ -81,13 +81,18 @@ func (f *fakeStore) ListUnrecoverable(_ context.Context, limit int) ([]Image, er
 	return f.pick(limit, func(img Image) bool { return !img.Origin.Recoverable() }), nil
 }
 
-func (f *fakeStore) ListMissingFormat(_ context.Context, recipe string, format Format, limit int) ([]Image, error) {
+func (f *fakeStore) ListMissingFormat(_ context.Context, recipe string, format Format, rungs []Rung, limit int) ([]Image, error) {
 	return f.pick(limit, func(img Image) bool {
 		ds := f.derivatives[img.Hash]
 		if len(ds) == 0 {
 			return false // no rendition at all: the fetch job's business, not the encoder's
 		}
-		return !slices.ContainsFunc(ds, func(d Derivative) bool { return d.Recipe == recipe && d.Format == format })
+		return slices.ContainsFunc(rungs, func(r Rung) bool {
+			owed := r.Role == img.Role && (img.Width >= r.MinSourceWidth || img.Width <= 0)
+			return owed && !slices.ContainsFunc(ds, func(d Derivative) bool {
+				return d.Recipe == recipe && d.Format == format && d.Width == r.Width
+			})
+		})
 	}), nil
 }
 

@@ -1,6 +1,9 @@
 package images
 
-import "slices"
+import (
+	"slices"
+	"sort"
+)
 
 // Width ladders, per role (§22).
 //
@@ -88,7 +91,7 @@ const fullScreenFrom = 1920
 // and a still's (RoleThumb) rung is offered only when the original nearly fills it: at least
 // nearFitPercent of the rung's width (#4476). A rung far wider than the original would be the
 // same pixels upscaled at several times the bytes, while one the original nearly fills is
-// stretched by at most about 15%, which is not visible, and leaving it out would serve a 680-wide
+// stretched by at most 1/0.85, about 18%, which is not visible, and leaving it out would serve a 680-wide
 // poster (common for TVDB art) at 500 and make it soft on a 2x screen. The smallest rung is
 // always offered, so an image always has one: a poster narrower than 154 is served at 154 and a
 // still narrower than 300 at 300. A 185-wide poster's set is 154 and 185, and a grid asking for
@@ -134,6 +137,32 @@ func (r Role) AVIFWidthsFor(sourceWidth int) []int {
 		}
 	}
 	return widths
+}
+
+// Rung is one rendition width a role owes an original at least MinSourceWidth pixels wide.
+type Rung struct {
+	Role           Role
+	Width          int
+	MinSourceWidth int
+}
+
+// roles is every Role an image is stored under.
+var roles = []Role{RolePoster, RoleBackdrop, RoleIcon, RoleThumb, RoleWatermark, RoleLogo}
+
+// AVIFRungs is every AVIF rung of every role, each with the narrowest original AVIFWidthsFor
+// offers it to. The AVIF job's work list is the images that lack one they are owed, so an image
+// encoded under an earlier ladder is topped up with the rungs the current one adds.
+func AVIFRungs() []Rung {
+	var out []Rung
+	for _, role := range roles {
+		for _, w := range role.AVIFWidthsFor(0) {
+			// The rule is monotone in the source width: an original that is offered a rung is
+			// offered it at every wider width, so the narrowest such original is a binary search.
+			least := sort.Search(w+1, func(s int) bool { return s > 0 && slices.Contains(role.AVIFWidthsFor(s), w) })
+			out = append(out, Rung{Role: role, Width: w, MinSourceWidth: least})
+		}
+	}
+	return out
 }
 
 // AspectRatio is width divided by height for the role, or 0 when the role has no fixed shape.
