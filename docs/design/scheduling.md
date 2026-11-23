@@ -294,7 +294,7 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   arranged break lengths. Reconcile stays the only writer. Each plan clears stored breaks only in its
   own stretch: the window on air plans up to its turn and clears everything behind it, and the next
   window clears only from the turn, so neither deletes the other's. A break whose start the plan
-  ahead missed (the lineup changed between the plan and the turn) airs live, as before.
+  ahead missed (the lineup changed between the plan and the turn) airs live, assembled as it starts.
 - **What "seen this evening" means for a break planned ahead:** the household's real watched airings
   up to now plus this channel's own already-stored breaks, so no ad repeats within the channel's
   evening. Other channels' planned breaks do not count, because what they air depends on viewing

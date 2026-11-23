@@ -43,10 +43,11 @@ func (e *Engine) TurnedWindow(ctx context.Context, channelID string, at, turnAnc
 // WithPlannedBreaks is an arranged window walked from turnAnchor with each break at the length
 // reconcile planned for it ahead of the turn (planNextWindow). It reads only and returns a new
 // slice, so a cached arrangement passed in stays as it was: a break with nothing planned at its
-// start keeps its slot and is assembled live, as before.
+// start keeps its slot and is assembled live. A turn further ahead than nextWindowLead has nothing
+// planned yet, so the guide's reads of it touch no store.
 func (e *Engine) WithPlannedBreaks(ctx context.Context, channelID string, turnAnchor time.Time, slots []schedule.Slot) []schedule.Slot {
 	planner, ok := e.pods.(BreakPlanner)
-	if !ok {
+	if !ok || turnAnchor.Sub(e.now()) > nextWindowLead {
 		return slots
 	}
 	first, from, plans := breakPlans(turnAnchor, slots)
@@ -55,7 +56,9 @@ func (e *Engine) WithPlannedBreaks(ctx context.Context, channelID string, turnAn
 	}
 	lengths, err := planner.PlannedLengths(ctx, channelID, from, plans)
 	if err != nil {
-		return slots // unplanned breaks air at their slot, assembled live
+		// Unplanned breaks air at their slot, assembled live.
+		e.log.Warn("channels: planned break lengths not read", "channel", channelID, "err", err)
+		return slots
 	}
 	return withLengths(slots, first, lengths)
 }
@@ -64,7 +67,7 @@ func (e *Engine) WithPlannedBreaks(ctx context.Context, channelID string, turnAn
 // start airing, once that is within nextWindowLead. The playout airs the next window as soon as the
 // programme crossing the boundary ends, before reconcile commits it, and reads these lengths
 // (TurnedWindow). It clears only from the turn, so the window on air keeps its own breaks.
-// Best-effort: a channel whose next window is not planned airs its breaks live, as before.
+// Best-effort: a channel whose next window is not planned airs its breaks live, each assembled as it starts.
 func (e *Engine) planNextWindow(ctx context.Context, ch channelstore.Channel) {
 	if _, ok := e.pods.(BreakPlanner); !ok || len(ch.Desired) == 0 || ch.PlayoutAnchor.IsZero() {
 		return
