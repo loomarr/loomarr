@@ -166,7 +166,7 @@ func (s *Service) Produces(f Format) bool {
 // and the surface rendered its fallback while the WebP and JPEG renditions both served 200.
 //
 // It is per width, not per format: an image whose AVIF was encoded under an earlier ladder has
-// some AVIF rungs and not others, and AVIFSrcSet lists only the ones it holds.
+// some AVIF rungs and not others, and AVIFSrcSet advertises AVIF only when it holds all of them.
 func (s *Service) EncodedWidths(ctx context.Context, hash string, f Format) ([]int, error) {
 	if !s.Produces(f) {
 		return nil, nil
