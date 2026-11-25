@@ -67,10 +67,13 @@ production remains one thread.
 ⚠ Therefore **AVIF coverage is eventually-consistent, and the frontend contract must tolerate it.**
 `<picture>` does this natively: when no AVIF derivative exists the `<source>` is simply not emitted
 and the browser takes WebP. No request ever blocks on AVIF, and no surface has to know whether the
-job has caught up. Coverage is per rung, not per image: the AVIF `srcset` lists only the rungs
-whose AVIF exists, because a `<source>` does not fall back on a 404. The job's work list is every
-image that lacks an AVIF rung its current ladder offers it, and it encodes only the missing rungs,
-so an image encoded under an earlier ladder is topped up when the ladder changes.
+job has caught up. Coverage is checked per rung, not per image: the AVIF `<source>` is emitted
+only when every AVIF rung the image's ladder offers exists. The browser commits to the first
+`<source>` type it supports: a listed rung that 404s has no fallback, and a partial set serves
+its widest AVIF rung stretched where the WebP set has the sharp one. Until the set is complete,
+the image serves WebP, which is made on request. The job's work list is every still (not
+animated) image that lacks an AVIF rung its current ladder offers it. The job encodes only the
+missing rungs, so an image encoded under an earlier ladder is topped up when the ladder changes.
 
 ### Formats and negotiation
 

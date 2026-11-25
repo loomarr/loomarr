@@ -84,8 +84,8 @@ func (f *fakeStore) ListUnrecoverable(_ context.Context, limit int) ([]Image, er
 func (f *fakeStore) ListMissingFormat(_ context.Context, recipe string, format Format, rungs []Rung, limit int) ([]Image, error) {
 	return f.pick(limit, func(img Image) bool {
 		ds := f.derivatives[img.Hash]
-		if len(ds) == 0 {
-			return false // no rendition at all: the fetch job's business, not the encoder's
+		if len(ds) == 0 || img.Animated {
+			return false // no rendition at all is the fetch job's business; animation is never AVIF
 		}
 		return slices.ContainsFunc(rungs, func(r Rung) bool {
 			owed := r.Role == img.Role && (img.Width >= r.MinSourceWidth || img.Width <= 0)

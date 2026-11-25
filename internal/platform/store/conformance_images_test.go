@@ -362,7 +362,9 @@ func testImagesMissingFormat(t *testing.T, newStore NewStoreFunc) {
 	topUp := imageAt("lambda", at)     // AVIF at 500 only, owed 780 too
 	small := imageAt("mu", at)         // AVIF at 500 only, too narrow to be owed 780
 	small.Width = 600
-	for _, img := range []clipstore.Image{webpOnly, bothFormats, untouched, topUp, small} {
+	animated := imageAt("nu", at) // WebP only, but never encoded as AVIF
+	animated.Animated = true
+	for _, img := range []clipstore.Image{webpOnly, bothFormats, untouched, topUp, small, animated} {
 		if err := s.PutImage(ctx, img); err != nil {
 			t.Fatal(err)
 		}
@@ -375,6 +377,7 @@ func testImagesMissingFormat(t *testing.T, newStore NewStoreFunc) {
 	}
 	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: webpOnly.Hash, Format: "webp", Width: 500, Path: "a", CreatedAt: at}))
 	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: bothFormats.Hash, Format: "webp", Width: 500, Path: "b", CreatedAt: at}))
+	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: animated.Hash, Format: "webp", Width: 500, Path: "g", Animated: true, CreatedAt: at}))
 	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: bothFormats.Hash, Format: "avif", Width: 500, Path: "c", CreatedAt: at}))
 	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: bothFormats.Hash, Format: "avif", Width: 780, Path: "d", CreatedAt: at}))
 	for i, img := range []clipstore.Image{topUp, small} {
@@ -400,7 +403,8 @@ func testImagesMissingFormat(t *testing.T, newStore NewStoreFunc) {
 	slices.Sort(want)
 	if !slices.Equal(hashes, want) {
 		t.Fatalf("ListImagesMissingFormat(avif) = %v, want the webp-only image and the one owed a 780 rung %v "+
-			"(an image with NO derivatives, a complete one and one too narrow for 780 must not be picked up)", hashes, want)
+			"(an image with NO derivatives, a complete one, one too narrow for 780 and an animated one "+
+			"must not be picked up)", hashes, want)
 	}
 	if none, err := s.ListImagesMissingFormat(ctx, "legacy-go-v1", "avif", nil, 10); err != nil || len(none) != 0 {
 		t.Fatalf("ListImagesMissingFormat with no rungs = %v, %v, want none", none, err)

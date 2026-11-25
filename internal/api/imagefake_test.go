@@ -174,7 +174,10 @@ func (f *fakeImageService) SrcSet(hash string, role images.Role, format images.F
 }
 
 func (f *fakeImageService) AVIFSrcSet(hash string, role images.Role, sourceWidth int, encoded []int) string {
-	widths := slices.DeleteFunc(role.AVIFWidthsFor(sourceWidth), func(w int) bool { return !slices.Contains(encoded, w) })
+	widths := role.AVIFWidthsFor(sourceWidth)
+	if slices.ContainsFunc(widths, func(w int) bool { return !slices.Contains(encoded, w) }) {
+		return ""
+	}
 	return f.srcSetOf(hash, images.FormatAVIF, widths)
 }
 

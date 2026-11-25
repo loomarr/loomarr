@@ -76,9 +76,10 @@ func TestAVIFJobUsesRustWorkerForWholeLadder(t *testing.T) {
 }
 
 // A still whose AVIF was encoded at [300] under an earlier ladder, and whose set is now [300 780]
-// (#4476), advertises AVIF at 300 only: <picture> does not fall back on a 404. The AVIF job tops
-// it up with 780 alone, and the set then lists both.
-func TestAVIFJobTopsUpAnEarlierLadderAndTheSetListsOnlyWhatExists(t *testing.T) {
+// (#4476), advertises no AVIF: a partial set would serve the 300 rung stretched where WebP has
+// 780, and a listed 780 would 404 with no fallback. The AVIF job tops it up with 780 alone, and
+// the complete set is then advertised.
+func TestAVIFJobTopsUpAnEarlierLadderAndOnlyACompleteSetIsAdvertised(t *testing.T) {
 	ctx := context.Background()
 	svc, fs := newTestService(t)
 	rec := seedWithWebP(t, svc, RoleThumb, 700, 394)
@@ -99,8 +100,8 @@ func TestAVIFJobTopsUpAnEarlierLadderAndTheSetListsOnlyWhatExists(t *testing.T) 
 		l := listed[rec.Hash]
 		return svc.AVIFSrcSet(rec.Hash, l.Role, l.Width, l.AVIFWidths)
 	}
-	if set := avifSet(); !strings.Contains(set, " 300w") || strings.Contains(set, "780w") {
-		t.Fatalf("AVIF srcset = %q, want the 300 rung only until 780 is encoded", set)
+	if set := avifSet(); set != "" {
+		t.Fatalf("AVIF srcset of a partial set = %q, want none until 780 is encoded", set)
 	}
 
 	recorder := &recordingRenderer{next: svc.renderer}
@@ -115,6 +116,22 @@ func TestAVIFJobTopsUpAnEarlierLadderAndTheSetListsOnlyWhatExists(t *testing.T) 
 	}
 	if set := avifSet(); !strings.Contains(set, " 300w") || !strings.Contains(set, " 780w") {
 		t.Errorf("AVIF srcset after the top-up = %q, want 300 and 780", set)
+	}
+}
+
+// A 680-wide poster owed AVIF at 154 to 780 advertises AVIF only once all five exist: with 780
+// missing, the browser would take the 500 AVIF stretched on a 2x screen over the WebP 780.
+func TestAVIFSrcSetNeedsTheCompleteSet(t *testing.T) {
+	svc, _ := newTestService(t)
+	hash := strings.Repeat("c", 64)
+	if set := svc.AVIFSrcSet(hash, RolePoster, 680, []int{154, 185, 342, 500}); set != "" {
+		t.Errorf("partial AVIF srcset = %q, want none", set)
+	}
+	set := svc.AVIFSrcSet(hash, RolePoster, 680, []int{154, 185, 342, 500, 780})
+	for _, w := range []string{" 154w", " 185w", " 342w", " 500w", " 780w"} {
+		if !strings.Contains(set, w) {
+			t.Errorf("complete AVIF srcset = %q, missing%s", set, w)
+		}
 	}
 }
 

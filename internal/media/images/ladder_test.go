@@ -1,9 +1,53 @@
 package images
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"slices"
+	"strconv"
 	"testing"
 )
+
+// roles is every Role constant the package declares: a Role missing from it would never be on the
+// AVIF job's work list (AVIFRungs). Structural, so it reads the declarations from the syntax tree.
+func TestRolesListsEveryRoleConstant(t *testing.T) {
+	file, err := parser.ParseFile(token.NewFileSet(), "image.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var declared []Role
+	ast.Inspect(file, func(n ast.Node) bool {
+		spec, ok := n.(*ast.ValueSpec)
+		if !ok {
+			return true
+		}
+		if ident, ok := spec.Type.(*ast.Ident); !ok || ident.Name != "Role" {
+			return true
+		}
+		for _, v := range spec.Values {
+			if lit, ok := v.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				s, err := strconv.Unquote(lit.Value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				declared = append(declared, Role(s))
+			}
+		}
+		return true
+	})
+	if len(declared) == 0 {
+		t.Fatal("found no Role constants in image.go")
+	}
+	for _, r := range declared {
+		if !slices.Contains(roles, r) {
+			t.Errorf("Role %q is declared but missing from roles, so the AVIF job never encodes it", r)
+		}
+	}
+	if len(roles) != len(declared) {
+		t.Errorf("roles = %v, want exactly the declared %v", roles, declared)
+	}
+}
 
 func TestLaddersAreAscendingAndNonEmpty(t *testing.T) {
 	for _, r := range []Role{RolePoster, RoleBackdrop, RoleIcon, RoleThumb} {

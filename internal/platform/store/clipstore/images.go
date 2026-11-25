@@ -213,7 +213,7 @@ type ImageStore interface {
 	ListColdestDerivatives(ctx context.Context, limit int) ([]ImageDerivative, error)
 	// ListImagesMissingFormat returns images that have at least one derivative but lack, in the
 	// given format, a rung of rungs they are owed — the AVIF job's work list, expressed without the
-	// job knowing SQL.
+	// job knowing SQL. An animated image is never listed.
 	ListImagesMissingFormat(ctx context.Context, recipe, format string, rungs []ImageRung, limit int) ([]Image, error)
 }
 
@@ -409,9 +409,11 @@ func (s *Store) ListImagesMissingFormat(ctx context.Context, recipe, format stri
 	// those belong to the fetch job, and encoding AVIF for an image with no WebP would invert the
 	// priority the split exists to create. A rung is owed when the image's role has it and the
 	// original is at least its MinSourceWidth wide, or of unknown width (0), which is owed every
-	// rung.
+	// rung. An animated image is never encoded as AVIF, so it is never on the list: otherwise the
+	// oldest animated images would fill every batch and the job would make no progress.
 	var owed strings.Builder
-	args := make([]any, 0, 5*len(rungs)+1)
+	args := make([]any, 0, 5*len(rungs)+2)
+	args = append(args, false)
 	for i, r := range rungs {
 		if i > 0 {
 			owed.WriteString(" OR ")
@@ -424,7 +426,8 @@ func (s *Store) ListImagesMissingFormat(ctx context.Context, recipe, format stri
 	args = append(args, limit)
 	return s.queryImages(ctx,
 		`SELECT `+imageColumns+` FROM images i
-		 WHERE EXISTS (SELECT 1 FROM image_derivatives d WHERE d.image_hash = i.hash)
+		 WHERE i.animated = ?
+		   AND EXISTS (SELECT 1 FROM image_derivatives d WHERE d.image_hash = i.hash)
 		   AND (`+owed.String()+`)
 		 ORDER BY i.created_at LIMIT ?`, args...)
 }

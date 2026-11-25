@@ -686,11 +686,19 @@ func (s *Service) SrcSet(hash string, role Role, f Format, sourceWidth int) stri
 	return s.srcSetOf(hash, f, role.WidthsFor(sourceWidth))
 }
 
-// AVIFSrcSet is the AVIF srcset of an image: the rungs of AVIFWidthsFor(sourceWidth) that encoded
-// (EncodedWidths) holds. An image encoded under an earlier ladder lists only the rungs it has
-// until the AVIF job tops up the rest.
+// AVIFSrcSet is the AVIF srcset of an image when encoded (EncodedWidths) holds every rung of
+// AVIFWidthsFor(sourceWidth), and "" otherwise. The browser takes the first `<source>` whose type
+// it supports and never falls back to the next for a missing width, so a partial AVIF set would
+// serve its widest rung stretched where the WebP set has the sharp one; and a rung it lists that
+// does not exist is a 404 with no fallback at all. An image encoded under an earlier ladder
+// therefore serves WebP, made on request, until the AVIF job tops up the rest.
 func (s *Service) AVIFSrcSet(hash string, role Role, sourceWidth int, encoded []int) string {
-	widths := slices.DeleteFunc(role.AVIFWidthsFor(sourceWidth), func(w int) bool { return !slices.Contains(encoded, w) })
+	widths := role.AVIFWidthsFor(sourceWidth)
+	for _, w := range widths {
+		if !slices.Contains(encoded, w) {
+			return ""
+		}
+	}
 	return s.srcSetOf(hash, FormatAVIF, widths)
 }
 

@@ -39,14 +39,15 @@ type ImageService interface {
 	PathFor(hash string, width int, f images.Format) string
 	URLFor(hash string, width int, f images.Format) string
 	SrcSet(hash string, role images.Role, f images.Format, sourceWidth int) string
-	// AVIFSrcSet lists only the AVIF rungs of encoded, the widths EncodedWidths read.
+	// AVIFSrcSet is the AVIF srcset when encoded (the widths EncodedWidths read) holds every AVIF
+	// rung of the image, and "" otherwise, so a partial set serves WebP.
 	AVIFSrcSet(hash string, role images.Role, sourceWidth int, encoded []int) string
 	// EncodedWidths is the widths a rendition in this format exists at RIGHT NOW. Required because
 	// advertising a job-produced AVIF that does not exist yet is a broken image, not a missed
 	// optimisation — see the method's own comment in internal/media/images.
 	EncodedWidths(ctx context.Context, hash string, f images.Format) ([]int, error)
 	// GetMany reads many images with their AVIF state in one store read; a list renders through
-	// it rather than Get and HasFormat per image.
+	// it rather than Get and EncodedWidths per image.
 	GetMany(ctx context.Context, hashes []string) (map[string]images.Listed, error)
 }
 
