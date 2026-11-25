@@ -211,9 +211,18 @@ type ImageStore interface {
 	// so a fifty-poster grid would be fifty writes per page load against SQLite's single writer.
 	// Image-level LRU costs one write per image request, which `TouchImage` already does.
 	ListColdestDerivatives(ctx context.Context, limit int) ([]ImageDerivative, error)
-	// ListImagesMissingFormat returns images that have at least one derivative but none in the
-	// given format — the AVIF job's work list, expressed without the job knowing SQL.
-	ListImagesMissingFormat(ctx context.Context, recipe, format string, limit int) ([]Image, error)
+	// ListImagesMissingFormat returns images that have at least one derivative but lack, in the
+	// given format, a rung of rungs they are owed — the AVIF job's work list, expressed without the
+	// job knowing SQL. An animated image is never listed.
+	ListImagesMissingFormat(ctx context.Context, recipe, format string, rungs []ImageRung, limit int) ([]Image, error)
+}
+
+// ImageRung is one rung an image of Role is owed once its original is at least MinSourceWidth
+// wide; the image package derives the set from its ladders.
+type ImageRung struct {
+	Role           string
+	Width          int
+	MinSourceWidth int
 }
 
 const imageColumns = `hash, origin, source_url, visibility, role, mime, width, height, bytes,
@@ -391,17 +400,36 @@ func (s *Store) ListUnrecoverableImages(ctx context.Context, limit int) ([]Image
 		 ORDER BY created_at LIMIT ?`, limit)
 }
 
-func (s *Store) ListImagesMissingFormat(ctx context.Context, recipe, format string, limit int) ([]Image, error) {
-	// "Has some derivative but not this one." The first EXISTS is what keeps the AVIF job from
-	// picking up images whose bytes have not been processed at all yet — those belong to the fetch
-	// job, and encoding AVIF for an image with no WebP would invert the priority the split exists
-	// to create.
+func (s *Store) ListImagesMissingFormat(ctx context.Context, recipe, format string, rungs []ImageRung, limit int) ([]Image, error) {
+	if len(rungs) == 0 {
+		return nil, nil
+	}
+	// "Has some derivative but lacks a rung it is owed in this format." The first EXISTS is what
+	// keeps the AVIF job from picking up images whose bytes have not been processed at all yet —
+	// those belong to the fetch job, and encoding AVIF for an image with no WebP would invert the
+	// priority the split exists to create. A rung is owed when the image's role has it and the
+	// original is at least its MinSourceWidth wide, or of unknown width (0), which is owed every
+	// rung. An animated image is never encoded as AVIF, so it is never on the list: otherwise the
+	// oldest animated images would fill every batch and the job would make no progress.
+	var owed strings.Builder
+	args := make([]any, 0, 5*len(rungs)+2)
+	args = append(args, false)
+	for i, r := range rungs {
+		if i > 0 {
+			owed.WriteString(" OR ")
+		}
+		owed.WriteString(`(i.role = ? AND (i.width >= ? OR i.width <= 0) AND NOT EXISTS (
+			SELECT 1 FROM image_derivatives d2
+			WHERE d2.image_hash = i.hash AND d2.recipe = ? AND d2.format = ? AND d2.width = ?))`)
+		args = append(args, r.Role, r.MinSourceWidth, recipe, format, r.Width)
+	}
+	args = append(args, limit)
 	return s.queryImages(ctx,
 		`SELECT `+imageColumns+` FROM images i
-		 WHERE EXISTS (SELECT 1 FROM image_derivatives d WHERE d.image_hash = i.hash)
-		   AND NOT EXISTS (SELECT 1 FROM image_derivatives d2
-			                   WHERE d2.image_hash = i.hash AND d2.recipe = ? AND d2.format = ?)
-		 ORDER BY i.created_at LIMIT ?`, recipe, format, limit)
+		 WHERE i.animated = ?
+		   AND EXISTS (SELECT 1 FROM image_derivatives d WHERE d.image_hash = i.hash)
+		   AND (`+owed.String()+`)
+		 ORDER BY i.created_at LIMIT ?`, args...)
 }
 
 func (s *Store) PutImageRef(ctx context.Context, ref ImageRef) error {

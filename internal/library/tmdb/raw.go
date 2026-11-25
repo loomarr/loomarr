@@ -42,8 +42,32 @@ func StillURL(path string) string {
 // URL until the record is refreshed, so the importer passes every still through this: a cached
 // record's still is adopted at w300 too, and any other source's ref is unchanged.
 func SmallStill(ref string) string {
+	return resized(stillBase, ref)
+}
+
+// profileBase is TMDB's image CDN at w185, the size a cast photo is fetched at.
+const profileBase = "https://image.tmdb.org/t/p/w185"
+
+// ProfileURL is ImageURL for a person's photo (a credit's profile_path), at TMDB's 185-wide size
+// rather than original: a cast row draws a photo at about 185 pixels or less, and an original is
+// a portrait several times that width. The image service offers a 185-wide poster at 154 and 185
+// alone, since its next rung, 342, is far wider than the original.
+func ProfileURL(path string) string {
+	return imageAt(profileBase, path)
+}
+
+// SmallProfile is ref at ProfileURL's size when ref is a TMDB image URL at original, and ref
+// otherwise, as SmallStill is for a still: a cached credit built at original is adopted at w185,
+// and an image at another size or from another source is unchanged.
+func SmallProfile(ref string) string {
+	return resized(profileBase, ref)
+}
+
+// resized is ref on TMDB's image CDN at base's size when ref is a TMDB image URL at original,
+// and ref otherwise.
+func resized(base, ref string) string {
 	if rest, ok := strings.CutPrefix(ref, imageBase+"/"); ok {
-		return stillBase + "/" + rest
+		return base + "/" + rest
 	}
 	return ref
 }

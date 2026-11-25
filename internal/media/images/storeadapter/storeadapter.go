@@ -41,7 +41,7 @@ type Store interface {
 	ListImagesExpiredBefore(ctx context.Context, cutoff time.Time, after clipstore.ExpiryCursor, limit int) ([]clipstore.Image, error)
 	ListOrphanImages(ctx context.Context, limit int) ([]clipstore.Image, error)
 	ListUnrecoverableImages(ctx context.Context, limit int) ([]clipstore.Image, error)
-	ListImagesMissingFormat(ctx context.Context, recipe, format string, limit int) ([]clipstore.Image, error)
+	ListImagesMissingFormat(ctx context.Context, recipe, format string, rungs []clipstore.ImageRung, limit int) ([]clipstore.Image, error)
 	ListColdestDerivatives(ctx context.Context, limit int) ([]clipstore.ImageDerivative, error)
 	TotalImageDerivativeBytes(ctx context.Context) (int64, error)
 	DeleteImageDerivative(ctx context.Context, hash, recipe, format string, width int) error
@@ -159,8 +159,12 @@ func (a Images) ListUnrecoverable(ctx context.Context, limit int) ([]images.Imag
 	return fromStoreImages(rows), err
 }
 
-func (a Images) ListMissingFormat(ctx context.Context, recipe string, f images.Format, limit int) ([]images.Image, error) {
-	rows, err := a.st.ListImagesMissingFormat(ctx, recipe, string(f), limit)
+func (a Images) ListMissingFormat(ctx context.Context, recipe string, f images.Format, rungs []images.Rung, limit int) ([]images.Image, error) {
+	owed := make([]clipstore.ImageRung, len(rungs))
+	for i, r := range rungs {
+		owed[i] = clipstore.ImageRung{Role: string(r.Role), Width: r.Width, MinSourceWidth: r.MinSourceWidth}
+	}
+	rows, err := a.st.ListImagesMissingFormat(ctx, recipe, string(f), owed, limit)
 	return fromStoreImages(rows), err
 }
 

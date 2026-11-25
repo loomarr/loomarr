@@ -150,7 +150,8 @@ func (s *Service) Produces(f Format) bool {
 	return false
 }
 
-// HasFormat reports whether a rendition in this format ALREADY EXISTS for an image.
+// EncodedWidths is the widths at which a rendition in this format ALREADY EXISTS for an image,
+// smallest first.
 //
 // ⚠ **This is the difference between "we would emit AVIF" and "AVIF is there right now", and
 // conflating them shipped a bug that broke every image in the app.** `Produces` answers the first
@@ -163,26 +164,37 @@ func (s *Service) Produces(f Format) bool {
 // one. Advertising an AVIF that 404s therefore breaks the image for every browser that supports
 // AVIF, which is all current ones. Measured in a real browser: the request for `w92.avif` failed
 // and the surface rendered its fallback while the WebP and JPEG renditions both served 200.
-func (s *Service) HasFormat(ctx context.Context, hash string, f Format) (bool, error) {
+//
+// It is per width, not per format: an image whose AVIF was encoded under an earlier ladder has
+// some AVIF rungs and not others, and AVIFSrcSet advertises AVIF only when it holds all of them.
+func (s *Service) EncodedWidths(ctx context.Context, hash string, f Format) ([]int, error) {
 	if !s.Produces(f) {
-		return false, nil
+		return nil, nil
 	}
 	ds, err := s.store.ListDerivatives(ctx, hash)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	for _, d := range ds {
-		if d.Recipe == renditionRecipe && d.Format == f {
-			return true, nil
-		}
-	}
-	return false, nil
+	return encodedWidths(ds, f), nil
 }
 
-// Listed is an image as a page lists it: its record and whether its AVIF ladder exists (HasFormat).
+// encodedWidths is the widths of ds that are current renditions in f, smallest first.
+func encodedWidths(ds []Derivative, f Format) []int {
+	var out []int
+	for _, d := range ds {
+		if d.Recipe == renditionRecipe && d.Format == f && !slices.Contains(out, d.Width) {
+			out = append(out, d.Width)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// Listed is an image as a page lists it: its record and the widths its AVIF renditions exist at
+// (EncodedWidths).
 type Listed struct {
 	Image
-	AVIF bool
+	AVIFWidths []int
 }
 
 // GetMany reads the images of hashes with their AVIF state, by hash, in one store read
@@ -214,10 +226,14 @@ func (s *Service) GetMany(ctx context.Context, hashes []string) (map[string]List
 	if !s.Produces(FormatAVIF) {
 		return out, nil
 	}
+	byHash := map[string][]Derivative{}
 	for _, d := range derivatives {
-		if l, ok := out[d.ImageHash]; ok && d.Recipe == renditionRecipe && d.Format == FormatAVIF {
-			l.AVIF = true
-			out[d.ImageHash] = l
+		byHash[d.ImageHash] = append(byHash[d.ImageHash], d)
+	}
+	for hash, ds := range byHash {
+		if l, ok := out[hash]; ok {
+			l.AVIFWidths = encodedWidths(ds, FormatAVIF)
+			out[hash] = l
 		}
 	}
 	return out, nil
@@ -659,13 +675,34 @@ func (s *Service) URLFor(hash string, width int, f Format) string {
 // DPR when choosing, so `w` already covers retina and a density list would be a second, redundant
 // axis that cannot express a fluid grid.
 //
-// sourceWidth is the original's width: the set lists only rungs it can fill, never an upscale
-// (#2774), and an AVIF set stops at the widest rung the AVIF job encodes.
+// sourceWidth is the original's width: the set lists only the rungs WidthsFor offers it (#2774).
+// WebP and JPEG are rendered on request, so every rung is listed. AVIF is job-produced and a
+// `<picture>` source does not fall back on a 404, so an AVIF set comes only from AVIFSrcSet,
+// which lists the rungs that exist; SrcSet in AVIF is empty.
 func (s *Service) SrcSet(hash string, role Role, f Format, sourceWidth int) string {
-	widths := role.WidthsFor(sourceWidth)
 	if f == FormatAVIF {
-		widths = role.AVIFWidthsFor(sourceWidth)
+		return ""
 	}
+	return s.srcSetOf(hash, f, role.WidthsFor(sourceWidth))
+}
+
+// AVIFSrcSet is the AVIF srcset of an image when encoded (EncodedWidths) holds every rung of
+// AVIFWidthsFor(sourceWidth), and "" otherwise. The browser takes the first `<source>` whose type
+// it supports and never falls back to the next for a missing width, so a partial AVIF set would
+// serve its widest rung stretched where the WebP set has the sharp one; and a rung it lists that
+// does not exist is a 404 with no fallback at all. An image encoded under an earlier ladder
+// therefore serves WebP, made on request, until the AVIF job tops up the rest.
+func (s *Service) AVIFSrcSet(hash string, role Role, sourceWidth int, encoded []int) string {
+	widths := role.AVIFWidthsFor(sourceWidth)
+	for _, w := range widths {
+		if !slices.Contains(encoded, w) {
+			return ""
+		}
+	}
+	return s.srcSetOf(hash, FormatAVIF, widths)
+}
+
+func (s *Service) srcSetOf(hash string, f Format, widths []int) string {
 	parts := make([]string, 0, len(widths))
 	for _, w := range widths {
 		parts = append(parts, fmt.Sprintf("%s %dw", s.PathFor(hash, w, f), w))
