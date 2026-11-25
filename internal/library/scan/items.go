@@ -205,6 +205,12 @@ func (l *Library) Items(ctx context.Context, q librarystore.LibraryItemQuery) (l
 	return l.ItemStore.ListLibraryItems(ctx, q)
 }
 
+// Genres lists the genres of the listed titles of kind, with how many carry each; for member,
+// only the titles a household member reads.
+func (l *Library) Genres(ctx context.Context, kind string, member bool) ([]librarystore.LibraryGenre, error) {
+	return l.ItemStore.LibraryGenres(ctx, kind, member)
+}
+
 // Item is one title's page; store.ErrNotFound when it has no present file, and for a member when
 // a household member doesn't read it (librarystore.MemberLibraryItem).
 func (l *Library) Item(ctx context.Context, id string, member bool) (ItemDetail, error) {

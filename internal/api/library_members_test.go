@@ -524,7 +524,7 @@ func newLibrarySessionHarness(t *testing.T) *apiHarness {
 }
 
 // §19: a signed-in member, and a device they paired, read the Library and are refused its fixes;
-// once an admin disables them, neither the session nor the device reads any of the four
+// once an admin disables them, neither the session nor the device reads any of the
 // member-readable routes.
 func TestDisabledMemberLosesTheLibraryOnSessionAndDevice(t *testing.T) {
 	h := newLibrarySessionHarness(t)
@@ -537,7 +537,8 @@ func TestDisabledMemberLosesTheLibraryOnSessionAndDevice(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("make collection = %d (%v)", code, made)
 	}
-	routes := []string{"/v1/library/items", "/v1/library/items/90000001", "/v1/collections", "/v1/collections/" + made["id"].(string)}
+	routes := []string{"/v1/library/items", "/v1/library/items/90000001", "/v1/library/genres", "/v1/collections",
+		"/v1/collections/" + made["id"].(string)}
 
 	for _, route := range routes {
 		assertMemberSafe(t, route, okBody(t, authed(t, http.MethodGet, srv.URL+route, member, "")))

@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -237,13 +240,17 @@ type LibraryItemSummary struct {
 	ExtraBytes  int64
 }
 
-// LibraryItemQuery narrows the list. Kind "" is movies and series; Search matches the name, any
-// case. Problems keeps only the titles that need a look: a file that can't be played, or a movie
-// with an extra copy. Limit 0 is every item.
+// LibraryItemQuery narrows the list. Kind "" is movies and series; Search matches the name, the
+// year or a genre, any case (searchMatch). Genre keeps the titles with that genre, any case.
+// Problems keeps only the titles that need a look: a file that can't be played, or a movie with an
+// extra copy. Limit 0 is every item.
 type LibraryItemQuery struct {
 	Kind     string
 	Search   string
+	Genre    string
 	Problems bool
+	// Letters asks for the page's letter index, under the name sort only.
+	Letters bool
 	// IDs keeps only these items, when not empty.
 	IDs []string
 	// InSet keeps only the movies in a ready-made set.
@@ -270,6 +277,15 @@ type LibraryItemChannel struct {
 type LibraryItemPage struct {
 	Items []LibraryItemSummary
 	Total int
+	// Letters is the letter index when the query asked for it, in list order; nil otherwise.
+	Letters []LibraryLetter
+}
+
+// LibraryLetter is one initial of the name-sorted list, "A" to "Z" or "#" for any other, and the
+// offset of the first title it starts.
+type LibraryLetter struct {
+	Letter string
+	Offset int
 }
 
 // LibraryItemStore keeps the Library's list of movies and series.
@@ -281,6 +297,10 @@ type LibraryItemStore interface {
 	SaveLibraryItems(ctx context.Context, items []LibraryItem, at time.Time) error
 	// ListLibraryItems lists items with at least one present file, by sort name.
 	ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error)
+	// LibraryGenres lists the genres of the titles the list reads, of kind ("" for movies and
+	// series) and, for member, as a household member reads it, each with how many carry it, by
+	// name. Names that differ only in case are one genre.
+	LibraryGenres(ctx context.Context, kind string, member bool) ([]LibraryGenre, error)
 	// LibraryItem reads one item with a present file; ErrNotFound otherwise.
 	LibraryItem(ctx context.Context, id string) (LibraryItemSummary, error)
 	// MemberLibraryItem is LibraryItem as a household member reads it (memberReads): a title
@@ -414,19 +434,81 @@ func titleIdentified(t string) string {
 		AND NOT EXISTS (` + answer + ` AND a.ignored = TRUE))`
 }
 
-func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
-	where := []string{}
-	args := []any{}
-	switch q.Kind {
-	case "":
-		where = append(where, "i.kind IN ('movie', 'series')")
-	default:
-		where = append(where, "i.kind = ?")
-		args = append(args, q.Kind)
+// listedTitles is the condition, and its arguments, on a title i that the list and its genre
+// counts read: of kind ("" for movies and series), with a present file, not ignored, and, for
+// member, one a household member reads.
+func listedTitles(kind string, member bool) ([]string, []any) {
+	where, args := []string{"i.kind IN ('movie', 'series')"}, []any{}
+	if kind != "" {
+		where, args = []string{"i.kind = ?"}, []any{kind}
 	}
-	if search := strings.TrimSpace(q.Search); search != "" {
-		where = append(where, s.lower("i.name")+" LIKE ? ESCAPE '\\'")
-		args = append(args, "%"+likeEscape(strings.ToLower(search))+"%")
+	// A title the maintainer said is not one is left out.
+	where = append(where, `NOT EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = i.origin_authority
+		AND a.origin_key = i.origin_key AND a.ignored = TRUE)`, itemListed)
+	if member {
+		where = append(where, memberReads)
+	}
+	return where, args
+}
+
+// genreIs is the condition on title i that one of its genres is ?, any case.
+func (s *Store) genreIs() string {
+	return `EXISTS (SELECT 1 FROM library_genres g WHERE g.item_id = i.id AND ` + s.lower("g.name") + ` = ?)`
+}
+
+// nameHolds is the condition on title i that its name holds ?, a LIKE pattern, any case.
+func (s *Store) nameHolds() string { return s.lower("i.name") + ` LIKE ? ESCAPE '\'` }
+
+// searchYear is a search word that names a year: four digits.
+var searchYear = regexp.MustCompile(`^[0-9]{4}$`)
+
+// searchMatch is the condition on title i that it matches the search term (library.md): its name
+// holds the whole term, a genre of it is the whole term, or every word of the term is in its
+// name, is its year or is one of its genres.
+func (s *Store) searchMatch(term string) (string, []any) {
+	or, args := []string{s.nameHolds(), s.genreIs()}, []any{"%" + likeEscape(term) + "%", term}
+	words := strings.Fields(term)
+	every := make([]string, 0, len(words))
+	for _, w := range words {
+		word := []string{s.nameHolds(), s.genreIs()}
+		args = append(args, "%"+likeEscape(w)+"%", w)
+		if searchYear.MatchString(w) {
+			year, _ := strconv.Atoi(w)
+			word = append(word, "i.year = ?")
+			args = append(args, year)
+		}
+		every = append(every, "("+strings.Join(word, " OR ")+")")
+	}
+	or = append(or, "("+strings.Join(every, " AND ")+")")
+	return "(" + strings.Join(or, " OR ") + ")", args
+}
+
+// letterBuckets are the letter index's initials of sort_name; any other is '#'.
+var letterBuckets = func() string {
+	letters := make([]string, 0, 26)
+	for c := 'a'; c <= 'z'; c++ {
+		letters = append(letters, "'"+string(c)+"'")
+	}
+	return strings.Join(letters, ", ")
+}()
+
+func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
+	where, args := listedTitles(q.Kind, q.Member)
+	// order ranks a search's name matches first; orderArgs are its arguments.
+	order, orderArgs := ` ORDER BY i.sort_name, i.id`, []any{}
+	if q.Recent {
+		order = ` ORDER BY i.updated_at_ms DESC, i.id`
+	}
+	if search := strings.ToLower(strings.TrimSpace(q.Search)); search != "" {
+		match, matchArgs := s.searchMatch(search)
+		where = append(where, match)
+		args = append(args, matchArgs...)
+		order = ` ORDER BY CASE WHEN ` + s.nameHolds() + ` THEN 0 ELSE 1 END,` + strings.TrimPrefix(order, ` ORDER BY`)
+		orderArgs = append(orderArgs, "%"+likeEscape(search)+"%")
+	}
+	if genre := strings.ToLower(strings.TrimSpace(q.Genre)); genre != "" {
+		where = append(where, s.genreIs())
+		args = append(args, genre)
 	}
 	if q.InSet {
 		where = append(where, "i.set_key <> ''")
@@ -437,13 +519,6 @@ func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Libra
 			args = append(args, id)
 		}
 	}
-	// A title the maintainer said is not one is left out.
-	where = append(where, `NOT EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = i.origin_authority
-		AND a.origin_key = i.origin_key AND a.ignored = TRUE)`)
-	where = append(where, itemListed)
-	if q.Member {
-		where = append(where, memberReads)
-	}
 	if q.Problems {
 		where = append(where, itemProblems)
 	}
@@ -452,20 +527,25 @@ func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Libra
 	}
 	from := ` FROM library_items i WHERE ` + strings.Join(where, " AND ")
 	var page LibraryItemPage
-	order := ` ORDER BY i.sort_name, i.id`
-	if q.Recent {
-		order = ` ORDER BY i.updated_at_ms DESC, i.id`
+	if q.Letters && !q.Recent {
+		// The window's ORDER BY precedes the WHERE in the text, so its arguments come first.
+		letters, err := s.libraryLetters(ctx, from, order, slices.Concat(orderArgs, args))
+		if err != nil {
+			return page, err
+		}
+		page.Letters = letters
 	}
 	query := `SELECT ` + itemColumns + from + order
+	queryArgs := slices.Concat(args, orderArgs)
 	if q.Limit > 0 {
 		// A page counts the whole list on its own; every item is its own count.
 		if err := s.h.QueryRowContext(ctx, s.ph(`SELECT COUNT(*)`+from), args...).Scan(&page.Total); err != nil {
 			return page, fmt.Errorf("count library items: %w", err)
 		}
 		query += ` LIMIT ? OFFSET ?`
-		args = append(args, q.Limit, q.Offset)
+		queryArgs = append(queryArgs, q.Limit, q.Offset)
 	}
-	items, err := s.scanLibraryItems(ctx, query, args...)
+	items, err := s.scanLibraryItems(ctx, query, queryArgs...)
 	if err != nil {
 		return page, err
 	}
@@ -474,6 +554,59 @@ func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Libra
 		page.Total = len(items)
 	}
 	return page, nil
+}
+
+// libraryLetters is the letter index of the list from (its FROM and WHERE) in order, in one
+// grouped read: each initial of sort_name present, a to z or '#', with the offset of its first
+// title. The offset is numbered in the list's own order, so it lands on that title.
+func (s *Store) libraryLetters(ctx context.Context, from, order string, args []any) ([]LibraryLetter, error) {
+	initial := `SUBSTR(i.sort_name, 1, 1)`
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT bucket, MIN(n) FROM (SELECT
+		CASE WHEN `+initial+` IN (`+letterBuckets+`) THEN `+initial+` ELSE '#' END AS bucket,
+		ROW_NUMBER() OVER (`+strings.TrimPrefix(order, " ")+`) - 1 AS n`+from+`) x
+		GROUP BY bucket ORDER BY MIN(n)`), args...)
+	if err != nil {
+		return nil, fmt.Errorf("library letters: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := []LibraryLetter{}
+	for rows.Next() {
+		var l LibraryLetter
+		if err := rows.Scan(&l.Letter, &l.Offset); err != nil {
+			return nil, fmt.Errorf("library letters: %w", err)
+		}
+		l.Letter = strings.ToUpper(l.Letter)
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// LibraryGenre is one genre of the listed titles and how many carry it.
+type LibraryGenre struct {
+	Name   string
+	Titles int
+}
+
+func (s *Store) LibraryGenres(ctx context.Context, kind string, member bool) ([]LibraryGenre, error) {
+	where, args := listedTitles(kind, member)
+	name := s.lower("g.name")
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT MIN(g.name), COUNT(DISTINCT i.id)
+		FROM library_items i JOIN library_genres g ON g.item_id = i.id
+		WHERE `+strings.Join(where, " AND ")+`
+		GROUP BY `+name+` ORDER BY `+name), args...)
+	if err != nil {
+		return nil, fmt.Errorf("library genres: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := []LibraryGenre{}
+	for rows.Next() {
+		var g LibraryGenre
+		if err := rows.Scan(&g.Name, &g.Titles); err != nil {
+			return nil, fmt.Errorf("library genres: %w", err)
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) LibraryItemChannels(ctx context.Context, id string) ([]LibraryItemChannel, error) {

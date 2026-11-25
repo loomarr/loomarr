@@ -43,6 +43,7 @@ type LibraryRootService interface {
 	ConfirmRemovals(ctx context.Context, root string) error
 
 	Items(ctx context.Context, q librarystore.LibraryItemQuery) (librarystore.LibraryItemPage, error)
+	Genres(ctx context.Context, kind string, member bool) ([]librarystore.LibraryGenre, error)
 	// Item, Collections, Collection and Sets take member: true reads only what a household
 	// member reads (librarystore.MemberLibraryItem); Items takes it in the query.
 	Item(ctx context.Context, id string, member bool) (scan.ItemDetail, error)
