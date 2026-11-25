@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 
 mod subtitles;
 
-pub use subtitles::{fuzz_decode_pgs, run_decode_subtitles};
+pub use subtitles::{fuzz_decode_pgs, fuzz_decode_vobsub, fuzz_vobsub_seed, run_decode_subtitles};
 
 pub const PROTOCOL: u32 = 1;
 pub const RECIPE: &str = "loomarr-rendition-v2";

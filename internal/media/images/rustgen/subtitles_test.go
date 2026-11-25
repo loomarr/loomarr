@@ -13,6 +13,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -146,7 +147,8 @@ func TestDecodeSubtitlesReturnsTypedRefusals(t *testing.T) {
 		code  string
 	}{
 		{"truncated", w.b[:len(w.b)-5], rustgen.CodecPGS, "corrupt_input"},
-		{"vobsub", w.b, "dvd_subtitle", "unsupported_input"},
+		{"vobsub without its index", w.b, rustgen.CodecVOBSUB, "invalid_request"},
+		{"text codec", w.b, "subrip", "unsupported_input"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := gen.DecodeSubtitles(context.Background(), subtitleRequest(t, tt.track, tt.codec))
@@ -155,6 +157,89 @@ func TestDecodeSubtitlesReturnsTypedRefusals(t *testing.T) {
 				t.Fatalf("DecodeSubtitles error = %v, want typed %s", err, tt.code)
 			}
 		})
+	}
+}
+
+// vobsubRequest names the worker's ffmpeg-made VOBSUB fixture pair, copied beside a staging
+// directory.
+func vobsubRequest(t *testing.T) rustgen.SubtitleRequest {
+	t.Helper()
+	fixture := filepath.Join("..", "..", "..", "..", "rust", "loomarr-image", "testdata", "vobsub")
+	files := map[string][]byte{}
+	for _, name := range []string{"track.idx", "track.sub"} {
+		data, err := os.ReadFile(filepath.Join(fixture, name)) //nolint:gosec // a checked-in fixture
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[name] = data
+	}
+	req := subtitleRequest(t, files["track.sub"], rustgen.CodecVOBSUB)
+	idx := filepath.Join(filepath.Dir(req.Path), "track.idx")
+	if err := os.WriteFile(idx, files["track.idx"], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	req.Index = &rustgen.SubtitleIndex{Path: idx, ExpectedSHA256: fmt.Sprintf("%x", sha256.Sum256(files["track.idx"]))}
+	return req
+}
+
+func TestDecodeSubtitlesDecodesAVOBSUBPair(t *testing.T) {
+	req := vobsubRequest(t)
+	gen := openSubtitleWorker(t)
+	stills, err := gen.DecodeSubtitles(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stills.Width != 720 || stills.Height != 480 {
+		t.Fatalf("canvas %dx%d, want 720x480", stills.Width, stills.Height)
+	}
+	want := []rustgen.SubtitleState{
+		{StartMS: 1000, EndMS: 2490, File: "s00000.png"},
+		{StartMS: 2490, EndMS: 3000},
+		{StartMS: 3000, EndMS: 3990, File: "s00002.png"},
+		{StartMS: 3990, EndMS: 3990},
+	}
+	if !slices.Equal(stills.States, want) {
+		t.Fatalf("states = %+v, want %+v", stills.States, want)
+	}
+	file, err := os.Open(filepath.Join(req.StagingDir, stills.States[0].File))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = file.Close() }()
+	img, err := png.Decode(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		x, y int
+		want color.NRGBA
+	}{
+		{100, 400, color.NRGBA{R: 255, G: 255, B: 255, A: 255}},
+		{139, 409, color.NRGBA{A: 255}},
+		{140, 400, color.NRGBA{}},
+	} {
+		if got := color.NRGBAModel.Convert(img.At(c.x, c.y)); got != c.want {
+			t.Errorf("pixel (%d,%d) = %v, want %v", c.x, c.y, got, c.want)
+		}
+	}
+
+	// The index is hash-checked like the track, and a PGS track takes none.
+	stale := vobsubRequest(t)
+	stale.Index.ExpectedSHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte("other")))
+	pgs := vobsubRequest(t)
+	pgs.Codec = rustgen.CodecPGS
+	for name, tt := range map[string]struct {
+		req  rustgen.SubtitleRequest
+		code string
+	}{
+		"stale index":       {stale, "source_changed"},
+		"PGS with an index": {pgs, "invalid_request"},
+	} {
+		_, err := gen.DecodeSubtitles(context.Background(), tt.req)
+		var refusal *rustgen.WorkerError
+		if !errors.As(err, &refusal) || refusal.Code != tt.code {
+			t.Errorf("%s: DecodeSubtitles error = %v, want typed %s", name, err, tt.code)
+		}
 	}
 }
 
@@ -226,10 +311,17 @@ func TestDecodeSubtitlesAcceptsOnlyAVerifiedResult(t *testing.T) {
 		states []any
 		// files are written relative to the request's directory, the parent of staging.
 		files map[string][]byte
+		// index makes the request a VOBSUB pair with an .idx at $INDEX.
+		index bool
 		after string
 		want  string
 	}{
 		{name: "valid", states: shows(rgba), files: map[string][]byte{"staging/s0.png": rgba}},
+		{name: "valid pair", states: shows(rgba), files: map[string][]byte{"staging/s0.png": rgba}, index: true},
+		{
+			name: "index changed", states: shows(rgba), files: map[string][]byte{"staging/s0.png": rgba}, index: true,
+			after: "printf 'other index' > \"$INDEX\"", want: "changed during decoding",
+		},
 		{
 			// A real, correctly declared PNG sits at the escaped path, so only containment refuses it.
 			name:   "outside staging",
@@ -259,19 +351,31 @@ func TestDecodeSubtitlesAcceptsOnlyAVerifiedResult(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			req := subtitleRequest(t, track, rustgen.CodecPGS)
+			codec := rustgen.CodecPGS
+			if tt.index {
+				codec = rustgen.CodecVOBSUB
+			}
+			req := subtitleRequest(t, track, codec)
 			dir := filepath.Dir(req.Path)
 			for name, data := range tt.files {
 				if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}
+			index := filepath.Join(dir, "track.idx")
+			if tt.index {
+				idx := []byte("size: 8x4\n")
+				if err := os.WriteFile(index, idx, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				req.Index = &rustgen.SubtitleIndex{Path: index, ExpectedSHA256: fmt.Sprintf("%x", sha256.Sum256(idx))}
+			}
 			result := map[string]any{
 				"protocol": 1, "status": "ok", "requestId": req.RequestID,
-				"source": map[string]any{"codec": rustgen.CodecPGS, "sha256": req.ExpectedSHA256, "bytes": len(track)},
+				"source": map[string]any{"codec": codec, "sha256": req.ExpectedSHA256, "bytes": len(track)},
 				"width":  8, "height": 4, "states": tt.states,
 			}
-			gen := fakeSubtitleWorker(t, result, "TRACK='"+req.Path+"'\n"+tt.after)
+			gen := fakeSubtitleWorker(t, result, "TRACK='"+req.Path+"'\nINDEX='"+index+"'\n"+tt.after)
 			stills, err := gen.DecodeSubtitles(context.Background(), req)
 			if tt.want == "" {
 				if err != nil || len(stills.States) != 2 || stills.States[0].File != "s0.png" {

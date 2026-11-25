@@ -4,13 +4,17 @@
 //! that draws it onto a full straight-alpha RGBA canvas. The timeline is codec-neutral: it keeps
 //! states in order, folds repeated clears, charges every draw, clear and encode to the work
 //! ceilings before doing it, enforces the state and output ceilings, and writes one PNG per still
-//! into staging. PGS (`hdmv_pgs_subtitle`) is the one decoder; VOBSUB (#2124) adds a second behind the
-//! same timeline.
+//! into staging. PGS (`hdmv_pgs_subtitle`, a `.sup`) and VOBSUB (`dvd_subtitle`, an `.idx`/`.sub`
+//! pair, in [`vobsub`]) decode behind the same timeline.
 
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+mod vobsub;
+
+pub use vobsub::VOBSUB_CODEC;
 
 use image::ImageEncoder;
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
@@ -22,6 +26,9 @@ use crate::{PROTOCOL, WorkerError, hex_digest, read_control, write_complete, wri
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Limits {
     pub max_input_bytes: u64,
+    /// A VOBSUB `.idx`: about 4x the 2.2 MB index of a track at the state ceiling, 50,000
+    /// 44-byte `timestamp:` lines.
+    pub max_index_bytes: u64,
     pub max_width: u32,
     pub max_height: u32,
     pub max_objects_per_state: usize,
@@ -37,6 +44,7 @@ pub(crate) struct Limits {
 
 pub(crate) const LIMITS: Limits = Limits {
     max_input_bytes: 256 << 20,
+    max_index_bytes: 8 << 20,
     max_width: 3840,
     max_height: 2160,
     max_objects_per_state: 64,
@@ -68,6 +76,16 @@ struct DecodeRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct TrackRequest {
     codec: String,
+    /// The `.sup` of a PGS track, the `.sub` of a VOBSUB pair.
+    path: PathBuf,
+    expected_sha256: String,
+    /// The `.idx` of a VOBSUB pair: required for `dvd_subtitle`, refused for PGS.
+    index: Option<FileRequest>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FileRequest {
     path: PathBuf,
     expected_sha256: String,
 }
@@ -337,13 +355,79 @@ fn decode(request: DecodeRequest, limits: Limits) -> Result<DecodeResult, Worker
     if request.protocol != PROTOCOL {
         return Err(WorkerError::new("invalid_request", "protocol mismatch"));
     }
-    if request.source.codec != PGS_CODEC {
-        return Err(WorkerError::new(
-            "unsupported_input",
-            "subtitle codec is not decodable",
-        ));
+    let codec = match request.source.codec.as_str() {
+        PGS_CODEC => PGS_CODEC,
+        VOBSUB_CODEC => VOBSUB_CODEC,
+        _ => {
+            return Err(WorkerError::new(
+                "unsupported_input",
+                "subtitle codec is not decodable",
+            ));
+        }
+    };
+    match (codec, &request.source.index) {
+        (VOBSUB_CODEC, None) => {
+            return Err(WorkerError::new(
+                "invalid_request",
+                "a dvd_subtitle source needs its index",
+            ));
+        }
+        (PGS_CODEC, Some(_)) => {
+            return Err(WorkerError::new(
+                "invalid_request",
+                "a hdmv_pgs_subtitle source has no index",
+            ));
+        }
+        _ => {}
     }
-    let meta = fs::symlink_metadata(&request.source.path)
+    let source = read_source(
+        &request.source.path,
+        &request.source.expected_sha256,
+        limits.max_input_bytes,
+        "track exceeds the input ceiling",
+    )?;
+    let index = match &request.source.index {
+        Some(index) => Some(read_source(
+            &index.path,
+            &index.expected_sha256,
+            limits.max_index_bytes,
+            "index exceeds the index ceiling",
+        )?),
+        None => None,
+    };
+    let mut staging = Staging(request.staging_dir);
+    let Decoded {
+        width,
+        height,
+        states,
+        ..
+    } = match &index {
+        Some(index) => vobsub::decode_vobsub(index, &source, limits, &mut staging)?,
+        None => decode_pgs(&source, limits, &mut staging)?,
+    };
+    Ok(DecodeResult {
+        protocol: PROTOCOL,
+        status: "ok",
+        request_id: request.request_id,
+        source: TrackResult {
+            codec,
+            sha256: request.source.expected_sha256,
+            bytes: source.len() as u64,
+        },
+        width,
+        height,
+        states,
+    })
+}
+
+/// Reads one regular file of at most `max` bytes and checks it against its expected SHA-256.
+fn read_source(
+    path: &Path,
+    expected_sha256: &str,
+    max: u64,
+    over_ceiling: &'static str,
+) -> Result<Vec<u8>, WorkerError> {
+    let meta = fs::symlink_metadata(path)
         .map_err(|err| WorkerError::new("io_failed", format!("stat source: {err}")))?;
     if !meta.is_file() {
         return Err(WorkerError::new(
@@ -351,52 +435,23 @@ fn decode(request: DecodeRequest, limits: Limits) -> Result<DecodeResult, Worker
             "source is not a regular file",
         ));
     }
-    if meta.len() > limits.max_input_bytes {
-        return Err(WorkerError::new(
-            "limit_exceeded",
-            "track exceeds the input ceiling",
-        ));
+    if meta.len() > max {
+        return Err(WorkerError::new("limit_exceeded", over_ceiling));
     }
     let mut source = Vec::new();
-    fs::File::open(&request.source.path)
-        .and_then(|file| {
-            file.take(limits.max_input_bytes + 1)
-                .read_to_end(&mut source)
-        })
+    fs::File::open(path)
+        .and_then(|file| file.take(max + 1).read_to_end(&mut source))
         .map_err(|err| WorkerError::new("io_failed", format!("read source: {err}")))?;
-    if source.len() as u64 > limits.max_input_bytes {
-        return Err(WorkerError::new(
-            "limit_exceeded",
-            "track exceeds the input ceiling",
-        ));
+    if source.len() as u64 > max {
+        return Err(WorkerError::new("limit_exceeded", over_ceiling));
     }
-    let sha256 = hex_digest(&source);
-    if sha256 != request.source.expected_sha256 {
+    if hex_digest(&source) != expected_sha256 {
         return Err(WorkerError::new(
             "source_changed",
             "source SHA-256 does not match request",
         ));
     }
-    let mut staging = Staging(request.staging_dir);
-    let Decoded {
-        width,
-        height,
-        states,
-        ..
-    } = decode_pgs(&source, limits, &mut staging)?;
-    Ok(DecodeResult {
-        protocol: PROTOCOL,
-        status: "ok",
-        request_id: request.request_id,
-        source: TrackResult {
-            codec: PGS_CODEC,
-            sha256,
-            bytes: source.len() as u64,
-        },
-        width,
-        height,
-        states,
-    })
+    Ok(source)
 }
 
 // PGS segment types.
@@ -717,20 +772,46 @@ pub(crate) fn ycbcr_to_rgba(y: u8, cr: u8, cb: u8, alpha: u8) -> [u8; 4] {
     ]
 }
 
+/// The ceilings the fuzz entries decode under, small enough to keep each input fast.
+const FUZZ_LIMITS: Limits = Limits {
+    max_width: 256,
+    max_height: 256,
+    max_states: 64,
+    max_output_bytes: 4 << 20,
+    max_drawn_pixels: 1 << 24,
+    max_canvas_pixels: 1 << 23,
+    ..LIMITS
+};
+
 /// The fuzz entry: the PGS decoder over arbitrary bytes, stills kept in memory.
 #[doc(hidden)]
 pub fn fuzz_decode_pgs(bytes: &[u8]) -> Result<usize, String> {
-    let limits = Limits {
-        max_width: 256,
-        max_height: 256,
-        max_states: 64,
-        max_output_bytes: 4 << 20,
-        max_drawn_pixels: 1 << 24,
-        max_canvas_pixels: 1 << 23,
-        ..LIMITS
-    };
-    let decoded =
-        decode_pgs(bytes, limits, &mut Memory::default()).map_err(|err| err.code.to_owned())?;
+    let decoded = decode_pgs(bytes, FUZZ_LIMITS, &mut Memory::default())
+        .map_err(|err| err.code.to_owned())?;
+    fuzz_checked(decoded, FUZZ_LIMITS)
+}
+
+/// The fuzz entry: the VOBSUB decoder over an arbitrary `.idx` and `.sub`, stills kept in memory.
+#[doc(hidden)]
+pub fn fuzz_decode_vobsub(idx: &[u8], sub: &[u8]) -> Result<usize, String> {
+    let decoded = vobsub::decode_vobsub(idx, sub, FUZZ_LIMITS, &mut Memory::default())
+        .map_err(|err| err.code.to_owned())?;
+    fuzz_checked(decoded, FUZZ_LIMITS)
+}
+
+/// The VOBSUB self-test probe's `.idx` and `.sub`, a valid pair for the fuzzer to mutate.
+#[doc(hidden)]
+pub fn fuzz_vobsub_seed() -> (Vec<u8>, Vec<u8>) {
+    let mut pair = vobsub::test_support::Pair::new((8, 4), "");
+    pair.spu(
+        1000,
+        &vobsub::test_support::Unit::two_rows(2, 1).bytes(),
+        2048,
+    );
+    (pair.idx.into_bytes(), pair.sub)
+}
+
+fn fuzz_checked(decoded: Decoded, limits: Limits) -> Result<usize, String> {
     // A decoded track never costs more than the ceilings it was charged against.
     assert!(
         decoded.work.drawn_pixels <= limits.max_drawn_pixels
@@ -751,8 +832,13 @@ impl StillSink for Memory {
     }
 }
 
-/// A 4x2 PGS probe: one still at 1 s, cleared at 4 s, on an 8x4 canvas.
+/// The PGS probe and the VOBSUB probe.
 pub(crate) fn self_test() -> bool {
+    pgs_self_test() && vobsub::self_test()
+}
+
+/// A 4x2 PGS probe: one still at 1 s, cleared at 4 s, on an 8x4 canvas.
+fn pgs_self_test() -> bool {
     let mut w = test_support::Sup::default();
     w.show(
         90_000,
@@ -1331,8 +1417,7 @@ mod tests {
         assert_eq!(result["states"][0]["still"]["sha256"], hex_digest(&png));
 
         let mut out = Vec::new();
-        let err =
-            run_decode_subtitles(&request("dvd_subtitle")[..], &mut out).expect_err("refused");
+        let err = run_decode_subtitles(&request("subrip")[..], &mut out).expect_err("refused");
         assert_eq!(err.code, "unsupported_input");
         let refusal: serde_json::Value = serde_json::from_slice(&out).expect("refusal");
         assert_eq!(refusal["error"]["code"], "unsupported_input");
