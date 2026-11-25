@@ -108,7 +108,7 @@ func TestLibraryListFiltersRevealNoAdminFact(t *testing.T) {
 			continue
 		}
 		// genre is a fact a member reads on a title's page; the list's genre filter keeps the member rule.
-		if want := []string{"genre", "kind", "limit", "offset", "ready", "search", "sort"};!slices.Equal(op.Query, want) {
+		if want := []string{"genre", "kind", "limit", "offset", "ready", "search", "sort"}; !slices.Equal(op.Query, want) {
 			t.Errorf("listLibraryItems filters = %v, want %v: decide whether a member may filter on it", op.Query, want)
 		}
 		return
