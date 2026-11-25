@@ -42,7 +42,8 @@ const Card = ({
   name: string;
   pile: readonly LibraryCollectionPoster[];
   lines: readonly { text: string; tone: "secondary" | "muted" }[];
-  action: ReactNode;
+  /** Absent on a card the viewer can only read. */
+  action?: ReactNode;
 }) => (
   <Surface flexBasis={0} flexGrow={1} gap="control" minWidth={0} padding="control">
     <Line alignItems="flex-start" flexWrap="nowrap" gap="control">
@@ -58,7 +59,7 @@ const Card = ({
         ))}
       </Stack>
     </Line>
-    <Line>{action}</Line>
+    {action ? <Line>{action}</Line> : null}
   </Surface>
 );
 
@@ -108,60 +109,105 @@ const Grid = ({ children }: { children: ReactNode[] }) => {
   );
 };
 
-const LibraryCollections = ({ collections, sets, onNew, onEdit, onCopy }: LibraryCollectionsProps) => (
-  <Stack gap="section">
-    <Stack aria-label="Yours" gap="control" role="region">
-      <Line justifyContent="space-between" rowGap="control">
-        <Text as="h2" textRole="headline">
-          Yours
-        </Text>
+// The household's own collections as cards; Edit on each only when the viewer can change them.
+const CollectionCards = ({
+  collections,
+  onEdit,
+}: {
+  collections: LibraryCollectionsProps["collections"];
+  onEdit?: (id: string) => void;
+}) => (
+  <Grid>
+    {collections.map((c) => (
+      <Card
+        action={
+          onEdit ? (
+            <Action accessibilityLabel={`Edit ${c.name}`} onPress={() => onEdit(c.id)} variant="outline">
+              Edit
+            </Action>
+          ) : null
+        }
+        key={c.id}
+        lines={[
+          { text: c.titles === 1 ? "1 title" : `${c.titles} titles`, tone: "secondary" },
+          ...(c.importedFrom
+            ? [{ text: `Brought over from ${c.importedFrom}`, tone: "muted" as const }]
+            : []),
+          ...c.usedBy.map((u) => ({ text: channelPhrase(u), tone: "muted" as const })),
+        ]}
+        name={c.name}
+        pile={c.pile}
+      />
+    ))}
+  </Grid>
+);
+
+// None made yet (#4476 mock): what a collection is, in place of an empty Yours. An admin can make
+// one; a member is told where they come from.
+const NoneYet = ({ onNew }: { onNew?: () => void }) => (
+  <Stack aria-label="Yours" gap="control" role="region">
+    <Text as="h2" textRole="headline">
+      No collections yet
+    </Text>
+    <Text textRole="body" tone="secondary">
+      {onNew
+        ? "A collection is a set of titles you put together, like “Rainy Sunday films”. A channel can play from it."
+        : "When someone in your household puts titles together, like “Rainy Sunday films”, they show up here."}
+    </Text>
+    {onNew ? (
+      <Line>
         <Action icon="plus" onPress={onNew} tone="primary">
           New collection
         </Action>
       </Line>
-      {collections.length === 0 ? null : (
-        <Grid>
-          {collections.map((c) => (
-            <Card
-              action={
-                <Action accessibilityLabel={`Edit ${c.name}`} onPress={() => onEdit(c.id)} variant="outline">
-                  Edit
-                </Action>
-              }
-              key={c.id}
-              lines={[
-                { text: c.titles === 1 ? "1 title" : `${c.titles} titles`, tone: "secondary" },
-                ...(c.importedFrom
-                  ? [{ text: `Brought over from ${c.importedFrom}`, tone: "muted" as const }]
-                  : []),
-                ...c.usedBy.map((u) => ({ text: channelPhrase(u), tone: "muted" as const })),
-              ]}
-              name={c.name}
-              pile={c.pile}
-            />
-          ))}
-        </Grid>
-      )}
-    </Stack>
-    {sets.length > 0 ? (
-      <Stack aria-label="Ready-made sets" gap="control" role="region">
-        <Text as="h2" textRole="headline">
-          Ready-made sets
-        </Text>
-        <Grid>
-          {sets.map((s) => (
-            <Card
-              action={<CopyAction onCopy={() => onCopy(s.id)} />}
-              key={s.id}
-              lines={[{ text: `From TMDB — you have ${s.have} of ${s.total}`, tone: "secondary" }]}
-              name={s.name}
-              pile={s.pile}
-            />
-          ))}
-        </Grid>
-      </Stack>
     ) : null}
   </Stack>
 );
+
+const LibraryCollections = ({ collections, sets, manage }: LibraryCollectionsProps) => {
+  const none = collections.length === 0;
+  // A member reads the collections only: no New collection, no Edit, and no ready-made sets,
+  // whose one action is to copy one.
+  if (!manage) {
+    return none ? <NoneYet /> : <CollectionCards collections={collections} />;
+  }
+  return (
+    <Stack gap="section">
+      {none ? (
+        <NoneYet onNew={manage.onNew} />
+      ) : (
+        <Stack aria-label="Yours" gap="control" role="region">
+          <Line justifyContent="space-between" rowGap="control">
+            <Text as="h2" textRole="headline">
+              Yours
+            </Text>
+            <Action icon="plus" onPress={manage.onNew} tone="primary">
+              New collection
+            </Action>
+          </Line>
+          <CollectionCards collections={collections} onEdit={manage.onEdit} />
+        </Stack>
+      )}
+      {sets.length > 0 ? (
+        <Stack aria-label="Ready-made sets" gap="control" role="region">
+          <Text as="h2" textRole={none ? "label" : "headline"} tone={none ? "secondary" : undefined}>
+            {none ? "Or start from a ready-made set" : "Ready-made sets"}
+          </Text>
+          <Grid>
+            {sets.map((s) => (
+              <Card
+                action={<CopyAction onCopy={() => manage.onCopy(s.id)} />}
+                key={s.id}
+                lines={[{ text: `From TMDB — you have ${s.have} of ${s.total}`, tone: "secondary" }]}
+                name={s.name}
+                pile={s.pile}
+              />
+            ))}
+          </Grid>
+        </Stack>
+      ) : null}
+    </Stack>
+  );
+};
 
 export { LibraryCollections };

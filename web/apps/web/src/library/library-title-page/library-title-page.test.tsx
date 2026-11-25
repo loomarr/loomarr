@@ -1,9 +1,10 @@
-import { getGetLibraryItemMockHandler } from "@loomarr/api/msw";
+import { getGetLibraryItemMockHandler, getMeMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
 import { LibraryTitlePage } from "./library-title-page";
@@ -63,6 +64,7 @@ describe("LibraryTitlePage", () => {
     mocks.navigate.mockReset();
     mocks.back.mockReset();
     mocks.canGoBack.mockReset().mockReturnValue(false);
+    server.use(getMeMockHandler(me()));
   });
 
   it("shows the title the server describes", async () => {
@@ -71,6 +73,19 @@ describe("LibraryTitlePage", () => {
 
     expect(await screen.findByRole("heading", { name: "Echo" })).toBeInTheDocument();
     expect(screen.getByText("A story.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update details" })).toBeInTheDocument();
+  });
+
+  // #4476: a member reads a title's page with nothing on it that calls an admin route.
+  it("gives a member the title with no fixes", async () => {
+    server.use(getMeMockHandler(me({ role: "member" })), getGetLibraryItemMockHandler(echo));
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Echo" })).toBeInTheDocument();
+    expect(screen.getByText("A story.")).toBeInTheDocument();
+    for (const name of ["Update details", "Check files again", "Wrong title?"]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
   });
 
   it("goes back to the grid it came from", async () => {

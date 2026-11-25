@@ -41,7 +41,27 @@ describe("PhoneBottomBar", () => {
     const tabs = within(bar)
       .getAllByRole("tab")
       .map((tab) => tab.getAttribute("aria-label"));
-    expect(tabs).toEqual(["Home", "Guide", "Requests"]);
+    expect(tabs).toEqual(["Home", "Guide", "Library"]);
+  });
+
+  // #4476: a member browses the Library from the bar; an admin keeps Requests there.
+  it("puts Library fourth in a member's bar and Requests in an admin's", async () => {
+    const member = renderBar({ isAdmin: false, watchChannelId: "ch-7" });
+    const memberBar = await screen.findByRole("tablist", { name: "Primary navigation" });
+    expect(
+      within(memberBar)
+        .getAllByRole("tab")
+        .map((tab) => tab.getAttribute("aria-label")),
+    ).toEqual(["Home", "Watch", "Guide", "Library"]);
+    member.unmount();
+
+    renderBar({ isAdmin: true, watchChannelId: "ch-7" });
+    const adminBar = await screen.findByRole("tablist", { name: "Primary navigation" });
+    expect(
+      within(adminBar)
+        .getAllByRole("tab")
+        .map((tab) => tab.getAttribute("aria-label")),
+    ).toEqual(["Home", "Watch", "Guide", "Requests"]);
   });
 
   it("opens More to exactly the admin overflow, and selecting a row navigates and closes it", async () => {
@@ -58,7 +78,7 @@ describe("PhoneBottomBar", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "More" })).not.toBeInTheDocument());
   });
 
-  it("gives a member exactly Notifications and Help in More", async () => {
+  it("gives a member exactly Requests, Notifications and Help in More", async () => {
     const user = userEvent.setup();
     renderBar({ isAdmin: false });
     await user.click(await screen.findByRole("button", { name: "More" }));
@@ -67,7 +87,7 @@ describe("PhoneBottomBar", () => {
       within(dialog)
         .getAllByRole("button")
         .map((b) => b.getAttribute("aria-label")),
-    ).toEqual(["Close", "Notifications", "Help"]);
+    ).toEqual(["Close", "Requests", "Notifications", "Help"]);
   });
 
   it("closes on Escape and returns focus to the More button", async () => {

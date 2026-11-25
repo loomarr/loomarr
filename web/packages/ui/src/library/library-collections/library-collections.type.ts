@@ -36,13 +36,19 @@ interface LibrarySetCard {
   pile: readonly LibraryCollectionPoster[];
 }
 
-interface LibraryCollectionsProps {
-  collections: readonly LibraryCollectionCard[];
-  sets: readonly LibrarySetCard[];
+/** What an admin does with the collections. */
+interface LibraryCollectionsManage {
   onNew: () => void;
   onEdit: (id: string) => void;
   /** Make my own copy. Resolves once copied; a rejection says it couldn't. */
   onCopy: (id: string) => Promise<void>;
+}
+
+interface LibraryCollectionsProps {
+  collections: readonly LibraryCollectionCard[];
+  sets: readonly LibrarySetCard[];
+  /** Absent for a member, who reads the collections only. */
+  manage?: LibraryCollectionsManage;
 }
 
 export type {
