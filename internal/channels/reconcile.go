@@ -538,6 +538,8 @@ func (e *Engine) commitReconcile(ctx context.Context, plan *reconcilePlan, run *
 		e.premeasureAhead(ctx, ch)
 		// The next window airs before reconcile commits it, so its breaks are planned now (#3838).
 		e.planNextWindow(ctx, ch)
+		// What the guide lists for the next two days is stored for a title's next airing (#4476).
+		e.indexUpcoming(ctx, ch)
 	}
 
 	// 7: media-server freshness (best-effort; never fails reconcile). A committed local

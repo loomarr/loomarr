@@ -19,7 +19,20 @@ type (
 	DiscoveryFeedback = channeldatastore.DiscoveryFeedback
 	// FeedbackFilter selects feedback by scope (channeldatastore.FeedbackFilter).
 	FeedbackFilter = channeldatastore.FeedbackFilter
+	// UpcomingAiring is one programme a channel airs soon (channeldatastore.UpcomingAiring).
+	UpcomingAiring = channeldatastore.UpcomingAiring
 )
+
+// UpcomingAiringStore keeps each internal-playout channel's programmes for the next two days
+// (#4476, scheduling.md "Upcoming airings"), so a title's next airing is one indexed read.
+type UpcomingAiringStore interface {
+	// ReplaceUpcomingAirings replaces a channel's rows in one transaction while the channel is still
+	// at revision, and reports whether it wrote; a stale revision or a gone channel changes nothing.
+	ReplaceUpcomingAirings(ctx context.Context, channelID string, revision int64, airings []UpcomingAiring) (bool, error)
+	// UpcomingAiringsForItem returns a library item's airings not ended by now, on channels neither
+	// paused nor detached, earliest first: a movie by its id, a series through its title key.
+	UpcomingAiringsForItem(ctx context.Context, libraryItemID string, now time.Time) ([]UpcomingAiring, error)
+}
 
 // ChannelPreferenceStore keeps per-person channel lists (#1666). Every method is keyed by user id;
 // a paired device resolves to its user before it gets here, so the lists follow the person.

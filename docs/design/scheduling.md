@@ -221,6 +221,34 @@ where it has one and otherwise from that window's tile, less the units its own g
 (#1939). History therefore never brings a unit back sooner, or keeps one waiting longer, than the
 same channel with no history.
 
+## Upcoming airings
+
+`channel_upcoming_airings` holds each internal-playout channel's programmes for the next 48 hours
+(`channels.PremeasureHorizon`), so a title's page can say when it is next on, and where, in one
+indexed read (#4476, [decision 0052](decisions/0052-next-airing-is-stored.md)). Each row is
+`{channel_id, starts_at_ms, ends_at_ms, library_item_id, title_key, forecast, revision}`: UTC epoch
+milliseconds, the lineup entry's title key, whether the row lies past the window on air, and the
+channel revision it was computed at.
+
+- **The writer.** After a committed reconcile has saved the channel and planned the next window's
+  breaks, the engine's upcoming index replaces the channel's rows. They come from
+  `Resolver.UpcomingProgrammes`, the guide's own window-by-window walk (the window on air from the
+  accepted cycle, the next one with its planned breaks, later ones forecast), without the guide's
+  metadata pass. Only programmes count: a programme slot with a library item, never a pending
+  placeholder.
+- **The replace** runs in one transaction and only while the channel is still at the revision the
+  rows were computed from; a write from a stale revision changes nothing. It is best-effort: a
+  failure is logged and the reconcile stands.
+- **The read** for a library item returns the rows still airing (`ends_at_ms` after now, so the
+  programme on air is included) on channels neither paused nor detached, earliest first. A movie
+  matches on its item id; a series matches through `titles.key = title_key` for that item, the key
+  that lists a title's channels.
+- **Freshness.** Pausing and detaching save without a reconcile, which is why the read filters the
+  channel's status. Purging a channel deletes its rows. A settings change reaches the rows at the
+  next sweep. Forecast rows can lag the guide by one sweep; the window on air never does, because
+  its programmes are fixed when it opens.
+- **Tunarr channels** store no upcoming airings, the same as the scheduled ledger.
+
 ## Breaks and pods
 
 A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper, sized to the gap.

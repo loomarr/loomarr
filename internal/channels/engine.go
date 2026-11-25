@@ -124,6 +124,8 @@ type Engine struct {
 	// committed Desired cycle differs from the one an active encoder may be using.
 	// Optional: nil when internal playout is not wired.
 	scheduleInvalidator ScheduleInvalidator
+	// upcoming stores each committed internal-playout channel's next two days (#4476). Optional/nil-safe.
+	upcoming UpcomingIndexer
 	// acts records operator-facing facts that must outlive a log line (§9 V54) — currently the
 	// automatic renumber when Tunarr already occupies a channel's number. Optional/nil-safe.
 	acts    ActivityRecorder
@@ -326,6 +328,32 @@ type ScheduleInvalidator interface {
 func (e *Engine) WithScheduleInvalidator(invalidator ScheduleInvalidator) *Engine {
 	e.scheduleInvalidator = invalidator
 	return e
+}
+
+// UpcomingIndexer stores what an internal-playout channel airs over [from, to), as the guide
+// lists it, so a title's next airing is one indexed read (#4476, scheduling.md "Upcoming
+// airings"). ch is the channel as the reconcile committed it; its revision guards the write.
+type UpcomingIndexer interface {
+	IndexUpcoming(ctx context.Context, ch channelstore.Channel, from, to time.Time) error
+}
+
+// WithUpcomingIndex wires the upcoming-airings writer that runs after each committed reconcile of
+// an internal-playout channel. Optional; nil ⇒ nothing is stored.
+func (e *Engine) WithUpcomingIndex(indexer UpcomingIndexer) *Engine {
+	e.upcoming = indexer
+	return e
+}
+
+// indexUpcoming stores the channel's programmes for the next PremeasureHorizon. Best-effort: a
+// failure is logged and the reconcile stands.
+func (e *Engine) indexUpcoming(ctx context.Context, ch channelstore.Channel) {
+	if e.upcoming == nil {
+		return
+	}
+	now := e.now()
+	if err := e.upcoming.IndexUpcoming(ctx, ch, now, now.Add(PremeasureHorizon)); err != nil {
+		e.log.Warn("upcoming airings: not stored", "channel", ch.ID, "err", err)
+	}
 }
 
 // WithNotifier wires the `channel` SSE emitter so a reconcile that changes a channel

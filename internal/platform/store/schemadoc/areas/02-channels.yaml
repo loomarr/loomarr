@@ -152,6 +152,27 @@ tables:
         The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a
         show. Kept for diagnosis.
 
+  - name: channel_upcoming_airings
+    about: >
+      What a channel airs in the next two days: one row per episode or film on its timeline, so a
+      title's page can say when it is next on, and where, without walking every channel's schedule.
+      Each reconcile of a channel that Loomarr plays itself replaces the channel's rows with what
+      the guide shows; Tunarr channels have none.
+    retention: >
+      Replaced whole at each reconcile of its channel; goes with its channel (deleted when that is).
+    columns:
+      channel_id: The channel it airs on (channels.id).
+      starts_at_ms: When the programme starts, in Unix milliseconds.
+      ends_at_ms: When the programme ends, in Unix milliseconds.
+      library_item_id: The library item id of the episode or film.
+      title_key: >
+        The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a
+        show. A series finds its next episode through it.
+      forecast: >
+        True when the programme lies past the rolling window on air, so a later reconcile may still
+        change it.
+      revision: The channel revision the row was computed at.
+
   - name: holidays
     about: >
       One row per holiday: when each country keeps it and the words that show a title or clip is

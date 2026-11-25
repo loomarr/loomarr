@@ -120,27 +120,39 @@ func (r *Resolver) segmentedBroadcasts(
 	ctx context.Context, channelID string, from, to time.Time,
 	project func(slots []schedule.Slot, epoch, segFrom, segTo time.Time) []timeline.Broadcast,
 ) ([]timeline.Broadcast, error) {
+	bs, _, err := r.segmentedTimeline(ctx, channelID, from, to, project)
+	return bs, err
+}
+
+// segmentedTimeline is segmentedBroadcasts plus forecastFrom, the instant the window on air hands
+// over: a broadcast starting at or after it is a forecast. It is zero when nothing is accepted yet,
+// since the window on air is then forecast too.
+func (r *Resolver) segmentedTimeline(
+	ctx context.Context, channelID string, from, to time.Time,
+	project func(slots []schedule.Slot, epoch, segFrom, segTo time.Time) []timeline.Broadcast,
+) (bs []timeline.Broadcast, forecastFrom time.Time, err error) {
 	if r.channels == nil {
-		return nil, errors.New("read channel playout anchor: channel reader is not configured")
+		return nil, time.Time{}, errors.New("read channel playout anchor: channel reader is not configured")
 	}
 	ch, err := r.channels.GetChannel(ctx, channelID)
 	if err != nil {
-		return nil, fmt.Errorf("read channel playout anchor %s: %w", channelID, err)
+		return nil, time.Time{}, fmt.Errorf("read channel playout anchor %s: %w", channelID, err)
 	}
 	// Reconcile stamps the anchor when the channel's first playable deck goes live, so a channel
 	// that has never been live has no timeline yet: an empty row, not corrupt state (#1630, which
 	// logged a failure for it on every guide read). Live and drifted keep the refusal below.
 	if ch.PlayoutAnchor.IsZero() && ch.Status != schedule.StatusLive && ch.Status != schedule.StatusDrifted {
-		return nil, nil
+		return nil, time.Time{}, nil
 	}
 	live, err := r.airingCycle(ctx, ch, r.now())
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
-	if live.slots == nil { // nothing accepted yet: forecast the window on air, from its opening
+	accepted := live.slots != nil
+	if !accepted { // nothing accepted yet: forecast the window on air, from its opening
 		now := r.now()
 		if live.slots, _, err = r.cycleAt(ctx, channelID, now); err != nil {
-			return nil, err
+			return nil, time.Time{}, err
 		}
 		if live.carriesOver && live.window > 0 {
 			live.epoch = later(live.epoch, schedule.WindowStart(now, live.window, live.zone))
@@ -148,7 +160,10 @@ func (r *Resolver) segmentedBroadcasts(
 	}
 	// Unbounded window ⇒ no rotation ⇒ nothing to segment.
 	if live.window <= 0 {
-		return project(live.slots, live.epoch, from, to), nil
+		if accepted {
+			forecastFrom = to
+		}
+		return project(live.slots, live.epoch, from, to), forecastFrom, nil
 	}
 
 	var legs []guideLeg
@@ -159,6 +174,9 @@ func (r *Resolver) segmentedBroadcasts(
 	}
 	out := make([]timeline.Broadcast, 0, 32)
 	for _, leg := range legs {
+		if leg.onAir && accepted {
+			forecastFrom = leg.to
+		}
 		segFrom, segTo := later(from, leg.from), earlier(to, leg.to)
 		if !segTo.After(segFrom) {
 			continue
@@ -181,15 +199,16 @@ func (r *Resolver) segmentedBroadcasts(
 			}
 		}
 	}
-	return out, nil
+	return out, forecastFrom, nil
 }
 
 // guideLeg is one stretch of a channel's timeline: `slots` walked from `epoch`, airing over
-// [from, to).
+// [from, to). onAir marks the rolling window on air.
 type guideLeg struct {
 	slots    []schedule.Slot
 	epoch    time.Time
 	from, to time.Time
+	onAir    bool
 }
 
 // carryOverLegs lays out the timeline of a channel whose rolling window turns with carry-over
@@ -225,7 +244,7 @@ func (r *Resolver) carryOverLegs(ctx context.Context, channelID string, live air
 		opened = next
 	}
 
-	leg := guideLeg{slots: live.slots, epoch: live.epoch, from: live.epoch}
+	leg := guideLeg{slots: live.slots, epoch: live.epoch, from: live.epoch, onAir: true}
 	for planned := false; ; planned = true {
 		leg.to = timeline.CarryOverEnd(leg.slots, leg.epoch, schedule.NextWindowStart(leg.epoch, live.window, live.zone))
 		legs = append(legs, leg)
@@ -256,13 +275,14 @@ func (r *Resolver) fixedAnchorLegs(ctx context.Context, channelID string, live a
 	for segFrom := from; segFrom.Before(to) && len(legs) < maxGuideSegments; {
 		next := schedule.NextWindowStart(segFrom, live.window, live.zone)
 		slots := live.slots
-		if !schedule.WindowStart(segFrom, live.window, live.zone).Equal(onAir) {
+		isOnAir := schedule.WindowStart(segFrom, live.window, live.zone).Equal(onAir)
+		if !isOnAir {
 			var err error
 			if slots, _, err = r.cycleAt(ctx, channelID, segFrom); err != nil {
 				break
 			}
 		}
-		legs = append(legs, guideLeg{slots: slots, epoch: live.epoch, from: segFrom, to: next})
+		legs = append(legs, guideLeg{slots: slots, epoch: live.epoch, from: segFrom, to: next, onAir: isOnAir})
 		segFrom = next
 	}
 	return legs

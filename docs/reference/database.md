@@ -79,7 +79,7 @@ one series per table, so `delta(loomarr_database_table_rows[30d])` graphs the sa
 ## Contents
 
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas), [`viewings`](#viewings)
-- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`growth_reviews`](#growth_reviews), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
+- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`growth_reviews`](#growth_reviews), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`channel_upcoming_airings`](#channel_upcoming_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
 - [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_catalog_feeds`](#library_catalog_feeds), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
@@ -389,6 +389,22 @@ What a channel's schedule put on air: one row each time an episode or film start
 | `aired_at` | When the programme started, in Unix seconds. | `BIGINT` · key |
 | `recorded_at` | When Loomarr first recorded the airing, in Unix seconds. | `BIGINT` |
 | `key` | The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a show. Kept for diagnosis. | `TEXT` |
+
+### channel_upcoming_airings
+
+What a channel airs in the next two days: one row per episode or film on its timeline, so a title's page can say when it is next on, and where, without walking every channel's schedule. Each reconcile of a channel that Loomarr plays itself replaces the channel's rows with what the guide shows; Tunarr channels have none.
+
+**Kept:** Replaced whole at each reconcile of its channel; goes with its channel (deleted when that is).
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel it airs on (channels.id). | `TEXT` · key · → `channels.id` |
+| `starts_at_ms` | When the programme starts, in Unix milliseconds. | `BIGINT` · key |
+| `ends_at_ms` | When the programme ends, in Unix milliseconds. | `BIGINT` |
+| `library_item_id` | The library item id of the episode or film. | `TEXT` |
+| `title_key` | The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a show. A series finds its next episode through it. | `TEXT` |
+| `forecast` | True when the programme lies past the rolling window on air, so a later reconcile may still change it. | `BOOLEAN` |
+| `revision` | The channel revision the row was computed at. | `BIGINT` |
 
 ### holidays
 

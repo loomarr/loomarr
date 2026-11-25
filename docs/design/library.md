@@ -696,7 +696,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   (`/library/{id}`) shows the poster, year and length or seasons, the rating, genres and
   overview, each season's episodes in a disclosure (specials last), and Technical details. Still
   to come: Collections (step 12); On these channels, once channels name library items (step 15's
-  id migration).
+  id migration). A title's next airing on each channel comes from `channel_upcoming_airings`,
+  which reconcile fills with each internal-playout channel's next 48 hours of programmes
+  (scheduling.md "Upcoming airings"): a movie by its item id, a series by its title key. Nothing
+  reads it over the API yet (#4476).
 - **Needs you on the page** (step 11b). The Library page's strip asks about the first four
   titles that need the household ("X — is this the 1999 movie?", Yes, that's it / Pick a
   different title, or Find it with no guess); `/library/needs` holds one card each with the
