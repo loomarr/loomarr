@@ -33,7 +33,8 @@ const CHANGE_COLOUR_CONTRAST: u8 = 0x07;
 const SEQUENCE_END: u8 = 0xff;
 /// Control sequences one unit may hold. A subtitle has two or three (start, stop, perhaps a
 /// colour change); a fade adds one per step. ffmpeg has no count of its own: non-overlapping
-/// sequences already keep a parse linear in the unit, and this bounds it further.
+/// sequences already keep a parse linear in the unit, and this ceiling bounds it further, so a
+/// unit past it is refused `limit_exceeded` like the other ceilings.
 const MAX_SEQUENCES: usize = 256;
 
 /// A parsed `.idx`: one track's canvas, colours and entries.
@@ -352,7 +353,12 @@ fn reassemble(
                 if id != stream {
                     continue;
                 }
-                let (start, mut unit, got, size) = match building.take() {
+                // A pack an entry names starts a unit, so an unfinished one from an earlier pack
+                // is dropped there: a damaged unit's size cannot swallow the units after it.
+                let resumed = building
+                    .take()
+                    .filter(|&(start, ..)| start == pack_at || !wanted.contains(&pack_at));
+                let (start, mut unit, got, size) = match resumed {
                     Some(unit) => unit,
                     None => {
                         if data.len() < 2 {
@@ -470,7 +476,10 @@ fn parse_spu(unit: &[u8]) -> Result<Subpicture, WorkerError> {
                     i += size;
                 }
                 SEQUENCE_END => break,
-                _ => return Err(corrupt("unknown subpicture command")),
+                // An unknown command ends its own control sequence like SEQUENCE_END, and the
+                // sequences after it still apply, as in libavcodec/dvdsubdec.c (`goto the_end`
+                // sits inside the loop over sequences).
+                _ => break,
             }
         }
         frozen |= picture.start.is_some();
@@ -486,7 +495,10 @@ fn parse_spu(unit: &[u8]) -> Result<Subpicture, WorkerError> {
         }
         sequences += 1;
         if sequences >= MAX_SEQUENCES {
-            return Err(corrupt("too many control sequences"));
+            return Err(WorkerError::new(
+                "limit_exceeded",
+                "a subpicture exceeds the control sequence ceiling",
+            ));
         }
         at = next;
     }
@@ -511,8 +523,10 @@ fn render(
     colours: &[[u8; 4]; 4],
     limits: Limits,
 ) -> Result<bool, WorkerError> {
+    // A started subpicture without an area or field offsets has no bitmap and shows nothing, as
+    // in ffmpeg, rather than failing the track.
     let (Some((x1, y1, x2, y2)), Some((top, bottom))) = (picture.area, picture.fields) else {
-        return Err(corrupt("a shown subpicture has no display area"));
+        return Ok(false);
     };
     if x2 < x1 || y2 < y1 {
         return Err(corrupt("inverted display area"));
@@ -1167,11 +1181,10 @@ mod tests {
         );
     }
 
-    /// The reviewer's shape: each sequence's header is the previous sequence's commands (STOP,
-    /// then COLOUR swallowing the next pointer), so every sequence overlaps the rest, and many
-    /// entries name the one unit.
+    /// Each sequence's header is the previous sequence's commands (STOP, then COLOUR swallowing
+    /// the next pointer), so every sequence overlaps the rest, and many entries name the one unit.
     #[test]
-    fn overlapping_sequences_and_repeated_entries_are_refused_quickly() {
+    fn overlapping_sequences_are_refused_and_repeated_entries_parse_once() {
         let mut unit = vec![0, 0, 0, 4];
         while unit.len() < 0xfff0 {
             let next = (unit.len() + 4) as u16;
@@ -1213,6 +1226,50 @@ mod tests {
         let (decoded, _) = decode_pair(pair.idx.as_bytes(), &pair.sub, LIMITS).expect("decode");
         assert!(decoded.states.is_empty());
         assert_eq!(decoded.work.drawn_pixels, never.len() as u64);
+    }
+
+    /// ffmpeg tolerates each of these, so the decoder does too: a stray command ends only its
+    /// own control sequence, a started subpicture with no bitmap shows nothing, and an unfinished
+    /// unit no entry names stops where a named one starts.
+    #[test]
+    fn a_stray_command_or_a_damaged_unit_costs_only_itself() {
+        let clean = Unit::two_rows(0, 0).bytes();
+        let mut pair = Pair::new((8, 4), "");
+        pair.spu(1000, &clean, 2048);
+        let want = timing(&decode_built(&pair).0.states);
+        assert_eq!(want, [(1000, 1512, true), (1512, 1512, false)]);
+
+        // An unknown command in place of the first sequence's end: the sequence ends there, and
+        // the second sequence's stop still applies.
+        let mut stray = clean.clone();
+        assert_eq!(
+            stray[29], SEQUENCE_END,
+            "the probe's first sequence ends at byte 29"
+        );
+        stray[29] = 0x09;
+        let mut pair = Pair::new((8, 4), "");
+        pair.spu(1000, &stray, 2048);
+        assert_eq!(timing(&decode_built(&pair).0.states), want);
+
+        // A started subpicture without an area and field offsets, whether a stray command cut
+        // them off or they were never there, shows nothing and the next subpicture still does.
+        for started in [
+            raw_unit(&[0, 0, 0, 4, 0x01, 0x09, 0x05, 0, 0, 3, 0, 0, 1, 0xff]),
+            raw_unit(&[0, 0, 0, 4, 0x01, 0xff]),
+        ] {
+            let mut pair = Pair::new((8, 4), "");
+            pair.spu(500, &started, 2048);
+            pair.spu(1000, &clean, 2048);
+            assert_eq!(timing(&decode_built(&pair).0.states), want);
+        }
+
+        // An unnamed unit claims 65,535 bytes and holds 100, before a named one.
+        let mut damaged = vec![0xff, 0xff, 0, 4];
+        damaged.resize(100, 0);
+        let mut pair = Pair::new((8, 4), "");
+        pair.pack(0x20, &damaged);
+        pair.spu(1000, &clean, 2048);
+        assert_eq!(timing(&decode_built(&pair).0.states), want);
     }
 
     /// An SPU of hand-written control bytes after its 4-byte header.
@@ -1296,23 +1353,11 @@ mod tests {
                 "too many sequences",
                 one("", &many_sequences),
                 LIMITS,
-                "corrupt_input",
-            ),
-            (
-                "unknown command",
-                one("", &raw_unit(&[0, 0, 0, 4, 0x09, 0xff])),
-                LIMITS,
-                "corrupt_input",
+                "limit_exceeded",
             ),
             (
                 "unterminated control",
                 one("", &raw_unit(&[0, 0, 0, 4, 0x01])),
-                LIMITS,
-                "corrupt_input",
-            ),
-            (
-                "no display area",
-                one("", &raw_unit(&[0, 0, 0, 4, 0x01, 0xff])),
                 LIMITS,
                 "corrupt_input",
             ),

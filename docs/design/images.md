@@ -141,13 +141,17 @@ probe for each, so a worker without one fails readiness instead of failing the f
   than one `id:` is `unsupported_input`); with `forced subs: ON` only forced subpictures show, and,
   as in ffmpeg, `custom colors:` is ignored, so the palette always colours the pixels. A `delay:`
   shifts later timestamps until the next `delay:` replaces it, as in ffmpeg; `time offset:` is
-  ignored, since neither ffmpeg nor VSFilter applies it. The result is
+  ignored, since neither ffmpeg nor VSFilter applies it. Also as in ffmpeg, an unknown control
+  command ends only its own control sequence, a started subpicture without an area or field
+  offsets shows nothing, and a pack an entry names starts a new subpicture, so a damaged
+  subpicture no entry names cannot swallow the ones after it. The result is
   the canvas size and an ordered list of display states, each with its start and end in
   milliseconds and either one full-canvas straight-alpha PNG or none (the screen is clear). Each
   state ends where the next starts, the last state's end equals its start, and Go refuses a
   result that breaks either rule. Every later step (ffv1 conversion, the per-seek ffconcat list, the overlay) is codec-neutral.
   Ceilings: 256 MiB input, an 8 MiB `.idx` (about 4× the 2.2 MB of 50,000 `timestamp:` lines),
-  3840×2160 canvas, 64 objects per state, 50,000 states (and `.idx` entries), 512 MiB output,
+  3840×2160 canvas, 64 objects per state, 256 control sequences per VOBSUB subpicture, 50,000
+  states (and `.idx` entries), 512 MiB output,
   and, across the whole track, 3.8×10¹⁰ drawn object pixels (each placement's object area plus its
   coded length) and 2×10¹¹ encoded or cleared canvas pixels, about 4× what a heavy 3,000-set track
   of two 3840×400 objects on a 3840×2160 canvas measures (9.45×10⁹ and 4.98×10¹⁰).
