@@ -333,8 +333,10 @@ func (e *Engine) WithScheduleInvalidator(invalidator ScheduleInvalidator) *Engin
 // UpcomingIndexer stores what an internal-playout channel airs over [from, to), as the guide
 // lists it, so a title's next airing is one indexed read (#4476, scheduling.md "Upcoming
 // airings"). ch is the channel as the reconcile committed it; its revision guards the write.
+// ClearUpcoming removes the channel's stored airings, for a channel Loomarr does not play.
 type UpcomingIndexer interface {
 	IndexUpcoming(ctx context.Context, ch channelstore.Channel, from, to time.Time) error
+	ClearUpcoming(ctx context.Context, ch channelstore.Channel) error
 }
 
 // WithUpcomingIndex wires the upcoming-airings writer that runs after each committed reconcile of
@@ -353,6 +355,17 @@ func (e *Engine) indexUpcoming(ctx context.Context, ch channelstore.Channel) {
 	now := e.now()
 	if err := e.upcoming.IndexUpcoming(ctx, ch, now, now.Add(PremeasureHorizon)); err != nil {
 		e.log.Warn("upcoming airings: not stored", "channel", ch.ID, "err", err)
+	}
+}
+
+// clearUpcoming removes the stored airings of a committed channel that does not play internally.
+// Best-effort, like indexUpcoming.
+func (e *Engine) clearUpcoming(ctx context.Context, ch channelstore.Channel) {
+	if e.upcoming == nil {
+		return
+	}
+	if err := e.upcoming.ClearUpcoming(ctx, ch); err != nil {
+		e.log.Warn("upcoming airings: not cleared", "channel", ch.ID, "err", err)
 	}
 }
 

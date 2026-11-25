@@ -240,14 +240,18 @@ channel revision it was computed at.
   rows were computed from; a write from a stale revision changes nothing. It is best-effort: a
   failure is logged and the reconcile stands.
 - **The read** for a library item returns the rows still airing (`ends_at_ms` after now, so the
-  programme on air is included) on channels neither paused nor detached, earliest first. A movie
-  matches on its item id; a series matches through `titles.key = title_key` for that item, the key
-  that lists a title's channels.
+  programme on air is included) on channels neither paused nor detached, earliest first. A row
+  matches the item by its own item id or through `titles.key = title_key` for that item, the key
+  that lists a title's channels: a movie both ways, a series through its episodes' title key. The
+  read does no member filtering; the API that serves it blanks a hidden episode's item id and name.
 - **Freshness.** Pausing and detaching save without a reconcile, which is why the read filters the
   channel's status. Purging a channel deletes its rows. A settings change reaches the rows at the
-  next sweep. Forecast rows can lag the guide by one sweep; the window on air never does, because
+  next sweep, and so does a removed file: its airing stays until then (at most ten minutes), as it
+  does in the guide. Forecast rows can lag the guide by one sweep; the window on air never does, because
   its programmes are fixed when it opens.
-- **Tunarr channels** store no upcoming airings, the same as the scheduled ledger.
+- **Tunarr channels** store no upcoming airings, the same as the scheduled ledger. Each committed
+  reconcile of a channel that does not play internally replaces its rows with none, through the
+  same guarded write, so a channel moved to Tunarr is not named on a title's page.
 
 ## Breaks and pods
 

@@ -29,6 +29,14 @@ func (r *Resolver) UpcomingProgrammes(ctx context.Context, channelID string, fro
 	if err != nil {
 		return nil, err
 	}
+	return upcomingFrom(bs, forecastFrom), nil
+}
+
+// upcomingFrom keeps the programmes of bs with a library item and real airtime, each a forecast
+// when it starts at or after forecastFrom. A Nominal block is a display estimate, never airtime;
+// BroadcastsBetween emits none today, and the filter keeps an estimate out of the stored rows if
+// that projection ever does.
+func upcomingFrom(bs []timeline.Broadcast, forecastFrom time.Time) []UpcomingProgramme {
 	out := make([]UpcomingProgramme, 0, len(bs))
 	for _, b := range bs {
 		if b.Kind != schedule.SlotProgram || b.LibraryItemID == "" || b.Nominal {
@@ -39,5 +47,5 @@ func (r *Resolver) UpcomingProgrammes(ctx context.Context, channelID string, fro
 			Forecast: !b.Start.Before(forecastFrom),
 		})
 	}
-	return out, nil
+	return out
 }

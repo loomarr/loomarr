@@ -540,6 +540,10 @@ func (e *Engine) commitReconcile(ctx context.Context, plan *reconcilePlan, run *
 		e.planNextWindow(ctx, ch)
 		// What the guide lists for the next two days is stored for a title's next airing (#4476).
 		e.indexUpcoming(ctx, ch)
+	} else {
+		// A channel Loomarr does not play stores no upcoming airings, so a title page never names
+		// it; this clears what an earlier internal reconcile stored.
+		e.clearUpcoming(ctx, ch)
 	}
 
 	// 7: media-server freshness (best-effort; never fails reconcile). A committed local

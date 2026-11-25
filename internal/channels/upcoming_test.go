@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 )
@@ -21,13 +22,68 @@ type upcomingCall struct {
 }
 
 type recordingUpcoming struct {
-	calls []upcomingCall
-	err   error
+	calls  []upcomingCall
+	clears []upcomingCall
+	err    error
 }
 
 func (r *recordingUpcoming) IndexUpcoming(_ context.Context, ch channelstore.Channel, from, to time.Time) error {
 	r.calls = append(r.calls, upcomingCall{channelID: ch.ID, revision: ch.Revision, from: from, to: to})
 	return r.err
+}
+
+func (r *recordingUpcoming) ClearUpcoming(_ context.Context, ch channelstore.Channel) error {
+	r.clears = append(r.clears, upcomingCall{channelID: ch.ID, revision: ch.Revision})
+	return r.err
+}
+
+// storeUpcoming writes through the real store: one row per committed slot with a library item
+// on index, and none on clear, both at the committed revision.
+type storeUpcoming struct{ st store.Store }
+
+func (s storeUpcoming) IndexUpcoming(ctx context.Context, ch channelstore.Channel, from, _ time.Time) error {
+	var rows []channeldatastore.UpcomingAiring
+	for i, slot := range ch.Desired {
+		if slot.LibraryItemID == "" {
+			continue
+		}
+		at := from.Add(time.Duration(i) * time.Hour)
+		rows = append(rows, channeldatastore.UpcomingAiring{Start: at, End: at.Add(time.Hour), LibraryItemID: slot.LibraryItemID, TitleKey: slot.Key})
+	}
+	_, err := s.st.ReplaceUpcomingAirings(ctx, ch.ID, ch.Revision, rows)
+	return err
+}
+
+func (s storeUpcoming) ClearUpcoming(ctx context.Context, ch channelstore.Channel) error {
+	_, err := s.st.ReplaceUpcomingAirings(ctx, ch.ID, ch.Revision, nil)
+	return err
+}
+
+// A channel that switches from internal playout to Tunarr has no stored upcoming airings after
+// its next committed reconcile, so a title page never names a channel Loomarr no longer plays.
+func TestReconcile_SwitchToTunarrClearsUpcoming(t *testing.T) {
+	st := newStore(t)
+	backend := schedule.PlayoutBackendInternal
+	e := newEngineForBackend(st, tunarrtest.NewTunarr(), mapAvail{"movie:tmdb:90000001": "lib-1"}, &fakeGuide{},
+		func() string { return backend })
+	e.WithUpcomingIndex(storeUpcoming{st: st})
+	seedChannel(t, st, "up-switch", 6, entry("movie:tmdb:90000001", "A"))
+	now := time.Unix(1_800_000_000, 0).UTC()
+
+	if err := e.Reconcile(context.Background(), "up-switch"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := st.UpcomingAiringsForItem(context.Background(), "lib-1", now); err != nil || len(got) == 0 {
+		t.Fatalf("internal reconcile stored %+v, %v; want lib-1's airing", got, err)
+	}
+
+	backend = "tunarr"
+	if err := e.Reconcile(context.Background(), "up-switch"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := st.UpcomingAiringsForItem(context.Background(), "lib-1", now); err != nil || len(got) != 0 {
+		t.Fatalf("after the switch to Tunarr, stored %+v, %v; want none", got, err)
+	}
 }
 
 // After a committed reconcile of an internal-playout channel, the upcoming index is asked for the
@@ -119,6 +175,9 @@ func TestReconcile_UpcomingIndexSkipsTunarrChannels(t *testing.T) {
 	}
 	if len(upcoming.calls) != 0 {
 		t.Fatalf("Tunarr channel indexed: %+v", upcoming.calls)
+	}
+	if len(upcoming.clears) != 1 {
+		t.Fatalf("Tunarr channel clears = %+v, want one after the commit", upcoming.clears)
 	}
 }
 

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
@@ -26,6 +27,7 @@ type upcomingWriter interface {
 type upcomingIndex struct {
 	guide upcomingGuide
 	store upcomingWriter
+	log   *slog.Logger
 }
 
 func (u upcomingIndex) IndexUpcoming(ctx context.Context, ch channelstore.Channel, from, to time.Time) error {
@@ -39,6 +41,18 @@ func (u upcomingIndex) IndexUpcoming(ctx context.Context, ch channelstore.Channe
 			ChannelID: ch.ID, Start: p.Start, End: p.Stop, LibraryItemID: p.LibraryItemID, TitleKey: p.Key, Forecast: p.Forecast,
 		})
 	}
-	_, err = u.store.ReplaceUpcomingAirings(ctx, ch.ID, ch.Revision, airings)
+	return u.replace(ctx, ch, airings)
+}
+
+// ClearUpcoming replaces the channel's stored airings with none, through the same guarded write.
+func (u upcomingIndex) ClearUpcoming(ctx context.Context, ch channelstore.Channel) error {
+	return u.replace(ctx, ch, nil)
+}
+
+func (u upcomingIndex) replace(ctx context.Context, ch channelstore.Channel, airings []channeldatastore.UpcomingAiring) error {
+	wrote, err := u.store.ReplaceUpcomingAirings(ctx, ch.ID, ch.Revision, airings)
+	if err == nil && !wrote && u.log != nil {
+		u.log.Debug("upcoming airings: a newer revision won, nothing written", "channel", ch.ID, "revision", ch.Revision)
+	}
 	return err
 }

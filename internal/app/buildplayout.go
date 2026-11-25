@@ -236,7 +236,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	})
 	// Each committed reconcile of an internal-playout channel stores its next two days from the
 	// guide's own walk, so a title's next airing is one indexed read (#4476).
-	channelEngine.WithUpcomingIndex(upcomingIndex{guide: playoutRes, store: st})
+	channelEngine.WithUpcomingIndex(upcomingIndex{guide: playoutRes, store: st, log: log})
 	// Loomarr measures each source itself, once per revision, so playout never asks the media
 	// server or re-probes a file at airtime (beta.8 G7). One worker, background priority, tied to
 	// the app's lifetime; sources are read directly through the path map, never through Emby.

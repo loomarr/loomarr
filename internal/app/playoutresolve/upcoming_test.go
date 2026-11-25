@@ -96,6 +96,36 @@ func TestUpcomingMatchesGuideAcrossTurn(t *testing.T) {
 	}
 }
 
+// Only real programmes with a library item are stored: filler, a pending placeholder, an item-less
+// programme and a Nominal (display-estimate) programme are not. Forecast starts at the hand-over.
+func TestUpcomingKeepsOnlyRealProgrammes(t *testing.T) {
+	t.Parallel()
+	at := func(h, m int) time.Time { return time.Date(2026, time.August, 15, h, m, 0, 0, time.UTC) }
+	bs := []timeline.Broadcast{
+		{Kind: schedule.SlotProgram, LibraryItemID: "ep-1", Key: "series:tvdb:90000001", Start: at(20, 0), Stop: at(20, 22)},
+		{Kind: schedule.SlotFiller, Start: at(20, 22), Stop: at(20, 30)},
+		{Kind: schedule.SlotProgram, LibraryItemID: "est-1", Key: "movie:tmdb:90000002", Nominal: true, Start: at(20, 30), Stop: at(21, 0)},
+		{Kind: schedule.SlotPending, Key: "movie:tmdb:90000003", Nominal: true, Start: at(20, 30), Stop: at(21, 0)},
+		{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000004", Start: at(21, 0), Stop: at(21, 30)},
+		{Kind: schedule.SlotProgram, LibraryItemID: "mv-5", Key: "movie:tmdb:90000005", Start: at(21, 30), Stop: at(23, 0)},
+	}
+	var got []string
+	for _, p := range upcomingFrom(bs, at(21, 30)) {
+		when := "now"
+		if p.Forecast {
+			when = "forecast"
+		}
+		got = append(got, fmt.Sprintf("%s %s %s–%s %s", p.LibraryItemID, p.Key, p.Start.Format(time.DateTime), p.Stop.Format(time.DateTime), when))
+	}
+	want := []string{
+		"ep-1 series:tvdb:90000001 2026-08-15 20:00:00–2026-08-15 20:22:00 now",
+		"mv-5 movie:tmdb:90000005 2026-08-15 21:30:00–2026-08-15 23:00:00 forecast",
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("upcoming\n%v\nwant\n%v", got, want)
+	}
+}
+
 func upcomingLine(ps []UpcomingProgramme) []string {
 	out := make([]string, 0, len(ps))
 	for _, p := range ps {
