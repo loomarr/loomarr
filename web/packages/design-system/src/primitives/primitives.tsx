@@ -195,11 +195,12 @@ const ArtworkFrame = ({
     backgroundColor="artworkPlaceholder"
     justifyContent="center"
     overflow="hidden"
+    padding={state === "ready" && children ? undefined : "inline"}
   >
     {state === "ready" && children ? (
       children
     ) : (
-      <Text density={density} textRole="metadata">
+      <Text density={density} textAlign="center" textRole="metadata">
         {artworkCopy[state === "ready" ? "missing" : state]}
       </Text>
     )}
