@@ -27,7 +27,8 @@ import (
 
 // libraryMemberReads are the Library operations a member may call. Every other operation under
 // /v1/library or /v1/collections is admin-only, except the public hook receiver.
-var libraryMemberReads = []string{"getCollection", "getLibraryItem", "listCollections", "listLibraryCollections", "listLibraryItems"}
+var libraryMemberReads = []string{"getCollection", "getLibraryItem", "listCollections", "listLibraryCollections", "listLibraryGenres",
+	"listLibraryItems"}
 
 // libraryPublic is the Library's one public operation: an *arr's webhook, which answers only its
 // app's shared secret.
@@ -106,7 +107,8 @@ func TestLibraryListFiltersRevealNoAdminFact(t *testing.T) {
 		if op.ID != "listLibraryItems" {
 			continue
 		}
-		if want := []string{"kind", "limit", "offset", "ready", "search", "sort"}; !slices.Equal(op.Query, want) {
+		// genre is a fact a member reads on a title's page; the list's genre filter keeps the member rule.
+		if want := []string{"genre", "kind", "limit", "offset", "ready", "search", "sort"};!slices.Equal(op.Query, want) {
 			t.Errorf("listLibraryItems filters = %v, want %v: decide whether a member may filter on it", op.Query, want)
 		}
 		return
