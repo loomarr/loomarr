@@ -2,6 +2,7 @@ package channels_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 type recordingPlanner struct {
 	plans   []pod.PlanBounds
 	planned map[int64]time.Duration
+	reads   int // PlannedLengths calls
 }
 
 func (p *recordingPlanner) BuildFillerList(context.Context, string, int64, pod.Selection) ([]string, bool) {
@@ -44,6 +46,7 @@ func (p *recordingPlanner) PlanBreaks(_ context.Context, _ string, _ pod.Selecti
 }
 
 func (p *recordingPlanner) PlannedLengths(_ context.Context, _ string, from time.Time, plans []pod.BreakPlan) ([]time.Duration, error) {
+	p.reads++
 	out := make([]time.Duration, len(plans))
 	t := from
 	for i, pl := range plans {
@@ -125,6 +128,31 @@ func TestReconcile_PlansTheNextWindowsBreaksBeforeItTurns(t *testing.T) {
 	}
 	if breaks == 0 {
 		t.Fatal("the turned window has no breaks")
+	}
+
+	// The guide, read before the turn, arranges the next window at the turn's instant and applies
+	// the planned lengths to that (cached) arrangement, which must come back as it went in.
+	now = turn.Add(-30 * time.Minute)
+	_, arranged, _, _, err := e.CyclePreview(context.Background(), "nw", turn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := append([]schedule.Slot(nil), arranged...)
+	if got := e.WithPlannedBreaks(context.Background(), "nw", turn, arranged); !reflect.DeepEqual(got, slots) {
+		t.Fatal("the guide's planned next window differs from the turned window playout airs")
+	}
+	if !reflect.DeepEqual(arranged, before) {
+		t.Fatal("applying the planned breaks changed the arrangement passed in")
+	}
+
+	// Further ahead than reconcile plans, nothing can be stored yet, so the read is skipped.
+	now = turn.Add(-2 * time.Hour)
+	reads := planner.reads
+	if got := e.WithPlannedBreaks(context.Background(), "nw", turn, arranged); !reflect.DeepEqual(got, arranged) {
+		t.Fatal("a turn beyond the planning lead changed the arranged breaks")
+	}
+	if planner.reads != reads {
+		t.Fatalf("a turn beyond the planning lead read the stored breaks %d times, want none", planner.reads-reads)
 	}
 }
 
