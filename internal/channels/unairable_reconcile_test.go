@@ -22,7 +22,7 @@ func TestReconcile_RecordsTheTitlesThatCannotAir(t *testing.T) {
 	avail.movies = map[provision.Key]schedule.ResolvedProgram{}
 	st := newStore(t)
 	now := time.Unix(1_800_000_000, 0).UTC()
-	e := recencyEngine(st, avail, &now)
+	e := recencyEngine(t, st, avail, &now)
 	seedShuffleChannel(t, st, "ua", entries)
 
 	before := reconcileDesired(t, e, st, "ua")

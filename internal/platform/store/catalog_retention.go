@@ -37,9 +37,11 @@ type CatalogRetentionStore interface {
 //     membership left and that no stored record names, with their candidates and image refs;
 //   - catalog records no library row names, fetched (or failing) longer than LibraryItemRetention.
 //
-// "Names" is LibraryReferences: titles, airings, channels' slots and open proposals' picks.
+// "Names" is a foreign key (titles, airings, scheduled_airings, channel_planned_items), checked
+// inside the transaction so a row written meanwhile keeps its item instead of failing the purge, or
+// an open proposal's pick (openProposalItems).
 func (s *sqlStore) PurgeSpentCatalog(ctx context.Context, now time.Time) (int, error) {
-	refs, err := s.LibraryReferences(ctx)
+	picks, err := s.openProposalItems(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("purge spent catalog: %w", err)
 	}
@@ -90,12 +92,16 @@ func (s *sqlStore) PurgeSpentCatalog(ctx context.Context, now time.Time) (int, e
 		AND NOT EXISTS (SELECT 1 FROM inventory_items v WHERE v.id = i.id)
 		AND NOT EXISTS (SELECT 1 FROM library_files f WHERE f.inventory_item_id = i.id OR f.inventory_series_id = i.id)
 		AND NOT EXISTS (SELECT 1 FROM library_items e WHERE e.series_id = i.id)
-		AND NOT EXISTS (SELECT 1 FROM library_collection_members m WHERE m.inventory_item_id = i.id)`, itemCutoffMs)
+		AND NOT EXISTS (SELECT 1 FROM library_collection_members m WHERE m.inventory_item_id = i.id)
+		AND NOT EXISTS (SELECT 1 FROM titles t WHERE t.library_id = i.id)
+		AND NOT EXISTS (SELECT 1 FROM airings a WHERE a.library_item_id = i.id)
+		AND NOT EXISTS (SELECT 1 FROM scheduled_airings a WHERE a.library_item_id = i.id)
+		AND NOT EXISTS (SELECT 1 FROM channel_planned_items p WHERE p.library_item_id = i.id)`, itemCutoffMs)
 	if err != nil {
 		return 0, fmt.Errorf("purge spent library items: %w", err)
 	}
 	for _, id := range candidates {
-		if _, named := slices.BinarySearch(refs.Items, id); named {
+		if _, named := slices.BinarySearch(picks, id); named {
 			continue
 		}
 		// Its candidates and artwork refs go with it (library_candidates and library_item_images
