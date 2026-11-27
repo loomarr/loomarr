@@ -1,7 +1,7 @@
 import type { FetchFillerSourceOutputBody } from "@loomarr/api/models/fetchFillerSourceOutputBody";
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import { formatRelative } from "@loomarr/core/format";
-import { Action, Stack, Text, TextLink } from "@loomarr/design-system";
+import { Action, Card, Stack, Text, TextLink } from "@loomarr/design-system";
 import { useState } from "react";
 
 const checkResultText = (source: FillerSourceDTO, result: FetchFillerSourceOutputBody) => {
@@ -83,7 +83,7 @@ const SourceStatus = ({ source, fetching, fetchError, onFetch }: SourceStatusPro
         </Stack>
         {source.kind === "folder" && (
           <Stack marginTop={12}>
-            <Text as="p" className="break-all" textRole="mono">
+            <Text as="p" textRole="mono" wordBreak="break-all">
               {source.uri ?? source.target}
             </Text>
           </Stack>
@@ -117,17 +117,11 @@ const SourceStatus = ({ source, fetching, fetchError, onFetch }: SourceStatusPro
         </Stack>
       )}
       {fetchError && (
-        <Stack
-          borderRadius={6}
-          className="bg-destructive/10"
-          paddingHorizontal={12}
-          paddingVertical={8}
-          role="alert"
-        >
+        <Card paddingHorizontal={12} paddingVertical={8} role="alert" tone="caution">
           <Text as="p" textRole="compact" tone="danger">
             {fetchError.detail}
           </Text>
-        </Stack>
+        </Card>
       )}
     </Stack>
   );
