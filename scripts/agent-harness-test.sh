@@ -135,7 +135,7 @@ printf '%s\n' '#!/usr/bin/env sh' 'case "${1:-}" in --version) echo "Docker vers
 chmod +x "$TMP/doctor-bin/"*
 # Only the doctor's shell utilities may resolve outside its fixture tools. Including /usr/bin
 # would let an installed ffprobe satisfy the missing-tool negative and fail on healthy hosts.
-for utility in sh dirname sed head cut git grep awk du wc tr cksum basename; do
+for utility in sh dirname sed head cut git grep awk du wc tr cksum basename cat; do
 	ln -s "$(command -v "$utility")" "$TMP/doctor-bin/$utility"
 done
 # uname is a fixture so every host, a Mac included, takes the Linux path unless a case sets FIXTURE_OS.
@@ -188,6 +188,10 @@ rejects_pinned 'is version 9.1, not 9.0.2'
 pinned_tool ffmpeg 9.0.2
 rejects_pinned 'has no drawtext filter'
 pinned_tool ffmpeg 9.0.2 drawtext
+# The same build recorded against an earlier pin.
+echo 'https://fixture/old old old' > "$pinned/.pins"
+rejects_pinned 'was not installed from the current pins'
+grep -v '^#' "$SCRIPT_DIR/macos-ffmpeg.pins" > "$pinned/.pins"
 PATH="$doctor_path" FIXTURE_OS=Darwin DOCTOR_DOCKER_READY=1 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor >/dev/null
 rm -rf "$TMP/.tools"
 
@@ -229,15 +233,36 @@ chmod +x "$TMP/fake-bin/curl" "$TMP/fake-bin/unzip"
 mac_bootstrap() {
 	: > "$bootstrap_log"
 	PATH="$TMP/fake-bin:$PATH" FIXTURE_OS="$1" BOOTSTRAP_LOG="$bootstrap_log" BOOTSTRAP_SKIP_FE=1 AGENT_DEV_IDENTITY=0 \
-		GITHUB_PATH='' LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" bootstrap >/dev/null 2>&1
+		GITHUB_PATH='' LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" bootstrap >/dev/null 2>"$TMP/bootstrap-stderr"
 }
-# The real shasum rejects the fixture download.
-if mac_bootstrap Darwin || [ -e "$TMP-wt/.tools/ffmpeg/bin/ffmpeg" ]; then
-	echo 'agent-harness-test: bootstrap installed an ffmpeg that failed its digest' >&2
+installed="$TMP-wt/.tools/ffmpeg/bin"
+# The real shasum rejects the fixture download. Bootstrap carries on, and says how to fix it.
+mac_bootstrap Darwin
+grep -q '^cargo build' "$bootstrap_log"
+if ! grep -q 'WARNING: the pinned ffmpeg was not installed.*make bootstrap' "$TMP/bootstrap-stderr" ||
+	[ -e "$installed/ffmpeg" ] || [ -e "$installed/.pins" ]; then
+	echo 'agent-harness-test: a failed digest was installed or not reported' >&2
+	exit 1
+fi
+# A failed fetch leaves an earlier build, and its record, exactly as they were.
+echo old-build > "$installed/ffmpeg"
+echo old-pins > "$installed/.pins"
+mac_bootstrap Darwin
+if [ "$(cat "$installed/ffmpeg" "$installed/.pins")" != "$(printf 'old-build\nold-pins')" ] ||
+	[ -n "$(find "$installed" -name '.stage.*')" ]; then
+	echo 'agent-harness-test: a failed fetch disturbed the installed ffmpeg' >&2
+	exit 1
+fi
+# ffmpeg downloads and ffprobe fails: neither may be installed.
+# shellcheck disable=SC2016
+printf '%s\n' '#!/usr/bin/env sh' 'read -r _ file; case "$file" in */ffprobe.zip) exit 1 ;; esac' > "$TMP/fake-bin/shasum"
+chmod +x "$TMP/fake-bin/shasum"
+mac_bootstrap Darwin
+if [ "$(cat "$installed/ffmpeg" "$installed/.pins")" != "$(printf 'old-build\nold-pins')" ] || [ -e "$installed/ffprobe" ]; then
+	echo 'agent-harness-test: a partial fetch left a mixed ffmpeg build' >&2
 	exit 1
 fi
 printf '%s\n' '#!/usr/bin/env sh' 'cat >/dev/null' > "$TMP/fake-bin/shasum"
-chmod +x "$TMP/fake-bin/shasum"
 mac_bootstrap Darwin
 grep -q '^curl https://ffmpeg.martin-riedl.de/.*_9\.0\.2/ffmpeg\.zip$' "$bootstrap_log"
 grep -q '^curl https://ffmpeg.martin-riedl.de/.*_9\.0\.2/ffprobe\.zip$' "$bootstrap_log"

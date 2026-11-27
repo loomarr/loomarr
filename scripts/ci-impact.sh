@@ -596,7 +596,7 @@ classify() {
       case "$path" in
         scripts/agent*|scripts/changed-paths*|scripts/go-direct-impact*|scripts/test-affected*) select_gate agent; select_gate policy ;;
         # `make bootstrap`/`doctor` and the macOS playout bench share this install.
-        scripts/macos-ffmpeg.sh) select_gate agent; select_gate policy; select_gate playout_bench ;;
+        scripts/macos-ffmpeg.sh|scripts/macos-ffmpeg.pins) select_gate agent; select_gate policy; select_gate playout_bench ;;
         scripts/apple-compilation-cache*) select_gate contracts; select_gate apple_mobile; select_gate apple_tv; select_gate policy ;;
         scripts/ci-ffmpeg.sh|scripts/go-mod-download.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
         # Rewrites the FFmpeg pin evidence that internal/platform/releaseverify (contracts) verifies.

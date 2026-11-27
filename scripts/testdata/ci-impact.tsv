@@ -180,6 +180,7 @@ playout-bench-package	internal/playout/bench/compare.go	contracts,go,postgres,im
 playout-bench-corpus-script	scripts/playout-bench-open-films.sh	docs,playout_bench
 playout-bench-coverage-script	scripts/playout-bench-coverage.sh	policy
 macos-ffmpeg-script	scripts/macos-ffmpeg.sh	agent,policy,playout_bench
+macos-ffmpeg-pins	scripts/macos-ffmpeg.pins	agent,policy,playout_bench
 playout-bench-baseline	docs/engineering/playout-bench/README.md	docs,playout_bench
 playout-bench-guide	docs/contributing/playout-bench.md	docs
 playout-bench-pr-workflow	.github/workflows/ci-playout-bench.yml	policy,playout_bench

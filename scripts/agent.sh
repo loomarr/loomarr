@@ -480,8 +480,11 @@ doctor() {
 bootstrap() {
 	command -v cargo >/dev/null 2>&1 || { echo 'bootstrap: cargo is required' >&2; exit 1; }
 	( cd "$ROOT" && LOOMARR_RELEASE=dev cargo build --locked -p loomarr-image )
+	# A failed fetch does not stop the rest of bootstrap: doctor and the tests that need the pinned
+	# build stay red until it succeeds.
+	ffmpeg_failed=0
 	if wants_pinned_ffmpeg; then
-		"$SCRIPT_DIR/macos-ffmpeg.sh" "$ROOT/.tools/ffmpeg/bin"
+		"$SCRIPT_DIR/macos-ffmpeg.sh" "$ROOT/.tools/ffmpeg/bin" || ffmpeg_failed=1
 	fi
 	if [ "${BOOTSTRAP_SKIP_FE:-0}" != 1 ]; then
 		command -v pnpm >/dev/null 2>&1 || { echo 'bootstrap: pnpm is required' >&2; exit 1; }
@@ -497,6 +500,10 @@ bootstrap() {
 	fi
 	echo 'bootstrap: ready'
 	"$SCRIPT_DIR/dev-env.sh" show
+	# Last, so the install output above does not bury it.
+	if [ "$ffmpeg_failed" = 1 ]; then
+		echo 'bootstrap: WARNING: the pinned ffmpeg was not installed; tests that need it will fail. Rerun make bootstrap, then check with make doctor.' >&2
+	fi
 }
 
 worktree() {

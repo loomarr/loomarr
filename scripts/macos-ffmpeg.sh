@@ -5,18 +5,20 @@
 #
 # It is FFmpeg 9.0.2, the release production pins (Dockerfile FFMPEG_BUILD_ID), built by a different
 # builder (martin-riedl). It has VideoToolbox and drawtext; Homebrew's bottle has no drawtext.
-# A rebuilt upstream asset fails the checksum instead of silently changing what runs.
+# The pins are in macos-ffmpeg.pins. A rebuilt upstream asset fails the checksum instead of silently
+# changing what runs.
 #
 #   scripts/macos-ffmpeg.sh BIN_DIR           install (a no-op when BIN_DIR already holds the pins)
 #   scripts/macos-ffmpeg.sh --check BIN_DIR   print what is wrong with BIN_DIR and exit 1, or exit 0
 set -eu
 
 version=9.0.2
-base=https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2
-ffmpeg_sha256=c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924
-ffprobe_sha256=fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6
+pins="$(grep -v '^#' "$(dirname "$0")/macos-ffmpeg.pins")"
+read -r base ffmpeg_sha256 ffprobe_sha256 <<EOF
+$pins
+EOF
 
-check() {
+check_build() {
 	for tool in ffmpeg ffprobe; do
 		[ -x "$1/$tool" ] || { echo "$tool is missing from $1"; return 1; }
 		# The build's version carries a builder suffix, as in "9.0.2-https://...".
@@ -25,6 +27,12 @@ check() {
 	done
 	"$1/ffmpeg" -hide_banner -filters 2>/dev/null | grep -w drawtext >/dev/null ||
 		{ echo "$1/ffmpeg has no drawtext filter"; return 1; }
+}
+
+# An installed build also records the pins it came from.
+check_installed() {
+	check_build "$1" || return 1
+	[ "$(cat "$1/.pins" 2>/dev/null)" = "$pins" ] || { echo "$1 was not installed from the current pins"; return 1; }
 }
 
 mode=install
@@ -36,27 +44,33 @@ fi
 bin_dir="$1"
 
 if [ "$mode" = check ]; then
-	check "$bin_dir"
+	check_installed "$bin_dir"
 	exit
 fi
 
 mkdir -p "$bin_dir"
-pins="$base $ffmpeg_sha256 $ffprobe_sha256"
-if [ "$(cat "$bin_dir/.pins" 2>/dev/null)" = "$pins" ] && check "$bin_dir" >/dev/null; then
+if check_installed "$bin_dir" >/dev/null; then
 	echo "macos-ffmpeg: $version already installed in $bin_dir"
 else
-	rm -f "$bin_dir/.pins"
+	# Everything is downloaded and checked in a staging directory, so a failure leaves the installed
+	# build as it was. It sits under BIN_DIR to make each move a rename.
+	stage="$(mktemp -d "$bin_dir/.stage.XXXXXX")"
+	trap 'rm -rf "$stage"' EXIT
+	trap 'exit 1' INT TERM
 	for pin in "ffmpeg:$ffmpeg_sha256" "ffprobe:$ffprobe_sha256"; do
 		tool="${pin%%:*}"
 		digest="${pin#*:}"
 		curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 \
-			--output "$bin_dir/$tool.zip" "$base/$tool.zip"
-		printf '%s  %s\n' "$digest" "$bin_dir/$tool.zip" | shasum -a 256 -c -
-		unzip -oq "$bin_dir/$tool.zip" -d "$bin_dir"
-		rm -f "$bin_dir/$tool.zip"
-		chmod +x "$bin_dir/$tool"
+			--output "$stage/$tool.zip" "$base/$tool.zip"
+		printf '%s  %s\n' "$digest" "$stage/$tool.zip" | shasum -a 256 -c -
+		unzip -oq "$stage/$tool.zip" -d "$stage"
+		chmod +x "$stage/$tool"
 	done
-	check "$bin_dir"
-	echo "$pins" > "$bin_dir/.pins"
+	check_build "$stage"
+	# Without its record the directory is not accepted, so an interruption between the moves cannot
+	# pass for a build.
+	rm -f "$bin_dir/.pins"
+	mv -f "$stage/ffmpeg" "$stage/ffprobe" "$bin_dir/"
+	printf '%s\n' "$pins" >"$bin_dir/.pins"
 fi
-[ -z "${GITHUB_PATH:-}" ] || echo "$bin_dir" >> "$GITHUB_PATH"
+[ -z "${GITHUB_PATH:-}" ] || echo "$bin_dir" >>"$GITHUB_PATH"
