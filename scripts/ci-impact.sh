@@ -51,67 +51,15 @@ classify() {
   local path="$1"
   local known=false
 
-  # The public repo's real-titles guard (make demo-titles-verify, run by privacy-verify in the
-  # Go contracts job) scans these seeds, fixtures and the demo catalogue. It adds the gate
-  # without claiming the path, so each path's own classification below still applies. Keep in
-  # step with isFixture and guarded in internal/demolibrary/guard_test.go; a test there fails
-  # when a scanned path would skip this gate (#1587).
-  case "$path" in
-    cmd/seed/*|cmd/demo-library/*|internal/demolibrary/*|web/*.stories.tsx|web/apps/web/tests/e2e/mock-backend.ts|web/scripts/tv-emulator-fixture-server.mjs)
-      select_gate contracts
-      ;;
-    # inventedGoFixtures: Go test fixtures written as invented data.
-    internal/testkit/fixtures/sonarr/*|internal/testkit/fixtures/radarr/*|internal/library/metadataprovider/nfo/testdata/*)
-      select_gate contracts
-      ;;
-    web/packages/fixtures/src/*)
-      [[ "$path" == *.test.* ]] || select_gate contracts
-      ;;
-    # migratedTests: the unit tests #1592 moved onto the demo catalogue.
-    web/apps/web/src/components/loomarr/ai/approval-queue-item/*|web/apps/web/src/components/loomarr/ai/episode-selection-label/*|web/apps/web/src/components/loomarr/ai/proposal-edit/*|web/apps/web/src/components/loomarr/ai/proposal-review/*|web/apps/web/src/components/loomarr/ai/refine-panel/*|web/apps/web/src/components/loomarr/ai/refine-review/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/src/components/loomarr/feedback/generation-progress/*|web/apps/web/src/discovery-feedback/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/src/suggest/approval-queue/*|web/apps/web/src/suggest/intent-form/*|web/apps/web/src/suggest/live-proposal-outlook/*|web/apps/web/src/suggest/movie-collection-choices/*|web/apps/web/src/suggest/suggestion-expansion/*|web/apps/web/src/suggest/suggestion-language/*|web/apps/web/src/suggest/use-channel-refine/*|web/apps/web/src/suggest/use-proposal-review-edit/*|web/apps/web/src/suggest/use-suggestion-run/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/src/components/loomarr/channels/channel-card/*|web/apps/web/src/components/loomarr/channels/channel-collections-scope/*|web/apps/web/src/components/loomarr/channels/channel-cycle-preview/*|web/apps/web/src/components/loomarr/channels/channel-ident/*|web/apps/web/src/components/loomarr/channels/channel-lineup-editor/*|web/apps/web/src/components/loomarr/channels/channel-policy-fields/*|web/apps/web/src/components/loomarr/channels/channel-rules-editor/*|web/apps/web/src/components/loomarr/channels/channel-series-scope/*|web/apps/web/src/components/loomarr/channels/now-next-strip/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/src/components/loomarr/filler/clip-card/*|web/apps/web/src/components/loomarr/filler/clip-row/*|web/apps/web/src/components/loomarr/filler/pod-timeline/*|web/apps/web/src/components/loomarr/filler/split-review-editor/*|web/apps/web/src/components/loomarr/people/import-dialog/*|web/apps/web/src/components/loomarr/people/invitation-join/*|web/apps/web/src/components/loomarr/player/video-player/*|web/apps/web/src/components/loomarr/shell/search-command/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/src/lib/policy-overrides/*|web/apps/web/src/queue/request-detail/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/src/channels/use-channel-lineup/*|web/apps/web/src/channels/use-channel-save/*|web/apps/web/src/filler/channel-filler/*|web/apps/web/src/filler/clip-details/*|web/apps/web/src/filler/incoming/*|web/apps/web/src/filler/sources-panel/*|web/apps/web/src/queue/request-lists/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/src/suggest/channel-suggest-panel/*|web/apps/web/src/suggest/manual-channel-builder/*|web/apps/web/src/test/*|web/packages/core/src/*|web/packages/core/tests/*|web/packages/player/tests/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    web/apps/web/tests/e2e/*)
-      [[ "$path" != *.spec.ts ]] || select_gate contracts
-      ;;
-    web/apps/web/src/components/loomarr/dashboard/activity-feed/*|web/packages/ui/tests/*|web/packages/ui-tv/tests/*)
-      [[ "$path" != *.test.* ]] || select_gate contracts
-      ;;
-    # migratedGo trees whose Go routing below skips the contracts job.
-    internal/platform/releaseverify/*_test.go|research/*_test.go)
-      select_gate contracts
-      ;;
-    web/apps/web/tests/visual/*)
-      [[ "$path" != *.spec.ts ]] || select_gate contracts
-      ;;
-  esac
+  # The public repo's real-titles guard (make privacy-verify) needs no routing here: CI's privacy
+  # job runs it on every run, whatever changed.
 
   # knip (run by `make fe` for the web gate and by `make clients` for the clients gate) spans the
   # whole web/ workspace, and web/knip.ts makes every web/scripts/*.{mjs,cjs} a knip entry. Those
   # entries are also named by the Apple and Android script rules below, which select native gates
   # but neither web nor clients, so a change there could alter knip's result unchecked (#1838).
-  # Like the guard above, this adds the gate without claiming the path.
+  # This adds the gate without claiming the path, so the path's own classification below still
+  # applies.
   case "$path" in
     web/scripts/*.mjs|web/scripts/*.cjs)
       select_gate clients
@@ -310,7 +258,13 @@ classify() {
       known=true
       select_gate web
       ;;
-    web/.dependency-cruiser.cjs|web/tsconfig.depcruise.json|web/turbo.json|web/.rnstorybook/*|web/apps/web/client-platform-proof.html|web/apps/web/src/client-platform-proof/*|web/apps/web/tests/client-platform-proof.*|web/apps/web/vite.client-platform.config.ts)
+    web/turbo.json)
+      # The Frontend job's typecheck and package tests run through Turbo, as the client lanes' do.
+      known=true
+      select_gate web
+      select_gate clients
+      ;;
+    web/.dependency-cruiser.cjs|web/tsconfig.depcruise.json|web/.rnstorybook/*|web/apps/web/client-platform-proof.html|web/apps/web/src/client-platform-proof/*|web/apps/web/tests/client-platform-proof.*|web/apps/web/vite.client-platform.config.ts)
       known=true
       select_gate clients
       ;;
@@ -494,7 +448,7 @@ classify() {
       select_gate docs
       select_gate agent
       ;;
-    docs/*|project/*|CHANGELOG.md|CODE_OF_CONDUCT.md|CONTRIBUTING.md|SECURITY.md|CLAUDE.md|AGENTS.md|CONTEXT.md|PROGRESS.md|docs-site/*|.agents/*|.claude/*|.vale|.vale/*|.vale.ini|lychee.toml|.markdownlint*|.github/CODEOWNERS|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md)
+    docs/*|project/*|CHANGELOG.md|CODE_OF_CONDUCT.md|CONTRIBUTING.md|SECURITY.md|CLAUDE.md|AGENTS.md|CONTEXT.md|PRODUCT.md|PROGRESS.md|docs-site/*|.agents/*|.claude/*|.vale|.vale/*|.vale.ini|lychee.toml|.markdownlint*|.github/CODEOWNERS|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md)
       known=true
       select_gate docs
       ;;
@@ -652,7 +606,9 @@ classify() {
         # Selection policy is control-plane code. Product gates validate files they consume;
         # the always-on policy job independently validates this classifier and its fixtures.
         scripts/ci-impact.sh) select_gate policy ;;
-        scripts/ci-impact*|scripts/ci-diff-base*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/ci-merge-queue-policy*|scripts/ci-merge-gate*|scripts/ci-assurance-alert*|scripts/testdata/ci-*) select_gate policy ;;
+        scripts/ci-impact*|scripts/ci-diff-base*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/ci-merge-queue-policy*|scripts/ci-merge-gate*|scripts/ci-cache-retention*|scripts/ci-assurance-alert*|scripts/testdata/ci-*) select_gate policy ;;
+        # The merge gate and the policy job run the migration order check and its self-test.
+        scripts/check-migration-order*) select_gate policy ;;
         scripts/dev-*) select_gate contracts; select_gate agent ;;
         # Local-only dev watchers; the agent gate runs their tests and shellcheck.
         scripts/dev/*) select_gate agent ;;
@@ -679,7 +635,8 @@ classify() {
         scripts/go-race-weights-refresh.sh) select_gate contracts ;;
         scripts/check-compose.sh) select_gate contracts ;;
         scripts/check-release-image-absence.sh) select_gate contracts ;;
-        scripts/check-retired.sh) select_gate contracts ;;
+        # The CI policy job runs and shellchecks it on every run.
+        scripts/check-retired.sh) select_gate policy ;;
         # Run by the curated-sources workflow against live providers; contracts shellchecks it.
         scripts/check-curated-sources.sh) select_gate contracts ;;
         # The docs gate's inline-path check (ci-docs.yml, `make docs-lint-paths`) and its allowlist.
@@ -913,7 +870,7 @@ classify() {
       select_gate contracts
       case "$path" in
         docker/compose.dev*|.node-version) select_gate agent ;;
-        docker/compose.yaml) select_gate go; select_gate go_full ;;
+        docker/compose.yaml|docker/compose.demo.yaml) select_gate go; select_gate go_full ;;
       esac
       ;;
   esac

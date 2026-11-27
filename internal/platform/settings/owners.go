@@ -86,13 +86,11 @@ var fillerOwners = map[string]Owner{
 	"filler.break_duration":             OwnerFillerBreaks,
 	"filler.pod_max":                    OwnerFillerBreaks,
 
-	"filler.transcribe.enabled":               OwnerFillerReview,
-	"filler.vision.enabled":                   OwnerFillerReview,
-	"filler.autosplit.enabled":                OwnerFillerReview,
-	"filler.autosplit.min_confidence":         OwnerFillerReview,
-	"filler.autosplit.max_duration":           OwnerFillerReview,
-	"filler.structure_window_authority_path":  OwnerFillerReview,
-	"filler.structure_window_deployment_path": OwnerFillerReview,
+	"filler.transcribe.enabled":       OwnerFillerReview,
+	"filler.vision.enabled":           OwnerFillerReview,
+	"filler.autosplit.enabled":        OwnerFillerReview,
+	"filler.autosplit.min_confidence": OwnerFillerReview,
+	"filler.autosplit.max_duration":   OwnerFillerReview,
 
 	"filler.cooldown_seconds":    OwnerFillerPlayback,
 	"filler.min_quality":         OwnerFillerPlayback,

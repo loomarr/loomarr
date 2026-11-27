@@ -104,6 +104,65 @@ func TestVerifyCIContainerDownloadsBindsTunerCallerInputsExactly(t *testing.T) {
 	})
 }
 
+func TestVerifyCIContainerDownloadsBindsTurboCallerSecretsExactly(t *testing.T) {
+	t.Parallel()
+	const declared = "    secrets:\n" +
+		"      TURBO_API: ${{ secrets.TURBO_API }}\n" +
+		"      TURBO_TEAM: ${{ secrets.TURBO_TEAM }}\n" +
+		"      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}\n" +
+		"      TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}\n"
+	mutations := map[string]string{
+		"inherited secrets": "    secrets: inherit\n",
+		"swapped secret":    strings.Replace(declared, "${{ secrets.TURBO_TOKEN }}", "${{ secrets.GITHUB_TOKEN }}", 1),
+		"extra secret":      declared + "      TMDB_BUNDLED_KEY: ${{ secrets.TMDB_BUNDLED_KEY }}\n",
+		"missing secret":    strings.Replace(declared, "      TURBO_API: ${{ secrets.TURBO_API }}\n", "", 1),
+		"no secrets":        "",
+	}
+	for _, workflow := range []string{"ci-frontend.yml", "ci-clients.yml"} {
+		caller := "    uses: ./.github/workflows/" + workflow + "\n"
+		for name, replacement := range mutations {
+			t.Run(workflow+"/"+name, func(t *testing.T) {
+				root := writeCIContainerDownloadsFixture(t)
+				path := filepath.Join(root, ".github", "workflows", "ci.yml")
+				source := readFixtureFile(t, path)
+				if !strings.Contains(source, caller+declared) {
+					t.Fatalf("CI %s caller `secrets` fixture changed", workflow)
+				}
+				writeFixtureFile(t, path, strings.Replace(source, caller+declared, caller+replacement, 1))
+				if err := VerifyCIContainerDownloads(root); err == nil {
+					t.Fatalf("VerifyCIContainerDownloads accepted a %s caller whose secrets differ from the exact authority", workflow)
+				}
+			})
+		}
+	}
+	t.Run("declared secrets pass", func(t *testing.T) {
+		if err := VerifyCIContainerDownloads(writeCIContainerDownloadsFixture(t)); err != nil {
+			t.Fatalf("declared Turbo caller secrets rejected: %v", err)
+		}
+	})
+}
+
+// `make fe-install` runs dependency install scripts, so it must never receive the Turbo token.
+func TestVerifyCIContainerDownloadsKeepsTurboSecretsFromInstall(t *testing.T) {
+	t.Parallel()
+	const install = "      - run: make fe-install\n"
+	const exposed = "      - env:\n          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}\n        run: make fe-install\n"
+	for _, workflow := range []string{"ci-frontend.yml", "ci-clients.yml"} {
+		t.Run(workflow, func(t *testing.T) {
+			root := writeCIContainerDownloadsFixture(t)
+			path := filepath.Join(root, ".github", "workflows", workflow)
+			source := readFixtureFile(t, path)
+			if !strings.Contains(source, install) {
+				t.Fatalf("%s `make fe-install` fixture changed", workflow)
+			}
+			writeFixtureFile(t, path, strings.Replace(source, install, exposed, 1))
+			if err := VerifyCIContainerDownloads(root); err == nil {
+				t.Fatalf("VerifyCIContainerDownloads accepted a %s install step that receives TURBO_TOKEN", workflow)
+			}
+		})
+	}
+}
+
 func TestVerifyCIContainerDownloadsBindsCacheCleanupCommandAndContext(t *testing.T) {
 	t.Parallel()
 	tests := map[string]func(*yaml.Node){

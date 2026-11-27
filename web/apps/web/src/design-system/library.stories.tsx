@@ -574,7 +574,7 @@ const WizardStepAdding: Story = {
     <LibraryWizardStep
       {...wizardStep}
       folders={[{ ...wizardFolders[0], inUse: true } as (typeof wizardFolders)[number]]}
-      readySoFar={TITLES.filter((t) => t.ready).map((t) => ({ id: t.id, name: t.name, poster: t.poster }))}
+      readySoFar={TITLES.map((t) => ({ id: t.id, name: t.name, ready: t.ready, poster: t.poster }))}
       scan={READING}
     />
   ),

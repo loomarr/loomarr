@@ -1,9 +1,10 @@
 name: Merge gate
 
 # The required `CI` check for a merge-queue candidate, so a queued PR merges in minutes. It proves
-# the one thing the pull request's own run cannot: that the PR still compiles on top of the main it
-# is about to join. The complete gate set runs beside it in ci.yml as `CI assurance`, which finishes
-# after the merge and files an issue if a merged commit fails (docs/contributing/ci.md).
+# what the pull request's own run cannot, against the main it is about to join: that the PR still
+# compiles on it, and that every migration it adds is still numbered above main's newest (#4450).
+# The complete gate set runs beside it in ci.yml as `CI assurance`, which finishes after the merge
+# and files an issue if a merged commit fails (docs/contributing/ci.md).
 #
 # This is a separate workflow because ci.yml's merge-group runs share one concurrency group, and the
 # gate must never wait behind them.
@@ -25,6 +26,10 @@ jobs:
     steps:
       # Shallow: the selector fetches only the queue base, which took a full-history clone 13s.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # goose refuses to start a database that already ran a newer migration than an unapplied
+      # file, so a migration numbered at or below main's newest would stop every upgraded install.
+      - name: Every added migration is numbered above main's newest
+        run: ./scripts/check-migration-order.sh merge_group "$GITHUB_EVENT_PATH"
       - name: Does this candidate change Go
         id: go
         run: ./scripts/ci-merge-gate-select.sh merge_group "$GITHUB_EVENT_PATH" >> "$GITHUB_OUTPUT"

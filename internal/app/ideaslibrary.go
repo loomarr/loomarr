@@ -50,7 +50,18 @@ func (l libraryIdeaTitles) AllItems(ctx context.Context) ([]mediaserver.SearchRe
 	return out, nil
 }
 
-// libraryIdeaItems adapts a title listing to api.IdeaLibrary, caching the listing.
+// ideaAudiences is api.IdeaLibrary: a household member's ideas are built from the titles a
+// member reads, everyone else's from every listed title. Each audience caches its own listing.
+type ideaAudiences struct{ all, member *libraryIdeaItems }
+
+func (a ideaAudiences) IdeaItems(ctx context.Context, member bool) ([]ideas.Item, error) {
+	if member {
+		return a.member.IdeaItems(ctx)
+	}
+	return a.all.IdeaItems(ctx)
+}
+
+// libraryIdeaItems adapts one title listing to idea items, caching the listing.
 type libraryIdeaItems struct {
 	lib libraryLister
 	now func() time.Time

@@ -20,6 +20,14 @@ import (
 //
 // dialect is Loomarr's ("sqlite" | "postgres"); dir is the embedded subdir.
 func migrate(ctx context.Context, db *sql.DB, dialect, dir string) error {
+	return migrateWith(ctx, db, dialect, dir, nil)
+}
+
+// migrateWith is migrate with a step that runs once the database is known to need migrations
+// and before any of them runs: from is the current schema, to the newest this build embeds. An
+// error from it stops the upgrade before the schema moves. A new database (schema 0) has nothing
+// to protect and skips it.
+func migrateWith(ctx context.Context, db *sql.DB, dialect, dir string, beforeUp func(ctx context.Context, from, to int64) error) error {
 	provider, err := newMigrationProvider(db, Dialect(dialect), dir)
 	if err != nil {
 		return err
@@ -42,6 +50,11 @@ func migrate(ctx context.Context, db *sql.DB, dialect, dir string) error {
 			current, maxEmbedded, current)
 	}
 
+	if beforeUp != nil && current > 0 && current < maxEmbedded {
+		if err := beforeUp(ctx, current, maxEmbedded); err != nil {
+			return fmt.Errorf("upgrade stopped before migrating from schema %d: %w", current, err)
+		}
+	}
 	if _, err := provider.Up(ctx); err != nil {
 		return fmt.Errorf("migrate up: %w", err)
 	}

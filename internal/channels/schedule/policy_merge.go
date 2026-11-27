@@ -92,7 +92,8 @@ func (current ChannelPolicy) MergeFromProposal(incoming ChannelPolicy) ChannelPo
 // operator DID set stays expressible; it simply unpins rather than pinning emptiness.
 func (current ChannelPolicy) MergeFromOperator(incoming ChannelPolicy) ChannelPolicy {
 	out := incoming
-	out.Applied = current.Applied // reconcile-owned
+	out.Applied = current.Applied     // reconcile-owned
+	out.Unairable = current.Unairable // reconcile-owned
 
 	// ⚠ **An OMITTED `policy.filler` keeps the saved selection (§10 V51f) — the same class of
 	// silent data loss the comment above records for `scope`, in the half `OperatorSet` cannot
@@ -107,6 +108,9 @@ func (current ChannelPolicy) MergeFromOperator(incoming ChannelPolicy) ChannelPo
 	// V51f era range already use. A caller that genuinely wants no selection says so.
 	if incoming.Filler == nil {
 		out.Filler = current.Filler
+	}
+	if incoming.Growth == nil { // the same rule: absence keeps the switch and what was declined
+		out.Growth = current.Growth
 	}
 
 	set := pathSet(current.OperatorSet)
@@ -125,13 +129,9 @@ func (current ChannelPolicy) MergeFromOperator(incoming ChannelPolicy) ChannelPo
 		}
 	}
 
-	// Scopes compare by value only: a saved legacy era+dates scope carries decode-only state
-	// that an unchanged re-save does not, and that must not read as an edit.
-	currentScope, incomingScope := current.Scope, incoming.Scope
-	currentScope.eraAndDates, incomingScope.eraAndDates = false, false
 	pin(pathScope,
-		!reflect.DeepEqual(currentScope, incomingScope),
-		reflect.DeepEqual(incomingScope, ScopePolicy{}))
+		!reflect.DeepEqual(current.Scope, incoming.Scope),
+		reflect.DeepEqual(incoming.Scope, ScopePolicy{}))
 	pin(pathAudience,
 		current.Audience != incoming.Audience,
 		incoming.Audience == AudiencePolicy{})
@@ -153,6 +153,18 @@ func (current ChannelPolicy) MergeFromOperator(incoming ChannelPolicy) ChannelPo
 func (p ChannelPolicy) WithApplied(applied []AppliedRelaxation) ChannelPolicy {
 	p.Applied = applied
 	return p
+}
+
+// WithUnairable is the reconcile writer for the titles that cannot air; it writes nothing else.
+func (p ChannelPolicy) WithUnairable(unairable []UnairableTitle) ChannelPolicy {
+	p.Unairable = unairable
+	return p
+}
+
+// Decided is the policy without what reconcile writes (Applied, Unairable): what an operator or a
+// proposal decided. It is what tells an edit from a library change (#4140).
+func (p ChannelPolicy) Decided() ChannelPolicy {
+	return p.WithApplied(nil).WithUnairable(nil)
 }
 
 // mergeRules composes rules by provenance (§8.2): keep every existing rule that is NOT

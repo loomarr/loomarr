@@ -1,6 +1,6 @@
 import { channelIdentHue, monogramOf } from "@loomarr/core/guide";
+import { Stack, Text } from "@loomarr/design-system";
 import { onTintVar } from "@loomarr/design-system/web-theme";
-import { cn } from "@/lib/utils";
 import type { ArtworkFallbackProps } from "./artwork-fallback.type";
 
 // ArtworkFallback — generated art for a slot with no picture (#2762): a soft wash in the channel's
@@ -14,22 +14,24 @@ const ArtworkFallback = ({ channel, label, seed = 0, className }: ArtworkFallbac
   const wash = `var(--color-${hue})`;
   const words = channel?.name ?? label;
   return (
-    <div
+    <Stack
+      align="center"
+      backgroundColor="$surfaceRaised"
+      className={className}
+      height="100%"
+      justify="center"
       role="presentation"
       style={{
         backgroundImage: `linear-gradient(155deg, color-mix(in srgb, ${wash} 34%, var(--color-static-900)) 0%, var(--color-static-900) 88%)`,
       }}
-      className={cn("bg-static-900 flex size-full items-center justify-center", className)}
+      width="100%"
     >
       {words && (
-        <span
-          style={{ color: onTintVar(hue) }}
-          className="font-mono text-3xl font-semibold tracking-[0.08em]"
-        >
+        <Text as="span" style={{ color: onTintVar(hue) }} textRole="monogram">
           {monogramOf(words)}
-        </span>
+        </Text>
       )}
-    </div>
+    </Stack>
   );
 };
 

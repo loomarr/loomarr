@@ -6,12 +6,24 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/storetest"
 )
 
 // NewStoreFunc builds a fresh, migrated, empty extended store for one test. Like the core suite's,
 // it hides the backend, so every assertion below runs identically on SQLite and Postgres.
 type NewStoreFunc func(t *testing.T) Store
+
+// saveMembers saves a member for each id. A pull's decided_by is a foreign key to users (#2793), so
+// a name that is no member reads back as no one.
+func saveMembers(t *testing.T, s Store, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		if err := s.UpsertUser(context.Background(), store.User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
+			t.Fatalf("save member %s: %v", id, err)
+		}
+	}
+}
 
 // RunConformance is the filler half of the store conformance suite (AGENTS.md: one suite, two
 // backends). It runs against the extended store the app holds, so clip-catalog assertions whose
@@ -48,7 +60,10 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ClipSearchWidened", func(t *testing.T) { testClipSearchWidened(t, newStore) })
 		t.Run("ClipTopLevelOnly", func(t *testing.T) { testClipTopLevelOnly(t, newStore) })
 		t.Run("ClipCreatedAt", func(t *testing.T) { testClipCreatedAt(t, newStore) })
+		t.Run("ClipAirWindow", func(t *testing.T) { testClipAirWindow(t, newStore) })
 		t.Run("FillerProgressiveEnrichment", func(t *testing.T) { testFillerProgressiveEnrichment(t, newStore) })
+		t.Run("AudienceBacking", func(t *testing.T) { testAudienceBacking(t, newStore) })
+		t.Run("VisionRespectsStrongerEvidence", func(t *testing.T) { testVisionRespectsStrongerEvidence(t, newStore) })
 		t.Run("FillerEnrichmentCandidateSelection", func(t *testing.T) { testFillerEnrichmentCandidateSelection(t, newStore) })
 		t.Run("OptInKindProjection", func(t *testing.T) { testOptInKindProjection(t, newStore) })
 		t.Run("FillerContextResearch", func(t *testing.T) { testFillerContextResearch(t, newStore) })
@@ -78,17 +93,19 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("InteractiveOperations", func(t *testing.T) { testInteractiveOperations(t, newStore) })
 		t.Run("FillerInferenceAccountingAndBudgets", func(t *testing.T) { testFillerInferenceAccountingAndBudgets(t, newStore) })
 		t.Run("FillerRetention", func(t *testing.T) { testFillerRetention(t, newStore) })
+		t.Run("FillerDownloadFailures", func(t *testing.T) { testFillerDownloadFailures(t, newStore) })
 		t.Run("FillerRetentionEmptyCatalog", func(t *testing.T) { testFillerRetentionEmptyCatalog(t, newStore) })
 		t.Run("FillerStructureWindowCallLedger", func(t *testing.T) { testFillerStructureWindowCallLedger(t, newStore) })
 		t.Run("FillerStructureWindowCallLedgerRetry", func(t *testing.T) { testFillerStructureWindowCallLedgerRetry(t, newStore) })
 		t.Run("FillerHeldClipUpsertAndCompositeRelease", func(t *testing.T) { testFillerHeldClipUpsertAndCompositeRelease(t, newStore) })
 		t.Run("FillerTerminalReadyTransaction", func(t *testing.T) { testFillerTerminalReadyTransaction(t, newStore) })
-		t.Run("FillerSplitShadowDecisions", func(t *testing.T) { testFillerSplitShadowDecisions(t, newStore) })
 		t.Run("SplitProposals", func(t *testing.T) { testSplitProposals(t, newStore) })
 		t.Run("ClipPipelineState", func(t *testing.T) { testClipPipeline(t, newStore) })
 		t.Run("ClipPipelineOverview", func(t *testing.T) { testClipPipelineOverview(t, newStore) })
 		t.Run("ClipPipelineRetry", func(t *testing.T) { testClipPipelineRetry(t, newStore) })
 		t.Run("ClipPipelineRetireRejected", func(t *testing.T) { testClipPipelineRetireRejected(t, newStore) })
+		t.Run("ClipPipelineRetireReady", func(t *testing.T) { testClipPipelineRetireReady(t, newStore) })
+		t.Run("ClipPipelineRetireSettledReel", func(t *testing.T) { testClipPipelineRetireSettledReel(t, newStore) })
 		t.Run("IncomingConveyorCount", func(t *testing.T) { testIncomingConveyorCount(t, newStore) })
 		t.Run("Taxonomy", func(t *testing.T) { testTaxonomy(t, newStore) })
 		t.Run("CoreTransactionSpansFillerTables", func(t *testing.T) { testCoreTransactionSpansFillerTables(t, newStore) })

@@ -63,14 +63,15 @@ the holidays your country keeps.
 ## When the pool runs dry
 
 A small library plus a tight scope plus a long no-repeat window can leave nothing eligible.
-Loomarr relaxes the rules in a fixed order and records what it did on the channel:
+Loomarr loosens only the rule the pool can't keep, only as far as it has to, and records what it
+did on the channel:
 
-1. Shorten the no-repeat windows (halved, never below 24 hours).
-2. Relax the series gap and back-to-back cap.
-3. Widen the year range slightly.
-4. Pad with filler.
+- **No-repeat windows** shorten to how long the channel's titles take to air once through.
+- **The series gap** narrows to the widest gap the titles allow.
+- **The back-to-back cap** rises to the shortest run the titles allow.
 
-The audience cap and your explicit series choices are never relaxed.
+A channel that can't keep its series gap keeps its no-repeat window, and the reverse. The audience
+cap, your series choices and the channel's years are never relaxed.
 
 ## Filler in the breaks
 

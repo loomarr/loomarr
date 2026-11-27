@@ -48,7 +48,7 @@ func TestProjectReadinessPrioritisesTheNextOperatorAction(t *testing.T) {
 		}, filler.ReadinessNone},
 		{"review before pool quality", func(in *filler.ReadinessInput) {
 			in.NeedsYou = 3
-			in.Pool.Channels[0].Report.Level = pod.MatchAudience
+			in.Pool.Channels[0].Report.Level = pod.MatchWidened
 		}, filler.ReadinessReviewIncoming},
 		// #2733: Overview sends "review" to Incoming, so only a choice Incoming lists may ask
 		// for one. A review-disposition row with no Incoming task would point at an empty page.
@@ -57,7 +57,7 @@ func TestProjectReadinessPrioritisesTheNextOperatorAction(t *testing.T) {
 		}, filler.ReadinessNone},
 		{"empty eligible pool", func(in *filler.ReadinessInput) { in.Pool.Eligible = 0 }, filler.ReadinessAddFiller},
 		{"weakest channel", func(in *filler.ReadinessInput) {
-			in.Pool.Channels[0].Report.Level = pod.MatchAudience
+			in.Pool.Channels[0].Report.Level = pod.MatchWidened
 		}, filler.ReadinessImproveCoverage},
 	}
 	for _, tt := range tests {

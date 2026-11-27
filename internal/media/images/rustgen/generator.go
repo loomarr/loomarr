@@ -25,15 +25,19 @@ type Contract struct {
 	Recipe          string
 	RequiredFormats []string
 	Animation       bool
+	// RequiredOperations are subcommands beyond generate that readiness depends on, such as
+	// "decode-subtitles". The worker's self-test covers every operation it lists.
+	RequiredOperations []string
 }
 
 type capabilities struct {
-	Protocol  int      `json:"protocol"`
-	Release   string   `json:"release"`
-	Recipe    string   `json:"recipe"`
-	Formats   []string `json:"formats"`
-	Animation bool     `json:"animation"`
-	SelfTest  bool     `json:"selfTest"`
+	Protocol   int      `json:"protocol"`
+	Release    string   `json:"release"`
+	Recipe     string   `json:"recipe"`
+	Formats    []string `json:"formats"`
+	Animation  bool     `json:"animation"`
+	Operations []string `json:"operations"`
+	SelfTest   bool     `json:"selfTest"`
 }
 
 // WorkerError is a stable worker refusal. Callers can distinguish invalid input and exhausted
@@ -59,6 +63,7 @@ type errorManifest struct {
 type Generator struct {
 	executable   string
 	contract     Contract
+	operations   []string
 	generateArgs []string
 }
 
@@ -175,7 +180,12 @@ func Open(executable string, expected Contract) (*Generator, error) {
 			return nil, fmt.Errorf("images: worker lacks required %s format", format)
 		}
 	}
-	return &Generator{executable: executable, contract: expected}, nil
+	for _, operation := range expected.RequiredOperations {
+		if !slices.Contains(got.Operations, operation) {
+			return nil, fmt.Errorf("images: worker lacks required %s operation", operation)
+		}
+	}
+	return &Generator{executable: executable, contract: expected, operations: got.Operations}, nil
 }
 
 // OpenBenchmark verifies the production worker, then opts Generate into the worker's explicit

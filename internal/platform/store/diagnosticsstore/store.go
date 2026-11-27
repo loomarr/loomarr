@@ -565,9 +565,9 @@ const diagnosticPurgeBatch = 500
 // their row. Deleting the row here would orphan a file the store cannot resolve safely.
 //
 // ⚠ **It works in bounded batches, one statement each, and never holds a transaction across
-// batches.** It used to run as ONE transaction; on SQLite that transaction held the write lock
-// for the entire delete (and, while the pool had one connection, the connection itself), so
-// River's leader election and the health probe queued behind it and timed out (#1411). Between
+// batches.** On SQLite ONE transaction over the purge would hold the write lock for the entire
+// delete (and, while the pool has one connection, the connection itself), so River's leader
+// election and the health probe would queue behind it and time out (#1411). Between
 // batches the write lock is released, so another writer waiting on busy_timeout gets it before
 // this loop's next Exec, and other work is delayed by one batch (tens of ms), not by the whole purge. The price is that a mid-purge
 // failure leaves a prefix deleted — harmless, since retention is idempotent and every batch is

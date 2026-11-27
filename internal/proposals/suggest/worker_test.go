@@ -32,9 +32,14 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
 
+// requesters are the people these tests name; each store saves them as members.
+var requesters = []string{"alice", "bob", "carol", "grace", "alex", "admin"}
+
 func newStore(t *testing.T) store.Store {
 	t.Helper()
-	return testkit.MigratedSQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
+	testkit.SaveMembers(t, st, requesters...)
+	return st
 }
 
 // mustChannel saves a live channel id for a refine or re-curation to name: a job's channel is a
@@ -1553,6 +1558,42 @@ func waitForDoneEvent(t *testing.T, e *doneEmitter) {
 func (c *recordingCurator) Consider(context.Context, proposalstore.Proposal) (proposals.AutoDecision, error) {
 	c.calls++
 	return c.decision, c.err
+}
+
+// panickingApprover stands in for a bug while a stored proposal is settled.
+type panickingApprover struct{}
+
+func (panickingApprover) Consider(context.Context, proposalstore.Proposal) (proposals.AutoDecision, error) {
+	panic("approval exploded")
+}
+
+// Once the proposal is stored the run is done, so screens waiting on it hear done even when
+// settling it panics; nothing polls the Journey to find out otherwise.
+func TestWorker_StoredProposalEmitsDoneEvenWhenSettlingPanics(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
+		t.Fatal(err)
+	}
+	llmMock := testkit.NewLLM(t,
+		catalogSearchResponse(map[string]any{"query": "marigold"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
+	)
+	done := newDoneEmitter()
+	svc := buildService(t, st, llmMock).WithAutoApprove(panickingApprover{}).WithProgressEmitter(done)
+	jobID, err := svc.Submit(ctx, proposals.Intent{Description: "sci-fi"}, "grace")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go svc.Run(runCtx)
+
+	waitForDoneEvent(t, done)
+	if j, _ := st.GetJob(ctx, jobID); j.Status != "done" {
+		t.Fatalf("job status = %s, want done: the proposal was stored before settling panicked", j.Status)
+	}
 }
 
 // TestWorker_AutoApproveCommitsChannel proves the worker reaches the same deep approval gate as

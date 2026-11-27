@@ -8,40 +8,17 @@ import (
 )
 
 // What hangs off channels without being the channel (favourites and recents, hidden ideas, airing
-// history, discovery feedback) lives in internal/platform/store/channeldatastore. Its types and value sets
-// are re-exported here by alias, for the store's own contract.
+// history, discovery feedback) lives in internal/platform/store/channeldatastore. Its types are
+// re-exported here by alias, for the store's own contract.
 type (
-	// FavouriteChannel is one channel a person starred (channeldatastore.FavouriteChannel).
-	FavouriteChannel = channeldatastore.FavouriteChannel
-	// RecentChannel is one channel a person tuned (channeldatastore.RecentChannel).
-	RecentChannel = channeldatastore.RecentChannel
 	// UserChannelLists is one person's guide filters (channeldatastore.UserChannelLists).
 	UserChannelLists = channeldatastore.UserChannelLists
 	// ScheduledAiring is one programme a channel's schedule put on air (channeldatastore.ScheduledAiring).
 	ScheduledAiring = channeldatastore.ScheduledAiring
-	// FeedbackScope is the scope of a discovery-feedback choice (channeldatastore.FeedbackScope).
-	FeedbackScope = channeldatastore.FeedbackScope
-	// FeedbackAction is a discovery-feedback choice (channeldatastore.FeedbackAction).
-	FeedbackAction = channeldatastore.FeedbackAction
 	// DiscoveryFeedback is one recorded choice (channeldatastore.DiscoveryFeedback).
 	DiscoveryFeedback = channeldatastore.DiscoveryFeedback
 	// FeedbackFilter selects feedback by scope (channeldatastore.FeedbackFilter).
 	FeedbackFilter = channeldatastore.FeedbackFilter
-)
-
-// RecentChannelsKept bounds each person's Recent list (channeldatastore.RecentChannelsKept).
-const RecentChannelsKept = channeldatastore.RecentChannelsKept
-
-// Discovery-feedback scopes and actions (channeldatastore).
-const (
-	FeedbackHousehold = channeldatastore.FeedbackHousehold
-	FeedbackChannel   = channeldatastore.FeedbackChannel
-
-	FeedbackKeep     = channeldatastore.FeedbackKeep
-	FeedbackLess     = channeldatastore.FeedbackLess
-	FeedbackNever    = channeldatastore.FeedbackNever
-	FeedbackSurprise = channeldatastore.FeedbackSurprise
-	FeedbackClear    = channeldatastore.FeedbackClear
 )
 
 // ChannelPreferenceStore keeps per-person channel lists (#1666). Every method is keyed by user id;
@@ -54,7 +31,7 @@ type ChannelPreferenceStore interface {
 	RemoveFavouriteChannel(ctx context.Context, userID, channelID string) error
 	// RecordChannelTune moves a channel to the front of the person's recents (never backwards, so
 	// a late report from a slow device can't reorder them) and drops all but the newest
-	// RecentChannelsKept. ErrNotFound when the channel doesn't exist.
+	// channeldatastore.RecentChannelsKept. ErrNotFound when the channel doesn't exist.
 	RecordChannelTune(ctx context.Context, userID, channelID string, at time.Time) error
 	// UserChannelLists reads both lists in one call, for the guide's first paint.
 	UserChannelLists(ctx context.Context, userID string) (UserChannelLists, error)

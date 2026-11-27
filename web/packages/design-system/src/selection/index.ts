@@ -8,5 +8,6 @@ export type {
   SelectOption,
   TabOption,
   TabsProps,
+  UnderlineTabOption,
 } from "./selection";
 export { Hint, MenuList, SelectControl, Tabs } from "./selection";

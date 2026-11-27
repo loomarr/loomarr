@@ -1,4 +1,4 @@
-import { Action, Chip, Stack } from "@loomarr/design-system";
+import { Action, Chip, Field, Stack } from "@loomarr/design-system";
 import type { IntentInputProps } from "./intent-input.type";
 
 // IntentInput — the hero (§3). A natural-language channel intent wearing the
@@ -21,20 +21,25 @@ const IntentInput = ({
   };
   return (
     <Stack className={className} gap="control">
-      <textarea
-        value={value}
-        onChange={(e) => onValueChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
+      {/* The design system's text area: the one amber focus border, in place of the AI magenta ring. */}
+      <Field
+        accessibilityLabel="Channel intent"
+        disabled={submitting}
+        multiline
+        numberOfLines={3}
+        onChangeText={onValueChange}
+        onKeyPress={(event) => {
+          const { ctrlKey, key, metaKey } = event.nativeEvent as typeof event.nativeEvent & {
+            ctrlKey?: boolean;
+            metaKey?: boolean;
+          };
+          if (key === "Enter" && (metaKey || ctrlKey)) {
+            event.preventDefault();
             submit();
           }
         }}
         placeholder={placeholder}
-        rows={3}
-        disabled={submitting}
-        aria-label="Channel intent"
-        className="border-input placeholder:text-muted-foreground focus-visible:border-suggest focus-visible:ring-suggest focus-visible:ring-offset-background w-full resize-none rounded-lg border bg-transparent px-4 py-3 text-base leading-relaxed shadow-sm transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        value={value}
       />
 
       {templates.length > 0 && (

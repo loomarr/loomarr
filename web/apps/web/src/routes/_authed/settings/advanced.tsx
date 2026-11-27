@@ -53,12 +53,12 @@ const AdvancedSettings = () => {
   });
 
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <PageHeader
         title="Advanced settings"
         description="Every setting key Loomarr knows about. Search by key, group, or value, or follow its owner to the usual place to change it."
       />
-      <div className="min-h-0 flex-1 overflow-auto p-6">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} overflow="auto" padding={24}>
         <AdvancedSettingsTable
           entries={entries}
           query={query}
@@ -77,7 +77,7 @@ const AdvancedSettings = () => {
             clear.mutate({ key: entry.key });
           }}
         />
-      </div>
+      </Stack>
     </Stack>
   );
 };

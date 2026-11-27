@@ -120,7 +120,7 @@ The daily `housekeeping` job enforces retention:
 | Jobs | `done` and `failed` purged after `JOBS_RETENTION` (30 days); `queued` and `running` never, because age is not evidence that work finished; a done job whose proposal is still `submitted` is kept until the proposal is decided; no channel depends on a purged job |
 | Proposals | `denied` purged after `PROPOSALS_RETENTION` (90 days); `approved` (the audit trail) and `submitted` (a member still waiting) are kept |
 
-Proposals are purged before jobs, because `proposals.job_id` has no foreign key. Filler catalog sync
+Proposals are purged before jobs; purging a job clears `proposals.job_id`. Filler catalog sync
 removes clips that vanished from the media server. Diagnostic files and their rows are deleted together
 by the diagnostics module, not by the store.
 
@@ -175,6 +175,8 @@ Formerly `design.md` §19.
   keeps auth and reads, accepts PostgreSQL writes and rolls back; target failures and a killed
   mid-copy recover on SQLite; an in-flight write drains into the snapshot. Direct SQL is limited to
   fixture setup and independent fidelity checks.
-- **Lifecycle:** the downgrade guard refuses a newer-schema database; the janitor purges expired
+- **Lifecycle:** the downgrade guard refuses a newer-schema database; an upgrade on SQLite first
+  keeps a checked copy under `backups/pre-migration/` beside the database and does not migrate
+  when the copy fails (#4383); the janitor purges expired
   sessions and old jobs; `GET /v1/backup` on SQLite yields a snapshot that restores to a working
   instance.

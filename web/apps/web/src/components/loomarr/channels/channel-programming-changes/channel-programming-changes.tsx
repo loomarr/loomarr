@@ -5,9 +5,10 @@ import type { ProgrammingChangeSideDTO } from "@loomarr/api/models/programmingCh
 import { ProgrammingChangeSideDTOKind } from "@loomarr/api/models/programmingChangeSideDTOKind";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatGuideEpisode, formatGuideTime } from "@loomarr/core/guide";
-import { Stack, Text } from "@loomarr/design-system";
+import { Stack, Text, VisuallyHidden } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 import { PREVIEW_DEBOUNCE_MS } from "@/channels/use-channel-rules-draft";
+import { useBelowSm } from "@/lib/use-phone-width";
 import { EmptyState, ErrorState } from "../../feedback";
 import type { ChannelProgrammingChangesProps } from "./channel-programming-changes.type";
 
@@ -36,33 +37,43 @@ const sideLabel = (side: ProgrammingChangeSideDTO | undefined): string => {
 // One row: time | before → after | winning rule, as the mock's preview rows. On a phone the
 // three columns would squeeze the titles to a word per line, so the change drops to its own
 // full-width line under the time and rule.
-const ChangeRow = ({ change, timeZone }: { change: ProgrammingChangeDTO; timeZone?: string }) => (
-  <Text
-    as="li"
-    className="border-border flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 border-b py-1.5 last:border-b-0"
-    textRole="compact"
-    tone="primary"
-  >
-    <Text as="span" className="w-28 shrink-0" textRole="mono">
-      {formatSlotTime(change.startMs, timeZone)}
-    </Text>
-    <span className="order-last w-full min-w-0 sm:order-none sm:w-auto sm:flex-1">
-      <Text as="span" className="line-through" textRole="compact" tone="secondary">
-        {sideLabel(change.before)}
+const ChangeRow = ({ change, timeZone }: { change: ProgrammingChangeDTO; timeZone?: string }) => {
+  const narrow = useBelowSm();
+  const changed = (
+    <Stack
+      key="change"
+      minWidth={0}
+      render="span"
+      {...(narrow ? { width: "100%" } : { flexBasis: "0%", flexGrow: 1, flexShrink: 1 })}
+    >
+      <Text as="span" textRole="compact" tone="primary">
+        <Text as="span" style={{ textDecoration: "line-through" }} textRole="compact" tone="secondary">
+          {sideLabel(change.before)}
+        </Text>
+        <Text aria-hidden as="span" textRole="compact" tone="secondary">
+          {" → "}
+        </Text>
+        <VisuallyHidden as="span"> becomes </VisuallyHidden>
+        <span>{sideLabel(change.after)}</span>
       </Text>
-      <Text aria-hidden as="span" textRole="compact" tone="secondary">
-        {" → "}
-      </Text>
-      <span className="sr-only"> becomes </span>
-      <span>{sideLabel(change.after)}</span>
-    </span>
-    {change.after ? (
-      <Text as="span" className="ml-auto" textRole="hint" tone="secondary">
+    </Stack>
+  );
+  const rule = change.after ? (
+    <Stack key="rule" marginLeft="auto" render="span">
+      <Text as="span" textRole="hint" tone="secondary">
         {change.after.rule.label}
       </Text>
-    ) : null}
-  </Text>
-);
+    </Stack>
+  ) : null;
+  return (
+    <Stack align="baseline" columnGap="2.5" direction="row" paddingVertical={6} render="li" rowGap="0.5" wrap>
+      <Text as="span" flexShrink={0} minWidth={112} textRole="mono" tone="primary">
+        {formatSlotTime(change.startMs, timeZone)}
+      </Text>
+      {narrow ? [rule, changed] : [changed, rule]}
+    </Stack>
+  );
+};
 
 // ChannelProgrammingChanges — the upcoming slots an unsaved edit changes (programming-design §8.1,
 // #1882). It compares the draft against the saved channel over the channel's schedule window, so
@@ -136,9 +147,13 @@ const ChannelProgrammingChanges = ({
         {/* Rows are text, so the scroll region itself takes the Tab stop (see the cycle
             preview's slot list for the same treatment). */}
         <Stack
-          // `relative` contains each row's absolutely positioned sr-only text: without it they
+          data-scroll="thin"
+          divided
+          maxHeight={384}
+          overflowY="auto"
+          // `relative` contains each row's absolutely positioned hidden text: without it they
           // escape this scroll box's clip and stretch the page by the list's full height.
-          className="scroll-thin relative max-h-96 overflow-y-auto"
+          position="relative"
           render="ul"
           tabIndex={0}
           aria-label="Changed slots"

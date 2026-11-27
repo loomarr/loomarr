@@ -32,6 +32,13 @@ func TestCompositeWhenTokensAreTheAndOfTheirParts(t *testing.T) {
 				if !ok {
 					// A composite that is refused must be one that could not be both parts at once, or
 					// whose parts name two windows (the intersection of two windows is not one window).
+					// A hyphen inside a part ("late-night-weekend") is not a reason: the parts are
+					// found by trying every hyphen, so the order and the spelling are not meaning.
+					sameOrNoWindow := !hasHourWindow(pa) || !hasHourWindow(pb) ||
+						(pa.HourFrom == pb.HourFrom && pa.HourTo == pb.HourTo)
+					if len(want) > 0 && sameOrNoWindow {
+						t.Fatalf("%q did not lower, but its parts share %d hours and name at most one window", token, len(want))
+					}
 					refused++
 					return
 				}
@@ -54,27 +61,45 @@ func TestCompositeWhenTokensAreTheAndOfTheirParts(t *testing.T) {
 	}
 }
 
+func hasHourWindow(p WhenPredicate) bool { return p.HourFrom != 0 || p.HourTo != 0 }
+
 // The named cases from the re-score, in both orders, and the ones that must keep working.
 func TestCompositeWhenTokenExamples(t *testing.T) {
 	vocab := holidayvocab.Default()
 	for token, ok := range map[string]bool{
-		"weekend-weekday":          false,
-		"weekday-weekend":          false,
-		"mornings-primetime":       false,
-		"primetime-mornings":       false,
-		"daytime-late-night":       false,
-		"overnight-mornings":       false,
-		"weekend-mornings":         true,
-		"mornings-weekend":         true, // the order of the parts is not meaning
-		"weekday-primetime":        true,
-		"weekend-late-night":       true,
-		"weekend-prime-time":       true,
-		"weekend-weekend":          true, // the same kind twice says the same thing
-		"mornings-mornings":        true,
-		"weekend-mornings-x":       false,
-		"weekend-mornings-weekday": false,
-		"WEEKEND-Mornings":         true,
-		" weekend-mornings ":       true,
+		"weekend-weekday":    false,
+		"weekday-weekend":    false,
+		"mornings-primetime": false,
+		"primetime-mornings": false,
+		"daytime-late-night": false,
+		"overnight-mornings": false,
+		"weekend-mornings":   true,
+		"mornings-weekend":   true, // the order of the parts is not meaning
+		"weekday-primetime":  true,
+		"weekend-late-night": true,
+		"weekend-prime-time": true,
+		// A part with a hyphen of its own, first or last, in either order.
+		"late-night-weekend":          true,
+		"prime-time-weekend":          true,
+		"early-morning-weekday":       true,
+		"weekday-early-morning":       true,
+		"late night-weekend":          true,
+		"prime time-weekday":          true,
+		"Late-Night-Weekend":          true,
+		"early-morning-early-morning": true, // the same window twice
+		"late-night-late-night":       true,
+		"early-morning-late-night":    false, // two windows
+		"late-night-prime-time":       false,
+		"prime-time-early-morning":    false,
+		"late-night-weekend-x":        false,
+		"x-late-night-weekend":        false,
+		"late-night-weekend-weekday":  false,
+		"weekend-weekend":             true, // the same kind twice says the same thing
+		"mornings-mornings":           true,
+		"weekend-mornings-x":          false,
+		"weekend-mornings-weekday":    false,
+		"WEEKEND-Mornings":            true,
+		" weekend-mornings ":          true,
 	} {
 		t.Run(token, func(t *testing.T) {
 			got, _, gotOK := LowerWhen(token, vocab)

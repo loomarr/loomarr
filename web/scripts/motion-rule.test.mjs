@@ -28,6 +28,9 @@ const ALLOWED = [
   "packages/design-system/src/brand-launch/",
   // Not motion: the Apple TV stage's fixed render scale, a layout transform that never animates.
   "packages/design-system/src/viewport/",
+  // The Library's posters grow a little under the pointer, so a household sees they open (the
+  // maintainer's call, 2026-11-21). This one tile only, never on focus or press.
+  "packages/ui/src/library/library-shelf/",
 ];
 
 // Keyframes whose transform is the effect, not a movement: the TV snow's grain (entry moments only).

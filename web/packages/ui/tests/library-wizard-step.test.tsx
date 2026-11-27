@@ -101,7 +101,7 @@ describe("LibraryWizardStep", () => {
     expect(host.textContent).toContain("Working out how long this takes…");
     expect(host.textContent).toContain("Night Ferry S02E03.mkv");
     expect(host.querySelectorAll('[data-testid="library-twirl"]').length).toBe(1);
-    expect(host.textContent).toContain("You can carry on — titles appear as they're ready.");
+    expect(host.textContent).toContain("You can carry on while it adds them.");
     expect(host.textContent).not.toContain("Make them available to Loomarr");
     cleanup();
   });

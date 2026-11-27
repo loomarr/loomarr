@@ -27,9 +27,11 @@ func testProposalAutoApprovalQuotaAcrossStores(t *testing.T, first, second Store
 	t.Helper()
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
+	// testApprovalCommit approves each proposal as job-<id>.
+	mustOriginJobs(t, first, "job-quota-race-a", "job-quota-race-b")
 	for _, p := range []Proposal{
-		{ID: "quota-race-a", JobID: "quota-job-a", Status: "submitted", CreatedBy: "member", CreatedAt: now, UpdatedAt: now},
-		{ID: "quota-race-b", JobID: "quota-job-b", Status: "submitted", CreatedBy: "member", CreatedAt: now, UpdatedAt: now},
+		{ID: "quota-race-a", JobID: "job-quota-race-a", Status: "submitted", CreatedBy: "member", CreatedAt: now, UpdatedAt: now},
+		{ID: "quota-race-b", JobID: "job-quota-race-b", Status: "submitted", CreatedBy: "member", CreatedAt: now, UpdatedAt: now},
 	} {
 		if err := first.CreateProposal(ctx, p); err != nil {
 			t.Fatal(err)

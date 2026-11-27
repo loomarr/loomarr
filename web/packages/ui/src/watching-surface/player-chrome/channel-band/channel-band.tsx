@@ -17,8 +17,12 @@ import { PreviewPlaybar } from "../preview-playbar";
 // The band (§9.2, variant J, layer 2): identity and what is on. The channel block (CH over the
 // number, in the channel's decade colour) beside the band: the channel's name, Live and the clock;
 // Now with the typed title and the episode line. On desktop and television the film strip is the
-// band's foot, the full width of the band, under the block too; on a phone a thin progress line and
+// band's foot, the full width of the band, under the block too; without one, a thin progress line and
 // Next. The channel is named once, here. The same band is the station-ID card.
+//
+// A phone's band is one row (§9.7, #4132): the block, the title, and the channel with the minutes
+// left. The full band arriving at once on every tune overwhelmed a phone's small screen; the episode,
+// the slot's times and Next are in Info.
 
 interface ChannelBandProps {
   band: PlayerBandData;
@@ -28,11 +32,9 @@ interface ChannelBandProps {
   ident?: boolean;
   live: PlayerLiveState;
   onGoLive: () => void;
-  /** The phone held upright (§9.7): the title may take two lines. */
-  portrait?: boolean;
   /**
    * The film strip, the band's foot on desktop and television (§9.2). Without it the band draws the
-   * progress line and Next, as a phone's does.
+   * progress line and Next.
    */
   schedule?: PlayerSchedule | undefined;
   /** Television: the strip's blocks take remote focus, and focus opens a block's card. */
@@ -270,6 +272,72 @@ const Row = ({ children, gap = 16 }: { children: ReactNode; gap?: number }) => (
   <View style={{ alignItems: "baseline", flexDirection: "row", gap, minWidth: 0 }}>{children}</View>
 );
 
+/** What the phone's one-row band says under the title: a break's return, else the channel and time left. */
+const PhoneLine = ({ band, minutesLeft }: { band: PlayerBandData; minutesLeft: number | undefined }) =>
+  band.inBreak && band.breakMinutesLeft !== undefined ? (
+    <Text density="touch" numberOfLines={1} strong testID="band-break" textRole="cardMeta" tone="info">
+      {`Back in ${band.breakMinutesLeft} min`}
+    </Text>
+  ) : (
+    <Text density="touch" numberOfLines={1} testID="band-channel-name" textRole="cardMeta" tone="secondary">
+      {band.title
+        ? `${band.channelName}${minutesLeft === undefined ? "" : ` · ${minutesLeft} min left`}`
+        : "Nothing scheduled"}
+    </Text>
+  );
+
+/** A phone's band (§9.7, #4132): the block, then the title over the channel and the minutes left. */
+const PhoneBand = ({
+  band,
+  behind,
+  minutesLeft,
+  onGoLive,
+}: {
+  band: PlayerBandData;
+  behind: boolean;
+  minutesLeft: number | undefined;
+  onGoLive: () => void;
+}) => (
+  <View style={{ maxWidth: BAND_MAX_WIDTH, minWidth: 0 }} testID="channel-band">
+    <View style={{ alignItems: "stretch", flexDirection: "row", minHeight: 56, minWidth: 0 }}>
+      <BarsEdge height={4} sweepKey={band.channelNumber} />
+      <ChannelBlock
+        decade={band.decade}
+        density="touch"
+        number={band.channelNumber}
+        width={BLOCK_WIDTH.touch}
+      />
+      <View
+        style={{
+          alignItems: "center",
+          backgroundColor: playerChrome.band,
+          borderBottomRightRadius: 12,
+          borderColor: playerChrome.hairline,
+          borderLeftWidth: 0,
+          borderTopRightRadius: 12,
+          borderWidth: 1,
+          flex: 1,
+          flexDirection: "row",
+          gap: 12,
+          minWidth: 0,
+          paddingHorizontal: 16,
+          paddingVertical: 8,
+        }}
+      >
+        <View style={{ flex: 1, minWidth: 0 }}>
+          {/* With nothing scheduled the channel's name is the line to read, and the line under it says so. */}
+          <Text density="touch" numberOfLines={1} strong testID="band-title" textRole="label" tone="primary">
+            {band.title ?? band.channelName}
+          </Text>
+          <PhoneLine band={band} minutesLeft={minutesLeft} />
+        </View>
+        {/* Live is what a channel is; only being behind it needs saying, and Go live says it. */}
+        {behind ? <GoLive density="touch" onPress={onGoLive} /> : null}
+      </View>
+    </View>
+  </View>
+);
+
 const ChannelBand = ({
   band,
   density,
@@ -277,7 +345,6 @@ const ChannelBand = ({
   ident = false,
   live,
   onGoLive,
-  portrait = false,
   schedule,
   tv = false,
 }: ChannelBandProps) => {
@@ -294,6 +361,9 @@ const ChannelBand = ({
     band.stopMs !== undefined && band.clockMs !== undefined
       ? Math.max(1, Math.round((band.stopMs - band.clockMs) / 60_000))
       : undefined;
+
+  if (!wide && !ident)
+    return <PhoneBand band={band} behind={behind} minutesLeft={minutesLeft} onGoLive={onGoLive} />;
 
   const header = (
     <View
@@ -334,15 +404,13 @@ const ChannelBand = ({
         </Text>
         {ident ? null : (
           <View style={{ alignItems: "center", flexDirection: "row", flexShrink: 0, gap: 16 }}>
-            {behind && wide && band.behindLabel ? (
+            {behind && band.behindLabel ? (
               <Text density={text} textRole="cardMeta" tone="muted">
                 {band.behindLabel}
               </Text>
             ) : null}
             {behind ? <GoLive density={text} onPress={onGoLive} /> : <LiveMark density={text} />}
-            {band.clockMs === undefined || (behind && !wide) ? null : (
-              <Clock density={text} label={formatTime(band.clockMs)} />
-            )}
+            {band.clockMs === undefined ? null : <Clock density={text} label={formatTime(band.clockMs)} />}
           </View>
         )}
       </View>
@@ -364,7 +432,7 @@ const ChannelBand = ({
                 and a television's large title alone fills the row. */}
             <Text
               density={text}
-              numberOfLines={portrait ? 2 : 1}
+              numberOfLines={1}
               strong
               style={{ flexShrink: 1, minWidth: 0 }}
               testID="band-title"
@@ -460,17 +528,6 @@ const ChannelBand = ({
             >
               {band.next.name}
             </Text>
-            {behind && !wide && !portrait && band.behindLabel ? (
-              <Text
-                density={text}
-                numberOfLines={1}
-                style={{ flexShrink: 0, marginLeft: "auto" }}
-                textRole="cardMeta"
-                tone="muted"
-              >
-                {band.behindLabel}
-              </Text>
-            ) : null}
           </View>
         </Row>
       )}

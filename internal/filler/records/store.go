@@ -77,6 +77,8 @@ type FillerAcquisitionStore interface {
 	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []acquisition.Artifact) error
 	// AcquisitionArtifactForClip resolves provenance and recovery state for a discovered clip.
 	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (acquisition.Artifact, bool, error)
+	// AcquisitionHasArtifacts reports whether any artifact row records the acquisition.
+	AcquisitionHasArtifacts(ctx context.Context, acquisitionID string) (bool, error)
 	// ListRecoverableAcquisitionArtifacts exposes bounded staged/published/repair work.
 	ListRecoverableAcquisitionArtifacts(ctx context.Context, limit int) ([]acquisition.Artifact, error)
 	// ListRecoverableAcquisitionArtifactsAfter continues a stable bounded recovery scan.
@@ -91,6 +93,8 @@ type FillerAcquisitionStore interface {
 	// AcquisitionRepairSummary reports all currently unresolved artifact repairs without loading
 	// the bounded acquisition history page.
 	AcquisitionRepairSummary(ctx context.Context) (acquisition.RepairSummary, error)
+	// DownloadLedger remembers each item that has not downloaded yet, so it retries on its own.
+	acquisition.DownloadLedger
 }
 
 // FillerInferenceStore owns append-only call attribution and the atomic budget
@@ -177,11 +181,6 @@ type FillerSplitProposalStore interface {
 	// CompleteSplitConfirmation atomically transitions a fully reviewed split proposal, retained
 	// parent, replacement pipelines, and selected child generation (§10 V65).
 	CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error)
-	// Put/ListStructureSplitShadowDecisions own the immutable V67 compatibility-versus-complete-
-	// plan history. It survives proposal consumption so publication cannot erase disagreement.
-	PutStructureSplitShadowDecision(ctx context.Context, decision filler.StructureSplitShadowDecision) error
-	GetStructureSplitShadowDecision(ctx context.Context, id string) (filler.StructureSplitShadowDecision, bool, error)
-	ListStructureSplitShadowDecisions(ctx context.Context, clipHash string, limit int) ([]filler.StructureSplitShadowDecision, error)
 }
 
 // FillerPipelineStore is the per-clip ingest pipeline (§10 V51b, migration 00044) and terminal
@@ -205,6 +204,13 @@ type FillerPipelineStore interface {
 	// RetireRejectedClip reaps a fetched, unpinned clip rejected no later than rejectedBy and marks
 	// its row's files deleted, in one transaction; false when the row no longer qualifies.
 	RetireRejectedClip(ctx context.Context, hash string, rejectedBy, at time.Time) (bool, error)
+	// RetireReadyClip removes and reaps a fetched, unpinned Ready clip and marks its row's files
+	// deleted, in one transaction, so a full budget can evict it; false when it no longer qualifies.
+	RetireReadyClip(ctx context.Context, hash string, at time.Time) (bool, error)
+	// ListSettledReels and RetireSettledReel let go of a split reel Loomarr fetched once every piece
+	// cut from it is settled (#4421): the row is reaped and kept, its files go to quarantine.
+	ListSettledReels(ctx context.Context) ([]string, error)
+	RetireSettledReel(ctx context.Context, hash string, at time.Time) (bool, error)
 	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first, with a
 	// total order so one clip cannot starve while another is worked repeatedly.
 	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]pipelinestate.ClipPipeline, error)

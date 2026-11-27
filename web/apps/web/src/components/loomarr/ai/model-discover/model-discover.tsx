@@ -1,6 +1,6 @@
 import type { DiscoverModelView } from "@loomarr/api/models/discoverModelView";
 import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
-import { Action, ActivityIndicator, Badge, Stack, Text } from "@loomarr/design-system";
+import { Action, ActivityIndicator, Badge, Stack, Text, TextLink } from "@loomarr/design-system";
 import { useState } from "react";
 import type { ModelDiscoverProps } from "./model-discover.type";
 
@@ -38,14 +38,16 @@ const ModelDiscover = ({
         <Text as="p" textRole="cardLabel" tone="secondary">
           Need a different model?
         </Text>
-        <Text as="p" className="mt-0.5" textRole="hint" tone="secondary">
-          These fit your hardware and can generate lineups. Download one to add it to the list above.
-        </Text>
+        <Stack marginTop={2}>
+          <Text as="p" textRole="hint" tone="secondary">
+            These fit your hardware and can generate lineups. Download one to add it to the list above.
+          </Text>
+        </Stack>
       </div>
 
       {loading && (
-        <Stack align="center" className="text-muted-foreground" direction="row" gap="inline" render="p">
-          <ActivityIndicator decorative size="compact" tone="inherit" />
+        <Stack align="center" direction="row" gap="inline" render="p">
+          <ActivityIndicator decorative size="compact" tone="secondary" />
           <Text as="span" textRole="hint" tone="secondary">
             Finding compatible models…
           </Text>
@@ -55,14 +57,9 @@ const ModelDiscover = ({
       {sourceError && (
         <Text as="p" textRole="hint" tone="secondary">
           Couldn't reach the model catalog.{" "}
-          <a
-            href="https://huggingface.co/models?library=gguf&sort=downloads"
-            target="_blank"
-            rel="noreferrer"
-            className="text-signal underline underline-offset-2"
-          >
-            Browse on huggingface.co ↗
-          </a>
+          <TextLink external href="https://huggingface.co/models?library=gguf&sort=downloads">
+            Browse on huggingface.co
+          </TextLink>
         </Text>
       )}
 
@@ -73,20 +70,21 @@ const ModelDiscover = ({
       )}
 
       {visible && visible.length > 0 && (
-        <Stack className="divide-border/60 border-border/60 divide-y rounded-md border" render="ul">
+        <Stack borderColor="borderDecorative" borderRadius={6} borderWidth={1} divided render="ul">
           {visible.map((m: DiscoverModelView) => {
             const isPulling = pulling?.tag === m.pullRef;
             const progress = isPulling ? pulling?.percent : undefined;
             return (
               <Stack
                 align="center"
-                className="px-3 py-2"
                 direction="row"
                 gap="control"
                 key={m.id}
+                paddingHorizontal={12}
+                paddingVertical={8}
                 render="li"
               >
-                <div className="min-w-0 flex-1">
+                <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
                   <Stack align="center" direction="row" gap="inline" render="p">
                     <span className="truncate" title={m.id}>
                       <Text as="span" textRole="cardLabel" tone="primary">
@@ -101,26 +99,33 @@ const ModelDiscover = ({
                   </Stack>
                   {/* The note carries the fit in plain words ("fits comfortably" /
                       "fits, but tight on VRAM"), so no separate fit badge is needed. */}
-                  <Text
-                    as="p"
-                    className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5"
-                    textRole="hint"
-                    tone="secondary"
+                  <Stack
+                    align="center"
+                    columnGap="2"
+                    direction="row"
+                    marginTop={2}
+                    render="p"
+                    rowGap="0.5"
+                    wrap
                   >
-                    <span>{m.note}</span>
-                    <span aria-hidden className="text-static-400">
+                    <Text as="span" textRole="hint" tone="secondary">
+                      {m.note}
+                    </Text>
+                    <Text aria-hidden as="span" textRole="hint" tone="secondary">
                       ·
-                    </span>
-                    <span className="text-static-400">~{formatGiB(m.sizeGiB)}</span>
+                    </Text>
+                    <Text as="span" textRole="hint" tone="secondary">
+                      ~{formatGiB(m.sizeGiB)}
+                    </Text>
                     {isPulling && (
-                      <span className="text-tune">
+                      <Text as="span" textRole="hint" tone="info">
                         downloading
                         {progress !== undefined ? ` ${formatPercentPoints(progress)}` : "…"}
-                      </span>
+                      </Text>
                     )}
-                  </Text>
-                </div>
-                <div className="shrink-0">
+                  </Stack>
+                </Stack>
+                <Stack flexShrink={0}>
                   <Action
                     disabled={isPulling}
                     icon={isPulling ? "loading" : "download"}
@@ -129,7 +134,7 @@ const ModelDiscover = ({
                   >
                     {isPulling ? "Getting…" : "Get"}
                   </Action>
-                </div>
+                </Stack>
               </Stack>
             );
           })}

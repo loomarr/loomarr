@@ -14,6 +14,13 @@ ci-lint: ## actionlint over .github/workflows — catches what YAML parsing cann
 retired-verify: ## retired identifiers must not appear as live instructions (CI red on drift)
 	@./scripts/check-retired.sh
 
+.PHONY: migration-order-verify migration-order-test
+migration-order-verify: ## every migration this branch adds is numbered above BASE's newest (default origin/main)
+	@./scripts/check-migration-order.sh --base "$(or $(BASE),origin/main)"
+
+migration-order-test: ## the migration order check's contract, on throwaway repositories
+	@./scripts/check-migration-order-test.sh
+
 ## ---- config docs (settings registry) ------------------------------------
 
 .PHONY: config-docs

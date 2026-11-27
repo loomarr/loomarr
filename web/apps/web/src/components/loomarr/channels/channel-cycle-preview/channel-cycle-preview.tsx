@@ -10,7 +10,6 @@ import { guideWallClock, guideWallTime } from "@loomarr/core/guide";
 import { Action, Badge, DateField, Disclosure, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
-import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState } from "../../feedback";
 import type { ChannelCyclePreviewProps } from "./channel-cycle-preview.type";
 import { nextMonthDayAt, nextWeekdayAt } from "./time-presets";
@@ -83,16 +82,16 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
       <Stack
         align="center"
         aria-label="Commercial break"
-        className="py-1.5"
         direction="row"
         gap="inline"
+        paddingVertical={6}
         render="li"
       >
-        <div className="bg-border h-px flex-1" />
+        <Stack backgroundColor="borderDecorative" flexBasis="0%" flexGrow={1} height={1} />
         <Text as="span" textRole="hint" tone="secondary">
           Commercial break
         </Text>
-        <div className="bg-border h-px flex-1" />
+        <Stack backgroundColor="borderDecorative" flexBasis="0%" flexGrow={1} height={1} />
       </Stack>
     );
   }
@@ -105,18 +104,18 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
   return (
     <Stack
       align="center"
-      className={cn(
-        "border-border rounded-md border px-3 py-2",
-        pending ? "border-dashed bg-transparent" : "bg-card",
-      )}
+      backgroundColor={pending ? "transparent" : "$surfaceRaised"}
+      borderColor="borderDecorative"
+      borderRadius={6}
+      borderStyle={pending ? "dashed" : "solid"}
+      borderWidth={1}
       direction="row"
-      // The list caps its height and scrolls; a shrinkable row (Stack's default) with View's
-      // min-height 0 would squeeze below its own padding instead of scrolling.
-      flexShrink={0}
       gap="control"
+      paddingHorizontal={12}
+      paddingVertical={8}
       render="li"
     >
-      <Text as="span" className="w-6 shrink-0 text-right" textRole="mono">
+      <Text as="span" style={{ flexShrink: 0, width: 24 }} textAlign="right" textRole="mono">
         {index + 1}
       </Text>
       {pending ? (
@@ -124,32 +123,48 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
       ) : (
         <Icon decorative glyph={icons.channels} size="compact" tone="muted" />
       )}
-      <Text
-        as="span"
-        className={cn("flex min-w-0 flex-1 items-baseline gap-1.5", pending && "italic")}
-        textRole="compact"
-        tone={pending ? "secondary" : "primary"}
+      <Stack
+        align="baseline"
+        direction="row"
+        flexBasis="0%"
+        flexGrow={1}
+        flexShrink={1}
+        gap="1.5"
+        minWidth={0}
+        render="span"
       >
         {showPrefix ? (
-          <Text as="span" className="shrink-0" textRole="cardLabel" tone="primary">
+          <Text as="span" style={{ flexShrink: 0 }} textRole="cardLabel" tone="primary">
             {showPrefix}
           </Text>
         ) : null}
         {se ? (
-          <Text as="span" className="shrink-0" textRole="mono">
+          <Text as="span" style={{ flexShrink: 0 }} textRole="mono">
             {se}
           </Text>
         ) : null}
         {/* The em dash separates the show/SxxExx from the episode title, only when there's a
             show prefix to separate from — a movie (title == its own name) just shows its title. */}
         {showPrefix ? (
-          <Text as="span" className="shrink-0" textRole="compact" tone="secondary">
+          <Text as="span" style={{ flexShrink: 0 }} textRole="compact" tone="secondary">
             —
           </Text>
         ) : null}
-        <span className="truncate">{episodeTitle}</span>
-        {pending ? <span className="shrink-0"> (coming soon)</span> : null}
-      </Text>
+        <Text
+          as="span"
+          numberOfLines={1}
+          style={pending ? { fontStyle: "italic" } : undefined}
+          textRole="compact"
+          tone={pending ? "secondary" : "primary"}
+        >
+          {episodeTitle}
+        </Text>
+        {pending ? (
+          <Text as="span" style={{ flexShrink: 0, fontStyle: "italic" }} textRole="compact" tone="secondary">
+            (coming soon)
+          </Text>
+        ) : null}
+      </Stack>
       {slot.part && slot.part > 0 ? (
         <Badge shape="square" tone="neutral">
           Part {slot.part}
@@ -209,7 +224,10 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
             and the panel must not run off the page. tabIndex + aria-label keep the region
             keyboard-reachable (WCAG 2.1.1) — the rows are non-focusable text. */}
       <Stack
-        className="scroll-thin divide-border max-h-64 divide-y overflow-y-auto"
+        data-scroll="thin"
+        divided
+        maxHeight={256}
+        overflowY="auto"
         render="ul"
         tabIndex={0}
         aria-label="Titles not airing"
@@ -221,11 +239,12 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
             // (it holds the SxxEyy), and the index closes the remaining gap.
             // biome-ignore lint/suspicious/noArrayIndexKey: disambiguator, not the sole key
             key={`${item.key}-${item.title}-${i}`}
-            className="px-3 py-2"
+            paddingHorizontal={12}
+            paddingVertical={8}
             gap="0.5"
             render="li"
           >
-            <Text as="span" className="truncate" textRole="compact" tone="primary">
+            <Text as="span" numberOfLines={1} textRole="compact" tone="primary">
               {item.title || item.key}
             </Text>
             <Text as="span" textRole="hint" tone={isSafetyReason(item.reason) ? "warning" : "secondary"}>
@@ -278,12 +297,22 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
       onExpandedChange={setExpanded}
     >
       {omitted > 0 ? (
-        <Text as="p" className="border-border border-b px-3 py-2" textRole="hint" tone="secondary">
-          {omitted} additional {omitted === 1 ? "decision" : "decisions"} omitted by the trace bound.
-        </Text>
+        <Stack
+          borderBottomWidth={1}
+          borderColor="borderDecorative"
+          paddingHorizontal={12}
+          paddingVertical={8}
+        >
+          <Text as="p" textRole="hint" tone="secondary">
+            {omitted} additional {omitted === 1 ? "decision" : "decisions"} omitted by the trace bound.
+          </Text>
+        </Stack>
       ) : null}
       <Stack
-        className="scroll-thin divide-border max-h-72 divide-y overflow-y-auto"
+        data-scroll="thin"
+        divided
+        maxHeight={288}
+        overflowY="auto"
         render="ul"
         tabIndex={0}
         aria-label="Scheduler decisions"
@@ -293,11 +322,12 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
             // Repeated airings legitimately share key/title/reason; position + index keep rows distinct.
             // biome-ignore lint/suspicious/noArrayIndexKey: index disambiguates repeated trace facts
             key={`${fact.stage}-${fact.key ?? "gap"}-${fact.reason}-${fact.cyclePosition ?? "x"}-${i}`}
-            className="px-3 py-2"
+            paddingHorizontal={12}
+            paddingVertical={8}
             gap="0.5"
             render="li"
           >
-            <Text as="span" className="truncate" textRole="compact" tone="primary">
+            <Text as="span" numberOfLines={1} textRole="compact" tone="primary">
               {fact.title || fact.key || "Commercial gap"}
             </Text>
             <Text as="span" textRole="hint" tone="secondary">
@@ -387,7 +417,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
           value={toDatetimeLocalValue(at, timeZone)}
           width={224}
         />
-        <Stack className="pb-0.5" direction="row" gap="1.5" wrap>
+        <Stack direction="row" gap="1.5" paddingBottom={2} wrap>
           {TIME_PRESETS.map((preset) => (
             <Action key={preset.label} onPress={() => setAt(preset.at(timeZone))} variant="outline">
               {preset.label}
@@ -420,9 +450,14 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
         <Stack gap="control">
           <Stack
             align="center"
-            className="border-border bg-card rounded-md border px-3 py-2.5"
+            backgroundColor="$surfaceRaised"
+            borderColor="borderDecorative"
+            borderRadius={6}
+            borderWidth={1}
             direction="row"
             gap="inline"
+            paddingHorizontal={12}
+            paddingVertical={10}
             wrap
           >
             <Icon decorative glyph={icons.filler} size="compact" tone="muted" />
@@ -441,9 +476,11 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
                 No rule active: base policy
               </Text>
             )}
-            <Text as="span" className="ml-auto" textRole="mono">
-              {humanWindow(body.windowMs)}
-            </Text>
+            <Stack marginLeft="auto" render="span">
+              <Text as="span" textRole="mono">
+                {humanWindow(body.windowMs)}
+              </Text>
+            </Stack>
           </Stack>
 
           {!body.slots || body.slots.length === 0 ? (
@@ -461,8 +498,10 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
             // orphan the <li> children and trip the `listitem` rule); aria-label names the
             // list without changing that role.
             <Stack
-              className="scroll-thin max-h-96 overflow-y-auto"
+              data-scroll="thin"
               gap="1.5"
+              maxHeight={384}
+              overflowY="auto"
               render="ul"
               tabIndex={0}
               aria-label="Scheduled slots"

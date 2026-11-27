@@ -12,7 +12,7 @@ const ProblemCard = ({ entry, onOpenTitle }: { entry: ProblemEntry; onOpenTitle:
         <Stack flexShrink={0} width={wide ? 144 : 112}>
           <LibraryPoster art={entry.poster} big name={entry.name} />
         </Stack>
-        <Stack flexBasis={240} flexGrow={1} gap="control" minWidth={0}>
+        <Stack flexBasis={240} flexGrow={1} flexShrink={1} gap="control" minWidth={0}>
           <Text textRole="title">{entry.headline}</Text>
           <Text textRole="body" tone="secondary">
             {entry.reason}

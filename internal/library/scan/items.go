@@ -6,7 +6,6 @@ import (
 	"errors"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
@@ -14,11 +13,15 @@ import (
 )
 
 // Library → Items (#2151 step 10): the movies and series the scanner wrote, and one title's page.
+// The page reads the Library's own rows (#4476); each origin's observation JSON is evidence only
+// (decision 39).
 
 // ItemDetail is one title as its page shows it.
 type ItemDetail struct {
 	librarystore.LibraryItemSummary
-	// Facts is what the scanner resolved for it: overview, genres, rating, runtime.
+	// Facts is what the scanner resolved for it: name, year, original title, overview, tagline,
+	// premiere date, score, genres, studios, countries, rating, runtime, and People (each credit's
+	// name, role and character, in billing order).
 	Facts inventory.ItemFacts
 	// From is where its details came from.
 	From DetailsFrom
@@ -30,6 +33,8 @@ type ItemDetail struct {
 	Seasons []Season
 	// Channels are the channels whose lineup holds it, by number.
 	Channels []librarystore.LibraryItemChannel
+	// Still is the image hash of an episode's still (#4476); "" for none, and for a movie or series.
+	Still string
 }
 
 // ItemFile is one of a movie's files, with what its header says once read; zero until then.
@@ -38,71 +43,75 @@ type ItemFile struct {
 	LengthMillis int64
 	// Picture is its first video stream; nil for none.
 	Picture *Picture
-	// AudioChannels is the sound that plays: the default audio stream, else the first.
+	// AudioChannels is the sound that plays: the file's default audio stream, else its first.
 	AudioChannels int
-	// Subtitles is each subtitle stream's language in order, "" where the file doesn't say.
+	// Subtitles is each subtitle track's language in order, the file's own then those beside it,
+	// "" where it doesn't say.
 	Subtitles []string
 	// Edition is the labelled version of the title it is, "" for the default (decision 54).
 	Edition string
 	// Part is which part of a movie in parts it is, from 1; 0 for a whole file.
 	Part int
-	// Extra is a copy that never plays, because another of the title's files in its edition does
-	// (decisions 37, 54).
+	// Container is the header's format name; Bitrate its overall rate in bit/s, 0 unknown.
+	Container string
+	Bitrate   int64
+	// Streams are every track in index order, the file's own then those beside it; Chapters its
+	// chapter marks in order.
+	Streams  []librarystore.LibraryStream
+	Chapters []librarystore.LibraryChapter
+	// Extra is a copy that never plays, because another of the title's listed files plays in its
+	// place (decisions 37, 54); see extraCopy.
 	Extra bool
-	// managed is true when its arr lists it.
-	managed bool
+	// sourced is true when it has a source row; plays is that row's plays.
+	sourced, plays bool
 }
 
-// markExtras marks every file but the ones that play in its edition, its one copy or each of its
-// parts, as an extra copy (decisions 37, 54). One file is never an extra, nor is a title's only
-// copy of an edition.
-func markExtras(files []ItemFile) {
-	if len(files) < 2 {
-		return
+// playsInPlaceOf is the listed files that play in files[i]'s place: each other file with a source
+// row that plays, in the same edition and either the same part or as a whole file (an edition
+// with a whole file plays it, not its parts). It is none when files[i] plays or has no source row
+// yet. The source rows follow the inventory and the list follows the walk, and the two disagree
+// while a removal waits (a pass that could not hear from an arr marks no origin unseen) and while
+// a new file waits for its first write. So a copy whose playing file has gone from the list has
+// none, and a file with no source row is neither removable nor in another's place.
+func playsInPlaceOf(files []ItemFile, i int) []ItemFile {
+	f := files[i]
+	if !f.sourced || f.plays {
+		return nil
 	}
-	plays := playingCopies(len(files), func(i int) string { return files[i].Edition },
-		func(i int) int { return files[i].Part },
-		func(i int) bool { return files[i].managed }, func(i int) int {
-			if files[i].Picture == nil {
-				return 0
-			}
-			return files[i].Picture.Width * files[i].Picture.Height
-		}, func(i int) int64 { return files[i].Size }, func(i int) int64 { return files[i].LengthMillis })
-	for i := range files {
-		files[i].Extra = !plays[i]
-	}
-}
-
-// playingCopy is which of a title's n copies plays (decision 37): the file its arr lists, else
-// the sharpest picture, else the biggest file; the first of equals. A copy under half as long as
-// the title's longest never plays while a whole one is there: it is an extra the walk could not
-// tell by its name, such as a 1080p trailer beside a DVD's film. A copy whose length is not yet
-// read is not held back.
-func playingCopy(n int, managed func(int) bool, pixels func(int) int, size func(int) int64, length func(int) int64) int {
-	var longest int64
-	for i := range n {
-		longest = max(longest, length(i))
-	}
-	short := func(i int) bool { return length(i) > 0 && length(i) < longest/2 }
-	best := 0
-	for i := 1; i < n; i++ {
-		if c := cmp.Or(compareBool(!short(i), !short(best)), compareBool(managed(i), managed(best)),
-			cmp.Compare(pixels(i), pixels(best)), cmp.Compare(size(i), size(best))); c > 0 {
-			best = i
+	var out []ItemFile
+	for j, g := range files {
+		if j != i && g.sourced && g.plays && editionKey(g.Edition) == editionKey(f.Edition) && (g.Part == f.Part || g.Part == 0) {
+			out = append(out, g)
 		}
 	}
-	return best
+	return out
 }
 
-func compareBool(a, b bool) int {
-	switch {
-	case a == b:
-		return 0
-	case a:
-		return 1
-	default:
-		return -1
+// extraCopy is whether files[i] is an extra copy: a listed file plays in its place, so a title's
+// last file is never offered for removal.
+func extraCopy(files []ItemFile, i int) bool { return len(playsInPlaceOf(files, i)) > 0 }
+
+// PlayingCopy is the file of d that plays when the title airs: of the files whose source row
+// plays, the default edition's before a labelled one, then a whole file or its first part, then
+// list order. ok is false for a series, which lists its episodes instead, and for a title none
+// of whose files plays yet.
+func (d ItemDetail) PlayingCopy() (f ItemFile, ok bool) {
+	rank := func(g ItemFile) int {
+		r := 0
+		if g.Edition != "" {
+			r += 2
+		}
+		if g.Part > 1 {
+			r++
+		}
+		return r
 	}
+	for _, g := range d.Files {
+		if g.sourced && g.plays && (!ok || rank(g) < rank(f)) {
+			f, ok = g, true
+		}
+	}
+	return f, ok
 }
 
 // Picture is a video stream's size and range.
@@ -111,19 +120,26 @@ type Picture struct {
 	HDR           bool
 }
 
-// itemFile is f with what its header facts say.
-func itemFile(f librarystore.LibraryFile, facts inventory.SourceFacts) ItemFile {
-	out := ItemFile{LibraryFile: f, LengthMillis: facts.DurationMillis}
-	var audio *inventory.Stream
-	for i, s := range facts.Streams {
-		switch s.Kind {
+// itemFile is f with what its source row says; a file with no row yet is zero beside f.
+func itemFile(f librarystore.LibraryFile, src librarystore.LibrarySource, ok bool) ItemFile {
+	out := ItemFile{LibraryFile: f}
+	if !ok {
+		return out
+	}
+	out.sourced = true
+	out.LengthMillis, out.Edition, out.Part, out.plays = src.DurationMs, src.Edition, src.Part, src.Plays
+	out.Container, out.Bitrate, out.Streams, out.Chapters = src.Container, src.Bitrate, src.Streams, src.Chapters
+	var audio *librarystore.LibraryStream
+	for i, s := range src.Streams {
+		own := s.ExternalRef == ""
+		switch inventory.StreamKind(s.Kind) {
 		case inventory.StreamVideo:
-			if out.Picture == nil {
-				out.Picture = &Picture{Width: s.Width, Height: s.Height, HDR: s.HDR}
+			if own && out.Picture == nil {
+				out.Picture = &Picture{Width: s.Width, Height: s.Height, HDR: s.HDR != ""}
 			}
 		case inventory.StreamAudio:
-			if audio == nil || (s.Disposition.Default && !audio.Disposition.Default) {
-				audio = &facts.Streams[i]
+			if own && (audio == nil || (s.Default && !audio.Default)) {
+				audio = &src.Streams[i]
 			}
 		case inventory.StreamSubtitle:
 			out.Subtitles = append(out.Subtitles, s.Language)
@@ -133,6 +149,27 @@ func itemFile(f librarystore.LibraryFile, facts inventory.SourceFacts) ItemFile 
 		out.AudioChannels = audio.Channels
 	}
 	return out
+}
+
+// sourceOf is the row of the file at path among sources.
+func sourceOf(sources []librarystore.LibrarySource, path string) (librarystore.LibrarySource, bool) {
+	for _, s := range sources {
+		if s.Path == path {
+			return s, true
+		}
+	}
+	return librarystore.LibrarySource{}, false
+}
+
+// detailsFrom is the page's provenance from a library row's _from columns. An episode's rating
+// taken from its show (librarystore.RatingFromShow) names no provider.
+func detailsFrom(f librarystore.LibraryFrom) DetailsFrom {
+	rating := mp.ID(f.Rating)
+	if f.Rating == librarystore.RatingFromShow {
+		rating = ""
+	}
+	return DetailsFrom{Name: mp.ID(f.Name), Description: mp.ID(f.Overview), Rating: rating,
+		Year: mp.ID(f.Year), Premiere: mp.ID(f.Premiere), Score: mp.ID(f.Score), Runtime: mp.ID(f.Runtime)}
 }
 
 // Season is one season's episodes in order.
@@ -153,6 +190,14 @@ type Episode struct {
 	// FromFile is an episode named and numbered by its file until its show's order is said
 	// (#2151 decision 53).
 	FromFile bool
+	// Named is true when a catalogue or sidecar gave its name; false while it is its file's.
+	Named bool
+	// Overview is its own story. LengthMillis is the measured length of its files that play once
+	// each is read, else the catalog's runtime; 0 when neither is known.
+	Overview     string
+	LengthMillis int64
+	// Still is the image hash of its still (#4476); "" for none.
+	Still string
 }
 
 // Items lists the movies and series with a present file.
@@ -160,9 +205,14 @@ func (l *Library) Items(ctx context.Context, q librarystore.LibraryItemQuery) (l
 	return l.ItemStore.ListLibraryItems(ctx, q)
 }
 
-// Item is one title's page; store.ErrNotFound when it has no present file.
-func (l *Library) Item(ctx context.Context, id string) (ItemDetail, error) {
-	summary, err := l.ItemStore.LibraryItem(ctx, id)
+// Item is one title's page; store.ErrNotFound when it has no present file, and for a member when
+// a household member doesn't read it (librarystore.MemberLibraryItem).
+func (l *Library) Item(ctx context.Context, id string, member bool) (ItemDetail, error) {
+	read := l.ItemStore.LibraryItem
+	if member {
+		read = l.ItemStore.MemberLibraryItem
+	}
+	summary, err := read(ctx, id)
 	if err != nil {
 		return ItemDetail{}, err
 	}
@@ -170,27 +220,35 @@ func (l *Library) Item(ctx context.Context, id string) (ItemDetail, error) {
 	if detail.Channels, err = l.ItemStore.LibraryItemChannels(ctx, id); err != nil {
 		return ItemDetail{}, err
 	}
-	item, err := l.scanned(ctx, id)
+	page, err := l.ItemStore.LibraryItemDetail(ctx, id)
 	if err != nil {
 		return ItemDetail{}, err
 	}
-	detail.Facts, detail.From = item.facts, item.from
+	detail.Facts = inventory.ItemFacts{Name: summary.Name, ProductionYear: summary.Year, Overview: page.Overview,
+		OriginalTitle: page.OriginalTitle, Tagline: page.Tagline, PremiereDate: page.PremiereDate,
+		CommunityScore: page.Score, Genres: page.Genres, Studios: page.Studios, Countries: page.Countries,
+		OfficialRating: page.Rating, RuntimeMillis: page.RuntimeMs}
+	for _, c := range page.Credits {
+		detail.Facts.People = append(detail.Facts.People, inventory.Person{Name: c.Name, Role: c.Role, Character: c.Character})
+	}
+	detail.From = detailsFrom(page.From)
+	detail.Still = page.Still
 	files, err := l.ItemStore.LibraryItemFiles(ctx, id)
 	if err != nil {
 		return ItemDetail{}, err
 	}
 	if summary.Kind != string(kindSeries) {
 		for _, f := range files {
-			source := item.sources[f.Path]
-			file := itemFile(f, source.facts)
-			file.managed, file.Edition, file.Part = source.managed, source.edition, source.part
-			detail.Files = append(detail.Files, file)
+			src, ok := sourceOf(page.Sources, f.Path)
+			detail.Files = append(detail.Files, itemFile(f, src, ok))
 		}
-		markExtras(detail.Files)
+		for i := range detail.Files {
+			detail.Files[i].Extra = extraCopy(detail.Files, i)
+		}
 		return detail, nil
 	}
-	detail.Seasons, detail.EpisodeNamesFrom, err = l.seasons(ctx, files)
-	return detail, err
+	detail.Seasons, detail.EpisodeNamesFrom = seasons(files, page.Episodes)
+	return detail, nil
 }
 
 // Decider is what decides which title an item is, as "Wrong title?" needs it (decision 26).
@@ -267,9 +325,10 @@ func (l *Library) pass(files []librarystore.LibraryFilePath) {
 	}
 }
 
-// seasons groups a series' episode files by the episode item each was written as, and says where
-// most of the episode names came from.
-func (l *Library) seasons(ctx context.Context, files []librarystore.LibraryFile) ([]Season, mp.ID, error) {
+// seasons groups a series' episode files by the item each was written as, and says where most of
+// the episode names came from. A file not yet written as an item is an episode with no name or
+// number.
+func seasons(files []librarystore.LibraryFile, episodes map[string]librarystore.LibraryDetailEpisode) ([]Season, mp.ID) {
 	ready := map[string]bool{}
 	var order []string
 	for _, f := range files {
@@ -284,17 +343,13 @@ func (l *Library) seasons(ctx context.Context, files []librarystore.LibraryFile)
 	bySeason := map[int][]Episode{}
 	named := map[mp.ID]int{}
 	for _, id := range order {
-		episode, err := l.scanned(ctx, id)
-		if err != nil {
-			return nil, "", err
-		}
-		facts := episode.facts
-		bySeason[facts.SeasonNumber] = append(bySeason[facts.SeasonNumber], Episode{
-			ID: id, Name: facts.Name, Number: facts.EpisodeNumber, End: facts.EpisodeEnd, Ready: ready[id],
-			FromFile: episode.unnumbered,
+		row := episodes[id]
+		bySeason[row.Season] = append(bySeason[row.Season], Episode{
+			ID: id, Name: row.Name, Number: row.Episode, End: row.EpisodeEnd, Ready: ready[id], FromFile: row.Unnumbered,
+			Named: row.NameFrom != "", Overview: row.Overview, LengthMillis: row.LengthMs, Still: row.Still,
 		})
-		if episode.from.Name != "" {
-			named[episode.from.Name]++
+		if row.NameFrom != "" {
+			named[mp.ID(row.NameFrom)]++
 		}
 	}
 	var namesFrom mp.ID
@@ -303,95 +358,30 @@ func (l *Library) seasons(ctx context.Context, files []librarystore.LibraryFile)
 			namesFrom = p
 		}
 	}
-	seasons := make([]Season, 0, len(bySeason))
+	out := make([]Season, 0, len(bySeason))
 	for n, eps := range bySeason {
 		slices.SortFunc(eps, func(a, b Episode) int {
 			return cmp.Or(cmp.Compare(a.Number, b.Number), strings.Compare(a.Name, b.Name))
 		})
-		seasons = append(seasons, Season{Number: n, Episodes: eps})
+		out = append(out, Season{Number: n, Episodes: eps})
 	}
-	slices.SortFunc(seasons, func(a, b Season) int { return cmp.Compare(a.Number, b.Number) })
-	return seasons, namesFrom, nil
+	slices.SortFunc(out, func(a, b Season) int { return cmp.Compare(a.Number, b.Number) })
+	return out, namesFrom
 }
 
 // EpisodesOnDisk is, for each season of a series on disk, the highest episode number its files
 // hold: what a series search is checked against (decision 57). Specials (season 0) and files
 // without a number are left out, since nothing lays them out the same way twice.
 func (l *Library) EpisodesOnDisk(ctx context.Context, seriesID string) (map[int]int, error) {
-	files, err := l.ItemStore.LibraryItemFiles(ctx, seriesID)
+	episodes, err := l.ItemStore.LibraryEpisodeNumbers(ctx, seriesID)
 	if err != nil {
 		return nil, err
 	}
-	seen := map[string]bool{}
 	highest := map[int]int{}
-	for _, f := range files {
-		if seen[f.ItemID] {
-			continue
-		}
-		seen[f.ItemID] = true
-		episode, err := l.scanned(ctx, f.ItemID)
-		if err != nil {
-			return nil, err
-		}
-		facts := episode.facts
-		if facts.SeasonNumber > 0 && facts.EpisodeNumber > 0 {
-			highest[facts.SeasonNumber] = max(highest[facts.SeasonNumber], facts.EpisodeNumber, facts.EpisodeEnd)
+	for _, e := range episodes {
+		if e.Season > 0 && e.Episode > 0 {
+			highest[e.Season] = max(highest[e.Season], e.Episode, e.EpisodeEnd)
 		}
 	}
 	return highest, nil
-}
-
-// scannedItem is what the scanner wrote about an item: its newest present scan origin's facts and
-// their provenance, and each present file by path.
-type scannedItem struct {
-	facts inventory.ItemFacts
-	from  DetailsFrom
-	// unnumbered is an episode that keeps its file's name and number until its show's order is said.
-	unnumbered bool
-	sources    map[string]scannedSource
-}
-
-// scannedSource is one of an item's present files: its header facts, and whether its arr lists it.
-type scannedSource struct {
-	facts   inventory.SourceFacts
-	managed bool
-	edition string
-	part    int
-}
-
-// scanned is what the scanner wrote about an item; zero when the inventory has none.
-func (l *Library) scanned(ctx context.Context, id string) (scannedItem, error) {
-	item, ok, err := l.Inventory.Item(ctx, inventory.ItemRef{ID: inventory.ItemID(id)})
-	if err != nil || !ok {
-		return scannedItem{}, err
-	}
-	present := func(key inventory.OriginKey, missing time.Time) bool {
-		return strings.HasPrefix(string(key.Authority), authorityPrefix) && missing.IsZero()
-	}
-	out := scannedItem{sources: map[string]scannedSource{}}
-	ext := map[inventory.OriginKey]originExtension{}
-	var best *inventory.ItemOrigin
-	for i, o := range item.Origins {
-		if !present(o.Key, o.MissingAt) {
-			continue
-		}
-		ext[o.Key] = readOriginExtension(o.Observation.Extension)
-		if best == nil || o.Observation.ObservedAt.After(best.Observation.ObservedAt) {
-			best = &item.Origins[i]
-		}
-	}
-	if best != nil {
-		out.facts, out.from = best.Observation.Facts, ext[best.Key].From
-		out.unnumbered = ext[best.Key].Listed != nil && ext[best.Key].Listed.Unnumbered
-	}
-	// A file's source origin shares its item origin's key, which says whether an arr lists it.
-	for _, s := range item.Sources {
-		for _, o := range s.Origins {
-			if present(o.Key, o.MissingAt) && o.Locator.Path != "" {
-				out.sources[o.Locator.Path] = scannedSource{facts: o.Observation.Facts, managed: ext[o.Key].Managed,
-					edition: ext[o.Key].Edition, part: ext[o.Key].Part}
-			}
-		}
-	}
-	return out, nil
 }

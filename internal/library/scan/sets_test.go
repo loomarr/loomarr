@@ -52,7 +52,7 @@ func TestReadyMadeSets(t *testing.T) {
 	if err := e.Tick(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if sets, err := lib.Sets(ctx); err != nil || len(sets) != 0 {
+	if sets, err := lib.Sets(ctx, false); err != nil || len(sets) != 0 {
 		t.Fatalf("sets before the set's record = %+v, %v", sets, err)
 	}
 	if err := e.Tick(ctx); err != nil {
@@ -62,7 +62,7 @@ func TestReadyMadeSets(t *testing.T) {
 		t.Fatalf("fetched %v, want the set", catalog.fetched)
 	}
 
-	sets, err := lib.Sets(ctx)
+	sets, err := lib.Sets(ctx, false)
 	if err != nil || len(sets) != 1 {
 		t.Fatalf("sets = %+v, %v", sets, err)
 	}
@@ -80,7 +80,7 @@ func TestReadyMadeSets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := lib.Collection(ctx, id)
+	c, err := lib.Collection(ctx, id, false)
 	if err != nil || c.Name != "The Lantern Keeper Collection" || len(c.Titles) != 2 || c.Titles[0].Name != "The Lantern Keeper" {
 		t.Fatalf("copy = %+v, %v", c, err)
 	}

@@ -69,8 +69,9 @@ tables:
       problem: >
         Why the file is skipped, or empty for none. One of disc_image (a disc image),
         identity_conflict (what names the file disagrees), invalid_facts (the library refused what
-        was read from it), broken_link (a symlink whose target is gone), or link_outside (a symlink
-        to a path outside the root, which the scan never follows).
+        was read from it), broken_link (a symlink whose target is gone), link_outside (a symlink
+        to a path outside the root, which the scan never follows), or empty_file (a video file with
+        no bytes, which makes no title until it is filled).
       held: >
         1 when a walk no longer found the file and that walk's removals are waiting for a person to
         confirm them. A held file still counts as present.
@@ -326,6 +327,12 @@ tables:
       channels: An audio track's channel count; 0 otherwise.
       channel_layout: An audio track's channel layout, such as 5.1(side).
       sample_rate: An audio track's sample rate in Hz.
+      bitrate: >
+        The track's own bitrate in bits per second, as its container states it (a Matroska BPS tag) or
+        an MP4's sample table measures it; 0 when the file says nothing.
+      bit_depth: >
+        Bits per sample: a video track's depth (8, 10 or 12), or a lossless or PCM audio track's sample
+        size; 0 for lossy audio or when unknown.
       audio_format: An audio track's format in plain words, such as Dolby Digital Plus.
       width: A video track's width in pixels.
       height: A video track's height in pixels.
@@ -584,6 +591,20 @@ tables:
       origin_fetched_at: >
         When a remote image's bytes were downloaded, in Unix seconds; 0 means not downloaded yet. Drives
         the six-month expiry for TMDB artwork.
+      fetch_failures: >
+        How many downloads of a remote image have failed in a row; 0 once one lands.
+      fetch_failed_at: When the last failed download was tried, in Unix seconds; 0 for none.
+      fetch_retry_at: >
+        The earliest time, in Unix seconds, the download is tried again after a failure; 0 for none.
+        Each failure doubles the wait, from five minutes up to a day; a failure that waiting will not
+        fix (the image is gone, its host is refused, it is too large or does not decode) waits a day.
+      fetch_queued_at: >
+        When the image joined the download queue, in Unix seconds: its adoption, or the expiry purge
+        putting it back. Within a priority the queue is served in this order.
+      fetch_priority: >
+        The image's class in the download queue, which is served class by class: 0 artwork just
+        adopted, 1 an image the expiry purge put back for a refresh, 2 artwork adopted in bulk to
+        download last (episode stills).
       created_at: When the image was first stored, in Unix seconds.
       updated_at: When the row last changed, in Unix seconds.
       last_used_at: When the image was last used, in Unix seconds. Older images lose their resized copies first when space runs short.

@@ -14,7 +14,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/accept"
 )
 
 // BindInput is everything Bind needs, read by the caller beforehand. Bind itself touches no
@@ -142,10 +141,16 @@ func Bind(in BindInput) (Binding, error) {
 		ch.Policy.Filler = schedule.SeedFillerSelection(ch.Policy.ProposalPolicy)
 	}
 	// The channel keeps the approved request itself, so a refine or a re-curation can be seeded
-	// from it long after the job that produced it is purged.
-	ch.IntentJSON, err = channelIntentJSON(p.Body)
-	if err != nil {
-		return Binding{}, fmt.Errorf("proposal %s: %w", p.ID, err)
+	// from it long after the job that produced it is purged. A growth batch (#4333) adds titles
+	// the line admitted and never restates what the channel was asked for, so the channel keeps
+	// its own request, or none for a channel made by hand.
+	if p.Body.Growth == "" || existing.ID == "" {
+		ch.IntentJSON, err = channelIntentJSON(p.Body)
+		if err != nil {
+			return Binding{}, fmt.Errorf("proposal %s: %w", p.ID, err)
+		}
+	} else {
+		ch.IntentJSON = existing.IntentJSON
 	}
 	ch.Status = schedule.StatusBuilding
 	// ⚠ **Due NOW, so the sweep owns this channel from the moment it exists** (§9 V54). The
@@ -173,7 +178,7 @@ func Bind(in BindInput) (Binding, error) {
 // discriminator, so the binder applies additive (non-destructive) lineup semantics only for
 // the unattended path — every human-in-the-loop approval keeps full-replace (a person decided).
 func isAutoCurate(p proposalstore.Proposal) bool {
-	return p.ApprovedBy == accept.AutoCuratedBy
+	return p.ApprovedBy == proposalstore.AutoCuratedBy
 }
 
 // mustExcludeKeys is the set of lower-cased title terms the intent asked to exclude
@@ -293,6 +298,9 @@ func lineupEntries(p proposals.Proposal, now time.Time) ([]schedule.LineupEntry,
 				EpisodeSelection: it.EpisodeSelection,
 				Fit:              schedule.StampFit(it.Confidence),
 				AddedAt:          now,
+				// An existing entry keeps its own origin through the union; only an added title
+				// carries the batch.
+				Grown: p.Growth,
 			})
 		}
 	}

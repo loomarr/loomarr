@@ -90,10 +90,11 @@ func (s *ProbeStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, er
 	// quality decision here so a near-total-black clip cannot become airable merely because the
 	// database was recreated; first-time clips have no report yet and continue to transcode.
 	if tags, ok := asset.ReadSidecarTags(file); ok && tags.MediaQuality != nil {
+		// A reel's quality review is the split's to settle, so only a single clip is doubtful here.
 		if v, reason, detail := EvaluateMediaQuality(*tags.MediaQuality); v != pipelinestate.VerdictContinue {
 			out := StageResult{Verdict: v, Reason: reason, Detail: detail}
 			if v == pipelinestate.VerdictReview {
-				out.Note, out.Detail = detail, ""
+				out.Note, out.Detail, out.Doubt = detail, "", !c.IsComposite
 			}
 			return out, nil
 		}

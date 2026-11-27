@@ -22,31 +22,37 @@
   --color-caution: #F5D90A;
 
   /* accent tints — alpha washes over the surface (§2.1) */
+  --color-signal-tint-5: color-mix(in srgb, var(--color-signal) 5%, transparent);
   --color-signal-tint-8: color-mix(in srgb, var(--color-signal) 8%, transparent);
   --color-signal-tint-12: color-mix(in srgb, var(--color-signal) 12%, transparent);
   --color-signal-tint-15: color-mix(in srgb, var(--color-signal) 15%, transparent);
   --color-signal-tint-30: color-mix(in srgb, var(--color-signal) 30%, transparent);
   --color-signal-tint-40: color-mix(in srgb, var(--color-signal) 40%, transparent);
+  --color-onair-tint-5: color-mix(in srgb, var(--color-onair) 5%, transparent);
   --color-onair-tint-8: color-mix(in srgb, var(--color-onair) 8%, transparent);
   --color-onair-tint-12: color-mix(in srgb, var(--color-onair) 12%, transparent);
   --color-onair-tint-15: color-mix(in srgb, var(--color-onair) 15%, transparent);
   --color-onair-tint-30: color-mix(in srgb, var(--color-onair) 30%, transparent);
   --color-onair-tint-40: color-mix(in srgb, var(--color-onair) 40%, transparent);
+  --color-suggest-tint-5: color-mix(in srgb, var(--color-suggest) 5%, transparent);
   --color-suggest-tint-8: color-mix(in srgb, var(--color-suggest) 8%, transparent);
   --color-suggest-tint-12: color-mix(in srgb, var(--color-suggest) 12%, transparent);
   --color-suggest-tint-15: color-mix(in srgb, var(--color-suggest) 15%, transparent);
   --color-suggest-tint-30: color-mix(in srgb, var(--color-suggest) 30%, transparent);
   --color-suggest-tint-40: color-mix(in srgb, var(--color-suggest) 40%, transparent);
+  --color-tune-tint-5: color-mix(in srgb, var(--color-tune) 5%, transparent);
   --color-tune-tint-8: color-mix(in srgb, var(--color-tune) 8%, transparent);
   --color-tune-tint-12: color-mix(in srgb, var(--color-tune) 12%, transparent);
   --color-tune-tint-15: color-mix(in srgb, var(--color-tune) 15%, transparent);
   --color-tune-tint-30: color-mix(in srgb, var(--color-tune) 30%, transparent);
   --color-tune-tint-40: color-mix(in srgb, var(--color-tune) 40%, transparent);
+  --color-lock-tint-5: color-mix(in srgb, var(--color-lock) 5%, transparent);
   --color-lock-tint-8: color-mix(in srgb, var(--color-lock) 8%, transparent);
   --color-lock-tint-12: color-mix(in srgb, var(--color-lock) 12%, transparent);
   --color-lock-tint-15: color-mix(in srgb, var(--color-lock) 15%, transparent);
   --color-lock-tint-30: color-mix(in srgb, var(--color-lock) 30%, transparent);
   --color-lock-tint-40: color-mix(in srgb, var(--color-lock) 40%, transparent);
+  --color-caution-tint-5: color-mix(in srgb, var(--color-caution) 5%, transparent);
   --color-caution-tint-8: color-mix(in srgb, var(--color-caution) 8%, transparent);
   --color-caution-tint-12: color-mix(in srgb, var(--color-caution) 12%, transparent);
   --color-caution-tint-15: color-mix(in srgb, var(--color-caution) 15%, transparent);

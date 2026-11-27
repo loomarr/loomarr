@@ -7,11 +7,9 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
-// Querier, Tx and Scannable are the storedb kernel's types, re-exported so importers of this
-// package keep one import. They are aliases: the same types, not copies.
+// Tx and Scannable are the storedb kernel's types, re-exported so importers of this package keep
+// one import. They are aliases: the same types, not copies.
 type (
-	// Querier runs statements, on the pool or inside one transaction (storedb.Querier).
-	Querier = storedb.Querier
 	// Tx is one transaction begun through Handle.Begin (storedb.Tx).
 	Tx = storedb.Tx
 	// Scannable is the one method *sql.Row and *sql.Rows share (storedb.Scannable).

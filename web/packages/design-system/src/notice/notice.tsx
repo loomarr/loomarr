@@ -5,7 +5,7 @@ import { StatusDot, Surface } from "../primitives";
 import { Text } from "../text";
 import type { Density } from "../tokens";
 
-type NoticeTone = "neutral" | "warn";
+type NoticeTone = "danger" | "neutral" | "success" | "warn";
 
 type NoticeAction = {
   label: string;
@@ -18,37 +18,77 @@ type NoticeProps = {
   /** One plain sentence saying what is true now. */
   body: string;
   density?: Density;
-  /** A short sentence-case line saying what happened. */
-  title: string;
-  /** `warn` outlines the notice in the warning colour; `neutral` is a plain raised card. */
+  /**
+   * `alert` interrupts assistive tech each time the notice draws, for a failure the person has to
+   * hear about now (a `danger` notice after an action they just took). The default `status` is
+   * polite.
+   */
+  role?: "alert" | "status";
+  /** A short sentence-case line saying what happened. Without it the body leads. */
+  title?: string;
+  /**
+   * `warn`, `success` and `danger` outline the notice in that state colour; `neutral` is a plain
+   * raised card.
+   */
   tone?: NoticeTone;
 };
 
+const outline = {
+  danger: "stateDanger",
+  neutral: undefined,
+  success: "stateSuccess",
+  warn: "stateWarning",
+} as const;
+const dot = { danger: "error", neutral: "off", success: "ok", warn: "warn" } as const;
+const titleTone = { danger: "danger", neutral: "primary", success: "success", warn: "warning" } as const;
+
 /**
  * A calm line above content that is still on screen: what happened, what is true now, and at most
- * one way out. It stays for as long as the state lasts, so it is a polite status and not an alert
- * that interrupts each time it draws. The dot only tints the title; the words carry the meaning,
- * so the dot is hidden from assistive tech.
+ * one way out. It stays for as long as the state lasts, so by default it is a polite status and
+ * not an alert that interrupts each time it draws; `role="alert"` opts into that for a failure. The
+ * dot only tints the title; the words carry the meaning, so the dot is hidden from assistive tech.
  */
-const Notice = ({ action, body, density = "pointer", title, tone = "neutral" }: NoticeProps) => (
+const Notice = ({
+  action,
+  body,
+  density = "pointer",
+  role = "status",
+  title,
+  tone = "neutral",
+}: NoticeProps) => (
   <Surface
-    aria-live="polite"
-    borderColor={tone === "warn" ? "stateWarning" : undefined}
+    aria-live={role === "alert" ? "assertive" : "polite"}
+    borderColor={outline[tone]}
     borderRadius="control"
     gap="control"
     level="raised"
     padding="section"
-    role="status"
+    role={role}
   >
-    <View style={{ alignItems: "center", flexDirection: "row", gap: 8 }}>
-      <StatusDot label="" tone={tone === "warn" ? "warn" : "off"} />
-      <Text density={density} textRole="headline" tone={tone === "warn" ? "warning" : "primary"}>
-        {title}
-      </Text>
+    <View style={{ alignItems: title ? "center" : "flex-start", flexDirection: "row", gap: 8 }}>
+      <View style={title ? undefined : { paddingTop: 6 }}>
+        <StatusDot label="" tone={dot[tone]} />
+      </View>
+      {title ? (
+        <Text density={density} textRole="headline" tone={titleTone[tone]}>
+          {title}
+        </Text>
+      ) : (
+        <Text
+          density={density}
+          style={{ flexShrink: 1 }}
+          textRole="body"
+          tone={tone === "danger" ? "danger" : "secondary"}
+        >
+          {body}
+        </Text>
+      )}
     </View>
-    <Text density={density} textRole="body" tone="secondary">
-      {body}
-    </Text>
+    {title ? (
+      <Text density={density} textRole="body" tone="secondary">
+        {body}
+      </Text>
+    ) : null}
     {action ? (
       <View style={{ alignItems: "flex-start" }}>
         <Action accessibilityRole="button" density={density} onPress={action.onPress} variant="outline">

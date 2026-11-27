@@ -1,7 +1,10 @@
-import { Stack, Text } from "@loomarr/design-system";
-import { useEffect, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
-import type { ChannelDrawerProps, DrawerChannel } from "./channel-drawer.type";
+import { Action, DockedPanel, Field, PressableRow, Stack, Text, Tooltip } from "@loomarr/design-system";
+import { useState } from "react";
+import type { ChannelDrawerProps, DrawerBlock, DrawerChannel } from "./channel-drawer.type";
+
+// A schedule block's fill: the signal hue for a filler pod, the text colour for a programme.
+const POD_FILL = "color-mix(in srgb, var(--color-signal) 28%, transparent)";
+const PROGRAMME_FILL = "color-mix(in srgb, var(--contentPrimary) 12%, transparent)";
 
 // How many recent channels the drawer lists above All channels (the console mock).
 const RECENT_ROWS = 3;
@@ -13,6 +16,10 @@ const OFF_AIR_LINE: Record<NonNullable<DrawerChannel["offAir"]>, string> = {
   building: "building — not on air yet",
   paused: "off air",
 };
+
+// A block's name, when the block is wide enough to show it.
+const shownBlockLabel = (block: DrawerBlock, total: number) =>
+  block.label && total > 0 && block.minutes / total > LABEL_SHARE ? block.label : undefined;
 
 const groupHeadingId = (header: string) => `channel-drawer-${header.toLowerCase().replaceAll(" ", "-")}`;
 
@@ -39,10 +46,6 @@ const ChannelDrawer = ({
   onClose,
 }: ChannelDrawerProps) => {
   const [query, setQuery] = useState("");
-  const findRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    findRef.current?.focus({ preventScroll: true });
-  }, []);
 
   const q = query.trim().toLowerCase();
   const listed = q ? channels.filter((channel) => matches(channel, q)) : channels;
@@ -63,64 +66,42 @@ const ChannelDrawer = ({
   }
 
   return (
-    // A sheet like the player's others (role=dialog), so the player's ↑/↓ leave its list alone.
-    <section
-      aria-labelledby="channel-drawer-title"
-      role="dialog"
-      className="border-static-700 bg-static-950/95 flex h-full w-[372px] max-w-full flex-col border-l"
-      onKeyDown={(e) => {
-        if (e.key !== "Escape") return;
-        e.stopPropagation();
-        onClose();
-      }}
-    >
-      <Stack
-        align="center"
-        className="border-static-800 border-b px-[18px] pt-4 pb-3"
-        direction="row"
-        gap="2.5"
-      >
-        <Text as="h2" id="channel-drawer-title" strong textRole="cardLabel" tone="primary">
-          Channels
-        </Text>
+    // The design system's docked panel: docked in the player's frame, non-modal, role=dialog (so the
+    // player's ↑/↓ leave its list alone), and it owns Escape.
+    <DockedPanel
+      title="Channels"
+      closeLabel="Close channels"
+      meta={
         <Text as="span" textRole="mono" tone="secondary" tracking={0.06}>
           NOW → NEXT 2H
         </Text>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close channels"
-          className="text-muted-foreground hover:text-static-0 focus-visible:ring-ring ml-auto flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:outline-none"
-        >
-          <span aria-hidden className="text-sm leading-none">
-            ✕
-          </span>
-        </button>
-      </Stack>
-      <div className="px-2.5 pt-2.5">
-        <input
-          ref={findRef}
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+      }
+      onClose={onClose}
+    >
+      <Stack paddingHorizontal={10} paddingTop={10}>
+        <Field
+          autoFocus
+          accessibilityLabel="Find a channel or show"
+          inputMode="search"
+          onChangeText={setQuery}
           placeholder="Find a channel or show…"
-          aria-label="Find a channel or show"
-          className="border-border-control bg-static-950 text-foreground placeholder:text-muted-foreground focus:border-signal w-full rounded-lg border px-3 py-2 text-sm outline-none"
+          value={query}
         />
-      </div>
-      <div className="flex-1 overflow-y-auto p-2.5">
+      </Stack>
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} overflowY="auto" padding={10}>
         {groups.map((group) => (
           <section key={group.header} aria-labelledby={groupHeadingId(group.header)}>
-            <Text
-              as="h3"
-              id={groupHeadingId(group.header)}
-              className="px-1 pt-1.5 pb-[7px]"
-              textRole="mono"
-              tone="secondary"
-              tracking={0.14}
-            >
-              {group.header}
-            </Text>
+            <Stack paddingBottom={7} paddingHorizontal={4} paddingTop={6}>
+              <Text
+                as="h3"
+                id={groupHeadingId(group.header)}
+                textRole="mono"
+                tone="secondary"
+                tracking={0.14}
+              >
+                {group.header}
+              </Text>
+            </Stack>
             {group.rows.map((channel) => (
               <DrawerRow
                 key={channel.id}
@@ -134,13 +115,20 @@ const ChannelDrawer = ({
             ))}
           </section>
         ))}
-      </div>
-      <p className="border-static-800 text-muted-foreground border-t px-[18px] py-3 font-mono text-[11px]">
-        {q
-          ? `${listed.length} of ${channels.length} channels · guide has the full week`
-          : `${channels.length} channels · type a number to tune direct`}
-      </p>
-    </section>
+      </Stack>
+      <Stack
+        borderTopColor="$borderDecorative"
+        borderTopWidth={1}
+        paddingHorizontal={18}
+        paddingVertical={12}
+      >
+        <Text as="p" textRole="footnote">
+          {q
+            ? `${listed.length} of ${channels.length} channels · guide has the full week`
+            : `${channels.length} channels · type a number to tune direct`}
+        </Text>
+      </Stack>
+    </DockedPanel>
   );
 };
 
@@ -161,94 +149,121 @@ const DrawerRow = ({
 }) => {
   const total = channel.blocks.reduce((sum, block) => sum + block.minutes, 0);
   const line = channel.offAir ? OFF_AIR_LINE[channel.offAir] : channel.now;
+  const shownLabels = channel.blocks.flatMap((block) => shownBlockLabel(block, total) ?? []);
   return (
-    <div className="relative mb-[7px]">
-      <button
-        type="button"
-        onClick={() => onTune(channel.id)}
-        aria-current={tuned ? "true" : undefined}
-        // The row's text runs together when read as one name ("07Westerns▸ …"); this says it in order,
-        // starting with the visible number and name.
-        aria-label={[
+    <Stack marginBottom={7} position="relative">
+      <PressableRow
+        // The row's text runs together when read as one name ("07Westerns▸ …"), so the name says it in
+        // order. It holds every word the row shows (WCAG 2.5.3, label in name): the number and name,
+        // the TUNED tag, the schedule strip's block names, what is on and the time left. Each piece of
+        // text below ends in a space, so a tool that joins the row's text nodes reads separate words.
+        accessibilityLabel={[
           `${channelNumber(channel.number)} ${channel.name}`,
+          tuned ? "tuned" : undefined,
+          ...shownLabels,
           line,
           channel.minutesLeft === undefined ? undefined : `${channel.minutesLeft}m left`,
         ]
           .filter(Boolean)
           .join(", ")}
+        aria-current={tuned ? "true" : undefined}
         // The tuned row is neutral (#1909 Q2): elevated fill, the TUNED tag and `aria-current`.
-        // Amber is left for the focus ring, so a focused row is never confused with the tuned one.
-        className={cn(
-          "text-foreground focus-visible:ring-ring flex w-full flex-col gap-[7px] rounded-xl border px-3 py-[11px] text-left focus-visible:ring-2 focus-visible:outline-none",
-          tuned ? "border-static-700 bg-static-800" : "border-static-800 hover:bg-static-900 bg-transparent",
-        )}
+        // Amber is left for the focus border, so a focused row is never confused with the tuned one.
+        bordered
+        onPress={() => onTune(channel.id)}
+        selected={tuned}
       >
-        <span className="flex items-center gap-[9px] pr-7">
-          <Text as="span" className="w-[26px]" textRole="mono" tone="secondary">
-            {channelNumber(channel.number)}
-          </Text>
-          <Text as="span" className="min-w-0 flex-1 truncate" strong textRole="cardLabel" tone="primary">
-            {channel.name}
-          </Text>
-          {tuned && (
-            <Text as="span" textRole="mono" tone="secondary">
-              TUNED
+        <Stack gap="1.75">
+          <Stack align="center" direction="row" gap="2" paddingRight={28} render="span">
+            <Text as="span" minWidth={26} textRole="mono" tone="secondary">
+              {channelNumber(channel.number)}{" "}
             </Text>
-          )}
-        </span>
-        <Stack
-          aria-hidden
-          className="relative h-6 overflow-hidden rounded"
-          direction="row"
-          gap="0.5"
-          render="span"
-        >
-          {channel.blocks.map((block) => (
-            <span
-              key={block.key}
-              className={cn(
-                "flex min-w-0.5 items-center overflow-hidden px-1.5",
-                block.pod ? "bg-signal/28" : "bg-foreground/12",
-              )}
-              style={{ flex: `${block.minutes} 1 0px` }}
+            <Text
+              as="span"
+              flex={1}
+              minWidth={0}
+              numberOfLines={1}
+              strong
+              textRole="cardLabel"
+              tone="primary"
             >
-              {block.label && total > 0 && block.minutes / total > LABEL_SHARE && (
-                <Text as="span" className="block min-w-0 truncate" textRole="cardMeta" tone="primary">
-                  {block.label}
-                </Text>
-              )}
-            </span>
-          ))}
-          {channel.blocks.length > 0 && (
-            <span className="bg-onair absolute inset-y-0 w-[1.5px]" style={{ left: `${nowPercent}%` }} />
-          )}
+              {channel.name}{" "}
+            </Text>
+            {tuned && (
+              <Text as="span" textRole="mono" tone="secondary">
+                TUNED{" "}
+              </Text>
+            )}
+          </Stack>
+          <Stack
+            aria-hidden
+            borderRadius={4}
+            direction="row"
+            gap="0.5"
+            height={24}
+            overflow="hidden"
+            position="relative"
+            render="span"
+          >
+            {channel.blocks.map((block) => (
+              <Stack
+                key={block.key}
+                align="center"
+                direction="row"
+                flexBasis={0}
+                flexGrow={block.minutes}
+                flexShrink={1}
+                minWidth={2}
+                overflow="hidden"
+                paddingHorizontal={6}
+                render="span"
+                style={{ backgroundColor: block.pod ? POD_FILL : PROGRAMME_FILL }}
+              >
+                {shownBlockLabel(block, total) && (
+                  <Text as="span" minWidth={0} numberOfLines={1} textRole="cardMeta" tone="primary">
+                    {block.label}{" "}
+                  </Text>
+                )}
+              </Stack>
+            ))}
+            {channel.blocks.length > 0 && (
+              <Stack
+                bottom={0}
+                position="absolute"
+                render="span"
+                style={{ backgroundColor: "var(--color-onair)", left: `${nowPercent}%` }}
+                top={0}
+                width={1.5}
+              />
+            )}
+          </Stack>
+          <Stack align="center" direction="row" gap="1.75" render="span">
+            <Text as="span" flex={1} minWidth={0} numberOfLines={1} textRole="cardMeta" tone="secondary">
+              {line ? `▸ ${line}` : ""}{" "}
+            </Text>
+            <Text as="span" flexShrink={0} textRole="mono" tone="secondary">
+              {channel.minutesLeft === undefined ? "—" : `${channel.minutesLeft}m left`}
+            </Text>
+          </Stack>
         </Stack>
-        <Stack align="center" direction="row" gap="1.75" render="span">
-          <Text as="span" className="min-w-0 truncate" textRole="cardMeta" tone="secondary">
-            {line ? `▸ ${line}` : ""}
-          </Text>
-          <Text as="span" className="ml-auto shrink-0" textRole="mono" tone="secondary">
-            {channel.minutesLeft === undefined ? "—" : `${channel.minutesLeft}m left`}
-          </Text>
-        </Stack>
-      </button>
-      <button
-        type="button"
-        onClick={() => onFavourite(channel.id, !favourite)}
-        aria-pressed={favourite}
-        aria-label={`Favorite ${channel.name}`}
-        title={favourite ? "Unpin favorite" : "Pin as favorite"}
-        className={cn(
-          // A pinned favourite is a pressed state, so it is foreground with the filled star, not amber.
-          "hover:text-foreground focus-visible:ring-ring absolute top-2 right-2 flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:outline-none",
-          favourite ? "text-foreground" : "text-muted-foreground",
-        )}
-      >
-        <span aria-hidden className="text-sm leading-none">
-          {favourite ? "★" : "☆"}
-        </span>
-      </button>
-    </div>
+      </PressableRow>
+      <Stack position="absolute" right={8} top={8}>
+        <Tooltip content={favourite ? "Unpin favorite" : "Pin as favorite"}>
+          {/* A pinned favourite is a pressed state, so it is foreground with the filled star, not amber. */}
+          <Action
+            aria-pressed={favourite}
+            compact
+            icon={favourite ? "starFilled" : "star"}
+            layout="icon"
+            onPress={() => onFavourite(channel.id, !favourite)}
+            selected={favourite}
+            variant="ghost"
+          >
+            {`Favorite ${channel.name}`}
+          </Action>
+        </Tooltip>
+      </Stack>
+    </Stack>
   );
 };
 

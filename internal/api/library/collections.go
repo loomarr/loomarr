@@ -13,7 +13,8 @@ import (
 // edits them through /v1/collections.
 //
 // Member-readable, like /v1/search: it is read-only, names no title, and picking a collection
-// still routes a channel through submit→approve. So it adds no privilege surface (§7.2).
+// still routes a channel through submit→approve. So it adds no privilege surface (§7.2). A
+// member's sizes count only the titles a member reads, so they give away no hidden title.
 func (s *Handlers) registerCollections(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "listLibraryCollections", Method: http.MethodGet, Path: "/v1/library/collections",
@@ -32,7 +33,7 @@ func (s *Handlers) doListCollections(ctx context.Context, _ *struct{}) (*collect
 		return nil, httpcore.NotImplemented("Collections aren't available",
 			"This server has no Library to keep collections in.")
 	}
-	colls, err := s.collections.Collections(ctx)
+	colls, err := s.collections.Collections(ctx, !readsAdminFacts(ctx))
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't load collections",
 			"Try again in a moment.", err)

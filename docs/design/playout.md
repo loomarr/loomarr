@@ -62,6 +62,12 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
   Reopening a clip at its last frame started an encoder that produced nothing and failed, which on
   VAAPI reads as a GPU fault (`A hardware frames reference is required`, 2026-10-24). Any other
   early end, including a stream that ended on a bad fragment, rejoins at once.
+  An item that cannot be opened, or whose encoder ends without a frame, reports `Item.Faulted`; a
+  late item, a decoder mismatch and a stopped channel do not, since they say nothing about the
+  item's own bytes. For a filler clip the app counts these per clip: three airings in a row feed
+  the clip back to the filler pipeline, which rejects it as `unplayable` with the cause and takes
+  it out of rotation ([filler](filler.md#filler-lets-go-on-its-own)); an airing that puts frames on
+  the channel starts the count again. The count is per process.
   A slot with **less than half a frame** left, an item or a card alike, airs nothing: the schedule is
   asked what airs at its end instead. For a card this is not cosmetic. Its slate would round to no
   frames, the timeline would never pass the boundary, and the packager would ask for that same
@@ -474,8 +480,11 @@ tone-mapping. A new stream **drops a rung before it is refused**, and a live ses
   CPU, and a step up applies only if it fits beside the other leases.
 - **CPU cost is learned from delivered media.** An item's encoder CPU is divided by the frames it put on
   the timeline, not by its slot, so an early close cannot over-count.
-- **Background media work yields to playback.** While any live transcode runs
-  (`PlaybackNeedsHeadroom`), capped background work such as filler processing waits.
+- **Background media work yields when playout is near capacity.** Filler media work waits while
+  live playout could not take two more streams like the ones running: one for the filler work, one
+  for the next viewer (`PlaybackBusy`). Each measured limit is checked: encoder sessions, GPU share
+  and CPU allowance. An install with no measurement keeps the older rule and waits while any live
+  transcode runs. The boot capacity probe still yields to any live transcode.
 
 The dashboard's `capacity` and the status endpoint's `budget` read this ledger. The ledger still has a
 `copy` class that costs nothing, but packager items are always transcoded, so it is unused there.
@@ -554,11 +563,65 @@ draws them over the picture:
   Reading a track demuxes the whole file, so a large film over a network share takes minutes the
   first time; nothing about the video encode changes.
 - **Image subtitles** (PGS, VOBSUB) cannot become text cheaply, so they are **not offered** by default.
-  An admin can set a channel to **always burn in** an image track. That is a GPU overlay in the
-  video graph, and it applies to everyone on the channel. Where the GPU path cannot do it, the track
-  is dropped: never a CPU filter in the playout graph.
-- Nothing the server did not supply is invented: a programme without a subtitle stream shows no
-  subtitle choices.
+  An admin can set a channel to **burn in** the image track in one language
+  (`policy.playout.burnSubtitles`). That is a GPU overlay in the video graph, and it applies to
+  everyone on the channel. Where the GPU path cannot do it, the track is dropped: never a CPU filter
+  in the playout graph. The tracks route marks such a track `burnable`.
+  - *How (step 8, `internal/playout/burnin.go`):* a track is prepared once, in the background. The
+    programme's streams come from the Library's inventory, so nothing is probed on the tune path,
+    and nothing is looked up at all until the encoder's overlay self-check has passed. Go copies the
+    stream out as a `.sup` (at most 256 MiB) and hashes it. The image worker decodes it into the
+    full canvas at each change (`decode-subtitles`, [`images.md`](images.md), *Operations beyond
+    renditions*), behind the `playout.SubtitleStillDecoder` seam; the app's adapter is the certified
+    worker, which must list `decode-subtitles` to pass its startup check. Go holds the result to
+    the worker's ceilings again (an even canvas of at most 3840×2160, at most 50,000 states, every
+    still inside the worker's staging directory) before it allocates anything. Go owns everything after the stills: one ffmpeg run
+    converts them into one-frame ffv1 files that are already yuva420p BT.709, and each encoder reads
+    an ffconcat list written for its own seek (the still on screen at that moment first, then each
+    change for exactly as long as it shows) through a `movie=` source inside its `-vf`, blended
+    where the bug is blended: `overlay_cuda` on NVENC (cropping the aligned rows before the
+    passthrough scale), the bug's `program_opencl` kernel on VAAPI. Both are gated by the bug's
+    overlay self-check. The canvas is fitted into the output as its own frame, so a cropped film's
+    subtitles land in the letterbox.
+  - *Why not ffmpeg's own route:* `[0:s:N]` into an overlay re-sends and re-converts the whole
+    canvas on every video frame (a quarter of a core per stream); stills cost only at a change
+    (measured ~0.005 cores on the GeForce, ~0.009 on the household Arc). Seeking a sparse stream
+    with `-ss` loses the still already on screen, so the list starts at the seek instead.
+  - *Limits:* the first airing of a title airs without them while its track is prepared
+    (`internal/app/playoutresolve/subtitleburn.go`; the next programme's track is queued as the
+    current one starts, and a track that fails is left alone for an hour); prepared tracks are kept
+    for the 48 most recently aired. PGS only: VOBSUB is dropped like any track a host cannot draw.
+    No HDR10 output (the overlays take 8-bit frames).
+- **Auto-generated subtitles** (#4530) are the one track the server makes itself. Every programme
+  with an audio stream offers one per language, labelled **Auto-generated** and keyed
+  `<language>-auto` (`und-auto` until the language is known). It is always a separate choice, even
+  when the file carries a text track in that language, and a remembered `-auto` key picks only
+  another Auto-generated track. No other track is invented: a choice the file and the transcriber
+  did not supply never appears.
+- **Transcription is on demand.** Nothing is transcribed until a viewer asks for an Auto-generated
+  track; there is no library-wide pass. Audio is cut into blocks on a grid counted from the start of
+  the media file, not the channel clock, so a repeat airing, a rerun or a second viewer reuses every
+  block already made. Blocks are cached like extracted tracks: by the file's size and modification
+  time plus the block index, in memory while in use and as WebVTT under
+  `<playout.state_dir>/subtitles/`.
+  - The **first block** at the viewer's position is about 8 s long and always runs on the local
+    `whisper-cli` with the shipped multilingual `tiny` model, so the first cue lands in seconds
+    (a 30 s first block measured 13–14 s at p95 to the first cue on every path, #4529).
+  - Later blocks are **30 s**, and the queue runs two to three blocks ahead of the latest window a
+    viewer asked for. It stops when no viewer has asked for that track for one block's length.
+  - Each block goes to the **hosted speech service** (`asr.provider=hosted`) when one is
+    configured and accepts the request, and otherwise to the local `tiny` model. A busy hosted
+    service (HTTP 429) falls back for that block; it is never retried in a loop. Hosted
+    transcription serves one request at a time, so concurrent viewers queue behind each other.
+  - Local transcription is a `ResourceBudget` client at filler's priority or below. When the budget
+    has no CPU headroom, a block is refused, not queued past it, and the answer says `pending`.
+  - The language is detected on the first block that carries speech and kept for the rest of the
+    programme.
+  - A cue that falls at least 80% inside detected silence (`silencedetect` at about −50 dB, or a
+    voice-activity detector) is dropped, because Whisper invents lines such as "Thank you." over
+    silence and music. Whole blocks are never skipped on a silence measure: at −35 dB it deletes
+    quiet real dialogue.
+  - Until a block exists, the answer says `pending` for that span and the player asks again.
 
 Both files carry a **`playout_token`** (§15, a generated secret): every segment request is signed, so
 only the operator's media server can pull the stream. Regenerating it invalidates the media server's

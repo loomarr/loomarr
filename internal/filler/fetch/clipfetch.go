@@ -141,6 +141,58 @@ type Ingestor struct {
 	writer      ArtifactWriter
 	storage     *storagegovernor.Governor
 	now         func() time.Time
+	// ledger remembers each item that has not downloaded, so it retries on its own. Nil forgets.
+	ledger acquisition.DownloadLedger
+}
+
+// WithLedger makes the Ingestor remember every item that fails or waits and forget every item that
+// downloads, which is what lets a failed download retry on its own (#3855).
+func (i *Ingestor) WithLedger(ledger acquisition.DownloadLedger) *Ingestor {
+	i.ledger = ledger
+	return i
+}
+
+// itemOf is the part of a source the ledger keeps.
+func itemOf(src Source) acquisition.DownloadItem {
+	return acquisition.DownloadItem{
+		Kind: string(src.Kind), SourceID: src.ID, RemoteID: src.RemoteID, URL: src.URL,
+		DurationMS: src.DurationMS, Height: src.Height, Gap: src.Gap,
+	}
+}
+
+// failed counts a source that did not download and schedules its retry. A ledger that cannot be
+// written is logged, never allowed to change what the pass reports.
+func (i *Ingestor) failed(ctx context.Context, res *Result, src Source, cause error) {
+	res.Failed++
+	if i.ledger == nil {
+		return
+	}
+	if _, err := i.ledger.RecordDownloadFailure(ctx, itemOf(src), cause.Error(), i.now()); err != nil {
+		i.logf("remember failed download %s: %v", src.URL, err)
+	}
+}
+
+// deferred counts a source that waits on a temporary cause (no room). It is not a failure: nothing
+// is counted against the item, which is tried again after acquisition.DownloadWait.
+func (i *Ingestor) deferred(ctx context.Context, res *Result, src Source, reason string) {
+	res.Deferred++
+	if i.ledger == nil {
+		return
+	}
+	now := i.now()
+	if err := i.ledger.DeferDownload(ctx, itemOf(src), reason, now.Add(acquisition.DownloadWait), now); err != nil {
+		i.logf("remember waiting download %s: %v", src.URL, err)
+	}
+}
+
+// succeeded forgets what an earlier failure of the source left behind.
+func (i *Ingestor) succeeded(ctx context.Context, src Source) {
+	if i.ledger == nil {
+		return
+	}
+	if err := i.ledger.ClearDownload(ctx, itemOf(src).Key()); err != nil {
+		i.logf("forget downloaded item %s: %v", src.URL, err)
+	}
 }
 
 // New builds an Ingestor from the providers' (real or fake) downloaders, the drop dir and the
@@ -314,6 +366,9 @@ type Result struct {
 	Fetched int
 	Skipped int
 	Failed  int
+	// Deferred counts sources that waited on a temporary cause, no room in the library, and so were
+	// not tried. They are not failures; each is tried again by itself.
+	Deferred int
 	// Empty counts sources that returned no clips and no error — a
 	// nonexistent/typo'd id or empty source (surfaced so it isn't silent).
 	Empty     int
@@ -348,21 +403,21 @@ func (i *Ingestor) run(ctx context.Context, sources []plannedSource) Result {
 		dl := i.downloaderFor(src.Kind)
 		if dl == nil {
 			i.logf("no downloader for kind %q (%s)", src.Kind, src.URL)
-			res.Failed++
+			i.failed(ctx, &res, src, fmt.Errorf("no downloader for kind %q", src.Kind))
 			continue
 		}
 		if planned.lease != nil {
 			decision := planned.lease.Revalidate(ctx, 0)
 			if !decision.Allowed {
 				i.logf("storage reservation for %s is no longer safe: %s", src.URL, decision.Snapshot.Reason)
-				res.Failed++
+				i.deferred(ctx, &res, src, "waiting for room: "+string(decision.Snapshot.Reason))
 				continue
 			}
 		}
 		outputDir := filepath.Join(i.dropDir, ".loomarr-acquisitions", src.AcquisitionID, fmt.Sprintf("%03d", sourceIndex))
 		if err := os.MkdirAll(outputDir, 0o750); err != nil {
 			i.logf("prepare quarantine for %s: %v", src.URL, err)
-			res.Failed++
+			i.failed(ctx, &res, src, err)
 			continue
 		}
 		src.PublicationDir = i.dropDir
@@ -379,13 +434,13 @@ func (i *Ingestor) run(ctx context.Context, sources []plannedSource) Result {
 		if len(manifests) > 0 {
 			if persistErr := i.writer.UpsertAcquisitionArtifacts(ctx, manifests); persistErr != nil {
 				i.logf("record acquisition outputs for %s: %v", src.URL, persistErr)
-				res.Failed++
+				i.failed(ctx, &res, src, persistErr)
 				continue
 			}
 			if committer, ok := dl.(ArchiveCommitter); ok {
 				if commitErr := committer.CommitArchive(outputDir, i.dropDir, download.Outputs); commitErr != nil {
 					i.logf("commit provider archive for %s: %v", src.URL, commitErr)
-					res.Failed++
+					i.failed(ctx, &res, src, commitErr)
 					continue
 				}
 				archiveUpdated := false
@@ -400,7 +455,7 @@ func (i *Ingestor) run(ctx context.Context, sources []plannedSource) Result {
 				if archiveUpdated {
 					if persistErr := i.writer.UpsertAcquisitionArtifacts(ctx, manifests); persistErr != nil {
 						i.logf("acknowledge provider archive for %s: %v", src.URL, persistErr)
-						res.Failed++
+						i.failed(ctx, &res, src, persistErr)
 						continue
 					}
 				}
@@ -415,9 +470,15 @@ func (i *Ingestor) run(ctx context.Context, sources []plannedSource) Result {
 		res.Artifacts = append(res.Artifacts, manifests...)
 		if err != nil {
 			i.logf("ingest %s failed: %v", src.URL, err)
-			res.Failed++
+			if capacityErr != nil {
+				// The governor refused the room: the item is fine and waits for space.
+				i.deferred(ctx, &res, src, "waiting for room: "+err.Error())
+				continue
+			}
+			i.failed(ctx, &res, src, err)
 			continue
 		}
+		i.succeeded(ctx, src)
 		if download.Fetched == 0 && download.Skipped == 0 {
 			// A source that yielded no clips AND no error is almost always operator
 			// error — a typo'd/nonexistent Archive id (Archive returns 200 {} for an
@@ -484,20 +545,12 @@ func (i *Ingestor) publish(ctx context.Context, manifests []acquisition.Artifact
 		// sidecar creates a race with intake even though the durable manifest remains authoritative.
 		if outputs[index].SidecarPath != "" {
 			if err := publishSidecar(outputs[index].SidecarPath, filepath.Join(i.dropDir, updated[index].SidecarPath), updated[index]); err != nil {
-				updated[index].State = acquisition.ArtifactRepair
-				updated[index].RepairReason = "publish sidecar: " + err.Error()
-				updated[index].UpdatedAt = i.now().UTC()
-				_ = i.writer.UpsertAcquisitionArtifacts(ctx, updated[index:index+1])
-				return updated, err
+				return updated, errors.Join(err, i.markRepair(ctx, &updated[index], "publish sidecar: "+err.Error()))
 			}
 		}
 		target := filepath.Join(i.dropDir, updated[index].MediaPath)
 		if err := publishFile(outputs[index].MediaPath, target); err != nil {
-			updated[index].State = acquisition.ArtifactRepair
-			updated[index].RepairReason = "publish media: " + err.Error()
-			updated[index].UpdatedAt = i.now().UTC()
-			_ = i.writer.UpsertAcquisitionArtifacts(ctx, updated[index:index+1])
-			return updated, err
+			return updated, errors.Join(err, i.markRepair(ctx, &updated[index], "publish media: "+err.Error()))
 		}
 		updated[index].State = acquisition.ArtifactPublished
 		updated[index].UpdatedAt = i.now().UTC()
@@ -506,6 +559,20 @@ func (i *Ingestor) publish(ctx context.Context, manifests []acquisition.Artifact
 		return updated, fmt.Errorf("acknowledge published acquisition outputs: %w", err)
 	}
 	return updated, nil
+}
+
+// markRepair records that publishing an artifact failed, so recovery finds it. A marker that cannot
+// be written leaves the artifact reading as staged, so the failure is returned (the caller joins it
+// to the publish error) and logged, never dropped.
+func (i *Ingestor) markRepair(ctx context.Context, artifact *acquisition.Artifact, reason string) error {
+	artifact.State = acquisition.ArtifactRepair
+	artifact.RepairReason = reason
+	artifact.UpdatedAt = i.now().UTC()
+	if err := i.writer.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{*artifact}); err != nil {
+		i.logf("repair marker for %s could not be saved; recovery may not find it: %v", artifact.MediaPath, err)
+		return fmt.Errorf("save repair marker: %w", err)
+	}
+	return nil
 }
 
 // publishSidecar publishes the provenance sidecar idempotently: an existing target that is this

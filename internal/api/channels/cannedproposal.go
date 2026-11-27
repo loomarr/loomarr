@@ -15,7 +15,7 @@ import (
 // picks the idea whose genre the description names, or the biggest idea when it names none, so a
 // guest sees the same review card a real suggestion would produce.
 func CannedProposal(ctx context.Context, lib IdeaLibrary, description string, now time.Time) (proposals.Proposal, error) {
-	items, err := lib.IdeaItems(ctx)
+	items, err := lib.IdeaItems(ctx, false)
 	if err != nil {
 		return proposals.Proposal{}, httpcore.ProblemWithCause(502, "Couldn't read the library",
 			"The demo library didn't answer. Try again in a moment.", err)

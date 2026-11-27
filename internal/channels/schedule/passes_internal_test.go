@@ -333,7 +333,7 @@ func BenchmarkDealChain(b *testing.B) {
 }
 
 // airing is one unit as playout airs it: the channel's window w opens at w*window, and what the
-// window carries is looped (`elapsed % total`, as internal/playout/timeline.go does) until it closes.
+// window carries is looped (`elapsed % total`, as internal/playout/timeline does) until it closes.
 type airing struct {
 	id string
 	at int64 // ms from the first window's open

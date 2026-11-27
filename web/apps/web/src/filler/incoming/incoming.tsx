@@ -16,6 +16,7 @@ import {
   PressableRow,
   Stack,
   Text,
+  TextLink,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -62,9 +63,10 @@ const StatusRows = ({
   onOpen: (row: IncomingStatusDTO, trigger: HTMLElement) => void;
   onMore: () => void;
 }) => (
-  <Card className="divide-border divide-y">
-    {group.rows.map((row) => (
+  <Card>
+    {group.rows.map((row, index) => (
       <PressableRow
+        divided={index < group.rows.length - 1 || Boolean(group.nextCursor)}
         key={row.clipHash}
         onPress={(event) => onOpen(row, event.currentTarget as unknown as HTMLElement)}
       >
@@ -81,8 +83,8 @@ const StatusRows = ({
         >
           {row.thumbImage ? <ServedImage image={row.thumbImage} alt="" sizes="64px" /> : null}
         </Stack>
-        <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0} render="span">
-          <Text as="span" className="break-words" textRole="cardLabel" tone="primary">
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="0.5" minWidth={0} render="span">
+          <Text as="span" overflowWrap="break-word" textRole="cardLabel" tone="primary">
             {row.name}
           </Text>
           <Text as="span" textRole="hint" tone="secondary">
@@ -309,17 +311,18 @@ const Incoming = () => {
               <Stack
                 align={{ base: "start", sm: "center" }}
                 direction={{ base: "column", sm: "row" }}
-                flexShrink={0}
                 gap="4"
               >
-                <div className="min-w-0 flex-1">
-                  <Text as="p" className="break-words" textRole="cardLabel">
+                <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+                  <Text as="p" overflowWrap="break-word" textRole="cardLabel">
                     {helpTask.name}
                   </Text>
-                  <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-                    {helpTask.question}
-                  </Text>
-                </div>
+                  <Stack marginTop={4}>
+                    <Text as="p" textRole="compact" tone="secondary">
+                      {helpTask.question}
+                    </Text>
+                  </Stack>
+                </Stack>
                 <Action accessibilityRole="link" render={<a href={helpTask.actionHref} />}>
                   {helpTask.actionLabel}
                 </Action>
@@ -363,13 +366,12 @@ const Incoming = () => {
               </Text>
               <Text as="p" textRole="compact" tone="secondary">
                 Added in {readyWindowLabel(view.readyWindowSeconds)}. These clips stay in your Library.{" "}
-                <Link
-                  to="/filler/settings/$section"
-                  params={{ section: "incoming" }}
-                  className="underline underline-offset-4"
+                <TextLink
+                  render={<Link to="/filler/settings/$section" params={{ section: "incoming" }} />}
+                  tone="primary"
                 >
                   Change
-                </Link>
+                </TextLink>
               </Text>
             </div>
             <Action accessibilityRole="link" render={<Link to="/filler/library" />} variant="outline">

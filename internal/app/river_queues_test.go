@@ -94,5 +94,69 @@ func TestRiverQueues_ALongJobDoesNotStarveTheCheapOnes(t *testing.T) {
 	}
 }
 
+// ⚠ **The job that says whether Loomarr is alive never waits behind another job.**
+//
+// Measured live 2026-11-18: `channel-maintenance` spent 53 s inside its Emby retry budget
+// (01:40:02 → 01:40:55Z) on the single default worker. `system-health` could not start, the
+// database check went stale at its 65 s mark, `/v1/readyz` answered 503, and the reverse proxy took
+// Loomarr off the network: a viewer's stream got 503s and stopped. The same happened at 01:30. Any
+// default job may legitimately run for River's 60 s, so a shared worker can always outlast the
+// freshness window; the watchdog needs a worker of its own.
+func TestRiverQueues_AStuckDefaultJobDoesNotDelayTheWatchdog(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	fired := make(chan struct{}, 1)
+
+	reg := jobs.NewRegistry().
+		Add(jobs.Job{
+			Name: "maintenance", Group: jobs.GroupSystem, Title: "Maintenance",
+			Description: "an ordinary job waiting on a busy media server.",
+			DefaultCron: "0 0 5 1 1 *",
+			Run: func(ctx context.Context) error {
+				close(started)
+				select {
+				case <-release:
+				case <-ctx.Done():
+				}
+				return nil
+			},
+		}).
+		Add(jobs.Job{
+			Name: "health", Group: jobs.GroupSystem, Title: "Health", Description: "the health watchdog.",
+			DefaultCron: "0 0 5 1 1 *", Timeout: 10 * time.Second, Watchdog: true,
+			Run: func(context.Context) error { fired <- struct{}{}; return nil },
+		})
+
+	log := slog.New(slog.DiscardHandler)
+	s := jobs.New(st, reg, nil, time.Now, log)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.SeedRegistry(ctx)
+	if _, err := s.StartRiver(ctx, store.DialectOf(st), store.PoolOf(st), log); err != nil {
+		t.Fatalf("StartRiver: %v", err)
+	}
+
+	if err := s.Trigger(ctx, "maintenance"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the ordinary job never started; nothing is being proved")
+	}
+	if err := s.Trigger(ctx, "health"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-fired:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the health watchdog waited behind an ordinary job; readiness would go stale and " +
+			"the proxy would take Loomarr off the network")
+	}
+}
+
 // The routing invariant is pinned in `internal/platform/jobs` (queues_test.go), where `queueFor` and
 // `riverQueues` live — test-only exports would be a worse trade than an internal test.

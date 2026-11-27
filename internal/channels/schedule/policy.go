@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/provision"
-	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
+
 	"github.com/loomarr/loomarr/internal/platform/langcode"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 )
@@ -36,8 +37,13 @@ type ChannelPolicy struct {
 	// It is NOT extracted — enforcement writes it, the API surfaces it. Recomputed
 	// from scratch each reconcile, so it un-relaxes automatically when the pool recovers.
 	// Reconcile-owned: rejected on write, force-preserved by MergeFromOperator.
-	// The ladder descends at most maxLadderSteps (8) steps, so a channel never records more.
+	// Each separation guard relaxes at most once (§7), so a channel records at most four.
 	Applied []AppliedRelaxation `json:"applied,omitempty" maxItems:"8"`
+	// Unairable lists the lineup titles that put nothing into the cycle at the last reconcile,
+	// each with why (#4140): not in the library, no episodes in the chosen seasons, refused by
+	// the ceiling or the scope. Reconcile-owned like Applied: recomputed each reconcile, ignored
+	// on write, and empty once every title airs.
+	Unairable []UnairableTitle `json:"unairable,omitempty" maxItems:"512"`
 	// OperatorSet lists the proposal-owned field paths the operator has explicitly set
 	// ("scope", "audience", "ordering", …). MergeFromProposal skips any field
 	// named here, so an operator edit is STICKY — a later refine/re-curation cannot silently
@@ -114,6 +120,10 @@ type OperatorPolicy struct {
 	// bounded by the quality bar + title cap (global defaults, optionally overridden here).
 	// Rides policy_json (no schema change), so it round-trips like every other policy field.
 	AutoCurate *AutoCurate `json:"autoCurate,omitempty"`
+	// Growth is how the channel grows by itself from the line its seeds draw (#4333). Nil grows:
+	// every channel grows unless kept as it is (decision 6). An operator write that omits it keeps
+	// the saved value, so a client that does not know the field cannot clear what was declined.
+	Growth *GrowthPolicy `json:"growth,omitempty"`
 	// Playout overrides which backend streams THIS channel (§9.1). Nil (the default) =
 	// inherit the `playout.backend` registry setting. Rides policy_json like everything
 	// above it, so there is no schema change and no migration.
@@ -144,6 +154,19 @@ type PlayoutPolicy struct {
 	// per-viewer — one encoder serves everyone (§9.1), so this re-picks the track for the
 	// whole channel, exactly as changing the instance default would.
 	AudioLanguage string `json:"audioLanguage,omitempty"`
+	// BurnSubtitles is the ISO 639-2 language whose IMAGE subtitle track (Blu-ray PGS) this
+	// channel burns into its programmes (#2088 step 8), when a programme carries one. Empty = never.
+	// Image subtitles cannot travel beside the stream as text, so burning them in is the only way
+	// to show them; text tracks stay each viewer's own choice (the subtitles sidecar).
+	BurnSubtitles string `json:"burnSubtitles,omitempty" doc:"ISO 639-2 language whose image subtitle track (Blu-ray PGS) is burned into this channel's programmes where a programme carries one and the host's GPU can draw it; omitted burns none in. Text subtitles stay each viewer's choice."`
+}
+
+// BurnSubtitlesLanguage is the language a channel burns image subtitles in, or "" for none.
+func BurnSubtitlesLanguage(policy ChannelPolicy) string {
+	if p := policy.Playout; p != nil {
+		return strings.ToLower(strings.TrimSpace(p.BurnSubtitles))
+	}
+	return ""
 }
 
 // Playout backend values are shared by settings, channel policy, and transition
@@ -244,6 +267,55 @@ type AutoCurate struct {
 	// MaxTitles overrides recurate.max_titles (the cap on how large this channel may grow).
 	// 0 = inherit the global default.
 	MaxTitles int `json:"maxTitles,omitempty"`
+}
+
+// GrowthPolicy is a channel's growth switches (#4333).
+type GrowthPolicy struct {
+	// Keep is "keep as it is": nothing joins the channel by itself.
+	Keep bool `json:"keep,omitempty"`
+	// Declined are titles taken back off from a growth batch. They never rejoin by themselves; a
+	// person can still add one by hand.
+	Declined []provision.Key `json:"declined,omitempty" maxItems:"1000"`
+}
+
+// Grows reports whether the channel takes titles by itself.
+func (p ChannelPolicy) Grows() bool { return p.Growth == nil || !p.Growth.Keep }
+
+// Declined reports whether a person took key back off a growth batch.
+func (p ChannelPolicy) Declined(key provision.Key) bool {
+	return p.Growth != nil && slices.Contains(p.Growth.Declined, key)
+}
+
+// maxDeclined is the GrowthPolicy.Declined cap; the oldest refusal is forgotten first.
+const maxDeclined = 1000
+
+// WithRemovedGrowthDeclined is p after a person edited the lineup from before to after: a title a
+// growth batch added and the edit took off is declined, so the next night does not add it back.
+// Taking a title off is the undo, whichever control a person used to do it (#4333).
+func (p ChannelPolicy) WithRemovedGrowthDeclined(before, after []LineupEntry) ChannelPolicy {
+	kept := make(map[provision.Key]bool, len(after))
+	for _, e := range after {
+		kept[e.Key] = true
+	}
+	var declined []provision.Key
+	for _, e := range before {
+		if e.Grown != "" && !kept[e.Key] && !p.Declined(e.Key) {
+			declined = append(declined, e.Key)
+		}
+	}
+	if len(declined) == 0 {
+		return p
+	}
+	g := GrowthPolicy{}
+	if p.Growth != nil {
+		g = *p.Growth
+	}
+	g.Declined = append(slices.Clone(g.Declined), declined...)
+	if over := len(g.Declined) - maxDeclined; over > 0 {
+		g.Declined = g.Declined[over:]
+	}
+	p.Growth = &g
+	return p
 }
 
 // FillerSelection is a channel's per-channel filler choice (§10). Every field is
@@ -412,8 +484,7 @@ func sameRanges(a, b []Range) bool {
 // ScopePolicy is the "what is allowed on this channel" filter (§2). Ids are
 // resolved provisioning keys, never names.
 //
-// Dates is the only date scope. The retired `era` field is still read as an alias on
-// decode (see UnmarshalJSON in datescope.go) and is never written.
+// Dates is the only date scope; a scope has no era field (#2147).
 type ScopePolicy struct {
 	Series      []provision.Key `json:"series,omitempty" maxItems:"1000"`     // restrict to these series (resolved ids); no larger than a lineup (1000)
 	Collections []string        `json:"collections,omitempty" maxItems:"100"` // media-server collections; a library has dozens
@@ -421,11 +492,6 @@ type ScopePolicy struct {
 	Dates       *DateScope      `json:"dates,omitempty"`                      // separate movie, premiere, and episode-airing windows
 	Genres      GenreFilter     `json:"genres,omitempty"`                     // include/exclude by genre name
 	RuntimeMax  int             `json:"runtimeMax,omitempty"`                 // seconds; 0 = unbounded ("nothing over an hour")
-
-	// eraAndDates records that the decoded JSON carried both `era` and `dates`. A stored
-	// policy decodes to their intersection; a request with both is ambiguous and the API
-	// rejects it (ChannelPolicy.DateAliasConflict). Decode-only state, never serialised.
-	eraAndDates bool
 }
 
 // DateScope keeps date meanings separate: title metadata supplies movie release and
@@ -606,11 +672,11 @@ type SeasonalPolicy struct {
 	Placement HolidayPlacement `json:"placement,omitempty"` // evenings | anytime; "" = evenings
 }
 
-// AppliedRelaxation records one step the relaxation ladder took (§7), surfaced in
+// AppliedRelaxation records one separation guard that relaxed (§7), surfaced in
 // the UI ("policy relaxed: repeat window 7d → 3d"). Kind is a stable slug; From/To
 // are human-readable values for display.
 type AppliedRelaxation struct {
-	Kind string `json:"kind"` // "episodeNoRepeat" | "seriesMinGap" | "era" | ...
+	Kind string `json:"kind"` // "episodeNoRepeat" | "movieNoRepeat" | "seriesMinGap" | "blockMax"
 	From string `json:"from"`
 	To   string `json:"to"`
 }
@@ -761,320 +827,3 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 
 // Std returns the underlying time.Duration.
 func (d Duration) Std() time.Duration { return time.Duration(d) }
-
-// --- built-in defaults (design §15; the two-tier `channel-policy > built-in`) ---
-// The registry-default middle tier (config-design.md) is deferred until the
-// settings registry lands; these constants are the v1 default source of truth.
-const (
-	defaultEpisodeNoRepeat = 168 * time.Hour // 7d
-	defaultMovieNoRepeat   = 720 * time.Hour // 30d
-	defaultSeriesMinGap    = 2 * time.Hour
-	defaultBlockMax        = 2
-	defaultOrdering        = OrderSyndication
-	defaultSeasonalMode    = SeasonalAuto
-	defaultOffSeason       = OffSeasonLoop
-	defaultHolidayStrength = HolidayStrengthFeatured
-)
-
-// ResolvedPolicy is the fully-populated form enforcement consumes: every default
-// filled, no zero-means-default ambiguity, so slotting/filter code never repeats
-// "if unset use default". Produced once per reconcile by ChannelPolicy.Resolved().
-type ResolvedPolicy struct {
-	Scope    ScopePolicy
-	Ceiling  rating.Rating
-	Unrated  UnratedPolicy // resolved to exclude|allow (never "")
-	Sep      ResolvedSeparation
-	Ordering OrderingMode // resolved to a concrete mode (never OrderInherit)
-	Seasonal ResolvedSeasonal
-	// LastAired is when each unit (library item id) last aired ON THIS CHANNEL (§3.1) — the
-	// recency signal placement biases on. Nil/empty ⇒ no history, and ordering is exactly what
-	// it was before the signal existed.
-	//
-	// NOT a policy field: it is observed state, not something an operator or the LLM authors,
-	// which is why it has no ChannelPolicy counterpart and no §9 extensibility entry. It rides
-	// here because it is an INPUT to placement and this is what placement receives.
-	LastAired map[string]time.Time
-	// Calendar is the household's holiday calendar (#2030), which judges and dates the seasonal
-	// pass and the holiday-episode matchers. Household state, not policy — it rides here for the
-	// same reason LastAired does.
-	Calendar Calendar
-}
-
-// ResolvedSeparation is the separation policy with every window/limit filled.
-type ResolvedSeparation struct {
-	EpisodeNoRepeat time.Duration
-	MovieNoRepeat   time.Duration
-	SeriesMinGap    time.Duration
-	BlockMax        int // 0 = unbounded (single-series auto-relax)
-}
-
-// ResolvedSeasonal is the seasonal policy with mode/off-season concrete.
-type ResolvedSeasonal struct {
-	Mode      SeasonalMode
-	Holidays  []string
-	OffSeason OffSeason
-	Strength  HolidayStrength // never "": light | featured | heavy
-	Evenings  bool            // featured holiday episodes air in the evening band
-}
-
-// Resolved fills every default and applies the single-series auto-relax (§2).
-//
-//   - strategy: the channel's Strategy — an omitted policy Ordering inherits it
-//     (a policy-less channel keeps its existing behavior, the locked decision).
-//   - singleSeries: true when the eligible entry set is exactly one series and no
-//     movies; separation there is EPISODE spacing, so SeriesMinGap/BlockMax relax
-//     (rule-based, not LLM judgment).
-func (p ChannelPolicy) Resolved(strategy Strategy, singleSeries bool) ResolvedPolicy {
-	sep := ResolvedSeparation{
-		EpisodeNoRepeat: orDur(p.Separation.EpisodeNoRepeat, defaultEpisodeNoRepeat),
-		MovieNoRepeat:   orDur(p.Separation.MovieNoRepeat, defaultMovieNoRepeat),
-		SeriesMinGap:    orDur(p.Separation.SeriesMinGap, defaultSeriesMinGap),
-		BlockMax:        orInt(p.Separation.BlockMax, defaultBlockMax),
-	}
-	if singleSeries {
-		// Separation is episode spacing here, not series spacing — relax both.
-		sep.SeriesMinGap = 0
-		sep.BlockMax = 0 // unbounded
-	}
-
-	ordering := p.Ordering
-	if ordering == OrderInherit {
-		ordering = orderingFromStrategy(strategy)
-	}
-
-	mode := p.Seasonal.Mode
-	if mode == SeasonalDefault {
-		mode = defaultSeasonalMode
-	}
-	off := p.Seasonal.OffSeason
-	if off == OffSeasonDefault {
-		off = defaultOffSeason
-	}
-	strength := p.Seasonal.Strength
-	if strength == HolidayStrengthDefault {
-		strength = defaultHolidayStrength
-	}
-
-	return ResolvedPolicy{
-		Scope:    p.Scope,
-		Ceiling:  p.Audience.Ceiling,
-		Unrated:  resolveUnrated(p.Audience),
-		Sep:      sep,
-		Ordering: ordering,
-		Seasonal: ResolvedSeasonal{
-			Mode: mode, Holidays: p.Seasonal.Holidays, OffSeason: off,
-			Strength: strength, Evenings: p.Seasonal.Placement != HolidayPlacementAnytime,
-		},
-	}
-}
-
-// resolveUnrated fills the unrated policy: explicit value wins; otherwise a kids
-// ceiling (TV-Y..TV-PG) defaults to exclude (fail-closed) and any other ceiling
-// (including none) defaults to allow (§4).
-func resolveUnrated(a AudiencePolicy) UnratedPolicy {
-	if a.Unrated != UnratedDefault {
-		return a.Unrated
-	}
-	if rank, _ := a.Ceiling.Rank(); a.Ceiling != "" && rank <= rating.KidsCeilingRank {
-		return UnratedExclude
-	}
-	return UnratedAllow
-}
-
-// orderingFromStrategy maps the channel's Strategy onto an OrderingMode for the
-// inherit case. TimeSlot has no separate ordering yet → sequential (its block
-// mapping happens at push time, matching lineup.go's TimeSlot handling).
-func orderingFromStrategy(s Strategy) OrderingMode {
-	switch s {
-	case Shuffle:
-		return OrderShuffle
-	case Sequential, TimeSlot:
-		return OrderSequential
-	default:
-		return defaultOrdering
-	}
-}
-
-func orDur(d Duration, def time.Duration) time.Duration {
-	if d == 0 {
-		return def
-	}
-	return d.Std()
-}
-
-func orInt(v, def int) int {
-	if v == 0 {
-		return def
-	}
-	return v
-}
-
-// ValidateWithHolidays is Validate plus the one check that needs the household's holiday
-// vocabulary: a rule's holiday id must be one it defines, exactly as written (the engine compares
-// ids as they are), because an unknown id is a rule that never fires. Writers that can reach the
-// vocabulary use this; Validate alone leaves holiday ids to the vocabulary-free callers.
-func (p ChannelPolicy) ValidateWithHolidays(v holidayvocab.Vocabulary) error {
-	return p.validateWith(&v, nil)
-}
-
-// ValidateEditOf is ValidateWithHolidays for an edit of a policy that is already stored. A rule the
-// edit leaves exactly as stored (same id and content) is not checked: the stored policy may hold
-// a rule an older writer allowed (a one-hour window written as 5 to 5, a pattern no hour of the week
-// satisfies), and refusing an unrelated edit for it would blame a change the operator never made.
-// Such a rule never fires, so leaving it costs nothing; a rule the edit adds or changes is held to
-// the same checks as a fresh write, and its error names it (RuleError). Every other field is
-// checked as usual.
-func (p ChannelPolicy) ValidateEditOf(stored ChannelPolicy, v holidayvocab.Vocabulary) error {
-	return p.validateWith(&v, stored.Rules)
-}
-
-// ValidateKeeping is Validate for a policy a writer built from the one already stored (an approved
-// proposal merged onto its channel): rules left exactly as stored are not re-checked, for the reason
-// ValidateEditOf gives, and a rule the writer added or changed is. It takes no holiday vocabulary,
-// so the holiday id is left to the writers that have one.
-func (p ChannelPolicy) ValidateKeeping(stored ChannelPolicy) error {
-	return p.validateWith(nil, stored.Rules)
-}
-
-// WithoutUnsatisfiableLLMRules drops the suggester's rules that could never fire (WhenPredicate.validate
-// refuses them): a stored proposal from before the lowering refused contradictory composites still
-// carries them. A rule that never fires changes nothing the channel airs, and an LLM rule is the
-// suggester's to replace, so removing one loses nothing; operator rules are never touched.
-func (p ChannelPolicy) WithoutUnsatisfiableLLMRules() ChannelPolicy {
-	kept := make([]SchedulingRule, 0, len(p.Rules))
-	for _, rule := range p.Rules {
-		if rule.Source.isLLM() && rule.When.validate() != nil {
-			continue
-		}
-		kept = append(kept, rule)
-	}
-	if len(kept) == len(p.Rules) {
-		return p
-	}
-	if len(kept) == 0 {
-		kept = nil // the zero value stays nil, as mergeRules keeps it (round-trip stability)
-	}
-	p.Rules = kept
-	return p
-}
-
-// RuleError is a policy validation failure in one rule, carrying which, so a caller can tell the
-// operator the rule rather than a generic policy complaint. Its text keeps the form
-// "channel policy: rule N: <reason>".
-type RuleError struct {
-	Index int // 1-based position in the policy's rules
-	ID    string
-	Label string
-	Err   error
-}
-
-func (e *RuleError) Error() string { return fmt.Sprintf("channel policy: rule %d: %v", e.Index, e.Err) }
-
-func (e *RuleError) Unwrap() error { return e.Err }
-
-// Describe is the failure in the operator's words: which rule, and why it cannot be saved.
-func (e *RuleError) Describe() string {
-	name := fmt.Sprintf("Rule %d", e.Index)
-	if label := strings.TrimSpace(e.Label); label != "" {
-		name += fmt.Sprintf(" (%s)", label)
-	}
-	return fmt.Sprintf("%s can never air: %v. Fix or remove it, then try again.", name, e.Err)
-}
-
-// sameStoredRule reports whether rule is, id and content, one of the stored rules (a rule saved
-// before ids existed has none, and matches a stored one that has none either). The comparison is on
-// the stored (JSON) form, not the Go value, so a time that decoded with a different location pointer
-// or a nil slice against an empty one is still the same rule.
-func sameStoredRule(rule SchedulingRule, stored []SchedulingRule) bool {
-	want, err := json.Marshal(rule)
-	if err != nil {
-		return false
-	}
-	for _, s := range stored {
-		if s.ID != rule.ID {
-			continue
-		}
-		if got, err := json.Marshal(s); err == nil && string(got) == string(want) {
-			return true
-		}
-	}
-	return false
-}
-
-// Validate rejects a policy with an unknown non-empty enum value or an unmappable
-// audience ceiling (grounding: the suggester must never emit a ceiling outside the
-// closed ladder), and a rule whose weekday or hour values name nothing or can never be
-// satisfied (WhenPredicate.validate).
-// Empty/omitted fields are always valid (they resolve to defaults).
-func (p ChannelPolicy) Validate() error { return p.validateWith(nil, nil) }
-
-// validateWith is Validate, plus the holiday check when v is given, with the rules in stored (an
-// edit's baseline) exempt from the per-rule checks.
-func (p ChannelPolicy) validateWith(v *holidayvocab.Vocabulary, stored []SchedulingRule) error {
-	if err := validateDates("channel policy: scope.dates", p.Scope.Dates); err != nil {
-		return err
-	}
-	for i, rule := range p.Rules {
-		if sameStoredRule(rule, stored) {
-			continue
-		}
-		if err := rule.When.validate(); err != nil {
-			return &RuleError{Index: i + 1, ID: rule.ID, Label: rule.Label, Err: err}
-		}
-		if rule.What != nil {
-			if err := validateDates("channel policy: rule.what.dates", rule.What.Dates); err != nil {
-				return err
-			}
-		}
-	}
-	if !p.Ordering.valid() {
-		return fmt.Errorf("channel policy: unknown ordering %q", p.Ordering)
-	}
-	if !p.Audience.Unrated.valid() {
-		return fmt.Errorf("channel policy: unknown unrated policy %q", p.Audience.Unrated)
-	}
-	if p.Audience.Ceiling != "" && !p.Audience.Ceiling.Mapped() {
-		return fmt.Errorf("channel policy: ceiling %q is not on the rating ladder", p.Audience.Ceiling)
-	}
-	if !p.Seasonal.Mode.valid() {
-		return fmt.Errorf("channel policy: unknown seasonal mode %q", p.Seasonal.Mode)
-	}
-	if !p.Seasonal.OffSeason.valid() {
-		return fmt.Errorf("channel policy: unknown offSeason %q", p.Seasonal.OffSeason)
-	}
-	if !p.Seasonal.Strength.valid() {
-		return fmt.Errorf("channel policy: unknown holiday strength %q", p.Seasonal.Strength)
-	}
-	if !p.Seasonal.Placement.valid() {
-		return fmt.Errorf("channel policy: unknown holiday placement %q", p.Seasonal.Placement)
-	}
-	if err := p.Filler.validate(); err != nil {
-		return fmt.Errorf("channel policy: %w", err)
-	}
-	if err := p.Watermark.validate(); err != nil {
-		return fmt.Errorf("channel policy: %w", err)
-	}
-	if p.BreakDuration != nil && p.BreakDuration.Std() < 30*time.Second {
-		return fmt.Errorf("channel policy: breakDuration %s must be at least 30s", p.BreakDuration.Std())
-	}
-	if p.CommercialSpacing != nil && p.CommercialSpacing.Std() < 0 {
-		return fmt.Errorf("channel policy: commercialSpacing %s must not be negative", p.CommercialSpacing.Std())
-	}
-	if p.AutoCurate != nil {
-		if p.AutoCurate.MinScorePct < 0 || p.AutoCurate.MinScorePct > 100 {
-			return fmt.Errorf("channel policy: autoCurate.minScorePct %d out of range (0–100)", p.AutoCurate.MinScorePct)
-		}
-		if p.AutoCurate.MaxTitles < 0 {
-			return fmt.Errorf("channel policy: autoCurate.maxTitles %d must not be negative", p.AutoCurate.MaxTitles)
-		}
-	}
-	if v != nil {
-		for i, rule := range p.Rules {
-			if id := rule.When.Holiday; id != "" && !sameStoredRule(rule, stored) && !knownHoliday(id, *v) {
-				return &RuleError{Index: i + 1, ID: rule.ID, Label: rule.Label,
-					Err: fmt.Errorf("holiday %q is not a holiday this household's calendar defines", id)}
-			}
-		}
-	}
-	return nil
-}

@@ -37,6 +37,8 @@ card and theater overlay.
 and the wizard's Library step (#2151): 21 desktop and 8 phone screens rendered from the step-2
 prototype. Like the watch player it is authoritative for structure as well as look, and it amends
 #2151's decisions 23–28 and 34 (plain words, artwork first, technical facts behind one disclosure).
+The 2026-11-21 sheets (#4476) are now the mock of record for the Library wall, Needs you and the
+title page.
 
 ## v2 prototypes (imported 2026-07-24 — research inputs, not yet ratified)
 
