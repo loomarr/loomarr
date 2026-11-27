@@ -216,9 +216,12 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
   const jumpShort =
     jump !== undefined && titles.length < jump.index + LIBRARY_PAGE_SIZE && Boolean(hasNextPage);
   const jumpLoading = jumpShort && items.errorUpdatedAt === jump?.failedAt;
+  // How many titles the jump still wants. It falls with each page, which asks for the next one even
+  // when a page arrives too fast for the fetching state to be seen changing.
+  const wanted = jumpLoading && jump ? jump.index + LIBRARY_PAGE_SIZE - titles.length : 0;
   useEffect(() => {
-    if (jumpLoading) loadMore();
-  }, [jumpLoading, loadMore]);
+    if (wanted > 0) loadMore();
+  }, [wanted, loadMore]);
   useCancelOnScroll(jumpLoading, cancel);
   // The title is scrolled to once everything asked for is in, or when no more is coming.
   const arrived = jump && !jumpLoading && jump.index < titles.length ? jump : undefined;
