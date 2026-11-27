@@ -117,6 +117,41 @@ func testLibraryReferences(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("channel after refused saves = revision %d, %v; want %d", got.Revision, err, saved.Revision)
 	}
 
+	// A schedule stored before the keys can hold a slot whose item is gone, such as one that has
+	// already aired. It doesn't block a save (reconcile's included) and gets no row; a save that
+	// adds a new unknown item is still refused.
+	if _, err := sqlSt.db.ExecContext(ctx, sqlSt.ph(`UPDATE channels SET desired_json = ? WHERE id = 'ch-1'`),
+		`[{"Kind":"program","Key":"movie:tmdb:90000002","LibraryItemID":"90000802","DurationMs":1},`+
+			`{"Kind":"program","Key":"movie:tmdb:90000009","LibraryItemID":"90000890","DurationMs":1}]`); err != nil {
+		t.Fatal(err)
+	}
+	held, err := st.GetChannel(ctx, "ch-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	held.Name = "Renamed"
+	if saved, err = st.SaveChannel(ctx, held); err != nil {
+		t.Fatalf("save a channel whose stored schedule already names a vanished item: %v", err)
+	}
+	if got := strings(`SELECT library_item_id FROM channel_planned_items WHERE channel_id = 'ch-1'`); !slices.Equal(got, []string{"90000802"}) {
+		t.Errorf("planned items with a vanished item held = %v, want [90000802]", got)
+	}
+	added := saved
+	added.Desired = append(slices.Clone(saved.Desired), schedule.Slot{Kind: schedule.SlotProgram,
+		Key: "movie:tmdb:90000010", LibraryItemID: "90000891", DurationMs: 1})
+	if _, err := st.SaveChannel(ctx, added); !errors.Is(err, channelstore.ErrUnknownLibraryReference) {
+		t.Errorf("save adding an unknown item beside a held vanished one = %v, want ErrUnknownLibraryReference", err)
+	}
+
+	// The catalog purge keeps an item a channel plans to air and removes one nothing names.
+	saveLibraryItems(t, st, "90000805")
+	if _, err := st.PurgeSpentCatalog(ctx, at.Add(100*365*24*time.Hour)); err != nil {
+		t.Fatalf("purge with a planned item: %v", err)
+	}
+	if got := strings(`SELECT id FROM library_items WHERE id IN ('90000802', '90000805')`); !slices.Equal(got, []string{"90000802"}) {
+		t.Errorf("library items after the purge = %v, want the planned 90000802 kept and 90000805 purged", got)
+	}
+
 	// Deleting the channel takes its rows.
 	if err := st.DeleteChannel(ctx, "ch-1", saved.Revision); err != nil {
 		t.Fatal(err)

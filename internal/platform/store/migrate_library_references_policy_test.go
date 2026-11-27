@@ -66,6 +66,21 @@ var policyFixtures = []struct {
 		named:   []string{"col-a", "col-b"},
 	},
 	{id: "ch-rules-only", desired: `[]`, policy: `{"rules":[{"what":{"collections":["col-b","dead-5"],"runtimeMax":60}}]}`, named: []string{"col-b"}},
+	// Shapes ChannelPolicy never writes: none may fail the migration, and anything that isn't an
+	// array of ids is left as it is.
+	{
+		id:      "ch-odd-shapes",
+		desired: `{"not":"a list"}`,
+		policy:  `{"scope":{"collections":["col-a",null,5,"dead-6"]},"rules":[{"what":{"collections":null}},{"what":{"collections":"col-b"}},{"what":"x"}]}`,
+		named:   []string{"col-a"},
+	},
+	{
+		id:      "ch-bare-rule",
+		desired: `[]`,
+		policy:  `{"scope":{"collections":["col-b"]},"rules":["bare",{"what":{"collections":["col-a"]}}]}`,
+		named:   []string{"col-a", "col-b"},
+	},
+	{id: "ch-scope-not-array", desired: `[]`, policy: `{"scope":{"collections":"col-a"},"rules":{"what":{"collections":["dead-7"]}}}`},
 }
 
 // testLibraryReferencesPolicyMigration proves the migration takes out of each channel's policy
@@ -118,7 +133,7 @@ func testLibraryReferencesPolicyMigration(t *testing.T, db *sql.DB, dialect Dial
 		}
 	}
 	// Removing a dead id is the only change: a policy with none reads back the same document.
-	for _, id := range []string{"ch-no-collections", "ch-empty-policy", "ch-empty-arrays", "ch-only-kept"} {
+	for _, id := range []string{"ch-no-collections", "ch-empty-policy", "ch-empty-arrays", "ch-only-kept", "ch-bare-rule", "ch-scope-not-array"} {
 		if got, want := decodeExact(t, after[id].policy), decodeExact(t, before[id].policy); !reflect.DeepEqual(got, want) {
 			t.Errorf("%s policy_json changed with no dead id in it: %s, was %s", id, after[id].policy, before[id].policy)
 		}

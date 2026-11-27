@@ -63,7 +63,7 @@ UPDATE channels SET policy_json = jsonb_set(policy_json, '{rules}', (
             WHERE x.value #>> '{}' IN (SELECT id FROM library_collections)), '[]'::jsonb))
         ELSE r.value END ORDER BY r.ord)
     FROM jsonb_array_elements(policy_json -> 'rules') WITH ORDINALITY AS r(value, ord)))
-WHERE jsonb_typeof(policy_json -> 'rules') = 'array' AND jsonb_array_length(policy_json -> 'rules') > 0;
+WHERE jsonb_typeof(policy_json -> 'rules') = 'array' AND policy_json -> 'rules' <> '[]'::jsonb;
 
 CREATE TABLE channel_scope_collections (
     channel_id    TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
@@ -71,13 +71,20 @@ CREATE TABLE channel_scope_collections (
     PRIMARY KEY (channel_id, collection_id)
 );
 CREATE INDEX idx_channel_scope_collections_collection ON channel_scope_collections (collection_id);
+-- Each expansion reads an array or nothing (Postgres does not short-circuit a WHERE), and only ids
+-- with a row are taken, so no stored shape can fail the insert.
 INSERT INTO channel_scope_collections (channel_id, collection_id)
-SELECT c.id, x.value FROM channels c, jsonb_array_elements_text(c.policy_json #> '{scope,collections}') x(value)
-WHERE jsonb_typeof(c.policy_json #> '{scope,collections}') = 'array'
+SELECT c.id, x.value FROM channels c,
+    jsonb_array_elements_text(CASE WHEN jsonb_typeof(c.policy_json #> '{scope,collections}') = 'array'
+        THEN c.policy_json #> '{scope,collections}' ELSE '[]'::jsonb END) x(value)
+WHERE x.value IN (SELECT id FROM library_collections)
 UNION
-SELECT c.id, x.value FROM channels c, jsonb_array_elements(c.policy_json -> 'rules') r(value),
-    jsonb_array_elements_text(r.value #> '{what,collections}') x(value)
-WHERE jsonb_typeof(c.policy_json -> 'rules') = 'array' AND jsonb_typeof(r.value #> '{what,collections}') = 'array';
+SELECT c.id, x.value FROM channels c,
+    jsonb_array_elements(CASE WHEN jsonb_typeof(c.policy_json -> 'rules') = 'array'
+        THEN c.policy_json -> 'rules' ELSE '[]'::jsonb END) r(value),
+    jsonb_array_elements_text(CASE WHEN jsonb_typeof(r.value #> '{what,collections}') = 'array'
+        THEN r.value #> '{what,collections}' ELSE '[]'::jsonb END) x(value)
+WHERE x.value IN (SELECT id FROM library_collections);
 
 -- +goose Down
 -- No down: forward-only (§16).

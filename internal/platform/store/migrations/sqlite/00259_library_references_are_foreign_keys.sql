@@ -89,7 +89,8 @@ UPDATE channels SET policy_json = json_set(policy_json, '$.rules', json((
             WHERE x.value IN (SELECT id FROM library_collections))))
         ELSE r.value END) ORDER BY r.key)
     FROM json_each(channels.policy_json, '$.rules') r)))
-WHERE json_type(policy_json, '$.rules') = 'array';
+WHERE json_type(policy_json, '$.rules') = 'array'
+  AND NOT EXISTS (SELECT 1 FROM json_each(channels.policy_json, '$.rules') r WHERE r.type <> 'object');
 
 CREATE TABLE channel_scope_collections (
     channel_id    TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
@@ -97,11 +98,17 @@ CREATE TABLE channel_scope_collections (
     PRIMARY KEY (channel_id, collection_id)
 );
 CREATE INDEX idx_channel_scope_collections_collection ON channel_scope_collections (collection_id);
+-- Only arrays of strings are read, and only ids with a row, so no stored shape can fail the insert.
 INSERT INTO channel_scope_collections (channel_id, collection_id)
 SELECT c.id, x.value FROM channels c, json_each(c.policy_json, '$.scope.collections') x
+WHERE json_type(c.policy_json, '$.scope.collections') = 'array' AND x.type = 'text'
+  AND x.value IN (SELECT id FROM library_collections)
 UNION
 SELECT c.id, x.value FROM channels c, json_each(c.policy_json, '$.rules') r,
-    json_each(r.value, '$.what.collections') x;
+    json_each(CASE WHEN r.type = 'object' THEN r.value ELSE '{}' END, '$.what.collections') x
+WHERE json_type(c.policy_json, '$.rules') = 'array' AND r.type = 'object'
+  AND json_type(CASE WHEN r.type = 'object' THEN r.value ELSE '{}' END, '$.what.collections') = 'array' AND x.type = 'text'
+  AND x.value IN (SELECT id FROM library_collections);
 
 -- +goose Down
 -- No down: forward-only (§16).

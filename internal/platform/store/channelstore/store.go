@@ -3,8 +3,8 @@
 //
 // It is a cluster of the store, built on the storedb kernel and never importing the store: the
 // store embeds a Store in its aggregate and re-exports Channel and its errors by alias, so every
-// caller of store.Store keeps working unchanged. The proposal-approval transaction and the
-// library-reference rewrite write channels inside their own transactions through SaveChannelIn,
+// caller of store.Store keeps working unchanged. The proposal-approval transaction writes channels
+// inside its own transaction through SaveChannelIn,
 // ChannelForJobIn, ScanChannels and the Columns/Select statements; the dialect claim statements are
 // passed to New. internal/architecture_test.go enforces the direction.
 package channelstore
@@ -263,13 +263,14 @@ func (s *Store) SaveChannel(ctx context.Context, ch Channel) (Channel, error) {
 
 type DB interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
 // SaveChannelIn writes ch on exec, which must be a caller's transaction (the lineup rows are written
 // beside the channel row), with the same
-// serialization and SQL as Store.SaveChannel. The proposal-approval transaction and the
-// library-reference rewrite use it so their atomic paths are not a subtly different channel adapter.
+// serialization and SQL as Store.SaveChannel. The proposal-approval transaction uses it so its
+// atomic path is not a subtly different channel adapter.
 // It is a function, not a method, so it does not widen the store's method set.
 func SaveChannelIn(ctx context.Context, s *Store, exec DB, ch Channel) (Channel, error) {
 	return s.saveChannel(ctx, exec, ch)
@@ -300,6 +301,9 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 		string(desiredBlob), string(policyBlob), broadcastCodec,
 		storedb.Epoch(ch.PlayoutAnchor), storedb.Epoch(ch.ReconcileDeadline), ch.UpdatedAt, ch.DealtFrom,
 		anchorMillis(ch.PlayoutAnchor)}
+	if err := s.refuseNewDeadItems(ctx, exec, ch); err != nil {
+		return Channel{}, err
+	}
 	invalidation := ""
 	if s.inv != nil {
 		invalidation, err = s.inv.Saved(ch)
@@ -375,40 +379,117 @@ func (s *Store) writeContents(ctx context.Context, exec DB, ch Channel) error {
 // writeReferences replaces the rows naming the library items a channel plans to air
 // (channel_planned_items, from its desired slots) and the collections its scope and rules name
 // (channel_scope_collections), so the foreign keys hold them and no reader decodes channels to find
-// them (#2793). An id the library has no row for is ErrUnknownLibraryReference, not a key
-// violation, which SaveChannel would report as a uniqueness race.
+// them (#2793). A collection the library has no row for is ErrUnknownLibraryReference, not a key
+// violation, which SaveChannel would report as a uniqueness race. A planned item with no row gets
+// none: refuseNewDeadItems has already refused one the save introduces, so it is one the channel's
+// schedule already held (an aired slot whose item is gone), and refusing it would leave the channel
+// unsaveable, reconcile included.
 func (s *Store) writeReferences(ctx context.Context, exec DB, ch Channel) error {
 	for _, table := range []string{"channel_planned_items", "channel_scope_collections"} {
 		if _, err := exec.ExecContext(ctx, s.h.Rebind(`DELETE FROM `+table+` WHERE channel_id = ?`), ch.ID); err != nil {
 			return fmt.Errorf("clear %s of %s: %w", table, ch.ID, err)
 		}
 	}
-	insert := func(what, query, id string) error {
+	insert := func(what, query, id string) (int64, error) {
 		res, err := exec.ExecContext(ctx, s.h.Rebind(query), ch.ID, id)
 		if err != nil {
-			return fmt.Errorf("write %s %s of %s: %w", what, id, ch.ID, err)
+			return 0, fmt.Errorf("write %s %s of %s: %w", what, id, ch.ID, err)
 		}
-		if n, err := res.RowsAffected(); err != nil {
-			return fmt.Errorf("write %s %s of %s: %w", what, id, ch.ID, err)
-		} else if n == 0 {
-			return fmt.Errorf("%w: %s %s of channel %s", ErrUnknownLibraryReference, what, id, ch.ID)
+		n, err := res.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("write %s %s of %s: %w", what, id, ch.ID, err)
 		}
-		return nil
+		return n, nil
 	}
 	for _, id := range plannedItems(ch) {
-		if err := insert("planned item", `INSERT INTO channel_planned_items (channel_id, library_item_id)
+		if _, err := insert("planned item", `INSERT INTO channel_planned_items (channel_id, library_item_id)
 			SELECT ?, id FROM library_items WHERE id = ?`, id); err != nil {
 			return err
 		}
 	}
 	for _, id := range scopeCollections(ch.Policy) {
-		if err := insert("scope collection", `INSERT INTO channel_scope_collections (channel_id, collection_id)
-			SELECT ?, id FROM library_collections WHERE id = ?`, id); err != nil {
+		n, err := insert("scope collection", `INSERT INTO channel_scope_collections (channel_id, collection_id)
+			SELECT ?, id FROM library_collections WHERE id = ?`, id)
+		if err != nil {
 			return err
+		}
+		if n == 0 {
+			return fmt.Errorf("%w: scope collection %s of channel %s", ErrUnknownLibraryReference, id, ch.ID)
 		}
 	}
 	return nil
 }
+
+// refuseNewDeadItems is ErrUnknownLibraryReference when ch's slots name a library item the library
+// has no row for and the stored channel's schedule did not already name it. A save may carry an
+// item that vanished under a slot already in its schedule (writeReferences records no row for it);
+// it may not introduce one. It runs before the channel row is written, while the stored schedule is
+// still the previous one.
+func (s *Store) refuseNewDeadItems(ctx context.Context, exec DB, ch Channel) error {
+	planned := plannedItems(ch)
+	if len(planned) == 0 {
+		return nil
+	}
+	known := map[string]bool{}
+	for start := 0; start < len(planned); start += deadItemsChunk {
+		chunk := planned[start:min(start+deadItemsChunk, len(planned))]
+		args := make([]any, len(chunk))
+		for i, id := range chunk {
+			args[i] = id
+		}
+		rows, err := exec.QueryContext(ctx, s.h.Rebind(`SELECT id FROM library_items WHERE id IN (`+
+			strings.TrimSuffix(strings.Repeat("?, ", len(chunk)), ", ")+`)`), args...)
+		if err != nil {
+			return fmt.Errorf("check planned items of %s: %w", ch.ID, err)
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				_ = rows.Close()
+				return fmt.Errorf("check planned items of %s: %w", ch.ID, err)
+			}
+			known[id] = true
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return fmt.Errorf("check planned items of %s: %w", ch.ID, err)
+		}
+	}
+	var dead []string
+	for _, id := range planned {
+		if !known[id] {
+			dead = append(dead, id)
+		}
+	}
+	if len(dead) == 0 {
+		return nil
+	}
+	held := map[string]bool{}
+	if ch.Revision > 0 {
+		var blob string
+		err := exec.QueryRowContext(ctx, s.h.Rebind(`SELECT desired_json FROM channels WHERE id = ?`), ch.ID).Scan(&blob)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("read the schedule of %s: %w", ch.ID, err)
+		}
+		if err == nil {
+			var stored []schedule.Slot
+			if err := json.Unmarshal([]byte(blob), &stored); err != nil {
+				return fmt.Errorf("decode the schedule of %s: %w", ch.ID, err)
+			}
+			for _, slot := range stored {
+				held[slot.LibraryItemID] = true
+			}
+		}
+	}
+	for _, id := range dead {
+		if !held[id] {
+			return fmt.Errorf("%w: planned item %s of channel %s", ErrUnknownLibraryReference, id, ch.ID)
+		}
+	}
+	return nil
+}
+
+// deadItemsChunk bounds one IN list, well under SQLite's bound-parameter limit.
+const deadItemsChunk = 500
 
 // ChannelsNamingCollections maps each collection a channel's scope or rules name to those channels'
 // ids, in id order.

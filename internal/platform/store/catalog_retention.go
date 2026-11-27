@@ -38,8 +38,9 @@ type CatalogRetentionStore interface {
 //   - catalog records no library row names, fetched (or failing) longer than LibraryItemRetention.
 //
 // "Names" is a foreign key (titles, airings, scheduled_airings, channel_planned_items), checked
-// inside the transaction so a row written meanwhile keeps its item instead of failing the purge, or
-// an open proposal's pick (openProposalItems).
+// inside the transaction, or an open proposal's pick (openProposalItems). A row that names a
+// candidate and commits between the check and its delete fails the delete on the key, which rolls
+// the purge back for the next sweep to retry; it never loses the item.
 func (s *sqlStore) PurgeSpentCatalog(ctx context.Context, now time.Time) (int, error) {
 	picks, err := s.openProposalItems(ctx)
 	if err != nil {
