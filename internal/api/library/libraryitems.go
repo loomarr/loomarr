@@ -223,7 +223,7 @@ type listLibraryItemsOutput struct {
 		Items []libraryItemDTO `json:"items"`
 		Total int              `json:"total" doc:"Titles matching, across every page"`
 		// Letters reads the same filters as total, so each offset lands on its title.
-		Letters []libraryLetterDTO `json:"letters,omitempty" doc:"Under sort=name, each initial present in the filtered list with its first title's offset, in list order; absent under sort=recent"`
+		Letters []libraryLetterDTO `json:"letters,omitempty" doc:"Under sort=name, each initial present in the filtered list with the offset of its first occurrence. Letters are in list order, not necessarily A to Z: under a search, name matches come first, and a letter maps to its first occurrence. Absent under sort=recent"`
 	}
 }
 

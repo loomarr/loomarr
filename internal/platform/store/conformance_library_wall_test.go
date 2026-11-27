@@ -2,12 +2,94 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
+
+// testLibraryWallText pins how the wall reads text: a title with no sort title sorts and is
+// bucketed by its name without accents, a search's % and _ are literal, a search under the recent
+// sort keeps the name's matches first, and a genre outside ASCII matches in any case.
+func testLibraryWallText(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	st := newStore(t)
+	at := time.UnixMilli(1_790_000_000_000).UTC()
+	save := func(at time.Time, id, name string, genres ...string) {
+		t.Helper()
+		item := librarystore.LibraryItem{ID: id, Kind: "movie", Name: name, Genres: genres,
+			Origin: librarystore.LibraryOrigin{Authority: "library:/m", Key: "/m/" + id},
+			Match:  librarystore.LibraryMatch{Basis: "embedded_id"}, From: librarystore.LibraryFrom{Name: "tmdb"}}
+		if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{item}, at); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{{Path: "/m/" + id + ".mkv", Root: "/m",
+			Size: 1, ModifiedNs: 1, Kind: "movie", Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: id}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save(at, "ember", "Ember Row")
+	save(at, "ebene", "Ébène Quay")
+	save(at, "erne", "Erne Walk", "Épouvante")
+	save(at, "fallow", "Fallow Mire")
+	save(at, "under", "Fen_Gate")
+	save(at, "cross", "FenXGate")
+	save(at, "percent", "Salt 50% Pier")
+	save(at, "digits", "Salt 500 Pier")
+	save(at, "old", "Old Marsh")
+	save(at.Add(time.Hour), "new", "New Marsh")
+	save(at.Add(2*time.Hour), "heron", "Heron", "Marsh")
+
+	list := func(q librarystore.LibraryItemQuery) []string {
+		t.Helper()
+		page, err := st.ListLibraryItems(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := []string{}
+		for _, it := range page.Items {
+			out = append(out, it.ID)
+		}
+		return out
+	}
+
+	page, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Letters: true, Limit: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var first []string
+	for _, it := range page.Items {
+		first = append(first, it.ID)
+	}
+	if want := []string{"ebene", "ember", "erne"}; !reflect.DeepEqual(first, want) {
+		t.Errorf("first page = %v, want %v", first, want)
+	}
+	var letters []string
+	for _, l := range page.Letters {
+		letters = append(letters, fmt.Sprintf("%s%d", l.Letter, l.Offset))
+	}
+	if want := []string{"E0", "F3", "H6", "N7", "O8", "S9"}; !reflect.DeepEqual(letters, want) {
+		t.Errorf("letters = %v, want %v", letters, want)
+	}
+
+	for _, tc := range []struct {
+		name string
+		q    librarystore.LibraryItemQuery
+		want []string
+	}{
+		{"literal percent", librarystore.LibraryItemQuery{Search: "50%"}, []string{"percent"}},
+		{"literal underscore", librarystore.LibraryItemQuery{Search: "n_g"}, []string{"under"}},
+		{"search under recent", librarystore.LibraryItemQuery{Search: "marsh", Recent: true}, []string{"new", "old", "heron"}},
+		{"non-ASCII genre", librarystore.LibraryItemQuery{Genre: "ÉPOUVANTE"}, []string{"erne"}},
+		{"non-ASCII genre search", librarystore.LibraryItemQuery{Search: "épouvante"}, []string{"erne"}},
+	} {
+		if got := list(tc.q); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
 
 // testLibraryWall pins the wall's filters (#4476): the list filters by genre in any case, a
 // search finds a title by its year and its genres as well as its name with the name's matches

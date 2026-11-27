@@ -459,15 +459,17 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `genre` (one genre name, any case; an unknown genre is an empty list), and `total` counts what
   the filters leave. `search` finds a title whose name holds the whole term, or one where every
   word of the term is in its name, is its year (four digits, exactly) or names one of its
-  genres, or whose genre is the whole term: "alien 1979" finds a title named with "alien" from
-  1979, and "comedy" finds every comedy beside a title with "comedy" in its name. The titles
+  genres, or whose genre is the whole term: "quillfen 1979" finds a title named with "quillfen"
+  from 1979, and "comedy" finds every comedy beside a title with "comedy" in its name. The titles
   whose name holds the whole term come first, then the rest, each in the chosen sort. The name
   sort is `sort_name`: the source's sort title (an arr's or an NFO's, which may drop a leading
-  article), folded to lower case without accents, else the name in lower case; Loomarr strips no
-  article itself. Under `sort=name` the list also carries `letters`, its letter index: for each
-  initial of `sort_name` present under the same filters, A to Z with one `#` for a digit or any
-  other character, the offset of the first such title in the list's order, so a letter rail asks
-  for `offset=<n>`. `GET /v1/library/genres` lists the genres of the listed titles, one row per
+  article), or the name where there is none, either one folded to lower case without accents;
+  Loomarr strips no article itself. Under `sort=name` the list also carries `letters`, its letter
+  index: for each initial of `sort_name` present under the same filters, A to Z with one `#` for a
+  digit or any other character, the offset of the first such title in the list's order, so a
+  letter rail asks for `offset=<n>`. The letters are in list order: under a search, where name
+  matches come first, that need not be A to Z, and a letter's offset is its first occurrence.
+  `GET /v1/library/genres` lists the genres of the listed titles, one row per
   genre name in any case, with how many titles carry it, by name; `kind` narrows it like the
   list. It is its own route, read once for the genre menu, because it does not change with the
   list's search, page or other filters. `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's

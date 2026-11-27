@@ -8378,7 +8378,7 @@ components:
             $ref: "#/components/schemas/LibraryItemDTO"
           type: array
         letters:
-          description: Under sort=name, each initial present in the filtered list with its first title's offset, in list order; absent under sort=recent
+          description: "Under sort=name, each initial present in the filtered list with the offset of its first occurrence. Letters are in list order, not necessarily A to Z: under a search, name matches come first, and a letter maps to its first occurrence. Absent under sort=recent"
           items:
             $ref: "#/components/schemas/LibraryLetterDTO"
           type: array
