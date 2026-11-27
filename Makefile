@@ -61,14 +61,19 @@ GO_TEST_LANE ?=
 # Toolchain tags are set by a go flag, not by -tags: `race` by -race. They are inventoried for the
 # same reason and never passed as tags; the race lanes compile those files (#2007).
 #
+# Dependency tags select a dependency's own implementation: `noasm` drops golang.org/x/image's
+# amd64 assembly, which the watermark rasterizer's equivalence test compares against (#4646).
+# They are inventoried and never passed as tags.
+#
 # ⚠ HAND-MAINTAINED LIST — but guarded. A new `//go:build` tag is covered only if it is added
 # here, the same drift class as `scripts/check-retired.sh`. `make tags-verify` enforces it in
 # BOTH directions (a tag in the tree but not here, and one here that no build constraint uses)
 # and runs as part of `check`, so the list can neither miss coverage nor overstate it.
 CUSTOM_TAGS   := ffmpeg eval integration
-PLATFORM_TAGS := linux windows
+PLATFORM_TAGS := linux windows amd64
 TOOLCHAIN_TAGS := race
-TAGS          := $(CUSTOM_TAGS) $(PLATFORM_TAGS) $(TOOLCHAIN_TAGS)
+DEPENDENCY_TAGS := noasm
+TAGS          := $(CUSTOM_TAGS) $(PLATFORM_TAGS) $(TOOLCHAIN_TAGS) $(DEPENDENCY_TAGS)
 SHELL_SCRIPTS := $(sort $(wildcard scripts/*.sh) $(wildcard scripts/dev/*.sh) $(wildcard scripts/shield-cert/*.sh) $(wildcard web/scripts/*.sh))
 comma     := ,
 space     := $(subst ,, )
