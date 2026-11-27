@@ -301,7 +301,7 @@ const InvitationDialog = ({
                 </form.Field>
               )}
 
-              {problem != null && <ErrorState error={problem} className="p-4" />}
+              {problem != null && <ErrorState error={problem} compact />}
               <DialogFooter>
                 <Action disabled={busy} onPress={() => changeOpen(false)} variant="outline">
                   Cancel
@@ -367,7 +367,7 @@ const InvitationDialog = ({
                   </Text>
                 </Card>
               )}
-              {problem != null && <ErrorState error={problem} className="p-4" />}
+              {problem != null && <ErrorState error={problem} compact />}
 
               <DialogFooter spread>
                 <Action
@@ -423,7 +423,7 @@ const InvitationDialog = ({
                   invitation.
                 </Text>
               </Card>
-              {problem != null && <ErrorState error={problem} className="p-4" />}
+              {problem != null && <ErrorState error={problem} compact />}
               <DialogFooter>
                 <Action disabled={busy} onPress={() => void issue(invitation)}>
                   {busy ? "Generating…" : "Generate QR and link"}

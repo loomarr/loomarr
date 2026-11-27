@@ -30,7 +30,7 @@ const PasswordField = () => {
 // In context: the line under a field that failed validation on submit.
 const UnderAField: Story = {
   render: (args) => (
-    <Stack className="max-w-sm" gap="2">
+    <Stack gap="2" maxWidth={384}>
       <PasswordField />
       <FieldError {...args} />
     </Stack>

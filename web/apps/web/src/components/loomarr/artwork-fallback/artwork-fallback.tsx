@@ -9,7 +9,7 @@ import type { ArtworkFallbackProps } from "./artwork-fallback.type";
 // never AI art: it is only the channel's hue and letters. A title with no channel sets its own
 // letters, in a hue picked from `seed`. The letters take the hue's on-tint stop, as ChannelIdent's
 // do (#3011), so they hold large-text contrast even where the wash is strongest.
-const ArtworkFallback = ({ channel, label, seed = 0, className }: ArtworkFallbackProps) => {
+const ArtworkFallback = ({ channel, label, seed = 0 }: ArtworkFallbackProps) => {
   const hue = channelIdentHue(channel?.number ?? seed);
   const wash = `var(--color-${hue})`;
   const words = channel?.name ?? label;
@@ -17,7 +17,6 @@ const ArtworkFallback = ({ channel, label, seed = 0, className }: ArtworkFallbac
     <Stack
       align="center"
       backgroundColor="$surfaceRaised"
-      className={className}
       height="100%"
       justify="center"
       role="presentation"

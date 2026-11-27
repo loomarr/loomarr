@@ -6,13 +6,7 @@ import type { SettingsSaveBarProps } from "./settings-save-bar.type";
 // token — and a half-saved pair caught mid-test is a footgun that looks like a broken
 // integration. The bar only appears once something is dirty, so a page being read rather
 // than edited stays quiet.
-const SettingsSaveBar = ({
-  dirtyCount,
-  onSave,
-  onDiscard,
-  saving = false,
-  className,
-}: SettingsSaveBarProps) => {
+const SettingsSaveBar = ({ dirtyCount, onSave, onDiscard, saving = false }: SettingsSaveBarProps) => {
   if (dirtyCount === 0) return null;
 
   return (
@@ -22,14 +16,12 @@ const SettingsSaveBar = ({
       backgroundColor="$surfaceRaised"
       borderColor="$borderDecorative"
       borderTopWidth={1}
-      className={className}
       direction="row"
       gap="control"
       paddingHorizontal={24}
       paddingVertical={12}
       render="section"
-      // A caller's `className` positions the bar itself, and an inline position would beat it.
-      style={className === undefined ? { bottom: 0, position: "sticky" } : undefined}
+      style={{ bottom: 0, position: "sticky" }}
     >
       <Text as="p" flex={1} textRole="compact">
         {dirtyCount} unsaved {dirtyCount === 1 ? "change" : "changes"}

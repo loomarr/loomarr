@@ -4,7 +4,7 @@ import { within } from "storybook/test";
 import { SupportBundle } from "./support-bundle";
 
 const framed = (args: ComponentProps<typeof SupportBundle>) => (
-  <div className="h-[680px] w-[min(720px,calc(100vw-32px))]">
+  <div style={{ height: 680, width: "min(720px, calc(100vw - 32px))" }}>
     <SupportBundle {...args} />
   </div>
 );

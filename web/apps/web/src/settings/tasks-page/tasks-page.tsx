@@ -271,7 +271,7 @@ const TasksPage = () => {
         description="Background work grouped by outcome. Expand a group to inspect or control its tasks."
       />
 
-      <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} flexShrink={1} gap="2" padding={24}>
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="2" overflow="auto" padding={24}>
         {GROUPS.map((group) => {
           const groupedJobs = list.filter((job) => job.group === group.id);
           if (groupedJobs.length === 0) return null;
@@ -390,9 +390,11 @@ const TasksPage = () => {
                             {jobOpen && (
                               <TableRow id={`task-${job.name}`} tone="raised">
                                 <TableCell colSpan={5} verticalAlign="top">
-                                  <Text as="p" className="max-w-prose" textRole="compact" tone="secondary">
-                                    {job.description}
-                                  </Text>
+                                  <Stack maxWidth="65ch">
+                                    <Text as="p" textRole="compact" tone="secondary">
+                                      {job.description}
+                                    </Text>
+                                  </Stack>
                                   {job.lastResult === "error" && job.lastError && (
                                     <Stack marginTop={8}>
                                       <ErrorDetails message={job.lastError} />

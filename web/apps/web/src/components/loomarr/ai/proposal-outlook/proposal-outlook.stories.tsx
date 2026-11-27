@@ -7,7 +7,7 @@ const meta = {
   component: ProposalOutlook,
   decorators: [
     (Story) => (
-      <div className="w-full max-w-xl p-4">
+      <div style={{ boxSizing: "border-box", maxWidth: 576, padding: 16, width: "100%" }}>
         <Story />
       </div>
     ),
