@@ -25,4 +25,11 @@ describe("ChannelIdent", () => {
     // 12 px type (the Label role) at 30 px, so 19.2 px at 48.
     expect(markup).toContain("font-size:19.2");
   });
+
+  it("draws the channel's icon in the tile, labelled with its name, instead of the monogram", () => {
+    const markup = render(<ChannelIdent name={NAME} number={7} logo="/icon.png" size={44} />);
+    expect(markup).toContain(`aria-label="${NAME} logo"`);
+    expect(markup).toContain("44px");
+    expect(markup).not.toContain(`>${monogramOf(NAME)}<`);
+  });
 });

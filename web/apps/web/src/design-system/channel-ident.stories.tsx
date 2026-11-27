@@ -1,31 +1,28 @@
+import { Stack } from "@loomarr/design-system";
+import { ChannelIdent } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { ChannelIdent } from "./channel-ident";
 
-// A channel's mark in the guide rail (§12). A logo when one exists, otherwise a derived
-// monogram — because a rail of unlabelled rows is far harder to scan than one with even a
-// crude mark, and most channels never get a logo uploaded.
+// A channel's mark in the guide rail and the channel header. A logo when one exists, otherwise a
+// monogram in the hue of the channel number, so renaming a channel does not change how it looks.
 const meta = {
-  title: "Channels/ChannelIdent",
+  title: "Loomarr Components/Channel Ident",
   component: ChannelIdent,
   args: { name: "1980s Action Heroes", number: 3 },
 } satisfies Meta<typeof ChannelIdent>;
 
 type Story = StoryObj<typeof meta>;
 
-// Initials of the first two significant words, hatched, in a colour keyed to the channel
-// NUMBER — so renaming a channel does not change how the rail looks.
 const Monogram: Story = {};
 
 // A leading number is skipped: "90s Action Heroes" reads better as "AH" than as "9A".
 const NumericName: Story = { args: { name: "90s Action Heroes", number: 42 } };
 
-// One word falls back to its first two letters.
 const SingleWord: Story = { args: { name: "Cartoons", number: 7 } };
 
 // Different numbers cycle the palette, so adjacent rows stay distinguishable.
 const PaletteSpread: Story = {
   render: () => (
-    <div className="flex gap-2">
+    <Stack direction="row" gap="2">
       {[
         ["Sparrowmoor Classics", 1],
         ["Star Transit Classics", 2],
@@ -35,12 +32,12 @@ const PaletteSpread: Story = {
       ].map(([name, number]) => (
         <ChannelIdent key={number} name={name as string} number={number as number} />
       ))}
-    </div>
+    </Stack>
   ),
 };
 
-// An uploaded icon replaces the monogram entirely. Inline data URI, never a remote URL: a
-// remote image bypasses the visual suite's stubbed fetch and races the snapshot.
+// An uploaded icon replaces the monogram. Inline data URI, never a remote URL: a remote image
+// bypasses the visual suite's stubbed fetch and races the snapshot.
 const WithLogo: Story = {
   args: {
     logo:
@@ -53,7 +50,6 @@ const WithLogo: Story = {
   },
 };
 
-// The rail scales with zoom, so the mark must too.
 const Large: Story = { args: { size: 48 } };
 
 export default meta;

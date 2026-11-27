@@ -5,7 +5,6 @@ export * from "./channel-cycle-preview";
 export * from "./channel-danger-zone";
 export * from "./channel-defaults-summary";
 export * from "./channel-icon-field";
-export * from "./channel-ident";
 export * from "./channel-lineup-editor";
 export * from "./channel-policy-fields";
 export * from "./channel-programming-changes";
