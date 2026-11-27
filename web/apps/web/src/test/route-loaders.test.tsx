@@ -240,4 +240,25 @@ describe("People", () => {
     expect(await screen.findByText("Couldn't load this page")).toBeInTheDocument();
     expect(screen.queryByText("Grace")).not.toBeInTheDocument();
   });
+
+  it("never asks a member for the people or the invitations", async () => {
+    const asked: string[] = [];
+    server.use(
+      getMeMockHandler(me({ role: "member" })),
+      http.get("*/v1/users", () => {
+        asked.push("users");
+        return HttpResponse.json({ users: people });
+      }),
+      http.get("*/v1/invitations", () => {
+        asked.push("invitations");
+        return HttpResponse.json({ invitations: [] });
+      }),
+      ...appHandlers(),
+    );
+    renderAt("/people");
+
+    await waitFor(() => expect(screen.queryByText("Grace")).not.toBeInTheDocument());
+    expect(screen.queryByText("Couldn't load this page")).not.toBeInTheDocument();
+    expect(asked).toEqual([]);
+  });
 });
