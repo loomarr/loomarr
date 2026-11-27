@@ -150,8 +150,8 @@ type LibraryStream struct {
 	Kind                  string
 	Codec, Profile, Title string
 	Default, Forced       bool
-	// Language is the ISO 639-1 code where one exists (else as the file says it); LanguageName
-	// its English name.
+	// Language is the ISO 639-1 code where one exists (else what the file says), in lower case;
+	// LanguageName its English name.
 	Language, LanguageName string
 	Channels               int
 	ChannelLayout          string
@@ -241,14 +241,23 @@ type LibraryItemSummary struct {
 }
 
 // LibraryItemQuery narrows the list. Kind "" is movies and series; Search matches the name, the
-// year or a genre, any case (searchMatch). Genre keeps the titles with that genre, any case.
+// year or a genre, any case (searchMatch). Genre keeps the titles with that genre, any case; the
+// other filters are filterTitles'.
 // Problems keeps only the titles that need a look: a file that can't be played, or a movie with an
 // extra copy. Limit 0 is every item.
 type LibraryItemQuery struct {
-	Kind     string
-	Search   string
-	Genre    string
-	Problems bool
+	Kind   string
+	Search string
+	Genre  string
+	// Studio is a studio's name, Person a credited person's id; Audio and Subtitles are language
+	// codes. UHD keeps 4K; HDR is LibraryHDRAny or one of a video track's HDR labels.
+	Studio    string
+	Person    string
+	Audio     string
+	Subtitles string
+	UHD       bool
+	HDR       string
+	Problems  bool
 	// Letters asks for the page's letter index, under the name sort only.
 	Letters bool
 	// IDs keeps only these items, when not empty.
@@ -301,6 +310,12 @@ type LibraryItemStore interface {
 	// series) and, for member, as a household member reads it, each with how many carry it, by
 	// name. Names that differ only in case are one genre.
 	LibraryGenres(ctx context.Context, kind string, member bool) ([]LibraryGenre, error)
+	// LibraryFacets lists the studio, language, 4K and HDR choices of the same titles.
+	LibraryFacets(ctx context.Context, kind string, member bool) (LibraryFacets, error)
+	// LibraryPeople searches the people those titles credit by part of their name.
+	LibraryPeople(ctx context.Context, term, kind string, member bool, limit int) ([]LibraryPerson, error)
+	// LibraryPerson reads one of them; ErrNotFound when no title the caller reads credits them.
+	LibraryPerson(ctx context.Context, id string, member bool) (LibraryPerson, error)
 	// LibraryItem reads one item with a present file; ErrNotFound otherwise.
 	LibraryItem(ctx context.Context, id string) (LibraryItemSummary, error)
 	// MemberLibraryItem is LibraryItem as a household member reads it (memberReads): a title
@@ -492,10 +507,17 @@ var letterBuckets = func() string {
 	return strings.Join(letters, ", ")
 }()
 
-func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
+// ListCountQuery is the statement, and its arguments, that counts q's list, for the plan test.
+func (s *Store) ListCountQuery(q LibraryItemQuery) (string, []any) {
+	from, args, _, _ := s.listFrom(q)
+	return s.ph(`SELECT COUNT(*)` + from), args
+}
+
+// listFrom is q's list as its FROM and WHERE with their arguments, and its order with its own.
+func (s *Store) listFrom(q LibraryItemQuery) (from string, args []any, order string, orderArgs []any) {
 	where, args := listedTitles(q.Kind, q.Member)
 	// order ranks a search's name matches first; orderArgs are its arguments.
-	order, orderArgs := ` ORDER BY i.sort_name, i.id`, []any{}
+	order, orderArgs = ` ORDER BY i.sort_name, i.id`, []any{}
 	if q.Recent {
 		order = ` ORDER BY i.updated_at_ms DESC, i.id`
 	}
@@ -506,10 +528,8 @@ func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Libra
 		order = ` ORDER BY CASE WHEN ` + s.nameHolds() + ` THEN 0 ELSE 1 END,` + strings.TrimPrefix(order, ` ORDER BY`)
 		orderArgs = append(orderArgs, "%"+likeEscape(search)+"%")
 	}
-	if genre := strings.ToLower(strings.TrimSpace(q.Genre)); genre != "" {
-		where = append(where, s.genreIs())
-		args = append(args, genre)
-	}
+	filters, filterArgs := s.filterTitles(q)
+	where, args = append(where, filters...), append(args, filterArgs...)
 	if q.InSet {
 		where = append(where, "i.set_key <> ''")
 	}
@@ -525,7 +545,11 @@ func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Libra
 	if q.Ready {
 		where = append(where, countFiles(` AND f.header = 'pending'`)+` = 0`)
 	}
-	from := ` FROM library_items i WHERE ` + strings.Join(where, " AND ")
+	return ` FROM library_items i WHERE ` + strings.Join(where, " AND "), args, order, orderArgs
+}
+
+func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
+	from, args, order, orderArgs := s.listFrom(q)
 	var page LibraryItemPage
 	if q.Letters && !q.Recent {
 		// The window's ORDER BY precedes the WHERE in the text, so its arguments come first.
