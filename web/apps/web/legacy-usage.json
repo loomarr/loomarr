@@ -158,7 +158,7 @@
       "tailwindClasses": 2
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 20
+      "tailwindClasses": 18
     },
     "src/diagnostics/application-diagnostics/event-detail/event-detail.tsx": {
       "tailwindClasses": 1
@@ -169,11 +169,8 @@
     "src/diagnostics/diagnostics-pager/diagnostics-pager.tsx": {
       "tailwindClasses": 4
     },
-    "src/diagnostics/diagnostics-split-pane/diagnostics-split-pane.tsx": {
-      "tailwindClasses": 31
-    },
     "src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
-      "tailwindClasses": 20
+      "tailwindClasses": 19
     },
     "src/diagnostics/server-status/server-status.tsx": {
       "tailwindClasses": 1
