@@ -3,12 +3,15 @@ package librarystore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // LibraryCatalogKey names one title in a catalog: the provider ("tmdb"), the kind it is fetched as
@@ -129,7 +132,8 @@ func (s *Store) LibraryCatalogRecord(ctx context.Context, key LibraryCatalogKey)
 	var record string
 	var fetched int64
 	err := s.h.QueryRowContext(ctx, s.ph(`SELECT record, fetched_at_ms FROM library_catalog
-		WHERE provider = ? AND kind = ? AND external_id = ?`), key.Provider, key.Kind, key.ExternalID).Scan(&record, &fetched)
+		WHERE provider = ? AND kind = ? AND external_id = ?`), key.Provider, key.Kind, key.ExternalID).
+		Scan((*storedb.OptionalJSON)(&record), &fetched)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, nil
 	}
@@ -274,7 +278,8 @@ func (s *Store) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, r
 	var held string
 	var heldAt int64
 	err = tx.QueryRowContext(ctx, s.ph(`SELECT record, fetched_at_ms FROM library_catalog
-		WHERE provider = ? AND kind = ? AND external_id = ?`), key.Provider, key.Kind, key.ExternalID).Scan(&held, &heldAt)
+		WHERE provider = ? AND kind = ? AND external_id = ?`), key.Provider, key.Kind, key.ExternalID).
+		Scan((*storedb.OptionalJSON)(&held), &heldAt)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, fmt.Errorf("save library catalog: %w", err)
 	}
@@ -284,7 +289,7 @@ func (s *Store) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, r
 		ON CONFLICT (provider, kind, external_id) DO UPDATE SET record = excluded.record,
 		fetched_at_ms = excluded.fetched_at_ms, retry_at_ms = 0, version = excluded.version,
 		language = excluded.language, changed = FALSE`),
-		key.Provider, key.Kind, key.ExternalID, record, at.UnixMilli(), version, language); err != nil {
+		key.Provider, key.Kind, key.ExternalID, storedb.OptionalJSON(record), at.UnixMilli(), version, language); err != nil {
 		return false, fmt.Errorf("save library catalog: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -292,7 +297,35 @@ func (s *Store) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, r
 	}
 	// The first answer for a row is news even when it is "no such title": the titles waiting on it
 	// are written again with it.
-	return held != record || heldAt == 0, nil
+	return !sameRecord(held, record) || heldAt == 0, nil
+}
+
+// sameRecord reports whether two catalog records are the same JSON document however each is
+// spelled. Postgres's jsonb keeps neither the key order nor the spacing it was given, so a record
+// read back is not byte-equal to the one fetched, and comparing bytes would write every title
+// again on every fetch.
+func sameRecord(a, b string) bool {
+	if a == b {
+		return true
+	}
+	ca, errA := canonicalRecord(a)
+	cb, errB := canonicalRecord(b)
+	return errA == nil && errB == nil && ca == cb
+}
+
+// canonicalRecord is a record re-encoded with sorted keys and no spacing; numbers keep their digits.
+func canonicalRecord(record string) (string, error) {
+	if record == "" {
+		return "", nil
+	}
+	d := json.NewDecoder(strings.NewReader(record))
+	d.UseNumber()
+	var v any
+	if err := d.Decode(&v); err != nil {
+		return "", err
+	}
+	out, err := json.Marshal(v)
+	return string(out), err
 }
 
 func (s *Store) FailLibraryCatalog(ctx context.Context, key LibraryCatalogKey, retryAt time.Time) error {

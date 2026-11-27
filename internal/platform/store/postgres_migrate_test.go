@@ -94,6 +94,15 @@ func TestPostgresProposalPeopleMigration(t *testing.T) {
 	testProposalPeopleMigration(t, db, DialectPostgres, "migrations/postgres")
 }
 
+func TestPostgresLibraryCatalogJSONMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testLibraryCatalogJSONMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
 func TestPostgresIndexNamesFollowConvention(t *testing.T) {
 	db, err := sql.Open("pgx", startPostgres(t))
 	if err != nil {
