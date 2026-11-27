@@ -28,8 +28,8 @@ tables:
         The step within that check, for example defects or window_video. Empty when the check has no steps.
       state: >
         Where the call stands. reserved means spend is set aside and the call is under way; completed
-        means it answered; failed means it did not; held_budget means a spend ceiling (per clip, per day
-        or per run) stopped it, or the provider charged more than was reserved.
+        means it answered; failed means it did not; held_budget means a spend ceiling (per clip or per
+        day) stopped it, or the provider charged more than was reserved.
       requested_provider: The AI provider Loomarr asked, such as ollama or openrouter.
       requested_model: The model Loomarr asked for.
       resolved_provider: The provider that actually answered, as reported back. Empty until the call settles.
@@ -95,7 +95,7 @@ tables:
         columns: [prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, cache_write_tokens, image_tokens, audio_tokens, video_tokens]
       - group: Cost
         why: >
-          The spend ceilings (per clip, per day, per run) add up reserved_nano_usd across calls in
+          The spend ceilings (per clip, per day) add up reserved_nano_usd across calls in
           one statement, which needs it on the call's own row.
         columns: [charged_amount, charged_currency, charged_nano_usd, estimated_nano_usd, reserved_nano_usd, price_snapshot]
       - group: Versions

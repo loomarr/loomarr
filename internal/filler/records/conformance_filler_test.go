@@ -5401,7 +5401,8 @@ func testFillerInferenceAccountingAndBudgets(t *testing.T, newStore NewStoreFunc
 	}
 
 	// Each ceiling holds on its own, exactly at its boundary. clip-a and the day have both spent
-	// 95: 40 settled on eval-1 and 55 charged on eval-3. A held request spends nothing.
+	// 95: 40 settled on eval-1 and 55 charged on eval-3. A held request spends nothing, and
+	// clip-at brings the day to 100.
 	boundary := func(id, clip string, nano int64, budget InferenceBudget, want InferenceEvaluationState) {
 		t.Helper()
 		e, err := s.ReserveInferenceEvaluation(ctx, InferenceEvaluation{

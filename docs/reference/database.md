@@ -1777,7 +1777,7 @@ One row per model call made about a filler clip, written before the call (as a s
 | `clip_hash` | The filler clip the call was about (clips.hash). For a long-reel structure check it is the SHA-256 of the reel's source file. | `TEXT` |
 | `role` | Which check made the call, for example defect_judge or complete_timeline_structure. | `TEXT` |
 | `rung` | The step within that check, for example defects or window_video. Empty when the check has no steps. | `TEXT` |
-| `state` | Where the call stands. reserved means spend is set aside and the call is under way; completed means it answered; failed means it did not; held_budget means a spend ceiling (per clip, per day or per run) stopped it, or the provider charged more than was reserved. | `TEXT` |
+| `state` | Where the call stands. reserved means spend is set aside and the call is under way; completed means it answered; failed means it did not; held_budget means a spend ceiling (per clip or per day) stopped it, or the provider charged more than was reserved. | `TEXT` |
 | `latency_ms` | How long the call took, in milliseconds. | `INTEGER` |
 | `attempts` | How many times the request was sent to the provider. | `INTEGER` |
 | `outcome` | window_complete once a structure-window call has answered; empty for every other call. | `TEXT` |
@@ -1819,7 +1819,7 @@ One row per model call made about a filler clip, written before the call (as a s
 | `audio_tokens` | Tokens the provider counted for audio. | `INTEGER` |
 | `video_tokens` | Tokens the provider counted for video. | `INTEGER` |
 
-**Cost.** The spend ceilings (per clip, per day, per run) add up reserved_nano_usd across calls in one statement, which needs it on the call's own row.
+**Cost.** The spend ceilings (per clip, per day) add up reserved_nano_usd across calls in one statement, which needs it on the call's own row.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
