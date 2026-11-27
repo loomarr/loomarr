@@ -125,7 +125,6 @@ var migrated = []string{
 	"web/apps/web/src/components/loomarr/channels/channel-breaks/channel-breaks.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-collections-scope/channel-collections-scope.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.stories.tsx",
-	"web/apps/web/src/components/loomarr/channels/channel-ident/channel-ident.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-lineup-editor/channel-lineup-editor.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-series-scope/channel-series-scope.stories.tsx",
@@ -163,7 +162,6 @@ var migratedTests = []string{
 	// The web component tests, policy overrides and request detail (slice 10).
 	"web/apps/web/src/components/loomarr/channels/channel-collections-scope/",
 	"web/apps/web/src/components/loomarr/channels/channel-cycle-preview/",
-	"web/apps/web/src/components/loomarr/channels/channel-ident/",
 	"web/apps/web/src/components/loomarr/channels/channel-lineup-editor/",
 	"web/apps/web/src/components/loomarr/channels/channel-policy-fields/",
 	"web/apps/web/src/components/loomarr/channels/channel-rules-editor/",

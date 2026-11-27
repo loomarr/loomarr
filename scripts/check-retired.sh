@@ -459,6 +459,7 @@ RETIRED=(
   # #4451 U2: the guide's channel card and now/next line are @loomarr/ui compositions.
   'NowNextStrip|#4451: the web now/next strip was deleted; the guide renders now/next through @loomarr/ui'
   'channels/channel-card|#4451: the web ChannelCard was deleted; the guide renders channels through @loomarr/ui'
+  'channels/channel-ident"|#4451: the web channel-ident was deleted; @loomarr/ui owns the one ChannelIdent'
   'channels/now-next-strip|#4451: the web NowNextStrip was deleted; the guide renders now/next through @loomarr/ui'
 
 )
