@@ -1,5 +1,4 @@
-import { Surface, Text } from "@loomarr/design-system";
-import { View } from "react-native";
+import { Surface, Text, VisuallyHidden } from "@loomarr/design-system";
 
 import type { WatchFrameProps } from "./watch-frame.type";
 
@@ -12,15 +11,6 @@ import type { WatchFrameProps } from "./watch-frame.type";
 // draws both scrollbars permanently wherever scrollbars are not overlays (Windows, Linux), which
 // took 15px off the picture on each axis with nothing to scroll (#3405).
 
-// Off-screen but in the accessibility tree: the page still needs a heading to be reachable.
-const visuallyHidden = {
-  height: 1,
-  margin: -1,
-  overflow: "hidden",
-  position: "absolute",
-  width: 1,
-} as const;
-
 const WatchFrame = ({ children, title }: WatchFrameProps) => (
   <Surface
     backgroundColor="#000"
@@ -32,11 +22,12 @@ const WatchFrame = ({ children, title }: WatchFrameProps) => (
     overflowY="auto"
     role="main"
   >
-    <View style={visuallyHidden}>
+    {/* Off-screen but in the accessibility tree: the page still needs a heading to be reachable. */}
+    <VisuallyHidden>
       <Text as="h1" textRole="title">
         {title}
       </Text>
-    </View>
+    </VisuallyHidden>
     {children}
   </Surface>
 );
