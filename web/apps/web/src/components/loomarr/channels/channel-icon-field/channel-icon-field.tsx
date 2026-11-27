@@ -286,7 +286,7 @@ const ChannelIconField = ({
 
             {/* (b) Upload a file. */}
             <Stack gap="2">
-              <Text as="label" htmlFor={`${urlInputId}-file`} textRole="label">
+              <Text as="span" textRole="label">
                 Upload a file
               </Text>
               <Stack gap="1">

@@ -96,14 +96,15 @@ const SeasonInput = ({
             disabled={disabled}
             keyboardType="number-pad"
             onBlur={() => {
-              const text = field.state.value.trim();
+              const text = field.state.value;
               const parsed = text === "" ? undefined : Number(text);
-              if (parsed !== undefined && Number.isNaN(parsed)) return;
               const next = parsed && parsed >= 1 ? parsed : undefined;
+              // The box shows the bound it keeps: a blank, or a 0, is no bound.
+              field.handleChange(next === undefined ? "" : String(next));
               if (next === (value || undefined)) return;
               onCommit(next);
             }}
-            onChangeText={field.handleChange}
+            onChangeText={(text) => field.handleChange(text.replace(/\D/g, ""))}
             placeholder={placeholder}
             value={field.state.value}
           />
