@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -24,9 +25,12 @@ type Need struct {
 	Candidates []librarystore.LibraryCandidate
 	// Present is its present files (a series' episodes), in path order.
 	Present []librarystore.LibraryFile
+	// Folder is where it sits, labelled as the Ignored list labels it.
+	Folder string
 }
 
-// Needs lists Needs you: every present title nothing grounds and nobody answered.
+// Needs lists Needs you: every present title nothing grounds and nobody answered, grouped by
+// folder, by sort name within one.
 func (l *Library) Needs(ctx context.Context) ([]Need, error) {
 	needs, err := l.NeedStore.LibraryNeeds(ctx)
 	if err != nil {
@@ -44,10 +48,16 @@ func (l *Library) Needs(ctx context.Context) ([]Need, error) {
 	if err != nil {
 		return nil, err
 	}
+	roots, err := l.rootPaths(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Need, 0, len(needs))
 	for _, n := range needs {
-		out = append(out, Need{LibraryNeed: n, Candidates: candidates[n.ID], Present: files[n.ID]})
+		_, folder, _ := onDisk(n.Kind, n.Origin, files[n.ID], roots)
+		out = append(out, Need{LibraryNeed: n, Candidates: candidates[n.ID], Present: files[n.ID], Folder: folder})
 	}
+	slices.SortStableFunc(out, func(a, b Need) int { return strings.Compare(a.Folder, b.Folder) })
 	return out, nil
 }
 
@@ -115,6 +125,24 @@ func (l *Library) Unanswer(ctx context.Context, itemID string) error {
 	return l.rewrite(ctx, itemID, origin)
 }
 
+// IgnoreAll ignores titles waiting in Needs you, all of them or none.
+func (l *Library) IgnoreAll(ctx context.Context, itemIDs []string) error {
+	titles, err := l.NeedStore.IgnoreLibraryNeeds(ctx, itemIDs, l.now())
+	if err != nil {
+		return err
+	}
+	return l.rewriteAll(ctx, titles)
+}
+
+// RestoreAll takes back the ignore of titles, all of them or none.
+func (l *Library) RestoreAll(ctx context.Context, itemIDs []string) error {
+	titles, err := l.NeedStore.RestoreLibraryIgnored(ctx, itemIDs)
+	if err != nil {
+		return err
+	}
+	return l.rewriteAll(ctx, titles)
+}
+
 // SearchTitles searches the catalog for a title by name, for "Pick a different title". kind ""
 // is movies and series.
 func (l *Library) SearchTitles(ctx context.Context, term, kind string) ([]SearchHit, error) {
@@ -167,12 +195,35 @@ func (l *Library) origin(ctx context.Context, itemID string) (string, librarysto
 // a title's file a copy of another title, which then holds the origin, so that title's files are
 // written again too: taking the link back has to find the file where it went.
 func (l *Library) rewrite(ctx context.Context, itemID string, origin librarystore.LibraryOrigin) error {
+	files, err := l.forget(ctx, itemID, origin)
+	if err != nil {
+		return err
+	}
+	l.pass(files)
+	return nil
+}
+
+// rewriteAll is rewrite for answers already saved together: one pass over all their folders, and
+// a title that fails holds back none of the others.
+func (l *Library) rewriteAll(ctx context.Context, titles []librarystore.LibraryAnswered) error {
+	var files []librarystore.LibraryFilePath
+	var failed []error
+	for _, t := range titles {
+		found, err := l.forget(ctx, t.ID, t.Origin)
+		files, failed = append(files, found...), append(failed, err)
+	}
+	l.pass(files)
+	return errors.Join(failed...)
+}
+
+// forget forgets the identity digests rewrite needs forgotten, and lists the files.
+func (l *Library) forget(ctx context.Context, itemID string, origin librarystore.LibraryOrigin) ([]librarystore.LibraryFilePath, error) {
 	ids := []string{itemID}
 	if l.Inventory != nil {
 		key := inventory.OriginKey{Authority: inventory.AuthorityID(origin.Authority), ExternalItemID: origin.Key}
 		holder, ok, err := l.Inventory.Item(ctx, inventory.ItemRef{Origin: &key})
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if ok && string(holder.ID) != itemID {
 			ids = append(ids, string(holder.ID))
@@ -182,12 +233,11 @@ func (l *Library) rewrite(ctx context.Context, itemID string, origin librarystor
 	for _, id := range ids {
 		found, err := l.NeedStore.RewriteLibraryItemFiles(ctx, id)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		files = append(files, found...)
 	}
-	l.pass(files)
-	return nil
+	return files, nil
 }
 
 func (l *Library) now() time.Time {

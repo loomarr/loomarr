@@ -738,6 +738,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
   with no folder of its own is listed by its title. A title with no present file is left out until a file of it is back. It is its own
   read, paged by `limit` and `offset` with a `total`, because the set only grows and the Needs you
   read, with its guesses, files and posters, is refetched on every library change.
+- **Ignoring a folder** (#4476, admin only). Each card in `GET /v1/library/needs` has a `folder`,
+  the same label as the Ignored list's, and the cards come grouped by it, by name within a folder.
+  A heading's action ignores the cards shown under it at that moment, each title as one item, so a
+  series counts as one. `POST /v1/library/needs/ignore` takes those cards' ids, never a folder
+  path, so files that arrive in the folder later still need the household. It ignores all of them
+  or none: an id that is unknown, or not waiting in Needs you, refuses the whole request (409). It
+  returns the ids it ignored, and `POST /v1/library/ignored/restore` takes them back in one step,
+  again all or none: an id that isn't ignored refuses the whole request (409), so a link answer is
+  never removed. Episode order and "needs a look" cards are not in folder groups.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left

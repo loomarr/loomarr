@@ -168,7 +168,7 @@ func TestMatcherFindsCandidatesAndAnAnswerGroundsTheTitle(t *testing.T) {
 	h.file("Grounded (2010) {tmdb-90000300}/Grounded (2010) {tmdb-90000300}.mkv", 10)
 	h.run()
 
-	lib := &Library{NeedStore: h.st, ItemStore: h.st, Keys: fakeCatalogKeys}
+	lib := &Library{Roots: &Roots{Store: h.st}, NeedStore: h.st, ItemStore: h.st, Keys: fakeCatalogKeys}
 	needs, err := lib.Needs(ctx)
 	if err != nil || len(needs) != 1 || needs[0].Kind != "movie" {
 		t.Fatalf("needs = %+v, %v; want the movie nothing grounds", needs, err)
@@ -279,7 +279,7 @@ func TestMatcherNameMatchesATitleEndingInAYearLikeNumber(t *testing.T) {
 	if len(search.terms) != 1 || search.terms[0] != "Lantern Keeper" {
 		t.Fatalf("searched %v", search.terms)
 	}
-	lib := &Library{NeedStore: h.st, ItemStore: h.st, Keys: fakeCatalogKeys}
+	lib := &Library{Roots: &Roots{Store: h.st}, NeedStore: h.st, ItemStore: h.st, Keys: fakeCatalogKeys}
 	needs, _ := lib.Needs(ctx)
 	if len(needs) != 1 || len(needs[0].Candidates) != 2 {
 		t.Fatalf("needs = %+v; want the film with both candidates", needs)
@@ -327,7 +327,7 @@ func TestMatcherSettlesAMovieOnlyWhenOneResultAgrees(t *testing.T) {
 			h.im.Answers = h.st
 			h.file(tc.file, 10)
 			h.run()
-			lib := &Library{NeedStore: h.st, ItemStore: h.st, Inventory: h.inv, Keys: fakeCatalogKeys}
+			lib := &Library{Roots: &Roots{Store: h.st}, NeedStore: h.st, ItemStore: h.st, Inventory: h.inv, Keys: fakeCatalogKeys}
 			// Every candidate runs 22 minutes, as long as the harness's file.
 			catalog := &fakeCatalog{records: map[string]mp.Record{}}
 			for _, hit := range tc.hits {
@@ -413,7 +413,7 @@ func TestTakingBackALinkSplitsTheCopyOut(t *testing.T) {
 	h.file("Grounded (2010) {tmdb-90000300}/Grounded (2010) {tmdb-90000300}.mkv", 10)
 	h.file("Mystery Film (2002)/Mystery Film (2002).mkv", 10)
 	h.run()
-	lib := &Library{NeedStore: h.st, ItemStore: h.st, Inventory: h.inv, Keys: fakeCatalogKeys}
+	lib := &Library{Roots: &Roots{Store: h.st}, NeedStore: h.st, ItemStore: h.st, Inventory: h.inv, Keys: fakeCatalogKeys}
 	needs, err := lib.Needs(ctx)
 	if err != nil || len(needs) != 1 {
 		t.Fatalf("needs = %+v, %v", needs, err)
@@ -483,7 +483,7 @@ func TestMatcherSearchesAgainWhenItsRulesChange(t *testing.T) {
 		[]librarystore.LibraryCandidate{candidate}); err != nil {
 		t.Fatal(err)
 	}
-	lib := &Library{NeedStore: h.st, ItemStore: h.st, Inventory: h.inv, Keys: fakeCatalogKeys}
+	lib := &Library{Roots: &Roots{Store: h.st}, NeedStore: h.st, ItemStore: h.st, Inventory: h.inv, Keys: fakeCatalogKeys}
 	catalog := &fakeCatalog{records: map[string]mp.Record{
 		"90000311": {Kind: mp.KindMovie, Descriptive: &mp.Descriptive{Runtime: 22 * time.Minute}},
 	}}
@@ -584,7 +584,7 @@ func TestMatcherSettlesASeriesOnlyWhenOneResultHoldsItsEpisodes(t *testing.T) {
 			h.file(tc.folder+"/Season 02/"+tc.show+" S02E03-E04.mkv", 10)
 			h.file(tc.folder+"/Specials/"+tc.show+" S00E05.mkv", 10)
 			h.run()
-			lib := &Library{NeedStore: h.st, ItemStore: h.st, Inventory: h.inv, Keys: fakeCatalogKeys}
+			lib := &Library{Roots: &Roots{Store: h.st}, NeedStore: h.st, ItemStore: h.st, Inventory: h.inv, Keys: fakeCatalogKeys}
 			hits := []SearchHit{
 				{Kind: "series", ID: tmdbID("90000411"), Name: "Harbour Lights", Year: 1999},
 				{Kind: "series", ID: tmdbID("90000412"), Name: "Harbour Lights", Year: 2004},
