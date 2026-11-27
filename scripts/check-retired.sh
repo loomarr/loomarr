@@ -461,6 +461,8 @@ RETIRED=(
   'channels/channel-card|#4451: the web ChannelCard was deleted; the guide renders channels through @loomarr/ui'
   'channels/channel-ident"|#4451: the web channel-ident was deleted; @loomarr/ui owns the one ChannelIdent'
   'channels/now-next-strip|#4451: the web NowNextStrip was deleted; the guide renders now/next through @loomarr/ui'
+  'shell/brand-lockup|#4451: the web BrandLockup was deleted; the design system owns the one BrandLockup'
+  '"\.\./brand-lockup"|#4451: the web BrandLockup was deleted; the design system owns the one BrandLockup'
 
 )
 # ⚠ `internal/platform/store/migrations/` is exempt, and it is the one exemption that is forced rather than
