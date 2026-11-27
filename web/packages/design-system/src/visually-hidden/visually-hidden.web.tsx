@@ -17,7 +17,7 @@ const hidden: CSSProperties = {
   width: 1,
 };
 
-const VisuallyHidden = ({ as: Host = "span", children }: VisuallyHiddenProps) => (
+const VisuallyHidden = ({ as: Host = "div", children }: VisuallyHiddenProps) => (
   <Host style={hidden}>{children}</Host>
 );
 

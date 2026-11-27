@@ -15,7 +15,7 @@ describe("VisuallyHidden", () => {
     );
 
     const hidden = screen.getByText("Skip the intro");
-    expect(hidden.tagName).toBe("SPAN");
+    expect(hidden.tagName).toBe("DIV");
     expect(hidden.style.position).toBe("absolute");
     expect(hidden.style.width).toBe("1px");
     expect(hidden.style.height).toBe("1px");
