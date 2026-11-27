@@ -23,6 +23,7 @@ import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { DiscoveryFeedbackControls, useDiscoveryFeedback } from "@/discovery-feedback";
+import { useAppForm } from "@/lib/app-form";
 import { SearchCommand } from "../../shell";
 import type { ChannelLineupEditorProps } from "./channel-lineup-editor.type";
 
@@ -85,24 +86,29 @@ const SeasonInput = ({
   placeholder: string;
   value: number | undefined;
 }) => {
-  const [text, setText] = useState(value ? String(value) : "");
+  const form = useAppForm({ defaultValues: { text: value ? String(value) : "" } });
   return (
     <Stack width={88}>
-      <Field
-        accessibilityLabel={label}
-        disabled={disabled}
-        keyboardType="number-pad"
-        onBlur={() => {
-          const parsed = text.trim() === "" ? undefined : Number(text);
-          if (parsed !== undefined && Number.isNaN(parsed)) return;
-          const next = parsed && parsed >= 1 ? parsed : undefined;
-          if (next === (value || undefined)) return;
-          onCommit(next);
-        }}
-        onChangeText={setText}
-        placeholder={placeholder}
-        value={text}
-      />
+      <form.Field name="text">
+        {(field) => (
+          <Field
+            accessibilityLabel={label}
+            disabled={disabled}
+            keyboardType="number-pad"
+            onBlur={() => {
+              const text = field.state.value.trim();
+              const parsed = text === "" ? undefined : Number(text);
+              if (parsed !== undefined && Number.isNaN(parsed)) return;
+              const next = parsed && parsed >= 1 ? parsed : undefined;
+              if (next === (value || undefined)) return;
+              onCommit(next);
+            }}
+            onChangeText={field.handleChange}
+            placeholder={placeholder}
+            value={field.state.value}
+          />
+        )}
+      </form.Field>
     </Stack>
   );
 };
