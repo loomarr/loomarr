@@ -16,9 +16,11 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/library/resolvers"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
@@ -1219,13 +1221,22 @@ func TestReconcile_StampsBoxSetMembership(t *testing.T) {
 func TestReconcile_BoxSetMembershipFollowsCollectionEdits(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
+	at := time.Unix(1_800_000_000, 0)
 	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
-	vale, err := st.CreateLibraryCollection(ctx, store.LibraryCollection{Name: "Juniper Vale"}, time.Unix(1_800_000_000, 0))
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
+		{ID: "lib-1", Kind: "movie", Name: "A", IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000001"}}},
+		{ID: "lib-2", Kind: "movie", Name: "B", IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000002"}}},
+	}, at); err != nil {
+		t.Fatal(err)
+	}
+	coll := librarystore.LibraryCollection{Name: "Juniper Vale", Members: []string{"lib-1"}}
+	vale, err := st.CreateLibraryCollection(ctx, coll, at)
 	if err != nil {
 		t.Fatal(err)
 	}
-	res := &countingBoxSets{sets: map[provision.Key][]string{"movie:tmdb:90000001": {vale}}}
-	e := newEngine(st, tunarrtest.NewTunarr(), avail, nil).WithBoxSets(res)
+	coll.ID = vale
+	// A zero TTL, so the resolver reads the collection afresh on each lookup.
+	e := newEngine(st, tunarrtest.NewTunarr(), avail, nil).WithBoxSets(resolvers.NewBoxSets(st, 0))
 
 	seedChannel(t, st, "cbs2", 9, entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
 	ch, _ := st.GetChannel(ctx, "cbs2")
@@ -1252,10 +1263,20 @@ func TestReconcile_BoxSetMembershipFollowsCollectionEdits(t *testing.T) {
 		t.Fatalf("before the edit the channel airs %v, want only the collection's title", got)
 	}
 
-	// The household moves the collection from A to B.
-	res.sets = map[provision.Key][]string{"movie:tmdb:90000002": {vale}}
+	edit := func(members ...string) {
+		t.Helper()
+		coll.Members = members
+		if err := st.UpdateLibraryCollection(ctx, coll, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	edit("lib-1", "lib-2")
+	if got := airs(); !slices.Equal(got, []string{"movie:tmdb:90000001", "movie:tmdb:90000002"}) {
+		t.Errorf("after adding B the channel airs %v, want both", got)
+	}
+	edit("lib-2")
 	if got := airs(); !slices.Equal(got, []string{"movie:tmdb:90000002"}) {
-		t.Errorf("after the edit the channel airs %v, want only B", got)
+		t.Errorf("after removing A the channel airs %v, want only B", got)
 	}
 }
 
