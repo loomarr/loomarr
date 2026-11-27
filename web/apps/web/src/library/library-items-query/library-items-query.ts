@@ -9,6 +9,8 @@ import { infiniteQueryOptions } from "@tanstack/react-query";
 // generated key plus "pages", so an invalidation of `/v1/library/items` reaches it) and the shape
 // of a page live here, and a loader that built its own would warm an entry nobody reads.
 const LIBRARY_PAGE_SIZE = 60;
+// The most the server returns in one page.
+const LIBRARY_PAGE_MAX = 200;
 
 interface LibraryItemsFilter {
   kind?: ListLibraryItemsKind;
@@ -16,15 +18,35 @@ interface LibraryItemsFilter {
   search?: string;
   /** Recently added first; absent is the server's order, by name. */
   sort?: typeof ListLibraryItemsSort.recent;
+  /** Only titles with this genre. */
+  genre?: string;
+  /**
+   * How far down the list a jump wants loaded: pages short of it ask for as much as the server
+   * gives at once. It is not part of the key, since the titles are the same list however they
+   * are paged.
+   */
+  reach?: () => number;
 }
 
-const libraryItemsQueryOptions = ({ kind, search, sort }: LibraryItemsFilter) => {
-  const params = { kind, search, sort, limit: LIBRARY_PAGE_SIZE };
+const libraryItemsQueryOptions = ({ kind, search, sort, genre, reach }: LibraryItemsFilter) => {
+  const params = { kind, search, sort, genre, limit: LIBRARY_PAGE_SIZE };
   return infiniteQueryOptions({
     queryKey: [...libraryApi.getListLibraryItemsQueryKey(params), "pages"],
     initialPageParam: 0,
-    queryFn: async ({ pageParam, signal }) => {
-      const res = await libraryApi.listLibraryItems({ ...params, offset: pageParam }, { signal });
+    queryFn: async ({ client, queryKey, pageParam, signal }) => {
+      // A refetch asks for each page again by count, so a page asks for as many titles as the
+      // cache holds from its offset: otherwise the large pages a jump loaded come back small and
+      // the list shrinks under the reader.
+      const cached = client.getQueryData<{ pages: { items: unknown[] }[] }>(queryKey)?.pages ?? [];
+      let start = 0;
+      let held = 0;
+      for (const page of cached) {
+        if (start === pageParam) held = page.items.length;
+        start += page.items.length;
+      }
+      const wanted = Math.max(held, (reach?.() ?? 0) - pageParam);
+      const limit = Math.min(LIBRARY_PAGE_MAX, Math.max(LIBRARY_PAGE_SIZE, wanted));
+      const res = await libraryApi.listLibraryItems({ ...params, limit, offset: pageParam }, { signal });
       const body = unwrap(res);
       if (!body) throw new Error("Couldn't list the library");
       return body;
@@ -48,4 +70,4 @@ const libraryCountsQueryOptions = () =>
   LIBRARY_COUNTS.map((params) => libraryApi.getListLibraryItemsQueryOptions(params));
 
 export type { LibraryItemsFilter };
-export { LIBRARY_COUNTS, libraryCountsQueryOptions, libraryItemsQueryOptions };
+export { LIBRARY_COUNTS, LIBRARY_PAGE_SIZE, libraryCountsQueryOptions, libraryItemsQueryOptions };

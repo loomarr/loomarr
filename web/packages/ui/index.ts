@@ -113,6 +113,8 @@ export type {
   LibrarySettingsProps,
   LibraryShelfAdmin,
   LibraryShelfCounts,
+  LibraryShelfGenre,
+  LibraryShelfLetter,
   LibraryShelfProps,
   LibraryShelfStatus,
   LibraryShelfTitle,

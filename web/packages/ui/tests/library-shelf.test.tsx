@@ -17,6 +17,30 @@ import {
 
 // The window the wall is drawn in, in points: the mock's desktop unless a test says a phone.
 const screen = vi.hoisted(() => ({ width: 1440 }));
+// The grid's virtualizer, with its scrolling recorded.
+const scrolled = vi.hoisted(() => vi.fn());
+vi.mock("@tanstack/react-virtual", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-virtual")>();
+  return {
+    ...actual,
+    useVirtualizer: (options: Parameters<typeof actual.useVirtualizer>[0]) =>
+      Object.assign(actual.useVirtualizer(options), { scrollToIndex: scrolled }),
+  };
+});
+// jsdom has no ResizeObserver; this one records what the grid watches.
+const watched = vi.hoisted(() => {
+  const nodes: { textContent: string | null }[] = [];
+  Object.assign(globalThis, {
+    ResizeObserver: class {
+      observe(node: { textContent: string | null }) {
+        nodes.push(node);
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  });
+  return nodes;
+});
 vi.mock("react-native", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-native")>();
   return { ...actual, useWindowDimensions: () => ({ ...actual.useWindowDimensions(), width: screen.width }) };
@@ -88,6 +112,7 @@ const render = (overrides: Partial<LibraryShelfProps>) => {
     counts: COUNTS,
     sort: "name",
     onSortChange: vi.fn(),
+    onGenreChange: vi.fn(),
     search: "",
     onSearchChange: vi.fn(),
     titles: TITLES,
@@ -309,14 +334,14 @@ describe("LibraryShelf", () => {
   it("says when a search matches nothing, what it looked at, and clears it", () => {
     const { host, props, button, cleanup } = render({ search: "zebra 1977 ", titles: [] });
     expect(host.textContent).toContain("Nothing here matches “zebra 1977”");
-    expect(host.textContent).toContain("Search looks at the names of all 3,412 titles.");
+    expect(host.textContent).toContain("Search looks at titles, years and genres across all 3,412 titles.");
     act(() => button("Clear search").click());
     expect(props.onSearchChange).toHaveBeenCalledWith("");
     cleanup();
 
     const member = render({ admin: undefined, search: "zebra", titles: [], counts: undefined });
     expect(member.host.textContent).toContain("Nothing here matches “zebra”");
-    expect(member.host.textContent).toContain("Search looks at the names of your titles.");
+    expect(member.host.textContent).toContain("Search looks at titles, years and genres.");
     member.cleanup();
   });
 
@@ -437,6 +462,114 @@ describe("LibraryShelf", () => {
     expect(host.querySelector('[aria-label="Search titles"]')).toBeNull();
     act(() => button("Tell Loomarr where your media is").click());
     expect(fresh.onOpenSettings).toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("lists each genre with its titles under All genres, and reports the choice", () => {
+    const { host, props, cleanup } = render({
+      genres: [
+        { name: "Drama", titles: 1204 },
+        { name: "Comedy", titles: 7 },
+      ],
+      genre: "drama",
+    });
+    const select = host.querySelector('select[aria-label="Genre"]');
+    if (!select) throw new Error("missing the genre filter");
+    // The URL's spelling matches the list's in any case.
+    expect(select.value).toBe("Drama");
+    expect(select.textContent).toContain("All genres");
+    expect(select.textContent).toContain("Drama · 1,204");
+    expect(select.textContent).toContain("Comedy · 7");
+    choose(select, "Comedy");
+    expect(props.onGenreChange).toHaveBeenCalledWith("Comedy");
+    choose(select, "");
+    expect(props.onGenreChange).toHaveBeenLastCalledWith(undefined);
+    cleanup();
+  });
+
+  it("says a genre has nothing in the tab, keeps it chosen, and goes back to every genre", () => {
+    const { host, props, button, cleanup } = render({
+      filter: "series",
+      genre: "Western",
+      genres: [{ name: "Drama", titles: 3 }],
+      titles: [],
+    });
+    expect(host.textContent).toContain("No shows in Western");
+    expect(host.querySelector('select[aria-label="Genre"]')?.value).toBe("Western");
+    act(() => button("Show all genres").click());
+    expect(props.onGenreChange).toHaveBeenCalledWith(undefined);
+    cleanup();
+  });
+
+  const LETTERS = [
+    { letter: "H", offset: 0 },
+    { letter: "P", offset: 40 },
+  ];
+
+  it("draws the rail on a desktop window, with letters that have no titles disabled", () => {
+    const onJump = vi.fn();
+    const { button, cleanup } = render({ letters: LETTERS, onJump });
+    const z = button("Jump to titles starting with Z");
+    expect(z.hasAttribute("disabled") || z.getAttribute("aria-disabled") === "true").toBe(true);
+    act(() => z.click());
+    expect(onJump).not.toHaveBeenCalled();
+    act(() => button("Jump to titles starting with P").click());
+    expect(onJump).toHaveBeenCalledWith({ letter: "P", offset: 40 });
+    cleanup();
+  });
+
+  it("draws no rail below the desktop width, or for a list with no letters", () => {
+    screen.width = 1023;
+    try {
+      const narrow = render({ letters: LETTERS, onJump: vi.fn() });
+      expect(narrow.find("Jump to titles starting with P")).toBeUndefined();
+      narrow.cleanup();
+    } finally {
+      screen.width = 1440;
+    }
+    const recent = render({ sort: "recent", onJump: vi.fn() });
+    expect(recent.find("Jump to titles starting with P")).toBeUndefined();
+    recent.cleanup();
+  });
+
+  // The grid is endless: a rail after it in the document is out of a keyboard's reach.
+  it("puts the rail before the grid in the document, so Tab reaches it first", () => {
+    const { host, cleanup } = render({ letters: LETTERS, onJump: vi.fn() });
+    const order = Array.from(host.querySelectorAll('[role="navigation"], [role="list"]')).map((n) =>
+      n.getAttribute("role"),
+    );
+    expect(order).toEqual(["navigation", "list"]);
+    cleanup();
+  });
+
+  it("scrolls the grid to the row holding the jumped title", () => {
+    scrolled.mockClear();
+    // The grid scrolls whatever holds it, and jsdom has no such thing until one says it scrolls.
+    const body = (globalThis as unknown as { document: { body: { style: { overflowY: string } } } }).document
+      .body;
+    body.style.overflowY = "auto";
+    const titles = Array.from(
+      { length: 120 },
+      (_, i) => ({ ...TITLES[0], id: `t${i}` }) as LibraryShelfTitle,
+    );
+    const { cleanup } = render({
+      titles,
+      letters: LETTERS,
+      onJump: vi.fn(),
+      jump: { index: 62, letter: "P", request: 1 },
+    });
+    // Six across, so the 63rd title is in the eleventh row.
+    expect(scrolled).toHaveBeenCalledWith(10, { align: "start" });
+    cleanup();
+    body.style.overflowY = "";
+  });
+
+  // The grid's own parent holds only the grid, beside the rail. A change in what sits above it
+  // (the status line) moves the grid, and only an outer ancestor changes height with it.
+  it("watches the heights of what holds the status line above the grid", () => {
+    watched.length = 0;
+    const { cleanup } = render({});
+    expect(watched.some((node) => node.textContent?.includes("Up to date"))).toBe(true);
     cleanup();
   });
 
