@@ -166,8 +166,13 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
   const current = isAdmin ? unwrap(status.data) : undefined;
   // Needs you's cards, and on the wall the titles nothing in the catalogue matches: the list of
   // titles doesn't flag them, so an admin's wall reads them from here while any are waiting.
-  const needs = useLibraryNeeds(isAdmin && (view === "needs" || (titlesView && Boolean(current?.needsYou))));
-  const unidentified = useMemo(() => new Set(needs.needs.map((need) => need.id)), [needs.needs]);
+  const marking = isAdmin && titlesView && Boolean(current?.needsYou);
+  const needs = useLibraryNeeds(marking || (isAdmin && view === "needs"));
+  // A list read earlier stays cached after the query is off, so it marks only while it is asked for.
+  const unidentified = useMemo(
+    () => new Set(marking ? needs.needs.map((need) => need.id) : []),
+    [marking, needs.needs],
+  );
   // The offline folders' names come from the folder list; it's only asked for while one is offline.
   const roots = libraryApi.useListLibraryRoots({
     query: { enabled: isAdmin && current?.health === LibraryStatusOutputBodyHealth.folder_offline },

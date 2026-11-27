@@ -253,9 +253,11 @@ const HOVER_MS = 200;
 
 // The link the card is drawn on keeps its own semantics and navigation; it only takes the card's
 // layout, focus and hover. The focus look is the card's amber border, so the browser's own outline
-// stays off.
+// never shows. Forced colours repaint borders alike, focused or not, but turn a transparent
+// outline visible, so a focused card draws one.
 const linkCard = (
   link: ReactElement<Record<string, unknown>>,
+  focused: boolean,
   handlers: Record<"onBlur" | "onFocus" | "onMouseEnter" | "onMouseLeave", () => void>,
   children: ReactNode,
 ) =>
@@ -267,7 +269,7 @@ const linkCard = (
         color: "inherit",
         display: "block",
         minWidth: 0,
-        outline: "none",
+        outline: focused ? "2px solid transparent" : "none",
         textDecoration: "none",
         width: "100%",
       },
@@ -342,6 +344,7 @@ const Tile = ({
   if (link) {
     return linkCard(
       link,
+      focused,
       {
         onBlur: () => setFocused(false),
         onFocus: () => setFocused(true),
@@ -359,7 +362,13 @@ const Tile = ({
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       onPress={onOpen}
-      style={{ minWidth: 0, outlineStyle: "none" as never, outlineWidth: 0, width: "100%" }}
+      style={{
+        minWidth: 0,
+        outlineColor: "transparent",
+        outlineStyle: focused ? "solid" : ("none" as never),
+        outlineWidth: focused ? 2 : 0,
+        width: "100%",
+      }}
     >
       {card}
     </Pressable>

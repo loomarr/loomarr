@@ -221,6 +221,8 @@ describe("LibraryShelf", () => {
     expect(ringed()).toBe(0);
     act(() => card.focus());
     expect(ringed()).toBeGreaterThan(0);
+    // Forced colours repaint a transparent outline, so focus stays visible there.
+    expect(card.style.outline).toBe("2px solid transparent");
     // The link's own click is what navigates.
     act(() => card.click());
     expect(onClick).toHaveBeenCalledOnce();

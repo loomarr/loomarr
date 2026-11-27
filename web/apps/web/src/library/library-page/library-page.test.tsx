@@ -1,3 +1,4 @@
+import { getLibraryStatusQueryKey } from "@loomarr/api/endpoints/library";
 import {
   getHouseholdMockHandler,
   getLibraryStatusMockHandler,
@@ -97,6 +98,32 @@ describe("LibraryPage", () => {
     await waitFor(() => expect(card).toHaveTextContent("2001 · Not identified yet"));
     expect(card).not.toHaveTextContent("Movie");
     expect(within(card).getByRole("img", { name: "Needs a look" })).toBeInTheDocument();
+  });
+
+  it("drops the mark once nothing needs you, though the list it read is still cached", async () => {
+    let needsYou = 1;
+    server.use(
+      http.get("*/v1/library/status", () => HttpResponse.json({ ...libraryStatus(), needsYou })),
+      getListLibraryItemsMockHandler({ items: [alpha], total: 1 }),
+      getListLibraryNeedsMockHandler({
+        needs: [{ item: alpha, searched: true, candidates: [], files: [] }],
+        orders: [],
+        problems: [],
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <LibraryPage filter="all" search="" />
+      </QueryClientProvider>,
+    );
+    const card = await screen.findByRole("link", { name: /Alpha/ });
+    await waitFor(() => expect(card).toHaveTextContent("Not identified yet"));
+
+    needsYou = 0;
+    await act(() => client.invalidateQueries({ queryKey: getLibraryStatusQueryKey() }));
+    await waitFor(() => expect(card).toHaveTextContent("2001 · Movie"));
+    expect(within(card).queryByRole("img", { name: "Needs a look" })).not.toBeInTheDocument();
   });
 
   it("lists the titles the server found, each linking to its page", async () => {
