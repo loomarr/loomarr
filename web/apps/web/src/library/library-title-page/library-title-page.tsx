@@ -89,6 +89,10 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
         isAdmin
           ? {
               onCheckFiles: () => act(libraryApi.checkLibraryItemFiles(id)),
+              // An episode is its own title, so its files come with its own answer.
+              onEpisodeFiles: async (episodeId) =>
+                unwrap(await queryClient.fetchQuery(libraryApi.getGetLibraryItemQueryOptions(episodeId)))
+                  ?.files ?? [],
               onChooseOrder: () => void navigate({ to: "/library/needs" }),
               onForget: () => act(libraryApi.unanswerLibraryItem(id)),
               onLink: (externalId) => act(libraryApi.linkLibraryItem(id, { externalId })),
@@ -133,7 +137,13 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
         runtimeMillis: body.runtimeMillis,
         files: body.files ?? [],
         unplayable: item.unplayable ?? 0,
-        seasons: body.seasons,
+        seasons: body.seasons.map((season) => ({
+          ...season,
+          episodes: season.episodes.map(({ still, ...episode }) => ({
+            ...episode,
+            still: still ? <ServedImage alt="" image={still} sizes="160px" /> : undefined,
+          })),
+        })),
         match: { by: match.by, app: match.app ? APP_NAMES[match.app] : undefined },
         channels: body.channels,
         detailsFrom: {
