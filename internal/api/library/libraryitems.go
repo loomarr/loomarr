@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
@@ -445,7 +446,7 @@ type libraryAiringEpisodeDTO struct {
 // libraryNextAiringsOf is the first of airings, which come earliest first, on each channel. An
 // episode is named only from d's own seasons as the caller reads them (episodeShown), so one the
 // caller doesn't read, or one with no present file, goes unnamed.
-func libraryNextAiringsOf(d scan.ItemDetail, airings []store.UpcomingAiring, admin bool) []libraryAiringDTO {
+func libraryNextAiringsOf(d scan.ItemDetail, airings []channeldatastore.UpcomingAiring, admin bool) []libraryAiringDTO {
 	episodes := map[string]*libraryAiringEpisodeDTO{}
 	for _, season := range d.Seasons {
 		for _, ep := range season.Episodes {
