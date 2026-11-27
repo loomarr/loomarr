@@ -114,10 +114,17 @@ dev-be: ## backend with live reload (Air) — rebuilds + restarts on Go/Rust cha
 	@# the :8080 bind and exited — while the stale one kept serving OLD code. That zombie cost
 	@# DAYS of "my fix didn't take". The guard refuses to start a duplicate (or, with
 	@# DEV_BE_REPLACE=1, cleanly replaces ONLY the loomarr dev binary — never a blanket kill).
+	@# Its refusal ends the recipe (`|| exit 1`): make's shell carries on past a failed command.
+	@#
+	@# The last session's binary is removed before Air starts. With stop_on_error=false Air runs
+	@# the previous binary when a build fails, so a tree that does not compile would otherwise
+	@# serve whatever build is left in tmp/, however old, against the live store. Air builds on
+	@# start either way; removing it means a failed first build serves nothing.
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  mkdir -p .agent-data "$$LOOMARR_ARTIFACT_DIR" "$${LOOMARR_AGENT_FILLER_DIR:-.filler-drop}" "$${LOOMARR_AGENT_IMAGES_DIR:-.agent-data/images}"; \
 	  echo "dev-be: $$LOOMARR_INSTANCE — http://localhost:$$LOOMARR_DEV_PORT"; \
-	  sh scripts/dev-be-guard.sh; \
+	  ./scripts/dev/free-orphan-port.sh "$$LOOMARR_DEV_PORT" && sh scripts/dev-be-guard.sh || exit 1; \
+	  rm -f tmp/loomarr-dev; \
 	  sh -c 'if [ "$${DEV_BE_NO_WATCHDOG:-0}" != "1" ]; then \
 	      sh scripts/dev-be-watchdog.sh & wd=$$!; trap "kill $$wd 2>/dev/null" EXIT INT TERM; fi; \
 	    exec $(GO) run github.com/air-verse/air@v1.67.4'
@@ -140,8 +147,11 @@ dev-gpu: ## dev compose stack with NVIDIA transcode overlay (Linux + nvidia-cont
 
 .PHONY: dev-fe
 dev-fe: ## frontend with HMR on this worktree's isolated port, proxying its backend
+	@# fe-sync installs and regenerates when a pull or branch switch changed the lockfile, API spec
+	@# or tokens; free-orphan-port stops a server a removed worktree left on this port.
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  echo "dev-fe: $$LOOMARR_INSTANCE — http://localhost:$$LOOMARR_FE_PORT -> $$LOOMARR_API"; \
+	  ./scripts/dev/fe-sync.sh && ./scripts/dev/free-orphan-port.sh "$$LOOMARR_FE_PORT" && \
 	  cd $(WEB) && pnpm --filter @loomarr/web dev
 
 .PHONY: seed
