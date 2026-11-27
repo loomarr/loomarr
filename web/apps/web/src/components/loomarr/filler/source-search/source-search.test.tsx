@@ -176,6 +176,21 @@ describe("SourceSearch", () => {
     expect(reported).toEqual(expect.arrayContaining(discoveredClips.map((c) => c.id)));
   });
 
+  it("watches each result row where the browser can observe visibility", () => {
+    const observed: Array<string | undefined> = [];
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe = (row: HTMLElement) => observed.push(row.dataset.clipId);
+        disconnect = () => {};
+      },
+    );
+    render(<SourceSearch {...base} onVisible={vi.fn()} />);
+    vi.unstubAllGlobals();
+
+    expect(observed).toEqual(discoveredClips.slice(0, 8).map((c) => c.id));
+  });
+
   // The whole point of the split: a row paints from the search, then gains its runtime.
   it("renders a runtime that arrived after the search", () => {
     const clip = discoveredClips[2] as DiscoveredClip; // the row that knows only its date

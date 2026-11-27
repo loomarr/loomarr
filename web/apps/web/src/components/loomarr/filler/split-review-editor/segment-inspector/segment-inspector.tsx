@@ -1,5 +1,17 @@
 import { formatClipDuration } from "@loomarr/core/format";
-import { Action, Badge, Field, Grid, Icon, icons, Stack, Text, Tooltip } from "@loomarr/design-system";
+import {
+  Action,
+  Badge,
+  Card,
+  Details,
+  Field,
+  Grid,
+  Icon,
+  icons,
+  Stack,
+  Text,
+  Tooltip,
+} from "@loomarr/design-system";
 import { languageName } from "@/lib/languages";
 import { SegmentPreview } from "../../segment-preview";
 import {
@@ -126,41 +138,27 @@ const SegmentInspector = ({
       </Stack>
 
       {segment.holdReason ? (
-        <Stack
-          borderRadius={4}
-          className="bg-caution-tint-15"
-          paddingHorizontal={8}
-          paddingVertical={6}
-          render="p"
-          role="status"
-        >
+        <Card paddingHorizontal={8} paddingVertical={6} render="p" role="status" tone="caution">
           <Text as="span" textRole="compact" tone="warning">
             {`Take a closer look: ${segment.holdReason}.`}
           </Text>
-        </Stack>
+        </Card>
       ) : null}
       {segment.unsplittable ? (
-        <Stack borderRadius={4} className="bg-onair-tint-15" paddingHorizontal={8} paddingVertical={6}>
+        <Card paddingHorizontal={8} paddingVertical={6} tone="caution">
           <Text as="p" textRole="compact" tone="danger">
             Loomarr may have missed a cut here. Preview it, then adjust the timing, join it with the next
             clip, or remove it.
           </Text>
-        </Stack>
+        </Card>
       ) : null}
       {span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs ? (
-        <Stack
-          borderRadius={4}
-          className="bg-onair-tint-15"
-          paddingHorizontal={8}
-          paddingVertical={6}
-          render="p"
-          role="status"
-        >
+        <Card paddingHorizontal={8} paddingVertical={6} render="p" role="status" tone="caution">
           <Text as="span" textRole="compact" tone="danger">
             This clip is shorter than your {formatClipDuration(minClipDurationMs)} minimum. Make it longer,
             join it with the next clip, or remove it.
           </Text>
-        </Stack>
+        </Card>
       ) : null}
 
       {segment.suggestedEra ? (
@@ -180,88 +178,110 @@ const SegmentInspector = ({
         </Stack>
       ) : null}
 
-      <details open={timingNeedsAttention} className="border-border/70 rounded-md border px-3 py-2">
-        <Text as="summary" className="list-none" cursor="pointer" textRole="cardLabel" tone="primary">
-          <Stack align="center" direction="row" gap="2" render="span">
-            <Icon decorative glyph={icons.edit} size="compact" tone="inherit" /> Rename or adjust timing
-          </Stack>
-        </Text>
-        <Grid columns={{ base: 1, sm: ["minmax(12rem,1fr)", "7rem", "7rem"] }} gap="3" marginTop={12}>
-          <Field
-            id={`seg-name-${position}`}
-            label="Name"
-            onChangeText={(name) => onChange({ name, ...nameNowOwnedByOperator })}
-            value={segment.name}
-          />
-          <Field
-            accessibilityLabel="Start (mm:ss)"
-            id={`seg-start-${position}`}
-            keyboardType="numbers-and-punctuation"
-            label="Starts"
-            onChangeText={(startText) =>
-              onChange({ startText, artwork: undefined, ...languageNeedsRecheck, ...nameNowOwnedByOperator })
+      <Card>
+        <Stack paddingHorizontal={12} paddingVertical={8}>
+          <Details
+            marker={false}
+            open={timingNeedsAttention}
+            summary={
+              <Stack align="center" direction="row" gap="2" render="span">
+                <Icon decorative glyph={icons.edit} size="compact" tone="inherit" /> Rename or adjust timing
+              </Stack>
             }
-            value={segment.startText}
-          />
-          <Field
-            accessibilityLabel="End (mm:ss)"
-            id={`seg-end-${position}`}
-            keyboardType="numbers-and-punctuation"
-            label="Ends"
-            onChangeText={(endText) =>
-              onChange({ endText, artwork: undefined, ...languageNeedsRecheck, ...nameNowOwnedByOperator })
-            }
-            value={segment.endText}
-          />
-        </Grid>
-      </details>
+            textRole="cardLabel"
+            tone="primary"
+          >
+            <Grid columns={{ base: 1, sm: ["minmax(12rem,1fr)", "7rem", "7rem"] }} gap="3" marginTop={12}>
+              <Field
+                id={`seg-name-${position}`}
+                label="Name"
+                onChangeText={(name) => onChange({ name, ...nameNowOwnedByOperator })}
+                value={segment.name}
+              />
+              <Field
+                accessibilityLabel="Start (mm:ss)"
+                id={`seg-start-${position}`}
+                keyboardType="numbers-and-punctuation"
+                label="Starts"
+                onChangeText={(startText) =>
+                  onChange({
+                    startText,
+                    artwork: undefined,
+                    ...languageNeedsRecheck,
+                    ...nameNowOwnedByOperator,
+                  })
+                }
+                value={segment.startText}
+              />
+              <Field
+                accessibilityLabel="End (mm:ss)"
+                id={`seg-end-${position}`}
+                keyboardType="numbers-and-punctuation"
+                label="Ends"
+                onChangeText={(endText) =>
+                  onChange({
+                    endText,
+                    artwork: undefined,
+                    ...languageNeedsRecheck,
+                    ...nameNowOwnedByOperator,
+                  })
+                }
+                value={segment.endText}
+              />
+            </Grid>
+          </Details>
+        </Stack>
+      </Card>
 
       {hasDetails ? (
-        <details className="px-1">
-          <Text as="summary" cursor="pointer" textRole="compact" tone="secondary">
-            Details
-          </Text>
-          <Stack gap="2" marginTop={8}>
-            {namingMessage ? (
-              <Text as="p" textRole="compact" tone="secondary">
-                {namingMessage}
-              </Text>
-            ) : null}
-            {!segment.language && languageMessage ? (
-              <p title={segment.languageNote}>
-                <Text as="span" textRole="compact" tone="secondary">
-                  {languageMessage}
+        <Stack paddingHorizontal={4}>
+          <Details summary="Details" tone="secondary">
+            <Stack gap="2" marginTop={8}>
+              {namingMessage ? (
+                <Text as="p" textRole="compact" tone="secondary">
+                  {namingMessage}
                 </Text>
-              </p>
-            ) : null}
-            {segment.dupOf ? (
-              <Text as="p" textRole="compact" tone="secondary">
-                {`Looks like a clip already in your library: ${segment.dupOf}`}
-              </Text>
-            ) : null}
-            {segment.dedupUnchecked && !segment.dupOf ? (
-              <Text as="p" textRole="compact" tone="secondary">
-                Couldn’t check this clip against your library, so it may already be there.
-              </Text>
-            ) : null}
-            {segment.boundaryConfidence ? (
-              <Text as="p" textRole="mono">
-                {`Cut confidence ${segment.boundaryConfidence}%`}
-                {segment.startEvidence ? ` · start: ${segment.startEvidence}` : ""}
-                {segment.endEvidence ? ` · end: ${segment.endEvidence}` : ""}
-              </Text>
-            ) : null}
-            {segment.transcript ? (
-              <Text
-                as="pre"
-                className="bg-static-800 max-h-48 overflow-auto rounded-sm p-3 whitespace-pre-wrap"
-                textRole="mono"
-              >
-                {segment.transcript}
-              </Text>
-            ) : null}
-          </Stack>
-        </details>
+              ) : null}
+              {!segment.language && languageMessage ? (
+                <p title={segment.languageNote}>
+                  <Text as="span" textRole="compact" tone="secondary">
+                    {languageMessage}
+                  </Text>
+                </p>
+              ) : null}
+              {segment.dupOf ? (
+                <Text as="p" textRole="compact" tone="secondary">
+                  {`Looks like a clip already in your library: ${segment.dupOf}`}
+                </Text>
+              ) : null}
+              {segment.dedupUnchecked && !segment.dupOf ? (
+                <Text as="p" textRole="compact" tone="secondary">
+                  Couldn’t check this clip against your library, so it may already be there.
+                </Text>
+              ) : null}
+              {segment.boundaryConfidence ? (
+                <Text as="p" textRole="mono">
+                  {`Cut confidence ${segment.boundaryConfidence}%`}
+                  {segment.startEvidence ? ` · start: ${segment.startEvidence}` : ""}
+                  {segment.endEvidence ? ` · end: ${segment.endEvidence}` : ""}
+                </Text>
+              ) : null}
+              {segment.transcript ? (
+                <Stack
+                  backgroundColor="surfaceElevated"
+                  borderRadius={4}
+                  maxHeight={192}
+                  padding={12}
+                  style={{ overflow: "auto" }}
+                >
+                  <Text as="pre" style={{ margin: 0, whiteSpace: "pre-wrap" }} textRole="mono">
+                    {segment.transcript}
+                  </Text>
+                </Stack>
+              ) : null}
+            </Stack>
+          </Details>
+        </Stack>
       ) : null}
     </Stack>
   );

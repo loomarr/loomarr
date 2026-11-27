@@ -3,7 +3,6 @@ import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLe
 import { formatClipDuration } from "@loomarr/core/format";
 import { guideFillerEntryLabel } from "@loomarr/core/guide";
 import { Badge, MediaTile, Stack, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
 import type { PodTimelineProps } from "./pod-timeline.type";
 
 // PodTimeline — a commercial break made legible (§3, §10): bumper → ads → bumper, each
@@ -24,15 +23,15 @@ const MATCH: Record<PodPoolDTOMatchLevel, { label: string; tone: StatusTone } | 
 const clipName = (entry: PodEntryDTO): string => entry.name.trim() || guideFillerEntryLabel(entry);
 
 const SEGMENT_FILL: Record<PodEntryDTO["role"], string> = {
-  bumper: "bg-tune-tint-30",
-  station_id: "bg-tune-tint-30",
-  commercial: "bg-suggest-tint-30",
-  trailer: "bg-signal-tint-30",
-  psa: "bg-signal-tint-30",
-  interstitial: "bg-static-700",
+  bumper: "var(--color-tune-tint-30)",
+  station_id: "var(--color-tune-tint-30)",
+  commercial: "var(--color-suggest-tint-30)",
+  trailer: "var(--color-signal-tint-30)",
+  psa: "var(--color-signal-tint-30)",
+  interstitial: "var(--color-static-700)",
   // A political ad is an ad, and news is an interstitial (#2037): each reads as its family.
-  political: "bg-suggest-tint-30",
-  news: "bg-static-700",
+  political: "var(--color-suggest-tint-30)",
+  news: "var(--color-static-700)",
 };
 
 // Each segment prints its role in words and its length ("Trailer, 41s"), so no legend is needed.
@@ -96,8 +95,13 @@ const PodTimeline = ({
             // biome-ignore lint/suspicious/noArrayIndexKey: position is identity in a pod
             key={`${entry.hash ?? entry.path ?? "card"}-${i}`}
             title={`${clipName(entry)} · ${formatClipDuration(entry.durationMs)}`}
-            style={{ flexBasis: `${(entry.durationMs / total) * 100}%` }}
-            className={cn("border-border min-w-0 border-r last:border-r-0", SEGMENT_FILL[entry.role])}
+            style={{
+              backgroundColor: SEGMENT_FILL[entry.role],
+              flexBasis: `${(entry.durationMs / total) * 100}%`,
+              minWidth: 0,
+              // The bar's own frame is the last segment's right edge.
+              ...(i < entries.length - 1 ? { borderRight: "1px solid var(--border)" } : {}),
+            }}
           >
             {onPreview && entry.hash && !entry.isFallbackCard ? (
               // The segment's fill is the list item's own, so the tile draws none; its ring is drawn

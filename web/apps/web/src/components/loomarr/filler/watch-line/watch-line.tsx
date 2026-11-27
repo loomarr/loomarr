@@ -1,5 +1,4 @@
-import { Stack, Text } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
+import { Stack, Text, useReducedMotionPreference } from "@loomarr/design-system";
 import type { WatchHealth, WatchLineProps } from "./watch-line.type";
 
 // WatchLine — the web mock's `watchLine` (#1659): a plain line under the Filler page's
@@ -13,41 +12,48 @@ import type { WatchHealth, WatchLineProps } from "./watch-line.type";
 // source switched off. The text says WHAT ("3 of 4 sources on"); the dot answers whether it is
 // working right now. (Maintainer decision, 2026-08-02.)
 const DOT: Record<WatchHealth, string> = {
-  healthy: "bg-lock",
-  attention: "bg-caution",
-  unconfigured: "bg-static-500",
+  healthy: "var(--color-lock)",
+  attention: "var(--color-caution)",
+  unconfigured: "var(--color-static-500)",
 };
 
 // ⚠ Only `healthy` pulses. Motion here means "running", so animating the other two would say the
 // opposite of what they mean — and a page with a permanently throbbing amber dot trains an
 // operator to stop seeing it.
 //
-// ⚠ `motion-safe:` gates the animation, matching OnAirIndicator. Reduced-motion users get the
-// colour and the sr-only sentence, which carry the whole meaning without the movement.
+// ⚠ The reduced-motion preference gates the animation. Those readers get the colour and the
+// sr-only sentence, which carry the whole meaning without the movement.
 const SR: Record<WatchHealth, string> = {
   healthy: "Watching your sources",
   attention: "Sources need attention",
   unconfigured: "No sources set up yet",
 };
 
-const WatchLine = ({ status, health, className }: WatchLineProps) => (
-  <Stack align="center" className={cn("mt-2", className)} direction="row" gap="inline" render="p">
-    <span
-      className={cn(
-        "size-1.75 shrink-0 rounded-full",
-        DOT[health],
-        health === "healthy" && "motion-safe:animate-pulse",
-      )}
-      aria-hidden
-    />
-    <Text as="span" className="min-w-0" textRole="hint" tone="secondary">
-      {status}
-    </Text>
-    {/* ⚠ The dot is `aria-hidden`, so its meaning has to be said in words or it is invisible to a
-        screen reader — a colour with no text equivalent is exactly the failure axe cannot catch
-        (it sees a decorated span, not a missing sentence). */}
-    <span className="sr-only">{SR[health]}</span>
-  </Stack>
-);
+const WatchLine = ({ status, health, className }: WatchLineProps) => {
+  const reducedMotion = useReducedMotionPreference();
+  const pulse = health === "healthy" && reducedMotion === false;
+  return (
+    <Stack align="center" className={className} direction="row" gap="inline" marginTop={8} render="p">
+      <span
+        aria-hidden
+        style={{
+          backgroundColor: DOT[health],
+          borderRadius: 999,
+          flexShrink: 0,
+          height: 7,
+          width: 7,
+          ...(pulse ? { animation: "onair-pulse 2s ease-in-out infinite" } : {}),
+        }}
+      />
+      <Text as="span" minWidth={0} textRole="hint" tone="secondary">
+        {status}
+      </Text>
+      {/* ⚠ The dot is `aria-hidden`, so its meaning has to be said in words or it is invisible to a
+          screen reader — a colour with no text equivalent is exactly the failure axe cannot catch
+          (it sees a decorated span, not a missing sentence). */}
+      <span className="sr-only">{SR[health]}</span>
+    </Stack>
+  );
+};
 
 export { WatchLine };

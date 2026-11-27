@@ -10,7 +10,6 @@ import {
   Text,
 } from "@loomarr/design-system";
 import { useRef, useState } from "react";
-import { cn } from "@/lib/utils";
 import { SegmentFilmstrip } from "../segment-filmstrip";
 import { SegmentInspector } from "./segment-inspector";
 import { SegmentSummaryRow } from "./segment-summary-row";
@@ -124,7 +123,7 @@ const SplitReviewEditor = ({
   const selected = selectedIndex >= 0 ? draft[selectedIndex] : undefined;
 
   return (
-    <Stack className={cn("overflow-x-hidden", className)} gap="4" maxWidth="100%" width="100%">
+    <Stack className={className} gap="4" maxWidth="100%" style={{ overflowX: "hidden" }} width="100%">
       {/* The reel stays stable while the selected clip is inspected in the side panel. */}
       <SegmentFilmstrip
         segments={stripSegments}
@@ -132,7 +131,7 @@ const SplitReviewEditor = ({
         onSelect={openSegment}
       />
 
-      <Stack aria-label="Clips in this recording" className="list-none" gap="inline" render="ol">
+      <Stack aria-label="Clips in this recording" gap="inline" render="ol" style={{ listStyle: "none" }}>
         {draft.map((seg, i) => (
           <SegmentSummaryRow
             key={seg.key}
