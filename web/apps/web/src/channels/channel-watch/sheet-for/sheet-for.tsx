@@ -1,5 +1,4 @@
 import { formatGuideTime } from "@loomarr/core/guide";
-import { Stack } from "@loomarr/design-system";
 import {
   PlayerAudio,
   PlayerBottomSheet,
@@ -174,18 +173,16 @@ const sheetFor = ({
   ) : sheet === "info" && info && placement !== "menu" ? (
     sheetOf("Info", <PlayerInfo density={density} formatTime={formatGuideTime} info={info} />)
   ) : sheet === "channels" && drawer ? (
-    <Stack bottom={0} direction="row" maxWidth="100%" position="absolute" right={0} top={0} zIndex={40}>
-      <ChannelDrawer
-        channels={drawer.channels}
-        tunedId={osdChannel.id}
-        favourites={drawer.favourites}
-        recent={drawer.recent}
-        nowPercent={drawer.nowPercent}
-        onTune={player.tune}
-        onFavourite={drawer.onFavourite}
-        onClose={closeSheet}
-      />
-    </Stack>
+    <ChannelDrawer
+      channels={drawer.channels}
+      tunedId={osdChannel.id}
+      favourites={drawer.favourites}
+      recent={drawer.recent}
+      nowPercent={drawer.nowPercent}
+      onTune={player.tune}
+      onFavourite={drawer.onFavourite}
+      onClose={closeSheet}
+    />
   ) : undefined;
 };
 

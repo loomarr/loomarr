@@ -637,6 +637,28 @@ describe("Action render composition", () => {
     expect(markup).toContain('aria-label="Remove"');
   });
 
+  it("draws a pinned compact icon action in the content colour and an unpinned one muted", () => {
+    const strokeOf = (selected: boolean) =>
+      /stroke="([^"]+)"/.exec(
+        renderToStaticMarkup(
+          <LoomarrProvider theme="dark">
+            <Action
+              aria-pressed={selected}
+              compact
+              icon="star"
+              layout="icon"
+              selected={selected}
+              variant="ghost"
+            >
+              Pin
+            </Action>
+          </LoomarrProvider>,
+        ),
+      )?.[1];
+    expect(strokeOf(false)).toBe(semanticThemes.dark.content.muted);
+    expect(strokeOf(true)).toBe(semanticThemes.dark.content.primary);
+  });
+
   it("is ignored on children that are not a valid element", () => {
     // Guards the isValidElement check: a Pressable still renders when `render` isn't usable.
     const markup = renderToStaticMarkup(

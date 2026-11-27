@@ -2,7 +2,6 @@ import { formatClipDuration } from "@loomarr/core/format";
 import { Grid, InlineAction, MediaTile, Stack, Text } from "@loomarr/design-system";
 import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { ServedImage } from "@/components/loomarr/served-image";
-import { cn } from "@/lib/utils";
 import { AUDIENCE_LABEL, playsLine, ROLE_LABEL } from "../clip-card";
 import type { ClipRowProps } from "./clip-row.type";
 
@@ -19,12 +18,13 @@ import type { ClipRowProps } from "./clip-row.type";
 const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowProps) => (
   <Grid
     align="center"
-    className={cn(
-      "border-border border-b px-3 py-2 last:border-b-0",
-      // Selection is neutral (#1909): amber is for focus and the primary action.
-      selected && "bg-static-800",
-      className,
-    )}
+    borderBottomWidth={1}
+    borderColor="borderDecorative"
+    className={className}
+    paddingHorizontal={12}
+    paddingVertical={8}
+    // Selection is neutral (#1909): amber is for focus and the primary action.
+    {...(selected ? { backgroundColor: "surfaceElevated" as const } : {})}
     // The wider steps add the tag columns back. Below `md` they would each be a few characters
     // wide, which is unreadable rather than dense.
     columns={{
@@ -62,12 +62,12 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
       {clip.thumbImage && <ServedImage image={clip.thumbImage} alt="" sizes="54px" />}
     </MediaTile>
 
-    {/* ⚠ `min-w-0` is what makes the truncate work. A grid item's default `min-width:auto`
+    {/* ⚠ `minWidth={0}` is what makes the truncate work. A grid item's default `min-width:auto`
         refuses to shrink below its content, so a long clip name pushes the tag columns off
         the row instead of ellipsising — and the NAME is the one column that must never be the
         thing that gets squeezed out. Caught by reading the baseline image, not by a test:
         every assertion still passed while the name was being crushed. */}
-    <div className="min-w-0">
+    <Stack minWidth={0}>
       {onOpen ? (
         // The name is the DS's truncating text action: its 24 px tap area is its own padding (#1785),
         // since the usual `::after` target is clipped by the ellipsis.
@@ -102,17 +102,23 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
           <NeedsDetailsChip />
         </Stack>
       ) : null}
-    </div>
+    </Stack>
 
-    <Text as="span" className="hidden md:inline" textRole="mono">
-      {clip.role === "unclassified" ? "" : ROLE_LABEL[clip.role]}
-    </Text>
-    <Text as="span" className="hidden md:inline" fontVariant={["tabular-nums"]} textRole="mono">
-      {clip.era ? (clip.era % 10 === 0 ? `${clip.era}s` : String(clip.era)) : "—"}
-    </Text>
-    <Text as="span" className="hidden lg:inline" textRole="mono">
-      {(clip.audience && AUDIENCE_LABEL[clip.audience]) || "—"}
-    </Text>
+    <Stack hidden={{ base: true, md: false }}>
+      <Text as="span" textRole="mono">
+        {clip.role === "unclassified" ? "" : ROLE_LABEL[clip.role]}
+      </Text>
+    </Stack>
+    <Stack hidden={{ base: true, md: false }}>
+      <Text as="span" fontVariant={["tabular-nums"]} textRole="mono">
+        {clip.era ? (clip.era % 10 === 0 ? `${clip.era}s` : String(clip.era)) : "—"}
+      </Text>
+    </Stack>
+    <Stack hidden={{ base: true, lg: false }}>
+      <Text as="span" textRole="mono">
+        {(clip.audience && AUDIENCE_LABEL[clip.audience]) || "—"}
+      </Text>
+    </Stack>
 
     <Text as="span" fontVariant={["tabular-nums"]} textRole="mono">
       {formatClipDuration(clip.durationMs)}
@@ -120,11 +126,13 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
 
     {/* The same three-branch rule the card renders — shared, because the `playsCounted:false`
         branch is a claim about what this install can OBSERVE, and two copies drift. */}
-    <div className="hidden lg:block" title={playsLine(clip)}>
-      <Text as="div" numberOfLines={1} textRole="mono" tone="secondary">
-        {playsLine(clip)}
-      </Text>
-    </div>
+    <Stack hidden={{ base: true, lg: false }} minWidth={0}>
+      <div title={playsLine(clip)}>
+        <Text as="div" numberOfLines={1} textRole="mono" tone="secondary">
+          {playsLine(clip)}
+        </Text>
+      </div>
+    </Stack>
   </Grid>
 );
 

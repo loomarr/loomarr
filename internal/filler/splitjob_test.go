@@ -84,24 +84,6 @@ func (d *spanLanguageDetector) DetectLanguage(_ context.Context, _ string, start
 	return d.answers[[2]int64{startMs, endMs}], nil
 }
 
-type splitShadowCapture struct {
-	calls    int
-	proposal filler.SplitProposal
-	legacy   filler.SplitPartition
-	pending  bool
-	err      error
-}
-
-func (s *splitShadowCapture) NeedsStructureSplitObservation(_ context.Context, _ filler.SplitProposal) (bool, error) {
-	return s.pending, s.err
-}
-
-func (s *splitShadowCapture) ObserveStructureSplit(_ context.Context, proposal filler.SplitProposal, legacy filler.SplitPartition) error {
-	s.calls++
-	s.proposal, s.legacy = proposal, legacy
-	return s.err
-}
-
 func key3(path string, start, end int64) string { return fmt.Sprintf("%s|%d|%d", path, start, end) }
 
 func (f *fakeTools) Chapters(context.Context, string) ([]tools.Chapter, error) {
@@ -1818,39 +1800,6 @@ func dropsCutJudged(t *testing.T, whole split.WholeCut) {
 	}
 	if _, ok := st.proposals[p.ID]; ok {
 		t.Error("the proposal was left for a person to review")
-	}
-}
-
-func TestSplitStageRecordsStructureShadowBeforeCompatibilityPublication(t *testing.T) {
-	st := newSplitMemStore()
-	hash := seedCompilation(st, "comps/shadow.mp4", 30_000)
-	p := filler.SplitProposal{
-		ID: "sp_shadow", ClipHash: hash, CreatedAt: time.Now(),
-		Segments: []split.Segment{{
-			Index: 0, StartMs: 0, EndMs: 30_000, Name: "grounded", Looked: true,
-			Category: "toys", BoundaryConfidence: 100, StartEvidence: "reel edge", EndEvidence: "reel edge",
-		}},
-	}
-	if err := st.UpsertSplitProposal(context.Background(), p); err != nil {
-		t.Fatal(err)
-	}
-	observer := &splitShadowCapture{err: errors.New("shadow store unavailable")}
-	stage := filler.NewSplitStage(newSplitter(st, &fakeTools{}, nil, t.TempDir()), st).
-		WithAutoConfirm(filler.AutoSplitPolicy{
-			Enabled: func() bool { return true }, MinConfidence: func() int { return 85 },
-			MaxDuration: func() time.Duration { return 2 * time.Minute },
-		}, func() time.Duration { return 10 * time.Second }).
-		WithFixedStructureRuntime(filler.StructureRuntime{Shadow: observer})
-
-	out, err := stage.Run(context.Background(), st.clips[hash])
-	if err == nil || !strings.Contains(err.Error(), "shadow store unavailable") || len(out.Spawned) != 0 {
-		t.Fatalf("result = %+v, error = %v", out, err)
-	}
-	if observer.calls != 1 || observer.proposal.ID != p.ID || len(observer.legacy.Confirm) != 1 {
-		t.Fatalf("shadow calls=%d proposal=%+v legacy=%+v", observer.calls, observer.proposal, observer.legacy)
-	}
-	if len(st.proposals) != 1 {
-		t.Fatal("proposal was consumed after its shadow decision failed to persist")
 	}
 }
 

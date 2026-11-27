@@ -28,7 +28,7 @@ const TaxonImpactReview = ({ impact }: { impact: Review["impact"] }) => (
         <Text as="p" textRole="cardLabel">
           Saved channel selections that reference this branch
         </Text>
-        <Text as="ul" className="list-disc pl-5" textRole="compact">
+        <Text as="ul" style={{ listStyleType: "disc", paddingLeft: 20 }} textRole="compact">
           {impact.savedChannelSelections.map((channel) => (
             <li key={channel.id}>
               Channel {channel.number}: {channel.name}

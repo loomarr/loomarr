@@ -13,6 +13,8 @@ interface CommitFieldProps {
   // The draft, handed over once the box loses focus.
   onCommit: (text: string) => void;
   placeholder?: string;
+  // Why a draft cannot be handed over, in words the box shows under it; undefined when it can.
+  validate?: (text: string) => string | undefined;
   // A fixed width for a short value; without it the box fills its container.
   width?: number;
 }

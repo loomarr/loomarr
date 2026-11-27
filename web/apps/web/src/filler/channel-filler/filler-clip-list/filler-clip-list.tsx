@@ -131,7 +131,7 @@ const FillerClipList = ({
                       </Text>
                       {/* The hash still shown, small and secondary: it is the only handle an
                           operator has if they want to work out WHICH clip this was. */}
-                      <Text as="span" className="ml-2" numberOfLines={1} textRole="mono">
+                      <Text as="span" marginLeft={8} numberOfLines={1} textRole="mono">
                         {id.slice(0, 12)}…
                       </Text>
                     </>
@@ -141,7 +141,7 @@ const FillerClipList = ({
                         {clip?.name ?? id}
                       </Text>
                       {clip ? (
-                        <Text as="span" className="ml-2" textRole="mono">
+                        <Text as="span" marginLeft={8} textRole="mono">
                           {formatClipDuration(clip.durationMs)}
                         </Text>
                       ) : null}

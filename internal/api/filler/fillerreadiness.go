@@ -41,7 +41,7 @@ type PipelineOverviewDTO struct {
 	InProgress    int `json:"inProgress"`
 	Scheduled     int `json:"scheduled"`
 	NeedsDecision int `json:"needsDecision"`
-	AwaitingSplit int `json:"awaitingSplit" doc:"Reels held until splitting is certified; nobody needs to act"`
+	AwaitingSplit int `json:"awaitingSplit" doc:"Reels held at the split, their cuts not confirmed; nobody needs to act"`
 	Ready         int `json:"ready"`
 	Complete      int `json:"complete"`
 	Rejected      int `json:"rejected"`

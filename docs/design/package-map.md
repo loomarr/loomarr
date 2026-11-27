@@ -77,7 +77,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `channels` | `channels/schedule`, `filler/clips`, `filler/language`, `filler/pod`, `library/inventory`, `library/provision`, `platform/jobs`, `platform/rating`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `playout/timeline`, `playout/tunarr` |
 | `channels/schedule` | `library/inventory`, `library/provision`, `platform/holidayvocab`, `platform/langcode`, `platform/rating` |
 | `channels/viewing` | `platform/store/channelstore` |
-| `filler` | `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/httpx`, `platform/llm`, `platform/storagegovernor`, `platform/store/clipstore` |
+| `filler` | `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/httpx`, `platform/llm`, `platform/storagegovernor`, `platform/store/clipstore` |
 | `filler/acquisition` | `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/source`, `filler/split` |
 | `filler/asset` | `filler/clips`, `filler/split`, `media/tools`, `platform/storagegovernor` |
 | `filler/cliplibrary` | `filler/asset`, `filler/clips`, `filler/pod`, `filler/split`, `media/bgexec`, `media/tools`, `platform/storagegovernor` |
@@ -88,13 +88,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filler/language` | `media/bgexec`, `media/tools`, `platform/langcode` |
 | `filler/pipelinestate` | — |
 | `filler/pod` | `channels/schedule`, `filler/clips`, `filler/language` |
-| `filler/records` | `filler`, `filler/acquisition`, `filler/asset`, `filler/clips`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb` |
+| `filler/records` | `filler`, `filler/acquisition`, `filler/asset`, `filler/clips`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/source`, `filler/split`, `filler/structure`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb` |
 | `filler/research` | `platform/llm` |
 | `filler/source` | — |
 | `filler/split` | `filler/clips`, `filler/structure`, `media/tools` |
 | `filler/station` | `filler/research` |
 | `filler/structure` | — |
-| `filler/structure/window` | `filler/structure` |
 | `filler/taxonomy` | — |
 | `library/inventory` | — |
 | `library/mediaserver` | `platform/httpx`, `platform/metrics` |

@@ -13,11 +13,11 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
     align="center"
     borderBottomWidth={1}
     borderColor="$borderDecorative"
-    className="px-4 sm:px-6"
     direction="row"
     flexShrink={0}
     gap="control"
     justify="between"
+    paddingHorizontal={{ base: 16, sm: 24 }}
   >
     <Stack aria-label="Settings location" minWidth={0} render="nav">
       <Stack align="center" direction="row" gap="inline" minWidth={0} render="ol">
@@ -31,7 +31,7 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
             <Text as="li" aria-hidden textRole="compact" tone="secondary">
               /
             </Text>
-            <Text as="li" className="truncate" textRole="compact" tone="primary">
+            <Text as="li" minWidth={0} numberOfLines={1} textRole="compact" tone="primary">
               {section}
             </Text>
           </>

@@ -153,7 +153,7 @@ var areas = []area{
 			"filler", "filler/defectfloor",
 			"filler/enrichment", "filler/research", "filler/screening",
 			"filler/records", "filler/structure", "filler/structure/assessment", "filler/structure/cut",
-			"filler/structure/window", "filler/structure/window/openrouter", "filler/clips", "filler/fetch",
+			"filler/structure/window", "filler/clips", "filler/fetch",
 			"filler/taxonomy", "filler/station", "filler/source", "filler/source/archive",
 			"filler/source/youtube", "filler/location", "filler/language", "filler/pod", "filler/split", "filler/asset", "filler/pipelinestate", "filler/cliplibrary", "filler/acquisition", "filler/identity",
 			"filler/storeadapter", "filler/capability", "filler/routine", "filler/operator",

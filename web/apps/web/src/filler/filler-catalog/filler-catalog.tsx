@@ -347,7 +347,11 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
           </Stack>
           {view === "list" ? (
             <Card overflow="hidden">
-              {rows.map((clip) => (clip.isComposite ? renderComposite(clip) : renderCatalogRow(clip)))}
+              {/* Each row draws its own bottom rule; pulling the list up by it leaves the card's
+                  edge as the last one. A compilation ends with its disclosure, which has none. */}
+              <Stack marginBottom={rows.at(-1)?.isComposite ? 0 : -1}>
+                {rows.map((clip) => (clip.isComposite ? renderComposite(clip) : renderCatalogRow(clip)))}
+              </Stack>
             </Card>
           ) : (
             <Grid columns={phone ? 2 : { base: 2, lg: 3 }} gap={phone ? "2.5" : "3"}>

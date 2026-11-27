@@ -55,7 +55,7 @@ type listDiscoveryFeedbackOutput struct{ Body []discoveryFeedbackDTO }
 
 type discoveryFeedbackDTO struct {
 	ID        string                          `json:"id"`
-	ActorID   string                          `json:"actorId"`
+	ActorID   string                          `json:"actorId" doc:"The member who gave it; empty for the API token or a member since deleted."`
 	Scope     channeldatastore.FeedbackScope  `json:"scope"`
 	ScopeID   string                          `json:"scopeId,omitempty"`
 	TargetKey provision.Key                   `json:"targetKey"`
@@ -81,12 +81,8 @@ func (s *Handlers) appendDiscoveryFeedback(ctx context.Context, scope channeldat
 	if !validFeedbackRequest(scope, scopeID, target) {
 		return nil, httpcore.BadRequest("Invalid discovery feedback", "Choose household scope or a specific channel and a grounded movie or series.")
 	}
-	actor := httpcore.UserIDFrom(ctx)
-	if actor == "" {
-		actor = "api-token"
-	}
 	feedback := channeldatastore.DiscoveryFeedback{ID: "feedback_" + strings.TrimPrefix(httpcore.NewRequestID(), "req_"),
-		ActorID: actor, Scope: scope, ScopeID: scopeID, Target: target, Action: action,
+		ActorID: httpcore.UserIDFrom(ctx), Scope: scope, ScopeID: scopeID, Target: target, Action: action,
 		Reason: strings.TrimSpace(reason), CreatedAt: time.Now().UTC()}
 	if err := s.store.AppendDiscoveryFeedback(ctx, feedback); err != nil {
 		if errors.Is(err, store.ErrNotFound) {

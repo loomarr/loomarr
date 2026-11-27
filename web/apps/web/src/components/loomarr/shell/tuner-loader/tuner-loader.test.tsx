@@ -4,23 +4,18 @@ import { TunerLoader } from "./tuner-loader";
 
 // The wash is the dark layer between whatever picture sits under the loader and the snow (#1620 B4).
 const wash = (container: HTMLElement) => container.querySelector<HTMLElement>("[data-wash]");
+const snow = (container: HTMLElement) => container.querySelector<HTMLElement>("[data-snow='wash']");
 
-// Every class that animates, across the whole loader. Under reduced motion none may run, so each one
-// must be gated `motion-safe:` (jsdom sees the raw class string, not the compiled rule).
-const animationClasses = (container: HTMLElement) =>
-  Array.from(container.querySelectorAll<HTMLElement>("[class]")).flatMap((el) =>
-    Array.from(el.classList).filter((c) => c.includes("animate-")),
-  );
+// What moves is named by `data-motion`; the stylesheet animates those only where motion is allowed,
+// and tests/visual/motion.spec.ts asserts that in a real browser.
+const motions = (container: HTMLElement) =>
+  Array.from(container.querySelectorAll<HTMLElement>("[data-motion]"), (el) => el.dataset.motion);
 
 describe("TunerLoader", () => {
   it("renders the phosphor bar strip", () => {
     const { container } = render(<TunerLoader />);
-    // Seven bars form the level-meter strip (the B4 mock). Counted structurally (the class carries a
-    // `motion-safe:` variant prefix that the Tailwind compiler resolves, but jsdom sees the raw
-    // string, so a `.animate-signal-lock` selector would miss) — the bars are the spans that carry
-    // the signal-400 phosphor colour.
-    const bars = container.querySelectorAll("span.bg-signal-400");
-    expect(bars).toHaveLength(7);
+    // Seven bars form the level-meter strip (the B4 mock).
+    expect(motions(container).filter((motion) => motion === "signal-lock")).toHaveLength(7);
   });
 
   it("shows the default TUNING IN readout, and honours a custom label", () => {
@@ -45,33 +40,28 @@ describe("TunerLoader", () => {
   it("drains a held frame into the snow on a switch", () => {
     const { container } = render(<TunerLoader heldFrame />);
     expect(wash(container)).toHaveAttribute("data-wash", "draining");
-    expect(wash(container)?.className).toContain("motion-safe:animate-held-drain");
+    expect(wash(container)).toHaveAttribute("data-motion", "held-drain");
     // …while the snow thickens in over it; a cold start shows the snow at once.
-    const snow = () => container.querySelector<HTMLElement>("[data-snow='wash']");
-    expect(snow()?.className).toContain("motion-safe:animate-wash-thicken");
+    expect(snow(container)).toHaveAttribute("data-motion", "wash-thicken");
   });
 
   it("shows the snow at once on a cold start", () => {
     const { container } = render(<TunerLoader />);
-    expect(container.querySelector("[data-snow='wash']")?.className).not.toContain("animate-wash-thicken");
+    expect(snow(container)).not.toHaveAttribute("data-motion");
+    expect(snow(container)?.querySelector("pattern")).not.toBeNull();
   });
 
   it("sits the wash at rest on a cold start, with nothing to drain", () => {
     const { container } = render(<TunerLoader />);
     expect(wash(container)).toHaveAttribute("data-wash", "rest");
-    expect(wash(container)?.className).not.toContain("animate-");
+    expect(wash(container)).not.toHaveAttribute("data-motion");
   });
 
-  it("stops every motion under reduced motion, but keeps the still snow", () => {
-    const { container } = render(
-      <TunerLoader heldFrame channel={{ number: 12, name: "Saturday Cartoons" }} />,
-    );
-    const classes = animationClasses(container);
-    expect(classes.length).toBeGreaterThan(0);
-    expect(classes.filter((c) => !c.startsWith("motion-safe:"))).toEqual([]);
-    // The frame is replaced by still snow, not by nothing: the wash snow is not hidden without motion.
-    const snow = container.querySelector<HTMLElement>("[data-snow='wash']");
-    expect(snow).not.toBeNull();
-    expect(snow?.classList.contains("hidden")).toBe(false);
+  it("rests drained, with still snow, under the frame its motion starts from", () => {
+    const { container } = render(<TunerLoader heldFrame />);
+    // Without the animation the wash is already dark and the bars already locked amber.
+    expect(wash(container)?.style.backgroundColor).toContain("static-950) 88%");
+    expect(container.querySelector<HTMLElement>("[data-motion='signal-lock']")?.style.height).toBe("64%");
+    expect(snow(container)?.querySelector("pattern")).not.toBeNull();
   });
 });

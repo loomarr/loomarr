@@ -86,6 +86,36 @@ func TestAutoCuttable_OffHoldsEverythingForThePerson(t *testing.T) {
 	}
 }
 
+// A stored proposal can still carry a confirmed complete-timeline decision. It authorizes no cut:
+// the gate decides each cut from the look, and segments nobody looked at are held, however clean
+// their edges and sound.
+func TestAutoCuttable_AConfirmedStructureDecisionCutsNothingUnlooked(t *testing.T) {
+	proposal := decidedStructureProposal(t)
+	if proposal.StructureDecision == nil || proposal.Structure == nil {
+		t.Fatal("fixture carries no confirmed structure decision")
+	}
+	for i := range proposal.Segments {
+		proposal.Segments[i].Sound = cleanSound()
+		if proposal.Segments[i].Looked || proposal.Segments[i].LookedRole != "" {
+			t.Fatalf("fixture segment %d was looked at: %+v", i, proposal.Segments[i])
+		}
+	}
+	pol := &AutoSplitPolicy{
+		Enabled:       func() bool { return true },
+		MinConfidence: func() int { return 85 },
+		MaxDuration:   func() time.Duration { return 2 * time.Minute },
+	}
+	part := AutoCuttable(proposal, pol, 10*time.Second)
+	if part.Reject != AutoSplitOK || len(part.Confirm) != 0 || len(part.Hold) != len(proposal.Segments) {
+		t.Fatalf("partition = %+v, want every segment held", part)
+	}
+	for _, held := range part.Hold {
+		if held.HoldReason != string(RejectNotFiller) {
+			t.Errorf("segment at %d ms held as %q, want %q", held.StartMs, held.HoldReason, RejectNotFiller)
+		}
+	}
+}
+
 func TestParseWholeCutTreatsAnythingUnknownAsUnsure(t *testing.T) {
 	for in, want := range map[string]split.WholeCut{
 		"one": split.WholeOne, " One ": split.WholeOne, "part": split.WholePart,

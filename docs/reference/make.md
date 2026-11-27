@@ -69,7 +69,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make shellcheck` | ✅ | shellcheck every repository shell script |
 | `make privacy-verify` | ✅ | captured private fixture literals and real media titles must not re-enter the tracked tree <br>*runs:* `demo-titles-verify` |
 | `make vet` | ✅ | go vet |
-| `make platform-vet` |  | go vet the opposite Linux/macOS target to catch platform-only compile drift |
+| `make platform-vet` | ✅ | go vet the opposite Linux/macOS target to catch platform-only compile drift |
 | `make vet-tags` | ✅ | go vet over custom-tagged sources |
 | `make tags-verify` | ✅ | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
 | `make lint` | ✅ | golangci-lint v2 (run via `go run` so no global install needed) |
@@ -302,7 +302,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients-bundles` · `clients-checks` · `clients-tests` · `compose-verify` · `config-docs-verify` · `db-docs-verify` · `dev-docs-verify` · `diagrams-verify` · `e2e-update` · `e2e` · `eval-contract` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-packages` · `fe-tokens-verify` · `fe-typecheck` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `lint` · `observability-verify` · `openapi-verify` · `playout-bench` · `privacy-verify` · `release-verify` · `retired-verify` · `route-timing-e2e-host` · `rust-check` · `scan-scale` · `shellcheck` · `tags-verify` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet-tags` · `vet` · `vuln`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients-bundles` · `clients-checks` · `clients-tests` · `compose-verify` · `config-docs-verify` · `db-docs-verify` · `dev-docs-verify` · `diagrams-verify` · `e2e-update` · `e2e` · `eval-contract` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-packages` · `fe-tokens-verify` · `fe-typecheck` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `lint` · `observability-verify` · `openapi-verify` · `platform-vet` · `playout-bench` · `privacy-verify` · `release-verify` · `retired-verify` · `route-timing-e2e-host` · `rust-check` · `scan-scale` · `shellcheck` · `tags-verify` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet-tags` · `vet` · `vuln`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

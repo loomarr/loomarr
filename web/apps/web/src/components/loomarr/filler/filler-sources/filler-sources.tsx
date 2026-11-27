@@ -249,12 +249,14 @@ const FillerSources = ({
           <Text as="h2" strong textRole="cardLabel">
             Where filler comes from
           </Text>
-          <Text as="p" className="max-w-xl" textRole="compact" tone="secondary">
-            Add sources once and Loomarr checks them for you. Turning one off does not remove clips already
-            added.
-          </Text>
+          <Stack maxWidth={576}>
+            <Text as="p" textRole="compact" tone="secondary">
+              Add sources once and Loomarr checks them for you. Turning one off does not remove clips already
+              added.
+            </Text>
+          </Stack>
         </Stack>
-        <Text as="span" className="shrink-0 whitespace-nowrap" textRole="hint" tone="secondary">
+        <Text as="span" flexShrink={0} numberOfLines={1} textRole="hint" tone="secondary">
           {`${realSources.filter((source) => source.ready).length} of ${realSources.length} ready`}
         </Text>
       </Stack>
@@ -301,7 +303,7 @@ const FillerSources = ({
                 Folders and media-server libraries you already manage.
               </Text>
             </Stack>
-            <Text as="span" className="shrink-0" textRole="hint" tone="secondary">
+            <Text as="span" flexShrink={0} textRole="hint" tone="secondary">
               {sourceSummary(localSources)}
             </Text>
           </Stack>

@@ -200,8 +200,9 @@ func TestSplitCorpus_BoundaryEvidencePerJoin(t *testing.T) {
 		scoreBoundaries(segs)
 		var airs, merged, whole, fragments int
 		for _, s := range segs {
-			s.Category = "corpus" // classification is not what this corpus measures
-			if segmentVerdict(s, pol, minClip, maxClip) != AutoSplitOK {
+			// The look and the sound are not what this corpus measures: only where it was cut.
+			s.LookedRole, s.Whole, s.Sound = split.RoleCommercial, split.WholeOne, cleanSound()
+			if cutVerdict(s, pol, minClip, maxClip) != AutoSplitOK {
 				continue
 			}
 			airs++

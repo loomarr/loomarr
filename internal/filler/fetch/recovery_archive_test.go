@@ -184,6 +184,7 @@ fi
 
 func seedArchiveRecoveryRun(t *testing.T, db records.Store, source fetch.Source) {
 	t.Helper()
+	testkit.SaveFillerSources(t, db, source.ID)
 	if err := db.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{
 		ID: source.AcquisitionID, SourceID: source.ID, Trigger: acquisition.TriggerPull,
 		Status: acquisition.RunRunning, Requested: 1,

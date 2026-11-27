@@ -1,5 +1,5 @@
 import type { ClipDTO } from "@loomarr/api";
-import { Text } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ClipRow } from "@/components/loomarr/filler/clip-row";
 import { widthFrame } from "@/test/story-utils";
@@ -30,9 +30,11 @@ const LargeCatalogState = () => (
       </Text>
     </div>
     <div className="border-border overflow-hidden rounded-lg border">
-      {clips.map((clip) => (
-        <ClipRow key={clip.hash} clip={clip} />
-      ))}
+      <Stack marginBottom={-1}>
+        {clips.map((clip) => (
+          <ClipRow key={clip.hash} clip={clip} />
+        ))}
+      </Stack>
     </div>
   </section>
 );

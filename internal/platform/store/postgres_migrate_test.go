@@ -58,6 +58,15 @@ func TestPostgresForeignKeyPolicyMigration(t *testing.T) {
 	testForeignKeyPolicyMigration(t, db, DialectPostgres, "migrations/postgres")
 }
 
+func TestPostgresQualitySnapshotMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testQualitySnapshotMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
 func TestPostgresLibraryLinksMigration(t *testing.T) {
 	db, err := sql.Open("pgx", startPostgres(t))
 	if err != nil {
@@ -67,6 +76,15 @@ func TestPostgresLibraryLinksMigration(t *testing.T) {
 	testLibraryLinksMigration(t, db, DialectPostgres, "migrations/postgres")
 }
 
+func TestPostgresFillerReferencesMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testFillerReferencesMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
 func TestPostgresChannelJobsMigration(t *testing.T) {
 	db, err := sql.Open("pgx", startPostgres(t))
 	if err != nil {
@@ -74,6 +92,33 @@ func TestPostgresChannelJobsMigration(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	testChannelJobsMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
+func TestPostgresPeopleKeysMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testPeopleKeysMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
+func TestPostgresProposalPeopleMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testProposalPeopleMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
+func TestPostgresLibraryCatalogJSONMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testLibraryCatalogJSONMigration(t, db, DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresIndexNamesFollowConvention(t *testing.T) {

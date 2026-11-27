@@ -1,8 +1,17 @@
 import { formatClipDuration } from "@loomarr/core/format";
-import { Badge, Card, Icon, icons, PressableRow, Stack, StatusLabel, Text } from "@loomarr/design-system";
+import {
+  Badge,
+  Card,
+  Icon,
+  icons,
+  PressableRow,
+  Stack,
+  StatusLabel,
+  Text,
+  VisuallyHidden,
+} from "@loomarr/design-system";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { languageName } from "@/lib/languages";
-import { cn } from "@/lib/utils";
 import { AUDIENCE_LABEL, type DraftSegment, isValid, spanMs } from "../split-review-draft";
 
 interface SegmentSummaryRowProps {
@@ -32,14 +41,25 @@ const SegmentSummaryRow = ({
   return (
     <li>
       {/* Selection is neutral (#1909): amber is for focus and the primary action. */}
-      <Card className={cn(selected && "ring-foreground ring-1")} overflow="hidden">
+      <Card overflow="hidden" {...(selected ? { style: { boxShadow: "0 0 0 1px var(--foreground)" } } : {})}>
         <PressableRow
           aria-current={selected ? "true" : undefined}
           onPress={(event) => onOpen(event.currentTarget as unknown as HTMLButtonElement)}
         >
           {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
-          <span className="sr-only">Open clip</span>{" "}
-          <span className="border-border bg-static-900 relative h-14 w-24 shrink-0 overflow-hidden rounded-md border">
+          <VisuallyHidden as="span">Open clip</VisuallyHidden>{" "}
+          <Stack
+            backgroundColor="surfaceRaised"
+            borderColor="borderDecorative"
+            borderRadius={8}
+            borderWidth={1}
+            flexShrink={0}
+            height={56}
+            overflow="hidden"
+            position="relative"
+            render="span"
+            width={96}
+          >
             {segment.artwork ? (
               <ServedImage image={segment.artwork} alt="" sizes="96px" />
             ) : (
@@ -57,7 +77,7 @@ const SegmentSummaryRow = ({
                 </Text>
               </Stack>
             )}
-          </span>
+          </Stack>
           {/* A button centres its text; the old row said text-left. */}
           <Stack
             flexBasis="0%"

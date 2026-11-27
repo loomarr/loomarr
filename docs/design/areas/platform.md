@@ -37,7 +37,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
 - **`platform/housekeeping`** · 1 importer · → `people/access`, `people/notifications`, `platform/diagnostics`, `platform/jobs`, `platform/settings`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
-- **`platform/httpx`** · 16 importers · → `platform/metrics`
+- **`platform/httpx`** · 15 importers · → `platform/metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`platform/jobs`** · 10 importers · → `platform/store`, `platform/store/jobstore`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
@@ -53,9 +53,9 @@ One area of the [package map](../package-map.md#start-here).
   Keeps a repeating per-item condition from flooding the log.
 - **`platform/metrics`** · 13 importers · → `library/provision`, `media/images/rustgen`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
-- **`platform/openroutercatalog`** · 2 importers · → `platform/httpx`, `platform/openroutermedia`
+- **`platform/openroutercatalog`** · 1 importer · → `platform/httpx`, `platform/openroutermedia`
   Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
-- **`platform/openroutermedia`** · 4 importers
+- **`platform/openroutermedia`** · 3 importers
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`platform/rating`** · 11 importers
   Audience rating ladder (programming-design §4): one ordered scale that places the TV and film content-rating systems side by side, and the folding of a media server's raw rating string onto it.
@@ -79,7 +79,7 @@ One area of the [package map](../package-map.md#start-here).
   Persists the crash reports paired apps send (#1816).
 - **`platform/store/diagnosticsstore`** · 1 importer · → `platform/diagnostics`, `platform/store/storedb`
   Persists the diagnostic event log, the process runs behind it, and the running byte totals that bound them (the diagnostic_events, diagnostic_process_runs and diagnostic_retained_bytes tables).
-- **`platform/store/identitystore`** · 9 importers · → `people/access`, `people/contact`, `people/notifications`, `platform/store/storedb`
+- **`platform/store/identitystore`** · 10 importers · → `people/access`, `people/contact`, `people/notifications`, `platform/store/storedb`
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).
 - **`platform/store/inventorystore`** · 1 importer · → `library/inventory`, `platform/store/storedb`
   Media-inventory cluster (#2151): the items, origins, sources, measurements and analyses the scanner records under inventory_*.

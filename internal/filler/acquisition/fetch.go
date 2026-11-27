@@ -942,7 +942,8 @@ func (p *fetchPass) searchOpen(ctx context.Context) error {
 }
 
 // sharedRejection is the rejection every provider's items are held to: a compilation reel waits
-// for certified splitting (#1773). What a provider's own metadata rules out is the provider's.
+// while `filler.acquisition.compilations` defers it (#1773). What a provider's own metadata rules
+// out is the provider's.
 func (f *Fetcher) sharedRejection(src FetchSource, item source.Item) (source.Outcome, bool) {
 	if f.limits.Compilations.Defers(src.Kind, int64(item.DurationMS)) {
 		return source.OutcomeTooLong, true
