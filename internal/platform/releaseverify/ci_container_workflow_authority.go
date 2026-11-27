@@ -440,8 +440,8 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"macos": {
 					condition: playoutBenchMacOSGate,
 					steps: map[string]workflowStepAuthority{
-						playoutBenchRecordReport: playoutBenchRecordStep(5),
-						"./scripts/playout-bench-macos-ffmpeg.sh \"$RUNNER_TEMP/loomarr-ffmpeg\"": exactWorkflowStep(2, "Install FFmpeg", workflowStepAuthority{allowsAcquisition: true}),
+						playoutBenchRecordReport:                                    playoutBenchRecordStep(5),
+						"./scripts/macos-ffmpeg.sh \"$RUNNER_TEMP/loomarr-ffmpeg\"": exactWorkflowStep(2, "Install FFmpeg", workflowStepAuthority{allowsAcquisition: true}),
 						"make playout-bench": exactWorkflowStep(3, "Bench the VideoToolbox pipeline", workflowStepAuthority{
 							targets: []string{"playout-bench"},
 							environment: map[string]string{

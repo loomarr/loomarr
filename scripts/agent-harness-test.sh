@@ -135,9 +135,13 @@ printf '%s\n' '#!/usr/bin/env sh' 'case "${1:-}" in --version) echo "Docker vers
 chmod +x "$TMP/doctor-bin/"*
 # Only the doctor's shell utilities may resolve outside its fixture tools. Including /usr/bin
 # would let an installed ffprobe satisfy the missing-tool negative and fail on healthy hosts.
-for utility in sh dirname sed head cut uname git grep awk du wc tr cksum basename; do
+for utility in sh dirname sed head cut git grep awk du wc tr cksum basename; do
 	ln -s "$(command -v "$utility")" "$TMP/doctor-bin/$utility"
 done
+# uname is a fixture so every host, a Mac included, takes the Linux path unless a case sets FIXTURE_OS.
+# shellcheck disable=SC2016 # The generated fixture expands its own arguments.
+printf '%s\n' '#!/usr/bin/env sh' 'case "${1:-}" in -m) echo arm64 ;; *) echo "${FIXTURE_OS:-Linux}" ;; esac' > "$TMP/doctor-bin/uname"
+chmod +x "$TMP/doctor-bin/uname"
 doctor_path="$TMP/doctor-bin"
 if PATH="$doctor_path" DOCTOR_DOCKER_READY=1 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor >/dev/null 2>&1; then
 	echo 'agent-harness-test: doctor accepted a missing ffprobe' >&2
@@ -157,6 +161,36 @@ if PATH="$doctor_path" LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor >/
 fi
 PATH="$doctor_path" DOCTOR_DOCKER_READY=1 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor >/dev/null
 
+step 'doctor checks the pinned macOS ffmpeg'
+pinned="$TMP/.tools/ffmpeg/bin"
+# pinned_tool NAME VERSION [FILTER] writes a double that reports a version and one filter.
+pinned_tool() {
+	printf '%s\n' '#!/usr/bin/env sh' \
+		"case \"\$*\" in *-filters*) echo ' T. ${3:-scale} V->V' ;; *) echo '$1 version $2-https://fixture' ;; esac" > "$pinned/$1"
+	chmod +x "$pinned/$1"
+}
+# rejects_pinned REASON expects doctor to fail on a Mac, naming the reason and the fix.
+rejects_pinned() {
+	if out="$(PATH="$doctor_path" FIXTURE_OS=Darwin DOCTOR_DOCKER_READY=1 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor 2>&1)"; then
+		echo "agent-harness-test: doctor accepted a pinned ffmpeg that $1" >&2
+		exit 1
+	fi
+	printf '%s\n' "$out" | grep -q "pinned ffmpeg: .*$1.*run make bootstrap" || {
+		echo "agent-harness-test: doctor did not name the problem and fix for: $1" >&2
+		exit 1
+	}
+}
+rejects_pinned 'is missing'
+mkdir -p "$pinned"
+pinned_tool ffmpeg 9.1 drawtext
+pinned_tool ffprobe 9.0.2
+rejects_pinned 'is version 9.1, not 9.0.2'
+pinned_tool ffmpeg 9.0.2
+rejects_pinned 'has no drawtext filter'
+pinned_tool ffmpeg 9.0.2 drawtext
+PATH="$doctor_path" FIXTURE_OS=Darwin DOCTOR_DOCKER_READY=1 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor >/dev/null
+rm -rf "$TMP/.tools"
+
 step 'secondary dev identity'
 mkdir -p "$TMP/fake-bin"
 # shellcheck disable=SC2016 # BOOTSTRAP_LOG expands inside the generated fixture.
@@ -164,6 +198,8 @@ printf '%s\n' '#!/usr/bin/env sh' 'echo "$PWD|$*" >> "$BOOTSTRAP_LOG"' > "$TMP/f
 # shellcheck disable=SC2016 # BOOTSTRAP_LOG expands inside the generated fixture.
 printf '%s\n' '#!/usr/bin/env sh' 'echo "cargo $*" >> "$BOOTSTRAP_LOG"' > "$TMP/fake-bin/cargo"
 chmod +x "$TMP/fake-bin/go" "$TMP/fake-bin/cargo"
+# Bootstrap downloads ffmpeg on a Mac; the fixture uname keeps these runs on the Linux path.
+cp "$TMP/doctor-bin/uname" "$TMP/fake-bin/uname"
 bootstrap_log="$TMP/bootstrap-runs"
 PATH="$TMP/fake-bin:$PATH" BOOTSTRAP_LOG="$bootstrap_log" BOOTSTRAP_SKIP_FE=1 \
 	LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" bootstrap >/dev/null
@@ -181,7 +217,43 @@ if grep -q 'run ./cmd/dev-bootstrap' "$bootstrap_log"; then
 	echo 'agent-harness-test: disabled dev identity still ran dev-bootstrap' >&2
 	exit 1
 fi
-rm -f "$TMP/fake-bin/go" "$TMP/fake-bin/cargo"
+
+step 'bootstrap installs the pinned macOS ffmpeg'
+# shellcheck disable=SC2016 # The generated fixtures expand their own arguments.
+printf '%s\n' '#!/usr/bin/env sh' 'while [ $# -gt 1 ]; do [ "$1" != --output ] || out="$2"; shift; done' \
+	'echo "curl $1" >> "$BOOTSTRAP_LOG"; echo fixture > "$out"' > "$TMP/fake-bin/curl"
+# shellcheck disable=SC2016
+printf '%s\n' '#!/usr/bin/env sh' 'tool="$(basename "$2" .zip)"' \
+	'{ echo "#!/usr/bin/env sh"; echo "case \"\$*\" in *-filters*) echo drawtext ;; *) echo $tool version 9.0.2-fixture ;; esac"; } > "$4/$tool"' > "$TMP/fake-bin/unzip"
+chmod +x "$TMP/fake-bin/curl" "$TMP/fake-bin/unzip"
+mac_bootstrap() {
+	: > "$bootstrap_log"
+	PATH="$TMP/fake-bin:$PATH" FIXTURE_OS="$1" BOOTSTRAP_LOG="$bootstrap_log" BOOTSTRAP_SKIP_FE=1 AGENT_DEV_IDENTITY=0 \
+		GITHUB_PATH='' LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/agent.sh" bootstrap >/dev/null 2>&1
+}
+# The real shasum rejects the fixture download.
+if mac_bootstrap Darwin || [ -e "$TMP-wt/.tools/ffmpeg/bin/ffmpeg" ]; then
+	echo 'agent-harness-test: bootstrap installed an ffmpeg that failed its digest' >&2
+	exit 1
+fi
+printf '%s\n' '#!/usr/bin/env sh' 'cat >/dev/null' > "$TMP/fake-bin/shasum"
+chmod +x "$TMP/fake-bin/shasum"
+mac_bootstrap Darwin
+grep -q '^curl https://ffmpeg.martin-riedl.de/.*_9\.0\.2/ffmpeg\.zip$' "$bootstrap_log"
+grep -q '^curl https://ffmpeg.martin-riedl.de/.*_9\.0\.2/ffprobe\.zip$' "$bootstrap_log"
+"$SCRIPT_DIR/macos-ffmpeg.sh" --check "$TMP-wt/.tools/ffmpeg/bin"
+mac_bootstrap Darwin
+if grep -q '^curl ' "$bootstrap_log"; then
+	echo 'agent-harness-test: bootstrap downloaded an ffmpeg it already had' >&2
+	exit 1
+fi
+rm -rf "$TMP-wt/.tools"
+mac_bootstrap Linux
+if grep -q '^curl ' "$bootstrap_log" || [ -e "$TMP-wt/.tools" ]; then
+	echo 'agent-harness-test: bootstrap fetched the macOS ffmpeg on Linux' >&2
+	exit 1
+fi
+rm -f "$TMP/fake-bin/go" "$TMP/fake-bin/cargo" "$TMP/fake-bin/uname" "$TMP/fake-bin/curl" "$TMP/fake-bin/unzip" "$TMP/fake-bin/shasum"
 
 step 'claims and port conflicts'
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" start first openapi-client >/dev/null

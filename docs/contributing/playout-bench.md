@@ -121,10 +121,9 @@ that could check whether a runner is online would need admin rights the workflow
 `macos-15` arm64 runners expose VideoToolbox hardware encode; `macos-14` does not.
 
 The macOS job installs a SHA-256-pinned static arm64 ffmpeg (VideoToolbox included) with the same bounded
-retry as `scripts/ci-ffmpeg.sh`, never an unpinned Homebrew bottle. It is ffmpeg 9.0.2 because no
-older macOS arm64 build is published; that is not the production 8.1 pin. ffmpeg 9 breaks the concat
-advance over a chunked HTTP body, which the bench never exercises: it drives `playout.Build` pipelines
-and reads the output directly. The bench films are Tears of Steel 720p and 1080p only; the 4K class
+retry as `scripts/ci-ffmpeg.sh`, never an unpinned Homebrew bottle (`scripts/macos-ffmpeg.sh`, which
+`make bootstrap` also uses). It is ffmpeg 9.0.2, the release production pins, from a different builder.
+The bench drives `playout.Build` pipelines and reads the output directly. The bench films are Tears of Steel 720p and 1080p only; the 4K class
 runs on generated HDR10 clips.
 
 ### Self-hosted runners

@@ -56,10 +56,10 @@ jobs:
         with:
           go-version: "1.27"
           cache: false
-      # A static arm64 build with VideoToolbox, pinned by SHA-256 with bounded retry (FFmpeg 9.0.2, not the
-      # production 8.1 pin; see the script header). Never an unpinned Homebrew bottle.
+      # A static arm64 FFmpeg 9.0.2 build with VideoToolbox, pinned by SHA-256 with bounded retry (see the
+      # script header). Never an unpinned Homebrew bottle.
       - name: Install FFmpeg
-        run: ./scripts/playout-bench-macos-ffmpeg.sh "$RUNNER_TEMP/loomarr-ffmpeg"
+        run: ./scripts/macos-ffmpeg.sh "$RUNNER_TEMP/loomarr-ffmpeg"
       - name: Bench the VideoToolbox pipeline
         env:
           LOOMARR_ARTIFACT_DIR: ${{ runner.temp }}/playout-bench

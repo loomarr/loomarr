@@ -32,6 +32,8 @@ One area of the [package map](../package-map.md#start-here).
   In-memory image store and a real image service over it, shared by the adapter tests of internal/app and internal/app/playoutresolve.
 - **`testkit/libraryfixture`** · → `channels/schedule`, `library/mediaserver`, `library/provision`
   No-network adapters for library-facing tests.
+- **`testkit/mediatool`**
+  Locates the media binaries real-tool tests run, without importing application packages: it is a cycle-free leaf beneath testkit, so a package testkit itself imports can use it.
 - **`testkit/moviecollectionsfixture`** · → `library/tmdb`
   The shared deterministic source for movie-collection resolver tests.
 - **`testkit/outlookfixture`** · → `channels/schedule`, `library/mediaserver`

@@ -377,6 +377,11 @@ baseline() {
 	echo "agent-baseline: shared gate is green"
 }
 
+# The pinned FFmpeg is published for Apple Silicon only; Linux takes its own from the host or CI.
+wants_pinned_ffmpeg() {
+	[ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]
+}
+
 tool_version() {
 	label="$1"
 	shift
@@ -405,6 +410,18 @@ doctor() {
 	tool_version shellcheck shellcheck --version || fail=1
 	tool_version ffmpeg ffmpeg -version || fail=1
 	tool_version ffprobe ffprobe -version || fail=1
+	# Tests that need drawtext take this build ahead of PATH (internal/testkit/mediatool), so the
+	# PATH lines above say nothing about it.
+	if wants_pinned_ffmpeg; then
+		pinned_dir="$ROOT/.tools/ffmpeg/bin"
+		if problem="$("$SCRIPT_DIR/macos-ffmpeg.sh" --check "$pinned_dir")"; then
+			printf '  %-14s %s\n' 'pinned ffmpeg' "$("$pinned_dir/ffmpeg" -version 2>&1 | head -1)"
+		else
+			echo "  ERROR: pinned ffmpeg: $problem; run make bootstrap"
+			fail=1
+		fi
+		[ -z "${FFMPEG_PATH:-}" ] || echo "  NOTE: FFMPEG_PATH is set, so tests use $FFMPEG_PATH instead of the pinned ffmpeg"
+	fi
 
 	if command -v go >/dev/null 2>&1; then
 		go_release="$(go version | sed -n 's/.* go\([0-9][0-9.]*\).*/\1/p')"
@@ -463,6 +480,9 @@ doctor() {
 bootstrap() {
 	command -v cargo >/dev/null 2>&1 || { echo 'bootstrap: cargo is required' >&2; exit 1; }
 	( cd "$ROOT" && LOOMARR_RELEASE=dev cargo build --locked -p loomarr-image )
+	if wants_pinned_ffmpeg; then
+		"$SCRIPT_DIR/macos-ffmpeg.sh" "$ROOT/.tools/ffmpeg/bin"
+	fi
 	if [ "${BOOTSTRAP_SKIP_FE:-0}" != 1 ]; then
 		command -v pnpm >/dev/null 2>&1 || { echo 'bootstrap: pnpm is required' >&2; exit 1; }
 		# Through fe-sync, so its stamp records this install and the first `make dev-fe` skips it.

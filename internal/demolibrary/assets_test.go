@@ -11,13 +11,15 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/testkit/mediatool"
 )
 
 func testGenerator(t *testing.T) generator {
 	t.Helper()
-	ffmpeg, err := exec.LookPath("ffmpeg")
+	ffmpeg, err := mediatool.FFmpeg(t)
 	if err != nil {
-		t.Skip("ffmpeg not on PATH")
+		t.Skip("no ffmpeg: run make bootstrap, or put it on PATH")
 	}
 	l := Layout{Dir: t.TempDir()}
 	if err := os.MkdirAll(l.work(), 0o755); err != nil {
