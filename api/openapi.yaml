@@ -1874,7 +1874,7 @@ components:
             $ref: "#/components/schemas/ClientCrashBreadcrumb"
           type: array
         deviceId:
-          description: The paired device's id from the device list; absent for a browser session
+          description: The paired device's id from the device list; absent for a browser session, or once the device is unpaired
           type: string
         deviceModel:
           type: string
@@ -2016,7 +2016,7 @@ components:
         appVersion:
           type: string
         deviceId:
-          description: The paired device's id from the device list; absent for a browser session
+          description: The paired device's id from the device list; absent for a browser session, or once the device is unpaired
           type: string
         deviceModel:
           type: string
