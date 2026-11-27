@@ -507,8 +507,10 @@ var letterBuckets = func() string {
 	return strings.Join(letters, ", ")
 }()
 
-// ListCountQuery is the statement, and its arguments, that counts q's list, for the plan test.
-func (s *Store) ListCountQuery(q LibraryItemQuery) (string, []any) {
+// ListCountQuery is the statement, and its arguments, that counts q's list in s, for the plan
+// test. It is a function, not a method: a method would join the core store's method set, and the
+// store interfaces have no reason to carry a test's helper.
+func ListCountQuery(s *Store, q LibraryItemQuery) (string, []any) {
 	from, args, _, _ := s.listFrom(q)
 	return s.ph(`SELECT COUNT(*)` + from), args
 }
