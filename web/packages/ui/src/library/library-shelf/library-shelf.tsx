@@ -2,6 +2,7 @@ import {
   Action,
   CompactSelect,
   Field,
+  LetterRail,
   ProgressTrack,
   Skeleton,
   StatusDot,
@@ -12,7 +13,7 @@ import {
   useReducedMotionPreference,
   useWindowWidth,
 } from "@loomarr/design-system";
-import { type ComponentProps, type ReactNode, useState } from "react";
+import { type ComponentProps, type ReactNode, useCallback, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { StatePanel } from "../../state-panel";
@@ -22,6 +23,7 @@ import { detailsWaiting, folderName, heldTitle, scanHeadline } from "../library-
 import type {
   LibraryShelfAdmin,
   LibraryShelfCounts,
+  LibraryShelfLetter,
   LibraryShelfProps,
   LibraryShelfTitle,
   LibrarySort,
@@ -34,7 +36,9 @@ import type {
 // Plain words per the mock's word sheet: "Getting ready", never a facts state.
 
 // The grid is 6 across on a desktop, 4 on a tablet and 3 on a phone, by the window as in the mock.
-const columnsFor = (width: number) => (width >= 1024 ? 6 : width >= 768 ? 4 : 3);
+// The wall's desktop layout starts here: six posters across, with the letter rail beside them.
+const DESKTOP = 1024;
+const columnsFor = (width: number) => (width >= DESKTOP ? 6 : width >= 768 ? 4 : 3);
 
 const count = (n: number) => n.toLocaleString("en-US");
 const titlesWord = (n: number) => (n === 1 ? "1 title" : `${count(n)} titles`);
@@ -155,9 +159,40 @@ const EmptyTab = ({ kind, onShowEverything }: { kind: "movie" | "series"; onShow
   );
 };
 
-// A search that found nothing: what was asked, what the search reads, and the way back. The search
-// matches names only, so it says so; years and genres join it with #4476 A2b.
-const NoMatch = ({ search, total, onClear }: { search: string; total?: number; onClear: () => void }) => {
+// A genre with nothing in the tab (the genre is kept as the tab changes): back to every genre.
+const EmptyGenre = ({
+  genre,
+  kind,
+  onAllGenres,
+}: {
+  genre: string;
+  kind: LibraryShelfProps["filter"];
+  onAllGenres: () => void;
+}) => {
+  const what = kind === "movie" ? "movies" : kind === "series" ? "shows" : "titles";
+  return (
+    <StatePanel
+      action={{ label: "Show all genres", onPress: onAllGenres }}
+      description="Pick another genre, or show them all."
+      kind="empty"
+      title={`No ${what} in ${genre}`}
+    />
+  );
+};
+
+// A search that found nothing: what was asked, what the search reads, and the way back. With a
+// genre chosen the search is inside it, so leaving the genre is a way back too.
+const NoMatch = ({
+  search,
+  total,
+  onClear,
+  onAllGenres,
+}: {
+  search: string;
+  total?: number;
+  onClear: () => void;
+  onAllGenres?: () => void;
+}) => {
   const wide = useWindowWidth() >= 768;
   return (
     <Stack
@@ -171,13 +206,18 @@ const NoMatch = ({ search, total, onClear }: { search: string; total?: number; o
       </Text>
       <Text textAlign={wide ? "center" : "left"} textRole="body" tone="secondary">
         {total === undefined
-          ? "Search looks at the names of your titles."
-          : `Search looks at the names of all ${titlesWord(total)}.`}
+          ? "Search looks at titles, years and genres."
+          : `Search looks at titles, years and genres across all ${titlesWord(total)}.`}
       </Text>
       <Line>
         <Action onPress={onClear} variant="outline">
           Clear search
         </Action>
+        {onAllGenres ? (
+          <Action onPress={onAllGenres} variant="outline">
+            Show all genres
+          </Action>
+        ) : null}
       </Line>
     </Stack>
   );
@@ -264,9 +304,9 @@ const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void 
 
 // A row's first guess before it is measured: a poster's 2:3 box (the content width less the
 // control gaps, per column) over the inline gap, the caption's 56 px floor and the section gap.
-const estimateRowHeight = (width: number, columns: number) => {
+const estimateRowHeight = (width: number, columns: number, rail: number) => {
   const gutter = width >= 768 ? PAGE_GUTTER.wide : PAGE_GUTTER.phone;
-  const content = Math.min(1152, width - 2 * gutter);
+  const content = Math.min(1152, width - 2 * gutter) - rail;
   const poster = (content - (columns - 1) * 12) / columns;
   return Math.round(poster * 1.5 + 8 + 56 + 24);
 };
@@ -282,22 +322,46 @@ const Row = ({ columns, children }: { columns: number; children: ReactNode[] }) 
   </Line>
 );
 
-// The grid as rows. LibraryGrid mounts only the rows near the screen.
-// TODO(#4476 A2b): the desktop letter rail sits beside this grid once the list can jump to a letter.
+// The rail's own width and the gap before it.
+const RAIL_SPACE = 40;
+
+// The letter the reader is at: the one just jumped to while its title is in the top row, else
+// the last letter that starts at or before the top row's first title.
+const letterAt = (
+  letters: readonly LibraryShelfLetter[],
+  first: number,
+  columns: number,
+  jump: LibraryShelfProps["jump"],
+) => {
+  if (jump && jump.index >= first && jump.index < first + columns) return jump.letter;
+  let at = letters[0];
+  for (const entry of letters) if (entry.offset <= first) at = entry;
+  return at?.letter;
+};
+
+// The grid as rows, with the letter rail beside it on a desktop window. LibraryGrid mounts only the
+// rows near the screen. The rail stays put while the wall scrolls past it.
 const Grid = ({
   titles,
   onOpenTitle,
   onEndReached,
-}: Pick<LibraryShelfProps, "titles" | "onOpenTitle" | "onEndReached">) => {
+  letters,
+  onJump,
+  jump,
+}: Pick<LibraryShelfProps, "titles" | "onOpenTitle" | "onEndReached" | "letters" | "onJump" | "jump">) => {
   const width = useWindowWidth();
   const columns = columnsFor(width);
+  const [topRow, setTopRow] = useState(0);
+  const onTopRowChange = useCallback((row: number) => setTopRow(row), []);
+  const rail = width >= DESKTOP && letters && letters.length > 0 && onJump ? letters : undefined;
   const rows: LibraryShelfTitle[][] = [];
   for (let i = 0; i < titles.length; i += columns) rows.push(titles.slice(i, i + columns));
-  return (
+  const grid = (
     <LibraryGrid
-      estimateRowHeight={estimateRowHeight(width, columns)}
+      estimateRowHeight={estimateRowHeight(width, columns, rail ? RAIL_SPACE : 0)}
       label="Titles"
       onEndReached={onEndReached}
+      onTopRowChange={onTopRowChange}
       renderRow={(row) => (
         <Row columns={columns}>
           {row.map((title) => (
@@ -309,7 +373,28 @@ const Grid = ({
       )}
       rowKey={(row, index) => row[0]?.id ?? `row-${index}`}
       rows={rows}
+      scrollTo={jump ? { row: Math.floor(jump.index / columns), request: jump.request } : undefined}
     />
+  );
+  // The grid keeps its place in the tree with and without the rail, so it is never remounted.
+  return (
+    <Line alignItems="flex-start" flexWrap="nowrap" gap="control" role="none">
+      <Stack flexBasis={0} flexGrow={1} flexShrink={1} minWidth={0}>
+        {grid}
+      </Stack>
+      {rail ? (
+        <View style={{ alignSelf: "flex-start", position: "sticky", top: 8 } as object}>
+          <LetterRail
+            available={rail.map((entry) => entry.letter)}
+            current={letterAt(rail, topRow * columns, columns, jump)}
+            onSelect={(letter) => {
+              const entry = rail.find((candidate) => candidate.letter === letter);
+              if (entry) onJump?.(entry);
+            }}
+          />
+        </View>
+      ) : null}
+    </Line>
   );
 };
 
@@ -355,20 +440,49 @@ const filterOptions = (counts: LibraryShelfCounts | undefined, withCounts: boole
   ];
 };
 
-// The tabs, then the search and the order. From a tablet up they share a line and the tabs carry
-// their counts; on a phone the search takes its own line and the count sits beside the order.
+// The genre choice: every genre with its titles, under "All genres". A chosen genre the tab has
+// none of is still listed, so the select shows what is filtering.
+const ALL_GENRES = "";
+const genreOptions = (genres: NonNullable<LibraryShelfProps["genres"]>, chosen: string | undefined) => {
+  const options = [
+    { label: "All genres", value: ALL_GENRES },
+    ...genres.map(({ name, titles }) => ({ label: `${name} (${count(titles)})`, value: name })),
+  ];
+  if (chosen && !genres.some((g) => g.name === chosen)) options.push({ label: chosen, value: chosen });
+  return options;
+};
+
+// The server matches a genre in any case; the list's own spelling is the one shown.
+const listedGenre = (genres: LibraryShelfProps["genres"], genre: string | undefined) =>
+  genres?.find((g) => g.name.toLowerCase() === genre?.toLowerCase());
+
+// The tabs, then the search, the order and the genre. From a tablet up they share a line and the
+// tabs carry their counts; on a phone the search takes its own line and the count sits beside
+// the order and the genre.
 const Controls = ({
   filter,
   onFilterChange,
   counts,
   sort,
   onSortChange,
+  genres,
+  genre,
+  onGenreChange,
   search,
   onSearchChange,
   showSearch,
 }: Pick<
   LibraryShelfProps,
-  "filter" | "onFilterChange" | "counts" | "sort" | "onSortChange" | "search" | "onSearchChange"
+  | "filter"
+  | "onFilterChange"
+  | "counts"
+  | "sort"
+  | "onSortChange"
+  | "genres"
+  | "genre"
+  | "onGenreChange"
+  | "search"
+  | "onSearchChange"
 > & { showSearch: boolean }) => {
   const wide = useWindowWidth() >= 768;
   const tabs = (
@@ -385,32 +499,53 @@ const Controls = ({
     <Field
       accessibilityLabel="Search titles"
       onChangeText={onSearchChange}
-      placeholder="Search titles"
+      placeholder="Search titles, years, genres"
       value={search}
     />
   );
   const order = (
-    <CompactSelect label="Order" onValueChange={onSortChange} options={SORTS} value={sort} width={168} />
+    <CompactSelect
+      label="Order"
+      onValueChange={onSortChange}
+      options={SORTS}
+      value={sort}
+      width={wide ? 168 : 140}
+    />
   );
-  // TODO(#4476 A2b): the genre filter sits after the order once the list can filter by genre.
+  const listed = listedGenre(genres, genre);
+  const chosen = listed?.name ?? genre;
+  const genreSelect = (
+    <CompactSelect
+      label="Genre"
+      onValueChange={(next) => onGenreChange(next === ALL_GENRES ? undefined : next)}
+      options={genreOptions(genres ?? [], chosen)}
+      value={chosen ?? ALL_GENRES}
+      width={wide ? 168 : 140}
+    />
+  );
   if (wide) {
     return (
       <Line columnGap="control" flexWrap="nowrap" justifyContent="space-between">
         {tabs}
         <Line flexShrink={1} flexWrap="nowrap" gap="control">
-          <Stack width={288}>{searchField}</Stack>
+          <Stack flexShrink={1} minWidth={0} width={288}>
+            {searchField}
+          </Stack>
           {order}
+          {genreSelect}
         </Line>
       </Line>
     );
   }
-  const shown = counts && filter !== "collections" ? counts[filter] : undefined;
+  // With a genre chosen the count is that genre's.
+  const shown = genre ? listed?.titles : counts && filter !== "collections" ? counts[filter] : undefined;
   return (
     <Stack gap="control">
       {tabs}
       {searchField}
-      <Line flexWrap="nowrap" gap="control">
+      <Line gap="control">
         {order}
+        {genreSelect}
         {shown === undefined ? null : (
           <Stack marginLeft="auto">
             <Text textRole="compact" tone="secondary">
@@ -430,6 +565,12 @@ const LibraryShelf = ({
   counts,
   sort,
   onSortChange,
+  genres,
+  genre,
+  onGenreChange,
+  letters,
+  onJump,
+  jump,
   search,
   onSearchChange,
   titles,
@@ -447,6 +588,8 @@ const LibraryShelf = ({
   const width = useWindowWidth();
   const wide = width >= 768;
   const searched = search.trim();
+  const allGenres = () => onGenreChange(undefined);
+  const chosenGenre = genre ? (listedGenre(genres, genre)?.name ?? genre) : undefined;
   // The All tab with no titles. While an import is adding them, an admin's status line tells that
   // story, so the dead air panel waits until nothing is running.
   const emptyLibrary = !admin ? (
@@ -487,7 +630,10 @@ const LibraryShelf = ({
           <Controls
             counts={counts}
             filter={filter}
+            genre={genre}
+            genres={genres}
             onFilterChange={onFilterChange}
+            onGenreChange={onGenreChange}
             onSearchChange={onSearchChange}
             onSortChange={onSortChange}
             search={search}
@@ -499,13 +645,27 @@ const LibraryShelf = ({
           {!showTitles ? null : loading ? (
             <Loading />
           ) : titles.length === 0 && searched !== "" ? (
-            <NoMatch onClear={() => onSearchChange("")} search={searched} total={counts?.[filter]} />
+            <NoMatch
+              onAllGenres={chosenGenre ? allGenres : undefined}
+              onClear={() => onSearchChange("")}
+              search={searched}
+              total={chosenGenre ? undefined : counts?.[filter]}
+            />
+          ) : titles.length === 0 && chosenGenre ? (
+            <EmptyGenre genre={chosenGenre} kind={filter} onAllGenres={allGenres} />
           ) : titles.length === 0 && (filter === "movie" || filter === "series") ? (
             <EmptyTab kind={filter} onShowEverything={() => onFilterChange("all")} />
           ) : titles.length === 0 && filter === "all" && searched === "" ? (
             emptyLibrary
           ) : (
-            <Grid onEndReached={onEndReached} onOpenTitle={onOpenTitle} titles={titles} />
+            <Grid
+              jump={jump}
+              letters={letters}
+              onEndReached={onEndReached}
+              onJump={onJump}
+              onOpenTitle={onOpenTitle}
+              titles={titles}
+            />
           )}
         </>
       )}

@@ -17,29 +17,33 @@ interface LibrarySearch {
   q?: string;
   /** Recently added first; absent is by name. */
   sort?: "recent";
+  genre?: string;
 }
 
 const validateLibrarySearch = (search: Record<string, unknown>): LibrarySearch => ({
   ...(search.kind === "movie" || search.kind === "series" ? { kind: search.kind } : {}),
   ...(typeof search.q === "string" && search.q.trim() !== "" ? { q: search.q.slice(0, 200) } : {}),
   ...(search.sort === "recent" ? { sort: search.sort } : {}),
+  ...(typeof search.genre === "string" && search.genre.trim() !== ""
+    ? { genre: search.genre.slice(0, 100) }
+    : {}),
 });
 
 const LibraryScreen = () => {
   useDocumentTitle("Library");
-  const { kind, q, sort } = Route.useSearch();
-  return <LibraryPage filter={kind ?? "all"} search={q ?? ""} sort={sort ?? "name"} />;
+  const { kind, q, sort, genre } = Route.useSearch();
+  return <LibraryPage filter={kind ?? "all"} genre={genre} search={q ?? ""} sort={sort ?? "name"} />;
 };
 
 const Route = createFileRoute("/_authed/library/")({
   validateSearch: validateLibrarySearch,
-  loaderDeps: ({ search: { kind, q, sort } }) => ({ kind, q, sort }),
+  loaderDeps: ({ search: { kind, q, sort, genre } }) => ({ kind, q, sort, genre }),
   // What the wall paints: the first page of titles, the tabs' counts, and for an admin the status
   // line over them. The page's search box starts from the URL's `q`, trimmed, so that is the entry
   // warmed here. A member's status request would 403, so only an admin's is asked.
-  loader: async ({ context: { queryClient }, deps: { kind, q, sort } }) => {
+  loader: async ({ context: { queryClient }, deps: { kind, q, sort, genre } }) => {
     const titles = queryClient.ensureInfiniteQueryData(
-      libraryItemsQueryOptions({ kind, search: q?.trim() || undefined, sort }),
+      libraryItemsQueryOptions({ kind, search: q?.trim() || undefined, sort, genre }),
     );
     const counts = libraryCountsQueryOptions().map((options) => queryClient.ensureQueryData(options));
     const status = (await viewerIsAdmin(queryClient))

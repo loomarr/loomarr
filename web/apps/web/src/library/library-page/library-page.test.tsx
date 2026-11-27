@@ -2,6 +2,7 @@ import {
   getHouseholdMockHandler,
   getLibraryStatusMockHandler,
   getListCollectionsMockHandler,
+  getListLibraryGenresMockHandler,
   getListLibraryItemsMockHandler,
   getListLibraryNeedsMockHandler,
   getMeMockHandler,
@@ -19,8 +20,13 @@ import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
 import { LibraryPage } from "./library-page";
 
-const mocks = vi.hoisted(() => ({ navigate: vi.fn() }));
+const mocks = vi.hoisted(() => ({ navigate: vi.fn(), width: 1440 }));
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => mocks.navigate }));
+// A desktop window, where the wall draws its letter rail.
+vi.mock("react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native")>();
+  return { ...actual, useWindowDimensions: () => ({ ...actual.useWindowDimensions(), width: mocks.width }) };
+});
 
 const alpha = {
   id: "90000001",
@@ -61,6 +67,7 @@ describe("LibraryPage", () => {
       getMeMockHandler(me()),
       getListLibraryNeedsMockHandler({ needs: [], orders: [], problems: [] }),
       getHouseholdMockHandler({ timeZone: "" }),
+      getListLibraryGenresMockHandler({ genres: [] }),
     );
   });
 
@@ -301,6 +308,121 @@ describe("LibraryPage", () => {
     }
     const library = paths.filter((p) => p.startsWith("/v1/library") || p.startsWith("/v1/collections"));
     expect(library.length).toBeGreaterThan(0);
-    for (const path of library) expect(["/v1/library/items", "/v1/collections"]).toContain(path);
+    for (const path of library) {
+      expect(["/v1/library/items", "/v1/library/genres", "/v1/collections"]).toContain(path);
+    }
+  });
+
+  it("asks for the URL's genre, keeps it in the URL, and keeps it across a tab change", async () => {
+    const asked: URLSearchParams[] = [];
+    server.use(
+      getLibraryStatusMockHandler(libraryStatus()),
+      getListLibraryGenresMockHandler({
+        genres: [
+          { name: "Drama", titles: 3 },
+          { name: "Comedy", titles: 2 },
+        ],
+      }),
+      http.get("*/v1/library/items", ({ request }) => {
+        const url = new URL(request.url);
+        if (!isCount(url)) asked.push(url.searchParams);
+        return HttpResponse.json({ items: [alpha], total: 1 });
+      }),
+    );
+    renderPage({ filter: "all", search: "", genre: "Drama" });
+
+    await waitFor(() => expect(asked.at(-1)?.get("genre")).toBe("Drama"));
+    await screen.findByRole("option", { name: "Comedy (2)" });
+    await userEvent.selectOptions(screen.getByLabelText("Genre"), "Comedy");
+    expect(mocks.navigate).toHaveBeenLastCalledWith({ to: "/library", search: { genre: "Comedy" } });
+    await userEvent.selectOptions(screen.getByLabelText("Genre"), "");
+    expect(mocks.navigate).toHaveBeenLastCalledWith({ to: "/library", search: {} });
+    await userEvent.click(screen.getByRole("tab", { name: /^Movies/ }));
+    expect(mocks.navigate).toHaveBeenLastCalledWith({
+      to: "/library",
+      search: { kind: "movie", genre: "Drama" },
+    });
+    await userEvent.type(screen.getByLabelText("Search titles"), "alp");
+    await waitFor(() =>
+      expect(mocks.navigate).toHaveBeenLastCalledWith({
+        to: "/library",
+        search: { q: "alp", genre: "Drama" },
+        replace: true,
+      }),
+    );
+  });
+
+  it("lists the new tab's genres when the tab changes", async () => {
+    server.use(
+      getLibraryStatusMockHandler(libraryStatus()),
+      getListLibraryItemsMockHandler({ items: [alpha], total: 1 }),
+      http.get("*/v1/library/genres", ({ request }) => {
+        const kind = new URL(request.url).searchParams.get("kind");
+        return HttpResponse.json({
+          genres: [{ name: kind === "series" ? "Reality" : "Western", titles: 1 }],
+        });
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const page = (filter: "movie" | "series") => (
+      <QueryClientProvider client={client}>
+        <LibraryPage filter={filter} search="" />
+      </QueryClientProvider>
+    );
+    const view = render(page("movie"));
+    expect(await screen.findByRole("option", { name: "Western (1)" })).toBeInTheDocument();
+
+    view.rerender(page("series"));
+    expect(await screen.findByRole("option", { name: "Reality (1)" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Western (1)" })).not.toBeInTheDocument();
+  });
+
+  // The wall is one list from its first title, so a jump loads on until the letter's title and a
+  // page below it are in, in pages as large as the server gives.
+  it("loads as far as a rail letter's title when it is pressed", async () => {
+    const asked: string[] = [];
+    server.use(
+      getLibraryStatusMockHandler(libraryStatus()),
+      http.get("*/v1/library/items", ({ request }) => {
+        const url = new URL(request.url);
+        if (isCount(url)) return HttpResponse.json({ items: [], total: 1000 });
+        const offset = Number(url.searchParams.get("offset") ?? 0);
+        const limit = Number(url.searchParams.get("limit"));
+        asked.push(`${offset}:${limit}`);
+        // The first page is long enough that the grid asks for no second one by itself.
+        const length = offset === 0 ? 200 : limit;
+        const items = Array.from({ length }, (_, i) => ({
+          ...alpha,
+          id: String(90300000 + offset + i),
+          name: `T${offset + i}`,
+        }));
+        return HttpResponse.json({
+          items,
+          total: 1000,
+          letters: [
+            { letter: "A", offset: 0 },
+            { letter: "T", offset: 400 },
+          ],
+        });
+      }),
+    );
+    renderPage();
+
+    const rail = await screen.findByRole("button", { name: "Jump to titles starting with T" });
+    expect(asked).toEqual(["0:60"]);
+    await userEvent.click(rail);
+
+    await waitFor(() => expect(asked).toEqual(["0:60", "200:200", "400:60"]));
+  });
+
+  it("draws no rail by Recently added, even if letters come back", async () => {
+    server.use(
+      getLibraryStatusMockHandler(libraryStatus()),
+      getListLibraryItemsMockHandler({ items: [alpha], total: 1, letters: [{ letter: "A", offset: 0 }] }),
+    );
+    renderPage({ filter: "all", search: "", sort: "recent" });
+
+    expect(await screen.findByRole("button", { name: /^Alpha/ })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Jump to a letter" })).not.toBeInTheDocument();
   });
 });
