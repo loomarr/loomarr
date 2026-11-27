@@ -70,3 +70,8 @@ jobs:
       - name: Every added migration is numbered above main's newest
         if: matrix.shard == 2 && github.event_name == 'pull_request'
         run: ./scripts/check-migration-order.sh pull_request "$GITHUB_EVENT_PATH"
+      # The runner is Linux, so this vets the macOS build: a Linux-only symbol without a build tag
+      # stops development on a Mac while every Linux check stays green (#4462).
+      - name: The macOS build compiles
+        if: matrix.shard == 2
+        run: make platform-vet

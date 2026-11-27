@@ -110,7 +110,7 @@ jobs:
           lookup-only: true
       - name: Compile what the contracts analyse
         if: steps.warm.outputs.cache-hit != 'true'
-        run: make vet vet-tags lint
+        run: make vet vet-tags lint platform-vet
       - name: Save the warm cache
         if: steps.warm.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6

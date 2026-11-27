@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -85,6 +86,9 @@ func TestWatchShareOnARealMount(t *testing.T) {
 	dir := os.Getenv("LOOMARR_SMB_DIR")
 	if dir == "" {
 		t.Skip("LOOMARR_SMB_DIR is not set")
+	}
+	if runtime.GOOS != "linux" {
+		t.Skip("SMB change notifications are the Linux CIFS client's")
 	}
 	if !cifsFilesystem(dir) {
 		t.Fatalf("%s is not on an SMB mount", dir)
