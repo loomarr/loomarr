@@ -147,6 +147,7 @@ const ChannelProgrammingChanges = ({
         {/* Rows are text, so the scroll region itself takes the Tab stop (see the cycle
             preview's slot list for the same treatment). */}
         <Stack
+          data-scroll="thin"
           divided
           maxHeight={384}
           overflowY="auto"

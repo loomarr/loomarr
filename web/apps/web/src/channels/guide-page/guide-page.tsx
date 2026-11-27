@@ -442,6 +442,7 @@ const GuidePage = () => {
           {guide.isPlaceholderData && (
             <Stack
               aria-label="Loading guide"
+              data-pulse="loading"
               height={2}
               left={0}
               pointerEvents="none"
