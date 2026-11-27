@@ -239,7 +239,8 @@ func finish(fg *image.NRGBA, shape *image.Alpha, look Look) Bug {
 				as = shadow[y*(w+2*pad)+x] * look.Opacity * 0.35
 			}
 			// The bug over its black shadow: premultiplied colour is the bug's alone.
-			a := af + as*(1-af)
+			// The conversion forbids a fused multiply-add, so every architecture rounds the same.
+			a := af + float64(as*(1-af))
 			if a <= 0 {
 				continue
 			}
@@ -272,7 +273,9 @@ func gaussianBlur(p []float64, w, h int, sigma float64) {
 				var v float64
 				for j, kv := range k {
 					if s := i + j - r; s >= 0 && s < n {
-						v += kv * src[l*lineStride+s*stride]
+						// The conversion forbids a fused multiply-add, so every
+						// architecture blurs the same.
+						v += float64(kv * src[l*lineStride+s*stride])
 					}
 				}
 				dst[l*lineStride+i*stride] = v
@@ -289,7 +292,7 @@ func textMask(text string, px float64) (*image.Alpha, error) {
 	if err != nil {
 		return nil, err
 	}
-	face, err := opentype.NewFace(f, &opentype.FaceOptions{Size: px * 1.45, DPI: 72, Hinting: font.HintingNone})
+	face, err := newGlyphFace(f, px*1.45)
 	if err != nil {
 		return nil, err
 	}
@@ -316,7 +319,7 @@ func fillRoundedRect(m *image.Alpha, r float64) {
 			cx, cy := float64(x)+0.5, float64(y)+0.5
 			dx := math.Max(0, math.Max(r-cx, cx-(w-r)))
 			dy := math.Max(0, math.Max(r-cy, cy-(h-r)))
-			if dx*dx+dy*dy <= r*r {
+			if float64(dx*dx)+float64(dy*dy) <= r*r { // no fused multiply-add, as in finish
 				m.Pix[m.PixOffset(x, y)] = 255
 			}
 		}

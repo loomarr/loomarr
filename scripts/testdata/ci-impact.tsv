@@ -14,6 +14,10 @@ composition-go	internal/app/application.go	contracts,go,go_full,postgres,image
 backend-transition-go	internal/playout/backendtransition/controller.go	contracts,go,postgres,image
 playout-go	internal/playout/packager_hls.go	contracts,go,postgres,image,playout_bench
 playout-opencl-kernel	internal/playout/watermark.cl	contracts,go,image,playout_bench
+watermark-render-go	internal/playout/watermark/render.go	contracts,go,postgres,image,agent
+watermark-raster-go	internal/playout/watermark/raster/raster.go	contracts,go,postgres,image,agent
+watermark-golden	internal/playout/watermark/testdata/looks.golden	contracts,go,agent
+watermark-raster-licence	internal/playout/watermark/raster/LICENSE	contracts,agent
 rust-worker	rust/loomarr-image/src/lib.rs	rust,image
 migration	internal/platform/store/migrations/sqlite/00001_init.sql	contracts,go,go_full,postgres,image
 schema-reference-words	internal/platform/store/schemadoc/areas/01-people.yaml	go,postgres,image,policy
