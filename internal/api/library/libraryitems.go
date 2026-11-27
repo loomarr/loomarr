@@ -206,10 +206,17 @@ type listLibraryItemsInput struct {
 	Kind   string `query:"kind" enum:"movie,series" doc:"Only movies or only series; both when absent"`
 	Search string `query:"search" maxLength:"200" doc:"Part of the name, any case; or words that are each in the name, the year (four digits) or a genre. Titles whose name holds it come first"`
 	Genre  string `query:"genre" maxLength:"100" doc:"Only titles with this genre, any case; an unknown genre lists none"`
-	Ready  bool   `query:"ready" doc:"Only titles with every file's details read"`
-	Sort   string `query:"sort" enum:"name,recent" default:"name" doc:"By name, or the titles written last first"`
-	Limit  int    `query:"limit" minimum:"1" maximum:"200" default:"60"`
-	Offset int    `query:"offset" minimum:"0"`
+	Studio string `query:"studio" maxLength:"200" doc:"Only titles of this studio, any case; an unknown studio lists none"`
+	Person string `query:"person" maxLength:"600" doc:"Only titles that credit this person, by id; an unknown id lists none"`
+	Audio  string `query:"audio" maxLength:"35" doc:"Only titles with sound in this language, by code; a series needs one episode with it"`
+	// The track filters read the copy that plays of each file that can play.
+	Subtitles string `query:"subtitles" maxLength:"35" doc:"Only titles with subtitles in this language, by code; a series needs one episode with them"`
+	UHD       bool   `query:"uhd" doc:"Only titles with a 4K picture; a series needs one 4K episode"`
+	HDR       string `query:"hdr" enum:"any,Dolby Vision,HDR10,HLG,HDR" doc:"Only titles with a high dynamic range picture, of any kind or one; a series needs one such episode"`
+	Ready     bool   `query:"ready" doc:"Only titles with every file's details read"`
+	Sort      string `query:"sort" enum:"name,recent" default:"name" doc:"By name, or the titles written last first"`
+	Limit     int    `query:"limit" minimum:"1" maximum:"200" default:"60"`
+	Offset    int    `query:"offset" minimum:"0"`
 }
 
 // libraryLetterDTO is one stop on the wall's letter rail.
@@ -266,7 +273,8 @@ func (s *Handlers) listLibraryItems(ctx context.Context, in *listLibraryItemsInp
 	}
 	admin := readsAdminFacts(ctx)
 	page, err := svc.Items(ctx, librarystore.LibraryItemQuery{
-		Kind: in.Kind, Search: in.Search, Genre: in.Genre, Ready: in.Ready, Recent: in.Sort == "recent",
+		Kind: in.Kind, Search: in.Search, Genre: in.Genre, Studio: in.Studio, Person: in.Person, Audio: in.Audio,
+		Subtitles: in.Subtitles, UHD: in.UHD, HDR: in.HDR, Ready: in.Ready, Recent: in.Sort == "recent",
 		Letters: in.Sort != "recent", Member: !admin, Limit: min(in.Limit, libraryItemsPageMax), Offset: in.Offset,
 	})
 	if err != nil {
@@ -336,6 +344,7 @@ type libraryChapterDTO struct {
 
 // libraryCreditDTO is one person credited on a title.
 type libraryCreditDTO struct {
+	PersonID  string `json:"personId" doc:"The person, for the list's person= and /v1/library/people/{id}"`
 	Name      string `json:"name"`
 	Role      string `json:"role" enum:"actor,director,writer,creator"`
 	Character string `json:"character,omitempty" doc:"An actor's part"`
@@ -556,7 +565,8 @@ func libraryItemDetailOf(d scan.ItemDetail, images map[string]*httpcore.ImageDTO
 		out.Genres = []string{}
 	}
 	for _, p := range d.Facts.People {
-		out.Credits = append(out.Credits, libraryCreditDTO{Name: p.Name, Role: p.Role, Character: p.Character})
+		credit := librarystore.LibraryCredit{Name: p.Name, ID: librarystore.LibraryID{Namespace: p.ID.Namespace, Value: p.ID.Value}}
+		out.Credits = append(out.Credits, libraryCreditDTO{PersonID: credit.PersonID(), Name: p.Name, Role: p.Role, Character: p.Character})
 	}
 	for _, c := range d.Channels {
 		out.Channels = append(out.Channels, libraryChannelDTO{ID: c.ID, Name: c.Name, Number: c.Number})

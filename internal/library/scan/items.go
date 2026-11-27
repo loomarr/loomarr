@@ -211,6 +211,21 @@ func (l *Library) Genres(ctx context.Context, kind string, member bool) ([]libra
 	return l.ItemStore.LibraryGenres(ctx, kind, member)
 }
 
+// Facets lists the studio, language, 4K and HDR choices of the same titles.
+func (l *Library) Facets(ctx context.Context, kind string, member bool) (librarystore.LibraryFacets, error) {
+	return l.ItemStore.LibraryFacets(ctx, kind, member)
+}
+
+// People searches the people those titles credit by part of their name.
+func (l *Library) People(ctx context.Context, term, kind string, member bool, limit int) ([]librarystore.LibraryPerson, error) {
+	return l.ItemStore.LibraryPeople(ctx, term, kind, member, limit)
+}
+
+// Person is one credited person; store.ErrNotFound when no title the caller reads credits them.
+func (l *Library) Person(ctx context.Context, id string, member bool) (librarystore.LibraryPerson, error) {
+	return l.ItemStore.LibraryPerson(ctx, id, member)
+}
+
 // Item is one title's page; store.ErrNotFound when it has no present file, and for a member when
 // a household member doesn't read it (librarystore.MemberLibraryItem).
 func (l *Library) Item(ctx context.Context, id string, member bool) (ItemDetail, error) {
@@ -235,7 +250,8 @@ func (l *Library) Item(ctx context.Context, id string, member bool) (ItemDetail,
 		CommunityScore: page.Score, Genres: page.Genres, Studios: page.Studios, Countries: page.Countries,
 		OfficialRating: page.Rating, RuntimeMillis: page.RuntimeMs}
 	for _, c := range page.Credits {
-		detail.Facts.People = append(detail.Facts.People, inventory.Person{Name: c.Name, Role: c.Role, Character: c.Character})
+		detail.Facts.People = append(detail.Facts.People, inventory.Person{Name: c.Name, Role: c.Role, Character: c.Character,
+			ID: inventory.ExternalID{Namespace: c.ID.Namespace, Value: c.ID.Value}})
 	}
 	detail.From = detailsFrom(page.From)
 	detail.Still = page.Still
