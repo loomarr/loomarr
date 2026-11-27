@@ -170,7 +170,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
                   <Stack align="center" direction="row" gap="inline">
                     <Stack
                       aria-hidden
-                      borderColor={checked ? "accentTune" : "borderControl"}
+                      borderColor={checked ? "stateInfo" : "borderControl"}
                       borderRadius={8}
                       // A thicker ring, not a fill: forced colours drop backgrounds and keep borders.
                       borderWidth={checked ? 5 : 2}
