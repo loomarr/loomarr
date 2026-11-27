@@ -11,6 +11,7 @@ import {
   type LibraryShelfProps,
   type LibraryShelfTitle,
   LibraryTitle,
+  LibraryTitleMissing,
   LibraryWizardStep,
 } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -336,6 +337,35 @@ const titleFixes = {
   onRemoveExtra: answered,
 };
 
+// What the TV-app page draws beyond the story: the facts, the next airings and the people.
+const movieExtras = {
+  tagline: "Every plan has a loose thread.",
+  score: 7.4,
+  credits: [
+    { name: "Imelda Varge", character: "Agnes Fell", role: "actor" as const },
+    { name: "Tobin Ashcroft", character: "Rafe Fell", role: "actor" as const },
+    { name: "Lorna Pettigrew", role: "director" as const },
+  ],
+  airings: [
+    {
+      channel: { id: "90000971", name: "Quiet Hours", number: 21 },
+      when: "Next tonight at 9:00 PM",
+      forecast: false,
+    },
+    {
+      channel: { id: "90000972", name: "Late Show", number: 7 },
+      when: "Next Saturday at 11:30 PM",
+      forecast: true,
+    },
+  ],
+  playing: {
+    picture: { width: 1920, height: 1080, hdr: false },
+    audioChannels: 2,
+    subtitleLanguages: ["English"],
+  },
+  about: [{ label: "Country", value: "Ireland" }],
+};
+
 const Movie: Story = {
   render: () => (
     <LibraryTitle
@@ -345,7 +375,8 @@ const Movie: Story = {
         kind: "movie",
         name: "Paper Kites",
         year: 1996,
-        poster: art("#6b3a2e"),
+        backdrop: art("#6b3a2e"),
+        ...movieExtras,
         overview:
           "A small-town salesman, bursting at the seams with debt, hatches a plan that goes wrong the moment it starts.",
         genres: ["Crime", "Thriller"],
@@ -390,7 +421,8 @@ const MemberMovie: Story = {
         kind: "movie",
         name: "Paper Kites",
         year: 1996,
-        poster: art("#6b3a2e"),
+        backdrop: art("#6b3a2e"),
+        ...movieExtras,
         overview:
           "A small-town salesman, bursting at the seams with debt, hatches a plan that goes wrong the moment it starts.",
         genres: ["Crime", "Thriller"],
@@ -416,7 +448,7 @@ const Series: Story = {
         kind: "series",
         name: "Harbour Lights",
         year: 1999,
-        poster: art("#3b4a63"),
+        backdrop: art("#3b4a63"),
         overview: "The keepers of a lighthouse town and the families who wait for the boats to come home.",
         genres: ["Drama", "Political"],
         rating: "TV-14",
@@ -442,6 +474,65 @@ const Series: Story = {
   ),
 };
 
+// The Fix menu open, on its solid surface over the backdrop.
+const MovieFixOpen: Story = {
+  ...Movie,
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole("button", { name: "Fix" }));
+  },
+};
+
+const memberSeries = {
+  kind: "series" as const,
+  name: "Harbour Lights",
+  year: 1999,
+  genres: ["Drama"],
+  files: [],
+  unplayable: 0,
+  seasons: [{ number: 1, episodes: [{ id: "90000011", name: "Dead Line", number: 1, ready: true }] }],
+  match: { by: "none" as const },
+  detailsFrom: {},
+  channels: [{ id: "90000972", name: "Late Show", number: 7 }],
+  airings: [
+    {
+      channel: { id: "90000972", name: "Late Show", number: 7 },
+      when: "Next Thursday at 10:00 PM",
+      forecast: true,
+      episode: "Season 1, episode 1 · Dead Line",
+    },
+  ],
+};
+
+const MemberSeries: Story = {
+  render: () => <LibraryTitle onBack={() => {}} title={{ ...memberSeries, backdrop: art("#3b4a63") }} />,
+};
+
+// A home video: no catalog details and on no channel.
+const HomeVideo: Story = {
+  render: () => (
+    <LibraryTitle
+      fix={titleFixes}
+      onBack={() => {}}
+      title={{
+        kind: "movie",
+        name: "Summer at the lake",
+        year: 2019,
+        genres: [],
+        files: [],
+        unplayable: 0,
+        seasons: [],
+        match: { by: "you" },
+        detailsFrom: {},
+        channels: [],
+      }}
+    />
+  ),
+};
+
+const NotInLibrary: Story = {
+  render: () => <LibraryTitleMissing onBack={() => {}} />,
+};
+
 // A show whose files don't say which of TMDB's orders they follow (#2151 decision 53): a hint
 // that opens Needs you, and the waiting episodes named from their files. Season 2 starts open.
 const SeriesOrderWaiting: Story = {
@@ -453,7 +544,7 @@ const SeriesOrderWaiting: Story = {
         kind: "series",
         name: "Tidewater",
         year: 2011,
-        poster: art("#3b4a63"),
+        backdrop: art("#3b4a63"),
         genres: ["Drama"],
         files: [],
         unplayable: 0,
@@ -668,6 +759,7 @@ export {
   FolderOffline,
   Fresh,
   HeldRemoval,
+  HomeVideo,
   Loading,
   Member,
   MemberCollections,
@@ -675,12 +767,15 @@ export {
   MemberEmpty,
   MemberMovie,
   MemberNoMatch,
+  MemberSeries,
   Movie,
+  MovieFixOpen,
   NeedsCards,
   NeedsYou,
   NewCollection,
   NoMatch,
   NothingNeedsYou,
+  NotInLibrary,
   Paused,
   RecentlyAdded,
   Series,

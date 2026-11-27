@@ -117,6 +117,7 @@ export type {
   LibraryShelfStatus,
   LibraryShelfTitle,
   LibrarySort,
+  LibraryTitleAiring,
   LibraryTitleChannel,
   LibraryTitleDetail,
   LibraryTitleEpisode,
@@ -134,6 +135,7 @@ export {
   LibrarySettings,
   LibraryShelf,
   LibraryTitle,
+  LibraryTitleMissing,
   LibraryWizardStep,
 } from "./src/library";
 export type { ListGroupProps, ListRowProgress, ListRowProps } from "./src/list-row";

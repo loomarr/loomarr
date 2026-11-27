@@ -65,7 +65,10 @@ describe("LibraryTitlePage", () => {
     mocks.navigate.mockReset();
     mocks.back.mockReset();
     mocks.canGoBack.mockReset().mockReturnValue(false);
-    server.use(getMeMockHandler(me()));
+    server.use(
+      getMeMockHandler(me()),
+      http.get("*/v1/household", () => HttpResponse.json({ timeZone: "UTC" })),
+    );
   });
 
   it("shows the title the server describes", async () => {
@@ -74,19 +77,83 @@ describe("LibraryTitlePage", () => {
 
     expect(await screen.findByRole("heading", { name: "Echo" })).toBeInTheDocument();
     expect(screen.getByText("A story.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Update details" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Fix" })).toBeInTheDocument();
+  });
+
+  it("offers the three fixes in one menu", async () => {
+    const checked = vi.fn();
+    server.use(
+      getGetLibraryItemMockHandler(echo),
+      http.post("*/v1/library/items/:id/check", () => {
+        checked();
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Fix" }));
+    for (const name of ["Update details", "Check files again", "Wrong title?"]) {
+      expect(await screen.findByRole("menuitem", { name })).toBeInTheDocument();
+    }
+    await userEvent.click(screen.getByRole("menuitem", { name: "Check files again" }));
+    expect(await screen.findByText("Checked just now")).toBeInTheDocument();
+    expect(checked).toHaveBeenCalled();
+  });
+
+  it("lists each channel's next airing, with the episode and a plain forecast", async () => {
+    const channel = { id: "90000971", name: "Quiet Hours", number: 21 };
+    const later = { id: "90000972", name: "Late Show", number: 7 };
+    server.use(
+      getGetLibraryItemMockHandler({
+        ...echo,
+        channels: [channel, later],
+        nextAirings: [
+          {
+            channel,
+            start: "2020-01-01T00:00:00Z",
+            end: "2020-01-01T01:00:00Z",
+            forecast: true,
+            episode: { id: "90000011", season: 1, number: 3, name: "Dead Line" },
+          },
+        ],
+      }),
+    );
+    renderPage();
+
+    const region = await screen.findByRole("region", { name: "On these channels" });
+    expect(region).toHaveTextContent("Quiet Hours");
+    expect(region).toHaveTextContent("On now");
+    expect(region).toHaveTextContent("Season 1, episode 3 · Dead Line");
+    expect(region).toHaveTextContent("Expected time, it can still change");
+    expect(region).toHaveTextContent("Late Show");
+    expect(region).toHaveTextContent("Nothing scheduled soon");
+  });
+
+  it("says when the title is on no channel", async () => {
+    server.use(getGetLibraryItemMockHandler(echo));
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Not on a channel yet" })).toBeInTheDocument();
   });
 
   // #4476: a member reads a title's page with nothing on it that calls an admin route.
   it("gives a member the title with no fixes", async () => {
-    server.use(getMeMockHandler(me({ role: "member" })), getGetLibraryItemMockHandler(echo));
+    const playing = {
+      picture: { width: 1920, height: 1080, hdr: false },
+      audioChannels: 2,
+      subtitleLanguages: ["English"],
+    };
+    server.use(
+      getMeMockHandler(me({ role: "member" })),
+      getGetLibraryItemMockHandler({ ...echo, files: undefined, match: undefined, playing }),
+    );
     renderPage();
 
     expect(await screen.findByRole("heading", { name: "Echo" })).toBeInTheDocument();
     expect(screen.getByText("A story.")).toBeInTheDocument();
-    for (const name of ["Update details", "Check files again", "Wrong title?"]) {
-      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
-    }
+    expect(screen.getByText("1080p HD · Stereo · English subtitles")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Fix" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Technical details")).not.toBeInTheDocument();
   });
 
   it("goes back to the grid it came from", async () => {
@@ -107,15 +174,31 @@ describe("LibraryTitlePage", () => {
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library" });
   });
 
-  it("shows why the title couldn't be read", async () => {
+  const failWith = (status: number) =>
     server.use(
       http.get("*/v1/library/items/:id", () =>
         HttpResponse.json(
-          { title: "Not found", status: 404 },
-          { status: 404, headers: { "Content-Type": "application/problem+json" } },
+          { title: "Failed", status },
+          { status, headers: { "Content-Type": "application/problem+json" } },
         ),
       ),
     );
+
+  it("tells a member a title they can't see isn't in the library, with no retry", async () => {
+    server.use(getMeMockHandler(me({ role: "member" })));
+    failWith(404);
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { name: "This title isn't in the library yet" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /try again/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Back to Library" }));
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library" });
+  });
+
+  it("keeps the retry for any other failure", async () => {
+    failWith(500);
     renderPage();
 
     expect(await screen.findByRole("button", { name: /try again/i })).toBeInTheDocument();

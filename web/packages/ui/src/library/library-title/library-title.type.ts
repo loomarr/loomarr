@@ -49,7 +49,7 @@ interface LibraryTitleSeason {
 /** When a channel next shows the title, its time already worded in the household's clock. */
 interface LibraryTitleAiring {
   channel: LibraryTitleChannel;
-  /** "tonight at 9:00 PM". */
+  /** "Next tonight at 9:00 PM", or "On now". */
   when: string;
   /** Past the window on air, so it can still change. */
   forecast: boolean;
@@ -59,7 +59,6 @@ interface LibraryTitleAiring {
 
 interface LibraryTitlePerson {
   name: string;
-  personId?: string;
   character?: string;
   role: "actor" | "director" | "writer" | "creator";
 }
@@ -88,8 +87,8 @@ interface LibraryTitleDetail {
   playing?: LibraryTitlePlaying;
   name: string;
   year?: number;
-  /** Its artwork, drawn by the app; absent draws the name on the placeholder. */
-  poster?: ReactNode;
+  /** Labelled facts beside the crew, such as Studio and Country. */
+  about?: readonly { label: string; value: string }[];
   overview?: string;
   genres: readonly string[];
   /** The certification, such as TV-14. */
@@ -128,11 +127,10 @@ interface LibraryTitleMatch {
 interface LibraryTitleProps {
   title: LibraryTitleDetail;
   onBack: () => void;
-  /** Opens the wall filtered to a person; absent leaves names as text. */
-  onOpenPerson?: (personId: string) => void;
   /**
    * What an admin does about the title. Absent for a member, who reads the page only: no Update
-   * details, Check files again or Wrong title?, no file cards and no Technical details.
+   * details, Check files again or Wrong title?, no file cards and no Technical details, only the
+   * one technical line.
    */
   fix?: LibraryTitleFix;
 }

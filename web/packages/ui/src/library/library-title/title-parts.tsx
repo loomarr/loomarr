@@ -1,4 +1,5 @@
-import { Action, Surface, Text } from "@loomarr/design-system";
+import { Surface, Text, useWindowWidth, VisuallyHidden } from "@loomarr/design-system";
+import type { ReactNode } from "react";
 import { ChannelIdentity } from "../../identity";
 import { Line, Stack } from "../library-poster";
 import { lengthPhrase, picturePhrase, soundPhrase } from "../technical-details";
@@ -7,10 +8,18 @@ import type {
   LibraryTitleDetail,
   LibraryTitlePerson,
   LibraryTitlePlaying,
-  LibraryTitleProps,
 } from "./library-title.type";
 
 // The parts of the TV-app title page (#4476): the hero, the channels and the people.
+
+// The hero grows and the page's gutter widens from a tablet up, as in the mock.
+const SIDE_BY_SIDE = 768;
+
+// A phone's actions take the touch target.
+const useTitleLayout = () => {
+  const wide = useWindowWidth() >= SIDE_BY_SIDE;
+  return { wide, density: wide ? ("pointer" as const) : ("touch" as const) };
+};
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -39,64 +48,87 @@ const playingLine = ({ picture, audioChannels, subtitleLanguages }: LibraryTitle
     .join(" · ");
 
 // The backdrop with the title over its foot. The fade to the page keeps the title readable over any
-// picture; with no backdrop the placeholder surface stands in.
-const Hero = ({ title, wide }: { title: LibraryTitleDetail; wide: boolean }) => (
-  <Stack>
-    <Surface
-      backgroundColor="artworkPlaceholder"
-      borderWidth={0}
-      height={wide ? 360 : 220}
-      overflow="hidden"
-      position="relative"
-    >
-      {title.backdrop}
-      <Stack
-        aria-hidden
-        bottom={0}
-        height="60%"
-        left={0}
-        pointerEvents="none"
-        position="absolute"
-        right={0}
-        style={{ backgroundImage: "linear-gradient(transparent, var(--surfaceCanvas))" }}
-      />
-    </Surface>
-    <Stack gap="inline" marginTop={-48} position="relative">
-      {/* A logo stands for the name on screen; the heading still says it. */}
-      <Text
-        aria-label={title.logo ? title.name : undefined}
-        as="h1"
-        style={{ overflowWrap: "anywhere" }}
-        textRole="display"
+// picture; with no backdrop the placeholder surface stands in. `actions` sit over its top, each on
+// its own solid surface.
+const Hero = ({ title, actions }: { title: LibraryTitleDetail; actions: ReactNode }) => {
+  const { wide } = useTitleLayout();
+  return (
+    <Stack>
+      <Surface
+        backgroundColor="artworkPlaceholder"
+        borderWidth={0}
+        height={wide ? 360 : 220}
+        overflow="hidden"
+        position="relative"
       >
-        {title.logo ?? title.name}
-      </Text>
-      <Line gap="control">
-        {heroFacts(title).map((fact) => (
-          <Text key={fact} textRole="body" tone="secondary">
-            {fact}
+        {title.backdrop}
+        <Stack
+          aria-hidden
+          bottom={0}
+          height="60%"
+          left={0}
+          pointerEvents="none"
+          position="absolute"
+          right={0}
+          style={{ backgroundImage: "linear-gradient(transparent, var(--surfaceCanvas))" }}
+        />
+        <Stack
+          flexDirection="row"
+          justifyContent="space-between"
+          left={0}
+          padding="control"
+          position="absolute"
+          right={0}
+          top={0}
+        >
+          {actions}
+        </Stack>
+      </Surface>
+      <Stack gap="inline" marginTop={-48} paddingHorizontal="control" position="relative">
+        {title.logo ? (
+          <>
+            {/* The logo stands for the name on screen; the heading still says it. */}
+            <VisuallyHidden as="h1">
+              <Text textRole="display">{title.name}</Text>
+            </VisuallyHidden>
+            <Stack aria-hidden height={wide ? 96 : 64} maxWidth={wide ? 420 : 280} width="100%">
+              {title.logo}
+            </Stack>
+          </>
+        ) : (
+          // A name no one has fixed yet can be a file name with no spaces; it breaks mid-word.
+          <Text as="h1" style={{ overflowWrap: "anywhere" }} textRole="display">
+            {title.name}
           </Text>
-        ))}
-        {title.rating ? (
-          <Surface backgroundColor="transparent" paddingHorizontal="inline">
-            <Text textRole="compact">{title.rating}</Text>
-          </Surface>
-        ) : null}
-        {title.genres.length > 0 ? (
-          <Text textRole="compact" tone="muted">
-            {title.genres.join(", ")}
+        )}
+        <Line gap="control">
+          {heroFacts(title).map((fact) => (
+            <Text key={fact} textRole="body" tone="secondary">
+              {fact}
+            </Text>
+          ))}
+          {/* A bordered chip in the body face: mono is for file names only. */}
+          {title.rating ? (
+            <Surface backgroundColor="transparent" paddingHorizontal="inline">
+              <Text textRole="compact">{title.rating}</Text>
+            </Surface>
+          ) : null}
+          {title.genres.length > 0 ? (
+            <Text textRole="compact" tone="muted">
+              {title.genres.join(", ")}
+            </Text>
+          ) : null}
+          {title.score ? <Text textRole="body">{`Score ${title.score.toFixed(1)}/10`}</Text> : null}
+        </Line>
+        {title.tagline ? (
+          <Text style={{ fontStyle: "italic" }} textRole="body">
+            {title.tagline}
           </Text>
         ) : null}
-        {title.score ? <Text textRole="body">{`Score ${title.score.toFixed(1)}/10`}</Text> : null}
-      </Line>
-      {title.tagline ? (
-        <Text style={{ fontStyle: "italic" }} textRole="body">
-          {title.tagline}
-        </Text>
-      ) : null}
+      </Stack>
     </Stack>
-  </Stack>
-);
+  );
+};
 
 // The page's main content: when each channel shows it next, earliest first, then the channels
 // that hold it with nothing scheduled.
@@ -110,11 +142,11 @@ const OnChannels = ({ title }: { title: LibraryTitleDetail }) => {
   return (
     <Stack aria-label="On these channels" gap="control" role="region">
       <Text as="h2" textRole="headline">
-        On these channels
+        {rows.length > 0 ? "On these channels" : "Not on a channel yet"}
       </Text>
       {rows.length === 0 ? (
         <Text textRole="body" tone="secondary">
-          Not on a channel yet.
+          A channel can play it once it's in one of the channel's collections.
         </Text>
       ) : null}
       {rows.map((row) => (
@@ -128,7 +160,7 @@ const OnChannels = ({ title }: { title: LibraryTitleDetail }) => {
           />
           {"when" in row ? (
             <Stack>
-              <Text textRole="body">{`Next ${row.when}`}</Text>
+              <Text textRole="body">{row.when}</Text>
               {row.episode ? (
                 <Text textRole="compact" tone="secondary">
                   {row.episode}
@@ -164,73 +196,71 @@ const CREW = [
   ["writer", "Written by"],
 ] as const;
 
-const Person = ({
-  person,
-  onOpen,
-}: {
-  person: LibraryTitlePerson;
-  onOpen: LibraryTitleProps["onOpenPerson"];
-}) =>
-  person.personId && onOpen ? (
-    <Action density="touch" onPress={() => onOpen(person.personId as string)} variant="ghost">
-      {person.name}
-    </Action>
-  ) : (
-    <Text textRole="body">{person.name}</Text>
-  );
-
-const CastAndCrew = ({
-  credits,
-  onOpenPerson,
-}: {
-  credits: readonly LibraryTitlePerson[];
-  onOpenPerson: LibraryTitleProps["onOpenPerson"];
-}) => {
+// The crew and the title's other facts as labelled lines, then the cast with their initials.
+const CastAndCrew = ({ title }: { title: LibraryTitleDetail }) => {
+  const credits: readonly LibraryTitlePerson[] = title.credits ?? [];
   const cast = credits.filter((c) => c.role === "actor");
-  const crew = CREW.map(([role, label]) => ({
-    label,
-    people: credits.filter((c) => c.role === role),
-  })).filter((group) => group.people.length > 0);
-  if (credits.length === 0) return null;
+  const rows = [
+    ...CREW.map(([role, label]) => ({
+      label,
+      value: credits
+        .filter((c) => c.role === role)
+        .map((c) => c.name)
+        .join(", "),
+    })),
+    ...(title.about ?? []),
+  ].filter((row) => row.value);
   return (
-    <Stack aria-label="Cast and crew" gap="control" role="region">
-      <Text as="h2" textRole="headline">
-        Cast and crew
-      </Text>
-      {crew.map((group) => (
-        <Line key={group.label}>
-          <Text textRole="compact" tone="muted">
-            {group.label}
-          </Text>
-          {group.people.map((person) => (
-            <Person key={`${person.personId}:${person.name}`} onOpen={onOpenPerson} person={person} />
+    <>
+      {rows.length > 0 ? (
+        <Stack aria-label="About" gap="inline" role="region">
+          {rows.map((row) => (
+            <Line alignItems="baseline" flexWrap="nowrap" gap="control" key={row.label}>
+              <Stack width={104}>
+                <Text textRole="compact" tone="muted">
+                  {row.label}
+                </Text>
+              </Stack>
+              <Stack flexShrink={1} minWidth={0}>
+                <Text textRole="compact">{row.value}</Text>
+              </Stack>
+            </Line>
           ))}
-        </Line>
-      ))}
-      <Line alignItems="flex-start" columnGap="control" rowGap="section">
-        {cast.map((person) => (
-          <Stack alignItems="center" key={`${person.personId}:${person.character}`} width={112}>
-            <Surface
-              alignItems="center"
-              aria-hidden
-              borderRadius={32}
-              height={64}
-              justifyContent="center"
-              width={64}
-            >
-              <Text textRole="title">{initials(person.name)}</Text>
-            </Surface>
-            <Person onOpen={onOpenPerson} person={person} />
-            {person.character ? (
-              <Text textAlign="center" textRole="compact" tone="muted">
-                {person.character}
-              </Text>
-            ) : null}
-          </Stack>
-        ))}
-      </Line>
-    </Stack>
+        </Stack>
+      ) : null}
+      {cast.length > 0 ? (
+        <Stack aria-label="Cast" gap="control" role="region">
+          <Text as="h2" textRole="headline">
+            Cast
+          </Text>
+          <Line alignItems="flex-start" columnGap="control" rowGap="section">
+            {cast.map((person) => (
+              <Stack alignItems="center" key={`${person.name}:${person.character}`} width={104}>
+                <Surface
+                  alignItems="center"
+                  aria-hidden
+                  borderRadius={32}
+                  height={64}
+                  justifyContent="center"
+                  width={64}
+                >
+                  <Text textRole="title">{initials(person.name)}</Text>
+                </Surface>
+                <Text textAlign="center" textRole="label">
+                  {person.name}
+                </Text>
+                {person.character ? (
+                  <Text textAlign="center" textRole="compact" tone="muted">
+                    {person.character}
+                  </Text>
+                ) : null}
+              </Stack>
+            ))}
+          </Line>
+        </Stack>
+      ) : null}
+    </>
   );
 };
 
-export { CastAndCrew, Hero, OnChannels, playingLine };
+export { CastAndCrew, Hero, OnChannels, playingLine, useTitleLayout };
