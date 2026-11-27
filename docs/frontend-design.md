@@ -564,6 +564,13 @@ built from. The mock of record is [`design/watch-player/`](../design/watch-playe
 state on desktop, television, and an iPhone held upright and on its side. This section is the rules
 that mock follows; where they disagree, the mock wins and this text is fixed.
 
+**Decided next (maintainer, 2026-11-27): The Cross.** A critique of the shipped Home, Guide and Watch
+found one idea drawn six ways and a band that talks over the picture. The design that replaces
+variant J is [`design/watch/`](../design/watch/README.md): Loomarr opens on the picture, a channel
+column and the film strip meet at a lower third set as type, the Guide becomes a view of the same
+screen, and the band, the on-screen channel keys and the white Play key go. It is not built. This
+section describes variant J, which ships, and each build PR amends it for the part it changes.
+
 The player is **channel-first and feels like live TV, not a streaming app**: a channel number, a
 band that says what is on, a film strip of what is on next (where there is room for it), and a small
 remote. It has no glass, and nothing in it needs to be discovered by hovering.

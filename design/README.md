@@ -31,6 +31,13 @@ replaced the #2088 mock (2026-10-29) and, unlike the v2 files, **is** authoritat
 well as look. Its rules are `docs/frontend-design.md` §9. It supersedes the v2 desktop mock's Watch
 card and theater overlay.
 
+## Watching: The Cross (2026-11-27, decided and not yet built)
+
+[`watch/`](watch/README.md) is the next design for watching on every client: the picture as the front
+door, the channel column, the film strip, the Guide as a view of the same screen, and Home's wall. Its
+source is one self-contained `mock.html`. `watch-player/` and `docs/frontend-design.md` §9 stay
+authoritative for the shipped player (variant J) until the build lands.
+
 ## Library (2026-11-02 — ratified)
 
 [`library/`](library/README.md) is the mock of record for the Library nav item, Settings → Library

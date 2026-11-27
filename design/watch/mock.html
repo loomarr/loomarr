@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watching Loomarr: The Cross</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0B0C0E;--surface:#131519;--surface2:#1B1E24;--line:#2A2E37;--muted:#8B93A3;--text:#E7EAF0;--white:#fff;
+--amber:#FFB020;--red:#E5484D;--cyan:#4CC9E8;--ink:11,12,14}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font-family:Geist,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+::selection{background:var(--amber);color:#0B0C0E}
+.mono{font-family:"Geist Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+svg.ic{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+/* ---------- one screen ---------- */
+.screen{position:relative;overflow:hidden;background:#000}
+.abs{position:absolute}
+.pic{position:absolute;background:#000 url(picture.webp) center/cover no-repeat}
+.bright .pic{filter:brightness(2.4) saturate(.55) contrast(.8)}
+.dip{position:absolute;inset:0;background:rgba(var(--ink),.5)}
+.scrimB{position:absolute;inset:0;background:linear-gradient(0deg,rgba(var(--ink),.96) 0,rgba(var(--ink),.78) 26%,rgba(var(--ink),0) 56%)}
+.scrimB.low{background:linear-gradient(0deg,rgba(var(--ink),.94) 0,rgba(var(--ink),.7) 22%,rgba(var(--ink),0) 44%)}
+.scrimL{position:absolute;inset:0;background:linear-gradient(90deg,rgba(var(--ink),.95) 0,rgba(var(--ink),.84) 30%,rgba(var(--ink),0) 58%)}
+.scrimAll{position:absolute;inset:0;background:rgba(var(--ink),.72)}
+.cover{position:absolute;inset:0;background:rgba(var(--ink),.9);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;padding:0 32px}
+.cover h2{font-size:20px;font-weight:600;color:var(--white)}
+.cover p{font-size:14px;color:var(--muted);max-width:340px;line-height:1.5}
+.cover .btn{margin-top:14px;height:40px;padding:0 18px;border-radius:8px;border:1px solid #666970;display:inline-flex;align-items:center;font-size:14px;font-weight:500}
+/* the lower third: the crossing */
+.third{position:absolute;display:grid;align-items:center}
+.third .n{line-height:1;font-weight:500;text-align:right;letter-spacing:-.02em;color:var(--white)}
+.third h1{line-height:1.12;font-weight:600;color:var(--white);letter-spacing:-.01em;text-wrap:balance;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.third .meta{color:var(--muted);white-space:nowrap}
+.third .meta em{font-style:normal;color:var(--text)}
+.third .next{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.third .next b{font-weight:500;color:var(--text)}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-right:8px;vertical-align:middle;position:relative;top:-1px}
+.golive{display:inline-flex;align-items:center;margin-left:12px;padding:3px 10px;border:1px solid var(--red);border-radius:6px;color:#E85A5F;font-weight:500}
+.back{color:var(--cyan)}
+.caret{display:inline-block;width:.5em;height:.08em;background:currentColor;margin-left:.06em}
+.bars{position:absolute;height:3px;background:linear-gradient(90deg,#FFB020 0 14.3%,#F5D90A 0 28.6%,#3DD68C 0 42.9%,#4CC9E8 0 57.2%,#D6409F 0 71.5%,#E5484D 0 85.8%,#8B93A3 0)}
+/* the vertical arm: channels */
+.tabs{position:absolute;display:flex;color:var(--muted);white-space:nowrap}
+.tabs b{color:var(--text);font-weight:500;border-bottom:1px solid var(--text)}
+.query{position:absolute;color:var(--white);font-weight:500}
+.query small{font-weight:400;color:var(--muted);margin-left:14px}
+.row{position:absolute;display:grid;align-items:baseline}
+.row .n{color:var(--muted);text-align:right}
+.row .name{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .now{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .left{color:var(--muted)}
+.dial{position:absolute;width:10px;background:repeating-linear-gradient(180deg,var(--line) 0 1px,transparent 1px 15px)}
+.dial i{position:absolute;left:0;width:10px;background:repeating-linear-gradient(180deg,var(--text) 0 1px,transparent 1px 15px)}
+/* the horizontal arm: tonight on this channel */
+.strip{position:absolute;display:flex;align-items:flex-start}
+.blk{position:relative;flex:none}
+.still{border-radius:6px;background-size:cover;background-position:center}
+.blk .t{color:var(--muted);white-space:nowrap}
+.blk .ti{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.blk.focus .still{outline:2px solid var(--amber);outline-offset:3px}
+.s0{background-image:url(picture.webp)}
+.s1{background:linear-gradient(135deg,#24364f,#101721 72%)}
+.s2{background:linear-gradient(135deg,#5a2b2f,#1c1012 72%)}
+.s3{background:linear-gradient(135deg,#3b3a22,#15150d 72%)}
+.s4{background:linear-gradient(135deg,#2f2a4a,#12101c 72%)}
+.s5{background:linear-gradient(135deg,#1f4037,#0c1714 72%)}
+.s6{background:linear-gradient(135deg,#4a3320,#17100a 72%)}
+.spots{flex:none;display:flex}
+.spots i{display:block;border-radius:2px;background:rgba(255,176,32,.3)}
+.head{position:absolute;width:2px;background:var(--white)}
+.head::before{content:"";position:absolute;left:-4px;top:-5px;width:10px;height:10px;border-radius:50%;background:var(--white)}
+.fadeR{position:absolute;right:0;background:linear-gradient(90deg,rgba(var(--ink),0),rgba(var(--ink),.94))}
+.info{position:absolute}
+.info h3{font-weight:600;color:var(--white)}
+.info .f{color:var(--muted);margin-top:4px}
+.info p{color:var(--text);margin-top:8px;line-height:1.5}
+/* the guide: every channel's day at once, on one clock */
+.gb{position:absolute;border-radius:4px;padding:0 10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gb.focus{outline:2px solid var(--amber);outline-offset:2px}
+.gs{position:absolute;border-radius:2px;background:rgba(255,176,32,.3)}
+.nowtag{position:absolute;font-size:11px;background:var(--red);color:#0B0C0E;font-weight:500;border-radius:3px;padding:2px 6px;transform:translateX(-50%)}
+/* quiet controls */
+.keys{position:absolute;display:flex;align-items:center;color:var(--text)}
+.keys .k{display:grid;place-items:center;opacity:.82;border-radius:8px}
+.keys .k.open{opacity:1;background:var(--surface2)}
+.keys .k.focus{opacity:1;outline:2px solid var(--amber);outline-offset:2px}
+.top{position:absolute;display:flex;align-items:center;color:var(--text)}
+.rate{font-size:11px;letter-spacing:.06em;color:var(--text);opacity:.82}
+.help{position:absolute;display:flex;color:var(--muted);white-space:nowrap}
+.help b{font-weight:500;color:var(--text);margin-right:8px}
+.pill{position:absolute;display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:8px;background:rgba(var(--ink),.94);font-size:13px;font-weight:500;transform:translateX(-50%)}
+/* menus and sheets */
+.menu{position:absolute;background:var(--surface);border-radius:10px;padding:8px}
+.menu .h{font-size:12px;color:var(--muted);padding:8px 12px 6px}
+.menu .o{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:6px;font-size:14px}
+.menu .o small{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.menu .o.sel{color:var(--white);font-weight:500}
+.menu .o.focus{outline:2px solid var(--amber);outline-offset:-2px}
+.sheetB{left:0;right:0;bottom:0;border-radius:16px 16px 0 0;padding:10px 12px 40px}
+.sheetB::before{content:"";display:block;width:36px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 8px}
+.sheetR{top:0;bottom:0;right:0;border-radius:0;padding:20px 12px 20px 12px}
+/* the wall: Home, zoomed out */
+.rail{position:absolute;left:0;top:0;bottom:0;width:224px;border-right:1px solid var(--line);padding:22px 12px}
+.brand{display:flex;align-items:center;gap:10px;padding:0 12px 22px;font-weight:600;font-size:13px;letter-spacing:.18em}
+.brand i{display:block;width:52px;height:3px;background:linear-gradient(90deg,#FFB020 0 14.3%,#F5D90A 0 28.6%,#3DD68C 0 42.9%,#4CC9E8 0 57.2%,#D6409F 0 71.5%,#E5484D 0 85.8%,#8B93A3 0)}
+.nav{display:flex;align-items:center;gap:14px;height:40px;padding:0 12px;border-radius:6px;font-size:14px;color:var(--muted)}
+.nav.on{background:var(--surface2);color:var(--text);font-weight:500}
+.wtabs{position:absolute;display:flex;gap:28px;font-size:14px;color:var(--muted)}
+.wtabs b{color:var(--text);font-weight:500;padding-bottom:6px;border-bottom:1px solid var(--text)}
+.wcount{position:absolute;font-size:12px;color:var(--muted)}
+.wall{position:absolute;display:grid}
+.tile{position:relative;border-radius:8px;overflow:hidden;background-size:cover;background-position:center}
+.tile::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(var(--ink),.94),rgba(var(--ink),0) 62%),linear-gradient(180deg,rgba(var(--ink),.8),rgba(var(--ink),0) 46%)}
+.tile>*{position:absolute;z-index:1}
+.tile .n{left:14px;top:12px;font-size:20px;font-weight:500}
+.tile .left{right:14px;top:15px;font-size:12px}
+.tile .cap{left:14px;right:14px;bottom:14px}
+.tile .name{font-size:12px;color:var(--muted)}
+.tile .ti{margin-top:2px;font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .prog{left:0;right:0;bottom:0;height:2px;background:rgba(231,234,240,.16)}
+.tile .prog i{display:block;height:2px;background:var(--white)}
+.tile.here{outline:2px solid var(--text);outline-offset:3px}
+.tile.here .n{color:var(--cyan)}
+.sec{position:absolute;font-size:20px;font-weight:600}
+.trow{position:absolute;display:grid;grid-template-columns:96px 40px 1fr;column-gap:16px;align-items:baseline;height:46px;padding-top:13px;border-top:1px solid var(--surface2);font-size:14px}
+.trow .mono{color:var(--muted);font-size:13px}
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:83px;border-top:1px solid var(--line);background:var(--bg);display:flex;justify-content:space-around;padding-top:10px;font-size:10px;color:var(--muted)}
+.tabbar div{display:flex;flex-direction:column;align-items:center;gap:4px}
+.tabbar .on{color:var(--text);font-weight:500}
+.island{position:absolute;left:50%;top:11px;width:124px;height:36px;border-radius:20px;background:#000;transform:translateX(-50%);z-index:5}
+.homeind{position:absolute;left:50%;bottom:8px;width:134px;height:5px;border-radius:3px;background:rgba(231,234,240,.8);transform:translateX(-50%);z-index:5}
+/* ---------- the gallery ---------- */
+.gal{padding:48px 48px 96px;max-width:1500px;margin:0 auto}
+.gal h1{font-size:32px;font-weight:600;letter-spacing:-.01em}
+.gal .lede{margin-top:10px;max-width:68ch;color:var(--muted);font-size:15px;line-height:1.55}
+.gal h2{margin:56px 0 4px;font-size:20px;font-weight:600}
+.gal .dn{color:var(--muted);font-size:13px;margin-bottom:20px}
+.grid{display:flex;flex-wrap:wrap;gap:28px 24px}
+.cell a{display:block;border-radius:6px;overflow:hidden;outline:1px solid var(--line)}
+.cell a:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+.cell iframe{border:0;display:block;transform-origin:0 0;pointer-events:none}
+.cell .cap{margin-top:10px;font-size:14px;font-weight:500}
+.cell .why{margin-top:2px;font-size:13px;color:var(--muted);line-height:1.45}
+</style>
+</head>
+<body>
+<script>
+const q = new URLSearchParams(location.search);
+const ICON = {
+  back:'<path d="M15 5l-7 7 7 7"/>', pause:'<path d="M8 5v14M16 5v14"/>', play:'<path d="M7 5l12 7-12 7z"/>',
+  cc:'<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 13h4M13 13h4"/>',
+  audio:'<path d="M5 10v4M9 7v10M13 4v16M17 8v8M21 11v2"/>',
+  vol:'<path d="M4 9h4l5-4v14l-5-4H4zM17 9a4 4 0 0 1 0 6"/>',
+  mute:'<path d="M4 9h4l5-4v14l-5-4H4zM17 10l4 4M21 10l-4 4"/>',
+  full:'<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  more:'<path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"/>',
+  air:'<path d="M6 17H4V5h16v12h-2M12 15l5 6H7z"/>',
+  pip:'<rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="12" width="6" height="4" rx="1" fill="currentColor"/>',
+  check:'<path d="M5 12l5 5 9-10"/>', home:'<path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/>',
+  guide:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 5v15"/>',
+  inbox:'<path d="M4 13l3-8h10l3 8v6H4zM4 13h5l1 2h4l1-2h5"/>', bell:'<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/>',
+  help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 1-1 1.7M12 17h.01"/>',
+  tv:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 3l4 4 4-4"/>'
+};
+const ic = (name, s = 22) => `<svg class="ic" viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true">${ICON[name]}</svg>`;
+
+// The invented household: 34 channels, these the ones around channel 7.
+const CH = {
+  2:{name:'Cartoon Classics',now:'Kettle Kids · The Upside-Down Picnic',short:'Kettle Kids',left:'6 min',s:5,p:74},
+  3:{name:'Saturday Mornings',now:'Harbour Hounds · The Borrowed Boat',short:'Harbour Hounds',left:'14 min',s:4,p:52},
+  5:{name:'Sitcom Corner',now:'Two Doors Down · back in 2 min',short:'Two Doors Down',left:'break',s:2,p:36},
+  7:{name:'Coast 90s',now:'The Diner Years · Opening Night',short:'The Diner Years',left:'35 min',s:0,p:22},
+  9:{name:'Movie Matinee',now:'The Marigold Protocol',short:'The Marigold Protocol',left:'63 min',s:1,p:40},
+  12:{name:'Game Night',now:'Buzzer Round · Champions Week, Day 3',short:'Buzzer Round',left:'24 min',s:3,p:18},
+  14:{name:'Sunday Westerns',now:'A Quiet Day in Dry Gulch and the Long Ride Home Afterwards',short:'A Quiet Day in Dry Gulch and the Long Ride Home Afterwards',left:'63 min',s:6,p:58},
+  19:{name:'Noir Nights',now:'Cold Relay · Voices on a Dead Channel',short:'Cold Relay',left:'41 min',s:1,p:30},
+  20:{name:'Game Show Vault',now:'Odds and Evens · The Lightning Round',short:'Odds and Evens',left:'9 min',s:3,p:80},
+  21:{name:'Late Movies',now:'Midnight at the Mapleton',short:'Midnight at the Mapleton',left:'86 min',s:4,p:12},
+  22:{name:'Cozy Autumn Horror',now:'The Harvest House',short:'The Harvest House',left:'52 min',s:2,p:44},
+  23:{name:'Kung Fu Theater',now:'Two Sides of the Ridge',short:'Two Sides of the Ridge',left:'77 min',s:5,p:26},
+  24:{name:'Midnight Anime',now:'Beacon of the Hollow Moon',short:'Beacon of the Hollow Moon',left:'18 min',s:4,p:70},
+  31:{name:'Sunday Matinee',now:'The Long Way to Marrow Bay',short:'The Long Way to Marrow Bay',left:'1 hr 12',s:1,p:34},
+  40:{name:'Sports Replay',now:'A baseball classic',short:'A baseball classic',left:'2 hr 3',s:5,p:15},
+  55:{name:'Frontier Westerns',now:'Dust on the Telegraph Line',short:'Dust on the Telegraph Line',left:'33 min',s:6,p:61}
+};
+const STRIP = [
+  {w:250,s:0,t:'Now · until 10:55',ti:'The Diner Years',now:1},{spots:3},
+  {w:300,s:1,t:'10:58 AM',ti:'Last Case on Harbor Street'},{spots:2},
+  {w:170,s:2,t:'12:34 PM',ti:'The Diner Years'},{spots:3},
+  {w:190,s:3,t:'1:02 PM',ti:'Beacon of the Hollow Moon'},{spots:2},
+  {w:220,s:4,t:'2:40 PM',ti:'Two Sides of the Ridge'}
+];
+
+// Each channel's day in minutes from 10:00 AM: [start, end, title]. A gap between two is a break.
+const SCHED = {
+  2:[[-4,26,'Kettle Kids'],[29,51,'Kettle Kids'],[54,76,'Harbour Hounds'],[79,101,'Harbour Hounds'],[104,126,'Kettle Kids'],[129,151,'Kettle Kids'],[154,200,'Harbour Hounds']],
+  3:[[4,34,'Harbour Hounds'],[37,67,'The Night Shift'],[70,100,'Harbour Hounds'],[103,133,'Odds and Evens'],[136,200,'Harbour Hounds']],
+  5:[[-8,19,'Two Doors Down'],[23,53,'Two Doors Down'],[56,86,'The Night Shift'],[89,119,'Two Doors Down'],[122,152,'The Night Shift'],[155,200,'Two Doors Down']],
+  7:[[-25,55,'The Diner Years'],[58,154,'Last Case on Harbor Street'],[157,200,'The Diner Years']],
+  9:[[-21,83,'The Marigold Protocol'],[83,175,'Beacon of the Hollow Moon'],[175,260,'Two Sides of the Ridge']],
+  12:[[-3,44,'Buzzer Round'],[47,91,'Buzzer Round'],[94,138,'Odds and Evens'],[141,200,'Odds and Evens']],
+  14:[[-48,83,'A Quiet Day in Dry Gulch and the Long Ride Home Afterwards'],[83,171,'Dust on the Telegraph Line'],[171,260,'A Quiet Day in Dry Gulch']],
+  19:[[-10,61,'Cold Relay'],[64,150,'The Harbor at Midnight'],[153,200,'Cold Relay']],
+  20:[[-18,29,'Odds and Evens'],[32,76,'Buzzer Round'],[79,123,'Odds and Evens'],[126,170,'Buzzer Round'],[173,220,'Odds and Evens']],
+  21:[[-3,106,'Midnight at the Mapleton'],[106,200,'Cold Relay']],
+  22:[[-30,72,'The Harvest House'],[75,165,'A Cold October'],[168,260,'The Harvest House']],
+  23:[[-20,97,'Two Sides of the Ridge'],[100,200,'The Iron Ferry']],
+  24:[[-9,38,'Beacon of the Hollow Moon'],[41,85,'Hollow Moon, Part Two'],[88,132,'Signal Fires'],[135,200,'Signal Fires']]
+};
+const clock = m => { const h = 10 + Math.floor(m / 60), mm = String(m % 60).padStart(2, '0'); return `${h > 12 ? h - 12 : h}:${mm} ${h >= 12 ? 'PM' : 'AM'}`; };
+// The grid is the cross with every row's strip open. g: where it sits and how wide a minute is.
+const grid = (g, o = {}) => {
+  let h = '';
+  // A clock label gives way to the now tag where the two would touch.
+  for (let m = 0; m < g.span; m += g.tick ?? 30) if (m * g.k >= g.now * g.k + 30 || m * g.k + 64 <= g.now * g.k - 30) h += `<span class="abs mono" style="left:${g.x + m * g.k}px;top:${g.y}px;font-size:12px;color:var(--muted)">${clock(m)}</span>`;
+  g.rows.forEach((n, i) => {
+    const top = g.y + 30 + i * g.pitch, tuned = n === 7, ty = top + Math.round((g.bh - g.fn * 1.3) / 2);
+    h += `<span class="abs mono" style="left:${g.cx}px;top:${ty}px;width:${g.numW}px;text-align:right;font-size:${g.fn}px;color:${tuned ? 'var(--cyan)' : 'var(--muted)'}">${n}</span>`;
+    if (g.nameW) h += `<span class="abs" style="left:${g.cx + g.numW + g.gap}px;top:${ty}px;width:${g.nameW}px;font-size:${g.fname}px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${tuned ? 'var(--white)' : 'var(--text)'}">${CH[n].name}</span>`;
+    let prev = null;
+    SCHED[n].forEach((b, j) => {
+      const s = Math.max(0, b[0]), e = Math.min(g.span, b[1]);
+      if (prev != null && b[0] > 0 && prev < g.span && b[0] - prev >= 2) h += `<i class="gs" style="left:${g.x + prev * g.k + 1}px;top:${top}px;width:${Math.max(3, (Math.min(g.span, b[0]) - prev) * g.k - 4)}px;height:${g.bh}px"></i>`;
+      prev = b[1];
+      if (e <= s) return;
+      const on = b[0] <= g.now && b[1] > g.now, focus = o.focus && o.focus[0] === n && o.focus[1] === j, w = (e - s) * g.k - 2;
+      h += `<div class="gb${focus ? ' focus' : ''}" style="left:${g.x + s * g.k}px;top:${top}px;width:${w}px;height:${g.bh}px;line-height:${g.bh}px;font-size:${g.fb}px;background:${tuned && on ? 'var(--line)' : on ? 'var(--surface2)' : 'var(--surface)'};color:${on ? 'var(--white)' : 'var(--text)'}">${w > 60 ? b[2] : ''}</div>`;
+    });
+  });
+  const nx = g.x + g.now * g.k;
+  return h + `<i class="abs" style="left:${nx}px;top:${g.y + 22}px;width:1px;height:${g.rows.length * g.pitch + 4}px;background:var(--red)"></i><span class="nowtag mono" style="left:${nx}px;top:${g.y - 3}px">10:20</span>`;
+};
+
+// Drawn stand-ins for each programme's artwork. Real stills bring their own colour.
+const ART = {
+  'Kettle Kids':'#e0a02e,#b5442a','Harbour Hounds':'#2e8fc2,#1b4f8a','The Night Shift':'#4a3a8a,#16122e','Two Doors Down':'#c0503a,#6b2440',
+  'Last Case on Harbor Street':'#2f6488,#0f2233','The Marigold Protocol':'#c98a1e,#5a3410','Beacon of the Hollow Moon':'#5a4bb0,#1d1a4a',
+  'Hollow Moon, Part Two':'#5a4bb0,#1d1a4a','Buzzer Round':'#c23a90,#4a1a5c','Odds and Evens':'#35a86c,#14573b',
+  'A Quiet Day in Dry Gulch and the Long Ride Home Afterwards':'#b5713a,#4a2a14','A Quiet Day in Dry Gulch':'#b5713a,#4a2a14','Dust on the Telegraph Line':'#9a6b3f,#3a2616',
+  'Cold Relay':'#4a6272,#131c24','The Harbor at Midnight':'#1f4a6e,#0a1420','Midnight at the Mapleton':'#8a2d3e,#200c14','The Harvest House':'#b5521e,#3a1608',
+  'A Cold October':'#6b6f3a,#22240f','Two Sides of the Ridge':'#3f7a5a,#12281c','The Iron Ferry':'#5a5f6b,#1a1c22','Signal Fires':'#c2552d,#3a1408'
+};
+// ?art=0 draws a library with no artwork at all: every still gives way to a flat tone.
+const NOART = q.get('art') === '0';
+const art = t => NOART ? 'var(--surface2)' : t === 'The Diner Years' ? 'url(picture.webp) center/cover' : `linear-gradient(120deg,${ART[t] ?? '#2A2E37,#131519'})`;
+// The one control that swaps the channel column for the guide, at the end of the group tabs.
+// It carries its word where there is room; on a phone it is the glyph alone, with the name for screen readers.
+const swap = (on, word = false) => `<span style="display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 ${word ? 10 : 6}px;margin:-7px 0 0 4px;border-radius:6px;color:var(--text);${on ? 'background:var(--surface2);font-weight:500' : 'opacity:.86'}">${ic('guide', 18)}${word ? 'Guide' : ''}</span>`;
+// Each channel's decade colour; a channel with none is plain.
+const DEC = {2:'#4CC9E8',3:'#F5D90A',5:'#E85A5F',7:'#4CC9E8',9:'#F5D90A',12:'#4CC9E8',20:'#E85A5F',22:'#F5D90A',23:'#E85A5F',24:'#4CC9E8'};
+// The guide with its content showing: what is on now carries its artwork, the tuned channel's row is the
+// film strip at full height, runs of one series read as one block, and breaks are quiet ticks.
+const guide = (g, o = {}) => {
+  const nx = g.x + g.now * g.k, total = (g.rows.length - 1) * (g.bh + g.rg) + g.th;
+  let h = '', top = g.y + 30;
+  for (let m = 0; m < g.span; m += 30) {
+    if (m * g.k >= g.now * g.k + 30 || m * g.k + 64 <= g.now * g.k - 30) h += `<span class="abs mono" style="left:${g.x + m * g.k}px;top:${g.y}px;font-size:12px;color:var(--muted)">${clock(m)}</span>`;
+    if (m) h += `<i class="abs" style="left:${g.x + m * g.k - 1}px;top:${g.y + 24}px;width:1px;height:${total + 8}px;background:rgba(231,234,240,.06)"></i>`;
+  }
+  g.rows.forEach(n => {
+    const tuned = n === 7, H = tuned ? g.th : g.bh, fn = tuned ? Math.round(g.fn * 1.7) : g.fn;
+    h += `<span class="abs mono" style="left:${g.cx}px;top:${top + Math.round((H - fn * 1.2) / 2)}px;width:${g.numW}px;text-align:right;font-size:${fn}px;line-height:1.2;font-weight:${tuned ? 500 : 400};color:${DEC[n] ?? 'var(--text)'}">${n}</span>`;
+    if (g.nameW) h += `<span class="abs" style="left:${g.cx + g.numW + g.gap}px;top:${top + Math.round((H - g.fname * 1.3) / 2)}px;width:${g.nameW}px;font-size:${g.fname}px;font-weight:${tuned ? 600 : 500};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${tuned ? 'var(--white)' : 'var(--text)'}">${CH[n].name}</span>`;
+    const runs = [];
+    SCHED[n].forEach(b => { const last = runs[runs.length - 1]; if (!tuned && last && last.t === b[2]) { last.cuts.push([last.e, b[0]]); last.e = b[1]; last.n++; } else runs.push({s: b[0], e: b[1], t: b[2], n: 1, cuts: []}); });
+    let prev = null;
+    runs.forEach((r, j) => {
+      if (prev != null && r.s - prev >= 2 && r.s > 0 && r.s < g.span) h += `<i class="abs" style="left:${Math.round(g.x + (prev + r.s) / 2 * g.k) - 1}px;top:${top + Math.round(H * .3)}px;width:2px;height:${Math.round(H * .4)}px;border-radius:1px;background:rgba(255,176,32,.55)"></i>`;
+      prev = r.e;
+      const s = Math.max(0, r.s), e = Math.min(g.span, r.e); if (e <= s) return;
+      const x = g.x + s * g.k, w = (e - s) * g.k - 2, on = r.s <= g.now && r.e > g.now, focus = o.focus && o.focus[0] === n && o.focus[1] === j;
+      const eps = r.n > 1 && w > 190 ? `<span style="font-weight:400;color:rgba(231,234,240,.72);margin-left:8px">${r.n} episodes</span>` : '';
+      // Episode boundaries inside a run sit on the block's foot, clear of its title.
+      const cuts = r.cuts.map(c => `<i style="position:absolute;left:${Math.round(((c[0] + c[1]) / 2 - s) * g.k) - 1}px;bottom:0;width:2px;height:7px;background:rgba(255,176,32,.75)"></i>`).join('');
+      const ring = focus ? 'outline:2px solid var(--amber);outline-offset:2px;' : '';
+      if (on || tuned) {
+        const aired = on ? `<i style="position:absolute;left:0;top:0;bottom:0;width:${nx - x}px;background:rgba(var(--ink),.62)"></i>` : '';
+        const tl = on && x + w - nx > 76 ? nx - x + 12 : 10;
+        const text = tuned
+          ? `<div style="position:absolute;left:${tl}px;right:8px;bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><div class="mono" style="font-size:11px;color:rgba(231,234,240,.78)">${w - tl < 132 ? (on ? 'Now' : clock(r.s).replace(/ .M/, '')) : on ? 'Now · until ' + clock(r.e).replace(/ .M/, '') : clock(r.s)}</div><div style="font-size:${g.fb + 1}px;font-weight:600;color:var(--white);margin-top:1px;overflow:hidden;text-overflow:ellipsis">${r.t}</div></div>`
+          : `<div style="position:absolute;left:${tl}px;right:8px;top:0;line-height:${H}px;font-size:${g.fb}px;font-weight:600;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${w - tl > 50 ? r.t + eps : ''}</div>`;
+        h += `<div class="abs" style="left:${x}px;top:${top}px;width:${w}px;height:${H}px;border-radius:4px;overflow:hidden;background:${art(r.t)};${ring}">
+          <i style="position:absolute;inset:0;background:${tuned ? 'linear-gradient(0deg,rgba(var(--ink),.88),rgba(var(--ink),.08) 70%)' : 'linear-gradient(90deg,rgba(var(--ink),.5),rgba(var(--ink),.2))'}"></i>${aired}${cuts}${text}</div>`;
+      } else {
+        h += `<div class="gb" style="left:${x}px;top:${top}px;width:${w}px;height:${H}px;line-height:${H}px;font-size:${g.fb}px;background:var(--surface);color:var(--text);${ring}">${cuts}${w > 150 ? `<span class="mono" style="font-weight:400;font-size:12px;color:var(--muted);margin-right:8px">${clock(Math.max(r.s, 0)).replace(/ .M/, '')}</span>` : ''}${w > 60 ? r.t + eps : ''}</div>`;
+      }
+    });
+    top += H + g.rg;
+  });
+  return h + `<i class="abs" style="left:${nx - 1}px;top:${g.y + 22}px;width:2px;height:${total + 12}px;background:var(--red)"></i><span class="nowtag mono" style="left:${nx}px;top:${g.y - 3}px">10:20</span>`;
+};
+
+// One layout table per device. Everything a device changes is here, once.
+const DEV = {
+  desktop:{W:1440,H:900,pad:64,safeT:0,numW:72,gap:24,cross:628,num:64,title:34,meta:15,rowN:20,rowName:16,rowNow:13,rowW:440,pitch:64,above:3,below:2,up:104,down:132,
+    stripX:584,stripH:96,stripK:1,cap:[12,14],tabs:326,tabF:14,keys:['cc','audio','vol','full','more'],keyS:22,keyGap:26,pointer:1},
+  tv:{W:960,H:540,pad:48,safeT:27,numW:60,gap:20,cross:340,num:52,title:30,meta:15,rowN:18,rowName:16,rowNow:13,rowW:330,pitch:56,above:3,below:1,up:92,down:118,
+    stripX:470,stripH:78,stripK:.72,cap:[12,14],tabs:84,tabF:14,keys:['cc','audio','more'],keyS:24,keyGap:30,remote:1},
+  landscape:{W:844,H:390,pad:59,safeT:0,numW:46,gap:14,cross:232,num:40,title:22,meta:13,rowN:15,rowName:14,rowNow:12,rowW:270,pitch:46,above:2,below:1,up:70,down:90,
+    stripX:410,stripH:56,stripK:.6,cap:[12,13],tabs:72,tabF:13,keys:['pause','cc','audio','more'],keyS:22,keyGap:26,touch:1}
+};
+
+const third = (d, o = {}) => {
+  const n = o.n ?? 7, colour = o.typing ? 'var(--amber)' : (o.plain ? 'var(--white)' : 'var(--cyan)');
+  const meta = o.meta ?? `<span class="dot"></span><em>Coast 90s</em> · “Opening Night” · <em>35 min left</em>`;
+  return `<div class="third" style="left:${d.pad}px;top:${d.cross}px;grid-template-columns:${d.numW}px ${o.w ?? d.rowW - d.numW + 40}px;column-gap:${d.gap}px">
+    <span class="n mono" style="font-size:${d.num}px;color:${colour};white-space:nowrap${o.typing ? ';justify-self:end;border-bottom:3px solid currentColor;padding-bottom:4px' : ''}">${n}</span>
+    <div><h1 style="font-size:${d.title}px">${o.title ?? 'The Diner Years'}</h1>
+      <div class="meta" style="font-size:${d.meta}px;margin-top:${Math.round(d.meta * .5)}px">${meta}</div>
+      ${o.next ? `<div class="next" style="font-size:${d.meta - 1}px;margin-top:${Math.round(d.meta * .45)}px">Next <span class="mono">10:58 AM</span> <b>Last Case on Harbor Street</b></div>` : ''}
+    </div></div>`;
+};
+const row = (d, n, top, fade = 1) => `<div class="row" style="left:${d.pad}px;top:${top}px;width:${d.rowW}px;grid-template-columns:${d.numW}px 1fr auto;column-gap:${d.gap}px;opacity:${fade}">
+  <span class="n mono" style="font-size:${d.rowN}px${DEC[n] ? `;color:${DEC[n]}` : ''}">${n}</span>
+  <div style="min-width:0"><div class="name" style="font-size:${d.rowName}px">${CH[n].name}</div><div class="now" style="font-size:${d.rowNow}px;margin-top:3px">${CH[n].now}</div></div>
+  <span class="left mono" style="font-size:12px">${CH[n].left}</span></div>`;
+const column = (d, o = {}) => {
+  const tx = d.pad + d.numW + d.gap, up = [5, 3, 2].slice(0, d.above), dn = [9, 12].slice(0, d.below), fades = [1, .92, .82];
+  let h = o.find
+    ? `<div class="query" style="left:${tx}px;top:${d.tabs - 4}px;font-size:${d.tabF + 6}px">we<span class="caret" style="width:2px;height:1em;vertical-align:-.12em"></span><small style="font-size:${d.tabF}px">2 channels</small></div>`
+    : `<nav class="tabs" style="left:${tx}px;top:${d.tabs}px;gap:${d.tabF * 2}px;font-size:${d.tabF}px"><span>Favourites</span><b style="padding-bottom:6px">All 34</b><span>Recent</span><span>By decade</span>${d.remote ? '' : swap(false)}</nav>`;
+  if (o.find) { h += row(d, 14, d.cross - d.up - d.pitch) + row(d, 55, d.cross - d.up); }
+  else {
+    up.forEach((n, i) => h += row(d, n, d.cross - d.up - i * d.pitch, fades[i]));
+    dn.forEach((n, i) => h += row(d, n, d.cross + d.down + i * d.pitch, fades[i]));
+  }
+  if (d.pointer && !o.find) h += `<div class="dial" style="left:28px;top:370px;height:495px"><i style="top:105px;height:106px"></i></div>`;
+  return h;
+};
+const strip = (d, o = {}) => {
+  const k = d.stripK, H = d.stripH; let x = 0, focusX = 0, h = '';
+  (o.data ?? STRIP).forEach((b, i) => {
+    if (b.spots) { const w = Math.round(7 * k) + 1; h += `<div class="spots" style="gap:2px;margin:0 ${Math.round(6 * k)}px">${`<i style="width:${w}px;height:${H}px"></i>`.repeat(b.spots)}</div>`; x += b.spots * (w + 2) - 2 + 2 * Math.round(6 * k); return; }
+    const w = Math.round(b.w * k), focus = o.focus === i;
+    if (focus) focusX = x;
+    // With no artwork a block is its words: the time and title sit inside it, so no box is ever empty.
+    const words = (m1, m2) => `<div class="t mono" style="font-size:${d.cap[0]}px;margin-top:${m1}px">${b.t}</div><div class="ti" style="font-size:${d.cap[1]}px;margin-top:${m2}px">${b.ti}</div>`;
+    h += `<div class="blk${focus ? ' focus' : ''}" style="width:${w}px">${NOART
+        ? `<div class="still" style="height:${H}px;background:var(--${b.now ? 'surface2' : 'surface'});padding:0 10px 0 ${b.now ? Math.round(w * .37) + 12 : 10}px;display:flex;flex-direction:column;justify-content:center;overflow:hidden">${words(0, 2)}</div>`
+        : `<div class="still s${b.s}" style="height:${H}px"></div>`}
+      ${b.now ? `<div class="head" style="left:${Math.round(w * .37)}px;top:-8px;height:${H + 16}px"></div>` : ''}
+      ${NOART ? '' : words(10, 2)}</div>`;
+    x += w;
+  });
+  const top = o.top ?? d.cross - 10, left = o.left ?? d.stripX;
+  const r = o.right ?? 0;
+  let out = `<div class="strip" style="left:${left}px;top:${top}px">${h}</div><div class="fadeR" style="right:${r}px;top:${top - 20}px;width:${Math.round(d.W * .1)}px;height:${H + 90}px"></div>`;
+  if (r) out += `<div class="abs" style="right:0;top:${top - 20}px;width:${r}px;height:${H + 90}px;background:var(--bg)"></div>`;
+  if (o.focus != null && !o.noInfo) out += `<div class="info" style="left:${left + focusX}px;bottom:${d.H - top + 22}px;width:${Math.min(430, d.W - left - focusX - d.pad)}px">
+    <h3 style="font-size:${d.title * .62}px">Last Case on Harbor Street</h3><div class="f mono" style="font-size:12px">10:58 AM to 12:34 PM · 1994 · TV-PG · Drama</div>
+    <p style="font-size:${d.meta - 1}px">A harbor detective takes one last case the week before he retires.</p></div>`;
+  return out;
+};
+const keys = (d, o = {}) => `<div class="keys" style="right:${d.pad}px;${o.top != null ? `top:${o.top}px` : `bottom:${d.remote ? 27 + 8 : d.touch ? 30 : 44}px`};gap:${d.keyGap - 14}px">${
+  d.keys.map(k => `<span class="k${o.open === k ? ' open' : ''}${o.focus === k ? ' focus' : ''}" style="width:${d.keyS + 14}px;height:${d.keyS + 14}px">${ic(o.muted && k === 'vol' ? 'mute' : (o.paused && k === 'pause' ? 'play' : k), d.keyS)}</span>`).join('')}</div>`;
+const topLeft = d => d.remote ? '' : `<div class="top" style="left:${d.pad - 7}px;top:${d.touch ? 22 : 36}px;gap:14px"><span style="display:grid;place-items:center;width:36px;height:36px;opacity:.82">${ic('back', 22)}</span><span class="rate mono">TV-PG</span></div>`;
+const help = d => d.pointer ? `<div class="help mono" style="left:${d.stripX}px;bottom:52px;gap:28px;font-size:12px"><span><b>Up Down</b>channels</span><span><b>Left Right</b>later today</span><span><b>Enter</b>picture</span></div>` : '';
+const subs = (d, cls, style) => `<div class="menu ${cls}" style="${style}"><div class="h">Subtitles</div><div class="o">Off</div>
+  <div class="o sel${d.remote ? ' focus' : ''}">English ${ic('check', 18)}</div><div class="o"><span>English, with sounds<small>For the deaf and hard of hearing</small></span></div><div class="o">Spanish</div></div>`;
+// More holds only what has no key of its own. The channel list and Info left it: the column and the
+// synopsis under the strip do those jobs.
+const more = (d, cls, style) => `<div class="menu ${cls}" style="${style}"><div class="h">More</div>
+  <div class="o">Picture<span style="color:var(--muted);font-size:13px">Auto · 1080p</span></div><div class="o">Playback details</div>${d.pointer ? '<div class="o">Picture in picture</div>' : ''}</div>`;
+// The cold start's hold: the seven bars as a band across the picture, the number in ink on them.
+const coldBand = (name = 'Coast 90s', n = 7, k = 1) => `<div class="abs" style="inset:0;background:rgba(var(--ink),.86)"></div>
+  <div class="abs" style="left:0;right:0;top:36%;height:28%;display:flex">${['#FFB020','#F5D90A','#3DD68C','#4CC9E8','#D6409F','#E5484D','#8B93A3'].map(c => `<i style="flex:1;background:${c}"></i>`).join('')}</div>
+  <div class="abs" style="left:0;right:0;top:36%;height:28%;display:flex;align-items:center;justify-content:center;gap:${18 * k}px;color:#0B0C0E">
+    <span class="mono" style="font-size:${88 * k}px;font-weight:500;line-height:1;letter-spacing:-.02em">${n}</span>
+    <span><span style="display:block;font-size:${26 * k}px;font-weight:600;line-height:1.15">${name}</span><span style="display:block;font-size:${14 * k}px;margin-top:${4 * k}px">Tuning in…</span></span></div>`;
+const cover = () => `<div class="cover"><span style="color:var(--muted)">${ic('tv', 28)}</span><h2>Coast 90s is off air</h2><p>This channel is paused, so there’s nothing to watch.</p><span class="btn">Leave</span></div>`;
+
+// Desktop, television and a phone on its side share one composition.
+const wide = (d, state) => {
+  const P = `<div class="pic" style="inset:0"></div>`, B = `<div class="scrimB"></div>`, L = `<div class="scrimL"></div>`, Bl = `<div class="scrimB low"></div>`, T = topLeft(d);
+  // On a phone the quiet row steps away while the guide is open: the strip needs the width.
+  const K = d.touch && ['column', 'cross', 'later'].includes(state) ? '' : keys(d);
+  const unmute = d.pointer ? `<div class="pill" style="left:50%;top:36px">${ic('mute', 18)}Click to unmute</div>` : '';
+  if (state === 'guide') {
+    // Television: the picture docks top right, and focus starts on the tuned channel's on-air block.
+    const g = {x:264,y:214,k:5.4,span:120,now:20,rows:[3,5,7,9,12],bh:38,th:68,rg:6,cx:d.pad,numW:44,gap:16,nameW:150,fn:16,fname:15,fb:14};
+    return `<div class="abs" style="inset:0;background:var(--bg)"></div>` + third({...d, cross: 44}, {w: 420})
+      + `<div class="abs" style="left:624px;top:27px;width:288px;height:162px;border-radius:6px;overflow:hidden"><div class="pic" style="inset:0"></div></div>`
+      + `<nav class="tabs" style="left:${d.pad + d.numW + d.gap}px;top:152px;gap:28px;font-size:14px"><span>Favourites</span><b style="padding-bottom:6px">All 34</b><span>Recent</span><span>By decade</span></nav>`
+      + guide(g, {focus: [7, 0]}) + `<div class="abs" style="left:0;right:0;bottom:0;height:34px;background:linear-gradient(0deg,var(--bg),rgba(var(--ink),0))"></div>`;
+  }
+  switch (state) {
+    case 'rest': return P;
+    case 'third': return P + Bl + T + third(d, {next: 1}) + K;
+    case 'unmute': return P + Bl + T + third(d, {next: 1}) + keys(d, {muted: 1}) + unmute;
+    case 'column': return P + B + L + T + column(d) + third(d) + K;
+    case 'cross': return P + B + L + T + column(d) + third(d) + strip(d) + help(d) + K;
+    case 'later': return P + B + L + `<div class="scrimAll" style="opacity:.45"></div>` + T + column(d) + third(d) + strip(d, {focus: 2}) + help(d) + K;
+    case 'find': return P + B + L + T + column(d, {find: 1}) + third(d) + K;
+    case 'break': return P + Bl + T + third(d, {meta: `<em>Coast 90s</em> · <span class="back">Back in 2 min</span>`, next: 1}) + K;
+    case 'behind': return P + Bl + T + third(d, {meta: `<em>Coast 90s</em> · 2 min behind<span class="golive"><span class="dot" style="top:0"></span>Go live</span>`, next: 1}) + keys(d, {paused: 1});
+    case 'nothing': return P + Bl + T + third(d, {title: 'Coast 90s', meta: 'Nothing scheduled'}) + K;
+    case 'typing': return P + Bl + third(d, {n: 12, typing: 1, title: 'Game Night', meta: `Buzzer Round · <em>tuning in 2 s</em>`});
+    case 'tune': return P + `<div class="dip"></div>` + B + `<div class="bars" style="left:${d.pad}px;top:${d.cross - 18}px;width:${Math.round(d.W * .46)}px"></div>` + third(d, {n: 12, title: 'Game Night', meta: `<span class="dot"></span><em>Game Night</em> · “Champions Week, Day 3” · <em>24 min left</em>`});
+    case 'subtitles': return P + B + T + third(d, {next: 1}) + keys(d, {open: 'cc'}) + (d.touch
+      ? `<div class="scrimAll" style="opacity:.4"></div>` + subs(d, 'sheetR', `width:300px;padding-right:${47}px`)
+      : subs(d, '', `right:${d.pad}px;bottom:${d.remote ? 86 : 100}px;width:280px`));
+    case 'off-air': return P + cover();
+    case 'cold': return P + coldBand('Coast 90s', 7, d.W / 1440 + .34);
+    case 'more': return P + Bl + T + third(d, {next: 1}) + keys(d, {open: 'more'}) + (d.touch
+      ? `<div class="scrimAll" style="opacity:.4"></div>` + more(d, 'sheetR', 'width:300px;padding-right:47px')
+      : more(d, '', `right:${d.pad}px;bottom:${d.remote ? 86 : 100}px;width:280px`));
+    case 'bright': return `<div class="bright" style="position:absolute;inset:0">${P}</div>` + B + L + T + column(d) + third(d) + strip(d) + help(d) + K;
+  }
+  return P;
+};
+
+// Desktop in a window: there is room beside the picture, so the cross sits beside it and nothing covers it.
+// The column runs down the left, the film strip runs under the picture, and they meet at the tuned row.
+const desk = state => {
+  const d = {W:1440,H:900,pad:48,numW:56,gap:20,cross:604,num:56,title:28,meta:14,rowW:392,rowN:16,rowName:15,rowNow:13,
+    stripH:84,stripK:.92,cap:[12,14],keys:['cc','audio','vol','full','more'],keyS:20,keyGap:24,pointer:1};
+  const pic = {x:488,y:40,w:904,h:508}, tx = d.pad + d.numW + d.gap, find = state === 'find';
+  const frame = inner => `<div class="abs" style="left:${pic.x}px;top:${pic.y}px;width:${pic.w}px;height:${pic.h}px;border-radius:6px;overflow:hidden">${inner}</div>`;
+  const picture = frame(`<div class="pic" style="inset:0"></div>${state === 'tune' ? '<div class="dip"></div>' : ''}${state === 'off-air' ? cover() : ''}`);
+  const home = `<div class="top" style="left:${d.pad - 8}px;top:36px;gap:8px;font-size:14px;color:var(--muted)"><span style="display:grid;place-items:center;width:36px;height:36px">${ic('back', 20)}</span>Home</div>`;
+  const tabs = find
+    ? `<div class="query" style="left:${tx}px;top:88px;font-size:20px">we<span class="caret" style="width:2px;height:1em;vertical-align:-.12em"></span><small style="font-size:14px">2 channels</small></div>`
+    : `<nav class="tabs" style="left:${tx}px;top:92px;gap:26px;font-size:14px"><span>Favourites</span><b style="padding-bottom:6px">All 34</b><span>Recent</span><span>By decade</span>${swap(false, true)}</nav>`;
+  // The column wraps as flipping does: after the last channel comes the first.
+  const up = find ? [55, 14] : [5, 3, 2, 55, 40, 31, 24, 23], dn = find ? [] : [9, 12, 14];
+  const hov = state === 'peek' ? 9 : null;
+  let col = '';
+  up.forEach((n, i) => col += row(d, n, d.cross - 62 - i * 56));
+  dn.forEach((n, i) => { const top = d.cross + 96 + i * 56;
+    if (n === hov) col += `<div class="abs" style="left:${d.pad - 12}px;top:${top - 10}px;width:${d.rowW + 24}px;height:58px;border-radius:6px;background:var(--surface2)"></div>`;
+    col += row(d, n, top); });
+  if (!find) col += `<div class="abs" style="left:${tx}px;top:${d.cross - 62 - 3 * 56 + 44}px;width:${d.rowW - d.numW - d.gap}px;height:1px;background:var(--line)"></div>`;
+  col += `<div class="abs" style="left:0;bottom:0;width:${d.pad + d.rowW + 24}px;height:56px;background:linear-gradient(0deg,var(--bg),rgba(var(--ink),0))"></div>`;
+  const PEEK = [{w:340,s:1,t:'Now · until 11:23',ti:'The Marigold Protocol',now:1},{spots:2},{w:300,s:4,t:'11:23 AM',ti:'Beacon of the Hollow Moon'},{spots:3},{w:260,s:5,t:'12:55 PM',ti:'Two Sides of the Ridge'}];
+  const label = t => `<div class="abs" style="left:${pic.x}px;top:560px;font-size:13px;color:var(--muted)">${t}</div>`;
+  const arm = (o = {}) => label(hov ? 'Today on Movie Matinee' : 'Today on Coast 90s') + strip(d, {top: 592, left: pic.x, right: d.pad, noInfo: 1, data: hov ? PEEK : STRIP, ...o});
+  const info = (h, f, p) => `<div class="info" style="left:${pic.x}px;top:748px;width:600px">${h ? `<h3 style="font-size:17px">${h}</h3>` : ''}<div class="f mono" style="font-size:12px${h ? '' : ';margin-top:0'}">${f}</div><p style="font-size:14px">${p}</p></div>`;
+  const onAir = info('', 'S02E04 · 1994 · TV-PG · Comedy', 'Two friends open a diner and learn the hard way who their regulars are.');
+  const K = o => keys(d, {top: 548, ...o});
+  const base = (o, extra = '') => home + tabs + col + picture + third(d, o) + arm() + extra;
+  if (state === 'guide' || state === 'guide-later' || state === 'guide-plain') {
+    // The guide: the picture steps into the corner and keeps playing; every channel's day runs on one clock.
+    const later = state === 'guide-later', plain = state === 'guide-plain';
+    const g = plain ? {x:312,y:286,k:6,span:180,now:20,rows:[2,3,5,7,9,12,14,19,20,21,22,23,24],pitch:44,bh:36,cx:48,numW:56,gap:20,nameW:170,fn:15,fname:14,fb:13}
+      : {x:312,y:286,k:6,span:180,now:20,rows:[2,3,5,7,9,12,14,19,20,21,22],bh:40,th:84,rg:6,cx:48,numW:56,gap:20,nameW:170,fn:15,fname:14,fb:13};
+    const head = third({...d, cross: 88}, later
+      ? {w: 560, title: 'Last Case on Harbor Street', meta: `<em>Coast 90s</em> · 10:58 AM to 12:34 PM · 1994 · TV-PG · Drama`}
+      : {w: 560});
+    const syn = `<p class="abs" style="left:${tx}px;top:178px;width:560px;font-size:14px;line-height:1.5;color:var(--text)">${later ? 'A harbor detective takes one last case the week before he retires.' : 'Two friends open a diner and learn the hard way who their regulars are.'}</p>`;
+    const dock = `<div class="abs" style="left:992px;top:40px;width:400px;height:225px;border-radius:6px;overflow:hidden"><div class="pic" style="inset:0"></div></div>`;
+    const gtabs = `<nav class="tabs" style="left:${tx}px;top:240px;gap:26px;font-size:14px"><span>Favourites</span><b style="padding-bottom:6px">All 34</b><span>Recent</span><span>By decade</span>${swap(true, true)}</nav>
+      <div class="abs" style="left:600px;top:236px;display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text)"><span style="opacity:.5;display:grid">${ic('back', 18)}</span>Today<span style="display:grid;transform:scaleX(-1)">${ic('back', 18)}</span></div>`;
+    const end = `<div class="abs" style="left:0;right:0;bottom:0;height:40px;background:linear-gradient(0deg,var(--bg),rgba(var(--ink),0))"></div>`;
+    return home + head + syn + dock + gtabs + (plain ? grid(g) : guide(g, later ? {focus: [7, 1]} : {})) + end + keys({...d, pad: 472}, {top: 228});
+  }
+  switch (state) {
+    case 'playing': return base({}, onAir + K());
+    case 'peek': return base({}, info('The Marigold Protocol', 'On now until 11:23 AM · 1987 · PG · Thriller', 'A florist finds a list of names in a delivery she was never meant to open.') + K());
+    case 'later': return home + tabs + col + picture + third(d) + arm({focus: 2}) + info('Last Case on Harbor Street', '10:58 AM to 12:34 PM · 1994 · TV-PG · Drama', 'A harbor detective takes one last case the week before he retires.') + K();
+    case 'find': return base({}, onAir + K());
+    case 'typing': return base({n: 12, typing: 1, title: 'Game Night', meta: `Buzzer Round · <em>tuning in 2 s</em>`}, onAir + K());
+    case 'tune': return home + tabs + col + picture + `<div class="bars" style="left:${d.pad}px;top:590px;width:${d.rowW}px"></div>` + third(d, {n: 12, title: 'Game Night', meta: `<span class="dot"></span><em>Game Night</em> · <em>24 min left</em>`}) + arm() + K();
+    case 'break': return base({meta: `<em>Coast 90s</em> · <span class="back">Back in 2 min</span>`}, onAir + K());
+    case 'behind': return base({meta: `<em>Coast 90s</em> · 2 min behind<span class="golive"><span class="dot" style="top:0"></span>Go live</span>`}, onAir + K());
+    case 'nothing': return home + tabs + col + picture + third(d, {title: 'Coast 90s', meta: 'Nothing scheduled'}) + K();
+    case 'subtitles': return base({}, onAir + K({open: 'cc'}) + subs(d, '', `right:${d.pad + 8}px;bottom:${d.H - 548 + 8}px;width:280px`));
+    case 'unmute': return base({}, onAir + K({muted: 1}) + `<div class="pill" style="left:${pic.x + pic.w / 2}px;top:${pic.y + 16}px">${ic('mute', 18)}Click to unmute</div>`);
+    case 'off-air': return home + tabs + col + picture + third(d, {title: 'Coast 90s', meta: 'Off air'}) + K();
+    case 'more': return base({}, onAir + K({open: 'more'}) + more(d, '', `right:${d.pad}px;bottom:${d.H - 548 + 8}px;width:280px`));
+    case 'cold': return home + tabs + col + frame(`<div class="pic" style="inset:0"></div>` + coldBand('Coast 90s', 7, .8)) + third(d, {title: 'Coast 90s', meta: 'Tuning in…'}) + K();
+  }
+  return base({}, onAir + K());
+};
+
+// A phone held upright: the picture on top, the column below it, always.
+const portrait = state => {
+  const d = {W:390,H:844,pad:16,numW:48,gap:14,cross:346,num:44,title:22,meta:13,rowW:358,stripH:52,stripK:.6,cap:[12,13]};
+  const icons = ['cc','audio','air','pip'].map(k => `<span style="display:grid;place-items:center;width:44px;height:44px;opacity:.82${state === 'subtitles' && k === 'cc' ? ';opacity:1;background:var(--surface2);border-radius:8px' : ''}">${ic(k, 22)}</span>`).join('');
+  const bar = `<div class="island"></div><div class="top" style="left:6px;top:55px;gap:8px"><span style="display:grid;place-items:center;width:44px;height:44px;opacity:.82">${ic('back', 22)}</span><span class="rate mono">TV-PG</span></div>
+    <div class="top" style="right:8px;top:55px">${icons}</div>`;
+  const pic = `<div class="pic" style="left:0;top:104px;width:390px;height:219px"></div>${state === 'tune' ? '<div class="dip" style="inset:104px 0 521px 0"></div>' : ''}`;
+  const list = [2, 3, 5, 7, 9].map((n, i) => `<div class="row" style="left:16px;top:${602 + i * 56}px;width:358px;grid-template-columns:36px 1fr auto;column-gap:14px">
+    <span class="n mono" style="font-size:15px${DEC[n] ? `;color:${DEC[n]}` : ''}">${n}</span>
+    <div style="min-width:0"><div class="name" style="font-size:15px">${CH[n].name}</div><div class="now" style="font-size:13px;margin-top:2px">${CH[n].now}</div></div>
+    <span class="left mono" style="font-size:12px">${CH[n].left}</span></div>`).join('');
+  const tabs = `<nav class="tabs" style="left:16px;top:558px;gap:22px;font-size:14px"><span>Favourites</span><b style="padding-bottom:6px">All 34</b><span>Recent</span><span>By decade</span>${swap(false)}</nav>`;
+  const fade = `<div class="abs" style="left:0;right:0;bottom:0;height:70px;background:linear-gradient(0deg,var(--bg),rgba(var(--ink),0))"></div><div class="homeind"></div>`;
+  const t = o => third(d, {w: 296, ...o});
+  const body = o => bar + pic + t(o) + strip(d, {top: 430, left: 16}) + tabs + list + fade;
+  if (state === 'guide') {
+    const g = {x:60,y:468,k:3.5,span:90,now:20,rows:[2,3,5,7,9,12],bh:40,th:64,rg:8,cx:12,numW:32,gap:16,nameW:0,fn:15,fb:13};
+    return bar + pic + t({}) + `<nav class="tabs" style="left:16px;top:424px;gap:22px;font-size:14px"><span>Favourites</span><b style="padding-bottom:6px">All 34</b><span>Recent</span><span>By decade</span>${swap(true)}</nav>`
+      + guide(g) + `<div class="abs" style="right:0;top:490px;width:16px;height:330px;background:linear-gradient(90deg,rgba(0,0,0,0),#000)"></div>` + fade;
+  }
+  switch (state) {
+    case 'playing': return body({});
+    case 'break': return body({meta: `<em>Coast 90s</em> · <span class="back">Back in 2 min</span>`});
+    case 'behind': return body({meta: `<em>Coast 90s</em> · 2 min behind<span class="golive"><span class="dot" style="top:0"></span>Go live</span>`});
+    case 'nothing': return bar + pic + t({title: 'Coast 90s', meta: 'Nothing scheduled'}) + tabs + list + fade;
+    case 'tune': return bar + pic + `<div class="bars" style="left:16px;top:334px;width:210px"></div>` + t({n: 12, title: 'Game Night', meta: `<span class="dot"></span><em>Game Night</em> · <em>24 min left</em>`}) + strip(d, {top: 430, left: 16}) + tabs + list + fade;
+    case 'later': return body({}) + `<div class="scrimAll" style="top:323px;opacity:.6"></div><div class="menu sheetB abs"><div style="padding:6px 12px 0"><h3 style="font-size:20px;font-weight:600;color:var(--white)">Last Case on Harbor Street</h3>
+      <div class="mono" style="font-size:12px;color:var(--muted);margin-top:6px">10:58 AM to 12:34 PM · 1994 · TV-PG · Drama</div><p style="font-size:14px;line-height:1.5;margin-top:10px">A harbor detective takes one last case the week before he retires.</p></div></div><div class="homeind"></div>`;
+    case 'subtitles': return body({}) + `<div class="scrimAll" style="top:323px;opacity:.6"></div>` + subs({}, 'sheetB abs', '') + `<div class="homeind"></div>`;
+    case 'cold': return bar + `<div class="abs" style="left:0;top:104px;width:390px;height:219px;overflow:hidden"><div class="pic" style="inset:0"></div>${coldBand('Coast 90s', 7, .5)}</div>` + t({title: 'Coast 90s', meta: 'Tuning in…'}) + tabs + list + fade;
+    case 'off-air': return bar + `<div class="abs" style="inset:104px 0 0 0">${cover()}</div><div class="homeind"></div>`;
+  }
+  return body({});
+};
+
+// The wall: Home, where the back arrow leads.
+const tile = (n, w, h, here) => `<div class="tile${NOART ? '' : ` s${CH[n].s}`}${here ? ' here' : ''}" style="height:${h}px${NOART ? ';background:var(--surface)' : ''}"><span class="n mono"${DEC[n] ? ` style="color:${DEC[n]}"` : ''}>${n}</span><span class="left mono">${CH[n].left}</span>
+  <div class="cap"><div class="name">${CH[n].name}</div><div class="ti">${CH[n].short}</div></div><div class="prog"><i style="width:${CH[n].p}%"></i></div></div>`;
+const wall = dev => {
+  const order = [7, 2, 3, 5, 9, 12, 14, 19, 20, 21, 22, 23];
+  if (dev === 'portrait') return `<div class="island"></div><nav class="wtabs" style="left:16px;top:76px;gap:22px"><b>On now</b><span>Favourites</span><span>Recent</span><span>By decade</span></nav>
+    <div class="wall" style="left:16px;top:122px;width:358px;grid-template-columns:1fr 1fr;gap:12px">${order.slice(0, 10).map((n, i) => tile(n, 173, 112, i === 0)).join('')}</div>
+    <div class="tabbar"><div class="on">${ic('home')}Home</div><div>${ic('guide')}Guide</div><div>${ic('inbox')}Requests</div><div>${ic('more')}More</div></div><div class="homeind"></div>`;
+  const nav = [['home','Home',1],['guide','Guide'],['inbox','Requests'],['bell','Notifications'],['help','Help']];
+  return `<div class="rail"><div class="brand"><i></i>LOOMARR</div>${nav.map(([i, l, on]) => `<div class="nav${on ? ' on' : ''}">${ic(i, 18)}${l}</div>`).join('')}</div>
+    <nav class="wtabs" style="left:272px;top:44px"><b>On now</b><span>Favourites</span><span>Recent</span><span>By decade</span><span>Films</span></nav>
+    <div class="wcount mono" style="right:48px;top:46px">34 channels · 10:20 AM</div>
+    <div class="wall" style="left:272px;top:92px;width:1120px;grid-template-columns:repeat(4,1fr);gap:16px">${order.map((n, i) => tile(n, 268, 151, i === 0)).join('')}</div>
+    <div class="sec" style="left:272px;top:630px">Tonight</div>
+    ${[['10:58 AM','7','Last Case on Harbor Street'],['11:23 AM','9','Beacon of the Hollow Moon'],['11:46 AM','21','Cold Relay'],['12:51 PM','14','A Quiet Day in Dry Gulch and the Long Ride Home Afterwards']].map((r, i) =>
+      `<div class="trow" style="left:272px;top:${676 + i * 46}px;width:1120px"><span class="mono">${r[0]}</span><span class="mono">${r[1]}</span><span style="font-weight:500">${r[2]}</span></div>`).join('')}`;
+};
+
+const STATES = {
+  wide: [
+    ['rest','At rest','Nothing but the picture and the channel’s own watermark.'],
+    ['third','A tune or a wake','The lower third, what is next, and the quiet row. Nothing has a box.'],
+    ['column','Beat one: channels','Up or Down opens the column. Moving through it tunes at once.'],
+    ['cross','Beat two: the evening','Right, or resting on a row, opens the film strip for this channel.'],
+    ['later','Looking ahead','Focus on a later programme sets its facts above it, as type.'],
+    ['find','Finding by name','Typing letters filters the column. There is no search field.'],
+    ['typing','Typing a number','The digits replace the numeral in place and count down to the tune.'],
+    ['tune','The tune','The picture dips and the seven bars run once along the crossing.'],
+    ['break','In a break','The programme that comes back, and when.'],
+    ['behind','Behind live','Paused or rewound: how far behind, and one way back.'],
+    ['nothing','Nothing scheduled','The channel’s name stands in for a title.'],
+    ['subtitles','What a key opens','A menu over the quiet row; a sheet on a phone.'],
+    ['off-air','Off air','The covers and their words are unchanged.']
+  ],
+  portrait: [
+    ['playing','Playing','Nothing covers the picture. The column fills what was black.'],
+    ['later','Looking ahead','Tapping a later programme opens its facts as a sheet.'],
+    ['tune','The tune','The bars run once above the lower third.'],
+    ['break','In a break',''],['behind','Behind live',''],['nothing','Nothing scheduled',''],
+    ['subtitles','What a key opens',''],['off-air','Off air','']
+  ]
+};
+STATES.desk = [
+  ['playing','Playing','Nothing covers the picture. The column and today’s strip sit beside and under it.'],
+  ['peek','Pointing at a channel','Its day shows in the strip before you tune. A click tunes.'],
+  ['later','Pointing at a programme','Its facts replace the on-air synopsis underneath.'],
+  ['find','Finding by name','Typing letters filters the column.'],
+  ['typing','Typing a number','The digits replace the numeral and count down to the tune.'],
+  ['tune','The tune','The picture dips and the bars run once along the crossing.'],
+  ['break','In a break',''],['behind','Behind live',''],['nothing','Nothing scheduled',''],
+  ['subtitles','What a key opens','A menu rises from the quiet row.'],
+  ['unmute','First play, muted',''],['off-air','Off air','The cover sits in the picture’s place.']
+];
+const SIZE = {desk:[1440,900,.3],desktop:[1440,900,.3],tv:[960,540,.45],landscape:[844,390,.5],portrait:[390,844,.5]};
+
+const dev = q.get('device'), state = q.get('state');
+if (dev) {
+  const [W, H] = SIZE[dev];
+  const html = state === 'wall' ? wall(dev) : dev === 'portrait' ? portrait(state) : dev === 'desk' ? desk(state) : wide(DEV[dev], state);
+  document.body.innerHTML = `<div class="screen" style="width:${W}px;height:${H}px${state === 'wall' || dev === 'desk' ? ';background:var(--bg)' : dev === 'portrait' ? ';background:#000' : ''}">${html}</div>`;
+  document.documentElement.style.cssText = `width:${W}px;height:${H}px;overflow:hidden`;
+} else {
+  const cell = (d, s, cap, why, x = '') => { const [W, H, k] = SIZE[d]; const src = `?device=${d}&state=${s}${x}`;
+    return `<div class="cell" style="width:${W * k}px"><a href="${src}" style="width:${W * k}px;height:${H * k}px"><iframe src="${src}" width="${W}" height="${H}" style="transform:scale(${k})" tabindex="-1" title="${cap}"></iframe></a><div class="cap">${cap}</div>${why ? `<div class="why">${why}</div>` : ''}</div>`; };
+  const sect = (d, title, note, list, extra = '') => `<h2>${title}</h2><div class="dn">${note}</div><div class="grid">${list.map(s => cell(d, ...s)).join('')}${extra}</div>`;
+  document.body.innerHTML = `<main class="gal"><h1>Watching Loomarr: The Cross</h1>
+    <p class="lede">Channels run down, the evening runs across, and they meet at what is on. Loomarr opens on the picture. Every state is drawn on a desktop, a television, and a phone both ways. Select a tile to open it at full size.</p>
+    ${sect('desk','Desktop, in a window','1440 × 900, pointer and keyboard. There is room beside the picture, so the cross sits beside it.',STATES.desk, cell('desk','guide','The guide','Every channel’s day on one clock. The picture steps into the corner and keeps playing.') + cell('desk','guide-later','The guide, pointing at a programme','Its facts take the place of what is on. A click on a row tunes.') + cell('desk','more','More','Only what has no key of its own. The channel list and Info left it.') + cell('desk','cold','First open','The full signature runs only on a cold start, for as long as the real wait.') + cell('desk','playing','No artwork','A library with no art: flat tones in place of stills, nothing empty.','&art=0') + cell('desk','guide','The guide, no artwork','The same hierarchy from tone alone.','&art=0') + cell('desktop','wall','The wall','Home, where the back arrow leads: every channel with its artwork.'))}
+    ${sect('desktop','Desktop, full screen','The picture fills the screen and the same cross sits over it.',STATES.wide, cell('desktop','unmute','First play, muted','The web’s first play is muted and says how to fix it.') + cell('desktop','bright','Over a bright frame','The same crossing over a washed-out picture, to prove the scrims.') + cell('desktop','cold','First open','') + cell('desktop','more','More',''))}
+    ${sect('tv','Television','960 × 540, remote. Up and Down tune, OK opens the column, Left and Right move along the evening.',STATES.wide.filter(s => s[0] !== 'find'), cell('tv','guide','The guide','OK on the picture opens it. Focus starts on what the tuned channel is showing.') + cell('tv','cold','First open','') + cell('tv','more','More',''))}
+    ${sect('portrait','Phone, upright','390 × 844',STATES.portrait, cell('portrait','guide','The guide','The picture stays on top; the grid takes the column’s place.') + cell('portrait','cold','First open','') + cell('portrait','playing','No artwork','','&art=0') +cell('portrait','wall','The wall',''))}
+    ${sect('landscape','Phone, on its side','844 × 390, touch. A tap wakes the lower third; a vertical swipe flips.',STATES.wide.filter(s => !['find','typing'].includes(s[0])))}
+  </main>`;
+}
+</script>
+</body>
+</html>
