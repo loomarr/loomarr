@@ -64,9 +64,9 @@ const StatusRows = ({
   onMore: () => void;
 }) => (
   <Card>
-    {group.rows.map((row) => (
+    {group.rows.map((row, index) => (
       <PressableRow
-        divided
+        divided={index < group.rows.length - 1 || Boolean(group.nextCursor)}
         key={row.clipHash}
         onPress={(event) => onOpen(row, event.currentTarget as unknown as HTMLElement)}
       >
