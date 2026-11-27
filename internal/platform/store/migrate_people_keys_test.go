@@ -7,7 +7,8 @@ import (
 	"testing"
 )
 
-// peopleKeysMigration makes the last columns naming a member foreign keys to users (#2793).
+// peopleKeysMigration makes the settings, invitation, destination and pull columns naming a member
+// foreign keys to users (#2793).
 const peopleKeysMigration = 252
 
 func TestPeopleKeysMigration(t *testing.T) {

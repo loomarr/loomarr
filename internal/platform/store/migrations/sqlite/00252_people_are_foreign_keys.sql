@@ -1,5 +1,5 @@
 -- +goose Up
--- Schema to a 10 (#2793, item 1): the last columns naming a member are foreign keys to users.
+-- Schema to a 10 (#2793, item 1): these columns naming a member are foreign keys to users.
 --
 --   - settings.updated_by, the admin who last changed a setting: cleared when they are deleted
 --     (SET NULL). A system write had NULL, and a few rows held 'system' or ''; both become NULL;
