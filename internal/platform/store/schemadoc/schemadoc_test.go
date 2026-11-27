@@ -122,7 +122,11 @@ func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
 			},
 			Indexes: [][]string{{"position", "parent_id", "id"}, {"old_id", "kind"}, {"shelf", "kind", "user_id"}, {"kind", "user_id"}},
 		},
-		{Name: "events", Columns: []LiveColumn{{Name: "outcome", Type: "text"}, {Name: "app_status", Type: "TEXT"}}},
+		{Name: "events", Columns: []LiveColumn{
+			{Name: "outcome", Type: "text"}, {Name: "app_status", Type: "TEXT"},
+			{Name: "run_id", Type: "TEXT", PrimaryKey: true}, // a gap: a composite key member names a row too
+			{Name: "id", Type: "INTEGER", PrimaryKey: true},  // the table's own
+		}},
 		{Name: "notes"},
 		{Name: "river_job", Columns: []LiveColumn{{Name: "state", Type: "TEXT"}}},
 	}
@@ -134,6 +138,7 @@ func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
 		"jobs.parent_id is listed in NonKeys but is a foreign key now, or gone",
 		"json jobs.steps_json: declare it JSON: CHECK (json_valid(column)) in SQLite, jsonb in Postgres",
 		"json jobs.tags: declare it JSON: CHECK (json_valid(column)) in SQLite, jsonb in Postgres",
+		"reference events.run_id: make it a foreign key, or list it in NonKeys with why it must not be one",
 		"reference jobs.owner_ref: make it a foreign key, or list it in NonKeys with why it must not be one",
 		"retention notes: add a retention line to its table in internal/platform/store/schemadoc/areas/",
 		"unbounded events: delete old rows (housekeeping or a retention setting), then say how long they're kept",
