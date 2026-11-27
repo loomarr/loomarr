@@ -122,8 +122,9 @@ printf '%s\n' "$overridden" | grep -q 'http://localhost:23456'
 step 'doctor checks runtime prerequisites'
 mkdir -p "$TMP/doctor-bin"
 printf '%s\n' '#!/usr/bin/env sh' 'echo "go version go1.27.0 darwin/arm64"' > "$TMP/doctor-bin/go"
-printf '%s\n' '#!/usr/bin/env sh' 'echo "rustc 1.93.0 (fixture)"' > "$TMP/doctor-bin/rustc"
-printf '%s\n' '#!/usr/bin/env sh' 'echo "cargo 1.93.0 (fixture)"' > "$TMP/doctor-bin/cargo"
+rust_pin=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$SCRIPT_DIR/../rust-toolchain.toml")
+printf '%s\n' '#!/usr/bin/env sh' "echo 'rustc $rust_pin (fixture)'" > "$TMP/doctor-bin/rustc"
+printf '%s\n' '#!/usr/bin/env sh' "echo 'cargo $rust_pin (fixture)'" > "$TMP/doctor-bin/cargo"
 # shellcheck disable=SC2016 # The generated fixture expands its own first argument.
 printf '%s\n' '#!/usr/bin/env sh' 'case "${1:-}" in -p) echo 22 ;; *) echo v22.5.0 ;; esac' > "$TMP/doctor-bin/node"
 printf '%s\n' '#!/usr/bin/env sh' 'echo 11.13.1' > "$TMP/doctor-bin/pnpm"
@@ -160,6 +161,13 @@ if PATH="$doctor_path" LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor >/
 	exit 1
 fi
 PATH="$doctor_path" DOCTOR_DOCKER_READY=1 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor >/dev/null
+printf '%s\n' '#!/usr/bin/env sh' 'echo "rustc 1.0.0 (fixture)"' > "$TMP/doctor-bin/rustc"
+if out="$(PATH="$doctor_path" DOCTOR_DOCKER_READY=1 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor 2>&1)" ||
+	! printf '%s\n' "$out" | grep -qF "ERROR: Rust $rust_pin is required"; then
+	echo 'agent-harness-test: doctor accepted a Rust other than the pinned toolchain' >&2
+	exit 1
+fi
+printf '%s\n' '#!/usr/bin/env sh' "echo 'rustc $rust_pin (fixture)'" > "$TMP/doctor-bin/rustc"
 
 step 'doctor checks the pinned macOS ffmpeg'
 pinned="$TMP/.tools/ffmpeg/bin"
