@@ -168,7 +168,7 @@ const SortableLineupRow = ({
 
   // ⚠ NARROW COLUMNS WRAP (#1896). One line of grip · title · Keep/Less/Never/Surprise · remove
   // needs ~28rem, and on a phone the Programming column is ~14rem. The row is a wrapping line: the
-  // title keeps at least 160 px, and the pieces that do not fit drop to the next line, with remove
+  // title starts from 96 px (so one line holds on a wide column), and the pieces that do not fit drop to the next line, with remove
   // at the right and a 44 px target. The pieces sit in DOM order, so what you see is the Tab order
   // at every width: grip → seasons → feedback → remove (#1899: remove is last in Tab order, so it
   // is never drawn top right beside the title).
@@ -189,7 +189,7 @@ const SortableLineupRow = ({
             {`Reorder ${entry.name}`}
           </Action>
 
-          <Stack flexBasis={160} flexGrow={1} flexShrink={1} gap="1.5" minWidth={0}>
+          <Stack flexBasis={96} flexGrow={1} flexShrink={1} gap="1.5" minWidth={0}>
             <Stack align="center" direction="row" flexShrink={1} gap="inline" minWidth={0} wrap>
               <Text as="span" numberOfLines={1} textRole="cardLabel" tone="primary">
                 {entry.name}

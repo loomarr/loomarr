@@ -6,7 +6,7 @@ import { ProgrammingChangeSideDTOKind } from "@loomarr/api/models/programmingCha
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatGuideEpisode, formatGuideTime } from "@loomarr/core/guide";
 import { Stack, Text, VisuallyHidden } from "@loomarr/design-system";
-import { useEffect, useState } from "react";
+import { type ComponentProps, useEffect, useState } from "react";
 import { PREVIEW_DEBOUNCE_MS } from "@/channels/use-channel-rules-draft";
 import { useBelowSm } from "@/lib/use-phone-width";
 import { EmptyState, ErrorState } from "../../feedback";
@@ -37,7 +37,15 @@ const sideLabel = (side: ProgrammingChangeSideDTO | undefined): string => {
 // One row: time | before → after | winning rule, as the mock's preview rows. On a phone the
 // three columns would squeeze the titles to a word per line, so the change drops to its own
 // full-width line under the time and rule.
-const ChangeRow = ({ change, timeZone }: { change: ProgrammingChangeDTO; timeZone?: string }) => {
+// `hairline` is the border a `divided` Stack hands its child; the row draws it on its root.
+const ChangeRow = ({
+  change,
+  timeZone,
+  ...hairline
+}: {
+  change: ProgrammingChangeDTO;
+  timeZone?: string;
+} & Pick<ComponentProps<typeof Stack>, "borderTopColor" | "borderTopWidth">) => {
   const narrow = useBelowSm();
   const changed = (
     <Stack
@@ -66,7 +74,16 @@ const ChangeRow = ({ change, timeZone }: { change: ProgrammingChangeDTO; timeZon
     </Stack>
   ) : null;
   return (
-    <Stack align="baseline" columnGap="2.5" direction="row" paddingVertical={6} render="li" rowGap="0.5" wrap>
+    <Stack
+      {...hairline}
+      align="baseline"
+      columnGap="2.5"
+      direction="row"
+      paddingVertical={6}
+      render="li"
+      rowGap="0.5"
+      wrap
+    >
       <Text as="span" flexShrink={0} minWidth={112} textRole="mono" tone="primary">
         {formatSlotTime(change.startMs, timeZone)}
       </Text>
