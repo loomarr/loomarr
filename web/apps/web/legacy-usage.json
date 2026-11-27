@@ -58,9 +58,6 @@
     "src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.tsx": {
       "tailwindClasses": 3
     },
-    "src/components/loomarr/channels/now-next-strip/now-next-strip.tsx": {
-      "tailwindClasses": 2
-    },
     "src/components/loomarr/channels/on-air-indicator/on-air-indicator.tsx": {
       "tailwindClasses": 2
     },
