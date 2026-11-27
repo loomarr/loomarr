@@ -47,7 +47,6 @@ type InteractiveOperation struct {
 	Percent     int
 	Completed   int64
 	Total       int64
-	ResultID    string
 	Error       string
 	StartedAt   time.Time
 	CompletedAt time.Time
@@ -56,16 +55,16 @@ type InteractiveOperation struct {
 
 func (s *Store) UpsertInteractiveOperation(ctx context.Context, operation InteractiveOperation) error {
 	_, err := s.h.ExecContext(ctx, s.h.Rebind(`INSERT INTO interactive_operations
-		(id, kind, subject, status, percent, completed, total, result_id, error,
+		(id, kind, subject, status, percent, completed, total, error,
 		 started_at, completed_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 		 kind=excluded.kind, subject=excluded.subject, status=excluded.status,
 		 percent=excluded.percent, completed=excluded.completed, total=excluded.total,
-		 result_id=excluded.result_id, error=excluded.error, started_at=excluded.started_at,
+		 error=excluded.error, started_at=excluded.started_at,
 		 completed_at=excluded.completed_at, updated_at=excluded.updated_at`),
 		operation.ID, string(operation.Kind), operation.Subject, string(operation.Status),
-		operation.Percent, operation.Completed, operation.Total, operation.ResultID, operation.Error,
+		operation.Percent, operation.Completed, operation.Total, operation.Error,
 		storedb.Epoch(operation.StartedAt), storedb.Epoch(operation.CompletedAt), storedb.Epoch(operation.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("upsert interactive operation %s: %w", operation.ID, err)
@@ -78,10 +77,10 @@ func (s *Store) GetInteractiveOperation(ctx context.Context, id string) (Interac
 	var kind, status string
 	var startedAt, completedAt, updatedAt int64
 	err := s.h.QueryRowContext(ctx, s.h.Rebind(`SELECT id, kind, subject, status, percent, completed,
-		total, result_id, error, started_at, completed_at, updated_at
+		total, error, started_at, completed_at, updated_at
 		FROM interactive_operations WHERE id = ?`), id).Scan(
 		&operation.ID, &kind, &operation.Subject, &status, &operation.Percent,
-		&operation.Completed, &operation.Total, &operation.ResultID, &operation.Error,
+		&operation.Completed, &operation.Total, &operation.Error,
 		&startedAt, &completedAt, &updatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {

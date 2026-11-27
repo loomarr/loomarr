@@ -1624,7 +1624,6 @@ func testInteractiveOperations(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	split.Status = InteractiveOperationSuccess
-	split.ResultID = "sp-1"
 	split.CompletedAt, split.UpdatedAt = now.Add(time.Minute), now.Add(time.Minute)
 	if err := s.UpsertInteractiveOperation(ctx, split); err != nil {
 		t.Fatal(err)
@@ -5336,11 +5335,11 @@ func testFillerInferenceAccountingAndBudgets(t *testing.T, newStore NewStoreFunc
 	}
 	reserve := func(id, clip string, nano int64) InferenceEvaluation {
 		e, err := s.ReserveInferenceEvaluation(ctx, InferenceEvaluation{
-			ID: id, ClipHash: clip, RunID: "cert-1", Role: "filler_frames", Rung: "frames",
+			ID: id, ClipHash: clip, Role: "filler_frames", Rung: "frames",
 			RequestedProvider: "openrouter", RequestedModel: "openai/gpt-5-mini",
 			Modalities: []string{"text", "image"}, DerivativeBytes: 4096, DerivativePixels: 2_073_600,
 			ReservedNanoUSD: nano, Versions: versions, CreatedAt: at,
-		}, InferenceBudget{PerClipNanoUSD: 100, PerDayNanoUSD: 1000, PerRunNanoUSD: 1000})
+		}, InferenceBudget{PerClipNanoUSD: 100, PerDayNanoUSD: 1000})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -5387,9 +5386,9 @@ func testFillerInferenceAccountingAndBudgets(t *testing.T, newStore NewStoreFunc
 
 	dayDenied := reserve("eval-4", "clip-b", 906)
 	if dayDenied.State != InferenceHeldBudget {
-		t.Fatalf("daily/run ceiling did not hold request: %+v", dayDenied)
+		t.Fatalf("daily ceiling did not hold request: %+v", dayDenied)
 	}
-	rows, err := s.ListInferenceEvaluations(ctx, InferenceEvaluationFilter{RunID: "cert-1", Limit: 10})
+	rows, err := s.ListInferenceEvaluations(ctx, InferenceEvaluationFilter{Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5400,6 +5399,26 @@ func testFillerInferenceAccountingAndBudgets(t *testing.T, newStore NewStoreFunc
 	if err != nil || got.GenerationID != "gen-1" || got.Versions.RolePolicy != "r1" || len(got.Modalities) != 2 || got.CacheKey == "" {
 		t.Fatalf("inspect evaluation = %+v, %v", got, err)
 	}
+
+	// Each ceiling holds on its own, exactly at its boundary. clip-a and the day have both spent
+	// 95: 40 settled on eval-1 and 55 charged on eval-3. A held request spends nothing, and
+	// clip-at brings the day to 100.
+	boundary := func(id, clip string, nano int64, budget InferenceBudget, want InferenceEvaluationState) {
+		t.Helper()
+		e, err := s.ReserveInferenceEvaluation(ctx, InferenceEvaluation{
+			ID: id, ClipHash: clip, Role: "filler_frames", RequestedProvider: "openrouter",
+			RequestedModel: "openai/gpt-5-mini", ReservedNanoUSD: nano, Versions: versions, CreatedAt: at,
+		}, budget)
+		if err != nil || e.State != want {
+			t.Fatalf("%s: state %q, %v, want %q", id, e.State, err, want)
+		}
+	}
+	clipOnly := InferenceBudget{PerClipNanoUSD: 100, PerDayNanoUSD: 1_000_000}
+	boundary("clip-over", "clip-a", 6, clipOnly, InferenceHeldBudget)
+	boundary("clip-at", "clip-a", 5, clipOnly, InferenceReserved)
+	dayOnly := InferenceBudget{PerClipNanoUSD: 1_000_000, PerDayNanoUSD: 1000}
+	boundary("day-over", "clip-c", 901, dayOnly, InferenceHeldBudget)
+	boundary("day-at", "clip-c", 900, dayOnly, InferenceReserved)
 }
 
 // The ordinary scan upsert cannot release a hold, even when its caller supplies held=false. An

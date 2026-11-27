@@ -446,8 +446,8 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if operation.Status != operationstore.InteractiveOperationSuccess || operation.ResultID != propID {
-		t.Fatalf("durable split operation = %+v, want successful proposal mapping", operation)
+	if operation.Status != operationstore.InteractiveOperationSuccess {
+		t.Fatalf("durable split operation = %+v, want success", operation)
 	}
 }
 

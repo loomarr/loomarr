@@ -85,6 +85,15 @@ func TestPostgresFillerReferencesMigration(t *testing.T) {
 	testFillerReferencesMigration(t, db, DialectPostgres, "migrations/postgres")
 }
 
+func TestPostgresDeadIDColumnsMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testDeadIDColumnsMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
 func TestPostgresChannelJobsMigration(t *testing.T) {
 	db, err := sql.Open("pgx", startPostgres(t))
 	if err != nil {
