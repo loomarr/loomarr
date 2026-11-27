@@ -16,6 +16,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 const MIN_DETAIL_WIDTH = 288;
@@ -23,6 +24,23 @@ const MAX_DETAIL_WIDTH = 640;
 const DEFAULT_DETAIL_WIDTH = 352;
 // The design system names no `xl`, so the wider split reads the window's width against this.
 const XL_WIDTH = 1280;
+
+// Whether the window is at least `width` wide. It reads the browser's min-width media query, which
+// counts a classic scrollbar as a breakpoint does, and falls back to the window's width where there
+// is no matchMedia (jsdom).
+const useMinWidth = (width: number) => {
+  const windowWidth = useWindowWidth();
+  const query = (query: string) => globalThis.matchMedia?.(query);
+  return useSyncExternalStore(
+    (onChange) => {
+      const list = query(`(min-width: ${width}px)`);
+      list?.addEventListener("change", onChange);
+      return () => list?.removeEventListener("change", onChange);
+    },
+    () => query(`(min-width: ${width}px)`)?.matches ?? windowWidth >= width,
+    () => false,
+  );
+};
 
 // The resize handle's hairline: it fills its cell, takes a signal wash while pointed at, and draws
 // the focus ring only for the keyboard (the ring is state because inline style has no :focus-visible).
@@ -75,8 +93,7 @@ const DiagnosticsSplitPane = ({
   const [hovered, setHovered] = useState(false);
   const [ringed, setRinged] = useState(false);
   const drag = useRef<{ x: number; width: number } | undefined>(undefined);
-  const windowWidth = useWindowWidth();
-  const desktop = windowWidth >= (breakpoint === "lg" ? breakpoints.lg : XL_WIDTH);
+  const desktop = useMinWidth(breakpoint === "lg" ? breakpoints.lg : XL_WIDTH);
   const columns = desktop
     ? collapsed
       ? (["minmax(0,1fr)", "2.5rem"] as const)
