@@ -52,7 +52,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      # ci-go.yml's six race lanes, plus `postgres` for ci-postgres.yml.
+      # ci-go.yml's seven race lanes, plus `postgres` for ci-postgres.yml.
       matrix:
         lane: ["1/2", "2/2", "certification-1/5", "certification-2/5", "certification-3/5", "certification-4/5", "certification-5/5", "postgres"]
     steps:

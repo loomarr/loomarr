@@ -224,6 +224,11 @@ certification_load() {
   module="$(go list -m)"
   # Captured first, as in partition: a failure inside `<(...)` reaches no exit status.
   paths="$(certification_lane_paths "$lane")"
+  # An empty lane loads nothing, which --verify rejects; the race policy refuses an empty list.
+  if [ -z "$paths" ]; then
+    echo 0
+    return
+  fi
   race="$(printf '%s\n' "$paths" | "$RACE_POLICY" --race | sort)"
   plain="$(printf '%s\n' "$paths" | "$RACE_POLICY" --no-race | sort)"
   twice="$(comm -12 <(printf '%s\n' "$race") <(printf '%s\n' "$plain") | tr '\n' ' ')"
@@ -398,7 +403,9 @@ if [ "${1:-}" = "--verify" ]; then
     exit 1
   fi
   certification_modeled="$(for ((i = 1; i <= CERTIFICATION_LANES; i++)); do
-    printf '%s %s %s\n' "$i" "$(certification_load "$i")" "$LANE_TEST_SECONDS"
+    # Assigned first: a failure inside a printf argument reaches no exit status.
+    load="$(certification_load "$i")"
+    printf '%s %s %s\n' "$i" "$load" "$LANE_TEST_SECONDS"
   done)"
   if ! printf '%s\n' "$certification_modeled" | awk -v ratio="$MAX_CERTIFICATION_IMBALANCE_PERCENT" '
     NR == 1 { min = $2; high = $2 }

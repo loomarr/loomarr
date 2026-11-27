@@ -8,14 +8,14 @@
 #
 # Five lanes: with the measured weights (scripts/go-race-weights.tsv) store, schedule (both its
 # phases) and the api+app pair each come close to the 469s lane budget, so no four-way split fits
-# it. The five lanes model 444s, 332s, 434s, 427s and 337s, inside the 150% serial balance budget,
-# which is the closest any five-way split of these packages comes (#4538).
+# it. The five lanes model 444s, 332s, 434s, 427s and 337s, 134% apart: the best five-way split of
+# these packages, inside the 150% serial balance budget (#4538).
 #
 # internal/platform/store is CPU-heavy, not latency-sensitive: its SQLite tests run in parallel
 # (#1631) and every statement runs through the race detector's view of a pure-Go SQLite. Beside api
 # and playout its lane passed the 15-minute timeout. Its migration tests start from the migration
-# ladder (migration_ladder_test.go); a test that replays the history from an empty file costs tens of
-# seconds under -race, and five of them took the package from 291s to 619s (#4538).
+# ladder (migration_ladder_test.go): a test that replays the history from an empty file costs tens of
+# seconds under -race, which puts the package over the per-package cap (#4538).
 1	internal/platform/store
 # internal/demolibrary encodes filler and scans the tree in parallel tests. Sharing an ordinary
 # -p=4 lane it measured 743s; at -p=1 it measures 320s to 410s (#2716, #4538).

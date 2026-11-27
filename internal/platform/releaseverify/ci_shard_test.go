@@ -307,7 +307,7 @@ example.invalid/cert-two`
 	root := filepath.Clean(filepath.Join("..", "..", ".."))
 	budgets := goShardBudgets(t)
 	lane, aggregate := budgets["lane_test"], budgets["ordinary_aggregate"]
-	verify := func(t *testing.T, weightRows string) (string, error) {
+	verify := func(t *testing.T, weightRows string, env ...string) (string, error) {
 		t.Helper()
 		weights := filepath.Join(t.TempDir(), "weights.tsv")
 		if err := os.WriteFile(weights, []byte(weightRows), 0o600); err != nil {
@@ -315,11 +315,11 @@ example.invalid/cert-two`
 		}
 		cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), "--verify", "1")
 		cmd.Dir = root
-		cmd.Env = append(os.Environ(),
+		cmd.Env = append(append(os.Environ(),
 			"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
 			"GO_SHARD_WEIGHTS="+weights,
 			"GO_SHARD_CERTIFICATION="+certification,
-		)
+		), env...)
 		output, err := cmd.CombinedOutput()
 		return string(output), err
 	}
@@ -335,6 +335,9 @@ example.invalid/cert-two`
 			fmt.Sprintf("shard 1: %ds (budget %ds)", lane+10, lane)},
 		{"serial certification lane past the lane budget", fmt.Sprintf("cert-one %[1]d\ncert-three %[1]d\ncert-two %[2]d\n", lane/2+10, lane-1),
 			fmt.Sprintf("certification lane 1/2: %ds (budget %ds)", 2*(lane/2+10), lane)},
+		// Lane 1 carries cert-one and cert-three: 160s against lane 2's 100s.
+		{"serial lanes more than 50% apart", "cert-one 80\ncert-three 80\ncert-two 100\n",
+			"certification split exceeds its lane budget or 150% balance budget"},
 	}
 	if aggregate != 4*lane {
 		t.Fatalf("aggregate fixture assumes ordinary_aggregate = 4 x lane_test: %v", budgets)
@@ -351,6 +354,31 @@ example.invalid/cert-two`
 			}
 		})
 	}
+	// A few indivisible serial packages rarely split within 25%; their lanes may differ by up to 50%.
+	t.Run("serial lanes 40% apart", func(t *testing.T) {
+		t.Parallel()
+		output, err := verify(t, "cert-one 70\ncert-three 70\ncert-two 100\n")
+		if err != nil {
+			t.Fatalf("go shard verification rejected serial lanes inside the 150%% band: %v\n%s", err, output)
+		}
+	})
+	// A package the race policy runs in both phases costs its serial lane twice.
+	t.Run("serial package run in both phases", func(t *testing.T) {
+		t.Parallel()
+		policy := filepath.Join(t.TempDir(), "race-policy.sh")
+		if err := os.WriteFile(policy, []byte("#!/usr/bin/env bash\nset -euo pipefail\ncase \"$1\" in\n"+
+			"--race) grep -v '/internal/platform/config$' || true ;;\n"+
+			"--no-race) grep -E '/(internal/platform/config|cert-two)$' || true ;;\n*) exit 2 ;;\nesac\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		output, err := verify(t, "cert-one 100\ncert-three 100\ncert-two 100\n", "GO_SHARD_RACE_POLICY="+policy)
+		if err != nil {
+			t.Fatalf("go shard verification rejected balanced serial lanes: %v\n%s", err, output)
+		}
+		if want := "modeled certification lane 2/2 = 200s"; !strings.Contains(output, want) {
+			t.Fatalf("verification output =\n%s\nwant %q", output, want)
+		}
+	})
 	t.Run("lane exactly at its test step", func(t *testing.T) {
 		t.Parallel()
 		output, err := verify(t, fmt.Sprintf("a %[1]d\nb %[1]d\nc %[1]d\nd %[1]d\n%[2]s", lane-1, certs))
@@ -382,6 +410,11 @@ func TestGoShardBudgetsDeriveFromTheQueueTarget(t *testing.T) {
 	// No package gets more than a lane's test step: an outgrown package is split, not budgeted.
 	if b["max_package"] != b["lane_test"] {
 		t.Fatalf("max_package = %d, want the lane test step %d", b["max_package"], b["lane_test"])
+	}
+	// Ordinary lanes balance within 25%; serial lanes, a few indivisible packages, within 50% (#4538).
+	if b["imbalance_percent"] != 125 || b["certification_imbalance_percent"] != 150 {
+		t.Fatalf("balance budgets = %d%% ordinary, %d%% serial; want 125%% and 150%%",
+			b["imbalance_percent"], b["certification_imbalance_percent"])
 	}
 }
 
