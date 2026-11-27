@@ -10,6 +10,7 @@ import {
   icons,
   Stack,
   Text,
+  TextLink,
 } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useId, useState } from "react";
@@ -217,9 +218,9 @@ const LocationPicker = ({
             {evidence.attribution && (
               <>
                 {" "}
-                <a className="underline" href={evidence.attribution} target="_blank" rel="noreferrer">
+                <TextLink external href={evidence.attribution} tone="inherit">
                   IP Geolocation by DB-IP
-                </a>
+                </TextLink>
               </>
             )}
           </Text>

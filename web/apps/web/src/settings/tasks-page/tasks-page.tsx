@@ -187,7 +187,11 @@ const ExecutionHistory = ({ name }: { name: string }) => {
                       {executionDuration(run.durationMs)}
                     </Text>
                   </Stack>
-                  {failed && run.error && <ErrorDetails message={run.error} className="mt-1" />}
+                  {failed && run.error && (
+                    <Stack marginTop={4}>
+                      <ErrorDetails message={run.error} />
+                    </Stack>
+                  )}
                 </Stack>
               );
             })}
@@ -390,7 +394,9 @@ const TasksPage = () => {
                                     {job.description}
                                   </Text>
                                   {job.lastResult === "error" && (
-                                    <ErrorDetails message={job.lastError} className="mt-2" />
+                                    <Stack marginTop={8}>
+                                      <ErrorDetails message={job.lastError} />
+                                    </Stack>
                                   )}
                                   {job.disabledReason && (
                                     <Stack marginTop={8}>

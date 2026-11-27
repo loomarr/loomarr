@@ -10,6 +10,8 @@ import {
   CompactSelect,
   Field,
   FieldHint,
+  Grid,
+  GridItem,
   Icon,
   icons,
   Reveal,
@@ -23,7 +25,6 @@ import {
 import { NumberField } from "@loomarr/ui";
 import { type ComponentProps, type ReactNode, useState } from "react";
 import { languageName } from "@/lib/languages";
-import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { CronField } from "./cron-field";
 import { DurationField, type DurationUnit } from "./duration-field";
@@ -365,16 +366,16 @@ const SettingField = ({
   return (
     // The audit line reveals on hover/focus of the whole field (below). The handlers are
     // decorative: the controls inside are what take focus.
-    <div
+    <Grid
       {...reveal.rowProps}
-      className={cn(
-        // `relative` anchors the absolutely positioned `sr-only` doc below to this field.
-        "relative",
-        inlineSwitch
-          ? "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5"
-          : "flex flex-col gap-1.5",
-        className,
-      )}
+      align={inlineSwitch ? "center" : "stretch"}
+      className={className}
+      columnGap="4"
+      columns={inlineSwitch ? ["minmax(0,1fr)", "auto"] : 1}
+      data-setting-field=""
+      // Anchors the absolutely positioned hidden help copy to this field.
+      position="relative"
+      rowGap="1.5"
     >
       <Stack align="center" direction="row" gap="inline">
         <Text as="label" htmlFor={id} textRole="label">
@@ -462,34 +463,33 @@ const SettingField = ({
 
       {/* The summary: one sentence, always visible, and the control's description. */}
       {entry.doc && (
-        <FieldHint id={`${id}-doc`} className={cn(inlineSwitch && "col-span-2")}>
-          {entry.doc}
-        </FieldHint>
+        <GridItem span="full">
+          <FieldHint id={`${id}-doc`}>{entry.doc}</FieldHint>
+        </GridItem>
       )}
 
       {entry.caution && (
-        <FieldHint tone="error" className={cn(inlineSwitch && "col-span-2")}>
-          <Stack align="center" direction="row" gap="1" render="span">
-            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
-            The stored value was invalid and has been reset to the default.
-          </Stack>
-        </FieldHint>
+        <GridItem span="full">
+          <FieldHint tone="error">
+            <Stack align="center" direction="row" gap="1" render="span">
+              <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+              The stored value was invalid and has been reset to the default.
+            </Stack>
+          </FieldHint>
+        </GridItem>
       )}
 
       {disabledReason && (
-        <FieldHint
-          id={`${id}-unavailable`}
-          role="alert"
-          tone="error"
-          className={cn(inlineSwitch && "col-span-2")}
-        >
-          <Stack align="start" direction="row" gap="1" render="span">
-            <Stack direction="row" marginTop={2} render="span">
-              <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+        <GridItem span="full">
+          <FieldHint id={`${id}-unavailable`} role="alert" tone="error">
+            <Stack align="start" direction="row" gap="1" render="span">
+              <Stack direction="row" marginTop={2} render="span">
+                <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+              </Stack>
+              {disabledReason}
             </Stack>
-            {disabledReason}
-          </Stack>
-        </FieldHint>
+          </FieldHint>
+        </GridItem>
       )}
 
       {/* "changed by … · when" (§5 field anatomy). Audit provenance is signal when you're
@@ -516,16 +516,13 @@ const SettingField = ({
       )}
 
       {problem && (
-        <FieldHint
-          id={`${id}-problem`}
-          role="alert"
-          tone="error"
-          className={cn(inlineSwitch && "col-span-2")}
-        >
-          {problem}
-        </FieldHint>
+        <GridItem span="full">
+          <FieldHint id={`${id}-problem`} role="alert" tone="error">
+            {problem}
+          </FieldHint>
+        </GridItem>
       )}
-    </div>
+    </Grid>
   );
 };
 
