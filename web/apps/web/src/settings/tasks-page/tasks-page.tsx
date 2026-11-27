@@ -393,7 +393,7 @@ const TasksPage = () => {
                                   <Text as="p" className="max-w-prose" textRole="compact" tone="secondary">
                                     {job.description}
                                   </Text>
-                                  {job.lastResult === "error" && (
+                                  {job.lastResult === "error" && job.lastError && (
                                     <Stack marginTop={8}>
                                       <ErrorDetails message={job.lastError} />
                                     </Stack>
