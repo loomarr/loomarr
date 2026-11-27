@@ -193,6 +193,7 @@ func (s *Service) editOnce(ctx context.Context, backend Backend, id string, revi
 		}
 	}
 	applyEditRules(before, &ch, backend)
+	ch.Policy = ch.Policy.WithRemovedGrowthDeclined(before.Lineup, ch.Lineup)
 	if err := ch.Validate(); err != nil {
 		return channelstore.Channel{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}

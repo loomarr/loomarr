@@ -156,12 +156,23 @@ describe("Command palette", () => {
   // (`const [, setCommandOpen] = useState(false)`), so clicking it did nothing at all.
   // Both entry points now drive one piece of state.
   it("opens from the shell's Search button", async () => {
-    stubHelp();
-    renderAt("/help");
-    await screen.findByRole("link", { name: "Troubleshooting" });
+    // The rail is hidden below `md`, and a window with no matchMedia reads as the narrowest width.
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      addEventListener: vi.fn(),
+      matches: true,
+      media: query,
+      removeEventListener: vi.fn(),
+    }));
+    try {
+      stubHelp();
+      renderAt("/help");
+      await screen.findByRole("link", { name: "Troubleshooting" });
 
-    await userEvent.click(screen.getByRole("button", { name: /search/i }));
-    expect(await screen.findByRole("dialog", { name: /search loomarr/i })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: /search/i }));
+      expect(await screen.findByRole("dialog", { name: /search loomarr/i })).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   // #2751: below `md` the rail (and its Search button) is gone; the phone header's Search icon,
@@ -177,8 +188,7 @@ describe("Command palette", () => {
       stubHelp();
       renderAt("/help");
 
-      // Exactly "Search": the rail's own button (CSS-hidden here, still in jsdom's tree) is named
-      // "Search…" plus its shortcut.
+      // Exactly "Search": the rail's own button (hidden here) is named "Search…" plus its shortcut.
       await userEvent.click(await screen.findByRole("button", { name: "Search" }));
       const dialog = await screen.findByRole("dialog", { name: /search loomarr/i });
       expect(dialog.style.inset).toBe("0px");

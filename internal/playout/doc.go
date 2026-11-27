@@ -12,8 +12,8 @@
 // application what is on (PackagerSource.ItemAt), runs one encoder per scheduled item into its
 // slot of frames, and stitches the fragments in-process onto one monotonic timeline: every item
 // encodes to the same output parameters, so a boundary is a keyframe, not a decoder reset. The
-// slot end is an explicit block boundary: the packager resolves the next authoritative Airing
-// from the wall clock.
+// slot end is an explicit block boundary: the packager resolves the next authoritative
+// timeline.Airing from the wall clock.
 //
 //	packager (channel, format) ──> item encoder ──> programme fragments ─┐
 //	                           └─> item encoder ──> commercial / card ───┴─> fMP4 HLS, MPEG-TS
@@ -24,8 +24,8 @@
 // has broken a live channel at least once when it did not.
 //
 //   - ONE SOURCE OF TRUTH FOR "WHAT IS ON". Reconciliation persists the accepted Desired cycle;
-//     AiringAt and the current BroadcastsBetween segment walk the same cycle arithmetic over that
-//     snapshot. CyclePreview forecasts future windows and unsaved edits, but is never called by the
+//     timeline.AiringAt and the current timeline.BroadcastsBetween segment walk the same cycle
+//     arithmetic over that snapshot. CyclePreview forecasts future windows and unsaved edits, but is never called by the
 //     encoder at a programme boundary: its mutable airing-history inputs could otherwise reorder
 //     the deck while it is playing.
 //
@@ -47,13 +47,15 @@
 //   - NOMINAL TIME IS NEVER AIRTIME. A pending acquisition has no known duration. Giving it one
 //     inside the cycle arithmetic would grow the cycle, shift every later programme, and make
 //     the encoder air silence for an invented length. Display width for such a slot is a
-//     PROJECTION concern (BroadcastsWithPending), never a timeline one (slotDuration).
+//     PROJECTION concern (timeline.BroadcastsWithPending), never part of the cycle arithmetic
+//     in internal/playout/timeline.
 //
 // # What lives here, and what deliberately does not
 //
 // This package is the MECHANISM: encoder capability probing, argument construction, the quality
-// ladder, session/viewer bookkeeping, cycle arithmetic, and XMLTV rendering. It knows nothing
-// about stores, media servers, settings, or HTTP handlers.
+// ladder, and session/viewer bookkeeping. The cycle arithmetic and XMLTV rendering are
+// internal/playout/timeline, pure functions over the schedule. Neither knows anything about
+// stores, media servers, settings, or HTTP handlers.
 //
 // The WIRING lives in internal/app/playoutresolve and internal/api. That split is why this
 // package can be tested without a database or a network, and it is worth preserving: the moment

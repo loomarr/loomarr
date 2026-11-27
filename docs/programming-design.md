@@ -71,17 +71,15 @@ onwards"); set bounds are 1900–2099.
 
 An **era** is a shortcut for dates, not a second scope: era R is `scope.dates` with
 `movieRelease = seriesPremiere = seriesAiring = [R]` ("era-shaped"), which filters exactly as the
-retired `scope.era` field did, on a channel scope and on a rule's scope alike. The backend resolves
-the alias on decode, so a policy saved with `era` keeps its lineup without a migration, and it
-never writes `era`. Requests (channel PATCH, programming preview, AI refine input) still accept
-`era`; a request carrying both `era` and `dates` is rejected with 422 as ambiguous. A stored
-legacy scope carrying both decodes to their per-axis intersection, which is what the scheduler
-aired; where an axis's windows miss the era entirely the era wins, since an empty list means
-"unconstrained" and cannot express "nothing". A rule's era now also filters each episode's airing
-year, as the channel's always did.
+retired `scope.era` field did, on a channel scope and on a rule's scope alike. The `era` request
+alias was retired in #2147: migration 00246 folded every stored one into `dates`, and a request
+that sends `era` is refused with 422. A stored scope that carried both was folded to their
+per-axis intersection, which is what the scheduler aired; where an axis's windows missed the era
+entirely the era won, since an empty list means "unconstrained" and cannot express "nothing". A
+rule's era-shaped dates filter each episode's airing year, as the channel's always did.
 
 Explicit per-axis date windows are not widened to admit out-of-window model picks or by
-automatic relaxation; only an era-shaped scope widens on the §7 ladder. The whole nonempty scope
+automatic relaxation; neither does an era-shaped scope (§7). The whole nonempty scope
 remains operator pinnable. Filler derives its own viewing-era union from the dates through the
 shared selection resolver: a single window seeds `filler.era` (which may be open-ended), a disjoint
 bounded union seeds `filler.eraWindows`; explicit scalar-era and range-list overrides are mutually
@@ -190,7 +188,9 @@ Recency closes that loop using `airings` (design.md §5): the last time each epi
   window opened, so it is constant for the whole window, like the slice offset. What airs during
   the window shapes the next one. Read live, every reconcile after a tune-in re-sorted the deck and
   the guide rewrote the programme on air (#1674). An unbounded window never opens a new one, so it
-  reads no history.
+  reads no history. Library facts do not re-arrange the window either, and an edit re-arranges only
+  what follows the programme on air (#4140; `docs/design/scheduling.md`, "Nothing that has aired
+  moves inside a window").
 
 - **A SOFT RANKING SIGNAL, not a constraint.** Among candidates that are equally valid under every
   §3 rule, the least-recently-aired wins; a title that has never aired sorts first. It cannot be
@@ -728,14 +728,15 @@ Every token lowers to primitives that already exist — nothing here is new sche
 
 ## 7. The relaxation ladder (constraints degrade predictably, never silently)
 
-When the eligible pool can't satisfy the policy (small library ∩ tight scope ∩ long no-repeat window), enforcement descends in order, and **every applied relaxation is recorded on the channel and surfaced in the UI** ("policy relaxed: repeat window 7d → 3d"):
+When the eligible pool can't satisfy the policy (small library ∩ tight scope ∩ long no-repeat window), **each guard the placed cycle breaches relaxes on its own, to the widest value the pool can hold**, and **every applied relaxation is recorded on the channel and surfaced in the UI** ("policy relaxed: repeat window 7d → 3d 4h") (#4140 decision 3):
 
-1. Shorten `episodeNoRepeat`/`movieNoRepeat` (halve, floor 24h).
-2. Relax `seriesMinGap`/`blockMax`.
-3. Widen an era-shaped `scope.dates` by ±2 years per step (never past the intent's decade boundary if one was stated). Per-axis dates never widen.
-4. Pad with filler pods (§10 main doc — never dead air).
+1. **`episodeNoRepeat` / `movieNoRepeat`.** An item airs once per loop of the cycle, so a window longer than the cycle's program runtime relaxes to that runtime, to the minute. Episodes and films are judged apart: each window relaxes only when the pool holds that kind, and a film shortfall never shortens the episode window.
+2. **`seriesMinGap`.** Relaxes only when the placed cycle breaches it, to the widest gap a placement holds, searched to the minute. Zero only when nothing wider holds.
+3. **`blockMax`.** Rises only when the placed cycle breaches it, to the shortest run a placement holds. Unbounded only when nothing shorter than the largest show's whole run holds.
 
-**Never relaxed, ever:** `audience` and explicit scope filters (series/seasons). A too-small kids' pool becomes a filler-heavy kids' channel — it does not become a less-kids channel. Mirrors the pod fallback ladder's philosophy: degrade quality, never safety or identity.
+A shortfall in one guard never touches another: a cycle shorter than the no-repeat window keeps the series gap, and a series-gap breach keeps the no-repeat windows. The gap is settled before the run length, because a run of two always breaches a gap.
+
+**Never relaxed, ever:** `audience` and scope — explicit series/seasons and the dates, era-shaped or not. A channel short of titles stays inside its line and says so; growth (#4140 step 2) is what widens a pool. A too-small kids' pool becomes a filler-heavy kids' channel — it does not become a less-kids channel. Mirrors the pod fallback ladder's philosophy: degrade quality, never safety or identity.
 
 ## 8. Pipeline placement & proposal surface
 
@@ -744,7 +745,8 @@ When the eligible pool can't satisfy the policy (small library ∩ tight scope �
   Every series row also names its proposal-owned episode-selection mode before approval: all
   episodes, curated highlights, or the explicit holiday scope. The review explains the selector;
   it does not let the client choose episode identities or bypass the deterministic binder.
-  - ⚠ **The exclusion report reaches the CHANNEL EDITOR only; proposal review still does not show it.** Both preview endpoints (`GET …/cycle` and `POST …/programming/preview`) carry `excluded` — counts plus a per-item reason — and the cycle-preview panel renders it under the schedule. This half of the sentence was aspirational for as long as the type existed: `ComputeDesiredAt` filled the report on **every reconcile** and every caller discarded it, so a title the ceiling refused was invisible product-wide, and diagnosing one meant querying the media server by hand. **Reconcile still discards its copy** — it has no column and no event to put one in, and the preview recomputes the identical report from the same pure builder. Both remaining gaps are real and named rather than implied. The same chip surface is the **per-channel rules editor** (§8.1) on the channel page (§7 `PATCH .../{id}` writes `policy_json`); omitted chips inherit the built-in default (§9), and `audience` + explicit `scope` are shown as never-relaxed safety fields.
+  - ⚠ **The exclusion report reaches the CHANNEL EDITOR only; proposal review still does not show it.** Both preview endpoints (`GET …/cycle` and `POST …/programming/preview`) carry `excluded` — counts plus a per-item reason — and the cycle-preview panel renders it under the schedule. This half of the sentence was aspirational for as long as the type existed: `ComputeDesiredAt` filled the report on **every reconcile** and every caller discarded it, so a title the ceiling refused was invisible product-wide, and diagnosing one meant querying the media server by hand. **Reconcile still discards its copy** of the per-episode report — the preview recomputes the identical report from the same pure builder. Both remaining gaps are real and named rather than implied.
+  - **A lineup title that cannot air is reported on the channel** (#4140). Each reconcile writes `policy.unairable`: every lineup title that put no programme into the cycle, with why — `not_in_library`, `no_episodes_in_seasons`, `over_ceiling`, `unrated`, `out_of_scope` or `no_episodes_selected`. It is reconcile-owned like `applied` (recomputed every reconcile, ignored on write, left out of what tells an edit from a library change) and the channel's Info page shows it to admins. A title the active rule or the seasonal bench rests is not on it: it airs at its time. The same chip surface is the **per-channel rules editor** (§8.1) on the channel page (§7 `PATCH .../{id}` writes `policy_json`); omitted chips inherit the built-in default (§9), and `audience` + explicit `scope` are shown as never-relaxed safety fields.
 - **Filler is part of the channel editor too (§10):** `policy.filler` (the `FillerSelection`) is edited on the channel page alongside the rules chips — theme criteria (era/audience/category/kinds) + pinned/excluded clips — with a live pod sandbox (`POST …/pods/preview`) that re-assembles the actual break against the unsaved draft before Apply. It also rides `policy_json`. The first approval of a generated Channel seeds its era from the grounded `scope.dates` and derives a conservative audience from the approved rating ceiling (`TV-Y`/`TV-Y7` → kids, `G`/`TV-G`/`PG`/`TV-PG` → family, otherwise general). Program genres never become filler product categories, and missing intent never invents late-night eligibility. This is a one-time ownership handoff: a present operator selection, including an explicitly empty one, is sticky across refine, re-curation, and reconcile.
 - **Lineup builder (§9):** hard filters → eligible pool → seeded constraint-aware slotting (greedy with backtracking is sufficient at envelope scale) → relaxation ladder on failure → pods → push. The periodic sweep re-evaluates policy (seasonal windows roll, library grows, relaxations un-relax when the pool recovers).
 
@@ -766,7 +768,7 @@ The preview is **read-only and never touches Tunarr or the store** — it is `Co
 
 **`POST /v1/channels/{id}/programming/preview` — the whole-definition draft preview (admin authoring).** The cycle preview above (`GET …/cycle`) and the pod preview (`GET …/pods`, §10) each preview *saved* state; this generalizes both to an **unsaved draft** — body `{lineup?, policy?}`, returns the shared shape `{at, activeRule, window, slots, trace, pods}` without persisting. It runs the **same** `ComputeDesiredAt` + pod assembler as reconcile (so a drafted lineup + rules + filler edit preview exactly what will air once applied), and is the call the Programming surface's **scheduling-rules draft** uses while editing (design.md §12 — the third review-before-apply surface, and the only block of that page that drafts; scope/ordering/auto-curate stay seamless because their edits are self-contained). ⚠ This sentence previously read "the one call the Programming surface uses while editing", which asserted a whole-page draft §12 did not sanction and the implementation never built — a companion doc contradicting the design doc, which AGENTS.md resolves in the design doc's favour. It **does not replace** the read paths: `GET …/cycle` stays the any-authenticated verification pane and `GET …/pods` the saved-pool read — the change is one shared response schema, not deleting the GETs. The preview shows play *order*, not wall-clock. Overview airtimes come from the backend actually streaming the channel: Tunarr's guide for Tunarr-backed channels and Loomarr's internal timeline for internal channels.
 
-**`POST /v1/channels/{id}/programming/changes` — the upcoming slots a draft changes (#1877).** The single-point preview answers "what airs at T"; this answers "where does this edit change the schedule". Same body, validation and authorization as `programming/preview`; query `from` (default now) and `horizonHours` (default the channel's rolling window, 24h when unbounded, at most 168). It **forecasts both sides with one walk**: the saved channel and the draft, from the same instant, the same playout anchor and the same engine (`Engine.ScheduleDiffDraft`). The walk re-arranges where the channel would — at each rolling-window turn (carry-over for internal playout, a cut on the boundary for Tunarr, as the guide forecasts them) **and at each instant the active rule or holiday set changes**, because `ComputeDesiredAt` arranges a cycle for the rule active at its instant; without the rule boundaries a Sunday-evening rule would never appear in a forecast whose windows open at midnight. Each arrangement is `PreviewPlannedChannel`, memoised on `ClockSignature` + window index. Because an untouched slot is produced by identical calls on both sides it compares equal, so the response lists only the changes — `{fromMs, toMs, compared, count, truncated, changes[{startMs, endMs, before?, after?}]}`, each side `{kind, title, series?, key, season?, episode?, startMs, stopMs, rule}`, capped at 100 rows with `count` the true total. The two sides are compared at every programme start on either side; content identity is kind + key + title + season/episode, so a programme cut at a rule boundary on one side is unchanged while both sides air it. It deliberately compares two forecasts rather than the draft against the accepted (persisted) cycle: a stale accepted cycle would otherwise surface as changes the edit did not make. With carry-over the first epoch is `playout.WindowTurn` over the accepted cycle, so a diff opened while the previous window's crossing programme is still on air starts from what the encoder airs; instants are evaluated in the engine clock's location, as reconcile evaluates rule hours. The two sides run concurrently; a 7-day diff of a 200-title shuffled channel with a nightly rule measures ~120–145 ms (`BenchmarkScheduleDiff_SevenDays`), so it stays in the request path.
+**`POST /v1/channels/{id}/programming/changes` — the upcoming slots a draft changes (#1877).** The single-point preview answers "what airs at T"; this answers "where does this edit change the schedule". Same body, validation and authorization as `programming/preview`; query `from` (default now) and `horizonHours` (default the channel's rolling window, 24h when unbounded, at most 168). It **forecasts both sides with one walk**: the saved channel and the draft, from the same instant, the same playout anchor and the same engine (`Engine.ScheduleDiffDraft`). The walk re-arranges where the channel would — at each rolling-window turn (carry-over for internal playout, a cut on the boundary for Tunarr, as the guide forecasts them) **and at each instant the active rule or holiday set changes**, because `ComputeDesiredAt` arranges a cycle for the rule active at its instant; without the rule boundaries a Sunday-evening rule would never appear in a forecast whose windows open at midnight. Each arrangement is `PreviewPlannedChannel`, memoised on `ClockSignature` + window index. Because an untouched slot is produced by identical calls on both sides it compares equal, so the response lists only the changes — `{fromMs, toMs, compared, count, truncated, changes[{startMs, endMs, before?, after?}]}`, each side `{kind, title, series?, key, season?, episode?, startMs, stopMs, rule}`, capped at 100 rows with `count` the true total. The two sides are compared at every programme start on either side; content identity is kind + key + title + season/episode, so a programme cut at a rule boundary on one side is unchanged while both sides air it. It deliberately compares two forecasts rather than the draft against the accepted (persisted) cycle: a stale accepted cycle would otherwise surface as changes the edit did not make. With carry-over the first epoch is `timeline.WindowTurn` over the accepted cycle, so a diff opened while the previous window's crossing programme is still on air starts from what the encoder airs; instants are evaluated in the engine clock's location, as reconcile evaluates rule hours. The two sides run concurrently; a 7-day diff of a 200-title shuffled channel with a nightly rule measures ~120–145 ms (`BenchmarkScheduleDiff_SevenDays`), so it stays in the request path.
 
 ## 8.2. Self-updating channels (scheduled re-curation)
 
@@ -836,6 +838,51 @@ A channel built from an intent shouldn't be frozen at build time — as the libr
 - **Cost-guarded + idempotent.** A channel whose intent-hash + lineup are unchanged since its last re-curation is skipped (the suggester's intent-hash cache), so a weekly run that finds nothing new makes no LLM call and no proposal. A re-curation that produces an identical proposal is a no-op end to end (same bind, no reconcile push — the §6.5 idempotency).
 
 The safety posture mirrors the rest of §4/§8: re-curation can *loosen* content over time (add titles) but never *weakens* a gate — the audience ceiling (§4, and the kids-only default), the approval gate, and the per-channel opt-in all still hold. It grows a channel toward its intent; it can't turn a kids channel adult or spend acquisitions a human never authorized.
+
+### 8.2.1. Growth from the line the seeds draw (#4140 step 2, #4333)
+
+#4140 replaces re-curation with deterministic growth, in `internal/channels/growth`. The line, the fit, the target and the plan are pure. `growth.Fill` is the nightly `channel-growth` job (`job.growth.schedule`, 00:05 by default), and it uses no model.
+
+- **The seeds draw the line** (`growth.DrawLine`). Every lineup entry is a seed until growth adds titles of its own. A seed with nothing airable is ignored. One airable seed, or none, fixes the line: a single-show channel never grows. Seeds that all share one franchise make the line that franchise. Otherwise the line has four parts:
+  - **Kinds:** every kind held by at least a quarter of the seeds and by at least two.
+  - **Years:** the seeds' years split into runs wherever neighbours are more than `2 × margin + 1` apart. The line spans the run holding more than half of them, or all of them when no run does, plus `margin` (3) either side.
+  - **Genres:** those at least half the seeds carry.
+  - **Rating:** no higher than the highest rating among the seeds that are not odd. NC-17 counts as above R and TV-MA here, though the audience ladder ranks them together: seeds that stop at R don't make an NC-17 channel.
+
+  A seed outside the kinds, years or genres is **odd**. It keeps airing, is listed, and does not widen the line.
+- **A title sits against the line** (`Line.Classify`) as one of four fits:
+  - **clear** when it carries at least `bar` (0.5) of the line's genres, and at least `bar` of its own genres are the line's (a crime thriller tagged drama is not a drama, and a clear fit airs before the model sees it);
+  - **unclear** when it carries fewer, or has no year;
+  - **unrated**, which never joins by itself (decision 29);
+  - **outside**, with the reason.
+
+  The channel's stored scope and ceiling are applied by the scheduler's filter first, so the line only narrows them.
+- **The target** (`growth.TargetFor`) has three parts:
+  - **Episodes:** a week of the channel's series airtime without a repeat.
+  - **Shows:** `⌈1 / maxShowShare⌉` (0.15 → 7), so that none dominates a day.
+  - **Films:** a month's rest for every film (decision 4), sized to the films' share of the airtime.
+
+  A single-show channel has no target.
+- **Measured before anything ships.** `go run ./project/evidence/curation-1670/report -db <copy> -growth` prints, per channel:
+  - the line;
+  - the clear, unclear, unrated and outside counts in the library;
+  - the target;
+  - the shortfall after the clear fits, and after the unclear fits too.
+
+  It also prints a sweep of the bar. On the install (2026-11-15) no series channel is short of episodes; three are short of shows. The maintainer chose margin 3, bar 0.5 and show share 0.15 from these numbers (#4333).
+- **The plan** (`growth.Plan`) adds clear fits first, the closest to the line first: genre share, then distance in years from the line's middle, then key. It stops at the target for each kind. A title the model judged does not fit never joins. An unclear fit joins once the model judged it fits. On an install with no model, nothing will ever review it, so it joins while the channel is still short (decision 8). A verdict counts only against the line it was given for (`Line.Words`); when the line changes, the title is asked again.
+- **The model's background review** (`growth.Review`, the `channel-growth-review` job, every 5 minutes by default, decisions 32 and 33):
+  - **What it asks about, each run:** at most four titles. First the titles growth already added (they are airing), then the unclear fits the plan would take if each were accepted.
+  - **The question:** the channel's name, its line in words, a few of its own titles, and the candidate. The answer is a fixed choice, `fits` or `does_not_fit`, with a reason of a few words.
+  - **What a verdict does:** it is kept in `growth_reviews` per channel and title, with the line it was given against. A grown title judged not to fit is taken off through `edit.Service`, which declines it. A person putting it back by hand is the undo: a title added by hand is a seed, and the review never asks about seeds.
+  - **When it waits:** while a person waits on the model (`llm.InteractiveGate`), and at the day's AI spending cap. A hosted model's questions reserve in the filler inference ledger under `filler.defects.judge_daily_cents`, the one daily cap for filler and programme work (#3838 decision 19). A self-hosted model costs nothing and never waits on the cap.
+  - An answer outside the choices leaves the title unjudged, and a later run asks again. A fixed line adds nothing, and neither does a declined title.
+- **The nightly fill** (`growth.Fill`) reads the library once and then goes through each channel:
+  - **Which channels:** those that reconcile, grow (not kept as they are) and were made from a request. A channel made by hand waits for a writer of its own, because approval binds only to a channel made from a request. A channel with a proposal in flight waits for the next night.
+  - **Seeds:** the lineup entries with no batch (`LineupEntry.Grown` empty). Titles a batch added are carried towards the target but never draw the line.
+  - **Candidates:** the library's playable series and films, keyed by TVDB for a series and TMDB otherwise. The channel's stored scope and ceiling (`schedule.Admitted`) apply first. On an exclusive holiday channel, a candidate must also fit one of the channel's holidays (`schedule.FitsHolidayChannel`, the in-season filter's own judgment). Its genres are only its mood: a Christmas channel scoped to Comedy must not take every comedy. The report applies the same filters, so its counts are what the fill would add. On the install it would add 15 titles to the holiday channel (not about 290 comedies), and that channel stays short by 276 films.
+  - **Writing:** the picks become one proposal (`Proposal.Growth` holds the batch, `growth-YYYY-MM-DD`). It is recorded against the channel (`Workflow.RecordForChannel`) and approved with `accept.AutoCuratedBy`, so the binder unions it onto the lineup and stamps each entry with the batch. A growth batch never restates the channel's request; the channel keeps its own, or none.
+- **Undo is taking it off.** Any edit that takes a grown title off the lineup adds it to `GrowthPolicy.Declined` (`edit.Service`, `ChannelPolicy.WithRemovedGrowthDeclined`). It never rejoins by itself, and a person can still add it back by hand. The list holds 1000 refusals and forgets the oldest first. `GrowthPolicy.Keep` stops growth for a channel, and a policy PATCH that leaves growth out keeps both.
 
 ## 8.3. Adjacency candidates (a deterministic second corpus)
 
@@ -954,7 +1001,7 @@ continue.
 - **Separation with wrap:** property test — no episode twice inside the window, no series-gap violation across the cycle seam.
 - **Syndication deck:** every eligible episode airs exactly once per deck before any repeats.
 - **Seasonality under a frozen clock:** Oct 15 boosts Halloween items; Jul 14 benches them; `exclusive` runs `offSeason` fallback out of window; window roll happens via the sweep.
-- **Relaxation ladder:** tiny pool → ladder descends in order, records + surfaces each step, and *never* touches audience/scope; pool growth un-relaxes on a later sweep.
+- **Relaxation:** tiny pool → only the breached guards relax, each to the widest value that holds, recorded + surfaced; a breach of one never touches another; *never* touches audience/scope; pool growth un-relaxes on a later sweep.
 - **Determinism:** same pool + policy + seed → byte-identical cycle.
 
 ## 11. Build integration

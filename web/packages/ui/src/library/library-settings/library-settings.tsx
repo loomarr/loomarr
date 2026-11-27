@@ -19,6 +19,7 @@ const LibrarySettings = ({
   readySoFar,
   held,
   unreadable,
+  skipped,
   hooks,
   details,
   checking,
@@ -28,6 +29,7 @@ const LibrarySettings = ({
   onConfirmRemoval,
   onUseFolder,
   onAddFolder,
+  folderBrowser,
   onMapFolder,
   now,
   timeZone,
@@ -41,6 +43,7 @@ const LibrarySettings = ({
         details={details}
         held={held}
         unreadable={unreadable}
+        skipped={skipped}
         hooks={hooks}
         onCheckAgain={onCheckAgain}
         onConfirmRemoval={onConfirmRemoval}
@@ -63,7 +66,7 @@ const LibrarySettings = ({
             onUseFolder={onUseFolder}
           />
         ))}
-        <AddFolder onAddFolder={onAddFolder} />
+        <AddFolder folderBrowser={folderBrowser} onAddFolder={onAddFolder} />
       </Stack>
       <PathMap onMapFolder={onMapFolder} pathMap={pathMap} />
     </Section>

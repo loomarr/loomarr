@@ -33,6 +33,8 @@ type Identity struct {
 	Role     Role
 	User     *identitystore.User
 	DeviceID string
+	// CodeMode is the paired device's Code Mode switch (#4486); false for any other credential.
+	CodeMode bool
 }
 
 // Authorizer resolves a request to its Identity (§7 authorization model). Production uses the

@@ -1,6 +1,5 @@
-import { Action, Tooltip } from "@loomarr/design-system";
+import { Action, Stack, Tooltip } from "@loomarr/design-system";
 import { useId } from "react";
-import { cn } from "@/lib/utils";
 import type { FieldHelpProps } from "./field-help.type";
 
 // FieldHelp — a small (i) icon that shows a field's guidance on hover/focus, instead of a
@@ -27,7 +26,7 @@ const FieldHelp = ({ children, label, describedById, className }: FieldHelpProps
   const descriptionId = describedById ?? ownId;
 
   return (
-    <span className={cn("inline-flex shrink-0", className)}>
+    <Stack className={className} direction="row" flexShrink={0} render="span">
       <Tooltip content={children}>
         <Action
           aria-describedby={descriptionId}
@@ -42,7 +41,7 @@ const FieldHelp = ({ children, label, describedById, className }: FieldHelpProps
           {children}
         </span>
       )}
-    </span>
+    </Stack>
   );
 };
 

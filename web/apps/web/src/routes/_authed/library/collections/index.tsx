@@ -6,7 +6,8 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { LibraryPage } from "@/library/library-page";
 
 // Collections (#2151 decision 28): the Library's fourth tab, the household's own collections and
-// the ready-made sets. Admin-only like the rest of the Library.
+// the ready-made sets. The screen is admin-only like the rest of the Library's; the API already
+// lets a member read the collections (#4476).
 
 const CollectionsScreen = () => {
   useDocumentTitle("Collections");

@@ -137,6 +137,14 @@
   }
 }
 
+/* The button a file input draws is its own box, so its weight is set on it: the input's text (the
+ * file name) keeps the weight the input sets, and the button reads one step heavier. */
+@layer base {
+  input[type="file"]::file-selector-button {
+    font-weight: 500;
+  }
+}
+
 body {
   margin: 0;
   background-color: var(--color-background);
@@ -300,24 +308,43 @@ body {
    transparent so the thumb floats over the card rather than sitting in a gutter. No
    `scrollbar-gutter: stable` — it would reserve the track width even on short lists that
    never scroll, shifting their content; the accepted cost is a one-time ~8px reflow the
-   moment a list actually grows past the cap (imperceptible for an overlay scrollbar). */
-.scroll-thin {
+   moment a list actually grows past the cap (imperceptible for an overlay scrollbar).
+
+   A design-system view takes it as `data-scroll="thin"`: a plain CSS hook that the legacy
+   ledger does not count as a utility class (#4451). `.scroll-thin` serves raw elements. */
+.scroll-thin,
+[data-scroll="thin"] {
   scrollbar-width: thin;
   scrollbar-color: var(--color-static-700) transparent;
 }
-.scroll-thin::-webkit-scrollbar {
+.scroll-thin::-webkit-scrollbar,
+[data-scroll="thin"]::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-.scroll-thin::-webkit-scrollbar-track {
+.scroll-thin::-webkit-scrollbar-track,
+[data-scroll="thin"]::-webkit-scrollbar-track {
   background: transparent;
 }
-.scroll-thin::-webkit-scrollbar-thumb {
+.scroll-thin::-webkit-scrollbar-thumb,
+[data-scroll="thin"]::-webkit-scrollbar-thumb {
   background-color: var(--color-static-700);
   border-radius: 9999px;
 }
-.scroll-thin::-webkit-scrollbar-thumb:hover {
+.scroll-thin::-webkit-scrollbar-thumb:hover,
+[data-scroll="thin"]::-webkit-scrollbar-thumb:hover {
   background-color: var(--color-static-600);
+}
+
+/* The slow pulse on a loading indicator, such as the guide's hairline while the next window
+   loads. Opacity only; the reduced-motion killswitch below stills it. */
+@keyframes loading-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+[data-pulse="loading"] {
+  animation: loading-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 /* guide-scroll — the guide grid's own scrollbars, and a deliberate variant of .scroll-thin

@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/contact"
 	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // The V11 gate: an established SQLite install migrates to Postgres with row-count
@@ -63,8 +64,8 @@ func seedForMigration(t *testing.T, s Store) {
 	// directions — a converter that hardcodes `false` passes a single-row test. Same for
 	// AutoApprove, deliberately set opposite to Disabled so a transposition shows up.
 	for _, u := range []User{
-		{ID: "u-alice", Name: "alice", Role: RoleAdmin, Disabled: false, AutoApprove: true, PasswordHash: "hash-alice"},
-		{ID: "u-bob", Name: "bob", Role: RoleMember, Disabled: true, AutoApprove: false, MediaServerLinked: true, PasswordHash: "hash-bob"},
+		{ID: "u-alice", Name: "alice", Role: identitystore.RoleAdmin, Disabled: false, AutoApprove: true, PasswordHash: "hash-alice"},
+		{ID: "u-bob", Name: "bob", Role: identitystore.RoleMember, Disabled: true, AutoApprove: false, MediaServerLinked: true, PasswordHash: "hash-bob"},
 	} {
 		u.CreatedAt, u.UpdatedAt = time.Now(), time.Now()
 		if err := s.UpsertUser(ctx, u); err != nil {

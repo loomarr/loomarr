@@ -137,6 +137,8 @@ describe("ChannelProgrammingChanges", () => {
     expect(rows[0]).toHaveTextContent("Draft 0");
     expect(rows[0]).toHaveTextContent("Sunday horror");
     expect(screen.getByText(/^2 changes until/)).toBeInTheDocument();
+    // The inner-scroll list asks for the slim scrollbar through its CSS hook.
+    expect(screen.getByRole("list", { name: "Changed slots" })).toHaveAttribute("data-scroll", "thin");
   });
 
   it("names episodes by series, breaks, and sides where nothing airs", () => {

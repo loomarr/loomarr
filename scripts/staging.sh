@@ -156,8 +156,10 @@ up() {
 			"$public_url" "$gpu" "$TS_AUTHKEY" "$tunnel_token" "$admin_password"
 		cat "$ROOT/docker/staging-boot.sh.tmpl"
 	} >"$TMP/boot"
-	# Through a file, because the boot script holds the tailnet key and argv is visible.
-	base64 -w0 "$TMP/boot" >"$TMP/boot.b64"
+	# Through a file, because the boot script holds the tailnet key and argv is visible. GNU base64
+	# wraps its output and macOS's takes no file operand, so stdin in and newlines stripped is the
+	# form both accept.
+	base64 <"$TMP/boot" | tr -d '\n' >"$TMP/boot.b64"
 	jq -n --arg region "$region" --arg plan "$plan" --argjson os "$OS_ID" --arg label "$name" \
 		--arg tag "$TAG" --arg lifetime "$lifetime" --rawfile boot "$TMP/boot.b64" \
 		'{region: $region, plan: $plan, os_id: $os, label: $label, hostname: $label, backups: "disabled",

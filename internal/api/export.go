@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
+	agentsapi "github.com/loomarr/loomarr/internal/api/agents"
 	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
@@ -66,6 +67,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	// profiler routes are Hidden on both paths anyway (they exist only when a flag is set), and the
 	// exporter has no Options to read the flag from.
 	opsapi.New(opsapi.Deps{}, true).Register(humaAPI)
+	agentsapi.New(agentsapi.Deps{Log: log}).Register(humaAPI)
 	return srv, humaAPI
 }
 
@@ -148,6 +150,51 @@ func UnboundedInputArrays() ([]string, error) {
 	}
 	sort.Strings(found)
 	return found, nil
+}
+
+// RegisteredOperation is one mounted operation with the role it requires and its query
+// parameters' names.
+type RegisteredOperation struct {
+	Method, Path, ID string
+	Role             httpcore.Role
+	Query            []string
+}
+
+// RegisteredOperations lists every operation the registry mounts, sorted by path then method, so
+// an authorization test enumerates the routes themselves rather than a list kept by hand. Role is
+// the one the middleware enforces, so an operation that declared none reads as admin.
+func RegisteredOperations() ([]RegisteredOperation, error) {
+	_, humaAPI := schemaOnlyAPI(slog.New(slog.DiscardHandler))
+	spec := humaAPI.OpenAPI()
+	if spec == nil || spec.Paths == nil {
+		return nil, fmt.Errorf("api: no operations registered")
+	}
+	var out []RegisteredOperation
+	for path, item := range spec.Paths {
+		for method, op := range map[string]*huma.Operation{
+			http.MethodGet: item.Get, http.MethodPost: item.Post, http.MethodPut: item.Put,
+			http.MethodPatch: item.Patch, http.MethodDelete: item.Delete,
+		} {
+			if op == nil {
+				continue
+			}
+			reg := RegisteredOperation{Method: method, Path: path, ID: op.OperationID, Role: httpcore.RoleForOperation(op)}
+			for _, p := range op.Parameters {
+				if p != nil && p.In == "query" {
+					reg.Query = append(reg.Query, p.Name)
+				}
+			}
+			sort.Strings(reg.Query)
+			out = append(out, reg)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Path != out[j].Path {
+			return out[i].Path < out[j].Path
+		}
+		return out[i].Method < out[j].Method
+	})
+	return out, nil
 }
 
 // OperationsMissingARole reports every registered operation that declares no required role

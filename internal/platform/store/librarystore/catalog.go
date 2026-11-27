@@ -272,8 +272,9 @@ func (s *Store) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, r
 	}
 	defer func() { _ = tx.Rollback() }()
 	var held string
-	err = tx.QueryRowContext(ctx, s.ph(`SELECT record FROM library_catalog
-		WHERE provider = ? AND kind = ? AND external_id = ?`), key.Provider, key.Kind, key.ExternalID).Scan(&held)
+	var heldAt int64
+	err = tx.QueryRowContext(ctx, s.ph(`SELECT record, fetched_at_ms FROM library_catalog
+		WHERE provider = ? AND kind = ? AND external_id = ?`), key.Provider, key.Kind, key.ExternalID).Scan(&held, &heldAt)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, fmt.Errorf("save library catalog: %w", err)
 	}
@@ -289,7 +290,9 @@ func (s *Store) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, r
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("save library catalog: %w", err)
 	}
-	return held != record, nil
+	// The first answer for a row is news even when it is "no such title": the titles waiting on it
+	// are written again with it.
+	return held != record || heldAt == 0, nil
 }
 
 func (s *Store) FailLibraryCatalog(ctx context.Context, key LibraryCatalogKey, retryAt time.Time) error {

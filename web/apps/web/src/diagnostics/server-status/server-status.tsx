@@ -37,7 +37,7 @@ const ServerStatus = () => {
   const cost = unwrap(restartCost.data);
 
   return (
-    <Stack className="mb-6 *:shrink-0" gap="section">
+    <Stack className="*:shrink-0" gap="section" marginBottom={24}>
       {services.data?.status === 200 ? (
         <ServicesPanel
           view={services.data.data}

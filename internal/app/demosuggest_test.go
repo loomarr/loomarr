@@ -24,7 +24,7 @@ func (r *recordingSuggest) SubmitBuilt(_ context.Context, _ proposals.Intent, p 
 
 type demoItems []ideas.Item
 
-func (d demoItems) IdeaItems(context.Context) ([]ideas.Item, error) { return d, nil }
+func (d demoItems) IdeaItems(context.Context, bool) ([]ideas.Item, error) { return d, nil }
 
 // The demo's Submit never reaches a model: it records a proposal built from the library as the
 // guest's own request (#2729).

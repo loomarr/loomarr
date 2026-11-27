@@ -1,5 +1,5 @@
 import { tidyGoDuration } from "@loomarr/core/format";
-import { Action, CompactSelect, Stack, Text } from "@loomarr/design-system";
+import { Action, CompactSelect, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
 import { CommitField, normalizeYearRanges, YearRangeListField } from "@loomarr/ui";
 import { useState } from "react";
 import { eraDates, eraOf } from "@/lib/era-dates";
@@ -10,10 +10,21 @@ import {
   type PolicyField as PolicyFieldName,
   resetField,
 } from "@/lib/policy-overrides";
-import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { PolicyFieldSource } from "../policy-field-source";
 import type { ChannelPolicyFieldsProps } from "./channel-policy-fields.type";
+
+// What the number boxes take. A blank always passes (it clears the override); anything else that is
+// not the box's kind of number is held back with the reason, never sent as NaN (which the wire
+// spells null, silently clearing the limit).
+const asMinutes = (text: string) =>
+  text.trim() === "" || (Number.isFinite(Number(text)) && Number(text) >= 0)
+    ? undefined
+    : "Enter minutes as a number, like 90";
+const asCount = (text: string) =>
+  text.trim() === "" || /^\d+$/.test(text.trim()) ? undefined : "Enter a whole number, like 3";
+const asYear = (text: string) =>
+  text.trim() === "" || /^\d{4}$/.test(text.trim()) ? undefined : "Enter a year, like 1985";
 
 // One date axis: its title over the shared range list.
 const DateAxisEditor = ({
@@ -25,7 +36,7 @@ const DateAxisEditor = ({
   ranges: { from: number; to: number }[];
   onChange: (next: { from: number; to: number }[]) => void;
 }) => (
-  <Stack className="border-border rounded-md border p-3" gap="inline">
+  <Stack borderColor="borderDecorative" borderRadius={6} borderWidth={1} gap="inline" padding={12}>
     <Stack align="center" direction="row" gap="control" justify="between">
       <Text textRole="label">{label}</Text>
     </Stack>
@@ -59,18 +70,20 @@ const PolicyField = ({
 }) => {
   const labelId = `${id}-label`;
   return (
-    <Stack className={wide ? "sm:col-span-2" : undefined} gap="1.5">
-      <Stack align="center" direction="row" gap="inline" justify="between" wrap>
-        <Stack align="center" direction="row" gap="1.5">
-          <Text as="label" htmlFor={htmlFor} id={labelId} textRole="label">
-            {label}
-          </Text>
-          <FieldHelp label={label}>{help}</FieldHelp>
+    <GridItem span={wide ? { base: 1, sm: "full" } : 1}>
+      <Stack gap="1.5">
+        <Stack align="center" direction="row" gap="inline" justify="between" wrap>
+          <Stack align="center" direction="row" gap="1.5">
+            <Text as="label" htmlFor={htmlFor} id={labelId} textRole="label">
+              {label}
+            </Text>
+            <FieldHelp label={label}>{help}</FieldHelp>
+          </Stack>
+          <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
         </Stack>
-        <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
+        {children}
       </Stack>
-      {children}
-    </Stack>
+    </GridItem>
   );
 };
 
@@ -214,7 +227,7 @@ const ChannelPolicyFields = ({
   return (
     // A responsive 2-column field grid (was a 1-wide stack): the Selects and single inputs sit
     // side by side, while the dates editor spans the full width. gap-x for columns, gap-y for rows.
-    <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
+    <Grid className={className} columnGap="4" columns={{ base: 1, sm: 2 }} rowGap="5">
       {/* Ordering — empty string means "inherit the channel's Strategy"; the select names that
           choice "inherit". */}
       {showOrdering && (
@@ -331,8 +344,9 @@ const ChannelPolicyFields = ({
               keyboardType="number-pad"
               label="From year"
               maxLength={4}
+              validate={asYear}
               onCommit={(text) => {
-                const next = text === "" ? undefined : Number(text);
+                const next = text.trim() === "" ? undefined : Number(text);
                 if (next === era?.from) return;
                 const { dates: _dates, ...scope } = policy.scope ?? {};
                 const nextDates = eraDates({ ...era, from: next });
@@ -351,8 +365,9 @@ const ChannelPolicyFields = ({
               keyboardType="number-pad"
               label="To year"
               maxLength={4}
+              validate={asYear}
               onCommit={(text) => {
-                const next = text === "" ? undefined : Number(text);
+                const next = text.trim() === "" ? undefined : Number(text);
                 if (next === era?.to) return;
                 const { dates: _dates, ...scope } = policy.scope ?? {};
                 const nextDates = eraDates({ ...era, to: next });
@@ -408,7 +423,7 @@ const ChannelPolicyFields = ({
                 const hasDates = Object.values(nextDates).some(
                   (ranges) => Array.isArray(ranges) && ranges.length > 0,
                 );
-                const { era: _era, dates: _dates, ...scope } = policy.scope ?? {};
+                const { dates: _dates, ...scope } = policy.scope ?? {};
                 // Editing an axis keeps this editor open even if the windows happen to line up
                 // again, so the field does not swap under the operator mid-edit.
                 setAxesRequested(true);
@@ -453,6 +468,7 @@ const ChannelPolicyFields = ({
             key={policy.scope?.runtimeMax ?? 0}
             keyboardType="number-pad"
             placeholder="e.g. 90"
+            validate={asMinutes}
             width={112}
             onCommit={(text) => {
               const raw = text.trim();
@@ -504,6 +520,7 @@ const ChannelPolicyFields = ({
             key={separation?.blockMax ?? ""}
             keyboardType="number-pad"
             placeholder="Use built-in"
+            validate={asCount}
             width={160}
             onCommit={(text) => {
               // Blank clears the authored cap and returns to the built-in limit. `0` is
@@ -516,7 +533,7 @@ const ChannelPolicyFields = ({
           />
         </PolicyField>
       )}
-    </div>
+    </Grid>
   );
 };
 

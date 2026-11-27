@@ -35,6 +35,12 @@ tables:
       audience: >
         Who the clip suits: kids, family, general or late_night. Empty when not yet tagged.
       duration_ms: Length of the clip in milliseconds, measured from the file.
+      air_start_ms: >
+        Where in the file the clip starts airing, in milliseconds: past black that is also silent at
+        its start, but for a short pad. Set with air_end_ms by the pipeline's air-window sweep.
+      air_end_ms: >
+        Where in the file the clip stops airing, in milliseconds. 0 means the window has not been
+        measured and the clip airs whole; a break books air_end_ms - air_start_ms.
       source: >
         Where the clip came from: the id of the registered filler source that downloaded it (such
         as archive:<collection>), or filler-dir for a file dropped into the clip folder.
@@ -110,7 +116,7 @@ tables:
       - group: The file
         why: >
           One file per clip, and every read of a clip needs it; the hash is the clip's identity.
-        columns: [hash, path, tunarr_program_id, duration_ms, quality, source, license, created_at, updated_at]
+        columns: [hash, path, tunarr_program_id, duration_ms, air_start_ms, air_end_ms, quality, source, license, created_at, updated_at]
       - group: What it is
         why: >
           The facts selection and research read for every clip, one value each. Repeated facts
@@ -368,6 +374,34 @@ tables:
         The channel coverage gap the download was for, such as era:1990-1999. Empty when it was not
         chosen for a gap.
 
+  - name: filler_download_failures
+    about: >
+      One row per item whose download has not worked yet. A failed download is tried three times over
+      a day, then rests 30 days; an item that waits for room is kept here too, with no failure
+      counted. The row has what a retry needs, so an item no source listing offers any more is still
+      retried.
+    retention: >
+      Deleted when the item downloads. The nightly housekeeping task also deletes the rows of a
+      source that was deleted. An item that keeps failing stays, tried once every 30 days.
+    columns:
+      item_key: >
+        Identifies the item: the provider's id for it within its source, or its address for a typed
+        URL.
+      provider: The provider that downloads it, such as archive or youtube.
+      source_id: The registered source it came from (filler_sources.id). Empty for a typed URL.
+      remote_id: The provider's id for the item. Empty for a typed URL.
+      url: The address to download.
+      duration_ms: The length the listing gave, in milliseconds; 0 when it gave none.
+      height: The picture height the listing gave, in pixels; 0 when it gave none.
+      gap: >
+        The channel coverage gap the download was for, such as era:1990-1999. Empty when it was not
+        chosen for a gap.
+      failures: How many attempts have failed. Waiting for room does not count.
+      first_failed_at: When the first attempt failed, in Unix seconds; 0 if none has.
+      last_failed_at: When the latest attempt failed, in Unix seconds; 0 if none has.
+      retry_at: The earliest the item is tried again, in Unix seconds.
+      last_error: Why the latest attempt failed or waited.
+
   - name: filler_clip_pipeline
     about: >
       Each clip's preparation: which step it is at, how that step is going, and the clip's outcome
@@ -388,7 +422,7 @@ tables:
       reject_reason: >
         Why the clip was rejected, as a code: unprobeable, too_short, no_audio, no_video,
         black_content, silent_content, too_quiet, unplayable, defect, language, duplicate,
-        screening, sliver or unidentified. Empty when not rejected.
+        screening, sliver, undecided or unidentified. Empty when not rejected.
       reject_detail: >
         The measurement behind the rejection, such as a duration under the minimum or the language
         heard.
@@ -538,6 +572,23 @@ tables:
       clip_hash: The clip that aired (clips.hash).
       aired_at_ms: When the clip was scheduled to start, in Unix milliseconds.
       recorded_at_ms: When playout recorded the airing, in Unix milliseconds.
+
+  - name: filler_breaks
+    about: >
+      Each commercial break Loomarr has planned for a channel. Reconcile assembles a break once, ahead
+      of time, and cuts the break's slot to the media its pod holds, so the programme resumes when the
+      break's own clips end. The guide, the previews and the stream read the stored pod, so what the
+      guide shows is what airs.
+    retention: >
+      Reconcile keeps the breaks of the window on air and deletes a channel's other breaks, including
+      those behind the playout anchor and those whose start moved. A channel's breaks go with it.
+    columns:
+      channel_id: The channel the break is on (channels.id).
+      start_ms: When the break starts on the channel's timeline, in Unix milliseconds.
+      ceiling_ms: The slot length the pod was assembled to, in milliseconds.
+      length_ms: The media the pod holds, in milliseconds. The break slot is this long once planned.
+      pod_json: The break's clips in order, as the pod assembler returned them.
+      planned_at: When the break was planned, in Unix seconds.
 
   - name: filler_context_reports
     about: >

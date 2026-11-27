@@ -160,6 +160,9 @@ func (b *blobStore) WriteFrom(path string, r io.Reader, maxBytes int64) ([]byte,
 	return data, nil
 }
 
+// errTooLarge is readCapped's refusal of a body over the cap.
+var errTooLarge = errors.New("images: larger than the byte limit")
+
 // readCapped reads at most maxBytes, treating one byte more as a refusal rather than a truncation.
 //
 // ⚠ The `+1` is the whole mechanism: LimitReader alone would silently hand back a truncated image,
@@ -175,7 +178,7 @@ func readCapped(r io.Reader, maxBytes int64) ([]byte, error) {
 		return nil, fmt.Errorf("images: read: %w", err)
 	}
 	if int64(len(data)) > maxBytes {
-		return nil, fmt.Errorf("images: larger than the %d byte limit", maxBytes)
+		return nil, fmt.Errorf("%w (%d bytes)", errTooLarge, maxBytes)
 	}
 	return data, nil
 }

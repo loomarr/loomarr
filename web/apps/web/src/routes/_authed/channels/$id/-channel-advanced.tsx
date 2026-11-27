@@ -1,7 +1,7 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import { humanizeRelaxation } from "@loomarr/core/format";
-import { CompactSelect, Stack, Text } from "@loomarr/design-system";
+import { CompactSelect, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
 
 // relaxationSentence — a single eased scheduling rule (a relaxation-ladder step) written as
 // a warm, plain sentence rather than a `KIND: from → to` code. Each kind gets its own
@@ -62,7 +62,7 @@ const ChannelAdvanced = ({
     // Disclosure this renders inside on the channel page. The web mock draws it as a
     // label | value grid. Its "Last updated · took" row has no field on ChannelDTO yet, so it
     // isn't drawn rather than faked.
-    <div className="grid grid-cols-[180px_1fr] gap-x-4 gap-y-2">
+    <Grid columnGap="4" columns={["180px", "1fr"]} rowGap="2">
       {/* Programming rules that were eased (the relaxation ladder). */}
       <Text as="span" textRole="compact" tone="secondary">
         Rules loosened
@@ -89,15 +89,11 @@ const ChannelAdvanced = ({
           override can be set. It sits beside the Tunarr row: the same subject. */}
       {onPolicyChange && (
         <>
-          <Text
-            as="span"
-            className="self-start pt-2"
-            id="channel-playout-backend-label"
-            textRole="compact"
-            tone="secondary"
-          >
-            Streamed by
-          </Text>
+          <GridItem alignSelf="flex-start" paddingTop={8}>
+            <Text as="span" id="channel-playout-backend-label" textRole="compact" tone="secondary">
+              Streamed by
+            </Text>
+          </GridItem>
           <Stack gap="1">
             <CompactSelect
               aria-labelledby="channel-playout-backend-label"
@@ -134,7 +130,7 @@ const ChannelAdvanced = ({
             ? "Not used — Loomarr plays this channel itself"
             : "Not on Tunarr yet. It's created there automatically once Tunarr is connected."}
       </Text>
-    </div>
+    </Grid>
   );
 };
 

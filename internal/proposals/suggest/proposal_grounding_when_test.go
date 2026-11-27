@@ -26,6 +26,11 @@ func TestGroundRulesDropsAContradictoryCompositeAndKeepsThePolicy(t *testing.T) 
 		"a sound one before a bad one":   {[]pickRule{{When: "weekday-primetime"}, {When: "mornings-overnight"}}, []string{"Weekday-primetime"}},
 		"three parts is not a composite": {[]pickRule{{When: "weekend-mornings-weekday"}}, nil},
 		"every rule sound":               {[]pickRule{{When: "weekend"}, {When: "primetime"}}, []string{"Weekend", "Primetime"}},
+		// A part with a hyphen of its own is a sound rule whichever side it is on: the model is not
+		// made to lose a rule it got right.
+		"a hyphenated part first":   {[]pickRule{{When: "late-night-weekend"}, {When: "prime-time-weekday"}}, []string{"Late-night-weekend", "Prime-time-weekday"}},
+		"a hyphenated part last":    {[]pickRule{{When: "weekend-late-night"}}, []string{"Weekend-late-night"}},
+		"hyphenated parts, a clash": {[]pickRule{{When: "early-morning-late-night"}, {When: "early-morning-weekday"}}, []string{"Early-morning-weekday"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			raw := &pickPolicy{Rules: tc.rules}

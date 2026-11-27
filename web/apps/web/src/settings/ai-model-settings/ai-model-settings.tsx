@@ -101,10 +101,14 @@ const OllamaLineup = ({ status, onModelChange }: { status: SystemLLMStatus; onMo
 const TmdbNotice = ({ configured }: { configured: boolean }) => (
   <Stack
     align="center"
-    className="border-border bg-muted/40 rounded-md border p-3"
+    backgroundColor="washElevated40"
+    borderColor="borderDecorative"
+    borderRadius={8}
+    borderWidth={1}
     direction="row"
     gap="control"
     justify="between"
+    padding={12}
     render="section"
     wrap
   >
@@ -157,8 +161,11 @@ const VisionPicker = ({
   return (
     <Stack
       aria-labelledby="role-vision"
-      className="border-border rounded-md border p-3"
+      borderColor="$borderDecorative"
+      borderRadius={6}
+      borderWidth={1}
       gap="inline"
+      padding={12}
       render="section"
     >
       <div>
@@ -342,8 +349,10 @@ const AiModelSettings = ({
     <Stack gap="4">
       <Stack
         aria-labelledby="role-lineup"
-        className="border-border border-t pt-4"
+        borderColor="$borderDecorative"
+        borderTopWidth={1}
         gap="control"
+        paddingTop={16}
         render="section"
       >
         <div>

@@ -14,7 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // GET /v1/guide/highlights — the few airings worth calling out tonight, each with a typed reason
@@ -60,7 +60,7 @@ const (
 
 type channelAirings struct {
 	channelID  string
-	broadcasts []playout.Broadcast
+	broadcasts []timeline.Broadcast
 	// shuffledAt reports whether the channel deals its episodes out of order at a time (shuffle or
 	// syndication). An episode 1 turning up in a deal is chance, not a premiere. nil means in order.
 	shuffledAt func(time.Time) bool
@@ -68,7 +68,7 @@ type channelAirings struct {
 
 type highlightPick struct {
 	channelID string
-	airing    playout.Broadcast
+	airing    timeline.Broadcast
 	reason    highlightReason
 	// episodes and until describe the back-to-back run from the airing, when it is a marathon
 	// (or a premiere that opens one); zero otherwise.
@@ -146,7 +146,7 @@ func pickHighlights(channels []channelAirings, limit int) []highlightPick {
 // channelHighlights finds one channel's runs and turns each into at most one highlight.
 func channelHighlights(ch channelAirings) []highlightPick {
 	var out []highlightPick
-	var run []playout.Broadcast
+	var run []timeline.Broadcast
 	flush := func() {
 		if len(run) == 0 {
 			return
@@ -176,7 +176,7 @@ func channelHighlights(ch channelAirings) []highlightPick {
 	return out
 }
 
-func runHighlight(ch channelAirings, run []playout.Broadcast) (highlightPick, bool) {
+func runHighlight(ch channelAirings, run []timeline.Broadcast) (highlightPick, bool) {
 	channelID := ch.channelID
 	for i, b := range run {
 		if b.Episode != 1 || b.Season < 1 || (ch.shuffledAt != nil && ch.shuffledAt(b.Start)) {

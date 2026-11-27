@@ -119,7 +119,7 @@ type Channel struct {
 	// library item id → the cuts the accepted cycle gave it (nil = it airs whole). A pinned item is
 	// split exactly so, whatever the fades or the switch now say, so the encoder and the guide never
 	// see a programme re-cut under them; new splits apply to later airings. Transient: reconcile
-	// derives it from the accepted Desired cycle (playout.CommittedSplits).
+	// derives it from the accepted Desired cycle (timeline.CommittedSplits).
 	PinnedCuts map[string][]int64 `json:"-"`
 	// LastAired is when each unit (library item id: one episode or film) last aired on THIS
 	// channel (§3.1) — the recency signal placement biases on, loaded from the airings table

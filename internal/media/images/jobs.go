@@ -60,9 +60,14 @@ func AVIFJobSpec(j *AVIFJob, disabledReason string) jobs.Job {
 // MaintenanceJob restores missing originals and then applies the image-store retention policy.
 // They share one daily outcome: keep durable artwork available while bounding storage. Both stages
 // run even when one fails, so a transient provider error cannot prevent compliance cleanup.
+//
+// It runs under the long-job timeout, not River's one-minute default: the day a large import
+// reaches the TMDB ceiling, the expiry purge alone is a file delete and a row write per image for
+// thousands of images. A run the timeout cuts short fails (GC.Run), and the next run resumes.
 func MaintenanceJob(f *Fetcher, g *GC) jobs.Job {
 	return jobs.Job{
-		Name: "images-maintenance", Group: jobs.GroupArtwork, Title: "Maintain stored artwork",
+		Timeout: jobs.LongJobTimeout,
+		Name:    "images-maintenance", Group: jobs.GroupArtwork, Title: "Maintain stored artwork",
 		Description: "Restores recoverable files, enforces retention, removes unreferenced images, and evicts variants above budget.",
 		DefaultCron: "0 0 5 * * *", ScheduleKey: settings.JobImagesMaintenanceSchedule.Key(),
 		Run: func(ctx context.Context) error {

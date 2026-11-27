@@ -29,7 +29,7 @@ func (s *Store) ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip)
 		res, err := s.h.ExecContext(ctx, s.h.Rebind(`UPDATE clips
 			SET path = ?,
 			    tunarr_program_id = CASE WHEN path = ? THEN tunarr_program_id ELSE NULL END,
-			    duration_ms = ?, quality = ?, updated_at = ?
+			    duration_ms = ?, quality = ?, air_start_ms = 0, air_end_ms = 0, updated_at = ?
 			WHERE hash = ?`), c.Path, c.Path, c.DurationMs, c.Quality, epoch(c.UpdatedAt), oldHash)
 		if err != nil {
 			return fmt.Errorf("replace clip identity %s: %w", oldHash, err)
@@ -91,7 +91,8 @@ func (s *Store) replaceClipIdentityTx(ctx context.Context, tx storedb.Tx, oldHas
 		return err
 	}
 	res, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE clips
-		SET hash = ?, path = ?, tunarr_program_id = NULL, duration_ms = ?, quality = ?, updated_at = ?
+		SET hash = ?, path = ?, tunarr_program_id = NULL, duration_ms = ?, quality = ?,
+		    air_start_ms = 0, air_end_ms = 0, updated_at = ?
 		WHERE hash = ?`), c.Hash, c.Path, c.DurationMs, c.Quality, epoch(c.UpdatedAt), oldHash)
 	if err != nil {
 		return fmt.Errorf("replace clip identity %s: %w", oldHash, err)
@@ -190,7 +191,6 @@ var clipReferences = []clipReference{
 	{"filler_acquisition_artifacts", "clip_hash", rekeyMove},
 	// Screening verdicts, enrichment, research and their cost ledgers judge the content. A Ready
 	// clip re-encoded from its master keeps them; its new evidence is screened again on its own.
-	{"filler_split_shadow_decisions", "clip_hash", rekeyMove},
 	{"filler_enrichment_axes", "clip_hash", rekeyMove},
 	{"filler_enrichment_passes", "clip_hash", rekeyMove},
 	{"filler_context_reports", "clip_hash", rekeyMove},
@@ -345,7 +345,7 @@ func (s *Store) AdoptConditionedClip(ctx context.Context, sourceHash string, tar
 			 brand, visible_text, is_composite, parent_hash, play_count,
 			 last_played_at, removed_at, held,
 			 created_at, reaped_at FROM clips WHERE hash = ?),
-			path = ?, tunarr_program_id = NULL, duration_ms = ?, quality = ?, updated_at = ?
+			path = ?, tunarr_program_id = NULL, duration_ms = ?, quality = ?, air_start_ms = 0, air_end_ms = 0, updated_at = ?
 			WHERE hash = ? AND path = ? AND parent_hash = ? AND held = ? AND removed_at = ? AND is_composite = ?`),
 			sourceHash, target.Path, target.DurationMs, target.Quality, epoch(target.UpdatedAt),
 			target.Hash, target.Path, target.ParentHash, true, int64(0), false)

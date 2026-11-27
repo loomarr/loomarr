@@ -242,6 +242,16 @@ func TestNeedsReencode_OnlyAiringOriginalsUnderAnotherProfileOnHardware(t *testi
 
 	full := filepath.Join(dir, filepath.FromSlash(airing.Path))
 	tags, _ := asset.ReadSidecarTags(full)
+	released := tags
+	master := *tags.MediaAssets
+	master.SourceMaster.Path = ""
+	released.MediaAssets = &master
+	if err := asset.WriteSidecarTags(full, released, false); err != nil {
+		t.Fatal(err)
+	}
+	if stage.NeedsReencode(airing) {
+		t.Error("a clip whose original was released (#3855) is due a re-encode")
+	}
 	tags.Mezzanine = tools.FileMezzanine(nvencHost).ID()
 	if err := asset.WriteSidecarTags(full, tags, false); err != nil {
 		t.Fatal(err)

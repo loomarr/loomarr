@@ -1,7 +1,7 @@
 import { ingestClientDiagnostics } from "@loomarr/api/endpoints/diagnostics";
 import type { ClientObservation as GeneratedClientObservation } from "@loomarr/api/models/clientObservation";
 import { observeApiFailures } from "@loomarr/api/mutator";
-import { ClientDiagnosticsReporter, type SendBatch } from "@loomarr/core/client-diagnostics";
+import { ClientDiagnosticsReporter, type SendBatch, vocabularyIn } from "@loomarr/core/client-diagnostics";
 
 type WebPlatform = "chromium" | "firefox" | "webkit" | "unknown_web";
 
@@ -16,7 +16,8 @@ const webPlatform = (): WebPlatform => {
 let reporter: ClientDiagnosticsReporter;
 reporter = new ClientDiagnosticsReporter(
   async (events) => {
-    await ingestClientDiagnostics(reporter.wireBatch(events), { keepalive: true });
+    const answer = await ingestClientDiagnostics(reporter.wireBatch(events), { keepalive: true });
+    return vocabularyIn(answer.data);
   },
   { clientVersion: "embedded", platform: webPlatform(), source: "web" },
 );

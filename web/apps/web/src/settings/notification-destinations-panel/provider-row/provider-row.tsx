@@ -105,16 +105,20 @@ const ProviderRow = ({ provider, definition }: ProviderRowProps) => {
                 {definition?.name ?? words(provider.type)}
               </Text>
             </Stack>
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-              {provider.events.map(words).join(", ")}
-            </Text>
-            {provider.health ? (
-              <Text as="p" className="mt-2" textRole="hint" tone="secondary">
-                {provider.health.queuedCount} queued · {provider.health.terminalFailureCount} failed
-                {provider.health.lastFailureOutcome
-                  ? ` · Last failure: ${words(provider.health.lastFailureOutcome)}`
-                  : ""}
+            <Stack marginTop={4}>
+              <Text as="p" textRole="compact" tone="secondary">
+                {provider.events.map(words).join(", ")}
               </Text>
+            </Stack>
+            {provider.health ? (
+              <Stack marginTop={8}>
+                <Text as="p" textRole="hint" tone="secondary">
+                  {provider.health.queuedCount} queued · {provider.health.terminalFailureCount} failed
+                  {provider.health.lastFailureOutcome
+                    ? ` · Last failure: ${words(provider.health.lastFailureOutcome)}`
+                    : ""}
+                </Text>
+              </Stack>
             ) : null}
           </div>
           {!confirmingDelete ? (
@@ -148,16 +152,18 @@ const ProviderRow = ({ provider, definition }: ProviderRowProps) => {
           ) : null}
         </Stack>
         {confirmingDelete ? (
-          <div className="border-onair-tint-15 bg-onair-tint-15 mt-4 grid gap-3 rounded-md border p-3">
+          <Card borderRadius={6} gap={12} marginTop={16} padding={12} tone="onair">
             <div>
               <Text as="p" textRole="compact">
                 Delete {provider.label} and stop sending its notifications?
               </Text>
-              <Text as="p" className="mt-1" textRole="hint" tone="danger">
-                This can't be undone.
-              </Text>
+              <Stack marginTop={4}>
+                <Text as="p" textRole="hint" tone="danger">
+                  This can't be undone.
+                </Text>
+              </Stack>
             </div>
-            <div className="grid max-w-sm gap-1.5">
+            <Stack gap="1.5" maxWidth={384}>
               <deleteForm.Field name="confirmation">
                 {(field) => (
                   <Field
@@ -171,8 +177,8 @@ const ProviderRow = ({ provider, definition }: ProviderRowProps) => {
                   />
                 )}
               </deleteForm.Field>
-            </div>
-            <Stack direction="row" gap="inline" wrap>
+            </Stack>
+            <Stack direction="row" flexShrink={1} gap="inline" wrap>
               <deleteForm.Subscribe selector={(state) => state.values.confirmation}>
                 {(confirmation) => (
                   <Action
@@ -196,17 +202,19 @@ const ProviderRow = ({ provider, definition }: ProviderRowProps) => {
                 Cancel
               </Action>
             </Stack>
-          </div>
+          </Card>
         ) : null}
         {update.error != null || remove.error != null || test.error != null ? (
-          <ErrorState className="mt-3" error={update.error ?? remove.error ?? test.error} />
+          <Stack marginTop={12}>
+            <ErrorState error={update.error ?? remove.error ?? test.error} />
+          </Stack>
         ) : null}
         {message ? (
-          <div className="mt-3" role="status" aria-live="polite">
+          <Stack aria-live="polite" marginTop={12} role="status">
             <Text as="p" textRole="compact">
               {message}
             </Text>
-          </div>
+          </Stack>
         ) : null}
       </Card>
     </li>

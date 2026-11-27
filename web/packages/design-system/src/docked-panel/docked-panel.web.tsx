@@ -101,7 +101,11 @@ const DockedPanel = ({
         <h2 id={titleId} style={{ margin: 0, fontSize: 13, fontWeight: 600, lineHeight: "20px" }}>
           {title}
         </h2>
-        {meta === undefined ? null : <span style={{ color: playerChrome.textMuted }}>{meta}</span>}
+        {/* A flex box, so a text role inside it keeps its own line height and centres in the header
+            rather than sitting on the header's taller line. */}
+        {meta === undefined ? null : (
+          <span style={{ color: playerChrome.textMuted, display: "flex" }}>{meta}</span>
+        )}
         <CloseButton label={closeLabel} onClick={onClose} />
       </div>
       <div style={{ display: "flex", flex: 1, flexDirection: "column", minHeight: 0 }}>{children}</div>

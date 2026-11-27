@@ -16,6 +16,9 @@ type MovieCollectionService interface {
 
 type MovieCollectionRequest struct {
 	Keys []string
+	// Member is true when the caller is not an admin: a roster title is marked in the Library
+	// only when it is one a household member reads (librarystore.MemberTitles).
+	Member bool
 }
 
 type MovieCollectionResolution struct {
@@ -40,7 +43,9 @@ type MovieCollection struct {
 // narrow. This is why it is not a `scope` on /v1/search — a Candidate models a provisionable
 // title and a collection is not one, the same distinction that keeps clips off that route.
 type CollectionService interface {
-	Collections(ctx context.Context) ([]LibraryCollection, error)
+	// Collections lists every collection. For a member, each ChildCount counts only the titles
+	// a household member reads (librarystore.MemberTitles); an admin's counts every member.
+	Collections(ctx context.Context, member bool) ([]LibraryCollection, error)
 }
 
 // LibraryCollection is the API view of one household collection. The ID is opaque and

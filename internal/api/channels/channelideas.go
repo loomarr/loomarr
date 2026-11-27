@@ -23,8 +23,11 @@ import (
 
 // IdeaLibrary lists the media library's movies and series for idea building. The composition root
 // adapts the library client and caches the listing, because Home reads ideas on every visit.
+// member lists only the titles a household member reads (librarystore.MemberTitles): no title
+// waiting in Needs you and none ignored. A route passes the caller's role; the demo's stand-in
+// for the suggester reads every title.
 type IdeaLibrary interface {
-	IdeaItems(ctx context.Context) ([]ideas.Item, error)
+	IdeaItems(ctx context.Context, member bool) ([]ideas.Item, error)
 }
 
 // ideaHolidayHorizon is how far ahead a holiday becomes an idea: long enough to request and build
@@ -161,7 +164,7 @@ func (s *Handlers) buildChannelIdeas(ctx context.Context, userID string) ([]idea
 	if s.ideaLibrary == nil {
 		return nil, nil, httpcore.NotImplemented("Channel ideas aren't available", "Connect your media library in Settings to get channel ideas.")
 	}
-	items, err := s.ideaLibrary.IdeaItems(ctx)
+	items, err := s.ideaLibrary.IdeaItems(ctx, httpcore.RoleFrom(ctx) != httpcore.RoleAdmin)
 	if err != nil {
 		return nil, nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't load channel ideas",
 			"The media library didn't answer. Check the connection in Settings and try again.", err)

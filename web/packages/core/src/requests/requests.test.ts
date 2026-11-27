@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createRequestsController,
   createRequestsPort,
-  GENERATING_POLL_MS,
   requestsInTab,
   requestsNeedsYouCount,
 } from "./requests";
@@ -101,33 +100,16 @@ describe("requests controller", () => {
     expect(controller.getSnapshot()).toMatchObject({ errorMessage: undefined, status: "ready" });
   });
 
-  it("re-reads every two seconds while a request is generating, then stops", async () => {
-    vi.useFakeTimers();
-    const loadJourneys = vi
-      .fn()
-      .mockResolvedValueOnce([generating])
-      .mockResolvedValueOnce([generating])
-      .mockResolvedValue([journey({ jobId: "job-generating", milestone: "awaiting_approval" })]);
-    const controller = createRequestsController({ port: port({ loadJourneys }) });
-    await controller.refresh();
-    expect(loadJourneys).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(GENERATING_POLL_MS);
-    expect(loadJourneys).toHaveBeenCalledTimes(2);
-    await vi.advanceTimersByTimeAsync(GENERATING_POLL_MS);
-    expect(loadJourneys).toHaveBeenCalledTimes(3);
-    await vi.advanceTimersByTimeAsync(GENERATING_POLL_MS * 3);
-    expect(loadJourneys).toHaveBeenCalledTimes(3);
-    controller.dispose();
-  });
-
-  it("stops polling when disposed", async () => {
+  // A generating request moves on the server's frames, which the app turns into refreshes; the
+  // controller itself never re-reads (#3352).
+  it("does not poll a generating request", async () => {
     vi.useFakeTimers();
     const loadJourneys = vi.fn(async () => [generating]);
     const controller = createRequestsController({ port: port({ loadJourneys }) });
     await controller.refresh();
-    controller.dispose();
-    await vi.advanceTimersByTimeAsync(GENERATING_POLL_MS * 2);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
     expect(loadJourneys).toHaveBeenCalledTimes(1);
+    controller.dispose();
   });
 
   it("requests an idea, then re-reads both the ideas and the requests", async () => {

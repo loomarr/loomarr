@@ -36,7 +36,7 @@ type visionWiring struct {
 // If the provider were built from `llm.provider`/`llm.url`/`llm.api_key`, naming a LOCAL model
 // while the main LLM was hosted would send an Ollama tag to the hosted endpoint (`llava:7b` →
 // `https://openrouter.ai/api/v1` → 401 on every segment). `ground` reports that as zero looks, the
-// gate refuses the reel with "a segment could not be classified", and nothing anywhere says why.
+// gate holds every cut as "the cut is not break material", and nothing in the cut says why.
 // A model name is useless without the host that serves it.
 //
 // ⚠ **The key is NEVER inherited once a vision provider is named.** Declaring a separate service

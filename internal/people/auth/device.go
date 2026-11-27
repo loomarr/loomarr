@@ -50,6 +50,7 @@ type DeviceStore interface {
 	TouchDeviceToken(ctx context.Context, tokenHash string, at time.Time) error
 	ListDeviceTokensForUser(ctx context.Context, userID string) ([]identitystore.DeviceToken, error)
 	DeleteDeviceToken(ctx context.Context, tokenHash, userID string) (bool, error)
+	SetDeviceCodeMode(ctx context.Context, tokenHash, userID string, on bool) (bool, error)
 	GetUser(ctx context.Context, id string) (identitystore.User, error)
 }
 
@@ -65,6 +66,9 @@ type DeviceManager struct {
 type DevicePrincipal struct {
 	ID   string
 	User identitystore.User
+	// CodeMode is the device's own switch for the MCP execute tool (#4486). It is read with the
+	// token on every request, like the role, so turning it off applies at once.
+	CodeMode bool
 }
 
 // NewDeviceManager builds a device manager. now defaults to time.Now.
@@ -185,6 +189,13 @@ func (m *DeviceManager) Redeem(ctx context.Context, deviceCode string) (token st
 	return token, claimed.DeviceName, nil
 }
 
+// Pairing reads a live pairing by its device code, approved or not, without consuming it: the
+// OAuth authorization step (internal/api/agents) checks that the person in front of it approved the
+// pairing before it issues the code a client later redeems.
+func (m *DeviceManager) Pairing(ctx context.Context, deviceCode string) (identitystore.DevicePairing, error) {
+	return m.store.GetDevicePairing(ctx, hashToken(deviceCode), m.now())
+}
+
 // Pending resolves a still-unapproved pairing by the code a human typed, so an approval screen can
 // name the device before granting it anything ("Approve Living Room Shield?"). Read-only.
 func (m *DeviceManager) Pending(ctx context.Context, rawUserCode string) (identitystore.DevicePairing, error) {
@@ -228,5 +239,11 @@ func (m *DeviceManager) ResolveDevice(ctx context.Context, token string) (Device
 			m.touch.warn(ctx, "device", now, err)
 		}
 	}
-	return DevicePrincipal{ID: id, User: user}, nil
+	return DevicePrincipal{ID: id, User: user, CodeMode: dt.CodeMode}, nil
+}
+
+// SetCodeMode turns Code Mode on or off for one of the user's devices. Scoped by user in the store,
+// like Revoke; false means the user has no such device.
+func (m *DeviceManager) SetCodeMode(ctx context.Context, tokenHash, userID string, on bool) (bool, error) {
+	return m.store.SetDeviceCodeMode(ctx, tokenHash, userID, on)
 }

@@ -83,7 +83,7 @@ describe("useSuggestionRun", () => {
     expect(result.current.error).toBeFalsy();
   });
 
-  it("re-reads the Journey on a frame, so a new stage or pick shows before the 2 s poll", async () => {
+  it("re-reads the Journey on a frame, so a new stage or pick shows at once", async () => {
     const journey = stub();
     journey.progress = {
       stage: "reading",

@@ -55,7 +55,7 @@ const fakes = vi.hoisted(() => {
     streamOptions: [] as { headers: Record<string, string>; onUnauthorized: () => unknown }[],
     streams: [] as {
       closed: boolean;
-      handlers: { onChannel: () => void };
+      onFrame: (type: string, payload: unknown) => void;
       onOpen?: () => void;
       url: string;
     }[],
@@ -72,14 +72,15 @@ const fakes = vi.hoisted(() => {
 
 vi.mock("expo-crypto", () => ({ randomUUID: () => "11111111-2222-4333-8444-555555555555" }));
 vi.mock("expo-video", () => ({ createVideoPlayer: vi.fn(), VideoView: vi.fn() }));
-vi.mock("@loomarr/core/events", () => ({
-  openEventStream: (
-    handlers: { onChannel: () => void },
+vi.mock("@loomarr/core/events", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@loomarr/core/events")>()),
+  openFrameStream: (
+    onFrame: (type: string, payload: unknown) => void,
     url: string,
     _createStream: unknown,
     onOpen?: () => void,
   ) => {
-    const stream = { closed: false, handlers, onOpen, url };
+    const stream = { closed: false, onFrame, onOpen, url };
     fakes.streams.push(stream);
     return () => {
       stream.closed = true;
@@ -371,7 +372,7 @@ describe("paired client", () => {
       expect(fakes.catalogLists).toHaveLength(1);
       fakes.guide.refresh.mockClear();
 
-      await act(async () => fakes.streams[0]?.handlers.onChannel());
+      await act(async () => fakes.streams[0]?.onFrame("channel", {}));
 
       expect(fakes.catalogLists).toHaveLength(2);
       expect(fakes.guide.refresh).toHaveBeenCalledWith();
@@ -582,7 +583,7 @@ describe("paired client", () => {
       await rerender({
         lastChannel: { load: () => Promise.resolve(undefined), save: () => Promise.resolve() },
       });
-      await act(async () => fakes.streams.at(-1)?.handlers.onChannel());
+      await act(async () => fakes.streams.at(-1)?.onFrame("channel", {}));
       await act(async () => {
         await client().guide.refresh();
         await client().myChannels.refresh();

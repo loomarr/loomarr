@@ -3,225 +3,230 @@ package schedule
 import (
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
-// The relaxation ladder (programming-design §7): when the eligible pool can't fill
-// the cycle window under the policy's separation constraints, enforcement descends
-// a FIXED ladder, re-attempting placement after each step, and RECORDS every
-// applied relaxation so the UI can surface it. Audience and explicit scope are
-// filtered out BEFORE the pool reaches here (filterEntries), so the ladder
-// structurally can never relax safety or channel identity (§7 "never relaxed").
+// Relaxation (programming-design §7): when the eligible pool can't hold the policy, each guard the
+// placed cycle breaches relaxes on its own, to the widest value the pool can hold, and every
+// relaxation is recorded so the UI can surface it. A shortfall in one guard never touches another
+// (#4140 decision 3): a short cycle keeps the series gap, and a gap breach keeps the no-repeat
+// windows.
 //
-// Un-relaxing is automatic: this recomputes from the full policy each call, so when
-// the pool recovers (library grows) a later reconcile simply produces fewer/zero
-// applied steps.
+// Audience and scope are filtered out BEFORE the pool reaches here (filterEntries), so nothing
+// here can relax safety or the channel's line; the dates never widen either. A channel short of
+// titles says so, and growth is what widens a pool.
+//
+// Un-relaxing is automatic: this recomputes from the full policy each call, so when the pool
+// recovers a later reconcile records fewer relaxations, or none.
 
-// minNoRepeatFloor is the hard floor for the no-repeat window relaxation (§7 step 1).
-const minNoRepeatFloor = 24 * time.Hour
-
-// eraWidenStep is how far the era widens per ladder step (§7 step 3).
-const eraWidenStep = 2
-
-// maxLadderSteps bounds ladder descent (defense-in-depth; each real step also has
-// its own floor/limit).
-const maxLadderSteps = 8
-
-// relaxAndSlot places the slots under the policy, descending the relaxation ladder
-// only if the placement can't satisfy separation across the cycle (§7). It returns
-// the ordered slots and the list of relaxations it had to apply (empty when the
-// pool satisfied the policy as-is). Deterministic: the seed drives all ordering,
-// and the ladder descends in a fixed order.
+// relaxAndSlot places the slots under the policy and relaxes each guard the placement breaches
+// (§7). It returns the ordered slots and the relaxations it applied, empty when the pool held the
+// policy as written. Deterministic: the seed drives all ordering.
 func relaxAndSlot(slots []Slot, rp ResolvedPolicy, seed int64) ([]Slot, []AppliedRelaxation) {
-	// First attempt: place under the policy as written.
 	ordered := slotByPolicy(slots, rp, seed)
-	if !separationUnsatisfied(ordered, rp) {
-		return ordered, nil
+	applied := relaxNoRepeat(ordered, rp.Sep)
+
+	// The gap is settled before the run length: a run of two always breaches a gap, so raising
+	// the run cap first could never help a gap, and a gap settled first shows which runs remain.
+	if breaches(ordered, rp, "gap") {
+		gap := widestGap(slots, rp, seed)
+		applied = append(applied, AppliedRelaxation{Kind: "seriesMinGap", From: rp.Sep.SeriesMinGap.String(), To: gap.String()})
+		rp.Sep.SeriesMinGap = gap
+		ordered = slotByPolicy(slots, rp, seed)
 	}
-
-	var applied []AppliedRelaxation
-	cur := rp
-	for step := 0; step < maxLadderSteps; step++ {
-		relaxed, note, ok := ladderStep(cur)
-		if !ok {
-			break // ladder exhausted — hand off to filler (the caller pads; never dead air)
+	if breaches(ordered, rp, "block") {
+		run := shortestRun(slots, rp, seed)
+		to := "unbounded"
+		if run > 0 {
+			to = fmt.Sprintf("%d", run)
 		}
-		prev := cur
-		cur = relaxed
-		applied = append(applied, note)
-
-		// Re-place ONLY when the step changed something placement actually reads.
-		//
-		// The ladder's first steps halve the no-repeat WINDOWS (168h → 84h → 42h → 24h), and
-		// `noRepeatUnmet` is pure arithmetic over the cycle's total runtime — it compares a
-		// duration, it does not arrange anything. Placement reads BlockMax, SeriesMinGap,
-		// scope and ordering; it never reads the no-repeat windows. So re-running
-		// slotByPolicy after a no-repeat-only step re-derives a byte-identical arrangement.
-		//
-		// Measured on a 100-slot series channel: steps 1-3 each re-ran the full backtracking
-		// search (~6-10ms apiece) and produced placementChanged=false every time. Only the
-		// step that relaxed SeriesMinGap changed the answer — and it was the cheapest, at
-		// 817µs, because dropping the constraint makes the search trivial.
-		//
-		// This is NOT a semantics change: when the inputs are equal the output is equal by
-		// construction, so the arrangement, the applied-relaxation list and the final verdict
-		// are all exactly what the old code produced. It only stops paying for the same
-		// answer repeatedly.
-		if placementInputsChanged(prev, cur) {
-			ordered = slotByPolicy(slots, cur, seed)
-		}
-		if !separationUnsatisfied(ordered, cur) {
-			break
-		}
+		applied = append(applied, AppliedRelaxation{Kind: "blockMax", From: fmt.Sprintf("%d", rp.Sep.BlockMax), To: to})
+		rp.Sep.BlockMax = run
+		ordered = slotByPolicy(slots, rp, seed)
 	}
 	return ordered, applied
 }
 
-// placementInputsChanged reports whether a ladder step altered anything slotByPolicy consumes.
-//
-// Deliberately a WHITELIST of the fields placement reads rather than a `!=` on the whole
-// policy: a future ladder step that relaxes some other field must be considered here on
-// purpose. Getting it wrong in the safe direction (reporting a change that did not happen)
-// costs one redundant placement; getting it wrong the other way would serve a stale
-// arrangement, so the comparison is explicit and narrow.
-//
-// Not included, deliberately: EpisodeNoRepeat / MovieNoRepeat. They gate `noRepeatUnmet`, which
-// is a runtime comparison over the already-placed cycle — see the call site.
-func placementInputsChanged(prev, cur ResolvedPolicy) bool {
-	if prev.Sep.BlockMax != cur.Sep.BlockMax || prev.Sep.SeriesMinGap != cur.Sep.SeriesMinGap {
-		return true
-	}
-	if prev.Ordering != cur.Ordering {
-		return true
-	}
-	// Dates are the scope field the ladder widens; compare by value (both may be nil).
-	return !datesEqual(prev.Scope.Dates, cur.Scope.Dates)
-}
-
-// separationUnsatisfied reports whether the placed cycle can't honor the policy
-// after slotting — the signal to descend the ladder (§7). Two independent shortfalls:
-//
-//   - texture separation (blockMax/seriesMinGap) breached across the cycle, per the
-//     wrap-aware checker; and
-//   - the no-repeat WINDOW can't be met: the cycle's total program runtime is
-//     shorter than episodeNoRepeat/movieNoRepeat, so an item necessarily recurs
-//     inside its window each loop. This is a runtime comparison, not a graph check —
-//     the case a single-series channel (block unbounded) hits.
-func separationUnsatisfied(programs []Slot, rp ResolvedPolicy) bool {
-	if len(checkWrapSeparation(programs, rp)) > 0 {
-		return true
-	}
-	return noRepeatUnmet(programs, rp)
-}
-
-// noRepeatUnmet reports whether the cycle loops faster than the no-repeat window
-// requires (§3/§7 step 1). The window an item must clear is the larger of the
-// episode/movie no-repeat durations that apply to the pool; if the cycle's total
-// runtime is shorter, the item repeats within its window on every loop.
-func noRepeatUnmet(programs []Slot, rp ResolvedPolicy) bool {
+// relaxNoRepeat records the no-repeat windows the cycle can't keep. An item airs once per loop,
+// so a window longer than the cycle's program runtime relaxes to that runtime, to the minute.
+// Placement never reads these windows, so this is arithmetic over the placed cycle. Episodes and
+// films are judged apart: each window applies only when the pool holds that kind.
+func relaxNoRepeat(programs []Slot, sep ResolvedSeparation) []AppliedRelaxation {
 	var cycleMs int64
-	hasSeries, hasMovie := false, false
+	episodes, films := false, false
 	for _, s := range programs {
 		if !s.IsProgram() {
 			continue
 		}
 		cycleMs += s.DurationMs
 		if s.Key.IsSeries() {
-			hasSeries = true
+			episodes = true
 		} else {
-			hasMovie = true
+			films = true
 		}
 	}
-	if cycleMs == 0 {
-		return false // nothing to schedule → not a relaxation case (handled as flex)
+	cycle := time.Duration(cycleMs) * time.Millisecond
+	if cycle <= 0 {
+		return nil // nothing to schedule → not a relaxation case (handled as flex)
 	}
-	var window time.Duration
-	if hasSeries && rp.Sep.EpisodeNoRepeat > window {
-		window = rp.Sep.EpisodeNoRepeat
+	held := cycle.Truncate(time.Minute)
+	if held == 0 {
+		held = cycle
 	}
-	if hasMovie && rp.Sep.MovieNoRepeat > window {
-		window = rp.Sep.MovieNoRepeat
+	var out []AppliedRelaxation
+	if episodes && sep.EpisodeNoRepeat > cycle {
+		out = append(out, AppliedRelaxation{Kind: "episodeNoRepeat", From: sep.EpisodeNoRepeat.String(), To: held.String()})
 	}
-	return window > 0 && time.Duration(cycleMs)*time.Millisecond < window
-}
-
-// ladderStep applies the next relaxation in the fixed ladder order (§7) to rp,
-// returning the relaxed policy, a display note, and ok=false when the ladder can't
-// descend further. Order:
-//  1. halve episode/movie no-repeat windows (floor 24h)
-//  2. relax series gap / block (toward unbounded)
-//  3. widen era ±2y per step (never past a stated decade boundary)
-//  4. (caller) pad with filler — represented by ok=false here
-//
-// NEVER touched: audience ceiling, explicit series/season scope (they aren't even
-// fields this function reads).
-func ladderStep(rp ResolvedPolicy) (ResolvedPolicy, AppliedRelaxation, bool) {
-	// Step 1: no-repeat windows.
-	if rp.Sep.EpisodeNoRepeat > minNoRepeatFloor {
-		from := rp.Sep.EpisodeNoRepeat
-		rp.Sep.EpisodeNoRepeat = halveFloor(rp.Sep.EpisodeNoRepeat)
-		rp.Sep.MovieNoRepeat = halveFloor(rp.Sep.MovieNoRepeat)
-		return rp, AppliedRelaxation{Kind: "episodeNoRepeat", From: from.String(), To: rp.Sep.EpisodeNoRepeat.String()}, true
-	}
-	// Step 2: series gap / block.
-	if rp.Sep.SeriesMinGap > 0 {
-		from := rp.Sep.SeriesMinGap
-		rp.Sep.SeriesMinGap = 0
-		return rp, AppliedRelaxation{Kind: "seriesMinGap", From: from.String(), To: "0s"}, true
-	}
-	if rp.Sep.BlockMax > 0 {
-		from := rp.Sep.BlockMax
-		rp.Sep.BlockMax = 0 // unbounded
-		return rp, AppliedRelaxation{Kind: "blockMax", From: fmt.Sprintf("%d", from), To: "unbounded"}, true
-	}
-	// Step 3: widen the era (only when the dates are era-shaped: one range, the same on
-	// every axis — what the era shortcut sets). Dates with distinct windows per axis are
-	// an explicit scope and never widen. Widening is symmetric ±2y; a stated decade
-	// boundary is respected by not widening past the decade the era was authored in —
-	// v1 keeps this simple and widens once per call.
-	if from, ok := rp.Scope.Dates.Era(); ok {
-		widened := widenEra(from)
-		if widened != from {
-			// A fresh DateScope: rp.Scope.Dates is shared with the channel's stored policy.
-			rp.Scope.Dates = EraDates(widened)
-			return rp, AppliedRelaxation{
-				Kind: "era",
-				From: fmt.Sprintf("%d-%d", from.From, from.To),
-				To:   fmt.Sprintf("%d-%d", widened.From, widened.To),
-			}, true
-		}
-	}
-	// Ladder exhausted — the caller pads with filler (never dead air), no more
-	// separation relaxation possible.
-	return rp, AppliedRelaxation{}, false
-}
-
-// halveFloor halves d but never below the no-repeat floor (§7 step 1).
-func halveFloor(d time.Duration) time.Duration {
-	h := d / 2
-	if h < minNoRepeatFloor {
-		return minNoRepeatFloor
-	}
-	return h
-}
-
-// widenEra widens an era window by ±eraWidenStep years, clamping to the decade the
-// window sits in so we never cross a stated decade boundary (§7 step 3). Returns the
-// input unchanged when already at the decade edges.
-func widenEra(r Range) Range {
-	out := r
-	if r.From > 0 {
-		decadeStart := (r.From / 10) * 10
-		out.From = r.From - eraWidenStep
-		if out.From < decadeStart {
-			out.From = decadeStart
-		}
-	}
-	if r.To > 0 {
-		decadeEnd := (r.To/10)*10 + 9
-		out.To = r.To + eraWidenStep
-		if out.To > decadeEnd {
-			out.To = decadeEnd
-		}
+	if films && sep.MovieNoRepeat > cycle {
+		out = append(out, AppliedRelaxation{Kind: "movieNoRepeat", From: sep.MovieNoRepeat.String(), To: held.String()})
 	}
 	return out
+}
+
+// breaches reports whether the placed cycle breaks the separation guard of the given violation
+// kind ("gap" or "block"), across the loop seam.
+func breaches(programs []Slot, rp ResolvedPolicy, kind string) bool {
+	for _, v := range checkWrapSeparation(programs, rp) {
+		if v.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// widestGap is the widest series gap, to the minute and below the policy's, that a placement of
+// the slots holds; zero when nothing wider does.
+//
+// No placement can do better than the tightest show's share: a show with k slots spends the rest
+// of the cycle in k gaps, so its narrowest gap is at most (cycle - its runtime) / k. That bound is
+// tried first, and is the answer whenever the placement spreads the show evenly.
+//
+// Below it the search scans down in gapStep steps, then back up a minute at a time. A binary
+// search would assume that a gap which fails means every wider gap fails too, and the placer is a
+// heuristic that does not keep that promise: it can miss 52 minutes and find an hour. A probe
+// that fails costs only its capped search, so the scan stays cheap.
+func widestGap(slots []Slot, rp ResolvedPolicy, seed int64) time.Duration {
+	holds := func(minutes int64) bool {
+		try := probing(rp, slots)
+		try.Sep.SeriesMinGap = time.Duration(minutes) * time.Minute
+		return !breaches(slotByPolicy(slots, try, seed), try, "gap")
+	}
+	top := min(rp.Sep.SeriesMinGap-time.Minute, gapBound(slots)).Milliseconds() / time.Minute.Milliseconds()
+	if top <= 0 {
+		return 0
+	}
+	if holds(top) {
+		return time.Duration(top) * time.Minute
+	}
+	found := int64(0)
+	for m := (top - 1) / gapStep * gapStep; m > 0; m -= gapStep {
+		if holds(m) {
+			found = m
+			break
+		}
+	}
+	if found == 0 {
+		return 0
+	}
+	for m := found + 1; m < min(found+gapStep, top) && holds(m); m++ {
+		found = m
+	}
+	return time.Duration(found) * time.Minute
+}
+
+// gapStep is widestGap's coarse step, in minutes.
+const gapStep = 5
+
+// gapBound is the widest series gap the slots could hold in any arrangement (see widestGap).
+func gapBound(slots []Slot) time.Duration {
+	counts, runtime, cycle := showShares(slots)
+	bound := time.Duration(cycle) * time.Millisecond
+	for key, k := range counts {
+		bound = min(bound, time.Duration((cycle-runtime[key])/int64(k))*time.Millisecond)
+	}
+	return bound
+}
+
+// shortestRun is the shortest back-to-back run above the policy's that a placement of the slots
+// holds; zero (unbounded) when only the largest show's whole run would.
+//
+// No placement can do better than spreading the largest share evenly: a show with k slots among m
+// others runs at least ceil(k/m) in a row, and one show alone runs its whole length. That bound
+// is tried first; past it the run doubles until one holds, and a binary search settles between
+// the last that failed and the first that held, so a long show among few others costs a handful
+// of probes rather than one per episode.
+func shortestRun(slots []Slot, rp ResolvedPolicy, seed int64) int {
+	counts, _, _ := showShares(slots)
+	if len(counts) <= 1 {
+		return 0
+	}
+	total, largest, floor := 0, 0, rp.Sep.BlockMax+1
+	for _, k := range counts {
+		total += k
+		largest = max(largest, k)
+	}
+	for _, k := range counts {
+		floor = max(floor, (k+total-k-1)/(total-k))
+	}
+	holds := func(run int) bool {
+		if run >= largest {
+			return true // a cap no show can reach is no cap
+		}
+		try := probing(rp, slots)
+		try.Sep.BlockMax = run
+		return !breaches(slotByPolicy(slots, try, seed), try, "block")
+	}
+	if holds(floor) {
+		return unboundedAt(floor, largest)
+	}
+	failed, step := floor, 1
+	for !holds(failed + step) {
+		failed += step
+		step *= 2
+	}
+	held := failed + step
+	for held-failed > 1 {
+		mid := failed + (held-failed)/2
+		if holds(mid) {
+			held = mid
+		} else {
+			failed = mid
+		}
+	}
+	return unboundedAt(held, largest)
+}
+
+// unboundedAt is run as a run cap, zero (unbounded) when no show is long enough to reach it.
+func unboundedAt(run, largest int) int {
+	if run >= largest {
+		return 0
+	}
+	return run
+}
+
+// probing is rp with the search capped for a probe (see ResolvedPolicy.searchBudget). A probe
+// that holds places exactly as the uncapped search would, since a capped search only stops
+// sooner; one that does not hold may have been solvable past the cap, so the guard settles a
+// little tighter than the widest the full search could reach.
+func probing(rp ResolvedPolicy, slots []Slot) ResolvedPolicy {
+	rp.searchBudget = 32*len(slots) + 256
+	return rp
+}
+
+// showShares counts each show's program slots and runtime, and the cycle's program runtime (ms).
+func showShares(slots []Slot) (map[provision.Key]int, map[provision.Key]int64, int64) {
+	counts := map[provision.Key]int{}
+	runtime := map[provision.Key]int64{}
+	var cycle int64
+	for _, s := range slots {
+		if !s.IsProgram() {
+			continue
+		}
+		key := seriesKeyOf(s)
+		counts[key]++
+		runtime[key] += s.DurationMs
+		cycle += s.DurationMs
+	}
+	return counts, runtime, cycle
 }

@@ -185,4 +185,24 @@ got=$("${promotion}" retention-plan "${test_root}/caches-current-only.json" \
   exit 1
 }
 
+# A save that was refused leaves the kept generation out of the listing. The plan then fails and
+# names nothing, so the older generation survives.
+cat >"${test_root}/caches-save-refused.json" <<'JSON'
+{"actions_caches":[
+  {"id":10,"ref":"refs/heads/main","key":"android-tv-ccache-v2-Linux-ccache-4.14-old-100"},
+  {"id":12,"ref":"refs/pull/1/merge","key":"android-tv-ccache-v2-Linux-ccache-4.14-current-101"},
+  {"id":13,"ref":"refs/heads/main","key":"unrelated"}
+]}
+JSON
+if got=$("${promotion}" retention-plan "${test_root}/caches-save-refused.json" \
+  refs/heads/main android-tv-ccache-v2-Linux-ccache-4.14- \
+  android-tv-ccache-v2-Linux-ccache-4.14-current-101 2>/dev/null); then
+  printf 'android-ccache-promotion-test: retention plan accepted a kept generation that was never saved, got %s\n' "${got}" >&2
+  exit 1
+fi
+[[ -z "${got}" ]] || {
+  printf 'android-ccache-promotion-test: refused-save retention plan printed %s\n' "${got}" >&2
+  exit 1
+}
+
 echo 'android-ccache-promotion-test: ok'

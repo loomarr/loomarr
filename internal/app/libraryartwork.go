@@ -29,11 +29,23 @@ type artRefs interface {
 }
 
 // artRoles is the image role each imported artwork kind takes (#2567): fanart is a title's
-// backdrop, and a clear logo keeps its alpha on the logo ladder.
+// backdrop, and a clear logo keeps its alpha on the logo ladder. An episode's still (#4476) is a
+// 16:9 still on the thumb ladder, never fanart's ladder to 3840.
 var artRoles = map[string]images.Role{
 	metadataprovider.KindPoster:    images.RolePoster,
 	metadataprovider.KindFanart:    images.RoleBackdrop,
 	metadataprovider.KindClearlogo: images.RoleLogo,
+	metadataprovider.KindThumb:     images.RoleThumb,
+}
+
+// artFetchPriority is the fetch-queue class an adopted artwork kind waits in: a still is adopted
+// by the thousand when a library is first written, so it is fetched after every other image
+// (#4476), and a title's poster, fanart and logo never wait behind one.
+func artFetchPriority(kind string) images.FetchPriority {
+	if kind == metadataprovider.KindThumb {
+		return images.FetchBulk
+	}
+	return images.FetchAdopted
 }
 
 // libraryArtwork gives the scanner's titles their artwork (#2151 step 10b, #2567). A file beside
@@ -66,7 +78,9 @@ func (p libraryArtwork) Art(ctx context.Context, itemID, kind, ref string) error
 	)
 	switch {
 	case strings.HasPrefix(ref, "https://"):
-		rec, err = p.images.Adopt(ctx, ref, images.IngestRequest{Role: role, Visibility: images.VisibilityMember})
+		rec, err = p.images.Adopt(ctx, ref, images.IngestRequest{
+			Role: role, Visibility: images.VisibilityMember, FetchPriority: artFetchPriority(kind),
+		})
 	case filepath.IsAbs(ref):
 		rec, err = p.importFile(ctx, ref, role)
 	default:

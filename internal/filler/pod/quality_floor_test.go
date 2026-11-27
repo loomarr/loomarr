@@ -16,7 +16,7 @@ func qualityCatalog() []pod.Clip {
 		// No quality: audio-only, or scanned before 00014_clips_quality added the column.
 		{Path: "unknown.mp4", Name: "Unprobed spot", Role: pod.Commercial, Era: 1992, Audience: pod.Kids, Category: "cars", DurationMs: 30000},
 		// A low-res BUMPER: the floor must not touch it (see the ladder's comment).
-		{Path: "bump.mp4", Name: "We'll be right back", Role: pod.Bumper, Era: 1992, Audience: pod.General, DurationMs: 5000, Quality: "240p"},
+		{Path: "bump.mp4", Name: "We'll be right back", Role: pod.Bumper, Era: 1992, Audience: pod.Kids, DurationMs: 5000, Quality: "240p"},
 	}
 }
 

@@ -35,19 +35,29 @@ func LowerWhen(token string, v holidayvocab.Vocabulary) (WhenPredicate, int, boo
 		return WhenPredicate{Holiday: id}, 60, true
 	}
 
-	// Composite "a-b" (e.g. weekend-mornings) = AND of two base tokens, priority = max+5.
-	if base, sub, found := strings.Cut(t, "-"); found {
-		if w1, p1, ok1 := lowerBaseWhen(base); ok1 {
-			if w2, p2, ok2 := lowerBaseWhen(sub); ok2 {
-				both, ok := andPredicate(w1, w2)
-				if !ok {
-					return WhenPredicate{}, 0, false // the parts cannot both hold: no rule, not a dead one
-				}
-				return both, maxInt(p1, p2) + 5, true
-			}
+	// Composite "a-b" (e.g. weekend-mornings) = AND of two base tokens, priority = max+5. A base
+	// token can hold a hyphen itself ("late-night", "prime-time", "early-morning"), so the
+	// split is tried at every hyphen, not only the first: "late-night-weekend" and
+	// "weekend-late-night" are the same rule.
+	for i := 0; i < len(t); i++ {
+		if t[i] != '-' {
+			continue
 		}
-		// fall through: "early-morning"/"late-night"/"graveyard" are single base tokens.
+		w1, p1, ok1 := lowerBaseWhen(t[:i])
+		if !ok1 {
+			continue
+		}
+		w2, p2, ok2 := lowerBaseWhen(t[i+1:])
+		if !ok2 {
+			continue
+		}
+		both, ok := andPredicate(w1, w2)
+		if !ok {
+			return WhenPredicate{}, 0, false // the parts cannot both hold: no rule, not a dead one
+		}
+		return both, maxInt(p1, p2) + 5, true
 	}
+	// "early-morning"/"late-night"/"graveyard" are single base tokens.
 	return lowerBaseWhen(t)
 }
 

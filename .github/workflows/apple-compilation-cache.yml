@@ -1,7 +1,12 @@
 name: Apple compilation cache
 
 on:
+  # A manual run always builds a new generation.
   workflow_dispatch:
+  # A pnpm lockfile change or a new runner image gives the Apple jobs a fingerprint with no
+  # generation, and they build cold until one exists. The daily run publishes one only then.
+  schedule:
+    - cron: "23 6 * * *"
 
 permissions:
   actions: write
@@ -16,9 +21,31 @@ env:
   NODE_VERSION: "22"
 
 jobs:
+  plan:
+    name: Find the current fingerprint's generation
+    if: github.ref == 'refs/heads/main'
+    runs-on: xcode-27
+    timeout-minutes: 10
+    outputs:
+      generation: ${{ steps.existing.outputs.cache-matched-key }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Fingerprint the Apple toolchain
+        id: apple-toolchain
+        run: echo "fingerprint=$(./scripts/apple-compilation-cache.sh fingerprint)" >> "$GITHUB_OUTPUT"
+      - name: Look up the fingerprint's generation on main
+        id: existing
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/apple-compilation-cache.tar.zst
+          key: ${{ steps.apple-toolchain.outputs.fingerprint }}-
+          restore-keys: ${{ steps.apple-toolchain.outputs.fingerprint }}-
+          lookup-only: true
+
   publish:
     name: Publish validated Apple compilation cache
-    if: github.ref == 'refs/heads/main'
+    needs: plan
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || needs.plan.outputs.generation == '')
     runs-on: xcode-27
     timeout-minutes: 75
     steps:
@@ -35,14 +62,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: corepack enable
-      - name: Restore pnpm and CocoaPods work
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/.local/share/pnpm/store
-            ~/Library/Caches/CocoaPods
-          key: apple-cache-publisher-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-${{ github.run_id }}
-          restore-keys: apple-clients-mobile-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-
       - run: make fe-install
       - name: Fingerprint the Apple toolchain
         id: apple-toolchain

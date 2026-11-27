@@ -109,6 +109,7 @@ const stubFillerPage = (over: { clips?: ClipDTO[]; total?: number } = {}) => {
         scheduled: 0,
         inProgress: 0,
         needsDecision: 0,
+        awaitingSplit: 0,
         recoverable: 0,
         ready: 200,
         complete: 0,

@@ -29,7 +29,7 @@ func TestFitFor_AgreesWithTheLadder(t *testing.T) {
 		commercial("other-era", 1975, Kids),
 		commercial("general-aud", 1992, General),
 		commercial("wrong-aud", 1992, LateNight),
-		{Hash: "bumper", Path: "bumper", Role: Bumper, Era: 1992, Audience: General, DurationMs: 5_000},
+		{Hash: "bumper", Path: "bumper", Role: Bumper, Era: 1992, Audience: Kids, DurationMs: 5_000},
 	}
 	// ⚠ The varied dimension is the era RANGE, which is the thing that actually varies in the wild —
 	// and a single year, a span and "any" put these clips in genuinely different rungs, so this is
@@ -297,16 +297,22 @@ func TestFitFor_NarrowingTheRangeMovesAClipDownTheLadder(t *testing.T) {
 	}{
 		{"inside the range", EraRange{From: 1990, To: 1999}, MatchExact},
 		{"a decade either side", Year(1992), MatchWidened},
-		// ⚠ 1975–1980 widens to 1965–1990, which still does not reach 1995 — so the clip falls to
-		// the audience rung. Under the old decade-BUCKET rule there was no way to express this:
-		// widening always snapped to one decade, so a range could never be too far away.
-		{"outside even the widened range", EraRange{From: 1975, To: 1980}, MatchAudience},
+		// 1975–1980 widens to 1965–1990, which does not reach 1995: the clip is further than a
+		// decade either side and is no candidate (#3838 decision 21).
+		{"outside even the widened range", EraRange{From: 1975, To: 1980}, ""},
 		{"any era", EraRange{}, MatchExact},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := Window{Era: tc.era, Audience: Kids}
-			if got := FitFor(c, w, Policy{}).Level; got != tc.want {
-				t.Errorf("era %+v: level = %s, want %s", tc.era, got, tc.want)
+			got := FitFor(c, w, Policy{})
+			if tc.want == "" {
+				if got.Reason != FitEra {
+					t.Errorf("era %+v: fit = %s, want the era reason", tc.era, got)
+				}
+				return
+			}
+			if got.Level != tc.want || got.Reason != "" {
+				t.Errorf("era %+v: fit = %s, want level %s", tc.era, got, tc.want)
 			}
 		})
 	}
