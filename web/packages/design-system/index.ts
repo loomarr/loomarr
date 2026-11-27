@@ -232,3 +232,5 @@ export {
   useViewportInsets,
   ViewportStage,
 } from "./src/viewport";
+export type { VisuallyHiddenProps } from "./src/visually-hidden";
+export { VisuallyHidden } from "./src/visually-hidden";
