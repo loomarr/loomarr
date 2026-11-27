@@ -13,7 +13,6 @@ import {
   Stack,
   Surface,
   Text,
-  typography,
 } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useId, useRef, useState } from "react";
@@ -302,13 +301,16 @@ const ChannelIconField = ({
                       const file = e.target.files?.[0];
                       if (file) void handleFile(file);
                     }}
-                    className="text-muted-foreground file:bg-static-800 file:text-foreground hover:file:bg-static-700 block w-full file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:px-3 file:py-1.5"
-                    style={{
-                      fontSize: typography.pointer.compact.size,
-                      fontWeight: typography.pointer.compact.weight,
-                      lineHeight: `${typography.pointer.compact.lineHeight}px`,
-                    }}
+                    // The native picker stays out of sight: the Action beside it opens it.
+                    style={{ display: "none" }}
                   />
+                  <Action
+                    disabled={uploading}
+                    onPress={() => fileInputRef.current?.click()}
+                    variant="outline"
+                  >
+                    Choose file
+                  </Action>
                   {uploading && <ActivityIndicator decorative size="compact" tone="muted" />}
                 </Stack>
                 <Text as="p" textRole="hint" tone="secondary">
