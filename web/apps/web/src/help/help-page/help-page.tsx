@@ -76,8 +76,9 @@ const HelpPage = () => {
         minHeight={0}
         overflow="auto"
         padding="section"
-        // The rows keep their own height, so the scroller scrolls instead of stretching them.
-        style={{ alignContent: "start" }}
+        // The rows keep their own height, so the scroller scrolls instead of stretching them. Views
+        // have `min-height: 0`, so auto rows would shrink below their content and overlap.
+        style={{ alignContent: "start", gridAutoRows: "max-content" }}
       >
         <Stack aria-label="Help pages" render="nav">
           <Card gap={12} padding={12}>
