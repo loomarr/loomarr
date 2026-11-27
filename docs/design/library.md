@@ -300,22 +300,24 @@ step 5). Nothing reads the scanner's origins until the cutover.
   the pass lock, a pass that finds it taking files hands its files over, and a read whose file a
   later pass wrote meanwhile is dropped. The scanner runs each pass's reads behind it
   (`Importer.Walk`), so a pass asked for while a first import reads (a folder added, Use this
-  folder, Scan now) walks at once, and its new files are listed then, not once every header is
+  folder, Check files again) walks at once, and its new files are listed then, not once every header is
   read.
 - **Removals.** An unreadable root or folder makes the walk incomplete, and nothing is marked
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
   maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once;
   one step 1 is walking or writing stops at the file it is on, and the pass goes on to the next
-  root.
+  root. Settings → Library's Stop using asks first, with Cancel focused: titles found only in that
+  folder leave the Library and channels cannot play them; the files stay on disk.
 - **Passes.** `scan.Scanner` makes one when the app starts, hourly, when a folder is used,
   added or released (its files are forgotten first thing), when a path mapping is set by hand (#3359: a corrected mapping takes without a restart or
-  the hourly wait), and on `POST /v1/library/scan` (Settings → Library's Scan now, as in Emby and
-  Jellyfin). A pass is *asked* when Scan now, Refresh everything, using or adding a folder or
+  the hourly wait), and on `POST /v1/library/scan` (Check files again, in Settings → Library and on a
+  held removal or a skipped file; Emby and Jellyfin's Scan library). A pass is *asked* when Check
+  files again, the library-wide Update details, using or adding a folder or
   setting a mapping started it, or
   it is the start-up pass of a library with no files yet (its first import); an unasked pass with
   nothing to read or look up is *quiet*, and shows only "Checking your folders…".
-  `POST /v1/library/refresh` (Refresh everything, asked first) clears every present file's identity
+  `POST /v1/library/refresh` (Settings → Library's Update details, asked first) clears every present file's identity
   and marks every fetched catalog row due, then starts a pass: each file is written again from its
   name and its apps, each title looked up again, and the headers already read are kept, so nothing
   stops playing. `library.scanner.enabled` (on by default) stops passes, folder passes
@@ -345,7 +347,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   listed it and once its files are written, because over a share either half can take minutes; the
   time left is worked out afresh from when a root's writes begin), 2 *Reading each file* (header reads, growing as passes hand files over; it names the
   file), and 3 *Looking up details* (the Enricher's fetches of catalog rows due as new: never
-  fetched, an outdated shape or language, or marked by Refresh everything; counted when it starts
+  fetched, an outdated shape or language, or marked by the library-wide Update details; counted when it starts
   and grown as more become due; it names the title). Steps 2 and 3 can run together; the status
   shows the earliest one running. A walk begun once reading has begun, a later pass's behind a
   first import's reading, runs behind it: the status stays on step 2 until the reading ends,
@@ -725,11 +727,22 @@ step 5). Nothing reads the scanner's origins until the cutover.
   title (503 without a key), and the status counts `needsYou`. The API says which facts agree;
   the sentence is the UI's. A candidate's poster is adopted by the image service under the
   title, and the API leaves it out until its bytes are here.
+- **The Ignored list** (#4476). `GET /v1/library/ignored` (admin only) lists every title the
+  household ignored, from Needs you or from a title's "Wrong title?", newest first, with no age
+  limit. Each entry has the title's `id` (the one `DELETE …/answer` takes, which brings it back),
+  `kind` (`movie`, a file; `series`, a folder), `name` (the movie's file name, or the show's folder
+  name), `folder` (the folder it sits in, from its media folder's name as Settings → Library shows
+  it, such as `Movies/Unsorted`, for grouping; two media folders with one name are told apart by
+  their whole paths) and `ignoredAt`. Only files under the title's own media folder name it, while
+  it has one there. A show joined from several folders is named by the folder it is kept by; a show
+  with no folder of its own is listed by its title. A title with no present file is left out until a file of it is back. It is its own
+  read, paged by `limit` and `offset` with a `total`, because the set only grows and the Needs you
+  read, with its guesses, files and posters, is refetched on every library change.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left
   ("Adding your media · Step 1 of 3 · 21% · about 9 min left"), paused, checking the folders on a
-  quiet pass, a held removal or an offline folder with Check again, or dead air before any folder
+  quiet pass, a held removal with Check files again or an offline folder with Check again (which only looks at the folders), or dead air before any folder
   is chosen. An import still running for the other folders stays on the line after a held removal
   or an offline folder ("Can't reach your Movies folder · Adding your media · Step 2 of 3 · 34%"),
   and Settings → Library keeps its bar, step, file and time left below the callout; neither says
@@ -826,11 +839,24 @@ step 5). Nothing reads the scanner's origins until the cutover.
   sharpest picture, else the biggest file. Each other file is an extra copy: a warning card on the title's page ("An
   extra copy is taking 4.0 GB") with Remove extra copy (`POST …/remove-copy`, 409 for the copy
   that plays). Removing moves the file to `<media folder>/.loomarr-trash/<date>/<its path>`, the
-  same share, so it is a rename and can be undone by moving it back; the trash holds a `.ignore`,
-  so walks and watches skip it. Loomarr marks the file missing at once, so no removal guard holds
-  it. A complete walk of the folder deletes each day's trash 30 days on; a folder there that isn't
-  a date is left alone. A read-only folder answers 409, and the card says Loomarr may not be
-  allowed to change it.
+  same share, so it is a rename; the trash holds a `.ignore`, so walks and watches skip it.
+  Loomarr marks the file missing at once, so no removal guard holds it. A complete walk of the
+  folder deletes each day's trash 30 days on; a folder there that isn't a date is left alone. A
+  read-only folder answers 409, and the card says Loomarr may not be allowed to change it.
+- **Undo for Remove extra copy** (#4476). The removal answers with an `undo` token, and
+  `POST …/restore-copy` (admin only) takes it to rename the file from the trash back to where it
+  was, then passes over its folder as for a file that appeared, so the title has its extra copy
+  again. The token names the title, media folder, file and trash day, signed with a key the
+  running process makes for itself: a request never carries a path, and nothing about removals is
+  stored. A restart voids pending undos, and the 30-day trash folder is then the way back. A token
+  that is forged, for another title or from before a restart is refused (400), and one whose file
+  is not in the trash is refused (410). A restore never overwrites: the move itself refuses a
+  taken place (a hard link and a remove, else the OS's no-replace rename, else nothing moves), so
+  a file written there at the same moment is safe. It also never leaves the media folder: a folder
+  on the way that is a symlink to somewhere outside is refused. When something is at the file's
+  old place, or the file can't be moved this safely, it answers 409 and the file stays in the
+  trash. The card's undo follows in U3: offered only right after removing, with the card saying
+  that afterwards the way back is the trash folder, for the 30 days it keeps the file.
 - **Titles that need a look** (step 10f, decision 24). A title with a file whose header failed
   (`unplayable`) or a movie with an extra copy is a problem: `ListLibraryItems{Problems: true}`
   finds them per title through the file indexes, an extra copy being a `library_sources` row no

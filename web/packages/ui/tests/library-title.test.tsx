@@ -22,7 +22,10 @@ type Host = Parameters<typeof createRoot>[0] & {
 };
 const doc = (
   globalThis as unknown as {
-    document: { body: { append(n: unknown): void }; createElement(t: string): Host };
+    document: {
+      body: { append(n: unknown): void; querySelectorAll(s: string): ArrayLike<El> };
+      createElement(t: string): Host;
+    };
   }
 ).document;
 
@@ -114,7 +117,16 @@ const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleFix> = {}, 
     act(() => root.unmount());
     host.remove();
   };
-  return { host, onBack, props, button, cleanup };
+  // The Fix menu is portalled to the body, so its items are looked up there.
+  const menuItems = () => Array.from(doc.body.querySelectorAll('[role="menuitem"]'));
+  const openFix = () => act(async () => button("Fix").click());
+  const fixItem = async (name: string) => {
+    await openFix();
+    const item = menuItems().find((n) => n.textContent?.trim() === name);
+    if (!item) throw new Error(`missing menu item: ${name}`);
+    await act(async () => item.click());
+  };
+  return { host, onBack, props, button, cleanup, menuItems, openFix, fixItem };
 };
 
 describe("LibraryTitle", () => {
@@ -227,6 +239,7 @@ describe("LibraryTitle", () => {
 
     const series = render(SERIES);
     expect(series.host.querySelectorAll('[aria-label="On these channels"]').length).toBe(0);
+    expect(series.host.textContent).toContain("Not on a channel yet");
     series.cleanup();
   });
 
@@ -301,20 +314,62 @@ describe("LibraryTitle", () => {
 
   it("checks the files again and says so, and says when updating the details failed", async () => {
     const onUpdateDetails = vi.fn(() => Promise.reject(new Error("tmdb down")));
-    const { host, props, button, cleanup } = render(MOVIE, { onUpdateDetails });
-    await act(async () => button("Check files again").click());
+    const { host, props, fixItem, cleanup } = render(MOVIE, { onUpdateDetails });
+    await fixItem("Check files again");
     expect(props.fix?.onCheckFiles).toHaveBeenCalled();
     expect(host.textContent).toContain("Checked just now");
-    await act(async () => button("Update details").click());
+    await fixItem("Update details");
     expect(onUpdateDetails).toHaveBeenCalled();
     expect(host.textContent).toContain("Couldn't update the details just now. Try again in a moment.");
     cleanup();
   });
 
-  it("sends a title its app decides to that app", () => {
+  it("sets a dot between each of the facts", () => {
+    const { host, cleanup } = render({ ...MOVIE, score: 7.4 });
+    expect(host.textContent).toContain("1996 · 1 h 38 minR· Crime, Thriller· Score 7.4/10");
+    cleanup();
+  });
+
+  it("has its live region in place before a fix says anything", async () => {
+    const { host, fixItem, cleanup } = render(MOVIE, { onCheckFiles: () => new Promise<void>(() => {}) });
+    const live = host.querySelectorAll('[aria-live="polite"]');
+    expect(live.length).toBe(1);
+    const region = live[0];
+    expect(region?.textContent).toBe("");
+    await fixItem("Check files again");
+    expect(region?.textContent).toBe("Checking…");
+    cleanup();
+  });
+
+  it("shows Wrong title? as open in the menu, and closes it", async () => {
+    const { host, button, fixItem, openFix, menuItems, cleanup } = render(MOVIE);
+    await fixItem("Wrong title?");
+    await openFix();
+    expect(menuItems().map((n) => n.textContent?.trim())).toContain("Wrong title? (open)");
+    await act(async () => button("Close").click());
+    expect(host.textContent).not.toContain("Radarr decides what this is");
+    cleanup();
+  });
+
+  it("holds the Fix menu's items to the touch target on a phone", async () => {
+    const view = globalThis as unknown as { innerWidth: number };
+    const wide = view.innerWidth;
+    view.innerWidth = 390;
+    const { menuItems, openFix, cleanup } = render(MOVIE);
+    await openFix();
+    expect(menuItems().map((n) => (n as El & { style: { minHeight: string } }).style.minHeight)).toEqual([
+      "48px",
+      "48px",
+      "48px",
+    ]);
+    cleanup();
+    view.innerWidth = wide;
+  });
+
+  it("sends a title its app decides to that app", async () => {
     const onOpenApp = vi.fn();
-    const { host, button, cleanup } = render(MOVIE, { onOpenApp });
-    act(() => button("Wrong title?").click());
+    const { host, button, fixItem, cleanup } = render(MOVIE, { onOpenApp });
+    await fixItem("Wrong title?");
     expect(host.textContent).toContain("Radarr decides what this is. Change it in Radarr.");
     expect(host.textContent).not.toContain("Search for the title");
     act(() => button("Open Radarr").click());
@@ -322,9 +377,9 @@ describe("LibraryTitle", () => {
     cleanup();
   });
 
-  it("says a title its file decides is fixed in the file", () => {
-    const { host, button, cleanup } = render({ ...MOVIE, match: { by: "file" } });
-    act(() => button("Wrong title?").click());
+  it("says a title its file decides is fixed in the file", async () => {
+    const { host, fixItem, cleanup } = render({ ...MOVIE, match: { by: "file" } });
+    await fixItem("Wrong title?");
     expect(host.textContent).toContain(
       "This file's name says what it is. Rename it, or change its NFO, to fix it.",
     );
@@ -334,14 +389,14 @@ describe("LibraryTitle", () => {
 
   it("lets the household pick the title, or forget an answer it gave", async () => {
     const unknown = render(SERIES);
-    act(() => unknown.button("Wrong title?").click());
+    await unknown.fixItem("Wrong title?");
     expect(unknown.host.textContent).toContain("Search for the title");
     expect(unknown.host.textContent).not.toContain("Forget my answer");
     unknown.cleanup();
 
     const onForget = vi.fn(() => Promise.resolve());
     const answered = render({ ...SERIES, match: { by: "you" } }, { onForget });
-    act(() => answered.button("Wrong title?").click());
+    await answered.fixItem("Wrong title?");
     await act(async () => answered.button("Forget my answer").click());
     expect(onForget).toHaveBeenCalled();
     answered.cleanup();
@@ -361,6 +416,10 @@ describe("LibraryTitle", () => {
       true,
     );
     expect(host.textContent).toContain(MOVIE.name);
+    // No Fix menu, so none of what it holds can be reached.
+    expect(
+      Array.from(host.querySelectorAll('[role="button"], button')).map((n) => n.textContent?.trim()),
+    ).not.toContain("Fix");
     for (const word of [
       "Update details",
       "Check files again",

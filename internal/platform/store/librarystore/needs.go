@@ -62,8 +62,21 @@ type LibraryNeed struct {
 	Searched string
 }
 
+// LibraryIgnoredTitle is a title the maintainer said is not one.
+type LibraryIgnoredTitle struct {
+	ID string
+	// Kind is movie or series.
+	Kind      string
+	Name      string
+	Origin    LibraryOrigin
+	IgnoredAt time.Time
+}
+
 // LibraryNeedsStore keeps Needs you (#2151 step 11).
 type LibraryNeedsStore interface {
+	// LibraryIgnored is a page of the ignored titles with a present file, newest ignore first, and
+	// how many there are in all.
+	LibraryIgnored(ctx context.Context, limit, offset int) ([]LibraryIgnoredTitle, int, error)
 	// LibraryNeeds lists every title that needs the maintainer, by sort name.
 	LibraryNeeds(ctx context.Context) ([]LibraryNeed, error)
 	// LibraryCandidates is each listed title's candidates, in rank order.
@@ -85,6 +98,36 @@ type LibraryNeedsStore interface {
 	UnnoticedLibraryNeeds(ctx context.Context) ([]string, error)
 	// NoticeLibraryNeeds marks titles a notice counted.
 	NoticeLibraryNeeds(ctx context.Context, itemIDs []string) error
+}
+
+func (s *Store) LibraryIgnored(ctx context.Context, limit, offset int) ([]LibraryIgnoredTitle, int, error) {
+	from := ` FROM library_items i JOIN library_answers a ON a.origin_authority = i.origin_authority
+		AND a.origin_key = i.origin_key
+		WHERE i.kind IN ('movie', 'series') AND a.ignored = TRUE AND ` + itemListed
+	var total int
+	if err := s.h.QueryRowContext(ctx, s.ph(`SELECT COUNT(*)`+from)).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("library ignored: %w", err)
+	}
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT i.id, i.kind, i.name, i.origin_authority, i.origin_key,
+		a.answered_at_ms`+from+` ORDER BY a.answered_at_ms DESC, i.id LIMIT ? OFFSET ?`), limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("library ignored: %w", err)
+	}
+	out := []LibraryIgnoredTitle{}
+	for rows.Next() {
+		var t LibraryIgnoredTitle
+		var at int64
+		if err := rows.Scan(&t.ID, &t.Kind, &t.Name, &t.Origin.Authority, &t.Origin.Key, &at); err != nil {
+			_ = rows.Close()
+			return nil, 0, fmt.Errorf("library ignored: %w", err)
+		}
+		t.IgnoredAt = time.UnixMilli(at).UTC()
+		out = append(out, t)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, 0, fmt.Errorf("library ignored: %w", err)
+	}
+	return out, total, nil
 }
 
 func (s *Store) UnnoticedLibraryNeeds(ctx context.Context) ([]string, error) {

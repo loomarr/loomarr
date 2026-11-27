@@ -48,13 +48,13 @@ func TestRemoveExtraCopyMovesItToTheTrash(t *testing.T) {
 		}
 	}
 
-	if err := lib.RemoveExtraCopy(ctx, id, sharp); !errors.Is(err, ErrPlays) {
+	if _, err := lib.RemoveExtraCopy(ctx, id, sharp); !errors.Is(err, ErrPlays) {
 		t.Fatalf("removing the copy that plays = %v, want ErrPlays", err)
 	}
-	if err := lib.RemoveExtraCopy(ctx, id, "/elsewhere/Foxtrot.mkv"); !errors.Is(err, store.ErrNotFound) {
+	if _, err := lib.RemoveExtraCopy(ctx, id, "/elsewhere/Foxtrot.mkv"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("removing another title's file = %v, want ErrNotFound", err)
 	}
-	if err := lib.RemoveExtraCopy(ctx, id, soft); err != nil {
+	if _, err := lib.RemoveExtraCopy(ctx, id, soft); err != nil {
 		t.Fatal(err)
 	}
 	trashed := filepath.Join(h.root, TrashDir, "2026-11-07", "Foxtrot (2001) {tmdb-90000631}", "Foxtrot DVD.mkv")
@@ -129,7 +129,7 @@ func TestATitlesLastFileIsNeverAnExtraCopy(t *testing.T) {
 	if d.Files[0].Extra {
 		t.Error("the title's last file is an extra copy")
 	}
-	if err := lib.RemoveExtraCopy(ctx, id, soft); !errors.Is(err, ErrPlays) {
+	if _, err := lib.RemoveExtraCopy(ctx, id, soft); !errors.Is(err, ErrPlays) {
 		t.Fatalf("removing the title's last file = %v, want ErrPlays", err)
 	}
 	if _, err := os.Stat(soft); err != nil {
@@ -168,7 +168,7 @@ func TestRemoveExtraCopyNeedsTheCopyThatPlaysOnDisk(t *testing.T) {
 			t.Errorf("%s extra = %v, want only the soft copy shown as an extra", f.Path, f.Extra)
 		}
 	}
-	if err := lib.RemoveExtraCopy(ctx, id, soft); !errors.Is(err, ErrPlayingCopyUnseen) {
+	if _, err := lib.RemoveExtraCopy(ctx, id, soft); !errors.Is(err, ErrPlayingCopyUnseen) {
 		t.Fatalf("removing the copy whose twin is gone from disk = %v, want ErrPlayingCopyUnseen", err)
 	}
 	if _, err := os.Stat(soft); err != nil {
@@ -216,7 +216,11 @@ func TestTwoRemovalsAtOnceKeepOneCopy(t *testing.T) {
 		entered: make(chan struct{}), release: make(chan struct{})}
 	lib := &Library{Roots: &Roots{Disk: disk}, ItemStore: h.st, Inventory: h.inv}
 	errs := make(chan error, 2)
-	go func() { errs <- lib.RemoveExtraCopy(ctx, id, soft) }()
+	remove := func(path string) {
+		_, err := lib.RemoveExtraCopy(ctx, id, path)
+		errs <- err
+	}
+	go remove(soft)
 	<-disk.entered
 	// A rescan meanwhile: the soft copy plays now, and the sharp one is the extra.
 	row, ok := ProjectLibraryItem(item)
@@ -229,7 +233,7 @@ func TestTwoRemovalsAtOnceKeepOneCopy(t *testing.T) {
 	if err := h.st.SaveLibraryItems(ctx, []librarystore.LibraryItem{row}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	go func() { errs <- lib.RemoveExtraCopy(ctx, id, sharp) }()
+	go remove(sharp)
 	close(disk.release)
 
 	var removed, refused int

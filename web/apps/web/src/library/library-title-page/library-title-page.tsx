@@ -1,15 +1,19 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import { LibraryDetailsFromDTODescription } from "@loomarr/api/models/libraryDetailsFromDTODescription";
 import { LibraryMatchDTOApp } from "@loomarr/api/models/libraryMatchDTOApp";
+import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { LibraryTitle } from "@loomarr/ui";
+import { LibraryTitle, LibraryTitleMissing } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { useRefetchAt } from "@/lib/use-refetch-at";
 import { searchLibraryTitles } from "@/library/use-library-needs";
+import { airingEpisode, airingsChangeAt, airingWhen, dateWords } from "./airing-words";
 
 // A TITLE'S PAGE (#2151 decisions 25–26): one movie or series from the Library. Back returns to
 // the grid as it was left (its filter and search are in the URL), or to the Library when the
@@ -31,6 +35,7 @@ const SOURCE_NAMES: Record<LibraryDetailsFromDTODescription, string> = {
 const sourceName = (source?: LibraryDetailsFromDTODescription) => (source ? SOURCE_NAMES[source] : undefined);
 
 const LibraryTitlePage = ({ id }: { id: string }) => {
+  const timeZone = useHouseholdTimeZone();
   const navigate = useNavigate();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -38,9 +43,25 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
   const detail = libraryApi.useGetLibraryItem(id);
   const body = unwrap(detail.data);
   useDocumentTitle(body?.item.name ?? "Library");
+  // An airing starts and ends with nothing sent, so the title is read again at that moment: the
+  // words follow the clock, and an ended airing gives way to the channel's next one.
+  useRefetchAt({
+    deadline: airingsChangeAt(body?.nextAirings ?? []),
+    answeredAt: detail.dataUpdatedAt,
+    refetch: detail.refetch,
+  });
 
+  const back = () => {
+    if (router.history.canGoBack()) router.history.back();
+    else void navigate({ to: "/library" });
+  };
+
+  // A 404 is an unknown title, or one hidden from this member: trying again can't change it.
+  if (detail.error instanceof ApiError && detail.error.status === 404) {
+    return <LibraryTitleMissing onBack={back} />;
+  }
   if (detail.error) return <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />;
-  // The route's loader ensured the title, so it is here before this page mounts.
+  // The route's loader asked for the title, so it is here before this page mounts.
   if (!body) return null;
 
   // An answer moves the title in and out of Needs you and can rename it on the shelf.
@@ -78,15 +99,34 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
             }
           : undefined
       }
-      onBack={() => {
-        if (router.history.canGoBack()) router.history.back();
-        else void navigate({ to: "/library" });
-      }}
+      onBack={back}
       title={{
         kind: item.kind,
         name: item.name,
         year: item.year,
-        poster: item.poster ? <ServedImage alt="" image={item.poster} priority sizes="208px" /> : undefined,
+        backdrop: body.backdropImage ? (
+          <ServedImage alt="" image={body.backdropImage} priority sizes="(min-width: 1216px) 1152px, 100vw" />
+        ) : undefined,
+        logo: body.logoImage ? (
+          <ServedImage alt="" fit="contain" image={body.logoImage} priority sizes="420px" />
+        ) : undefined,
+        tagline: body.tagline,
+        score: body.score,
+        credits: body.credits,
+        airings: body.nextAirings.flatMap((a) => {
+          const when = airingWhen(a, timeZone);
+          const episode = a.episode ? airingEpisode(a.episode) : undefined;
+          return when ? [{ channel: a.channel, when, forecast: a.forecast, episode }] : [];
+        }),
+        playing: body.playing,
+        about: [
+          { label: "Studio", value: body.studios.join(", ") },
+          { label: "Country", value: body.countries.join(", ") },
+          {
+            label: item.kind === "series" ? "First aired" : "Released",
+            value: body.premiereDate ? dateWords(body.premiereDate) : "",
+          },
+        ],
         overview: body.overview,
         genres: body.genres,
         rating: body.rating,

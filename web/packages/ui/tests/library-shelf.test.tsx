@@ -501,13 +501,13 @@ describe("LibraryShelf", () => {
     short.cleanup();
   });
 
-  it("puts a held removal first, with Check again", () => {
+  it("puts a held removal first, with Check files again", () => {
     const held = admin({
       held: [{ path: "/media/movies", movies: 2406, episodes: 0, other: 0, titles: [], titleCount: 0 }],
     });
     const { host, button, cleanup } = render({ admin: held });
     expect(host.textContent).toContain("2,406 movies seem to be gone from your Movies folder");
-    act(() => button("Check again").click());
+    act(() => button("Check files again").click());
     expect(held.onRescan).toHaveBeenCalled();
     cleanup();
   });

@@ -46,13 +46,49 @@ interface LibraryTitleSeason {
   episodes: readonly LibraryTitleEpisode[];
 }
 
+/** When a channel next shows the title, its time already worded in the household's clock. */
+interface LibraryTitleAiring {
+  channel: LibraryTitleChannel;
+  /** "Next tonight at 9:00 PM", or "On now". */
+  when: string;
+  /** Past the window on air, so it can still change. */
+  forecast: boolean;
+  /** A series' episode, worded. */
+  episode?: string;
+}
+
+interface LibraryTitlePerson {
+  name: string;
+  character?: string;
+  role: "actor" | "director" | "writer" | "creator";
+}
+
+/** What plays, for a member's one technical line. */
+interface LibraryTitlePlaying {
+  picture?: { width: number; height: number; hdr: boolean };
+  audioChannels?: number;
+  /** Language names. */
+  subtitleLanguages: readonly string[];
+}
+
 /** A movie or a series, as its page shows it. */
 interface LibraryTitleDetail {
   kind: LibraryKind;
+  /** The wide art behind the title, drawn by the app. */
+  backdrop?: ReactNode;
+  /** The title's logo, drawn by the app in place of its name. */
+  logo?: ReactNode;
+  tagline?: string;
+  /** Out of 10. */
+  score?: number;
+  credits?: readonly LibraryTitlePerson[];
+  /** One per channel, earliest first. */
+  airings?: readonly LibraryTitleAiring[];
+  playing?: LibraryTitlePlaying;
   name: string;
   year?: number;
-  /** Its artwork, drawn by the app; absent draws the name on the placeholder. */
-  poster?: ReactNode;
+  /** Labelled facts beside the crew, such as Studio and Country. */
+  about?: readonly { label: string; value: string }[];
   overview?: string;
   genres: readonly string[];
   /** The certification, such as TV-14. */
@@ -93,7 +129,8 @@ interface LibraryTitleProps {
   onBack: () => void;
   /**
    * What an admin does about the title. Absent for a member, who reads the page only: no Update
-   * details, Check files again or Wrong title?, no file cards and no Technical details.
+   * details, Check files again or Wrong title?, no file cards and no Technical details, only the
+   * one technical line.
    */
   fix?: LibraryTitleFix;
 }
@@ -119,12 +156,15 @@ interface LibraryTitleFix {
 }
 
 export type {
+  LibraryTitleAiring,
   LibraryTitleChannel,
   LibraryTitleDetail,
   LibraryTitleEpisode,
   LibraryTitleFile,
   LibraryTitleFix,
   LibraryTitleMatch,
+  LibraryTitlePerson,
+  LibraryTitlePlaying,
   LibraryTitleProps,
   LibraryTitleSeason,
 };

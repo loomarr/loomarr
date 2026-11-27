@@ -561,11 +561,25 @@ func TestDisabledMemberLosesTheLibraryOnSessionAndDevice(t *testing.T) {
 	if code, _ := deviceCall(t, srv, http.MethodPost, "/v1/library/items/90000001/check", nil, tv, ""); code != http.StatusForbidden {
 		t.Errorf("member's device check = %d, want 403", code)
 	}
+	const restore, undo = "/v1/library/items/90000001/restore-copy", `{"undo":"a.b"}`
+	resp = authed(t, http.MethodPost, srv.URL+restore, member, undo)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("signed-in member restore = %d, want 403", resp.StatusCode)
+	}
+	if code, _ := deviceCall(t, srv, http.MethodPost, restore, nil, tv, undo); code != http.StatusForbidden {
+		t.Errorf("member's device restore = %d, want 403", code)
+	}
 
 	resp = authed(t, http.MethodPatch, srv.URL+"/v1/users/u-kid", admin, `{"disabled":true}`)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("disable = %d", resp.StatusCode)
+	}
+	resp = authed(t, http.MethodPost, srv.URL+restore, member, undo)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("disabled member restore = %d, want 401", resp.StatusCode)
 	}
 	for _, route := range routes {
 		resp := authed(t, http.MethodGet, srv.URL+route, member, "")

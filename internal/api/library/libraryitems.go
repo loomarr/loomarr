@@ -69,9 +69,18 @@ func (s *Handlers) registerLibraryItems(api huma.API) {
 		OperationID: "removeLibraryExtraCopy", Method: http.MethodPost, Path: "/v1/library/items/{id}/remove-copy",
 		Summary: "Remove a title's extra copy",
 		Description: "Moves one of the title's files that never plays into its media folder's trash " +
-			"(.loomarr-trash), which empties after 30 days.",
-		Tags: []string{"library"}, DefaultStatus: http.StatusNoContent,
+			"(.loomarr-trash), which empties after 30 days. Answers with the token that undoes it.",
+		Tags: []string{"library"},
 	}, httpcore.RoleAdmin), s.removeLibraryExtraCopy)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "restoreLibraryExtraCopy", Method: http.MethodPost, Path: "/v1/library/items/{id}/restore-copy",
+		Summary: "Undo removing an extra copy",
+		Description: "Moves the copy a removal put in the trash back to where it was; the title has it again once the folder " +
+			"is read. Takes the token that removal answered with, which stops working when Loomarr restarts. " +
+			"400 for a token that isn't valid for this title, 410 when the copy isn't in the trash, 409 when " +
+			"something is where it was or the folder can't be changed.",
+		Tags: []string{"library"}, DefaultStatus: http.StatusNoContent,
+	}, httpcore.RoleAdmin), s.restoreLibraryExtraCopy)
 }
 
 type removeLibraryExtraCopyInput struct {
@@ -81,15 +90,56 @@ type removeLibraryExtraCopyInput struct {
 	}
 }
 
-func (s *Handlers) removeLibraryExtraCopy(ctx context.Context, in *removeLibraryExtraCopyInput) (*struct{}, error) {
+type removeLibraryExtraCopyOutput struct {
+	Body struct {
+		Undo string `json:"undo" doc:"Give this to restore-copy to put the file back"`
+	}
+}
+
+type restoreLibraryExtraCopyInput struct {
+	ID   string `path:"id" maxLength:"64"`
+	Body struct {
+		Undo string `json:"undo" minLength:"1" maxLength:"16384" doc:"The token the removal answered with"`
+	}
+}
+
+func (s *Handlers) restoreLibraryExtraCopy(ctx context.Context, in *restoreLibraryExtraCopyInput) (*struct{}, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
 	}
-	err = svc.RemoveExtraCopy(ctx, in.ID, in.Body.Path)
+	err = svc.RestoreExtraCopy(ctx, in.ID, in.Body.Undo)
 	switch {
 	case err == nil:
 		return nil, nil
+	case errors.Is(err, scan.ErrUndoToken):
+		return nil, httpcore.Problem(http.StatusBadRequest, "Can't undo this any more",
+			"If you still want the file, it's in the .loomarr-trash folder inside its media folder for 30 days.")
+	case errors.Is(err, scan.ErrTrashGone):
+		return nil, httpcore.Problem(http.StatusGone, "The file isn't in the trash",
+			"It may have been emptied or moved. Check that its drive is connected.")
+	case errors.Is(err, scan.ErrPathTaken):
+		return nil, httpcore.Problem(http.StatusConflict, "Something is already there",
+			"A file is where this copy was, so Loomarr left the copy in the trash.")
+	case errors.Is(err, scan.ErrRestore):
+		return nil, httpcore.ProblemWithCause(http.StatusConflict, "Couldn't put the copy back",
+			"Loomarr may not be allowed to change this folder.", err)
+	default:
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't put the copy back", "Try again in a moment.", err)
+	}
+}
+
+func (s *Handlers) removeLibraryExtraCopy(ctx context.Context, in *removeLibraryExtraCopyInput) (*removeLibraryExtraCopyOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	undo, err := svc.RemoveExtraCopy(ctx, in.ID, in.Body.Path)
+	switch {
+	case err == nil:
+		out := &removeLibraryExtraCopyOutput{}
+		out.Body.Undo = undo
+		return out, nil
 	case errors.Is(err, store.ErrNotFound):
 		return nil, httpcore.Problem(http.StatusNotFound, "Not one of this title's files", "Check files again, then try again.")
 	case errors.Is(err, scan.ErrPlays):

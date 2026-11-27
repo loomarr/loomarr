@@ -52,9 +52,11 @@ type LibraryRootService interface {
 	Item(ctx context.Context, id string, member bool) (scan.ItemDetail, error)
 	UpdateDetails(ctx context.Context, id string) error
 	CheckFiles(ctx context.Context, id string) error
-	RemoveExtraCopy(ctx context.Context, id, path string) error
+	RemoveExtraCopy(ctx context.Context, id, path string) (undo string, err error)
+	RestoreExtraCopy(ctx context.Context, id, undo string) error
 
 	Needs(ctx context.Context) ([]scan.Need, error)
+	Ignored(ctx context.Context, limit, offset int) ([]scan.IgnoredTitle, int, error)
 	Problems(ctx context.Context) ([]librarystore.LibraryItemSummary, error)
 	NeedCount(ctx context.Context) (int, error)
 	Link(ctx context.Context, itemID string, id librarystore.LibraryID) error

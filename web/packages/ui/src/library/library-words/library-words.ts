@@ -48,12 +48,12 @@ const heldNames = (held: LibraryHeldRemoval) => {
 const unreadableTitle = (paths: readonly string[]) =>
   `${count(paths.length, "file has a name", "files have names")} Loomarr can't read`;
 
-// "Rename Ferrow �t� (1999).mkv and Kettle�.mkv using ordinary letters, then check again." Each
-// file by its own name: the folder it sits in is plain.
+// "Rename Ferrow �t� (1999).mkv and Kettle�.mkv using ordinary letters, then check files again."
+// Each file by its own name: the folder it sits in is plain.
 const unreadableNames = (paths: readonly string[]) => {
   const names = paths.slice(0, 3).map((p) => p.split("/").pop() ?? p);
   const rest = paths.length - names.length;
-  return `Rename ${joinNames(rest > 0 ? [...names, `${rest.toLocaleString("en-US")} more`] : names)} using ordinary letters, then check again.`;
+  return `Rename ${joinNames(rest > 0 ? [...names, `${rest.toLocaleString("en-US")} more`] : names)} using ordinary letters, then check files again.`;
 };
 
 // What the scan skips, said a callout per kind: each names the first three files by their own
@@ -66,8 +66,8 @@ const SKIPPED_KINDS = [
       count(n, "shortcut points to a file that's gone", "shortcuts point to files that are gone"),
     body: (names: string, n: number) =>
       n === 1
-        ? `${names}. Point it at the file again or delete it, then check again.`
-        : `${names}. Point them at the files again or delete them, then check again.`,
+        ? `${names}. Point it at the file again or delete it, then check files again.`
+        : `${names}. Point them at the files again or delete them, then check files again.`,
   },
   {
     reasons: ["link_outside"],
@@ -80,19 +80,19 @@ const SKIPPED_KINDS = [
     reasons: ["disc_image"],
     title: (n: number) => count(n, "disc image Loomarr can't play", "disc images Loomarr can't play"),
     body: (names: string, n: number) =>
-      `Loomarr plays video files, not whole discs. Rip ${names} to ${n === 1 ? "a video file" : "video files"}, then check again.`,
+      `Loomarr plays video files, not whole discs. Rip ${names} to ${n === 1 ? "a video file" : "video files"}, then check files again.`,
   },
   {
     reasons: ["empty_file"],
     title: (n: number) => count(n, "video file is empty", "video files are empty"),
     body: (names: string, n: number) =>
-      `${names} ${n === 1 ? "has" : "have"} nothing in ${n === 1 ? "it" : "them"} — a copy that never finished. Copy ${n === 1 ? "it" : "them"} again or delete ${n === 1 ? "it" : "them"}, then check again.`,
+      `${names} ${n === 1 ? "has" : "have"} nothing in ${n === 1 ? "it" : "them"} — a copy that never finished. Copy ${n === 1 ? "it" : "them"} again or delete ${n === 1 ? "it" : "them"}, then check files again.`,
   },
   {
     reasons: ["identity_conflict", "invalid_facts"],
     title: (n: number) => count(n, "file Loomarr couldn't add", "files Loomarr couldn't add"),
     body: (names: string, n: number) =>
-      `Loomarr couldn't make sense of ${names}. Check again; if ${n === 1 ? "it's" : "they're"} still here, it's a problem in Loomarr, not your ${n === 1 ? "file" : "files"}.`,
+      `Loomarr couldn't make sense of ${names}. Check files again; if ${n === 1 ? "it's" : "they're"} still here, it's a problem in Loomarr, not your ${n === 1 ? "file" : "files"}.`,
   },
 ] as const satisfies readonly {
   reasons: readonly LibrarySkipped["reason"][];
