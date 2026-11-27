@@ -1,6 +1,5 @@
 import { toProblem } from "@loomarr/api/mutator";
 import { Action, Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
 import type { ErrorStateProps } from "./error-state.type";
 
 // ErrorState — the RFC 7807 renderer (§3). Every failure surfaces the problem's
@@ -13,10 +12,12 @@ const ErrorState = ({ error, onRetry, retrying = false, className }: ErrorStateP
     <Card
       alignItems="center"
       borderRadius={8}
-      className={cn("p-8", className)}
+      className={className}
       flexShrink={0}
       gap={12}
       justifyContent="center"
+      // A caller's `className` sets its own padding, so the default 32 stands only without one.
+      {...(className ? {} : { padding: 32 })}
       role="alert"
       tone="onair"
     >

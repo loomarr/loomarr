@@ -5,7 +5,7 @@ import { RestartOverlay } from "./restart-overlay";
 
 describe("RestartOverlay", () => {
   // ⚠ THE POINT: while the server is down every request fails, so the app must not accept
-  // clicks that were never going to work. `cursor-progress` marks it busy; the fixed
+  // clicks that were never going to work. The progress cursor marks it busy; the fixed
   // full-screen layer is what actually swallows the input.
   // ⚠ `status`, not `alertdialog`. This used to claim `role="alertdialog" aria-modal="true"` with
   // none of the behaviour behind it (V50b). It is a status message: no focusable content in any
@@ -14,9 +14,9 @@ describe("RestartOverlay", () => {
     render(<RestartOverlay restarting />);
 
     const overlay = screen.getByRole("status");
-    expect(overlay).toHaveClass("fixed", "inset-0");
-    expect(overlay).toHaveClass("cursor-progress");
-    expect(overlay).not.toHaveClass("pointer-events-none");
+    expect(overlay).toHaveStyle({ position: "fixed", top: "0px", bottom: "0px", left: "0px", right: "0px" });
+    expect(overlay).toHaveStyle({ cursor: "progress" });
+    expect(overlay).not.toHaveStyle({ pointerEvents: "none" });
     expect(overlay).toHaveTextContent(/restarting loomarr/i);
   });
 
@@ -26,7 +26,7 @@ describe("RestartOverlay", () => {
     render(<RestartOverlay restarting={false} justCameBack />);
 
     const overlay = screen.getByRole("status");
-    expect(overlay).toHaveClass("pointer-events-none");
+    expect(overlay).toHaveStyle({ pointerEvents: "none" });
     expect(overlay).toHaveTextContent(/loomarr is back/i);
   });
 
@@ -37,7 +37,7 @@ describe("RestartOverlay", () => {
     render(<RestartOverlay restarting={false} failed="Loomarr hasn't come back." />);
 
     const overlay = screen.getByRole("alert");
-    expect(overlay).toHaveClass("cursor-progress");
+    expect(overlay).toHaveStyle({ cursor: "progress" });
     expect(overlay).toHaveTextContent(/hasn't come back/i);
   });
 

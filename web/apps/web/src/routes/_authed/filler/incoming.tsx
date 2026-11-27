@@ -1,7 +1,7 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { meQueryOptions } from "@/auth/me-query";
-import { warmFillerPage } from "@/filler/filler-loader";
+import { openFillerPage } from "@/filler/filler-loader";
 import { FillerPage } from "@/filler/filler-page";
 
 // Incoming — what has arrived but isn't filed yet. Its own path (V-nav-paths), same as
@@ -19,11 +19,11 @@ const Route = createFileRoute("/_authed/filler/incoming")({
     }
   },
   // beforeLoad has already sent a member away, so only an admin gets here. What is on the way is
-  // the page's own list and it shows its own error, so it is warmed beside the page's status line.
+  // what the page is made of, so it opens on it and a failed read is the route's error view.
   loader: async ({ context: { queryClient } }) => {
     await Promise.all([
-      warmFillerPage(queryClient),
-      queryClient.prefetchQuery(fillerApi.getFillerIncomingQueryOptions()),
+      openFillerPage(queryClient),
+      queryClient.ensureQueryData(fillerApi.getFillerIncomingQueryOptions()),
     ]);
   },
   component: IncomingScreen,

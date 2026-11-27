@@ -616,11 +616,12 @@ motion on that way. The gallery now asserts the media query on every story it sh
 `tests/e2e/reduced-motion.spec.ts` does the same in the SPA.
 
 Reduced motion freezes the JS-driven loops (`ActivityIndicator`, `SignalLoader`, skeletons) that
-the gallery's `animation: none` style can't reach. It also hides the idle `TvStatic` snow. A
-story that exists to show motion opts out with the `motion` tag:
+the gallery's `animation: none` style can't reach. It also leaves out the idle snow (`IdleSnow`,
+whose flicker is a JS-driven loop). A story that exists to show motion opts out with the `motion`
+tag:
 
 ```tsx
-const meta = { title: "Setup/LoginShell", tags: ["route", "motion"] /* … */ };
+const meta = { title: "…", tags: ["route", "motion"] /* … */ };
 ```
 
 The gallery calls `page.emulateMedia({ reducedMotion: "no-preference" })` for that story before
@@ -628,8 +629,8 @@ it loads, and its test carries `@motion` for `--grep`. It is a tag, not a story 
 `index.json` lists tags, and the preference has to be set before the story mounts. The style tag
 still freezes CSS animation at frame 0, so a `motion` story must be still in every other way: a
 seeded tile, and no JS-driven loop. Prove that with repeat renders in the pinned image before you
-tag a story (`--grep @motion --repeat-each 3`). The `LoginShell`, `WizardShell`,
-`Password recovery`, `Invitation join` and `TvStatic` Default stories carry it.
+tag a story (`--grep @motion --repeat-each 3`). No story carries it today: the surfaces with idle
+snow are shot without it, and `motion.spec.ts` proves the snow moves.
 
 `motion-only` is different: it keeps a story out of the gallery entirely, and `motion.spec.ts`
 checks its behaviour frame to frame instead of its pixels.

@@ -84,7 +84,7 @@ one series per table, so `delta(loomarr_database_table_rows[30d])` graphs the sa
 - [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_catalog_feeds`](#library_catalog_feeds), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
 - [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_download_failures`](#filler_download_failures), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_breaks`](#filler_breaks), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
-- [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
+- [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals)
 - [Notifications](#notifications): [`notification_destinations`](#notification_destinations), [`notification_intents`](#notification_intents), [`notification_delivery_attempts`](#notification_delivery_attempts), [`title_requesters`](#title_requesters), [`channel_requesters`](#channel_requesters)
 - [Settings and housekeeping](#settings-and-housekeeping): [`settings`](#settings), [`secret_protection_metadata`](#secret_protection_metadata), [`secret_data_keys`](#secret_data_keys), [`scheduled_jobs`](#scheduled_jobs), [`interactive_operations`](#interactive_operations), [`activity`](#activity), [`diagnostic_events`](#diagnostic_events), [`diagnostic_process_runs`](#diagnostic_process_runs), [`diagnostic_retained_bytes`](#diagnostic_retained_bytes), [`client_crash_reports`](#client_crash_reports), [`database_table_rows`](#database_table_rows)
 - [Tables other libraries own](#tables-other-libraries-own)
@@ -178,7 +178,7 @@ One row per invitation an admin sends to let a new person in. It reserves a user
 | `created_at` | When the admin made the invitation, in Unix seconds. | `BIGINT` |
 | `expires_at` | When it stops working, in Unix seconds (always 7 days after created_at). | `BIGINT` |
 | `terminal_at` | When it was redeemed, revoked or expired, in Unix seconds. 0 while still pending. | `BIGINT` |
-| `redeemed_by` | The id of the account created from it, in users. Empty unless redeemed. | `TEXT` |
+| `redeemed_by` | The id of the account created from it, in users. Null unless redeemed, and once that account is deleted. | `TEXT` · may be empty · → `users.id` |
 
 ### invitation_grants
 
@@ -452,7 +452,6 @@ One row per run of the channel suggester: a person's channel request, a refine o
 | `status` | `queued` (waiting for a worker), `running`, `done` (produced a proposal), or `failed`. | `TEXT` |
 | `intent_json` | The request: its description and options such as era, tone, titles to include or leave out, and for a refine the change asked for and the channel's current lineup. | `TEXT` |
 | `intent_hash` | A fingerprint of the normalised request. A new identical request can reuse a recent `done` job's result instead of running again. | `TEXT` |
-| `created_by` | The person who submitted the request (users.id). Empty when no person did. | `TEXT` |
 | `last_error` | The detailed error from the last failure, for the logs. Not shown to the requester. | `TEXT` |
 | `deadline` | When a queued job is due to run, or when a running job's hold expires and another worker may take it over, in Unix seconds. | `BIGINT` |
 | `attempts` | How many times a worker has started the job. | `INTEGER` |
@@ -463,6 +462,7 @@ One row per run of the channel suggester: a person's channel request, a refine o
 | `reached_live` | 1 once a channel made from this job has gone live. It stays 1 even if the channel is later paused. | `BOOLEAN` |
 | `failure_trace_json` | The bounded record of the candidate titles a failed run considered and why each was kept or dropped, used to explain the failure. Empty when there is none. | `TEXT` · may be empty |
 | `channel_id` | The existing channel a refine or re-curation job changes (channels.id); the job goes with that channel. Null for a job that creates a new channel. | `TEXT` · may be empty · → `channels.id` |
+| `created_by` | The person who submitted the request (users.id). Null when no person did (the API token or a re-curation), or once that person is deleted. | `TEXT` · may be empty · → `users.id` |
 
 ### proposal_job_attempts
 
@@ -489,10 +489,7 @@ A suggested channel lineup produced by a channel suggester job, waiting for an a
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `id` | Identifies the proposal. | `TEXT` · key |
-| `job_id` | The job that produced it (proposal_jobs.id). | `TEXT` |
 | `status` | `submitted` (waiting for a decision), `approved`, `denied`, or `superseded` (replaced by a newer proposal from the same job before anyone decided). | `TEXT` |
-| `created_by` | The person who asked for it (users.id). | `TEXT` |
-| `decided_by` | The admin who approved or denied it (users.id). Empty until decided. | `TEXT` |
 | `deny_reason` | The reason given for a denial. Empty otherwise. | `TEXT` |
 | `proposal_json` | The suggestion itself. The request, the proposed channel name, the lineup of titles already in the library, titles to acquire, ranked backups, scores, the rationale and the channel rules. | `TEXT` |
 | `created_at` | When the proposal was made, in Unix seconds. | `BIGINT` |
@@ -500,6 +497,10 @@ A suggested channel lineup produced by a channel suggester job, waiting for an a
 | `mod_summary` | What the admin changed before approving, written by Loomarr, such as "dropped 2, added 1". Empty when approved unchanged. | `TEXT` |
 | `note` | The admin's message to the requester about the decision. Empty for none. | `TEXT` |
 | `approved_at` | When the proposal was approved, in Unix seconds. 0 if it never was. | `BIGINT` |
+| `decided_via` | How it was approved or denied. `person` (an admin, or the API token), `auto` (the requester's automatic approval), or `auto-curate` (a channel's scheduled re-curation). Null until decided. | `TEXT` · may be empty |
+| `created_by` | The person who asked for it (users.id). Null for the API token, or once that person is deleted. | `TEXT` · may be empty · → `users.id` |
+| `decided_by` | The admin who approved or denied it (users.id). Null until decided, when an automatic rule decided (see decided_via), for the API token, or once that admin is deleted. | `TEXT` · may be empty · → `users.id` |
+| `job_id` | The job that produced it (proposal_jobs.id). The job is kept while the proposal is submitted; null once the finished job is purged. | `TEXT` · may be empty · → `proposal_jobs.id` |
 
 ### discovery_feedback
 
@@ -510,13 +511,13 @@ The Keep, Less like this, Never and Surprise me choices people make about titles
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `id` | Identifies the choice. | `TEXT` · key |
-| `actor_id` | The person who made it (users.id), or `api-token` for a choice sent with the API token. | `TEXT` |
 | `scope` | Where it applies. `household` for every channel, or `channel` for one channel. | `TEXT` |
 | `scope_id` | The channel it applies to (channels.id) when the scope is `channel`, and goes with that channel; null for `household`. | `TEXT` · may be empty · → `channels.id` |
 | `target_key` | The title it is about, by its key, such as `movie:tmdb:603`. | `TEXT` |
 | `action` | `keep` (favour this title), `less` (less like this, which also lowers titles of its genres), `never` (leave it out), `surprise` (Surprise me, favouring picks unlike it), or `clear` (remove an earlier choice). | `TEXT` |
 | `reason` | An optional reason the person gave. | `TEXT` |
 | `created_at_ns` | When the choice was made, in Unix nanoseconds. | `BIGINT` |
+| `actor_id` | The person who made it (users.id). Null for a choice sent with the API token, or once that person is deleted. | `TEXT` · may be empty · → `users.id` |
 
 ### quality_receipts
 
@@ -544,10 +545,10 @@ Daily totals of suggestion-quality receipts, one row per day, stage, outcome and
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `day` | The UTC day, as YYYY-MM-DD. | `TEXT` · key |
-| `stage` | The pipeline step, with the same values as quality_receipts.stage. | `TEXT` · key |
-| `outcome` | How the steps went, with the same values as quality_receipts.outcome. | `TEXT` · key |
-| `run_snapshot_id` | The evaluation run (quality_run_snapshots.id), or empty for ordinary use. | `TEXT` · key |
+| `day` | The UTC day, as YYYY-MM-DD. | `TEXT` |
+| `stage` | The pipeline step, with the same values as quality_receipts.stage. | `TEXT` |
+| `outcome` | How the steps went, with the same values as quality_receipts.outcome. | `TEXT` |
+| `run_snapshot_id` | The evaluation run (quality_run_snapshots.id), or NULL for ordinary use. A row is unique by day, stage, outcome and this run, with ordinary use counted as one run. | `TEXT` · may be empty · → `quality_run_snapshots.id` |
 | `observation_count` | How many receipts were rolled into the row. | `BIGINT` |
 | `duration_ms` | Total time of those steps, in milliseconds. | `BIGINT` |
 | `tool_calls` | Total tool calls. | `BIGINT` |
@@ -936,12 +937,12 @@ What TMDB says about a title or a TMDB collection, cached so a scan never has to
 | `provider` | The catalog, tmdb for a movie or show, tmdb_collection for a collection. | `TEXT` · key |
 | `kind` | What the record is fetched as, one of movie, series or collection. | `TEXT` · key |
 | `external_id` | The id the catalog knows it by. | `TEXT` · key |
-| `record` | The catalog's record as JSON (names, description, ids, artwork and so on). Empty until fetched, and empty after the catalog said it has no such title. | `TEXT` |
 | `fetched_at_ms` | When the record was last fetched, in Unix milliseconds; 0 means never. | `INTEGER` |
 | `retry_at_ms` | After a failed fetch, the time before which it is not tried again, in Unix milliseconds; 0 for none. | `INTEGER` |
 | `version` | The shape of record it was fetched in. A record of an older shape than its kind is read in now is fetched again first, as if it had never been fetched. | `INTEGER` |
 | `language` | The language the record was fetched in, such as en-US; empty before languages were noted. A record in another language than the household's is fetched again first. | `TEXT` |
 | `changed` | 1 when the catalog's nightly change feed named the record after it was fetched; it is fetched again ahead of the refresh, which sets it back to 0. | `BOOLEAN` |
+| `record` | The catalog's record as JSON (names, description, ids, artwork and so on). Null until fetched, and null after the catalog said it has no such title; fetched_at_ms tells the two apart. | `TEXT` · may be empty |
 
 ### library_catalog_feeds
 
@@ -1483,7 +1484,7 @@ A proposed batch of clips to download, which an operator approves or dismisses. 
 | `plan_json` | JSON document of the plan: what was asked for, the items selected (each with its source, address, estimate and why it was chosen, including any the operator dropped), the candidates turned down and why, and how each source was treated. | `TEXT` |
 | `created_at` | When the pull was proposed, in Unix seconds. | `INTEGER` |
 | `decided_at` | When it was approved or dismissed, in Unix seconds; 0 while pending. | `INTEGER` |
-| `decided_by` | Who approved or dismissed it. Empty while pending. | `TEXT` |
+| `decided_by` | The admin who approved or dismissed it (users.id). Null while pending, and once that admin is deleted. | `TEXT` · may be empty · → `users.id` |
 
 ### filler_pull_commits
 
@@ -1506,8 +1507,6 @@ One row per download run: a source check, an approved pull or URLs an admin type
 | --- | --- | --- |
 | `id` | Identifies the run. Downloaded files and prepared clips point here. | `TEXT` · key |
 | `trigger` | What started it: source (a registered source's check), pull (an approved pull) or manual (URLs typed by an admin). scheduled is also allowed. | `TEXT` |
-| `source_id` | The registered source every item came from (filler_sources.id). Empty when items came from several sources or none. | `TEXT` |
-| `pull_id` | The approved pull that started it (filler_pulls.id). Empty for other triggers. | `TEXT` |
 | `status` | queued, running, success or error. | `TEXT` |
 | `requested` | How many items were asked for. | `INTEGER` |
 | `fetched` | How many files were downloaded. | `INTEGER` |
@@ -1518,6 +1517,8 @@ One row per download run: a source check, an approved pull or URLs an admin type
 | `started_at` | When the run started, in Unix seconds. | `INTEGER` |
 | `completed_at` | When the run finished, in Unix seconds; 0 while still going. | `INTEGER` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
+| `source_id` | The registered source every item came from, pointing at filler_sources. NULL when items came from several sources or none, or the source has since been deleted. | `TEXT` · may be empty · → `filler_sources.id` |
+| `pull_id` | The approved pull that started it, pointing at filler_pulls. NULL for other triggers, or once the pull is purged. | `TEXT` · may be empty · → `filler_pulls.id` |
 
 ### filler_acquisition_artifacts
 
@@ -1529,7 +1530,7 @@ One row per file a download produced, tracking it from download to the clip fold
 | --- | --- | --- |
 | `id` | Identifies the downloaded file. | `TEXT` · key |
 | `acquisition_id` | The download run that produced it (filler_acquisition_runs.id). | `TEXT` · → `filler_acquisition_runs.id` |
-| `source_id` | The registered source it came from (filler_sources.id). Empty for a typed URL. | `TEXT` |
+| `source_id` | The registered source it came from (filler_sources.id). Empty for a typed URL. Deliberately not a foreign key: with provider and remote_id it is how the fetcher knows it already has an item, and that row is kept after the source is deleted. | `TEXT` |
 | `provider` | The provider that downloaded it, such as archive or youtube. | `TEXT` |
 | `source_url` | The address that was downloaded. | `TEXT` |
 | `staging_path` | Where the file was put while it was being checked, relative to the clip folder. Empty when not staged. | `TEXT` |
@@ -1590,7 +1591,6 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 | `enrolled_at` | When the clip entered preparation, in Unix seconds. | `INTEGER` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
 | `force_run` | 1 when a person asked to re-run the current step, so it runs even if it would normally be skipped. Cleared once the step runs. | `BOOLEAN` |
-| `acquisition_id` | The download run that brought the clip in (filler_acquisition_runs.id). Empty for clips dropped into the folder by hand. | `TEXT` |
 | `preparation_attempt` | Which attempt at preparing the clip this is, counting from 1. 0 for clips enrolled before this was tracked. | `INTEGER` |
 | `preparation_started_at` | When the current preparation attempt began, in Unix seconds. | `INTEGER` |
 | `preparation_start_reason` | Why the current attempt began: enrollment (the clip was new) or restart. | `TEXT` |
@@ -1598,6 +1598,7 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 | `stage_queued_at` | When the current step was queued, in Unix seconds. | `INTEGER` |
 | `stage_started_at` | When the current step started running, in Unix seconds. | `INTEGER` |
 | `files_deleted_at` | When Loomarr deleted the files of a clip it fetched and rejected a week earlier, in Unix seconds; the row stays as the record of why. 0 while the files are kept. | `INTEGER` |
+| `acquisition_id` | The download run that brought the clip in, pointing at filler_acquisition_runs, which is kept while this row names it. NULL for clips dropped into the folder by hand, and for a file whose sidecar names a run the database doesn't hold; checks that read this column don't count either as Loomarr's own download. | `TEXT` · may be empty · → `filler_acquisition_runs.id` |
 
 ### filler_clip_variants
 
@@ -1669,11 +1670,11 @@ A record written when a clip becomes ready to air, at the same moment it joins t
 | --- | --- | --- |
 | `id` | Identifies the event, as ready:<clip hash>. | `TEXT` · key |
 | `clip_hash` | The clip that became ready (clips.hash). | `TEXT` |
-| `acquisition_id` | The download run that brought the clip in (filler_acquisition_runs.id). Empty for clips from a folder. | `TEXT` |
 | `enrollment_kind` | What let the clip into filler: acquisition (a download run) or source (a clip folder or source the operator chose). | `TEXT` |
 | `enrollment_ref` | The download run id or source id behind enrollment_kind. | `TEXT` |
 | `placement` | Where it may be scheduled, break_body or bookend. | `TEXT` |
 | `created_at` | When the clip became ready, in Unix seconds. | `INTEGER` |
+| `acquisition_id` | The download run that brought the clip in, pointing at filler_acquisition_runs. NULL for clips from a folder, or once the run is purged. | `TEXT` · may be empty · → `filler_acquisition_runs.id` |
 
 ### filler_curated_offers
 
@@ -1683,7 +1684,7 @@ Which entries from Loomarr's shipped list of curated sources this install has be
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `source_id` | The offered source (filler_sources.id). | `TEXT` · key |
+| `source_id` | The offered source (filler_sources.id). Deliberately not a foreign key: the row outlives the source so a curated source the operator deleted is not offered again. | `TEXT` · key |
 | `list_version` | The version of the shipped list that first offered it. | `TEXT` |
 | `offered_at` | When it was offered, in Unix seconds. | `INTEGER` |
 | `stations` | Comma-separated station ids the shipped list ties the source to, refreshed on every offer. | `TEXT` |
@@ -1971,23 +1972,6 @@ A proposed cut list for a compilation reel waiting for an admin's review, one pe
 | `claim_token` | A lock held while a confirm is publishing the segments, so two confirms cannot run at once. Empty when unlocked. | `TEXT` |
 | `claim_expires_at` | When the lock lapses if not renewed, in Unix seconds. 0 when unlocked. | `INTEGER` |
 
-### filler_split_shadow_decisions
-
-A side-by-side record, made while a new splitting rule is being trialled, of what the current rule and the new certified rule would each do with one split proposal. Kept after the proposal itself is gone; rows are never changed.
-
-**Kept:** Kept while the proposal exists; once it is gone, the nightly housekeeping task deletes the decision 180 days after it was made.
-
-| Column | What it holds | Type |
-| --- | --- | --- |
-| `id` | Identifies the decision, derived from its content. | `TEXT` · key |
-| `proposal_id` | The split proposal it was made for (filler_split_proposals.id). The proposal may since have been removed. | `TEXT` |
-| `clip_hash` | The compilation reel (clips.hash). | `TEXT` |
-| `source_sha256` | SHA-256 of the reel's source file. Empty when not known. | `TEXT` |
-| `assessment_sha256` | SHA-256 of the structure assessment the new rule used. Empty when there was none. | `TEXT` |
-| `policy_version` | Version of the splitting policy compared. | `TEXT` |
-| `decision_json` | The full decision as JSON. For each rule (legacy and certified) it holds a verdict and the spans it would confirm, hold (with a reason) or discard. | `TEXT` |
-| `observed_at` | When the comparison was made, in Unix seconds. | `INTEGER` |
-
 ## Notifications
 
 Messages Loomarr sends outside the app (email, chat services, push apps, Browser Push) and where they go. A notification is recorded once, then sent to each matching destination, with every send attempt kept as a record. Message bodies and plaintext secrets are never stored here.
@@ -2004,7 +1988,7 @@ One row per place notifications can be sent, such as a Discord webhook, an ntfy 
 | `means` | The kind of service it sends through. One of email, webhook, discord, ntfy, gotify, apprise, pushover, telegram, mattermost, matrix, web_push (Browser Push), mqtt or slack. | `TEXT` |
 | `label` | The name shown for the destination, also shown in delivery history in place of its address. | `TEXT` |
 | `scope` | installation for a destination an admin set up for the whole household; person for one that belongs to a single person. | `TEXT` |
-| `owner_id` | The person a person-scoped destination belongs to, from users. Empty for installation scope. | `TEXT` |
+| `owner_id` | The person a person-scoped destination belongs to, from users; it goes with them. Null for installation scope. | `TEXT` · may be empty · → `users.id` |
 | `audience` | Who the destination is for. person means its owner's own notifications; approvers means the admins who review requests; operators means the admins who look after the server and library. | `TEXT` |
 | `topics_json` | A JSON list of the notification topics the destination receives (the same values as notification_intents.topic). Topics not in the list are never sent here. | `TEXT` |
 | `enabled` | 1 when the destination is switched on. A disabled destination receives nothing. | `BOOLEAN` |
@@ -2099,8 +2083,8 @@ One saved setting value. Every setting resolves environment variable, then this 
 | `key` | The setting's name, such as activity.retention, as listed in the configuration reference. A few keys hold Loomarr's own state, such as instance_id. | `TEXT` · key |
 | `value` | The stored value as text. Secret settings (API keys, tokens) are stored encrypted, beginning with loomarr-secret:v1:, and can only be read with the installation key. | `TEXT` |
 | `updated_at` | When the value was last written, in Unix seconds. 0 means unknown (written before this was tracked). | `BIGINT` |
-| `updated_by` | The id of the person who last changed it, pointing at users. Empty for values Loomarr wrote itself. | `TEXT` · may be empty |
 | `env_override` | 1 when an admin has taken the setting back from its environment variable, so the saved value wins even while the variable is still set. 0 means a set environment variable wins. | `BOOLEAN` |
+| `updated_by` | The id of the person who last changed it, pointing at users. Null for values Loomarr wrote itself, for a change sent with the API token, and once that person is deleted. | `TEXT` · may be empty · → `users.id` |
 
 ### secret_protection_metadata
 
@@ -2260,7 +2244,6 @@ One crash report sent by the Loomarr TV or phone app, cleaned of secrets before 
 | `received_at_ms` | When the server received it, in Unix milliseconds. | `BIGINT` |
 | `occurred_at_ms` | When the crash happened by the device's clock, in Unix milliseconds. | `BIGINT` |
 | `user_id` | The person signed in on the app that sent it, pointing at users. Empty if unknown or the person has been deleted. | `TEXT` · may be empty · → `users.id` |
-| `device_id` | The paired device that sent it, matching device_tokens.token_hash. Empty when not sent from a paired device. | `TEXT` |
 | `device_name` | The paired device's name at the time, or empty. | `TEXT` |
 | `kind` | What crashed. js-fatal is an app error that closed the app, js-error is an app error that was caught, native is a crash of the app's native code. | `TEXT` |
 | `platform` | Which app sent it. ios, android, tvos (Apple TV), or android-tv. | `TEXT` |
@@ -2272,6 +2255,7 @@ One crash report sent by the Loomarr TV or phone app, cleaned of secrets before 
 | `stack` | The stack trace, or empty. | `TEXT` |
 | `breadcrumbs_json` | A JSON list of up to 50 things the app did just before the crash, each with a time, a category (navigation, http, lifecycle or log) and a short message. | `TEXT` |
 | `native_payload` | For native crashes, the crash report from Apple's MetricKit as JSON. Empty otherwise. | `TEXT` |
+| `device_id` | The paired device that sent it (device_tokens.token_hash). Null when not sent from a paired device, or once that device is unpaired; device_name still says which it was. | `TEXT` · may be empty · → `device_tokens.token_hash` |
 
 ### database_table_rows
 

@@ -136,8 +136,8 @@ func declaredChannelsAndFiller() []Setting {
 			// model, but the provider was still built from `llm.provider`/`llm.url`/`llm.api_key`
 			// — so naming a LOCAL model while the main LLM was hosted sent an Ollama tag to the
 			// hosted endpoint. Measured: `llava:7b` → `https://openrouter.ai/api/v1` → 401 on every
-			// segment, which `ground` reports as zero looks and the gate refuses as "a segment
-			// could not be classified". The model name is useless without the host that serves it.
+			// segment, which `ground` reports as zero looks and the gate holds as "the cut is not
+			// break material". The model name is useless without the host that serves it.
 			//
 			// Empty ⇒ inherit the main provider.
 			// ⚠ `inherit` is a REAL value, not an empty string: the registry invariant requires
@@ -232,20 +232,6 @@ func declaredChannelsAndFiller() []Setting {
 			Group: GroupFiller, Kind: KindDuration, Default: "120s",
 			Doc:    "The longest a single advert is expected to be.",
 			Detail: "Recordings longer than this are treated as compilations worth splitting, and any piece longer than this is one Loomarr will ask you about.",
-		},
-		{
-			Key: "filler.structure_window_authority_path", Label: "Long-reel authority file", EnvVar: "FILLER_STRUCTURE_WINDOW_AUTHORITY_PATH", Group: GroupFiller,
-			Kind: KindString, Presentation: PresentationPath, Default: "", Validate: storagePath(true), Advanced: true,
-			Doc:      "A reviewed file that allows certain long recordings to be split, for advanced installs.",
-			Detail:   "Optional absolute path to a separately reviewed long-reel materialization authority. Empty or invalid evidence enables no certified slice; a valid authority may create held children but cannot make them airable. A change applies to the next split; a split already running finishes under the files it started with.",
-			ShowWhen: map[string][]string{"filler.autosplit.enabled": {"true"}},
-		},
-		{
-			Key: "filler.structure_window_deployment_path", Label: "Long-reel deployment file", EnvVar: "FILLER_STRUCTURE_WINDOW_DEPLOYMENT_PATH", Group: GroupFiller,
-			Kind: KindString, Presentation: PresentationPath, Default: "", Validate: storagePath(true), Advanced: true,
-			Doc:      "A reviewed file naming the paid AI route long-recording splits may use, for advanced installs.",
-			Detail:   "Optional absolute path to the reviewed authority's OpenRouter route and spend deployment. Empty, invalid, or mismatched evidence performs no structure inference and enables no certified slice. A change applies to the next split; a split already running finishes under the files it started with.",
-			ShowWhen: map[string][]string{"filler.autosplit.enabled": {"true"}},
 		},
 		// The ingest pipeline's per-run budget (§10 V51b). Every one of these bounds ONE PASS, not
 		// the catalog: a backlog drains over cycles, which is the property the per-job batch

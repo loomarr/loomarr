@@ -34,7 +34,7 @@ const JoinScreen = () => {
   useEffect(() => () => clearAccountActionGrant(), []);
 
   return (
-    <LoginShell className="py-10">
+    <LoginShell paddingVertical={40}>
       <InvitationJoin
         preview={preview.data?.status === 200 ? preview.data.data : undefined}
         isLoading={Boolean(grant) && preview.isPending}

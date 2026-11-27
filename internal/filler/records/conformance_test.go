@@ -6,12 +6,24 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/storetest"
 )
 
 // NewStoreFunc builds a fresh, migrated, empty extended store for one test. Like the core suite's,
 // it hides the backend, so every assertion below runs identically on SQLite and Postgres.
 type NewStoreFunc func(t *testing.T) Store
+
+// saveMembers saves a member for each id. A pull's decided_by is a foreign key to users (#2793), so
+// a name that is no member reads back as no one.
+func saveMembers(t *testing.T, s Store, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		if err := s.UpsertUser(context.Background(), identitystore.User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
+			t.Fatalf("save member %s: %v", id, err)
+		}
+	}
+}
 
 // RunConformance is the filler half of the store conformance suite (AGENTS.md: one suite, two
 // backends). It runs against the extended store the app holds, so clip-catalog assertions whose
@@ -81,13 +93,14 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("InteractiveOperations", func(t *testing.T) { testInteractiveOperations(t, newStore) })
 		t.Run("FillerInferenceAccountingAndBudgets", func(t *testing.T) { testFillerInferenceAccountingAndBudgets(t, newStore) })
 		t.Run("FillerRetention", func(t *testing.T) { testFillerRetention(t, newStore) })
+		t.Run("AcquisitionRunOutlivesItsSource", func(t *testing.T) { testAcquisitionRunOutlivesItsSource(t, newStore) })
+		t.Run("ClipPipelineForgetsAMissingRun", func(t *testing.T) { testClipPipelineForgetsAMissingRun(t, newStore) })
 		t.Run("FillerDownloadFailures", func(t *testing.T) { testFillerDownloadFailures(t, newStore) })
 		t.Run("FillerRetentionEmptyCatalog", func(t *testing.T) { testFillerRetentionEmptyCatalog(t, newStore) })
 		t.Run("FillerStructureWindowCallLedger", func(t *testing.T) { testFillerStructureWindowCallLedger(t, newStore) })
 		t.Run("FillerStructureWindowCallLedgerRetry", func(t *testing.T) { testFillerStructureWindowCallLedgerRetry(t, newStore) })
 		t.Run("FillerHeldClipUpsertAndCompositeRelease", func(t *testing.T) { testFillerHeldClipUpsertAndCompositeRelease(t, newStore) })
 		t.Run("FillerTerminalReadyTransaction", func(t *testing.T) { testFillerTerminalReadyTransaction(t, newStore) })
-		t.Run("FillerSplitShadowDecisions", func(t *testing.T) { testFillerSplitShadowDecisions(t, newStore) })
 		t.Run("SplitProposals", func(t *testing.T) { testSplitProposals(t, newStore) })
 		t.Run("ClipPipelineState", func(t *testing.T) { testClipPipeline(t, newStore) })
 		t.Run("ClipPipelineOverview", func(t *testing.T) { testClipPipelineOverview(t, newStore) })

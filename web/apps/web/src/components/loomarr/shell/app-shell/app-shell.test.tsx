@@ -67,7 +67,7 @@ describe("AppShell", () => {
   // Scroll must end at `main`: chaining into the document drags the whole shell off-screen (#2724).
   it("keeps scroll inside main", async () => {
     renderShell(true);
-    expect(await screen.findByRole("main")).toHaveClass("overscroll-contain");
+    expect(await screen.findByRole("main")).toHaveStyle({ overscrollBehavior: "contain" });
   });
 
   // One focus style across the app: the amber border the design system's controls draw. A rail

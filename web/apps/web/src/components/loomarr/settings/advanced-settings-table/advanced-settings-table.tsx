@@ -193,9 +193,13 @@ const AdvancedSettingsTable = ({
                   {prov.label}
                 </Badge>
                 {pickerOwned ? (
-                  <Link to="/settings/ai" className="text-signal w-fit text-xs underline underline-offset-4">
-                    Choose model
-                  </Link>
+                  <Stack align="start">
+                    <TextLink render={<Link to="/settings/ai" />} tone="primary">
+                      <Text as="span" textRole="hint" tone="signal">
+                        Choose model
+                      </Text>
+                    </TextLink>
+                  </Stack>
                 ) : (
                   <Action
                     disabled={entry.provenance !== SettingEntryProvenance.db || !onClear}

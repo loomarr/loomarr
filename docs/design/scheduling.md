@@ -250,9 +250,10 @@ channel revision it was computed at.
 - **Freshness.** Pausing and detaching save without a reconcile, which is why the read filters the
   channel's status. Purging a channel deletes its rows. A settings change reaches the rows at the
   next sweep, and so does a removed file: its airing stays until the channel's next sweep
-  (`channel.reconcile_every`, by default within ten minutes), as it does in the guide. Forecast rows
-  can lag the guide by one sweep; the window on air never does, because its programmes are fixed
-  when it opens.
+  (by default within about twenty minutes: `channel.reconcile_every` is a ten-minute minimum wait
+  between a channel's reconciles, and the sweep runs on its own ten-minute cadence), as it does in
+  the guide. Forecast rows can lag the guide by one sweep; the window on air never does, because its
+  programmes are fixed when it opens.
 - **Tunarr channels** store no upcoming airings, the same as the scheduled ledger. Each reconcile
   of a channel that does not play internally replaces its rows with none, through the same guarded
   write, before it projects onto Tunarr and again after it commits. A channel moved to Tunarr is

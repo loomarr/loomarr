@@ -1,6 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { warmFillerPage } from "@/filler/filler-loader";
+import { openFillerPage } from "@/filler/filler-loader";
 import { FillerPage } from "@/filler/filler-page";
 import { type FillerSearch, validateCatalogSearch } from "@/filler/filler-search";
 
@@ -44,12 +44,12 @@ const Route = createFileRoute("/_authed/filler/")({
       throw redirect({ to: "/filler/library", search });
     }
   },
-  // The readiness the Overview cards are made of, beside the page's status line. The Overview
-  // shows its own error for a failed read, so it is warmed.
+  // The readiness the Overview cards are made of, so it opens on them and a failed read is the
+  // route's error view. Member-readable, like the page.
   loader: async ({ context: { queryClient } }) => {
     await Promise.all([
-      warmFillerPage(queryClient),
-      queryClient.prefetchQuery(fillerApi.getFillerReadinessQueryOptions()),
+      openFillerPage(queryClient),
+      queryClient.ensureQueryData(fillerApi.getFillerReadinessQueryOptions()),
     ]);
   },
   component: FillerScreen,

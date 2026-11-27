@@ -56,7 +56,7 @@ const SourceContentPreview = ({
           )}
           {!loading && previewItems && previewItems.length > 0 && (
             <>
-              <ul className="mt-1 space-y-1">
+              <Stack gap="1" marginTop={4} render="ul">
                 {previewItems.map((item) => (
                   <Stack
                     align="center"
@@ -67,7 +67,7 @@ const SourceContentPreview = ({
                     minWidth={0}
                     render="li"
                   >
-                    <Text as="div" className="min-w-0 flex-1 truncate" textRole="compact">
+                    <Text as="div" flex={1} minWidth={0} numberOfLines={1} textRole="compact">
                       <TextLink
                         render={<a href={item.url} rel="noreferrer" target="_blank" title={item.title} />}
                         tone="inherit"
@@ -77,7 +77,7 @@ const SourceContentPreview = ({
                       </TextLink>
                     </Text>
                     {item.durationMs ? (
-                      <Text as="span" className="shrink-0" textRole="hint" tone="secondary">
+                      <Text as="span" flexShrink={0} textRole="hint" tone="secondary">
                         {formatClipDuration(item.durationMs)}
                       </Text>
                     ) : null}
@@ -86,7 +86,7 @@ const SourceContentPreview = ({
                     </Action>
                   </Stack>
                 ))}
-              </ul>
+              </Stack>
               <Stack marginTop={8}>
                 <Text as="p" textRole="hint" tone="secondary">
                   A small sample from this source.

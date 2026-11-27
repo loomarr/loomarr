@@ -407,6 +407,22 @@ const typography = {
     // at every density, the one place it is drawn.
     subtitle: { size: 24, lineHeight: 31, weight: "500" },
     subtitleUpright: { size: 13, lineHeight: 17, weight: "500" },
+    // Display type the app draws once each, kept at the size it already had (#2147), so none of it
+    // moves a pixel. Pointer carries the measured sizes; touch and TV scale them as their neighbours
+    // (channelNumber, code, metadata) do. Mono throughout, but `stationName`.
+    // A channel's monogram on its generated art, and the channel's number in the info header.
+    monogram: { size: 30, lineHeight: 36, weight: "600" },
+    numeral: { size: 30, lineHeight: 30, weight: "400" },
+    // The code a person types to pair a device, read off a television across the room.
+    pairCode: { size: 32, lineHeight: 42.67, weight: "400" },
+    // A timecode or duration over a thumbnail, and a quiet line of fine print.
+    microBadge: { size: 9, lineHeight: 13.5, weight: "400" },
+    footnote: { size: 11, lineHeight: 16.5, weight: "400" },
+    // The tuner's channel line: the name scales with the window between `fluid.min` and `size`
+    // (`clamp(min, vw, size)`, web only), and the "CH n" tag is the same line at 0.62 of it. Their
+    // line height is 1.5 times the size at every width.
+    stationName: { size: 28, lineHeight: 42, weight: "600", fluid: { min: 18, vw: 2.8 } },
+    stationTag: { size: 17.36, lineHeight: 26.04, weight: "500", fluid: { min: 11.16, vw: 1.736 } },
   },
   touch: {
     display: { size: 38, lineHeight: 42, weight: "700" },
@@ -439,6 +455,13 @@ const typography = {
     guideCell: { size: 13, lineHeight: 18, weight: "500" },
     subtitle: { size: 15, lineHeight: 20, weight: "500" },
     subtitleUpright: { size: 13, lineHeight: 17, weight: "500" },
+    monogram: { size: 32, lineHeight: 38, weight: "600" },
+    numeral: { size: 32, lineHeight: 32, weight: "400" },
+    pairCode: { size: 36, lineHeight: 48, weight: "400" },
+    microBadge: { size: 11, lineHeight: 16.5, weight: "400" },
+    footnote: { size: 12, lineHeight: 18, weight: "400" },
+    stationName: { size: 28, lineHeight: 42, weight: "600" },
+    stationTag: { size: 17, lineHeight: 26, weight: "500" },
   },
   tv: {
     display: { size: 54, lineHeight: 60, weight: "700" },
@@ -470,12 +493,33 @@ const typography = {
     guideCell: { size: 16, lineHeight: 22, weight: "400" },
     subtitle: { size: 18, lineHeight: 23, weight: "500" },
     subtitleUpright: { size: 13, lineHeight: 17, weight: "500" },
+    monogram: { size: 40, lineHeight: 48, weight: "600" },
+    numeral: { size: 40, lineHeight: 40, weight: "400" },
+    pairCode: { size: 44, lineHeight: 59, weight: "400" },
+    microBadge: { size: 14, lineHeight: 21, weight: "400" },
+    footnote: { size: 15, lineHeight: 22, weight: "400" },
+    stationName: { size: 40, lineHeight: 60, weight: "600" },
+    stationTag: { size: 25, lineHeight: 38, weight: "500" },
   },
 } as const;
+
+// Letter spacing in em for the roles drawn tracked out, so the gap scales with the size (a fluid
+// role's too). A role absent here takes its own default; Text's `tracking` sets any other value.
+const roleLetterSpacing = {
+  monogram: 0.08,
+  pairCode: 0.3,
+  stationName: 0.01,
+  stationTag: 0.16,
+} as const;
+
+// Line height as a multiple of the size, for text whose box is exactly its glyph height (a ✕ or ★
+// set beside an icon button's edge). Text's `leading` takes a step; a role's own px height otherwise.
+const leadingSteps = { none: 1 } as const;
 
 type Density = keyof typeof semanticTargets;
 type TextRole = keyof (typeof typography)["pointer"];
 type FontFamilyRole = keyof (typeof typography)["family"];
+type LeadingStep = keyof typeof leadingSteps;
 
 /**
  * The embedded weight a requested weight draws with, by CSS font matching: a weight from 400 to 500
@@ -513,14 +557,16 @@ const nativeFontFace = (role: FontFamilyRole, os: "android" | "ios", weight: num
   return os === "android" ? `${file}_${embedded}${style}` : `${file}-${style}`;
 };
 
-export type { Density, FontFamilyRole, TextRole };
+export type { Density, FontFamilyRole, LeadingStep, TextRole };
 export {
   brandChroma,
   brandContract,
   breakpoints,
   iconography,
+  leadingSteps,
   nativeFontFace,
   playerChrome,
+  roleLetterSpacing,
   semanticColors,
   semanticMotion,
   semanticRadius,

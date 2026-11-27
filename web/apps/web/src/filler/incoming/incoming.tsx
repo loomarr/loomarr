@@ -16,6 +16,8 @@ import {
   PressableRow,
   Stack,
   Text,
+  TextLink,
+  VisuallyHidden,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -35,6 +37,18 @@ type IncomingView = Pick<
   "preparing" | "needsHelp" | "recentlyReady" | "readyWindowSeconds"
 >;
 type GroupName = "preparing" | "needsHelp" | "recentlyReady";
+
+const toView = ({
+  preparing,
+  needsHelp,
+  recentlyReady,
+  readyWindowSeconds,
+}: FillerIncomingOutputBody): IncomingView => ({
+  preparing,
+  needsHelp,
+  recentlyReady,
+  readyWindowSeconds,
+});
 
 const readyWindowLabel = (seconds: number): string => {
   if (seconds === 3600) return "the last hour";
@@ -62,14 +76,15 @@ const StatusRows = ({
   onOpen: (row: IncomingStatusDTO, trigger: HTMLElement) => void;
   onMore: () => void;
 }) => (
-  <Card className="divide-border divide-y">
-    {group.rows.map((row) => (
+  <Card>
+    {group.rows.map((row, index) => (
       <PressableRow
+        divided={index < group.rows.length - 1 || Boolean(group.nextCursor)}
         key={row.clipHash}
         onPress={(event) => onOpen(row, event.currentTarget as unknown as HTMLElement)}
       >
         {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
-        <span className="sr-only">View details for</span>{" "}
+        <VisuallyHidden as="span">View details for</VisuallyHidden>{" "}
         <Stack
           backgroundColor="surfaceElevated"
           borderRadius={4}
@@ -110,7 +125,8 @@ const Incoming = () => {
   const query = fillerApi.useFillerIncoming();
   const timeZone = useHouseholdTimeZone();
   const body = unwrap(query.data, (value) => value);
-  const [view, setView] = useState<IncomingView>();
+  // Seeded from the read the loader already holds, so the first frame is the tab and not a blank.
+  const [view, setView] = useState<IncomingView | undefined>(() => body && toView(body));
   const [loadingGroup, setLoadingGroup] = useState<GroupName>();
   const [selected, setSelected] = useState<IncomingStatusDTO>();
   const [helpIndex, setHelpIndex] = useState(0);
@@ -126,12 +142,7 @@ const Incoming = () => {
 
   useEffect(() => {
     if (body) {
-      setView({
-        preparing: body.preparing,
-        needsHelp: body.needsHelp,
-        recentlyReady: body.recentlyReady,
-        readyWindowSeconds: body.readyWindowSeconds,
-      });
+      setView(toView(body));
       setHelpIndex(0);
     }
   }, [body]);
@@ -200,15 +211,9 @@ const Incoming = () => {
   };
 
   if (query.error) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  if (!view) {
-    return (
-      <Card aria-live="polite" padding={24}>
-        <Text as="p" textRole="compact" tone="secondary">
-          Checking what’s on the way…
-        </Text>
-      </Card>
-    );
-  }
+  // The route's loader ensured what is on the way, and its error view takes a first read that
+  // fails, so the tab always opens on it. A failed refresh after that is the branch above.
+  if (!view) return null;
 
   const total = view.preparing.total + view.needsHelp.total + view.recentlyReady.total;
   if (total === 0) {
@@ -364,13 +369,12 @@ const Incoming = () => {
               </Text>
               <Text as="p" textRole="compact" tone="secondary">
                 Added in {readyWindowLabel(view.readyWindowSeconds)}. These clips stay in your Library.{" "}
-                <Link
-                  to="/filler/settings/$section"
-                  params={{ section: "incoming" }}
-                  className="underline underline-offset-4"
+                <TextLink
+                  render={<Link to="/filler/settings/$section" params={{ section: "incoming" }} />}
+                  tone="primary"
                 >
                   Change
-                </Link>
+                </TextLink>
               </Text>
             </div>
             <Action accessibilityRole="link" render={<Link to="/filler/library" />} variant="outline">

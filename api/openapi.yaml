@@ -1874,7 +1874,7 @@ components:
             $ref: "#/components/schemas/ClientCrashBreadcrumb"
           type: array
         deviceId:
-          description: The paired device's id from the device list; absent for a browser session
+          description: The paired device's id from the device list; absent for a browser session, or once the device is unpaired
           type: string
         deviceModel:
           type: string
@@ -2016,7 +2016,7 @@ components:
         appVersion:
           type: string
         deviceId:
-          description: The paired device's id from the device list; absent for a browser session
+          description: The paired device's id from the device list; absent for a browser session, or once the device is unpaired
           type: string
         deviceModel:
           type: string
@@ -3672,6 +3672,7 @@ components:
         action:
           type: string
         actorId:
+          description: The member who gave it; empty for the API token or a member since deleted.
           type: string
         createdAt:
           format: date-time
@@ -9242,7 +9243,7 @@ components:
       additionalProperties: false
       properties:
         awaitingSplit:
-          description: Reels held until splitting is certified; nobody needs to act
+          description: Reels held at the split, their cuts not confirmed; nobody needs to act
           format: int64
           type: integer
         complete:
@@ -12137,8 +12138,6 @@ components:
         - filler.autosplit.enabled
         - filler.autosplit.min_confidence
         - filler.autosplit.max_duration
-        - filler.structure_window_authority_path
-        - filler.structure_window_deployment_path
         - filler.pipeline.max_clips
         - filler.transcode.max_per_run
         - filler.pipeline.max_whisper
@@ -12300,8 +12299,6 @@ components:
         - FillerAutosplitEnabled
         - FillerAutosplitMinConfidence
         - FillerAutosplitMaxDuration
-        - FillerStructureWindowAuthorityPath
-        - FillerStructureWindowDeploymentPath
         - FillerPipelineMaxClips
         - FillerTranscodeMaxPerRun
         - FillerPipelineMaxWhisper

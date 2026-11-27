@@ -49,7 +49,8 @@ const ChannelDangerZone = ({
         {/* Pause/resume — fully reversible, so it is a single click with no confirm step. */}
         <Stack
           align="center"
-          className="border-onair-tint-15 border-t"
+          borderTopColor="$borderDecorative"
+          borderTopWidth={1}
           direction="row"
           gap="control"
           justify="between"
@@ -75,7 +76,7 @@ const ChannelDangerZone = ({
           only for a Tunarr-streamed channel: a detached channel Loomarr plays itself goes off
           air (api/channelplayurl.go). Until the maintainer settles it, this row keeps the line
           that is true for both. */}
-        <Stack className="border-onair-tint-15 border-t" gap="control" paddingTop={16}>
+        <Stack borderTopColor="$borderDecorative" borderTopWidth={1} gap="control" paddingTop={16}>
           {!confirming ? (
             <Stack gap="4">
               <Stack align="center" direction="row" gap="control" justify="between">
@@ -116,11 +117,7 @@ const ChannelDangerZone = ({
               </Stack>
             </Stack>
           ) : (
-            <Stack
-              className="border-onair-tint-15 bg-background/40 rounded-md border"
-              gap="control"
-              padding={12}
-            >
+            <Card borderRadius={6} gap="control" padding={12} tone="onair">
               {removal === "detach" ? (
                 <Text as="p" textRole="compact" tone="primary">
                   Stop updating {channelName}? Loomarr will keep its record and leave any Tunarr channel in
@@ -150,7 +147,7 @@ const ChannelDangerZone = ({
                   Cancel
                 </Action>
               </Stack>
-            </Stack>
+            </Card>
           )}
         </Stack>
       </Stack>

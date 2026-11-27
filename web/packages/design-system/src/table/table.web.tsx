@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { Text } from "../text";
 import { semanticRadius, semanticSpace, typography } from "../tokens";
+import { VisuallyHidden } from "../visually-hidden";
 import { isPlainText as isPlain } from "./plain-text";
 import type {
   TableCellProps,
@@ -19,18 +20,6 @@ import { TableContext, useTableContext } from "./table-context";
 // through the theme's CSS variables so light and dark both hold.
 const framedRule = "1px solid var(--borderDecorative)";
 const rowRule = "1px solid var(--surfaceElevated)";
-
-const visuallyHidden = {
-  border: 0,
-  clip: "rect(0 0 0 0)",
-  height: 1,
-  margin: -1,
-  overflow: "hidden",
-  padding: 0,
-  position: "absolute",
-  whiteSpace: "nowrap",
-  width: 1,
-} as const;
 
 const cellPadding = (dense: boolean) => {
   const space = dense ? semanticSpace.inline : semanticSpace.control;
@@ -82,7 +71,7 @@ const Table = ({
               width: "100%",
             }}
           >
-            <caption style={visuallyHidden}>{caption}</caption>
+            <VisuallyHidden as="caption">{caption}</VisuallyHidden>
             {children}
           </table>
         </section>

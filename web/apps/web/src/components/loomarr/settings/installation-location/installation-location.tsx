@@ -1,7 +1,6 @@
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { Stack, Text } from "@loomarr/design-system";
+import { Card, Stack, Text } from "@loomarr/design-system";
 import { SettingField } from "@/components/loomarr/settings/setting-field";
-import { cn } from "@/lib/utils";
 import type { InstallationLocationProps } from "./installation-location.type";
 import { LanguagePicker } from "./language-picker";
 import { LocationPicker } from "./location-picker";
@@ -36,13 +35,8 @@ const InstallationLocation = ({
   );
   const radiusResult = results?.find((result) => result.key === RADIUS_KEY && result.status !== "saved");
 
-  return (
-    <Stack
-      className={cn(card && "border-border bg-card rounded-xl border p-5 shadow-sm sm:p-6")}
-      flexShrink={0}
-      gap="4"
-      render="section"
-    >
+  const content = (
+    <>
       {showHeading && (
         <div>
           <Text as="h2" strong textRole="headline">
@@ -86,7 +80,22 @@ const InstallationLocation = ({
           lockedLabel="set via environment"
         />
       )}
-    </Stack>
+    </>
+  );
+
+  if (!card) {
+    return (
+      <Stack flexShrink={0} gap="4" render="section">
+        {content}
+      </Stack>
+    );
+  }
+  return (
+    <Card flexShrink={0} render="section">
+      <Stack gap="4" padding={{ base: 20, sm: 24 }}>
+        {content}
+      </Stack>
+    </Card>
   );
 };
 

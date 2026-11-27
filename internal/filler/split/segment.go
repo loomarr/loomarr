@@ -62,7 +62,7 @@ type Segment struct {
 	StartEvidence string `json:"startEvidence,omitempty"`
 	EndEvidence   string `json:"endEvidence,omitempty"`
 	// HoldReason is why this segment was kept back when its reel was partly confirmed (§10 V54) —
-	// the same vocabulary `AutoSplitReject` uses, so the review says "a segment's era is a guess"
+	// the same vocabulary `AutoSplitReject` uses, so the review says "the cut is not one whole spot"
 	// rather than leaving the operator to work out why 5 of 52 are still here.
 	HoldReason string `json:"holdReason,omitempty"`
 	// StartSrc/EndSrc are the bitmask the two evidence fields above are rendered from. Never

@@ -456,6 +456,28 @@ RETIRED=(
   'filler-decision-activity|#2147: the filler decision routes were deleted with their ledger'
   'filler-decision-diagnostics|#2147: the filler decision routes were deleted with their ledger'
   'act-on-filler-diagnostic|#2147: the filler decision routes were deleted with their ledger'
+  # #4414: AutoCuttable is the split's only gate (#4409), so the certified long-reel structure path,
+  # its authority and deployment files, its OpenRouter runtime and the shadow comparison were deleted.
+  'filler.structure_window_authority_path|retired (#4414): the certified long-reel structure path is gone; AutoCuttable is the split gate'
+  'filler.structure_window_deployment_path|retired (#4414): the certified long-reel structure path is gone; AutoCuttable is the split gate'
+  'FILLER_STRUCTURE_WINDOW_AUTHORITY_PATH|retired (#4414): the certified long-reel structure path is gone; AutoCuttable is the split gate'
+  'FILLER_STRUCTURE_WINDOW_DEPLOYMENT_PATH|retired (#4414): the certified long-reel structure path is gone; AutoCuttable is the split gate'
+  'CertifiedStructureMaterializable|retired (#4414): the certified complete-plan gate is gone; use AutoCuttable'
+  'AutoConfirmable|retired (#4414): the legacy partition is gone; use AutoCuttable'
+  'StructureSplitShadow|retired (#4414): the shadow comparison is gone; AutoCuttable is the only gate'
+  'filler_split_shadow_decisions|retired (#4414): the shadow-comparison table was dropped; AutoCuttable is the only gate'
+  # #4451 U2: the guide's channel card and now/next line are @loomarr/ui compositions.
+  'NowNextStrip|#4451: the web now/next strip was deleted; the guide renders now/next through @loomarr/ui'
+  'TvStatic|#4451: the web TvStatic was deleted; use the design system AnalogSnow (IdleSnow behind entry surfaces)'
+  'snow-tile|#4451: the web snow tile was deleted; the design system AnalogSnow draws the snow'
+  'ColorBars|#4451: the web ColorBars was deleted; the design system BrandLockup draws the strip'
+  'shell/color-bars|#4451: the web ColorBars was deleted; the design system BrandLockup draws the strip'
+  '"../color-bars"|#4451: the web ColorBars was deleted; the design system BrandLockup draws the strip'
+  'channels/channel-card|#4451: the web ChannelCard was deleted; the guide renders channels through @loomarr/ui'
+  'channels/channel-ident"|#4451: the web channel-ident was deleted; @loomarr/ui owns the one ChannelIdent'
+  'channels/now-next-strip|#4451: the web NowNextStrip was deleted; the guide renders now/next through @loomarr/ui'
+  'shell/brand-lockup|#4451: the web BrandLockup was deleted; the design system owns the one BrandLockup'
+  '"../brand-lockup"|#4451: the web BrandLockup was deleted; the design system owns the one BrandLockup'
 
 )
 # ⚠ `internal/platform/store/migrations/` is exempt, and it is the one exemption that is forced rather than

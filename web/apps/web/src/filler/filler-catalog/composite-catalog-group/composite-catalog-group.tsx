@@ -53,7 +53,10 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
             Segments could not be loaded.
           </Text>
         ) : rows.length > 0 ? (
-          <Card overflow="hidden">{rows.map(renderChild)}</Card>
+          <Card overflow="hidden">
+            {/* Each row draws its own bottom rule; the card's edge is the last one. */}
+            <Stack marginBottom={-1}>{rows.map(renderChild)}</Stack>
+          </Card>
         ) : children.isFetching ? null : (
           <Text as="p" textRole="compact" tone="secondary">
             No filed segments remain under this compilation.

@@ -224,7 +224,8 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
             and the panel must not run off the page. tabIndex + aria-label keep the region
             keyboard-reachable (WCAG 2.1.1) — the rows are non-focusable text. */}
       <Stack
-        className="scroll-thin divide-border divide-y"
+        data-scroll="thin"
+        divided
         maxHeight={256}
         overflowY="auto"
         render="ul"
@@ -308,7 +309,8 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
         </Stack>
       ) : null}
       <Stack
-        className="scroll-thin divide-border divide-y"
+        data-scroll="thin"
+        divided
         maxHeight={288}
         overflowY="auto"
         render="ul"
@@ -496,7 +498,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
             // orphan the <li> children and trip the `listitem` rule); aria-label names the
             // list without changing that role.
             <Stack
-              className="scroll-thin"
+              data-scroll="thin"
               gap="1.5"
               maxHeight={384}
               overflowY="auto"

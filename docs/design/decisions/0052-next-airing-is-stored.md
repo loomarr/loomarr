@@ -30,7 +30,7 @@ forecast windows, and a Library page would pay it for every title it shows.
 
 - A title page reads its next airings in one query, whatever the number of channels.
 - Forecast rows, those past the window on air, can lag the guide until the channel's next sweep
-  (by default within ten minutes); the window on air never does. No extra reconcile runs at a
-  window's turn.
+  (by default within about twenty minutes); the window on air never does. No extra reconcile runs
+  at a window's turn.
 - Pausing or detaching a channel saves it without a reconcile, so the read filters the channel's
   status rather than trusting the rows; purging a channel deletes its rows with it.

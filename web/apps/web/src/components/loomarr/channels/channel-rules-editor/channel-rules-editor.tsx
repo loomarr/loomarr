@@ -149,7 +149,16 @@ const RuleRow = ({
   } = useSortable({ id: draft.id });
   const rowId = useId();
 
-  const style = { transform: CSS.Transform.toString(transform), transition };
+  // A dragged row lifts above its neighbours, dimmed, with a shadow.
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    ...(isDragging && {
+      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)",
+      opacity: 0.7,
+      zIndex: 10,
+    }),
+  };
 
   const label = computeLabel(
     {
@@ -167,7 +176,7 @@ const RuleRow = ({
   ];
 
   return (
-    <li ref={setNodeRef} style={style} className={isDragging ? "z-10 opacity-70 shadow-md" : undefined}>
+    <li ref={setNodeRef} style={style}>
       <Card borderRadius={6} gap={8} paddingHorizontal={12} paddingVertical={10}>
         <Stack align="center" direction="row" gap="inline">
           <Action
