@@ -14,7 +14,7 @@ delivery sequence, and retirement contract live in
 [`project/plans/shared-client-platform.md`](../project/plans/shared-client-platform.md).
 
 The sections below describe the **shipping legacy implementation** until each surface migrates. They
-remain binding for code that still uses Tailwind/shadcn or Compose and are parity evidence. New shared design work follows the
+remain binding for code that still uses Compose and are parity evidence. New shared design work follows the
 migration plan and these precedence rules:
 
 1. Loomarr owns the semantic interfaces; application code does not depend directly on Tamagui.
@@ -116,9 +116,9 @@ do. Both themes are rendered and contrast-checked in Storybook.
 
 Additional statics from the prototype: **`signal-400` `#FFC14D`** (hover/active amber, 11.3:1 on card) and **`static-500` `#5A6170`** — 2.94:1 on cards, therefore restricted to **disabled states and decorative glyphs only**; any text carrying information uses `static-400` muted or better.
 
-Semantic aliases map onto these (`primary`→signal, `destructive`→onair, `success`→lock, `warning`→caution, `info`→tune) so shadcn primitives restyle without edits. The lifecycle states (§ main doc §4) map: `wanted`/`requested` static-400 · `downloading` tune · `available` lock · `unavailable` static-400 strikethrough · drift caution.
+Semantic aliases map onto these (`primary`→signal, `destructive`→onair, `success`→lock, `warning`→caution, `info`→tune). The lifecycle states (§ main doc §4) map: `wanted`/`requested` static-400 · `downloading` tune · `available` lock · `unavailable` static-400 strikethrough · drift caution.
 
-Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex above is for human reference.
+The tokens in `web/packages/design-system/src/tokens` are the source of truth; hex above is for human reference.
 
 ### 2.2 Typography
 
@@ -177,19 +177,20 @@ Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex abov
 ### 2.5 Token pipeline and migration
 
 `web/packages/design-system/src/tokens` is the one palette and token source for every app and
-package. Its semantic themes and the brand contract name every color; the web's Tailwind theme
+package. Its semantic themes and the brand contract name every color; the web's CSS theme
 (`src/tokens/web-theme.ts`, entry point `@loomarr/design-system/web-theme`) derives its raw palette,
 type scale, space, radius and motion from them, so a hex lives in one place.
 
-`make fe-tokens` renders that theme to `web/packages/design-system/generated/theme.css` (Tailwind v4
-`@theme` variables, imported by the web app as `@loomarr/design-system/theme.css`). CI fails if the
+`make fe-tokens` renders that theme to `web/packages/design-system/generated/theme.css` (`:root`
+custom properties, imported by the web app as `@loomarr/design-system/theme.css`). CI fails if the
 committed file drifts from the tokens (`make fe-tokens-verify`; diff must be empty). This is the same
 committed-artifact discipline as `api/openapi.yaml`. The contrast tests in
 `packages/design-system/tests/web-theme.test.ts` gate every on-tint pairing.
 
 A token does not graduate into the semantic interface merely because the web theme has it: the
-visual review classifies it as keep, redesign, adapt, or retire. The Tailwind output is an adapter
-that disappears with the legacy Web consumers.
+visual review classifies it as keep, redesign, adapt, or retire. The custom properties serve the
+web app's plain stylesheet (`apps/web/src/styles.css`: the element reset, keyframes and data-attribute
+hooks) and a few inline styles; design-system components read their Tamagui theme instead.
 
 ---
 
@@ -197,47 +198,7 @@ that disappears with the legacy Web consumers.
 
 **Layer 0 — tokens** (§2).
 **Layer 1 — primitives:** the design system, `@loomarr/design-system` (`Action`, `Field`, `CompactSelect`, `Combobox`, `Details`, `Dialog`, `Disclosure`, `InlineAction`, `Grid`, `MediaTile`, `Stack`, `Table`, `Text`, `TextLink`, `Surface`…) with `@loomarr/ui` above it, shared with native and TV. The app's old shadcn copy-ins (`components/ui`) are gone (#2147 Wave 4); a missing primitive is built in the design system with its stories first, never re-added to the app. Its web adapters keep **Base UI** (`@base-ui/react`) underneath the dialog, menu, toggle and tooltip for focus management and a11y; the app itself never imports it. ⚠ Base UI's Tooltip is **visual-only by design** (no `role="tooltip"`, no `aria-describedby`), so a tooltip whose content is information rather than a restatement of the trigger's label must declare its own description — see `FieldHelp` and design §14.
-**Layer 2 — Loomarr components:** the actual product library, in `apps/web/src/components/loomarr/`. **Pages compose Layer-2 components; Tailwind utility soup is confined to Layers 1–2.** Every Layer-2 component: typed props (named variants, not ad-hoc class strings) from the orval client where applicable, a co-located Storybook story (§5) enumerating all states, and renders RFC 7807 errors through the shared `ErrorState`/field-error patterns — never raw JSON.
-
-### Moving legacy text classes onto `Text`
-
-Text styled by Tailwind classes moves onto the design system's `Text`, keeping its element through
-`as` (`<h2>`, `<p>`, `<dt>`…). The role is the one whose web size and weight match the classes. The
-role's own line height and tracking then apply, and the visual baselines are refreshed: the design
-system's look wins over the legacy one.
-
-| Legacy classes | `Text` |
-|---|---|
-| `text-xs` | `textRole="hint"` (12/16, 400) |
-| `text-xs font-medium` | `textRole="label"` (12/16, 500) |
-| `font-mono text-xs`, `text-2xs` mono | `textRole="mono"` (12/16, mono) |
-| `text-sm` | `textRole="compact"` (13/20, 400) |
-| `text-sm font-medium` / `font-semibold` | `textRole="cardLabel"` (13/18, 500); `strong` for 600 |
-| `text-base` | `textRole="body"` (14/21) |
-| `text-md` | `textRole="reading"` (16/24) |
-| `text-base`/`text-md` `font-semibold` | `textRole="heading"` (18/24, 600) |
-| `text-lg` | `textRole="headline"` (20/30) |
-| `text-xl font-semibold` | `textRole="title"` (24/30, 650) |
-| `text-2xl` | `textRole="display"` (32/36) |
-
-Colour is the role's default unless the classes name another: `text-muted-foreground` and
-`text-static-400` are `tone="secondary"`, `text-foreground` and `text-static-100` are
-`tone="primary"`, and the accents are `danger` (`destructive`/`onair`), `success` (`lock`), `warning`
-(`caution`), `info` (`tune`), `signal` and `suggest`. A role that is muted by default (`label`,
-`section`, `metadata`…) takes `tone="primary"` where the legacy text was the foreground colour.
-`uppercase tracking-wide` is `shout`. Classes that are not typography (`mt-2`, `truncate`, widths)
-stay on `className` until their own sweep.
-
-`web/scripts/codemods/tailwind-to-ds.mjs` makes these moves for the cases that need no judgement:
-`node scripts/codemods/tailwind-to-ds.mjs [--write] '<glob>'` from `web/` (a dry run without `--write`),
-then `biome check --write` over the changed files. It rewrites a `flex` container (`div`, `section`,
-`li`…) as a `Stack` with `direction`, `align`, `justify`, `gap`, padding, margin, `minWidth`,
-`minHeight`, `width`, `height` and the flex-item props; moves padding and margin classes off an
-existing `Stack`; and turns a plain text element with an exact row of the table above into a `Text`.
-It leaves a class with a state variant, an arbitrary value, `grid`, a `cn(…)` className, or an element
-with a handler. A `Stack`'s own props beat Tailwind (the base rule is unlayered), so an element is
-converted only when every class for `display`, direction, alignment, gap, `min-*` and flex-basis/shrink
-maps to a prop.
+**Layer 2 — Loomarr components:** the actual product library, in `apps/web/src/components/loomarr/`. **Pages compose Layer-2 components.** Every Layer-2 component: typed props (named variants, not ad-hoc class strings) from the orval client where applicable, a co-located Storybook story (§5) enumerating all states, and renders RFC 7807 errors through the shared `ErrorState`/field-error patterns — never raw JSON.
 
 ### Signature components (the vocabulary of the app)
 
@@ -475,9 +436,9 @@ These suites join **phase 13's gate** in the main doc's build plan.
   padding lives inside an edge-to-edge surface and never produces an outer frame.
 - **One page-edge contract.** Every top-level route begins with `PageHeader`; nested route navigation may precede it, but may not restyle it. The header owns the 24px horizontal gutter, 16px vertical gutter, bottom rule, one `<h1>`, bounded explanatory copy, and page-level actions/status. At mobile widths those actions stack below the copy so the title never collapses into a narrow text column. Entity-detail and focused workflow headers may add domain identity, but keep the same gutter and title scale.
 - **Content width is picked by task, from six named tiers** (#1817, decided 2026-10-13). A route
-  names its tier (`max-w-reading`, defined in `apps/web/src/styles.css`) and never types a pixel
-  width. Every capped tier is centred with `mx-auto`. The gutter is 24px, and 16px below `sm`
-  where a surface has adopted it (the Guide's create panel); other routes keep their `p-6`.
+  sets its tier's width from the table below as a design-system `maxWidth`, and never picks a width
+  off the table. Every capped tier is centred. The gutter is 24px, and 16px below `sm` where a
+  surface has adopted it (the Guide's create panel); other routes keep 24px.
 
   | Tier | Width | For | Routes |
   | --- | --- | --- | --- |

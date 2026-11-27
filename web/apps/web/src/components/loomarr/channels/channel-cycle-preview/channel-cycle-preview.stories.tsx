@@ -141,7 +141,7 @@ const BasePolicy: Story = {
 };
 
 // A whole-run marathon resolves to many slots — this is the case the slot list's inner
-// scroll (max-h-96 + .scroll-thin, styles.css) exists for. Interleaving breaks and a
+// scroll (a 384px cap and data-scroll="thin", styles.css) exists for. Interleaving breaks and a
 // trailing pending row proves those row variants still render correctly INSIDE the
 // overflowing, clipped region (not just plain program rows). Slots are index-derived so
 // the snapshot is deterministic (no dates/random — the visual suite is pixel-diffed).

@@ -478,6 +478,14 @@ RETIRED=(
   'channels/now-next-strip|#4451: the web NowNextStrip was deleted; the guide renders now/next through @loomarr/ui'
   'shell/brand-lockup|#4451: the web BrandLockup was deleted; the design system owns the one BrandLockup'
   '"../brand-lockup"|#4451: the web BrandLockup was deleted; the design system owns the one BrandLockup'
+  # #4451: the web app is styled by design-system props and the plain stylesheet in styles.css. The
+  # utility-class framework, its Vite plugin and the class-name helpers were deleted with it.
+  'tailwindcss|#4451: Tailwind was removed from the web app; use design-system props, or a data-attribute hook in styles.css'
+  '@tailwindcss/vite|#4451: the web build has no Tailwind plugin'
+  'tailwind-merge|#4451: there are no utility classes left to merge'
+  'clsx|#4451: compose design-system props, not class strings'
+  'import { cn }|#4451: the cn class helper was deleted with Tailwind'
+  'lib/utils|#4451: src/lib/utils held only the cn class helper and was deleted'
 
 )
 # ⚠ `internal/platform/store/migrations/` is exempt, and it is the one exemption that is forced rather than
