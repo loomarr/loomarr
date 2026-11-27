@@ -6,13 +6,13 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { LibraryTitle, LibraryTitleMissing } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
-import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useRefetchAt } from "@/lib/use-refetch-at";
+import { toastNotRestored, toastRemoved, toastRestored } from "@/library/extra-copy-toasts";
 import { searchLibraryTitles } from "@/library/use-library-needs";
 import { airingEpisode, airingsChangeAt, airingWhen, dateWords } from "./airing-words";
 
@@ -79,25 +79,17 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
     await refresh();
   };
 
-  // The toast is the one place a removal can be undone (#4476 D3); after it, the file waits in the
-  // trash folder.
   const removeExtra = async (path: string) => {
     const name = path.split(/[\\/]/).pop() ?? path;
     const removed = unwrap(await libraryApi.removeLibraryExtraCopy(id, { path }));
-    const kept = `${name} is in Loomarr's trash for 30 days.`;
     const undo = (token: string) =>
       act(libraryApi.restoreLibraryExtraCopy(id, { undo: token })).then(
-        () => toast.success(`Put ${name} back`),
-        (error: unknown) => {
-          // 410: the undo has run out. 409: something else has taken the file's place.
-          const refused = error instanceof ApiError && (error.status === 410 || error.status === 409);
-          toast.error(`${refused ? "Couldn't undo." : "Couldn't put it back just now."} ${kept}`);
-        },
+        () => toastRestored(name),
+        // 410: the undo has run out. 409: something else has taken the file's place.
+        (error: unknown) =>
+          toastNotRestored(name, error instanceof ApiError && (error.status === 410 || error.status === 409)),
       );
-    toast(`Moved ${name} to the trash`, {
-      duration: 10_000,
-      action: removed ? { label: "Undo", onClick: () => void undo(removed.undo) } : undefined,
-    });
+    toastRemoved(name, removed ? () => void undo(removed.undo) : undefined);
     await refresh();
   };
 

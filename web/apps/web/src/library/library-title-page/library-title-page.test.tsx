@@ -1,9 +1,11 @@
+import type { LibraryItemFileDTO } from "@loomarr/api/models/libraryItemFileDTO";
 import { getGetLibraryItemMockHandler, getMeMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppToaster } from "@/components/loomarr/feedback/app-toaster";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
@@ -62,6 +64,11 @@ const renderPage = () => {
 // The wiring: the page shows the server's title, and Back returns to the grid as it was left, or
 // to the Library when the page was opened directly.
 describe("LibraryTitlePage", () => {
+  // The toaster's list outlives a test: without this, one test's toast is on the next one's page.
+  afterEach(() => {
+    toast.dismiss();
+  });
+
   beforeEach(() => {
     mocks.navigate.mockReset();
     mocks.back.mockReset();
@@ -242,7 +249,17 @@ describe("LibraryTitlePage", () => {
   // #4476 D3: the removal can be undone from its toast.
   const removeCopy = async (restore: () => Response) => {
     const restored = vi.fn();
-    const copy = { ...echo.files[0], path: "/media/movies/Echo/Echo DVD.mkv", extra: true };
+    const copy: LibraryItemFileDTO = {
+      path: "/media/movies/Echo/Echo DVD.mkv",
+      size: 500_000,
+      ready: true,
+      subtitles: [],
+      extra: true,
+      streams: [],
+      chapters: [],
+    };
+    // jsdom has no pointer capture, which the toast asks for when its Undo is pressed.
+    Element.prototype.setPointerCapture ??= () => {};
     server.use(
       getGetLibraryItemMockHandler({ ...echo, files: [...echo.files, copy] }),
       http.post("*/v1/library/items/:id/remove-copy", () => HttpResponse.json({ undo: "token-1" })),
