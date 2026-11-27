@@ -13,9 +13,6 @@
     "apps/web/src/diagnostics/support-bundle/support-bundle.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/routes/_authed/settings/index.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/wizard/playout-step/playout-step.tsx": {
       "flexStack": 1
     }

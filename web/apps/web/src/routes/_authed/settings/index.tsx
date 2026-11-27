@@ -3,7 +3,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as jobsApi from "@loomarr/api/endpoints/jobs";
 import * as notificationsApi from "@loomarr/api/endpoints/notifications";
 import * as systemApi from "@loomarr/api/endpoints/system";
-import { Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Card, Icon, icons, PressableRow, Stack, Text } from "@loomarr/design-system";
 import { SearchField, SettingsOverview, type SettingsOverviewCard } from "@loomarr/ui";
 import type { EnsureQueryDataOptions, QueryKey } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
@@ -167,16 +167,22 @@ const SettingsHome = () => {
                           {results.length} {results.length === 1 ? "match" : "matches"}
                         </Text>
                       </Stack>
-                      <nav aria-label="Settings search results" className="divide-border divide-y">
-                        {results.slice(0, 10).map((result, index) => (
-                          <DestinationAnchor
+                      <Stack aria-label="Settings search results" render="nav">
+                        {results.slice(0, 10).map((result, index, shown) => (
+                          <PressableRow
+                            divided={index < shown.length - 1}
+                            inset={{ x: 16, y: 12 }}
                             key={result.destination.id}
                             ref={(node) => {
-                              resultLinks.current[index] = node;
+                              // On the web the row is the anchor `render` draws.
+                              resultLinks.current[index] = node as unknown as HTMLAnchorElement | null;
                             }}
-                            destination={result.destination}
-                            onKeyDown={(event) => moveResultFocus(event, index)}
-                            className="group hover:bg-muted/40 focus-visible:ring-ring flex items-center gap-3 px-4 py-3 focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
+                            render={
+                              <DestinationAnchor
+                                destination={result.destination}
+                                onKeyDown={(event) => moveResultFocus(event, index)}
+                              />
+                            }
                           >
                             <Stack
                               flexBasis="0%"
@@ -195,9 +201,9 @@ const SettingsHome = () => {
                               </Text>
                             </Stack>
                             <Icon decorative glyph={icons.goForward} size="compact" tone="muted" />
-                          </DestinationAnchor>
+                          </PressableRow>
                         ))}
-                      </nav>
+                      </Stack>
                     </Card>
                   )}
                 </Stack>
