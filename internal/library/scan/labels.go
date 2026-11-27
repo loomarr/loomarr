@@ -86,10 +86,11 @@ func audioFormatLabel(codec, profile string) string {
 }
 
 // languageLabel is a track's language as an ISO 639-1 code where one exists ("eng" is "en"),
-// and its English name. A code the file gives that names no language is kept as it is, unnamed;
-// "und" and "" are no language.
+// and its English name. A code the file gives that names no language is kept, unnamed; "und"
+// and "" are no language. Every code is lower case: the Library's language filters compare the
+// stored code as it is.
 func languageLabel(code string) (string, string) {
-	code = strings.TrimSpace(code)
+	code = strings.ToLower(strings.TrimSpace(code))
 	if code == "" || strings.EqualFold(code, "und") {
 		return "", ""
 	}
