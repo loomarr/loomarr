@@ -93,6 +93,8 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("InteractiveOperations", func(t *testing.T) { testInteractiveOperations(t, newStore) })
 		t.Run("FillerInferenceAccountingAndBudgets", func(t *testing.T) { testFillerInferenceAccountingAndBudgets(t, newStore) })
 		t.Run("FillerRetention", func(t *testing.T) { testFillerRetention(t, newStore) })
+		t.Run("AcquisitionRunOutlivesItsSource", func(t *testing.T) { testAcquisitionRunOutlivesItsSource(t, newStore) })
+		t.Run("ClipPipelineForgetsAMissingRun", func(t *testing.T) { testClipPipelineForgetsAMissingRun(t, newStore) })
 		t.Run("FillerDownloadFailures", func(t *testing.T) { testFillerDownloadFailures(t, newStore) })
 		t.Run("FillerRetentionEmptyCatalog", func(t *testing.T) { testFillerRetentionEmptyCatalog(t, newStore) })
 		t.Run("FillerStructureWindowCallLedger", func(t *testing.T) { testFillerStructureWindowCallLedger(t, newStore) })

@@ -99,6 +99,7 @@ func TestFillerReadinessRetainsOlderRepairBeyondHistoryPage(t *testing.T) {
 	}
 	defer func() { _ = st.Close() }()
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	testkit.SaveFillerSources(t, st, "source")
 	for i := 0; i < 21; i++ {
 		at := now.Add(time.Duration(-21+i) * time.Minute)
 		run := acquisition.AcquisitionRun{ID: "acq-" + string(rune('a'+i)), Trigger: acquisition.TriggerSource, SourceID: "source", Status: acquisition.RunSuccess, StartedAt: at, CompletedAt: at, UpdatedAt: at}
