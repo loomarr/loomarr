@@ -871,7 +871,7 @@ Each track of a title's files (video, audio, subtitles), one row each: those ins
 | `title` | The track's own title, if the file gives one. | `TEXT` |
 | `is_default` | True when the file marks the track to play by default. | `BOOLEAN` |
 | `forced` | True for a forced subtitle track. | `BOOLEAN` |
-| `language` | The track's language as a two-letter code where one exists (en), else what the file gives, in lower case; empty when unknown. | `TEXT` |
+| `language` | The track's language as a two-letter code where one exists (en), else as the file gives it; empty when unknown. | `TEXT` |
 | `language_name` | The language's English name, such as English; empty when unknown. | `TEXT` |
 | `channels` | An audio track's channel count; 0 otherwise. | `INTEGER` |
 | `channel_layout` | An audio track's channel layout, such as 5.1(side). | `TEXT` |
