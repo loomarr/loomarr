@@ -38,6 +38,18 @@ type IncomingView = Pick<
 >;
 type GroupName = "preparing" | "needsHelp" | "recentlyReady";
 
+const toView = ({
+  preparing,
+  needsHelp,
+  recentlyReady,
+  readyWindowSeconds,
+}: FillerIncomingOutputBody): IncomingView => ({
+  preparing,
+  needsHelp,
+  recentlyReady,
+  readyWindowSeconds,
+});
+
 const readyWindowLabel = (seconds: number): string => {
   if (seconds === 3600) return "the last hour";
   if (seconds === 86400) return "the last 24 hours";
@@ -113,7 +125,8 @@ const Incoming = () => {
   const query = fillerApi.useFillerIncoming();
   const timeZone = useHouseholdTimeZone();
   const body = unwrap(query.data, (value) => value);
-  const [view, setView] = useState<IncomingView>();
+  // Seeded from the read the loader already holds, so the first frame is the tab and not a blank.
+  const [view, setView] = useState<IncomingView | undefined>(() => body && toView(body));
   const [loadingGroup, setLoadingGroup] = useState<GroupName>();
   const [selected, setSelected] = useState<IncomingStatusDTO>();
   const [helpIndex, setHelpIndex] = useState(0);
@@ -129,12 +142,7 @@ const Incoming = () => {
 
   useEffect(() => {
     if (body) {
-      setView({
-        preparing: body.preparing,
-        needsHelp: body.needsHelp,
-        recentlyReady: body.recentlyReady,
-        readyWindowSeconds: body.readyWindowSeconds,
-      });
+      setView(toView(body));
       setHelpIndex(0);
     }
   }, [body]);
@@ -203,15 +211,9 @@ const Incoming = () => {
   };
 
   if (query.error) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  if (!view) {
-    return (
-      <Card aria-live="polite" padding={24}>
-        <Text as="p" textRole="compact" tone="secondary">
-          Checking what’s on the way…
-        </Text>
-      </Card>
-    );
-  }
+  // The route's loader ensured what is on the way, and its error view takes a first read that
+  // fails, so the tab always opens on it. A failed refresh after that is the branch above.
+  if (!view) return null;
 
   const total = view.preparing.total + view.needsHelp.total + view.recentlyReady.total;
   if (total === 0) {
