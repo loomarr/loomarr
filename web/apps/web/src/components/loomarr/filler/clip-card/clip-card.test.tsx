@@ -127,7 +127,7 @@ describe("ClipCard", () => {
   it("rings a selected card in foreground", () => {
     const { container } = render(<ClipCard clip={base} selected onToggleSelect={vi.fn()} />);
     const card = container.querySelector("[data-clip-card]") as HTMLElement;
-    expect(card.style.boxShadow).toContain("var(--foreground)");
+    expect(card.style.boxShadow).toContain("var(--color-static-100)");
     expect(card.style.boxShadow).not.toContain("signal");
   });
   // A tagged clip must still be editable. §10's likely tagging error is a trailer scanned

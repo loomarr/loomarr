@@ -485,7 +485,7 @@ RETIRED=(
   'tailwind-merge|#4451: there are no utility classes left to merge'
   'clsx|#4451: compose design-system props, not class strings'
   'import { cn }|#4451: the cn class helper was deleted with Tailwind'
-  'lib/utils|#4451: src/lib/utils held only the cn class helper and was deleted'
+  '@/lib/utils|#4451: src/lib/utils held only the cn class helper and was deleted'
 
 )
 # ⚠ `internal/platform/store/migrations/` is exempt, and it is the one exemption that is forced rather than
@@ -552,6 +552,18 @@ for path in internal/proposals/suggest/tools.go internal/proposals/suggest/promp
     printf '\nRETIRED MODEL SCHEMA PROPERTY STILL REFERENCED: "era":\n  %s\n\n' "$path"
     printf '%s\n' "$hits" | sed 's/^/    /'
   fi
+done
+[[ "$fail" -ne 0 ]] && exit 1
+# #4451: the web app's manifest and build config are outside SEARCH, and they are where the
+# deleted styling packages and their Vite plugin were installed.
+for path in web/apps/web/package.json web/apps/web/vite.config.ts; do
+  for id in 'tailwind' 'clsx'; do
+    hits="$(grep -niF "$id" "$path" 2>/dev/null || true)"
+    if [[ -n "$hits" ]]; then
+      fail=1
+      printf '\nRETIRED WEB STYLING PACKAGE: %s in %s (#4451)\n%s\n' "$id" "$path" "$hits"
+    fi
+  done
 done
 [[ "$fail" -ne 0 ]] && exit 1
 # Separate provider IDs are retired only at the model-selection interface.

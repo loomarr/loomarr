@@ -41,7 +41,10 @@ const SegmentSummaryRow = ({
   return (
     <li>
       {/* Selection is neutral (#1909): amber is for focus and the primary action. */}
-      <Card overflow="hidden" {...(selected ? { style: { boxShadow: "0 0 0 1px var(--foreground)" } } : {})}>
+      <Card
+        overflow="hidden"
+        {...(selected ? { style: { boxShadow: "0 0 0 1px var(--color-static-100)" } } : {})}
+      >
         <PressableRow
           aria-current={selected ? "true" : undefined}
           onPress={(event) => onOpen(event.currentTarget as unknown as HTMLButtonElement)}

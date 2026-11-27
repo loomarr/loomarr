@@ -76,8 +76,8 @@ const webType = {
 } as const;
 
 // --- Space (4px grid), radius, motion (§2.3, §2.4) ---
-// Only the grid: a half step has no `--spacing-N` name (a dot is not valid in one), and the app's
-// Tailwind already sizes its half-step utilities from the base unit.
+// Only the grid: a half step has no `--spacing-N` name (a dot is not valid in one); `Stack` takes
+// half steps from `spaceSteps` directly.
 const webSpace = spaceGrid;
 const webRadius = { sm: 4, md: 8, lg: 12 } as const;
 const webRowHeight = { compact: 40 } as const; // tables (§2.3)
