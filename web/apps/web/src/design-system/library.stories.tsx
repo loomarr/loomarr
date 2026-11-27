@@ -695,6 +695,14 @@ const WizardStepStep3: Story = { render: wizardAdding(LOOKING_UP) };
 const WizardStepPaused: Story = { render: wizardAdding(PAUSED) };
 const WizardStepChecking: Story = { render: wizardAdding({ ...WALKING, quiet: true }) };
 
+// Stop using asks first: the folder in use, with its confirm open.
+const StopUsingFolder: Story = {
+  render: wizardAdding(IDLE),
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(await canvas.findByRole("button", { name: "Stop using" }));
+  },
+};
+
 export default meta;
 export {
   Adding,
@@ -729,6 +737,7 @@ export {
   RecentlyAdded,
   Series,
   SeriesOrderWaiting,
+  StopUsingFolder,
   WizardStep,
   WizardStepAdding,
   WizardStepChecking,

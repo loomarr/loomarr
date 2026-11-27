@@ -175,9 +175,9 @@ interface LibrarySettingsProps {
   /** A check of every folder is running. */
   checking: boolean;
   onCheckAgain: () => void;
-  /** Scans every folder again ("Scan now"); a held removal is looked at afresh. */
+  /** Scans every folder again ("Check files again"); a held removal is looked at afresh. */
   onRescan: () => void;
-  /** "Refresh everything": every title's details are read and fetched again. Asked first. */
+  /** "Update details" for the library: every title's details are read and fetched again. Asked first. */
   onRefreshEverything: () => void;
   /** The maintainer says the held files are gone. */
   onConfirmRemoval: (path: string) => void;
