@@ -39,6 +39,7 @@ type Tunarr struct {
 	LocalFillerClips    []tunarr.LocalClip
 	// Injectable failures (nil = success).
 	SetLineupErr error
+	GetLineupErr error
 	// SetLineupErrByChannel targets one server-assigned channel id while allowing a
 	// fleet operation to continue exercising the remaining Programmer calls.
 	SetLineupErrByChannel map[string]error
@@ -251,6 +252,9 @@ func (m *Tunarr) SetLineup(_ context.Context, tunarrID string, slots []schedule.
 func (m *Tunarr) GetLineup(_ context.Context, tunarrID string) ([]schedule.Slot, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.GetLineupErr != nil {
+		return nil, m.GetLineupErr
+	}
 	ch, ok := m.channels[tunarrID]
 	if !ok || !ch.set {
 		return []schedule.Slot{}, nil // mimics Tunarr's 400-on-unprogrammed → empty

@@ -709,6 +709,7 @@ type Store interface {
 	DiscoveryFeedbackStore
 	ChannelPreferenceStore
 	HiddenIdeaStore
+	UpcomingAiringStore
 	ViewingStore
 	DiscoveryQualityStore
 	InventoryStore
