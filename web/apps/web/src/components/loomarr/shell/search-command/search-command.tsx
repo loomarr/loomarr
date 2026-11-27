@@ -98,7 +98,7 @@ const SearchCommand = ({
           </Action>
         ) : (
           <Stack
-            backgroundColor="$surfaceRaised"
+            backgroundColor="$surfaceElevated"
             borderColor="$borderDecorative"
             borderRadius={4}
             borderWidth={1}
