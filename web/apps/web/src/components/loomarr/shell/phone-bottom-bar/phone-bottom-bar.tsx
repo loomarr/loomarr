@@ -125,7 +125,7 @@ const PhoneBottomBar = ({ badges, isAdmin, watchChannelId }: PhoneBottomBarProps
   const { pathname } = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  const primary = phoneBarPrimary(watchChannelId, badges);
+  const primary = phoneBarPrimary(isAdmin, watchChannelId, badges);
   const overflow = phoneBarOverflow(isAdmin, badges);
   // Decision X2 (critique row 5), shared with the desktop rail: a channel's `/watch/$id` player
   // highlights Watch, its management tabs (Info/Programming/Filler/Danger) highlight Guide instead —

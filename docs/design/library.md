@@ -462,7 +462,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   plays and nothing that names a file: its picture (width, height, high dynamic range), the
   channels of the sound that plays and its subtitle languages.
 - **Who reads the Library** (#4476, decided 2026-11-21). A household member browses the
-  Library read-only: the wall and a title's page, and the Collections tab. The member-readable
+  Library read-only: the wall and a title's page, and the Collections tab. On the web, Library is
+  in a member's navigation and fourth in their phone bar (Home · Watch · Guide · Library), with no
+  Needs you count; an admin's phone bar keeps Requests there. The member-readable
   routes are `GET /v1/library/items`, `GET /v1/library/items/{id}`, `GET /v1/collections`,
   `GET /v1/collections/{id}`, and `GET /v1/library/collections` (names and sizes, for the channel
   scope picker). Everything else under `/v1/library` and `/v1/collections` is admin-only: the

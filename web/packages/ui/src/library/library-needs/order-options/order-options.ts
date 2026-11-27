@@ -84,9 +84,4 @@ const mismatchLine = (need: LibraryOrderNeed): string => {
     : `Season ${off.season} on your disk has ${plural(off.episodes, "episode")}; TMDB lists ${listed}. ${still}`;
 };
 
-const orderLine = (need: LibraryOrderNeed) =>
-  onlyCatalog(need)
-    ? `${need.name} — ${need.files.length === 1 ? "1 episode keeps its file name" : `${need.files.length} episodes keep their file names`}`
-    : `${need.name} — which order are the episodes in?`;
-
-export { FILES, mismatchLine, onlyCatalog, orderLine, orderOptions };
+export { FILES, mismatchLine, onlyCatalog, orderOptions };

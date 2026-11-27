@@ -1,5 +1,6 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { ListLibraryItemsKind } from "@loomarr/api/models/listLibraryItemsKind";
+import type { ListLibraryItemsSort } from "@loomarr/api/models/listLibraryItemsSort";
 import { unwrap } from "@loomarr/api/unwrap";
 import { infiniteQueryOptions } from "@tanstack/react-query";
 
@@ -13,10 +14,12 @@ interface LibraryItemsFilter {
   kind?: ListLibraryItemsKind;
   /** The search as the server is asked for it: already settled and trimmed, absent when empty. */
   search?: string;
+  /** Recently added first; absent is the server's order, by name. */
+  sort?: typeof ListLibraryItemsSort.recent;
 }
 
-const libraryItemsQueryOptions = ({ kind, search }: LibraryItemsFilter) => {
-  const params = { kind, search, limit: LIBRARY_PAGE_SIZE };
+const libraryItemsQueryOptions = ({ kind, search, sort }: LibraryItemsFilter) => {
+  const params = { kind, search, sort, limit: LIBRARY_PAGE_SIZE };
   return infiniteQueryOptions({
     queryKey: [...libraryApi.getListLibraryItemsQueryKey(params), "pages"],
     initialPageParam: 0,
@@ -33,5 +36,16 @@ const libraryItemsQueryOptions = ({ kind, search }: LibraryItemsFilter) => {
   });
 };
 
+// The tabs' counts: one title of everything, of the movies and of the shows, read for the total.
+// The page reads them and the Library's loaders warm them, so both name these params.
+const LIBRARY_COUNTS = [
+  { limit: 1 },
+  { kind: "movie", limit: 1 },
+  { kind: "series", limit: 1 },
+] as const satisfies readonly { kind?: ListLibraryItemsKind; limit: number }[];
+
+const libraryCountsQueryOptions = () =>
+  LIBRARY_COUNTS.map((params) => libraryApi.getListLibraryItemsQueryOptions(params));
+
 export type { LibraryItemsFilter };
-export { libraryItemsQueryOptions };
+export { LIBRARY_COUNTS, libraryCountsQueryOptions, libraryItemsQueryOptions };

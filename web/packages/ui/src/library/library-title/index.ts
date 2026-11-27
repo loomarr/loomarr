@@ -4,6 +4,7 @@ export type {
   LibraryTitleDetail,
   LibraryTitleEpisode,
   LibraryTitleFile,
+  LibraryTitleFix,
   LibraryTitleMatch,
   LibraryTitleProps,
   LibraryTitleSeason,

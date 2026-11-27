@@ -6,7 +6,7 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { LibraryPage } from "@/library/library-page";
 
 // Needs you (#2151 decision 27): the Library page with one card per title Loomarr can't tell what
-// it is, in place of the strip. Admin-only like the rest of the Library.
+// it is, in place of the grid. Admin-only, unlike the wall, a title's page and Collections.
 
 const NeedsYouScreen = () => {
   useDocumentTitle("Needs you");

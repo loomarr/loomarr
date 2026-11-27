@@ -86,9 +86,11 @@ const searchLibraryTitles: LibraryNeedSearch = async (query, kind) => {
   }));
 };
 
-const useLibraryNeeds = () => {
+// Asks for the list only while `enabled`: the wall says the count from the status, so only Needs
+// you's own screen reads the cards.
+const useLibraryNeeds = (enabled = true) => {
   const queryClient = useQueryClient();
-  const list = libraryApi.useListLibraryNeeds();
+  const list = libraryApi.useListLibraryNeeds({ query: { enabled } });
   const needs = useMemo(() => (unwrap(list.data)?.needs ?? []).map(needOf), [list.data]);
   const orders = useMemo(() => (unwrap(list.data)?.orders ?? []).map(orderNeedOf), [list.data]);
   const problems = useMemo(() => (unwrap(list.data)?.problems ?? []).map(problemOf), [list.data]);

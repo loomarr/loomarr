@@ -183,9 +183,16 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   // The Library's titles changed (written, ready, or gone). The frame is empty on purpose:
   // the grid, a title's page, the import's strip of titles found and Needs you refetch, because a list assembled from
   // frames would lose the rows a reconnecting client misses. A collection lists only titles still
-  // in the Library, so collections read again too.
+  // in the Library, so collections read again too. The status reads again for its Needs you count,
+  // which the wall's line and the nav badge say.
   library_titles: {
-    prefixes: ["/v1/library/items", "/v1/library/needs", "/v1/collections", "/v1/library/collections"],
+    prefixes: [
+      "/v1/library/items",
+      "/v1/library/needs",
+      "/v1/library/status",
+      "/v1/collections",
+      "/v1/library/collections",
+    ],
     fed: [listAndDetail("/v1/library/items"), /^\/v1\/library\/needs$/],
   },
   // A media folder stopped or started opening, or emptied or filled (a share unmounted or mounted

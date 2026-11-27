@@ -117,17 +117,6 @@ interface LibraryNeedsAnswers {
   onChooseOrder: (id: string, answer: LibraryOrderAnswer) => Promise<void>;
 }
 
-interface LibraryNeedsStripProps extends Pick<LibraryNeedsAnswers, "onLink"> {
-  needs: readonly LibraryNeed[];
-  /** Shows whose episode order to say; Choose opens Needs you. */
-  orders: readonly LibraryOrderNeed[];
-  problems: readonly LibraryProblem[];
-  /** Opens Needs you, where a different title can be picked. */
-  onOpenNeeds: () => void;
-  /** See why: opens a title's page. */
-  onOpenTitle: (id: string) => void;
-}
-
 interface LibraryNeedsCardsProps extends LibraryNeedsAnswers {
   needs: readonly LibraryNeed[];
   orders: readonly LibraryOrderNeed[];
@@ -144,7 +133,6 @@ export type {
   LibraryNeedSearch,
   LibraryNeedsAnswers,
   LibraryNeedsCardsProps,
-  LibraryNeedsStripProps,
   LibraryOrderAnswer,
   LibraryOrderChoice,
   LibraryOrderFile,
