@@ -161,6 +161,29 @@ describe("LibraryShelf", () => {
     clear.cleanup();
   });
 
+  it("says one title needs you in the singular", () => {
+    const { host, cleanup } = render({ admin: admin({ needsYou: 1 }) });
+    expect(host.textContent).toContain("1 needs you");
+    expect(host.textContent).not.toContain("1 need you");
+    cleanup();
+  });
+
+  it("tells a member an empty Library has nothing in it yet, and offers an admin the folders", () => {
+    const member = render({ admin: undefined, titles: [] });
+    expect(member.host.textContent).toContain("Nothing in the Library yet");
+    expect(member.find("Tell Loomarr where your media is")).toBeUndefined();
+    member.cleanup();
+
+    const idle = render({ titles: [] });
+    expect(idle.host.textContent).toContain("Dead air");
+    expect(idle.host.textContent).not.toContain("Nothing in the Library yet");
+    idle.cleanup();
+
+    const importing = render({ admin: admin({ scan: WALKING }), titles: [] });
+    expect(importing.host.textContent).not.toContain("Dead air");
+    importing.cleanup();
+  });
+
   it("gives a member the wall with no status line, no Needs you and no settings", () => {
     const { host, find, tile, props, cleanup } = render({ admin: undefined });
     expect(host.textContent).not.toContain("Up to date");

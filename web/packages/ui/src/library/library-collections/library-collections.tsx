@@ -198,7 +198,7 @@ const LibraryCollections = ({ collections, sets, manage }: LibraryCollectionsPro
               <Card
                 action={<CopyAction onCopy={() => manage.onCopy(s.id)} />}
                 key={s.id}
-                lines={[{ text: `From TMDB — you have ${s.have} of ${s.total}`, tone: "secondary" }]}
+                lines={[{ text: `From TMDB. You have ${s.have} of ${s.total}.`, tone: "secondary" }]}
                 name={s.name}
                 pile={s.pile}
               />

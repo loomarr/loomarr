@@ -171,6 +171,9 @@ const NoMatch: Story = { args: { admin: admin({ needsYou: 6 }), search: "zebra 1
 // A member browses the same wall read-only: no status line, no Needs you, no settings.
 const Member: Story = { args: { admin: undefined } };
 const MemberNoMatch: Story = { args: { admin: undefined, search: "zebra 1977", titles: [] } };
+const MemberEmpty: Story = {
+  args: { admin: undefined, counts: { all: 0, movie: 0, series: 0 }, titles: [] },
+};
 
 // Needs you: one guess the name agrees with, one with nothing to go on.
 const NEEDS: LibraryNeed[] = [
@@ -670,6 +673,7 @@ export {
   MemberCollections,
   MemberCollectionsNoneYet,
   MemberMovie,
+  MemberEmpty,
   MemberNoMatch,
   Movie,
   NeedsCards,

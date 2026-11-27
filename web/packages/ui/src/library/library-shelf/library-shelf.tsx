@@ -43,7 +43,7 @@ const titlesWord = (n: number) => (n === 1 ? "1 title" : `${count(n)} titles`);
 const NeedsYouLine = ({ needsYou, onOpenNeeds }: { needsYou: number; onOpenNeeds?: () => void }) => (
   <Line flexWrap="nowrap">
     <StatusDot label="Needs you" tone="warn" />
-    <Text textRole="label">{`${count(needsYou)} need you`}</Text>
+    <Text textRole="label">{needsYou === 1 ? "1 needs you" : `${count(needsYou)} need you`}</Text>
     {onOpenNeeds ? <TextLink onPress={onOpenNeeds}>Review</TextLink> : null}
   </Line>
 );
@@ -130,6 +130,15 @@ const DeadAir = ({ onOpenSettings }: { onOpenSettings: () => void }) => (
     description="Point it at your movie and show folders and your shelf fills up on its own."
     kind="empty"
     title="Dead air"
+  />
+);
+
+// A member's wall with no titles at all: there is nothing for them to set up, so no action.
+const EmptyLibrary = () => (
+  <StatePanel
+    description="Movies and shows appear here once they're added."
+    kind="empty"
+    title="Nothing in the Library yet"
   />
 );
 
@@ -438,6 +447,13 @@ const LibraryShelf = ({
   const width = useWindowWidth();
   const wide = width >= 768;
   const searched = search.trim();
+  // The All tab with no titles. While an import is adding them, an admin's status line tells that
+  // story, so the dead air panel waits until nothing is running.
+  const emptyLibrary = !admin ? (
+    <EmptyLibrary />
+  ) : scanHeadline(admin.status.scan, true).running ? null : (
+    <DeadAir onOpenSettings={admin.onOpenSettings} />
+  );
   return (
     <Stack
       alignSelf="center"
@@ -486,6 +502,8 @@ const LibraryShelf = ({
             <NoMatch onClear={() => onSearchChange("")} search={searched} total={counts?.[filter]} />
           ) : titles.length === 0 && (filter === "movie" || filter === "series") ? (
             <EmptyTab kind={filter} onShowEverything={() => onFilterChange("all")} />
+          ) : titles.length === 0 && filter === "all" && searched === "" ? (
+            emptyLibrary
           ) : (
             <Grid onEndReached={onEndReached} onOpenTitle={onOpenTitle} titles={titles} />
           )}

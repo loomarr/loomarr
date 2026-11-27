@@ -116,7 +116,7 @@ describe("LibraryCollections", () => {
 
   it("says how much of a ready-made set the library has, and copies it", async () => {
     const { host, props, button, cleanup } = render({});
-    expect(host.textContent).toContain("From TMDB — you have 2 of 3");
+    expect(host.textContent).toContain("From TMDB. You have 2 of 3.");
     act(() => button("Make my own copy").click());
     await settle();
     expect(props.manage?.onCopy).toHaveBeenCalledWith("90000611");
