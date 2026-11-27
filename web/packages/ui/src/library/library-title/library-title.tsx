@@ -235,13 +235,13 @@ const FixMenu = ({ fixes }: { fixes: ReturnType<typeof useTitleFixes> }) => {
           </Action>
         </MenuTrigger>
         <MenuContent align="end" width={240}>
-          <MenuAction icon={menuIcon(icons.refresh)} onSelect={fixes.update}>
+          <MenuAction density={density} icon={menuIcon(icons.refresh)} onSelect={fixes.update}>
             Update details
           </MenuAction>
-          <MenuAction icon={menuIcon(icons.folder)} onSelect={fixes.check}>
+          <MenuAction density={density} icon={menuIcon(icons.folder)} onSelect={fixes.check}>
             Check files again
           </MenuAction>
-          <MenuAction icon={menuIcon(icons.swap)} onSelect={fixes.toggleWrong}>
+          <MenuAction density={density} icon={menuIcon(icons.swap)} onSelect={fixes.toggleWrong}>
             Wrong title?
           </MenuAction>
         </MenuContent>

@@ -39,6 +39,8 @@ interface MenuActionProps {
   /** `false` keeps the menu open, for an item that arms a confirmation inside it. */
   closeOnSelect?: boolean;
   tone?: "danger";
+  /** `touch` holds the row to the touch target, for a menu opened on a phone. */
+  density?: "pointer" | "touch";
 }
 
 interface MenuGroupProps {

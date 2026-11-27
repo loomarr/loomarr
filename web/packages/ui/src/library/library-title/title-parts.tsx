@@ -102,11 +102,11 @@ const Hero = ({ title, actions }: { title: LibraryTitleDetail; actions: ReactNod
           </Text>
         )}
         <Line gap="control">
-          {heroFacts(title).map((fact) => (
-            <Text key={fact} textRole="body" tone="secondary">
-              {fact}
+          {heroFacts(title).length > 0 ? (
+            <Text textRole="body" tone="secondary">
+              {heroFacts(title).join(" · ")}
             </Text>
-          ))}
+          ) : null}
           {/* A bordered chip in the body face: mono is for file names only. */}
           {title.rating ? (
             <Surface backgroundColor="transparent" paddingHorizontal="inline">
@@ -139,10 +139,12 @@ const OnChannels = ({ title }: { title: LibraryTitleDetail }) => {
     ...airings,
     ...title.channels.filter((c) => !scheduled.has(c.id)).map((channel) => ({ channel })),
   ];
+  // The region is named by what it says, so a title on no channel has no "On these channels".
+  const heading = rows.length > 0 ? "On these channels" : "Not on a channel yet";
   return (
-    <Stack aria-label="On these channels" gap="control" role="region">
+    <Stack aria-label={heading} gap="control" role="region">
       <Text as="h2" textRole="headline">
-        {rows.length > 0 ? "On these channels" : "Not on a channel yet"}
+        {heading}
       </Text>
       {rows.length === 0 ? (
         <Text textRole="body" tone="secondary">
