@@ -1,0 +1,3 @@
+interface:
+  display_name: "React Best Practices"
+  short_description: "Vercel's React performance rules: re-renders, rendering, bundle size and client data fetching"

@@ -46,10 +46,10 @@
     },
     "impeccable": {
       "source": "pbakaus/impeccable",
-      "commit": "b49177d32788f2dc585c42831d845dacf1ebed2c",
+      "commit": "2fc5e1459efbbf06d92c7306517c286bf12490cf",
       "sourceType": "github",
       "skillPath": ".agents/skills/impeccable/SKILL.md",
-      "computedHash": "08bd5bf141cb507f46bd8347890cd985865606f15adf88295ed3a73bc9ad5d96"
+      "computedHash": "8d3da85cc91bad519329cd9ea6d14429a2f45b63535ec55ed0fe04b5d2839579"
     },
     "improve-codebase-architecture": {
       "source": "mattpocock/skills",
@@ -153,6 +153,13 @@
       "skillPath": "skills/turborepo/SKILL.md",
       "computedHash": "49bb6427015253ce5d93f15dfa6c9ade3f8528f0fbe54769b6da1e1458f058d4"
     },
+    "vercel-react-best-practices": {
+      "source": "vercel-labs/agent-skills",
+      "commit": "5a37a6329fbad3666c3207392a6a7c0110e92efb",
+      "sourceType": "github",
+      "skillPath": "skills/react-best-practices/SKILL.md",
+      "computedHash": "3219a1944e404ffc14d1d9d6aef6dd2e3855b81387ee0a044ccbfe14d34c2357"
+    },
     "wait-what": {
       "source": "mattpocock/skills",
       "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
@@ -165,6 +172,13 @@
       "sourceType": "github",
       "skillPath": "skills/engineering/wayfinder/SKILL.md",
       "computedHash": "c9e18cefd77b6b5b0ee35f59ce2fd96359aa2d2f02e3479e12c873c5402d9d43"
+    },
+    "web-design-guidelines": {
+      "source": "vercel-labs/agent-skills",
+      "commit": "5a37a6329fbad3666c3207392a6a7c0110e92efb",
+      "sourceType": "github",
+      "skillPath": "skills/web-design-guidelines/SKILL.md",
+      "computedHash": "1807144a592ddd784291b59caafe9629e29ba7adaa4536b0a9cd4f80dcffa196"
     },
     "writing-for-agents": {
       "source": "mattpocock/skills",
