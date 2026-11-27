@@ -132,4 +132,4 @@ const TechnicalDetails = ({ title }: { title: LibraryTitleDetail }) => {
   );
 };
 
-export { lengthPhrase, TechnicalDetails };
+export { lengthPhrase, picturePhrase, soundPhrase, TechnicalDetails };

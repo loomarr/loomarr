@@ -3,7 +3,7 @@ import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { cloneElement, type ReactElement } from "react";
 
 import { Action } from "../interaction";
-import { semanticRadius } from "../tokens";
+import { semanticRadius, semanticTargets } from "../tokens";
 import type {
   MenuActionProps,
   MenuContentProps,
@@ -69,7 +69,15 @@ const MenuContent = ({ align, children, portalContainer, side, width }: MenuCont
   </MenuPrimitive.Portal>
 );
 
-const MenuAction = ({ children, closeOnSelect = true, disabled, icon, onSelect, tone }: MenuActionProps) => (
+const MenuAction = ({
+  children,
+  closeOnSelect = true,
+  density,
+  disabled,
+  icon,
+  onSelect,
+  tone,
+}: MenuActionProps) => (
   <MenuPrimitive.Item
     closeOnClick={closeOnSelect}
     disabled={disabled}
@@ -88,6 +96,7 @@ const MenuAction = ({ children, closeOnSelect = true, disabled, icon, onSelect, 
       fontSize: 14,
       gap: 8,
       lineHeight: "20px",
+      minHeight: density === "touch" ? semanticTargets.touch : undefined,
       opacity: disabled ? 0.5 : 1,
       outline: "none",
       padding: "6px 8px",
