@@ -57,7 +57,6 @@ const EncoderRow = ({ capability, gpu }: { capability: PlayoutCapability; gpu: P
       align="center"
       borderBottomWidth={1}
       borderColor="$borderDecorative"
-      className="bg-static-900/40"
       direction="row"
       gap="control"
       justify="between"
@@ -119,7 +118,7 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
           <Stack render="span" width={56}>
             <Text
               as="span"
-              className="tabular-nums"
+              fontVariant={["tabular-nums"]}
               textAlign="right"
               textRole="mono"
               tone={slow ? "warning" : "secondary"}
