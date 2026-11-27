@@ -23,8 +23,8 @@ import (
 //     and a Unix-seconds one in neither, so a reader never multiplies by the wrong thousand.
 //   - reference: a column named for another row (_id, _by or _ref) is a foreign key (#2793), so it
 //     can't name a row that isn't there. One that must not be (another system's id, a log tag, a
-//     column naming rows of several tables) is listed in NonKeys with why. Primary key columns,
-//     members of a composite key included, are not checked.
+//     column naming rows of several tables) is listed in NonKeys with why. Primary key columns are
+//     held to it too.
 //   - json: a column named _json, or one defaulting to a JSON object or array, is declared JSON
 //     (CHECK (json_valid(column)), jsonb in Postgres), so neither engine stores text that isn't.
 //
@@ -143,12 +143,10 @@ func holdsJSON(c LiveColumn) bool {
 	return strings.HasSuffix(c.Name, "_json") || strings.HasPrefix(c.Default, "'{") || strings.HasPrefix(c.Default, "'[")
 }
 
-// referenceNamed reports a column whose name says it points at another row (_id, _by, _ref) and
-// that is not its own table's primary key.
+// referenceNamed reports a column whose name says it points at another row (_id, _by, _ref). A
+// primary key column so named counts too: a member of a composite key, or a sole key such as
+// source_id, can still name a row. A table's own `id` carries none of those endings.
 func referenceNamed(c LiveColumn) bool {
-	if c.PrimaryKey {
-		return false
-	}
 	return strings.HasSuffix(c.Name, "_id") || strings.HasSuffix(c.Name, "_by") || strings.HasSuffix(c.Name, "_ref")
 }
 
@@ -213,10 +211,15 @@ var NonKeys = map[string]string{
 	"library_answers.external_id":                        "a catalog's id for the answer",
 	"library_streams.external_ref":                       "the media server's stream reference",
 	"notification_delivery_attempts.provider_message_id": "the delivery provider's message id",
+	"inventory_external_ids.external_id":                 "the id in the system its namespace names",
+	"inventory_item_origins.external_item_id":            "the importer's own id for the item",
+	"inventory_source_origins.external_source_id":        "the importer's id for the source, or file",
+	"library_catalog.external_id":                        "a catalog's id for the record",
 	"filler_inference_evaluations.generation_id":         "the model provider's generation id",
 	"filler_structure_window_call_ledger.assessor_id":    "the model that assessed, by name",
 	// Names rows of several tables, so no one key fits.
 	"activity.subject_id":                            "a channel, title or proposal",
+	"contact_addresses.owner_id":                     "a person or an invitation, by owner_kind",
 	"filler_download_failures.source_id":             "a filler source's id, or search:archive, which no row has",
 	"filler_pulls.proposed_by":                       "a person's id or a job's name",
 	"filler_ready_events.enrollment_ref":             "a folder, source or pull, by enrollment_kind",
@@ -224,10 +227,14 @@ var NonKeys = map[string]string{
 	"notification_intents.recipient_id":              "an invitation, a person, approvers or operators",
 	"notification_intents.reference_id":              "a title, channel or proposal, by reference kind",
 	// Not a reference at all.
-	"library_answers.answered_by": "who answered: you or search",
+	"library_answers.answered_by":         "who answered: you or search",
+	"inventory_item_origins.authority_id": "the importer's name, such as scan: and a root path's fingerprint",
+	"user_hidden_ideas.idea_id":           "an idea's stable name; ideas are rebuilt on each read, never stored",
 	// Outlives what it names on purpose, so deleting that must not touch it.
 	"filler_acquisition_artifacts.source_id": "part of the already-downloaded identity, kept after its source is deleted",
 	"viewings.channel_id":                    "watch history outlives the channel",
+	"filler_airings.channel_id":              "airing history outlives the channel, since it rests clips for the household",
+	"filler_curated_offers.source_id":        "kept after its source is deleted, so that source isn't offered again",
 	// Log correlation tags, written from whatever a log line carried, and kept past what they name.
 	"diagnostic_events.actor_id":                "a log tag",
 	"diagnostic_events.channel_id":              "a log tag",
