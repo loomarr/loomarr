@@ -240,6 +240,9 @@ const FileFacts = ({
       {read ? (
         <Line>
           <Action
+            // A title can list several files, so the name says which one; it starts with the
+            // words on the button.
+            accessibilityLabel={`${more ? "Less" : "More"} about this file, ${file.path.split(/[\\/]/).pop()}`}
             aria-expanded={more}
             density={density}
             icon={more ? "showLess" : "showMore"}

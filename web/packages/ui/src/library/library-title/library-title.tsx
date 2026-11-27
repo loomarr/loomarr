@@ -236,8 +236,8 @@ const ExtraCopy = ({
         </Text>
       ) : null}
       <Line>
-        <Action density={density} onPress={remove} tone="primary">
-          Remove extra copy
+        <Action density={density} onPress={remove} variant="outline">
+          {`Remove ${file.path.split(/[\\/]/).pop()}`}
         </Action>
       </Line>
     </Surface>
@@ -292,7 +292,7 @@ const Unplayable = ({
       ) : null}
       <Line>
         <Action density={density} onPress={check} tone="primary">
-          {checked ? "Checked just now" : "Check again"}
+          {checked ? "Checked just now" : "Check files again"}
         </Action>
       </Line>
     </Surface>
@@ -395,11 +395,15 @@ const LibraryTitle = ({ title, onBack, fix }: LibraryTitleProps) => {
       ) : null}
 
       {title.seasons.length > 0 ? (
-        <SeasonEpisodes onEpisodeFiles={fix?.onEpisodeFiles} seasons={title.seasons} />
+        <SeasonEpisodes
+          onEpisodeFiles={fix?.onEpisodeFiles}
+          readAt={fix?.episodeFilesAt}
+          seasons={title.seasons}
+        />
       ) : null}
 
       {/* A member's title carries no files or match to tell. */}
-      {fix ? <TechnicalDetails title={title} /> : null}
+      {fix ? <TechnicalDetails density={density} title={title} /> : null}
     </Stack>
   );
 };

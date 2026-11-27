@@ -4,6 +4,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AppToaster } from "@/components/loomarr/feedback/app-toaster";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
@@ -236,5 +237,43 @@ describe("LibraryTitlePage", () => {
     renderPage();
 
     expect(await screen.findByRole("button", { name: /try again/i })).toBeInTheDocument();
+  });
+
+  // #4476 D3: the removal can be undone from its toast.
+  const removeCopy = async (restore: () => Response) => {
+    const restored = vi.fn();
+    const copy = { ...echo.files[0], path: "/media/movies/Echo/Echo DVD.mkv", extra: true };
+    server.use(
+      getGetLibraryItemMockHandler({ ...echo, files: [...echo.files, copy] }),
+      http.post("*/v1/library/items/:id/remove-copy", () => HttpResponse.json({ undo: "token-1" })),
+      http.post("*/v1/library/items/:id/restore-copy", async ({ request }) => {
+        restored(await request.json());
+        return restore();
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <LibraryTitlePage id="90000003" />
+        <AppToaster />
+      </QueryClientProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Remove Echo DVD.mkv" }));
+    expect(await screen.findByText("Moved Echo DVD.mkv to the trash")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    return restored;
+  };
+
+  it("undoes removing an extra copy with the token the removal answered with", async () => {
+    const restored = await removeCopy(() => new HttpResponse(null, { status: 204 }));
+    expect(await screen.findByText("Put Echo DVD.mkv back")).toBeInTheDocument();
+    expect(restored).toHaveBeenCalledWith({ undo: "token-1" });
+  });
+
+  it.each([410, 409])("says the file is in the trash when undo answers %i", async (status) => {
+    await removeCopy(() => HttpResponse.json({ status, title: "no" }, { status }));
+    expect(
+      await screen.findByText("Couldn't undo. Echo DVD.mkv is in Loomarr's trash for 30 days."),
+    ).toBeInTheDocument();
   });
 });

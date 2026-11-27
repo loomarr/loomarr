@@ -6,6 +6,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { LibraryTitle, LibraryTitleMissing } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -78,6 +79,28 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
     await refresh();
   };
 
+  // The toast is the one place a removal can be undone (#4476 D3); after it, the file waits in the
+  // trash folder.
+  const removeExtra = async (path: string) => {
+    const name = path.split(/[\\/]/).pop() ?? path;
+    const removed = unwrap(await libraryApi.removeLibraryExtraCopy(id, { path }));
+    const kept = `${name} is in Loomarr's trash for 30 days.`;
+    const undo = (token: string) =>
+      act(libraryApi.restoreLibraryExtraCopy(id, { undo: token })).then(
+        () => toast.success(`Put ${name} back`),
+        (error: unknown) => {
+          // 410: the undo has run out. 409: something else has taken the file's place.
+          const refused = error instanceof ApiError && (error.status === 410 || error.status === 409);
+          toast.error(`${refused ? "Couldn't undo." : "Couldn't put it back just now."} ${kept}`);
+        },
+      );
+    toast(`Moved ${name} to the trash`, {
+      duration: 10_000,
+      action: removed ? { label: "Undo", onClick: () => void undo(removed.undo) } : undefined,
+    });
+    await refresh();
+  };
+
   // match, files, detailsFrom and the counts are admin-only, and so is every fix: a member's page
   // offers none, so it calls nothing a member would be refused.
   const { item } = body;
@@ -90,14 +113,16 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
           ? {
               onCheckFiles: () => act(libraryApi.checkLibraryItemFiles(id)),
               // An episode is its own title, so its files come with its own answer.
-              onEpisodeFiles: async (episodeId) =>
-                unwrap(await queryClient.fetchQuery(libraryApi.getGetLibraryItemQueryOptions(episodeId)))
-                  ?.files ?? [],
+              onEpisodeFiles: async (episodeId) => {
+                const options = libraryApi.getGetLibraryItemQueryOptions(episodeId);
+                return unwrap(await queryClient.fetchQuery({ ...options, staleTime: 0 }))?.files ?? [];
+              },
+              episodeFilesAt: detail.dataUpdatedAt,
               onChooseOrder: () => void navigate({ to: "/library/needs" }),
               onForget: () => act(libraryApi.unanswerLibraryItem(id)),
               onLink: (externalId) => act(libraryApi.linkLibraryItem(id, { externalId })),
               onOpenApp: page ? () => window.open(page, "_blank", "noopener,noreferrer") : undefined,
-              onRemoveExtra: (path) => act(libraryApi.removeLibraryExtraCopy(id, { path })),
+              onRemoveExtra: removeExtra,
               onSearch: searchLibraryTitles,
               onUpdateDetails: () => act(libraryApi.updateLibraryItemDetails(id)),
             }
