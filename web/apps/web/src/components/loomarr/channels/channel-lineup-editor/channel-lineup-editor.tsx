@@ -391,7 +391,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
                 channel with many titles otherwise runs the page off. max-height means a short
                 lineup isn't boxed (the scroll only appears when it overflows). dnd-kit
                 auto-scrolls this container during a drag toward its edges. */}
-                <Stack gap="inline" maxHeight={512} overflowY="auto" render="ul">
+                <Stack data-scroll="thin" gap="inline" maxHeight={512} overflowY="auto" render="ul">
                   {shown.map((entry) => (
                     <SortableLineupRow
                       key={entry.key}

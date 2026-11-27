@@ -223,7 +223,15 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
       {/* Same scroll treatment as the slot list above: a tight era filter can refuse dozens,
             and the panel must not run off the page. tabIndex + aria-label keep the region
             keyboard-reachable (WCAG 2.1.1) — the rows are non-focusable text. */}
-      <Stack divided maxHeight={256} overflowY="auto" render="ul" tabIndex={0} aria-label="Titles not airing">
+      <Stack
+        data-scroll="thin"
+        divided
+        maxHeight={256}
+        overflowY="auto"
+        render="ul"
+        tabIndex={0}
+        aria-label="Titles not airing"
+      >
         {items.map((item, i) => (
           <Stack
             // ⚠ The key is NOT `item.key` alone: a per-episode ceiling refusal carries its
@@ -301,6 +309,7 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
         </Stack>
       ) : null}
       <Stack
+        data-scroll="thin"
         divided
         maxHeight={288}
         overflowY="auto"
@@ -489,6 +498,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
             // orphan the <li> children and trip the `listitem` rule); aria-label names the
             // list without changing that role.
             <Stack
+              data-scroll="thin"
               gap="1.5"
               maxHeight={384}
               overflowY="auto"
