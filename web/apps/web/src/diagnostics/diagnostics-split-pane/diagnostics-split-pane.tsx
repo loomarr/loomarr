@@ -137,7 +137,14 @@ const DiagnosticsSplitPane = ({
   };
 
   return (
-    <Grid columns={columns} flex={flex} gap={desktop ? "none" : "3"} minHeight={minHeight}>
+    <Grid
+      columns={columns}
+      gap={desktop ? "none" : "3"}
+      minHeight={minHeight}
+      // A percentage basis, not `flex`: in a column with no definite height it sizes to the content,
+      // where `flex` gives a 0px basis and holds the pane at `minHeight`, clipping the list.
+      {...(flex === undefined ? {} : { flexBasis: "0%", flexGrow: flex, flexShrink: 1 })}
+    >
       <Stack minWidth={0} overflowX="hidden">
         {primary}
       </Stack>

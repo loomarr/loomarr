@@ -9,6 +9,23 @@ describe("DiagnosticsSplitPane", () => {
   beforeEach(() => setWindowWidth(1440));
   afterEach(() => setWindowWidth(0));
 
+  it("sizes a growing pane from its content, so a short column does not clip the list", () => {
+    const { container } = render(
+      <DiagnosticsSplitPane
+        storageKey="test-basis"
+        primary={<p>Evidence list</p>}
+        secondary={<p>Selected evidence</p>}
+        flex={1}
+        minHeight={288}
+      />,
+    );
+
+    const pane = screen.getByText("Evidence list").parentElement?.parentElement as HTMLElement;
+    expect(container).toContainElement(pane);
+    expect(getComputedStyle(pane).flexBasis).toBe("0%");
+    expect(getComputedStyle(pane).flexGrow).toBe("1");
+  });
+
   it("resizes accessibly and remembers the detail width for this session", () => {
     render(
       <DiagnosticsSplitPane
