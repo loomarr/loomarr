@@ -49,7 +49,7 @@ jobs:
     strategy:
       fail-fast: false # one lane's failures must not hide the others'
       matrix:
-        lane: ["1/2", "2/2", "certification-1/3", "certification-2/3", "certification-3/3"]
+        lane: ["1/2", "2/2", "certification-1/5", "certification-2/5", "certification-3/5", "certification-4/5", "certification-5/5"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
