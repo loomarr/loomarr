@@ -58,6 +58,7 @@ func TestBuild_InternalChannelReconcilesWithoutTunarr(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	testkit.SaveLibraryItems(t, st, "lib-marigold")
 	if err := st.UpsertTitle(ctx, provision.Record{
 		Key: key, Title: title, State: provision.Available, LibraryID: "lib-marigold",
 	}); err != nil {
