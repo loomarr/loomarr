@@ -1,7 +1,7 @@
 import { Disclosure } from "@loomarr/design-system";
 import { useState } from "react";
 
-import { FileFacts, lengthPhrase, picturePhrase, Row, soundPhrase } from "../file-facts";
+import { FileFacts, fileName, lengthPhrase, picturePhrase, Row, soundPhrase } from "../file-facts";
 import { Stack } from "../library-poster";
 import type {
   LibraryTitleDetail,
@@ -65,7 +65,16 @@ const TechnicalDetails = ({
         {origin ? <Row label="Where details come from" value={origin} /> : null}
         <Row label="Title match" value={MATCH_WORDS[title.match.by](title.match.app)} />
         {title.files.map((file) => (
-          <FileFacts density={density} file={file} key={file.path} label={fileLabel(file, parts)} />
+          <FileFacts
+            density={density}
+            file={file}
+            key={file.path}
+            label={fileLabel(file, parts)}
+            name={fileName(
+              file.path,
+              title.files.map((f) => f.path),
+            )}
+          />
         ))}
       </Stack>
     </Disclosure>

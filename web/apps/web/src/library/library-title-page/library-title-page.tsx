@@ -12,7 +12,12 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useRefetchAt } from "@/lib/use-refetch-at";
-import { toastNotRestored, toastRemoved, toastRestored } from "@/library/extra-copy-toasts";
+import {
+  toastRemoved,
+  toastRestored,
+  toastRestoreFailed,
+  toastRestoreRefused,
+} from "@/library/extra-copy-toasts";
 import { searchLibraryTitles } from "@/library/use-library-needs";
 import { airingEpisode, airingsChangeAt, airingWhen, dateWords } from "./airing-words";
 
@@ -82,12 +87,14 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
   const removeExtra = async (path: string) => {
     const name = path.split(/[\\/]/).pop() ?? path;
     const removed = unwrap(await libraryApi.removeLibraryExtraCopy(id, { path }));
-    const undo = (token: string) =>
+    const undo = (token: string): Promise<unknown> =>
       act(libraryApi.restoreLibraryExtraCopy(id, { undo: token })).then(
         () => toastRestored(name),
-        // 410: the undo has run out. 409: something else has taken the file's place.
         (error: unknown) =>
-          toastNotRestored(name, error instanceof ApiError && (error.status === 410 || error.status === 409)),
+          // A 4xx refuses for good, and says why. Anything else can be tried again.
+          error instanceof ApiError && error.status >= 400 && error.status < 500
+            ? toastRestoreRefused(error.message, error.problem.detail)
+            : toastRestoreFailed(name, () => void undo(token)),
       );
     toastRemoved(name, removed ? () => void undo(removed.undo) : undefined);
     await refresh();

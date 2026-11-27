@@ -17,7 +17,7 @@ import {
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, screen, waitFor } from "storybook/test";
 import { AppToaster } from "@/components/loomarr/feedback/app-toaster";
-import { toastNotRestored, toastRemoved } from "@/library/extra-copy-toasts";
+import { toastRemoved, toastRestoreRefused } from "@/library/extra-copy-toasts";
 
 // The Library (#2151, design/library variant D): the poster grid in each scan state and a title's
 // page. Stories load no remote images: a title with artwork gets a flat stand-in in its own colour.
@@ -937,7 +937,12 @@ const ExtraCopyRemoved: Story = {
         fix={{
           ...titleFixes,
           onRemoveExtra: async () => {
-            toastRemoved("Paper Kites DVD.mkv", () => toastNotRestored("Paper Kites DVD.mkv", true));
+            toastRemoved("Paper Kites DVD.mkv", () =>
+              toastRestoreRefused(
+                "The file isn't in the trash",
+                "It may have been emptied or moved. Check that its drive is connected.",
+              ),
+            );
           },
         }}
         onBack={() => {}}
@@ -978,7 +983,7 @@ const ExtraCopyUndoRefused: Story = {
   play: async ({ canvas, userEvent }) => {
     await userEvent.click(canvas.getByRole("button", { name: "Remove Paper Kites DVD.mkv" }));
     await userEvent.click(await screen.findByRole("button", { name: "Undo" }));
-    const said = await screen.findByText(/is in Loomarr's trash for 30 days/);
+    const said = await screen.findByText("The file isn't in the trash");
     await waitFor(() => expect(said).toBeVisible());
   },
 };

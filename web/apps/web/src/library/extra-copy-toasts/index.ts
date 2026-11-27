@@ -1,1 +1,1 @@
-export { toastNotRestored, toastRemoved, toastRestored } from "./extra-copy-toasts";
+export { toastRemoved, toastRestored, toastRestoreFailed, toastRestoreRefused } from "./extra-copy-toasts";

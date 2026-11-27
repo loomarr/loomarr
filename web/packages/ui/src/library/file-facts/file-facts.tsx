@@ -101,6 +101,14 @@ const clockPhrase = (ms: number) => {
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 };
 
+// A file by its name, with its folder only when another of `paths` has the same name.
+const fileName = (path: string, paths: readonly string[] = []) => {
+  const parts = path.split(/[\\/]/);
+  const name = parts.pop() ?? path;
+  const shared = paths.some((other) => other !== path && other.split(/[\\/]/).pop() === name);
+  return shared && parts.length > 0 ? `${name} in ${parts.pop()}` : name;
+};
+
 const trackLanguage = (track: LibraryTitleStream) =>
   track.languageName || languageLabel(track.language ?? "");
 
@@ -218,9 +226,12 @@ const FileFacts = ({
   label = "File",
   density,
   defaultMore = false,
+  name = fileName(file.path),
 }: {
   file: LibraryTitleFile;
   label?: string;
+  /** What the More button calls the file. */
+  name?: string;
   density?: "pointer" | "touch";
   defaultMore?: boolean;
 }) => {
@@ -242,7 +253,7 @@ const FileFacts = ({
           <Action
             // A title can list several files, so the name says which one; it starts with the
             // words on the button.
-            accessibilityLabel={`${more ? "Less" : "More"} about this file, ${file.path.split(/[\\/]/).pop()}`}
+            accessibilityLabel={`${more ? "Less" : "More"} about this file, ${name}`}
             aria-expanded={more}
             density={density}
             icon={more ? "showLess" : "showMore"}
@@ -258,4 +269,4 @@ const FileFacts = ({
   );
 };
 
-export { FileFacts, lengthPhrase, picturePhrase, Row, soundPhrase };
+export { FileFacts, fileName, lengthPhrase, picturePhrase, Row, soundPhrase };

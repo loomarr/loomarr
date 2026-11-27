@@ -434,6 +434,35 @@ describe("LibraryTitle", () => {
     view.innerWidth = wide;
   });
 
+  it("adds the folder to a file's name only when two files share it", async () => {
+    const at = (path: string, extra: boolean) => ({ ...READ_FILE, path, extra });
+    const { host, button, cleanup } = render({
+      ...MOVIE,
+      files: [
+        at("/media/Kites/Kites.mkv", false),
+        at("/media/Kites/Extras/Kites.mkv", true),
+        at("/media/Kites/Kites DVD.mkv", true),
+      ],
+    });
+    act(() => button("Technical details").click());
+    expect(
+      Array.from(host.querySelectorAll('[aria-label^="More about this file"]')).map((n) =>
+        n.getAttribute("aria-label"),
+      ),
+    ).toEqual([
+      "More about this file, Kites.mkv in Kites",
+      "More about this file, Kites.mkv in Extras",
+      "More about this file, Kites DVD.mkv",
+    ]);
+    expect(button("Remove Kites.mkv in Extras")).toBeTruthy();
+    expect(button("Remove Kites DVD.mkv")).toBeTruthy();
+    // The card says the way back once the toast's Undo has gone.
+    expect(host.textContent).toContain(
+      "You can undo right after. After that, the file is in the .loomarr-trash folder inside its media folder for 30 days.",
+    );
+    cleanup();
+  });
+
   it("announces an episode's file loading and failing in a region already there", async () => {
     let fail: (reason: Error) => void = () => {};
     const onEpisodeFiles = () =>

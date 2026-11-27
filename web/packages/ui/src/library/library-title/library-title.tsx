@@ -12,6 +12,7 @@ import {
   Text,
 } from "@loomarr/design-system";
 import { type ComponentProps, type ReactNode, type Ref, useRef, useState } from "react";
+import { fileName } from "../file-facts";
 import { Line, PAGE_GUTTER, Stack } from "../library-poster";
 import { PickTitle } from "../pick-title";
 import { SeasonEpisodes } from "../season-episodes";
@@ -203,9 +204,11 @@ const FixMenu = ({
 // page refetches without the file; a press while one is out is dropped.
 const ExtraCopy = ({
   file,
+  name,
   onRemove,
 }: {
   file: LibraryTitleFile;
+  name: string;
   onRemove: (path: string) => Promise<void>;
 }) => {
   const [busy, setBusy] = useState(false);
@@ -227,8 +230,9 @@ const ExtraCopy = ({
     <Surface borderColor="stateWarning" gap="control" padding="section">
       <Text as="h2" textRole="title">{`An extra copy is taking ${formatBytes(file.size)}`}</Text>
       <Text textRole="body" tone="secondary">
-        Loomarr plays the better copy, so this one never plays. Removing it moves it to Loomarr's trash in the
-        same folder, which empties after 30 days.
+        Loomarr plays the better copy, so this one never plays. Removing it moves it to Loomarr's trash. You
+        can undo right after. After that, the file is in the .loomarr-trash folder inside its media folder for
+        30 days.
       </Text>
       {failed ? (
         <Text textRole="body" tone="secondary">
@@ -237,7 +241,7 @@ const ExtraCopy = ({
       ) : null}
       <Line>
         <Action density={density} onPress={remove} variant="outline">
-          {`Remove ${file.path.split(/[\\/]/).pop()}`}
+          {`Remove ${name}`}
         </Action>
       </Line>
     </Surface>
@@ -372,7 +376,17 @@ const LibraryTitle = ({ title, onBack, fix }: LibraryTitleProps) => {
       {fix
         ? title.files
             .filter((file) => file.extra)
-            .map((file) => <ExtraCopy file={file} key={file.path} onRemove={fix.onRemoveExtra} />)
+            .map((file) => (
+              <ExtraCopy
+                file={file}
+                key={file.path}
+                name={fileName(
+                  file.path,
+                  title.files.map((f) => f.path),
+                )}
+                onRemove={fix.onRemoveExtra}
+              />
+            ))
         : null}
 
       {fix?.onChooseOrder && title.seasons.some((s) => s.episodes.some((e) => e.fromFile)) ? (

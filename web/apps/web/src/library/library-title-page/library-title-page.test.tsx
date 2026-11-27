@@ -247,7 +247,7 @@ describe("LibraryTitlePage", () => {
   });
 
   // #4476 D3: the removal can be undone from its toast.
-  const removeCopy = async (restore: () => Response) => {
+  const removeCopy = async (restore: () => Response, press: "once" | "double" = "once") => {
     const restored = vi.fn();
     const copy: LibraryItemFileDTO = {
       path: "/media/movies/Echo/Echo DVD.mkv",
@@ -277,7 +277,8 @@ describe("LibraryTitlePage", () => {
     );
     await userEvent.click(await screen.findByRole("button", { name: "Remove Echo DVD.mkv" }));
     expect(await screen.findByText("Moved Echo DVD.mkv to the trash")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    const undo = screen.getByRole("button", { name: "Undo" });
+    await (press === "double" ? userEvent.dblClick(undo) : userEvent.click(undo));
     return restored;
   };
 
@@ -287,10 +288,67 @@ describe("LibraryTitlePage", () => {
     expect(restored).toHaveBeenCalledWith({ undo: "token-1" });
   });
 
-  it.each([410, 409])("says the file is in the trash when undo answers %i", async (status) => {
-    await removeCopy(() => HttpResponse.json({ status, title: "no" }, { status }));
-    expect(
-      await screen.findByText("Couldn't undo. Echo DVD.mkv is in Loomarr's trash for 30 days."),
-    ).toBeInTheDocument();
+  // A refusal is permanent and says why in the server's words (restore-copy's problems).
+  it.each([
+    [400, "Can't undo this any more", "If you still want the file, it's in the .loomarr-trash folder."],
+    [409, "Something is already there", "Move it away, then put the copy back by hand."],
+    [410, "The file isn't in the trash", "It may have been emptied or moved."],
+  ])("shows the server's words when undo answers %i", async (status, title, detail) => {
+    await removeCopy(() => HttpResponse.json({ status, title, detail }, { status }));
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    expect(screen.getByText(detail)).toBeInTheDocument();
+    // Nothing to try again: the removal's own Undo is gone with its toast.
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument());
+  });
+
+  it("sends one restore for a double press on Undo", async () => {
+    const restored = await removeCopy(() => new HttpResponse(null, { status: 204 }), "double");
+    expect(await screen.findByText("Put Echo DVD.mkv back")).toBeInTheDocument();
+    expect(restored).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["the server fails", () => HttpResponse.json({ status: 500, title: "boom" }, { status: 500 })],
+    ["the network drops", () => HttpResponse.error()],
+  ])("offers Undo again with the same token when %s", async (_what, failure) => {
+    const answers = [failure, () => new HttpResponse(null, { status: 204 })];
+    const restored = await removeCopy(() => (answers.shift() ?? failure)());
+    expect(await screen.findByText("Couldn't put Echo DVD.mkv back")).toBeInTheDocument();
+    expect(screen.getByText("Try again in a moment.")).toBeInTheDocument();
+    // The first toast's button leaves with it; the one that stays is the retry.
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(1));
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("Put Echo DVD.mkv back")).toBeInTheDocument();
+    expect(restored.mock.calls).toEqual([[{ undo: "token-1" }], [{ undo: "token-1" }]]);
+  });
+
+  it("reads an open episode's file again after the title is read again", async () => {
+    const episodeRead = vi.fn();
+    const series = {
+      ...echo,
+      item: { ...echo.item, kind: "series" as const },
+      files: [],
+      seasons: [{ number: 1, episodes: [{ id: "90000004", name: "Pilot", number: 1, ready: true }] }],
+    };
+    server.use(
+      http.get("*/v1/library/items/:id", ({ params }) => {
+        if (params.id !== "90000004") return HttpResponse.json(series);
+        episodeRead();
+        return HttpResponse.json({ ...echo, seasons: [] });
+      }),
+      http.post("*/v1/library/items/:id/check", () => new HttpResponse(null, { status: 204 })),
+    );
+    // A cache that would otherwise hand the same answer back.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 } } });
+    render(
+      <QueryClientProvider client={client}>
+        <LibraryTitlePage id="90000003" />
+      </QueryClientProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /1\. Pilot/ }));
+    await waitFor(() => expect(episodeRead).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole("button", { name: "Fix" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Check files again" }));
+    await waitFor(() => expect(episodeRead).toHaveBeenCalledTimes(2));
   });
 });
