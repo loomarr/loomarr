@@ -215,6 +215,7 @@ const useTitleFixes = (fix: LibraryTitleFix | undefined) => {
     update: () => fix && run("update", fix.onUpdateDetails),
     check: () => fix && run("check", fix.onCheckFiles),
     toggleWrong: () => setWrong(!wrong),
+    closeWrong: () => setWrong(false),
   };
 };
 
@@ -241,8 +242,12 @@ const FixMenu = ({ fixes }: { fixes: ReturnType<typeof useTitleFixes> }) => {
           <MenuAction density={density} icon={menuIcon(icons.folder)} onSelect={fixes.check}>
             Check files again
           </MenuAction>
-          <MenuAction density={density} icon={menuIcon(icons.swap)} onSelect={fixes.toggleWrong}>
-            Wrong title?
+          <MenuAction
+            density={density}
+            icon={menuIcon(fixes.wrong ? icons.selected : icons.swap)}
+            onSelect={fixes.toggleWrong}
+          >
+            {fixes.wrong ? "Wrong title? (open)" : "Wrong title?"}
           </MenuAction>
         </MenuContent>
       </Menu>
@@ -386,12 +391,22 @@ const LibraryTitle = ({ title, onBack, fix }: LibraryTitleProps) => {
             {technical}
           </Text>
         ) : null}
-        {fixes.said ? (
+        {/* Mounted before it has anything to say: a live region added with its words is often missed. */}
+        {fix ? (
           <Text aria-live="polite" textRole="body" tone="secondary">
             {fixes.said}
           </Text>
         ) : null}
-        {fix && fixes.wrong ? <WrongTitle title={title} {...fix} /> : null}
+        {fix && fixes.wrong ? (
+          <Stack gap="inline">
+            <WrongTitle title={title} {...fix} />
+            <Line>
+              <Action density={density} icon="close" onPress={fixes.closeWrong} variant="ghost">
+                Close
+              </Action>
+            </Line>
+          </Stack>
+        ) : null}
       </Stack>
 
       {title.overview ? <Text textRole="body">{title.overview}</Text> : null}

@@ -1,6 +1,6 @@
 import { getGetLibraryItemMockHandler, getMeMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -110,8 +110,8 @@ describe("LibraryTitlePage", () => {
         nextAirings: [
           {
             channel,
-            start: "2020-01-01T00:00:00Z",
-            end: "2020-01-01T01:00:00Z",
+            start: new Date(Date.now() - 60_000).toISOString(),
+            end: new Date(Date.now() + 3_600_000).toISOString(),
             forecast: true,
             episode: { id: "90000011", season: 1, number: 3, name: "Dead Line" },
           },
@@ -127,6 +127,40 @@ describe("LibraryTitlePage", () => {
     expect(region).toHaveTextContent("Expected time, it can still change");
     expect(region).toHaveTextContent("Late Show");
     expect(region).toHaveTextContent("Nothing scheduled soon");
+  });
+
+  it("drops an airing that has ended", async () => {
+    const channel = { id: "90000971", name: "Quiet Hours", number: 21 };
+    server.use(
+      getGetLibraryItemMockHandler({
+        ...echo,
+        channels: [channel],
+        nextAirings: [
+          { channel, start: "2020-01-01T00:00:00Z", end: "2020-01-01T01:00:00Z", forecast: false },
+        ],
+      }),
+    );
+    renderPage();
+
+    const region = await screen.findByRole("region", { name: "On these channels" });
+    expect(region).not.toHaveTextContent("On now");
+    expect(region).toHaveTextContent("Nothing scheduled soon");
+  });
+
+  it("follows the clock: an airing turns to On now when it starts", async () => {
+    const channel = { id: "90000971", name: "Quiet Hours", number: 21 };
+    const airing = {
+      channel,
+      start: new Date(Date.now() + 700).toISOString(),
+      end: new Date(Date.now() + 3_600_000).toISOString(),
+      forecast: false,
+    };
+    server.use(getGetLibraryItemMockHandler({ ...echo, channels: [channel], nextAirings: [airing] }));
+    renderPage();
+
+    const region = await screen.findByRole("region", { name: "On these channels" });
+    expect(region).toHaveTextContent("Next ");
+    await waitFor(() => expect(region).toHaveTextContent("On now"), { timeout: 4000 });
   });
 
   it("says when the title is on no channel", async () => {

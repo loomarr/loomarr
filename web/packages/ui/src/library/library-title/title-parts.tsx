@@ -113,12 +113,17 @@ const Hero = ({ title, actions }: { title: LibraryTitleDetail; actions: ReactNod
               <Text textRole="compact">{title.rating}</Text>
             </Surface>
           ) : null}
+          {/* A dot sets each fact apart from the one before it. */}
           {title.genres.length > 0 ? (
             <Text textRole="compact" tone="muted">
-              {title.genres.join(", ")}
+              {`${heroFacts(title).length > 0 || title.rating ? "· " : ""}${title.genres.join(", ")}`}
             </Text>
           ) : null}
-          {title.score ? <Text textRole="body">{`Score ${title.score.toFixed(1)}/10`}</Text> : null}
+          {title.score ? (
+            <Text textRole="body">
+              {`${heroFacts(title).length > 0 || title.rating || title.genres.length > 0 ? "· " : ""}Score ${title.score.toFixed(1)}/10`}
+            </Text>
+          ) : null}
         </Line>
         {title.tagline ? (
           <Text style={{ fontStyle: "italic" }} textRole="body">

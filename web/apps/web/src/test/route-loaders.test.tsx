@@ -52,6 +52,48 @@ const renderAt = (path: string) => {
   return queryClient;
 };
 
+// A title's page (#4476): its loader lets a 404 through to the page's own words, and fails the route
+// on anything else.
+describe("the Library title route", () => {
+  const open = (respond: () => Response) => {
+    server.use(
+      ...appHandlers(),
+      getMeMockHandler(me({ role: "member" })),
+      http.get("*/v1/library/items/:id", respond),
+    );
+    renderAt("/library/90000003");
+  };
+  const problem = (status: number) => () =>
+    HttpResponse.json(
+      { title: "Failed", status },
+      { status, headers: { "Content-Type": "application/problem+json" } },
+    );
+
+  it("says a title that answers 404 isn't in the library", async () => {
+    open(problem(404));
+
+    expect(
+      await screen.findByRole("heading", { name: "This title isn't in the library yet" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /try again/i })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["a 500", problem(500)],
+    ["a request that never answers", () => HttpResponse.error()],
+  ])("offers a retry after %s", async (_, respond) => {
+    const asked = vi.fn(respond);
+    open(asked);
+
+    expect(await screen.findByRole("button", { name: /try again/i })).toBeInTheDocument();
+    // The failure ends the route's load: no page mounts under it to ask a second time.
+    expect(asked).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole("heading", { name: "This title isn't in the library yet" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 const job: JobView = {
   name: "reconcile",
   group: "acquisitions",

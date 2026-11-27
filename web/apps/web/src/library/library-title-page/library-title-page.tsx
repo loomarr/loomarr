@@ -11,8 +11,9 @@ import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { useRefetchAt } from "@/lib/use-refetch-at";
 import { searchLibraryTitles } from "@/library/use-library-needs";
-import { airingEpisode, airingWhen } from "./airing-words";
+import { airingEpisode, airingsChangeAt, airingWhen, dateWords } from "./airing-words";
 
 // A TITLE'S PAGE (#2151 decisions 25–26): one movie or series from the Library. Back returns to
 // the grid as it was left (its filter and search are in the URL), or to the Library when the
@@ -33,10 +34,6 @@ const SOURCE_NAMES: Record<LibraryDetailsFromDTODescription, string> = {
 };
 const sourceName = (source?: LibraryDetailsFromDTODescription) => (source ? SOURCE_NAMES[source] : undefined);
 
-// "14 March 1979", read as the calendar date it names rather than a moment in the viewer's zone.
-const dateWords = (date: string) =>
-  new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", dateStyle: "long" }).format(Date.parse(date));
-
 const LibraryTitlePage = ({ id }: { id: string }) => {
   const timeZone = useHouseholdTimeZone();
   const navigate = useNavigate();
@@ -46,6 +43,13 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
   const detail = libraryApi.useGetLibraryItem(id);
   const body = unwrap(detail.data);
   useDocumentTitle(body?.item.name ?? "Library");
+  // An airing starts and ends with nothing sent, so the title is read again at that moment: the
+  // words follow the clock, and an ended airing gives way to the channel's next one.
+  useRefetchAt({
+    deadline: airingsChangeAt(body?.nextAirings ?? []),
+    answeredAt: detail.dataUpdatedAt,
+    refetch: detail.refetch,
+  });
 
   const back = () => {
     if (router.history.canGoBack()) router.history.back();
@@ -109,12 +113,11 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
         tagline: body.tagline,
         score: body.score,
         credits: body.credits,
-        airings: body.nextAirings.map((a) => ({
-          channel: a.channel,
-          when: airingWhen(a.start, timeZone),
-          forecast: a.forecast,
-          episode: a.episode ? airingEpisode(a.episode) : undefined,
-        })),
+        airings: body.nextAirings.flatMap((a) => {
+          const when = airingWhen(a, timeZone);
+          const episode = a.episode ? airingEpisode(a.episode) : undefined;
+          return when ? [{ channel: a.channel, when, forecast: a.forecast, episode }] : [];
+        }),
         playing: body.playing,
         about: [
           { label: "Studio", value: body.studios.join(", ") },

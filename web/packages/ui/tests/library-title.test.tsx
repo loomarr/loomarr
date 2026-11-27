@@ -324,6 +324,33 @@ describe("LibraryTitle", () => {
     cleanup();
   });
 
+  it("sets a dot between each of the facts", () => {
+    const { host, cleanup } = render({ ...MOVIE, score: 7.4 });
+    expect(host.textContent).toContain("1996 · 1 h 38 minR· Crime, Thriller· Score 7.4/10");
+    cleanup();
+  });
+
+  it("has its live region in place before a fix says anything", async () => {
+    const { host, fixItem, cleanup } = render(MOVIE, { onCheckFiles: () => new Promise<void>(() => {}) });
+    const live = host.querySelectorAll('[aria-live="polite"]');
+    expect(live.length).toBe(1);
+    const region = live[0];
+    expect(region?.textContent).toBe("");
+    await fixItem("Check files again");
+    expect(region?.textContent).toBe("Checking…");
+    cleanup();
+  });
+
+  it("shows Wrong title? as open in the menu, and closes it", async () => {
+    const { host, button, fixItem, openFix, menuItems, cleanup } = render(MOVIE);
+    await fixItem("Wrong title?");
+    await openFix();
+    expect(menuItems().map((n) => n.textContent?.trim())).toContain("Wrong title? (open)");
+    await act(async () => button("Close").click());
+    expect(host.textContent).not.toContain("Radarr decides what this is");
+    cleanup();
+  });
+
   it("holds the Fix menu's items to the touch target on a phone", async () => {
     const view = globalThis as unknown as { innerWidth: number };
     const wide = view.innerWidth;
