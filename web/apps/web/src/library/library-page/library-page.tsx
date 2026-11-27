@@ -14,7 +14,7 @@ import {
   type LibrarySort,
 } from "@loomarr/ui";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
@@ -153,7 +153,6 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
   const { isAdmin, isLoading: authLoading } = useAuth();
   const [typed, setTyped] = useState(search);
   const settled = useSettled(typed.trim());
-  const needs = useLibraryNeeds(isAdmin && view === "needs");
   const collections = useLibraryCollections(view === "collections");
   const titlesView = view === "titles";
   const counts = useTabCounts(view !== "needs");
@@ -165,6 +164,10 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
   useLibraryScanFrames();
   const status = libraryApi.useLibraryStatus({ query: { enabled: isAdmin } });
   const current = isAdmin ? unwrap(status.data) : undefined;
+  // Needs you's cards, and on the wall the titles nothing in the catalogue matches: the list of
+  // titles doesn't flag them, so an admin's wall reads them from here while any are waiting.
+  const needs = useLibraryNeeds(isAdmin && (view === "needs" || (titlesView && Boolean(current?.needsYou))));
+  const unidentified = useMemo(() => new Set(needs.needs.map((need) => need.id)), [needs.needs]);
   // The offline folders' names come from the folder list; it's only asked for while one is offline.
   const roots = libraryApi.useListLibraryRoots({
     query: { enabled: isAdmin && current?.health === LibraryStatusOutputBodyHealth.folder_offline },
@@ -193,8 +196,11 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
   // The tab's genres, each with its titles; a member reads them too.
   const genreList = libraryApi.useListLibraryGenres({ kind }, { query: { enabled: titlesView } });
   const titles = useMemo(
-    () => items.data?.pages.flatMap((page) => page.items.map(titleOf)) ?? [],
-    [items.data],
+    () =>
+      items.data?.pages.flatMap((page) =>
+        page.items.map((item) => ({ ...titleOf(item), unidentified: unidentified.has(item.id) })),
+      ) ?? [],
+    [items.data, unidentified],
   );
   // The page's content is the admin's status line and whatever the view shows under it.
   const viewReady = titlesView
@@ -318,6 +324,7 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
         onGenreChange={(next) => showWall({ kind, sort: recent, genre: next })}
         onJump={(letter) => onJump(letter, items.errorUpdatedAt)}
         onOpenTitle={openTitle}
+        titleLink={(id) => <Link params={{ id }} to="/library/$id" />}
         onSearchChange={setTyped}
         onSortChange={(next) => showWall({ kind, sort: next === "recent" ? next : undefined, genre })}
         search={typed}

@@ -13,7 +13,14 @@ import {
   useReducedMotionPreference,
   useWindowWidth,
 } from "@loomarr/design-system";
-import { type ComponentProps, type ReactNode, useCallback, useState } from "react";
+import {
+  type ComponentProps,
+  cloneElement,
+  type ReactElement,
+  type ReactNode,
+  useCallback,
+  useState,
+} from "react";
 import { Pressable, View } from "react-native";
 
 import { StatePanel } from "../../state-panel";
@@ -44,13 +51,23 @@ const count = (n: number) => n.toLocaleString("en-US");
 const titlesWord = (n: number) => (n === 1 ? "1 title" : `${count(n)} titles`);
 
 // "6 need you · Review": the count and the way to Needs you's own page, which has no Review.
-const NeedsYouLine = ({ needsYou, onOpenNeeds }: { needsYou: number; onOpenNeeds?: () => void }) => (
-  <Line flexWrap="nowrap">
-    <StatusDot label="Needs you" tone="warn" />
-    <Text textRole="label">{needsYou === 1 ? "1 needs you" : `${count(needsYou)} need you`}</Text>
-    {onOpenNeeds ? <TextLink onPress={onOpenNeeds}>Review</TextLink> : null}
-  </Line>
-);
+const NeedsYouLine = ({ needsYou, onOpenNeeds }: { needsYou: number; onOpenNeeds?: () => void }) => {
+  const wide = useWindowWidth() >= 768;
+  return (
+    <Line flexWrap="nowrap">
+      <StatusDot label="Needs you" tone="warn" />
+      <Text textRole="label">{needsYou === 1 ? "1 needs you" : `${count(needsYou)} need you`}</Text>
+      {/* On a phone a line of text is too small to tap, so Review takes a touch target. */}
+      {!onOpenNeeds ? null : wide ? (
+        <TextLink onPress={onOpenNeeds}>Review</TextLink>
+      ) : (
+        <Action density="touch" onPress={onOpenNeeds} variant="ghost">
+          Review
+        </Action>
+      )}
+    </Line>
+  );
+};
 
 // The one line under the heading: what's going on, the one action it needs, and Needs you.
 const StatusLine = ({
@@ -224,7 +241,7 @@ const NoMatch = ({
 };
 
 const subtitle = (title: LibraryShelfTitle) => {
-  const kind = title.kind === "series" ? "Show" : "Movie";
+  const kind = title.unidentified ? "Not identified yet" : title.kind === "series" ? "Show" : "Movie";
   return title.year ? `${title.year} · ${kind}` : kind;
 };
 
@@ -234,7 +251,39 @@ const subtitle = (title: LibraryShelfTitle) => {
 const HOVER_SCALE = 1.04;
 const HOVER_MS = 200;
 
-const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void }) => {
+// The link the card is drawn on keeps its own semantics and navigation; it only takes the card's
+// layout, focus and hover. The focus look is the card's amber border, so the browser's own outline
+// stays off.
+const linkCard = (
+  link: ReactElement<Record<string, unknown>>,
+  handlers: Record<"onBlur" | "onFocus" | "onMouseEnter" | "onMouseLeave", () => void>,
+  children: ReactNode,
+) =>
+  cloneElement(
+    link,
+    {
+      ...handlers,
+      style: {
+        color: "inherit",
+        display: "block",
+        minWidth: 0,
+        outline: "none",
+        textDecoration: "none",
+        width: "100%",
+      },
+    },
+    children,
+  );
+
+const Tile = ({
+  title,
+  onOpen,
+  link,
+}: {
+  title: LibraryShelfTitle;
+  onOpen: () => void;
+  link?: ReactElement<Record<string, unknown>>;
+}) => {
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
   const reduced = useReducedMotionPreference();
@@ -247,10 +296,62 @@ const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void 
           transitionTimingFunction: "ease-out",
         }
       : {};
+  // ⚠ The card is named by what it shows (the dot, the title, its year and kind or Getting
+  // ready), not a label of its own: a label that leaves out visible words fails WCAG 2.5.3, and
+  // voice control users say what they see.
+  const card = (
+    <Stack gap="inline">
+      <View style={grow as object}>
+        <Surface
+          backgroundColor="transparent"
+          borderColor={focused ? "actionFocus" : "transparent"}
+          borderRadius="control"
+          borderWidth={2}
+        >
+          {/* A title getting ready is dimmed, and its caption says so: a word on the poster
+              doesn't fit a three-across phone grid. */}
+          <LibraryPoster art={title.poster} dim={!title.ready} name={title.name}>
+            {title.ready && (title.attention || title.unidentified) ? (
+              // A dot, not a badge, for the same reason.
+              <Surface
+                backgroundColor="surfaceCanvas"
+                borderRadius="round"
+                borderWidth={0}
+                padding={6}
+                position="absolute"
+                right={8}
+                top={8}
+              >
+                <StatusDot label="Needs a look" tone="warn" />
+              </Surface>
+            ) : null}
+          </LibraryPoster>
+        </Surface>
+      </View>
+      <Stack flexShrink={1} gap={2} minHeight={56} minWidth={0}>
+        {/* Left-aligned: a button card centres its text. */}
+        <Text numberOfLines={2} textAlign="left" textRole="label">
+          {title.name}
+        </Text>
+        <Text textAlign="left" textRole="compact" tone="secondary">
+          {title.ready ? subtitle(title) : "Getting ready"}
+        </Text>
+      </Stack>
+    </Stack>
+  );
+  if (link) {
+    return linkCard(
+      link,
+      {
+        onBlur: () => setFocused(false),
+        onFocus: () => setFocused(true),
+        onMouseEnter: () => setHovered(true),
+        onMouseLeave: () => setHovered(false),
+      },
+      card,
+    );
+  }
   return (
-    // ⚠ Named by what it shows (the dot, the title, its year and kind or Getting ready), not a
-    // label of its own: a label that leaves out visible words fails WCAG 2.5.3, and voice control
-    // users say what they see.
     <Pressable
       accessibilityRole="button"
       onBlur={() => setFocused(false)}
@@ -258,46 +359,9 @@ const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void 
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       onPress={onOpen}
-      style={{ minWidth: 0, width: "100%" }}
+      style={{ minWidth: 0, outlineStyle: "none" as never, outlineWidth: 0, width: "100%" }}
     >
-      <Stack gap="inline">
-        <View style={grow as object}>
-          <Surface
-            backgroundColor="transparent"
-            borderColor={focused ? "actionFocus" : "transparent"}
-            borderRadius="control"
-            borderWidth={2}
-          >
-            {/* A title getting ready is dimmed, and its caption says so: a word on the poster
-                doesn't fit a three-across phone grid. */}
-            <LibraryPoster art={title.poster} dim={!title.ready} name={title.name}>
-              {title.ready && title.attention ? (
-                // A dot, not a badge, for the same reason.
-                <Surface
-                  backgroundColor="surfaceCanvas"
-                  borderRadius="round"
-                  borderWidth={0}
-                  padding={6}
-                  position="absolute"
-                  right={8}
-                  top={8}
-                >
-                  <StatusDot label="Needs a look" tone="warn" />
-                </Surface>
-              ) : null}
-            </LibraryPoster>
-          </Surface>
-        </View>
-        <Stack flexShrink={1} gap={2} minHeight={56} minWidth={0}>
-          {/* Left-aligned: on the web the tile is a <button>, which centres its text. */}
-          <Text numberOfLines={2} textAlign="left" textRole="label">
-            {title.name}
-          </Text>
-          <Text textAlign="left" textRole="compact" tone="secondary">
-            {title.ready ? subtitle(title) : "Getting ready"}
-          </Text>
-        </Stack>
-      </Stack>
+      {card}
     </Pressable>
   );
 };
@@ -344,6 +408,7 @@ const letterAt = (
 const Grid = ({
   titles,
   onOpenTitle,
+  titleLink,
   onEndReached,
   letters,
   onJump,
@@ -351,7 +416,7 @@ const Grid = ({
   jumpingTo,
 }: Pick<
   LibraryShelfProps,
-  "titles" | "onOpenTitle" | "onEndReached" | "letters" | "onJump" | "jump" | "jumpingTo"
+  "titles" | "onOpenTitle" | "titleLink" | "onEndReached" | "letters" | "onJump" | "jump" | "jumpingTo"
 >) => {
   const width = useWindowWidth();
   const columns = columnsFor(width);
@@ -370,7 +435,7 @@ const Grid = ({
         <Row columns={columns}>
           {row.map((title) => (
             <Stack flexBasis={0} flexGrow={1} flexShrink={1} key={title.id} minWidth={0} role="listitem">
-              <Tile onOpen={() => onOpenTitle(title.id)} title={title} />
+              <Tile link={titleLink?.(title.id)} onOpen={() => onOpenTitle(title.id)} title={title} />
             </Stack>
           ))}
         </Row>
@@ -492,9 +557,12 @@ const Controls = ({
   | "onSearchChange"
 > & { showSearch: boolean }) => {
   const wide = useWindowWidth() >= 768;
+  // On a phone the controls are tapped, so they take the design system's touch targets.
+  const density = wide ? "pointer" : "touch";
   const tabs = (
     <Tabs
       appearance="underline"
+      density={density}
       label="What to show"
       onValueChange={onFilterChange}
       options={filterOptions(counts, wide)}
@@ -505,6 +573,7 @@ const Controls = ({
   const searchField = (
     <Field
       accessibilityLabel="Search titles"
+      density={density}
       onChangeText={onSearchChange}
       placeholder="Search titles, years, genres"
       value={search}
@@ -512,6 +581,7 @@ const Controls = ({
   );
   const order = (
     <CompactSelect
+      density={density}
       label="Order"
       onValueChange={onSortChange}
       options={SORTS}
@@ -523,6 +593,7 @@ const Controls = ({
   const chosen = listed?.name ?? genre;
   const genreSelect = (
     <CompactSelect
+      density={density}
       label="Genre"
       onValueChange={(next) => onGenreChange(next === ALL_GENRES ? undefined : next)}
       options={genreOptions(genres ?? [], chosen)}
@@ -589,6 +660,7 @@ const LibraryShelf = ({
   titles,
   loading,
   onOpenTitle,
+  titleLink,
   onEndReached,
   needs,
   showTitles: showGrid = true,
@@ -678,6 +750,7 @@ const LibraryShelf = ({
               onEndReached={onEndReached}
               onJump={onJump}
               onOpenTitle={onOpenTitle}
+              titleLink={titleLink}
               titles={titles}
             />
           )}

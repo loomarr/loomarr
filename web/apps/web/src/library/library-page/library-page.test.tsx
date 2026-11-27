@@ -8,9 +8,10 @@ import {
   getMeMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LoomarrEventsProvider } from "@/events/events-provider";
 import { FakeEventSource } from "@/test/fake-event-source";
@@ -21,7 +22,13 @@ import { render } from "@/test/render";
 import { LibraryPage } from "./library-page";
 
 const mocks = vi.hoisted(() => ({ navigate: vi.fn(), width: 1440 }));
-vi.mock("@tanstack/react-router", () => ({ useNavigate: () => mocks.navigate }));
+// The cards' links are the real router's in library-page-links.test.tsx; here a card only has to draw.
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => mocks.navigate,
+  Link: ({ params, to, ...rest }: { params: { id: string }; to: string; children?: ReactNode }) => (
+    <a {...rest} href={to.replace("$id", params.id)} />
+  ),
+}));
 // A desktop window, where the wall draws its letter rail.
 vi.mock("react-native", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-native")>();
@@ -74,7 +81,25 @@ describe("LibraryPage", () => {
   // The tabs' counts ask for one title of each kind; the grid's pages ask for many.
   const isCount = (url: URL) => url.searchParams.get("limit") === "1";
 
-  it("lists the titles the server found and opens one", async () => {
+  it("marks the titles Needs you holds on an admin's wall instead of calling them a Movie", async () => {
+    server.use(
+      getLibraryStatusMockHandler({ ...libraryStatus(), needsYou: 1 }),
+      getListLibraryItemsMockHandler({ items: [alpha], total: 1 }),
+      getListLibraryNeedsMockHandler({
+        needs: [{ item: alpha, searched: true, candidates: [], files: [] }],
+        orders: [],
+        problems: [],
+      }),
+    );
+    renderPage();
+
+    const card = await screen.findByRole("link", { name: /Alpha/ });
+    await waitFor(() => expect(card).toHaveTextContent("2001 · Not identified yet"));
+    expect(card).not.toHaveTextContent("Movie");
+    expect(within(card).getByRole("img", { name: "Needs a look" })).toBeInTheDocument();
+  });
+
+  it("lists the titles the server found, each linking to its page", async () => {
     server.use(
       getLibraryStatusMockHandler(libraryStatus()),
       getListLibraryItemsMockHandler({ items: [alpha, bravo], total: 2 }),
@@ -83,9 +108,8 @@ describe("LibraryPage", () => {
 
     // A title whose files aren't read yet says so under its name, which is what its tile shows.
     // jsdom lays nothing out, so the tile's lines join without spaces in the computed name.
-    expect(await screen.findByRole("button", { name: /^Bravo\s*Getting ready$/ })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /^Alpha/ }));
-    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library/$id", params: { id: "90000001" } });
+    expect(await screen.findByRole("link", { name: /^Bravo\s*Getting ready$/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^Alpha/ })).toHaveAttribute("href", "/library/90000001");
   });
 
   it("fills the grid and moves the status from the event stream, polling nothing", async () => {
@@ -106,7 +130,7 @@ describe("LibraryPage", () => {
         </LoomarrEventsProvider>
       </QueryClientProvider>,
     );
-    expect(await screen.findByRole("button", { name: /^Alpha/ })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /^Alpha/ })).toBeInTheDocument();
     const stream = FakeEventSource.instances.at(-1);
     if (!stream) throw new Error("no event stream");
 
@@ -131,7 +155,7 @@ describe("LibraryPage", () => {
     // A titles frame refetches the grid, and the new title shows up.
     items = [alpha, bravo];
     act(() => stream.emit("library_titles", {}));
-    expect(await screen.findByRole("button", { name: /^Bravo\s*Getting ready$/ })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /^Bravo\s*Getting ready$/ })).toBeInTheDocument();
   });
 
   it("loads the next page when the grid reaches its last rows, and stops at the total", async () => {
@@ -155,7 +179,7 @@ describe("LibraryPage", () => {
     renderPage();
 
     // A first page short enough to show its last rows asks for the next one, and no more.
-    expect(await screen.findByRole("button", { name: /^T17/ })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /^T17/ })).toBeInTheDocument();
     expect(offsets).toEqual(["0", "12"]);
   });
 
@@ -294,8 +318,10 @@ describe("LibraryPage", () => {
     );
     try {
       const wall = renderPage();
-      await userEvent.click(await screen.findByRole("button", { name: /^Alpha/ }));
-      expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library/$id", params: { id: "90000001" } });
+      expect(await screen.findByRole("link", { name: /^Alpha/ })).toHaveAttribute(
+        "href",
+        "/library/90000001",
+      );
       expect(screen.queryByText(/need you/)).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Library settings" })).not.toBeInTheDocument();
       wall.unmount();
@@ -584,7 +610,7 @@ describe("LibraryPage", () => {
     );
     renderPage({ filter: "all", search: "", sort: "recent" });
 
-    expect(await screen.findByRole("button", { name: /^Alpha/ })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /^Alpha/ })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Jump to a letter" })).not.toBeInTheDocument();
   });
 });

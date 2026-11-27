@@ -172,6 +172,74 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
+  it("says a title nothing matches isn't identified yet, with the needs-a-look mark", () => {
+    const { tile, cleanup } = render({
+      titles: [
+        { id: "90000804", kind: "movie", name: "Clip 12", year: 2019, ready: true, unidentified: true },
+      ],
+    });
+    const card = tile("Clip 12");
+    expect(card.textContent).toContain("2019 · Not identified yet");
+    expect(card.textContent).not.toContain("Movie");
+    expect(card.querySelector('[aria-label="Needs a look"]')).not.toBeNull();
+    cleanup();
+  });
+
+  it("draws a card on the caller's link, ringed in amber on focus in place of the browser's ring", () => {
+    const onClick = vi.fn((event: { preventDefault(): void }) => event.preventDefault());
+    const { host, props, cleanup } = render({
+      // The card replaces the link's own children.
+      titleLink: (id) => (
+        <a href={`/library/${id}`} onClick={onClick}>
+          the card's own text
+        </a>
+      ),
+    });
+    const card = host.querySelector('a[href="/library/90000801"]') as El & {
+      focus(): void;
+      style: { outline: string };
+      querySelectorAll(s: string): ArrayLike<{ classList: { contains(name: string): boolean } }>;
+    };
+    // The ring is drawn in the actionFocus colour. Tamagui hashes each atomic class, so find the
+    // rules that carry that colour and count the card's elements wearing one of their classes.
+    const sheets = globalThis as unknown as {
+      document: { styleSheets: Iterable<{ cssRules: Iterable<{ cssText: string }> }> };
+    };
+    const ringed = () => {
+      const css = [...sheets.document.styleSheets]
+        .flatMap((sheet) => [...sheet.cssRules].map((rule) => rule.cssText))
+        .join("\n");
+      const names = [...css.matchAll(/\.(_[\w-]+)[^{}]*\{[^}]*var\(--actionFocus\)[^}]*\}/g)].map(
+        (match) => match[1] ?? "",
+      );
+      return Array.from(card.querySelectorAll("[class]")).filter((el) =>
+        names.some((name) => el.classList.contains(name)),
+      ).length;
+    };
+    expect(card.textContent).toContain("Harbour Lights");
+    expect(card.style.outline).toBe("none");
+    expect(ringed()).toBe(0);
+    act(() => card.focus());
+    expect(ringed()).toBeGreaterThan(0);
+    // The link's own click is what navigates.
+    act(() => card.click());
+    expect(onClick).toHaveBeenCalledOnce();
+    expect(props.onOpenTitle).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("gives a phone's search, order, genre and Review touch targets", () => {
+    screen.width = 390;
+    const { host, button, cleanup } = render({ admin: admin({ needsYou: 2 }), genres: [] });
+    const minHeight = (selector: string) =>
+      (host.querySelector(selector) as unknown as { style: { minHeight: string } }).style.minHeight;
+    expect(minHeight("input")).toBe("48px");
+    expect(minHeight("select")).toBe("48px");
+    expect(button("Review").getAttribute("href")).toBeNull();
+    screen.width = 1440;
+    cleanup();
+  });
+
   it("says how many titles need you on the status line, and Review opens Needs you", () => {
     const status = admin({ needsYou: 6 });
     const { host, button, cleanup } = render({ admin: status });

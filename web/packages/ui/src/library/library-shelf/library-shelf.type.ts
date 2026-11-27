@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import type {
   LibraryDetails,
   LibraryHealth,
@@ -27,6 +27,11 @@ interface LibraryShelfTitle {
   poster?: ReactNode;
   /** It needs a look: a file can't be played, or an extra copy takes space. */
   attention?: boolean;
+  /**
+   * Nothing in the catalogue matches it, so it waits in Needs you. It carries the needs-a-look
+   * mark and says so in place of Movie or Show, whose kind is only a guess.
+   */
+  unidentified?: boolean;
 }
 
 /** A genre of the tab's titles, with how many carry it. */
@@ -104,6 +109,12 @@ interface LibraryShelfProps {
   /** The first page hasn't arrived: the grid draws placeholders. */
   loading: boolean;
   onOpenTitle: (id: string) => void;
+  /**
+   * Web: the link a title's card is drawn on (the router's `Link`), so it opens in a new tab or
+   * by middle click; the link navigates itself and `onOpenTitle` isn't called. Without it the card
+   * is a button.
+   */
+  titleLink?: (id: string) => ReactElement<Record<string, unknown>>;
   /** The grid's last rows are on screen: load the next page, if there is one. */
   onEndReached?: () => void;
   /** Needs you's own screen draws its cards here, in place of the grid. */
