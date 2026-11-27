@@ -76,6 +76,32 @@ const Facts = ({ facts }: { facts: readonly (ReactNode | false)[] }) => (
 // The backdrop with the title over its foot. The fade to the page keeps the title readable over any
 // picture; with no backdrop the placeholder surface stands in. `actions` sit over its top, each on
 // its own solid surface.
+// The separator's column, which sits left of its fact.
+const DOT = 20;
+
+// Facts with a dot BETWEEN them, however the line wraps: each fact carries its dot on its left,
+// and the row is pulled one dot-width outward and clipped, so the dot that would start a line is
+// out of sight and no line ends with one.
+const Facts = ({ facts }: { facts: readonly (ReactNode | false)[] }) => (
+  <Stack overflow="hidden">
+    <Line columnGap={0} marginLeft={-DOT}>
+      {facts.filter(Boolean).map((fact, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: a fixed list of facts that never reorders
+        <Line flexShrink={1} flexWrap="nowrap" gap={0} key={i} minWidth={0}>
+          <Stack aria-hidden alignItems="center" width={DOT}>
+            <Text textRole="compact" tone="muted">
+              ·
+            </Text>
+          </Stack>
+          <Stack flexShrink={1} minWidth={0}>
+            {fact}
+          </Stack>
+        </Line>
+      ))}
+    </Line>
+  </Stack>
+);
+
 const Hero = ({ title, actions }: { title: LibraryTitleDetail; actions: ReactNode }) => {
   const { wide } = useTitleLayout();
   return (

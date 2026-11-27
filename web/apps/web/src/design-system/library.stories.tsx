@@ -129,6 +129,17 @@ const CaughtUp: Story = {};
 // The mock's "titles needing a look": the count on the status line, Review beside it.
 const NeedsYou: Story = { args: { admin: admin({ needsYou: 6 }) } };
 
+// A file nothing in the catalogue matches: the needs-a-look mark, and no claim that it is a movie.
+const Unidentified: Story = {
+  args: {
+    admin: admin({ needsYou: 1 }),
+    titles: [
+      { id: "90000813", kind: "movie", name: "Clip 12", year: 2019, ready: true, unidentified: true },
+      ...TITLES,
+    ],
+  },
+};
+
 // Importing: the step's words over the preparation bar, with Needs you beside them.
 const AddingStep1: Story = { args: { admin: status(WALKING) } };
 const Adding: Story = { args: { admin: admin({ scan: READING, needsYou: 3 }) } };
@@ -957,6 +968,7 @@ export {
   Series,
   SeriesOrderWaiting,
   StopUsingFolder,
+  Unidentified,
   WizardStep,
   WizardStepAdding,
   WizardStepChecking,
