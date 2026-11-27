@@ -19,19 +19,15 @@ import (
 
 // The SPLIT stage (§10 V51b): a compilation is cut into the adverts it holds.
 //
-// Detection is `Splitter.Propose` and the gate is `AutoConfirmable`. The probe rung decides a clip
-// is a candidate (it sets `is_composite`), and the pieces are SPAWNED, so each segment runs the
+// Detection is `Splitter.Propose` and the gate is `AutoCuttable` (#4409). The probe rung decides a
+// clip is a candidate (it sets `is_composite`), and the pieces are SPAWNED, so each segment runs the
 // whole ladder for itself instead of waiting for cron jobs to notice it.
 //
-// ⚠ **`filler.autosplit.enabled` now defaults ON** (maintainer decision, V51b). The gate it turns
-// on is strict: `SuggestedEra > 0` disqualifies at every threshold and `MaxAutoSplitConfidence`
-// remains the ceiling. Segments it holds back keep their proposal and appear in Incoming with
-// `AutoSplitReject`'s reason recorded, so "why did this not auto-cut?" is answerable without
-// reading the log.
+// ⚠ **`filler.autosplit.enabled` defaults ON** (maintainer decision, V51b). Each cut it drops
+// carries `AutoSplitReject`'s reason, so "why was this not cut?" is answerable without reading the
+// log.
 //
-// ⚠ **The gate is PER SEGMENT (V54).** The confident cuts are filed and the doubtful ones stay
-// behind in a shrunken proposal, so a reel of 52 becomes 47 clips and 5 cuts to review; one
-// doubtful segment must not send all 52 back.
+// ⚠ **The gate is PER SEGMENT (V54).** One doubtful cut in 52 drops that cut, never the other 51.
 
 // SplitStageStore is the slice of the store the split stage reads.
 //
@@ -53,33 +49,8 @@ type SplitStage struct {
 	// vision grounds proposed segments from their own frames so the gate has data (§10 V54).
 	// nil ⇒ propose only.
 	vision *SegmentVision
-	// structureRuntime returns the long-reel runtime currently in force. nil is the zero runtime:
-	// no assessment, no shadow, every proposal held.
-	structureRuntime func() StructureRuntime
 	// log reports what a grounding pass actually did (§10 V54b). nil is tolerated everywhere.
 	log *slog.Logger
-}
-
-// StructureRuntime is ONE long-reel policy: the assessment, the gate that may materialize from it,
-// and the shadow that records the comparison under that gate's identity. They are built together
-// and swapped together.
-//
-// ⚠ **A split reads it ONCE (#1659).** The two long-reel files apply live, so the runtime can be
-// replaced while a split is in flight. Reading each part at its point of use would let one pass
-// assess under the old authority and gate or record under the new one — a shadow row attributed
-// to a policy that never judged the proposal. A decision persisted under an older authority is
-// still re-verified by the gate, so it fails closed as uncertified rather than materializing.
-type StructureRuntime struct {
-	// Decisioner independently assesses the complete retained source once. nil leaves detector
-	// structure in place and makes no provider request.
-	Decisioner split.CompleteTimelineDecisioner
-	// Materialization is the certified complete-plan policy the shadow compares against. Since
-	// #4409 it decides nothing: the unattended cut (AutoCuttable) is the split's only gate. Its
-	// retirement, with the decisioner and the shadow, is #4414.
-	Materialization *StructureMaterializationPolicy
-	// Shadow durably records the compatibility comparison beside the complete-plan gate. It is
-	// diagnostic only and never authorizes child materialization.
-	Shadow StructureSplitShadowObserver
 }
 
 // NewSplitStage builds the stage. Without `WithAutoConfirm` it PROPOSES ONLY, which is the safe
@@ -94,8 +65,8 @@ func NewSplitStage(splitter *Splitter, store SplitStageStore) *SplitStage {
 // ⚠ **Grounding had SEVEN distinct silent outcomes and no way to tell them apart.** Not wired,
 // zero budget, unreadable taxonomy, no keyframes, a provider that refused, an unparseable answer,
 // and — the one that actually bit — a provider that answered every time and yielded nothing
-// usable. All seven produced the same observable: segments left ungrounded, the gate refusing with
-// "a segment could not be classified", and not one line anywhere saying which.
+// usable. All seven produce the same observable: cuts left unlooked, the gate holding each as
+// "the cut is not break material", and nothing in the cut itself saying which.
 func (s *SplitStage) WithLogger(log *slog.Logger) *SplitStage {
 	s.log = log
 	return s
@@ -110,9 +81,9 @@ func (s *SplitStage) WithAutoConfirm(pol AutoSplitPolicy, minClipDuration func()
 
 // WithSegmentVision attaches the split-time grounder that answers the auto-confirm gate (§10 V54).
 //
-// ⚠ **Without this, `filler.autosplit.enabled` is default-ON and cannot fire.** `AutoConfirmable`
-// refuses any segment with neither `Audience` nor `Category`, and the split-time grounder is the
-// only thing that fills them: text classification at split time was removed in V51g (§10) because
+// ⚠ **Without this, `filler.autosplit.enabled` is default-ON and cannot fire.** `AutoCuttable`
+// refuses any cut whose look did not see one whole piece of filler, and the split-time grounder is
+// the only thing that looks: text classification at split time was removed in V51g (§10) because
 // it cost 3× the pass budget and classified nothing but a generated name.
 //
 // ⚠ **It grounds from PIXELS, not from the segment's name, and that is the whole difference.** The
@@ -126,28 +97,6 @@ func (s *SplitStage) WithAutoConfirm(pol AutoSplitPolicy, minClipDuration func()
 func (s *SplitStage) WithSegmentVision(v *SegmentVision) *SplitStage {
 	s.vision = v
 	return s
-}
-
-// WithStructureRuntime attaches the source of the long-reel runtime in force. Merely attaching an
-// assessment cannot authorize child materialization; the complete-plan gate still requires an
-// immutable structure authority. A shadow recording failure is an error rather than a log-only
-// omission: unattended materialization must not erase the disagreement evidence by consuming its
-// proposal.
-func (s *SplitStage) WithStructureRuntime(current func() StructureRuntime) *SplitStage {
-	s.structureRuntime = current
-	return s
-}
-
-// WithFixedStructureRuntime attaches a runtime that never changes.
-func (s *SplitStage) WithFixedStructureRuntime(rt StructureRuntime) *SplitStage {
-	return s.WithStructureRuntime(func() StructureRuntime { return rt })
-}
-
-func (s *SplitStage) currentStructureRuntime() StructureRuntime {
-	if s.structureRuntime == nil {
-		return StructureRuntime{}
-	}
-	return s.structureRuntime()
 }
 
 // SegmentRoleEscalator is the split stage's complete interface to temporal model evidence.
@@ -574,7 +523,6 @@ func (s *SplitStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, er
 	//
 	// Re-detection stays the operator's call (`POST /v1/filler/split`): a rung must not redraw a
 	// cut list a human may have open. Grounding is additive and touches no boundary.
-	rt := s.currentStructureRuntime()
 	p, err := s.pendingFor(ctx, c.Hash)
 	if err != nil {
 		return StageResult{}, err
@@ -601,27 +549,6 @@ func (s *SplitStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, er
 			return StageResult{Verdict: pipelinestate.VerdictDefer, Note: fmt.Sprintf(
 				"prepared previews for %d of %d clips", len(p.Segments)-pending, len(p.Segments))}, nil
 		}
-	}
-	if p.StructureDecision == nil && rt.Decisioner != nil {
-		assessed, assessErr := s.splitter.AssessProposalStructure(ctx, *p, rt.Decisioner)
-		if errors.Is(assessErr, ErrProposalGone) {
-			return StageResult{Verdict: pipelinestate.VerdictContinue, Note: "already resolved"}, nil
-		}
-		if assessErr != nil {
-			// An assessment outage or invalid runtime result says nothing about the source or
-			// its proposed boundaries. Keep both at split review rather than letting ordinary
-			// retry exhaustion skip the rung and file a compilation without an assessment.
-			// Context cancellation is control flow, though: the pipeline resumes it without
-			// turning an incomplete attempt into review evidence.
-			if errors.Is(assessErr, context.Canceled) || errors.Is(assessErr, context.DeadlineExceeded) {
-				return StageResult{}, assessErr
-			}
-			return StageResult{
-				Verdict: pipelinestate.VerdictReview,
-				Note:    "the complete-timeline assessment could not be completed; review the split proposal",
-			}, nil
-		}
-		p = &assessed
 	}
 	// A segment whose duplicate check could not run is checked again on every pass, before the gate
 	// reads it: the tooling may be back. One that still cannot be checked is held back below, never
@@ -708,16 +635,10 @@ func (s *SplitStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, er
 	// the decision they came to make.
 	//
 	// ⚠ **PER SEGMENT (V54).** One doubtful cut in 52 drops that cut, never the other 51.
-	legacy, part := s.splitPartitions(*p)
-	if rt.Shadow != nil {
-		if err := rt.Shadow.ObserveStructureSplit(ctx, *p, legacy); err != nil {
-			return StageResult{}, err
-		}
-	}
+	part := AutoCuttable(*p, s.autoConfirm, s.minClipFloor())
 	if part.Reject != AutoSplitOK {
-		// A whole-proposal refusal — disabled splitting, an incomplete certified plan, or nothing
-		// detected. Certified holds must be persisted too: a reviewable proposal without its
-		// attributable reason would turn missing authority into an opaque failure.
+		// A whole-proposal refusal: splitting is off or nothing was detected. The held cuts keep
+		// their reason, so the proposal under review says why it was not cut.
 		if len(part.Hold) > 0 {
 			if err := s.persistHeldReasons(ctx, p.ID, part.Hold); err != nil {
 				if errors.Is(err, ErrProposalGone) {
@@ -796,13 +717,6 @@ func (s *SplitStage) persistHeldReasons(ctx context.Context, proposalID string, 
 	return err
 }
 
-// splitPartitions returns the legacy partition, which only the shadow records, and the partition
-// that decides: the unattended cut (#4409).
-func (s *SplitStage) splitPartitions(proposal SplitProposal) (SplitPartition, SplitPartition) {
-	return AutoConfirmable(proposal, s.autoConfirm, s.minClipFloor()),
-		AutoCuttable(proposal, s.autoConfirm, s.minClipFloor())
-}
-
 // minClipFloor resolves the clip-duration floor, defaulting to zero (no floor check).
 func (s *SplitStage) minClipFloor() time.Duration {
 	if s.minClipDuration == nil {
@@ -838,7 +752,6 @@ func (s *SplitStage) reviewHashes(ctx context.Context, uncheckedOnly bool) (map[
 		return out, nil
 	}
 	autoOn := s.autoConfirm != nil && s.autoConfirm.Enabled != nil && s.autoConfirm.Enabled()
-	rt := s.currentStructureRuntime()
 	out := make(map[string]struct{})
 	for _, p := range proposals {
 		if !p.Ready() {
@@ -848,25 +761,6 @@ func (s *SplitStage) reviewHashes(ctx context.Context, uncheckedOnly bool) (map[
 		if !p.ArtworkPrepared && s.splitter != nil && s.splitter.artwork != nil {
 			out[p.ClipHash] = struct{}{}
 			continue
-		}
-		if rt.Decisioner != nil && p.StructureDecision == nil {
-			out[p.ClipHash] = struct{}{}
-			continue
-		}
-		if rt.Shadow != nil {
-			pending, shadowErr := rt.Shadow.NeedsStructureSplitObservation(ctx, p)
-			if shadowErr != nil {
-				// This proposal stays in review, unconsumed; the others are still requeued.
-				if s.log != nil {
-					s.log.WarnContext(ctx, "split review not requeued: its structure shadow could not be read",
-						"clip", p.ClipHash, "err", shadowErr)
-				}
-				continue
-			}
-			if pending {
-				out[p.ClipHash] = struct{}{}
-				continue
-			}
 		}
 		kept, discarded := discardDeterministic(p.Segments, s.minClipFloor())
 		if len(kept) != len(p.Segments) || discarded.duplicates > 0 || discarded.short > 0 {

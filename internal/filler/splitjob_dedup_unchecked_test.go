@@ -200,13 +200,14 @@ func uncheckedProposal(t *testing.T) (*splitMemStore, *fakeTools, *filler.Splitt
 	return st, fake, splitter, p
 }
 
-// gateReady makes the proposal's segments pass every other part of the gate, so only the duplicate
-// check decides.
+// gateReady makes the proposal's segments pass every other part of the unattended cut, so only the
+// duplicate check decides: corroborated edges, a clean sound and a look that saw one whole advert.
 func gateReady(p filler.SplitProposal) filler.SplitProposal {
 	segs := append([]split.Segment(nil), p.Segments...)
 	for i := range segs {
-		segs[i].Era, segs[i].Audience, segs[i].Category = 1993, "kids", "toys"
 		segs[i].BoundaryConfidence = 90
+		segs[i].Sound = &split.CutSound{MedianDb: -22, StartDb: -40, EndDb: -40, InsideDb: -6}
+		segs[i].LookedRole, segs[i].Whole = split.RoleCommercial, split.WholeOne
 	}
 	p.Segments = segs
 	return p
@@ -217,7 +218,7 @@ func TestRecheckDedup_ReleasesAHeldSegmentOnceTheCheckWorks(t *testing.T) {
 	st, fake, splitter, p := uncheckedProposal(t)
 	pol := policy(true, 85, 120*time.Second)
 
-	first := filler.AutoConfirmable(gateReady(*p), pol, 0)
+	first := filler.AutoCuttable(gateReady(*p), pol, 0)
 	if len(first.Confirm) != 1 || len(first.Hold) != 1 || first.Hold[0].HoldReason != string(filler.RejectDedupUnchecked) {
 		t.Fatalf("first pass = %+v, want one confirmed and the unchecked one held", first)
 	}
@@ -238,7 +239,7 @@ func TestRecheckDedup_ReleasesAHeldSegmentOnceTheCheckWorks(t *testing.T) {
 	if err != nil || stored.Segments[1].DedupUnchecked {
 		t.Fatalf("stored = %+v, %v; the check result was not persisted", stored.Segments, err)
 	}
-	second := filler.AutoConfirmable(gateReady(stored), pol, 0)
+	second := filler.AutoCuttable(gateReady(stored), pol, 0)
 	if len(second.Confirm) != 2 || len(second.Hold) != 0 {
 		t.Fatalf("second pass = %+v, want both confirmed", second)
 	}
@@ -265,7 +266,7 @@ func TestRecheckDedup_ReleasesSegmentsHeldByAnUnreadableCatalogClip(t *testing.T
 		t.Fatal(err)
 	}
 	pol := policy(true, 85, 120*time.Second)
-	first := filler.AutoConfirmable(gateReady(*p), pol, 0)
+	first := filler.AutoCuttable(gateReady(*p), pol, 0)
 	if len(first.Confirm) != 0 || len(first.Hold) != 2 || first.Hold[0].HoldReason != string(filler.RejectDedupUnchecked) {
 		t.Fatalf("first pass = %+v, want both segments held as unchecked", first)
 	}
@@ -284,7 +285,7 @@ func TestRecheckDedup_ReleasesSegmentsHeldByAnUnreadableCatalogClip(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second := filler.AutoConfirmable(gateReady(stored), pol, 0); len(second.Confirm) != 2 || len(second.Hold) != 0 {
+	if second := filler.AutoCuttable(gateReady(stored), pol, 0); len(second.Confirm) != 2 || len(second.Hold) != 0 {
 		t.Fatalf("second pass = %+v, want both confirmed", second)
 	}
 }
