@@ -86,11 +86,11 @@ const ModelDiscover = ({
               >
                 <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
                   <Stack align="center" direction="row" gap="inline" render="p">
-                    <span className="truncate" title={m.id}>
-                      <Text as="span" textRole="cardLabel" tone="primary">
+                    <Stack flexShrink={1} minWidth={0} render={<span title={m.id} />}>
+                      <Text as="span" numberOfLines={1} textRole="cardLabel" tone="primary">
                         {m.label}
                       </Text>
-                    </span>
+                    </Stack>
                     {m.recommended && (
                       <Badge shape="square" tone="tune" flexShrink={0}>
                         suggested
