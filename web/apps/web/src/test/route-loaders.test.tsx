@@ -257,7 +257,8 @@ describe("People", () => {
     );
     renderAt("/people");
 
-    await waitFor(() => expect(screen.queryByText("Grace")).not.toBeInTheDocument());
+    // The route has settled once the member's view of it renders, and its loader has run by then.
+    expect(await screen.findByText("Admins only")).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load this page")).not.toBeInTheDocument();
     expect(asked).toEqual([]);
   });
