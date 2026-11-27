@@ -258,9 +258,9 @@ func buildChannels(
 		// it and the channel plays nothing (§9). Uses the same library client the
 		// availability resolver does.
 		channelEngine.WithRatings(resolvers.NewRatings(st))
-		// Stamp media-server collection membership so scope.collections enforces with no
-		// library I/O on the scheduling path (programming-design §2.2). Shares the library
-		// client; the reverse index is built once and cached behind a TTL.
+		// Stamp household collection membership so scope.collections enforces with no library
+		// I/O on the scheduling path (programming-design §2.2). The resolver reads the
+		// collections into a reverse index cached behind a TTL.
 		channelEngine.WithBoxSets(resolvers.NewBoxSets(st, 15*time.Minute))
 		// Emit a `channel` SSE frame after each reconcile so the UI updates live — the
 		// "no manual rebuild" model (§9). The emitter already fans to the event bus.

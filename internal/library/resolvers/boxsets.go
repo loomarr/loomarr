@@ -28,8 +28,8 @@ type OwnCollections interface {
 // provider ids must be findable under whichever key the lineup entry was born with — the same
 // parity problem the availability scan solves, and the same solution.
 //
-// The cache is refreshed on a TTL: a collection edited in the Library takes effect within it,
-// which is consistent with the stamp only being read at reconcile anyway.
+// The cache is refreshed on a TTL: a collection edited in the Library reaches a channel at its
+// first reconcile after the TTL lapses.
 type BoxSets struct {
 	own OwnCollections
 	ttl time.Duration
@@ -48,10 +48,10 @@ func NewBoxSets(own OwnCollections, ttl time.Duration) *BoxSets {
 func (a *BoxSets) BoxSets(ctx context.Context, key provision.Key) ([]string, bool, error) {
 	idx, err := a.ensureIndex(ctx)
 	if err != nil {
-		return nil, false, err // unresolved this pass; the entry stays unstamped and airs (§2.2 fail-open)
+		return nil, false, err // the entry keeps its last stamp (§2.2 fail-open)
 	}
 	// A key absent from the index is a REAL answer — "in no collection" — not a failure. It
-	// must return ok=true so the stamp settles, or every non-member re-resolves forever.
+	// must return ok=true, or a title taken out of its last collection keeps its old stamp.
 	return idx[key], true, nil
 }
 

@@ -22,7 +22,7 @@ Stored per channel (JSON on the channel row), produced by the suggester, edited 
 {
   "scope": {                       // WHAT is allowed on this channel
     "series":      ["tmdb:456"],   // resolved ids only — never names
-    "collections": [],             // media-server collection (BoxSet) ids — §2.2
+    "collections": [],             // household collection ids — §2.2
     "seasons":     {"min": 1, "max": 10},   // per-series season window
     "era":         {"from": 1990, "to": 1999}, // by first-air/release year, including episodes
     "genres":      {"include": ["Animation"], "exclude": ["Documentary"]},
@@ -123,40 +123,46 @@ every clock boundary.
 
 ### 2.2 `scope.collections` — media-server collections, and why it is stamped
 
-`scope.collections` restricts a channel to titles the operator has curated into a **media-server
-collection** (Emby/Jellyfin call these **BoxSets**; Kometa and similar tools write them). It is a
+`scope.collections` restricts a channel to titles in a **household collection**
+(`library_collections`, made in Loomarr or brought over from the media server at cutover). It is a
 hand-curated set — "my Halloween shelf" — which is precisely what makes it worth having: it is the
 one scope field whose membership is an explicit human judgment rather than derived metadata.
 
 ⚠ **This is NOT `LineupEntry.CollectionID`, which is the TMDB franchise id (§5 ordering).** Two
 different namespaces share the English word "collection": a TMDB collection is an integer
-identifying a *franchise* (the Alien films), a BoxSet id is an opaque server-local string
+identifying a *franchise* (the Alien films), a household collection id is an opaque string
 identifying a *shelf someone made*. They are never interchangeable, and a filter that compared one
 to the other would type-check and silently match nothing. The Go field is therefore named
-`BoxSetIDs`, in the media server's own vocabulary, so the two cannot be confused at the point of
-use. The wire/DTO name stays `collections` (it is what an operator calls it).
+`BoxSetIDs`, after the media server's word for such a shelf, so the two cannot be confused at the
+point of use. The wire/DTO name stays `collections` (it is what an operator calls it).
 
 **Membership is STAMPED on the entry and healed at reconcile**, exactly like `OfficialRating`
 (§4) and `CollectionID` (§5), for the reason those two are: `filterEntries` is a pure function
 over `[]LineupEntry` with **no per-reconcile library I/O**, and that property is load-bearing for
-scheduling latency rather than incidental. Resolving BoxSet membership inside the filter would put
-a media-server round trip on the scheduling path, per entry, per pass — the N+1 shape that
+scheduling latency rather than incidental. Resolving membership inside the filter would put
+a lookup on the scheduling path, per entry, per pass — the N+1 shape that
 dominated the guide-latency work (1910ms → 103ms; the first fix was removing exactly this).
 
 ⚠ **The `CollectionID` tri-state does not transfer, and the difference is a real trap.** `-1`
 works as "resolved, standalone" because the field is an `int`. `BoxSetIDs` is a `[]string`, where
-"not resolved yet" and "resolved, belongs to no collection" are **both empty** — so an entry in no
-BoxSet would be re-fetched on every reconcile forever, reintroducing the N+1 through the back
-door for the most common case. Resolution state is therefore carried by an explicit
-`BoxSetsResolved bool`, not by nil-vs-empty: the entry is JSON-persisted, and a nil/empty slice
-distinction does not survive a round trip through encoding/json, let alone a later refactor.
+"not resolved yet" and "resolved, belongs to no collection" are **both empty**. Resolution state
+is therefore carried by an explicit `BoxSetsResolved bool`, not by nil-vs-empty: the entry is
+JSON-persisted, and a nil/empty slice distinction does not survive a round trip through
+encoding/json, let alone a later refactor.
 
-**The consequence, stated plainly:** adding a title to a BoxSet in Emby takes effect on the
-channel's **next reconcile**, not instantly. That is the deliberate trade for keeping the
-scheduler I/O-free, and it matches how a rating change already propagates.
+**Re-stamped every reconcile, unlike the other two.** Membership now comes from the household's
+own collections (`library_collections`, #2151 step 16), not a media-server call. The resolver
+reads them into a reverse index once per TTL (15 minutes) and answers each entry from memory, so
+re-stamping every entry on every pass costs no I/O. A one-time stamp would be wrong: a title taken
+out of a collection would stay on every channel scoped to it forever (#2793). A failed lookup keeps
+the last stamp.
+
+**The consequence, stated plainly:** a collection edit takes effect on the channel's **next
+reconcile after the index refreshes**, not instantly. That is the deliberate trade for keeping
+the scheduler I/O-free.
 
 **Fail-OPEN, unlike audience.** An unresolved entry (`BoxSetsResolved == false`) is **not**
-filtered out — a media server that is down or slow must not silently empty a channel's lineup.
+filtered out — collections that can't be read must not silently empty a channel's lineup.
 This is the opposite of the §4 audience ceiling, and the asymmetry is the same one §4 states: a
 missing rating risks showing adult content to a kids channel, so it fails closed; a missing
 collection membership risks showing an in-library title the operator did not shelve, which is a
@@ -995,7 +1001,7 @@ continue.
 ## 10. Tests (extends main doc §19 — these join the phase 10/11 gates)
 
 - **Binding:** "seasons 1–10" policy → zero slots outside the range across many seeded cycles; era and genre filters likewise.
-- **Collections bind, and fail OPEN (§2.2):** a `scope.collections` channel airs only stamped members; an entry whose membership is **unresolved** still airs (a down media server must not empty a lineup), while a *resolved* non-member is excluded. The heal is one-time — a fully-stamped channel makes ZERO library calls on the next pass.
+- **Collections bind, and fail OPEN (§2.2):** a `scope.collections` channel airs only stamped members; an entry whose membership is **unresolved** still airs (a down media server must not empty a lineup), while a *resolved* non-member is excluded. The stamp is refreshed every pass from the collections' cached index, so a collection edit reaches the channel and a pass still makes no per-entry library call.
 - **Fail-closed audience:** unrated item + `TV-Y7` ceiling → excluded, counted in the exclusion report; `TV-MA` never appears under any kids ceiling *including after full ladder relaxation*.
 - **Per-episode ceiling (§4):** one fixture must reach **three different outcomes** — an episode rated under the ceiling airs, one rated *above* it is dropped **even though its series cleared the entry gate**, and an *unrated* one airs by inheriting its parent. A test that cannot tell those apart proves nothing, and neither can one asserting on program *keys*: every episode of a series shares the series key, so assertions run on library item ids. Also pinned: a permissive parent never lifts a rated episode, and a series the ceiling empties yields **no slot at all** rather than a pending one.
 - **Separation with wrap:** property test — no episode twice inside the window, no series-gap violation across the cycle seam.
