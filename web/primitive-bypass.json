@@ -7,9 +7,6 @@
     "apps/web/src/components/loomarr/settings/setting-field/setting-field.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
       "flexStack": 1
     },
