@@ -113,6 +113,13 @@ const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleFix> = {}, 
     if (!hit) throw new Error(`missing button: ${name}`);
     return hit;
   };
+  // The seasons' tabs, in the order drawn.
+  const tabs = () => Array.from(host.querySelectorAll('[role="tab"]'));
+  const tab = (name: string) => {
+    const hit = tabs().find((n) => n.textContent?.trim().startsWith(name));
+    if (!hit) throw new Error(`missing tab: ${name}`);
+    return hit;
+  };
   const cleanup = () => {
     act(() => root.unmount());
     host.remove();
@@ -126,13 +133,13 @@ const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleFix> = {}, 
     if (!item) throw new Error(`missing menu item: ${name}`);
     await act(async () => item.click());
   };
-  return { host, onBack, props, button, cleanup, menuItems, openFix, fixItem };
+  return { host, onBack, props, button, tab, tabs, cleanup, menuItems, openFix, fixItem };
 };
 
 describe("LibraryTitle", () => {
   it("shows a movie's facts in plain words and its file behind Technical details", () => {
     const { host, button, cleanup } = render(MOVIE);
-    expect(host.textContent).toContain("1996 · 1 h 38 min");
+    expect(host.textContent).toContain("1996·1 h 38 min");
     expect(host.textContent).toContain("R");
     expect(host.textContent).toContain("Crime, Thriller");
     expect(host.textContent).toContain("bursting at the seams");
@@ -251,15 +258,19 @@ describe("LibraryTitle", () => {
   });
 
   it("lists a series' seasons, specials last, each opening to its episodes", () => {
-    const { host, button, cleanup } = render(SERIES);
+    const { host, button, tab, tabs, cleanup } = render(SERIES);
     // Specials aren't a season, so the count leaves them out.
-    expect(host.textContent).toContain("1999 · 1 season");
+    expect(host.textContent).toContain("1999·1 season");
     act(() => button("Technical details").click());
     expect(host.textContent).toContain("Description from TMDB. Episode names from Sonarr.");
     expect(host.textContent).toContain("Not recognised yet");
-    const text = host.textContent ?? "";
-    expect(text.indexOf("Season 1")).toBeLessThan(text.indexOf("Specials"));
-    act(() => button("Season 1").click());
+    // The data lists the specials first.
+    expect(tabs().map((n) => n.textContent?.replace(/\d+$/, "").trim())).toEqual(["Season 1", "Specials"]);
+    act(() => tab("Specials").click());
+    expect(host.textContent).toContain("Christmas at the Harbour");
+    expect(host.textContent).not.toContain("Pilot");
+    act(() => tab("Season 1").click());
+    expect(host.textContent).not.toContain("Christmas at the Harbour");
     expect(host.textContent).toContain("1–2");
     expect(host.textContent).toContain("Pilot");
     // An episode with no name yet reads by its number, and one not read yet says so.
@@ -277,10 +288,10 @@ describe("LibraryTitle", () => {
         { number: 0, episodes: [{ id: "90000921", name: "Harbour - The Movie", number: 0, ready: true }] },
       ],
     };
-    const { host, button, cleanup } = render(unnumbered);
-    act(() => button("Specials").click());
+    const { host, tab, cleanup } = render(unnumbered);
+    act(() => tab("Specials").click());
     expect(host.textContent).toContain("Harbour - The Movie");
-    expect(host.textContent).not.toContain("0Harbour - The Movie");
+    expect(host.textContent).not.toContain("0. Harbour - The Movie");
     cleanup();
   });
 
@@ -299,9 +310,9 @@ describe("LibraryTitle", () => {
         },
       ],
     };
-    const { host, button, cleanup } = render(waiting, { onChooseOrder });
+    const { host, button, tab, cleanup } = render(waiting, { onChooseOrder });
     expect(host.textContent).toContain("We're not sure which order these episodes are in.");
-    act(() => button("Season 1").click());
+    act(() => tab("Season 1").click());
     expect(host.textContent?.match(/Name from the file/g)).toHaveLength(1);
     act(() => button("Choose").click());
     expect(onChooseOrder).toHaveBeenCalled();
@@ -326,7 +337,95 @@ describe("LibraryTitle", () => {
 
   it("sets a dot between each of the facts", () => {
     const { host, cleanup } = render({ ...MOVIE, score: 7.4 });
-    expect(host.textContent).toContain("1996 · 1 h 38 minR· Crime, Thriller· Score 7.4/10");
+    // The first dot is outside the clipped row (the story measures that); none trails the last fact.
+    expect(host.textContent).toContain("·1996·1 h 38 min·R·Crime, Thriller·Score 7.4/10A small-town");
+    cleanup();
+  });
+
+  const READ_FILE = {
+    ...MOVIE.files[0],
+    path: "/media/tv/Harbour Lights/S01E01.mkv",
+    container: "matroska,webm",
+    streams: [
+      {
+        index: 0,
+        kind: "video",
+        codec: "h264",
+        profile: "High",
+        frameRate: "24000/1001",
+        bitrate: 9_800_000,
+      },
+      { index: 1, kind: "audio", codec: "ac3", channels: 6, languageName: "English", default: true },
+      { index: 2, kind: "audio", codec: "aac", channels: 2, languageName: "French" },
+      { index: 3, kind: "subtitle", codec: "subrip", languageName: "Spanish", forced: true },
+    ],
+    chapters: [{ startMillis: 0, name: "Cold open" }, { startMillis: 3_725_000 }],
+  } as unknown as LibraryTitleDetail["files"][number];
+
+  it("opens an episode's own file from its row, and closes it", async () => {
+    const onEpisodeFiles = vi.fn(() => Promise.resolve([READ_FILE]));
+    const { host, button, cleanup } = render(SERIES, { onEpisodeFiles });
+    expect(onEpisodeFiles).not.toHaveBeenCalled();
+    await act(async () => button("1–2. Pilot").click());
+    expect(onEpisodeFiles).toHaveBeenCalledWith("90000901");
+    expect(host.textContent).toContain("This episode's file");
+    expect(host.textContent).toContain(READ_FILE.path);
+    await act(async () => button("1–2. Pilot").click());
+    expect(host.textContent).not.toContain("This episode's file");
+    cleanup();
+  });
+
+  it("says when an episode's file couldn't be loaded", async () => {
+    const onEpisodeFiles = vi.fn(() => Promise.reject(new Error("offline")));
+    const { host, button, cleanup } = render(SERIES, { onEpisodeFiles });
+    await act(async () => button("1–2. Pilot").click());
+    expect(host.textContent).toContain("Couldn't load this file's details. Try again in a moment.");
+    cleanup();
+  });
+
+  it("shows a file's tracks and chapters behind More, to an admin only", () => {
+    const { host, button, cleanup } = render({ ...MOVIE, files: [READ_FILE] });
+    act(() => button("Technical details").click());
+    expect(host.textContent).not.toContain("Cold open");
+    act(() => button("More about this file").click());
+    for (const words of [
+      "Matroska (MKV)",
+      "H.264, High profile",
+      "9.8 Mb/s",
+      "23.976 frames a second",
+      "None (standard range)",
+      "EnglishSurround 5.1 · AC-3 · default",
+      "FrenchStereo · AAC",
+      "SpanishForced · SRT",
+      "0:00 · Cold open",
+      "1:02:05 · Chapter 2",
+    ]) {
+      expect(host.textContent).toContain(words);
+    }
+    cleanup();
+
+    const member = render({ ...MOVIE, files: [READ_FILE] }, {}, true);
+    expect(member.host.textContent).not.toContain("More about this file");
+    expect(member.host.textContent).not.toContain("Cold open");
+    member.cleanup();
+  });
+
+  it("gives a member episode rows that don't open", () => {
+    const { host, button, cleanup } = render(SERIES, {}, true);
+    expect(host.textContent).toContain("Pilot");
+    expect(() => button("1–2. Pilot")).toThrow();
+    cleanup();
+  });
+
+  it("puts focus back on Fix when Wrong title? is closed", async () => {
+    const { button, fixItem, cleanup } = render(MOVIE);
+    await fixItem("Wrong title?");
+    const focused = () =>
+      (globalThis as unknown as { document: { activeElement: unknown } }).document.activeElement;
+    const close = button("Close") as El & { focus(): void };
+    close.focus();
+    await act(async () => close.click());
+    expect(focused()).toBe(button("Fix"));
     cleanup();
   });
 

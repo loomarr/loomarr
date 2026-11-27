@@ -44,7 +44,7 @@ const EpisodeFile = ({ id, load }: { id: string; load: NonNullable<LibraryTitleF
   }, [id]);
   return (
     <Surface borderWidth={0} gap="control" padding="control">
-      <Text textRole="title">This episode's file</Text>
+      <Text textRole="body">This episode's file</Text>
       {failed ? (
         <Text textRole="compact" tone="secondary">
           Couldn't load this file's details. Try again in a moment.
@@ -83,16 +83,17 @@ const EpisodeContent = ({ episode, open }: { episode: LibraryTitleEpisode; open?
         {episode.still}
       </Surface>
       <Stack flexBasis={0} flexGrow={1} flexShrink={1} minWidth={0}>
-        <Text numberOfLines={wide ? 1 : 2} textRole="body">
+        {/* A button element centres its text, so each line says where it starts. */}
+        <Text numberOfLines={wide ? 1 : 2} textAlign="left" textRole="body">
           {number ? `${number}. ${name}` : name}
         </Text>
         {episode.overview ? (
-          <Text numberOfLines={wide ? 1 : 2} textRole="compact" tone="secondary">
+          <Text numberOfLines={wide ? 1 : 2} textAlign="left" textRole="compact" tone="secondary">
             {episode.overview}
           </Text>
         ) : null}
         {episode.fromFile ? (
-          <Text textRole="hint" tone="muted">
+          <Text textAlign="left" textRole="hint" tone="muted">
             Name from the file
           </Text>
         ) : null}
@@ -105,7 +106,7 @@ const EpisodeContent = ({ episode, open }: { episode: LibraryTitleEpisode; open?
           </Line>
         )}
         {!wide && length ? (
-          <Text textRole="compact" tone="secondary">
+          <Text textAlign="left" textRole="compact" tone="secondary">
             {length}
           </Text>
         ) : null}
