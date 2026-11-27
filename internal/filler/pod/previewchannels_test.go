@@ -2,6 +2,7 @@ package pod_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -112,6 +113,33 @@ func TestPreviewChannelsMatchesEachChannelOnItsOwn(t *testing.T) {
 	}
 	if reflect.DeepEqual(got[0][2], got[1][0]) {
 		t.Error("two channels with different selections and seeds got the same pod: the batch shared one channel's answer")
+	}
+}
+
+// cancellingExposures is the history read during which the caller hangs up.
+type cancellingExposures struct{ cancel context.CancelFunc }
+
+func (c cancellingExposures) FillerAirings(context.Context) (pod.AiringHistory, error) {
+	c.cancel()
+	return pod.AiringHistory{}, nil
+}
+
+// A caller that hangs up after the shared reads gets its context's error and no pods, whether its
+// one channel assembles inline or several fan out: a skipped row would otherwise read as a break
+// with nothing to air.
+func TestPreviewChannelsReturnsTheCancelAndNoPods(t *testing.T) {
+	cat := []pod.Clip{{Hash: "a", Path: "a.mp4", Role: pod.Commercial, Audience: pod.General, DurationMs: 30_000}}
+	brk := []pod.Break{{Seed: 1, Start: time.Date(2026, 11, 3, 20, 0, 0, 0, time.UTC), Length: time.Minute}}
+	for _, chans := range [][]pod.ChannelBreaks{
+		{{ChannelID: "ch-1", Breaks: brk}},
+		{{ChannelID: "ch-1", Breaks: brk}, {ChannelID: "ch-2", Breaks: brk}, {ChannelID: "ch-3", Breaks: brk}},
+	} {
+		ctx, cancel := context.WithCancel(context.Background())
+		adapter := pod.NewAdapter(stubCatalog{clips: cat}, cancellingExposures{cancel}, nil, discardLogger())
+		got, err := adapter.PreviewChannels(ctx, chans)
+		if !errors.Is(err, context.Canceled) || got != nil {
+			t.Errorf("%d channels: pods = %v, err = %v; want no pods and context.Canceled", len(chans), got, err)
+		}
 	}
 }
 

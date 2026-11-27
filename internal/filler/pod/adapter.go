@@ -294,8 +294,7 @@ type Break struct {
 // PreviewAtMany assembles several breaks of one channel — the guide's per-airing hover cards
 // (#1420). Each pod is exactly what PreviewAt returns for that break; the catalog, the policy and
 // the household's airing history are read ONCE and each break's snapshot is cut from them in
-// memory. It used to be a catalog read plus an exposure query per break, 40-80 full-catalog reads
-// for a four-hour guide once breaks were on.
+// memory, so a four-hour guide makes one catalog read rather than one per break.
 func (a *Adapter) PreviewAtMany(ctx context.Context, channelID string, sel Selection, breaks []Break) ([]Pod, error) {
 	pods, err := a.PreviewChannels(ctx, []ChannelBreaks{{ChannelID: channelID, Selection: sel, Breaks: breaks}})
 	if err != nil {
@@ -322,6 +321,9 @@ type ChannelBreaks struct {
 // a new slice and each sort runs on a copy, as PreviewAtMany's sharing across one channel's breaks
 // already requires. The airing history spans every channel anyway (ExposuresBefore), so one read
 // is the same history each channel would have read.
+//
+// A context cancelled before the batch finishes returns its error and no pods: the rows it
+// skipped would otherwise read as breaks with nothing to air.
 func (a *Adapter) PreviewChannels(ctx context.Context, chans []ChannelBreaks) ([][]Pod, error) {
 	out := make([][]Pod, len(chans))
 	if !slices.ContainsFunc(chans, func(c ChannelBreaks) bool { return len(c.Breaks) > 0 }) {
@@ -377,7 +379,7 @@ func (a *Adapter) PreviewChannels(ctx context.Context, chans []ChannelBreaks) ([
 	// breaks do not depend on another's. Each goroutine writes only its own row.
 	if len(rows) == 1 {
 		row(rows[0])
-		return out, ctx.Err()
+		return finished(out, ctx)
 	}
 	sem := make(chan struct{}, max(2, runtime.NumCPU()))
 	var wg sync.WaitGroup
@@ -389,7 +391,16 @@ func (a *Adapter) PreviewChannels(ctx context.Context, chans []ChannelBreaks) ([
 		})
 	}
 	wg.Wait()
-	return out, ctx.Err()
+	return finished(out, ctx)
+}
+
+// finished is the batch's pods, or the context's error once the caller is gone: rows skipped
+// after a cancel hold zero pods, so none of them is returned.
+func finished(out [][]Pod, ctx context.Context) ([][]Pod, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (a *Adapter) previewAt(ctx context.Context, channelID string, seed int64, sel Selection, breakStart time.Time) (Pod, error) {
