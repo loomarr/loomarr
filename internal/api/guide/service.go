@@ -7,6 +7,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // PodPreviewer answers "what commercials would this channel get" without touching
@@ -32,9 +33,13 @@ type PodPreviewer interface {
 	// assembled to the slot's own length, so it never runs past the break the timeline gives it.
 	PreviewAt(ctx context.Context, channelID string, slot pod.BreakSlot) (pod.Pod, error)
 	// PreviewAtMany is PreviewAt for many breaks of one channel, pod for pod, reading the
-	// channel, catalog and play history once (#1420). The guide uses it: one call per channel
-	// row instead of one per break.
+	// channel, catalog and play history once (#1420). A single channel's timeline uses it.
 	PreviewAtMany(ctx context.Context, channelID string, slots []pod.BreakSlot) ([]pod.Pod, error)
+	// PreviewAtChannels is PreviewAtMany for several channels, reading the catalog and play
+	// history once for all of them (#2147). slots[i] are the breaks of chans[i], the rows the
+	// caller already read, and the result is index-aligned with both. The Guide uses it: one call
+	// for the whole grid instead of one per row.
+	PreviewAtChannels(ctx context.Context, chans []channelstore.Channel, slots [][]pod.BreakSlot) ([][]pod.Pod, error)
 	// Coverage reports which ladder rung this channel's breaks would draw from, and how much
 	// material each rung holds (V29a/V29b). Same catalog, same Window, same policy as Preview —
 	// it counts what is available instead of drawing from it, which is why it takes no seed.

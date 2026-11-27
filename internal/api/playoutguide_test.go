@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -260,6 +262,54 @@ func TestPlayoutGuide_OneChannelFailingDoesNotEmptyTheGuide(t *testing.T) {
 	// "no information" rather than dropping it from Live TV.
 	if !strings.Contains(string(body), `id="bad"`) {
 		t.Errorf("the failing channel vanished from Live TV entirely:\n%s", body)
+	}
+}
+
+// hangUpGuide holds the first channel's timeline until the request is cancelled, then fails every
+// read the way the store does once its context is done.
+type hangUpGuide struct {
+	fakeXMLTVGuide
+	started chan struct{}
+	calls   atomic.Int32
+}
+
+func (g *hangUpGuide) BroadcastsBetween(ctx context.Context, channelID string, _, _ time.Time) ([]timeline.Broadcast, error) {
+	if g.calls.Add(1) == 1 {
+		close(g.started)
+		<-ctx.Done()
+	}
+	return nil, fmt.Errorf("read channel playout anchor %s: %w", channelID, ctx.Err())
+}
+
+// A media server that hangs up mid-document cancels the request, and every channel still to come
+// would fail at its first store read with "context canceled": the install logged that as one broken
+// channel after another (#2147). The client is gone, so the handler stops at the first such failure.
+func TestPlayoutGuide_StopsWhenTheMediaServerHangsUp(t *testing.T) {
+	g := &hangUpGuide{started: make(chan struct{})}
+	harness := newPlayoutGuideHarness(t, g)
+	for i, id := range []string{"ch1", "ch2", "ch3"} {
+		seedChannel(t, harness.Store, id, id, i+1, "internal")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, harness.Server.URL+"/v1/playout/guide.xml?token="+playoutToken, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	<-g.started
+	cancel()
+	<-done
+	harness.Server.Close() // waits for the handler to return
+
+	if n := g.calls.Load(); n != 1 {
+		t.Errorf("the guide asked for %d channel timelines after the client hung up, want only the one in flight", n)
 	}
 }
 
