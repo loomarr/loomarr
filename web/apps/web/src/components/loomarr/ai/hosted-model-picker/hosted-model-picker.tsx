@@ -163,7 +163,7 @@ const HostedModelPicker = ({
               <Text as="p" textRole="cardLabel">
                 {hp.label}
                 {hp.active && (
-                  <Text as="span" marginLeft={8} textRole="hint" tone="secondary">
+                  <Text as="span" style={{ marginInlineStart: 8 }} textRole="hint" tone="secondary">
                     (in use)
                   </Text>
                 )}

@@ -478,7 +478,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
                   <Text as="span" textRole="cardLabel">
                     More suggestions
                   </Text>
-                  <Text as="span" marginLeft={8} textRole="compact" tone="secondary">
+                  <Text as="span" style={{ marginInlineStart: 8 }} textRole="compact" tone="secondary">
                     {suggestions.length} {suggestions.length === 1 ? "option" : "options"}
                   </Text>
                 </>
