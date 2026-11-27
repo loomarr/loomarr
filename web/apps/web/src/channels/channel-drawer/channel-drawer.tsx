@@ -1,14 +1,10 @@
-import { Action, DockedPanel, PressableRow, Stack, Text, Tooltip, typography } from "@loomarr/design-system";
-import { useEffect, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
+import { Action, DockedPanel, Field, PressableRow, Stack, Text, Tooltip } from "@loomarr/design-system";
+import { useState } from "react";
 import type { ChannelDrawerProps, DrawerBlock, DrawerChannel } from "./channel-drawer.type";
 
-// The search box's type: the compact role's size at a line height of 1.25/0.875 of it, which sets
-// the box's height (a text input is as tall as its line).
-const SEARCH_TYPE = {
-  fontSize: typography.pointer.compact.size,
-  lineHeight: "calc(1.25 / 0.875)",
-} as const;
+// A schedule block's fill: the signal hue for a filler pod, the text colour for a programme.
+const POD_FILL = "color-mix(in srgb, var(--color-signal) 28%, transparent)";
+const PROGRAMME_FILL = "color-mix(in srgb, var(--contentPrimary) 12%, transparent)";
 
 // How many recent channels the drawer lists above All channels (the console mock).
 const RECENT_ROWS = 3;
@@ -50,10 +46,6 @@ const ChannelDrawer = ({
   onClose,
 }: ChannelDrawerProps) => {
   const [query, setQuery] = useState("");
-  const findRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    findRef.current?.focus({ preventScroll: true });
-  }, []);
 
   const q = query.trim().toLowerCase();
   const listed = q ? channels.filter((channel) => matches(channel, q)) : channels;
@@ -86,31 +78,30 @@ const ChannelDrawer = ({
       }
       onClose={onClose}
     >
-      <div className="px-2.5 pt-2.5">
-        <input
-          ref={findRef}
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+      <Stack paddingHorizontal={10} paddingTop={10}>
+        <Field
+          autoFocus
+          accessibilityLabel="Find a channel or show"
+          inputMode="search"
+          onChangeText={setQuery}
           placeholder="Find a channel or show…"
-          aria-label="Find a channel or show"
-          className="border-border-control bg-static-950 text-foreground placeholder:text-muted-foreground focus:border-signal w-full rounded-lg border px-3 py-2 outline-none"
-          style={SEARCH_TYPE}
+          value={query}
         />
-      </div>
-      <div className="flex-1 overflow-y-auto p-2.5">
+      </Stack>
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} overflowY="auto" padding={10}>
         {groups.map((group) => (
           <section key={group.header} aria-labelledby={groupHeadingId(group.header)}>
-            <Text
-              as="h3"
-              id={groupHeadingId(group.header)}
-              className="px-1 pt-1.5 pb-[7px]"
-              textRole="mono"
-              tone="secondary"
-              tracking={0.14}
-            >
-              {group.header}
-            </Text>
+            <Stack paddingBottom={7} paddingHorizontal={4} paddingTop={6}>
+              <Text
+                as="h3"
+                id={groupHeadingId(group.header)}
+                textRole="mono"
+                tone="secondary"
+                tracking={0.14}
+              >
+                {group.header}
+              </Text>
+            </Stack>
             {group.rows.map((channel) => (
               <DrawerRow
                 key={channel.id}
@@ -124,12 +115,19 @@ const ChannelDrawer = ({
             ))}
           </section>
         ))}
-      </div>
-      <Text as="p" className="border-static-800 border-t px-[18px] py-3" textRole="footnote">
-        {q
-          ? `${listed.length} of ${channels.length} channels · guide has the full week`
-          : `${channels.length} channels · type a number to tune direct`}
-      </Text>
+      </Stack>
+      <Stack
+        borderTopColor="$borderDecorative"
+        borderTopWidth={1}
+        paddingHorizontal={18}
+        paddingVertical={12}
+      >
+        <Text as="p" textRole="footnote">
+          {q
+            ? `${listed.length} of ${channels.length} channels · guide has the full week`
+            : `${channels.length} channels · type a number to tune direct`}
+        </Text>
+      </Stack>
     </DockedPanel>
   );
 };
@@ -153,7 +151,7 @@ const DrawerRow = ({
   const line = channel.offAir ? OFF_AIR_LINE[channel.offAir] : channel.now;
   const shownLabels = channel.blocks.flatMap((block) => shownBlockLabel(block, total) ?? []);
   return (
-    <div className="relative mb-[7px]">
+    <Stack marginBottom={7} position="relative">
       <PressableRow
         // The row's text runs together when read as one name ("07Westerns▸ …"), so the name says it in
         // order. It holds every word the row shows (WCAG 2.5.3, label in name): the number and name,
@@ -176,11 +174,19 @@ const DrawerRow = ({
         selected={tuned}
       >
         <Stack gap="1.75">
-          <span className="flex items-center gap-[9px] pr-7">
-            <Text as="span" className="w-[26px]" textRole="mono" tone="secondary">
+          <Stack align="center" direction="row" gap="2" paddingRight={28} render="span">
+            <Text as="span" minWidth={26} textRole="mono" tone="secondary">
               {channelNumber(channel.number)}{" "}
             </Text>
-            <Text as="span" className="min-w-0 flex-1 truncate" strong textRole="cardLabel" tone="primary">
+            <Text
+              as="span"
+              flex={1}
+              minWidth={0}
+              numberOfLines={1}
+              strong
+              textRole="cardLabel"
+              tone="primary"
+            >
               {channel.name}{" "}
             </Text>
             {tuned && (
@@ -188,39 +194,54 @@ const DrawerRow = ({
                 TUNED{" "}
               </Text>
             )}
-          </span>
+          </Stack>
           <Stack
             aria-hidden
-            className="relative h-6 overflow-hidden rounded"
+            borderRadius={4}
             direction="row"
             gap="0.5"
+            height={24}
+            overflow="hidden"
+            position="relative"
             render="span"
           >
             {channel.blocks.map((block) => (
-              <span
+              <Stack
                 key={block.key}
-                className={cn(
-                  "flex min-w-0.5 items-center overflow-hidden px-1.5",
-                  block.pod ? "bg-signal/28" : "bg-foreground/12",
-                )}
-                style={{ flex: `${block.minutes} 1 0px` }}
+                align="center"
+                direction="row"
+                flexBasis={0}
+                flexGrow={block.minutes}
+                flexShrink={1}
+                minWidth={2}
+                overflow="hidden"
+                paddingHorizontal={6}
+                render="span"
+                style={{ backgroundColor: block.pod ? POD_FILL : PROGRAMME_FILL }}
               >
                 {shownBlockLabel(block, total) && (
-                  <Text as="span" className="block min-w-0 truncate" textRole="cardMeta" tone="primary">
+                  <Text as="span" minWidth={0} numberOfLines={1} textRole="cardMeta" tone="primary">
                     {block.label}{" "}
                   </Text>
                 )}
-              </span>
+              </Stack>
             ))}
             {channel.blocks.length > 0 && (
-              <span className="bg-onair absolute inset-y-0 w-[1.5px]" style={{ left: `${nowPercent}%` }} />
+              <Stack
+                bottom={0}
+                position="absolute"
+                render="span"
+                style={{ backgroundColor: "var(--color-onair)", left: `${nowPercent}%` }}
+                top={0}
+                width={1.5}
+              />
             )}
           </Stack>
           <Stack align="center" direction="row" gap="1.75" render="span">
-            <Text as="span" className="min-w-0 truncate" textRole="cardMeta" tone="secondary">
+            <Text as="span" flex={1} minWidth={0} numberOfLines={1} textRole="cardMeta" tone="secondary">
               {line ? `▸ ${line}` : ""}{" "}
             </Text>
-            <Text as="span" className="ml-auto shrink-0" textRole="mono" tone="secondary">
+            <Text as="span" flexShrink={0} textRole="mono" tone="secondary">
               {channel.minutesLeft === undefined ? "—" : `${channel.minutesLeft}m left`}
             </Text>
           </Stack>
@@ -242,7 +263,7 @@ const DrawerRow = ({
           </Action>
         </Tooltip>
       </Stack>
-    </div>
+    </Stack>
   );
 };
 
