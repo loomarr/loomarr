@@ -27,7 +27,7 @@ const SourceLocationForm = ({ source, actions }: SourceLocationFormProps) => {
   const clear = () => form.setFieldValue("country", "");
 
   return (
-    <Stack className="border-border border-t" gap="control" paddingTop={12}>
+    <Stack borderColor="borderDecorative" borderTopWidth={1} gap="control" paddingTop={12}>
       <Text as="p" textRole="compact" tone="secondary">
         Change this only when the source covers a different area from your location.
       </Text>

@@ -16,6 +16,7 @@ import {
   PressableRow,
   Stack,
   Text,
+  TextLink,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -62,9 +63,10 @@ const StatusRows = ({
   onOpen: (row: IncomingStatusDTO, trigger: HTMLElement) => void;
   onMore: () => void;
 }) => (
-  <Card className="divide-border divide-y">
+  <Card>
     {group.rows.map((row) => (
       <PressableRow
+        divided
         key={row.clipHash}
         onPress={(event) => onOpen(row, event.currentTarget as unknown as HTMLElement)}
       >
@@ -364,13 +366,12 @@ const Incoming = () => {
               </Text>
               <Text as="p" textRole="compact" tone="secondary">
                 Added in {readyWindowLabel(view.readyWindowSeconds)}. These clips stay in your Library.{" "}
-                <Link
-                  to="/filler/settings/$section"
-                  params={{ section: "incoming" }}
-                  className="underline underline-offset-4"
+                <TextLink
+                  render={<Link to="/filler/settings/$section" params={{ section: "incoming" }} />}
+                  tone="primary"
                 >
                   Change
-                </Link>
+                </TextLink>
               </Text>
             </div>
             <Action accessibilityRole="link" render={<Link to="/filler/library" />} variant="outline">
