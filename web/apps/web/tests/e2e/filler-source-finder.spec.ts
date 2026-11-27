@@ -129,7 +129,12 @@ test("Archive source search stays in flow and registers only after confirmation"
 });
 
 test("a specific clip keeps its parent source and reconnects to the durable download", async ({ page }) => {
-  const backend = await installMockBackend(page, { authed: true, role: "admin", fillerEnabled: true });
+  const backend = await installMockBackend(page, {
+    authed: true,
+    role: "admin",
+    fillerEnabled: true,
+    eventStream: true,
+  });
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/filler/sources");
 
@@ -153,7 +158,17 @@ test("a specific clip keeps its parent source and reconnects to the durable down
     ]);
   await expect(workspace.getByText("Downloading…")).toBeVisible();
 
+  // The worker stores the finished download, then announces it; the row reads it again on the
+  // frame, not on a poll (#4391).
   backend.state.fillerAcquisitionStatus = "success";
+  backend.sendFrame("filler_ingest", {
+    jobId: "e2e-source-item-acquisition",
+    status: "success",
+    fetched: 1,
+    failed: 0,
+    skipped: 0,
+    empty: 0,
+  });
   await expect(workspace.getByText("Added · being checked")).toBeVisible();
 
   await page.reload();

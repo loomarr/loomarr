@@ -191,7 +191,7 @@ func workflowActionAuthorityEntries() map[workflowActionKey]string {
 		{workflow: "ffmpeg-pin-refresh.yml", job: "refresh", step: 1}:     `{"uses":"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e","with":{"go-version":"${{ env.GO_VERSION }}","cache":false}}`,
 		{workflow: "rust-maintenance.yml", job: "supply-chain", step: 0}:  `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "rust-maintenance.yml", job: "fuzz", step: 0}:          `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
-		{workflow: "rust-maintenance.yml", job: "fuzz", step: 4}:          `{"name":"Keep crash and timeout artifacts","if":"failure()","uses":"actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9","with":{"name":"rust-image-fuzz-artifacts","path":"rust/loomarr-image/fuzz/artifacts/protocol_decoder","if-no-files-found":"ignore","retention-days":30}}`,
+		{workflow: "rust-maintenance.yml", job: "fuzz", step: 4}:          `{"name":"Keep crash and timeout artifacts","if":"failure()","uses":"actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9","with":{"name":"rust-image-fuzz-artifacts","path":"rust/loomarr-image/fuzz/artifacts","if-no-files-found":"ignore","retention-days":30}}`,
 		// The render checks out the commit it was dispatched at, without a persisted token; only the
 		// commit job's checkout keeps the token, for its push, and it reads only the render run's
 		// artifact, by the run id the render job reported and the push job verified.

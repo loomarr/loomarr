@@ -694,6 +694,10 @@ func (s *spanTools) VisionKeyframesIn(_ context.Context, _ string, startMs, endM
 	return s.frames, s.err
 }
 
+func (s *spanTools) FrameHintsIn(context.Context, string, int64, int64, int) (tools.FrameHint, error) {
+	return tools.FrameHint{}, nil
+}
+
 // The split look judges each cut as a whole (#4409): its answer lands on the segment, frames are
 // taken across the whole cut, and a cut looked at before the look asked has no answer and is looked
 // at again.

@@ -75,7 +75,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | --- | --- |
 | `api/httpcore` | `channels/schedule`, `channels/viewing`, `filler/source`, `media/images`, `platform/rating`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout` |
 | `channels` | `channels/schedule`, `filler/clips`, `filler/language`, `filler/pod`, `library/inventory`, `library/provision`, `platform/jobs`, `platform/rating`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `playout/timeline`, `playout/tunarr` |
-| `channels/schedule` | `library/inventory`, `library/provision`, `platform/holidayvocab`, `platform/rating` |
+| `channels/schedule` | `library/inventory`, `library/provision`, `platform/holidayvocab`, `platform/langcode`, `platform/rating` |
 | `channels/viewing` | `platform/store/channelstore` |
 | `filler` | `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/httpx`, `platform/llm`, `platform/storagegovernor`, `platform/store/clipstore` |
 | `filler/acquisition` | `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/source`, `filler/split` |
@@ -85,7 +85,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filler/defectfloor` | `filler`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/pipelinestate`, `media/creative`, `media/defects`, `media/tools`, `platform/llm`, `platform/store/clipstore` |
 | `filler/enrichment` | `filler/station`, `filler/taxonomy`, `platform/llm` |
 | `filler/fetch` | `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/source`, `media/bgexec`, `platform/storagegovernor` |
-| `filler/language` | `media/bgexec`, `media/tools` |
+| `filler/language` | `media/bgexec`, `media/tools`, `platform/langcode` |
 | `filler/pipelinestate` | — |
 | `filler/pod` | `channels/schedule`, `filler/clips`, `filler/language` |
 | `filler/records` | `filler`, `filler/acquisition`, `filler/asset`, `filler/clips`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/source`, `filler/split`, `filler/structure`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb` |
@@ -119,10 +119,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/holidayvocab` | — |
 | `platform/httpx` | `platform/metrics` |
 | `platform/jobs` | `platform/store` |
+| `platform/langcode` | — |
 | `platform/llm` | `platform/httpx`, `platform/metrics` |
 | `platform/metrics` | `library/provision` |
 | `platform/rating` | — |
-| `platform/settings` | `library/mediaserver`, `platform/buildinfo`, `platform/config`, `platform/httpx` |
+| `platform/settings` | `library/mediaserver`, `platform/buildinfo`, `platform/config`, `platform/httpx`, `platform/langcode` |
 | `platform/storagegovernor` | — |
 | `platform/store` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `library/inventory`, `library/provision`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/librarystore`, `platform/store/operationstore`, `platform/store/proposalstore`, `platform/store/storedb`, `proposals`, `proposals/quality` |
 | `platform/store/activitystore` | `platform/store/storedb` |
@@ -134,7 +135,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/store/operationstore` | `platform/store/storedb` |
 | `platform/store/proposalstore` | `platform/store/channelstore`, `platform/store/storedb`, `proposals` |
 | `platform/store/storedb` | — |
-| `playout` | `media/encode`, `platform/diagnostics`, `playout/timeline` |
+| `playout` | `media/encode`, `platform/diagnostics`, `platform/langcode`, `playout/timeline` |
 | `playout/timeline` | `channels/schedule`, `library/provision` |
 | `playout/tunarr` | `channels/schedule`, `platform/httpx`, `platform/metrics` |
 | `proposals` | `channels/schedule`, `library/provision`, `platform/storagegovernor` |

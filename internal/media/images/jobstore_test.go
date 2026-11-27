@@ -2,6 +2,7 @@ package images
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"time"
 )
@@ -9,28 +10,65 @@ import (
 // The job half of the in-memory store, extending fakeStore so one double satisfies FetchStore,
 // AVIFStore and GCStore.
 //
-// ⚠ Every list here re-implements the SQL's selection rule in Go, which is a duplication worth
-// being uneasy about — a fake that disagrees with the real query makes a job look correct against
-// a work list it will never actually be handed. The mitigation is that the store conformance suite
-// runs the real queries against BOTH dialects, so these predicates are checked in one place and
-// exercised in another rather than being the only statement of the rule.
+// ⚠ Every list here re-implements the SQL's selection rule and order in Go, which is a duplication
+// worth being uneasy about — a fake that disagrees with the real query makes a job look correct
+// against a work list it will never actually be handed. The mitigation is that the store
+// conformance suite runs the real queries against BOTH dialects, so these predicates and orders
+// are checked in one place and exercised in another rather than being the only statement of them.
 
-func (f *fakeStore) ListAwaitingFetch(_ context.Context, limit int) ([]Image, error) {
-	return f.pick(limit, func(img Image) bool {
-		return img.Origin == OriginRemote && img.OriginFetchedAt.IsZero()
-	}), nil
+// ListAwaitingFetch serves due rows by priority, then in the order they joined the queue, ties by
+// hash (pick's order).
+func (f *fakeStore) ListAwaitingFetch(_ context.Context, now time.Time, limit int) ([]Image, error) {
+	due := f.pick(0, func(img Image) bool {
+		return img.Origin == OriginRemote && img.OriginFetchedAt.IsZero() && !img.FetchRetryAt.After(now)
+	})
+	slices.SortStableFunc(due, func(a, b Image) int {
+		if a.FetchPriority != b.FetchPriority {
+			return int(a.FetchPriority - b.FetchPriority)
+		}
+		return a.FetchQueuedAt.Compare(b.FetchQueuedAt)
+	})
+	return due[:min(len(due), limit)], nil
+}
+
+// DeferFetch holds a never-fetched image until retryAt without counting a failure.
+func (f *fakeStore) DeferFetch(_ context.Context, hash string, retryAt time.Time) error {
+	if img, ok := f.images[hash]; ok && img.OriginFetchedAt.IsZero() {
+		img.FetchRetryAt = retryAt
+		f.images[hash] = img
+	}
+	return nil
+}
+
+func (f *fakeStore) RecordFetchFailure(_ context.Context, hash string, at, retryAt time.Time) error {
+	img, ok := f.images[hash]
+	if !ok || !img.OriginFetchedAt.IsZero() {
+		return nil
+	}
+	img.FetchFailures++
+	img.FetchFailedAt = at
+	img.FetchRetryAt = retryAt
+	f.images[hash] = img
+	return nil
 }
 
 func (f *fakeStore) ListByOrigin(_ context.Context, origin Origin, limit int) ([]Image, error) {
 	return f.pick(limit, func(img Image) bool { return img.Origin == origin }), nil
 }
 
-func (f *fakeStore) ListExpiredBefore(_ context.Context, cutoff time.Time, limit int) ([]Image, error) {
-	return f.pick(limit, func(img Image) bool {
+func (f *fakeStore) ListExpiredBefore(_ context.Context, cutoff time.Time, after ExpiryCursor, limit int) ([]Image, error) {
+	f.expiredReads++
+	due := f.pick(0, func(img Image) bool {
 		// The `> 0` half matters: a never-fetched row must not look infinitely stale, or the
 		// expiry sweep would purge the fetch job's entire backlog.
-		return img.Origin == OriginRemote && !img.OriginFetchedAt.IsZero() && img.OriginFetchedAt.Before(cutoff)
-	}), nil
+		if img.Origin != OriginRemote || img.OriginFetchedAt.IsZero() || !img.OriginFetchedAt.Before(cutoff) {
+			return false
+		}
+		c := img.OriginFetchedAt.Compare(after.FetchedAt)
+		return c > 0 || (c == 0 && img.Hash > after.Hash)
+	})
+	slices.SortStableFunc(due, func(a, b Image) int { return a.OriginFetchedAt.Compare(b.OriginFetchedAt) })
+	return due[:min(len(due), limit)], nil
 }
 
 func (f *fakeStore) ListOrphans(_ context.Context, limit int) ([]Image, error) {
@@ -43,13 +81,18 @@ func (f *fakeStore) ListUnrecoverable(_ context.Context, limit int) ([]Image, er
 	return f.pick(limit, func(img Image) bool { return !img.Origin.Recoverable() }), nil
 }
 
-func (f *fakeStore) ListMissingFormat(_ context.Context, recipe string, format Format, limit int) ([]Image, error) {
+func (f *fakeStore) ListMissingFormat(_ context.Context, recipe string, format Format, rungs []Rung, limit int) ([]Image, error) {
 	return f.pick(limit, func(img Image) bool {
 		ds := f.derivatives[img.Hash]
-		if len(ds) == 0 {
-			return false // no rendition at all: the fetch job's business, not the encoder's
+		if len(ds) == 0 || img.Animated {
+			return false // no rendition at all is the fetch job's business; animation is never AVIF
 		}
-		return !slices.ContainsFunc(ds, func(d Derivative) bool { return d.Recipe == recipe && d.Format == format })
+		return slices.ContainsFunc(rungs, func(r Rung) bool {
+			owed := r.Role == img.Role && (img.Width >= r.MinSourceWidth || img.Width <= 0)
+			return owed && !slices.ContainsFunc(ds, func(d Derivative) bool {
+				return d.Recipe == recipe && d.Format == format && d.Width == r.Width
+			})
+		})
 	}), nil
 }
 
@@ -93,6 +136,10 @@ func (f *fakeStore) DeleteDerivative(_ context.Context, hash, recipe string, for
 }
 
 func (f *fakeStore) DeleteDerivatives(_ context.Context, hash string) error {
+	f.deleteDerivativeCalls[hash]++
+	if f.failDeleteDerivatives[hash] {
+		return errors.New("fake: derivative delete refused")
+	}
 	delete(f.derivatives, hash)
 	return nil
 }

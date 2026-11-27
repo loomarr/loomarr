@@ -7083,6 +7083,9 @@ components:
           type: string
         ready:
           type: boolean
+        still:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Its still; absent when it has none, or while one is still being fetched
       required:
         - id
         - name
@@ -7315,6 +7318,9 @@ components:
           items:
             $ref: "#/components/schemas/LibrarySeasonDTO"
           type: array
+        still:
+          $ref: "#/components/schemas/ImageDTO"
+          description: An episode's still; absent for a movie or a series, when it has none, or while one is still being fetched
         studios:
           description: A movie's or a series' studios; empty for an episode, whose studios are its show's
           items:
@@ -9371,6 +9377,9 @@ components:
         audioLanguage:
           type: string
         backend:
+          type: string
+        burnSubtitles:
+          description: ISO 639-2 language whose image subtitle track (Blu-ray PGS) is burned into this channel's programmes where a programme carries one and the host's GPU can draw it; omitted burns none in. Text subtitles stay each viewer's choice.
           type: string
       type: object
     PlayoutStatus:
@@ -13897,6 +13906,9 @@ components:
     TrackDTO:
       additionalProperties: false
       properties:
+        burnable:
+          description: "Subtitles only: an image track (Blu-ray PGS) a channel can burn into its programmes; text tracks are each viewer's choice instead."
+          type: boolean
         index:
           description: Position among tracks of its own type — the N in -map 0:a:N / 0:s:N.
           format: int64

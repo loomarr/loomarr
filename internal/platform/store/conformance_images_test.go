@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -355,9 +357,14 @@ func testImagesMissingFormat(t *testing.T, newStore NewStoreFunc) {
 	at := time.Unix(1_700_000_000, 0)
 
 	webpOnly := imageAt("theta", at)
-	bothFormats := imageAt("iota", at)
-	untouched := imageAt("kappa", at) // no derivatives at all
-	for _, img := range []clipstore.Image{webpOnly, bothFormats, untouched} {
+	bothFormats := imageAt("iota", at) // AVIF at every rung it is owed
+	untouched := imageAt("kappa", at)  // no derivatives at all
+	topUp := imageAt("lambda", at)     // AVIF at 500 only, owed 780 too
+	small := imageAt("mu", at)         // AVIF at 500 only, too narrow to be owed 780
+	small.Width = 600
+	animated := imageAt("nu", at) // WebP only, but never encoded as AVIF
+	animated.Animated = true
+	for _, img := range []clipstore.Image{webpOnly, bothFormats, untouched, topUp, small, animated} {
 		if err := s.PutImage(ctx, img); err != nil {
 			t.Fatal(err)
 		}
@@ -370,19 +377,37 @@ func testImagesMissingFormat(t *testing.T, newStore NewStoreFunc) {
 	}
 	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: webpOnly.Hash, Format: "webp", Width: 500, Path: "a", CreatedAt: at}))
 	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: bothFormats.Hash, Format: "webp", Width: 500, Path: "b", CreatedAt: at}))
+	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: animated.Hash, Format: "webp", Width: 500, Path: "g", Animated: true, CreatedAt: at}))
 	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: bothFormats.Hash, Format: "avif", Width: 500, Path: "c", CreatedAt: at}))
+	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: bothFormats.Hash, Format: "avif", Width: 780, Path: "d", CreatedAt: at}))
+	for i, img := range []clipstore.Image{topUp, small} {
+		must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: img.Hash, Format: "webp", Width: 500, Path: fmt.Sprintf("e%d", i), CreatedAt: at}))
+		must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: img.Hash, Format: "avif", Width: 500, Path: fmt.Sprintf("f%d", i), CreatedAt: at}))
+	}
 
-	got, err := s.ListImagesMissingFormat(ctx, "legacy-go-v1", "avif", 10)
+	rungs := []clipstore.ImageRung{
+		{Role: "poster", Width: 500, MinSourceWidth: 0},
+		{Role: "poster", Width: 780, MinSourceWidth: 663},
+		{Role: "thumb", Width: 1000, MinSourceWidth: 0}, // another role's rung owes a poster nothing
+	}
+	got, err := s.ListImagesMissingFormat(ctx, "legacy-go-v1", "avif", rungs, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Hash != webpOnly.Hash {
-		hashes := make([]string, len(got))
-		for i, g := range got {
-			hashes[i] = g.Hash
-		}
-		t.Fatalf("ListImagesMissingFormat(avif) = %v, want just the webp-only image %s "+
-			"(an image with NO derivatives must not be picked up)", hashes, webpOnly.Hash)
+	hashes := make([]string, len(got))
+	for i, g := range got {
+		hashes[i] = g.Hash
+	}
+	slices.Sort(hashes)
+	want := []string{webpOnly.Hash, topUp.Hash}
+	slices.Sort(want)
+	if !slices.Equal(hashes, want) {
+		t.Fatalf("ListImagesMissingFormat(avif) = %v, want the webp-only image and the one owed a 780 rung %v "+
+			"(an image with NO derivatives, a complete one, one too narrow for 780 and an animated one "+
+			"must not be picked up)", hashes, want)
+	}
+	if none, err := s.ListImagesMissingFormat(ctx, "legacy-go-v1", "avif", nil, 10); err != nil || len(none) != 0 {
+		t.Fatalf("ListImagesMissingFormat with no rungs = %v, %v, want none", none, err)
 	}
 }
 
@@ -409,7 +434,7 @@ func testImageFetchQueueAndExpirySweepAreDisjoint(t *testing.T, newStore NewStor
 		}
 	}
 
-	queue, err := s.ListImagesAwaitingFetch(ctx, 10)
+	queue, err := s.ListImagesAwaitingFetch(ctx, now, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +443,7 @@ func testImageFetchQueueAndExpirySweepAreDisjoint(t *testing.T, newStore NewStor
 	}
 
 	cutoff := now.Add(-180 * 24 * time.Hour)
-	expired, err := s.ListImagesExpiredBefore(ctx, cutoff, 10)
+	expired, err := s.ListImagesExpiredBefore(ctx, cutoff, clipstore.ExpiryCursor{}, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -576,14 +601,15 @@ func testImagesByOrigin(t *testing.T, newStore NewStoreFunc) {
 // placeholder rows re-key onto ONE content hash. A second repoint carrying the same
 // (owner_kind, owner_id, role) must be a no-op rather than a primary-key violation.
 // Finding a remote image by the URL it came from — the lookup that stops a re-adopt from
-// re-downloading bytes already on disk (V52 phase 7).
+// downloading the image a second time (V52 phase 7).
 //
-// ⚠ **The `origin_fetched_at > 0` half is the point, not a tidy-up.** Adopt keys a pending row on a
-// hash of the source URL; the fetch re-keys it onto the content hash and deletes the placeholder,
-// and for the width of that operation BOTH rows carry the same source URL — deliberately, so no
-// ref ever points at a hash with no row. A lookup that returned the placeholder would hand back a
-// hash that is about to stop resolving, which is worse than returning nothing.
-func testImageFetchedBySourceURL(t *testing.T, newStore NewStoreFunc) {
+// ⚠ **A fetched row wins over a pending one.** Adopt keys a pending row on a hash of the source
+// URL; the fetch re-keys it onto the content hash and deletes the placeholder, and for the width
+// of that operation BOTH rows carry the same source URL — deliberately, so no ref ever points at a
+// hash with no row. The lookup hands back the row with bytes. With no fetched row, it hands back
+// the pending one: the adopted placeholder, or a row the expiry purge requeued under its content
+// hash, which a re-adopt must reuse rather than queue the URL a second time.
+func testImageBySourceURL(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)
 	at := time.Unix(1_700_000_000, 0)
@@ -593,46 +619,45 @@ func testImageFetchedBySourceURL(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 
-	got, err := s.GetFetchedImageBySourceURL(ctx, fetched.SourceURL)
+	got, err := s.GetImageBySourceURL(ctx, fetched.SourceURL)
 	if err != nil {
-		t.Fatalf("GetFetchedImageBySourceURL: %v", err)
+		t.Fatalf("GetImageBySourceURL: %v", err)
 	}
 	if got.Hash != fetched.Hash {
 		t.Errorf("hash = %q, want %q", got.Hash, fetched.Hash)
 	}
 
-	// A row adopted but never fetched must NOT be returned: it has no bytes to reuse, and its hash
-	// is the placeholder the re-key deletes.
+	// A row still waiting for its bytes, alone with its URL, is found.
 	pending := imageAt("pending", at)
 	pending.OriginFetchedAt = time.Time{}
 	if err := s.PutImage(ctx, pending); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.GetFetchedImageBySourceURL(ctx, pending.SourceURL); !errors.Is(err, ErrNotFound) {
-		t.Errorf("a never-fetched row was returned (err = %v), want ErrNotFound", err)
+	if got, err := s.GetImageBySourceURL(ctx, pending.SourceURL); err != nil || got.Hash != pending.Hash {
+		t.Errorf("a pending row's URL = %q, %v; want the pending row", got.Hash, err)
 	}
 
 	// Both rows sharing one source URL — the state that exists during a re-key. The fetched one
-	// wins; without the predicate this is a coin toss decided by row order.
+	// wins; without the order this is a coin toss decided by row order.
 	shadow := imageAt("shadow", at)
 	shadow.SourceURL = fetched.SourceURL
 	shadow.OriginFetchedAt = time.Time{}
 	if err := s.PutImage(ctx, shadow); err != nil {
 		t.Fatal(err)
 	}
-	got, err = s.GetFetchedImageBySourceURL(ctx, fetched.SourceURL)
+	got, err = s.GetImageBySourceURL(ctx, fetched.SourceURL)
 	if err != nil {
-		t.Fatalf("GetFetchedImageBySourceURL with a placeholder alongside: %v", err)
+		t.Fatalf("GetImageBySourceURL with a placeholder alongside: %v", err)
 	}
 	if got.Hash != fetched.Hash {
 		t.Errorf("hash = %q, want the FETCHED row %q — the placeholder shadowed it", got.Hash, fetched.Hash)
 	}
 
 	// An empty URL is every non-remote row's value, so it must never match one.
-	if _, err := s.GetFetchedImageBySourceURL(ctx, ""); !errors.Is(err, ErrNotFound) {
+	if _, err := s.GetImageBySourceURL(ctx, ""); !errors.Is(err, ErrNotFound) {
 		t.Errorf("empty source URL returned %v, want ErrNotFound", err)
 	}
-	if _, err := s.GetFetchedImageBySourceURL(ctx, "https://nothing.example.test/x.jpg"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.GetImageBySourceURL(ctx, "https://nothing.example.test/x.jpg"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown source URL returned %v, want ErrNotFound", err)
 	}
 }

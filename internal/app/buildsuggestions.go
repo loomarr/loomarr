@@ -24,6 +24,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/media/images"
+	"github.com/loomarr/loomarr/internal/media/images/rustgen"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/buildinfo"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -52,6 +53,7 @@ type suggestionBuild struct {
 	systemLLM        system.SystemLLMService
 	icons            channelsapi.IconService
 	images           *images.Service
+	imageWorker      *rustgen.Generator // the certified worker images uses; it also decodes subtitles
 	imageFetcher     *images.Fetcher
 	timelineThumbs   guideapi.TimelineThumbResolver
 }
@@ -87,7 +89,7 @@ func buildSuggestions(
 	result.workflow = result.durableWorkflow
 
 	var err error
-	result.images, err = newImageService(
+	result.images, result.imageWorker, err = newImageService(
 		st, set, overrides.ImageWorkerExecutable, buildinfo.Get().Version, metricRecorder,
 	)
 	if err != nil {

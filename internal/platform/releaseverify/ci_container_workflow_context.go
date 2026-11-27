@@ -124,7 +124,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "go-maintenance.yml", job: "library-scale"}:   {name: "Library scan at household size", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
 		{workflow: "ffmpeg-pin-refresh.yml", job: "refresh"}:     {name: "Refresh the FFmpeg pin", runsOn: "ubuntu-24.04", timeoutMinutes: 120},
 		{workflow: "rust-maintenance.yml", job: "supply-chain"}:  {name: "Advisories, licences, and sources", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
-		{workflow: "rust-maintenance.yml", job: "fuzz"}:          {name: "Bounded protocol and decoder fuzz", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
+		{workflow: "rust-maintenance.yml", job: "fuzz"}:          {name: "Bounded protocol and decoder fuzz", runsOn: "ubuntu-24.04", timeoutMinutes: 80},
 		{workflow: "visual-baselines.yml", job: "resolve"}:       {name: "Resolve the pull request's branch", runsOn: "ubuntu-latest", timeoutMinutes: 5},
 		{workflow: "visual-baselines.yml", job: "render"}:        {name: "Render on the pull request's branch", runsOn: "ubuntu-latest", needs: "resolve", timeoutMinutes: 70},
 		{workflow: "visual-baselines.yml", job: "commit"}:        {name: "Commit the changed baselines", runsOn: "ubuntu-latest", needsList: []string{"resolve", "render"}, timeoutMinutes: 10},

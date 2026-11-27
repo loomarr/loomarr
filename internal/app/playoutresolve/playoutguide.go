@@ -226,7 +226,7 @@ func (r *Resolver) carryOverLegs(ctx context.Context, channelID string, live air
 	}
 
 	leg := guideLeg{slots: live.slots, epoch: live.epoch, from: live.epoch}
-	for {
+	for planned := false; ; planned = true {
 		leg.to = timeline.CarryOverEnd(leg.slots, leg.epoch, schedule.NextWindowStart(leg.epoch, live.window, live.zone))
 		legs = append(legs, leg)
 		if !leg.to.Before(to) || len(legs) >= maxGuideSegments {
@@ -235,6 +235,12 @@ func (r *Resolver) carryOverLegs(ctx context.Context, channelID string, live air
 		slots, _, err := r.cycleAt(ctx, channelID, leg.to)
 		if err != nil {
 			break
+		}
+		// The window after the one on air is the one reconcile plans ahead of the turn, and
+		// playout airs it with those break lengths (airingCycle's TurnedWindow), so it is
+		// listed with them too. Windows after it are not planned yet and keep the forecast.
+		if !planned {
+			slots = r.engine.WithPlannedBreaks(ctx, channelID, leg.to, slots)
 		}
 		leg = guideLeg{slots: slots, epoch: leg.to, from: leg.to}
 	}

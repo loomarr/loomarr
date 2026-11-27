@@ -67,7 +67,13 @@ production remains one thread.
 ⚠ Therefore **AVIF coverage is eventually-consistent, and the frontend contract must tolerate it.**
 `<picture>` does this natively: when no AVIF derivative exists the `<source>` is simply not emitted
 and the browser takes WebP. No request ever blocks on AVIF, and no surface has to know whether the
-job has caught up.
+job has caught up. Coverage is checked per rung, not per image: the AVIF `<source>` is emitted
+only when every AVIF rung the image's ladder offers exists. The browser commits to the first
+`<source>` type it supports: a listed rung that 404s has no fallback, and a partial set serves
+its widest AVIF rung stretched where the WebP set has the sharp one. Until the set is complete,
+the image serves WebP, which is made on request. The job's work list is every still (not
+animated) image that lacks an AVIF rung its current ladder offers it. The job encodes only the
+missing rungs, so an image encoded under an earlier ladder is topped up when the ladder changes.
 
 ### Formats and negotiation
 
@@ -95,7 +101,8 @@ produces different but contract-equivalent bytes.
 ### Required renderer protocol and limits
 
 - **Boot self-test.** `loomarr-image capabilities --protocol 1 --self-test` must agree on release,
-  protocol, recipe, formats and an embedded static-plus-animation probe before readiness.
+  protocol, recipe, formats and an embedded static-plus-animation probe before readiness, and must
+  list every operation the server requires (`decode-subtitles`, which burn-in calls).
 - **One request, one staging directory.** `loomarr-image generate --protocol 1` reads one bounded JSON
   request on stdin (a content-addressed source and its SHA-256, a private staging directory, targets
   and limits) and writes one bounded result on stdout; stderr is bounded diagnostics. Rust writes only
@@ -130,13 +137,33 @@ probe for each, so a worker without one fails readiness instead of failing the f
   Go's cache key. An upload is held to the rendition ceilings above; the output height is at most
   512 px.
 - **`decode-subtitles --protocol 1` turns an image subtitle track into timed stills** for GPU
-  burn-in ([`playout.md`](playout.md)). The request names the extracted track (`.sup` for
-  `hdmv_pgs_subtitle`; the `.idx`/`.sub` pair for `dvd_subtitle`) and its SHA-256. The result is
+  burn-in ([`playout.md`](playout.md)). The request names the extracted track and its SHA-256:
+  `source.path` and `source.expectedSha256` name the `.sup` of a `hdmv_pgs_subtitle` track or the
+  `.sub` of a `dvd_subtitle` pair, and `source.index` (`{path, expectedSha256}`) names the pair's
+  `.idx`. `index` is required for `dvd_subtitle` and refused (`invalid_request`) for
+  `hdmv_pgs_subtitle`; the worker hash-checks both files before decoding (`source_changed`), and
+  Go re-reads both after it, refusing a result whose `.sub` or `.idx` changed or was swapped (the
+  `.idx` within its 8 MiB ceiling). A pair holds one track (more
+  than one `id:` is `unsupported_input`); with `forced subs: ON` only forced subpictures show, and,
+  as in ffmpeg, `custom colors:` is ignored, so the palette always colours the pixels. A `delay:`
+  shifts later timestamps until the next `delay:` replaces it, as in ffmpeg; `time offset:` is
+  ignored, since neither ffmpeg nor VSFilter applies it. Also as in ffmpeg, an unknown control
+  command ends only its own control sequence, a started subpicture without an area or field
+  offsets shows nothing, and a pack an entry names starts a new subpicture, so a damaged
+  subpicture no entry names cannot swallow the ones after it. The result is
   the canvas size and an ordered list of display states, each with its start and end in
-  milliseconds and either one full-canvas straight-alpha PNG or none (the screen is clear). Every
-  later step (ffv1 conversion, the per-seek ffconcat list, the overlay) is codec-neutral.
-  Ceilings: 256 MiB input, 3840×2160 canvas, 64 objects per state, 50,000 states, 512 MiB output.
-  Rust checks them before allocating each state and while decoding it.
+  milliseconds and either one full-canvas straight-alpha PNG or none (the screen is clear). Each
+  state ends where the next starts, the last state's end equals its start, and Go refuses a
+  result that breaks either rule. Every later step (ffv1 conversion, the per-seek ffconcat list, the overlay) is codec-neutral.
+  Ceilings: 256 MiB input, an 8 MiB `.idx` (about 4× the 2.2 MB of 50,000 `timestamp:` lines),
+  3840×2160 canvas, 64 objects per state, 256 control sequences per VOBSUB subpicture, 50,000
+  states (and `.idx` entries), 512 MiB output,
+  and, across the whole track, 3.8×10¹⁰ drawn object pixels (each placement's object area plus its
+  coded length) and 2×10¹¹ encoded or cleared canvas pixels, about 4× what a heavy 3,000-set track
+  of two 3840×400 objects on a 3840×2160 canvas measures (9.45×10⁹ and 4.98×10¹⁰).
+  Rust checks them before reading each file, storing each `.idx` entry, allocating each state,
+  drawing each placement (a VOBSUB subpicture charges its display area plus its coded length), and
+  clearing or encoding each canvas; it keeps only the `.sub` subpictures the `.idx` points at.
 
 **Format choices.** A JPEG fallback stays because the few percent of browsers without AVIF or WebP
 are exactly a media server's clients (televisions, old tablets, embedded WebViews). Selection uses
@@ -222,6 +249,40 @@ the database only.
 - **Expiry deletes, then requeues.** The original and every derivative are deleted and the row goes
   back on `images-fetch`'s list (every minute). Re-fetching first would put compliance inside an error
   branch: an unreachable TMDB would keep expired bytes forever.
+- **One GC run purges everything due.** `images-maintenance` runs under the 30-minute long-job
+  timeout. Its purge reads expired images 500 at a time, in (fetch time, hash) order, each read
+  starting after the last image of the one before. It stops at a short page. Images are purged one
+  at a time, each a file delete and then a row write, so a run that has a large backlog takes longer
+  but never adds load in parallel. An image whose purge fails is passed over and tried by the next
+  daily run. It is never read again in the same run, and it never holds back the images behind it.
+  A run that the timeout or a shutdown ends stops between images and skips the steps it has not
+  reached. The job then fails, and the next run carries on.
+- **The fetch queue is served by class, then by arrival.** `fetch_priority` is 0 for artwork a
+  surface adopted, 1 for an image the purge requeued for a refresh, and 2 for artwork adopted in
+  bulk to fetch last (episode stills). Within a class, `fetch_queued_at` sets the order: the
+  adoption, or the requeue. Artwork adopted the day a purge requeues thousands of images therefore
+  goes ahead of all of them. The purge requeues a bulk image in the bulk class, not the refresh
+  class: stills are fetched in a burst, so they expire in one, and tens of thousands of them in
+  the refresh class would keep a purged poster, which reads as pending until it is fetched again,
+  waiting hours behind them. The queue's read follows `idx_images_fetch_queue` (origin,
+  origin_fetched_at, fetch_priority, fetch_queued_at, hash), so a pass reads the front of the queue
+  without sorting it.
+- **A failed download backs off.** Each failure is recorded on the row (`fetch_failures`,
+  `fetch_failed_at`) and holds the image off `images-fetch`'s list until `fetch_retry_at`. The wait
+  doubles from five minutes (5m, 10m, 20m … 21h20m after the ninth failure) and is a day from the
+  tenth failure on. A failure that waiting will not fix waits a day straight away: a 404 or 410, a
+  URL or redirect this install refuses, a body over the size cap, or bytes the image worker refuses.
+  A pass in which every attempt that went to the network got no response is the network being
+  down. A permanent failure never reaches the network, so it neither makes nor unmakes an outage.
+  In an outage each unreachable image waits five minutes and no failure is counted, so an outage
+  does not push the whole catalogue's retries back. An image that never answers still waits five
+  minutes between tries, even when it is alone in its pass. A foreground fetch skips an image
+  that is still backing off, and the caller reports it as backing off, not as failed. A failing image therefore never holds the front of the queue. The
+  download that lands clears all three fields. An image is never dropped for failing: it is retried
+  once a day for as long as something references it.
+- **Adopting a URL reuses its row.** Adoption looks the source URL up. It reuses the row with bytes
+  if one exists, else the row still waiting for them: the placeholder, or an image the purge
+  requeued under its content hash. Re-adopting a URL therefore never queues a second download.
 - **Orphans are collected before expiry,** so an unreferenced expired image is never queued for a
   pointless download.
 - **Attribution:** the TMDB logo, less prominent than Loomarr's branding, with the notice "This
@@ -229,7 +290,9 @@ the database only.
   Data sources, and the same line in the README (#2853).
 - **Connections:** well under TMDB's 20 per IP, with jittered backoff on 429 and 5xx.
 - **Fetch `original` once** and build the ladder locally: one origin request per artwork. `profile`
-  sizes use a height token (`h632`), and SVG assets exist only at `original`.
+  sizes use a height token (`h632`), and SVG assets exist only at `original`. An episode's still
+  is the exception: it is fetched at `w300` (#4476), the size an episode row draws, because a
+  library holds tens of thousands of them and no surface draws one larger.
 
 ### Metadata
 
@@ -239,7 +302,31 @@ need attribution or provenance read the image row instead of parsing format-spec
 
 ### Two modes
 
-- **Owned** (the default): ingested, content-addressed, permanent record, immutable URL.
+- **Owned** (the default): ingested, content-addressed, permanent record, immutable URL. The
+  Library's artwork is owned: a title's poster, fanart (role `backdrop`) and clear logo, and an
+  episode's still (role `thumb`, #4476), each imported when the scanner writes the title or
+  episode, a file beside the media ingested then and a provider's URL adopted for the fetch job
+  (library.md, "Posters, backdrops and logos" and "Episode stills"). Role `thumb` is a 16:9
+  still, an episode's or a filler clip's, on the 300/780/1280 ladder; role `backdrop` is fanart,
+  on the ladder to 3840.
+- **A rendition is never an upscale where it would show.** Fanart drops a full-screen rung (1920
+  and up) its original cannot fill. A poster or a still is offered a rung only when its
+  original is at least 85% of the rung's width (#4476), so the browser stretches it by at most
+  1/0.85, about 18%, which does not show. A rung far wider than the original would be the same pixels
+  upscaled at several times the bytes. A rung the original nearly fills is kept because leaving
+  it out makes the picture soft: a 680-wide poster, common for TVDB art, keeps its 780 rung
+  rather than being served at 500 on a 2x screen. The smallest rung is always offered, so a
+  poster narrower than 154 is served at 154 and a still narrower than 300 at 300. A 185-wide
+  poster (a provider's small poster) is served at 154 and 185 alone, and a grid drawing it wider
+  takes the 185 rung and scales it in the browser. A 300-wide catalogue still is served at 300 alone, and a 2x
+  screen drawing it at 300 CSS pixels takes that rung the same way. A filler clip's catalogue
+  still is made 320 wide (`tools.PreviewWidth`), so its ladder is `[300]` too. A rendition an
+  image already holds above its ladder is not listed, and budget eviction reclaims it when the
+  cache is over budget. A split proposal's segment still is a frame up to 1920 wide and keeps the
+  rungs it fills. Icons and logos keep their whole ladder, and an image whose width is not yet
+  known (adopted, bytes not here) lists the whole ladder. The serve route snaps a requested width
+  to the image's own ladder, so a request for a rung the image is not offered is served at the
+  image's widest rung, never a 404.
 - **Proxied**: a short-TTL pass-through with **no permanent row**, for high-volume ephemeral thumbnails
   such as source-search results. Ingesting hundreds of thumbnails for a search the operator abandons
   would be the wrong trade; proxying still removes the third-party origin from the browser.

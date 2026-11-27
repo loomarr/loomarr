@@ -55,6 +55,11 @@ type CyclePreviewer interface {
 	// cycle with each break at the length reconcile planned for it ahead of the turn (#3838 step
 	// 2). A read like the rest: reconcile is the only writer of the break plans.
 	TurnedWindow(ctx context.Context, channelID string, at, turnAnchor time.Time) ([]schedule.Slot, error)
+	// WithPlannedBreaks is TurnedWindow's second half over an arrangement already in hand: the
+	// slots walked from turnAnchor with each break at its planned length, as a new slice. The
+	// guide applies it to its cached forecast of the next window so it lists that window as it
+	// airs.
+	WithPlannedBreaks(ctx context.Context, channelID string, turnAnchor time.Time, slots []schedule.Slot) []schedule.Slot
 	// Calendar is the holiday calendar the arrangement reads, so the cycle cache keys on it.
 	Calendar() schedule.Calendar
 }
@@ -180,6 +185,9 @@ type Resolver struct {
 	// until SetSubtitles, which leaves every window empty.
 	librarySubtitles LibrarySubtitleReader
 	subtitleCues     SubtitleCues
+	// burns prepares the image subtitle tracks channels burn in (#2088 step 8; subtitleburn.go).
+	// Nil ⇒ nothing is burned in.
+	burns *SubtitleBurns
 	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil
 	// leaves the guide without descriptions, and any other id has none.
 	itemFacts librarystore.LibraryItemFactsReader

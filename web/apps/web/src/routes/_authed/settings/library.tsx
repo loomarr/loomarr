@@ -18,12 +18,13 @@ const LibrarySettingsPage = () => (
 const Route = createFileRoute("/_authed/settings/library")({
   component: LibrarySettingsPage,
   // The folders and the library status the page is made of (`useLibraryFolders` reads the same
-  // two), each answering for itself when it fails, so they are warmed. Admin-only, like the page.
+  // two), so it opens on them and a failed read is the route's error view. Admin-only, like the
+  // page.
   loader: async ({ context: { queryClient } }) => {
     if (!(await viewerIsAdmin(queryClient))) return;
     await Promise.all([
-      queryClient.prefetchQuery(libraryApi.getListLibraryRootsQueryOptions()),
-      queryClient.prefetchQuery(libraryApi.getLibraryStatusQueryOptions()),
+      queryClient.ensureQueryData(libraryApi.getListLibraryRootsQueryOptions()),
+      queryClient.ensureQueryData(libraryApi.getLibraryStatusQueryOptions()),
     ]);
   },
 });

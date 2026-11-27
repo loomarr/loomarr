@@ -146,7 +146,8 @@ brand is dropped; no brand is the honest common case.
 Transcript, brand and visible text persist to the sidecar as well as the store.
 
 **Broadcast context (V45).** A parser over titles and filenames (Go `regexp` plus a callsign table)
-extracts network, station and full air date, only when they literally appear. A station is the
+extracts network, station and full air date, only when they literally appear; a network only on a
+piece that presents it, its ID, bumper or promo (decision 0050), never on an ad taped off it. A station is the
 broadcast station directory's id (#2061); its community of license is the only location a local
 clip has. It runs on the composite and its output propagates to every child.
 

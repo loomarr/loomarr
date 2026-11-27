@@ -49,6 +49,7 @@ func (s PackagerSource) ItemAt(ctx context.Context, channelID string, at time.Ti
 	}
 	item.Input, item.Seek = streamURL, airing.Seek()
 	item.Watermark = s.WatermarkFor(channelID, airing)
+	item.Subtitles = s.Res.BurnSubtitlesFor(ctx, channelID, airing, at, streamURL)
 	item.RecordAiringServed = func(ctx context.Context) { s.Res.RecordAiringServed(ctx, channelID, airing, at) }
 	if airing.Source != "" {
 		// A filler clip that keeps failing to encode is fed back to the catalog; the identity of a

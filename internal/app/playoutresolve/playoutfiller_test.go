@@ -23,6 +23,10 @@ func (s stubCycle) TurnedWindow(context.Context, string, time.Time, time.Time) (
 	return s.slots, nil
 }
 
+func (s stubCycle) WithPlannedBreaks(_ context.Context, _ string, _ time.Time, slots []schedule.Slot) []schedule.Slot {
+	return slots
+}
+
 func (s stubCycle) CyclePreview(context.Context, string, time.Time) (
 	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
 ) {

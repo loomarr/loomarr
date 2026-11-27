@@ -6,7 +6,7 @@ Where the outside world comes in. The api package is Loomarr's HTTP surface, and
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** any, by design — platform (103), filler (55), library (32), channels (25), playout (21), proposals (19), media (18), people (14)
+**Imports from other areas:** any, by design — platform (104), filler (55), library (32), channels (25), playout (21), proposals (19), media (18), people (14)
 
 ## Packages
 
@@ -46,5 +46,5 @@ One area of the [package map](../package-map.md#start-here).
   The named connection probes behind POST /v1/setup/test and the Health checks (config-design §8): media server, Tunarr, requester, Sonarr, Radarr, LLM, TMDB and the filler library folders.
 - **`app/nownext`** · 1 importer · → `channels/schedule`, `library/provision`, `platform/store/channelstore`, `playout/timeline`
   Answers the channel list's "on now / up next" card and the "what's on later" strip, routing each channel to the backend that actually streams it (§9.1).
-- **`app/playoutresolve`** · 1 importer · → `channels/schedule`, `filler/asset`, `filler/cliplibrary`, `filler/pod`, `library/inventory`, `library/mediaserver`, `library/provision`, `library/tmdb`, `media/encode`, `media/images`, `media/measure`, `platform/diagnostics`, `platform/metrics`, `platform/store/channelstore`, `platform/store/librarystore`, `playout`, `playout/subtitles`, `playout/timeline`
+- **`app/playoutresolve`** · 1 importer · → `channels/schedule`, `filler/asset`, `filler/cliplibrary`, `filler/pod`, `library/inventory`, `library/mediaserver`, `library/provision`, `library/tmdb`, `media/encode`, `media/images`, `media/measure`, `platform/diagnostics`, `platform/langcode`, `platform/metrics`, `platform/store/channelstore`, `platform/store/librarystore`, `playout`, `playout/subtitles`, `playout/timeline`
   Adapter that makes internal playout work (§9.1): where three separately-verified pieces finally compose.

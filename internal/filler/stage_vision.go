@@ -136,12 +136,15 @@ func (s *VisionStage) Observe(ctx context.Context, c clipstore.Clip) (StageResul
 
 	v := groundVisionTags(out, forest)
 
-	// The free frame-heuristic tier: if the model grounded no era, read one off the pixels already
-	// decoded. Only ever a SUGGESTION — a one-click-dismissible prompt on a clip that had no era
-	// signal at all, never a fact.
+	// The free frame-heuristic tier: if the model grounded no era, read one off the same windows'
+	// pixels. Only ever a SUGGESTION — a one-click-dismissible prompt on a clip that had no era
+	// signal at all, never a fact. A failed measurement yields no suggestion rather than an error:
+	// failing here would retry a vision call that already answered, to recover the weakest tier.
 	suggestedEra := 0
 	if v.Era == 0 {
-		suggestedEra = tools.SuggestedEraFrom(tools.AnalyzeFrames(frames))
+		if hint, err := s.tools.FrameHintsIn(ctx, file, 0, c.DurationMs, split.VisionKeyframes); err == nil {
+			suggestedEra = tools.SuggestedEraFrom(hint)
+		}
 	}
 
 	pipelinestate.ReportProgress(ctx, pipelinestate.StageVision, 100)

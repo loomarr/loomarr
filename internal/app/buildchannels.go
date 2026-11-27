@@ -67,6 +67,7 @@ func buildChannels(
 	log *slog.Logger, processDiagnostics *diagnostics.ProcessManager,
 	storageGovernor *storagegovernor.Governor,
 	metricRecorder *metrics.Recorder, watermarks *channelWatermarks, calendar func() schedule.Calendar,
+	subtitleDecoder playout.SubtitleStillDecoder,
 ) (channelBuild, error) {
 	// Scheduler + Tunarr (§9): the channel reconcile engine + periodic
 	// sweep, plus the Live TV wiring connector (guide-refresh poker). Wired when a
@@ -293,6 +294,7 @@ func buildChannels(
 			capacityProbe:      ov.CapacityProbe,
 			startup:            ov.Startup,
 			watermarks:         watermarks,
+			subtitleDecoder:    subtitleDecoder,
 		})
 		if err != nil {
 			return channelBuild{}, err
