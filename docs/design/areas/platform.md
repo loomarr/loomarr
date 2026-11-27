@@ -69,7 +69,7 @@ One area of the [package map](../package-map.md#start-here).
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 - **`platform/store/activitystore`** · 10 importers · → `platform/store/storedb`
   Persists the Dashboard's Recent activity feed (§5, §12, V32): one append-only table, newest first, purged by age.
-- **`platform/store/channeldatastore`** · 6 importers · → `library/provision`, `platform/store/storedb`
+- **`platform/store/channeldatastore`** · 7 importers · → `library/provision`, `platform/store/storedb`
   Persists what hangs off channels without being the channel itself: a person's favourite and recent channels (#1666), the channel ideas they hid (#1665), the airing history placement ranks on (§5), and the household's and channels' discovery feedback.
 - **`platform/store/channelstore`** · 23 importers · → `channels/schedule`, `library/provision`, `platform/store/storedb`
   Persists channels (the channels table, §9): the approved lineup, the desired schedule, the optimistic revision, and the reconcile deadline the sweep claims by.

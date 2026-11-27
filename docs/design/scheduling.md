@@ -248,7 +248,8 @@ an airing whose item the catalog doesn't hold and writes the rest.
   programme on air is included) on channels neither paused nor detached, earliest first. A row
   matches the item by its own item id or through `titles.key = title_key` for that item, the key
   that lists a title's channels: a movie both ways, a series through its episodes' title key. The
-  read does no member filtering; the API that serves it blanks a hidden episode's item id and name.
+  read does no member filtering. The API that serves it sends a member no `episode` at all for an
+  episode their page leaves out: no id, name or numbering.
 - **Freshness.** Pausing and detaching save without a reconcile, which is why the read filters the
   channel's status. Purging a channel deletes its rows. A settings change reaches the rows at the
   next sweep, and so does a removed file: its airing stays until the channel's next sweep

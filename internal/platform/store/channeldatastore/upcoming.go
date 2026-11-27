@@ -14,7 +14,10 @@ import (
 // UpcomingAiring is one programme a channel airs within the stored horizon (#4476, scheduling.md
 // "Upcoming airings"). Start and End are wall-clock; End is exclusive.
 type UpcomingAiring struct {
-	ChannelID     string
+	ChannelID string
+	// ChannelName and ChannelNumber are the channel's own as read; a replace ignores them.
+	ChannelName   string
+	ChannelNumber int
 	Start, End    time.Time
 	LibraryItemID string
 	// TitleKey is the lineup title the programme belongs to; a series finds its episodes by it.
@@ -78,7 +81,7 @@ func (s *Store) ReplaceUpcomingAirings(ctx context.Context, channelID string, re
 // on channels neither paused nor detached, earliest first. A movie matches on its own id; a series
 // matches its episodes through the title key its titles row holds, the key a lineup names it by.
 func (s *Store) UpcomingAiringsForItem(ctx context.Context, libraryItemID string, now time.Time) ([]UpcomingAiring, error) {
-	rows, err := s.h.QueryContext(ctx, s.h.Rebind(`SELECT u.channel_id, u.starts_at_ms, u.ends_at_ms,
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(`SELECT u.channel_id, c.name, c.number, u.starts_at_ms, u.ends_at_ms,
 			u.library_item_id, u.title_key, u.forecast
 		FROM channel_upcoming_airings u JOIN channels c ON c.id = u.channel_id
 		WHERE u.ends_at_ms > ? AND c.status NOT IN ('paused', 'detached')
@@ -95,7 +98,7 @@ func (s *Store) UpcomingAiringsForItem(ctx context.Context, libraryItemID string
 		var a UpcomingAiring
 		var startMs, endMs int64
 		var key string
-		if err := rows.Scan(&a.ChannelID, &startMs, &endMs, &a.LibraryItemID, &key, &a.Forecast); err != nil {
+		if err := rows.Scan(&a.ChannelID, &a.ChannelName, &a.ChannelNumber, &startMs, &endMs, &a.LibraryItemID, &key, &a.Forecast); err != nil {
 			return nil, fmt.Errorf("upcoming airings for %s: scan: %w", libraryItemID, err)
 		}
 		a.Start, a.End, a.TitleKey = time.UnixMilli(startMs), time.UnixMilli(endMs), provision.Key(key)

@@ -46,6 +46,7 @@ const echo = {
   match: { by: "file" as const },
   detailsFrom: {},
   channels: [],
+  nextAirings: [],
 };
 
 const renderPage = () => {
