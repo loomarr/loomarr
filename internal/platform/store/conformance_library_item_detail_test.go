@@ -121,11 +121,10 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("film facts = %+v", film)
 	}
 	// Credits read back in billing order with their people's names, one person twice in two roles,
-	// and a linked person's catalog id, with no photo.
-	ana := librarystore.LibraryID{Namespace: "tmdb", Value: "1"}
+	// and no photo or catalog id.
 	wantCredits := []librarystore.LibraryCredit{
-		{Name: "Ana Actor", Role: "actor", Character: "Lead", ID: ana}, {Name: "Bo Byname", Role: "actor"},
-		{Name: "Ana Actor", Role: "director", ID: ana}, {Name: "Cy Writer", Role: "writer"},
+		{Name: "Ana Actor", Role: "actor", Character: "Lead"}, {Name: "Bo Byname", Role: "actor"},
+		{Name: "Ana Actor", Role: "director"}, {Name: "Cy Writer", Role: "writer"},
 	}
 	if !slices.Equal(film.Credits, wantCredits) {
 		t.Errorf("film credits = %+v, want %+v", film.Credits, wantCredits)

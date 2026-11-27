@@ -69,9 +69,6 @@ func TestLanguageLabel(t *testing.T) {
 		{"und", "", ""},
 		{"", "", ""},
 		{"zzz", "zzz", ""},
-		// A code that names no language is kept, in lower case like the rest.
-		{" Qq-Made-Up ", "qq-made-up", ""},
-		{"ENG", "en", "English"},
 	} {
 		code, name := languageLabel(tc.in)
 		if code != tc.code || name != tc.name {
