@@ -478,8 +478,8 @@ describe("LibraryShelf", () => {
     // The URL's spelling matches the list's in any case.
     expect(select.value).toBe("Drama");
     expect(select.textContent).toContain("All genres");
-    expect(select.textContent).toContain("Drama (1,204)");
-    expect(select.textContent).toContain("Comedy (7)");
+    expect(select.textContent).toContain("Drama · 1,204");
+    expect(select.textContent).toContain("Comedy · 7");
     choose(select, "Comedy");
     expect(props.onGenreChange).toHaveBeenCalledWith("Comedy");
     choose(select, "");

@@ -332,7 +332,7 @@ describe("LibraryPage", () => {
     renderPage({ filter: "all", search: "", genre: "Drama" });
 
     await waitFor(() => expect(asked.at(-1)?.get("genre")).toBe("Drama"));
-    await screen.findByRole("option", { name: "Comedy (2)" });
+    await screen.findByRole("option", { name: "Comedy · 2" });
     await userEvent.selectOptions(screen.getByLabelText("Genre"), "Comedy");
     expect(mocks.navigate).toHaveBeenLastCalledWith({ to: "/library", search: { genre: "Comedy" } });
     await userEvent.selectOptions(screen.getByLabelText("Genre"), "");
@@ -370,11 +370,11 @@ describe("LibraryPage", () => {
       </QueryClientProvider>
     );
     const view = render(page("movie"));
-    expect(await screen.findByRole("option", { name: "Western (1)" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "Western · 1" })).toBeInTheDocument();
 
     view.rerender(page("series"));
-    expect(await screen.findByRole("option", { name: "Reality (1)" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "Western (1)" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "Reality · 1" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Western · 1" })).not.toBeInTheDocument();
   });
 
   // The wall is one list from its first title, so a jump loads on until the letter's title and a

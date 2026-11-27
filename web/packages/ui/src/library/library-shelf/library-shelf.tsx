@@ -453,7 +453,7 @@ const ALL_GENRES = "";
 const genreOptions = (genres: NonNullable<LibraryShelfProps["genres"]>, chosen: string | undefined) => {
   const options = [
     { label: "All genres", value: ALL_GENRES },
-    ...genres.map(({ name, titles }) => ({ label: `${name} (${count(titles)})`, value: name })),
+    ...genres.map(({ name, titles }) => ({ label: `${name} · ${count(titles)}`, value: name })),
   ];
   if (chosen && !genres.some((g) => g.name === chosen)) options.push({ label: chosen, value: chosen });
   return options;
@@ -516,7 +516,7 @@ const Controls = ({
       onValueChange={onSortChange}
       options={SORTS}
       value={sort}
-      width={wide ? 168 : 124}
+      width={wide ? 168 : undefined}
     />
   );
   const listed = listedGenre(genres, genre);
@@ -527,7 +527,7 @@ const Controls = ({
       onValueChange={(next) => onGenreChange(next === ALL_GENRES ? undefined : next)}
       options={genreOptions(genres ?? [], chosen)}
       value={chosen ?? ALL_GENRES}
-      width={wide ? 168 : 124}
+      width={wide ? 168 : undefined}
     />
   );
   if (wide) {
@@ -544,23 +544,28 @@ const Controls = ({
       </Line>
     );
   }
-  // With a genre chosen the count is that genre's.
+  // With a genre chosen the count is that genre's. On a phone the order and the genre share the
+  // line equally, so a chosen genre's name and count stay readable; the count sits under them.
   const shown = genre ? listed?.titles : counts && filter !== "collections" ? counts[filter] : undefined;
   return (
     <Stack gap="control">
       {tabs}
       {searchField}
-      <Line gap="control">
-        {order}
-        {genreSelect}
-        {shown === undefined ? null : (
-          <Stack marginLeft="auto">
-            <Text textRole="compact" tone="secondary">
-              {titlesWord(shown)}
-            </Text>
-          </Stack>
-        )}
+      <Line flexWrap="nowrap" gap="control">
+        <Stack flex={1} minWidth={0}>
+          {order}
+        </Stack>
+        <Stack flex={1} minWidth={0}>
+          {genreSelect}
+        </Stack>
       </Line>
+      {shown === undefined ? null : (
+        <Stack alignItems="flex-end">
+          <Text textRole="compact" tone="secondary">
+            {titlesWord(shown)}
+          </Text>
+        </Stack>
+      )}
     </Stack>
   );
 };
