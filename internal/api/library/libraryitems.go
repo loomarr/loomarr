@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -384,6 +385,7 @@ type libraryItemDetailDTO struct {
 	Playing       *libraryPlayingDTO  `json:"playing,omitempty" doc:"The copy that plays, in one line; absent for a series, and while none of its files plays"`
 	Seasons       []librarySeasonDTO  `json:"seasons" doc:"A series' episodes by season; empty for a movie or an episode"`
 	Channels      []libraryChannelDTO `json:"channels" doc:"The channels whose lineup holds it, by number"`
+	NextAirings   []libraryAiringDTO  `json:"nextAirings" doc:"The next programme of it on each channel with one stored (about the next 48 hours; not paused, detached or Tunarr channels), earliest first. One already on air counts"`
 	// Files, Match and DetailsFrom are present for an admin, an empty files list included.
 	Files       *[]libraryItemFileDTO  `json:"files,omitempty" doc:"A movie's files, or an episode's; empty for a series. Admins only"`
 	Match       *libraryMatchDTO       `json:"match,omitempty" doc:"What decides which title it is. Admins only"`
@@ -423,6 +425,51 @@ type libraryChannelDTO struct {
 	Number int    `json:"number"`
 }
 
+// libraryAiringDTO is a title's next programme on one channel (scheduling.md "Upcoming airings").
+type libraryAiringDTO struct {
+	Channel  libraryChannelDTO        `json:"channel"`
+	Start    time.Time                `json:"start"`
+	End      time.Time                `json:"end"`
+	Forecast bool                     `json:"forecast" doc:"Past the window on air, so it can still change"`
+	Episode  *libraryAiringEpisodeDTO `json:"episode,omitempty" doc:"A series' episode that airs; absent for any other title, and for an episode the caller doesn't read"`
+}
+
+type libraryAiringEpisodeDTO struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Season int    `json:"season" doc:"0 is the specials"`
+	Number int    `json:"number"`
+	End    int    `json:"end,omitempty" doc:"The last episode a multi-episode file holds"`
+}
+
+// libraryNextAiringsOf is the first of airings, which come earliest first, on each channel. An
+// episode is named only from d's own seasons as the caller reads them (episodeShown), so one the
+// caller doesn't read, or one with no present file, goes unnamed.
+func libraryNextAiringsOf(d scan.ItemDetail, airings []store.UpcomingAiring, admin bool) []libraryAiringDTO {
+	episodes := map[string]*libraryAiringEpisodeDTO{}
+	for _, season := range d.Seasons {
+		for _, ep := range season.Episodes {
+			if episodeShown(ep, admin) {
+				episodes[ep.ID] = &libraryAiringEpisodeDTO{ID: ep.ID, Name: ep.Name, Season: season.Number,
+					Number: ep.Number, End: ep.End}
+			}
+		}
+	}
+	out := []libraryAiringDTO{}
+	seen := map[string]bool{}
+	for _, a := range airings {
+		if seen[a.ChannelID] {
+			continue
+		}
+		seen[a.ChannelID] = true
+		out = append(out, libraryAiringDTO{
+			Channel: libraryChannelDTO{ID: a.ChannelID, Name: a.ChannelName, Number: a.ChannelNumber},
+			Start:   a.Start.UTC(), End: a.End.UTC(), Forecast: a.Forecast, Episode: episodes[a.LibraryItemID],
+		})
+	}
+	return out
+}
+
 type getLibraryItemInput struct {
 	ID string `path:"id" maxLength:"64"`
 }
@@ -445,8 +492,13 @@ func (s *Handlers) getLibraryItem(ctx context.Context, in *getLibraryItemInput) 
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read this title", "Try again in a moment.", err)
 	}
+	airings, err := s.store.UpcomingAiringsForItem(ctx, in.ID, time.Now())
+	if err != nil {
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read this title", "Try again in a moment.", err)
+	}
 	images := s.pageImages(ctx, d, admin)
 	body := libraryItemDetailOf(d, images, admin)
+	body.NextAirings = libraryNextAiringsOf(d, airings, admin)
 	body.LogoImage, body.BackdropImage = images[d.Logo], images[d.Backdrop]
 	if d.Still != "" {
 		body.Still = images[d.Still]

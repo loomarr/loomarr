@@ -14,9 +14,10 @@ import (
 )
 
 // Store is the slice of the aggregate store these routes read directly: collections list the
-// channels that use them.
+// channels that use them, and a title's page reads when it next airs.
 type Store interface {
 	store.ChannelStore
+	store.UpcomingAiringStore
 }
 
 // Deps is what the library routes need from the rest of the server. Every field is optional: a nil

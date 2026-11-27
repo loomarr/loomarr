@@ -702,9 +702,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   which reconcile fills with each internal-playout channel's next 48 hours of programmes
   (scheduling.md "Upcoming airings"): a movie by its item id and its title key, a series by its
   title key. A removed file's airing stays until the channel's next sweep (by default within about
-  twenty minutes), as in the guide. The store read does no member filtering; the API field that
-  serves it blanks a hidden episode's item id and name for a member. Nothing reads it over the API
-  yet (#4476).
+  twenty minutes), as in the guide. `GET /v1/library/items/{id}` serves it as `nextAirings`: one
+  entry per channel, earliest first, with the channel's id, name and number, the programme's `start`
+  and `end`, and `forecast`. A programme on air counts; a title with none reads an empty list. A
+  series' entry names its `episode` (id, name, season, number) from the page's own episode list. The
+  store read does no member filtering: for a member, an entry whose episode their page leaves out
+  carries no `episode`, so neither its id, name nor numbering is sent (#4476).
 - **Needs you on the page** (step 11b). The Library page's strip asks about the first four
   titles that need the household ("X — is this the 1999 movie?", Yes, that's it / Pick a
   different title, or Find it with no guess); `/library/needs` holds one card each with the
