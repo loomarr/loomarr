@@ -80,6 +80,12 @@ var policyFixtures = []struct {
 		policy:  `{"scope":{"collections":["col-b"]},"rules":["bare",{"what":{"collections":["col-a"]}}]}`,
 		named:   []string{"col-a", "col-b"},
 	},
+	{
+		id:      "ch-null-rule",
+		desired: `["not a slot",{"Kind":"program","LibraryItemID":"lib-film"}]`,
+		policy:  `{"rules":[null,true,7,"bare",{"what":{"collections":["col-a","dead-8"]}}]}`,
+		named:   []string{"col-a"},
+	},
 	{id: "ch-scope-not-array", desired: `[]`, policy: `{"scope":{"collections":"col-a"},"rules":{"what":{"collections":["dead-7"]}}}`},
 }
 
@@ -164,8 +170,8 @@ func testLibraryReferencesPolicyMigration(t *testing.T, db *sql.DB, dialect Dial
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) || ':' || MIN(channel_id) || ':' || MIN(library_item_id) FROM channel_planned_items`).Scan(&planned); err != nil {
 		t.Fatal(err)
 	}
-	if planned != "1:ch-full:lib-film" {
-		t.Errorf("channel_planned_items = %s, want only ch-full's lib-film", planned)
+	if planned != "2:ch-full:lib-film" {
+		t.Errorf("channel_planned_items = %s, want ch-full's and ch-null-rule's lib-film", planned)
 	}
 }
 

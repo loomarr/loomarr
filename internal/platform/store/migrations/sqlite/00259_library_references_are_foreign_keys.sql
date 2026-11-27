@@ -73,8 +73,8 @@ CREATE INDEX idx_channel_planned_items_item ON channel_planned_items (library_it
 INSERT INTO channel_planned_items (channel_id, library_item_id)
 SELECT DISTINCT c.id, json_extract(d.value, '$.LibraryItemID')
 FROM channels c, json_each(c.desired_json) d
-WHERE json_type(c.desired_json) = 'array' AND d.type = 'object'
-  AND json_extract(d.value, '$.LibraryItemID') IN (SELECT id FROM library_items);
+WHERE json_type(c.desired_json) = 'array'
+  AND json_extract(CASE WHEN d.type = 'object' THEN d.value ELSE '{}' END, '$.LibraryItemID') IN (SELECT id FROM library_items);
 
 -- A collection id that names no collection is taken out of the policy, as it already matched no
 -- title; left in, it would refuse every save of its channel.
@@ -83,14 +83,15 @@ UPDATE channels SET policy_json = json_set(policy_json, '$.scope.collections', j
     WHERE x.value IN (SELECT id FROM library_collections))))
 WHERE json_type(policy_json, '$.scope.collections') = 'array';
 UPDATE channels SET policy_json = json_set(policy_json, '$.rules', json((
-    SELECT json_group_array(json(CASE WHEN json_type(r.value, '$.what.collections') = 'array'
+    SELECT json_group_array(json(CASE
+        WHEN r.type <> 'object' THEN channels.policy_json -> r.fullkey
+        WHEN json_type(r.value, '$.what.collections') = 'array'
         THEN json_set(r.value, '$.what.collections', json((
             SELECT json_group_array(x.value ORDER BY x.key) FROM json_each(r.value, '$.what.collections') x
             WHERE x.value IN (SELECT id FROM library_collections))))
         ELSE r.value END) ORDER BY r.key)
     FROM json_each(channels.policy_json, '$.rules') r)))
-WHERE json_type(policy_json, '$.rules') = 'array'
-  AND NOT EXISTS (SELECT 1 FROM json_each(channels.policy_json, '$.rules') r WHERE r.type <> 'object');
+WHERE json_type(policy_json, '$.rules') = 'array';
 
 CREATE TABLE channel_scope_collections (
     channel_id    TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,

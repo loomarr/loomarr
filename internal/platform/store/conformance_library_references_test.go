@@ -142,6 +142,9 @@ func testLibraryReferences(t *testing.T, newStore NewStoreFunc) {
 	if _, err := st.SaveChannel(ctx, added); !errors.Is(err, channelstore.ErrUnknownLibraryReference) {
 		t.Errorf("save adding an unknown item beside a held vanished one = %v, want ErrUnknownLibraryReference", err)
 	}
+	if got, err := st.GetChannel(ctx, "ch-1"); err != nil || got.Revision != saved.Revision {
+		t.Errorf("channel after the refused save = revision %d, %v; want %d", got.Revision, err, saved.Revision)
+	}
 
 	// The catalog purge keeps an item a channel plans to air and removes one nothing names.
 	saveLibraryItems(t, st, "90000805")
