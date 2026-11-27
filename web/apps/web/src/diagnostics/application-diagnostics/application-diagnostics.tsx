@@ -341,7 +341,8 @@ const ApplicationDiagnostics = ({
         <DiagnosticsSplitPane
           storageKey="diagnostics-log-details"
           revealKey={expanded}
-          className="min-h-72 flex-1"
+          flex={1}
+          minHeight={288}
           primary={
             <section
               ref={listRef}

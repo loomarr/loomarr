@@ -209,6 +209,7 @@ export {
   iconography,
   nativeFontFace,
   playerChrome,
+  roleLetterSpacing,
   semanticColors,
   semanticMotion,
   semanticRadius,
@@ -231,3 +232,5 @@ export {
   useViewportInsets,
   ViewportStage,
 } from "./src/viewport";
+export type { VisuallyHiddenProps } from "./src/visually-hidden";
+export { VisuallyHidden } from "./src/visually-hidden";

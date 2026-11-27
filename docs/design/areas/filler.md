@@ -8,13 +8,13 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 37 imports — the store that records sources, pulls and the catalog, the language models that screen and enrich clips, the storage governor, the diagnostics process manager, and the OpenRouter clients
-- **media** · 29 imports — ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound and creative-identity checks every clip passes
+- **platform** · 34 imports — the store that records sources, pulls and the catalog, the language models that screen and enrich clips, the storage governor, the diagnostics process manager, and the OpenRouter clients
+- **media** · 28 imports — ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound and creative-identity checks every clip passes
 - **channels** · 3 imports — the holiday season and filler selection a channel's `channels/schedule` asks for
 
 ## Packages
 
-- **`filler`** · 9 importers · → `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/httpx`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`, `platform/store/clipstore`
+- **`filler`** · 9 importers · → `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/httpx`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`, `platform/store/clipstore`
   Commercials & filler domain (design §10): the clip catalog model; pod assembly lives in filler/pod.
 - **`filler/acquisition`** · 11 importers · → `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/source`, `filler/split`
   How filler decides what to fetch and keeps the record of it: the intent a source is searched with, the plan that selects candidates, the durable download manifests and their repair, the per-pass Fetcher, and the gates that keep a compilation or an unlisted source out.
@@ -60,22 +60,20 @@ One area of the [package map](../package-map.md#start-here).
   Archive.org source provider: a collection the operator registers, listed through archive.org's search API and searched inside for the call signs of nearby stations.
 - **`filler/source/youtube`** · 1 importer · → `filler/acquisition`, `filler/fetch`, `filler/source`
   YouTube source provider: a channel or playlist the operator registers, listed newest-first through yt-dlp's flat-playlist mode.
-- **`filler/split`** · 13 importers · → `filler/clips`, `filler/structure`, `media/tools`
+- **`filler/split`** · 12 importers · → `filler/clips`, `filler/structure`, `media/tools`
   The filler source-structure planner and the split model it plans over: the exact source asset, the proposed segments, the detector checkpoint, and the deterministic reduction of independent observations into one complete-timeline assessment.
 - **`filler/station`** · 7 importers · → `filler/location`, `filler/research`
   Owns the directory of over-the-air TV stations a filler clip can name (#2059): each station's community of license and the dated call signs it has held.
-- **`filler/storeadapter`** · 2 importers · → `filler`, `filler/acquisition`, `filler/asset`, `filler/clips`, `filler/defectfloor`, `filler/enrichment`, `filler/identity`, `filler/pipelinestate`, `filler/pod`, `filler/records`, `filler/research`, `filler/split`, `filler/structure/window`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/images`, `platform/store`, `platform/store/clipstore`
+- **`filler/storeadapter`** · 2 importers · → `filler`, `filler/acquisition`, `filler/asset`, `filler/clips`, `filler/defectfloor`, `filler/enrichment`, `filler/identity`, `filler/pipelinestate`, `filler/pod`, `filler/records`, `filler/research`, `filler/split`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/images`, `platform/store`, `platform/store/clipstore`
   Bridges the store's filler rows to the ports the filler packages declare.
-- **`filler/structure`** · 7 importers
+- **`filler/structure`** · 6 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
-- **`filler/structure/assessment`** · 2 importers · → `filler/asset`, `filler/cliplibrary`, `filler/split`, `filler/structure`, `filler/structure/cut`, `filler/structure/window`, `media/bgexec`, `media/tools`
+- **`filler/structure/assessment`** · 1 importer · → `filler/asset`, `filler/cliplibrary`, `filler/split`, `filler/structure`, `filler/structure/cut`, `filler/structure/window`, `media/bgexec`, `media/tools`
   Complete-timeline structure-assessment runtime: the ffmpeg media preparer that renders and verifies the normalized per-window derivatives, the lineage records that bind those derivatives to their source, the family and window-set runtimes that run independent assessors serially and stitch their answers, and the private content-addressed evidence repositories that keep every call, stitch and decision.
-- **`filler/structure/cut`** · 4 importers · → `filler/structure`, `media/encode`, `media/tools`
+- **`filler/structure/cut`** · 2 importers · → `filler/structure`, `media/encode`, `media/tools`
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
-- **`filler/structure/window`** · 6 importers · → `filler/structure`, `filler/structure/cut`
+- **`filler/structure/window`** · 2 importers · → `filler/structure`, `filler/structure/cut`
   Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
-- **`filler/structure/window/openrouter`** · 1 importer · → `filler/split`, `filler/structure`, `filler/structure/assessment`, `filler/structure/cut`, `filler/structure/window`, `media/encode`, `platform/httpx`, `platform/openroutercatalog`, `platform/openroutermedia`
-  Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
 - **`filler/taxonomy`** · 7 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`filler/upkeep`** · 1 importer · → `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/identity`, `filler/pipelinestate`, `media/tools`, `platform/store/clipstore`

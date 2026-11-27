@@ -827,6 +827,7 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, old); err != nil {
 		t.Fatal(err)
 	}
+	saveFillerSources(t, s, "youtube:ads")
 	run := acquisition.AcquisitionRun{
 		ID: "identity-acquisition", Trigger: acquisition.TriggerSource, SourceID: "youtube:ads",
 		Status: acquisition.RunSuccess, Requested: 1, Fetched: 1,
@@ -969,6 +970,7 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	}, at); err != nil {
 		t.Fatal(err)
 	}
+	saveAcquisitionRun(t, s, "ready-acquisition")
 	pipeline := pipelinestate.ClipPipeline{
 		ClipHash: old.Hash, AcquisitionID: "ready-acquisition", Stage: pipelinestate.StageFinish,
 		Status: pipelinestate.StatusRunning, Progress: 100, Disposition: pipelinestate.DispositionRunning,
@@ -1081,6 +1083,7 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, source); err != nil {
 		t.Fatal(err)
 	}
+	saveFillerSources(t, s, "youtube:ads")
 	run := acquisition.AcquisitionRun{
 		ID: "conditioning-acquisition", Trigger: acquisition.TriggerSource, SourceID: "youtube:ads",
 		Status: acquisition.RunSuccess, Requested: 1, Fetched: 1,
@@ -1400,6 +1403,7 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
+	saveFillerSources(t, s, "archive:classic", "archive:vault")
 	older := acquisition.AcquisitionRun{
 		ID: "acq-old", Trigger: acquisition.TriggerScheduled, SourceID: "archive:classic",
 		Status: acquisition.RunRunning, Requested: 3, StartedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
@@ -1527,6 +1531,7 @@ func testFillerAcquisitionArtifacts(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
+	saveFillerSources(t, s, "archive:classic")
 	run := acquisition.AcquisitionRun{
 		ID: "acq-manifest", Trigger: acquisition.TriggerSource, SourceID: "archive:classic",
 		Status: acquisition.RunRunning, Requested: 2, StartedAt: now, UpdatedAt: now,
@@ -1732,6 +1737,7 @@ func testClipPipelineRetireRejected(t *testing.T, newStore NewStoreFunc) {
 		}
 		return Clip{Clip: c}
 	}
+	saveAcquisitionRun(t, s, "run-1")
 	old := reject("old", "run-1", week.Add(-time.Hour))
 	recent := reject("recent", "run-1", week.Add(time.Hour))
 	byHand := reject("by-hand", "", week.Add(-time.Hour))
@@ -1827,6 +1833,7 @@ func testClipPipelineRetireReady(t *testing.T, newStore NewStoreFunc) {
 		}
 		return Clip{Clip: c}
 	}
+	saveAcquisitionRun(t, s, "run-1")
 	fetched := ready("fetched", "run-1", nil)
 	byHand := ready("by-hand", "", nil)
 	pinned := ready("pinned", "run-1", nil)
@@ -3794,6 +3801,7 @@ func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	ctx := context.Background()
 	s := newStore(t)
+	saveMembers(t, s, "admin-2")
 	created := time.Now().UTC().Truncate(time.Second)
 
 	p := acquisition.Pull{
@@ -5447,6 +5455,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
 	}
+	saveAcquisitionRun(t, s, "acquisition-1")
 	current := pipelinestate.ClipPipeline{
 		ClipHash: hash, AcquisitionID: "acquisition-1", Stage: pipelinestate.StageFinish,
 		Status: pipelinestate.StatusRunning, Progress: 100, Disposition: pipelinestate.DispositionRunning,
@@ -5593,58 +5602,6 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	}
 	if _, found, err := s.GetFillerReadyEvent(ctx, driftHash); err != nil || found {
 		t.Fatalf("drifted transaction recorded event, found=%t err=%v", found, err)
-	}
-}
-
-func testFillerSplitShadowDecisions(t *testing.T, newStore NewStoreFunc) {
-	t.Helper()
-	s := newStore(t)
-	ctx := context.Background()
-	decision := filler.StructureSplitShadowDecision{
-		SchemaVersion: filler.StructureSplitShadowSchemaVersion, ContractVersion: filler.StructureSplitShadowContractVersion,
-		ProposalID: "proposal-shadow-1", ClipHash: "clip-shadow-1",
-		SourceSHA256: strings.Repeat("a", 64), AssessmentSHA256: strings.Repeat("b", 64),
-		PolicyVersion: "production-shadow-no-certified-slices-v1",
-		Legacy: filler.StructureSplitShadowOutcome{
-			Confirm: []filler.StructureSplitShadowSpan{{StartMs: 0, EndMs: 30_000}, {StartMs: 30_000, EndMs: 60_000}},
-		},
-		Certified: filler.StructureSplitShadowOutcome{
-			Verdict: filler.RejectStructureUncertified,
-			Hold: []filler.StructureSplitShadowSpan{
-				{StartMs: 0, EndMs: 30_000, HoldReason: string(filler.RejectStructureUncertified)},
-				{StartMs: 30_000, EndMs: 60_000, HoldReason: string(filler.RejectStructureUncertified)},
-			},
-		},
-		ObservedAt: time.Unix(1_900_000_000, 123).UTC(),
-	}
-	decision.SHA256 = filler.StructureSplitShadowDecisionSHA256(decision)
-	decision.ID = "split-shadow-" + decision.SHA256
-	if err := filler.ValidateStructureSplitShadowDecision(decision); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.PutStructureSplitShadowDecision(ctx, decision); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.PutStructureSplitShadowDecision(ctx, decision); err != nil {
-		t.Fatalf("idempotent retry failed: %v", err)
-	}
-	got, found, err := s.GetStructureSplitShadowDecision(ctx, decision.ID)
-	if err != nil || !found || !reflect.DeepEqual(got, decision) {
-		t.Fatalf("get split shadow = %+v, %v, %v; want %+v", got, found, err, decision)
-	}
-	if _, found, err := s.GetStructureSplitShadowDecision(ctx, "missing-split-shadow"); err != nil || found {
-		t.Fatalf("missing split shadow found = %v, error = %v", found, err)
-	}
-	rows, err := s.ListStructureSplitShadowDecisions(ctx, decision.ClipHash, 10)
-	if err != nil || len(rows) != 1 || !reflect.DeepEqual(rows[0], decision) {
-		t.Fatalf("split shadow round trip = %+v, %v; want %+v", rows, err, decision)
-	}
-	other, err := s.ListStructureSplitShadowDecisions(ctx, "another-clip", 10)
-	if err != nil || len(other) != 0 {
-		t.Fatalf("split shadow clip filter = %+v, %v", other, err)
-	}
-	if _, err := s.ListStructureSplitShadowDecisions(ctx, "", 0); err == nil {
-		t.Fatal("invalid split shadow page limit was accepted")
 	}
 }
 

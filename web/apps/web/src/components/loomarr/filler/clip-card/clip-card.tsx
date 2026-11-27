@@ -16,7 +16,6 @@ import { CardAction, CardStatus, ClipSelect, PictureCard } from "@loomarr/ui";
 import { useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ServedImage } from "@/components/loomarr/served-image";
-import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
 
 // The play disc's drop shadow, as the card has always drawn it.
@@ -127,7 +126,8 @@ const ClipFrame = ({
     // biome-ignore lint/a11y/noStaticElementInteractions: decorative hover only, see above
     <div
       // Fills the picture card's media box, which sets the ratio and crops to it.
-      className="group relative size-full overflow-hidden"
+      data-clip-frame=""
+      style={{ height: "100%", overflow: "hidden", position: "relative", width: "100%" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       // Focus counts as hover so a keyboard user tabbing to the play button sees the same preview
@@ -230,7 +230,8 @@ const ClipFrame = ({
 
           ⚠ Always in the DOM, revealed on hover/focus by opacity — NOT conditionally rendered.
           A button that only exists on hover cannot be reached by Tab, so a keyboard user could
-          never play a clip. `group-focus-within` is what makes tabbing to it reveal it. */}
+          never play a clip. The frame's focus counts as hover, which is what makes tabbing to it
+          reveal it. */}
       {onPlay && thumbImage && (
         <Stack bottom={0} left={0} position="absolute" right={0} top={0}>
           {/* The target is the whole preview frame, drawn as a MediaTile with no fill of its own so
@@ -306,7 +307,11 @@ const ClipCard = ({ clip, onOpen, onSplit, splitPending, selected, onToggleSelec
   // A composite offers its split as the one action, so its name opens the details instead.
   const nameOpens = onSplit && onOpen;
   return (
-    <div className={cn("rounded-lg", selected && "ring-foreground ring-1")}>
+    // Selection is neutral (#1909): a foreground ring, never amber.
+    <div
+      data-clip-card=""
+      style={{ borderRadius: 12, ...(selected ? { boxShadow: "0 0 0 1px var(--foreground)" } : {}) }}
+    >
       <PictureCard
         action={
           onSplit ? (

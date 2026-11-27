@@ -1,8 +1,8 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import { PressableRow, SectionHeader, Stack, Text } from "@loomarr/design-system";
+import { ChannelIdent } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
-import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
 import type { NewThisWeekProps } from "./new-this-week.type";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;

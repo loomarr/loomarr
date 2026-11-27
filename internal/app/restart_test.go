@@ -156,11 +156,9 @@ func TestRestartDrift_NamesOnlyTheFillerFoldersAmongAppSettings(t *testing.T) {
 	drift := config.RestartDrift(nil, applied, canonicalRestartCurrent(set))
 
 	set.svc.SetDB(map[string]string{
-		"filler.dir":                              "/clips/old",
-		"filler.watch_dir":                        "/watch/old",
-		"diagnostics.dir":                         "/diagnostics/new",
-		"filler.structure_window_authority_path":  "/reviewed/authority.json",
-		"filler.structure_window_deployment_path": "/reviewed/deployment.json",
+		"filler.dir":       "/clips/old",
+		"filler.watch_dir": "/watch/old",
+		"diagnostics.dir":  "/diagnostics/new",
 	})
 	if got := drift(); len(got) != 0 {
 		t.Fatalf("drift = %v after editing live settings, want none", got)

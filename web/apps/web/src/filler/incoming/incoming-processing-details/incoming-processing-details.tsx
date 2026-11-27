@@ -1,7 +1,7 @@
 import type { IncomingProcessingDTO } from "@loomarr/api/models/incomingProcessingDTO";
 import type { IncomingProcessingStageDTO } from "@loomarr/api/models/incomingProcessingStageDTO";
 import { formatRelative, formatUntil } from "@loomarr/core/format";
-import { Action, ProgressTrack, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Details, ProgressTrack, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 
 const visibleByDefault = (stage: IncomingProcessingStageDTO) => stage.outcome !== "not_needed";
@@ -25,11 +25,35 @@ const CurrentStageProgress = ({ stage }: { stage: IncomingProcessingStageDTO }) 
   );
 };
 
-const ProcessingStage = ({ stage, timeZone }: { stage: IncomingProcessingStageDTO; timeZone?: string }) => (
-  <li className="border-border relative min-w-0 border-l pb-5 pl-4 last:pb-0">
-    <span
+const ProcessingStage = ({
+  last,
+  stage,
+  timeZone,
+}: {
+  last: boolean;
+  stage: IncomingProcessingStageDTO;
+  timeZone?: string;
+}) => (
+  <Stack
+    borderColor="borderDecorative"
+    borderLeftWidth={1}
+    minWidth={0}
+    paddingBottom={last ? 0 : 20}
+    paddingLeft={16}
+    position="relative"
+    render="li"
+  >
+    <Stack
       aria-hidden
-      className="border-background bg-muted-foreground absolute top-1.5 -left-[0.3125rem] size-2.5 rounded-full border-2"
+      backgroundColor="contentSecondary"
+      borderColor="surfaceCanvas"
+      borderRadius={999}
+      borderWidth={2}
+      height={10}
+      left={-5}
+      position="absolute"
+      top={6}
+      width={10}
     />
     <Stack align="baseline" direction="row" flexShrink={1} gap="3" justify="between" minWidth={0} wrap>
       <Text as="span" textRole="cardLabel">
@@ -52,7 +76,7 @@ const ProcessingStage = ({ stage, timeZone }: { stage: IncomingProcessingStageDT
       </time>
     </Stack>
     <CurrentStageProgress stage={stage} />
-  </li>
+  </Stack>
 );
 
 // `timeZone` is the household's, so a step's full date on hover reads as the Guide tells times;
@@ -76,45 +100,51 @@ const IncomingProcessingDetails = ({
   });
 
   return (
-    <details className="border-border rounded-lg border p-4">
-      <Text as="summary" cursor="pointer" textRole="cardLabel">
-        Processing details
-      </Text>
-      <Stack gap="4" marginTop={16}>
-        {processing.attempts ? (
-          <Text as="p" textRole="compact" tone="secondary">
-            This step was tried {processing.attempts} {processing.attempts === 1 ? "time" : "times"}.
-          </Text>
-        ) : null}
-        {processing.nextTryAt ? (
-          <Text as="p" textRole="compact" tone="secondary">
-            Next try {formatUntil(processing.nextTryAt)}
-          </Text>
-        ) : null}
-        {stages.length ? (
-          <Stack paddingLeft={4} render="ol">
-            {keyedStages.map(({ key, stage }) => (
-              // The ordered projection may contain identical stored occurrences. Its array
-              // occurrence is part of the identity so content-derived keys do not collapse it.
-              <ProcessingStage key={key} stage={stage} timeZone={timeZone} />
-            ))}
+    <Card>
+      <Stack padding={16}>
+        <Details summary="Processing details" textRole="cardLabel">
+          <Stack gap="4" marginTop={16}>
+            {processing.attempts ? (
+              <Text as="p" textRole="compact" tone="secondary">
+                This step was tried {processing.attempts} {processing.attempts === 1 ? "time" : "times"}.
+              </Text>
+            ) : null}
+            {processing.nextTryAt ? (
+              <Text as="p" textRole="compact" tone="secondary">
+                Next try {formatUntil(processing.nextTryAt)}
+              </Text>
+            ) : null}
+            {stages.length ? (
+              <Stack paddingLeft={4} render="ol">
+                {keyedStages.map(({ key, stage }, index) => (
+                  // The ordered projection may contain identical stored occurrences. Its array
+                  // occurrence is part of the identity so content-derived keys do not collapse it.
+                  <ProcessingStage
+                    key={key}
+                    last={index === keyedStages.length - 1}
+                    stage={stage}
+                    timeZone={timeZone}
+                  />
+                ))}
+              </Stack>
+            ) : (
+              <Text as="p" textRole="compact" tone="secondary">
+                No processing steps recorded yet.
+              </Text>
+            )}
+            {skipped ? (
+              <Stack direction="row">
+                <Action onPress={() => setShowSkipped((open) => !open)} variant="ghost">
+                  {showSkipped
+                    ? "Hide skipped steps"
+                    : `Show ${skipped === 1 ? "skipped step" : `${skipped} skipped steps`}`}
+                </Action>
+              </Stack>
+            ) : null}
           </Stack>
-        ) : (
-          <Text as="p" textRole="compact" tone="secondary">
-            No processing steps recorded yet.
-          </Text>
-        )}
-        {skipped ? (
-          <Stack direction="row">
-            <Action onPress={() => setShowSkipped((open) => !open)} variant="ghost">
-              {showSkipped
-                ? "Hide skipped steps"
-                : `Show ${skipped === 1 ? "skipped step" : `${skipped} skipped steps`}`}
-            </Action>
-          </Stack>
-        ) : null}
+        </Details>
       </Stack>
-    </details>
+    </Card>
   );
 };
 

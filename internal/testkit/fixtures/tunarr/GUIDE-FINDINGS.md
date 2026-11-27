@@ -37,4 +37,4 @@ TvGuideProgram = discriminatedUnion('type') of content | custom | redirect | fle
 - Cache/TTL: `GET /api/guide/status` returns per-channel `lastUpdate` + `guideTimes`
   (start/end of the generated window) — cheap staleness signal.
 - `flex` entries are gaps (commercial pods / dead air) and carry their own `title`; the UI
-  should render them as a gap, not as a program (NowNextStrip already has a `gap` flag).
+  should render them as a gap, not as a program (the guide's now/next line already has a `gap` flag).

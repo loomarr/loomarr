@@ -1,11 +1,20 @@
-import { Action, Icon, icons, PressableRow, SkipLink, Stack, Text, Tooltip } from "@loomarr/design-system";
+import {
+  Action,
+  BrandLockup,
+  Icon,
+  icons,
+  PressableRow,
+  SkipLink,
+  Stack,
+  Text,
+  Tooltip,
+} from "@loomarr/design-system";
 import { SearchButton } from "@loomarr/ui";
 import { Link, useLocation } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { channelNavHighlight } from "@/channels/channel-nav-highlight";
 import { commandShortcutAria, commandShortcutLabel } from "@/lib/platform";
 import { usePhoneWidth } from "@/lib/use-phone-width";
-import { BrandLockup } from "../brand-lockup";
 import type { AppShellProps, NavItem, NavTo, WatchNavItem } from "./app-shell.type";
 
 // Lazy, not a static import: PhoneBottomBar is @loomarr/design-system's only consumer of
@@ -104,6 +113,9 @@ const navItemsFor = (isAdmin: boolean, watchChannelId: string | undefined): (Nav
 
 const MAIN_ID = "main-content";
 
+// `main` scrolls only when its content overflows, and the scroll stops at its end.
+const MAIN_SCROLL = { overflow: "auto", overscrollBehavior: "contain" } as const;
+
 // The link is the row's frame: the current-page edge is positioned against its left side.
 const ROW_FRAME = { position: "relative" } as const;
 
@@ -139,12 +151,18 @@ const AppShell = ({
     </>
   );
   return (
-    // `h-screen` + `overflow-hidden`, not `min-h-screen`. With only a MINIMUM the shell grows to
-    // fit its content, so every `flex-1 min-h-0 overflow-auto` region inside it inherits an
+    // A fixed height with hidden overflow, not a minimum height. With only a MINIMUM the shell grows
+    // to fit its content, so every flexing scroll region inside it inherits an
     // unbounded height and never becomes a scroll viewport — the page scrolls instead. That is
     // invisible on short pages and breaks anything that needs a real viewport: the Guide's
     // virtualizer measured an 11,000px "viewport" and dutifully mounted all 200 rows.
-    <div className="bg-background text-foreground flex h-screen flex-col overflow-hidden md:grid md:grid-cols-[auto_1fr]">
+    <Stack
+      backgroundColor="$surfaceCanvas"
+      // The same hook that mounts the phone header and bottom bar, so the two cannot disagree.
+      direction={phoneWidth ? "column" : "row"}
+      height="100vh"
+      overflow="hidden"
+    >
       {/* WCAG 2.4.1: the rail puts nine-plus stops before any page content, so the first Tab stop
           jumps past it. Absolute, so it never takes a grid cell; visible only while focused. */}
       <SkipLink href={`#${MAIN_ID}`}>Skip to content</SkipLink>
@@ -163,7 +181,9 @@ const AppShell = ({
       >
         <Stack aria-label="Primary" gap="1" render="nav" width={224}>
           <Stack marginBottom={16} paddingHorizontal={8}>
-            <BrandLockup variant="compact" />
+            <Stack align="start">
+              <BrandLockup size="small" />
+            </Stack>
           </Stack>
 
           {/* The shell's search is the SearchField's press-only form (maintainer: field look, as a
@@ -221,15 +241,18 @@ const AppShell = ({
                     waiting on the viewer. Absent at zero: a permanent "0" would train the eye to
                     ignore it. Watch has no badge key (its `to` isn't a stable `NavTo` literal). */}
                 {item.to !== "/watch/$id" && (badges?.[item.to] ?? 0) > 0 && (
-                  <Text
-                    as="span"
-                    data-testid={`nav-badge-${item.to}`}
-                    className="bg-suggest-tint-15 ml-auto rounded-full px-[7px] py-px"
-                    textRole="mono"
-                    tone="suggest"
+                  <Stack
+                    borderRadius={999}
+                    marginLeft="auto"
+                    paddingHorizontal={7}
+                    paddingVertical={1}
+                    render="span"
+                    style={{ backgroundColor: "var(--color-suggest-tint-15)" }}
                   >
-                    {badges?.[item.to]}
-                  </Text>
+                    <Text as="span" data-testid={`nav-badge-${item.to}`} textRole="mono" tone="suggest">
+                      {badges?.[item.to]}
+                    </Text>
+                  </Stack>
                 )}
               </>
             );
@@ -344,15 +367,15 @@ const AppShell = ({
         </Stack>
       </Stack>
 
-      {/* `flex flex-col`, not a plain block. A block child is not a flex item, so a page using
-          the `min-h-0 flex-1` idiom to fill the viewport gets no constraint from here and grows
-          to its content instead — which silently turns any inner `overflow-auto` region into a
-          non-scrolling div. `min-h-0` lets this shrink below its content so the OVERFLOW lands
+      {/* A flex column, not a plain block. A block child is not a flex item, so a page that
+          flexes to fill the viewport gets no constraint from here and grows to its content
+          instead, which silently turns any inner scroll region into a non-scrolling div. A
+          Stack's zero minimum height lets this shrink below its content so the OVERFLOW lands
           on the region that asked for it. */}
       {/* `tabIndex={-1}` so the skip link moves focus here, not just the scroll position. */}
       {/* The banner slot sits ABOVE `main`, in a column with it, so its height comes out of main's
           viewport instead of being added to main's scrollable content (a second scroller at phone
-          width). `overscroll-contain` stops a scroll that reaches main's end from chaining into
+          width). Containing the overscroll stops a scroll that reaches main's end from chaining into
           the document and dragging the whole shell off-screen. */}
       <Stack flexBasis="0%" flexGrow={1} flexShrink={1}>
         {/* Below `md` the rail and its Search button are gone, so Search moves to a header row,
@@ -366,12 +389,13 @@ const AppShell = ({
         )}
         {banner}
         <Stack
-          className="overflow-auto overscroll-contain focus:outline-none"
           flexBasis="0%"
           flexGrow={1}
           flexShrink={1}
           id={MAIN_ID}
+          outlineStyle="none"
           render="main"
+          style={MAIN_SCROLL}
           tabIndex={-1}
         >
           {children}
@@ -396,7 +420,7 @@ const AppShell = ({
           </Suspense>
         </nav>
       )}
-    </div>
+    </Stack>
   );
 };
 

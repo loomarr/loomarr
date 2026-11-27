@@ -29,7 +29,6 @@ var jsonRebuilt = map[string][]string{
 	"filler_context_reports":              nil,
 	"filler_enrichment_axes":              nil,
 	"filler_split_proposals":              nil,
-	"filler_split_shadow_decisions":       nil,
 	"filler_inference_evaluations":        nil,
 	"filler_structure_window_call_ledger": {"record_json"},
 	"filler_pulls":                        nil,

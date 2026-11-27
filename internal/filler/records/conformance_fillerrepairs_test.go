@@ -18,6 +18,7 @@ func testFillerAcquisitionRepairSummary(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || empty.Count != 0 || empty.LatestReason != "" {
 		t.Fatalf("empty repair summary = %+v, %v", empty, err)
 	}
+	saveFillerSources(t, s, "source")
 	for i, id := range []string{"run-old", "run-new"} {
 		at := now.Add(time.Duration(i) * time.Minute)
 		if err := s.UpsertAcquisitionRun(ctx, acquisition.AcquisitionRun{ID: id, Trigger: acquisition.TriggerSource, SourceID: "source", Status: acquisition.RunSuccess, StartedAt: at, CompletedAt: at, UpdatedAt: at}); err != nil {

@@ -30,7 +30,8 @@ describe("PodTimeline", () => {
     );
     expect(screen.getByRole("list", { name: /pod segments/i })).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
-    expect(screen.getByText("Fizzbolt, 30s")).toHaveClass("sr-only");
+    // The full name and length are there for a screen reader and clipped away for the eye.
+    expect(screen.getByText("Fizzbolt, 30s")).toHaveStyle({ position: "absolute", width: "1px" });
     expect(screen.getByText("1990s")).toBeInTheDocument();
     // Segments print words and a length, so no legend of codes is needed.
     expect(screen.getByText("Commercial, 30s")).toBeInTheDocument();

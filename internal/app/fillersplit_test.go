@@ -12,6 +12,7 @@ import (
 
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -341,6 +342,12 @@ func TestSplit_ALetGoReelIsRefusedSynchronously(t *testing.T) {
 	ctx := context.Background()
 	a, st := newSplitAdapter(t, events.NewBus(), true)
 	now := time.Now().UTC()
+	if err := st.UpsertAcquisitionRun(ctx, acquisition.AcquisitionRun{
+		ID: "run-1", Trigger: acquisition.TriggerSource, Status: acquisition.RunSuccess,
+		StartedAt: now, CompletedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
 		ClipHash: compHash, AcquisitionID: "run-1", Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusDone,
 		Disposition: pipelinestate.DispositionComplete, EnrolledAt: now, UpdatedAt: now,

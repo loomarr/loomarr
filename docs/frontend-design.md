@@ -132,6 +132,16 @@ Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex abov
   renders under 11px, content stays at 12px or above, and new code takes its size from the
   `--text-*` scale rather than an arbitrary `text-[Npx]`.
 
+- **Display roles (#2147):** the app draws a few sizes once each, 2px or more from every role above,
+  and they are named roles at the size they have, not snapped onto the scale: `monogram` (a channel's
+  letters on its art, 30/36, 600, tracked 0.08em), `numeral` (the info header's channel number, 30/30),
+  `pairCode` (the code typed to pair a device, 32/42.67, tracked 0.3em), `microBadge` (a thumbnail's
+  timecode, 9/13.5), `footnote` (fine print, 11/16.5, muted), and the tuner's `stationName` (28/42, 600,
+  tracked 0.01em) and `stationTag` (17.36/26.04, 500, tracked 0.16em), which are fluid on the web:
+  `clamp(18px, 2.8vw, 28px)` and 0.62 of it. A role's letter spacing is in em (`roleLetterSpacing`), and
+  `Text`'s `leading="none"` sets a line height of 1 for a glyph whose box is its own height. `Design/Typography`
+  shows each at its real values.
+
 ### 2.3 Space, radius, elevation
 
 - 4px grid (`space-1`=4 … `space-8`=32). Density: comfortable default; tables use compact row height (40px).
@@ -237,8 +247,6 @@ maps to a prop.
 | `PageHeader` | A page's single semantic title, optional explanatory copy, and optional page-level actions/status. Owns the page-edge gutter, divider, and responsive action stacking. | title only · title + description · with actions |
 | `StateBadge` | Provisioning lifecycle chip (mono) | wanted · requested · downloading · available · unavailable · drift |
 | `OnAirIndicator` | The red dot with a pulse (pulse ≤ reduced-motion) | off · live · reconciling |
-| `ChannelCard` | Channel health at a glance: number (mono), name, now/next, managed badge | healthy · pending-slots · drift · error · creating |
-| `NowNextStrip` | "Now: X · Next: Y" line for a channel | playing · flex/pod gap · empty |
 | `IntentInput` | The hero — NL intent with `suggest` magenta focus ring + template chips | empty · focused · template-filled · submitting |
 | `GenerationProgress` | SSE-driven suggester steps | searching · reasoning · scoring · done · failed |
 | `ProposalReview` | Lineup + acquisitions with rationale, confidence, alternates; edit-via-search | draft · submitted · approved · denied · partially-edited |
@@ -363,7 +371,7 @@ Coverage says every component *has* a story. It says nothing about whether a per
 | Small tinted chip, mono/uppercase | `Badge` (L1) **and** `StateBadge` (L2), each with its own `cva` and its own tint classes | `StateBadge` composes `Badge` |
 | `font-mono text-[10px] uppercase tracking-…` caption | **21 occurrences across 11 components** | a `Caption` primitive |
 | Status dot (`size-2 rounded-full`, pulse when live) | `GenerationProgress`, `GuideGrid`, `OnAirIndicator` | a `StatusDot` primitive |
-| 15 Layer-2 components import **no** primitive at all | — | audited case by case; a leaf like `TvStatic` legitimately owns its markup, a card-shaped one does not |
+| 15 Layer-2 components import **no** primitive at all | — | audited case by case; a leaf like `TunerLoader` legitimately owns its markup, a card-shaped one does not |
 
 **Why this matters more than tidiness.** The badge/tint contrast rule (§2.1) — the one learned the hard way, twice — is now encoded in `Badge` *and* `StateBadge` independently. Fix a stop in one and the other stays wrong, and **the contrast gate cannot tell**: it verifies token *pairings*, not which components consume them. Every duplicated pattern is a second place a design rule has to be remembered rather than inherited.
 
@@ -407,7 +415,7 @@ These suites join **phase 13's gate** in the main doc's build plan.
 - Voice: warm broadcast metaphor without cosplay. "Let's get you on the air." Checklist items *lock in* (`lock` green) as each signal is acquired; the webhook handshake shows a live "listening…" state that flips on receipt.
 - **Failures never blame.** Every red check = plain-language cause + the exact fix + a deep link into the embedded docs (backend contract, main doc §13). No stack traces in the wizard, ever.
 - Resume-safe: the wizard reflects `GET /v1/setup/status` truth, so a browser refresh loses nothing.
-- The finale is the payoff: the guided first channel ends with its `ChannelCard` flipping to **ON AIR** — the product's promise, demonstrated in the first ten minutes.
+- The finale is the payoff: the guided first channel ends with its channel flipping to **ON AIR** — the product's promise, demonstrated in the first ten minutes.
 
 ### Config that makes sense
 - Settings opens on a searchable task home. Ordinary destinations are grouped by setup, access and

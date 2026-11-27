@@ -32,9 +32,14 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
 
+// requesters are the people these tests name; each store saves them as members.
+var requesters = []string{"alice", "bob", "carol", "grace", "alex", "admin"}
+
 func newStore(t *testing.T) store.Store {
 	t.Helper()
-	return testkit.MigratedSQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
+	testkit.SaveMembers(t, st, requesters...)
+	return st
 }
 
 // mustChannel saves a live channel id for a refine or re-curation to name: a job's channel is a

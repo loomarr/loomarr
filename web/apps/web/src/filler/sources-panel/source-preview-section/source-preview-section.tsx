@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Text } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { useFillerProviders } from "../../use-filler-providers";
 import { SourceContentPreview } from "../source-content-preview";
@@ -42,11 +42,17 @@ const SourcePreviewSection = ({ source }: SourcePreviewSectionProps) => {
   if (!url || !remote) return null;
 
   return (
-    <section aria-labelledby="source-preview-heading" className="border-border border-t pt-5">
+    <Stack
+      aria-labelledby="source-preview-heading"
+      borderColor="borderDecorative"
+      borderTopWidth={1}
+      paddingTop={20}
+      render="section"
+    >
       <Text as="h3" id="source-preview-heading" textRole="heading">
         From this source
       </Text>
-      <div className="mt-2">
+      <Stack marginTop={8}>
         <SourceContentPreview
           provider={remote}
           canonicalUrl={suggestion?.canonicalUrl ?? url}
@@ -60,8 +66,8 @@ const SourcePreviewSection = ({ source }: SourcePreviewSectionProps) => {
                 : null
           }
         />
-      </div>
-    </section>
+      </Stack>
+    </Stack>
   );
 };
 

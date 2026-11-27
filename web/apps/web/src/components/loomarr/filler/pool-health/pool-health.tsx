@@ -113,7 +113,8 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
       wrap
     >
       {folded ? (
-        <div className="order-last">
+        // Drawn after the numbers, though it comes first for a keyboard.
+        <div style={{ order: 1 }}>
           <Action aria-expanded onPress={() => setExpanded(false)} variant="outline">
             Hide details
           </Action>

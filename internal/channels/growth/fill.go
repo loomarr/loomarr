@@ -159,7 +159,7 @@ func (f *Fill) fillChannel(ctx context.Context, ch channelstore.Channel, lib lib
 	if _, err := f.approver.Approve(ctx, proposalstore.Proposal{
 		ID: committed.ID, JobID: committed.JobID, Status: "submitted", Body: committed.Proposal,
 		CreatedAt: committed.CreatedAt, UpdatedAt: committed.CreatedAt,
-	}, nil, accept.AutoCuratedBy); err != nil {
+	}, nil, proposalstore.AutoCuratedBy); err != nil {
 		return 0, fmt.Errorf("approve growth proposal: %w", err)
 	}
 	return len(picks), nil

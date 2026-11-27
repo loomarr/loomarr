@@ -64,7 +64,7 @@ const LocalSourceForm = () => {
       >
         <form.Field name="kind">
           {(field) => (
-            <div className="w-45">
+            <Stack width={180}>
               <BrowserSelectControl
                 appearance="field"
                 label="Kind of source to add"
@@ -73,7 +73,7 @@ const LocalSourceForm = () => {
                 options={typed.map((candidate) => ({ label: candidate.label, value: candidate.id }))}
                 value={provider.id}
               />
-            </div>
+            </Stack>
           )}
         </form.Field>
         <form.Field name="uri">

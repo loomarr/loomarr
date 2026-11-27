@@ -662,6 +662,9 @@ func TestImportArrIdentityThroughPathMap(t *testing.T) {
 // as near its name as text allows, for the maintainer to rename. A pass over another folder keeps
 // it listed; one over its own folder, once it is renamed, drops it.
 func TestANameThatIsNotUTF8IsListed(t *testing.T) {
+	if err := os.WriteFile(filepath.Join(t.TempDir(), "\xe9"), nil, 0o600); errors.Is(err, syscall.EILSEQ) {
+		t.Skip("the filesystem refuses a name that is not UTF-8 (APFS)")
+	}
 	h := newHarness(t)
 	h.file("Movies/Kettle Bay (2001).mkv", 5)
 	bad := h.file("Movies/Ferrow Lane (1999)/Ferrow \xe9t\xe9 (1999).mkv", 5)

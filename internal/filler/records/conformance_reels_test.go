@@ -44,6 +44,9 @@ func testClipPipelineRetireSettledReel(t *testing.T, newStore NewStoreFunc) {
 		return add(name, "", true, acquisition, pipelinestate.DispositionComplete)
 	}
 
+	for _, run := range []string{"run-1", "run-2", "run-3", "run-4", "run-5", "run-6", "run-7"} {
+		saveAcquisitionRun(t, s, run)
+	}
 	settled := reel("settled", "run-1")
 	onAir := add("settled-on-air", settled, false, "run-1", pipelinestate.DispositionReady)
 	add("settled-dropped", settled, false, "run-1", pipelinestate.DispositionRejected)

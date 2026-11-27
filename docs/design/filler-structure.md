@@ -107,21 +107,10 @@ never decides.
   masters (60 s each; median 94.4 against 93.8), at a median 80% of its size; `-cq 31` fell below it
   on all 20. A family without a measured cut level (VAAPI,
   VideoToolbox, the generic encoders) cuts in software.
-- **A certification covers one profile.** The authority pins its media-profile digest, and the
-  runtime cuts to exactly that profile: a host whose encoder is not the certified family (a GPU
-  certification on a host in software, or the reverse) sends each proposal to split review rather
-  than assessing a picture nobody reviewed. Moving a household to the GPU cut means certifying the
-  GPU profile. The certify tools in the frozen research module still build the old software
-  profile, so a new certificate needs them back in the main module first.
 - The runtime prepares and validates every window's media, and stays inside the certified duration
   and byte envelope, **before** any provider metadata refresh, reservation or request. Nothing
   extrapolates beyond the plan's capacity or truncates a reel; a longer source holds at split
   review.
-- The OpenRouter adapter uses one fallback-disabled, zero-retention route and a strict schema,
-  hashes everything, and durably reserves the request digest and worst-case charge in the shared
-  filler-inference budget before sending. A journal refuses a second reservation for the same
-  request once the call has an answer. An unknown settlement keeps the full reservation, and an
-  open entry is a recovery hold, never permission to resend.
 - **Only a known outcome is replayed.** A window call that is accepted, refused or invalid
   (provider answer), unsettled with response bytes, or over its reservation has a response that may
   have been billed, so it is published and replays without a second call. A call that produced **no
@@ -135,42 +124,19 @@ never decides.
   decision. A child cut on a confirmed `keep` interval carries its SHA-256 in conditioning lineage;
   legacy or operator-edited cuts leave it absent.
 
-**Since #4409 the certified plan below decides nothing.** The split rung cuts by `AutoCuttable`
-alone; the complete-timeline decision and its comparison still run and are recorded until their
-retirement (#4414). The rest of this section describes them as built.
+**The split rung cuts by `AutoCuttable` alone (#4409).** No binary runs the complete-timeline
+decision, and no complete plan authorizes a cut: each cut is decided by the look at it, its edges
+and its sound. A proposal that already holds a confirmed decision still projects its roles onto the
+children cut from it, as above.
 
-**Structure authority is not broadcast admission.** A certified `compilation_break`, or the bounded
-filler portion of `programme_with_spots`, may authorize automatic materialization of its complete
-keep plan into held, non-airable children that enter the ordinary ingest ladder. That needs exact
-evidence bytes, resolved boundaries and roles, complete explained coverage, and a source and signal
-slice inside the locked structure certificate. It says nothing about safety, playability or
-readiness. Unresolved intervals leave one concise structure review.
-
-- **Failures stay at split review.** A structure-assessment failure, including a source outside the
-  reviewed envelope, keeps the source and proposal at the split review rung; it never exhausts into
-  a terminal Complete, creates children or confers authority. Cancellation keeps resumable work.
-- Without a verified complete-timeline decision and matching authority, a proposal stays reviewable.
-  The legacy calculation may run as a non-authorizing **shadow comparison**, recorded immutably with
-  exact spans; failing to persist a required comparison blocks unattended materialization and never
-  selects the comparison as a fallback.
-- Children are prepared as **one replacement generation** from the exact reviewed source intervals
-  through the V66 publisher. The parent, assessment and prior generation stay until every child and
-  its lineage validates and the switch commits atomically, so a partial generation never replaces a
-  complete one.
-
-**Certification** uses a rights-cleared corpus split by source family: declared and chaptered
-truth, authored compilations, programme excerpts with spots, long single units, same-brand joins,
-wordless units, bumpers, slivers, damaged tails and adversarial non-joins. It scores source
-structure, under- and over-splitting separately, boundary error at predeclared tolerances, purity,
-coverage, role accuracy, abstention and operational failure per slice. Every automatic decision
-must have zero wrong outcomes; abstentions count against coverage. The development certificate
-(at least 30 of 60 decisions, 6 per source-unit category, 6 per declared difficult slice) permits
-shadow evaluation only. Automatic materialization expands only for slices whose locked estimates
-and bounds pass. Model training waits until measurement names a residual error class.
+Children are prepared as **one replacement generation** from the exact reviewed source intervals
+through the V66 publisher. The parent, assessment and prior generation stay until every child and
+its lineage validates and the switch commits atomically, so a partial generation never replaces a
+complete one.
 
 ## Detection
 
-The V34 detector is now a proposal and shadow input under V67; where they conflict, V67 governs.
+The V34 detector proposes the cuts, and `AutoCuttable` decides them (#4409).
 Its design and measurements are archived in
 [`filler-splitting-v34.md`](../../project/design-archive-2026-09/filler-splitting-v34.md).
 

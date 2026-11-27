@@ -37,21 +37,6 @@
 /* Expose the semantic layer to Tailwind so bg-card / text-muted-foreground / etc.
    resolve (Tailwind v4 @theme inline convention). */
 @theme inline {
-  /* CRT flicker for TvStatic (§1). `steps(1,end)` per cycle makes the grain jump between
-     keyframe offsets rather than glide — that read of discrete jitter is what sells "static". */
-  --animate-tv-snow: tv-snow 0.45s steps(1, end) infinite;
-  --animate-bar-breathe: bar-breathe 4s ease-in-out infinite;
-  /* Signal-lock — the tuner loader's bars jitter as snow (grey, stepped) then RESOLVE to a
-     steady phosphor-amber level: static becoming signal. Each bar carries this with a per-index
-     delay (set inline in TunerLoader) so the lock travels across the strip rather than snapping
-     as one block. `steps(4)` in the first half keeps the snow phase discrete (real static jumps);
-     the tail eases so the amber settles rather than pings. Off under reduced-motion. */
-  --animate-signal-lock: signal-lock 1.6s steps(4, end) infinite;
-  /* Held-frame drain — a channel switch's outgoing picture greys, flattens and fades into the
-     tuner's snow (#1620 B4). One shot, not a loop: it runs once as the switch starts. */
-  --animate-held-drain: held-drain 448ms ease-in both;
-  /* The switch wash thickening over the draining frame: the snow comes up as the picture goes. */
-  --animate-wash-thicken: wash-thicken 260ms ease-in both;
   --animate-select-in: select-in 120ms ease-out;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -137,6 +122,14 @@
   }
 }
 
+/* The button a file input draws is its own box, so its weight is set on it: the input's text (the
+ * file name) keeps the weight the input sets, and the button reads one step heavier. */
+@layer base {
+  input[type="file"]::file-selector-button {
+    font-weight: 500;
+  }
+}
+
 body {
   margin: 0;
   background-color: var(--color-background);
@@ -184,55 +177,32 @@ body {
   }
 }
 
-/* TV snow — the CRT flicker on idle surfaces (§1). The noise layer is oversized (200%),
-   and this steps its transform between offsets so the grain JUMPS a few times a second
-   (real static flickers; it doesn't drift). Applied only via `motion-safe:animate-tv-snow`,
-   and the reduced-motion killswitch below neutralizes it as a second guard. */
-@keyframes tv-snow {
-  0% {
-    transform: translate(0, 0);
+/* TunerLoader's motion, keyed on its `data-motion` hooks and only where motion is allowed:
+   - signal-lock: the bars jitter as snow, then resolve to amber. `steps(4)` keeps the snow phase
+     discrete; each bar's delay is set inline so the lock travels across the strip.
+   - held-drain: one shot as a channel switch starts.
+   - wash-thicken: the snow comes up as the held picture goes.
+   - cursor: the blinking underscore after the readout. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-motion="signal-lock"] {
+    animation: signal-lock 1.6s steps(4, end) infinite;
   }
-  25% {
-    transform: translate(-8%, 5%);
+  [data-motion="held-drain"] {
+    animation: held-drain 448ms ease-in both;
   }
-  50% {
-    transform: translate(4%, -6%);
+  [data-motion="wash-thicken"] {
+    animation: wash-thicken 260ms ease-in both;
   }
-  75% {
-    transform: translate(-5%, -3%);
-  }
-  100% {
-    transform: translate(6%, 4%);
-  }
-}
-/* Bar breathe — the idle test card's sign of life (§1). Each colour segment dips out of
-   phase, so the strip SHIMMERS across its width like a signal holding steady rather than
-   pulsing as one block (which reads as a loading spinner).
-
-   Opacity-only, so it composites without re-rastering the bars. 4s and eased at both ends,
-   with the trough at 62%: deep enough to notice on a glance back at the screen, shallow
-   enough that it never pulls the eye away from the one button beside it. The per-segment
-   delays live in ColorBars, which is the only thing that knows how many segments there are.
-
-   Applied via `motion-safe:` at the call site, with the reduced-motion killswitch below as
-   the second guard — the visual suite pins `reducedMotion: reduce`, so baselines freeze it
-   at full opacity and never diff on a mid-cycle frame. */
-@keyframes bar-breathe {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.62;
+  [data-motion="cursor"] {
+    animation: onair-pulse 1s steps(2, end) infinite;
   }
 }
 
 /* Signal-lock — the tuner loader (§9.1 Watch). A bar starts as grey snow at a jittering height,
    then locks to phosphor-amber at a settled height with a bloom. `height` carries the snow jitter;
-   `background-color` and the amber `box-shadow` carry the static→signal transition. Animated via
-   `motion-safe:animate-signal-lock` so it's off under reduced-motion, and the visual suite's
-   `reducedMotion: reduce` freezes it at the locked (amber) frame — a deterministic baseline, not a
-   mid-flicker one. Colours are the raw token values (Tailwind can't interpolate a class per frame). */
+   `background-color` and the amber `box-shadow` carry the static→signal transition. It is off under
+   reduced motion, so the visual suite's `reducedMotion: reduce` shows the bar's resting (locked,
+   amber) frame: a deterministic baseline, not a mid-flicker one. */
 @keyframes signal-lock {
   0% {
     height: 22%;
@@ -300,24 +270,43 @@ body {
    transparent so the thumb floats over the card rather than sitting in a gutter. No
    `scrollbar-gutter: stable` — it would reserve the track width even on short lists that
    never scroll, shifting their content; the accepted cost is a one-time ~8px reflow the
-   moment a list actually grows past the cap (imperceptible for an overlay scrollbar). */
-.scroll-thin {
+   moment a list actually grows past the cap (imperceptible for an overlay scrollbar).
+
+   A design-system view takes it as `data-scroll="thin"`: a plain CSS hook that the legacy
+   ledger does not count as a utility class (#4451). `.scroll-thin` serves raw elements. */
+.scroll-thin,
+[data-scroll="thin"] {
   scrollbar-width: thin;
   scrollbar-color: var(--color-static-700) transparent;
 }
-.scroll-thin::-webkit-scrollbar {
+.scroll-thin::-webkit-scrollbar,
+[data-scroll="thin"]::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-.scroll-thin::-webkit-scrollbar-track {
+.scroll-thin::-webkit-scrollbar-track,
+[data-scroll="thin"]::-webkit-scrollbar-track {
   background: transparent;
 }
-.scroll-thin::-webkit-scrollbar-thumb {
+.scroll-thin::-webkit-scrollbar-thumb,
+[data-scroll="thin"]::-webkit-scrollbar-thumb {
   background-color: var(--color-static-700);
   border-radius: 9999px;
 }
-.scroll-thin::-webkit-scrollbar-thumb:hover {
+.scroll-thin::-webkit-scrollbar-thumb:hover,
+[data-scroll="thin"]::-webkit-scrollbar-thumb:hover {
   background-color: var(--color-static-600);
+}
+
+/* The slow pulse on a loading indicator, such as the guide's hairline while the next window
+   loads. Opacity only; the reduced-motion killswitch below stills it. */
+@keyframes loading-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+[data-pulse="loading"] {
+  animation: loading-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 /* guide-scroll — the guide grid's own scrollbars, and a deliberate variant of .scroll-thin

@@ -441,6 +441,9 @@ doctor() {
 	echo
 	"$SCRIPT_DIR/dev-env.sh" show
 	echo
+	# Optional, like Orca. The check needs bash, and doctor must still run with only the required
+	# toolchain on PATH (agent-harness-test runs it that way).
+	if command -v bash >/dev/null 2>&1; then "$SCRIPT_DIR/dev/orca-doctor.sh"; fi
 	worktree_count="$(git -C "$ROOT" worktree list --porcelain | grep -c '^worktree ')"
 	echo "Registered worktrees: $worktree_count"
 	if [ "$worktree_count" -gt 24 ]; then
@@ -462,7 +465,8 @@ bootstrap() {
 	( cd "$ROOT" && LOOMARR_RELEASE=dev cargo build --locked -p loomarr-image )
 	if [ "${BOOTSTRAP_SKIP_FE:-0}" != 1 ]; then
 		command -v pnpm >/dev/null 2>&1 || { echo 'bootstrap: pnpm is required' >&2; exit 1; }
-		( cd "$ROOT/web" && pnpm install --frozen-lockfile && pnpm codegen )
+		# Through fe-sync, so its stamp records this install and the first `make dev-fe` skips it.
+		FE_SYNC_FORCE=1 "$SCRIPT_DIR/dev/fe-sync.sh"
 	fi
 	mkdir -p "$ROOT/.artifacts" "$ROOT/.agent-data"
 	eval "$("$SCRIPT_DIR/dev-env.sh" export)"

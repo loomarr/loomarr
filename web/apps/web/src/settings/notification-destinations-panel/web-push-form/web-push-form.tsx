@@ -120,7 +120,8 @@ const WebPushForm = ({
         <form.Field name="events">
           {(field) => (
             <Grid columns={{ base: 1, sm: 2 }} gap="2" render="fieldset">
-              <Text as="legend" className="mb-2" textRole="cardLabel">
+              {/* A legend sits outside its fieldset's grid, so no gap reaches it. */}
+              <Text as="legend" style={{ marginBottom: 8 }} textRole="cardLabel">
                 Events *
               </Text>
               {definition.events.map((event) => {

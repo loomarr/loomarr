@@ -262,8 +262,8 @@ func TestAutoApprove_RespectsQuota(t *testing.T) {
 			t.Errorf("enqueued %d, want 2", d.Enqueued)
 		}
 		// The audit must say a machine decided (§11).
-		if got := st.proposals["p1"].ApprovedBy; got != accept.AutoApprovedBy {
-			t.Errorf("approvedBy = %q, want %q", got, accept.AutoApprovedBy)
+		if got := st.proposals["p1"].ApprovedBy; got != proposalstore.AutoApprovedBy {
+			t.Errorf("approvedBy = %q, want %q", got, proposalstore.AutoApprovedBy)
 		}
 		if st.titles[movieKey(t, 101)].State != provision.Wanted {
 			t.Error("acquisition did not become a wanted title")

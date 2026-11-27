@@ -168,7 +168,7 @@ const SourceSearch = ({
               : pluralize(visibleResults.length, "match", "matches")}
           </Text>
 
-          <ul ref={listRef} className="flex flex-col gap-2">
+          <Stack gap="2" ref={listRef as never} render="ul">
             {visibleResults.map((clip) => {
               const acquisition = queueStatus?.[clip.id];
               const parts = metaParts(clip, stats?.[clip.id]);
@@ -196,7 +196,14 @@ const SourceSearch = ({
                       // Empty alt: the title is the very next element, so describing the frame
                       // would make a screen reader announce the same item twice.
                       alt=""
-                      className="bg-static-800 h-10 w-16 shrink-0 rounded object-cover"
+                      style={{
+                        backgroundColor: "var(--color-static-800)",
+                        borderRadius: 4,
+                        flexShrink: 0,
+                        height: 40,
+                        objectFit: "cover",
+                        width: 64,
+                      }}
                       loading="lazy"
                     />
                   )}
@@ -218,9 +225,11 @@ const SourceSearch = ({
                         spinner would promise a value that is never coming, and "0:00" would
                         claim the clip is empty. */}
                     {(parts.length > 0 || loadingSet.has(clip.id)) && (
-                      <Text as="span" className="mt-0.5 block" textRole="mono">
-                        {[...parts, ...(loadingSet.has(clip.id) ? ["checking…"] : [])].join(" · ")}
-                      </Text>
+                      <Stack marginTop={2}>
+                        <Text as="span" textRole="mono">
+                          {[...parts, ...(loadingSet.has(clip.id) ? ["checking…"] : [])].join(" · ")}
+                        </Text>
+                      </Stack>
                     )}
                   </Stack>
 
@@ -236,14 +245,14 @@ const SourceSearch = ({
                       </Action>
                     )}
                     {acquisition === "queued" || acquisition === "running" ? (
-                      <Text as="span" className="shrink-0" textRole="compact" tone="signal">
+                      <Text as="span" flexShrink={0} textRole="compact" tone="signal">
                         <Stack align="center" direction="row" gap="1" render="span">
                           <ActivityIndicator decorative size="compact" tone="inherit" />
                           Downloading…
                         </Stack>
                       </Text>
                     ) : acquisition === "success" ? (
-                      <Text as="span" className="shrink-0" textRole="compact" tone="signal">
+                      <Text as="span" flexShrink={0} textRole="compact" tone="signal">
                         <Stack align="center" direction="row" gap="1" render="span">
                           <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
                           Added · being checked
@@ -274,7 +283,7 @@ const SourceSearch = ({
                 </Stack>
               );
             })}
-          </ul>
+          </Stack>
 
           {remaining > 0 && (
             <Action

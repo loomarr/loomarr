@@ -16,6 +16,8 @@ import {
   PressableRow,
   Stack,
   Text,
+  TextLink,
+  VisuallyHidden,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -62,14 +64,15 @@ const StatusRows = ({
   onOpen: (row: IncomingStatusDTO, trigger: HTMLElement) => void;
   onMore: () => void;
 }) => (
-  <Card className="divide-border divide-y">
-    {group.rows.map((row) => (
+  <Card>
+    {group.rows.map((row, index) => (
       <PressableRow
+        divided={index < group.rows.length - 1 || Boolean(group.nextCursor)}
         key={row.clipHash}
         onPress={(event) => onOpen(row, event.currentTarget as unknown as HTMLElement)}
       >
         {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
-        <span className="sr-only">View details for</span>{" "}
+        <VisuallyHidden as="span">View details for</VisuallyHidden>{" "}
         <Stack
           backgroundColor="surfaceElevated"
           borderRadius={4}
@@ -364,13 +367,12 @@ const Incoming = () => {
               </Text>
               <Text as="p" textRole="compact" tone="secondary">
                 Added in {readyWindowLabel(view.readyWindowSeconds)}. These clips stay in your Library.{" "}
-                <Link
-                  to="/filler/settings/$section"
-                  params={{ section: "incoming" }}
-                  className="underline underline-offset-4"
+                <TextLink
+                  render={<Link to="/filler/settings/$section" params={{ section: "incoming" }} />}
+                  tone="primary"
                 >
                   Change
-                </Link>
+                </TextLink>
               </Text>
             </div>
             <Action accessibilityRole="link" render={<Link to="/filler/library" />} variant="outline">

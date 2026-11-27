@@ -65,9 +65,9 @@ const storagePauseMessage = (pausedBy?: FillerStorageStatusDTO["pausedBy"]): str
 
 // The quiet strip a summary sits in: a muted wash with 8px corners, 16px by 12px of room.
 const QuietStrip = ({ children }: { children: ReactNode }) => (
-  <Stack borderRadius={8} className="bg-muted/50" paddingHorizontal={16} paddingVertical={12}>
+  <Card paddingHorizontal={16} paddingVertical={12}>
     {children}
-  </Stack>
+  </Card>
 );
 
 const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
@@ -120,9 +120,9 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
       {body}
     </Card>
   ) : (
-    <Stack borderRadius={8} className="bg-muted/50" paddingHorizontal={16} paddingVertical={12} role="status">
+    <Card paddingHorizontal={16} paddingVertical={12} role="status">
       {body}
-    </Stack>
+    </Card>
   );
 };
 
@@ -149,7 +149,7 @@ const FillerSettingsTaskSwitcher = ({ section }: { section: FillerSettingsSectio
             Jump straight to another task.
           </Text>
         </Stack>
-        <div className="w-full sm:w-64">
+        <Stack minWidth={256}>
           <BrowserSelectControl
             appearance="field"
             label="Filler settings task"
@@ -160,7 +160,7 @@ const FillerSettingsTaskSwitcher = ({ section }: { section: FillerSettingsSectio
             options={SETTINGS_SECTIONS.map((item) => ({ label: item.label, value: item.id }))}
             value={section}
           />
-        </div>
+        </Stack>
       </Stack>
     </Card>
   );
