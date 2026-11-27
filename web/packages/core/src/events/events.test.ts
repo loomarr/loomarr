@@ -52,6 +52,11 @@ describe("the frame-to-query map", () => {
     }
   });
 
+  // The genre filter's counts move with the titles, so a titles frame reads them again too.
+  it("reads the genres again when the Library's titles change", () => {
+    expect(EVENT_INVALIDATIONS.library_titles.prefixes).toContain("/v1/library/genres");
+  });
+
   it("trusts nothing that moves with the clock, carries a signed URL, or has no frame", () => {
     for (const url of [
       "/v1/channels/now-next",

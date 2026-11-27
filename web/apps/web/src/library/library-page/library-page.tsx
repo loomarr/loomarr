@@ -9,6 +9,7 @@ import {
   LibraryNeedsCards,
   LibraryShelf,
   type LibraryShelfCounts,
+  type LibraryShelfLetter,
   type LibraryShelfTitle,
   type LibrarySort,
 } from "@loomarr/ui";
@@ -20,7 +21,7 @@ import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { useRouteContent } from "@/lib/use-route-content";
-import { LIBRARY_COUNTS, libraryItemsQueryOptions } from "../library-items-query";
+import { LIBRARY_COUNTS, LIBRARY_PAGE_SIZE, libraryItemsQueryOptions } from "../library-items-query";
 import { useLibraryCollections } from "../use-library-collections";
 import { useLibraryNeeds } from "../use-library-needs";
 import { useLibraryScanFrames } from "../use-library-scan-frames";
@@ -28,7 +29,7 @@ import { useLibraryScanFrames } from "../use-library-scan-frames";
 // THE WALL (#4476): the titles Loomarr found in its media folders, as a poster grid. An admin sees
 // one line about the library above it, with Needs you's count; a member browses the same wall
 // read-only and the page asks only the routes a member reads (the titles and the collections).
-// The filter, the order and the search live in the URL; the grid loads a page at a time as it
+// The filter, the order, the genre and the search live in the URL; the grid loads a page at a time as it
 // scrolls. Nothing polls: an import's progress arrives as library_scan frames written into the
 // status, and each library_titles frame refetches the titles (the events bus), so new titles
 // appear and "Getting ready" clears on their own.
@@ -72,8 +73,69 @@ const useTabCounts = (enabled: boolean): LibraryShelfCounts | undefined => {
     : { all, movie, series };
 };
 
+// A letter the rail was asked for, in the list it was asked of: another filter drops it.
+interface Jump {
+  list: string;
+  index: number;
+  letter: string;
+  request: number;
+  /** When the list's last failure had happened as the letter was pressed. */
+  failedAt: number;
+}
+
+// The keys that scroll a page.
+const SCROLL_KEYS = ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "];
+
+// The rail's jump. The wall is one list from its first title, so a jump loads pages until the
+// title and a page below it are in, then the grid scrolls to it; scrolling back up needs nothing.
+const useLetterJump = (list: string) => {
+  const [asked, setAsked] = useState<Jump>();
+  // Dropped as the list changes, so coming back to a list does not jump again.
+  if (asked && asked.list !== list) setAsked(undefined);
+  const jump = asked?.list === list ? asked : undefined;
+  const requests = useRef(0);
+  // Read by the query as it asks for each page, so it is a ref: how far this list was jumped.
+  const reached = useRef({ list, to: 0 });
+  const reach = useCallback(() => (reached.current.list === list ? reached.current.to : 0), [list]);
+  const onJump = useCallback(
+    ({ letter, offset }: LibraryShelfLetter, failedAt: number) => {
+      const to = Math.max(reach(), offset + LIBRARY_PAGE_SIZE);
+      reached.current = { list, to };
+      requests.current += 1;
+      setAsked({ list, index: offset, letter, request: requests.current, failedAt });
+    },
+    [list, reach],
+  );
+  const cancel = useCallback(() => {
+    reached.current = { list, to: 0 };
+    setAsked(undefined);
+  }, [list]);
+  return { jump, onJump, cancel, reach };
+};
+
+// While a jump is loading, a reader who scrolls has moved on: the jump is dropped rather than
+// pulling them to the letter later.
+const useCancelOnScroll = (pending: boolean, cancel: () => void) => {
+  useEffect(() => {
+    if (!pending) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (SCROLL_KEYS.includes(event.key)) cancel();
+    };
+    window.addEventListener("wheel", cancel, { passive: true });
+    window.addEventListener("touchmove", cancel, { passive: true });
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("wheel", cancel);
+      window.removeEventListener("touchmove", cancel);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [pending, cancel]);
+};
+
 interface LibraryPageProps {
   filter: LibraryFilter;
+  /** Only titles with this genre; absent is every genre. */
+  genre?: string;
   search: string;
   /** The wall's order; by name unless the URL says recent. */
   sort?: LibrarySort;
@@ -84,7 +146,7 @@ interface LibraryPageProps {
   view?: "titles" | "needs" | "collections";
 }
 
-const LibraryPage = ({ filter, search, sort = "name", view = "titles" }: LibraryPageProps) => {
+const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: LibraryPageProps) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const timeZone = useHouseholdTimeZone();
@@ -118,15 +180,18 @@ const LibraryPage = ({ filter, search, sort = "name", view = "titles" }: Library
     synced.current = settled;
     void navigate({
       to: "/library",
-      search: { kind, q: settled || undefined, sort: recent },
+      search: { kind, q: settled || undefined, sort: recent, genre },
       replace: true,
     });
-  }, [settled, kind, recent, navigate, titlesView]);
+  }, [settled, kind, recent, genre, navigate, titlesView]);
 
+  const { jump, onJump, cancel, reach } = useLetterJump(JSON.stringify([kind, settled, recent, genre]));
   const items = useInfiniteQuery({
-    ...libraryItemsQueryOptions({ kind, search: settled || undefined, sort: recent }),
+    ...libraryItemsQueryOptions({ kind, search: settled || undefined, sort: recent, genre, reach }),
     enabled: titlesView,
   });
+  // The tab's genres, each with its titles; a member reads them too.
+  const genreList = libraryApi.useListLibraryGenres({ kind }, { query: { enabled: titlesView } });
   const titles = useMemo(
     () => items.data?.pages.flatMap((page) => page.items.map(titleOf)) ?? [],
     [items.data],
@@ -145,6 +210,24 @@ const LibraryPage = ({ filter, search, sort = "name", view = "titles" }: Library
     if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  // A jump loads on until its title and a page below it are in, or the list ends. A page that
+  // fails after the press stops it, so it is not asked for again and again; the next press asks
+  // once more. The failure shows above the wall with the other page errors.
+  const jumpShort =
+    jump !== undefined && titles.length < jump.index + LIBRARY_PAGE_SIZE && Boolean(hasNextPage);
+  const jumpLoading = jumpShort && items.errorUpdatedAt === jump?.failedAt;
+  // How many titles the jump still wants. It falls with each page, which asks for the next one even
+  // when a page arrives too fast for the fetching state to be seen changing.
+  const wanted = jumpLoading && jump ? jump.index + LIBRARY_PAGE_SIZE - titles.length : 0;
+  useEffect(() => {
+    if (wanted > 0) loadMore();
+  }, [wanted, loadMore]);
+  useCancelOnScroll(jumpLoading, cancel);
+  // The title is scrolled to once everything asked for is in, or when no more is coming.
+  const arrived = jump && !jumpLoading && jump.index < titles.length ? jump : undefined;
+  // The server works the letters out again with each page, so the newest page's are current.
+  const letters = items.data?.pages.at(-1)?.letters;
+
   if (authLoading) return null;
   if (isAdmin && status.error && !current) {
     return <ErrorState error={status.error} onRetry={() => void status.refetch()} />;
@@ -155,7 +238,7 @@ const LibraryPage = ({ filter, search, sort = "name", view = "titles" }: Library
   const offline = (unwrap(roots.data)?.roots ?? []).filter((f) => f.inUse && !f.readable).map((f) => f.path);
 
   const openTitle = (id: string) => void navigate({ to: "/library/$id", params: { id } });
-  const showWall = (next: { kind?: typeof kind; sort?: typeof recent }) =>
+  const showWall = (next: { kind?: typeof kind; sort?: typeof recent; genre?: string }) =>
     void navigate({ to: "/library", search: { ...next, q: settled || undefined } });
 
   return (
@@ -206,6 +289,11 @@ const LibraryPage = ({ filter, search, sort = "name", view = "titles" }: Library
         }
         counts={counts}
         filter={view === "collections" ? "collections" : filter}
+        genre={genre}
+        genres={unwrap(genreList.data)?.genres}
+        jump={arrived}
+        jumpingTo={jumpLoading ? jump?.letter : undefined}
+        letters={recent ? undefined : letters}
         loading={items.isPending}
         needs={
           view === "needs" && needs.loaded ? (
@@ -225,11 +313,13 @@ const LibraryPage = ({ filter, search, sort = "name", view = "titles" }: Library
         onFilterChange={(next) =>
           next === "collections"
             ? void navigate({ to: "/library/collections" })
-            : showWall({ kind: next === "all" ? undefined : next, sort: recent })
+            : showWall({ kind: next === "all" ? undefined : next, sort: recent, genre })
         }
+        onGenreChange={(next) => showWall({ kind, sort: recent, genre: next })}
+        onJump={(letter) => onJump(letter, items.errorUpdatedAt)}
         onOpenTitle={openTitle}
         onSearchChange={setTyped}
-        onSortChange={(next) => showWall({ kind, sort: next === "recent" ? next : undefined })}
+        onSortChange={(next) => showWall({ kind, sort: next === "recent" ? next : undefined, genre })}
         search={typed}
         showTitles={titlesView}
         sort={sort}

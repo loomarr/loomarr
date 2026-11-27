@@ -29,6 +29,19 @@ interface LibraryShelfTitle {
   attention?: boolean;
 }
 
+/** A genre of the tab's titles, with how many carry it. */
+interface LibraryShelfGenre {
+  name: string;
+  titles: number;
+}
+
+/** A letter the list holds, with where its first title is in the list's order. */
+interface LibraryShelfLetter {
+  /** A to Z, or # for any other first character. */
+  letter: string;
+  offset: number;
+}
+
 /** How many titles each tab holds, across the whole library rather than the search. */
 interface LibraryShelfCounts {
   all: number;
@@ -72,6 +85,19 @@ interface LibraryShelfProps {
   counts?: LibraryShelfCounts;
   sort: LibrarySort;
   onSortChange: (sort: LibrarySort) => void;
+  /** The tab's genres; absent until they arrive. */
+  genres?: readonly LibraryShelfGenre[];
+  /** The chosen genre; absent is every genre. */
+  genre?: string;
+  onGenreChange: (genre: string | undefined) => void;
+  /** The list's letters, drawn as a rail on a desktop window; absent (as by Recently added) draws none. */
+  letters?: readonly LibraryShelfLetter[];
+  /** A letter on the rail was pressed: load as far as it. */
+  onJump?: (letter: LibraryShelfLetter) => void;
+  /** The jump to make, once its titles are loaded: scrolls the title at `index` to the top. */
+  jump?: { index: number; letter: string; request: number };
+  /** The letter whose titles are still loading: the rail shows it busy. */
+  jumpingTo?: string;
   search: string;
   onSearchChange: (search: string) => void;
   titles: readonly LibraryShelfTitle[];
@@ -95,6 +121,8 @@ export type {
   LibraryKind,
   LibraryShelfAdmin,
   LibraryShelfCounts,
+  LibraryShelfGenre,
+  LibraryShelfLetter,
   LibraryShelfProps,
   LibraryShelfStatus,
   LibraryShelfTitle,

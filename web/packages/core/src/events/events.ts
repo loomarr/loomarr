@@ -188,6 +188,7 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   library_titles: {
     prefixes: [
       "/v1/library/items",
+      "/v1/library/genres",
       "/v1/library/needs",
       "/v1/library/status",
       "/v1/collections",

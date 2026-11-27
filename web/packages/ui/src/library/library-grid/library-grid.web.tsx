@@ -47,6 +47,8 @@ const LibraryGrid = <Row,>({
   estimateRowHeight,
   onEndReached,
   label,
+  scrollTo,
+  onTopRowChange,
 }: LibraryGridProps<Row>) => {
   const list = useRef<HTMLDivElement>(null);
   const [scroller, setScroller] = useState<DomNode | null>(null);
@@ -67,12 +69,16 @@ const LibraryGrid = <Row,>({
     if (offset !== margin) setMargin(offset);
   });
 
-  // The grid's parent holds what sits above it: any change in its height is re-read.
+  // What sits above the grid is held by one of its ancestors, up to the scroller: any change in
+  // one of their heights is re-read.
   useEffect(() => {
-    const parent = (list.current as DomNode | null)?.parentElement;
-    if (!parent || !Resize) return;
+    const node = list.current as DomNode | null;
+    if (!node?.parentElement || !Resize) return;
+    const end = scrollerOf(node);
     const observer = new Resize(() => setResized((n) => n + 1));
-    observer.observe(parent);
+    for (let el: DomNode | null = node.parentElement; el && el !== end; el = el.parentElement) {
+      observer.observe(el);
+    }
     return () => observer.disconnect();
   }, []);
 
@@ -102,6 +108,18 @@ const LibraryGrid = <Row,>({
     scrollMargin: margin,
   });
   const items = virtual.getVirtualItems();
+
+  const asked = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!scrollTo || !scroller || asked.current === scrollTo.request || scrollTo.row >= rows.length) return;
+    asked.current = scrollTo.request;
+    virtual.scrollToIndex(scrollTo.row, { align: "start" });
+  }, [scrollTo, scroller, rows.length, virtual]);
+
+  const top = virtual.range?.startIndex;
+  useEffect(() => {
+    if (top !== undefined) onTopRowChange?.(top);
+  }, [top, onTopRowChange]);
 
   const last = items.at(-1)?.index;
   useEffect(() => {
