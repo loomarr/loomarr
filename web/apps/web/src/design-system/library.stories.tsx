@@ -15,6 +15,7 @@ import {
   LibraryWizardStep,
 } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect } from "storybook/test";
 
 // The Library (#2151, design/library variant D): the poster grid in each scan state and a title's
 // page. Stories load no remote images: a title with artwork gets a flat stand-in in its own colour.
@@ -794,6 +795,126 @@ const StopUsingFolder: Story = {
   },
 };
 
+const episodeFile = {
+  path: "/media/tv/Harbour Lights/Season 1/Harbour Lights S01E01.mkv",
+  size: 2_100_000_000,
+  lengthMillis: 2_580_000,
+  picture: { width: 1920, height: 1080, hdr: false },
+  audioChannels: 6,
+  subtitles: [{ language: "en" }],
+  extra: false,
+  container: "matroska,webm",
+  bitrate: 9_800_000,
+  streams: [
+    {
+      index: 0,
+      kind: "video" as const,
+      codec: "h264",
+      profile: "High",
+      bitDepth: 8,
+      frameRate: "24000/1001",
+    },
+    {
+      index: 1,
+      kind: "audio" as const,
+      codec: "ac3",
+      channels: 6,
+      bitrate: 640_000,
+      languageName: "English",
+      default: true,
+    },
+    { index: 2, kind: "subtitle" as const, codec: "subrip", languageName: "English", default: true },
+  ].map((track) => ({
+    default: false,
+    forced: false,
+    commentary: false,
+    descriptive: false,
+    hearingImpaired: false,
+    external: false,
+    ...track,
+  })),
+  chapters: [
+    { startMillis: 0, name: "Cold open" },
+    { startMillis: 610_000, name: "The boats" },
+  ],
+};
+
+// Season tabs with the specials last, and episodes with stills, summaries and lengths. One has no
+// still, so its quiet frame shows.
+const SeasonsWithStills: Story = {
+  render: () => (
+    <LibraryTitle
+      fix={{ ...titleFixes, onEpisodeFiles: () => Promise.resolve([episodeFile]) }}
+      onBack={() => {}}
+      title={{
+        ...memberSeries,
+        backdrop: art("#3b4a63"),
+        airings: [],
+        seasons: [0, 1, 2].map((number) => ({
+          number,
+          episodes: [1, 2, 3].map((n) => ({
+            id: `9000${number}${n}`,
+            name: ["Dead Line", "Low Water", "The Long Night"][n - 1] ?? "",
+            number: n,
+            ready: true,
+            overview: "A boat is late and the whole town finds a reason to walk down to the harbour wall.",
+            lengthMillis: 2_580_000,
+            still: n === 3 ? undefined : art(n === 1 ? "#4a5d7a" : "#6b4a3a"),
+          })),
+        })),
+      }}
+    />
+  ),
+};
+
+// An episode row open, with More about its file showing the tracks and chapters.
+const EpisodeMore: Story = {
+  ...SeasonsWithStills,
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole("button", { name: /1\. Dead Line/ }));
+    // A wide screen opens More itself.
+    const more = await canvas.findByRole("button", { name: /(More|Less) about this file/ });
+    if (more.textContent?.includes("More")) await userEvent.click(more);
+    await expect(canvas.getByText("0:00 · Cold open")).toBeVisible();
+  },
+};
+
+// A narrow page whose facts wrap: no line shows a dot at its start or its end.
+const FactsWrapped: Story = {
+  render: () => (
+    <div style={{ maxWidth: 260 }}>
+      <LibraryTitle
+        onBack={() => {}}
+        title={{
+          ...memberSeries,
+          score: 7.4,
+          rating: "TV-14",
+          genres: ["Drama", "Political", "Mystery"],
+          backdrop: art("#3b4a63"),
+        }}
+      />
+    </div>
+  ),
+  play: async ({ canvas }) => {
+    const dots = canvas.getAllByText("·");
+    // The clipped row: the nearest ancestor that hides its overflow.
+    let clip = dots[0]?.parentElement;
+    while (clip && getComputedStyle(clip).overflowX !== "hidden") clip = clip.parentElement;
+    const row = clip?.getBoundingClientRect();
+    const lines = new Map<number, DOMRect[]>();
+    for (const dot of dots) {
+      const fact = dot.parentElement?.parentElement?.getBoundingClientRect();
+      if (fact) lines.set(Math.round(fact.top), [...(lines.get(Math.round(fact.top)) ?? []), fact]);
+    }
+    await expect(lines.size).toBeGreaterThan(1);
+    for (const line of lines.values()) {
+      const first = Math.min(...line.map((r) => r.left));
+      // The line's first dot column ends where the clipped row begins.
+      await expect(first + 20).toBeLessThanOrEqual((row?.left ?? Number.NaN) + 1);
+    }
+  },
+};
+
 export default meta;
 export {
   Adding,
@@ -805,6 +926,8 @@ export {
   CollectionEditorInUse,
   Collections,
   CollectionsNoneYet,
+  EpisodeMore,
+  FactsWrapped,
   FolderOffline,
   Fresh,
   GenreChosen,
@@ -830,6 +953,7 @@ export {
   NotInLibrary,
   Paused,
   RecentlyAdded,
+  SeasonsWithStills,
   Series,
   SeriesOrderWaiting,
   StopUsingFolder,

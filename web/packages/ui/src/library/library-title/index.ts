@@ -12,4 +12,5 @@ export type {
   LibraryTitlePlaying,
   LibraryTitleProps,
   LibraryTitleSeason,
+  LibraryTitleStream,
 } from "./library-title.type";
