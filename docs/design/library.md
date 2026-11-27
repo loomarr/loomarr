@@ -746,7 +746,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   or none: an id that is unknown, or not waiting in Needs you, refuses the whole request (409). It
   returns the ids it ignored, and `POST /v1/library/ignored/restore` takes them back in one step,
   again all or none: an id that isn't ignored refuses the whole request (409), so a link answer is
-  never removed. Episode order and "needs a look" cards are not in folder groups.
+  never removed. Once either is saved it answers success, so the ids are there to undo with:
+  queuing the files to be read again is best-effort, carries on if the request is dropped, is
+  bounded to a minute, and only logs a failure. Episode order and "needs a look" cards are not in
+  folder groups.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left

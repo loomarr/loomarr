@@ -1,8 +1,10 @@
 package scan
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"log/slog"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -131,7 +133,8 @@ func (l *Library) IgnoreAll(ctx context.Context, itemIDs []string) error {
 	if err != nil {
 		return err
 	}
-	return l.rewriteAll(ctx, titles)
+	l.rewriteAll(ctx, titles)
+	return nil
 }
 
 // RestoreAll takes back the ignore of titles, all of them or none.
@@ -140,7 +143,8 @@ func (l *Library) RestoreAll(ctx context.Context, itemIDs []string) error {
 	if err != nil {
 		return err
 	}
-	return l.rewriteAll(ctx, titles)
+	l.rewriteAll(ctx, titles)
+	return nil
 }
 
 // SearchTitles searches the catalog for a title by name, for "Pick a different title". kind ""
@@ -203,9 +207,15 @@ func (l *Library) rewrite(ctx context.Context, itemID string, origin librarystor
 	return nil
 }
 
+// batchRewriteTimeout bounds the rewrite that follows a saved batch.
+const batchRewriteTimeout = time.Minute
+
 // rewriteAll is rewrite for answers already saved together: one pass over all their folders, and
-// a title that fails holds back none of the others.
-func (l *Library) rewriteAll(ctx context.Context, titles []librarystore.LibraryAnswered) error {
+// a title that fails holds back none of the others. It is best-effort: the answers stand, so a
+// failure is logged, never returned, and a dropped request does not stop it.
+func (l *Library) rewriteAll(ctx context.Context, titles []librarystore.LibraryAnswered) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), batchRewriteTimeout)
+	defer cancel()
 	var files []librarystore.LibraryFilePath
 	var failed []error
 	for _, t := range titles {
@@ -213,7 +223,10 @@ func (l *Library) rewriteAll(ctx context.Context, titles []librarystore.LibraryA
 		files, failed = append(files, found...), append(failed, err)
 	}
 	l.pass(files)
-	return errors.Join(failed...)
+	if err := errors.Join(failed...); err != nil {
+		cmp.Or(l.Log, slog.Default()).WarnContext(ctx, "library: saved answers, but some files aren't queued to be read again",
+			"titles", len(titles), "error", err)
+	}
 }
 
 // forget forgets the identity digests rewrite needs forgotten, and lists the files.
