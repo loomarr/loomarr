@@ -220,7 +220,7 @@ func (d Design) draw() (*canvas, error) {
 		}
 	}
 	fill := func(s func(t xform) shape, col color.NRGBA, a float64) func(c *canvas, t xform) error {
-		return func(c *canvas, t xform) error { c.paint(raster(s(t)), col, a); return nil }
+		return func(c *canvas, t xform) error { c.paint(rasterise(s(t)), col, a); return nil }
 	}
 	main := d.colour(d.Colour)
 	switch d.Style {
@@ -286,13 +286,15 @@ func (d Design) draw() (*canvas, error) {
 		w = tw + 60
 		ops = append(ops, func(c *canvas, t xform) error {
 			// The frosted fill: white whose alpha falls from 0.6 at the top to 0.16 at the bottom.
-			body := raster(roundRect(1, 1, w-2, 98, 22, t))
+			body := rasterise(roundRect(1, 1, w-2, 98, 22, t))
 			top, bottom := t.at(0, 1).y, t.at(0, 99).y
-			c.paintFn(body, white, func(y float64) float64 { return 0.6 + (0.16-0.6)*math.Max(0, math.Min(1, (y-top)/(bottom-top))) })
+			c.paintFn(body, white, func(y float64) float64 {
+				return 0.6 + float64((0.16-0.6)*math.Max(0, math.Min(1, (y-top)/(bottom-top))))
+			})
 			// The bright edge: a 2-unit stroke on the plate's edge at 0.75.
-			c.paint(subtract(raster(roundRect(0, 0, w, 100, 23, t)), raster(roundRect(2, 2, w-4, 96, 21, t))), white, 0.75)
+			c.paint(subtract(rasterise(roundRect(0, 0, w, 100, 23, t)), rasterise(roundRect(2, 2, w-4, 96, 21, t))), white, 0.75)
 			// The sheen across the top.
-			c.paint(raster(roundRect(5, 5, w-10, 38, 18, t)), white, 0.18)
+			c.paint(rasterise(roundRect(5, 5, w-10, 38, 18, t)), white, 0.18)
 			p := t.at(w/2, 50)
 			l, err := textLayer(call, 50*unit, p.x, p.y)
 			if err != nil {
@@ -348,15 +350,15 @@ func RenderMotif(m Motif, white bool, px int) (*image.NRGBA, error) {
 func (d Design) drawMotif(c *canvas, t xform) {
 	switch d.Motif {
 	case MotifPumpkin:
-		body := union(raster(ellipse(50, 60, 40, 30, t)), raster(ellipse(29, 60, 20, 29, t)), raster(ellipse(71, 60, 20, 29, t)))
-		face := raster(svgPath("M26 50L38 50L32 38ZM62 50L74 50L68 38ZM30 64L40 72L46 66L54 66L60 72L70 64L68 76Q50 86 32 76Z", t))
+		body := union(rasterise(ellipse(50, 60, 40, 30, t)), rasterise(ellipse(29, 60, 20, 29, t)), rasterise(ellipse(71, 60, 20, 29, t)))
+		face := rasterise(svgPath("M26 50L38 50L32 38ZM62 50L74 50L68 38ZM30 64L40 72L46 66L54 66L60 72L70 64L68 76Q50 86 32 76Z", t))
 		c.paint(subtract(body, face), d.colour(Amber), 1)
-		c.paint(raster(svgPath("M45 34L44 18Q50 10 58 16L55 34Z", t)), d.colour(Green), 1)
+		c.paint(rasterise(svgPath("M45 34L44 18Q50 10 58 16L55 34Z", t)), d.colour(Green), 1)
 	case MotifBat:
-		c.paint(raster(svgPath("M50 38L45 22L41 38C32 26 18 24 4 30C12 38 12 48 18 56C26 48 34 50 40 62C44 56 48 56 50 64C52 56 56 56 60 62C66 50 74 48 82 56C88 48 88 38 96 30C82 24 68 26 59 38L55 22Z", t)), white, 1)
+		c.paint(rasterise(svgPath("M50 38L45 22L41 38C32 26 18 24 4 30C12 38 12 48 18 56C26 48 34 50 40 62C44 56 48 56 50 64C52 56 56 56 60 62C66 50 74 48 82 56C88 48 88 38 96 30C82 24 68 26 59 38L55 22Z", t)), white, 1)
 	case MotifGhost:
-		body := raster(svgPath("M16 94V46C16 22 31 6 50 6S84 22 84 46V94L72 83L61 94L50 83L39 94L28 83Z", t))
-		face := union(raster(ellipse(38, 42, 7, 7, t)), raster(ellipse(62, 42, 7, 7, t)), raster(ellipse(50, 62, 7, 9, t)))
+		body := rasterise(svgPath("M16 94V46C16 22 31 6 50 6S84 22 84 46V94L72 83L61 94L50 83L39 94L28 83Z", t))
+		face := union(rasterise(ellipse(38, 42, 7, 7, t)), rasterise(ellipse(62, 42, 7, 7, t)), rasterise(ellipse(50, 62, 7, 9, t)))
 		c.paint(subtract(body, face), white, 1)
 	case MotifSnowflake:
 		var arms shape
@@ -367,12 +369,12 @@ func (d Design) drawMotif(c *canvas, t xform) {
 				arms = append(arms, line(x1, y1, x2, y2, 8, t)...)
 			}
 		}
-		c.paint(raster(arms), d.colour(Cyan), 1)
+		c.paint(rasterise(arms), d.colour(Cyan), 1)
 	case MotifHolly:
-		c.paint(raster(append(svgPath("M50 74C24 76 6 60 2 36C26 32 44 46 50 74Z", t), svgPath("M50 74C76 76 94 60 98 36C74 32 56 46 50 74Z", t)...)), d.colour(Green), 1)
-		c.paint(raster(append(append(ellipse(40, 78, 11, 11, t), ellipse(60, 78, 11, 11, t)...), ellipse(50, 62, 11, 11, t)...)), d.colour(Red), 1)
+		c.paint(rasterise(append(svgPath("M50 74C24 76 6 60 2 36C26 32 44 46 50 74Z", t), svgPath("M50 74C76 76 94 60 98 36C74 32 56 46 50 74Z", t)...)), d.colour(Green), 1)
+		c.paint(rasterise(append(append(ellipse(40, 78, 11, 11, t), ellipse(60, 78, 11, 11, t)...), ellipse(50, 62, 11, 11, t)...)), d.colour(Red), 1)
 	case MotifHeart:
-		c.paint(raster(svgPath("M50 90C8 60 4 30 27 21C40 17 48 25 50 34C52 25 60 17 73 21C96 30 92 60 50 90Z", t)), d.colour(Pink), 1)
+		c.paint(rasterise(svgPath("M50 90C8 60 4 30 27 21C40 17 48 25 50 34C52 25 60 17 73 21C96 30 92 60 50 90Z", t)), d.colour(Pink), 1)
 	case MotifFirework:
 		var rays shape
 		for i := range 8 {
@@ -380,11 +382,11 @@ func (d Design) drawMotif(c *canvas, t xform) {
 			x2, y2 := rotate(50, 32, float64(i)*45, 50, 50)
 			rays = append(rays, line(x1, y1, x2, y2, 12, t)...)
 		}
-		c.paint(raster(append(rays, ellipse(50, 50, 10, 10, t)...)), d.colour(Yellow), 1)
+		c.paint(rasterise(append(rays, ellipse(50, 50, 10, 10, t)...)), d.colour(Yellow), 1)
 	case MotifLeaf:
-		blade := raster(svgPath("M50 4C14 26 8 62 50 86C92 62 86 26 50 4Z", t))
-		c.paint(subtract(blade, raster(line(50, 84, 50, 30, 5, t))), d.colour(Amber), 1)
-		c.paint(raster(line(50, 84, 50, 97, 8, t)), d.colour(Amber), 1)
+		blade := rasterise(svgPath("M50 4C14 26 8 62 50 86C92 62 86 26 50 4Z", t))
+		c.paint(subtract(blade, rasterise(line(50, 84, 50, 30, 5, t))), d.colour(Amber), 1)
+		c.paint(rasterise(line(50, 84, 50, 97, 8, t)), d.colour(Amber), 1)
 	}
 }
 
@@ -407,15 +409,17 @@ func (c *canvas) paintFn(l layer, col color.NRGBA, a func(y float64) float64) {
 		ay := a(float64(cy)+0.5) * float64(col.A) / 255
 		for x := 0; x < l.m.Rect.Dx(); x++ {
 			cx := l.x + x
-			k := float64(l.m.Pix[y*l.m.Stride+x]) / 255 * ay
+			k := float64(float64(l.m.Pix[y*l.m.Stride+x]) / 255 * ay)
 			if cx < 0 || cx >= c.w || k == 0 {
 				continue
 			}
 			i := 4 * (cy*c.w + cx)
-			c.p[i] = r*k + c.p[i]*(1-k)
-			c.p[i+1] = g*k + c.p[i+1]*(1-k)
-			c.p[i+2] = b*k + c.p[i+2]*(1-k)
-			c.p[i+3] = k + c.p[i+3]*(1-k)
+			// The conversions here and on k forbid a fused multiply-add (see xform), even across
+			// statements, so every architecture composites the same.
+			c.p[i] = float64(r*k) + float64(c.p[i]*(1-k))
+			c.p[i+1] = float64(g*k) + float64(c.p[i+1]*(1-k))
+			c.p[i+2] = float64(b*k) + float64(c.p[i+2]*(1-k))
+			c.p[i+3] = k + float64(c.p[i+3]*(1-k))
 		}
 	}
 }

@@ -167,6 +167,8 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		},
 		"ci-agent.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make agent-harness-test": exactWorkflowStep(2, "Worktree isolation, claims, leases, and process ownership", workflowStepAuthority{targets: []string{"agent-harness-test"}}),
+			// The watermark goldens are rendered on amd64; this arm64 runner proves they match (#4646).
+			"go test ./internal/playout/watermark/...": exactWorkflowStep(3, "Watermark render on arm64", workflowStepAuthority{}),
 		}),
 		"ci-android.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),

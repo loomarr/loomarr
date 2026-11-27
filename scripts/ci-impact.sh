@@ -106,6 +106,15 @@ classify() {
       select_gate playout_bench
       ;;
   esac
+  # The watermark goldens are rendered on amd64. The macOS agent job runs them on arm64, which
+  # catches any arithmetic that rounds per architecture (#4646). go.mod pins the Go toolchain and
+  # go.sum golang.org/x/image: a compiler or x/image bump can change which products fuse. The path
+  # is the classifier's grain, so any go.sum change selects the job.
+  case "$path" in
+    internal/playout/watermark/*|go.mod|go.sum)
+      select_gate agent
+      ;;
+  esac
   case "$path" in
     scripts/playout-bench-coverage*)
       # The hardware bench's coverage summary; releaseverify runs its contract test.
@@ -539,6 +548,12 @@ classify() {
       known=true
       select_gate contracts
       select_gate go
+      ;;
+    internal/playout/watermark/raster/LICENSE)
+      # The BSD licence of the forked golang.org/x/image/vector rasterizer. No code reads it;
+      # THIRD_PARTY_NOTICES.md cites it.
+      known=true
+      select_gate contracts
       ;;
     internal/playout/watermark/fonts/*)
       # The Plate bug's typeface and its licence, embedded by render.go. They change the rendered

@@ -28,3 +28,7 @@ jobs:
       # comprehensive verification, where `/proc` is available.
       - name: Worktree isolation, claims, leases, and process ownership
         run: make agent-harness-test
+      # The watermark goldens are rendered on amd64; this arm64 runner proves every architecture
+      # renders the same pixels (#4646).
+      - name: Watermark render on arm64
+        run: go test ./internal/playout/watermark/...

@@ -24,6 +24,7 @@ ISC), compatible with MIT redistribution. The authoritative, versioned list is
 | `github.com/prometheus/client_golang` | Apache-2.0 |
 | `github.com/testcontainers/testcontainers-go` (test only) | MIT |
 | `golang.org/x/crypto`, `golang.org/x/time` | BSD-3-Clause |
+| `golang.org/x/image`, and its `vector` rasterizer forked into `internal/playout/watermark/raster` (Copyright 2016 The Go Authors; licence in [`raster/LICENSE`](internal/playout/watermark/raster/LICENSE)) | BSD-3-Clause |
 | `modernc.org/sqlite` | BSD-3-Clause |
 
 The Apache-2.0 components (`prometheus/client_golang` and its transitive `prometheus/*`) carry a

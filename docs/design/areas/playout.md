@@ -37,5 +37,7 @@ One area of the [package map](../package-map.md#start-here).
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
 - **`playout/tunarr/tunarrtest`** · → `channels/schedule`, `playout/tunarr`
   The shared Tunarr test double and HTTP fixture server (AGENTS.md testing rules: unit tests never touch the network; extend this package rather than inventing a private mock).
-- **`playout/watermark`** · 1 importer
+- **`playout/watermark`** · 1 importer · → `playout/watermark/raster`
   Renders a channel's bug (#1512): the small mark burned into a channel's programmes by the GPU overlay (internal/playout, watermark.go).
+- **`playout/watermark/raster`** · 1 importer
+  Rasterises the watermark's opaque alpha masks identically on every CPU architecture, so the watermark render is bit-identical everywhere (#4646).
