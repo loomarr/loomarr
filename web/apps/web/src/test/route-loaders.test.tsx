@@ -1,7 +1,13 @@
 import type { JobView } from "@loomarr/api";
 import * as jobsApi from "@loomarr/api/endpoints/jobs";
 import * as libraryApi from "@loomarr/api/endpoints/library";
-import { getJobsListMockHandler, getListLibraryRootsMockHandler, getMeMockHandler } from "@loomarr/api/msw";
+import {
+  getJobsListMockHandler,
+  getListInvitationsMockHandler,
+  getListLibraryRootsMockHandler,
+  getListUsersMockHandler,
+  getMeMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { act, screen, waitFor, within } from "@testing-library/react";
@@ -10,7 +16,7 @@ import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RouteError } from "@/components/loomarr/feedback/route-error";
 import { routeTree } from "@/routeTree.gen";
-import { me } from "@/test/fixtures/users";
+import { me, user } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
@@ -183,5 +189,55 @@ describe("Settings → Library", () => {
     expect(within(alert).getByText("Server is restarting")).toBeInTheDocument();
     expect(screen.getByText("/media/movies")).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load this page")).not.toBeInTheDocument();
+  });
+});
+
+describe("People", () => {
+  const people = [user({ id: "u1", name: "Ada" }), user({ id: "u2", name: "Grace", role: "member" })];
+
+  it("opens on its people", async () => {
+    server.use(
+      getMeMockHandler(me()),
+      getListUsersMockHandler({ users: people }),
+      getListInvitationsMockHandler({ invitations: [] }),
+      ...appHandlers(),
+    );
+    renderAt("/people");
+
+    expect(await screen.findByText("Grace")).toBeInTheDocument();
+  });
+
+  it("shows a failed first read as the route's error view, and recovers on Try again", async () => {
+    const users = failing("*/v1/users");
+    server.use(
+      getMeMockHandler(me()),
+      users.handler(() => HttpResponse.json({ users: people })),
+      getListInvitationsMockHandler({ invitations: [] }),
+      ...appHandlers(),
+    );
+    renderAt("/people");
+
+    expect(await screen.findByText("Couldn't load this page")).toBeInTheDocument();
+    expect(screen.getByText("Server is restarting")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "People" })).not.toBeInTheDocument();
+
+    users.state.failing = false;
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Grace")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Couldn't load this page")).not.toBeInTheDocument());
+  });
+
+  it("shows a failed invitations read as the route's error view", async () => {
+    const invitations = failing("*/v1/invitations");
+    server.use(
+      getMeMockHandler(me()),
+      getListUsersMockHandler({ users: people }),
+      invitations.handler(() => HttpResponse.json({ invitations: [] })),
+      ...appHandlers(),
+    );
+    renderAt("/people");
+
+    expect(await screen.findByText("Couldn't load this page")).toBeInTheDocument();
+    expect(screen.queryByText("Grace")).not.toBeInTheDocument();
   });
 });

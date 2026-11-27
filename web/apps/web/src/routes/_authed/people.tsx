@@ -20,14 +20,14 @@ const PeopleScreen = () => {
 };
 
 const Route = createFileRoute("/_authed/people")({
-  // The people and invitations the page lists, and the settings list that says whether a media
-  // server can be imported from. Admin-only, so a member's request is never sent. The page shows
-  // its own state for each, so they are warmed.
+  // The people and invitations the page lists, so it opens on them and a failed read is the
+  // route's error view. The settings list only says whether a media server can be imported from
+  // (the import button), so it is warmed. Admin-only, so a member's request is never sent.
   loader: async ({ context: { queryClient } }) => {
     if (!(await viewerIsAdmin(queryClient))) return;
     await Promise.all([
-      queryClient.prefetchQuery(usersApi.getListUsersQueryOptions()),
-      queryClient.prefetchQuery(invitationsApi.getListInvitationsQueryOptions()),
+      queryClient.ensureQueryData(usersApi.getListUsersQueryOptions()),
+      queryClient.ensureQueryData(invitationsApi.getListInvitationsQueryOptions()),
       queryClient.prefetchQuery(settingsApi.getSettingsListQueryOptions()),
     ]);
   },
