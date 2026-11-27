@@ -301,7 +301,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 					"make go-cache-warm GO_CACHE_WARM=${{ matrix.lane }}": exactWorkflowStep(4, "Compile the gate's test binaries without running them", workflowStepAuthority{targets: []string{"go-cache-warm"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
 				}},
 				"contracts": {steps: map[string]workflowStepAuthority{
-					"make vet vet-tags lint": exactWorkflowStep(4, "Compile what the contracts analyse", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
+					"make vet vet-tags lint platform-vet": exactWorkflowStep(4, "Compile what the contracts analyse", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint", "platform-vet"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
 				}},
 				"pnpm": {steps: map[string]workflowStepAuthority{
 					"make fe-install": exactWorkflowStep(4, "Fill the store from the lockfile", workflowStepAuthority{targets: []string{"fe-install"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),

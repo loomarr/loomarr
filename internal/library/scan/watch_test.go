@@ -15,7 +15,7 @@ import (
 func TestWatcherPassesOverChangedFolders(t *testing.T) {
 	h := newHarness(t)
 	if !localFilesystem(h.root) {
-		t.Skip("the test folder is on a network filesystem")
+		t.Skip("the watcher does not follow the test folder: a network filesystem, or not Linux")
 	}
 	for i := range 12 {
 		h.file("Xray/Xray "+twoDigits(i)+".mkv", 5)

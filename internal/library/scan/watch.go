@@ -17,9 +17,9 @@ import (
 const watchResync = time.Minute
 
 // Watcher hands the scanner the folders a change names (Scanner.PassFolders), for each in-use root:
-// through the kernel's file events (inotify on Linux, kqueue on macOS) on a local filesystem, and
-// through the server's change notifications on an SMB share (Linux only), which report changes any
-// client makes. Kernel file events see only this machine's own changes, so
+// through inotify on a local filesystem, and through the server's change notifications on an SMB
+// share, which report changes any client makes. Both are Linux's; elsewhere every root is left to
+// the hourly walk (filesystem_other.go). inotify sees only this machine's own changes, so
 // another network or userspace filesystem (NFS, FUSE) is left to the hourly walk and the arrs'
 // webhooks. A kernel queue overflow asks for a full pass instead.
 type Watcher struct {
