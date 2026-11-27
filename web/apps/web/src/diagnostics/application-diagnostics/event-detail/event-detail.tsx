@@ -25,7 +25,7 @@ const EventDetail = ({
   ].filter((entry): entry is [string, string] => Boolean(entry[1]));
   const copyLog = () => void copy(JSON.stringify(event, null, 2));
   return (
-    <Stack className="bg-muted/20" gap="4" padding={16}>
+    <Stack backgroundColor="$washElevated20" gap="4" padding={16}>
       <Stack align="start" direction="row" gap="control" justify="between">
         <Stack gap="2">
           <Text as="span" textRole="hint" tone="secondary">
