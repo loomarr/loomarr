@@ -472,7 +472,34 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `GET /v1/library/genres` lists the genres of the listed titles, one row per
   genre name in any case, with how many titles carry it, by name; `kind` narrows it like the
   list. It is its own route, read once for the genre menu, because it does not change with the
-  list's search, page or other filters. `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's
+  list's search, page or other filters.
+  The list also filters by `studio` (a name, any case), `person` (a person's id), `audio` and
+  `subtitles` (a language code, any case, as the track holds it), `uhd` (4K) and `hdr` (`any`, or
+  one of the track labels `Dolby Vision`, `HDR10`, `HLG`, `HDR`). Every filter ANDs with the
+  others and with `kind`, `search` and `genre`, `total` and `letters` read the same conditions,
+  and an unknown value is an empty list. A studio and a credit are the title's own rows, so a
+  series answers by its show's. `person` matches a credit in any role (`library_credits`, not
+  `library_filmography`, which reaches titles the Library does not hold). **A title matches a
+  track filter (`audio`, `subtitles`, `uhd`, `hdr`) when any of its present playable files has
+  such a track in the copy that plays:** a file that is present, can be imported and whose header
+  has not failed, and a source with `plays` set, so an extra copy that never plays counts for
+  nothing. A series matches when any one episode listed under it does, and two track filters may
+  be met by different episodes. Each statement (the count, the page, the letters) gathers the
+  matching titles once from the `(kind, language)` track index, so no index of its own is
+  needed. The scanner stores every language code in lower case and the filter lower-cases what
+  it is asked, so the column is compared as it is.
+  `GET /v1/library/facets` lists the choices of those filters except `genre` and `person`, each
+  with how many listed titles it keeps, under `kind` like the list: `studios`, `audio` and
+  `subtitles` languages (by name; a track that states no language is no choice), the `uhd` and
+  `hdrAny` counts, and the `hdr` labels present. It is one route because the filter menu reads
+  them together, and the track choices come from one read of the playing tracks. People are too
+  many to list, so `GET /v1/library/people?q=` searches them by part of their name (the most
+  credited first, at most `limit`), and `GET /v1/library/people/{id}` is one person's name and
+  title count; their titles are the list under `person=<id>`. A person has no photo field: the
+  Library holds only a source's remote photo URL, and imports no cast photos. A person's id is
+  `<catalog>:<id>`, or `name:<name>` for one no catalog identifies, and a title's credits carry
+  it as `personId`.
+  `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's
   files, or a series' episodes by season. Both are member-readable (see **Who reads the
   Library** below). Every caller's title also carries `playing`, one line about the copy that
   plays and nothing that names a file: its picture (width, height, high dynamic range), the
@@ -482,6 +509,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   in a member's navigation and fourth in their phone bar (Home · Watch · Guide · Library), with no
   Needs you count; an admin's phone bar keeps Requests there. The member-readable
   routes are `GET /v1/library/items`, `GET /v1/library/items/{id}`, `GET /v1/library/genres`,
+  `GET /v1/library/facets`, `GET /v1/library/people`, `GET /v1/library/people/{id}`,
   `GET /v1/collections`,
   `GET /v1/collections/{id}`, and `GET /v1/library/collections` (names and sizes, for the channel
   scope picker). Everything else under `/v1/library` and `/v1/collections` is admin-only: the
@@ -519,9 +547,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   sizes, tracks, chapters), `match` and `detailsFrom`; a list entry, a collection's title and a
   set's title leave out the file count (`files`), `unplayable` and `extraCopies`; an episode
   leaves out `fromFile`. Each of those fields is optional in the schema and says "admins only".
-  "Getting ready" (`ready`) stays. The list's filters (kind, search, ready, genre, sort), its
-  total, its letter index and the genre counts follow the rule above: a member never learns a
-  hidden title's genre or initial.
+  "Getting ready" (`ready`) stays. The list's filters (kind, search, ready, genre, studio,
+  person, audio, subtitles, uhd, hdr, sort), its total, its letter index, the genre and filter
+  choices and the people follow the rule above: a member never learns a hidden title's genre,
+  studio, language, cast or initial. The track filters read file data on the server; a member
+  learns only that a title has such a track, never a file or a path.
   The other routes a member calls that read Library titles follow the same rule, decided from
   the caller's role at the route: `GET /v1/search` (its Library half, and a TMDB result's
   in-Library mark, whether a title search or a structured discovery), `GET /v1/discovery/ideas`

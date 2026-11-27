@@ -236,7 +236,8 @@ func TestLibraryItemPageCarriesStoredFacts(t *testing.T) {
 	for field, want := range map[string]string{
 		"originalTitle": `"Alpha Original"`, "tagline": `"One line."`, "premiereDate": `"2001-02-03"`, "score": `7.5`,
 		"studios": `["North Studio"]`, "countries": `["France","Spain"]`,
-		"credits":     `[{"character":"Lead","name":"Ana Actor","role":"actor"},{"name":"Di Director","role":"director"}]`,
+		"credits": `[{"character":"Lead","name":"Ana Actor","personId":"name:Ana Actor","role":"actor"},` +
+			`{"name":"Di Director","personId":"name:Di Director","role":"director"}]`,
 		"detailsFrom": `{"premiere":"tmdb","runtime":"radarr","score":"tmdb","year":"nfo"}`,
 	} {
 		if got := asJSON(movie[field]); got != want {

@@ -27,8 +27,8 @@ import (
 
 // libraryMemberReads are the Library operations a member may call. Every other operation under
 // /v1/library or /v1/collections is admin-only, except the public hook receiver.
-var libraryMemberReads = []string{"getCollection", "getLibraryItem", "listCollections", "listLibraryCollections", "listLibraryGenres",
-	"listLibraryItems"}
+var libraryMemberReads = []string{"getCollection", "getLibraryItem", "getLibraryPerson", "listCollections", "listLibraryCollections",
+	"listLibraryFacets", "listLibraryGenres", "listLibraryItems", "searchLibraryPeople"}
 
 // libraryPublic is the Library's one public operation: an *arr's webhook, which answers only its
 // app's shared secret.
@@ -107,8 +107,12 @@ func TestLibraryListFiltersRevealNoAdminFact(t *testing.T) {
 		if op.ID != "listLibraryItems" {
 			continue
 		}
-		// genre is a fact a member reads on a title's page; the list's genre filter keeps the member rule.
-		if want := []string{"genre", "kind", "limit", "offset", "ready", "search", "sort"}; !slices.Equal(op.Query, want) {
+		// Genres, studios and people are on a title's page for a member. The track filters read file
+		// data on the server and say only that a title has such a track (#4476, #2491). Each keeps
+		// the member rule.
+		want := []string{"audio", "genre", "hdr", "kind", "limit", "offset", "person", "ready", "search", "sort", "studio",
+			"subtitles", "uhd"}
+		if !slices.Equal(op.Query, want) {
 			t.Errorf("listLibraryItems filters = %v, want %v: decide whether a member may filter on it", op.Query, want)
 		}
 		return
@@ -155,7 +159,8 @@ func seedMemberLibrary(t *testing.T, st records.Store) {
 	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "90000001", Kind: "movie", Name: "Alpha Movie", Year: 2001, Overview: "A story.",
 			Origin: origin(dir + "alpha.mkv"), Match: grounded, Set: set,
-			From: librarystore.LibraryFrom{Name: "tmdb", Year: "nfo"},
+			Credits: []librarystore.LibraryCredit{{Name: "Ada Quill", Role: "actor"}},
+			From:    librarystore.LibraryFrom{Name: "tmdb", Year: "nfo"},
 			Sources: []librarystore.LibrarySource{
 				{Path: dir + "alpha.mkv", Plays: true, DurationMs: 5_400_000, Streams: streams},
 				{Path: dir + "alpha.copy.mkv", Plays: false, DurationMs: 5_400_000},
@@ -539,8 +544,8 @@ func TestDisabledMemberLosesTheLibraryOnSessionAndDevice(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("make collection = %d (%v)", code, made)
 	}
-	routes := []string{"/v1/library/items", "/v1/library/items/90000001", "/v1/library/genres", "/v1/collections",
-		"/v1/collections/" + made["id"].(string)}
+	routes := []string{"/v1/library/items", "/v1/library/items/90000001", "/v1/library/genres", "/v1/library/facets",
+		"/v1/library/people", "/v1/library/people/name:Ada%20Quill", "/v1/collections", "/v1/collections/" + made["id"].(string)}
 
 	for _, route := range routes {
 		assertMemberSafe(t, route, okBody(t, authed(t, http.MethodGet, srv.URL+route, member, "")))
