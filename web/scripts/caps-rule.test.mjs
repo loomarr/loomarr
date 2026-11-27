@@ -27,8 +27,6 @@ const ALLOWED = [
   "packages/ui/src/watching-surface/player-chrome/player-info/",
   // A channel page's number ("Ch 07").
   "apps/web/src/routes/_authed/channels/$id/route.tsx",
-  // Provenance: the "Managed by Loomarr" line on a channel card.
-  "apps/web/src/components/loomarr/channels/channel-card/",
   // A pairing code is typed and shown in capitals, as the device shows it.
   "apps/web/src/settings/pair-device/",
   "apps/web/src/settings/paired-devices/",
