@@ -1,1 +1,1 @@
-export { DiagnosticsSplitPane } from "./diagnostics-split-pane";
+export { DiagnosticsSplitPane, useMinWidth, XL_WIDTH } from "./diagnostics-split-pane";
