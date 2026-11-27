@@ -359,7 +359,7 @@ const typography = {
     },
   },
   // Pointer is the web's density, so its body is the web scale's body (`--text-base` 14 at
-  // `--leading-body` 1.5; #1909 Q9), and shared components match the Tailwind page around them.
+  // `--leading-body` 1.5; #1909 Q9), and shared components match the web page around them.
   // `data` is body in mono, as at every density.
   pointer: {
     // The five type roles (#2788): Display, Heading, Body, Label and Mono, sized per density. Pointer

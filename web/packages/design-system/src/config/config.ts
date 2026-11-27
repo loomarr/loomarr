@@ -80,8 +80,7 @@ const tamaguiTheme = (mode: keyof typeof semanticThemes) => {
     // Theme entries are emitted as CSS custom properties on web. Tamagui does not
     // resolve one theme entry through another, so aliases here must be concrete
     // values rather than token names such as "surfaceCanvas". An unresolved alias also
-    // poisons legacy declarations that consume the same custom-property name (for
-    // example Tailwind's ring-offset shadow reads --background).
+    // poisons any stylesheet declaration that reads the same custom-property name.
     background: colors.surfaceCanvas,
     backgroundHover: colors.surfaceRaised,
     backgroundFocus: colors.surfaceFocus,

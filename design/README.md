@@ -77,8 +77,8 @@ any more: the unsuffixed file is the new export, the `copy` is the previous 502 
 
 ## How Phase 13 uses these
 
-**Recreate the visual output pixel-perfectly** in the decided stack (Vite + React 18 +
-Tailwind v4 + shadcn/ui — design doc §14, `docs/frontend-design.md` §3–4). Match the
+**Recreate the visual output pixel-perfectly** in the decided stack (Vite + React 19 on
+the Loomarr design system — design doc §14, `docs/frontend-design.md` §3–4). Match the
 *rendered picture*, not the prototype's internal structure (`.dc.html` templating is a
 mock tool; production is React components + the token layer). The Playwright visual suite
 (`make fe-visual`, `docs/frontend-design.md` §5) judges the React build against these

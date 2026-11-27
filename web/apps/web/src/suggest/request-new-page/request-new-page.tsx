@@ -14,7 +14,8 @@ import type { RequestNewPageProps } from "./request-new-page.type";
 // What is open on top of the page and owns Escape for itself: a dialog, a list, a menu.
 const OWNS_ESCAPE = '[role="dialog"], [role="listbox"], [role="menu"]';
 
-// The web shell's form tier (`--container-form` in styles.css) and Tailwind's `sm` breakpoint.
+// The web shell's form tier (672 px, frontend-design.md's page-edge contract) and the design
+// system's `sm` breakpoint.
 const FORM_WIDTH = 672;
 const PAGE_GUTTER_BREAKPOINT = 640;
 
