@@ -377,17 +377,30 @@ describe("Filler", () => {
     });
   });
 
-  it("draws Incoming with what is on the way as soon as the page is there", async () => {
+  // Incoming has no pending state of its own, so its page may not open before the read answers.
+  it("holds Incoming back until what is on the way has been read", async () => {
+    let answer = () => {};
+    const held = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    let asked = false;
     server.use(
       getMeMockHandler(me()),
       getSettingsListMockHandler(configured),
-      http.get("*/v1/filler/incoming", () => HttpResponse.json(pages[1]?.body)),
+      http.get("*/v1/filler/incoming", async () => {
+        asked = true;
+        await held;
+        return HttpResponse.json(pages[1]?.body);
+      }),
       ...appHandlers(),
     );
     renderAt("/filler/incoming");
 
-    await screen.findByRole("navigation", { name: "Filler sections" });
-    expect(screen.getByText("Nothing on the way")).toBeInTheDocument();
+    await waitFor(() => expect(asked).toBe(true));
+    expect(screen.queryByRole("navigation", { name: "Filler sections" })).not.toBeInTheDocument();
+
+    answer();
+    expect(await screen.findByText("Nothing on the way")).toBeInTheDocument();
   });
 
   // What says whether filler is set up: the settings list for an admin, the watch summary for a
