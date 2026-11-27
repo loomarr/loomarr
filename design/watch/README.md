@@ -34,7 +34,8 @@ mock.html?device=<desk|desktop|tv|portrait|landscape>&state=<state>
 `desk` is desktop in a window and `desktop` is desktop full screen. `&art=0` draws a library with no
 artwork. The mock is not product code: build from it and the rules below, never by copying it. The
 picture is the drawn diner still from variant J's sheet; every other programme's artwork is a drawn
-two-colour stand-in, so real stills will be richer and less tidy. Fonts load from Google Fonts and
+two-colour stand-in, so real stills will be richer and less tidy. `static.webp` is a generated noise
+tile standing in for the design system's `AnalogSnow`. Fonts load from Google Fonts and
 fall back to the system face offline.
 
 ## Renders
@@ -58,7 +59,7 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled.
 | `peek` | Desktop in a window: pointing at a channel shows its day in the strip before a click tunes. |
 | `later` | A later programme pointed at or focused: its facts as type (a sheet on an upright phone). |
 | `find`, `typing` | Typing letters filters the column; typing digits replaces the numeral and counts down to the tune. |
-| `tune`, `cold` | The warm flip (the picture dips, the seven bars run once along the crossing) and the cold start's hold. |
+| `tune`, `cold` | Changing channel (a short burst of static, the seven bars along the crossing) and tuning in (static for the real wait, the bars in grey). |
 | `break`, `behind`, `nothing` | In a break, behind live with Go live, and nothing scheduled. |
 | `subtitles`, `more` | What a key opens: a menu from the quiet row, a sheet on a phone. |
 | `unmute`, `off-air` | The web's muted first play, and a cover. |
@@ -93,11 +94,20 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled.
    Guide and the wall. Digits tune direct. Typing letters filters; there is no search field.
 8. **Decade colour is the channel's numeral**, everywhere a channel is listed. A channel with no
    decade is plain, so amber stays for focus alone. The tuned channel's numeral is the large one.
-9. **The tune stays and the station-ident card goes.** The lower third on a settled tune does the
-   ident's job. The seven bars run along the crossing, since there is no band edge. The static is
-   kept where it is today: a cold start drains the held picture into snow before the bars, and a
-   warm flip between channels already streaming has none. The `cold` tile draws only the hold that
-   follows the static.
+9. **The tune is static and seven bars, and it is never a nuisance** (maintainer, 2026-11-27). The
+   station-ident card goes: the lower third on a settled tune does its job.
+   - **Changing channel** (the next channel is already streaming): the picture dips into a burst of
+     static for about 150 ms, inside the same 340 ms the flip takes today, and the seven bars run
+     once along the crossing. It never adds waiting time.
+   - **Tuning in** (the first tune, or a channel that must spin up): the held picture is drained and
+     under static for as long as the real wait. The lower third already names the channel and says
+     "Tuning in…", in the place it stays. The seven bars wait in grey along the crossing and lock to
+     colour when the picture arrives. There is no full-screen colour-bar band and no centred readout.
+   - **The static is dim**: fine grey snow over a darkened picture, never a white flash.
+   - **Fast flipping does not strobe.** While flips keep coming the static holds as one low wash and
+     resolves once when they stop, so nothing flashes more than three times a second.
+   - **Reduced motion** gets a plain crossfade and no static.
+   - Sound is unchanged: the web's Channel-change sound switch still decides it.
 10. **More holds only what has no key of its own**: Picture, Playback details, and Picture in picture
     on desktop. Channels and Info left it: the column and the synopsis under the strip do those jobs.
 11. **Administration leaves the watching path.** "Request a channel" and the Guide's per-row Actions
