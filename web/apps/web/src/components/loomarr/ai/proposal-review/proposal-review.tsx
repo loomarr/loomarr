@@ -1,5 +1,17 @@
 import { provisionKey } from "@loomarr/core/provision";
-import { Action, Badge, type BadgeTone, Card, Field, Grid, Stack, Text } from "@loomarr/design-system";
+import {
+  Action,
+  Badge,
+  type BadgeTone,
+  breakpoints,
+  Card,
+  Details,
+  Field,
+  Grid,
+  Stack,
+  Text,
+  useWindowWidth,
+} from "@loomarr/design-system";
 import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { useAppForm } from "@/lib/app-form";
 import {
@@ -71,6 +83,8 @@ const ProposalReview = ({
   const [findingMore, setFindingMore] = useState(false);
   const findingMoreStarted = useRef(false);
   const reasonId = useId();
+  // Below `sm` the approval footer floats over the title list; from `sm` up it sits in the flow.
+  const floatingFooter = useWindowWidth() < breakpoints.sm;
   // Why an admin turns the request down: optional, and the requester sees it.
   const denyForm = useAppForm({
     defaultValues: { reason: "" },
@@ -196,12 +210,11 @@ const ProposalReview = ({
               )}
             </briefForm.Field>
             {requestDetails.length > 0 && (
-              <details>
-                <summary className="w-fit cursor-pointer">
-                  <Text as="span" textRole="compact" tone="secondary">
-                    Other request details ({requestDetails.length})
-                  </Text>
-                </summary>
+              <Details
+                fitSummary
+                summary={`Other request details (${requestDetails.length})`}
+                tone="secondary"
+              >
                 <Grid
                   backgroundColor="washCanvas60"
                   borderRadius={6}
@@ -223,7 +236,7 @@ const ProposalReview = ({
                     </Fragment>
                   ))}
                 </Grid>
-              </details>
+              </Details>
             )}
             <Stack direction="row" gap="inline" justify="end" wrap>
               <Action onPress={() => setEditingBrief(false)} variant="ghost">
@@ -340,9 +353,16 @@ const ProposalReview = ({
 
       {actionable && onApprove && (
         <Stack
-          className="border-border bg-card/95 sticky bottom-0 z-10 -mx-4 border-t px-4 py-4 backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:backdrop-blur-none"
+          backgroundColor={floatingFooter ? "surfaceRaised" : undefined}
+          borderColor="borderDecorative"
+          borderTopWidth={1}
           gap="control"
+          marginHorizontal={floatingFooter ? -16 : 0}
+          paddingBottom={floatingFooter ? 16 : 0}
+          paddingHorizontal={floatingFooter ? 16 : 0}
+          paddingTop={16}
           render="footer"
+          style={floatingFooter ? { bottom: 0, position: "sticky", zIndex: 10 } : undefined}
         >
           <div>
             <Text as="p" textRole="cardLabel">
@@ -402,135 +422,133 @@ const ProposalReview = ({
         </Stack>
       )}
 
-      <details className="border-border border-t pt-3">
-        <summary className="cursor-pointer">
-          <Text as="span" textRole="cardLabel" tone="secondary">
-            How these suggestions were chosen
-          </Text>
-        </summary>
-        <Stack gap="5" marginTop={16}>
-          <Stack aria-label="Why these titles" gap="inline" render="section">
-            <Text as="h3" textRole="cardLabel">
-              Why these titles
-            </Text>
-            {status === "partially-edited" ? (
-              <Text as="p" textRole="compact" tone="secondary">
-                You changed the title list. Check any titles you added against your brief.
+      <Stack borderColor="borderDecorative" borderTopWidth={1} paddingTop={12}>
+        <Details summary="How these suggestions were chosen" textRole="cardLabel" tone="secondary">
+          <Stack gap="5" marginTop={16}>
+            <Stack aria-label="Why these titles" gap="inline" render="section">
+              <Text as="h3" textRole="cardLabel">
+                Why these titles
               </Text>
-            ) : proposal.manual ? (
-              <Text as="p" textRole="compact" tone="secondary">
-                You picked every title in this channel yourself — there's nothing to check.
-              </Text>
-            ) : proposal.scores?.version !== 1 ? (
-              <Text as="p" textRole="compact" tone="secondary">
-                Loomarr couldn't check this saved draft. Review each title before creating the channel.
-              </Text>
-            ) : (
-              <>
+              {status === "partially-edited" ? (
                 <Text as="p" textRole="compact" tone="secondary">
-                  {proposal.scores.theme.basis === "named_membership"
-                    ? "These suggestions are listed as part of the lineup you asked for."
-                    : proposal.scores.theme.basis === "none"
-                      ? "Review the titles to decide whether this is the channel you want."
-                      : "We compared the titles with your description. Remove anything that doesn't fit."}
+                  You changed the title list. Check any titles you added against your brief.
                 </Text>
-                {proposal.scores.theme.basis === "qualifiers" && (
-                  <ul className="list-inside list-disc">
-                    {(proposal.scores.theme.qualifiers ?? []).map((qualifier) => (
-                      <Text as="li" key={qualifier.term} textRole="compact" tone="secondary">
-                        “{qualifier.term}” fits {qualifier.supportedItems} of{" "}
-                        {proposal.scores.theme.assessedItems} titles Loomarr could check
-                      </Text>
-                    ))}
-                  </ul>
-                )}
-                {proposal.scores.era.status !== "not_requested" && (
+              ) : proposal.manual ? (
+                <Text as="p" textRole="compact" tone="secondary">
+                  You picked every title in this channel yourself — there's nothing to check.
+                </Text>
+              ) : proposal.scores?.version !== 1 ? (
+                <Text as="p" textRole="compact" tone="secondary">
+                  Loomarr couldn't check this saved draft. Review each title before creating the channel.
+                </Text>
+              ) : (
+                <>
                   <Text as="p" textRole="compact" tone="secondary">
-                    {proposal.scores.era.status === "unassessed"
-                      ? "Loomarr could not check the date range because some release or air dates were missing."
-                      : `${proposal.scores.era.matchingItems} of ${proposal.scores.era.assessedItems} titles with known dates matched your requested range.`}
+                    {proposal.scores.theme.basis === "named_membership"
+                      ? "These suggestions are listed as part of the lineup you asked for."
+                      : proposal.scores.theme.basis === "none"
+                        ? "Review the titles to decide whether this is the channel you want."
+                        : "We compared the titles with your description. Remove anything that doesn't fit."}
                   </Text>
-                )}
-              </>
-            )}
-          </Stack>
-
-          {assessmentPending ? (
-            <div role="status">
-              <Text as="p" textRole="compact" tone="secondary">
-                Updating what's ready to play…
-              </Text>
-            </div>
-          ) : assessment ? (
-            <ProposalOutlookDetails assessment={assessment} showDiagnostics={false} />
-          ) : null}
-
-          {(proposal.rationale || assessment || proposal.trace?.candidates?.length) && (
-            <details className="border-border border-t pt-3">
-              <summary className="w-fit cursor-pointer">
-                <Text as="span" textRole="compact" tone="secondary">
-                  Troubleshooting details
-                </Text>
-              </summary>
-              <Stack gap="4" marginTop={12}>
-                <Text as="p" textRole="hint" tone="secondary">
-                  This shows how Loomarr handled the original suggestions, before any changes you made.
-                </Text>
-                {proposal.rationale && (
-                  <Stack gap="1" render="section">
-                    <Text as="h3" textRole="cardLabel">
-                      Suggestion summary
-                    </Text>
+                  {proposal.scores.theme.basis === "qualifiers" && (
+                    <ul style={{ listStyle: "disc inside", margin: 0, padding: 0 }}>
+                      {(proposal.scores.theme.qualifiers ?? []).map((qualifier) => (
+                        <Text as="li" key={qualifier.term} textRole="compact" tone="secondary">
+                          “{qualifier.term}” fits {qualifier.supportedItems} of{" "}
+                          {proposal.scores.theme.assessedItems} titles Loomarr could check
+                        </Text>
+                      ))}
+                    </ul>
+                  )}
+                  {proposal.scores.era.status !== "not_requested" && (
                     <Text as="p" textRole="compact" tone="secondary">
-                      {friendlyProposalRationale(proposal.rationale)}
+                      {proposal.scores.era.status === "unassessed"
+                        ? "Loomarr could not check the date range because some release or air dates were missing."
+                        : `${proposal.scores.era.matchingItems} of ${proposal.scores.era.assessedItems} titles with known dates matched your requested range.`}
                     </Text>
-                  </Stack>
-                )}
-                {assessment && !assessmentPending && (
-                  <ProposalOutlookDiagnostics assessment={assessment} timeZone={assessmentTimeZone} />
-                )}
-                {proposal.trace?.candidates?.length ? (
-                  <Stack aria-label="Titles considered" gap="3" render="section">
-                    <Stack gap="2">
-                      <Text as="h3" textRole="cardLabel">
-                        Titles considered
-                      </Text>
-                      <Stack divided render="ul">
-                        {proposal.trace.candidates.map((candidate) => (
+                  )}
+                </>
+              )}
+            </Stack>
+
+            {assessmentPending ? (
+              <div role="status">
+                <Text as="p" textRole="compact" tone="secondary">
+                  Updating what's ready to play…
+                </Text>
+              </div>
+            ) : assessment ? (
+              <ProposalOutlookDetails assessment={assessment} showDiagnostics={false} />
+            ) : null}
+
+            {(proposal.rationale || assessment || proposal.trace?.candidates?.length) && (
+              <Stack borderColor="borderDecorative" borderTopWidth={1} paddingTop={12}>
+                <Details fitSummary summary="Troubleshooting details" tone="secondary">
+                  <Stack gap="4" marginTop={12}>
+                    <Text as="p" textRole="hint" tone="secondary">
+                      This shows how Loomarr handled the original suggestions, before any changes you made.
+                    </Text>
+                    {proposal.rationale && (
+                      <Stack gap="1" render="section">
+                        <Text as="h3" textRole="cardLabel">
+                          Suggestion summary
+                        </Text>
+                        <Text as="p" textRole="compact" tone="secondary">
+                          {friendlyProposalRationale(proposal.rationale)}
+                        </Text>
+                      </Stack>
+                    )}
+                    {assessment && !assessmentPending && (
+                      <ProposalOutlookDiagnostics assessment={assessment} timeZone={assessmentTimeZone} />
+                    )}
+                    {proposal.trace?.candidates?.length ? (
+                      <Stack aria-label="Titles considered" gap="3" render="section">
+                        <Stack gap="2">
+                          <Text as="h3" textRole="cardLabel">
+                            Titles considered
+                          </Text>
+                          <Stack divided render="ul">
+                            {proposal.trace.candidates.map((candidate) => (
+                              <Stack
+                                key={`${candidate.key}-${candidate.disposition}-${candidate.reason}`}
+                                paddingVertical={8}
+                                render="li"
+                              >
+                                <Text as="p" textRole="cardLabel">
+                                  {friendlyCandidateName(candidate.name)}
+                                </Text>
+                                <Text as="p" textRole="compact" tone="secondary">
+                                  {catalogDecision(candidate.disposition, candidate.reason)}
+                                </Text>
+                              </Stack>
+                            ))}
+                          </Stack>
+                        </Stack>
+                        <Details fitSummary summary="Raw search data" textRole="hint">
                           <Stack
-                            key={`${candidate.key}-${candidate.disposition}-${candidate.reason}`}
-                            paddingVertical={8}
-                            render="li"
+                            backgroundColor="surfaceElevated"
+                            borderRadius={6}
+                            margin={0}
+                            marginTop={8}
+                            maxHeight={288}
+                            padding={12}
+                            render="pre"
+                            style={{ overflow: "auto" }}
                           >
-                            <Text as="p" textRole="cardLabel">
-                              {friendlyCandidateName(candidate.name)}
-                            </Text>
-                            <Text as="p" textRole="compact" tone="secondary">
-                              {catalogDecision(candidate.disposition, candidate.reason)}
+                            <Text as="span" textRole="mono" tone="primary">
+                              {JSON.stringify(proposal.trace, null, 2)}
                             </Text>
                           </Stack>
-                        ))}
+                        </Details>
                       </Stack>
-                    </Stack>
-                    <details>
-                      <summary className="w-fit cursor-pointer">
-                        <Text as="span" textRole="hint">
-                          Raw search data
-                        </Text>
-                      </summary>
-                      <pre className="bg-muted mt-2 max-h-72 overflow-auto rounded-md p-3">
-                        <Text as="span" textRole="mono" tone="primary">
-                          {JSON.stringify(proposal.trace, null, 2)}
-                        </Text>
-                      </pre>
-                    </details>
+                    ) : null}
                   </Stack>
-                ) : null}
+                </Details>
               </Stack>
-            </details>
-          )}
-        </Stack>
-      </details>
+            )}
+          </Stack>
+        </Details>
+      </Stack>
     </Stack>
   );
 };

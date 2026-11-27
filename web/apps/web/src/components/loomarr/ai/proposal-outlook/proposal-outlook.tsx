@@ -1,6 +1,6 @@
 import type { Assessment } from "@loomarr/api/models/assessment";
-import { Grid, Stack, Text } from "@loomarr/design-system";
-import { Fragment } from "react";
+import { Details, Grid, Stack, Text } from "@loomarr/design-system";
+import { Fragment, type ReactNode } from "react";
 
 interface ProposalOutlookProps {
   assessment?: Assessment;
@@ -29,6 +29,12 @@ const describedDuration = (milliseconds: number, lowerBound = false) =>
 
 const sentenceCase = (value: string) => `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 
+const Line = ({ children }: { children: ReactNode }) => (
+  <Text as="p" textRole="compact" tone="secondary">
+    {children}
+  </Text>
+);
+
 const ProposalOutlookDiagnostics = ({
   assessment: value,
   timeZone,
@@ -36,7 +42,7 @@ const ProposalOutlookDiagnostics = ({
   assessment: Assessment;
   timeZone?: string;
 }) => (
-  <Stack className="text-muted-foreground" gap="inline">
+  <Stack gap="inline">
     <Grid columnGap="4" columns={["auto", "1fr"]} render="dl" rowGap="1">
       {(
         [
@@ -49,25 +55,33 @@ const ProposalOutlookDiagnostics = ({
         .filter(([, count]) => count > 0)
         .map(([label, count]) => (
           <Fragment key={label}>
-            <dt>{label}</dt>
-            <dd>{count}</dd>
+            <Text as="dt" textRole="compact" tone="secondary">
+              {label}
+            </Text>
+            <Text as="dd" textRole="compact" tone="secondary">
+              {count}
+            </Text>
           </Fragment>
         ))}
-      <dt>Seasons represented</dt>
-      <dd>{value.seasons}</dd>
+      <Text as="dt" textRole="compact" tone="secondary">
+        Seasons represented
+      </Text>
+      <Text as="dd" textRole="compact" tone="secondary">
+        {value.seasons}
+      </Text>
     </Grid>
-    <p>
+    <Line>
       This estimate reflects the current title list and schedule settings. Missing titles and breaks do not
       add playing time.
-    </p>
+    </Line>
     {value.relaxations.length > 0 && (
-      <p>
+      <Line>
         Loomarr loosened {value.relaxations.length} scheduling{" "}
         {value.relaxations.length === 1 ? "rule" : "rules"} to build this preview. Your audience and title
         limits still apply.
-      </p>
+      </Line>
     )}
-    <p>
+    <Line>
       Checked{" "}
       {new Date(value.observedAt).toLocaleString(undefined, {
         dateStyle: "medium",
@@ -75,7 +89,7 @@ const ProposalOutlookDiagnostics = ({
         timeZone,
       })}
       . Changes to your library or schedule can update this result.
-    </p>
+    </Line>
   </Stack>
 );
 
@@ -88,45 +102,46 @@ const ProposalOutlookDetails = ({
   showDiagnostics?: boolean;
   timeZone?: string;
 }) => (
-  <Stack aria-label="What can play now" className="text-muted-foreground" gap="inline" render="section">
-    <Text as="h3" textRole="cardLabel">
+  <Stack aria-label="What can play now" gap="inline" render="section">
+    <Text as="h3" textRole="cardLabel" tone="secondary">
       What can play now
     </Text>
-    <p>
+    <Line>
       {value.programs > 0
         ? `${value.programs} playable ${value.programs === 1 ? "episode or movie" : "episodes or movies"} from ${value.scheduledTitles} ${value.scheduledTitles === 1 ? "title" : "titles"}.`
         : value.state === "uncertain"
           ? "We haven't confirmed what's ready to play yet."
           : "No episodes or movies are ready to play yet."}
-    </p>
+    </Line>
     {value.missingAcquisitions > 0 && (
-      <p>
+      <Line>
         {value.missingAcquisitions}{" "}
         {value.missingAcquisitions === 1 ? "title still needs" : "titles still need"} adding and{" "}
         {value.missingAcquisitions === 1 ? "isn't" : "aren't"} included in the estimate yet.
-      </p>
+      </Line>
     )}
     {value.missingLibrary > 0 && (
-      <p>
+      <Line>
         {value.missingLibrary} library {value.missingLibrary === 1 ? "title isn't" : "titles aren't"} ready to
         play and {value.missingLibrary === 1 ? "isn't" : "aren't"} included in the estimate.
-      </p>
+      </Line>
     )}
     {value.unknownTitles > 0 && (
-      <p>
+      <Line>
         Availability hasn't been confirmed for {value.unknownTitles}{" "}
         {value.unknownTitles === 1 ? "title" : "titles"}.{" "}
         {value.unknownTitles === 1 ? "It isn't" : "They aren't"} included in the estimate.
-      </p>
+      </Line>
     )}
-    {value.windowLimited && <p>This is a partial preview; more from your library may fit.</p>}
+    {value.windowLimited && <Line>This is a partial preview; more from your library may fit.</Line>}
     {showDiagnostics && (
-      <details className="mt-1">
-        <summary className="w-fit cursor-pointer">How this estimate works</summary>
-        <div className="mt-3">
-          <ProposalOutlookDiagnostics assessment={value} timeZone={timeZone} />
-        </div>
-      </details>
+      <Stack marginTop={4}>
+        <Details fitSummary summary="How this estimate works" tone="secondary">
+          <Stack marginTop={12}>
+            <ProposalOutlookDiagnostics assessment={value} timeZone={timeZone} />
+          </Stack>
+        </Details>
+      </Stack>
     )}
   </Stack>
 );
@@ -170,19 +185,20 @@ const ProposalOutlook = ({
           ? `Short lineup: ${programmingDuration} of programming.`
           : `${sentenceCase(programmingDuration)} of programming.`;
   return (
-    <Text as="section" aria-label="Channel outlook" textRole="compact" tone="secondary">
+    <Stack aria-label="Channel outlook" render="section">
       <Text as="p" textRole="compact" tone={value.thin ? "warning" : "secondary"}>
         {summary}
       </Text>
       {showDetails && (
-        <details className="mt-2">
-          <summary className="text-muted-foreground cursor-pointer">Schedule details</summary>
-          <div className="mt-2">
-            <ProposalOutlookDetails assessment={value} timeZone={timeZone} />
-          </div>
-        </details>
+        <Stack marginTop={8}>
+          <Details summary="Schedule details" tone="secondary">
+            <Stack marginTop={8}>
+              <ProposalOutlookDetails assessment={value} timeZone={timeZone} />
+            </Stack>
+          </Details>
+        </Stack>
       )}
-    </Text>
+    </Stack>
   );
 };
 

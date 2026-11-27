@@ -117,7 +117,7 @@ const PolicyDeltaGroup = ({ deltas }: { deltas: PolicyDelta[] }) => {
                 <Text as="span" textDecorationLine="line-through" textRole="compact" tone="secondary">
                   {d.from}
                 </Text>
-                <Text aria-hidden as="span" className="mx-1" textRole="compact" tone="secondary">
+                <Text aria-hidden as="span" marginHorizontal={4} textRole="compact" tone="secondary">
                   →
                 </Text>
                 <Text as="span" textRole="compact" tone="primary">

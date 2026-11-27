@@ -4,7 +4,7 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
-import { Action, Badge, Field, Stack, Text, Toggle } from "@loomarr/design-system";
+import { Action, Badge, Card, Details, Field, Stack, Text, Toggle } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import { MovieCollectionChoices, movieCollectionKeys } from "@/suggest/movie-collection-choices";
 import { friendlyTitleRationale } from "@/suggest/suggestion-language";
@@ -136,21 +136,13 @@ const PickRow = ({
         </Stack>
         {included && pick.item.rationale && (
           <Stack marginTop={6}>
-            <details>
-              <Text
-                as="summary"
-                className="hover:text-foreground! w-fit cursor-pointer"
-                textRole="hint"
-                tone="secondary"
-              >
-                Why this title?
-              </Text>
-              <Stack marginTop={4}>
-                <Text as="p" className="max-w-prose" textRole="compact" tone="secondary">
+            <Details fitSummary summary="Why this title?" textRole="hint" tone="secondary">
+              <Stack marginTop={4} maxWidth="65ch">
+                <Text as="p" textRole="compact" tone="secondary">
                   {friendlyTitleRationale(pick.item.rationale)}
                 </Text>
               </Stack>
-            </details>
+            </Details>
           </Stack>
         )}
         {included && feedback && <Stack marginTop={8}>{feedback}</Stack>}
@@ -478,48 +470,54 @@ const ProposalEdit = (props: ProposalEditProps) => {
       )}
 
       {suggestions.length > 0 && (
-        <details className="border-border rounded-md border px-3 py-2.5">
-          <summary className="cursor-pointer">
-            <Text as="span" textRole="cardLabel">
-              More suggestions
-            </Text>
-            <Text as="span" className="ml-2" textRole="compact" tone="secondary">
-              {suggestions.length} {suggestions.length === 1 ? "option" : "options"}
-            </Text>
-          </summary>
-          <Stack marginTop={8}>
-            <Text as="p" textRole="compact" tone="secondary">
-              Add any that belong on your channel.
-            </Text>
+        <Card>
+          <Stack paddingHorizontal={12} paddingVertical={10}>
+            <Details
+              summary={
+                <>
+                  More suggestions
+                  <Text as="span" marginLeft={8} textRole="compact" tone="secondary">
+                    {suggestions.length} {suggestions.length === 1 ? "option" : "options"}
+                  </Text>
+                </>
+              }
+              textRole="cardLabel"
+            >
+              <Stack marginTop={8}>
+                <Text as="p" textRole="compact" tone="secondary">
+                  Add any that belong on your channel.
+                </Text>
+              </Stack>
+              <Stack borderColor="$borderDecorative" borderTopWidth={1} marginTop={8} render="ul">
+                {suggestions.map((pick, index) => (
+                  <PickRow
+                    key={pick.key || `unkeyed-${pick.item.name}`}
+                    last={index === suggestions.length - 1}
+                    pick={pick}
+                    included
+                    editable={editable}
+                    disabled={disabled}
+                    episodeSelectionPreview={episodeSelectionPreview}
+                    feedback={renderFeedback?.(pick.item)}
+                    onAdd={() => addSuggestion(pick)}
+                  />
+                ))}
+              </Stack>
+              {onFindMore && (
+                <Stack direction="row" marginTop={8}>
+                  <Action
+                    disabled={disabled || findingMore}
+                    icon={findingMore ? "loading" : undefined}
+                    onPress={onFindMore}
+                    variant="ghost"
+                  >
+                    {findingMore ? "Finding more suggestions…" : "Find more suggestions"}
+                  </Action>
+                </Stack>
+              )}
+            </Details>
           </Stack>
-          <Stack borderColor="$borderDecorative" borderTopWidth={1} marginTop={8} render="ul">
-            {suggestions.map((pick, index) => (
-              <PickRow
-                key={pick.key || `unkeyed-${pick.item.name}`}
-                last={index === suggestions.length - 1}
-                pick={pick}
-                included
-                editable={editable}
-                disabled={disabled}
-                episodeSelectionPreview={episodeSelectionPreview}
-                feedback={renderFeedback?.(pick.item)}
-                onAdd={() => addSuggestion(pick)}
-              />
-            ))}
-          </Stack>
-          {onFindMore && (
-            <Stack direction="row" marginTop={8}>
-              <Action
-                disabled={disabled || findingMore}
-                icon={findingMore ? "loading" : undefined}
-                onPress={onFindMore}
-                variant="ghost"
-              >
-                {findingMore ? "Finding more suggestions…" : "Find more suggestions"}
-              </Action>
-            </Stack>
-          )}
-        </details>
+        </Card>
       )}
 
       {showNote && editable && (
