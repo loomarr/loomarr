@@ -796,11 +796,24 @@ step 5). Nothing reads the scanner's origins until the cutover.
   sharpest picture, else the biggest file. Each other file is an extra copy: a warning card on the title's page ("An
   extra copy is taking 4.0 GB") with Remove extra copy (`POST …/remove-copy`, 409 for the copy
   that plays). Removing moves the file to `<media folder>/.loomarr-trash/<date>/<its path>`, the
-  same share, so it is a rename and can be undone by moving it back; the trash holds a `.ignore`,
-  so walks and watches skip it. Loomarr marks the file missing at once, so no removal guard holds
-  it. A complete walk of the folder deletes each day's trash 30 days on; a folder there that isn't
-  a date is left alone. A read-only folder answers 409, and the card says Loomarr may not be
-  allowed to change it.
+  same share, so it is a rename; the trash holds a `.ignore`, so walks and watches skip it.
+  Loomarr marks the file missing at once, so no removal guard holds it. A complete walk of the
+  folder deletes each day's trash 30 days on; a folder there that isn't a date is left alone. A
+  read-only folder answers 409, and the card says Loomarr may not be allowed to change it.
+- **Undo for Remove extra copy** (#4476). The removal answers with an `undo` token, and
+  `POST …/restore-copy` (admin only) takes it to rename the file from the trash back to where it
+  was, then passes over its folder as for a file that appeared, so the title has its extra copy
+  again. The token names the title, media folder, file and trash day, signed with a key the
+  running process makes for itself: a request never carries a path, and nothing about removals is
+  stored. A restart voids pending undos, and the 30-day trash folder is then the way back. A token
+  that is forged, for another title or from before a restart is refused (400), and one whose file
+  is not in the trash is refused (410). A restore never overwrites: the move itself refuses a
+  taken place (a hard link and a remove, else the OS's no-replace rename, else nothing moves), so
+  a file written there at the same moment is safe. It also never leaves the media folder: a folder
+  on the way that is a symlink to somewhere outside is refused. When something is at the file's
+  old place, or the file can't be moved this safely, it answers 409 and the file stays in the
+  trash. The card's undo follows in U3: offered only right after removing, with the card saying
+  that afterwards the way back is the trash folder, for the 30 days it keeps the file.
 - **Titles that need a look** (step 10f, decision 24). A title with a file whose header failed
   (`unplayable`) or a movie with an extra copy is a problem: `ListLibraryItems{Problems: true}`
   finds them per title through the file indexes, an extra copy being a `library_sources` row no

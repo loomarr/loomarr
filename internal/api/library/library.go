@@ -49,7 +49,8 @@ type LibraryRootService interface {
 	Item(ctx context.Context, id string, member bool) (scan.ItemDetail, error)
 	UpdateDetails(ctx context.Context, id string) error
 	CheckFiles(ctx context.Context, id string) error
-	RemoveExtraCopy(ctx context.Context, id, path string) error
+	RemoveExtraCopy(ctx context.Context, id, path string) (undo string, err error)
+	RestoreExtraCopy(ctx context.Context, id, undo string) error
 
 	Needs(ctx context.Context) ([]scan.Need, error)
 	Problems(ctx context.Context) ([]librarystore.LibraryItemSummary, error)
