@@ -26,7 +26,9 @@ type UpcomingAiring struct {
 // ReplaceUpcomingAirings replaces every stored upcoming airing of a channel with airings, in one
 // transaction, while the channel is still at revision. It reports whether it wrote: a channel
 // that moved past revision, or is gone, keeps its rows, since airings were computed from a state
-// that is no longer current. Airings with an empty library item id are skipped.
+// that is no longer current. An airing whose library item id names no library item (empty, or an
+// item the channel still plans that the catalog dropped) is skipped: the column is a foreign key
+// (#2793), and one dead item must not lose the channel's other rows.
 func (s *Store) ReplaceUpcomingAirings(ctx context.Context, channelID string, revision int64, airings []UpcomingAiring) (bool, error) {
 	tx, err := s.h.Begin(ctx)
 	if err != nil {
@@ -52,7 +54,11 @@ func (s *Store) ReplaceUpcomingAirings(ctx context.Context, channelID string, re
 		return false, fmt.Errorf("replace upcoming airings %s: delete: %w", channelID, err)
 	}
 	for _, a := range airings {
-		if a.LibraryItemID == "" {
+		var known int
+		if err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT COUNT(*) FROM library_items WHERE id = ?`), a.LibraryItemID).Scan(&known); err != nil {
+			return false, fmt.Errorf("replace upcoming airings %s: find item %s: %w", channelID, a.LibraryItemID, err)
+		}
+		if known == 0 {
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO channel_upcoming_airings

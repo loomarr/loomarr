@@ -22,6 +22,8 @@ func testUpcomingAirings(t *testing.T, newStore NewStoreFunc) {
 	if err := s.SaveLibraryItems(ctx, []LibraryItem{
 		{ID: "m1", Kind: "movie", Name: "Upcoming Movie"},
 		{ID: "s1", Kind: "series", Name: "Upcoming Series"},
+		{ID: "ep-7", Kind: "episode", Name: "Upcoming Episode 7"},
+		{ID: "ep-8", Kind: "episode", Name: "Upcoming Episode 8"},
 	}, now); err != nil {
 		t.Fatal(err)
 	}
@@ -132,6 +134,17 @@ func testUpcomingAirings(t *testing.T, newStore NewStoreFunc) {
 	a2 = mustSaveChannel(t, s, a2)
 	if got := read("m1"); !same(got, on(a2, onAir)) {
 		t.Fatalf("resumed channel's movie m1 = %+v; want the row on air", got)
+	}
+
+	// An airing of an item the catalog doesn't hold is left out; the others are written.
+	if !replace(a2, airing("90000933", seriesKey, 5, 20, false), onAir) {
+		t.Fatal("replace naming an unknown item wrote nothing")
+	}
+	if got := read("90000933"); len(got) != 0 {
+		t.Fatalf("unknown item's rows = %+v; want none", got)
+	}
+	if got := read("m1"); !same(got, on(a2, onAir)) {
+		t.Fatalf("beside an unknown item, movie m1 = %+v; want its row", got)
 	}
 
 	// Purging the channel deletes its rows.

@@ -228,7 +228,9 @@ same channel with no history.
 indexed read (#4476, [decision 0052](decisions/0052-next-airing-is-stored.md)). Each row is
 `{channel_id, starts_at_ms, ends_at_ms, library_item_id, title_key, forecast, revision}`: UTC epoch
 milliseconds, the lineup entry's title key, whether the row lies past the window on air, and the
-channel revision it was computed at.
+channel revision it was computed at. `library_item_id` is a foreign key to `library_items`, and a
+row goes with its item: a forecast never keeps an item the catalog purge drops. The write leaves out
+an airing whose item the catalog doesn't hold and writes the rest.
 
 - **The writer.** After a committed reconcile has saved the channel and planned the next window's
   breaks, the engine's upcoming index replaces the channel's rows. They come from

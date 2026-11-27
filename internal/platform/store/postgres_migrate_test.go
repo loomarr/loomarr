@@ -103,6 +103,15 @@ func TestPostgresLibraryReferencesMigration(t *testing.T) {
 	testLibraryReferencesMigration(t, db, DialectPostgres, "migrations/postgres")
 }
 
+func TestPostgresUpcomingAiringsReferenceMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testUpcomingAiringsReferenceMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
 func TestPostgresLibraryReferencesPolicyMigration(t *testing.T) {
 	db, err := sql.Open("pgx", startPostgres(t))
 	if err != nil {
