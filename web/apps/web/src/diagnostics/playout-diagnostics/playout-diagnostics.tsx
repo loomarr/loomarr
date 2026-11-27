@@ -492,7 +492,7 @@ const PlayoutDiagnostics = ({
           revealKey={filters.processId}
           breakpoint="xl"
           secondaryOnMobile
-          className="min-h-96"
+          minHeight={384}
           primary={
             <div
               ref={listRef}
