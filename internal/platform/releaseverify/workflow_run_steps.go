@@ -146,7 +146,11 @@ func VerifyGoModuleDownloads(root string) error {
 		return err
 	}
 	for _, step := range steps {
-		if goModuleDownloadCommand.MatchString(stripShellComments(normalizeShellContinuations(step.run))) {
+		masked, line, err := maskWorkflowExpressions(step.run)
+		if err != nil {
+			return fmt.Errorf("%s, line %d: %w", step, line, err)
+		}
+		if goModuleDownloadCommand.MatchString(stripShellComments(normalizeShellContinuations(masked))) {
 			return fmt.Errorf("%s runs go mod download directly; use %s", step, goModuleDownloadStep)
 		}
 	}
@@ -175,7 +179,11 @@ func VerifyWorkflowPnpmPackageManager(root string) error {
 func verifyPnpmRunStep(root string, step repositoryRunStep) error {
 	directory := path.Clean(step.workingDirectory)
 	known := !strings.Contains(directory, "$") && !path.IsAbs(directory)
-	for _, fields := range shellCommandSegments(stripShellComments(normalizeShellContinuations(step.run))) {
+	masked, line, err := maskWorkflowExpressions(step.run)
+	if err != nil {
+		return fmt.Errorf("line %d: %w", line, err)
+	}
+	for _, fields := range shellCommandSegments(stripShellComments(normalizeShellContinuations(masked))) {
 		fields[0] = strings.TrimLeft(fields[0], "(")
 		if fields[0] == "cd" {
 			if len(fields) != 2 || strings.ContainsAny(fields[1], "$`~") || path.IsAbs(fields[1]) {

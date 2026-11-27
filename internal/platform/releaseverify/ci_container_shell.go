@@ -8,18 +8,15 @@ import (
 // normalizeShellContinuations applies the shell's lexical backslash-newline
 // splice without executing or expanding any command text. Both workflow run
 // scalars and logical Make recipes cross this boundary before classification.
-// An escaped backslash, a single-quoted one and one in a comment splice nothing.
+// An escaped backslash, a single-quoted one and one in a comment splice nothing,
+// and neither does one before CRLF: the shell escapes the CR and ends the line.
 func normalizeShellContinuations(source string) string {
 	runes := scanShell(source).runes
 	var spliced strings.Builder
 	for index := 0; index < len(runes); index++ {
 		if runes[index].value == '\\' && runes[index].class == shellSyntax {
-			next := index + 1
-			if next < len(runes) && runes[next].value == '\r' {
-				next++
-			}
-			if next < len(runes) && runes[next].value == '\n' {
-				index = next
+			if index+1 < len(runes) && runes[index+1].value == '\n' {
+				index++
 				continue
 			}
 		}

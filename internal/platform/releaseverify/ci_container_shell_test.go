@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Every first line below is valid shell. The reader must still see the command
@@ -37,7 +39,6 @@ var shellQuotingLines = map[string]string{
 	"quoted brace in expansion":          `v=${x#'}'}`,
 	"substitution in expansion":          `v="${x:-$(tr -d '"' < f)}"`,
 	"ansi-c after parameter":             `v=${x}$'it\'s'`,
-	"workflow expression in string":      `v="a-${{ hashFiles('web/**', '}}') }}-b"`,
 }
 
 func TestShellReaderNeverSilentlyHidesACommand(t *testing.T) {
@@ -62,8 +63,47 @@ func TestShellReaderNeverSilentlyHidesACommand(t *testing.T) {
 		})
 	}
 	// A comment's trailing backslash continues nothing.
-	if !containerCommandInvokesEngine("true # note \\\nbash -c 'docker pull x'") {
+	if !workflowRouteCandidateWithScripts("true # note \\\ndocker pull x", nil, nil) {
 		t.Error("a comment swallowed the line after it")
+	}
+	// Only Actions reads "${{": in a script, "${" ends at the first "}".
+	for _, command := range []string{
+		`if false; then echo "${{ x }"; fi; docker pull x; echo "}}"`,
+		"if false; then echo \"${{ x }\"; fi\ndocker pull x\necho \"}}\"",
+		`if false; then echo ${{ "}}" }}; fi; docker pull x # "`,
+		"echo a\\\r\ndocker pull x #\r",
+	} {
+		if !containerCommandInvokesEngine(command) {
+			t.Errorf("missed the engine call in %q", command)
+		}
+	}
+}
+
+func TestWorkflowExpressionsAreOpaqueOnlyInRunText(t *testing.T) {
+	t.Parallel()
+	check := func(run string) error {
+		var document yaml.Node
+		source, err := yaml.Marshal(map[string]string{"run": run})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := yaml.Unmarshal(source, &document); err != nil {
+			t.Fatal(err)
+		}
+		return verifyWorkflowContainerAcquisition(&document, "zz.yml", nil, nil)
+	}
+	if err := check(`echo "a-${{ hashFiles('web/**', '}}') }}-b"`); err != nil {
+		t.Errorf("valid workflow expression rejected: %v", err)
+	}
+	for name, run := range map[string]string{
+		"unclosed":              "true\necho ${{ x",
+		"double quote":          "true\necho ${{ \"x\" }}",
+		"shell quote in string": "true\necho \"${{ '\"' }}\"",
+	} {
+		// The marshalled file is a block scalar, so run's second line is line 3.
+		if err := check(run); err == nil || !strings.Contains(err.Error(), "zz.yml:3: ") {
+			t.Errorf("%s: error = %v, want one naming zz.yml:3", name, err)
+		}
 	}
 }
 

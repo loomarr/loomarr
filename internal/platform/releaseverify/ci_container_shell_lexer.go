@@ -155,8 +155,6 @@ func (s *shellScanner) close(width int) {
 // here, if any. These are live both unquoted and inside double quotes.
 func (s *shellScanner) expansion() bool {
 	switch {
-	case s.peek(0) == '$' && s.peek(1) == '{' && s.peek(2) == '{':
-		s.workflowExpression()
 	case s.peek(0) == '$' && s.peek(1) == '{':
 		parent := s.top()
 		inString := parent.quote == '"' || (parent.kind == shellParameter && parent.inString)
@@ -177,32 +175,6 @@ func (s *shellScanner) expansion() bool {
 		return false
 	}
 	return true
-}
-
-// workflowExpression consumes a GitHub "${{ ... }}", which Actions replaces
-// before any shell reads it, so its quotes never change the shell's quote state.
-func (s *shellScanner) workflowExpression() {
-	opened, class := s.line, shellPlain
-	if s.top().quote == '"' || s.top().inString {
-		class = shellQuoted
-	}
-	s.emit(3, class)
-	quoted := false
-	for s.position < len(s.source) {
-		switch {
-		case s.peek(0) == '\'':
-			quoted = !quoted
-			if class == shellPlain {
-				s.emit(1, shellSyntax)
-				continue
-			}
-		case !quoted && s.peek(0) == '}' && s.peek(1) == '}':
-			s.emit(2, class)
-			return
-		}
-		s.emit(1, class)
-	}
-	s.fail(opened, "unterminated workflow expression")
 }
 
 func (s *shellScanner) step() {
