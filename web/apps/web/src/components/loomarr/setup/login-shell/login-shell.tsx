@@ -1,6 +1,6 @@
 import { BrandLockup, Card, Stack } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
-import { TvStatic } from "../../shell";
+import { IdleSnow } from "../../shell";
 import type { LoginShellProps } from "./login-shell.type";
 
 // LoginShell — the presentational frame for the sign-in page (§11, §13): the test-card
@@ -25,7 +25,7 @@ const LoginShell = ({ children, className }: LoginShellProps) => (
   >
     {/* Static sits behind; content siblings get an explicit stacking context above it, since
         a position:absolute layer paints OVER position:static content regardless of DOM order. */}
-    <TvStatic className="z-0" />
+    <IdleSnow />
     <Stack position="relative" zIndex={10}>
       <BrandLockup orientation="stacked" showTagline size="large" />
     </Stack>

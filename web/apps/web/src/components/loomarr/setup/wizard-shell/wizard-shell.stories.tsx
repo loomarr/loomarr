@@ -19,12 +19,11 @@ const body = (
 );
 
 // The operator first-run frame (§13): the rail is resume-safe — it renders whatever the
-// caller derived from GET /v1/setup/status, so a refresh loses nothing. Tagged `motion`, as
-// LoginShell is, so the gallery keeps the idle snow that reduced motion hides.
+// caller derived from GET /v1/setup/status, so a refresh loses nothing.
 const meta = {
   title: "Setup/WizardShell",
   component: WizardShell,
-  tags: ["route", "motion"],
+  tags: ["route"],
   parameters: { layout: "fullscreen" },
   args: {
     steps,
