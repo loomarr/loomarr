@@ -30,7 +30,8 @@ describe("PodTimeline", () => {
     );
     expect(screen.getByRole("list", { name: /pod segments/i })).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
-    expect(screen.getByText("Fizzbolt, 30s")).toHaveClass("sr-only");
+    // The full name and length are there for a screen reader and clipped away for the eye.
+    expect(screen.getByText("Fizzbolt, 30s")).toHaveStyle({ position: "absolute", width: "1px" });
     expect(screen.getByText("1990s")).toBeInTheDocument();
     // Segments print words and a length, so no legend of codes is needed.
     expect(screen.getByText("Commercial, 30s")).toBeInTheDocument();
@@ -48,7 +49,6 @@ describe("PodTimeline", () => {
   // answerable from the screen rather than from the logs.
   it.each([
     ["widened", "Era widened"],
-    ["audience", "Any era"],
     ["bumper_card", "Bumper only"],
   ] as const)("names the %s fallback level", (level, label) => {
     render(<PodTimeline matchLevel={level} entries={[entry("Filler", "interstitial", 15000)]} />);
@@ -78,7 +78,7 @@ describe("PodTimeline", () => {
         onPreview={onPreview}
       />,
     );
-    await userEvent.click(screen.getByRole("button", { name: "Preview Fizzbolt" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Preview Fizzbolt, .*Commercial, 30s$/ }));
     expect(onPreview).toHaveBeenCalledWith(ad);
     expect(screen.queryByRole("button", { name: /Preview We'll be right back/i })).not.toBeInTheDocument();
   });

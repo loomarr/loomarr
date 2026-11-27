@@ -1,12 +1,25 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
-import { Icon, icons, Tooltip } from "@loomarr/design-system";
+import {
+  Icon,
+  InlineAction,
+  icons,
+  MediaTile,
+  Reveal,
+  Stack,
+  semanticThemes,
+  Text,
+  Tooltip,
+  typography,
+} from "@loomarr/design-system";
 import { CardAction, CardStatus, ClipSelect, PictureCard } from "@loomarr/ui";
 import { useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ServedImage } from "@/components/loomarr/served-image";
-import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
+
+// The play disc's drop shadow, as the card has always drawn it.
+const DISC_SHADOW = "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)";
 
 // ClipCard — a filler clip with its match tags (§3, §10): role/era/audience/category
 // chips + a mono, sub-minute-aware duration. tagged clips are pod-ready; untagged
@@ -39,15 +52,15 @@ const eraLabel = (era: number | undefined): string => {
   if (!era) return "";
   return era % 10 === 0 ? `${era}s` : String(era);
 };
-// ⚠ The hardcoded CATEGORIES cycle list was DELETED (§10 V45a). `category` is now a DERIVED shadow
-// of the taxonomy tags, not a directly-editable free string — there is nothing to cycle. Tags are
-// shown as read-only badges and edited in the tag dialog, which serves the real vocabulary. (The list
-// was also a rule violation: operator-editable data hardcoded on the FE — see the no-hardcode rule.)
+// ⚠ No hardcoded CATEGORIES list here (§10 V45a). `category` is a DERIVED shadow of the taxonomy
+// tags, not a directly-editable free string — there is nothing to cycle. Tags are shown as read-only
+// badges and edited in the tag dialog, which serves the real vocabulary. (A list here would also break
+// the no-hardcode rule: operator-editable data hardcoded on the FE.)
 
 // How much this clip has actually AIRED — the mock's `usedLine`.
 //
-// ⚠ The verb is "aired", not "played", deliberately (fixed after a live review: "played" read as
-// "have I watched this", and the Play button on the card visibly did not move the number). The count
+// ⚠ The verb is "aired", not "played", deliberately: "played" reads as "have I watched this", and
+// the Play button on the card visibly does not move the number. The count
 // is an AIRINGS counter — incremented only when internal playout actually broadcasts the clip
 // (store.RecordClipPlay, "written from playout only"), NEVER by watching the preview. "Aired" is what
 // the number measures, and it disambiguates from the Play button (which is watching, not airing).
@@ -69,7 +82,7 @@ const playsLine = (clip: ClipDTO): string => {
 // a `useState` would make every card in a 200-card grid re-render on any one card's hover.
 //
 // ⚠ **The animation is a generated ASSET, not the clip streamed on hover.** Playing the source on
-// hover was the cheaper build and the wrong one at catalog scale: a grid would open a range
+// hover is the cheaper build and the wrong one at catalog scale: a grid would open a range
 // request per hovered card against files tens of megabytes each, to show six seconds. The webp is
 // ~150KB and already the right length. See internal/filler/preview.go.
 const ClipFrame = ({
@@ -87,7 +100,7 @@ const ClipFrame = ({
   // ⚠ **Unmounted on leave, and that is what makes the animation RESTART.** An animated WebP
   // begins at frame 0 when it decodes and then runs on its own — the browser keeps it going while
   // the element lives, whether or not anyone is looking. Keeping it mounted and merely hiding it
-  // meant the second hover picked the loop up wherever it happened to be, usually mid-advert.
+  // would make the second hover pick the loop up wherever it happens to be, usually mid-advert.
   // Remounting forces a fresh decode, so every hover starts from the beginning. (Maintainer,
   // 2026-08-03.)
   //
@@ -98,8 +111,8 @@ const ClipFrame = ({
   // every preview up front would pull the whole grid's worth of animation immediately — precisely
   // what the still exists to avoid.
   const [hovered, setHovered] = useState(false);
-  // ⚠ Keys on `hoverImage`, not the retired `preview` path (V52 phase 8). Same question — "is
-  // there an animation to show?" — asked of the record that now answers it.
+  // ⚠ Keys on `hoverImage` (V52 phase 8): "is there an animation to show?" is answered by the
+  // image record, not by a `preview` path.
   const showPreview = hovered && Boolean(clip.hoverImage);
 
   // ⚠ These handlers are DECORATIVE: they reveal a preview and do nothing else. The real control
@@ -113,7 +126,8 @@ const ClipFrame = ({
     // biome-ignore lint/a11y/noStaticElementInteractions: decorative hover only, see above
     <div
       // Fills the picture card's media box, which sets the ratio and crops to it.
-      className="group relative size-full overflow-hidden"
+      data-clip-frame=""
+      style={{ height: "100%", overflow: "hidden", position: "relative", width: "100%" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       // Focus counts as hover so a keyboard user tabbing to the play button sees the same preview
@@ -121,8 +135,7 @@ const ClipFrame = ({
       onFocus={() => setHovered(true)}
       onBlur={() => setHovered(false)}
     >
-      {/* ⚠ ONE path since V52 phase 8. The legacy `/v1/filler/thumb/{hash}` fallback that stood retired-ok
-          here through the migration window is retired with its route — a clip's artwork is an
+      {/* ⚠ ONE path (V52 phase 8), with no thumbnail-route fallback: a clip's artwork is an
           image-service image (§22).
 
           Empty alt, deliberately: the clip's name is the very next element, so a description here
@@ -151,18 +164,18 @@ const ClipFrame = ({
         //
         // The animation is ONE rendition and skips the ladder (§22 `animated`), so `sizes` is
         // nominal here — it is the still beneath that does the responsive work.
-        <span className="absolute inset-0">
+        <Stack bottom={0} left={0} position="absolute" render="span" right={0} top={0}>
           <ServedImage
             image={clip.hoverImage}
             alt=""
             sizes="(max-width: 640px) 45vw, 220px"
             fallback={null}
           />
-        </span>
+        </Stack>
       )}
 
       {/* Overlays (V35b, the mock's card): duration bottom-right, quality top-right, select
-          top-left. ⚠ Each sits on a scrim (`bg-static-900/80`) rather than directly on the frame
+          top-left. ⚠ Each sits on a scrim (`washRaised80`) rather than directly on the frame
           — a thumbnail is arbitrary video, so text with no backing plate has NO guaranteed
           contrast against it. That is a legibility rule, not a style choice. */}
       {clip.quality && (
@@ -170,23 +183,42 @@ const ClipFrame = ({
         // ARIA only permits naming on an element that has a role, and the chip-row version below
         // gets one from Badge. Without it the label silently does nothing and "1080P" is announced
         // as letter-spaced shouting, which is the whole reason the label exists.
-        <span
-          role="img"
-          className="bg-static-900/80 text-2xs text-static-100 absolute top-1.5 right-1.5 rounded px-1.5 py-0.5 font-mono"
-          title="Resolution, from the clip's video height"
+        <Stack
           aria-label={`Resolution ${clip.quality}`}
+          backgroundColor="washRaised80"
+          borderRadius={4}
+          paddingHorizontal={6}
+          // 4, not the old `py-0.5`: the old inline span's box was the inherited font's content
+          // area plus 2px a side (22px). As a flex box it is the role's 14px line, so 4px a side
+          // keeps the plate 22px tall.
+          paddingVertical={4}
+          position="absolute"
+          render="span"
+          right={6}
+          role="img"
+          // The browser's own hover text; a Stack's props do not name `title`.
+          {...({ title: "Resolution, from the clip's video height" } as object)}
+          top={6}
         >
-          {clip.quality}
-        </span>
+          {/* The plate is fixed dark over a thumbnail in either theme, so the ink is the static light
+              stop rather than a theme tone, and it keeps the mono face the role does not carry. */}
+          <Text
+            as="span"
+            style={{ color: "var(--color-static-100)", fontFamily: typography.family.data.web }}
+            textRole="guideCell"
+          >
+            {clip.quality}
+          </Text>
+        </Stack>
       )}
       {onToggleSelect && (
-        <div className="absolute top-0.5 left-0.5 z-10">
+        <Stack left={2} position="absolute" top={2} zIndex={10}>
           <ClipSelect
             clipName={clip.name}
             selected={Boolean(selected)}
             onSelectedChange={() => onToggleSelect()}
           />
-        </div>
+        </Stack>
       )}
 
       {/* The play button — the mock's 58px amber disc (line 982 of the desktop prototype),
@@ -198,35 +230,52 @@ const ClipFrame = ({
 
           ⚠ Always in the DOM, revealed on hover/focus by opacity — NOT conditionally rendered.
           A button that only exists on hover cannot be reached by Tab, so a keyboard user could
-          never play a clip. `group-focus-within` is what makes tabbing to it reveal it. */}
+          never play a clip. The frame's focus counts as hover, which is what makes tabbing to it
+          reveal it. */}
       {onPlay && thumbImage && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          {/* A plain <button>, not a DS Action: the target is the whole preview frame with no
-              control box of its own, which no Action layout draws. So the pointer cursor (which
-              Tailwind v4's Preflight stopped giving <button>) and the focus ring are set here.
-              Only the disc is visible. */}
-          <button
-            type="button"
-            onClick={onPlay}
+        <Stack bottom={0} left={0} position="absolute" right={0} top={0}>
+          {/* The target is the whole preview frame, drawn as a MediaTile with no fill of its own so
+              the still shows through; only the disc is visible. Its focus ring is drawn inside the
+              frame, which clips anything outside it. */}
+          <MediaTile
+            bordered={false}
+            fill={false}
+            focusInset
+            height="100%"
             // The name says WHICH clip: a grid of buttons all called "Play" is unusable by voice
             // control and meaningless in a screen reader's element list.
-            aria-label={`Preview ${clip.name}`}
-            className={cn(
-              "text-static-950 pointer-events-auto flex h-full w-full cursor-pointer items-center justify-center",
-              // Visible focus ring against arbitrary video underneath.
-              "focus-visible:ring-static-100 outline-none focus-visible:ring-2 focus-visible:ring-inset",
-            )}
+            label={`Preview ${clip.name}`}
+            onPress={onPlay}
+            radius="none"
+            width="100%"
           >
             {/* ⚠ Nudged right by a pixel: a triangle's optical centre is left of its bounding
                 box, so a mathematically centred play glyph reads as sitting too far left. The
                 mock does the same thing with `padding-left:4px`. */}
-            <span className="bg-signal/90 flex size-11 items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-              <span className="ml-0.5 flex">
-                <Icon decorative glyph={icons.play} size="default" tone="inherit" />
-              </span>
-            </span>
-          </button>
-        </div>
+            <Reveal
+              align="center"
+              backgroundColor="washSignal90"
+              borderRadius={999}
+              direction="row"
+              height={44}
+              justify="center"
+              render="span"
+              shown={hovered}
+              style={{ boxShadow: DISC_SHADOW }}
+              width={44}
+            >
+              <Stack direction="row" marginLeft={2} render="span">
+                {/* Dark ink on the amber disc in either theme, as the disc is the same amber in both. */}
+                <Icon
+                  color={semanticThemes.dark.surface.canvas}
+                  decorative
+                  glyph={icons.play}
+                  size="default"
+                />
+              </Stack>
+            </Reveal>
+          </MediaTile>
+        </Stack>
       )}
     </div>
   );
@@ -258,7 +307,11 @@ const ClipCard = ({ clip, onOpen, onSplit, splitPending, selected, onToggleSelec
   // A composite offers its split as the one action, so its name opens the details instead.
   const nameOpens = onSplit && onOpen;
   return (
-    <div className={cn("rounded-lg", selected && "ring-foreground ring-1")}>
+    // Selection is neutral (#1909): a foreground ring, never amber.
+    <div
+      data-clip-card=""
+      style={{ borderRadius: 12, ...(selected ? { boxShadow: "0 0 0 1px var(--foreground)" } : {}) }}
+    >
       <PictureCard
         action={
           onSplit ? (
@@ -284,14 +337,9 @@ const ClipCard = ({ clip, onOpen, onSplit, splitPending, selected, onToggleSelec
         ratio="1/1"
         title={
           nameOpens ? (
-            <button
-              type="button"
-              onClick={onOpen}
-              aria-label={`View details for ${clip.name}`}
-              className="hover:text-signal focus-visible:ring-ring rounded-sm text-left focus-visible:ring-2 focus-visible:outline-none"
-            >
+            <InlineAction aria-label={`View details for ${clip.name}`} onPress={() => onOpen?.()}>
               {clip.name}
-            </button>
+            </InlineAction>
           ) : (
             clip.name
           )

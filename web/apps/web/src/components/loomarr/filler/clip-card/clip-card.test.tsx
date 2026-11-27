@@ -126,9 +126,9 @@ describe("ClipCard", () => {
   // Selection is neutral (#1909): a foreground ring, never amber.
   it("rings a selected card in foreground", () => {
     const { container } = render(<ClipCard clip={base} selected onToggleSelect={vi.fn()} />);
-    const card = container.querySelector(".ring-1");
-    expect(card).toHaveClass("ring-foreground");
-    expect(container.querySelector('[class*="ring-signal"]')).toBeNull();
+    const card = container.querySelector("[data-clip-card]") as HTMLElement;
+    expect(card.style.boxShadow).toContain("var(--foreground)");
+    expect(card.style.boxShadow).not.toContain("signal");
   });
   // A tagged clip must still be editable. §10's likely tagging error is a trailer scanned
   // as a commercial — it arrives with era/audience/category filled in, so it counts as
@@ -286,7 +286,7 @@ describe("ClipCard", () => {
 
       expect(container.querySelector('img[src*="bbbb2222"]')).toBeNull();
 
-      fireEvent.mouseEnter(container.querySelector(".group") as HTMLElement);
+      fireEvent.mouseEnter(container.querySelector("[data-clip-frame]") as HTMLElement);
       const preview = container.querySelector('img[src*="bbbb2222"]');
       // ⚠ The ANIMATION's own content hash, not the clip's. Until V52 phase 8 this was
       // `/v1/filler/hover/{clipHash}`, a route that derived the .webp from the clip server-side; retired-ok
@@ -302,7 +302,7 @@ describe("ClipCard", () => {
     // This is the test that catches a "keep it mounted for caching" optimisation reintroducing it.
     it("unmounts the animation on leave so the next hover starts it again", () => {
       const { container } = render(<ClipCard clip={{ ...framed, hoverImage }} onOpen={() => {}} />);
-      const frame = container.querySelector(".group") as HTMLElement;
+      const frame = container.querySelector("[data-clip-frame]") as HTMLElement;
 
       fireEvent.mouseEnter(frame);
       expect(container.querySelector('img[src*="bbbb2222"]')).toBeInTheDocument();
@@ -320,7 +320,7 @@ describe("ClipCard", () => {
     // across the whole catalog.
     it("does not request an animation for a clip that has none", () => {
       const { container } = render(<ClipCard clip={framed} onOpen={() => {}} />);
-      fireEvent.mouseEnter(container.querySelector(".group") as HTMLElement);
+      fireEvent.mouseEnter(container.querySelector("[data-clip-frame]") as HTMLElement);
 
       expect(container.querySelector('img[src*="bbbb2222"]')).toBeNull();
       // ...and the still is still there, which is the whole fallback.

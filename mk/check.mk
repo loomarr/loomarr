@@ -27,10 +27,12 @@ rust-audit: ## check Rust advisories, licences, and dependency sources (needs ca
 	$(CARGO) deny check advisories licenses sources
 	$(CARGO) deny --manifest-path rust/loomarr-image/fuzz/Cargo.toml check advisories licenses sources
 
-rust-fuzz: ## fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz)
+rust-fuzz: ## fuzz the bounded Rust image protocol and subtitle decoders; optional FUZZ_SECONDS per target (needs nightly + cargo-fuzz)
 	@seconds="$${FUZZ_SECONDS:-60}"; \
 	  cd rust/loomarr-image; \
-	  $(CARGO) +$(RUST_FUZZ_TOOLCHAIN) fuzz run protocol_decoder -- -max_total_time="$$seconds" -max_len=1048576
+	  for target in protocol_decoder subtitle_decoder; do \
+	    $(CARGO) +$(RUST_FUZZ_TOOLCHAIN) fuzz run "$$target" -- -max_total_time="$$seconds" -max_len=1048576 || exit 1; \
+	  done
 
 .PHONY: fmt
 fmt: ## gofmt -l (fails if any file needs formatting)
@@ -83,6 +85,13 @@ lint: ## golangci-lint v2 (run via `go run` so no global install needed)
 # Dockerfile's golang image must move together. Needs network (vuln.go.dev).
 vuln: ## govulncheck: known vulnerabilities reachable from Loomarr code, stdlib included
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.9.0 $(PKG)
+
+.PHONY: scan-scale
+# The library scanner's scale guard at the household's size (33k files): step 2 counts each file
+# once, and passes made while it waits leave nothing held. The suite runs it at 2k; this takes
+# about a minute, so it runs weekly rather than on every PR.
+scan-scale: ## library scanner's scale guard over a 33k-file library (about a minute)
+	LOOMARR_SCAN_SCALE_FILES=33000 $(GO) test ./internal/library/scan/ -run '^TestALongHeaderStageHoldsTheLibraryOnce$$' -count=1 -timeout 15m -v
 
 .PHONY: deadcode
 deadcode: ## functions no ./cmd binary reaches, per package (report only; not a PR gate)
@@ -139,7 +148,8 @@ go-shard-verify: ## Go test lanes must cover every package within their latency 
 # QUIETLY SHRINK the suite: a split that drops a package does not fail — those tests simply never
 # run, every lane reports success, and CI is green over code it never executed. Nothing else in
 # the pipeline would notice. The release verifier pins SHARDS=2 and the workflow's two ordinary
-# identities plus its two certification identities, so execution and coverage authority cannot drift.
+# identities plus one certification identity per manifest lane, so execution and coverage authority
+# cannot drift.
 	@./scripts/go-shard.sh --verify $(or $(SHARDS),2)
 
 .PHONY: go-race-weights

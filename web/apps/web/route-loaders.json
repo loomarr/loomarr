@@ -1,0 +1,4 @@
+{
+  "note": "Routes with no loader yet (#3399 item 9.2), maintained by web/scripts/check-route-loaders.mjs. Entries may only be removed: give the route a loader (or a `// no-loader: <reason>` comment) and run `pnpm route-loaders:update`. Never add one to pass the check.",
+  "files": []
+}

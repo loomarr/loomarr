@@ -1,11 +1,16 @@
 import type { FillerIncomingOutputBody, IncomingStatusDTO } from "@loomarr/api";
-import { getFillerIncomingMockHandler, getListFillerMockHandler } from "@loomarr/api/msw";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import {
+  getFillerIncomingMockHandler,
+  getHouseholdMockHandler,
+  getListFillerMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { Profiler, type ReactNode } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
@@ -41,6 +46,37 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 };
 
 describe("Incoming", () => {
+  // A step's full date reads on the household's clock.
+  beforeEach(() => server.use(getHouseholdMockHandler({ timeZone: "" })));
+
+  // The route's loader leaves the read in the cache, so the first commit is already the tab.
+  it("draws what is cached in its first commit, with no frame in between", async () => {
+    server.use(getFillerIncomingMockHandler(incoming()));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(fillerApi.getFillerIncomingQueryKey(), {
+      status: 200,
+      data: incoming(),
+      headers: new Headers(),
+    });
+    const commits: string[] = [];
+
+    render(
+      <QueryClientProvider client={client}>
+        <RouterHarness
+          content={
+            <Profiler id="incoming" onRender={() => commits.push(document.body.textContent ?? "")}>
+              <Incoming />
+            </Profiler>
+          }
+          initialPath="/filler/incoming"
+        />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("Nothing on the way");
+    expect(commits[0]).toContain("Nothing on the way");
+  });
+
   it("preserves simultaneous repeated processing steps without identity warnings", async () => {
     const error = vi.spyOn(console, "error");
     const stage = {

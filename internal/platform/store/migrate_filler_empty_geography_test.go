@@ -2,14 +2,13 @@ package store
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 )
 
 func TestRemoveEmptyFillerGeographyMigrationSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "empty-geography.db"))
+	s, err := openSQLite(ctx, sqliteFileAt(t, 119, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,12 +4,22 @@ import type { ChannelIdeaDTO } from "@loomarr/api/models/channelIdeaDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { ideaAvailability, ideaCount, ideaReason } from "@loomarr/core/requests";
-import { Action, Badge, SectionHeader, StatusDot, Surface, Tooltip } from "@loomarr/design-system";
+import {
+  Action,
+  Badge,
+  Card,
+  Grid,
+  SectionHeader,
+  Stack,
+  StatusDot,
+  Surface,
+  Text,
+  Tooltip,
+} from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import type { ChannelIdeasProps, IdeaCardProps } from "./channel-ideas.type";
 
 const PAGE = 3;
@@ -20,45 +30,60 @@ const POSTERS = 4;
 const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps) => {
   const nameId = `idea-${idea.id}`;
   return (
-    <article
+    <Card
       aria-labelledby={nameId}
-      className={cn(
-        "bg-static-900 flex min-w-0 flex-col overflow-hidden rounded-lg border",
-        idea.requested ? "border-suggest-tint-40" : "border-static-700",
-      )}
+      borderRadius={8}
+      minWidth={0}
+      overflow="hidden"
+      render="article"
+      tone={idea.requested ? "suggest" : undefined}
     >
       {/* Poster slots. Titles carry no artwork yet, so they're the mock's empty tiles: at a quarter
           of a card the artwork frame's "No artwork" label doesn't fit, and the text below says
           what the idea is. */}
-      <div aria-hidden className="grid grid-cols-4 gap-1.5 px-3 pt-3">
+      <Grid aria-hidden columns={4} gap="1.5" paddingHorizontal={12} paddingTop={12}>
         {idea.keys.slice(0, POSTERS).map((key) => (
-          <div key={key} className="border-static-700 bg-static-800 aspect-[2/3] rounded-[6px] border" />
+          <Stack
+            aspectRatio={2 / 3}
+            backgroundColor="surfaceElevated"
+            borderColor="borderDecorative"
+            borderRadius={6}
+            borderWidth={1}
+            key={key}
+          />
         ))}
-      </div>
-      <div className="flex flex-col gap-1 px-4 pt-3.5">
-        <span className="text-static-400 text-xs">{ideaReason(idea, empty, nowMs)}</span>
-        <h3 id={nameId} className="m-0 text-base leading-[1.3] font-semibold">
+      </Grid>
+      <Stack gap="1" paddingHorizontal={16} paddingTop={14}>
+        <Text as="span" textRole="hint" tone="secondary">
+          {ideaReason(idea, empty, nowMs)}
+        </Text>
+        <Text as="h3" id={nameId} textRole="heading">
           {idea.name}
-        </h3>
-        <p className="text-static-400 m-0 text-sm text-pretty">{idea.pitch}</p>
-      </div>
-      <div className="flex items-center gap-2 px-4 pt-2.5 text-xs">
+        </Text>
+        <Text as="p" style={{ textWrap: "pretty" }} textRole="compact" tone="secondary">
+          {idea.pitch}
+        </Text>
+      </Stack>
+      <Stack align="center" direction="row" gap="inline" paddingHorizontal={16} paddingTop={10}>
         {/* The availability text beside it says what the dot does. */}
         <StatusDot tone={idea.toDownload > 0 ? "progress" : "ok"} label="" size="compact" />
-        <span>
+        <Text as="span" textRole="hint">
           {ideaCount(idea)}
-          <span className="text-static-400"> · {ideaAvailability(idea)}</span>
-        </span>
-      </div>
-      <div className="mt-auto p-4">
+          <Text as="span" textRole="hint" tone="secondary">
+            {" "}
+            · {ideaAvailability(idea)}
+          </Text>
+        </Text>
+      </Stack>
+      <Stack marginTop="auto" padding={16}>
         {idea.requested ? (
-          <div className="flex min-h-8 items-center">
+          <Stack align="center" direction="row" minHeight={32}>
             <Badge shape="square" tone="suggest">
               Waiting for an admin
             </Badge>
-          </div>
+          </Stack>
         ) : (
-          <div className="flex flex-wrap items-center gap-2">
+          <Stack align="center" direction="row" gap="inline" wrap>
             <Action disabled={busy} onPress={onRequest}>
               Request channel
             </Action>
@@ -71,17 +96,17 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
             >
               Edit first
             </Action>
-            <div className="ml-auto">
+            <Stack marginLeft="auto">
               <Tooltip content="Not for me">
                 <Action disabled={busy} icon="close" layout="icon" onPress={onHide} variant="ghost">
                   {`Not for me: ${idea.name}`}
                 </Action>
               </Tooltip>
-            </div>
-          </div>
+            </Stack>
+          </Stack>
         )}
-      </div>
-    </article>
+      </Stack>
+    </Card>
   );
 };
 
@@ -145,7 +170,9 @@ const ChannelIdeas = ({ empty, inset = false, nowMs }: ChannelIdeasProps) => {
       >
         {hidden && (
           <>
-            <span className="text-static-400 text-xs">Hid {hidden.name}</span>
+            <Text as="span" textRole="hint" tone="secondary">
+              Hid {hidden.name}
+            </Text>
             <Action
               disabled={unhide.isPending}
               layout="text"
@@ -163,11 +190,13 @@ const ChannelIdeas = ({ empty, inset = false, nowMs }: ChannelIdeasProps) => {
         )}
       </SectionHeader>
       {ideas.length === 0 ? (
-        <p className="border-static-700 bg-static-900 text-static-400 m-0 rounded-lg border px-4 py-5 text-sm">
-          That’s every idea for now. New ones appear as your library grows.
-        </p>
+        <Card paddingHorizontal={16} paddingVertical={20}>
+          <Text as="p" textRole="compact" tone="secondary">
+            That’s every idea for now. New ones appear as your library grows.
+          </Text>
+        </Card>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(272px,1fr))] gap-3">
+        <Grid columns={1} gap="3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(272px, 1fr))" }}>
           {shown.map((idea) => (
             <IdeaCard
               key={idea.id}
@@ -193,12 +222,22 @@ const ChannelIdeas = ({ empty, inset = false, nowMs }: ChannelIdeasProps) => {
               }}
             />
           ))}
-        </div>
+        </Grid>
       )}
       {/* Describe your own channel (#1817): the same manual builder "Edit first" opens, started
           blank. The shipped grid above already names this as waiting on the mock; #1872 is the
           approved one. */}
-      <div className="border-static-700 mt-3 flex items-center justify-center rounded-lg border border-dashed p-3.5">
+      <Stack
+        align="center"
+        borderColor="borderDecorative"
+        borderRadius={12}
+        borderStyle="dashed"
+        borderWidth={1}
+        direction="row"
+        justify="center"
+        marginTop={12}
+        padding={14}
+      >
         <Action
           accessibilityRole="link"
           render={<Link to="/requests/new" search={{ manual: 1 }} />}
@@ -206,7 +245,7 @@ const ChannelIdeas = ({ empty, inset = false, nowMs }: ChannelIdeasProps) => {
         >
           Don’t see it? Describe your own channel
         </Action>
-      </div>
+      </Stack>
     </section>
   );
   // On a page of its own the section brings its page inset; the inset is part of what renders, so

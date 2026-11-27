@@ -1,7 +1,8 @@
 import type { ImageDTO } from "@loomarr/api/models/imageDTO";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { SegmentFilmstrip } from "./segment-filmstrip";
 import type { FilmstripSegment } from "./segment-filmstrip.type";
 

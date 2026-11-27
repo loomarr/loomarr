@@ -45,6 +45,20 @@ func TestPickAudioTrack_UntaggedTracksFallBackToTheFirst(t *testing.T) {
 	}
 }
 
+// "Unknown language" on the Audio sheet saves `und` (#3409): it picks the track with no language,
+// whether the container left the tag off or wrote `und`, and never a tagged one.
+func TestPickAudioTrack_UndPicksTheUntaggedTrack(t *testing.T) {
+	for _, tag := range []string{"", "und", "UND"} {
+		tracks := []AudioTrack{{Language: "eng"}, {Language: tag}}
+		if got := PickAudioTrack(tracks, "und"); got != 1 {
+			t.Errorf("untagged as %q: picked audio track %d, want 1", tag, got)
+		}
+	}
+	if got := PickAudioTrack([]AudioTrack{{Language: "fra"}, {Language: "eng"}}, "und"); got != 0 {
+		t.Fatalf("no untagged track: picked audio track %d, want the first", got)
+	}
+}
+
 // Clearing the setting restores ffmpeg's historical behaviour — an operator who wants the old
 // selection can have it, and that has to keep working.
 func TestPickAudioTrack_NoPreferenceKeepsTheFirstTrack(t *testing.T) {
@@ -77,7 +91,7 @@ func itemArgsWithTrack(t *testing.T, track int) []string {
 	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
 	_, args, err := packagerItemArgs(encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{}), out,
 		PackagerItem{Input: "http://library.invalid/stream", Format: testSources()["h264-1080p-sdr-25"], AudioTrack: track},
-		nil, packager.Slot{Frames: 250, AudioFrames: 469}, itemFault{})
+		nil, nil, packager.Slot{Frames: 250, AudioFrames: 469}, itemFault{})
 	if err != nil {
 		t.Fatal(err)
 	}

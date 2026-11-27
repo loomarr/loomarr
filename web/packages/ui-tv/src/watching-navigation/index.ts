@@ -12,6 +12,7 @@ export type {
   TvNumberEntryPresentation,
   TvNumberedChannel,
   TvRemoteDigit,
+  TvWatchingFocus,
   TvWatchingRemoteEvent,
   TvWatchingRemoteIntent,
   TvWatchingRemoteResult,

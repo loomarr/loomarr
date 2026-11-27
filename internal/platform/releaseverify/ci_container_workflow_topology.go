@@ -14,7 +14,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 	return map[string]workflowTopologyAuthority{
 		"android-ccache-promotion.yml": {jobs: map[string]int{"promote": 6}},
 		"android-beta.yml":             {jobs: map[string]int{"release": 9}},
-		"apple-compilation-cache.yml":  {jobs: map[string]int{"publish": 13}},
+		"apple-compilation-cache.yml":  {jobs: map[string]int{"plan": 3, "publish": 12}},
 		"apple-testflight.yml":         {jobs: map[string]int{"plan": 2, "release": 11}},
 		"cache-cleanup.yml":            {jobs: map[string]int{"cleanup": 1}},
 		"ci-agent.yml":                 {jobs: map[string]int{"run": 3}},
@@ -24,20 +24,20 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 
 		"ci-expo-android-mobile.yml": {jobs: map[string]int{"run": 9}},
 
-		"ci-apple-cache-validation.yml": {jobs: map[string]int{"producer": 7, "consumer": 7}},
+		"ci-apple-cache-validation.yml": {jobs: map[string]int{"producer": 6, "consumer": 6}},
 
 		"ci-clients.yml":             {jobs: map[string]int{"run": 10}},
 		"ci-docs.yml":                {jobs: map[string]int{"run": 8}},
 		"ci-frontend.yml":            {jobs: map[string]int{"run": 10}},
-		"ci-go-contracts.yml":        {jobs: map[string]int{"run": 10}},
-		"ci-go.yml":                  {jobs: map[string]int{"run": 14}},
-		"ci-go-cache-warm.yml":       {jobs: map[string]int{"run": 6, "contracts": 6}},
+		"ci-go-contracts.yml":        {jobs: map[string]int{"run": 11}},
+		"ci-go.yml":                  {jobs: map[string]int{"run": 13}},
+		"ci-go-cache-warm.yml":       {jobs: map[string]int{"run": 6, "contracts": 6, "pnpm": 6, "ffmpeg": 5}},
 		"ci-image-certification.yml": {jobs: map[string]int{"run": 5}},
 		"ci-image.yml":               {jobs: map[string]int{"run": 7}},
 		"ci-playwright.yml":          {jobs: map[string]int{"run": 10}},
-		"ci-postgres.yml":            {jobs: map[string]int{"run": 6}},
+		"ci-postgres.yml":            {jobs: map[string]int{"run": 5}},
 		"ci-rust-contracts.yml":      {jobs: map[string]int{"run": 3}},
-		"ci-tuner.yml":               {jobs: map[string]int{"run": 10}},
+		"ci-tuner.yml":               {jobs: map[string]int{"run": 12}},
 		"ci-playout-bench.yml":       {jobs: map[string]int{"run": 9}},
 		"playout-bench.yml":          {jobs: map[string]int{"macos": 6, "gpu-t4": 9, "arc": 4, "geforce": 4, "coverage": 2}},
 		"codeql.yml": {jobs: map[string]int{
@@ -47,15 +47,15 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		}},
 		"ci.yml": {jobs: map[string]int{
 			"changes": 3, "agent-harness-macos": 0, "release-candidate-scope": 1, "full-manual-scope": 1,
-			"ci-policy": 6, "rust-contracts": 0, "go-contracts": 0, "image-certification": 0, "go": 0,
+			"ci-policy": 6, "privacy": 4, "rust-contracts": 0, "go-contracts": 0, "image-certification": 0, "go": 0,
 			"store-postgres": 0, "frontend": 0, "clients": 0, "apple-mobile": 0, "apple-tv": 0, "apple-cache-validation": 0, "expo-android-mobile": 0,
 			"playwright": 0, "tuner": 0, "image": 0, "docs": 0, "android": 0, "playout-bench": 0, "ci-ok": 4,
 		}},
-		"merge-gate.yml":              {jobs: map[string]int{"run": 5}},
+		"merge-gate.yml":              {jobs: map[string]int{"run": 6}},
 		"merge-gate-cache.yml":        {jobs: map[string]int{"run": 7}},
 		"curated-sources.yml":         {jobs: map[string]int{"check": 2}},
 		"deadcode.yml":                {jobs: map[string]int{"report": 3}},
-		"go-maintenance.yml":          {jobs: map[string]int{"vulnerabilities": 3}},
+		"go-maintenance.yml":          {jobs: map[string]int{"vulnerabilities": 3, "library-scale": 3}},
 		"ffmpeg-pin-refresh.yml":      {jobs: map[string]int{"refresh": 3}},
 		"image-benchmark.yml":         {jobs: map[string]int{"benchmark": 6}},
 		"pages.yml":                   {jobs: map[string]int{"build": 5, "deploy": 1}},
@@ -63,8 +63,8 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"release.yml":                 {jobs: map[string]int{"build": 7, "publish": 9}},
 		"rust-maintenance.yml":        {jobs: map[string]int{"supply-chain": 5, "fuzz": 5}},
 		"staging.yml":                 {jobs: map[string]int{"build-image": 4, "control": 2}},
-		"visual-baselines.yml":        {jobs: map[string]int{"resolve": 1, "render": 1, "commit": 4, "ci": 1}},
-		"visual-baselines-render.yml": {jobs: map[string]int{"render": 10}},
+		"visual-baselines.yml":        {jobs: map[string]int{"resolve": 2, "render": 1, "commit": 4, "release": 1}},
+		"visual-baselines-render.yml": {jobs: map[string]int{"render": 12}},
 	}
 }
 
@@ -77,6 +77,9 @@ type reusableWorkflowCallerAuthority struct {
 	// permissions is the exact job-level grant the caller passes down; nil means the caller sets
 	// none and inherits the workflow's contents: read.
 	permissions map[string]string
+	// secrets is the exact set of named secrets the caller passes; nil means the caller passes
+	// none. `secrets: inherit` is never accepted, because it hands over every repository secret.
+	secrets map[string]string
 }
 
 func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerAuthority {
@@ -87,8 +90,8 @@ func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerA
 		"image-certification": {name: "Rust image — runtime certification", condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true')"},
 		"go":                  {name: "Go — race-policy tests", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_go == 'true'"},
 		"store-postgres":      {name: "Store conformance (Postgres)", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_postgres == 'true'"},
-		"frontend":            {name: "Frontend — biome + typecheck + unit + build", condition: "needs.changes.outputs.impact_web == 'true'"},
-		"clients":             {name: "Shared clients — lint + test + browser/iOS/Android/TV bundles", condition: "needs.changes.outputs.impact_clients == 'true'"},
+		"frontend":            {name: "Frontend — biome + typecheck + unit + build", condition: "needs.changes.outputs.impact_web == 'true'", secrets: turboRemoteCacheSecrets()},
+		"clients":             {name: "Shared clients — lint + test + browser/iOS/Android/TV bundles", condition: "needs.changes.outputs.impact_clients == 'true'", secrets: turboRemoteCacheSecrets()},
 		"apple-mobile":        {name: "Apple mobile — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'"},
 		"apple-tv":            {name: "Apple TV — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'"},
 
@@ -105,11 +108,28 @@ func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerA
 	}
 }
 
+// turboRemoteCacheSecrets is the exact set of named secrets ci.yml passes to each reusable workflow
+// that runs Turbo: the four optional Remote Cache settings, never `inherit`.
+func turboRemoteCacheSecrets() map[string]string {
+	return map[string]string{
+		"TURBO_API":                        "${{ secrets.TURBO_API }}",
+		"TURBO_TEAM":                       "${{ secrets.TURBO_TEAM }}",
+		"TURBO_TOKEN":                      "${{ secrets.TURBO_TOKEN }}",
+		"TURBO_REMOTE_CACHE_SIGNATURE_KEY": "${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}",
+	}
+}
+
 func verifyWorkflowTopology(workflowName string, workflow *yaml.Node) error {
 	authority, registered := workflowAuthorityCatalog().topology[workflowName]
 	if !registered {
 		return fmt.Errorf("workflow %s has no registered topology authority", workflowName)
 	}
+	// A workflow-level cache mode applies to every job that declares none, so only a job's own
+	// execution-context authority may grant one.
+	if _, declared := mappingValue(workflow, "cache-mode"); declared {
+		return fmt.Errorf("workflow %s must not declare a workflow-level cache-mode", workflowName)
+	}
+	jobContexts := workflowJobContextAuthorityEntries()
 	jobs, ok := mappingValue(workflow, "jobs")
 	if !ok || jobs.Kind != yaml.MappingNode || len(jobs.Content)/2 != len(authority.jobs) {
 		return fmt.Errorf("workflow %s job topology differs from its authority", workflowName)
@@ -119,6 +139,12 @@ func verifyWorkflowTopology(workflowName string, workflow *yaml.Node) error {
 		stepCount, expected := authority.jobs[jobName]
 		if !expected || job.Kind != yaml.MappingNode {
 			return fmt.Errorf("workflow %s contains unregistered job %s", workflowName, jobName)
+		}
+		// Every job is checked here, including those with no execution-context entry: a job the
+		// authority does not name may not declare a cache mode at all.
+		cacheMode := jobContexts[workflowJobContextKey{workflow: workflowName, job: jobName}].cacheMode
+		if err := verifyExactOptionalScalar(job, "cache-mode", cacheMode, fmt.Sprintf("workflow %s job %s", workflowName, jobName)); err != nil {
+			return err
 		}
 		if _, reusable := mappingValue(job, "uses"); reusable {
 			if stepCount != 0 {
@@ -156,8 +182,17 @@ func verifyReusableWorkflowCaller(jobName string, job *yaml.Node) error {
 	if len(authority.permissions) > 0 {
 		allowed = append(allowed, "permissions")
 	}
+	if len(authority.secrets) > 0 {
+		allowed = append(allowed, "secrets")
+	}
 	if !ok || !mappingHasOnlyKeys(job, allowed...) {
 		return fmt.Errorf("reusable-workflow caller keys differ from their exact authority")
+	}
+	if len(authority.secrets) > 0 {
+		got, err := scalarMapping(job, "secrets", "reusable-workflow caller secrets")
+		if err != nil || !equalStringMaps(got, authority.secrets) {
+			return fmt.Errorf("reusable-workflow caller secrets differ from their exact authority")
+		}
 	}
 	if len(authority.permissions) > 0 {
 		got, err := scalarMapping(job, "permissions", "reusable-workflow caller permissions")

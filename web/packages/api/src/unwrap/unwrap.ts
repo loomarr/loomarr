@@ -4,10 +4,10 @@
 //
 //   const list = jobs.data?.status === 200 ? (jobs.data.data.jobs ?? []) : [];
 //
-// which appeared 78 times across 44 files before this helper existed. The repetition is
-// the small problem. The real one is that the fallback is re-decided at every site, so
-// the same endpoint could yield `[]` on one page and `undefined` on another, and a
-// reader cannot tell whether that difference is deliberate.
+// repeated at every call site. The repetition is the small problem. The real one is that
+// the fallback is re-decided at every site, so the same endpoint could yield `[]` on one
+// page and `undefined` on another, and a reader cannot tell whether that difference is
+// deliberate.
 
 /** An orval response: a discriminated union whose success arm is `status: 200`. */
 type ApiResponse = { data: unknown; status: number };

@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { eraDates } from "@/lib/era-dates";
 import { widthFrame } from "@/test/story-utils";
 import { ChannelDefaultsSummary } from "./channel-defaults-summary";
 
@@ -11,19 +10,9 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 
-// A fresh channel: every field is a default.
+// A fresh channel: every field is a default. A channel with changes draws nothing here, so it has
+// no story; the component's test holds that.
 const Fresh: Story = { args: { policy: {} } };
 
-// A lightly customized channel: a ceiling, an order and an era.
-const Customized: Story = {
-  args: {
-    policy: {
-      audience: { ceiling: "TV-14" },
-      ordering: "shuffle",
-      scope: { dates: eraDates({ from: 1990, to: 2015 }) },
-    },
-  },
-};
-
 export default meta;
-export { Customized, Fresh };
+export { Fresh };

@@ -1,5 +1,4 @@
-import { ActivityIndicator, Icon, icons } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
+import { ActivityIndicator, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import type { RestartOverlayProps } from "./restart-overlay.type";
 
 // RestartOverlay — the app is unusable while it restarts, so say so and mean it (§9.2, V13).
@@ -17,35 +16,38 @@ import type { RestartOverlayProps } from "./restart-overlay.type";
 // return, because a spinner that simply vanishes leaves "it worked" and "it never
 // restarted" indistinguishable.
 //
-// ⚠ **THIS IS A STATUS REGION, NOT A DIALOG — and it used to claim otherwise.** It carried
-// `role="alertdialog" aria-modal="true"` on a plain `fixed inset-0` div, with none of the
-// behaviour either attribute promises: no portal, no focus trap, no focus restore, no scroll
-// lock, no inert background. A screen reader was told the rest of the page was inert; Tab walked
-// straight into it.
+// ⚠ **THIS IS A STATUS REGION, NOT A DIALOG — and must not claim otherwise.** `role="alertdialog"
+// aria-modal="true"` on a plain `fixed inset-0` div promises behaviour it does not have: no
+// portal, no focus trap, no focus restore, no scroll lock, no inert background. A screen reader
+// would be told the rest of the page is inert while Tab walks straight into it.
 //
-// V50b was going to make the claim true by rebuilding this on a real AlertDialog. It should not,
-// for two reasons that only surfaced on reading it: `alertdialog` is defined for interrupting with
-// a REQUIRED RESPONSE and requires a focusable element, and this overlay has no interactive
-// content in any of its three states; and the "came back" state is deliberately
-// `pointer-events-none` so a lingering confirmation cannot swallow a click on the app behind it,
-// which a modal would forbid. Dropping the false attributes is the honest fix — a real modal would
-// have satisfied the audit and broken the interaction.
+// Nor should it be rebuilt on a real AlertDialog (V50b), for two reasons: `alertdialog` is
+// defined for interrupting with a REQUIRED RESPONSE and requires a focusable element, and this
+// overlay has no interactive content in any of its three states; and the "came back" state is
+// deliberately `pointer-events-none` so a lingering confirmation cannot swallow a click on the app
+// behind it, which a modal would forbid. A real modal would satisfy an audit and break the
+// interaction.
 //
 // `alert` (assertive) when the restart FAILED, because that is an interruption worth one; `status`
 // (polite) otherwise, so a routine restart does not talk over whatever the operator is reading.
-const RestartOverlay = ({ restarting, justCameBack, failed, className }: RestartOverlayProps) => {
+const RestartOverlay = ({ restarting, justCameBack, failed }: RestartOverlayProps) => {
   const visible = restarting || justCameBack || Boolean(failed);
   if (!visible) return null;
 
   return (
-    <div
-      className={cn(
-        "bg-background/70 fixed inset-0 z-50 flex items-center justify-center backdrop-blur-[2px]",
-        // Transparent to pointer events ONLY once the app is usable again, so a stray
-        // click during the confirmation moment cannot land on a control behind it.
-        restarting || failed ? "cursor-progress" : "pointer-events-none",
-        className,
-      )}
+    <Stack
+      align="center"
+      justify="center"
+      backgroundColor="$artworkScrim"
+      bottom={0}
+      left={0}
+      position="fixed"
+      right={0}
+      top={0}
+      zIndex={50}
+      // Transparent to pointer events ONLY once the app is usable again, so a stray
+      // click during the confirmation moment cannot land on a control behind it.
+      {...(restarting || failed ? { cursor: "progress" } : { pointerEvents: "none" })}
       // It takes the screen, and a screen reader should announce it without waiting for focus to
       // move — which is what a live region does and what `aria-modal` never did here.
       //
@@ -56,24 +58,36 @@ const RestartOverlay = ({ restarting, justCameBack, failed, className }: Restart
       // implicit role, which supports no label at all.
       role={failed ? "alert" : "status"}
     >
-      <div className="border-border bg-card flex max-w-sm items-center gap-3 rounded-lg border p-4 shadow-lg">
+      <Stack
+        align="center"
+        backgroundColor="$surfaceRaised"
+        borderColor="$borderDecorative"
+        borderRadius={8}
+        borderWidth={1}
+        direction="row"
+        gap="control"
+        maxWidth={384}
+        padding={16}
+      >
         {restarting ? (
           <ActivityIndicator decorative size="default" tone="primary" />
         ) : failed ? null : (
           <Icon decorative glyph={icons.selected} size="default" tone="success" />
         )}
-        <div className="min-w-0">
-          <p className="text-sm font-medium">
+        <Stack minWidth={0}>
+          <Text as="p" textRole="cardLabel">
             {restarting ? "Restarting Loomarr" : failed ? "Loomarr hasn't come back" : "Loomarr is back"}
-          </p>
-          <p className="text-muted-foreground mt-0.5 text-sm leading-snug">
-            {restarting
-              ? "This takes a few seconds. The app will pick up where it left off."
-              : (failed ?? "Everything is back to normal.")}
-          </p>
-        </div>
-      </div>
-    </div>
+          </Text>
+          <Stack marginTop={2}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {restarting
+                ? "This takes a few seconds. The app will pick up where it left off."
+                : (failed ?? "Everything is back to normal.")}
+            </Text>
+          </Stack>
+        </Stack>
+      </Stack>
+    </Stack>
   );
 };
 

@@ -60,9 +60,13 @@ describe("ChannelHero (#2753)", () => {
     await waitFor(() => expect(document.querySelector("img")?.getAttribute("src")).toBe("/img/still"));
   });
 
-  it("is generated channel art, never an empty box, when no title has a picture", async () => {
+  // #3413 decision 9: no tall panel with two letters in it. The box holds its place only while the
+  // timeline loads, then the page starts at the "On air" card.
+  it("draws no hero when no title has a picture", async () => {
     show([airing({})]);
-    expect(await screen.findByText("FN")).toBeInTheDocument();
+    expect(document.querySelector("[data-channel-hero]")).not.toBeNull();
+    await waitFor(() => expect(document.querySelector("[data-channel-hero]")).toBeNull());
+    expect(screen.queryByText("FN")).not.toBeInTheDocument();
     expect(document.querySelector("img")).toBeNull();
   });
 
@@ -75,8 +79,9 @@ describe("ChannelHero (#2753)", () => {
     expect(getComputedStyle(hero).maxHeight).not.toMatch(/px$/);
   });
 
-  it("is generated channel art while the schedule is empty", async () => {
+  it("draws no hero while the schedule is empty", async () => {
     show([]);
-    expect(await screen.findByText("FN")).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector("[data-channel-hero]")).toBeNull());
+    expect(screen.queryByText("FN")).not.toBeInTheDocument();
   });
 });

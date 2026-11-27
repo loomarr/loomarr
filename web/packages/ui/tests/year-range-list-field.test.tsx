@@ -124,6 +124,45 @@ describe("YearRangeListField", () => {
     expect(alertText()).toBeUndefined();
   });
 
+  it("keeps an invalid endpoint on screen, then reseeds the row when the ranges are replaced", async () => {
+    const container = doc.createElement("div");
+    doc.body.append(container);
+    const root = createRoot(container);
+    const render = (next: YearRange[]) =>
+      act(async () => {
+        root.render(
+          <LoomarrProvider theme="dark">
+            <YearRangeListField label="Movie release" onChange={vi.fn()} ranges={next} />
+          </LoomarrProvider>,
+        );
+      });
+    await render(ranges);
+    await typeInto("From year (Movie release, range 1)", "2050");
+    await blur("From year (Movie release, range 1)");
+    expect(named("From year (Movie release, range 1)").value).toBe("2050");
+    expect(named("To year (Movie release, range 1)").value).toBe("1989");
+
+    await render([{ from: 1970, to: 1979 }]);
+    expect(named("From year (Movie release, range 1)").value).toBe("1970");
+    expect(named("To year (Movie release, range 1)").value).toBe("1979");
+  });
+
+  it("clears the message once an edited row commits", async () => {
+    const onChange = vi.fn();
+    await mount(<YearRangeListField label="Movie release" onChange={onChange} ranges={ranges} />);
+
+    await typeInto("To year (Movie release, range 1)", "1970");
+    await blur("To year (Movie release, range 1)");
+    expect(alertText()).toContain("Enter whole years");
+    await typeInto("To year (Movie release, range 1)", "1985");
+    await blur("To year (Movie release, range 1)");
+    expect(alertText()).toBeUndefined();
+    expect(onChange).toHaveBeenLastCalledWith([
+      { from: 1980, to: 1985 },
+      { from: 1995, to: 1999 },
+    ]);
+  });
+
   it("adds a range, and rejects an incomplete one", async () => {
     const onChange = vi.fn();
     await mount(<YearRangeListField label="Movie release" onChange={onChange} ranges={ranges} />);

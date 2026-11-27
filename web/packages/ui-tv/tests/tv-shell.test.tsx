@@ -175,9 +175,9 @@ describe("a remote press on Watching", () => {
   it("steps the channel and tunes a typed number", () => {
     const player = controller();
     const open = vi.fn();
-    runTvRemoteIntent({ direction: 1, kind: "step" }, player, open);
-    runTvRemoteIntent({ direction: -1, kind: "step" }, player, open);
-    runTvRemoteIntent({ digits: "042", kind: "tune-number" }, player, open);
+    runTvRemoteIntent({ direction: 1, kind: "step" }, player, open, vi.fn());
+    runTvRemoteIntent({ direction: -1, kind: "step" }, player, open, vi.fn());
+    runTvRemoteIntent({ digits: "042", kind: "tune-number" }, player, open, vi.fn());
 
     expect(player.step.mock.calls).toEqual([[1], [-1]]);
     expect(player.tuneNumber).toHaveBeenCalledExactlyOnceWith("042");
@@ -187,28 +187,37 @@ describe("a remote press on Watching", () => {
   it("opens the Guide or Surf, and does nothing for a press that asked for nothing", () => {
     const player = controller();
     const open = vi.fn();
-    runTvRemoteIntent({ kind: "open-guide" }, player, open);
-    runTvRemoteIntent({ kind: "open-surf" }, player, open);
-    runTvRemoteIntent(undefined, player, open);
+    runTvRemoteIntent({ kind: "open-guide" }, player, open, vi.fn());
+    runTvRemoteIntent({ kind: "open-surf" }, player, open, vi.fn());
+    runTvRemoteIntent(undefined, player, open, vi.fn());
 
     expect(open.mock.calls).toEqual([["guide"], ["surf"]]);
     expect(player.pause).not.toHaveBeenCalled();
     expect(player.step).not.toHaveBeenCalled();
   });
 
+  it("closes Watching's open layer, and goes nowhere", () => {
+    const player = controller();
+    const open = vi.fn();
+    const closeLayer = vi.fn();
+    runTvRemoteIntent({ kind: "close-layer" }, player, open, closeLayer);
+    expect(closeLayer).toHaveBeenCalledTimes(1);
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it("pauses a playing channel and plays a paused one, and leaves an untuned player alone", () => {
     const playing = controller({ channel: { id: "a" }, status: "playing" });
-    runTvRemoteIntent({ kind: "toggle-pause" }, playing, vi.fn());
+    runTvRemoteIntent({ kind: "toggle-pause" }, playing, vi.fn(), vi.fn());
     expect(playing.pause).toHaveBeenCalledTimes(1);
     expect(playing.play).not.toHaveBeenCalled();
 
     const paused = controller({ channel: { id: "a" }, status: "paused" });
-    runTvRemoteIntent({ kind: "toggle-pause" }, paused, vi.fn());
+    runTvRemoteIntent({ kind: "toggle-pause" }, paused, vi.fn(), vi.fn());
     expect(paused.play).toHaveBeenCalledTimes(1);
     expect(paused.pause).not.toHaveBeenCalled();
 
     const idle = controller({ status: "idle" });
-    runTvRemoteIntent({ kind: "toggle-pause" }, idle, vi.fn());
+    runTvRemoteIntent({ kind: "toggle-pause" }, idle, vi.fn(), vi.fn());
     expect(idle.play).not.toHaveBeenCalled();
     expect(idle.pause).not.toHaveBeenCalled();
   });

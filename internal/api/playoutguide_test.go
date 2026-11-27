@@ -15,16 +15,16 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // fakeXMLTVGuide answers programme timelines without a store or a scheduler.
 type fakeXMLTVGuide struct {
-	byChannel map[string][]playout.Broadcast
+	byChannel map[string][]timeline.Broadcast
 	// withPending is what BroadcastsWithPending returns; nil ⇒ it echoes byChannel. Kept
 	// separate so a test can prove WHICH projection a route asked for — the XMLTV document and
 	// the time grid must not be able to swap them silently.
-	withPending map[string][]playout.Broadcast
+	withPending map[string][]timeline.Broadcast
 	errFor      map[string]error
 
 	// mu guards `windows`. GET /v1/guide resolves channels CONCURRENTLY, so this fake is
@@ -49,7 +49,7 @@ func (f *fakeXMLTVGuide) recordWindow(d time.Duration) {
 
 func (f *fakeXMLTVGuide) BroadcastsBetween(
 	_ context.Context, channelID string, from, to time.Time,
-) ([]playout.Broadcast, error) {
+) ([]timeline.Broadcast, error) {
 	f.recordWindow(to.Sub(from))
 	if err := f.errFor[channelID]; err != nil {
 		return nil, err
@@ -59,7 +59,7 @@ func (f *fakeXMLTVGuide) BroadcastsBetween(
 
 func (f *fakeXMLTVGuide) BroadcastsWithPending(
 	_ context.Context, channelID string, from, to time.Time,
-) ([]playout.Broadcast, error) {
+) ([]timeline.Broadcast, error) {
 	f.recordWindow(to.Sub(from))
 	if err := f.errFor[channelID]; err != nil {
 		return nil, err
@@ -84,20 +84,19 @@ func newPlayoutGuideHarness(t *testing.T, guide playoutapi.PlayoutGuide) *playou
 			"playout.backend":   "internal",
 		}
 		return api.Router(defaults.Log, api.Options{
-			Store:         defaults.Store,
-			Auth:          httpcore.NewTokenAuthorizer(adminToken),
-			Log:           defaults.Log,
-			PlayoutSecret: func() string { return playoutToken },
-			PlayoutGuide:  guide,
-			LiveSettings:  stringSettings(func(key string) string { return cfg[key] }),
+			Store:        defaults.Store,
+			Auth:         httpcore.NewTokenAuthorizer(adminToken),
+			Log:          defaults.Log,
+			Playout:      api.PlayoutOptions{Secret: func() string { return playoutToken }, Guide: guide},
+			LiveSettings: stringSettings(func(key string) string { return cfg[key] }),
 		})
 	})
 	return &playoutGuideHarness{apiHarness: base}
 }
 
-func nowProgramme(title string, offset time.Duration, mins int) playout.Broadcast {
+func nowProgramme(title string, offset time.Duration, mins int) timeline.Broadcast {
 	start := time.Now().Add(offset)
-	return playout.Broadcast{
+	return timeline.Broadcast{
 		Kind: schedule.SlotProgram, Title: title,
 		Start: start, Stop: start.Add(time.Duration(mins) * time.Minute),
 	}
@@ -118,7 +117,7 @@ func TestPlayoutGuide_RequiresTheDeviceToken(t *testing.T) {
 
 // THE POINT OF THE PHASE: a channel in the tuner gets real listings, not "no information".
 func TestPlayoutGuide_ServesRealListings(t *testing.T) {
-	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{byChannel: map[string][]timeline.Broadcast{
 		"ch1": {
 			nowProgramme("Beacon of the Hollow Moon", -40*time.Minute, 130),
 			nowProgramme("Robo-Rabbits of Zone Nine: The Movie", 90*time.Minute, 84),
@@ -168,7 +167,7 @@ func TestPlayoutGuide_ServesRealListings(t *testing.T) {
 // wiring failure, and silent (channels play, guide is empty). Asserted by fetching BOTH and
 // comparing, rather than by trusting each in isolation.
 func TestPlayoutGuide_ChannelIDsMatchTheTuner(t *testing.T) {
-	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{byChannel: map[string][]timeline.Broadcast{
 		"classic-kettle-kids": {nowProgramme("Pip and the Sugar Bowl", 0, 22)},
 	}}
 	harness := newPlayoutGuideHarness(t, g)
@@ -190,7 +189,7 @@ func TestPlayoutGuide_ChannelIDsMatchTheTuner(t *testing.T) {
 // Only channels internal playout actually serves. A Tunarr-backed channel in Loomarr's guide
 // would advertise listings for a channel Loomarr does not stream.
 func TestPlayoutGuide_ExcludesTunarrBackedChannels(t *testing.T) {
-	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{byChannel: map[string][]timeline.Broadcast{
 		"mine":   {nowProgramme("Midnight at the Mapleton", 0, 60)},
 		"theirs": {nowProgramme("Emberfall Canyon", 0, 60)},
 	}}
@@ -209,7 +208,7 @@ func TestPlayoutGuide_ExcludesTunarrBackedChannels(t *testing.T) {
 }
 
 func TestPlayoutGuide_ExcludesChannelsThatAreOffAirOrNotManaged(t *testing.T) {
-	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{byChannel: map[string][]timeline.Broadcast{
 		"live":     {nowProgramme("On Air", 0, 60)},
 		"paused":   {nowProgramme("Paused", 0, 60)},
 		"detached": {nowProgramme("Detached", 0, 60)},
@@ -241,7 +240,7 @@ func TestPlayoutGuide_ExcludesChannelsThatAreOffAirOrNotManaged(t *testing.T) {
 // wholesale, so an error return would empty every channel's listings because one had a problem.
 func TestPlayoutGuide_OneChannelFailingDoesNotEmptyTheGuide(t *testing.T) {
 	g := &fakeXMLTVGuide{
-		byChannel: map[string][]playout.Broadcast{"good": {nowProgramme("Midnight at the Mapleton", 0, 60)}},
+		byChannel: map[string][]timeline.Broadcast{"good": {nowProgramme("Midnight at the Mapleton", 0, 60)}},
 		errFor:    map[string]error{"bad": errors.New("scheduler exploded")},
 	}
 	harness := newPlayoutGuideHarness(t, g)
@@ -267,7 +266,7 @@ func TestPlayoutGuide_OneChannelFailingDoesNotEmptyTheGuide(t *testing.T) {
 // The window spans past AND future: a media server needs the currently-airing programme's real
 // start time to draw it, which requires asking from before now.
 func TestPlayoutGuide_WindowCoversPastAndFuture(t *testing.T) {
-	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{"ch1": {}}}
+	g := &fakeXMLTVGuide{byChannel: map[string][]timeline.Broadcast{"ch1": {}}}
 	harness := newPlayoutGuideHarness(t, g)
 	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Ch", 1, "internal")

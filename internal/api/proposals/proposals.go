@@ -206,7 +206,7 @@ func (s *Handlers) personNames(ctx context.Context) (personNames, error) {
 // name maps a stored created_by/decided_by to something a person can read. An unknown id
 // yields "" rather than the id itself: the raw id is exactly what this exists to keep off screen.
 func (n personNames) name(id string) string {
-	if id == accept.AutoApprovedBy {
+	if id == proposalstore.AutoApprovedBy {
 		return "Automatic"
 	}
 	return n.Name(id)
@@ -244,11 +244,11 @@ func (s *Handlers) listProposals(ctx context.Context, in *listProposalsInput) (*
 	var err error
 	if in.Mine {
 		// Scope from the SESSION, never from a parameter. The important property is that this
-		// cannot widen: `ListProposalsByCreator` is `WHERE created_by = ?`, so the worst case is
-		// too FEW rows, never another member's.
+		// cannot widen: `ListProposalsByCreator` matches `created_by` to one id, so the worst case
+		// is too FEW rows, never another member's.
 		//
 		// A break-glass API_TOKEN caller has no user record, so its id is "" — and submit
-		// stamps `created_by` with the same "" for a token-submitted proposal. So `mine=true`
+		// stamps `created_by` NULL for a token-submitted proposal, which "" matches. So `mine=true`
 		// on a token returns exactly the proposals that token submitted (usually none), which
 		// is the honest reading of "mine" for a caller that is not a person. What it can never
 		// do is fall through to everyone's, which is the failure mode worth designing against.
@@ -323,7 +323,7 @@ type ApprovalEditDTO struct {
 	// Drop lists provisioning keys ("movie:tmdb:603") the approver removed. Keys rather than
 	// indexes: an index means "the third one in the list I was looking at", which is wrong the
 	// moment anything reorders between render and submit.
-	Drop []string `json:"drop,omitempty" doc:"Provisioning keys to remove from the proposal before approving"`
+	Drop []string `json:"drop,omitempty" maxItems:"1000" doc:"Provisioning keys to remove from the proposal before approving"`
 	// Add lists titles the approver added via search or a grounded collection. The approval
 	// gate rechecks Library presence: owned titles join the Lineup and only missing titles
 	// become acquisitions.
@@ -331,7 +331,7 @@ type ApprovalEditDTO struct {
 	// The DOMAIN type, not a hand-written mirror — the same call this file makes for
 	// ProposalDTO.Proposal, and for the same reason recorded there: a mirror drifts from what it
 	// mirrors.
-	Add []proposals.ProposalItem `json:"add,omitempty" doc:"Titles to add; current Library presence determines Lineup or acquisition placement"`
+	Add []proposals.ProposalItem `json:"add,omitempty" maxItems:"1000" doc:"Titles to add; current Library presence determines Lineup or acquisition placement"`
 	// Note is the message to whoever requested this — why it came back altered.
 	Note string `json:"note,omitempty" doc:"A message to the requester, stored with the approval"`
 	// Audience is the card's "Raise to <rating>" (#3012): a new audience limit, applied as the
@@ -458,7 +458,7 @@ type bulkApproveInput struct {
 		// No edit field, deliberately. Edit-before-approve (V25b) is a per-proposal judgement —
 		// "drop these two titles" means nothing applied across a batch — so bulk is the
 		// unmodified path only. An admin who wants to change a proposal opens it.
-		IDs []string `json:"ids" minItems:"1" doc:"Proposal ids to approve, each through the single approval gate"`
+		IDs []string `json:"ids" minItems:"1" maxItems:"100" doc:"Proposal ids to approve, each through the single approval gate (at most 100, the same ceiling as bulk pull approval)"`
 	}
 }
 

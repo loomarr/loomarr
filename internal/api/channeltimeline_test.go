@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // fakeTimelineThumbs is a canned TimelineThumbResolver — it records the keys it was asked about and
@@ -59,13 +60,13 @@ func newTimelineServerWithImages(t *testing.T, g playoutapi.PlayoutGuide, thumbs
 	t.Cleanup(func() { _ = st.Close() })
 	cfg := map[string]string{"server.public_url": "http://loomarr.local:8080", "playout.backend": "internal"}
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:          st,
-		Auth:           httpcore.NewTokenAuthorizer(adminToken),
-		Log:            slog.New(slog.DiscardHandler),
-		PlayoutGuide:   g,
-		TimelineThumbs: thumbs,
-		Images:         imageService,
-		LiveSettings:   stringSettings(func(k string) string { return cfg[k] }),
+		Store:        st,
+		Auth:         httpcore.NewTokenAuthorizer(adminToken),
+		Log:          slog.New(slog.DiscardHandler),
+		Playout:      api.PlayoutOptions{Guide: g},
+		Guide:        api.GuideOptions{TimelineThumbs: thumbs},
+		Images:       imageService,
+		LiveSettings: stringSettings(func(k string) string { return cfg[k] }),
 	}))
 	t.Cleanup(srv.Close)
 	return srv, st
@@ -75,7 +76,7 @@ func newTimelineServerWithImages(t *testing.T, g playoutapi.PlayoutGuide, thumbs
 // response here prevents the player from quietly regressing to the legacy URL-only projection.
 func TestChannelTimeline_ProgrammeCarriesImageServiceRecord(t *testing.T) {
 	now := time.Now()
-	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{byChannel: map[string][]timeline.Broadcast{
 		"ch1": {{
 			Kind: schedule.SlotProgram, Key: "movie:tmdb:90000089", Title: "Bellwether Junction",
 			Start: now, Stop: now.Add(2 * time.Hour),
@@ -125,16 +126,16 @@ func getTimeline(t *testing.T, srv *httptest.Server, channelID string) []guideap
 // the strip resolves a preview image for the PROGRAMMES only — a break has no title image.
 func TestChannelTimeline_EpisodesAndBreaks(t *testing.T) {
 	now := time.Now()
-	prog := func(series, ep string, s, e int, key provision.Key, start time.Time, mins int) playout.Broadcast {
-		return playout.Broadcast{
+	prog := func(series, ep string, s, e int, key provision.Key, start time.Time, mins int) timeline.Broadcast {
+		return timeline.Broadcast{
 			Kind: schedule.SlotProgram, SeriesTitle: series, Title: ep, Season: s, Episode: e,
 			Key: key, Start: start, Stop: start.Add(time.Duration(mins) * time.Minute),
 		}
 	}
-	brk := func(start time.Time, mins int) playout.Broadcast {
-		return playout.Broadcast{Kind: schedule.SlotFiller, Start: start, Stop: start.Add(time.Duration(mins) * time.Minute)}
+	brk := func(start time.Time, mins int) timeline.Broadcast {
+		return timeline.Broadcast{Kind: schedule.SlotFiller, Start: start, Stop: start.Add(time.Duration(mins) * time.Minute)}
 	}
-	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{byChannel: map[string][]timeline.Broadcast{
 		"ch1": {
 			prog("Kettle Kids", "The Whistling Teaspoon", 1, 6, "series:tmdb:90000456", now, 22),
 			brk(now.Add(22*time.Minute), 2),

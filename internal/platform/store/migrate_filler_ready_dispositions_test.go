@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +16,7 @@ import (
 func TestFillerReadyDispositionsMigrationSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "ready-dispositions.db"))
+	s, err := openSQLite(ctx, sqliteFileAt(t, 107, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +70,7 @@ func testFillerReadyDispositionsMigration(t *testing.T, s *sqlStore, migrationDi
 func TestRemoveFillerAdmissionRungMigrationSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "remove-admission-rung.db"))
+	s, err := openSQLite(ctx, sqliteFileAt(t, 108, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +136,7 @@ func testRemoveFillerAdmissionRungMigration(t *testing.T, s *sqlStore, migration
 func TestRetireFillerTaggingPathMigrationSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "retire-tagging-path.db"))
+	s, err := openSQLite(ctx, sqliteFileAt(t, 114, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,10 +211,15 @@ func testRetireFillerTaggingPathMigration(t *testing.T, s *sqlStore, migrationDi
 
 // insertLegacyClipPipeline deliberately writes the pre-00113 shape used by migration fixtures.
 // The production writer always speaks the current schema and must not grow a compatibility path.
+// It leaves acquisition_id to the column's default, which is empty before 00256 keys it and NULL
+// after, so a fixture row names no download run at any version.
 func insertLegacyClipPipeline(ctx context.Context, st Store, p pipelinestate.ClipPipeline) error {
 	s, ok := adapterOf(st)
 	if !ok {
 		return fmt.Errorf("%T is not the SQL store", st)
+	}
+	if p.AcquisitionID != "" {
+		return fmt.Errorf("legacy pipeline fixture %s names a download run; it writes none", p.ClipHash)
 	}
 	raw := "[]"
 	if len(p.Stages) > 0 {
@@ -226,10 +230,10 @@ func insertLegacyClipPipeline(ctx context.Context, st Store, p pipelinestate.Cli
 		raw = string(encoded)
 	}
 	_, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO filler_clip_pipeline
-		(clip_hash, acquisition_id, stage, status, progress, disposition, reject_reason,
+		(clip_hash, stage, status, progress, disposition, reject_reason,
 		 reject_detail, attempts, force_run, next_run, stages_json, enrolled_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		p.ClipHash, p.AcquisitionID, string(p.Stage), string(p.Status), p.Progress,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		p.ClipHash, string(p.Stage), string(p.Status), p.Progress,
 		string(p.Disposition), string(p.RejectReason), p.RejectDetail, p.Attempts, p.ForceRun,
 		epoch(p.NextRun), raw, epoch(p.EnrolledAt), epoch(p.UpdatedAt))
 	return err

@@ -65,6 +65,10 @@ type Deps struct {
 	// connected yet.
 	ConfigInt           func(settings.IntKey) int
 	LibraryUnconfigured func() bool
+
+	// Changed runs after a people route stores a change: an invitation, account, session or device
+	// was created, changed or revoked. Nil announces nothing.
+	Changed func()
 }
 
 // Handlers serves the people routes.
@@ -84,13 +88,19 @@ type Handlers struct {
 	accessPublicURL      func() string
 	devices              *auth.DeviceManager
 	deviceLimiter        *auth.RateLimiter
-	devLogin             bool
-	sso                  SSOService
-	provision            Provisioner
-	demo                 DemoAccount
+	// invitationPreviewLimiter and invitationRedeemLimiter throttle the two public invitation
+	// routes. Redeeming a library invitation asks the media server to check a caller-chosen
+	// username and password, so it is held per account across every source as well as per source.
+	invitationPreviewLimiter *auth.RateLimiter
+	invitationRedeemLimiter  *auth.SourceLimiter
+	devLogin                 bool
+	sso                      SSOService
+	provision                Provisioner
+	demo                     DemoAccount
 
 	configIntFn           func(settings.IntKey) int
 	libraryUnconfiguredFn func() bool
+	changed               func()
 
 	// schemaOnly is set only by the OpenAPI exporter: it mounts every route whatever is configured,
 	// so the generated spec lists them all.
@@ -106,14 +116,16 @@ func New(d Deps, schemaOnly bool) *Handlers {
 		invitations: d.Invitations, invitationDelivery: d.InvitationDelivery,
 		invitationRedemption: d.InvitationRedemption, passwordRecovery: d.PasswordRecovery,
 		accessPublicURL: d.AccessPublicURL, devices: d.Devices, deviceLimiter: d.DeviceLimiter,
+		invitationPreviewLimiter: newInvitationPreviewLimiter(), invitationRedeemLimiter: newInvitationRedeemLimiter(),
 		devLogin: d.DevLogin, sso: d.SSO, provision: d.Provision, demo: d.Demo,
-		configIntFn: d.ConfigInt, libraryUnconfiguredFn: d.LibraryUnconfigured,
+		configIntFn: d.ConfigInt, libraryUnconfiguredFn: d.LibraryUnconfigured, changed: d.Changed,
 		schemaOnly: schemaOnly,
 	}
 }
 
 // Register mounts every people route on api.
 func (s *Handlers) Register(api huma.API) {
+	api = s.announcing(api)
 	s.registerAuth(api)
 	s.registerDeviceAuth(api)
 	s.registerUsers(api)

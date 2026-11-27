@@ -5,6 +5,19 @@ import (
 	"time"
 )
 
+// A restore of a reject whose files Loomarr deleted has nothing to bring back; turning the row to
+// review would erase the record of why it went (#3855).
+func TestRestoreRefusalKeepsALetGoReject(t *testing.T) {
+	row := ClipPipeline{Disposition: DispositionRejected, RejectReason: ReasonLanguage, RejectDetail: "heard French",
+		FilesDeletedAt: time.Unix(1_900_000_000, 0).UTC()}
+	if row.RestoreRefusal(time.Unix(1_900_000_100, 0)) {
+		t.Fatal("RestoreRefusal changed a reject whose files were deleted")
+	}
+	if row.Disposition != DispositionRejected || row.RejectReason != ReasonLanguage || row.RejectDetail == "" {
+		t.Fatalf("row after refused restore = %+v, want unchanged", row)
+	}
+}
+
 func TestClipPipelineLifecycle(t *testing.T) {
 	now := time.Unix(1_900_000_000, 0).UTC()
 	tests := []struct {
@@ -44,6 +57,11 @@ func TestClipPipelineLifecycle(t *testing.T) {
 			want: PipelineLifecycle{State: LifecycleNeedsDecision},
 		},
 		{
+			name: "a reel held at the split waits for splitting, not a person",
+			row:  ClipPipeline{Disposition: DispositionReview, Stage: StageSplit, Status: StatusDone},
+			want: PipelineLifecycle{State: LifecycleAwaitingSplit},
+		},
+		{
 			name: "ready is playable",
 			row:  ClipPipeline{Disposition: DispositionReady, Stage: StageFinish, Status: StatusDone},
 			want: PipelineLifecycle{State: LifecycleReady},
@@ -52,6 +70,18 @@ func TestClipPipelineLifecycle(t *testing.T) {
 			name: "completed composite is not ready",
 			row:  ClipPipeline{Disposition: DispositionComplete, Stage: StageFinish, Status: StatusDone},
 			want: PipelineLifecycle{State: LifecycleComplete},
+		},
+		{
+			name: "a reject whose files were deleted keeps its failure but offers no retry",
+			row: ClipPipeline{Disposition: DispositionRejected, Stage: StageTranscode,
+				Status: StatusFailed, Attempts: 3, RejectReason: ReasonUnplayable, FilesDeletedAt: now},
+			want: PipelineLifecycle{State: LifecycleRejected, FailureCode: FailureUnplayable},
+		},
+		{
+			name: "a soft reject whose files were deleted offers no restore",
+			row: ClipPipeline{Disposition: DispositionRejected, Stage: StageScreen,
+				Status: StatusDone, RejectReason: ReasonLanguage, FilesDeletedAt: now},
+			want: PipelineLifecycle{State: LifecycleRejected},
 		},
 		{
 			name: "exhausted transcode execution can retry after repair",

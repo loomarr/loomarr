@@ -126,6 +126,120 @@ func testInventoryGroundedIdentity(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// An id grounds an episode only on the same episode: a stale NFO copied beside another episode's
+// file carries its id, and the two are not one title with an extra copy.
+func testInventoryEpisodeIDsKeepTheirNumbers(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	st := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	episode := func(file string, season, number int) inventory.Snapshot {
+		s := inventorySnapshot("scan-a", file, "file", "rev-"+file, file, at)
+		s.Observation.Facts.SeasonNumber, s.Observation.Facts.EpisodeNumber = season, number
+		s.ExternalIDs = []inventory.ExternalID{{Namespace: "tvdb", Value: "90000801"}}
+		return s
+	}
+	sixth, eighteenth, copyOf := episode("e06", 2, 6), episode("e18", 2, 18), episode("e06-720p", 2, 6)
+	sixthID, err := st.ApplyInventorySnapshot(ctx, sixth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eighteenthID, err := st.ApplyInventorySnapshot(ctx, eighteenth)
+	if err != nil || eighteenthID == sixthID {
+		t.Fatalf("another episode with the same id = (%q, %v), want an item of its own", eighteenthID, err)
+	}
+	if id, err := st.ApplyInventorySnapshot(ctx, copyOf); err != nil || id != sixthID {
+		t.Fatalf("a second copy of the episode = (%q, %v), want %q", id, err, sixthID)
+	}
+	for _, s := range []inventory.Snapshot{sixth, eighteenth} {
+		if _, err := st.ApplyInventorySnapshot(ctx, s); err != nil {
+			t.Fatalf("written again: %v", err)
+		}
+	}
+	if item, _, _ := st.InventoryItem(ctx, inventory.ItemRef{ID: eighteenthID}); len(item.Origins) != 1 {
+		t.Fatalf("the 18th = %+v, want its own file only", item)
+	}
+}
+
+// An inferred id joins a title only where no catalog id says otherwise: a file a catalog grounds
+// as another film keeps a title of its own and leaves the inferred id behind, so a copy no catalog
+// grounds still joins the one title that holds it; a file grounded by another catalog joins.
+func testInventoryInferredIDsYieldToCatalogs(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	st := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	folder := inventory.ExternalID{Namespace: inventory.InferredNamespacePrefix + "film", Value: "harrow-fen-2011"}
+	film := func(file string, ids ...inventory.ExternalID) inventory.Snapshot {
+		s := inventorySnapshot("scan-a", file, "file", "rev-"+file, file, at)
+		s.Kind = "movie"
+		s.ExternalIDs = append(ids, folder)
+		return s
+	}
+	first, err := st.ApplyInventorySnapshot(ctx, film("first", inventory.ExternalID{Namespace: "tmdb", Value: "90047222"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := st.ApplyInventorySnapshot(ctx, film("other", inventory.ExternalID{Namespace: "tmdb", Value: "90047444"}))
+	if err != nil || other == first {
+		t.Fatalf("a file the catalog grounds as another film = (%q, %v), want a title of its own", other, err)
+	}
+	if id, err := st.ApplyInventorySnapshot(ctx, film("copy")); err != nil || id != first {
+		t.Fatalf("a copy no catalog grounds = (%q, %v), want %q", id, err, first)
+	}
+	if id, err := st.ApplyInventorySnapshot(ctx, film("imdb", inventory.ExternalID{Namespace: "imdb", Value: "tt9047222"})); err != nil || id != first {
+		t.Fatalf("a copy another catalog grounds = (%q, %v), want %q", id, err, first)
+	}
+	item, _, err := st.InventoryItem(ctx, inventory.ItemRef{ID: other})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range item.ExternalIDs {
+		if id.Inferred() {
+			t.Errorf("the other film carries the folder's inferred id %v", id)
+		}
+	}
+}
+
+// The file that founded a title leaves it once a catalog says it is another title than the one a
+// copy that joined it holds, taking its sources, and stays apart when written again; the copy
+// keeps the title.
+func testInventoryFounderLeavesForAnotherCatalog(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	st := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	folder := inventory.ExternalID{Namespace: inventory.InferredNamespacePrefix + "film", Value: "harrow-fen-2011"}
+	film := func(file string, ids ...inventory.ExternalID) inventory.Snapshot {
+		s := inventorySnapshot("scan-a", file, "file-"+file, "rev-"+file, file, at)
+		s.Kind = "movie"
+		s.ExternalIDs = append(ids, folder)
+		return s
+	}
+	founded, err := st.ApplyInventorySnapshot(ctx, film("founder"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined, err := st.ApplyInventorySnapshot(ctx, film("copy", inventory.ExternalID{Namespace: "tmdb", Value: "90048111"}))
+	if err != nil || joined != founded {
+		t.Fatalf("the copy = (%q, %v), want the founder's %q", joined, err, founded)
+	}
+	other := film("founder", inventory.ExternalID{Namespace: "tmdb", Value: "90048222"})
+	apart, err := st.ApplyInventorySnapshot(ctx, other)
+	if err != nil || apart == founded {
+		t.Fatalf("the founder grounded as another film = (%q, %v), want a title apart from %q", apart, err, founded)
+	}
+	if again, err := st.ApplyInventorySnapshot(ctx, other); err != nil || again != apart {
+		t.Fatalf("written again = (%q, %v), want it to stay at %q", again, err, apart)
+	}
+	for id, want := range map[inventory.ItemID]string{founded: "copy", apart: "founder"} {
+		item, ok, err := st.InventoryItem(ctx, inventory.ItemRef{ID: id})
+		if err != nil || !ok || len(item.Origins) != 1 || item.Origins[0].Key.ExternalItemID != want || len(item.Sources) != 1 {
+			t.Errorf("item %q = %+v (%v, %v), want only %s and its source", id, item, ok, err, want)
+		}
+	}
+}
+
 // An origin written before its ids were known follows them to the item they name, taking its
 // sources, when it is its item's only origin; otherwise it is a conflict. Ids name items of the
 // origin's own kind only.

@@ -3,7 +3,7 @@
 // (phone-layout.spec.ts), so a new top-level page joins both by being listed once.
 const shellRoutes = [
   { path: "/dashboard", title: "Home" },
-  { path: "/guide", title: "Channels" },
+  { path: "/guide", title: "Guide" },
   // Requests replaced Queue (#1405). With no requests in this mock, the page shows its empty state
   // under the same header, which is all the shell contract needs.
   { path: "/requests", title: "Requests" },

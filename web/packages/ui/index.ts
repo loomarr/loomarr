@@ -10,12 +10,20 @@ export type {
   ChannelAudioOption,
   ChannelAudioSectionProps,
   ChannelSeasonalFieldsProps,
+  ChannelUnairableProps,
   SeasonalHoliday,
   SeasonalMode,
   SeasonalOffSeason,
   SeasonalStrength,
+  UnairableReason,
+  UnairableTitle,
 } from "./src/channels";
-export { ChannelAudioSection, ChannelSeasonalFields, seasonalModeLabel } from "./src/channels";
+export {
+  ChannelAudioSection,
+  ChannelSeasonalFields,
+  ChannelUnairable,
+  seasonalModeLabel,
+} from "./src/channels";
 export type { ClientDestination, ClientNavigationProps } from "./src/client-navigation";
 export { ClientNavigation, clientBackDestination, clientDestinationLabel } from "./src/client-navigation";
 export { ClientPlatformProof } from "./src/client-platform-proof";
@@ -36,6 +44,7 @@ export { confirmDisconnect, DeviceSheet } from "./src/device-sheet";
 export type { ClipSelectProps, DefectReviewProps } from "./src/filler";
 export { ClipSelect, DefectReview, NeedsDetailsChip } from "./src/filler";
 export type { FocusableTargetHandle, FocusTargetRegistry } from "./src/focus-target";
+export { useUiForm } from "./src/form-kit";
 export type {
   GuideArtworkRenderer,
   GuideChannelWindow,
@@ -74,6 +83,7 @@ export type {
 export { ChannelIdentity, ProgrammeIdentity } from "./src/identity";
 export type {
   LibraryAuthority,
+  LibraryBrowseListing,
   LibraryCollectionCard,
   LibraryCollectionChannel,
   LibraryCollectionEditorProps,
@@ -84,6 +94,7 @@ export type {
   LibraryExternalId,
   LibraryFilter,
   LibraryFolder,
+  LibraryFolderBrowser,
   LibraryHealth,
   LibraryHeldRemoval,
   LibraryHook,
@@ -93,7 +104,6 @@ export type {
   LibraryNeedSearch,
   LibraryNeedsAnswers,
   LibraryNeedsCardsProps,
-  LibraryNeedsStripProps,
   LibraryOrderNeed,
   LibraryPathMapping,
   LibraryProblem,
@@ -101,13 +111,17 @@ export type {
   LibraryScan,
   LibrarySetCard,
   LibrarySettingsProps,
+  LibraryShelfAdmin,
+  LibraryShelfCounts,
   LibraryShelfProps,
   LibraryShelfStatus,
   LibraryShelfTitle,
+  LibrarySort,
   LibraryTitleChannel,
   LibraryTitleDetail,
   LibraryTitleEpisode,
   LibraryTitleFile,
+  LibraryTitleFix,
   LibraryTitleMatch,
   LibraryTitleProps,
   LibraryTitleSeason,
@@ -117,7 +131,6 @@ export {
   LibraryCollectionEditor,
   LibraryCollections,
   LibraryNeedsCards,
-  LibraryNeedsStrip,
   LibrarySettings,
   LibraryShelf,
   LibraryTitle,
@@ -189,6 +202,8 @@ export type { RowCardProps } from "./src/row-card";
 export { RowCard } from "./src/row-card";
 export type { ScreenHeaderAction, ScreenHeaderProps } from "./src/screen-header";
 export { ScreenHeader } from "./src/screen-header";
+export type { SearchButtonProps } from "./src/search-button";
+export { SearchButton } from "./src/search-button";
 export type { SearchFieldProps } from "./src/search-field";
 export { SearchField } from "./src/search-field";
 export type {
@@ -223,6 +238,7 @@ export {
 } from "./src/surf-rail";
 export type { BackHandlerSource } from "./src/use-client-destination";
 export { useClientDestination } from "./src/use-client-destination";
+export { useCommittedDraft } from "./src/use-committed-draft";
 export type { WallTileProps } from "./src/wall-tile";
 export { WallTile } from "./src/wall-tile";
 export type {
@@ -246,13 +262,17 @@ export type {
   PlayerMoreProps,
   PlayerOption,
   PlayerOptionsProps,
+  PlayerSchedule,
   PlayerSheetProps,
-  PlayerTopRowProps,
+  PlayerSurf,
+  PlayerSurfChannel,
+  PlayerUtilitiesProps,
   PlayerWatermark,
+  SurfCatalogChannel,
   WatchFrameProps,
+  WatchingLayer,
   WatchingPanelData,
   WatchingPanelDataArgs,
-  WatchingPanelProps,
   WatchingProgrammeData,
   WatchingScheduleData,
   WatchingSurfaceProps,
@@ -262,20 +282,26 @@ export {
   clearOfWatermark,
   logoSize,
   PlayerAudio,
+  PlayerBottomSheet,
   PlayerChrome,
   PlayerCover,
   PlayerDetails,
   PlayerDetailsPanel,
   PlayerInfo,
+  PlayerMenu,
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
-  PORTRAIT_PICTURE_TOP,
+  PlayerVolume,
   pictureIn,
   playbarFromTimeline,
+  playerChromeFromGuide,
+  playerCoverOf,
   rungFor,
+  SURF_LINGER_MS,
+  surfCardsFromGuide,
+  useSurfCards,
   WatchFrame,
-  WatchingPanel,
   WatchingSurface,
   watchingPanelFromGuide,
   watchingScheduleTimeMs,

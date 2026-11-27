@@ -16,7 +16,9 @@ interface PlaybarStillBox {
   flexBasis?: Length;
   flexGrow?: number;
   height?: Length;
+  left?: number;
   position?: "absolute";
+  top?: number;
   width?: Length;
 }
 

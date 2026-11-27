@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type notificationAuthorizer struct{}
@@ -66,7 +67,7 @@ func TestNotificationProvidersUseOneRedactedAdminWorkflow(t *testing.T) {
 		func() string { return "destination-1" }, func() time.Time { return now },
 	).WithTester(acceptingDestinationTester{})
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: notificationAuthorizer{}, NotificationDestinations: manager,
+		Store: st, Auth: notificationAuthorizer{}, Setup: api.SetupOptions{NotificationDestinations: manager},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -182,6 +183,7 @@ func TestNotificationProviderTypesDriveTheAdminFormWithoutSecretValues(t *testin
 func TestNotificationProvidersBindBrowserPushToTheAuthenticatedMember(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/member-web-push.db")
 	t.Cleanup(func() { _ = st.Close() })
+	testkit.SaveMembers(t, st, "member-1") // a personal destination's owner is a foreign key to users
 	protection, err := secretprotection.NewManager(t.Context(), st, secretprotection.ManagerOptions{
 		InstallationKey: secretprotection.InstallationKey{0x52},
 	})
@@ -197,8 +199,8 @@ func TestNotificationProvidersBindBrowserPushToTheAuthenticatedMember(t *testing
 		return fmt.Sprintf("browser-%d", nextID)
 	}, time.Now)
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: notificationAuthorizer{}, NotificationDestinations: manager,
-		WebPushPublicKey: "public-vapid-key",
+		Store: st, Auth: notificationAuthorizer{},
+		Setup: api.SetupOptions{NotificationDestinations: manager, WebPushPublicKey: "public-vapid-key"},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

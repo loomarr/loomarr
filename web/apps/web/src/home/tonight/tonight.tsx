@@ -41,8 +41,9 @@ const nextProgrammes = (channels: readonly GuideChannelTimeline[], nowMs: number
     .sort((a, b) => a.airing.startMs - b.airing.startMs || a.channelNumber - b.channelNumber);
 
 // Tonight — Home's list of what is on next (#1659 web mock): when, which channel, the show and its
-// episode, and, when it is a premiere or a marathon, why that is worth knowing. Each row opens that
-// channel's Watch.
+// episode, and, when it is a premiere or a marathon, why that is worth knowing. Each row opens the
+// guide's grid at that time with the programme selected (#2763): it hasn't started, so Watch would
+// show something else.
 const Tonight = ({ channels, highlights, nowMs, timeZone }: TonightProps) => {
   const rows = nextProgrammes(channels, nowMs);
   if (rows.length === 0) return null;
@@ -62,7 +63,7 @@ const Tonight = ({ channels, highlights, nowMs, timeZone }: TonightProps) => {
             channelNumber={String(channelNumber).padStart(2, "0")}
             title={formatProgrammeTitle(airing)}
             reason={reasons.get(airing.scheduleBlockId)}
-            render={<Link to="/watch/$id" params={{ id: channelId }} />}
+            render={<Link to="/guide" search={{ view: "grid", at: airing.startMs, channel: channelId }} />}
           />
         ))}
       </ListGroup>

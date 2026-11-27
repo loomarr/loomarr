@@ -273,6 +273,24 @@ describe("Dialog", () => {
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
   });
 
+  // A phone's bottom sheet: docked to the bottom edge across the width, drawing its own surface and
+  // close.
+  it("docks to the bottom edge with no corner close of its own", async () => {
+    render(
+      <Dialog defaultOpen>
+        <DialogContent accessibilityLabel="More destinations" placement="bottom">
+          <button type="button">Settings</button>
+        </DialogContent>
+      </Dialog>,
+    );
+
+    const sheet = await screen.findByRole("dialog", { name: "More destinations" });
+    expect(sheet.style.bottom).toBe("0px");
+    expect(sheet.style.left).toBe("0px");
+    expect(sheet.style.right).toBe("0px");
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+  });
+
   // jsdom never matches `:focus-visible`, so it stands in for the browser here: focus that arrives by
   // the keyboard is visible, the way Chrome, Firefox and Safari decide it.
   it("rings the corner button while the browser marks its focus visible", async () => {
@@ -342,5 +360,68 @@ describe("Dialog", () => {
 
     expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
     expect(onPress).toHaveBeenCalledOnce();
+  });
+
+  describe("a dialog that must be answered (dismissible={false})", () => {
+    const MustAnswer = ({ onOpenChange }: { onOpenChange: (open: boolean) => void }) => {
+      const [open, setOpen] = useState(true);
+      return (
+        <LoomarrProvider>
+          <button type="button">Behind</button>
+          <Dialog
+            dismissible={false}
+            onOpenChange={(next) => {
+              onOpenChange(next);
+              setOpen(next);
+            }}
+            open={open}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Approving</DialogTitle>
+              </DialogHeader>
+              <DialogFooter stacked>
+                <DialogClose>
+                  <button type="button">Done</button>
+                </DialogClose>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </LoomarrProvider>
+      );
+    };
+
+    it("draws no corner close, and Escape and a press outside leave it open", async () => {
+      const user = userEvent.setup();
+      const onOpenChange = vi.fn();
+      render(<MustAnswer onOpenChange={onOpenChange} />);
+
+      expect(await screen.findByRole("dialog", { name: "Approving" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+
+      await user.keyboard("{Escape}");
+      await user.click(document.body);
+
+      expect(screen.getByRole("dialog", { name: "Approving" })).toBeTruthy();
+      expect(onOpenChange).not.toHaveBeenCalled();
+    });
+
+    it("still closes from its own close action", async () => {
+      const user = userEvent.setup();
+      const onOpenChange = vi.fn();
+      render(<MustAnswer onOpenChange={onOpenChange} />);
+
+      await user.click(await screen.findByRole("button", { name: "Done" }));
+
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+
+    it("stacks a stacked footer's actions in a column", async () => {
+      render(<MustAnswer onOpenChange={vi.fn()} />);
+      const done = await screen.findByRole("button", { name: "Done" });
+      const footer = done.parentElement as HTMLElement;
+      expect([footer.style.flexDirection, footer.style.alignItems]).toEqual(["column", "stretch"]);
+    });
   });
 });

@@ -1,7 +1,7 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { countryLabel, formatClipDuration, topicLabel } from "@loomarr/core/format";
-import { Action, Icon, icons } from "@loomarr/design-system";
-import { useState } from "react";
+import { Action, Card, Grid, Stack, Text, TextLink } from "@loomarr/design-system";
+import { Fragment, useState } from "react";
 import { AUDIENCE_LABEL, playsLine, ROLE_LABEL } from "@/components/loomarr/filler/clip-card";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
 
@@ -63,94 +63,120 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
         : undefined;
 
   return (
-    <div className="space-y-5">
-      <div className="border-border overflow-hidden rounded-lg border">
+    <Stack gap="5">
+      <Card overflow="hidden">
         {showPreview ? (
           <ClipPreview clip={clip} />
         ) : (
-          <div className="space-y-3 p-4">
-            <p className="text-muted-foreground text-sm">
+          <Stack gap="3" padding={16}>
+            <Text as="p" textRole="compact" tone="secondary">
               This clip is not ready for channels yet. Open the preview when you are ready.
-            </p>
-            <div className="flex">
+            </Text>
+            <Stack direction="row">
               <Action onPress={() => setRevealedHash(clip.hash)} variant="outline">
                 Preview clip
               </Action>
-            </div>
-          </div>
+            </Stack>
+          </Stack>
         )}
-      </div>
+      </Card>
       {enrichmentMessage ? (
-        <div className="bg-muted/40 rounded-lg px-4 py-3 text-sm">
-          <p className="font-medium">{enrichmentMessage.title}</p>
-          <p className="text-muted-foreground mt-1">{enrichmentMessage.detail}</p>
-        </div>
+        <Card paddingHorizontal={16} paddingVertical={12}>
+          <Text as="p" textRole="cardLabel">
+            {enrichmentMessage.title}
+          </Text>
+          <Stack marginTop={4}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {enrichmentMessage.detail}
+            </Text>
+          </Stack>
+        </Card>
       ) : null}
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
-        <dt className="text-muted-foreground">Length</dt>
-        <dd>{formatClipDuration(clip.durationMs)}</dd>
+      <Grid columnGap="4" columns={["auto", "minmax(0,1fr)"]} render="dl" rowGap="2">
+        <Text as="dt" textRole="compact" tone="secondary">
+          Length
+        </Text>
+        <Text as="dd" textRole="compact">
+          {formatClipDuration(clip.durationMs)}
+        </Text>
         {facts.map(([label, value]) => (
-          <div key={label} className="contents">
-            <dt className="text-muted-foreground">{label}</dt>
-            <dd className="break-words">{value}</dd>
-          </div>
+          <Fragment key={label}>
+            <Text as="dt" textRole="compact" tone="secondary">
+              {label}
+            </Text>
+            <Text as="dd" overflowWrap="break-word" textRole="compact">
+              {value}
+            </Text>
+          </Fragment>
         ))}
         {suggestion?.explanation || suggestion?.sources.length ? (
           <>
-            <dt className="text-muted-foreground">Context</dt>
-            <dd className="min-w-0 space-y-1 break-words">
-              {suggestion.explanation ? <p>{suggestion.explanation}</p> : null}
-              {suggestion.sources.length ? (
-                <div className="flex flex-wrap gap-x-3 gap-y-1">
-                  {suggestion.sources.map((source) => (
-                    <a
-                      key={source.url}
-                      href={source.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-signal inline-flex items-center gap-1 underline underline-offset-4"
-                    >
-                      {source.title} <Icon decorative glyph={icons.external} size="compact" tone="inherit" />
-                    </a>
-                  ))}
-                </div>
-              ) : null}
-            </dd>
+            <Text as="dt" textRole="compact" tone="secondary">
+              Context
+            </Text>
+            <Text as="dd" minWidth={0} overflowWrap="break-word" textRole="compact">
+              <Stack gap="1">
+                {suggestion.explanation ? <p>{suggestion.explanation}</p> : null}
+                {suggestion.sources.length ? (
+                  <Stack columnGap="3" direction="row" rowGap="1" wrap>
+                    {suggestion.sources.map((source) => (
+                      <TextLink external href={source.url} key={source.url}>
+                        {source.title}
+                      </TextLink>
+                    ))}
+                  </Stack>
+                ) : null}
+              </Stack>
+            </Text>
           </>
         ) : null}
         {sourceLabel || sourceURL ? (
           <>
-            <dt className="text-muted-foreground">Source</dt>
-            <dd className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 break-words">
-              {sourceLabel ? <span>{sourceLabel}</span> : null}
-              {sourceURL ? (
-                <a
-                  href={sourceURL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-signal inline-flex items-center gap-1 underline underline-offset-4"
-                >
-                  View original <Icon decorative glyph={icons.external} size="compact" tone="inherit" />
-                </a>
+            <Text as="dt" textRole="compact" tone="secondary">
+              Source
+            </Text>
+            <Stack
+              align="center"
+              columnGap="3"
+              direction="row"
+              flexShrink={1}
+              minWidth={0}
+              render="dd"
+              rowGap="1"
+              wrap
+            >
+              {sourceLabel ? (
+                <Text as="span" overflowWrap="break-word" textRole="compact">
+                  {sourceLabel}
+                </Text>
               ) : null}
-            </dd>
+              {sourceURL ? (
+                <Text as="span" overflowWrap="break-word" textRole="compact">
+                  <TextLink external href={sourceURL}>
+                    View original
+                  </TextLink>
+                </Text>
+              ) : null}
+            </Stack>
           </>
         ) : null}
-      </dl>
-      <p className="text-muted-foreground text-xs">{playsLine(clip)}</p>
+      </Grid>
+      <Text as="p" textRole="hint" tone="secondary">
+        {playsLine(clip)}
+      </Text>
       {!clip.held && !clip.isComposite ? (
-        <p className="text-muted-foreground text-sm">
+        <Text as="p" textRole="compact" tone="secondary">
           Channels choose clips from this library automatically, using their filler settings.
-        </p>
+        </Text>
       ) : null}
       {onEdit ? (
-        <div className="flex">
+        <Stack direction="row">
           <Action onPress={onEdit} variant="outline">
             Edit details
           </Action>
-        </div>
+        </Stack>
       ) : null}
-    </div>
+    </Stack>
   );
 };
 

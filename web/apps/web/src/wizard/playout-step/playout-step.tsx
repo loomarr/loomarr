@@ -1,15 +1,27 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action, Badge, Icon, icons } from "@loomarr/design-system";
+import {
+  Action,
+  Badge,
+  Card,
+  Grid,
+  Icon,
+  icons,
+  RadioGroup,
+  RadioItem,
+  Stack,
+  Text,
+} from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
-import { cn } from "@/lib/utils";
+import { everyEditSaved } from "@/settings/saved-edits";
+import { type SettingsDraft, useSettingsDraft } from "@/settings/settings-draft";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { PLAYOUT_INTERNAL, PLAYOUT_TUNARR, type PlayoutBackend } from "../steps";
 import type { PlayoutStepProps } from "./playout-step.type";
@@ -81,8 +93,10 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   const checks = unwrap(status.data, (b) => b.checks) ?? [];
   const standing = checks.find((c) => c.name === "tunarr");
 
-  const [publicURLEdits, setPublicURLEdits] = useState<Record<string, string>>({});
-  const [tunarrEdits, setTunarrEdits] = useState<Record<string, string>>({});
+  const publicURL = useSettingsDraft();
+  const tunarrDraft = useSettingsDraft();
+  const publicURLEdits = publicURL.edits;
+  const tunarrEdits = tunarrDraft.edits;
   const [open, setOpen] = useState(true);
   const [testing, setTesting] = useState(false);
   const [tested, setTested] = useState<{ ok: boolean; hint?: string } | undefined>();
@@ -97,27 +111,27 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   // Keep rejected values editable, but drop drafts once every submitted key is durably
   // saved. Otherwise SettingsFields keeps preferring the stale local copy over the freshly
   // invalidated registry and advertises a Save action for an edit that no longer exists.
-  const saveEdits = async (edits: Record<string, string>, clear: () => void) => {
-    const response = await patch.mutateAsync({ data: { edits } });
-    const results = unwrap(response, (body) => body.results) ?? [];
-    const submitted = Object.keys(edits);
-    if (
-      submitted.length > 0 &&
-      submitted.every((key) =>
-        results.some((result) => result.key === key && result.status === SettingResultStatus.saved),
-      )
-    ) {
-      clear();
+  // Resolves true only when every key was saved. A failed request resolves false too: it shows
+  // as patch.error below, and the edits stay for a retry.
+  const saveEdits = async (draft: SettingsDraft): Promise<boolean> => {
+    const { edits } = draft;
+    try {
+      const response = await patch.mutateAsync({ data: { edits } });
+      draft.dropSaved(response, edits);
+      return everyEditSaved(response, edits);
+    } catch {
+      return false;
     }
   };
-  const savePublicURL = () => saveEdits(publicURLEdits, () => setPublicURLEdits({}));
-  const saveTunarr = () => saveEdits(tunarrEdits, () => setTunarrEdits({}));
+  const savePublicURL = () => saveEdits(publicURL);
+  const saveTunarr = () => saveEdits(tunarrDraft);
   // Test evaluates PERSISTED settings, so unsaved edits must be written first or the operator
   // tests the OLD address right after typing a new one (the flavor-save bug, config-design §6).
   const test = async () => {
     setTesting(true);
     try {
-      if (tunarrDirty) await saveTunarr();
+      // A rejected value stays in the form and the test is skipped: it would judge the old address.
+      if (tunarrDirty && !(await saveTunarr())) return;
       const res = await runTest.mutateAsync({ data: { check: "tunarr" } });
       if (res.status === 200) setTested({ ok: res.data.ok, hint: res.data.hint });
     } catch {
@@ -128,91 +142,100 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* ⚠ REAL RADIOS, inside a real <fieldset>. These are mutually exclusive answers to one
-          question, so assistive tech should announce the question (the legend), the group,
-          and which option is chosen — none of which a list of <button>s conveys. An earlier
-          cut used role="radio" on buttons, which biome's useSemanticElements caught: it also
-          had no radiogroup parent, so the options would have been announced with no question
-          attached to them. Arrow-key navigation comes free with native inputs. */}
-      <fieldset className="border-0 p-0" disabled={pinnedBy !== undefined}>
-        <legend className="sr-only">How should Loomarr play your channels?</legend>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {OPTIONS.map((option) => {
-            const selected = option.value === value;
-            return (
-              // The whole card is the label, so the entire target is clickable rather than
-              // just a small control the operator has to aim at.
-              <label
-                key={option.value}
-                className={cn(
-                  "flex cursor-pointer flex-col gap-2 rounded-lg border p-4 transition-colors",
-                  selected ? "border-tune bg-tune/5" : "border-input hover:bg-accent",
-                  pinnedBy && "cursor-not-allowed opacity-60",
-                )}
-              >
-                <span className="flex items-center gap-2">
-                  {/* ⚠ Visible, not `sr-only`. Hiding it made the control unreachable for
-                      anything driving the real input (Playwright's .check() timed out on it),
-                      and a hidden radio also gives a sighted keyboard user no focus ring to
-                      follow. The card stays fully clickable because it is the <label>. */}
-                  <input
-                    type="radio"
-                    name="playout-backend"
-                    value={option.value}
-                    checked={selected}
-                    onChange={() => choose(option.value)}
-                    className="accent-tune size-4 shrink-0"
-                  />
-                  <span className="font-medium">{option.title}</span>
-                </span>
-                <span className="text-muted-foreground text-sm">{option.tagline}</span>
-                <ul className="text-muted-foreground flex flex-col gap-1 text-sm">
-                  {option.points.map((point) => (
-                    <li key={point}>{point}</li>
-                  ))}
-                </ul>
-              </label>
-            );
-          })}
-        </div>
-      </fieldset>
+    <Stack gap="4">
+      {/* Mutually exclusive answers to one question, so assistive tech announces the question,
+          the group and which option is chosen, with arrow keys walking the choices. The whole
+          card is the radio, so the entire target is clickable. */}
+      <RadioGroup
+        borderWidth={0}
+        backgroundColor="transparent"
+        label="How should Loomarr play your channels?"
+        onValueChange={(next) => choose(next as PlayoutBackend)}
+        opacity={pinnedBy ? 0.6 : 1}
+        value={value}
+        values={OPTIONS.map((option) => option.value)}
+      >
+        <Grid columns={{ base: 1, sm: 2 }} data-playout-choices="" gap="3">
+          {OPTIONS.map((option) => (
+            <RadioItem
+              disabled={pinnedBy !== undefined}
+              key={option.value}
+              // A radio's content is presentational, so its name carries what the card says.
+              label={`${option.title}: ${[option.tagline, ...option.points].join(" ")}`}
+              ringRadius={8}
+              value={option.value}
+            >
+              {({ checked }) => (
+                <Card gap={8} padding={16} tone={checked ? "tune" : undefined}>
+                  <Stack align="center" direction="row" gap="inline">
+                    <Stack
+                      aria-hidden
+                      borderColor={checked ? "stateInfo" : "borderControl"}
+                      borderRadius={8}
+                      // A thicker ring, not a fill: forced colours drop backgrounds and keep borders.
+                      borderWidth={checked ? 5 : 2}
+                      flexShrink={0}
+                      height={16}
+                      width={16}
+                    />
+                    <Text as="span" textRole="cardLabel">
+                      {option.title}
+                    </Text>
+                  </Stack>
+                  <Text as="span" textRole="compact" tone="secondary">
+                    {option.tagline}
+                  </Text>
+                  <Stack gap="1" render="ul">
+                    {option.points.map((point) => (
+                      <Text as="li" key={point} textRole="compact" tone="secondary">
+                        {point}
+                      </Text>
+                    ))}
+                  </Stack>
+                </Card>
+              )}
+            </RadioItem>
+          ))}
+        </Grid>
+      </RadioGroup>
 
       {pinnedBy && (
-        <p className="text-muted-foreground flex items-center gap-2 text-sm">
+        <Stack align="center" direction="row" gap="inline" render="p">
           <Badge shape="square" icon={<Icon decorative glyph={icons.locked} size="compact" tone="inherit" />}>
             set via environment
           </Badge>
-          <span>
+          <Text as="span" textRole="compact" tone="secondary">
             {pinnedBy} decides this, so it can&rsquo;t be changed here. Unset it to choose in the app.
-          </span>
-        </p>
+          </Text>
+        </Stack>
       )}
 
       {/* Internal playout publishes absolute tuner/guide/stream URLs from this registry key.
           It belongs beside the backend choice because selecting Loomarr without supplying its
           machine-reachable address is not a complete answer to "who plays the channel?". */}
       {value === PLAYOUT_INTERNAL && (
-        <div className="border-input rounded-lg border p-4">
+        <Stack borderColor="$borderControl" borderRadius={8} borderWidth={1} padding={16}>
           <SettingsFields
             entries={publicURLEntries}
             values={publicURLEdits}
-            onChange={(key, v) => setPublicURLEdits((previous) => ({ ...previous, [key]: v }))}
+            onChange={publicURL.setEdit}
             results={patchResults}
             descriptionIds={{ [SettingKey.ServerPublicURL]: "server-public-url-requirement" }}
           />
-          <p id="server-public-url-requirement" className="text-muted-foreground mt-3 text-sm">
-            Required for Loomarr playback. Your media server must be able to reach this address to fetch the
-            guide and every channel stream.
-          </p>
+          <Stack marginTop={12}>
+            <Text as="p" id="server-public-url-requirement" textRole="compact" tone="secondary">
+              Required for Loomarr playback. Your media server must be able to reach this address to fetch the
+              guide and every channel stream.
+            </Text>
+          </Stack>
           {publicURLDirty && (
-            <div className="mt-3">
+            <Stack marginTop={12}>
               <Action disabled={patch.isPending} onPress={() => void savePublicURL()}>
                 {patch.isPending ? "Saving…" : "Save address"}
               </Action>
-            </div>
+            </Stack>
           )}
-        </div>
+        </Stack>
       )}
 
       {/* ⚠ Tunarr's own settings live HERE, under the choice that makes them relevant, rather
@@ -239,24 +262,27 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
           <SettingsFields
             entries={tunarrEntries}
             values={tunarrEdits}
-            onChange={(key, v) => setTunarrEdits((p) => ({ ...p, [key]: v }))}
+            onChange={tunarrDraft.setEdit}
             results={patchResults}
           />
           {tunarrDirty && (
-            <div className="mt-3">
+            <Stack marginTop={12}>
               <Action disabled={patch.isPending} onPress={() => void saveTunarr()}>
                 {patch.isPending ? "Saving…" : "Save"}
               </Action>
-            </div>
+            </Stack>
           )}
         </ConnectionBlock>
       )}
 
-      <p className="text-muted-foreground text-sm">
+      {/* A failed save (the choice, the address or Tunarr's form) says so, as the other steps do. */}
+      {patch.error != null && <ErrorState error={patch.error} />}
+
+      <Text as="p" textRole="compact" tone="secondary">
         The playback engine can be changed later in Settings and overridden per channel.
         {value === PLAYOUT_INTERNAL && " The Loomarr address applies to the whole install."}
-      </p>
-    </div>
+      </Text>
+    </Stack>
   );
 };
 

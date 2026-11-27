@@ -13,8 +13,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 )
@@ -259,7 +259,7 @@ func (f *fakeProposalWorkflow) Revise(
 
 func proposalJourneyServer(t *testing.T, workflow proposalsapi.ProposalWorkflow, configure ...func(*api.Options)) *httptest.Server {
 	t.Helper()
-	opts := api.Options{Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), ProposalWorkflow: workflow}
+	opts := api.Options{Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Proposals: api.ProposalsOptions{Workflow: workflow}}
 	for _, fn := range configure {
 		fn(&opts)
 	}
@@ -282,7 +282,7 @@ func TestProposalJourneyReportsWhoApprovedAndWhen(t *testing.T) {
 		Intent:    proposals.Intent{Description: "Saturday morning cartoons"},
 		Proposal: &workflow.ProposalRef{
 			ID: "proposal-1", Status: workflow.ProposalApproved,
-			ApprovedBy: accept.AutoApprovedBy, ApprovedAt: approvedAt,
+			ApprovedBy: proposalstore.AutoApprovedBy, ApprovedAt: approvedAt,
 		},
 	}}
 	srv := proposalJourneyServer(t, flow)
@@ -336,7 +336,7 @@ func TestProposalJourneyCarriesLiveProgressWhileGenerating(t *testing.T) {
 	wf := &fakeProposalWorkflow{journey: workflow.Journey{
 		Version: workflow.WorkflowVersion1, JobID: "job-1", Milestone: workflow.MilestoneGenerating,
 	}}
-	body := getJourney(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.ProposalProgress = progress }))
+	body := getJourney(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.Proposals.Progress = progress }))
 	if progress.got != "job-1" {
 		t.Fatalf("progress read for %q, want job-1", progress.got)
 	}
@@ -355,13 +355,13 @@ func TestProposalJourneyOmitsProgressOutsideGenerating(t *testing.T) {
 	wf := &fakeProposalWorkflow{journey: workflow.Journey{
 		Version: workflow.WorkflowVersion1, JobID: "job-1", Milestone: workflow.MilestoneAwaitingApproval,
 	}}
-	if body := getJourney(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.ProposalProgress = progress })); body.Progress != nil {
+	if body := getJourney(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.Proposals.Progress = progress })); body.Progress != nil {
 		t.Fatalf("progress = %+v on an awaiting_approval journey, want none", body.Progress)
 	}
 	// A queued job (not running on this process) has no snapshot: progress is absent, not empty.
 	progress.ok = false
 	wf.journey.Milestone = workflow.MilestoneGenerating
-	if body := getJourney(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.ProposalProgress = progress })); body.Progress != nil {
+	if body := getJourney(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.Proposals.Progress = progress })); body.Progress != nil {
 		t.Fatalf("progress = %+v for a job with no live run, want none", body.Progress)
 	}
 }
@@ -373,7 +373,7 @@ func TestProposalJourneyListCarriesLiveProgressToo(t *testing.T) {
 	wf := &fakeProposalWorkflow{journeys: []workflow.Journey{{
 		Version: workflow.WorkflowVersion1, JobID: "job-1", Milestone: workflow.MilestoneGenerating,
 	}}}
-	resp := do(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.ProposalProgress = progress }), http.MethodGet, "/v1/proposal-jobs", adminToken, "")
+	resp := do(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.Proposals.Progress = progress }), http.MethodGet, "/v1/proposal-jobs", adminToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	var body struct {
 		Journeys []proposalsapi.ProposalJourneyDTO `json:"journeys"`

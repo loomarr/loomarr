@@ -1,9 +1,18 @@
 import type { DiscoveredClip } from "@loomarr/api/models/discoveredClip";
 import type { DiscoveredClipStats } from "@loomarr/api/models/discoveredClipStats";
 import { formatClipDuration, formatDuration, pluralize } from "@loomarr/core/format";
-import { Action, ActivityIndicator, Field, Icon, icons, Surface, Text } from "@loomarr/design-system";
+import {
+  Action,
+  ActivityIndicator,
+  Field,
+  Icon,
+  icons,
+  Stack,
+  Surface,
+  Text,
+  TextLink,
+} from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
 import type { SourceSearchProps } from "./source-search.type";
 
 // SourceSearch — the Sources tab's per-source search expander (§10, V35).
@@ -13,7 +22,7 @@ import type { SourceSearchProps } from "./source-search.type";
 // distinction is invisible from the rows themselves and an operator browsing a collection must
 // not fear triggering a multi-gigabyte walk.
 //
-// ⚠ These rows are deliberately THINNER than the retired Discover cards: no description, and
+// ⚠ These rows are deliberately THIN: no description, and
 // **no licence badge**. Build plan §6.3 measured ~92% of archive.org items as declaring no
 // licence at all, so a badge would be empty on almost every row — and an absent licence means
 // UNKNOWN, never "public domain", which a chip cannot say.
@@ -115,15 +124,19 @@ const SourceSearch = ({
   }, [ids, onVisible]);
 
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
+    <Stack className={className} gap="control">
       {/* A real form, so Enter submits — this is a search box, and needing the mouse to run it
           is the kind of papercut that makes a surface feel broken. */}
-      <form
-        className="flex flex-wrap items-end gap-2"
+      <Stack
+        align="end"
+        direction="row"
+        gap="2"
         onSubmit={(e) => {
           e.preventDefault();
           onSearch();
         }}
+        render="form"
+        wrap
       >
         <Surface backgroundColor="transparent" borderWidth={0} flexGrow={1} flexShrink={1} minWidth={0}>
           {/* The visible label lives in the tab heading above, so the control carries its own
@@ -139,9 +152,13 @@ const SourceSearch = ({
         <Action disabled={searching || query.trim().length < 2} icon="search" submit>
           {searching ? "Searching…" : "Search"}
         </Action>
-      </form>
+      </Stack>
 
-      {error && <p className="text-onair-300 text-sm">{error}</p>}
+      {error && (
+        <Text as="p" textRole="compact" tone="danger">
+          {error}
+        </Text>
+      )}
 
       {results.length > 0 && (
         <>
@@ -151,15 +168,24 @@ const SourceSearch = ({
               : pluralize(visibleResults.length, "match", "matches")}
           </Text>
 
-          <ul ref={listRef} className="flex flex-col gap-2">
+          <Stack gap="2" ref={listRef as never} render="ul">
             {visibleResults.map((clip) => {
               const acquisition = queueStatus?.[clip.id];
               const parts = metaParts(clip, stats?.[clip.id]);
               return (
-                <li
+                <Stack
+                  align="center"
                   key={clip.id}
+                  borderColor="$borderDecorative"
+                  borderRadius={8}
+                  borderWidth={1}
+                  paddingHorizontal={12}
+                  paddingVertical={8}
                   data-clip-id={clip.id}
-                  className="border-border flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2"
+                  direction="row"
+                  gap="control"
+                  render="li"
+                  wrap
                 >
                   {/* Archive's own thumbnail service — a stable URL, no API call. Rendered only
                       when present, following the clip card: a grid of identical grey
@@ -170,34 +196,44 @@ const SourceSearch = ({
                       // Empty alt: the title is the very next element, so describing the frame
                       // would make a screen reader announce the same item twice.
                       alt=""
-                      className="bg-static-800 h-10 w-16 shrink-0 rounded object-cover"
+                      style={{
+                        backgroundColor: "var(--color-static-800)",
+                        borderRadius: 4,
+                        flexShrink: 0,
+                        height: 40,
+                        objectFit: "cover",
+                        width: 64,
+                      }}
                       loading="lazy"
                     />
                   )}
 
-                  <div className="min-w-0 flex-1">
+                  <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
                     {/* The item's own page, so an operator can look before committing. Opens
                         away from Loomarr, so it says so for anyone not watching the status bar. */}
-                    <a
-                      href={clip.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block truncate text-sm hover:underline"
-                    >
-                      {clip.title || clip.id}
-                    </a>
+                    <Text as="div" numberOfLines={1} textRole="compact">
+                      <TextLink
+                        render={<a href={clip.url} rel="noreferrer" target="_blank" />}
+                        tone="inherit"
+                        underline="hover"
+                      >
+                        {clip.title || clip.id}
+                      </TextLink>
+                    </Text>
                     {/* ⚠ "checking…" only while a request is genuinely in flight. Once it has
                         answered, an unknown duration renders as nothing at all — a permanent
                         spinner would promise a value that is never coming, and "0:00" would
                         claim the clip is empty. */}
                     {(parts.length > 0 || loadingSet.has(clip.id)) && (
-                      <Text as="span" className="mt-0.5 block" textRole="mono">
-                        {[...parts, ...(loadingSet.has(clip.id) ? ["checking…"] : [])].join(" · ")}
-                      </Text>
+                      <Stack marginTop={2}>
+                        <Text as="span" textRole="mono">
+                          {[...parts, ...(loadingSet.has(clip.id) ? ["checking…"] : [])].join(" · ")}
+                        </Text>
+                      </Stack>
                     )}
-                  </div>
+                  </Stack>
 
-                  <div className="ml-auto flex shrink-0 items-center gap-1">
+                  <Stack align="center" direction="row" flexShrink={0} gap="1" marginLeft="auto">
                     {onPreview && (
                       <Action
                         accessibilityLabel={`Preview: ${clip.title || clip.id}`}
@@ -209,22 +245,28 @@ const SourceSearch = ({
                       </Action>
                     )}
                     {acquisition === "queued" || acquisition === "running" ? (
-                      <span className="text-signal flex shrink-0 items-center gap-1 text-sm">
-                        <ActivityIndicator decorative size="compact" tone="inherit" />
-                        Downloading…
-                      </span>
+                      <Text as="span" flexShrink={0} textRole="compact" tone="signal">
+                        <Stack align="center" direction="row" gap="1" render="span">
+                          <ActivityIndicator decorative size="compact" tone="inherit" />
+                          Downloading…
+                        </Stack>
+                      </Text>
                     ) : acquisition === "success" ? (
-                      <span className="text-signal flex shrink-0 items-center gap-1 text-sm">
-                        <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
-                        Added · being checked
-                      </span>
+                      <Text as="span" flexShrink={0} textRole="compact" tone="signal">
+                        <Stack align="center" direction="row" gap="1" render="span">
+                          <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
+                          Added · being checked
+                        </Stack>
+                      </Text>
                     ) : acquisition === "error" ? (
-                      <div className="flex shrink-0 items-center gap-2">
-                        <span className="text-onair-300 text-sm">Couldn’t add</span>
+                      <Stack align="center" direction="row" flexShrink={0} gap="inline">
+                        <Text as="span" textRole="compact" tone="danger">
+                          Couldn’t add
+                        </Text>
                         <Action disabled={queueing != null} onPress={() => onQueue(clip)} variant="ghost">
                           {queueing === clip.id ? "Queueing…" : "Try again"}
                         </Action>
-                      </div>
+                      </Stack>
                     ) : (
                       <Action
                         // The row's own link carries the title, so the button names what it acts on
@@ -237,11 +279,11 @@ const SourceSearch = ({
                         {queueing === clip.id ? "Queueing…" : "Queue download"}
                       </Action>
                     )}
-                  </div>
-                </li>
+                  </Stack>
+                </Stack>
               );
             })}
-          </ul>
+          </Stack>
 
           {remaining > 0 && (
             <Action
@@ -260,10 +302,10 @@ const SourceSearch = ({
       )}
 
       {/* This is prose, not machine metadata, so it must not use the monospace caption role. */}
-      <p className="text-muted-foreground text-xs">
+      <Text as="p" textRole="hint" tone="secondary">
         Searching doesn’t download anything. Choose Queue download when you find a clip you want.
-      </p>
-    </div>
+      </Text>
+    </Stack>
   );
 };
 

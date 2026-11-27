@@ -46,11 +46,11 @@ const testPlayoutTok = "sign-test-token-abcdefghijklmnop"
 func TestSignPlayout_VerifiesRoundTrip(t *testing.T) {
 	s := serverWithToken(testPlayoutTok)
 	now := time.Now()
-	sig := s.signPlayout("ch_abc", now.Add(time.Hour))
+	sig := signPlayoutWithKey(s.playoutToken(), "ch_abc", now.Add(time.Hour))
 	if sig == "" {
-		t.Fatal("signPlayout returned empty with a token set")
+		t.Fatal("signPlayoutWithKey returned empty with a token set")
 	}
-	if !s.verifyPlayoutSignature(sig, "ch_abc", now) {
+	if !verifyPlayoutSignatureWithKey(s.playoutToken(), sig, "ch_abc", now) {
 		t.Fatal("a freshly signed URL failed to verify for its own channel")
 	}
 }
@@ -58,9 +58,9 @@ func TestSignPlayout_VerifiesRoundTrip(t *testing.T) {
 func TestVerifyPlayoutSignature_RejectsWrongChannel(t *testing.T) {
 	s := serverWithToken(testPlayoutTok)
 	now := time.Now()
-	sig := s.signPlayout("ch_abc", now.Add(time.Hour))
+	sig := signPlayoutWithKey(s.playoutToken(), "ch_abc", now.Add(time.Hour))
 	// A URL minted for ch_abc must not pull ch_xyz — the channel is inside the signed material.
-	if s.verifyPlayoutSignature(sig, "ch_xyz", now) {
+	if verifyPlayoutSignatureWithKey(s.playoutToken(), sig, "ch_xyz", now) {
 		t.Fatal("a signature for ch_abc verified against ch_xyz")
 	}
 }
@@ -68,9 +68,9 @@ func TestVerifyPlayoutSignature_RejectsWrongChannel(t *testing.T) {
 func TestVerifyPlayoutSignature_RejectsExpired(t *testing.T) {
 	s := serverWithToken(testPlayoutTok)
 	base := time.Now()
-	sig := s.signPlayout("ch_abc", base.Add(time.Minute))
+	sig := signPlayoutWithKey(s.playoutToken(), "ch_abc", base.Add(time.Minute))
 	// One second past the deadline must fail, even for the right channel and an untampered sig.
-	if s.verifyPlayoutSignature(sig, "ch_abc", base.Add(time.Minute+time.Second)) {
+	if verifyPlayoutSignatureWithKey(s.playoutToken(), sig, "ch_abc", base.Add(time.Minute+time.Second)) {
 		t.Fatal("an expired signature verified")
 	}
 }
@@ -78,7 +78,7 @@ func TestVerifyPlayoutSignature_RejectsExpired(t *testing.T) {
 func TestVerifyPlayoutSignature_RejectsTamper(t *testing.T) {
 	s := serverWithToken(testPlayoutTok)
 	now := time.Now()
-	sig := s.signPlayout("ch_abc", now.Add(time.Hour))
+	sig := signPlayoutWithKey(s.playoutToken(), "ch_abc", now.Add(time.Hour))
 
 	// Flip the last character of the MAC. Any single-character change must fail the constant-time
 	// compare.
@@ -88,7 +88,7 @@ func TestVerifyPlayoutSignature_RejectsTamper(t *testing.T) {
 	} else {
 		tampered += "A"
 	}
-	if s.verifyPlayoutSignature(tampered, "ch_abc", now) {
+	if verifyPlayoutSignatureWithKey(s.playoutToken(), tampered, "ch_abc", now) {
 		t.Fatal("a tampered signature verified")
 	}
 
@@ -98,7 +98,7 @@ func TestVerifyPlayoutSignature_RejectsTamper(t *testing.T) {
 	if len(parts) >= 3 {
 		parts[len(parts)-2] = "99999999999" // far-future exp, original MAC
 		forged := strings.Join(parts, ":")
-		if s.verifyPlayoutSignature(forged, "ch_abc", now) {
+		if verifyPlayoutSignatureWithKey(s.playoutToken(), forged, "ch_abc", now) {
 			t.Fatal("an extended-expiry forgery verified — the expiry is not covered by the MAC")
 		}
 	}
@@ -107,12 +107,12 @@ func TestVerifyPlayoutSignature_RejectsTamper(t *testing.T) {
 func TestVerifyPlayoutSignature_RejectsWhenNoToken(t *testing.T) {
 	// With no token configured there is no key to verify against — everything fails closed, the
 	// same posture the device-token path takes.
-	signed := serverWithToken(testPlayoutTok).signPlayout("ch_abc", time.Now().Add(time.Hour))
+	signed := signPlayoutWithKey(serverWithToken(testPlayoutTok).playoutToken(), "ch_abc", time.Now().Add(time.Hour))
 	noKey := serverWithToken("")
-	if noKey.verifyPlayoutSignature(signed, "ch_abc", time.Now()) {
+	if verifyPlayoutSignatureWithKey(noKey.playoutToken(), signed, "ch_abc", time.Now()) {
 		t.Fatal("verified a signature with no token configured")
 	}
-	if noKey.signPlayout("ch_abc", time.Now().Add(time.Hour)) != "" {
+	if signPlayoutWithKey(noKey.playoutToken(), "ch_abc", time.Now().Add(time.Hour)) != "" {
 		t.Fatal("signed with no token configured")
 	}
 }
@@ -121,7 +121,7 @@ func TestVerifyPlayoutSignature_RejectsMalformed(t *testing.T) {
 	s := serverWithToken(testPlayoutTok)
 	now := time.Now()
 	for _, raw := range []string{"", "onlyonepart", "two:parts", "ch:notanumber:sig"} {
-		if s.verifyPlayoutSignature(raw, "ch", now) {
+		if verifyPlayoutSignatureWithKey(s.playoutToken(), raw, "ch", now) {
 			t.Fatalf("malformed capability %q verified", raw)
 		}
 	}
@@ -131,7 +131,7 @@ func TestVerifyPlayoutSignature_RejectsMalformed(t *testing.T) {
 // for a different channel, so a valid capability for ch1 cannot be replayed against ch2.
 func TestAuthorizePlayout_AcceptsSignedURLForThatChannel(t *testing.T) {
 	s := serverWithToken(testPlayoutTok)
-	sig := s.signPlayout("ch1", time.Now().Add(time.Hour))
+	sig := signPlayoutWithKey(s.playoutToken(), "ch1", time.Now().Add(time.Hour))
 
 	if !authorizeWith(s, "ch1", "?"+signQueryParam+"="+sig) {
 		t.Fatal("a valid signed URL for ch1 was rejected on ch1")
@@ -161,7 +161,7 @@ func TestPlayoutHLSURL_CarriesSigAndQuality(t *testing.T) {
 		playoutSecret: func() string { return testPlayoutTok },
 		liveSettings:  mapSettings{"server.public_url": "http://loomarr.local:8080"},
 	}
-	u := s.playoutHLSURL("ch_abc", "720", time.Now().Add(time.Hour))
+	u := s.playoutHLSURLWithKey(s.playoutToken(), "ch_abc", "720", time.Now().Add(time.Hour))
 	if u == "" {
 		t.Fatal("empty HLS URL with public_url and token set")
 	}
@@ -178,10 +178,10 @@ func TestPlayoutHLSURL_CarriesSigAndQuality(t *testing.T) {
 	// signal. But the RELATIVE URL must still be built — the web player uses it and does not need
 	// public_url — which is the whole point of returning both.
 	noBase := &Handlers{playoutSecret: func() string { return testPlayoutTok }, liveSettings: mapSettings{}}
-	if noBase.playoutHLSURL("ch_abc", "", time.Now().Add(time.Hour)) != "" {
+	if noBase.playoutHLSURLWithKey(noBase.playoutToken(), "ch_abc", "", time.Now().Add(time.Hour)) != "" {
 		t.Fatal("built an ABSOLUTE HLS URL with no public_url")
 	}
-	rel := noBase.playoutHLSPathURL("ch_abc", "720", time.Now().Add(time.Hour))
+	rel := noBase.playoutHLSPathURLWithKey(noBase.playoutToken(), "ch_abc", "720", time.Now().Add(time.Hour))
 	if rel == "" {
 		t.Fatal("relative HLS URL should be built even with no public_url")
 	}

@@ -45,7 +45,7 @@ type Segment struct {
 	// Tags is the grounded taxonomy leaf set (§10 V45a); Category is its DERIVED product-leaf shadow,
 	// carried so the review and the confirmed clip both have the cheap read-path value. Both come from
 	// the same Classify the tag job uses.
-	Tags     []string `json:"tags,omitempty"`
+	Tags     []string `json:"tags,omitempty" maxItems:"64"` // at most 64, as on a clip
 	Category string   `json:"category,omitempty"`
 	// BoundaryConfidence is how much Loomarr trusts WHERE this was cut, 0–100 (§10 V34 ladder).
 	// `0` means never scored — every proposal detected before V54 deserialises that way, and the
@@ -62,7 +62,7 @@ type Segment struct {
 	StartEvidence string `json:"startEvidence,omitempty"`
 	EndEvidence   string `json:"endEvidence,omitempty"`
 	// HoldReason is why this segment was kept back when its reel was partly confirmed (§10 V54) —
-	// the same vocabulary `AutoSplitReject` uses, so the review says "a segment's era is a guess"
+	// the same vocabulary `AutoSplitReject` uses, so the review says "the cut is not one whole spot"
 	// rather than leaving the operator to work out why 5 of 52 are still here.
 	HoldReason string `json:"holdReason,omitempty"`
 	// StartSrc/EndSrc are the bitmask the two evidence fields above are rendered from. Never
@@ -87,6 +87,17 @@ type Segment struct {
 	// provider-error path does NOT set it, because a failing backend fails for every segment and
 	// should be retried next pass rather than poisoning the reel.
 	Looked bool `json:"looked,omitempty"`
+	// Whole is the look at the whole cut (#4409): whether its frames show one complete piece of
+	// filler, part of one, several, or cannot tell. Black and silence cannot see a hard cut between
+	// two ads, nor tell a dip inside an ad from a gap between two, so only a cut judged WholeOne may
+	// be cut unattended. "" is not looked at under this question yet.
+	Whole WholeCut `json:"whole,omitempty"`
+	// LookedRole is the role the same look gave the cut (commercial, promo, ...). Only a filler role
+	// may be cut unattended.
+	LookedRole Role `json:"lookedRole,omitempty"`
+	// Sound is the cut's loudness at its edges and inside (#4409), measured from the reel. nil is
+	// not measured, and an unmeasured cut is never made unattended.
+	Sound *CutSound `json:"sound,omitempty"`
 	// RoleEvidence is the exact, independently attributable frame judgement for THIS span. It is
 	// intentionally not flattened into Category or copied from the parent: the source-structure
 	// reducer consumes it as a segment_role observation and decides whether the span is keepable.
@@ -96,6 +107,11 @@ type Segment struct {
 	// (dHash, measured 25× separation). Propose records the detection fact; the automated split
 	// stage then discards it before classification because it cannot add a new catalog clip.
 	DupOf string `json:"dupOf,omitempty"`
+	// DedupUnchecked means the comparison against the catalog could not be made for this segment (its
+	// fingerprint could not be read, or the catalog could not be listed). It is not a finding: an
+	// empty DupOf then reads as "not checked", not as "checked and new", and the review says so. A
+	// proposal stored before this field existed reads as checked.
+	DedupUnchecked bool `json:"dedupUnchecked,omitempty"`
 	// Unsplittable means the segment is over-long AND the rescue could not run or
 	// found nothing (no whisper, whisper/LLM failure). The review must say so —
 	// the alternative is guessing, which is exactly what the era rule forbids in

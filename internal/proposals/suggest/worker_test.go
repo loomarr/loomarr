@@ -32,9 +32,14 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
 
+// requesters are the people these tests name; each store saves them as members.
+var requesters = []string{"alice", "bob", "carol", "grace", "alex", "admin"}
+
 func newStore(t *testing.T) store.Store {
 	t.Helper()
-	return testkit.MigratedSQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
+	testkit.SaveMembers(t, st, requesters...)
+	return st
 }
 
 // mustChannel saves a live channel id for a refine or re-curation to name: a job's channel is a
@@ -71,6 +76,7 @@ func marigoldLibrary() *catalogfixture.ScriptedLibrary {
 }
 
 func buildService(t *testing.T, st store.Store, llmMock llm.Provider) *suggest.Service {
+	testkit.SaveLibraryItems(t, st, "1000", "1001", "1002") // marigoldLibrary's items
 	return buildServiceWith(t, st, workflow.New(st, idGen(), time.Now, suggest.IntentHash), llmMock)
 }
 
@@ -732,6 +738,84 @@ func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("job did not reach failed state")
+}
+
+// panickingLLM stands in for any bug deep in one suggestion run.
+type panickingLLM struct{}
+
+func (panickingLLM) Chat(context.Context, []llm.Message, llm.ChatOptions) (llm.Response, error) {
+	panic("provider exploded")
+}
+func (panickingLLM) Name() string { return "panicking" }
+
+func TestWorker_PanicFailsTheJobAndKeepsTheWorkerAlive(t *testing.T) {
+	st := newStore(t)
+	flow := workflow.New(st, func() string { return "workflow-proposal-1" }, time.Now, suggest.IntentHash)
+	svc := buildServiceWith(t, st, flow, panickingLLM{})
+	jobID, err := svc.Submit(context.Background(), proposals.Intent{Description: "Classic Kettle Kids episodes"}, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go svc.Run(ctx)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		job, _ := st.GetJob(context.Background(), jobID)
+		if job.Status == "failed" {
+			if !strings.Contains(job.LastError, "panicked") {
+				t.Fatalf("last_error = %q, want the panic named", job.LastError)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("panicking job did not reach failed state")
+}
+
+// slowUnwindLLM is a provider mid-request when the pool stops: it says when it is called, then
+// takes a while to give up after its context ends.
+type slowUnwindLLM struct {
+	called   chan struct{}
+	finished atomic.Bool
+}
+
+func (p *slowUnwindLLM) Chat(ctx context.Context, _ []llm.Message, _ llm.ChatOptions) (llm.Response, error) {
+	close(p.called)
+	<-ctx.Done()
+	time.Sleep(300 * time.Millisecond)
+	p.finished.Store(true)
+	return llm.Response{}, ctx.Err()
+}
+func (*slowUnwindLLM) Name() string { return "slow-unwind" }
+
+// Run returns only once every job it started has finished: the app closes the store after it, so
+// a job still running would write its outcome to a closed store and sit leased.
+func TestWorker_RunWaitsForItsJobsToFinish(t *testing.T) {
+	st := newStore(t)
+	provider := &slowUnwindLLM{called: make(chan struct{})}
+	svc := buildService(t, st, provider)
+	if _, err := svc.Submit(context.Background(), proposals.Intent{Description: "Classic Kettle Kids episodes"}, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+	go func() {
+		svc.Run(ctx)
+		close(stopped)
+	}()
+	select {
+	case <-provider.called:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the job never reached the provider")
+	}
+	cancel()
+	<-stopped
+	if !provider.finished.Load() {
+		t.Fatal("Run returned while its job was still running")
+	}
 }
 
 func TestWorker_RecordsCommittedDiscoveryQualityStages(t *testing.T) {
@@ -1475,6 +1559,42 @@ func waitForDoneEvent(t *testing.T, e *doneEmitter) {
 func (c *recordingCurator) Consider(context.Context, proposalstore.Proposal) (proposals.AutoDecision, error) {
 	c.calls++
 	return c.decision, c.err
+}
+
+// panickingApprover stands in for a bug while a stored proposal is settled.
+type panickingApprover struct{}
+
+func (panickingApprover) Consider(context.Context, proposalstore.Proposal) (proposals.AutoDecision, error) {
+	panic("approval exploded")
+}
+
+// Once the proposal is stored the run is done, so screens waiting on it hear done even when
+// settling it panics; nothing polls the Journey to find out otherwise.
+func TestWorker_StoredProposalEmitsDoneEvenWhenSettlingPanics(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
+		t.Fatal(err)
+	}
+	llmMock := testkit.NewLLM(t,
+		catalogSearchResponse(map[string]any{"query": "marigold"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
+	)
+	done := newDoneEmitter()
+	svc := buildService(t, st, llmMock).WithAutoApprove(panickingApprover{}).WithProgressEmitter(done)
+	jobID, err := svc.Submit(ctx, proposals.Intent{Description: "sci-fi"}, "grace")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go svc.Run(runCtx)
+
+	waitForDoneEvent(t, done)
+	if j, _ := st.GetJob(ctx, jobID); j.Status != "done" {
+		t.Fatalf("job status = %s, want done: the proposal was stored before settling panicked", j.Status)
+	}
 }
 
 // TestWorker_AutoApproveCommitsChannel proves the worker reaches the same deep approval gate as

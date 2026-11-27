@@ -1,5 +1,5 @@
 import type { IncomingPreparationDTO } from "@loomarr/api/models/incomingPreparationDTO";
-import { ProgressTrack } from "@loomarr/design-system";
+import { Card, ProgressTrack, Stack, Text } from "@loomarr/design-system";
 
 const readyRangeLabel = (lowerSeconds: number, upperSeconds: number): string => {
   if (upperSeconds < 60) return "Less than a minute";
@@ -52,23 +52,30 @@ const IncomingPreparationSummary = ({ preparation }: { preparation: IncomingPrep
     preparation.percent != null && !["waiting", "retrying", "unavailable"].includes(preparation.state);
 
   return (
-    <section
-      aria-labelledby="incoming-preparation-heading"
-      className="bg-muted/30 space-y-2.5 rounded-lg p-4"
-    >
-      <div className="flex items-baseline justify-between gap-3">
-        <div className="min-w-0">
-          <h3 id="incoming-preparation-heading" className="text-sm font-medium">
-            {message.title}
-          </h3>
-          <p className="text-muted-foreground mt-0.5 text-xs">{message.detail}</p>
-        </div>
-        {preparation.percent != null ? (
-          <span className="text-muted-foreground shrink-0 text-xs tabular-nums">{preparation.percent}%</span>
+    <Card aria-labelledby="incoming-preparation-heading" padding={16} render="section">
+      <Stack gap="2.5">
+        <Stack align="baseline" direction="row" gap="control" justify="between">
+          <Stack flexShrink={1} minWidth={0}>
+            <Text as="h3" id="incoming-preparation-heading" textRole="cardLabel">
+              {message.title}
+            </Text>
+            <Stack marginTop={2}>
+              <Text as="p" textRole="hint" tone="secondary">
+                {message.detail}
+              </Text>
+            </Stack>
+          </Stack>
+          {preparation.percent != null ? (
+            <Text as="span" flexShrink={0} fontVariant={["tabular-nums"]} textRole="hint" tone="secondary">
+              {preparation.percent}%
+            </Text>
+          ) : null}
+        </Stack>
+        {showBar ? (
+          <ProgressTrack percent={preparation.percent} label="Clip preparation" tone="tune" />
         ) : null}
-      </div>
-      {showBar ? <ProgressTrack percent={preparation.percent} label="Clip preparation" tone="tune" /> : null}
-    </section>
+      </Stack>
+    </Card>
   );
 };
 

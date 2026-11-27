@@ -16,8 +16,8 @@ import (
 // unexported helpers of internal/filler, which an external package cannot import; production code
 // exports nothing for them.
 
-// Assess plans and prepares the windows itself, then runs AssessPrepared. Production's hosted
-// adapter prepares first and calls AssessPrepared directly, so nothing in a binary reaches this.
+// Assess plans and prepares the windows itself, then runs AssessPrepared. Nothing in a binary
+// reaches it.
 func (r *StructureWindowAssessmentRuntime) Assess(ctx context.Context, input split.AssessmentSource) (structure.Artifact, error) {
 	if r == nil || len(r.families) < 2 || len(r.profiles) != len(r.families) || r.preparer == nil || r.evidence == nil || r.now == nil {
 		return structure.Artifact{}, errors.New("structure window runtime is unavailable")
@@ -36,5 +36,3 @@ func (r *StructureWindowAssessmentRuntime) Assess(ctx context.Context, input spl
 	}
 	return r.AssessPrepared(ctx, input, prepared)
 }
-
-var _ split.CompleteTimelineDecisioner = (*StructureWindowAssessmentRuntime)(nil)

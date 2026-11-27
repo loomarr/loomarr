@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { Tokens } from "./tokens";
 
 // The index's one promise is that every generated token appears with its value. A nested group
@@ -12,7 +13,7 @@ describe("Tokens", () => {
     const rows = screen.getAllByRole("row");
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
-      const value = row.querySelectorAll("code")[1]?.textContent ?? "";
+      const value = row.querySelectorAll("th, td")[1]?.textContent ?? "";
       expect(value, `row ${row.textContent}`).not.toBe("");
       expect(value).not.toContain("[object");
     }
@@ -20,7 +21,7 @@ describe("Tokens", () => {
 
   it("keys a nested token by its dotted path", () => {
     render(<Tokens />);
-    const keys = screen.getAllByRole("row").map((row) => row.querySelector("code")?.textContent ?? "");
+    const keys = screen.getAllByRole("row").map((row) => row.querySelector("th")?.textContent ?? "");
     expect(keys.some((key) => key.includes("."))).toBe(true);
   });
 });

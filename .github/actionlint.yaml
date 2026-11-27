@@ -7,3 +7,11 @@ self-hosted-runner:
     - xcode-27
     - loomarr-playout-arc
     - loomarr-playout-geforce
+
+# actionlint v1.7.12 predates the job-level cache-mode key (rhysd/actionlint#762). The ignore
+# covers only that one message in the one workflow that declares the key; release-verify pins its
+# value.
+paths:
+  .github/workflows/android-ccache-promotion.yml:
+    ignore:
+      - 'unexpected key "cache-mode" for "job" section'

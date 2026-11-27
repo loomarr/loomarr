@@ -34,7 +34,7 @@ const JoinScreen = () => {
   useEffect(() => () => clearAccountActionGrant(), []);
 
   return (
-    <LoginShell className="py-10">
+    <LoginShell paddingVertical={40}>
       <InvitationJoin
         preview={preview.data?.status === 200 ? preview.data.data : undefined}
         isLoading={Boolean(grant) && preview.isPending}
@@ -49,6 +49,7 @@ const JoinScreen = () => {
   );
 };
 
+// no-loader: the invitation preview is a POST made with a grant taken from the URL fragment, not a query
 const Route = createFileRoute("/join")({
   // This runs before JoinScreen renders, so the fragment is gone from browser
   // history before password controls enter the DOM. The returned value lives only

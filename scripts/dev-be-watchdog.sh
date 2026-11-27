@@ -39,6 +39,8 @@ REPO_ROOT="$(CDPATH='' cd -- "$REPO_ROOT" && pwd -P)"
 # shellcheck source=scripts/dev-processes.sh
 . "$REPO_ROOT/scripts/dev-processes.sh"
 BIN="$REPO_ROOT/tmp/loomarr-dev"
+# Air appends to this log on every failed build and never on a successful one.
+BUILD_LOG="$REPO_ROOT/tmp/build-errors.log"
 POLL_SECONDS="${DEV_BE_WATCHDOG_POLL:-10}"
 # 3 strikes × 10s = 30s of continuous staleness before we act. Air's poll_interval (0.5s) + delay
 # (0.4s) + a cold incremental Go/Rust build is comfortably under that, so a healthy rebuild never
@@ -60,11 +62,16 @@ loomarr_pids() {
 # on the first hit keeps it O(1)-ish on a big tree.
 newest_src_after_bin() {
   [ -f "$BIN" ] || { echo "nobin"; return; }
+  newest_src_after "$BIN"
+}
+
+# newest_src_after FILE: prints a nonempty string iff a watched Go/Rust input is newer than FILE.
+newest_src_after() {
   find "$REPO_ROOT/cmd" "$REPO_ROOT/internal" "$REPO_ROOT/rust" \
     "$REPO_ROOT/Cargo.toml" "$REPO_ROOT/Cargo.lock" "$REPO_ROOT/rust-toolchain.toml" \
     -type d \( -name testdata -o -name fixtures \) -prune -o \
     -type f \( -name '*.go' -o -name '*.rs' -o -name '*.toml' -o -name 'Cargo.lock' \) \
-    ! -name '*_test.go' -newer "$BIN" -print -quit 2>/dev/null
+    ! -name '*_test.go' -newer "$1" -print -quit 2>/dev/null
 }
 
 # newest_source_file: a single watched path to `touch` as the gentle nudge. Any watched file works —
@@ -98,6 +105,21 @@ while air_alive; do
   stale="$(newest_src_after_bin)"
   if [ -z "$stale" ] || [ "$stale" = "nobin" ]; then
     # Not stale (or no binary yet — Air's first build hasn't finished). Reset.
+    strikes=0
+    nudged=0
+    continue
+  fi
+
+  # A failing build leaves the binary stale as well, but Air is rebuilding: its build log is newer
+  # than the binary exactly when the last build failed. Restarting would only rerun the same old
+  # binary, so say so once per failure and wait for the fix. A source saved after that failure
+  # that Air has not built yet is a wedge again, and falls through.
+  if [ -n "$(find "$BUILD_LOG" -newer "$BIN" 2>/dev/null)" ] && [ -z "$(newest_src_after "$BUILD_LOG")" ]; then
+    failure="$(ls -ln "$BUILD_LOG" 2>/dev/null)"
+    if [ "$failure" != "${reported_failure:-}" ]; then
+      echo "dev-be-watchdog: the build is failing, so Air is serving the last binary that built. Air's output above has the error." >&2
+      reported_failure="$failure"
+    fi
     strikes=0
     nudged=0
     continue

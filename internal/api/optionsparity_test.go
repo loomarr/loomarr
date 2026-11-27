@@ -10,29 +10,29 @@ import (
 	"testing"
 )
 
-// ⚠ **THE OPTIONS→SERVER COPY IS 36 HAND-WRITTEN PAIRS**, assigned in `Router` ~400 lines
-// from where either struct is declared. A missed line is SILENT: the field takes its zero
-// value, and per `Server`'s nil-semantics that may mean 501, 404, a route not mounted, a
-// no-op — or, for the two config gates, a gate that stops applying.
+// ⚠ **THE OPTIONS→AREA COPY IS HAND-WRITTEN**: `Router` reads each Options field (top-level, or
+// inside an area struct such as `opts.Playout.Observer`) and assigns it to the area package's Deps
+// or to Server. A missed line is SILENT: the field takes its zero value, and per the field's
+// nil-semantics that may mean 501, 404, a route not mounted, a no-op — or, for the config gates, a
+// gate that stops applying.
 //
-// This asserts every `Options` field is assigned somewhere in the `Server` literal.
+// This asserts every Options field, including every field of every area struct, is read somewhere
+// in api.go as a selector chain rooted at `opts`.
 //
-// ⚠ **It reads the SOURCE, and that is a deliberate second choice.** The natural test is to
-// fill each Options field with a non-nil value and check it arrives — but 29 of the 41 are
-// service INTERFACES, and reflection cannot synthesise an implementation of an arbitrary
-// method set (`reflect.StructOf` does not promote methods of an embedded interface). A
-// value-based version therefore covered 11 of 41, skipping precisely the fields most likely
-// to be missed. Checking 11 while reporting success would have been worse than not testing.
+// ⚠ **It reads the SOURCE, and that is a deliberate choice.** The natural test is to fill each
+// Options field with a non-nil value and check it arrives — but most fields are service
+// INTERFACES, and reflection cannot synthesise an implementation of an arbitrary method set
+// (`reflect.StructOf` does not promote methods of an embedded interface). A value-based version
+// would skip precisely the fields most likely to be missed, and checking a fraction while
+// reporting success is worse than not testing.
 //
-// Deliberately NOT solved by embedding Options into Server. That makes the copy one line,
-// but renames 308 call sites (`s.store` → `s.Store`) and — the reason it is refused — makes
-// every dependency settable from `api_test`. Zero tests call handlers directly today; all 26
-// go through `Router`, and that discipline is worth more than the copy it would remove.
+// Deliberately NOT solved by embedding Options into Server. That makes the copy one line, but
+// makes every dependency settable from `api_test`. Zero tests call handlers directly; all go
+// through `Router`, and that discipline is worth more than the copy it would remove.
 func TestEveryOptionsFieldIsCopiedToServer(t *testing.T) {
-	// Fields that legitimately never become a same-named Server field.
+	// Fields that legitimately are never read from Options in Router.
 	skip := map[string]string{
-		"Pprof":        "mounts a route; not stored on Server",
-		"MetricsToken": "guards the /metrics route at mount; not stored on Server",
+		"Log": "Router takes its logger as a parameter, which callers pass alongside Options.Log",
 	}
 
 	fset := token.NewFileSet()
@@ -41,87 +41,65 @@ func TestEveryOptionsFieldIsCopiedToServer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Collect the field names assigned in the `&Server{…}` composite literal and in every area's
-	// `area.Deps{…}` literal (the dependencies an area package takes, internal/api/people and its
-	// siblings). A Deps key is exported; it stands for the Server-style name with a lower-case first
-	// letter, which is what an Options field is matched on.
-	assigned := map[string]bool{}
+	// Collect every `opts.A` and `opts.A.B` selector chain.
+	read := map[string]bool{}
 	ast.Inspect(f, func(n ast.Node) bool {
-		lit, ok := n.(*ast.CompositeLit)
+		sel, ok := n.(*ast.SelectorExpr)
 		if !ok {
 			return true
 		}
-		isDeps := false
-		switch typ := lit.Type.(type) {
-		case *ast.Ident:
-			if typ.Name != "Server" {
-				return true
-			}
-		case *ast.SelectorExpr:
-			if typ.Sel.Name != "Deps" {
-				return true
-			}
-			isDeps = true
-		default:
-			return true
-		}
-		for _, el := range lit.Elts {
-			kv, ok := el.(*ast.KeyValueExpr)
+		var chain []string
+		var cur ast.Expr = sel
+		for {
+			s, ok := cur.(*ast.SelectorExpr)
 			if !ok {
-				continue
+				break
 			}
-			if k, ok := kv.Key.(*ast.Ident); ok {
-				name := k.Name
-				if isDeps {
-					name = strings.ToLower(name[:1]) + name[1:]
-				}
-				assigned[name] = true
-			}
+			chain = append([]string{s.Sel.Name}, chain...)
+			cur = s.X
+		}
+		if id, ok := cur.(*ast.Ident); ok && id.Name == "opts" {
+			read[strings.Join(chain, ".")] = true
 		}
 		return true
 	})
-	if len(assigned) == 0 {
-		t.Fatal("found no &Server{…} literal in api.go — this test can no longer see what it guards")
+	if len(read) == 0 {
+		t.Fatal("found no opts.… reads in api.go — this test can no longer see what it guards")
 	}
 
-	// CookieSecure and TrustProxy arrive grouped, as Server.origin (httpcore.Origin).
-	rename := map[string]string{"CookieSecure": "origin", "TrustProxy": "origin"}
-	ot := reflect.TypeOf(Options{})
-	st := reflect.TypeOf(Server{})
-
 	var lost []string
-	checked := 0
-	for i := 0; i < ot.NumField(); i++ {
-		name := ot.Field(i).Name
-		if _, ok := skip[name]; ok {
-			continue
-		}
-		target, ok := rename[name]
-		if !ok {
-			target = strings.ToLower(name[:1]) + name[1:]
-		}
-		// The field is on Server, or an area took it through its Deps literal and Server no longer
-		// holds it.
-		if _, ok := st.FieldByName(target); !ok && !assigned[target] {
-			lost = append(lost, name+": neither a Server field named "+target+" nor an area Deps field assigned in api.go")
-			continue
+	checked, total := 0, 0
+	check := func(path string) {
+		total++
+		if _, ok := skip[path]; ok {
+			return
 		}
 		checked++
-		if !assigned[target] {
-			lost = append(lost, name+": Server."+target+" is never assigned in Router — "+
-				"the field will be its zero value")
+		if !read[path] {
+			lost = append(lost, path+": never read in Router — the field will be its zero value")
+		}
+	}
+	ot := reflect.TypeOf(Options{})
+	for i := 0; i < ot.NumField(); i++ {
+		field := ot.Field(i)
+		if field.Type.Kind() != reflect.Struct {
+			check(field.Name)
+			continue
+		}
+		for j := 0; j < field.Type.NumField(); j++ {
+			check(field.Name + "." + field.Type.Field(j).Name)
 		}
 	}
 
 	// ⚠ Report coverage. A test that skipped everything would pass identically to one that
 	// checked it all, and this test skips by design.
-	t.Logf("checked %d of %d Options fields", checked, ot.NumField())
-	if checked < ot.NumField()-len(skip) {
-		t.Errorf("only %d of %d fields were checkable — the skip list may be stale", checked, ot.NumField()-len(skip))
+	t.Logf("checked %d of %d Options fields", checked, total)
+	if checked < total-len(skip) {
+		t.Errorf("only %d of %d fields were checkable — the skip list may be stale", checked, total-len(skip))
 	}
 
 	sort.Strings(lost)
 	if len(lost) > 0 {
-		t.Errorf("Options fields that never reach Server:\n  %s", strings.Join(lost, "\n  "))
+		t.Errorf("Options fields that never reach a handler:\n  %s", strings.Join(lost, "\n  "))
 	}
 }

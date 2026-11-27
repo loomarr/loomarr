@@ -58,10 +58,10 @@ func newSystemDatabaseHarness(t *testing.T, svc system.DatabaseService) *apiHarn
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
-			Store:    defaults.Store,
-			Auth:     defaults.Auth,
-			Log:      defaults.Log,
-			Database: svc,
+			Store:  defaults.Store,
+			Auth:   defaults.Auth,
+			Log:    defaults.Log,
+			System: api.SystemOptions{Database: svc},
 		})
 	})
 }

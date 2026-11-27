@@ -14,9 +14,9 @@ import (
 // out of the titles and comes back in its place when it returns.
 func TestCollectionsKeepTheHouseholdsOrder(t *testing.T) {
 	h := newHarness(t)
-	h.file("Alpha (1999) {tmdb-90000651}/Alpha.mkv", 10)
-	bravo := h.file("Bravo (2003) {tmdb-90000652}/Bravo.mkv", 10)
-	h.file("Charlie (2005) {tmdb-90000653}/Charlie.mkv", 10)
+	h.file("Alpha {tmdb-90000651}/Alpha.mkv", 10)
+	bravo := h.file("Bravo {tmdb-90000652}/Bravo.mkv", 10)
+	h.file("Charlie {tmdb-90000653}/Charlie.mkv", 10)
 	h.run()
 
 	lib := &Library{ItemStore: h.st, CollectionStore: h.st, Scanner: NewScanner(h.im, 0)}
@@ -38,7 +38,7 @@ func TestCollectionsKeepTheHouseholdsOrder(t *testing.T) {
 	}
 	titles := func() []string {
 		t.Helper()
-		c, err := lib.Collection(ctx, id)
+		c, err := lib.Collection(ctx, id, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -67,13 +67,13 @@ func TestCollectionsKeepTheHouseholdsOrder(t *testing.T) {
 	if got := titles(); !slices.Equal(got, []string{"Charlie", "Alpha"}) {
 		t.Fatalf("titles after Bravo left = %v, want Charlie, Alpha", got)
 	}
-	list, err := lib.Collections(ctx)
+	list, err := lib.Collections(ctx, false)
 	if err != nil || len(list) != 1 || len(list[0].Titles) != 2 {
 		t.Fatalf("collections = %+v, %v", list, err)
 	}
 
 	// It comes back in its place.
-	h.file("Bravo (2003) {tmdb-90000652}/Bravo.mkv", 10)
+	h.file("Bravo {tmdb-90000652}/Bravo.mkv", 10)
 	h.run()
 	if got := titles(); !slices.Equal(got, []string{"Charlie", "Bravo", "Alpha"}) {
 		t.Fatalf("titles after Bravo returned = %v, want Charlie, Bravo, Alpha", got)
@@ -96,7 +96,7 @@ func TestCollectionsRefuseAnUnknownTitle(t *testing.T) {
 	if _, err := lib.CreateCollection(ctx, "Strays", "", []string{alpha, "90000662"}); !errors.Is(err, librarystore.ErrUnknownLibraryItem) {
 		t.Fatalf("create = %v, want ErrUnknownLibraryItem", err)
 	}
-	if list, err := lib.Collections(ctx); err != nil || len(list) != 0 {
+	if list, err := lib.Collections(ctx, false); err != nil || len(list) != 0 {
 		t.Fatalf("collections after a refused create = %+v, %v", list, err)
 	}
 }

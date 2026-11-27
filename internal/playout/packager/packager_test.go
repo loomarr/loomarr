@@ -929,6 +929,84 @@ func TestSlateNeverDefinesTheChannelInit(t *testing.T) {
 	}
 }
 
+// A tune-in that lands on a card (a break with no ads, the generated bumper card) has no item to
+// define the init until the card ends, and the slate never defines it (#3960). With longer left than
+// RunAhead + StartDeadline, the start used to fail. The init is now read from the item after the
+// card (passing over further cards), so the card airs at once, at the usual run-ahead, and the item
+// airs when the card ends with the init the probe read.
+func TestTuneInOnACardReadsTheInitFromTheItemAfterIt(t *testing.T) {
+	const runAhead = 2 * time.Second
+	cardEnds := time.Now().Add(4 * time.Second) // > runAhead + StartDeadline
+	var opens atomic.Int32
+	sched := func(ctx context.Context, at time.Time) (Item, error) {
+		if at.Before(cardEnds) {
+			// Card slots of at most a second: the probe passes over several to reach the item.
+			return Item{Label: "card", Duration: min(cardEnds.Sub(at), time.Second)}, nil
+		}
+		return Item{Label: "prog", Duration: time.Hour, Open: func(ictx context.Context, slot Slot) (io.ReadCloser, error) {
+			opens.Add(1)
+			return synth{label: "prog"}.encode(t, ictx, slot), nil
+		}}, nil
+	}
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: runAhead, FirstManifest: time.Second,
+		StartDeadline: 500 * time.Millisecond}, sched, readySlate(testSlate(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := start(t, p)
+	wctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := p.AwaitPlaylist(wctx); err != nil {
+		t.Fatalf("AwaitPlaylist on a card longer than run-ahead + start deadline: %v (stats %+v)", err, p.Stats())
+	}
+	if !SameDecoderConfig(p.Init(), encodeInit(t, testSPS)) {
+		t.Fatal("the channel init is not the item's")
+	}
+	if s := p.Stats(); s.Slates == 0 || s.Items != 0 || opens.Load() != 1 {
+		t.Fatalf("stats %+v, opens %d: want the card on air, the item opened once for its init and not airing yet",
+			s, opens.Load())
+	}
+	p.mu.Lock() // the window, not p.v: Run owns p.v and is still appending
+	last := p.window.segs[len(p.window.segs)-1]
+	lead := ticks(last.start+last.dur) - time.Since(p.epoch)
+	p.mu.Unlock()
+	if lead > runAhead+time.Second+100*time.Millisecond {
+		t.Fatalf("timeline leads the clock by %v with a %v run-ahead", lead, runAhead)
+	}
+	deadline := time.Now().Add(6 * time.Second)
+	for p.Stats().Items == 0 && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if s := p.Stats(); s.Items == 0 || s.DecoderMismatch != 0 || opens.Load() != 2 {
+		t.Fatalf("stats %+v, opens %d: want the item on air after the card, matching the init it gave", s, opens.Load())
+	}
+}
+
+// A channel with nothing but cards still fails its start: the probe finds no item within
+// InitLookAhead and leaves the start as it was.
+func TestTuneInOnCardsAloneStillFailsTheStart(t *testing.T) {
+	var lookups atomic.Int32
+	sched := func(ctx context.Context, at time.Time) (Item, error) {
+		lookups.Add(1)
+		return Item{Label: "card", Duration: time.Second}, nil
+	}
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: 100 * time.Millisecond,
+		InitLookAhead: 5 * time.Second, StartDeadline: 400 * time.Millisecond}, sched, readySlate(testSlate(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := start(t, p)
+	wctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := p.AwaitPlaylist(wctx); !errors.Is(err, ErrNoStart) {
+		t.Fatalf("AwaitPlaylist on cards alone = %v, want ErrNoStart", err)
+	}
+	// The probe's five lookups, then the run loop's own, paced by the slate.
+	if n := lookups.Load(); n > 12 {
+		t.Fatalf("%d schedule lookups in 400 ms: the probe should stop at InitLookAhead", n)
+	}
+}
+
 // With the slate barred from the init, a tune-in slate only delays the first manifest: a first item
 // that is slow to produce (a cold HDR tone-map took over 3 s live) is waited for, not slated,
 // re-resolved and re-spawned.

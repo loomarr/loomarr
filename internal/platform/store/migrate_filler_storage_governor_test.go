@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 )
 
@@ -10,7 +9,7 @@ func TestFillerStorageGovernorMigrationSQLite(t *testing.T) {
 	t.Parallel()
 	t.Run("moves a durable positive allowance", func(t *testing.T) {
 		ctx := context.Background()
-		s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "storage-governor.db"))
+		s, err := openSQLite(ctx, sqliteFileAt(t, 111, storeConnections))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -48,7 +47,7 @@ func TestFillerStorageGovernorMigrationSQLite(t *testing.T) {
 
 	t.Run("keeps an existing new allowance and removes the obsolete key", func(t *testing.T) {
 		ctx := context.Background()
-		s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "storage-governor-existing.db"))
+		s, err := openSQLite(ctx, sqliteFileAt(t, 111, storeConnections))
 		if err != nil {
 			t.Fatal(err)
 		}

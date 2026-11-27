@@ -1,7 +1,10 @@
+import * as authApi from "@loomarr/api/endpoints/auth";
+import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { Disclosure } from "@loomarr/design-system";
+import { Card, Disclosure, Stack, Text } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { InstallationLocation } from "@/components/loomarr/settings/installation-location";
 import { EncryptionSettings } from "@/settings/encryption-settings";
 import { PairedDevices } from "@/settings/paired-devices";
@@ -12,14 +15,18 @@ import { useSettingsEntries } from "@/settings/use-settings-entries";
 const publicURLKey = SettingKey.AccessPublicURL;
 
 const SsoNote = () => (
-  <section className="border-border rounded-lg border p-4">
-    <h2 className="text-sm font-medium">How sign-in works with a provider</h2>
-    <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-      Your provider proves who someone is. The People list decides whether they can get in — signing in with
-      your provider does not create an account here, and it does not set anyone's role. Add people under
-      People first, then they can sign in either way.
-    </p>
-  </section>
+  <Card backgroundColor="transparent" borderRadius={8} padding={16} render="section">
+    <Stack gap="1">
+      <Text as="h2" textRole="cardLabel">
+        How sign-in works with a provider
+      </Text>
+      <Text as="p" textRole="compact" tone="secondary">
+        Your provider proves who someone is. The People list decides whether they can get in — signing in with
+        your provider does not create an account here, and it does not set anyone's role. Add people under
+        People first, then they can sign in either way.
+      </Text>
+    </Stack>
+  </Card>
 );
 
 interface PublicURLDefaultProps {
@@ -89,10 +96,10 @@ const AccessSettings = () => {
             description="Generated credentials and database encryption for unusual administration work."
             label="Advanced access controls"
           >
-            <div className="flex flex-col gap-4">
+            <Stack gap="4">
               <SecretsSettings />
               <EncryptionSettings />
-            </div>
+            </Stack>
           </Disclosure>
         </>
       }
@@ -124,6 +131,16 @@ const AccessSettings = () => {
 
 const Route = createFileRoute("/_authed/settings/access")({
   component: AccessSettings,
+  // The paired devices and the encryption status each part of the page reads for itself and
+  // answers for when it fails, so they are warmed (a prefetch never rejects). The settings list is
+  // the layout's. Admin-only, like the page.
+  loader: async ({ context: { queryClient } }) => {
+    if (!(await viewerIsAdmin(queryClient))) return;
+    await Promise.all([
+      queryClient.prefetchQuery(authApi.getDeviceListQueryOptions()),
+      queryClient.prefetchQuery(systemApi.getSystemEncryptionStatusQueryOptions({ query: { retry: false } })),
+    ]);
+  },
 });
 
 export { Route };

@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
+	agentsapi "github.com/loomarr/loomarr/internal/api/agents"
 	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
@@ -66,6 +67,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	// profiler routes are Hidden on both paths anyway (they exist only when a flag is set), and the
 	// exporter has no Options to read the flag from.
 	opsapi.New(opsapi.Deps{}, true).Register(humaAPI)
+	agentsapi.New(agentsapi.Deps{Log: log}).Register(humaAPI)
 	return srv, humaAPI
 }
 
@@ -83,6 +85,116 @@ func EventFrameTypes() map[string]string {
 		out[name] = reflect.TypeOf(v).Name()
 	}
 	return out
+}
+
+// UnboundedInputArrays reports every array a caller supplies, as a query or path parameter or
+// anywhere in a JSON request body, that declares no maxItems. A caller-sized collection fans out
+// into store reads and provider calls, so each one carries its ceiling in its schema.
+//
+// Returns "METHOD /path (operation-id): where" so a failure names the field.
+func UnboundedInputArrays() ([]string, error) {
+	_, humaAPI := schemaOnlyAPI(slog.New(slog.DiscardHandler))
+	spec := humaAPI.OpenAPI()
+	if spec == nil || spec.Paths == nil || spec.Components == nil {
+		return nil, fmt.Errorf("api: no operations registered")
+	}
+	registry := spec.Components.Schemas
+	var found []string
+	var walk func(route, where string, s *huma.Schema, seen map[string]bool)
+	walk = func(route, where string, s *huma.Schema, seen map[string]bool) {
+		if s == nil {
+			return
+		}
+		if s.Ref != "" {
+			// seen holds the refs on this path only, so a recursive schema ends, and a schema shared
+			// by two fields is reported under both.
+			if seen[s.Ref] {
+				return
+			}
+			seen[s.Ref] = true
+			walk(route, where, registry.SchemaFromRef(s.Ref), seen)
+			delete(seen, s.Ref)
+			return
+		}
+		if s.Type == huma.TypeArray && s.MaxItems == nil {
+			found = append(found, route+": "+where)
+		}
+		walk(route, where+"[]", s.Items, seen)
+		for name, p := range s.Properties {
+			walk(route, where+"."+name, p, seen)
+		}
+		for _, group := range [][]*huma.Schema{s.OneOf, s.AnyOf, s.AllOf} {
+			for _, sub := range group {
+				walk(route, where, sub, seen)
+			}
+		}
+	}
+	for path, item := range spec.Paths {
+		for method, op := range map[string]*huma.Operation{
+			http.MethodGet: item.Get, http.MethodPost: item.Post, http.MethodPut: item.Put,
+			http.MethodPatch: item.Patch, http.MethodDelete: item.Delete,
+		} {
+			if op == nil {
+				continue
+			}
+			route := fmt.Sprintf("%s %s (%s)", method, path, op.OperationID)
+			for _, p := range op.Parameters {
+				walk(route, p.In+" "+p.Name, p.Schema, map[string]bool{})
+			}
+			if op.RequestBody != nil {
+				if media := op.RequestBody.Content["application/json"]; media != nil {
+					walk(route, "body", media.Schema, map[string]bool{})
+				}
+			}
+		}
+	}
+	sort.Strings(found)
+	return found, nil
+}
+
+// RegisteredOperation is one mounted operation with the role it requires and its query
+// parameters' names.
+type RegisteredOperation struct {
+	Method, Path, ID string
+	Role             httpcore.Role
+	Query            []string
+}
+
+// RegisteredOperations lists every operation the registry mounts, sorted by path then method, so
+// an authorization test enumerates the routes themselves rather than a list kept by hand. Role is
+// the one the middleware enforces, so an operation that declared none reads as admin.
+func RegisteredOperations() ([]RegisteredOperation, error) {
+	_, humaAPI := schemaOnlyAPI(slog.New(slog.DiscardHandler))
+	spec := humaAPI.OpenAPI()
+	if spec == nil || spec.Paths == nil {
+		return nil, fmt.Errorf("api: no operations registered")
+	}
+	var out []RegisteredOperation
+	for path, item := range spec.Paths {
+		for method, op := range map[string]*huma.Operation{
+			http.MethodGet: item.Get, http.MethodPost: item.Post, http.MethodPut: item.Put,
+			http.MethodPatch: item.Patch, http.MethodDelete: item.Delete,
+		} {
+			if op == nil {
+				continue
+			}
+			reg := RegisteredOperation{Method: method, Path: path, ID: op.OperationID, Role: httpcore.RoleForOperation(op)}
+			for _, p := range op.Parameters {
+				if p != nil && p.In == "query" {
+					reg.Query = append(reg.Query, p.Name)
+				}
+			}
+			sort.Strings(reg.Query)
+			out = append(out, reg)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Path != out[j].Path {
+			return out[i].Path < out[j].Path
+		}
+		return out[i].Method < out[j].Method
+	})
+	return out, nil
 }
 
 // OperationsMissingARole reports every registered operation that declares no required role

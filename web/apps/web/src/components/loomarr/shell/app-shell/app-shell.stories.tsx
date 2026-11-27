@@ -1,3 +1,4 @@
+import { Stack, Text } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { withRouter } from "@/test/story-utils";
 import { AppShell } from "./app-shell";
@@ -5,10 +6,14 @@ import { AppShell } from "./app-shell";
 const noop = () => {};
 
 const body = (
-  <div className="p-6">
-    <h1 className="text-xl font-semibold">Channels</h1>
-    <p className="text-muted-foreground mt-1 text-sm">The broadcast console frame.</p>
-  </div>
+  <Stack gap="1" padding={24}>
+    <Text as="h1" textRole="title">
+      Channels
+    </Text>
+    <Text as="p" textRole="compact" tone="secondary">
+      The broadcast console frame.
+    </Text>
+  </Stack>
 );
 
 // The console frame (§3): admin (Users + Settings visible) · member (they're hidden).

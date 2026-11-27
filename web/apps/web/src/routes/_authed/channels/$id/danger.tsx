@@ -22,6 +22,7 @@ const DangerScreen = () => {
   );
 };
 
+// no-loader: reads only the channel the layout's loader already ensured
 const Route = createFileRoute("/_authed/channels/$id/danger")({
   component: DangerScreen,
 });

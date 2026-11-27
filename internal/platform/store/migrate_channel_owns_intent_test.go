@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 )
 
@@ -12,7 +11,7 @@ import (
 func TestChannelOwnsIntentMigrationSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "channel-owns-intent.db"))
+	s, err := openSQLite(ctx, sqliteFileAt(t, 144, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

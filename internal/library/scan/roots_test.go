@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,14 +15,22 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// fakeDisk answers readability from a fixed set of folders.
+// fakeDisk answers from a fixed set of folders, readable ones and of those the empty ones, and a
+// fixed set of files.
 type fakeDisk struct {
 	readable map[string]bool
+	empty    map[string]bool
+	files    map[string]bool
 	mounts   []string
 }
 
-func (d fakeDisk) Readable(_ context.Context, path string) bool { return d.readable[path] }
-func (d fakeDisk) Mounts() []string                             { return d.mounts }
+func (d fakeDisk) Look(_ context.Context, path string) Folder {
+	return Folder{Readable: d.readable[path], Empty: d.empty[path]}
+}
+
+func (d fakeDisk) File(_ context.Context, path string) bool { return d.files[path] }
+
+func (d fakeDisk) Mounts() []string { return d.mounts }
 
 func folders(list ...string) func(context.Context) ([]string, error) {
 	return func(context.Context) ([]string, error) { return list, nil }
@@ -147,9 +156,60 @@ func TestDiscoverKeepsFailedSourceAndMarksOffline(t *testing.T) {
 	}
 }
 
-// Using a folder, or typing one in, asks for a pass at once; releasing one does not.
+// Stop using a folder forgets its files at once, with no pass run: a pass would wait for the
+// running one's reading, which on a first import is most of it.
+func TestStopUsingForgetsAtOnce(t *testing.T) {
+	h := newHarness(t)
+	h.file("Lima (2011)/Lima (2011).mkv", 10)
+	h.run()
+	ctx := context.Background()
+	if rows, err := h.st.LibraryFiles(ctx, h.root); err != nil || len(rows) != 1 {
+		t.Fatalf("%d files before release, %v", len(rows), err)
+	}
+	lib := &Library{Roots: &Roots{Store: h.st, Now: time.Now}, Scanner: NewScanner(h.im, time.Hour)}
+	if err := lib.SetInUse(ctx, h.root, false); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		rows, err := h.st.LibraryFiles(ctx, h.root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d files still kept after Stop using, with no pass run", len(rows))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// With no scanner (it failed to start), Stop using still releases the folder, and leaves the
+// forgetting to the scanner's first pass once there is one.
+func TestStopUsingWithNoScannerReleasesTheFolder(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	lib := &Library{Roots: &Roots{Store: h.st, Now: time.Now}}
+	if err := lib.SetInUse(ctx, h.root, false); err != nil {
+		t.Fatal(err)
+	}
+	roots, err := h.st.LibraryRoots(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range roots.Roots {
+		if r.Path == h.root && r.InUse {
+			t.Fatal("the folder is still in use")
+		}
+	}
+}
+
+// Using a folder, releasing one, typing one in, or mapping one by hand asks for a pass at once;
+// clearing a mapping does not.
 func TestUsingAFolderAsksForAPass(t *testing.T) {
-	disk := fakeDisk{readable: map[string]bool{"/media/tv": true, "/mnt/extra": true}}
+	disk := fakeDisk{readable: map[string]bool{"/media/tv": true, "/mnt/extra": true, "/mnt/shows": true}}
 	h := newHarness(t)
 	roots := newRoots(t, disk, "", Source{Authority: "sonarr", Folders: folders("/media/tv")})
 	lib := &Library{Roots: roots, Scanner: NewScanner(h.im, time.Hour)}
@@ -175,8 +235,9 @@ func TestUsingAFolderAsksForAPass(t *testing.T) {
 	if err := lib.SetInUse(ctx, "/media/tv", false); err != nil {
 		t.Fatal(err)
 	}
-	if asked() {
-		t.Fatal("releasing a folder asked for a pass")
+	// Releasing a folder forgets its files at once (docs/design/library.md), which a pass does.
+	if !asked() {
+		t.Fatal("Stop using did not ask for a pass")
 	}
 	if err := lib.Add(ctx, "/mnt/extra"); err != nil {
 		t.Fatal(err)
@@ -186,6 +247,52 @@ func TestUsingAFolderAsksForAPass(t *testing.T) {
 	}
 	if err := lib.SetInUse(ctx, "/nowhere", true); err == nil || asked() {
 		t.Fatalf("an unknown folder: err %v, asked %v", err, asked())
+	}
+	if err := lib.SetMapping(ctx, "sonarr", "/media/tv", "/mnt/shows"); err != nil {
+		t.Fatal(err)
+	}
+	if !asked() {
+		t.Fatal("a mapping set by hand did not ask for a pass")
+	}
+	if err := lib.SetMapping(ctx, "sonarr", "/media/tv", ""); err != nil {
+		t.Fatal(err)
+	}
+	if asked() {
+		t.Fatal("clearing a mapping asked for a pass")
+	}
+	if err := lib.SetMapping(ctx, "sonarr", "/nowhere", "/mnt/shows"); err == nil || asked() {
+		t.Fatalf("an unknown mapping: err %v, asked %v", err, asked())
+	}
+}
+
+// An empty folder is usually a share that isn't mounted: it is added, but the library isn't
+// called healthy while it stays empty, and is again once something is in it.
+func TestAnEmptyFolderIsAddedButNotHealthy(t *testing.T) {
+	disk := fakeDisk{
+		readable: map[string]bool{"/mnt/movies": true, "/mnt/tv": true},
+		empty:    map[string]bool{"/mnt/tv": true},
+	}
+	r := newRoots(t, disk, "")
+	ctx := context.Background()
+	for _, path := range []string{"/mnt/movies", "/mnt/tv"} {
+		if err := r.Add(ctx, path); err != nil {
+			t.Fatalf("add %s: %v", path, err)
+		}
+	}
+	all, err := r.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := StatusOf(all); got.Health != HealthFolderEmpty || got.InUse != 2 || got.Empty != 1 {
+		t.Fatalf("with tv empty: %+v, want folder_empty with 2 in use, 1 empty", got)
+	}
+
+	delete(disk.empty, "/mnt/tv") // the share is mounted again
+	if all, _, err = r.Discover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := StatusOf(all); got.Health != HealthOK || got.Empty != 0 {
+		t.Fatalf("with tv mounted: %+v, want ok and nothing empty", got)
 	}
 }
 
@@ -244,13 +351,19 @@ func TestParseMountInfo(t *testing.T) {
 	}
 }
 
-func TestOSDiskReadable(t *testing.T) {
+func TestOSDiskLook(t *testing.T) {
 	dir := t.TempDir()
 	var d OSDisk
-	if !d.Readable(context.Background(), dir) {
-		t.Fatal("an empty directory is readable")
+	if got := d.Look(context.Background(), dir); got != (Folder{Readable: true, Empty: true}) {
+		t.Fatalf("an empty directory: %+v, want readable and empty", got)
 	}
-	if d.Readable(context.Background(), filepath.Join(dir, "missing")) {
-		t.Fatal("a missing directory is not readable")
+	if err := os.Mkdir(filepath.Join(dir, "Films"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if got := d.Look(context.Background(), dir); got != (Folder{Readable: true}) {
+		t.Fatalf("a directory with a folder in it: %+v, want readable and not empty", got)
+	}
+	if got := d.Look(context.Background(), filepath.Join(dir, "missing")); got.Readable || got.Empty {
+		t.Fatalf("a missing directory: %+v, want neither readable nor empty", got)
 	}
 }

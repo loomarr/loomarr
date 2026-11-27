@@ -1,7 +1,7 @@
 import type { FetchFillerSourceOutputBody } from "@loomarr/api/models/fetchFillerSourceOutputBody";
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import { formatRelative } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
+import { Action, Card, Stack, Text, TextLink } from "@loomarr/design-system";
 import { useState } from "react";
 
 const checkResultText = (source: FillerSourceDTO, result: FetchFillerSourceOutputBody) => {
@@ -55,37 +55,38 @@ const SourceStatus = ({ source, fetching, fetchError, onFetch }: SourceStatusPro
   const [checkResult, setCheckResult] = useState<FetchFillerSourceOutputBody>();
 
   return (
-    <section aria-labelledby="source-status-heading" className="flex flex-col gap-3">
+    <Stack aria-labelledby="source-status-heading" gap="control" render="section">
       <div>
-        <h3 id="source-status-heading" className="font-medium">
+        <Text as="h3" id="source-status-heading" textRole="heading">
           {readinessLabel(source)}
-        </h3>
-        <p className="text-muted-foreground mt-1 text-sm">
-          {source.detail}
-          {source.onForPlace &&
-            source.enabled &&
-            " Loomarr switched this on because it covers TV stations near your location. If you switch it off, it stays off."}
-        </p>
-        <p className="text-muted-foreground mt-1 text-xs">
-          {source.incoming > 0
-            ? `${source.count} ready · `
-            : `${source.count} ${source.count === 1 ? "clip" : "clips"}`}
-          {source.incoming > 0 && (
-            <a
-              href="/filler/incoming"
-              className="decoration-border hover:text-foreground underline underline-offset-2"
-            >
-              {`${source.incoming} being checked`}
-            </a>
-          )}
-          {source.lastCheckedAt
-            ? ` · last checked ${formatRelative(source.lastCheckedAt)}`
-            : " · not checked yet"}
-        </p>
+        </Text>
+        <Stack marginTop={4}>
+          <Text as="p" textRole="compact" tone="secondary">
+            {source.detail}
+            {source.onForPlace &&
+              source.enabled &&
+              " Loomarr switched this on because it covers TV stations near your location. If you switch it off, it stays off."}
+          </Text>
+        </Stack>
+        <Stack marginTop={4}>
+          <Text as="p" textRole="hint" tone="secondary">
+            {source.incoming > 0
+              ? `${source.count} ready · `
+              : `${source.count} ${source.count === 1 ? "clip" : "clips"}`}
+            {source.incoming > 0 && (
+              <TextLink href="/filler/incoming" tone="muted">{`${source.incoming} being checked`}</TextLink>
+            )}
+            {source.lastCheckedAt
+              ? ` · last checked ${formatRelative(source.lastCheckedAt)}`
+              : " · not checked yet"}
+          </Text>
+        </Stack>
         {source.kind === "folder" && (
-          <p className="text-muted-foreground mt-3 font-mono text-xs break-all">
-            {source.uri ?? source.target}
-          </p>
+          <Stack marginTop={12}>
+            <Text as="p" textRole="mono" wordBreak="break-all">
+              {source.uri ?? source.target}
+            </Text>
+          </Stack>
         )}
       </div>
 
@@ -103,16 +104,26 @@ const SourceStatus = ({ source, fetching, fetchError, onFetch }: SourceStatusPro
       )}
 
       {checkResult && checkResult.sourceId === source.id && (
-        <p role="status" className="bg-muted/40 rounded-md px-3 py-2 text-sm">
-          {checkResultText(source, checkResult)}
-        </p>
+        <Stack
+          backgroundColor="washElevated40"
+          borderRadius={6}
+          paddingHorizontal={12}
+          paddingVertical={8}
+          role="status"
+        >
+          <Text as="p" textRole="compact">
+            {checkResultText(source, checkResult)}
+          </Text>
+        </Stack>
       )}
       {fetchError && (
-        <p role="alert" className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm">
-          {fetchError.detail}
-        </p>
+        <Card paddingHorizontal={12} paddingVertical={8} role="alert" tone="caution">
+          <Text as="p" textRole="compact" tone="danger">
+            {fetchError.detail}
+          </Text>
+        </Card>
       )}
-    </section>
+    </Stack>
   );
 };
 

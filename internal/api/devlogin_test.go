@@ -39,18 +39,20 @@ func newDevAccessHarness(t *testing.T, config devAccessHarnessConfig) *apiHarnes
 		}
 		n := 0
 		return api.Router(defaults.Log, api.Options{
-			Store:    defaults.Store,
-			Auth:     sessionAuth(mgr, "break-glass-token"),
-			Log:      defaults.Log,
-			Login:    auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
-			Sessions: mgr,
-			// Provision mounts /v1/setup/state so the off case cannot pass by
-			// decoding a 404 response into a zero-valued state.
-			Provision:    auth.NewProvisioner(defaults.Store, lib, func() string { n++; return "local-" + string(rune('a'+n-1)) }, time.Now),
+			Store:        defaults.Store,
+			Auth:         sessionAuth(mgr, "break-glass-token"),
+			Log:          defaults.Log,
 			CookieSecure: "false",
-			DevLogin:     config.DevLogin,
-			Pprof:        config.Pprof,
-			Demo:         config.Demo,
+			People: api.PeopleOptions{
+				Login:    auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+				Sessions: mgr,
+				// Provision mounts /v1/setup/state so the off case cannot pass by
+				// decoding a 404 response into a zero-valued state.
+				Provision: auth.NewProvisioner(defaults.Store, lib, func() string { n++; return "local-" + string(rune('a'+n-1)) }, time.Now),
+				DevLogin:  config.DevLogin,
+				Demo:      config.Demo,
+			},
+			Ops: api.OpsOptions{Pprof: config.Pprof},
 		})
 	})
 }

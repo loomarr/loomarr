@@ -3,9 +3,9 @@
 //
 // It is the frontend mirror of Go's `safeReturnPath` (internal/api/ssoroutes.go:296-309), which
 // guards the SSO `next` param. Two validators exist because two different values reach two
-// different navigations — the server's `next` and the SPA's `redirect` — and the SPA's was
-// unguarded: `/login?redirect=https://evil.example` on an already-signed-in browser became an
-// off-site `window.location.replace()`, because the guard's `redirect({ href })` is force-committed
+// different navigations — the server's `next` and the SPA's `redirect` — and the SPA's needs its
+// own guard: unguarded, `/login?redirect=https://evil.example` on an already-signed-in browser
+// becomes an off-site `window.location.replace()`, because the guard's `redirect({ href })` is force-committed
 // with `replace: true` by the router.
 //
 // ⚠ **PARSED, not prefix-matched, and the backslash is why.** The obvious check —

@@ -22,7 +22,7 @@ func TestPostgresSchemaIsDescribedAndCommented(t *testing.T) {
 	defer func() { _ = st.Close() }()
 	db := st.(*sqlStore).db
 
-	live, err := introspectPostgres(ctx, db)
+	live, err := schemadoc.IntrospectPostgres(ctx, db)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -37,7 +37,7 @@ const meta = {
   decorators: [widthFrame(760)],
   parameters: { layout: "fullscreen" },
   render: (args) => (
-    <div className="h-screen w-screen p-6">
+    <div style={{ boxSizing: "border-box", height: "100vh", padding: 24, width: "100vw" }}>
       <InvitationDialog {...args} portalContainer={document.getElementById("storybook-root")} />
     </div>
   ),

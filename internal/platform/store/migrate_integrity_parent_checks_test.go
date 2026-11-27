@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -29,8 +28,9 @@ var integrityParentRebuilt = []string{
 // migration with foreign keys on as production opens SQLite, and proves the rows stayed, every
 // table kept its shape, deleting a parent still cascades, and a misspelt state is refused.
 func TestIntegrityParentChecksMigration(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "integrity.db")+"?_pragma=foreign_keys(on)")
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, integrityParentChecksMigration-1, foreignKeyConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

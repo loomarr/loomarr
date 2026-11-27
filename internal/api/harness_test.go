@@ -50,10 +50,10 @@ func newAPIHarness(t *testing.T) *apiHarness {
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
-			Store:        defaults.Store,
-			Auth:         defaults.Auth,
-			Log:          defaults.Log,
-			BackupSQLite: store.SQLiteBackuper(defaults.Store),
+			Store:  defaults.Store,
+			Auth:   defaults.Auth,
+			Log:    defaults.Log,
+			System: api.SystemOptions{BackupSQLite: store.SQLiteBackuper(defaults.Store)},
 		})
 	})
 }

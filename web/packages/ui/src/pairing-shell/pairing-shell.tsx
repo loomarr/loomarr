@@ -6,7 +6,6 @@ import {
   Badge,
   BrandLockup,
   BrandMark,
-  Field,
   QrCode,
   Screen,
   ScrollFrame,
@@ -14,9 +13,19 @@ import {
   semanticSpace,
   Text,
 } from "@loomarr/design-system";
-import { type ComponentRef, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useStore } from "@tanstack/react-form";
+import {
+  type ComponentRef,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, type ScrollView } from "react-native";
 
+import { useUiForm } from "../form-kit";
 import type { ApprovalBrowser, PairingShellProps } from "./pairing-shell.type";
 import { PhoneApproval } from "./phone-approval";
 import { serverAddressLabel } from "./server-address";
@@ -58,7 +67,11 @@ const PairingShell = ({
     discovery?.snapshot ?? readEmptyDiscovery,
     discovery?.snapshot ?? readEmptyDiscovery,
   );
-  const [serverUrl, setServerUrl] = useState(initialServerUrl ?? "");
+  const form = useUiForm({
+    defaultValues: { serverUrl: initialServerUrl ?? "" },
+    onSubmit: ({ value }) => void session.pair(value.serverUrl),
+  });
+  const serverUrl = useStore(form.store, (current) => current.values.serverUrl);
   const [manualEntry, setManualEntry] = useState(!discovery);
   const [, setTick] = useState(0);
   // A phone's keyboard covers the bottom of the page, where Continue is: when it opens, the page
@@ -91,8 +104,8 @@ const PairingShell = ({
   // The rejected text goes back into the field, so the viewer fixes it rather than retypes it.
   const rejectedInput = state.status === "failed" ? state.input : undefined;
   useEffect(() => {
-    if (rejectedInput !== undefined) setServerUrl(rejectedInput);
-  }, [rejectedInput]);
+    if (rejectedInput !== undefined) form.setFieldValue("serverUrl", rejectedInput);
+  }, [form, rejectedInput]);
   const choosingServer = state.status === "needs-server" || invalidAddress;
   useEffect(() => {
     if (!choosingServer || !discovery || !discoveryForeground) {
@@ -123,7 +136,23 @@ const PairingShell = ({
     session,
     allowServerEntry,
     serverUrl,
-    setServerUrl,
+    <form.AppField name="serverUrl">
+      {(field) => (
+        <field.TextField
+          accessibilityLabel="Loomarr server address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          density={density}
+          error={state.status === "failed" ? state.message : undefined}
+          hasTVPreferredFocus={density === "tv"}
+          keyboardType="url"
+          onSubmitEditing={() => void form.handleSubmit()}
+          placeholder="http://loomarr.local:8080"
+          returnKeyType="go"
+        />
+      )}
+    </form.AppField>,
+    () => void form.handleSubmit(),
     discovery ? discoveryState : undefined,
     manualEntry,
     setManualEntry,
@@ -186,7 +215,8 @@ const pairingContent = (
   session: PairingShellProps["session"],
   allowServerEntry: boolean,
   serverUrl: string,
-  setServerUrl: (value: string) => void,
+  serverEntry: ReactNode,
+  submitServer: () => void,
   discovery: ServerDiscoverySnapshot | undefined,
   manualEntry: boolean,
   setManualEntry: (value: boolean) => void,
@@ -246,21 +276,8 @@ const pairingContent = (
         {allowServerEntry ? (
           manualEntry || addressError ? (
             <>
-              <Field
-                accessibilityLabel="Loomarr server address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                density={density}
-                error={addressError}
-                hasTVPreferredFocus={density === "tv"}
-                keyboardType="url"
-                onChangeText={setServerUrl}
-                onSubmitEditing={() => void session.pair(serverUrl)}
-                placeholder="http://loomarr.local:8080"
-                returnKeyType="go"
-                value={serverUrl}
-              />
-              <Action density={density} onPress={() => void session.pair(serverUrl)}>
+              {serverEntry}
+              <Action density={density} onPress={submitServer}>
                 Continue
               </Action>
             </>

@@ -1,5 +1,6 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Stack } from "@loomarr/design-system";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { ActivityFeed } from "@/components/loomarr/dashboard/activity-feed";
@@ -7,9 +8,9 @@ import { ServiceControl } from "@/components/loomarr/dashboard/service-control";
 import { ServicesPanel } from "@/components/loomarr/dashboard/services-panel";
 import { useRestartWatchContext } from "@/dashboard/restart-watch-provider";
 
-// ServerStatus — the connected services, recent activity and the restart control, moved here from
-// the old Dashboard when Home replaced it (#1659, Q-H7: the operator panels keep working, on This
-// server's routes). Admin-only, like the page that hosts it.
+// ServerStatus — the connected services, recent activity and the restart control: the operator
+// panels, on This server's routes rather than on Home (#1659, Q-H7). Admin-only, like the page that
+// hosts it.
 const ServerStatus = () => {
   const navigate = useNavigate();
   // ⚠ Services POLLS (30s); the feed does NOT (§12). A probe result only exists because the
@@ -36,34 +37,43 @@ const ServerStatus = () => {
   const cost = unwrap(restartCost.data);
 
   return (
-    <div className="mb-6 flex flex-col gap-6 *:shrink-0">
+    // Each panel keeps its height inside the scrolling page, so every one is held from shrinking.
+    <Stack gap="section" marginBottom={24}>
       {services.data?.status === 200 ? (
-        <ServicesPanel
-          view={services.data.data}
-          refreshing={services.isFetching}
-          // "Fix →" routes to the settings that own the failing connection. A red dot
-          // with nowhere to go is a puzzle, not a diagnosis (§12).
-          onFix={(group) => navigate({ to: "/settings/connections", hash: group })}
-          onDiagnose={(subsystem) =>
-            navigate({
-              to: "/settings/system/diagnostics",
-              search: { view: "logs", level: "error", subsystem },
-            })
-          }
-        />
+        <Stack flexShrink={0}>
+          <ServicesPanel
+            view={services.data.data}
+            refreshing={services.isFetching}
+            // "Fix →" routes to the settings that own the failing connection. A red dot
+            // with nowhere to go is a puzzle, not a diagnosis (§12).
+            onFix={(group) => navigate({ to: "/settings/connections", hash: group })}
+            onDiagnose={(subsystem) =>
+              navigate({
+                to: "/settings/system/diagnostics",
+                search: { view: "logs", level: "error", subsystem },
+              })
+            }
+          />
+        </Stack>
       ) : null}
-      {activity.data?.status === 200 ? <ActivityFeed entries={activity.data.data.activity ?? []} /> : null}
+      {activity.data?.status === 200 ? (
+        <Stack flexShrink={0}>
+          <ActivityFeed entries={activity.data.data.activity ?? []} />
+        </Stack>
+      ) : null}
       {cost ? (
-        <ServiceControl
-          cost={cost}
-          onRestart={() => restart.mutate()}
-          restarting={watch.restarting}
-          // A restart that never came back is the failure worth naming — it outranks
-          // a request-level error, because the app is actually down.
-          error={watch.failed ?? serviceError}
-        />
+        <Stack flexShrink={0}>
+          <ServiceControl
+            cost={cost}
+            onRestart={() => restart.mutate()}
+            restarting={watch.restarting}
+            // A restart that never came back is the failure worth naming — it outranks
+            // a request-level error, because the app is actually down.
+            error={watch.failed ?? serviceError}
+          />
+        </Stack>
       ) : null}
-    </div>
+    </Stack>
   );
 };
 

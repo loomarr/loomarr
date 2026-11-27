@@ -21,7 +21,8 @@ type LibraryTitle struct {
 	IDs    []LibraryID
 	Rating string
 	Genres []string
-	// SizeBytes is a movie's playing file's size; 0 for a series.
+	// SizeBytes is a movie's playing file's size, its parts' together for a movie in parts; the
+	// biggest edition's when it plays several; 0 for a series.
 	SizeBytes int64
 }
 
@@ -96,17 +97,52 @@ func (s *Store) withLibraryIDs(ctx context.Context, titles []LibraryTitle) error
 }
 
 const libraryTitleColumns = `i.id, i.kind, i.name, i.rating,
-	CASE WHEN i.kind = 'movie' THEN COALESCE((SELECT MAX(s.size_bytes) FROM library_sources s
-		WHERE s.item_id = i.id AND s.plays), 0) ELSE 0 END
+	CASE WHEN i.kind = 'movie' THEN COALESCE((SELECT MAX(e.size_bytes) FROM (SELECT SUM(s.size_bytes) AS size_bytes
+		FROM library_sources s WHERE s.item_id = i.id AND s.plays GROUP BY s.edition) e), 0) ELSE 0 END
 	FROM library_items i`
 
+// MemberTitleReader hands out the Library's titles as a household member reads them.
+type MemberTitleReader interface {
+	// MemberTitles reads, lists and searches only the titles a member reads (memberReads): no
+	// title waiting in Needs you, none ignored, so no name taken from a file or folder. A route
+	// a member calls reads through it; the server's own readers (presence, grounding, growth)
+	// read the Store's.
+	MemberTitles() MemberTitles
+}
+
+// MemberTitles is the LibraryTitleReader and LibraryTitleSearcher over the identified titles.
+type MemberTitles struct{ s *Store }
+
+func (s *Store) MemberTitles() MemberTitles { return MemberTitles{s: s} }
+
+// memberTitle narrows a movie-or-series query to the titles a member reads: for those kinds,
+// memberReads is titleIdentified.
+var memberTitle = ` AND ` + titleIdentified("i")
+
+func (m MemberTitles) LibraryTitles(ctx context.Context, since time.Time) ([]LibraryTitle, error) {
+	return m.s.libraryTitles(ctx, since, memberTitle)
+}
+
+func (m MemberTitles) LibraryTitleByProviderID(ctx context.Context, kind, namespace, value string) (LibraryTitle, bool, error) {
+	return m.s.libraryTitleByProviderID(ctx, kind, namespace, value, memberTitle)
+}
+
+func (m MemberTitles) SearchLibraryTitles(ctx context.Context, term string, limit int) ([]LibraryTitle, error) {
+	return m.s.searchLibraryTitles(ctx, term, limit, memberTitle)
+}
+
 func (s *Store) LibraryTitles(ctx context.Context, since time.Time) ([]LibraryTitle, error) {
+	return s.libraryTitles(ctx, since, "")
+}
+
+// libraryTitles lists the titles; narrow is "" or an AND clause over i.
+func (s *Store) libraryTitles(ctx context.Context, since time.Time, narrow string) ([]LibraryTitle, error) {
 	var sinceMs int64
 	if !since.IsZero() {
 		sinceMs = since.UnixMilli()
 	}
 	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT `+libraryTitleColumns+`
-		WHERE i.kind IN ('movie', 'series') AND i.updated_at_ms >= ? AND `+itemListed+`
+		WHERE i.kind IN ('movie', 'series') AND i.updated_at_ms >= ? AND `+itemListed+narrow+`
 		ORDER BY i.id`), sinceMs)
 	if err != nil {
 		return nil, fmt.Errorf("library titles: %w", err)
@@ -133,10 +169,14 @@ func (s *Store) LibraryTitles(ctx context.Context, since time.Time) ([]LibraryTi
 }
 
 func (s *Store) LibraryTitleByProviderID(ctx context.Context, kind, namespace, value string) (LibraryTitle, bool, error) {
+	return s.libraryTitleByProviderID(ctx, kind, namespace, value, "")
+}
+
+func (s *Store) libraryTitleByProviderID(ctx context.Context, kind, namespace, value, narrow string) (LibraryTitle, bool, error) {
 	var t LibraryTitle
 	err := s.h.QueryRowContext(ctx, s.ph(`SELECT `+libraryTitleColumns+`
 		WHERE i.kind = ? AND i.id IN (SELECT item_id FROM library_ids WHERE namespace = ? AND value = ?)
-		AND `+itemListed+` ORDER BY i.id LIMIT 1`), kind, namespace, value).Scan(
+		AND `+itemListed+narrow+` ORDER BY i.id LIMIT 1`), kind, namespace, value).Scan(
 		&t.ID, &t.Kind, &t.Name, &t.Rating, &t.SizeBytes)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -167,6 +207,10 @@ type LibraryTitleSearcher interface {
 }
 
 func (s *Store) SearchLibraryTitles(ctx context.Context, term string, limit int) ([]LibraryTitle, error) {
+	return s.searchLibraryTitles(ctx, term, limit, "")
+}
+
+func (s *Store) searchLibraryTitles(ctx context.Context, term string, limit int, narrow string) ([]LibraryTitle, error) {
 	term = strings.ToLower(strings.TrimSpace(term))
 	if term == "" || limit <= 0 {
 		return nil, nil
@@ -174,7 +218,7 @@ func (s *Store) SearchLibraryTitles(ctx context.Context, term string, limit int)
 	escaped := likeEscape(term)
 	name := s.lower("i.name")
 	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT `+libraryTitleColumns+`
-		WHERE i.kind IN ('movie', 'series') AND `+name+` LIKE ? ESCAPE '\' AND `+itemListed+`
+		WHERE i.kind IN ('movie', 'series') AND `+name+` LIKE ? ESCAPE '\' AND `+itemListed+narrow+`
 		ORDER BY CASE WHEN `+name+` = ? THEN 0 WHEN `+name+` LIKE ? ESCAPE '\' THEN 1 ELSE 2 END,
 			i.sort_name, i.id
 		LIMIT ?`), "%"+escaped+"%", term, escaped+"%", limit)

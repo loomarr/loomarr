@@ -21,7 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -124,6 +124,8 @@ type Engine struct {
 	// committed Desired cycle differs from the one an active encoder may be using.
 	// Optional: nil when internal playout is not wired.
 	scheduleInvalidator ScheduleInvalidator
+	// upcoming stores each committed internal-playout channel's next two days (#4476). Optional/nil-safe.
+	upcoming UpcomingIndexer
 	// acts records operator-facing facts that must outlive a log line (§9 V54) — currently the
 	// automatic renumber when Tunarr already occupies a channel's number. Optional/nil-safe.
 	acts    ActivityRecorder
@@ -327,6 +329,47 @@ func (e *Engine) WithScheduleInvalidator(invalidator ScheduleInvalidator) *Engin
 	return e
 }
 
+// UpcomingIndexer stores what an internal-playout channel airs over [from, to), as the guide
+// lists it, so a title's next airing is one indexed read (#4476, scheduling.md "Upcoming
+// airings"). ch is the channel as the reconcile committed it; its revision guards the write.
+// ClearUpcoming removes the channel's stored airings, for a channel Loomarr does not play.
+type UpcomingIndexer interface {
+	IndexUpcoming(ctx context.Context, ch channelstore.Channel, from, to time.Time) error
+	ClearUpcoming(ctx context.Context, ch channelstore.Channel) error
+}
+
+// WithUpcomingIndex wires the upcoming-airings writer that runs after each committed reconcile of
+// an internal-playout channel. Optional; nil ⇒ nothing is stored.
+func (e *Engine) WithUpcomingIndex(indexer UpcomingIndexer) *Engine {
+	e.upcoming = indexer
+	return e
+}
+
+// indexUpcoming stores the channel's programmes for the next PremeasureHorizon. Best-effort: a
+// failure is logged and the reconcile stands. A failure also clears the channel's rows at the
+// committed revision, because the read cannot tell an earlier revision's rows from fresh ones.
+func (e *Engine) indexUpcoming(ctx context.Context, ch channelstore.Channel) {
+	if e.upcoming == nil {
+		return
+	}
+	now := e.now()
+	if err := e.upcoming.IndexUpcoming(ctx, ch, now, now.Add(PremeasureHorizon)); err != nil {
+		e.log.Warn("upcoming airings: not stored", "channel", ch.ID, "err", err)
+		e.clearUpcoming(ctx, ch)
+	}
+}
+
+// clearUpcoming removes the channel's stored airings at ch's revision. Best-effort, like
+// indexUpcoming.
+func (e *Engine) clearUpcoming(ctx context.Context, ch channelstore.Channel) {
+	if e.upcoming == nil {
+		return
+	}
+	if err := e.upcoming.ClearUpcoming(ctx, ch); err != nil {
+		e.log.Warn("upcoming airings: not cleared", "channel", ch.ID, "err", err)
+	}
+}
+
 // WithNotifier wires the `channel` SSE emitter so a reconcile that changes a channel
 // updates the UI live (the "no manual rebuild" model, §9). Optional; nil ⇒ no emit.
 func (e *Engine) WithNotifier(n ChannelNotifier) *Engine {
@@ -405,7 +448,7 @@ type storeAvailability struct {
 	mu        sync.Mutex
 	titleMemo map[provision.Key]titleLookup
 	durMemo   map[string]memoEntry[int64]
-	epsMemo   map[string]memoEntry[schedule.EpisodeResolution]
+	epsMemo   map[string]memoEntry[episodeLookup]
 	now       func() time.Time
 }
 
@@ -457,7 +500,8 @@ type DurationsResolver func(ctx context.Context, libraryItemIDs []string) (map[s
 type EpisodeResolver func(ctx context.Context, showItemID string) ([]schedule.ResolvedProgram, error)
 
 // NewStoreAvailability builds an Availability over the store's title records.
-// The ctx bounds the lookups (they run inside a reconcile's context). dur/eps may
+// The ctx bounds the lookups made through the Availability itself (the guide and the
+// previews); a reconcile reads through its own view, under its own context. dur/eps may
 // be nil (e.g. tests): a nil dur ⇒ movies resolve with duration 0 (caller falls
 // back to the entry's); a nil eps ⇒ series resolve to a pending slot.
 func NewStoreAvailability(ctx context.Context, st AvailabilityStore, dur DurationResolver, eps EpisodeResolver) Availability {
@@ -465,7 +509,7 @@ func NewStoreAvailability(ctx context.Context, st AvailabilityStore, dur Duratio
 		store: st, ctx: ctx, duration: dur, episodes: eps,
 		titleMemo: map[provision.Key]titleLookup{},
 		durMemo:   map[string]memoEntry[int64]{},
-		epsMemo:   map[string]memoEntry[schedule.EpisodeResolution]{},
+		epsMemo:   map[string]memoEntry[episodeLookup]{},
 		now:       time.Now,
 	}
 }
@@ -498,7 +542,7 @@ func (s *storeAvailability) clock() time.Time {
 // title reads a title record, memoized for memoTTL. Short-lived on purpose: a title's State
 // changes as an acquisition lands, and a permanent memo would leave a channel reading `pending`
 // long after the title became available.
-func (s *storeAvailability) title(key provision.Key) (provision.Record, error) {
+func (s *storeAvailability) title(ctx context.Context, key provision.Key) (provision.Record, error) {
 	now := s.clock()
 	s.mu.Lock()
 	if hit, ok := s.titleMemo[key]; ok && now.Before(hit.exp) {
@@ -511,7 +555,7 @@ func (s *storeAvailability) title(key provision.Key) (provision.Record, error) {
 	// would serialize every channel the guide resolves concurrently — trading one bottleneck
 	// for another. A duplicate read on a race is cheap and harmless; both writers store the
 	// same answer.
-	rec, err := s.store.GetTitle(s.ctx, key)
+	rec, err := s.store.GetTitle(ctx, key)
 
 	s.mu.Lock()
 	s.titleMemo[key] = titleLookup{rec: rec, err: err, exp: now.Add(memoTTL)}
@@ -522,7 +566,7 @@ func (s *storeAvailability) title(key provision.Key) (provision.Record, error) {
 // itemDuration resolves a library item's runtime, memoized for memoTTL.
 // A failure memoizes as 0 — the caller falls back to the lineup entry's own duration, and
 // retrying a failing lookup once per occurrence is what made this slow in the first place.
-func (s *storeAvailability) itemDuration(libraryID string) int64 {
+func (s *storeAvailability) itemDuration(ctx context.Context, libraryID string) int64 {
 	if s.duration == nil {
 		return 0
 	}
@@ -535,7 +579,7 @@ func (s *storeAvailability) itemDuration(libraryID string) int64 {
 	s.mu.Unlock()
 
 	var ms int64
-	if d, err := s.duration(s.ctx, libraryID); err == nil {
+	if d, err := s.duration(ctx, libraryID); err == nil {
 		ms = d
 	}
 
@@ -604,20 +648,37 @@ func (s *storeAvailability) PrewarmDurations(libraryIDs []string) {
 }
 
 func (s *storeAvailability) Resolve(key provision.Key) (string, int64, bool) {
+	id, durationMs, available, _ := s.resolve(s.ctx, key)
+	return id, durationMs, available
+}
+
+// resolve is Resolve with the one thing the scheduler's seam cannot carry: whether the answer
+// is known. A title with no record is not in the library, which is an answer. Any other failed
+// read is returned as an error beside "unavailable", so a caller that is about to write what it
+// learns (the reconcile, through availabilityRun) can refuse to.
+func (s *storeAvailability) resolve(ctx context.Context, key provision.Key) (string, int64, bool, error) {
 	// A series isn't directly playable — it resolves via ResolveEpisodes.
 	if key.IsSeries() {
-		return "", 0, false
+		return "", 0, false, nil
 	}
-	rec, err := s.title(key)
+	rec, err := s.title(ctx, key)
 	if err != nil {
-		return "", 0, false // not found / error → treat as unavailable
+		return "", 0, false, readFailure(key, err)
 	}
 	if rec.State != provision.Available || rec.LibraryID == "" {
-		return "", 0, false
+		return "", 0, false, nil
 	}
 	// Best-effort: a duration lookup failure shouldn't make an available title vanish.
 	// ComputeDesired falls back to the entry's own duration on 0.
-	return rec.LibraryID, s.itemDuration(rec.LibraryID), true
+	return rec.LibraryID, s.itemDuration(ctx, rec.LibraryID), true, nil
+}
+
+// readFailure is nil when the store answered "no such title", and the wrapped error otherwise.
+func readFailure(key provision.Key, err error) error {
+	if isNotFound(err) {
+		return nil
+	}
+	return fmt.Errorf("read title %s: %w", key, err)
 }
 
 // ResolveEpisodes expands an available series into its episode programs (§9). The
@@ -626,12 +687,23 @@ func (s *storeAvailability) Resolve(key provision.Key) (string, int64, bool) {
 // non-series, an unavailable series, or when no episode resolver is wired — the
 // series then falls back to a pending slot upstream.
 func (s *storeAvailability) ResolveEpisodes(key provision.Key) schedule.EpisodeResolution {
+	resolution, _ := s.resolveEpisodes(s.ctx, key)
+	return resolution
+}
+
+// resolveEpisodes is ResolveEpisodes with whether the answer is known, as resolve is for
+// Resolve: a failed title read or a failed episode read comes back as an error beside the
+// empty resolution.
+func (s *storeAvailability) resolveEpisodes(ctx context.Context, key provision.Key) (schedule.EpisodeResolution, error) {
 	if !key.IsSeries() || s.episodes == nil {
-		return schedule.EpisodeResolution{}
+		return schedule.EpisodeResolution{}, nil
 	}
-	rec, err := s.title(key)
-	if err != nil || rec.State != provision.Available || rec.LibraryID == "" {
-		return schedule.EpisodeResolution{}
+	rec, err := s.title(ctx, key)
+	if err != nil {
+		return schedule.EpisodeResolution{}, readFailure(key, err)
+	}
+	if rec.State != provision.Available || rec.LibraryID == "" {
+		return schedule.EpisodeResolution{}, nil
 	}
 
 	// A series in the lineup is re-resolved on every layout pass, so the memo collapses the
@@ -641,24 +713,89 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) schedule.EpisodeR
 	s.mu.Lock()
 	if hit, ok := s.epsMemo[rec.LibraryID]; ok && now.Before(hit.exp) {
 		s.mu.Unlock()
-		return hit.val
+		return hit.val.resolution, hit.val.err
 	}
 	s.mu.Unlock()
 
-	var result schedule.EpisodeResolution
-	if eps, err := s.episodes(s.ctx, rec.LibraryID); err == nil {
-		result.Programs = eps
+	var lookup episodeLookup
+	eps, err := s.episodes(ctx, rec.LibraryID)
+	if err != nil {
+		lookup.err = fmt.Errorf("read the episodes of %s: %w", key, err)
+	} else {
+		lookup.resolution.Programs = eps
 	}
-	s.memoEpisodes(rec.LibraryID, result, now)
-	return result
+	s.memoEpisodes(rec.LibraryID, lookup, now)
+	return lookup.resolution, lookup.err
 }
 
-// memoEpisodes records an episode list in the in-process memo. The empty result is memoized
+// episodeLookup is one episode read as the memo keeps it: the resolution, or the failure that
+// left it empty. The failure is kept so a second reader inside the memo's life is told the
+// episodes are unknown, not that the series has none.
+type episodeLookup struct {
+	resolution schedule.EpisodeResolution
+	err        error
+}
+
+// memoEpisodes records an episode read in the in-process memo. The empty result is memoized
 // too — see itemDuration for why remembering a miss matters as much as remembering a hit.
-func (s *storeAvailability) memoEpisodes(libraryID string, resolution schedule.EpisodeResolution, now time.Time) {
+func (s *storeAvailability) memoEpisodes(libraryID string, lookup episodeLookup, now time.Time) {
 	s.mu.Lock()
-	s.epsMemo[libraryID] = memoEntry[schedule.EpisodeResolution]{val: resolution, exp: now.Add(memoTTL)}
+	s.epsMemo[libraryID] = memoEntry[episodeLookup]{val: lookup, exp: now.Add(memoTTL)}
 	s.mu.Unlock()
+}
+
+// availabilityRun is the availability one reconcile reads. It looks titles up under the
+// reconcile's own context and remembers the first read that failed, because the scheduler's
+// seam can only say "available" or "not": without this, a failed read reaches the scheduler as
+// "not in the library" and the reconcile commits a lineup with that title gone.
+type availabilityRun struct {
+	from *storeAvailability
+	ctx  context.Context
+
+	mu  sync.Mutex
+	err error
+}
+
+func (r *availabilityRun) Resolve(key provision.Key) (string, int64, bool) {
+	id, durationMs, available, err := r.from.resolve(r.ctx, key)
+	r.note(err)
+	return id, durationMs, available
+}
+
+func (r *availabilityRun) ResolveEpisodes(key provision.Key) schedule.EpisodeResolution {
+	resolution, err := r.from.resolveEpisodes(r.ctx, key)
+	r.note(err)
+	return resolution
+}
+
+func (r *availabilityRun) note(err error) {
+	if err == nil {
+		return
+	}
+	r.mu.Lock()
+	if r.err == nil {
+		r.err = err
+	}
+	r.mu.Unlock()
+}
+
+// failure is the first read that failed during the run, or nil when every answer is known.
+func (r *availabilityRun) failure() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.err
+}
+
+// reconcileAvailability is the availability a reconcile computes its lineup from, and a check
+// to make once it has: an error means a read failed and the lineup must not be committed. Only
+// the store-backed availability reads anything; a fixed set of answers cannot fail.
+func (e *Engine) reconcileAvailability(ctx context.Context) (schedule.Availability, func() error) {
+	fromStore, ok := e.avail.(*storeAvailability)
+	if !ok {
+		return e.avail, func() error { return nil }
+	}
+	run := &availabilityRun{from: fromStore, ctx: ctx}
+	return run, run.failure
 }
 
 // RollingWindow is the rolling-window length a channel with this policy resolves to at `at` (rule
@@ -732,13 +869,13 @@ func (e *Engine) lastAiredFor(ctx context.Context, ch schedule.Channel, policy s
 	}
 	hist, err := e.store.LastAiredByChannel(ctx, ch.ID, opened)
 	if err != nil {
-		e.log.Debug("recency: airing history unavailable; placement falls back to positional rotation",
+		e.log.Warn("recency: airing history unavailable; placement falls back to positional rotation",
 			"channel", ch.ID, "err", err)
 		return nil
 	}
 	scheduled, err := e.store.LastScheduledByChannel(ctx, ch.ID, opened)
 	if err != nil {
-		e.log.Debug("recency: scheduled ledger unavailable; using watched airings only", "channel", ch.ID, "err", err)
+		e.log.Warn("recency: scheduled ledger unavailable; using watched airings only", "channel", ch.ID, "err", err)
 	}
 	for _, b := range scheduledPrograms(accepted, acceptedAnchor, opened) {
 		if scheduled == nil {
@@ -764,12 +901,12 @@ func latest(a, b time.Time) time.Time {
 
 // scheduledPrograms is every programme the accepted cycle, walked from its anchor, started before
 // `until` (#1677). An empty cycle or no anchor aired nothing.
-func scheduledPrograms(slots []schedule.Slot, anchor, until time.Time) []playout.Broadcast {
+func scheduledPrograms(slots []schedule.Slot, anchor, until time.Time) []timeline.Broadcast {
 	if len(slots) == 0 || anchor.IsZero() || !anchor.Before(until) {
 		return nil
 	}
-	var out []playout.Broadcast
-	for _, b := range playout.BroadcastsBetween(slots, anchor, anchor, until) {
+	var out []timeline.Broadcast
+	for _, b := range timeline.BroadcastsBetween(slots, anchor, anchor, until) {
 		if b.Kind == schedule.SlotProgram && b.LibraryItemID != "" && b.Start.Before(until) {
 			out = append(out, b)
 		}
@@ -788,14 +925,14 @@ func (e *Engine) recordScheduled(ctx context.Context, ch channelstore.Channel, n
 	}
 	until := now.Add(time.Nanosecond) // a programme starting at now has started
 	if window, zone := e.RollingWindow(ch.Policy, now); window > 0 {
-		if end := playout.CarryOverEnd(ch.Desired, ch.PlayoutAnchor, schedule.NextWindowStart(ch.PlayoutAnchor, window, zone)); end.Before(until) {
+		if end := timeline.CarryOverEnd(ch.Desired, ch.PlayoutAnchor, schedule.NextWindowStart(ch.PlayoutAnchor, window, zone)); end.Before(until) {
 			until = end // past the hand-over the next window airs, not this cycle
 		}
 	}
 	for _, b := range scheduledPrograms(ch.Desired, ch.PlayoutAnchor, until) {
 		airing := channeldatastore.ScheduledAiring{Key: b.Key, LibraryItemID: b.LibraryItemID, AiredAt: b.Start}
 		if err := e.store.RecordScheduledAirings(ctx, ch.ID, []channeldatastore.ScheduledAiring{airing}, b.Start); err != nil {
-			e.log.Debug("recency: scheduled airing not recorded", "channel", ch.ID, "item", b.LibraryItemID, "err", err)
+			e.log.Warn("recency: scheduled airing not recorded", "channel", ch.ID, "item", b.LibraryItemID, "err", err)
 			return
 		}
 	}

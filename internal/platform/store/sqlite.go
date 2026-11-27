@@ -78,7 +78,14 @@ const sqliteMaxOpenConns = 4
 //   - _txlock=immediate: see openSQLite.
 func sqliteDSN(path string) string {
 	return fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(15000)"+
-		"&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(on)&_txlock=immediate", path)
+		"&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(on)&_txlock=immediate", sqliteURIPath(path))
+}
+
+// sqliteURIPath is a database's path as a "file:" URI holds it. SQLite reads the URI: a "#" in a
+// folder's name would end the path there, a "?" start its parameters and a "%" an escape, so each
+// is escaped, and SQLite turns them back into the path's own characters.
+func sqliteURIPath(path string) string {
+	return strings.NewReplacer("%", "%25", "?", "%3F", "#", "%23").Replace(path)
 }
 
 // optimizeSQLite lets SQLite gather the planner statistics prod never had (no sqlite_stat1, #2446).
@@ -137,7 +144,7 @@ func openSQLiteDriver(ctx context.Context, driverName, path string) (*sqlStore, 
 // modernc driver, while the migration invariant requires the source to be incapable of
 // accepting a write after the live generation has closed.
 func openSQLiteReadOnly(ctx context.Context, path string) (*sqlStore, error) {
-	dsn := fmt.Sprintf("file:%s?mode=ro&_pragma=query_only(1)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)", path)
+	dsn := fmt.Sprintf("file:%s?mode=ro&_pragma=query_only(1)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)", sqliteURIPath(path))
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open read-only sqlite: %w", err)

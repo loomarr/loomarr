@@ -1,8 +1,7 @@
 import { parseDocHref } from "@loomarr/core/anchor";
-import { ActivityIndicator, Icon, icons } from "@loomarr/design-system";
+import { ActivityIndicator, Card, Icon, icons, Stack, Text, TextLink } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
 import type { ChecklistItemProps, CheckStatus } from "./checklist-item.type";
 
 // ChecklistItem — the wizard / Settings-troubleshooting check row (§3, §6). A pass
@@ -16,35 +15,45 @@ const ICON: Record<CheckStatus, { node: ReactNode; label: string }> = {
 };
 
 const ChecklistItem = ({ name, status, hint, docHref, className }: ChecklistItemProps) => (
-  <div
-    className={cn(
-      "border-border bg-card flex items-start gap-3 rounded-md border px-3 py-2.5 transition-colors",
-      status === "pass" && "border-lock-tint-30",
-      status === "fail" && "border-onair-tint-30",
-      className,
-    )}
+  <Card
+    alignItems="flex-start"
+    borderColor={status === "pass" ? "stateSuccess" : undefined}
+    className={className}
+    flexDirection="row"
+    gap={12}
+    paddingHorizontal={12}
+    paddingVertical={10}
+    tone={status === "fail" ? "caution" : undefined}
   >
-    <span className="mt-0.5" role="img" aria-label={ICON[status].label}>
+    <Stack aria-label={ICON[status].label} direction="row" marginTop={2} render="span" role="img">
       {ICON[status].node}
-    </span>
-    <div className="min-w-0 flex-1">
-      <p className="text-sm font-medium">{name}</p>
-      {status === "fail" && hint && <p className="text-muted-foreground mt-0.5 text-sm">{hint}</p>}
-    </div>
+    </Stack>
+    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+      <Text as="p" textRole="cardLabel">
+        {name}
+      </Text>
+      {status === "fail" && hint && (
+        <Stack marginTop={2}>
+          <Text as="p" textRole="compact" tone="secondary">
+            {hint}
+          </Text>
+        </Stack>
+      )}
+    </Stack>
     {status === "fail" && docHref && (
       // Route into the Help center — the docHref ("troubleshooting#tunarr") is parsed
       // into { page, section }, not used as a raw href (which resolves relative to the
       // current path and 404s). This is what makes §13's "every red check deep-links to
       // its section" actually navigate.
-      <Link
-        to="/help"
-        search={parseDocHref(docHref)}
-        className="text-tune inline-flex shrink-0 items-center gap-0.5 text-xs hover:underline"
-      >
-        Fix <Icon decorative glyph={icons.goTo} size="compact" tone="inherit" />
-      </Link>
+      <Stack flexShrink={0} render="span">
+        <Text as="span" textRole="hint">
+          <TextLink icon="goTo" render={<Link search={parseDocHref(docHref)} to="/help" />}>
+            Fix
+          </TextLink>
+        </Text>
+      </Stack>
     )}
-  </div>
+  </Card>
 );
 
 export { ChecklistItem };

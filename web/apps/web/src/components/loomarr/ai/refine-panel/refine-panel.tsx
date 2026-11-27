@@ -1,13 +1,12 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { toProblem } from "@loomarr/api/mutator";
-import { Action, Field, Icon, icons, LoadingStrip, Surface } from "@loomarr/design-system";
+import { Action, Card, Field, Icon, icons, LoadingStrip, Stack, Surface, Text } from "@loomarr/design-system";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { RefineReview } from "@/components/loomarr/ai/refine-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import { suggestionFailureCopy } from "@/suggest/suggestion-failure-copy";
 import { useChannelRefine } from "@/suggest/use-channel-refine";
 import { useElapsed } from "@/suggest/use-elapsed";
@@ -86,49 +85,69 @@ const RefinePanel = ({
   return (
     // The web mock's card: always open, a one-line input and "Suggest changes". The running and
     // review states below are today's; the mock draws neither.
-    <section
+    <Card
       aria-labelledby={headingId}
-      className={cn("border-border bg-card flex flex-col gap-2.5 rounded-lg border p-4", className)}
+      borderRadius={8}
+      className={className}
+      gap={10}
+      padding={16}
+      render="section"
     >
-      <div className="flex flex-wrap items-center gap-2">
+      <Stack align="center" direction="row" gap="inline" wrap>
         <Icon decorative glyph={icons.suggest} size="compact" tone="suggest" />
-        <h3 id={headingId} className="text-sm font-medium">
+        <Text as="h3" id={headingId} textRole="cardLabel">
           Refine with AI
-        </h3>
-        <span className="text-muted-foreground ml-auto text-xs">
-          Describe what to change. You'll see the result before anything is saved.
-        </span>
-      </div>
+        </Text>
+        <Stack marginLeft="auto">
+          <Text as="span" textRole="hint" tone="secondary">
+            Describe what to change. You'll see the result before anything is saved.
+          </Text>
+        </Stack>
+      </Stack>
 
       {(state === "idle" || state === "open") && (
-        <div className="flex flex-col gap-2.5">
+        <Stack gap="2.5">
           {generationFailed && (
-            <div
+            <Card
+              alignItems="flex-start"
+              borderRadius={8}
+              flexDirection="row"
+              gap={8}
+              paddingHorizontal={12}
+              paddingVertical={8}
               role="alert"
-              className="border-onair-tint-15 bg-onair-tint-10 text-onair-300 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm"
+              tone="onair"
             >
-              <span className="mt-0.5 flex">
-                <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
-              </span>
+              <Stack direction="row" marginTop={2} render="span">
+                <Icon decorative glyph={icons.alert} size="compact" tone="danger" />
+              </Stack>
               {failureCopy ? (
-                <span className="flex flex-col gap-0.5">
-                  <span className="font-medium">{failureCopy.title}</span>
-                  <span>{failureCopy.message}</span>
-                  <span>{failureCopy.guidance}</span>
-                </span>
+                <Stack gap="0.5" render="span">
+                  <Text as="span" textRole="cardLabel" tone="danger">
+                    {failureCopy.title}
+                  </Text>
+                  <Text as="span" textRole="compact" tone="danger">
+                    {failureCopy.message}
+                  </Text>
+                  <Text as="span" textRole="compact" tone="danger">
+                    {failureCopy.guidance}
+                  </Text>
+                </Stack>
               ) : (
-                <span>
+                <Text as="span" textRole="compact" tone="danger">
                   Loomarr couldn't update this channel. Try again or describe the change another way.
-                </span>
+                </Text>
               )}
-            </div>
+            </Card>
           )}
-          <form
-            className="flex gap-2"
+          <Stack
+            direction="row"
+            gap="2"
             onSubmit={(e) => {
               e.preventDefault();
               void form.handleSubmit();
             }}
+            render="form"
           >
             <form.Field name="change">
               {(field) => (
@@ -153,13 +172,13 @@ const RefinePanel = ({
                 </>
               )}
             </form.Field>
-          </form>
+          </Stack>
           {refine.error != null && <ErrorState error={refine.error} />}
-        </div>
+        </Stack>
       )}
 
       {state === "running" && (
-        <div className="flex flex-col gap-3">
+        <Stack gap="control">
           {refine.phase ? (
             <GenerationProgress
               phase={refine.phase}
@@ -168,13 +187,15 @@ const RefinePanel = ({
               progress={refine.progress}
             />
           ) : (
-            <p className="text-muted-foreground flex items-center gap-2 text-sm">
+            <Stack align="center" direction="row" gap="inline" render="p">
               <LoadingStrip decorative width={32} />
-              Starting…
-            </p>
+              <Text as="span" textRole="compact" tone="secondary">
+                Starting…
+              </Text>
+            </Stack>
           )}
           {refine.error != null && <ErrorState error={refine.error} />}
-        </div>
+        </Stack>
       )}
 
       {landed && (
@@ -189,7 +210,7 @@ const RefinePanel = ({
           onDiscard={close}
         />
       )}
-    </section>
+    </Card>
   );
 };
 

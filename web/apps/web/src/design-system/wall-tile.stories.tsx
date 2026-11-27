@@ -12,9 +12,14 @@ const meta = {
     number: "07",
     title: "Coastline Mysteries",
   },
+  // One frame for every story, sized as the wall sizes a tile: a tile has no width of its own, it takes
+  // its grid column's. Desktop: a column of the three-column wall at about 1280px (400px). Phone: a
+  // column of the two-column wall at 390px (165px). Height follows from the tile's 16:9 ratio.
   decorators: [
-    (Story) => (
-      <div style={{ maxWidth: 420, padding: 24 }}>
+    (Story, { args }) => (
+      // content-box, so the padding is outside the tile's width (the app's reset is border-box, which
+      // made the first render's phone tile 117px wide and overlapped its own lines).
+      <div style={{ boxSizing: "content-box", padding: 24, width: args.compact ? 165 : 400 }}>
         <Story />
       </div>
     ),
@@ -55,13 +60,6 @@ const WatchedCompact: Story = {
     number: "12",
     watchers: ["Sam", "Jo"],
   },
-  decorators: [
-    (Story) => (
-      <div style={{ maxWidth: 180 }}>
-        <Story />
-      </div>
-    ),
-  ],
 };
 const LightWatched: Story = { ...Watched, globals: { theme: "light" } };
 
@@ -86,22 +84,66 @@ const Compact: Story = {
     detail: "41m left",
     number: "12",
   },
-  decorators: [
-    (Story) => (
-      <div style={{ maxWidth: 180 }}>
-        <Story />
-      </div>
-    ),
-  ],
 };
 
 const CompactLast: Story = {
   args: { ...Compact.args, last: true },
-  decorators: Compact.decorators ?? [],
 };
 
 // The number block in the channel's decade colour (#2767), the only place the tile shows it. OnAir is
 // the channel with no single-decade era: a neutral block.
+// The words over the brightest and the busiest pictures (#3407): the head scrim holds the number and
+// name at 4.5:1 over plain white, and over a checkered, striped picture.
+const WhitePicture = () => (
+  <div aria-hidden style={{ background: "#ffffff", height: "100%", width: "100%" }} />
+);
+const BusyPicture = () => (
+  <div
+    aria-hidden
+    style={{
+      background:
+        "repeating-linear-gradient(45deg, #f4f1e8 0 14px, #1b6ea8 14px 28px, #e8b923 28px 42px, #ffffff 42px 56px)",
+      height: "100%",
+      width: "100%",
+    }}
+  />
+);
+
+const OverWhitePicture: Story = {
+  args: { art: <WhitePicture />, detail: "S2 E4 · 13 min left", progressPercent: 56 },
+};
+const OverBusyPicture: Story = {
+  args: { art: <BusyPicture />, detail: "S2 E4 · 13 min left", progressPercent: 56 },
+};
+
+// A long channel name ends in an ellipsis before the "You were here" pill, and the pill covers nothing.
+const LastWatchedLongName: Story = {
+  args: {
+    art: <WhitePicture />,
+    channelName: "Late Night Coastal Mysteries and Other Stories",
+    detail: "S1 E12 · 9 min left",
+    last: true,
+    progressPercent: 60,
+  },
+};
+
+// A phone's tile, 165px wide (the mock): the number alone on top, the title on one line, then one
+// caption line, channel name first.
+const CompactWithArt: Story = {
+  args: {
+    art: <BusyPicture />,
+    channelName: "Nature Hour",
+    compact: true,
+    detail: "13 min left",
+    number: "12",
+    title: "Heron Country: A Long Season on the Marsh",
+  },
+};
+const CompactNoArt: Story = { args: { ...CompactWithArt.args, art: null } };
+const CompactLastLongName: Story = {
+  args: { ...CompactWithArt.args, channelName: "Late Night Coastal Mysteries", last: true },
+};
+
 const Decade1970: Story = { args: { ...OnAir.args, decade: 1970 } };
 const Decade1980: Story = { args: { ...OnAir.args, decade: 1980 } };
 const Decade1990: Story = { args: { ...OnAir.args, decade: 1990 } };
@@ -121,7 +163,7 @@ const Decades: Story = {
           key={decade ?? "none"}
           {...args}
           art={<Still hue={[40, 0, 190, 205][i] ?? 205} />}
-          number={String(3 + i * 2).padStart(2, "0")}
+          number={String(3 + i * 2)}
           {...(decade === undefined ? {} : { decade })}
         />
       ))}
@@ -133,18 +175,24 @@ export default meta;
 export {
   Compact,
   CompactLast,
+  CompactLastLongName,
+  CompactNoArt,
+  CompactWithArt,
   Decade1970,
   Decade1980,
   Decade1990,
   Decades,
   FillingUp,
   LastWatched,
+  LastWatchedLongName,
   LightCompact,
   LightFillingUp,
   LightLastWatched,
   LightOnAir,
   LightWatched,
   OnAir,
+  OverBusyPicture,
+  OverWhitePicture,
   Watched,
   WatchedCompact,
 };

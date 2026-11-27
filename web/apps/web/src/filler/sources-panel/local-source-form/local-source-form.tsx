@@ -1,6 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { addFillerSourceSchema } from "@loomarr/core/schemas";
-import { Action, Field, Surface, Text } from "@loomarr/design-system";
+import { Action, Field, Stack, Surface, Text } from "@loomarr/design-system";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -46,19 +46,25 @@ const LocalSourceForm = () => {
   if (!provider) return null;
 
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm font-medium">Add a folder or library</p>
-      <form
-        className="flex flex-wrap items-center gap-2"
+    <Stack gap="control">
+      <Text as="p" textRole="cardLabel">
+        Add a folder or library
+      </Text>
+      <Stack
+        align="center"
+        direction="row"
+        gap="2"
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
           void form.handleSubmit();
         }}
+        render="form"
+        wrap
       >
         <form.Field name="kind">
           {(field) => (
-            <div className="w-45">
+            <Stack width={180}>
               <BrowserSelectControl
                 appearance="field"
                 label="Kind of source to add"
@@ -67,7 +73,7 @@ const LocalSourceForm = () => {
                 options={typed.map((candidate) => ({ label: candidate.label, value: candidate.id }))}
                 value={provider.id}
               />
-            </div>
+            </Stack>
           )}
         </form.Field>
         <form.Field name="uri">
@@ -94,12 +100,12 @@ const LocalSourceForm = () => {
             </Action>
           )}
         </form.Subscribe>
-      </form>
+      </Stack>
       {addSource.error != null && <ErrorState error={addSource.error} />}
       <Text as="span" textRole="mono">
         Uses your location. Every clip is checked before it can play.
       </Text>
-    </div>
+    </Stack>
   );
 };
 

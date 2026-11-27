@@ -1,7 +1,6 @@
 import { parseDocHref } from "@loomarr/core/anchor";
-import { Disclosure, Icon, icons, type StatusTone } from "@loomarr/design-system";
+import { Disclosure, Icon, icons, Stack, type StatusTone, Text, TextLink } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
-import { cn } from "@/lib/utils";
 import type { ConnectionBlockProps } from "./connection-block.type";
 
 // ConnectionBlock — one service (Media server, Tunarr, …) as a self-diagnosing, collapsible
@@ -67,42 +66,39 @@ const ConnectionBlock = ({
       onExpandedChange={() => onToggle()}
       status={status}
     >
-      <div className="flex flex-col gap-4">
+      <Stack gap="4">
         {children}
         {(action || verdict) && (
-          <div className="flex flex-wrap items-center gap-3">
+          <Stack align="center" direction="row" gap="control" wrap>
             {action}
             {verdict && (
-              <p
-                role="status"
-                className={cn(
-                  "flex items-center gap-1.5 text-sm",
-                  verdict.ok ? "text-lock" : failing ? "text-onair-300" : "text-static-400",
-                )}
-              >
-                {failing && <Icon decorative glyph={icons.close} size="compact" tone="inherit" />}
-                <span className="min-w-0">
+              <Stack align="center" direction="row" gap="1.5" render="p" role="status">
+                {failing && <Icon decorative glyph={icons.close} size="compact" tone="danger" />}
+                <Text
+                  as="span"
+                  minWidth={0}
+                  textRole="compact"
+                  tone={verdict.ok ? "success" : failing ? "danger" : "secondary"}
+                >
                   {verdict.hint ?? (verdict.ok ? "Connection OK" : "Not connected yet")}
-                </span>
+                </Text>
                 {failing && docHref && (
                   // Route into the Help center via parseDocHref — a raw href would
                   // resolve relative to /settings and 404 (mirrors ChecklistItem).
-                  <Link
-                    to="/help"
-                    search={parseDocHref(docHref)}
-                    className="hover:text-onair-200 inline-flex shrink-0 items-center gap-0.5 underline underline-offset-2"
-                  >
-                    Fix <Icon decorative glyph={icons.goTo} size="compact" tone="inherit" />
-                  </Link>
+                  <Text as="span" textRole="compact">
+                    <TextLink icon="goTo" render={<Link search={parseDocHref(docHref)} to="/help" />}>
+                      Fix
+                    </TextLink>
+                  </Text>
                 )}
-              </p>
+              </Stack>
             )}
-          </div>
+          </Stack>
         )}
         {/* Below the fields AND below the Test row — a statement about the service, read
             after its settings rather than competing with them. */}
         {footer}
-      </div>
+      </Stack>
     </Disclosure>
   );
 };

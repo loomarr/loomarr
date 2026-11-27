@@ -21,7 +21,18 @@ fi
 run=$(gh api \
   "/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&per_page=20" \
   --jq '[.workflow_runs[] | select(.head_branch == "main" and .event == "workflow_dispatch")] | sort_by(.created_at) | last | [.id, .conclusion, .event] | @tsv')
-IFS=$'\t' read -r run_id conclusion event <<< "$run"
+# cut, not `read`: a tab is IFS whitespace, so a running run's empty conclusion would collapse and
+# shift its event into the conclusion's place.
+run_id=$(cut -f1 <<< "$run")
+conclusion=$(cut -f2 <<< "$run")
+event=$(cut -f3 <<< "$run")
+# The newest dispatch run is the evidence, whatever its scope: a full-scope run dispatched after
+# the release-candidate run has to finish green and carry the candidate's jobs too, or be followed
+# by another release-candidate run.
+if [[ -n "$run_id" && -z "$conclusion" ]]; then
+  echo "the newest manual CI run on the tagged commit ($run_id) has not finished; wait for it, or dispatch a release-candidate run after it" >&2
+  exit 1
+fi
 if [[ "$conclusion" != success ]]; then
   echo "tagged main commit does not have a successful release-candidate CI run (found: ${conclusion:-none})" >&2
   exit 1

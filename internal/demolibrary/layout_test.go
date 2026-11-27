@@ -61,6 +61,15 @@ func TestLinkLibraryHardLinksEachItemToItsEncodedFile(t *testing.T) {
 	if !sameAs(l.FilmFile(film), l.Video(film.Format)) {
 		t.Fatal("the film's file isn't its format file")
 	}
+	// An invented film has English subtitles beside it, named so the scan reads their language.
+	subs, err := os.ReadFile(filepath.Join(filepath.Dir(l.FilmFile(film)),
+		"Kite (1986) {tmdb-"+strconv.Itoa(ProviderIDBase+1)+"}.en.srt"))
+	if err != nil {
+		t.Fatalf("the film has no subtitles beside it: %v", err)
+	}
+	if want := "1\n00:00:10,000 --> 00:00:14,000\nDemo subtitles · line 1\n\n2\n00:00:20,000"; len(subs) < len(want) || string(subs[:len(want)]) != want {
+		t.Fatalf("subtitles begin %q, want %q", subs[:min(len(subs), len(want))], want)
+	}
 	for _, e := range EpisodesOf(show) {
 		if !sameAs(l.EpisodeFile(show, e), l.Video(show.Format)) {
 			t.Fatalf("episode %d's file isn't its format file", e.Number)

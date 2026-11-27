@@ -280,10 +280,10 @@ for (const width of WIDTHS) {
 
       // t1 (index 0) names a channel: its monogram shows inside ITS OWN poster — scoped, since
       // the same channel's monogram also legitimately appears in On now and Recently tuned.
-      // t2 (index 1, the long title) names none: the fallback's restrained line motif alone, no
-      // invented monogram ("a channel monogram where available").
+      // t2 (index 1, the long title) names none: the fallback sets the title's own letters, so a
+      // poster is never blank (#2762).
       await expect(arts.nth(0).getByText("SS", { exact: true })).toBeVisible();
-      await expect(arts.nth(1).getByText(/^[A-Z]{2}$/)).toHaveCount(0);
+      await expect(arts.nth(1).getByText("TR", { exact: true })).toBeVisible();
       await expect(page.locator("[data-home-poster-art] img")).toHaveCount(0);
       await expect(page.getByText(LONG_POSTER_TITLE)).toBeVisible();
       // The on-now stress title wraps too, in its own section, at the same width.

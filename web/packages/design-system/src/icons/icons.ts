@@ -1,4 +1,5 @@
 import Activity from "lucide-react-native/icons/activity";
+import Airplay from "lucide-react-native/icons/airplay";
 import Archive from "lucide-react-native/icons/archive";
 import ArrowLeft from "lucide-react-native/icons/arrow-left";
 import ArrowLeftRight from "lucide-react-native/icons/arrow-left-right";
@@ -54,6 +55,7 @@ import PanelRightClose from "lucide-react-native/icons/panel-right-close";
 import PanelRightOpen from "lucide-react-native/icons/panel-right-open";
 import Pause from "lucide-react-native/icons/pause";
 import Pencil from "lucide-react-native/icons/pencil";
+import PictureInPicture2 from "lucide-react-native/icons/picture-in-picture-2";
 import Play from "lucide-react-native/icons/play";
 import Plus from "lucide-react-native/icons/plus";
 import Radio from "lucide-react-native/icons/radio";
@@ -72,6 +74,7 @@ import SkipBack from "lucide-react-native/icons/skip-back";
 import SkipForward from "lucide-react-native/icons/skip-forward";
 import Sparkles from "lucide-react-native/icons/sparkles";
 import Square from "lucide-react-native/icons/square";
+import Star from "lucide-react-native/icons/star";
 import StepBack from "lucide-react-native/icons/step-back";
 import Trash from "lucide-react-native/icons/trash";
 import TriangleAlert from "lucide-react-native/icons/triangle-alert";
@@ -82,6 +85,7 @@ import Volume2 from "lucide-react-native/icons/volume-2";
 import VolumeX from "lucide-react-native/icons/volume-x";
 import X from "lucide-react-native/icons/x";
 
+import { filled } from "./filled-glyph";
 import { withSeconds } from "./seek-glyph";
 
 const icons = {
@@ -89,6 +93,8 @@ const icons = {
   account: CircleUserRound,
   // Diagnostics' live activity pulse.
   activity: Activity,
+  // An iPhone player's AirPlay utility (§9.3).
+  airplay: Airplay,
   // A caution the reader should act on or know about, drawn as a triangle: `warning` is the round
   // mark of a status, this is the banner's.
   alert: TriangleAlert,
@@ -175,6 +181,8 @@ const icons = {
   person: UserRound,
   pending: Circle,
   people: Users,
+  // The player's picture-in-picture utility (§9.3).
+  pictureInPicture: PictureInPicture2,
   // A table row's disclosure: closed points at the row's details, open points down into them.
   rowCollapse: ChevronDown,
   rowExpand: ChevronRight,
@@ -212,6 +220,9 @@ const icons = {
   skipForward: SkipForward,
   // Cutting one recording into its clips (filler's Split into clips).
   split: Scissors,
+  // A favourite not yet pinned, and the same star filled once it is.
+  star: Star,
+  starFilled: filled(Star),
   // The player's Start over (§9.4): back to the programme's start.
   startOver: StepBack,
   stop: Square,

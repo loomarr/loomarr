@@ -69,9 +69,11 @@ describe("HomePage (#1659)", () => {
     );
     renderAt("/dashboard");
     expect(await screen.findByRole("heading", { name: "Tonight" })).toBeInTheDocument();
+    // The guide is here before the page is, so the row is too; its reason follows with the
+    // highlights, which are read once a channel is on.
     const row = screen.getByRole("link", { name: /A sci-fi anthology/ });
     expect(row).toHaveTextContent("07");
-    expect(row).toHaveTextContent("Season 4 premiere");
+    await waitFor(() => expect(row).toHaveTextContent("Season 4 premiere"));
   });
 
   // The guide window is part of the query key. It is pinned at mount, so minutes passing never

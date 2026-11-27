@@ -6,16 +6,22 @@ import type { BundlePreview } from "@loomarr/api/models/bundlePreview";
 import type { BundleSelection } from "@loomarr/api/models/bundleSelection";
 import {
   Action,
+  Card,
   CompactSelect,
+  Details,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Grid,
   Icon,
   icons,
   LoadingStrip,
+  Notice,
+  Stack,
+  Text,
   Toggle,
 } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
@@ -206,18 +212,20 @@ const SupportBundle = ({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <section className="border-border bg-muted/20 rounded-lg border p-4" aria-label="Report scope">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-medium">Recent diagnostic evidence</h3>
-                  <p className="text-muted-foreground mt-1 text-sm">
+          <Stack gap="4">
+            <Card aria-label="Report scope" gap={16} padding={16} render="section">
+              <Stack align="start" direction="row" gap="control" justify="between" wrap>
+                <Stack gap="1">
+                  <Text as="h3" textRole="heading">
+                    Recent diagnostic evidence
+                  </Text>
+                  <Text as="p" textRole="compact" tone="secondary">
                     {events ? "Application and player logs" : ""}
                     {events && processes ? " plus " : ""}
                     {processes ? "related process details" : ""}
                     {processOutput ? " and retained output" : ""}.
-                  </p>
-                </div>
+                  </Text>
+                </Stack>
                 <form.Field name="range">
                   {(field) => (
                     <CompactSelect
@@ -229,118 +237,148 @@ const SupportBundle = ({
                     />
                   )}
                 </form.Field>
-              </div>
-              <div className="border-success/30 bg-success/5 mt-4 flex items-start gap-2 rounded-md border p-3">
-                <span className="mt-0.5 flex">
-                  <Icon decorative glyph={icons.verified} size="compact" tone="success" />
-                </span>
-                <p className="text-muted-foreground text-xs">
-                  Secrets, URL credentials, and local paths are redacted again while the report is built.
-                </p>
-              </div>
-            </section>
+              </Stack>
+              <Notice
+                body="Secrets, URL credentials, and local paths are redacted again while the report is built."
+                tone="success"
+              />
+            </Card>
 
             {busy === "preview" && (
-              <p className="text-muted-foreground inline-flex items-center gap-2 text-sm" role="status">
-                <LoadingStrip decorative width={32} /> Reviewing the selected evidence…
-              </p>
+              <Stack align="center" direction="row" gap="2" role="status">
+                <LoadingStrip decorative width={32} />
+                <Text as="p" textRole="compact" tone="secondary">
+                  Reviewing the selected evidence…
+                </Text>
+              </Stack>
             )}
 
             {preview && (
-              <section
-                className="border-border bg-card space-y-3 rounded-lg border p-4"
-                aria-label="Troubleshooting report summary"
-              >
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h3 className="font-medium">What will be included</h3>
-                  <span className="font-mono text-sm">About {formatBytes(preview.estimatedBytes)}</span>
-                </div>
-                <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                  <div>
-                    <dt className="text-muted-foreground">Logs</dt>
-                    <dd className="font-medium">{counts?.events ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Processes</dt>
-                    <dd className="font-medium">{counts?.processes ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Outputs</dt>
-                    <dd className="font-medium">{counts?.processOutputs ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Redactions</dt>
-                    <dd className="font-medium">{counts?.redactions ?? 0}</dd>
-                  </div>
-                </dl>
+              <Card aria-label="Troubleshooting report summary" gap={12} padding={16} render="section">
+                <Stack align="baseline" direction="row" gap="inline" justify="between" wrap>
+                  <Text as="h3" textRole="heading">
+                    What will be included
+                  </Text>
+                  <Text textRole="data">About {formatBytes(preview.estimatedBytes)}</Text>
+                </Stack>
+                <Grid columns={{ base: 2, sm: 4 }} gap="3" render="dl">
+                  <Stack>
+                    <Text as="dt" textRole="compact" tone="secondary">
+                      Logs
+                    </Text>
+                    <Text as="dd" textRole="cardLabel">
+                      {counts?.events ?? 0}
+                    </Text>
+                  </Stack>
+                  <Stack>
+                    <Text as="dt" textRole="compact" tone="secondary">
+                      Processes
+                    </Text>
+                    <Text as="dd" textRole="cardLabel">
+                      {counts?.processes ?? 0}
+                    </Text>
+                  </Stack>
+                  <Stack>
+                    <Text as="dt" textRole="compact" tone="secondary">
+                      Outputs
+                    </Text>
+                    <Text as="dd" textRole="cardLabel">
+                      {counts?.processOutputs ?? 0}
+                    </Text>
+                  </Stack>
+                  <Stack>
+                    <Text as="dt" textRole="compact" tone="secondary">
+                      Redactions
+                    </Text>
+                    <Text as="dd" textRole="cardLabel">
+                      {counts?.redactions ?? 0}
+                    </Text>
+                  </Stack>
+                </Grid>
                 {warnings.length > 0 ? (
-                  <p className="border-caution/30 bg-caution/5 rounded-md border p-3 text-sm">
-                    Some evidence is limited: {warnings.join(", ")}.
-                  </p>
+                  <Notice
+                    body={`${warnings.join(", ").replace(/^./, (first) => first.toUpperCase())}.`}
+                    title="Some evidence is limited"
+                    tone="warn"
+                  />
                 ) : (
-                  <p className="text-muted-foreground text-xs">
+                  <Text as="p" textRole="hint" tone="secondary">
                     No evidence limits were reached in this review.
-                  </p>
+                  </Text>
                 )}
-              </section>
+              </Card>
             )}
 
-            <details className="border-border rounded-lg border p-4">
-              <summary className="cursor-pointer text-sm font-medium">
-                <span className="mr-2 inline-flex align-middle">
-                  <Icon decorative glyph={icons.settingsAdjust} size="compact" tone="inherit" />
-                </span>{" "}
-                Customize report
-              </summary>
-              <div className="mt-4 space-y-4">
-                <fieldset>
-                  <legend className="mb-2 text-sm font-medium">Evidence types</legend>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {EVIDENCE_TYPES.map(([label, kind]) => (
-                      <div key={kind} className="border-border rounded-md border px-3">
-                        <Toggle
-                          label={label}
-                          checked={values[kind]}
-                          onCheckedChange={(next) => updateCategory(kind, next)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </fieldset>
-                <div>
-                  <h4 className="mb-2 text-sm font-medium">Exact identifiers</h4>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {CORRELATION_FIELDS.map(([label, key]) => (
-                      <form.AppField key={key} name={key}>
-                        {(field) => <field.TextField label={label} maxLength={128} />}
-                      </form.AppField>
-                    ))}
-                  </div>
-                </div>
-                {preview && (
-                  <details>
-                    <summary className="text-muted-foreground cursor-pointer text-sm">Files included</summary>
-                    <ul className="mt-2 grid gap-1 font-mono text-xs sm:grid-cols-2">
-                      {["manifest.json", ...preview.manifest.entries.map((entry) => entry.name)].map(
-                        (name) => (
-                          <li key={name}>{name}</li>
-                        ),
-                      )}
-                    </ul>
-                  </details>
-                )}
-              </div>
-            </details>
-          </div>
+            <Card padding={16}>
+              <Details
+                summary={
+                  <>
+                    <span style={{ display: "inline-flex", marginRight: 8, verticalAlign: "middle" }}>
+                      <Icon decorative glyph={icons.settingsAdjust} size="compact" tone="inherit" />
+                    </span>{" "}
+                    Customize report
+                  </>
+                }
+                textRole="cardLabel"
+              >
+                <Stack gap="4" paddingTop={16}>
+                  <fieldset>
+                    <Text as="legend" textRole="cardLabel">
+                      Evidence types
+                    </Text>
+                    <Stack paddingTop={8}>
+                      <Grid columns={{ base: 1, sm: 3 }} gap="2">
+                        {EVIDENCE_TYPES.map(([label, kind]) => (
+                          <Stack
+                            borderColor="borderDecorative"
+                            borderRadius={8}
+                            borderWidth={1}
+                            key={kind}
+                            paddingHorizontal={12}
+                          >
+                            <Toggle
+                              label={label}
+                              checked={values[kind]}
+                              onCheckedChange={(next) => updateCategory(kind, next)}
+                            />
+                          </Stack>
+                        ))}
+                      </Grid>
+                    </Stack>
+                  </fieldset>
+                  <Stack gap="2">
+                    <Text as="h4" textRole="cardLabel">
+                      Exact identifiers
+                    </Text>
+                    <Grid columns={{ base: 1, sm: 2 }} gap="3">
+                      {CORRELATION_FIELDS.map(([label, key]) => (
+                        <form.AppField key={key} name={key}>
+                          {(field) => <field.TextField label={label} maxLength={128} />}
+                        </form.AppField>
+                      ))}
+                    </Grid>
+                  </Stack>
+                  {preview && (
+                    <Details summary="Files included" tone="secondary">
+                      <Stack paddingTop={8}>
+                        <Grid columns={{ base: 1, sm: 2 }} gap="1" render="ul">
+                          {["manifest.json", ...preview.manifest.entries.map((entry) => entry.name)].map(
+                            (name) => (
+                              <Text as="li" key={name} textRole="mono" tone="primary">
+                                {name}
+                              </Text>
+                            ),
+                          )}
+                        </Grid>
+                      </Stack>
+                    </Details>
+                  )}
+                </Stack>
+              </Details>
+            </Card>
+          </Stack>
 
-          {error && (
-            <p
-              role="alert"
-              className="border-destructive/40 bg-destructive/10 text-destructive rounded-md border p-3 text-sm"
-            >
-              {error}
-            </p>
-          )}
+          {error && <Notice body={error} role="alert" tone="danger" />}
 
           <DialogFooter>
             <Action

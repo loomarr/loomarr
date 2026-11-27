@@ -31,7 +31,17 @@ const meta = {
   component: TunerLoader,
   decorators: [
     (Story) => (
-      <div className="relative aspect-video w-[calc(100vw-2rem)] max-w-[720px] overflow-hidden rounded-xl bg-black">
+      <div
+        style={{
+          aspectRatio: "16 / 9",
+          backgroundColor: "#000",
+          borderRadius: 12,
+          maxWidth: 720,
+          overflow: "hidden",
+          position: "relative",
+          width: "calc(100vw - 2rem)",
+        }}
+      >
         <Story />
       </div>
     ),
@@ -50,7 +60,11 @@ const Switch: Story = {
   decorators: [
     (Story) => (
       <>
-        <img src={HELD_FRAME} alt="" className="absolute inset-0 size-full object-cover" />
+        <img
+          src={HELD_FRAME}
+          alt=""
+          style={{ height: "100%", inset: 0, objectFit: "cover", position: "absolute", width: "100%" }}
+        />
         <Story />
       </>
     ),

@@ -4,38 +4,16 @@ import (
 	"context"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
-	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
-	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
-	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	imagesapi "github.com/loomarr/loomarr/internal/api/images"
-	libraryapi "github.com/loomarr/loomarr/internal/api/library"
-	opsapi "github.com/loomarr/loomarr/internal/api/ops"
-	"github.com/loomarr/loomarr/internal/api/people"
-	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
-	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
-	setupapi "github.com/loomarr/loomarr/internal/api/setup"
-	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
-	"github.com/loomarr/loomarr/internal/filler/defectfloor"
-	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/filler/source"
-	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/platform/activity"
-	"github.com/loomarr/loomarr/internal/platform/metrics"
-	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
-	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
 // Server is the root of the API wiring: it carries the dependencies the request middleware and
@@ -44,7 +22,7 @@ import (
 type Server struct {
 	auth httpcore.Authorizer
 	log  *slog.Logger
-	// origin is COOKIE_SECURE and TRUST_PROXY: where a request came from, how cookies are marked (§11).
+	// origin is COOKIE_SECURE and TRUSTED_PROXIES: where a request came from, how cookies are marked (§11).
 	origin httpcore.Origin
 	// channels is the channel engine; the root reads it only for holidayCalendar.
 	channels guideapi.ChannelService
@@ -90,159 +68,6 @@ type ProposalApprover interface {
 	// acquire. It shares the one approval-addition resolver with Approve's edit.Add, so a
 	// manually submitted proposal gets the same "client presence is not authority" guarantee.
 	ResolveManualLineup(ctx context.Context, items []proposals.ProposalItem) (lineup, acquisitions []proposals.ProposalItem, err error)
-}
-
-// Options configures the API server.
-type Options struct {
-	Store                records.Store
-	Auth                 httpcore.Authorizer
-	Log                  *slog.Logger
-	Metrics              *metrics.Recorder
-	BackupSQLite         system.BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
-	Ready                ReadyFunc
-	Now                  func() time.Time                   // optional deterministic request clock for tests
-	Login                people.LoginService                // /v1/auth/login + user disable; nil ⇒ routes absent
-	Passwords            people.PasswordService             // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
-	Sessions             people.SessionManager              // /v1/auth/logout
-	UserSync             people.UserSyncer                  // POST /v1/users/sync; nil ⇒ route absent
-	Invitations          people.InvitationService           // /v1/invitations* (§11); nil ⇒ routes absent
-	InvitationRedemption people.InvitationRedemptionService // public preview and explicit activation (§11)
-	PasswordRecovery     people.PasswordRecoveryService     // public local-password recovery (§11)
-	// InvitationDelivery adds explicit email send/resend and provider-safe delivery summaries.
-	InvitationDelivery people.InvitationDeliveryService
-	// AccessPublicURL supplies the recipient-reachable browser origin. It is read
-	// at grant issuance so a hot-applied setting takes effect without restart.
-	AccessPublicURL func() string
-	// Devices wires /v1/auth/device/* (§11, Shield P1); nil ⇒ routes absent.
-	Devices *auth.DeviceManager
-	// DeviceLimiter bounds pairing starts and code-approval attempts; nil ⇒ unlimited, which is
-	// acceptable only in tests. Production wires it at composition beside Devices.
-	DeviceLimiter    *auth.RateLimiter
-	CookieSecure     string                            // COOKIE_SECURE: auto|true|false (§11)
-	TrustProxy       bool                              // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
-	DevLogin         bool                              // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
-	Pprof            bool                              // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
-	MetricsToken     string                            // LOOMARR_METRICS_TOKEN[_FILE] (§7): the Prometheus scrape bearer; empty ⇒ /metrics refused (fail closed)
-	Demo             people.DemoAccount                // LOOMARR_DEMO_USERNAME/_PASSWORD (#2268): the zero value ⇒ not a demo site
-	Channels         guideapi.ChannelService           // /v1/channels* reconcile; nil ⇒ reconcile route absent
-	LiveTV           setupapi.LiveTVService            // /v1/setup/*; nil ⇒ setup routes absent
-	TunerRescanner   channelsapi.TunerRescanner        // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
-	TunarrConnect    setupapi.TunarrConnector          // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
-	ArrDiscovery     setupapi.ArrDiscovery             // /v1/setup/arrs-from-requester; nil ⇒ fills nothing
-	Suggest          SuggestService                    // /v1/proposals submit; nil ⇒ submit route 501
-	ProposalProgress proposalsapi.ProposalProgress     // live generation progress on GET /v1/proposal-jobs/{jobId}; nil ⇒ none
-	ProposalWorkflow proposalsapi.ProposalWorkflow     // authoritative /v1/proposal-jobs Journey reads
-	Search           catalogapi.SearchService          // /v1/search; nil ⇒ search route 501
-	MovieCollections libraryapi.MovieCollectionService // /v1/movie-collections; nil ⇒ route 501
-	Collections      libraryapi.CollectionService      // /v1/library/collections (§2.2); nil ⇒ route 501
-	LibraryRoots     libraryapi.LibraryRootService     // /v1/library/roots*, path-map, status (#2151); nil ⇒ 409
-	LibraryHooks     libraryapi.LibraryHookService     // /v1/library/hooks/* (#2151); nil ⇒ 409
-	IdeaLibrary      channelsapi.IdeaLibrary           ///v1/discovery/ideas (#1665); nil ⇒ route 501
-	Icons            channelsapi.IconService           ///v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
-	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
-	// route 404s and the record route reports the image absent, which is the honest answer for an
-	// instance with no store behind it.
-	Images          imagesapi.ImageService
-	Events          opsapi.EventSource         // /v1/events SSE; nil ⇒ route 501
-	Shutdown        <-chan struct{}            // generation lifetime; closes SSE so http.Server.Shutdown can drain
-	Filler          fillerapi.Service          // /v1/filler sync/tag; nil ⇒ those routes 501
-	SourceProviders *source.Registry           // /v1/filler/providers and source validation; nil ⇒ none registered
-	FillerResearch  fillerapi.ResearchService  // optional structured-first web-search status and validation
-	FillerDefects   *defectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
-	Pods            guideapi.PodPreviewer      // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
-	Taxonomy        fillerapi.TaxonomyEditor   // taxonomy impact + committed channel convergence
-	// FillerLayout is the immutable storage topology applied to this server generation. Its zero
-	// value means filler storage is unavailable; saved desired values do not replace it mid-run.
-	FillerLayout cliplibrary.Layout
-	// IntakeLanguages is the languages intake admits now, the channels' commercial languages
-	// (language.IntakeSet), read live. Split review compares a proposal with it; nil reports none.
-	IntakeLanguages func(context.Context) (string, error)
-	SystemLLM       system.SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
-	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper
-	// (§18, V11). Production wires it on both backends so a reconnect can observe the
-	// successful cutover; nil is reserved for embeddings without migration status.
-	Database   system.DatabaseService
-	Encryption system.EncryptionService
-	// Backups backs /v1/system/backups* — listing, downloading and writing the backups
-	// on disk (§16, V12). nil ⇒ routes 501 (a Postgres install wires it nil).
-	Backups system.BackupsService
-	// SSO backs /v1/auth/sso/* (§11, V8); nil ⇒ the routes are not mounted.
-	SSO people.SSOService
-	// Activity records Dashboard feed lines (§12, V32); nil ⇒ nothing is recorded.
-	Activity *activity.Recorder
-	// DiagnosticEvents backs the bounded admin/agent diagnostic timeline.
-	DiagnosticEvents opsapi.DiagnosticEventService
-	// DiagnosticProcesses backs active/recent Process runs and bounded output.
-	DiagnosticProcesses opsapi.DiagnosticProcessService
-	// DiagnosticBundles backs preview and on-demand redacted ZIP creation.
-	DiagnosticBundles opsapi.DiagnosticBundleService
-	// DiagnosticCapture controls the recorder's process-local bounded debug window.
-	DiagnosticCapture opsapi.DiagnosticCaptureService
-	// ClientDiagnostics accepts bounded curated events from authenticated web/TV clients.
-	ClientDiagnostics opsapi.ClientDiagnosticService
-	// ClientCrashes backs the crash-report write and its admin reads (#1816); nil ⇒ unmounted.
-	ClientCrashes opsapi.ClientCrashService
-	// StartupReports backs the current/recent application-generation report.
-	StartupReports opsapi.StartupReportService
-	// Restart backs POST /v1/system/restart (§9.2, V13) — implemented over main's
-	// generation loop. nil ⇒ 501, the honest answer for a handler with no loop behind it.
-	Restart system.RestartService
-	// RestartDrift names bootstrap and app-managed generation settings waiting on a restart
-	// (config-design §3).
-	RestartDrift             func() []string
-	Jobs                     system.JobService                                         // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
-	Settings                 setupapi.SettingsService                                  // /v1/settings* (config-design §8); nil ⇒ routes 501
-	NotificationDestinations setupapi.NotificationDestinationService                   // redacted product-delivery routing (§11)
-	WebPushPublicKey         string                                                    // public half of the generated VAPID identity (§11)
-	ProposalNotifications    suggest.ProposalNotifier                                  // best-effort product lifecycle publication (§11)
-	DecisionQuality          proposalsapi.ProposalDecisionQuality                      // committed Proposal denial quality outcome (§17)
-	BackendTransition        setupapi.BackendTransitioner                              // durable backend prepare/publish/retire coordinator
-	BackendCheckpoint        func(context.Context) (httpcore.BackendCheckpoint, error) // durable checkpoint, once per operation
-	Guide                    guideapi.GuideReader                                      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
-	Provision                people.Provisioner                                        // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
-	ProposalOutlook          proposalsapi.ProposalOutlook
-	Approver                 ProposalApprover   // atomic proposal + titles + channel gate (§7); required for approval
-	Binder                   channelsapi.Binder // explicit channel intent/number helpers; not the approval gate
-	// PlayoutObserver supplies operational snapshots and program progress.
-	PlayoutObserver playoutapi.PlayoutObserver
-	// Viewing is the household-viewing tracker the playlist polls feed (#1662). The composition
-	// root shares it with the watch-history recorder (#3010); nil ⇒ Router makes its own.
-	Viewing *viewing.Tracker
-	// PlayoutCapability returns the already-published host encoder capability. It must not
-	// perform or await a probe on this observational request path.
-	PlayoutCapability func() playout.Capacity
-	// WatermarkPreview draws a channel's bug for the channel page's preview. Nil ⇒ the route 501s.
-	WatermarkPreview channelsapi.WatermarkPreviewer
-	// PlayoutSecret reads the generated `playout_token` (§11 device auth). A func so a
-	// REGENERATED token takes effect without a restart. Nil ⇒ playout routes fail closed.
-	PlayoutSecret func() string
-	// PlayoutSecretCurrent reads the durable token at a request boundary. Production wires
-	// this for Postgres replica coherence; nil preserves the local/SQLite seam above.
-	PlayoutSecretCurrent func(context.Context) (string, error)
-	// PlayoutResolver describes channels for the formats, play-url and filler handlers.
-	PlayoutResolver playoutapi.PlayoutResolver
-	// Playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
-	Playout playoutapi.Playout
-	// PlayoutGuide resolves programme timelines for the XMLTV guide (§9.1). Nil ⇒ the route 501s.
-	PlayoutGuide playoutapi.PlayoutGuide
-	// TimelineThumbs resolves a TMDB preview image per programme for the Watch timeline (§9.1 V47).
-	// Nil ⇒ the strip renders with no images (TMDB optional, and it never fails the timeline).
-	TimelineThumbs guideapi.TimelineThumbResolver
-	// ResidentLLMVRAM reports the VRAM the LLM currently holds + its model tag, from a live Ollama
-	// /api/ps probe (§9.1 V47 doctor). Powers the doctor's TRUE contention header. Nil for a hosted
-	// provider or an install without a local LLM; the composition root wires it to llm ListResident.
-	ResidentLLMVRAM func(ctx context.Context) (gib float64, model string)
-	// LiveSettings answers a setting's live resolved value so feature routes gate on the
-	// CURRENT config (a saved connection enables the route with no restart, §8.1). Routes read
-	// it through the typed handles — `settings.GuideTimezone.Get(s.liveSettings)` — so a key
-	// cannot be misspelt or read as the wrong kind. The composition root passes its settings
-	// view; unit tests that omit it (nil) skip the live-config gates, and a handle on a nil
-	// reader answers the setting's declared default.
-	LiveSettings settings.Reader
-	// LibraryConfigured atomically reports whether the complete live media-server
-	// {flavor,url,token} connection is usable. The composition root supplies it; unit tests
-	// that wire a concrete adapter may omit it.
-	LibraryConfigured func() bool
 }
 
 // arrayNullableOnce guards the one write to Huma's package-level DefaultArrayNullable (see the

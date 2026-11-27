@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -72,8 +71,9 @@ var flagsRebuilt = map[string][]string{
 // production opens SQLite, and proves every table kept its columns in order, every flag became a
 // checked BOOLEAN with its value, the rows stayed, deletes still cascade, and a 2 is refused.
 func TestFlagsDeclaredOneWayMigration(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "flags.db")+"?_pragma=foreign_keys(on)")
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, flagsDeclaredOneWayMigration-1, foreignKeyConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

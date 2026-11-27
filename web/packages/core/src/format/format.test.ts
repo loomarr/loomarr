@@ -6,7 +6,6 @@ import {
   formatClipDuration,
   formatCompactCount,
   formatDuration,
-  formatEpgTime,
   formatGiB,
   formatMmSs,
   formatPercent,
@@ -93,11 +92,6 @@ describe("formatters", () => {
     expect(channelNumber(42)).toBe("42");
   });
 
-  it("formats EPG time as 12-hour", () => {
-    expect(formatEpgTime("2026-07-17T20:00:00")).toBe("8:00 PM");
-    expect(formatEpgTime("2026-07-17T00:05:00")).toBe("12:05 AM");
-  });
-
   it("formats relative time against an injected now", () => {
     const now = new Date("2026-07-17T12:00:00Z").getTime();
     expect(formatRelative("2026-07-17T11:59:30Z", now)).toBe("just now");
@@ -134,11 +128,6 @@ describe("Instant accepts both wire shapes", () => {
     const iso = "2026-07-17T11:57:00Z";
     expect(formatRelative(Date.parse(iso), now)).toBe(formatRelative(iso, now));
     expect(formatRelative(Date.parse(iso), now)).toBe("3m ago");
-  });
-
-  it("formats an EPG time from Unix ms", () => {
-    // now/next carry stopMs, so the channel card's "·til 8:00 PM" needs ms support.
-    expect(formatEpgTime(Date.parse("2026-07-17T20:00:00"))).toBe("8:00 PM");
   });
 });
 

@@ -1,3 +1,5 @@
+import type { ChannelAudioSource } from "@loomarr/core/channel-audio";
+import type { ChannelSubtitlesSource } from "@loomarr/core/channel-subtitles";
 import type { ClientDiagnosticsIdentity } from "@loomarr/core/client-diagnostics";
 import type { GuideController, GuideControllerSnapshot } from "@loomarr/core/guide";
 import type { MyChannelsController, MyChannelsSnapshot } from "@loomarr/core/my-channels";
@@ -11,6 +13,7 @@ import type {
 import type { NativePlayerTransport, PlaybackMarks } from "@loomarr/player/native";
 
 import type { LastChannelStore } from "../last-channel";
+import type { PairedEvents } from "../paired-events";
 
 interface PairedClientOptions {
   credential: PairingCredential;
@@ -42,7 +45,13 @@ interface PairedClientOptions {
 /** One paired server's playback, guide and the viewer's channels, shared by the TV and the phone. */
 interface PairedClient {
   catalogState: CatalogRefreshState;
+  /** The player's Audio menu for a channel, read from the server (see useChannelAudio). */
+  channelAudio: ChannelAudioSource;
+  /** The channel's subtitles beside the stream, read with the device's token (see usePairedSubtitles). */
+  channelSubtitles: ChannelSubtitlesSource;
   controller: PlayerController;
+  /** The device's one stream to the server, for anything else that follows its frames. */
+  events: PairedEvents;
   guide: GuideController;
   guideSnapshot: GuideControllerSnapshot;
   myChannels: MyChannelsController;

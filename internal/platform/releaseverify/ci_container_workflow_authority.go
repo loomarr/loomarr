@@ -1,13 +1,5 @@
 package releaseverify
 
-import (
-	"fmt"
-	"sort"
-	"strings"
-
-	"gopkg.in/yaml.v3"
-)
-
 type workflowStepAuthority struct {
 	targets           []string
 	allowsAcquisition bool
@@ -57,98 +49,6 @@ func standardWorkflowEnvironment() map[string]string {
 func standardWorkflowPermissions() map[string]string {
 	return map[string]string{"contents": "read"}
 }
-
-const cacheCleanupWorkflowCommand = "set -uo pipefail\n" +
-	"# `|| true` on the list: a PR with no caches is the normal case for docs-only\n" +
-	"# work, and it must not fail the job.\n" +
-	"ids=$(gh api \"repos/$REPO/actions/caches\" --paginate \\\n" +
-	"        -q \".actions_caches[] | select(.ref==\\\"$REF\\\" or (.ref | startswith(\\\"$QUEUE_REF_PREFIX\\\"))) | .id\" 2>/dev/null || true)\n" +
-	"if [ -z \"$ids\" ]; then\n" +
-	"  echo \"no caches for $REF or $QUEUE_REF_PREFIX*\"\n" +
-	"  exit 0\n" +
-	"fi\n" +
-	"for id in $ids; do\n" +
-	"  # Best-effort per cache: a 404 here means something else already deleted it\n" +
-	"  # (a concurrent run, or GitHub's own expiry), which is success, not failure.\n" +
-	"  if gh api -X DELETE \"repos/$REPO/actions/caches/$id\" >/dev/null 2>&1; then\n" +
-	"    echo \"deleted $id\"\n" +
-	"  else\n" +
-	"    echo \"could not delete $id (already gone?)\"\n" +
-	"  fi\n" +
-	"done\n"
-
-const appleCacheFingerprintCommand = `echo "fingerprint=$(./scripts/apple-compilation-cache.sh fingerprint)" >> "$GITHUB_OUTPUT"`
-
-const codeQLImpactCommand = `set -uo pipefail
-if [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ]; then
-  ./scripts/codeql-impact.sh --all >> "$GITHUB_OUTPUT"
-elif [ -z "${BASE:-}" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
-  || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-  echo "no usable CodeQL diff base ($BASE) — selecting every language"
-  ./scripts/codeql-impact.sh --all >> "$GITHUB_OUTPUT"
-elif ! git diff --name-only "$BASE" HEAD | ./scripts/codeql-impact.sh >> "$GITHUB_OUTPUT"; then
-  echo "CodeQL impact classification failed — selecting every language"
-  ./scripts/codeql-impact.sh --all >> "$GITHUB_OUTPUT"
-fi
-`
-
-const appleCachePublisherPreflightCommand = `set -euo pipefail
-gh api "repos/$REPO/actions/cache/usage" > "$RUNNER_TEMP/apple-cache-usage.json"
-./scripts/apple-compilation-cache.sh admit-capacity "$RUNNER_TEMP/apple-cache-usage.json"
-`
-
-const appleCacheConsumerPrepareCommand = `set -euo pipefail
-mode=cold
-store="$RUNNER_TEMP/apple-compilation-cache-store"
-archive="$RUNNER_TEMP/apple-compilation-cache.tar.zst"
-if [[ -f "$archive" ]] && ./scripts/apple-compilation-cache.sh restore "$archive" "$store"; then
-  mode=warm
-else
-  rm -f "$archive"
-fi
-echo "mode=$mode" >> "$GITHUB_OUTPUT"
-echo "store=$store" >> "$GITHUB_OUTPUT"
-`
-
-const appleCachePublisherSeedCommand = `set -euo pipefail
-archive="$RUNNER_TEMP/apple-compilation-cache.tar.zst"
-seed="$RUNNER_TEMP/apple-compilation-cache-seed.tar.zst"
-if [[ -f "$archive" ]]; then
-  mv "$archive" "$seed"
-  echo "archive=$seed" >> "$GITHUB_OUTPUT"
-else
-  echo "archive=" >> "$GITHUB_OUTPUT"
-fi
-`
-
-const appleCachePublisherAdmissionCommand = `set -euo pipefail
-gh api "repos/$REPO/actions/cache/usage" > "$RUNNER_TEMP/apple-cache-usage.json"
-./scripts/apple-compilation-cache.sh admit-save \
-  "$RUNNER_TEMP/apple-compilation-cache.tar.zst" \
-  "$RUNNER_TEMP/apple-cache-usage.json"
-`
-
-const appleCachePublisherRetentionCommand = `set -euo pipefail
-inventory="$RUNNER_TEMP/apple-cache-inventory.json"
-gh api "repos/$REPO/actions/caches?per_page=100&ref=refs/heads/main" > "$inventory"
-while read -r id; do
-  [[ -n "$id" ]] || continue
-  gh api -X DELETE "repos/$REPO/actions/caches/$id"
-done < <(./scripts/apple-compilation-cache.sh retention-plan \
-  "$inventory" "$PREFIX" refs/heads/main 1)
-`
-
-const androidCCachePromotionRetentionCommand = `set -euo pipefail
-gh api -X DELETE "repos/$REPO/actions/artifacts/$ARTIFACT_ID"
-inventory="$RUNNER_TEMP/android-ccache-inventory.json"
-gh api "repos/$REPO/actions/caches?per_page=100&ref=refs/heads/main" > "$inventory"
-ids=$(./scripts/android-ccache-promotion.sh retention-plan \
-  "$inventory" refs/heads/main android-tv-ccache-v2-Linux-ccache-4.14- "$KEEP_KEY")
-while read -r id; do
-  [[ -n "$id" ]] || continue
-  gh api -X DELETE "repos/$REPO/actions/caches/$id"
-done <<< "$ids"
-`
 
 func workflowRunAuthorityEntries() map[string]workflowAuthority {
 	return map[string]workflowAuthority{
@@ -216,23 +116,29 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			environment: standardWorkflowEnvironment(),
 			permissions: map[string]string{"actions": "write", "contents": "read"},
 			jobs: map[string]workflowJobAuthority{
-				"publish": {
+				"plan": {
 					condition: "github.ref == 'refs/heads/main'",
+					steps: map[string]workflowStepAuthority{
+						appleCacheFingerprintCommand: exactWorkflowStep(1, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
+					},
+				},
+				"publish": {
+					condition: "github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || needs.plan.outputs.generation == '')",
 					steps: map[string]workflowStepAuthority{
 						appleCachePublisherPreflightCommand: exactWorkflowStep(1, "Preflight repository cache headroom", workflowStepAuthority{environment: map[string]string{
 							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}",
 						}}),
-						"make fe-install":              exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
-						appleCacheFingerprintCommand:   exactWorkflowStep(6, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
-						appleCachePublisherSeedCommand: exactWorkflowStep(8, "Isolate the optional seed generation", workflowStepAuthority{}),
-						`./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(9, "Build and validate the candidate generation", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{
+						"make fe-install":              exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
+						appleCacheFingerprintCommand:   exactWorkflowStep(5, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
+						appleCachePublisherSeedCommand: exactWorkflowStep(7, "Isolate the optional seed generation", workflowStepAuthority{}),
+						`./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(8, "Build and validate the candidate generation", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{
 							"LOOMARR_APPLE_CACHE_SEED_ARCHIVE":    "${{ steps.seed.outputs.archive }}",
 							"LOOMARR_APPLE_CACHE_VALIDATION_ROOT": "${{ runner.temp }}/apple-cache-publisher",
 						}}),
-						appleCachePublisherAdmissionCommand: exactWorkflowStep(10, "Enforce repository cache headroom", workflowStepAuthority{environment: map[string]string{
+						appleCachePublisherAdmissionCommand: exactWorkflowStep(9, "Enforce repository cache headroom", workflowStepAuthority{environment: map[string]string{
 							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}",
 						}}),
-						appleCachePublisherRetentionCommand: exactWorkflowStep(12, "Retain only the newest generation for this fingerprint", workflowStepAuthority{environment: map[string]string{
+						appleCachePublisherRetentionCommand: exactWorkflowStep(11, "Retain only the newest generation for this fingerprint", workflowStepAuthority{environment: map[string]string{
 							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}", "PREFIX": "${{ steps.apple-toolchain.outputs.fingerprint }}",
 						}}),
 					},
@@ -252,6 +158,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 								"REPO":             "${{ github.repository }}",
 								"REF":              "refs/pull/${{ github.event.pull_request.number }}/merge",
 								"QUEUE_REF_PREFIX": "refs/heads/gh-readonly-queue/main/pr-${{ github.event.pull_request.number }}-",
+								"HEAD_REF":         "${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref != github.event.repository.default_branch && format('refs/heads/{0}', github.event.pull_request.head.ref) || '' }}",
 							},
 						}),
 					},
@@ -336,40 +243,31 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			permissions: standardWorkflowPermissions(),
 			jobs: map[string]workflowJobAuthority{
 				"producer": {steps: map[string]workflowStepAuthority{
-					"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
-					`./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(5, "Produce and validate the compilation cache", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{"LOOMARR_APPLE_CACHE_VALIDATION_ROOT": "${{ runner.temp }}/apple-cache-validation-producer"}}),
+					"make fe-install": exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
+					`./web/scripts/validate-apple-compilation-cache.sh produce "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(4, "Produce and validate the compilation cache", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{"LOOMARR_APPLE_CACHE_VALIDATION_ROOT": "${{ runner.temp }}/apple-cache-validation-producer"}}),
 				}},
 				"consumer": {steps: map[string]workflowStepAuthority{
-					"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
-					`./web/scripts/validate-apple-compilation-cache.sh consume "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(6, "Consume and invalidate the compilation cache", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{"LOOMARR_APPLE_CACHE_VALIDATION_ROOT": "${{ runner.temp }}/apple-cache-validation-consumer"}}),
+					"make fe-install": exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
+					`./web/scripts/validate-apple-compilation-cache.sh consume "$RUNNER_TEMP/apple-compilation-cache.tar.zst"`: exactWorkflowStep(5, "Consume and invalidate the compilation cache", workflowStepAuthority{allowsAcquisition: true, environment: map[string]string{"LOOMARR_APPLE_CACHE_VALIDATION_ROOT": "${{ runner.temp }}/apple-cache-validation-consumer"}}),
 				}},
 			},
 		},
 		"ci-clients.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}}),
 			"make clients-checks": exactWorkflowStep(6, "Verify the affected client graph", workflowStepAuthority{
-				targets:   []string{"clients-checks"},
-				condition: "matrix.lane == 'checks'",
-				environment: map[string]string{
-					"TMPDIR":                   "${{ runner.temp }}",
-					"TURBO_TELEMETRY_DISABLED": "1",
-				},
+				targets:     []string{"clients-checks"},
+				condition:   "matrix.lane == 'checks'",
+				environment: clientsTurboEnvironment(),
 			}),
 			"make clients-tests CLIENTS_APP=${{ matrix.lane == 'tv-tests' && 'tv' || 'mobile' }}": exactWorkflowStep(7, "Typecheck and test the client", workflowStepAuthority{
-				targets:   []string{"clients-tests"},
-				condition: "endsWith(matrix.lane, '-tests')",
-				environment: map[string]string{
-					"TMPDIR":                   "${{ runner.temp }}",
-					"TURBO_TELEMETRY_DISABLED": "1",
-				},
+				targets:     []string{"clients-tests"},
+				condition:   "endsWith(matrix.lane, '-tests')",
+				environment: clientsTurboEnvironment(),
 			}),
 			"make clients-bundles CLIENTS_APP=${{ matrix.lane }}": exactWorkflowStep(8, "Bundle the client", workflowStepAuthority{
-				targets:   []string{"clients-bundles"},
-				condition: "matrix.lane == 'mobile' || matrix.lane == 'tv'",
-				environment: map[string]string{
-					"TMPDIR":                   "${{ runner.temp }}",
-					"TURBO_TELEMETRY_DISABLED": "1",
-				},
+				targets:     []string{"clients-bundles"},
+				condition:   "matrix.lane == 'mobile' || matrix.lane == 'tv'",
+				environment: clientsTurboEnvironment(),
 			}),
 		}),
 		"ci-docs.yml": standardRunWorkflow(map[string]workflowStepAuthority{
@@ -381,15 +279,20 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make fe-unit FE_SHARD=${{ matrix.shard }}/6": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-unit"}, condition: "matrix.shard <= 6"}),
 			"make fe-checks":        exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-checks"}, condition: "matrix.shard == 7"}),
 			"make fe-tokens-verify": exactWorkflowStep(7, "Token artifacts are committed and current", workflowStepAuthority{targets: []string{"fe-tokens-verify"}, condition: "matrix.shard == 7"}),
-			"make fe-packages":      exactWorkflowStep(8, "", workflowStepAuthority{targets: []string{"fe-packages"}, condition: "matrix.shard == 8"}),
+			"make fe-typecheck fe-packages": exactWorkflowStep(8, "Typecheck and test the packages", workflowStepAuthority{
+				targets:     []string{"fe-typecheck", "fe-packages"},
+				condition:   "matrix.shard == 8",
+				environment: turboRemoteCacheEnvironment(),
+			}),
 		}),
 		"ci-go-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make vet vet-tags lint": exactWorkflowStep(4, "Static analysis", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "matrix.shard == 1"}),
-			"make fmt privacy-verify tags-verify compose-verify go-race-verify eval-contract": exactWorkflowStep(5, "Repository contracts", workflowStepAuthority{targets: []string{"fmt", "privacy-verify", "tags-verify", "compose-verify", "go-race-verify", "eval-contract"}, condition: "matrix.shard == 2", environment: map[string]string{"MAKEFLAGS": "-j4 --output-sync=target"}}),
-			"make go-shard-verify SHARDS=2": exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}, condition: "matrix.shard == 1"}),
-			"make openapi-verify":           exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}, condition: "matrix.shard == 1"}),
-			"make retired-verify":           exactWorkflowStep(8, "Retired identifiers are gone from prose", workflowStepAuthority{targets: []string{"retired-verify"}, condition: "matrix.shard == 2"}),
-			"make observability-verify":     exactWorkflowStep(9, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, condition: "matrix.shard == 2", allowsAcquisition: true})}),
+			"make fmt tags-verify compose-verify go-race-verify eval-contract":     exactWorkflowStep(5, "Repository contracts", workflowStepAuthority{targets: []string{"fmt", "tags-verify", "compose-verify", "go-race-verify", "eval-contract"}, condition: "matrix.shard == 2", environment: map[string]string{"MAKEFLAGS": "-j4 --output-sync=target"}}),
+			"make go-shard-verify SHARDS=2":                                        exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}, condition: "matrix.shard == 1"}),
+			"make openapi-verify":                                                  exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}, condition: "matrix.shard == 1"}),
+			"make observability-verify":                                            exactWorkflowStep(8, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, condition: "matrix.shard == 2", allowsAcquisition: true}),
+			`./scripts/check-migration-order.sh pull_request "$GITHUB_EVENT_PATH"`: exactWorkflowStep(9, "Every added migration is numbered above main's newest", workflowStepAuthority{condition: "matrix.shard == 2 && github.event_name == 'pull_request'"}),
+			"make platform-vet":                                                    exactWorkflowStep(10, "The macOS build compiles", workflowStepAuthority{targets: []string{"platform-vet"}, condition: "matrix.shard == 2"})}),
 		"ci-go-cache-warm.yml": {
 			environment: standardWorkflowEnvironment(),
 			permissions: standardWorkflowPermissions(),
@@ -398,8 +301,12 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 					"make go-cache-warm GO_CACHE_WARM=${{ matrix.lane }}": exactWorkflowStep(4, "Compile the gate's test binaries without running them", workflowStepAuthority{targets: []string{"go-cache-warm"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
 				}},
 				"contracts": {steps: map[string]workflowStepAuthority{
-					"make vet vet-tags lint": exactWorkflowStep(4, "Compile what the contracts analyse", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
+					"make vet vet-tags lint platform-vet": exactWorkflowStep(4, "Compile what the contracts analyse", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint", "platform-vet"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
 				}},
+				"pnpm": {steps: map[string]workflowStepAuthority{
+					"make fe-install": exactWorkflowStep(4, "Fill the store from the lockfile", workflowStepAuthority{targets: []string{"fe-install"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
+				}},
+				"ffmpeg": {steps: map[string]workflowStepAuthority{}},
 			},
 		},
 		"ci-go.yml": standardRunWorkflow(map[string]workflowStepAuthority{
@@ -432,10 +339,11 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			permissions: map[string]string{"contents": "read", "issues": "read"},
 			jobs: map[string]workflowJobAuthority{
 				"run": {steps: map[string]workflowStepAuthority{
-					"make fe-install":           exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),
-					"make tuner-quarantine":     exactWorkflowStep(5, "Resolve the flake quarantine", workflowStepAuthority{targets: []string{"tuner-quarantine"}, environment: map[string]string{"GH_TOKEN": "${{ github.token }}", "TUNER_QUARANTINE": "${{ inputs.quarantine }}"}}),
-					"make tuner-e2e-host":       exactWorkflowStep(6, "100-Channel controller matrix", workflowStepAuthority{targets: []string{"tuner-e2e-host"}, environment: map[string]string{"TUNER_PROJECT": "${{ inputs.project }}", "TUNER_REPEAT_EACH": "${{ inputs.repeat_each }}", "TUNER_QUARANTINE": "${{ inputs.quarantine }}"}}),
-					"make tuner-e2e-quarantine": exactWorkflowStep(8, "Quarantined tests (non-blocking)", workflowStepAuthority{targets: []string{"tuner-e2e-quarantine"}, condition: "inputs.quarantine == 'exclude'", nonBlocking: true}),
+					"make fe-install":            exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),
+					"make tuner-quarantine":      exactWorkflowStep(5, "Resolve the flake quarantine", workflowStepAuthority{targets: []string{"tuner-quarantine"}, environment: map[string]string{"GH_TOKEN": "${{ github.token }}", "TUNER_QUARANTINE": "${{ inputs.quarantine }}"}}),
+					"make tuner-e2e-host":        exactWorkflowStep(6, "100-Channel controller matrix", workflowStepAuthority{targets: []string{"tuner-e2e-host"}, environment: map[string]string{"TUNER_PROJECT": "${{ inputs.project }}", "TUNER_REPEAT_EACH": "${{ inputs.repeat_each }}", "TUNER_QUARANTINE": "${{ inputs.quarantine }}"}}),
+					"make tuner-e2e-quarantine":  exactWorkflowStep(8, "Quarantined tests (non-blocking)", workflowStepAuthority{targets: []string{"tuner-e2e-quarantine"}, condition: "inputs.quarantine == 'exclude'", nonBlocking: true}),
+					"make route-timing-e2e-host": exactWorkflowStep(10, "Route timing budgets (Chromium)", workflowStepAuthority{targets: []string{"route-timing-e2e-host"}}),
 				}},
 			},
 		},
@@ -448,10 +356,13 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"ci-policy": {
 					condition: "always()",
 					steps: map[string]workflowStepAuthority{
-						"make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck":        exactWorkflowStep(4, "Workflow, publication, agent harness, and shell policy", workflowStepAuthority{targets: []string{"ci-lint", "release-verify", "agent-harness-test", "shellcheck"}}),
-						"go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify db-docs-verify": exactWorkflowStep(5, "Documentation contracts read by Go", workflowStepAuthority{targets: []string{"arch-docs-verify", "config-docs-verify", "dev-docs-verify", "db-docs-verify"}}),
+						"make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck retired-verify": exactWorkflowStep(4, "Workflow, publication, agent harness, shell, and retired-identifier policy", workflowStepAuthority{targets: []string{"ci-lint", "release-verify", "agent-harness-test", "shellcheck", "retired-verify"}}),
+						"go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify db-docs-verify":         exactWorkflowStep(5, "Documentation contracts read by Go", workflowStepAuthority{targets: []string{"arch-docs-verify", "config-docs-verify", "dev-docs-verify", "db-docs-verify"}}),
 					},
 				},
+				"privacy": {steps: map[string]workflowStepAuthority{
+					"make privacy-verify": exactWorkflowStep(3, "Real titles and private fixture literals", workflowStepAuthority{targets: []string{"privacy-verify"}}),
+				}},
 				"ci-ok": {
 					condition:   "always()",
 					permissions: map[string]string{"actions": "read", "contents": "read", "issues": "write"},
@@ -460,7 +371,8 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			},
 		},
 		"merge-gate.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make vet": exactWorkflowStep(4, "The merged tree compiles, tests included", workflowStepAuthority{
+			`./scripts/check-migration-order.sh merge_group "$GITHUB_EVENT_PATH"`: exactWorkflowStep(1, "Every added migration is numbered above main's newest", workflowStepAuthority{}),
+			"make vet": exactWorkflowStep(5, "The merged tree compiles, tests included", workflowStepAuthority{
 				targets:   []string{"vet"},
 				condition: "steps.go.outputs.changed == 'true'",
 			}),
@@ -474,7 +386,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 						targets:   []string{"vet"},
 						condition: "steps.warm.outputs.cache-hit != 'true'",
 					}),
-					`./scripts/ci-merge-gate-cache-prune.sh "${{ steps.warm.outputs.cache-primary-key }}"`: exactWorkflowStep(6, "Delete older gate caches", workflowStepAuthority{
+					"./scripts/ci-cache-retention.sh apply": exactWorkflowStep(6, "Keep one entry of each shared cache", workflowStepAuthority{
 						condition:   "steps.warm.outputs.cache-hit != 'true'",
 						environment: map[string]string{"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}"},
 					}),
@@ -644,6 +556,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"vulnerabilities": {steps: map[string]workflowStepAuthority{
 					"make vuln": exactWorkflowStep(2, "Scan the code that ships", workflowStepAuthority{targets: []string{"vuln"}}),
 				}},
+				"library-scale": {steps: map[string]workflowStepAuthority{
+					"make scan-scale": exactWorkflowStep(2, "Scan a 33k-file library", workflowStepAuthority{targets: []string{"scan-scale"}}),
+				}},
 			},
 		},
 		// The one workflow that publishes a release and opens a PR on a schedule. Everything it does is
@@ -717,23 +632,27 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				},
 			},
 		},
-		// Only the commit job may write contents; render and ci may only dispatch a workflow. None of
-		// these jobs runs the branch's code: that happens in visual-baselines-render.yml, dispatched
-		// at the branch (visual_baselines_workflow.go).
+		// Only the commit job may write contents; render and release may only dispatch or approve a
+		// workflow run. None of the jobs that can write runs the branch's code: resolve reads only the
+		// CI impact classifier with a read token, and the render happens in
+		// visual-baselines-render.yml, dispatched at the branch (visual_baselines_workflow.go).
 		"visual-baselines.yml": {
 			permissions: map[string]string{"contents": "read"},
 			jobs: map[string]workflowJobAuthority{
 				"resolve": {
 					permissions: map[string]string{"contents": "read", "pull-requests": "read"},
+					condition:   visualBaselinesResolveCondition,
 					steps: map[string]workflowStepAuthority{
-						visualBaselinesResolveCommand + "\n": exactWorkflowStep(0, "Resolve and vet the pull request", workflowStepAuthority{shell: "bash", environment: map[string]string{
-							"GH_TOKEN": "${{ github.token }}", "PR": "${{ inputs.pr }}", "REPO": "${{ github.repository }}",
-							"REF": "${{ github.ref }}", "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+						visualBaselinesResolveCommand + "\n": exactWorkflowStep(1, "Resolve and vet the pull request", workflowStepAuthority{shell: "bash", environment: map[string]string{
+							"GH_TOKEN": "${{ github.token }}", "EVENT": "${{ github.event_name }}", "PR": visualBaselinesPR,
+							"REPO": "${{ github.repository }}", "REF": "${{ github.ref }}",
+							"DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
 						}}),
 					},
 				},
 				"render": {
 					permissions: map[string]string{"actions": "write", "contents": "read"},
+					condition:   "needs.resolve.outputs.render == 'true'",
 					steps: map[string]workflowStepAuthority{
 						visualBaselinesRenderDispatchCommand + "\n": exactWorkflowStep(0, "Dispatch the render and wait for it", workflowStepAuthority{shell: "bash", environment: map[string]string{
 							"GH_TOKEN": "${{ github.token }}", "REPO": "${{ github.repository }}",
@@ -752,7 +671,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 							"RENDER_RUN": "${{ needs.render.outputs.run_id }}", "REQUEST": visualBaselinesRequest,
 						}}),
 						visualBaselinesCommitCommand + "\n": exactWorkflowStep(3, "Commit and push only the changed baselines", workflowStepAuthority{shell: "bash", environment: map[string]string{
-							"PR": "${{ inputs.pr }}", "BRANCH": "${{ needs.resolve.outputs.branch }}", "HEAD_SHA": "${{ needs.resolve.outputs.sha }}",
+							"PR": visualBaselinesPR, "BRANCH": "${{ needs.resolve.outputs.branch }}", "HEAD_SHA": "${{ needs.resolve.outputs.sha }}",
 							"RUN_URL":     "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
 							"RUN_ATTEMPT": "${{ github.run_attempt }}",
 							"RENDER_RUN":  "${{ needs.render.outputs.run_id }}",
@@ -760,13 +679,14 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 						}}),
 					},
 				},
-				"ci": {
+				"release": {
 					permissions: map[string]string{"actions": "write", "contents": "read"},
 					condition:   "needs.commit.outputs.pushed == 'true'",
 					steps: map[string]workflowStepAuthority{
-						visualBaselinesCIDispatchCommand + "\n": exactWorkflowStep(0, "Dispatch CI for the pushed commit", workflowStepAuthority{shell: "bash", environment: map[string]string{
+						visualBaselinesReleaseCommand + "\n": exactWorkflowStep(0, "Approve the bot commit's held runs", workflowStepAuthority{shell: "bash", environment: map[string]string{
 							"GH_TOKEN": "${{ github.token }}", "REPO": "${{ github.repository }}",
 							"BRANCH": "${{ needs.resolve.outputs.branch }}", "HEAD_SHA": "${{ needs.commit.outputs.sha }}",
+							"SERVER_URL": "${{ github.server_url }}",
 						}}),
 					},
 				},
@@ -791,7 +711,10 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 							targets: []string{"fe-visual-update"}, allowsAcquisition: true,
 							environment: map[string]string{"LOOMARR_PLAYWRIGHT_FORCE": "${{ inputs.force }}"},
 						}),
-						visualBaselinesCollectCommand + "\n": exactWorkflowStep(8, "Collect the rewritten baselines", workflowStepAuthority{shell: "bash"}),
+						"make e2e-update": exactWorkflowStep(8, visualBaselinesE2EUpdateStepName, workflowStepAuthority{
+							targets: []string{"e2e-update"}, allowsAcquisition: true,
+						}),
+						visualBaselinesCollectCommand + "\n": exactWorkflowStep(9, "Collect the rewritten baselines", workflowStepAuthority{shell: "bash"}),
 					},
 				},
 			},
@@ -845,6 +768,27 @@ func codeQLWorkflowAuthority() workflowAuthority {
 	}
 }
 
+// clientsTurboEnvironment is the exact environment of every ci-clients.yml step that runs Turbo.
+func clientsTurboEnvironment() map[string]string {
+	environment := turboRemoteCacheEnvironment()
+	environment["TMPDIR"] = "${{ runner.temp }}"
+	return environment
+}
+
+// turboRemoteCacheEnvironment is the exact Turbo environment of the ci-frontend.yml step that runs
+// Turbo, and the base of clientsTurboEnvironment: the Remote Cache credentials, and TURBO_CACHE,
+// which lets only the merge queue and main write.
+func turboRemoteCacheEnvironment() map[string]string {
+	return map[string]string{
+		"TURBO_TELEMETRY_DISABLED":         "1",
+		"TURBO_API":                        "${{ secrets.TURBO_API }}",
+		"TURBO_TEAM":                       "${{ secrets.TURBO_TEAM }}",
+		"TURBO_TOKEN":                      "${{ secrets.TURBO_TOKEN }}",
+		"TURBO_REMOTE_CACHE_SIGNATURE_KEY": "${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}",
+		"TURBO_CACHE":                      "${{ (github.event_name == 'merge_group' || github.ref == 'refs/heads/main') && 'local:rw,remote:rw' || 'local:rw,remote:r' }}",
+	}
+}
+
 func standardRunWorkflow(steps map[string]workflowStepAuthority) workflowAuthority {
 	return workflowAuthority{
 		environment: standardWorkflowEnvironment(),
@@ -853,263 +797,4 @@ func standardRunWorkflow(steps map[string]workflowStepAuthority) workflowAuthori
 			"run": {steps: steps},
 		},
 	}
-}
-
-type workflowAuthorityKey struct {
-	workflow string
-	job      string
-	command  string
-}
-
-type workflowAuthorityLedger struct {
-	required map[workflowAuthorityKey]int
-}
-
-func newWorkflowAuthorityLedger() *workflowAuthorityLedger {
-	return &workflowAuthorityLedger{required: make(map[workflowAuthorityKey]int)}
-
-}
-
-func (ledger *workflowAuthorityLedger) expectWorkflow(workflowName string) {
-	workflow, ok := workflowAuthorityCatalog().runs[workflowName]
-	if !ok {
-		return
-	}
-	for jobName, job := range workflow.jobs {
-		for command := range job.steps {
-			ledger.required[workflowAuthorityKey{workflow: workflowName, job: jobName, command: command}] = 0
-		}
-	}
-}
-
-func (ledger *workflowAuthorityLedger) authorize(workflowName, jobName string, step, run *yaml.Node, stepIndex int, protectedTargets map[string]struct{}, scripts *repositoryScriptAudit) (bool, error) {
-	authority, ok := workflowAuthorityCatalog().runs[workflowName]
-	if !ok {
-		return false, nil
-	}
-	jobAuthority, ok := authority.jobs[jobName]
-	if !ok {
-		return false, nil
-	}
-	stepAuthority, ok := jobAuthority.steps[run.Value]
-	if !ok {
-		return false, nil
-	}
-	if !stepAuthority.allowsAcquisition && !targetsRemainNonAcquiring(stepAuthority.targets, protectedTargets) {
-		return false, nil
-	}
-	if !stepAuthority.allowsAcquisition && scripts != nil && scripts.commandAcquires(run.Value) {
-		return false, nil
-	}
-	if stepAuthority.exactStepIndex && stepIndex != stepAuthority.stepIndex {
-		return false, fmt.Errorf("workflow %s job %s source-bound step %q moved from absolute step %d to %d", workflowName, jobName, strings.TrimSpace(run.Value), stepAuthority.stepIndex+1, stepIndex+1)
-	}
-	if _, hasActionKind := mappingValue(step, "uses"); hasActionKind {
-		return false, fmt.Errorf("workflow %s job %s source-bound step %q must remain a run step", workflowName, jobName, strings.TrimSpace(run.Value))
-	}
-	if stepAuthority.exactName {
-		gotName, present := mappingValue(step, "name")
-		if stepAuthority.name == "" {
-			if present {
-				return false, fmt.Errorf("workflow %s job %s source-bound step %q must remain unnamed", workflowName, jobName, strings.TrimSpace(run.Value))
-			}
-		} else if !present || gotName.Kind != yaml.ScalarNode || gotName.Value != stepAuthority.name {
-			return false, fmt.Errorf("workflow %s job %s source-bound step %q name differs from its authority", workflowName, jobName, strings.TrimSpace(run.Value))
-		}
-	}
-	label := fmt.Sprintf("workflow %s job %s source-bound step %q", workflowName, jobName, strings.TrimSpace(run.Value))
-	continueOnError := ""
-	if stepAuthority.nonBlocking {
-		continueOnError = "true"
-	}
-	if err := verifyExactExecutionContext(step, label+" step", stepAuthority.environment, nil, stepAuthority.condition, stepAuthority.shell, continueOnError); err != nil {
-		return false, err
-	}
-	key := workflowAuthorityKey{workflow: workflowName, job: jobName, command: run.Value}
-	ledger.required[key]++
-	if ledger.required[key] != 1 {
-		return false, fmt.Errorf("workflow %s job %s must contain source-bound run authority %q exactly once", workflowName, jobName, strings.TrimSpace(run.Value))
-	}
-	return true, nil
-}
-
-func verifySourceBoundWorkflowContext(workflowName, jobName string, workflow, job *yaml.Node) error {
-	authority, ok := workflowAuthorityCatalog().runs[workflowName]
-	if !ok {
-		return nil
-	}
-	jobAuthority, ok := authority.jobs[jobName]
-	if !ok {
-		return nil
-	}
-	label := fmt.Sprintf("workflow %s job %s source-bound context", workflowName, jobName)
-	if err := verifyExactExecutionContext(workflow, label+" workflow", authority.environment, authority.permissions, "", "", ""); err != nil {
-		return err
-	}
-	if err := verifyExactExecutionContext(job, label+" job", jobAuthority.environment, jobAuthority.permissions, jobAuthority.condition, "", ""); err != nil {
-		return err
-	}
-	return verifyWorkflowJobContextAuthority(workflowName, jobName, job)
-}
-
-func verifySourceBoundWorkflowIdentity(workflowName string, workflow *yaml.Node) error {
-	authority, ok := workflowAuthorityCatalog().runs[workflowName]
-	if !ok || (authority.name == "" && authority.pullRequestTypes == nil && authority.pushBranches == nil && authority.workflowRun == nil) {
-		return nil
-	}
-	name, present := mappingValue(workflow, "name")
-	if authority.name == "" {
-		if present {
-			return fmt.Errorf("workflow %s must remain unnamed", workflowName)
-		}
-	} else if !present || name.Kind != yaml.ScalarNode || name.Value != authority.name {
-		return fmt.Errorf("workflow %s name differs from its source-bound authority", workflowName)
-	}
-	trigger, present := mappingValue(workflow, "on")
-	if !present || trigger.Kind != yaml.MappingNode || len(trigger.Content) != 2 {
-		return fmt.Errorf("workflow %s trigger differs from its source-bound authority", workflowName)
-	}
-	declared := 0
-	for _, set := range []bool{authority.pullRequestTypes != nil, authority.pushBranches != nil, authority.workflowRun != nil} {
-		if set {
-			declared++
-		}
-	}
-	if declared > 1 {
-		return fmt.Errorf("workflow %s authority declares conflicting triggers", workflowName)
-	}
-	if authority.workflowRun != nil {
-		return verifyWorkflowRunTrigger(workflowName, trigger, *authority.workflowRun)
-	}
-	if authority.pullRequestTypes != nil {
-		if trigger.Content[0].Value != "pull_request" {
-			return fmt.Errorf("workflow %s trigger must remain exactly pull_request", workflowName)
-		}
-		pullRequest := trigger.Content[1]
-		if pullRequest.Kind != yaml.MappingNode || len(pullRequest.Content) != 2 || pullRequest.Content[0].Value != "types" {
-			return fmt.Errorf("workflow %s pull_request trigger differs from its source-bound authority", workflowName)
-		}
-		types := pullRequest.Content[1]
-		if types.Kind != yaml.SequenceNode || len(types.Content) != len(authority.pullRequestTypes) {
-			return fmt.Errorf("workflow %s pull_request types differ from its source-bound authority", workflowName)
-		}
-		for index, want := range authority.pullRequestTypes {
-			if types.Content[index].Kind != yaml.ScalarNode || types.Content[index].Value != want {
-				return fmt.Errorf("workflow %s pull_request types differ from its source-bound authority", workflowName)
-			}
-		}
-		return nil
-	}
-	if trigger.Content[0].Value != "push" {
-		return fmt.Errorf("workflow %s trigger must remain exactly push", workflowName)
-	}
-	push := trigger.Content[1]
-	if push.Kind != yaml.MappingNode || len(push.Content) != 2 || push.Content[0].Value != "branches" {
-		return fmt.Errorf("workflow %s push trigger differs from its source-bound authority", workflowName)
-	}
-	branches := push.Content[1]
-	if branches.Kind != yaml.SequenceNode || len(branches.Content) != len(authority.pushBranches) {
-		return fmt.Errorf("workflow %s push branches differ from its source-bound authority", workflowName)
-	}
-	for index, want := range authority.pushBranches {
-		if branches.Content[index].Kind != yaml.ScalarNode || branches.Content[index].Value != want {
-			return fmt.Errorf("workflow %s push branches differ from its source-bound authority", workflowName)
-		}
-	}
-	return nil
-}
-
-func verifyWorkflowRunTrigger(workflowName string, trigger *yaml.Node, want workflowRunTrigger) error {
-	if trigger.Content[0].Value != "workflow_run" {
-		return fmt.Errorf("workflow %s trigger must remain exactly workflow_run", workflowName)
-	}
-	run := trigger.Content[1]
-	if run.Kind != yaml.MappingNode || len(run.Content) != 4 {
-		return fmt.Errorf("workflow %s workflow_run trigger differs from its source-bound authority", workflowName)
-	}
-	for key, values := range map[string][]string{"workflows": want.workflows, "types": want.types} {
-		got, ok := mappingValue(run, key)
-		if !ok || got.Kind != yaml.SequenceNode || len(got.Content) != len(values) {
-			return fmt.Errorf("workflow %s workflow_run %s differ from its source-bound authority", workflowName, key)
-		}
-		for index, value := range values {
-			if got.Content[index].Kind != yaml.ScalarNode || got.Content[index].Value != value {
-				return fmt.Errorf("workflow %s workflow_run %s differ from its source-bound authority", workflowName, key)
-			}
-		}
-	}
-	return nil
-}
-
-func (ledger *workflowAuthorityLedger) verifyComplete() error {
-	keys := make([]workflowAuthorityKey, 0, len(ledger.required))
-	for key := range ledger.required {
-		keys = append(keys, key)
-	}
-	sort.Slice(keys, func(left, right int) bool {
-		if keys[left].workflow != keys[right].workflow {
-			return keys[left].workflow < keys[right].workflow
-		}
-		if keys[left].job != keys[right].job {
-			return keys[left].job < keys[right].job
-		}
-		return keys[left].command < keys[right].command
-	})
-	for _, key := range keys {
-		count := ledger.required[key]
-		if count != 1 {
-			return fmt.Errorf("workflow %s job %s must contain source-bound run authority %q exactly once (found %d)", key.workflow, key.job, strings.TrimSpace(key.command), count)
-		}
-	}
-	return nil
-}
-
-func verifyExactExecutionContext(scope *yaml.Node, label string, wantEnvironment, wantPermissions map[string]string, wantCondition, wantShell, wantContinueOnError string) error {
-	gotEnvironment, err := scalarEnvironment(scope)
-	if err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
-	if !equalStringMaps(gotEnvironment, wantEnvironment) {
-		return fmt.Errorf("%s environment differs from its source-bound authority", label)
-	}
-	gotPermissions, err := scalarMapping(scope, "permissions", "workflow permissions")
-	if err != nil {
-		return fmt.Errorf("%s: %w", label, err)
-	}
-	if !equalStringMaps(gotPermissions, wantPermissions) {
-		return fmt.Errorf("%s permissions differ from its source-bound authority", label)
-	}
-	if _, ok := mappingValue(scope, "defaults"); ok {
-		return fmt.Errorf("%s must not override run defaults", label)
-	}
-	for key, want := range map[string]string{
-		"if":                wantCondition,
-		"shell":             wantShell,
-		"working-directory": "",
-		"continue-on-error": wantContinueOnError,
-	} {
-		got, present := mappingValue(scope, key)
-		if want == "" {
-			if present {
-				return fmt.Errorf("%s must not set %s", label, key)
-			}
-			continue
-		}
-		if !present || got.Kind != yaml.ScalarNode || got.Value != want {
-			return fmt.Errorf("%s %s differs from its source-bound authority", label, key)
-		}
-	}
-	return nil
-}
-
-func equalStringMaps(left, right map[string]string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for key, value := range left {
-		if right[key] != value {
-			return false
-		}
-	}
-	return true
 }

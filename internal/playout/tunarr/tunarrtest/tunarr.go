@@ -39,6 +39,7 @@ type Tunarr struct {
 	LocalFillerClips    []tunarr.LocalClip
 	// Injectable failures (nil = success).
 	SetLineupErr error
+	GetLineupErr error
 	// SetLineupErrByChannel targets one server-assigned channel id while allowing a
 	// fleet operation to continue exercising the remaining Programmer calls.
 	SetLineupErrByChannel map[string]error
@@ -251,6 +252,9 @@ func (m *Tunarr) SetLineup(_ context.Context, tunarrID string, slots []schedule.
 func (m *Tunarr) GetLineup(_ context.Context, tunarrID string) ([]schedule.Slot, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.GetLineupErr != nil {
+		return nil, m.GetLineupErr
+	}
 	ch, ok := m.channels[tunarrID]
 	if !ok || !ch.set {
 		return []schedule.Slot{}, nil // mimics Tunarr's 400-on-unprogrammed → empty
@@ -315,17 +319,18 @@ func sameIDs(a, b []string) bool {
 	return true
 }
 
-// readback mirrors tunarr.slotToItem+itemToSlot: what a real Tunarr would
-// return for a pushed slot. Only a program is content (keeps id); everything else
+// readback mirrors what the real client's GetLineup returns for a pushed slot. Only a
+// program is content, and it keeps its media-server id: the real client posts Tunarr's
+// program uuid and translates it back on read (lineup.go GetLineup). Everything else
 // — including filler, which post-§10-redesign lives in a Tunarr filler-list, never
-// inline — is flex (loses id/key). Deliberately lossy: it forces the reconcile diff
-// to compare on the *pushable* shape, not the domain slot, so idempotency holds
-// against a real Tunarr too.
+// inline — is flex (loses id/key), at the length it was pushed with (Tunarr's floor
+// applied). Deliberately lossy: it forces the reconcile diff to compare on the
+// *pushable* shape, not the domain slot, so idempotency holds against a real Tunarr too.
 func readback(s schedule.Slot) schedule.Slot {
 	if s.Kind == schedule.SlotProgram {
 		return schedule.Slot{Kind: schedule.SlotProgram, LibraryItemID: s.LibraryItemID, DurationMs: s.DurationMs}
 	}
-	return schedule.Slot{Kind: schedule.SlotFlex, DurationMs: s.DurationMs}
+	return schedule.Slot{Kind: schedule.SlotFlex, DurationMs: tunarr.PushedFlexMs(s.DurationMs)}
 }
 
 // Guide satisfies the Adapter's guide-read surface with an empty schedule. Nothing in the

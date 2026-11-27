@@ -1,8 +1,17 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Action, Icon, icons, type StatusTone, Surface, Toggle } from "@loomarr/design-system";
+import {
+  Action,
+  Card,
+  Icon,
+  icons,
+  Stack,
+  type StatusTone,
+  Surface,
+  Text,
+  Toggle,
+} from "@loomarr/design-system";
 import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
 import { type ReactNode, useState } from "react";
-import { cn } from "@/lib/utils";
 import type { FillerSourcesProps } from "./filler-sources.type";
 
 const dormant = (source: { effectiveEnabled: boolean }) => !source.effectiveEnabled;
@@ -27,12 +36,12 @@ interface SourceListProps {
   sources: Source[];
   sectionLabel: string;
   renderRow: (source: Source) => ReactNode;
-  className?: string;
+  marginTop?: number;
 }
 
 // Long lists keep problems visible without letting healthy rows take over the page. Filtering is
 // deliberately local to registered rows; the provider finder above this list remains independent.
-const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListProps) => {
+const SourceList = ({ sources, sectionLabel, renderRow, marginTop }: SourceListProps) => {
   const [expanded, setExpanded] = useState(false);
   const [filter, setFilter] = useState("");
   const scalable = sources.length >= FILTER_THRESHOLD;
@@ -59,7 +68,7 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
     scalable && !normalizedFilter && !expanded ? Math.max(healthy.length - INITIAL_HEALTHY, 0) : 0;
 
   return (
-    <div className={className}>
+    <Stack gap={visible.length > 0 ? "2" : "3"} marginTop={marginTop}>
       {scalable && (
         <Surface backgroundColor="transparent" borderWidth={0} maxWidth={384}>
           <SearchField
@@ -73,19 +82,19 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
       )}
 
       {visible.length > 0 ? (
-        <div className={cn(scalable && "mt-2")}>
-          <ListGroup
-            aria-label={sectionLabel === "Your files" ? "Your file sources" : `Sources under ${sectionLabel}`}
-          >
-            {visible.map(renderRow)}
-          </ListGroup>
-        </div>
+        <ListGroup
+          aria-label={sectionLabel === "Your files" ? "Your file sources" : `Sources under ${sectionLabel}`}
+        >
+          {visible.map(renderRow)}
+        </ListGroup>
       ) : (
-        <p className="text-muted-foreground mt-3 text-sm">No sources match your filter.</p>
+        <Text as="p" textRole="compact" tone="secondary">
+          No sources match your filter.
+        </Text>
       )}
 
       {remaining > 0 && (
-        <div className="mt-2 flex">
+        <Stack direction="row">
           <Action
             accessibilityLabel={`Show ${remaining} more under ${sectionLabel}`}
             onPress={() => setExpanded(true)}
@@ -93,10 +102,10 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
           >
             {`Show ${remaining} more`}
           </Action>
-        </div>
+        </Stack>
       )}
       {scalable && expanded && !normalizedFilter && (
-        <div className="mt-2 flex">
+        <Stack direction="row">
           <Action
             accessibilityLabel={`Show fewer under ${sectionLabel}`}
             onPress={() => setExpanded(false)}
@@ -104,9 +113,9 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
           >
             Show fewer
           </Action>
-        </div>
+        </Stack>
       )}
-    </div>
+    </Stack>
   );
 };
 
@@ -187,9 +196,14 @@ const FillerSources = ({
       <Icon decorative glyph={icons.folder} size="default" tone="muted" />
     );
     return (
-      <div
+      <Stack
+        align="center"
+        // Raised, not elevated: RowCard's lead disc is surfaceElevated and would vanish on it.
+        backgroundColor={selectedId === source.id ? "surfaceRaised" : undefined}
+        direction="row"
+        gap="inline"
         key={source.id}
-        className={cn("flex min-w-0 items-center gap-2 pl-2", selectedId === source.id && "bg-muted/25")}
+        paddingLeft={8}
       >
         {onToggleEnabled && source.switchable && (
           <Toggle
@@ -206,7 +220,7 @@ const FillerSources = ({
             onCheckedChange={(checked) => onToggleEnabled(source.id, checked)}
           />
         )}
-        <div className="min-w-0 flex-1">
+        <Stack flexBasis="0%" flexGrow={1} minWidth={0}>
           <RowCard
             action={
               onSelect ? (
@@ -223,90 +237,113 @@ const FillerSources = ({
             meta={meta}
             title={name}
           />
-        </div>
-      </div>
+        </Stack>
+      </Stack>
     );
   };
 
   return (
-    <div className={cn("flex flex-col gap-6", className)}>
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold">Where filler comes from</h2>
-          <p className="text-muted-foreground mt-1 max-w-xl text-sm">
-            Add sources once and Loomarr checks them for you. Turning one off does not remove clips already
-            added.
-          </p>
-        </div>
-        <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">
+    <Stack className={className} gap="section">
+      <Stack align="start" direction="row" gap="4" wrap>
+        <Stack flexBasis="0%" flexGrow={1} gap="1" minWidth={0}>
+          <Text as="h2" strong textRole="cardLabel">
+            Where filler comes from
+          </Text>
+          <Stack maxWidth={576}>
+            <Text as="p" textRole="compact" tone="secondary">
+              Add sources once and Loomarr checks them for you. Turning one off does not remove clips already
+              added.
+            </Text>
+          </Stack>
+        </Stack>
+        <Text as="span" flexShrink={0} numberOfLines={1} textRole="hint" tone="secondary">
           {`${realSources.filter((source) => source.ready).length} of ${realSources.length} ready`}
-        </span>
-      </div>
+        </Text>
+      </Stack>
 
       {needsLocation && (
-        <div className="border-caution/30 bg-caution/5 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3">
-          <div>
-            <p className="text-sm font-medium">Add your location</p>
-            <p className="text-muted-foreground text-sm">
-              Loomarr uses it to choose sources that fit your area.
-            </p>
-          </div>
-          <Action accessibilityRole="link" render={<a href="/settings/access" />} variant="outline">
-            Set location
-          </Action>
-        </div>
+        <Card borderRadius={8} paddingHorizontal={16} paddingVertical={12} tone="caution">
+          <Stack align="center" direction="row" gap="control" justify="between" wrap>
+            <div>
+              <Text as="p" textRole="cardLabel" tone="primary">
+                Add your location
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
+                Loomarr uses it to choose sources that fit your area.
+              </Text>
+            </div>
+            <Action accessibilityRole="link" render={<a href="/settings/access" />} variant="outline">
+              Set location
+            </Action>
+          </Stack>
+        </Card>
       )}
 
-      {error && <p className="text-onair-300 text-sm">{error}</p>}
+      {error && (
+        <Text as="p" textRole="compact" tone="danger">
+          {error}
+        </Text>
+      )}
 
       {(localSources.length > 0 || renderLocalSetup) && (
-        <section aria-labelledby="local-filler-sources" className="border-border/60 border-t pt-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <h3 id="local-filler-sources" className="font-medium">
+        <Stack
+          aria-labelledby="local-filler-sources"
+          borderColor="borderDecorative"
+          borderTopWidth={1}
+          gap={renderLocalSetup ? "4" : "2"}
+          paddingTop={20}
+          render="section"
+        >
+          <Stack align="start" direction="row" gap="4" justify="between">
+            <Stack gap="1" minWidth={0}>
+              <Text as="h3" id="local-filler-sources" textRole="cardLabel" tone="primary">
                 Your files
-              </h3>
-              <p className="text-muted-foreground mt-1 text-sm">
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
                 Folders and media-server libraries you already manage.
-              </p>
-            </div>
-            <span className="text-muted-foreground shrink-0 text-xs">{sourceSummary(localSources)}</span>
-          </div>
+              </Text>
+            </Stack>
+            <Text as="span" flexShrink={0} textRole="hint" tone="secondary">
+              {sourceSummary(localSources)}
+            </Text>
+          </Stack>
 
-          {renderLocalSetup && <div className="mt-4">{renderLocalSetup}</div>}
+          {renderLocalSetup && <div>{renderLocalSetup}</div>}
           {localSources.length > 0 && (
-            <SourceList
-              className={renderLocalSetup ? "mt-4" : "mt-2"}
-              sources={localSources}
-              sectionLabel="Your files"
-              renderRow={row}
-            />
+            <SourceList sources={localSources} sectionLabel="Your files" renderRow={row} />
           )}
-        </section>
+        </Stack>
       )}
 
       {providers.map((provider) => {
         const children = childrenByProvider.get(provider.id) ?? [];
         const providerBodyOpen = provider.enabled && togglingProvider !== provider.kind;
         return (
-          <section
+          <Stack
             key={provider.id}
             aria-labelledby={`provider-${provider.kind}`}
-            className="border-border/60 border-t pt-5"
+            borderColor="borderDecorative"
+            borderTopWidth={1}
+            paddingTop={20}
+            render="section"
           >
-            <div className="flex flex-wrap items-start justify-between gap-4 sm:flex-nowrap">
-              <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
-                <h3 id={`provider-${provider.kind}`} className="font-medium">
+            <Stack align={{ base: "stretch", sm: "start" }} direction={{ base: "column", sm: "row" }} gap="4">
+              <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+                <Text as="h3" id={`provider-${provider.kind}`} textRole="cardLabel" tone="primary">
                   {provider.target}
-                </h3>
-                <p className="text-muted-foreground mt-1 text-sm">
-                  {!provider.enabled
-                    ? `${provider.target} is paused. Sources and clips stay saved.`
-                    : descriptions.find((description) => description.id === provider.kind)?.blurb}
-                </p>
-              </div>
-              <div className="ml-auto flex shrink-0 items-center gap-3">
-                <span className="text-muted-foreground text-xs">{sourceSummary(children)}</span>
+                </Text>
+                <Stack marginTop={4}>
+                  <Text as="p" textRole="compact" tone="secondary">
+                    {!provider.enabled
+                      ? `${provider.target} is paused. Sources and clips stay saved.`
+                      : descriptions.find((description) => description.id === provider.kind)?.blurb}
+                  </Text>
+                </Stack>
+              </Stack>
+              <Stack align="center" direction="row" gap="3" marginLeft="auto">
+                <Text as="span" textRole="hint" tone="secondary">
+                  {sourceSummary(children)}
+                </Text>
                 {onToggleProvider && (
                   <Toggle
                     kind="switch"
@@ -318,8 +355,8 @@ const FillerSources = ({
                     onCheckedChange={(checked) => onToggleProvider(provider.kind, checked)}
                   />
                 )}
-              </div>
-            </div>
+              </Stack>
+            </Stack>
 
             {/* Folded, not unmounted: a paused provider's children keep their saved switches. */}
             <div hidden={!providerBodyOpen}>
@@ -327,19 +364,23 @@ const FillerSources = ({
 
               {children.length > 0 ? (
                 <SourceList
-                  className="mt-3"
+                  marginTop={12}
                   sources={children}
                   sectionLabel={provider.target}
                   renderRow={row}
                 />
               ) : (
-                <p className="text-muted-foreground mt-3 text-xs">Nothing added yet.</p>
+                <Stack marginTop={12}>
+                  <Text as="p" textRole="hint" tone="secondary">
+                    Nothing added yet.
+                  </Text>
+                </Stack>
               )}
             </div>
-          </section>
+          </Stack>
         );
       })}
-    </div>
+    </Stack>
   );
 };
 

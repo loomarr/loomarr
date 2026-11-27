@@ -4,7 +4,16 @@ import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLevel";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
-import { Action, Card, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
+import {
+  Action,
+  Card,
+  Grid,
+  Stack,
+  StatusLabel,
+  type StatusTone,
+  Text,
+  TextLink,
+} from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -131,7 +140,6 @@ const readinessAction = (readiness: FillerReadinessDTO): ReadinessAction | undef
 const COVERAGE_BADGE: Record<PoolChannelDTOLevel, { label: string; tone: StatusTone }> = {
   exact: { label: "Good match", tone: "ok" },
   widened: { label: "Years loosened", tone: "warn" },
-  audience: { label: "Audience only", tone: "warn" },
   bumper_card: { label: "Bumpers only", tone: "error" },
 };
 
@@ -152,21 +160,25 @@ const CoverageCard = ({ coverage, title }: { coverage: PoolChannelDTO; title: Re
   const badge = COVERAGE_BADGE[coverage.level];
   return (
     <Card padding={16}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+      <Stack align="start" direction="row" gap="control" justify="between">
+        <Stack align="start" minWidth={0}>
           {title}
-          <p className="text-muted-foreground mt-1 text-sm">
-            {coverage.level === "bumper_card"
-              ? "Only a bumper card"
-              : `${formatDuration(coverage.durationMs)} playable · ${pluralize(coverage.total, "clip")}`}
-          </p>
-        </div>
+          <Stack marginTop={4}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {coverage.level === "bumper_card"
+                ? "Only a bumper card"
+                : `${formatDuration(coverage.durationMs)} playable · ${pluralize(coverage.total, "clip")}`}
+            </Text>
+          </Stack>
+        </Stack>
         <StatusLabel tone={badge.tone}>{badge.label}</StatusLabel>
-      </div>
-      <p className="text-muted-foreground mt-3 text-xs">
-        {coverage.categories} {coverage.categories === 1 ? "category" : "categories"} ·{" "}
-        {pluralize(coverage.brands, "brand")}
-      </p>
+      </Stack>
+      <Stack marginTop={12}>
+        <Text as="p" textRole="hint" tone="secondary">
+          {coverage.categories} {coverage.categories === 1 ? "category" : "categories"} ·{" "}
+          {pluralize(coverage.brands, "brand")}
+        </Text>
+      </Stack>
     </Card>
   );
 };
@@ -179,38 +191,43 @@ const FillerOverview = () => {
   if (readinessQuery.error) {
     return <ErrorState error={readinessQuery.error} onRetry={() => readinessQuery.refetch()} />;
   }
-  if (!readiness) {
-    return (
-      <Card aria-live="polite" padding={24}>
-        <p className="font-medium">Checking filler health…</p>
-        <p className="text-muted-foreground mt-1 text-sm">Finding out what's ready and what's on the way.</p>
-      </Card>
-    );
-  }
+  // The route's loader ensured the readiness, and its error view takes a first read that fails, so
+  // the Overview always opens on it. A failed refresh after that is the branch above.
+  if (!readiness) return null;
 
   const action = readinessAction(readiness);
   const shared = sharedPool(readiness.pool.channels);
 
   return (
-    <div className="flex flex-col gap-6">
+    <Stack gap="section">
       {/* Normal is quiet and the exception is loud (#1817, decided on #1908). Amber is the brand's
           action colour, so a state where nothing needs doing doesn't wear it: the ready card is
           plain, with the same green dot as the healthy watch line above it. */}
       {action ? (
-        <Card className="border-caution/40! bg-caution/5!" padding={20}>
-          <div className="flex flex-col items-start gap-4 sm:flex-row">
-            <div className="min-w-0 flex-1">
+        <Card padding={20} tone="caution">
+          <Stack align="start" direction={{ base: "column", sm: "row" }} gap="4">
+            <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
               <StatusLabel tone="warn">Action recommended</StatusLabel>
-              <h2 className="mt-3 text-xl font-semibold">{action.title}</h2>
-              <p className="text-muted-foreground mt-1 max-w-3xl text-sm">{action.description}</p>
+              <Stack marginTop={12}>
+                <Text as="h2" textRole="title">
+                  {action.title}
+                </Text>
+              </Stack>
+              <Stack marginTop={4} maxWidth={768}>
+                <Text as="p" textRole="compact" tone="secondary">
+                  {action.description}
+                </Text>
+              </Stack>
               {/* Every destination behind the button is admin-only, so a member got a button
                   that bounced. They get the state and who can act on it instead. */}
               {isAdmin ? null : (
-                <p className="text-muted-foreground mt-2 text-sm">
-                  An admin can sort this out from Filler › Manage.
-                </p>
+                <Stack marginTop={8}>
+                  <Text as="p" textRole="compact" tone="secondary">
+                    An admin can sort this out from Filler › Manage.
+                  </Text>
+                </Stack>
               )}
-            </div>
+            </Stack>
             {isAdmin ? (
               <Action
                 accessibilityRole="link"
@@ -225,36 +242,46 @@ const FillerOverview = () => {
                 {action.label}
               </Action>
             ) : null}
-          </div>
+          </Stack>
         </Card>
       ) : (
         <Card alignItems="center" flexDirection="row" gap={10} padding={16}>
-          <span aria-hidden className="bg-lock size-2 shrink-0 rounded-full" />
-          <div className="min-w-0">
-            <h2 className="font-semibold">Filler is working on its own</h2>
-            <p className="text-muted-foreground text-sm">
+          <Stack
+            aria-hidden
+            backgroundColor="$stateSuccess"
+            borderRadius={999}
+            flexShrink={0}
+            height={8}
+            render="span"
+            width={8}
+          />
+          <Stack minWidth={0}>
+            <Text as="h2" textRole="heading">
+              Filler is working on its own
+            </Text>
+            <Text as="p" textRole="compact" tone="secondary">
               Loomarr is preparing clips automatically. Nothing needs your attention.
-            </p>
-          </div>
+            </Text>
+          </Stack>
         </Card>
       )}
 
       <section aria-labelledby="coverage-heading">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <Stack align="end" direction="row" gap="control" justify="between" marginBottom={12} wrap>
           <div>
-            <h2 id="coverage-heading" className="text-lg font-semibold">
+            <Text as="h2" id="coverage-heading" textRole="headline" strong>
               Channel coverage
-            </h2>
-            <p className="text-muted-foreground text-sm">
+            </Text>
+            <Text as="p" textRole="compact" tone="secondary">
               See how much filler each channel has ready to play.
-            </p>
+            </Text>
           </div>
           <Action accessibilityRole="link" render={<Link to="/filler/library" />} variant="outline">
             Browse library
           </Action>
-        </div>
+        </Stack>
         {readiness?.pool.channels.length ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+          <Grid columnGap="3" columns={{ base: 1, md: 2, lg: 3 }} rowGap="3">
             {shared ? (
               // Every channel draws the same pool, so one card says it once instead of repeating
               // identical numbers per channel (#2733).
@@ -272,28 +299,37 @@ const FillerOverview = () => {
                   key={channel.channelId}
                   coverage={channel}
                   title={
-                    <Link
-                      className="font-medium hover:underline"
-                      to="/channels/$id/filler"
-                      params={{ id: channel.channelId }}
-                      search={{ from: "filler" }}
+                    <TextLink
+                      render={
+                        <Link
+                          to="/channels/$id/filler"
+                          params={{ id: channel.channelId }}
+                          search={{ from: "filler" }}
+                        />
+                      }
+                      tone="inherit"
+                      underline="hover"
                     >
-                      {channel.number} · {channel.name}
-                    </Link>
+                      <Text as="span" textRole="cardLabel" tone="primary">
+                        {channel.number} · {channel.name}
+                      </Text>
+                    </TextLink>
                   }
                 />
               ))
             )}
-          </div>
+          </Grid>
         ) : (
-          <Card className="text-muted-foreground text-sm" padding={16}>
-            {readinessQuery.error
-              ? "Channel coverage is temporarily unavailable."
-              : "No live channels need filler coverage yet."}
+          <Card padding={16}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {readinessQuery.error
+                ? "Channel coverage is temporarily unavailable."
+                : "No live channels need filler coverage yet."}
+            </Text>
           </Card>
         )}
       </section>
-    </div>
+    </Stack>
   );
 };
 

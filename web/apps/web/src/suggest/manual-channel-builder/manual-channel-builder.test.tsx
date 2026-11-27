@@ -11,16 +11,19 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { LoomarrEventsProvider } from "@/events/events-provider";
+import { FakeEventSource } from "@/test/fake-event-source";
 import { server } from "@/test/msw/server";
 import { render as rtlRender } from "@/test/render";
-import { POLL_MS } from "../use-ai-reconnect";
 import { ManualChannelBuilder } from "./manual-channel-builder";
 
 const makeWrapper = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    <QueryClientProvider client={client}>
+      <LoomarrEventsProvider>{children}</LoomarrEventsProvider>
+    </QueryClientProvider>
   );
 };
 
@@ -63,19 +66,20 @@ const stubIdeas = (ideas: ChannelIdeaDTO[]) => {
   server.use(getListChannelIdeasMockHandler({ ideas }));
 };
 
-// The manual/AI-off builder (#1817, G2): starter templates fill name/description only, library
-// facets (the existing channel-ideas data) and search feed one lineup, and "Continue to review"
-// is the one write — a new proposal, re-grounded server-side, never a second creation route.
+// The manual/AI-off builder (#1817, G2): library facets (the existing channel-ideas data) and
+// search feed one lineup, and "Continue to review" is the one write — a new proposal, re-grounded
+// server-side, never a second creation route.
 describe("ManualChannelBuilder", () => {
-  it("fills the name and description from a starter template, without touching the lineup", async () => {
-    stubIdeas([]);
-    const user = userEvent.setup();
+  // The AI path's example chips are not repeated here as templates (#2746, #3411).
+  it("doesn't offer the AI path's example chips as starter templates", async () => {
+    stubIdeas([comedyIdea]);
     render(<ManualChannelBuilder isAdmin onCancel={vi.fn()} onSubmitted={vi.fn()} />);
 
-    await user.click(await screen.findByRole("button", { name: /cozy mystery nights/i }));
-
-    expect(screen.getByLabelText("Channel name")).toHaveValue("Cozy Mystery Nights");
-    expect(screen.getByText(/no titles yet/i)).toBeInTheDocument();
+    expect(await screen.findByText("Build from your library")).toBeInTheDocument();
+    expect(screen.queryByText("Starter templates")).not.toBeInTheDocument();
+    for (const template of CHANNEL_TEMPLATES) {
+      expect(screen.queryByRole("button", { name: new RegExp(template.label, "i") })).not.toBeInTheDocument();
+    }
   });
 
   it("adds a facet's titles one at a time and keeps already-added titles out of the list", async () => {
@@ -138,7 +142,7 @@ describe("ManualChannelBuilder", () => {
     await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith("job-manual-1"));
   });
 
-  it("starting from an idea ('Edit first') hides templates and facets and preloads the lineup", async () => {
+  it("starting from an idea ('Edit first') hides the facets and preloads the lineup", async () => {
     render(
       <ManualChannelBuilder
         isAdmin={false}
@@ -167,9 +171,6 @@ describe("ManualChannelBuilder", () => {
 
 // The resume banner (#1817, mock #1872 Alt A): AI comes back while an admin is building by hand.
 describe("ManualChannelBuilder resume banner", () => {
-  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
-  afterEach(() => vi.useRealTimers());
-
   const renderWithTheme = (ui: ReactElement) => render(<LoomarrProvider theme="dark">{ui}</LoomarrProvider>);
 
   // GET /v1/settings' computed `features.suggestions`, flipped by the test; reads are counted.
@@ -184,16 +185,15 @@ describe("ManualChannelBuilder resume banner", () => {
     return state;
   };
 
+  // A settings write turns AI on, and the backend announces it.
   const reconnect = async (features: { suggestions: boolean; reads: number }) => {
     await waitFor(() => expect(features.reads).toBe(1));
     features.suggestions = true;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(POLL_MS);
-    });
+    act(() => FakeEventSource.broadcast("settings", {}));
     return screen.findByText("AI is connected now");
   };
 
-  const setupUser = () => userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  const setupUser = () => userEvent.setup();
 
   it("appears when AI comes back, and Try AI suggestions records the picks before handing over", async () => {
     const features = stubFeatures(false);
@@ -252,15 +252,14 @@ describe("ManualChannelBuilder resume banner", () => {
         onDescribeWithAi={onDescribeWithAi}
       />,
     );
-    await user.click(await screen.findByRole("button", { name: /cozy mystery nights/i }));
+    await user.type(await screen.findByLabelText("Channel name"), "Cozy Mystery Nights");
 
     await reconnect(features);
     expect(screen.getByText(/Your manual lineup \(0 titles\) is still here/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Try AI suggestions" }));
 
-    expect(onDescribeWithAi).toHaveBeenCalledWith(
-      CHANNEL_TEMPLATES.find((t) => t.label === "Cozy Mystery Nights")?.description,
-    );
+    // With no description from an idea, the name is the brief that carries over.
+    expect(onDescribeWithAi).toHaveBeenCalledWith("Cozy Mystery Nights");
     expect(onAiSubmitted).not.toHaveBeenCalled();
   });
 
@@ -288,7 +287,7 @@ describe("ManualChannelBuilder resume banner", () => {
     expect(screen.getByText("Name this channel to try AI suggestions.")).toBeInTheDocument();
   });
 
-  it("Keep building manually hides the banner for the session and stops polling", async () => {
+  it("Keep building manually hides the banner for the session and stops reading", async () => {
     const features = stubFeatures(false);
     const user = setupUser();
     renderWithTheme(
@@ -307,14 +306,13 @@ describe("ManualChannelBuilder resume banner", () => {
     expect(screen.queryByText("AI is connected now")).not.toBeInTheDocument();
 
     const reads = features.reads;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(POLL_MS * 4);
-    });
+    act(() => FakeEventSource.broadcast("settings", {}));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
     expect(features.reads).toBe(reads);
     expect(screen.getByText("Autumn Market")).toBeInTheDocument();
   });
 
-  it("a member never polls the admin-only signal", async () => {
+  it("a member never reads the admin-only signal", async () => {
     const features = stubFeatures(false);
     renderWithTheme(
       <ManualChannelBuilder
@@ -326,9 +324,8 @@ describe("ManualChannelBuilder resume banner", () => {
         onDescribeWithAi={vi.fn()}
       />,
     );
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(POLL_MS * 4);
-    });
+    act(() => FakeEventSource.broadcast("settings", {}));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
     expect(features.reads).toBe(0);
   });
 });

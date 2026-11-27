@@ -8,9 +8,13 @@ import { lengthPhrase, TechnicalDetails } from "../technical-details";
 import type {
   LibraryTitleDetail,
   LibraryTitleFile,
+  LibraryTitleFix,
   LibraryTitleProps,
   LibraryTitleSeason,
 } from "./library-title.type";
+
+// The title and what an admin can do about it.
+type TitleFixes = LibraryTitleFix & Pick<LibraryTitleProps, "title">;
 
 // A TITLE'S PAGE (#2151 decisions 25–26, design/library variant D): big artwork, the facts in plain
 // words, the story, the seasons, and the file behind one "Technical details" disclosure.
@@ -42,8 +46,13 @@ const Heading = ({ children }: { children: string }) => (
 );
 
 // "3" or, for a file holding two, "3–4".
-const episodeNumber = (number: number, end?: number) =>
-  end && end > number ? `${number}–${end}` : `${number}`;
+// An episode with no number (a special its show's catalog doesn't number) shows none.
+const episodeNumber = (number: number, end?: number) => {
+  if (number <= 0) {
+    return "";
+  }
+  return end && end > number ? `${number}–${end}` : `${number}`;
+};
 
 const Season = ({ season }: { season: LibraryTitleSeason }) => {
   const [open, setOpen] = useState(false);
@@ -71,7 +80,7 @@ const Season = ({ season }: { season: LibraryTitleSeason }) => {
                 {episodeNumber(episode.number, episode.end)}
               </Text>
             </Stack>
-            <Stack flexBasis={0} flexGrow={1} minWidth={0}>
+            <Stack flexBasis={0} flexGrow={1} flexShrink={1} minWidth={0}>
               <Text textRole="body">{episode.name || `Episode ${episode.number}`}</Text>
               {episode.fromFile ? (
                 <Text textRole="hint" tone="muted">
@@ -102,7 +111,7 @@ const WrongTitle = ({
   onSearch,
   onLink,
   onForget,
-}: Pick<LibraryTitleProps, "title" | "onOpenApp" | "onSearch" | "onLink" | "onForget">) => {
+}: Pick<TitleFixes, "title" | "onOpenApp" | "onSearch" | "onLink" | "onForget">) => {
   const [done, setDone] = useState<string>();
   const [failed, setFailed] = useState(false);
   const { by, app } = title.match;
@@ -172,7 +181,7 @@ type Busy = "update" | "check";
 
 // Update details · Check files again · Wrong title?, as the mock words them. A press waits for its
 // answer; a check that went through says so, and one that failed says to try again.
-const TitleActions = (props: Omit<LibraryTitleProps, "onBack">) => {
+const TitleActions = (props: TitleFixes) => {
   const { onUpdateDetails, onCheckFiles } = props;
   const [busy, setBusy] = useState<Busy>();
   const [checked, setChecked] = useState(false);
@@ -318,8 +327,7 @@ const Unplayable = ({
   );
 };
 
-const LibraryTitle = ({ onBack, ...actions }: LibraryTitleProps) => {
-  const { title } = actions;
+const LibraryTitle = ({ title, onBack, fix }: LibraryTitleProps) => {
   const wide = useWindowWidth() >= SIDE_BY_SIDE;
   const facts = factLine(title);
   return (
@@ -365,21 +373,21 @@ const LibraryTitle = ({ onBack, ...actions }: LibraryTitleProps) => {
             </Text>
           ) : null}
           {title.overview ? <Text textRole="body">{title.overview}</Text> : null}
-          <TitleActions {...actions} />
+          {fix ? <TitleActions title={title} {...fix} /> : null}
         </Stack>
       </Stack>
 
-      {title.unplayable > 0 ? (
-        <Unplayable count={title.unplayable} kind={title.kind} onCheck={actions.onCheckFiles} />
+      {fix && title.unplayable > 0 ? (
+        <Unplayable count={title.unplayable} kind={title.kind} onCheck={fix.onCheckFiles} />
       ) : null}
 
-      {title.files
-        .filter((file) => file.extra)
-        .map((file) => (
-          <ExtraCopy file={file} key={file.path} onRemove={actions.onRemoveExtra} />
-        ))}
+      {fix
+        ? title.files
+            .filter((file) => file.extra)
+            .map((file) => <ExtraCopy file={file} key={file.path} onRemove={fix.onRemoveExtra} />)
+        : null}
 
-      {actions.onChooseOrder && title.seasons.some((s) => s.episodes.some((e) => e.fromFile)) ? (
+      {fix?.onChooseOrder && title.seasons.some((s) => s.episodes.some((e) => e.fromFile)) ? (
         <Surface
           backgroundColor="stateWarningSurface"
           borderWidth={0}
@@ -391,7 +399,7 @@ const LibraryTitle = ({ onBack, ...actions }: LibraryTitleProps) => {
               <StatusDot label="Needs you" tone="warn" />
               <Text textRole="compact">We're not sure which order these episodes are in.</Text>
             </Line>
-            <Action onPress={actions.onChooseOrder} variant="outline">
+            <Action onPress={fix.onChooseOrder} variant="outline">
               Choose
             </Action>
           </Line>
@@ -430,7 +438,8 @@ const LibraryTitle = ({ onBack, ...actions }: LibraryTitleProps) => {
         </Stack>
       ) : null}
 
-      <TechnicalDetails title={title} />
+      {/* A member's title carries no files or match to tell. */}
+      {fix ? <TechnicalDetails title={title} /> : null}
     </Stack>
   );
 };

@@ -1,6 +1,6 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
-import { layoutGuide, useGuideWindow } from "@loomarr/core/guide";
+import { type GuideLayout, layoutGuide, useGuideWindow } from "@loomarr/core/guide";
 import { type SurfChannelData, type WatchingScheduleData, watchingPanelFromGuide } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -28,6 +28,8 @@ type WatchChannels = {
   };
   // A tune has settled on this channel (its first frame played): the viewer's recents record it.
   onTuneSettled: (channelId: string) => void;
+  // The guide window laid out, for the channel cards a flip shows (§9.2); undefined until it is read.
+  guide?: { layout: GuideLayout; nowMs: number };
 };
 
 // Reads the guide window Home and the Guide already share, and the viewer's favourites and recents
@@ -52,19 +54,23 @@ const useWatchChannels = (tunedId: string | undefined): WatchChannels => {
   const list = useMemo(() => drawerChannels(unwrap(guide.data)?.channels ?? [], nowMs), [guide.data, nowMs]);
   const favourites = useMemo(() => mineBody?.favourites.map((f) => f.channelId) ?? [], [mineBody]);
   const recent = useMemo(() => mineBody?.recent.map((r) => r.channelId) ?? [], [mineBody]);
+  // Read defensively, as the drawer does: a body without `channels` must not reach the layout.
+  const layout = useMemo(() => {
+    const body = unwrap(guide.data);
+    return body?.channels ? layoutGuide(body, nowMs) : undefined;
+  }, [guide.data, nowMs]);
   const phone = useMemo(() => {
     if (!tunedId) return undefined;
     const body = unwrap(guide.data);
-    // Read defensively, as the drawer does: a body without `channels` must not reach the layout.
     return watchingPanelFromGuide({
       channelId: tunedId,
       favouriteIds: favourites,
-      layout: body?.channels ? layoutGuide(body, nowMs) : undefined,
+      layout,
       nowMs,
       playableChannelIds: (body?.channels ?? []).filter((c) => c.status === "live").map((c) => c.channelId),
       recentIds: recent,
     });
-  }, [guide.data, nowMs, tunedId, favourites, recent]);
+  }, [guide.data, layout, nowMs, tunedId, favourites, recent]);
 
   return {
     drawer: {
@@ -77,6 +83,7 @@ const useWatchChannels = (tunedId: string | undefined): WatchChannels => {
     },
     phone,
     onTuneSettled: (channelId) => recordTune.mutate({ channelId }),
+    ...(layout ? { guide: { layout, nowMs } } : {}),
   };
 };
 

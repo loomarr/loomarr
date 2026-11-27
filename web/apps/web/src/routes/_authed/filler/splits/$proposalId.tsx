@@ -1,5 +1,8 @@
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { createFileRoute } from "@tanstack/react-router";
 import { AdminOnly } from "@/auth/admin-only";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { SplitReviewPage } from "@/filler/split-review-page";
 import { validateSplitReviewSearch } from "@/filler/split-review-search";
 
@@ -22,6 +25,16 @@ const SplitReviewScreen = () => {
 
 const Route = createFileRoute("/_authed/filler/splits/$proposalId")({
   validateSearch: validateSplitReviewSearch,
+  // Admin-only, so a member's request is never sent. The proposal is what the page is made of, so it
+  // opens on it and a failed read is the route's error view. The settings list is warmed: it only
+  // adds the shortest-clip rule to the editor.
+  loader: async ({ context: { queryClient }, params: { proposalId } }) => {
+    if (!(await viewerIsAdmin(queryClient))) return;
+    await Promise.all([
+      queryClient.ensureQueryData(fillerApi.getGetFillerSplitQueryOptions(proposalId)),
+      queryClient.prefetchQuery(settingsApi.getSettingsListQueryOptions({ query: { retry: false } })),
+    ]);
+  },
   component: SplitReviewScreen,
 });
 

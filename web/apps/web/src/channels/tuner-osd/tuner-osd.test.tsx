@@ -11,4 +11,11 @@ describe("TunerOSD", () => {
     expect(status).toHaveTextContent("The Big Sleep");
     expect(status).toHaveTextContent("Tuning…");
   });
+
+  // The wash's channel line is what a viewer sees; this is the announcement only (#1620, #2769).
+  it("is for screen readers only", () => {
+    render(<TunerOSD number={42} name="Late Night Noir" />);
+    // Clipped to a pixel by the design system's wrapper, so it stays in the accessibility tree.
+    expect(screen.getByRole("status").parentElement).toHaveStyle({ height: "1px", overflow: "hidden" });
+  });
 });

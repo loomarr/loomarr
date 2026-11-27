@@ -47,7 +47,7 @@ const (
 // `MinSegmentMs` is for, and it does not become configurable.
 //
 // ⚠ **Why the catalog floor belongs at DETECTION and not only in the gate (§10 V34, V54).** It was
-// only in `AutoConfirmable`, which returns on the first failing segment — so one sub-floor fragment
+// only in the V43 gate, which returned on the first failing segment — so one sub-floor fragment
 // sank the whole reel. A real commercial compilation is *made of* such fragments: measured
 // 2026-08-11 on an 82-segment archive.org reel, **39 were under the 10s floor**, shortest 3.1s
 // (station IDs, inter-ad bumpers). Auto-split had therefore never fired on any real reel, and the
@@ -144,8 +144,8 @@ func evidenceToken(src split.BoundarySource) string {
 //
 // ⚠ **It cannot see a single tag field, and that is structural rather than incidental.** No
 // `SuggestedEra`, `Era`, `Looked`, `Category` or `Tags` is in scope here, so a tag fact can never
-// move this number — which is what keeps `AutoConfirmable`'s refusals absolute instead of being
-// laundered into a score (the objection `autosplit.go` records).
+// move this number — which is what keeps `AutoCuttable`'s refusals absolute instead of being
+// laundered into a score.
 //
 // Within a boundary the best evidence wins; across the two the WORST does, because a cut is only as
 // trustworthy as its weaker end. Segment facts then cap it.

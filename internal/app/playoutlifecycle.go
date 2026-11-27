@@ -12,8 +12,8 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 func durableInternalTransportPlayable(
@@ -243,7 +243,7 @@ func (l *postgresPlayoutLifecycle) rememberSchedule(ch channelstore.Channel) {
 	l.schedules[ch.ID] = acceptedTimeline{store.ChannelScheduleVersion(ch), ch.Desired, ch.PlayoutAnchor}
 }
 
-// onAirMoved applies reconcile's stop rule on this replica (playout.OnAirChanged): a committed
+// onAirMoved applies reconcile's stop rule on this replica (timeline.OnAirChanged): a committed
 // cycle with a new fingerprint stops the channel only when it changes what is on air now. A
 // re-size or an edit later in the cycle reaches the packager at its next lookup. A change is
 // reported only when an earlier version is known; an empty version from an older sender is not
@@ -277,8 +277,8 @@ func (l *postgresPlayoutLifecycle) onAirMoved(ctx context.Context, channelID, ve
 		return false
 	}
 	now := l.clock()
-	return playout.OnAirChanged(previous.slots, previous.anchor, ch.Desired, ch.PlayoutAnchor,
-		now, now.Add(playout.OnAirLookahead))
+	return timeline.OnAirChanged(previous.slots, previous.anchor, ch.Desired, ch.PlayoutAnchor,
+		now, now.Add(timeline.OnAirLookahead))
 }
 
 func (l *postgresPlayoutLifecycle) clock() time.Time {

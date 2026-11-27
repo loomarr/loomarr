@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +17,7 @@ import (
 func TestClipNameSourceMigrationSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "clip-name-source.db"))
+	s, err := openSQLite(ctx, sqliteFileAt(t, 133, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

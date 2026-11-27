@@ -8,6 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Stack,
 } from "@loomarr/design-system";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -60,13 +61,15 @@ const CreateLocalDialog = ({
       </Action>
       <Dialog open={open} onOpenChange={changeOpen}>
         <DialogContent portalContainer={portalContainer}>
-          <form
-            className="flex flex-col gap-4"
+          <Stack
+            flexShrink={0}
+            gap="4"
             noValidate
             onSubmit={(event) => {
               event.preventDefault();
               void form.handleSubmit();
             }}
+            render="form"
           >
             <DialogHeader>
               <DialogTitle>Add local account</DialogTitle>
@@ -77,18 +80,16 @@ const CreateLocalDialog = ({
             </DialogHeader>
 
             <form.AppField name="username">
-              {(field) => <field.TextField className="gap-1.5" disabled={creating} label="Username" />}
+              {(field) => <field.TextField disabled={creating} label="Username" />}
             </form.AppField>
             <form.AppField name="password">
-              {(field) => (
-                <field.TextField className="gap-1.5" disabled={creating} label="Password" type="password" />
-              )}
+              {(field) => <field.TextField disabled={creating} label="Password" type="password" />}
             </form.AppField>
             <form.AppField name="role">
               {(field) => <field.SelectField disabled={creating} label="Role" options={ROLE_OPTIONS} />}
             </form.AppField>
 
-            {error != null && <ErrorState error={error} className="p-4" />}
+            {error != null && <ErrorState error={error} compact />}
 
             <DialogFooter>
               <Action disabled={creating} onPress={() => changeOpen(false)} variant="outline">
@@ -98,7 +99,7 @@ const CreateLocalDialog = ({
                 {creating ? "Creating…" : "Create account"}
               </Action>
             </DialogFooter>
-          </form>
+          </Stack>
         </DialogContent>
       </Dialog>
     </>

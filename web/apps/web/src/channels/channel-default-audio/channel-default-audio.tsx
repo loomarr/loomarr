@@ -2,13 +2,13 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import { unwrap } from "@loomarr/api/unwrap";
+import { AUTO_SENTINEL, audioOptions, withSaved } from "@loomarr/core/channel-audio";
 import { ChannelAudioSection } from "@loomarr/ui";
-import { AUTO_SENTINEL, audioOptions, withSaved } from "./audio-options";
 
 // The channel's default audio language (#2088), on Channel info beside the On-screen logo: admin-only,
 // autosaving `policy.playout.audioLanguage` through the page's one writer like the other fields. It
-// moved here from the player's Audio menu when Watch became its own route; the player's Settings
-// sheet now shows it read-only.
+// is a channel setting, so it lives with the channel rather than in the player, whose Settings
+// sheet shows it read-only.
 
 interface ChannelDefaultAudioProps {
   channel: ChannelDTO;

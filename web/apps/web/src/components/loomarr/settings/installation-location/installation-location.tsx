@@ -1,6 +1,6 @@
 import { SettingKey } from "@loomarr/api/models/settingKey";
+import { Card, Stack, Text } from "@loomarr/design-system";
 import { SettingField } from "@/components/loomarr/settings/setting-field";
-import { cn } from "@/lib/utils";
 import type { InstallationLocationProps } from "./installation-location.type";
 import { LanguagePicker } from "./language-picker";
 import { LocationPicker } from "./location-picker";
@@ -35,19 +35,18 @@ const InstallationLocation = ({
   );
   const radiusResult = results?.find((result) => result.key === RADIUS_KEY && result.status !== "saved");
 
-  return (
-    <section
-      className={cn(
-        "flex flex-col gap-4",
-        card && "border-border bg-card rounded-xl border p-5 shadow-sm sm:p-6",
-      )}
-    >
+  const content = (
+    <>
       {showHeading && (
         <div>
-          <h2 className="text-lg font-semibold">Your area and language</h2>
-          <p className="text-muted-foreground mt-1 max-w-xl text-sm">
-            Loomarr uses these to find commercials that fit your home.
-          </p>
+          <Text as="h2" strong textRole="headline">
+            Your area and language
+          </Text>
+          <Stack marginTop={4} maxWidth={576}>
+            <Text as="p" textRole="compact" tone="secondary">
+              Loomarr uses these to find commercials that fit your home.
+            </Text>
+          </Stack>
         </div>
       )}
 
@@ -81,7 +80,22 @@ const InstallationLocation = ({
           lockedLabel="set via environment"
         />
       )}
-    </section>
+    </>
+  );
+
+  if (!card) {
+    return (
+      <Stack flexShrink={0} gap="4" render="section">
+        {content}
+      </Stack>
+    );
+  }
+  return (
+    <Card flexShrink={0} render="section">
+      <Stack gap="4" padding={{ base: 20, sm: 24 }}>
+        {content}
+      </Stack>
+    </Card>
   );
 };
 

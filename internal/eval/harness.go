@@ -42,7 +42,9 @@ func buildSuggester() (*suggest.Suggester, ScheduleMaterializer, *observedProvid
 
 type evalClients struct {
 	library LibraryReader
-	tmdb    *tmdb.Client
+	// evidence is the Library's tags and credits for owned discovery hits (#3006); nil skips it.
+	evidence store.LibraryEvidenceReader
+	tmdb     *tmdb.Client
 }
 
 // buildEvalClients constructs only evidence adapters. It deliberately cannot
@@ -66,12 +68,12 @@ func buildEvalClients() (evalClients, error) {
 		return evalClients{}, fmt.Errorf("TMDB_API_KEY required for the eval (grounding + discovery)")
 	}
 	tm := tmdb.New(tmdbKey)
-	return evalClients{library: lib, tmdb: tm}, nil
+	return evalClients{library: lib, evidence: lib, tmdb: tm}, nil
 }
 
 func buildSuggesterWithClients(clients evalClients) (*suggest.Suggester, *observedProvider, error) {
 	cat := titlesearch.New(titlesearch.LibrarySearch{Titles: clients.library, Facts: clients.library}, clients.tmdb).
-		WithPresence(titlesearch.LibraryOwnership{Titles: clients.library})
+		WithPresence(titlesearch.LibraryOwnership{Titles: clients.library}).WithEvidence(clients.evidence)
 	provider, err := buildProvider()
 	if err != nil {
 		return nil, nil, err

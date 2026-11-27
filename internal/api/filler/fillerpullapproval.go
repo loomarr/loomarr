@@ -20,8 +20,9 @@ type approveFillerPullInput struct {
 	Body struct {
 		// DropSourceIDs are the rows the operator excluded. Recorded on the pull rather than
 		// removed from it, so the audit shows what was proposed as well as what was agreed to.
-		DropSourceIDs    []string `json:"dropSourceIds,omitempty"`
-		DropCandidateIDs []string `json:"dropCandidateIds,omitempty"`
+		// At most 1000 each: a pull proposes a playlist's worth of sources and candidates.
+		DropSourceIDs    []string `json:"dropSourceIds,omitempty" maxItems:"1000"`
+		DropCandidateIDs []string `json:"dropCandidateIds,omitempty" maxItems:"1000"`
 		Note             string   `json:"note,omitempty" doc:"Optional annotation for the approval record; does not change what is downloaded"`
 	}
 }

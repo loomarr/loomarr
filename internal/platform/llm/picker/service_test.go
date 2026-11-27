@@ -3,12 +3,16 @@ package picker
 import (
 	"context"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -43,8 +47,54 @@ func TestModelPull_HasExplicitTimeoutAndDurableTerminalOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if operation.Status != store.InteractiveOperationError || !strings.Contains(operation.Error, context.DeadlineExceeded.Error()) {
+	if operation.Status != operationstore.InteractiveOperationError || !strings.Contains(operation.Error, context.DeadlineExceeded.Error()) {
 		t.Fatalf("timed out pull = %+v, want durable deadline error", operation)
+	}
+}
+
+// pullFrames records each pull frame with the operation's stored status at that moment.
+type pullFrames struct {
+	t      *testing.T
+	st     store.Store
+	frames []string
+}
+
+func (p *pullFrames) PullProgress(jobID, _, status string, _ int, _, _ int64, _ string) {
+	operation, err := p.st.GetInteractiveOperation(p.t.Context(), jobID)
+	if err != nil {
+		p.t.Fatal(err)
+	}
+	p.frames = append(p.frames, status+"/"+string(operation.Status))
+}
+
+// Ollama ends a pull with its own "success" line before the operation's outcome is stored. Only
+// the completion announces success, once, after storing it: a client that reads the operation on
+// a frame sees what the frame says.
+func TestModelPull_AnnouncesSuccessOnceItIsStored(t *testing.T) {
+	ollama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		_, _ = w.Write([]byte("{\"status\":\"pulling manifest\"}\n{\"status\":\"success\"}\n"))
+	}))
+	defer ollama.Close()
+	st := testkit.MigratedSQLiteStore(t)
+	frames := &pullFrames{t: t, st: st}
+	start := func(_ time.Duration, run func(context.Context) error, complete func(context.Context, error)) error {
+		complete(t.Context(), run(t.Context()))
+		return nil
+	}
+	sut := New(Config{
+		Swap:       llm.NewSwappable(func(llm.Selection) llm.Provider { return nil }, llm.Selection{Provider: "ollama"}),
+		OllamaBase: func() string { return ollama.URL },
+		Log:        slog.New(slog.DiscardHandler), NewID: func() string { return "pull-1" },
+		Start: start, Operations: st, PullTimeout: time.Minute, Events: frames,
+	})
+
+	if _, err := sut.Pull(t.Context(), "qwen3:8b"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"starting/running", "pulling manifest/running", "success/success"}
+	if !slices.Equal(frames.frames, want) {
+		t.Fatalf("frames = %v, want %v", frames.frames, want)
 	}
 }
 

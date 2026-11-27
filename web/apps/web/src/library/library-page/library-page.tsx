@@ -7,28 +7,32 @@ import {
   LibraryCollections,
   type LibraryFilter,
   LibraryNeedsCards,
-  LibraryNeedsStrip,
   LibraryShelf,
+  type LibraryShelfCounts,
   type LibraryShelfTitle,
-  StatePanel,
+  type LibrarySort,
 } from "@loomarr/ui";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/auth/use-auth";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { useRouteContent } from "@/lib/use-route-content";
+import { LIBRARY_COUNTS, libraryItemsQueryOptions } from "../library-items-query";
 import { useLibraryCollections } from "../use-library-collections";
 import { useLibraryNeeds } from "../use-library-needs";
 import { useLibraryScanFrames } from "../use-library-scan-frames";
 
-// LIBRARY (#2151 decision 22): the titles Loomarr found in its media folders, as a poster grid
-// under one line about the library. The filter and the search live in the URL; the grid loads a
-// page at a time as it scrolls. Nothing polls: an import's progress arrives as library_scan frames
-// written into the status, and each library_titles frame refetches the titles (the events bus), so
-// new titles appear and "Getting ready" clears on their own.
+// THE WALL (#4476): the titles Loomarr found in its media folders, as a poster grid. An admin sees
+// one line about the library above it, with Needs you's count; a member browses the same wall
+// read-only and the page asks only the routes a member reads (the titles and the collections).
+// The filter, the order and the search live in the URL; the grid loads a page at a time as it
+// scrolls. Nothing polls: an import's progress arrives as library_scan frames written into the
+// status, and each library_titles frame refetches the titles (the events bus), so new titles
+// appear and "Getting ready" clears on their own.
 
-const PAGE = 60;
 const SEARCH_SETTLE_MS = 250;
 
 // The poster grid is 6 across at most, so a poster is drawn at most about a sixth of the frame.
@@ -40,7 +44,8 @@ const titleOf = (item: LibraryItemDTO): LibraryShelfTitle => ({
   name: item.name,
   year: item.year,
   ready: item.ready,
-  attention: item.unplayable > 0 || item.extraCopies > 0,
+  // Both counts are admin-only; a member's titles carry neither, so none needs a look.
+  attention: (item.unplayable ?? 0) > 0 || (item.extraCopies ?? 0) > 0,
   poster: item.poster ? <ServedImage alt="" image={item.poster} sizes={POSTER_SIZES} /> : undefined,
 });
 
@@ -54,33 +59,53 @@ const useSettled = (value: string) => {
   return settled;
 };
 
+// The tabs' counts: the whole library's total and each kind's, whatever the search. Each asks for
+// one title, since only the total is read.
+const useTabCounts = (enabled: boolean): LibraryShelfCounts | undefined => {
+  const options = { query: { enabled } };
+  const [allParams, movieParams, seriesParams] = LIBRARY_COUNTS;
+  const all = unwrap(libraryApi.useListLibraryItems(allParams, options).data)?.total;
+  const movie = unwrap(libraryApi.useListLibraryItems(movieParams, options).data)?.total;
+  const series = unwrap(libraryApi.useListLibraryItems(seriesParams, options).data)?.total;
+  return all === undefined || movie === undefined || series === undefined
+    ? undefined
+    : { all, movie, series };
+};
+
 interface LibraryPageProps {
   filter: LibraryFilter;
   search: string;
+  /** The wall's order; by name unless the URL says recent. */
+  sort?: LibrarySort;
   /**
-   * "needs" is Needs you's own screen: its cards in place of the strip, and no grid.
+   * "needs" is Needs you's own screen, an admin's: its cards in place of the grid.
    * "collections" is the Collections tab: the collections in place of the search and the grid.
    */
   view?: "titles" | "needs" | "collections";
 }
 
-const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
+const LibraryPage = ({ filter, search, sort = "name", view = "titles" }: LibraryPageProps) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const timeZone = useHouseholdTimeZone();
+  const { isAdmin, isLoading: authLoading } = useAuth();
   const [typed, setTyped] = useState(search);
   const settled = useSettled(typed.trim());
-  const needs = useLibraryNeeds();
+  const needs = useLibraryNeeds(isAdmin && view === "needs");
   const collections = useLibraryCollections(view === "collections");
   const titlesView = view === "titles";
+  const counts = useTabCounts(view !== "needs");
   const kind =
     filter === ListLibraryItemsKind.movie || filter === ListLibraryItemsKind.series ? filter : undefined;
+  const recent = sort === "recent" ? sort : undefined;
 
+  // The status, its folders and its actions are an admin's; a member's page never asks for them.
   useLibraryScanFrames();
-  const status = libraryApi.useLibraryStatus();
-  const current = unwrap(status.data);
+  const status = libraryApi.useLibraryStatus({ query: { enabled: isAdmin } });
+  const current = isAdmin ? unwrap(status.data) : undefined;
   // The offline folders' names come from the folder list; it's only asked for while one is offline.
   const roots = libraryApi.useListLibraryRoots({
-    query: { enabled: current?.health === LibraryStatusOutputBodyHealth.folder_offline },
+    query: { enabled: isAdmin && current?.health === LibraryStatusOutputBodyHealth.folder_offline },
   });
   const refresh = () => queryClient.invalidateQueries({ queryKey: libraryApi.getLibraryStatusQueryKey() });
   const rescan = libraryApi.useRescanLibrary({ mutation: { onSettled: refresh } });
@@ -93,37 +118,26 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
     synced.current = settled;
     void navigate({
       to: "/library",
-      search: { kind, q: settled || undefined },
+      search: { kind, q: settled || undefined, sort: recent },
       replace: true,
     });
-  }, [settled, kind, navigate, titlesView]);
+  }, [settled, kind, recent, navigate, titlesView]);
 
-  const params = {
-    kind,
-    search: settled || undefined,
-    limit: PAGE,
-  };
   const items = useInfiniteQuery({
+    ...libraryItemsQueryOptions({ kind, search: settled || undefined, sort: recent }),
     enabled: titlesView,
-    queryKey: [...libraryApi.getListLibraryItemsQueryKey(params), "pages"],
-    initialPageParam: 0,
-    queryFn: async ({ pageParam, signal }) => {
-      const res = await libraryApi.listLibraryItems({ ...params, offset: pageParam }, { signal });
-      const body = unwrap(res);
-      if (!body) throw new Error("Couldn't list the library");
-      return body;
-    },
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((n, page) => n + page.items.length, 0);
-      return loaded < last.total && last.items.length > 0 ? loaded : undefined;
-    },
   });
   const titles = useMemo(
     () => items.data?.pages.flatMap((page) => page.items.map(titleOf)) ?? [],
     [items.data],
   );
-  // The library's content is its status line and the first page of titles under it.
-  useRouteContent(current !== undefined && !items.isPending);
+  // The page's content is the admin's status line and whatever the view shows under it.
+  const viewReady = titlesView
+    ? !items.isPending
+    : view === "collections"
+      ? collections.loaded
+      : needs.loaded;
+  useRouteContent(!authLoading && (!isAdmin || current !== undefined) && viewReady);
 
   // The next page loads once the grid's last rows are on screen.
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = items;
@@ -131,36 +145,18 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
     if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const error = status.error ?? items.error;
-  if (error && !current) return <ErrorState error={error} onRetry={() => void status.refetch()} />;
-  if (!current) return <StatePanel kind="loading" title="Loading your library" />;
+  if (authLoading) return null;
+  if (isAdmin && status.error && !current) {
+    return <ErrorState error={status.error} onRetry={() => void status.refetch()} />;
+  }
+  // The route's loader ensured an admin's status, so it is here before this page mounts.
+  if (isAdmin && !current) return null;
 
   const offline = (unwrap(roots.data)?.roots ?? []).filter((f) => f.inUse && !f.readable).map((f) => f.path);
 
-  const openNeeds = () => void navigate({ to: "/library/needs" });
   const openTitle = (id: string) => void navigate({ to: "/library/$id", params: { id } });
-  const needsSlot =
-    view !== "needs" ? (
-      <LibraryNeedsStrip
-        needs={needs.needs}
-        onLink={needs.answers.onLink}
-        onOpenNeeds={openNeeds}
-        onOpenTitle={openTitle}
-        orders={needs.orders}
-        problems={needs.problems}
-      />
-    ) : needs.loaded ? (
-      <LibraryNeedsCards
-        needs={needs.needs}
-        onChooseOrder={needs.answers.onChooseOrder}
-        onIgnore={needs.answers.onIgnore}
-        onLink={needs.answers.onLink}
-        onOpenTitle={openTitle}
-        onSearch={needs.onSearch}
-        orders={needs.orders}
-        problems={needs.problems}
-      />
-    ) : null;
+  const showWall = (next: { kind?: typeof kind; sort?: typeof recent }) =>
+    void navigate({ to: "/library", search: { ...next, q: settled || undefined } });
 
   return (
     <>
@@ -172,44 +168,72 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
         <ErrorState error={collections.error} onRetry={() => void collections.refetch()} />
       ) : null}
       <LibraryShelf
+        admin={
+          current
+            ? {
+                status: {
+                  health: current.health,
+                  scan: current.scan,
+                  held: current.held,
+                  offline,
+                  needsYou: current.needsYou,
+                  details: current.details,
+                },
+                checking: discover.isPending,
+                onCheckAgain: () => discover.mutate(),
+                onRescan: () => rescan.mutate(),
+                onOpenSettings: () => void navigate({ to: "/settings/library" }),
+                onOpenNeeds: view === "needs" ? undefined : () => void navigate({ to: "/library/needs" }),
+              }
+            : undefined
+        }
         collections={
           collections.loaded ? (
             <LibraryCollections
               collections={collections.collections}
-              onCopy={collections.onCopy}
-              onEdit={(id) => void navigate({ to: "/library/collections/$id", params: { id } })}
-              onNew={() => void navigate({ to: "/library/collections/new" })}
+              manage={
+                isAdmin
+                  ? {
+                      onCopy: collections.onCopy,
+                      onEdit: (id) => void navigate({ to: "/library/collections/$id", params: { id } }),
+                      onNew: () => void navigate({ to: "/library/collections/new" }),
+                    }
+                  : undefined
+              }
               sets={collections.sets}
             />
           ) : null
         }
-        needs={needsSlot}
-        showTitles={titlesView}
-        checking={discover.isPending}
+        counts={counts}
         filter={view === "collections" ? "collections" : filter}
         loading={items.isPending}
-        onCheckAgain={() => discover.mutate()}
-        onFilterChange={(next) =>
-          void (next === "collections"
-            ? navigate({ to: "/library/collections" })
-            : navigate({
-                to: "/library",
-                search: { kind: next === "all" ? undefined : next, q: settled || undefined },
-              }))
+        needs={
+          view === "needs" && needs.loaded ? (
+            <LibraryNeedsCards
+              needs={needs.needs}
+              onChooseOrder={needs.answers.onChooseOrder}
+              onIgnore={needs.answers.onIgnore}
+              onLink={needs.answers.onLink}
+              onOpenTitle={openTitle}
+              onSearch={needs.onSearch}
+              orders={needs.orders}
+              problems={needs.problems}
+            />
+          ) : null
         }
         onEndReached={loadMore}
-        onOpenSettings={() => void navigate({ to: "/settings/library" })}
+        onFilterChange={(next) =>
+          next === "collections"
+            ? void navigate({ to: "/library/collections" })
+            : showWall({ kind: next === "all" ? undefined : next, sort: recent })
+        }
         onOpenTitle={openTitle}
-        onRescan={() => rescan.mutate()}
         onSearchChange={setTyped}
+        onSortChange={(next) => showWall({ kind, sort: next === "recent" ? next : undefined })}
         search={typed}
-        status={{
-          health: current.health,
-          scan: current.scan,
-          held: current.held,
-          offline,
-          needsYou: needs.needs.length + needs.problems.length > 0,
-        }}
+        showTitles={titlesView}
+        sort={sort}
+        timeZone={timeZone}
         titles={titles}
       />
     </>

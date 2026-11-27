@@ -107,6 +107,9 @@ device is watching a Channel while its polls continue (`internal/channels/viewin
   [Favourites and recents](#favourites-and-recents), which is also what Watch opens.
 - The tracker is in memory: one replica is the supported topology, and a restart loses nothing
   a poll interval doesn't rebuild.
+- **Live.** Home reads it again on the empty `viewing` frame (#3352), sent as a viewing starts,
+  moves to another Channel, or ends. An end is seen when the tracker next prunes, on the next
+  poll or the recorder's next read, so it reaches Home within 15 s of the 30 s running out.
 
 ### Watch history
 
@@ -164,32 +167,51 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   live edge. The playbar's past is seekable by click or drag; its future is preview only. `L` (and
   the live indicator) goes live; **Start over** seeks to the current programme's start, offered
   only when that start is inside the window.
-- **The band, not a timeline (#2768).** The chrome is variant H, channel-first: the band names the
-  channel, what is on and what is next, with one progress line. The #2088 preview playbar and its
-  hover cards were replaced; the schedule playbar lives in More.
+- **The band, with the film strip (#3449).** The chrome is variant J, channel-first: the band names
+  the channel and what is on. On desktop and television its foot is the film strip, the timeline of
+  what is on and what follows, with a preview card for the block under the pointer or the remote's
+  focus; phones keep one progress line and Next, and their film strip lives in More.
 - **Station ID.** Every settled tune shows the station-ID card for five seconds, and a break reads
   the programme's title with `Back in n min`, the same rules as [Android TV](#android-tv).
-- **Panels.** Subtitles and Audio (top row, `C` and `A`), Picture (quality Auto plus the ladder's
-  manual rungs, shown as `Auto · 720p`), Playback details (`I`: the one place technical terms are
-  allowed; members see rung, resolution, codec, bitrate, buffer and lag; admins also see the encoder,
-  transcode reason and session, and get **Copy stream URL**), Info (synopsis, licence and source),
-  Channels and Shortcuts, all behind More except the top row's. One sheet is open at a time.
-- **Audio, subtitles and quality are per viewer and remembered**, chosen among the renditions the
-  Channel publishes: the default audio plus at most one alternate, and soft WebVTT subtitles
-  (`C` cycles them; [`playout.md`](playout.md)). The choice switches the rendition; it never
-  restarts the encoder.
+- **Panels.** Subtitles and Audio (utilities over the keys, `C` and `A`), Picture (quality Auto plus
+  the ladder's manual rungs, shown as `Auto · 720p`), Playback details (`I`: the one place technical
+  terms are allowed; members see rung, resolution, codec, bitrate, buffer and lag; admins also see
+  the encoder, transcode reason and session, and get **Copy stream URL**), Info (the on-air
+  programme's card in full) and Channels, all behind More except the utilities'. On desktop they open
+  as a menu over the keys; on a phone as a sheet (§9.5). One is open at a time.
+- **Audio, subtitles and quality are per viewer and remembered.** Audio and quality are among the
+  renditions the Channel publishes (the default audio plus at most one alternate); that choice
+  switches the rendition and never restarts the encoder. Subtitles are soft and served beside the
+  stream (`GET /v1/channels/{id}/subtitles`, [`playout.md`](playout.md)): the player asks for the
+  cues of the remembered track key around its playhead, on the channel's wall clock, and draws them
+  over the picture (`C` cycles them). A server-generated track (`generated: true`, key
+  `<language>-auto`) is labelled **Auto-generated** on every client and listed after the file's own
+  tracks; while its cues are `pending` the player says "Generating subtitles…" and keeps asking.
 - **Leaving `/watch`** stops playback, unless the viewer is in the browser's picture-in-picture
   (`P`; hidden where unsupported). There is no in-app mini-player; the one-`<video>` rule stands.
-  The route hides the app nav and has a ✕/back control.
+  The route hides the app nav and has a back arrow in the top left corner.
 - **Keys** (when focus is not in a control that owns them): `Space`/`K` play-pause · `←`/`→` ±10 s ·
   `L` live · `↑`/`↓`/`PgUp`/`PgDn` channel · digits + `Enter` tune · `G` channels · `M` mute ·
   `−`/`=` volume · `F` fullscreen · `P` picture-in-picture · `C` subtitles · `I` info · `?`
   shortcuts · `Esc` closes the top layer, then leaves `/watch`.
-- **Phone.** Portrait and landscape wear the same band and keys at phone size; tap shows or hides
-  the chrome. How portrait lays out around a letterboxed picture is open (#2775).
+- **Volume** (desktop). The Volume key opens the volume level in the menu's place: a glyph, a
+  slider and the level, or "Off" when muted. Dragging to zero mutes. Any change of level or mute
+  (`M`, `−`/`=`) shows it for a moment. The first play's own mute does not; the unmute pill
+  speaks for that. A phone or a television has no Volume key: its own buttons set the level.
+- **Phone.** On its side, the band and keys at phone size over the picture; tap shows or hides the
+  chrome, and it leaves after 5 s untouched while playing. Upright, nothing covers the picture: a
+  toolbar above it, the band and keys below (#2775). On its side what a key opens is the right-hand
+  sheet; upright it rises from the bottom. The phone app turns with the phone only on Watching and
+  stays upright everywhere else (#1831).
 - **Other clients.** The phone, Android TV and Apple TV apps adopt the same chrome from
-  `@loomarr/ui` after the web route ships, one PR each; the TV's input mapping for the playbar is
-  decided then.
+  `@loomarr/ui`, one PR each. A television has four keys (Last channel, Subtitles, Audio, More) and
+  remote focus starts on the film strip's on-air block (§9.7). Their Audio reads the same two things
+  the web's does (the airing programme's tracks and the channel's language, both a member's reads,
+  `@loomarr/core/channel-audio`), each time it opens. Subtitles are `@loomarr/core/channel-subtitles` on every
+  client: the menu's choices, `C`'s next one, and a follower that asks for the remembered track's
+  cues along the picture's own clock; `PlayerChrome` draws the line (`captions`). The phone and TV
+  remember the choice on the device (`usePairedSubtitles`, `@loomarr/paired-client`); a television's
+  menu starts its focus on the choice in use, and its line stays while the controls are down.
 
 ## Android TV
 
@@ -201,7 +223,14 @@ media-server token and no second playback API. It installs as a Leanback launche
 the user's home-screen ordering.
 
 - **Watching** is full-screen video. Up/down and Channel keys tune adjacent Channels, number keys
-  enter a Channel, OK opens Guide, Left (or Menu) opens Surf, Back returns to the launcher. Channel
+  enter a Channel, OK opens Guide, Left (or Menu) opens Surf, Back returns to the launcher. While the
+  controls are up, Left and Right move focus through them instead (frontend-design §9.7). The More
+  key opens a menu over the keys (Channels, Info, and Start over and Go live when behind): every
+  arrow moves through its rows, the controls stay up until a choice, and Menu or Back closes it, as
+  they close Info, the on-air card pinned open, before doing anything else (§9.5). Closing a menu
+  hands the remote's focus back to the key that opened it. The Audio key
+  opens the channel's language in the same place, read-only, so focus stays on the key, whose OK
+  closes it as Menu or Back does. Channel
   identity and the programme bar appear together and clear after five seconds. During filler the
   label is `Commercials · <clip title>` when the Guide supplies one; content hashes and paths are
   never shown. The Guide supplies a clip title only when it is viewer copy. Each clip records where
@@ -296,8 +325,17 @@ routes Web already uses; no native-only route exists and no authority is added.
   request). Until then `/v1/auth/me` reports `member` and the controls do not appear. **Edit** is
   Web's edit-at-the-gate: the admin unticks titles and adds a note, and both ride the one
   `POST /v1/proposals/{id}/approve` body (`drop`, `note`). Adding a title needs search and stays on Web.
-- **Touch and orientation.** Portrait only, touch density, every target at least 44 pt. Live updates
-  poll (two seconds while a request is generating); `/v1/events` is only a Web invalidation trigger.
+- **Touch and orientation.** Portrait only, touch density, every target at least 44 pt.
+- **Live updates.** The device keeps one `/v1/events` stream while the app is in the foreground;
+  the player and Requests both follow it. Requests reads again on:
+  - a `proposal` frame: a proposal now waits for a decision, or was approved or denied, by anyone
+    or by an automatic grant;
+  - a `suggestion` frame for one of the person's own runs (another member's progress is ignored);
+  - a `title` frame (a title settles available or unavailable);
+  - a `channel` frame (an approved request's channel builds);
+  - the stream coming back, and the app returning to the foreground.
+
+  Nothing re-reads on a timer (#3352).
 - **Tab position (approved mock, #1840).** Requests is a fourth tab between Guide and Surf (Watching ·
   Guide · Requests · Surf) with Web's count badge: an admin's pending decisions plus anyone's failed
   requests. "Request a channel" is an icon button in the Requests app bar on both phones; Android has no

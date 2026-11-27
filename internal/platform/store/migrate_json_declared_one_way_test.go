@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -30,7 +29,6 @@ var jsonRebuilt = map[string][]string{
 	"filler_context_reports":              nil,
 	"filler_enrichment_axes":              nil,
 	"filler_split_proposals":              nil,
-	"filler_split_shadow_decisions":       nil,
 	"filler_inference_evaluations":        nil,
 	"filler_structure_window_call_ledger": {"record_json"},
 	"filler_pulls":                        nil,
@@ -59,8 +57,9 @@ var jsonRebuilt = map[string][]string{
 // documents, each ” became NULL, the rows stayed, deletes still cascade, and text that is not JSON
 // is refused.
 func TestJSONDeclaredOneWayMigration(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "json.db")+"?_pragma=foreign_keys(on)")
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, jsonDeclaredOneWayMigration-1, foreignKeyConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -99,6 +99,41 @@ describe("TV Watching remote navigation", () => {
     expect(reduceTvWatchingRemote(initialTvWatchingRemoteState, { key: "right" }).handled).toBe(false);
   });
 
+  it("lets Left and Right move focus through the controls while they are up (§9.7)", () => {
+    const shown = (key: "left" | "right" | "up" | "menu") =>
+      reduceTvWatchingRemote(initialTvWatchingRemoteState, { key }, undefined, "controls");
+    // Focus moves along the film strip and the keys; the press still counts as activity.
+    expect(shown("left")).toEqual({ handled: true, state: initialTvWatchingRemoteState });
+    expect(shown("right")).toEqual({ handled: true, state: initialTvWatchingRemoteState });
+    // Up/Down still tune and Menu still opens Surf, as before.
+    expect(shown("up")).toMatchObject({ intent: { direction: 1, kind: "step" } });
+    expect(shown("menu")).toMatchObject({ intent: { kind: "open-surf" } });
+  });
+
+  it("gives every arrow to the More menu's rows, and closes it on Menu (§9.5)", () => {
+    const inMenu = (key: "down" | "left" | "menu" | "right" | "up") =>
+      reduceTvWatchingRemote(initialTvWatchingRemoteState, { key }, undefined, "menu");
+    for (const key of ["up", "down", "left", "right"] as const)
+      expect(inMenu(key)).toEqual({ handled: true, state: initialTvWatchingRemoteState });
+    expect(inMenu("menu")).toMatchObject({ intent: { kind: "close-layer" } });
+    // The Channel keys still tune: they are not arrows.
+    expect(
+      reduceTvWatchingRemote(
+        initialTvWatchingRemoteState,
+        { direction: "up", key: "channel" },
+        undefined,
+        "menu",
+      ),
+    ).toMatchObject({ intent: { direction: 1, kind: "step" } });
+  });
+
+  it("closes Info on Menu, and otherwise treats it as the controls up", () => {
+    const withInfo = (key: "menu" | "up") =>
+      reduceTvWatchingRemote(initialTvWatchingRemoteState, { key }, undefined, "info");
+    expect(withInfo("menu")).toMatchObject({ intent: { kind: "close-layer" } });
+    expect(withInfo("up")).toMatchObject({ intent: { direction: 1, kind: "step" } });
+  });
+
   it("keeps the last three digits and restarts the bounded timeout", () => {
     let state: TvWatchingRemoteState = initialTvWatchingRemoteState;
     for (const [digit, atMs] of [

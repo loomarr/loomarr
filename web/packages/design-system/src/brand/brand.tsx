@@ -1,7 +1,7 @@
 import { useTheme, View } from "@tamagui/core";
 import Svg, { ClipPath, Defs, G, Rect } from "react-native-svg";
 
-import { lineHeightPx } from "../primitives";
+import { lineHeightPx } from "../text";
 import { TamaguiText } from "../text-base";
 import { brandChroma, brandContract, semanticColors } from "../tokens";
 

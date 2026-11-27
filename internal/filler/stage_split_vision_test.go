@@ -17,19 +17,17 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
-// The auto-confirm gate has had NO data source since V51g removed the text classifier, so
-// `filler.autosplit.enabled` has been default-ON and structurally unable to fire — measured on the
-// maintainer's catalog as 45 compilations parked at `split`, none ever auto-confirmed. These tests
-// pin the property that matters: grounding a segment from its own frames makes the REAL gate pass.
-//
-// ⚠ Deliberately asserted through `AutoConfirmable` rather than by inspecting the stamped fields.
-// "ground() set Category" is a claim about a function; "the gate now accepts the reel" is the claim
-// the feature makes to an operator, and only the second one can fail if the gate changes.
+// The split-time grounder is the only thing that looks at a cut: text classification at split time
+// was removed in V51g. These tests pin what a grounding pass writes from each segment's own frames,
+// and what the real gate, `AutoCuttable`, then cuts: it reads the look's role and whole-cut answer
+// (and the cut's sound), never the tags, so a pass the budget or the provider cuts short cuts
+// nothing it did not look at.
 
 // spanTools records the spans it was asked to frame, so a test can prove the grounder scoped its
 // extraction to each SEGMENT rather than re-framing the whole compilation N times.
 type spanTools struct {
 	spans  [][2]int64
+	counts []int
 	frames [][]byte
 	err    error
 }
@@ -104,8 +102,7 @@ func (p proposalQueue) ListSplitProposals(context.Context) ([]SplitProposal, err
 	return p.proposals, nil
 }
 
-// gatePolicy is auto-confirm ON at a mid threshold — below MaxAutoSplitConfidence, so a grounded
-// era is not additionally required and Category alone decides.
+// gatePolicy is unattended cutting ON at a mid boundary threshold.
 func gatePolicy() *AutoSplitPolicy {
 	return &AutoSplitPolicy{
 		Enabled:       func() bool { return true },
@@ -114,14 +111,50 @@ func gatePolicy() *AutoSplitPolicy {
 	}
 }
 
+// ungrounded counts the segments a grounding pass left with neither an audience nor a category.
+// It reads the tags a pass writes for the catalog; the gate does not read them (see gateCuts).
+func ungrounded(segs []split.Segment) int {
+	n := 0
+	for _, s := range segs {
+		if s.Audience == "" && s.Category == "" {
+			n++
+		}
+	}
+	return n
+}
+
+// lookAnswer is a split look that saw one whole commercial, the only answer the gate cuts on.
+const lookAnswer = `{"role":"commercial","whole":"one","category":"toys","visibleText":"TOYBURROW MEGA SALE"}`
+
+// soundedSegments is twoSegments with both cuts already measured as clean, so what the gate decides
+// turns on the look alone.
+func soundedSegments() []split.Segment {
+	segs := twoSegments()
+	for i := range segs {
+		segs[i].Sound = cleanSound()
+	}
+	return segs
+}
+
+// gateCuts runs the real gate, `AutoCuttable`, over segs and returns the start of each cut it makes
+// and the reason it holds each of the others.
+func gateCuts(t *testing.T, segs []split.Segment) (cut []int64, held []string) {
+	t.Helper()
+	part := AutoCuttable(SplitProposal{Segments: segs}, gatePolicy(), 10*time.Second)
+	if part.Reject != AutoSplitOK {
+		t.Fatalf("whole-proposal reject %q", part.Reject)
+	}
+	for _, s := range part.Confirm {
+		cut = append(cut, s.StartMs)
+	}
+	for _, s := range part.Hold {
+		held = append(held, s.HoldReason)
+	}
+	return cut, held
+}
+
 // twoSegments is a pair of WELL-DETECTED cuts: reel edges at the outside, a boundary both
 // detectors agreed on in the middle.
-//
-// ⚠ The provenance is not decoration. Since V54 the gate's last check is boundary confidence, so a
-// fixture with no evidence is held back on "not sure this was cut in the right place" — which is
-// correct behaviour, and would make every test here assert the wrong thing. These tests are about
-// GROUNDING (tags), so their boundaries must be beyond reproach for the tag half to be what the
-// gate is deciding on.
 func twoSegments() []split.Segment {
 	segs := []split.Segment{
 		{Index: 0, StartMs: 0, EndMs: 30_000, Name: "reel part 1",
@@ -133,32 +166,30 @@ func twoSegments() []split.Segment {
 	return segs
 }
 
-// The baseline this feature exists to change: ungrounded segments are refused, every time.
-func TestSegmentVision_WithoutGrounding_TheGateRefuses(t *testing.T) {
-	segs := twoSegments()
-	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != RejectUntagged {
-		t.Fatalf("ungrounded segments = %q, want %q — this is the state 45 live reels are in",
-			got, RejectUntagged)
-	}
-}
-
-func TestSegmentVision_GroundsFromFramesSoTheGateCanFire(t *testing.T) {
+func TestSegmentVision_GroundsEachSegmentFromItsOwnFrames(t *testing.T) {
 	tools := &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}}
-	// A grounded product category the seed forest resolves. Era is left absent on purpose: below
-	// the confidence ceiling the gate asks only for tags, and an era this model did not read must
-	// not be invented.
-	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYBURROW MEGA SALE"}`}
+	// One whole commercial in a product category the seed forest resolves. Era is left absent on
+	// purpose: an era this model did not read must not be invented.
+	model := &fixedVision{answer: lookAnswer}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
 		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
 		Budget: func() int { return 10 },
 	})
 
-	segs := twoSegments()
+	segs := soundedSegments()
+	if n := ungrounded(segs); n != 2 {
+		t.Fatalf("fixture has %d ungrounded segments, want 2", n)
+	}
+	if cut, held := gateCuts(t, segs); len(cut) != 0 || !slices.Equal(held, []string{string(RejectNotFiller), string(RejectNotFiller)}) {
+		t.Fatalf("before any look the gate cut %v, held %v; want nothing cut, both held as not seen", cut, held)
+	}
 	s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 
-	// THE assertion: the same gate that refused above now accepts.
-	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != AutoSplitOK {
-		t.Fatalf("grounded segments = %q, want AutoSplitOK", got)
+	if n := ungrounded(segs); n != 0 {
+		t.Fatalf("%d segments still ungrounded after a full pass, want 0: %+v", n, segs)
+	}
+	if cut, held := gateCuts(t, segs); !slices.Equal(cut, []int64{0, 30_000}) || len(held) != 0 {
+		t.Fatalf("after a full pass the gate cut %v, held %v; want both cut", cut, held)
 	}
 	// ⚠ Each segment framed over ITS OWN span. Without this the grounder would re-frame the whole
 	// compilation per segment — the exact unbounded-per-segment cost §10 V51g forbids — and every
@@ -167,12 +198,11 @@ func TestSegmentVision_GroundsFromFramesSoTheGateCanFire(t *testing.T) {
 	if len(tools.spans) != 2 || tools.spans[0] != want[0] || tools.spans[1] != want[1] {
 		t.Errorf("framed spans = %v, want %v", tools.spans, want)
 	}
-	// ⚠ SuggestedEra must stay empty. The gate refuses a guessed era at EVERY threshold, so a
-	// grounder that emitted one would guarantee the rejection it exists to lift.
+	// ⚠ SuggestedEra must stay empty: the model read no era, and a grounder that emitted one would
+	// file the clip under a decade nobody saw.
 	for _, sg := range segs {
 		if sg.SuggestedEra != 0 {
-			t.Errorf("segment %d carries SuggestedEra %d — that is an automatic gate refusal",
-				sg.Index, sg.SuggestedEra)
+			t.Errorf("segment %d carries SuggestedEra %d the model never read", sg.Index, sg.SuggestedEra)
 		}
 	}
 }
@@ -414,20 +444,23 @@ func TestSegmentVisionDirectVideoCanResolveAnIndependentFrameProviderFailure(t *
 // budget silently meant "reels this big can never auto-confirm".
 func TestSegmentVision_ResumesWhereThePreviousPassStopped(t *testing.T) {
 	tools := &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}}
-	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYBURROW MEGA SALE"}`}
+	model := &fixedVision{answer: lookAnswer}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
 		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
 		Budget: func() int { return 1 }, // one segment per pass — two passes for two segments
 	})
 	clip := clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}
-	segs := twoSegments()
+	segs := soundedSegments()
 
 	first := s.ground(context.Background(), clip, segs)
 	if first.Looked != 1 || first.Pending != 1 {
 		t.Fatalf("pass 1 = %+v, want {Looked:1 Pending:1}", first)
 	}
-	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got == AutoSplitOK {
-		t.Fatal("a half-grounded reel must not pass the gate — all-or-nothing is unchanged")
+	if n := ungrounded(segs); n != 1 {
+		t.Fatalf("%d segments ungrounded after pass 1, want 1", n)
+	}
+	if cut, held := gateCuts(t, segs); !slices.Equal(cut, []int64{0}) || !slices.Equal(held, []string{string(RejectNotFiller)}) {
+		t.Fatalf("after pass 1 the gate cut %v, held %v; want only the looked-at cut made", cut, held)
 	}
 
 	second := s.ground(context.Background(), clip, segs)
@@ -442,8 +475,11 @@ func TestSegmentVision_ResumesWhereThePreviousPassStopped(t *testing.T) {
 		t.Fatalf("framed spans = %v, want %v — pass 2 re-framed the segment pass 1 already did",
 			tools.spans, want)
 	}
-	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != AutoSplitOK {
-		t.Errorf("fully grounded over two passes = %q, want AutoSplitOK", got)
+	if n := ungrounded(segs); n != 0 {
+		t.Errorf("%d segments ungrounded after two passes, want 0", n)
+	}
+	if cut, held := gateCuts(t, segs); !slices.Equal(cut, []int64{0, 30_000}) || len(held) != 0 {
+		t.Errorf("after two passes the gate cut %v, held %v; want both cut", cut, held)
 	}
 }
 
@@ -464,30 +500,32 @@ func TestSegmentVision_APassThatAchievesNothingReportsNoProgress(t *testing.T) {
 	}
 }
 
-// The budget is a cost bound, and exceeding it must fail SAFE: an ungrounded tail leaves the reel
-// in review rather than confirming a reel only partly looked at.
-func TestSegmentVision_BudgetLeavesTheRestUngroundedAndTheReelInReview(t *testing.T) {
+// The budget is a cost bound, and exceeding it must fail SAFE: the tail it did not look at is held
+// at the split, cut by cut, rather than cut unseen.
+func TestSegmentVision_BudgetHoldsTheCutsItDidNotLookAt(t *testing.T) {
 	tools := &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}}
-	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYBURROW"}`}
+	model := &fixedVision{answer: lookAnswer}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
 		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
 		Budget: func() int { return 1 }, // one segment only
 	})
 
-	segs := twoSegments()
+	segs := soundedSegments()
 	s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 
 	if model.calls != 1 {
 		t.Errorf("model called %d times, want 1 — the budget is not bounding the pass", model.calls)
 	}
-	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != RejectUntagged {
-		t.Fatalf("partly-grounded reel = %q, want %q — a reel nobody finished judging must wait",
-			got, RejectUntagged)
+	if n := ungrounded(segs); n != 1 {
+		t.Fatalf("%d segments ungrounded, want 1: the budget leaves the rest for a later pass", n)
+	}
+	if cut, held := gateCuts(t, segs); !slices.Equal(cut, []int64{0}) || !slices.Equal(held, []string{string(RejectNotFiller)}) {
+		t.Fatalf("the gate cut %v, held %v; want the unlooked cut held as not seen", cut, held)
 	}
 }
 
-// A model failure must not confirm anything. Every error path degrades toward review.
-func TestSegmentVision_ModelFailureLeavesTheReelInReview(t *testing.T) {
+// A model failure must not cut anything. Every error path degrades toward a hold.
+func TestSegmentVision_ModelFailureCutsNothing(t *testing.T) {
 	tools := &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}}
 	model := &fixedVision{err: context.DeadlineExceeded}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
@@ -495,7 +533,7 @@ func TestSegmentVision_ModelFailureLeavesTheReelInReview(t *testing.T) {
 		Budget: func() int { return 10 },
 	})
 
-	segs := twoSegments()
+	segs := soundedSegments()
 	for i := range segs {
 		segs[i].Name = fallbackSegmentName("reel.mp4", i+1)
 		segs[i].NameOrigin = SplitNameFallback
@@ -505,32 +543,38 @@ func TestSegmentVision_ModelFailureLeavesTheReelInReview(t *testing.T) {
 		t.Fatalf("provider failure pass = %+v, want no consumed segments", pass)
 	}
 
-	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != RejectUntagged {
-		t.Fatalf("after a model failure = %q, want %q", got, RejectUntagged)
+	if n := ungrounded(segs); n != 2 {
+		t.Fatalf("%d segments ungrounded after a model failure, want 2", n)
+	}
+	if cut, held := gateCuts(t, segs); len(cut) != 0 || len(held) != 2 {
+		t.Fatalf("after a model failure the gate cut %v, held %v; want both held", cut, held)
 	}
 	if segs[0].Name != "Clip 1 from reel" || segs[0].NameOrigin != SplitNameFallback || segs[0].NameEvidence != "" {
 		t.Fatalf("provider failure did not preserve fallback: %+v", segs[0])
 	}
 }
 
-// Vision switched off ⇒ budget 0 ⇒ the model is never asked, and nothing auto-confirms. An
-// operator who turned vision off did not ask for it back on a different rung.
+// Vision switched off ⇒ budget 0 ⇒ the model is never asked, and nothing is cut. An operator who
+// turned vision off did not ask for it back on a different rung.
 func TestSegmentVision_ZeroBudgetAsksNothing(t *testing.T) {
 	tools := &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}}
-	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYBURROW"}`}
+	model := &fixedVision{answer: lookAnswer}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
 		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
 		Budget: func() int { return 0 },
 	})
 
-	segs := twoSegments()
+	segs := soundedSegments()
 	s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 
 	if model.calls != 0 {
 		t.Errorf("model called %d times with vision off, want 0", model.calls)
 	}
-	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != RejectUntagged {
-		t.Fatalf("with vision off = %q, want %q", got, RejectUntagged)
+	if n := ungrounded(segs); n != 2 {
+		t.Fatalf("%d segments ungrounded with vision off, want 2", n)
+	}
+	if cut, held := gateCuts(t, segs); len(cut) != 0 || len(held) != 2 {
+		t.Fatalf("with vision off the gate cut %v, held %v; want both held", cut, held)
 	}
 }
 
@@ -591,53 +635,165 @@ func TestSplitStage_ResumesOnlyReviewsItCanImprove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, hash := range []string{"duplicate", "short", "unchecked"} {
+	// With splitting on nobody reviews (#4409): a reel the old rule left waiting for a person goes
+	// back to the rung, which cuts or drops it.
+	for _, hash := range []string{"duplicate", "short", "unchecked", "already-ambiguous"} {
 		if _, ok := hashes[hash]; !ok {
 			t.Errorf("%q was not selected for automatic refinement", hash)
 		}
 	}
-	if _, ok := hashes["already-ambiguous"]; ok {
-		t.Error("a segment the model already examined was requeued; it genuinely needs review")
-	}
-}
 
-type pendingStructureShadow struct {
-	pending map[string]bool
-}
-
-func (s pendingStructureShadow) NeedsStructureSplitObservation(_ context.Context, proposal SplitProposal) (bool, error) {
-	return s.pending[proposal.ClipHash], nil
-}
-
-func (pendingStructureShadow) ObserveStructureSplit(context.Context, SplitProposal, SplitPartition) error {
-	return nil
-}
-
-func TestSplitStageResumesExistingReviewForOneMissingShadowObservation(t *testing.T) {
-	queue := proposalQueue{proposals: []SplitProposal{
-		{ClipHash: "unobserved", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
-		{ClipHash: "observed", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
-	}}
-	stage := NewSplitStage(nil, queue).WithFixedStructureRuntime(StructureRuntime{Shadow: pendingStructureShadow{
-		pending: map[string]bool{"unobserved": true},
-	}})
-
-	hashes, err := stage.resumableReviewHashes(t.Context())
+	// With splitting off the person still decides, so a looked-at reel stays with them.
+	off := NewSplitStage(nil, queue).
+		WithAutoConfirm(AutoSplitPolicy{Enabled: func() bool { return false }}, func() time.Duration { return 10 * time.Second })
+	hashes, err = off.resumableReviewHashes(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := hashes["unobserved"]; !ok {
-		t.Fatal("unobserved existing proposal was not requeued")
+	if _, ok := hashes["already-ambiguous"]; ok {
+		t.Error("splitting is off, yet a reel waiting for its person was taken back")
 	}
-	if _, ok := hashes["observed"]; ok {
-		t.Fatal("observed proposal was requeued again")
+}
+
+// A review holding a segment whose duplicate check could not run is offered back to the split stage,
+// at restart and on the slow re-check cadence. The re-check cadence takes nothing else; the restart
+// scan, with splitting on, takes every reel with cuts (#4409).
+func TestSplitStage_RequeuesReviewsHoldingAnUncheckedSegment(t *testing.T) {
+	ready := func(hash string, seg split.Segment) SplitProposal {
+		return SplitProposal{ClipHash: hash, Segments: []split.Segment{seg}}
+	}
+	queue := proposalQueue{proposals: []SplitProposal{
+		ready("unchecked", split.Segment{StartMs: 0, EndMs: 30_000, Looked: true, DedupUnchecked: true}),
+		ready("checked", split.Segment{StartMs: 0, EndMs: 30_000, Looked: true}),
+	}}
+	s := NewSplitStage(nil, queue).WithAutoConfirm(*gatePolicy(), func() time.Duration { return 10 * time.Second })
+
+	for name, pick := range map[string]func(context.Context) (map[string]struct{}, error){
+		"restart scan":    s.resumableReviewHashes,
+		"recheck cadence": s.uncheckedReviewHashes,
+	} {
+		hashes, err := pick(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := hashes["unchecked"]; !ok {
+			t.Errorf("%s: the unchecked review was not requeued", name)
+		}
+		if _, ok := hashes["checked"]; ok != (name == "restart scan") {
+			t.Errorf("%s: checked review requeued = %v", name, ok)
+		}
 	}
 }
 
 // VisionKeyframesIn is the ONLY framing a vision call may use: the plain KeyframesIn above is
 // unbounded (up to 1920 px wide), so a call site that regresses to it would send a third more
 // pixels per frame. spanTools.KeyframesIn therefore refuses.
-func (s *spanTools) VisionKeyframesIn(_ context.Context, _ string, startMs, endMs int64, _ int) ([][]byte, error) {
+func (s *spanTools) VisionKeyframesIn(_ context.Context, _ string, startMs, endMs int64, n int) ([][]byte, error) {
 	s.spans = append(s.spans, [2]int64{startMs, endMs})
+	s.counts = append(s.counts, n)
 	return s.frames, s.err
+}
+
+func (s *spanTools) FrameHintsIn(context.Context, string, int64, int64, int) (tools.FrameHint, error) {
+	return tools.FrameHint{}, nil
+}
+
+// The split look judges each cut as a whole (#4409): its answer lands on the segment, frames are
+// taken across the whole cut, and a cut looked at before the look asked has no answer and is looked
+// at again.
+func TestSegmentVisionRecordsTheWholeCutJudgement(t *testing.T) {
+	tools := &spanTools{frames: [][]byte{[]byte("opening"), []byte("closing")}}
+	model := &fixedVision{answer: `{"visibleText":"ACME","role":"commercial","roleReason":"offer","whole":"several","wholeReason":"two brands"}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: tools, Provider: model, Taxa: seedTaxa{}, Budget: func() int { return 10 },
+	})
+	segments := twoSegments()
+	segments[1].Looked = true // looked at under the old prompt: no whole answer
+	pass := s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), segments)
+	if pass.Looked != 2 || pass.Pending != 0 {
+		t.Fatalf("ground pass = %+v, want both cuts looked at", pass)
+	}
+	for i, seg := range segments {
+		if seg.Whole != split.WholeSeveral || seg.LookedRole != split.RoleCommercial {
+			t.Errorf("segment %d whole=%q role=%q", i, seg.Whole, seg.LookedRole)
+		}
+	}
+	for _, n := range tools.counts {
+		if n != split.WholeCutKeyframes {
+			t.Errorf("asked for %d frames, want %d across the whole cut", n, split.WholeCutKeyframes)
+		}
+	}
+	if !strings.Contains(model.prompts[0], `"whole"`) {
+		t.Error("the split prompt does not ask about the whole cut")
+	}
+
+	// An answer the model leaves out or garbles is a doubt, and a doubt never cuts.
+	model.answer = `{"role":"commercial","whole":"probably"}`
+	again := twoSegments()
+	s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), again)
+	if again[0].Whole != split.WholeUnsure {
+		t.Errorf("garbled answer recorded as %q, want unsure", again[0].Whole)
+	}
+}
+
+// scriptedMeter answers each span with a sound bed that is quiet at the span's own edges, except
+// the spans listed as running through (no quiet at the end), and fails the spans listed as broken.
+type scriptedMeter struct {
+	through, broken map[int64]bool // keyed by the cut's start
+	calls           int
+}
+
+func (m *scriptedMeter) LoudnessWindows(_ context.Context, _ string, from, to, win int64) ([]float64, error) {
+	m.calls++
+	start := from + split.SoundPadMs
+	if from == 0 {
+		start = 0
+	}
+	if m.broken[start] {
+		return nil, errors.New("no audio stream")
+	}
+	levels := make([]float64, (to-from)/win)
+	for i := range levels {
+		levels[i] = -20
+	}
+	levels[(start-from)/win] = -60
+	if !m.through[start] {
+		levels[(to-split.SoundPadMs-from)/win] = -60
+	}
+	return levels, nil
+}
+
+// The split look measures each cut's sound (#4409) without spending the vision budget: a cut
+// already looked at gets it too, a cut whose sound cannot be read stays unmeasured (and so is never
+// made), and a measured cut is not measured again.
+func TestSegmentVisionMeasuresEachCutsSound(t *testing.T) {
+	meter := &scriptedMeter{through: map[int64]bool{30_000: true}}
+	model := &fixedVision{answer: `{"role":"commercial","whole":"one"}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: &spanTools{frames: [][]byte{[]byte("f")}}, Loudness: meter, Provider: model, Taxa: seedTaxa{},
+		Budget: func() int { return 0 }, // no looks this pass: the sound is measured anyway
+	})
+	segs := twoSegments()
+	pass := s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), segs)
+	if pass.Measured != 2 || pass.Looked != 0 {
+		t.Fatalf("pass = %+v, want both cuts measured and none looked at", pass)
+	}
+	if !segs[0].Sound.Clean() {
+		t.Errorf("a cut quiet at both edges reads %+v", segs[0].Sound)
+	}
+	if segs[1].Sound.Clean() {
+		t.Errorf("a cut whose sound runs through its end reads clean: %+v", segs[1].Sound)
+	}
+
+	again := s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), segs)
+	if again.Measured != 0 || meter.calls != 2 {
+		t.Errorf("a measured cut was measured again: pass %+v, %d calls", again, meter.calls)
+	}
+
+	broken := twoSegments()
+	meter.broken = map[int64]bool{0: true}
+	s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), broken)
+	if broken[0].Sound != nil || broken[1].Sound == nil {
+		t.Errorf("unreadable sound = %+v, readable = %+v; want only the readable one measured", broken[0].Sound, broken[1].Sound)
+	}
 }

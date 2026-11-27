@@ -1,8 +1,7 @@
 import type { DiscoverModelView } from "@loomarr/api/models/discoverModelView";
 import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
-import { Action, ActivityIndicator, Badge } from "@loomarr/design-system";
+import { Action, ActivityIndicator, Badge, Stack, Text, TextLink } from "@loomarr/design-system";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import type { ModelDiscoverProps } from "./model-discover.type";
 
 // The §8.1 "download a model" surface — the QUIET counterpart to the installed picker above
@@ -34,74 +33,99 @@ const ModelDiscover = ({
   const hiddenCount = total - (visible?.length ?? 0);
 
   return (
-    <div className={cn("flex flex-col gap-2.5", className)}>
+    <Stack className={className} gap="2.5">
       <div>
-        <p className="text-muted-foreground text-sm font-medium">Need a different model?</p>
-        <p className="text-muted-foreground mt-0.5 text-xs">
-          These fit your hardware and can generate lineups. Download one to add it to the list above.
-        </p>
+        <Text as="p" textRole="cardLabel" tone="secondary">
+          Need a different model?
+        </Text>
+        <Stack marginTop={2}>
+          <Text as="p" textRole="hint" tone="secondary">
+            These fit your hardware and can generate lineups. Download one to add it to the list above.
+          </Text>
+        </Stack>
       </div>
 
       {loading && (
-        <p className="text-muted-foreground flex items-center gap-2 text-xs">
-          <ActivityIndicator decorative size="compact" tone="inherit" />
-          Finding compatible models…
-        </p>
+        <Stack align="center" direction="row" gap="inline" render="p">
+          <ActivityIndicator decorative size="compact" tone="secondary" />
+          <Text as="span" textRole="hint" tone="secondary">
+            Finding compatible models…
+          </Text>
+        </Stack>
       )}
 
       {sourceError && (
-        <p className="text-muted-foreground text-xs">
+        <Text as="p" textRole="hint" tone="secondary">
           Couldn't reach the model catalog.{" "}
-          <a
-            href="https://huggingface.co/models?library=gguf&sort=downloads"
-            target="_blank"
-            rel="noreferrer"
-            className="text-signal underline underline-offset-2"
-          >
-            Browse on huggingface.co ↗
-          </a>
-        </p>
+          <TextLink external href="https://huggingface.co/models?library=gguf&sort=downloads">
+            Browse on huggingface.co
+          </TextLink>
+        </Text>
       )}
 
       {results && results.length === 0 && !loading && !sourceError && (
-        <p className="text-muted-foreground text-xs">No other compatible models found right now.</p>
+        <Text as="p" textRole="hint" tone="secondary">
+          No other compatible models found right now.
+        </Text>
       )}
 
       {visible && visible.length > 0 && (
-        <ul className="divide-border/60 border-border/60 flex flex-col divide-y rounded-md border">
+        <Stack borderColor="borderDecorative" borderRadius={6} borderWidth={1} divided render="ul">
           {visible.map((m: DiscoverModelView) => {
             const isPulling = pulling?.tag === m.pullRef;
             const progress = isPulling ? pulling?.percent : undefined;
             return (
-              <li key={m.id} className="flex items-center gap-3 px-3 py-2">
-                <div className="min-w-0 flex-1">
-                  <p className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium" title={m.id}>
-                      {m.label}
-                    </span>
+              <Stack
+                align="center"
+                direction="row"
+                gap="control"
+                key={m.id}
+                paddingHorizontal={12}
+                paddingVertical={8}
+                render="li"
+              >
+                <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+                  <Stack align="center" direction="row" gap="inline" render="p">
+                    <Stack flexShrink={1} minWidth={0} render={<span title={m.id} />}>
+                      <Text as="span" numberOfLines={1} textRole="cardLabel" tone="primary">
+                        {m.label}
+                      </Text>
+                    </Stack>
                     {m.recommended && (
                       <Badge shape="square" tone="tune" flexShrink={0}>
                         suggested
                       </Badge>
                     )}
-                  </p>
+                  </Stack>
                   {/* The note carries the fit in plain words ("fits comfortably" /
                       "fits, but tight on VRAM"), so no separate fit badge is needed. */}
-                  <p className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-                    <span>{m.note}</span>
-                    <span aria-hidden className="text-static-400">
+                  <Stack
+                    align="center"
+                    columnGap="2"
+                    direction="row"
+                    marginTop={2}
+                    render="p"
+                    rowGap="0.5"
+                    wrap
+                  >
+                    <Text as="span" textRole="hint" tone="secondary">
+                      {m.note}
+                    </Text>
+                    <Text aria-hidden as="span" textRole="hint" tone="secondary">
                       ·
-                    </span>
-                    <span className="text-static-400">~{formatGiB(m.sizeGiB)}</span>
+                    </Text>
+                    <Text as="span" textRole="hint" tone="secondary">
+                      ~{formatGiB(m.sizeGiB)}
+                    </Text>
                     {isPulling && (
-                      <span className="text-tune">
+                      <Text as="span" textRole="hint" tone="info">
                         downloading
                         {progress !== undefined ? ` ${formatPercentPoints(progress)}` : "…"}
-                      </span>
+                      </Text>
                     )}
-                  </p>
-                </div>
-                <div className="shrink-0">
+                  </Stack>
+                </Stack>
+                <Stack flexShrink={0}>
                   <Action
                     disabled={isPulling}
                     icon={isPulling ? "loading" : "download"}
@@ -110,11 +134,11 @@ const ModelDiscover = ({
                   >
                     {isPulling ? "Getting…" : "Get"}
                   </Action>
-                </div>
-              </li>
+                </Stack>
+              </Stack>
             );
           })}
-        </ul>
+        </Stack>
       )}
 
       {!expanded && hiddenCount > 0 && (
@@ -127,7 +151,7 @@ const ModelDiscover = ({
           Show fewer
         </Action>
       )}
-    </div>
+    </Stack>
   );
 };
 

@@ -17,6 +17,8 @@ interface LibraryTitleFile {
   subtitles: readonly { language?: string }[];
   /** A copy that never plays, because another of the title's files does. */
   extra: boolean;
+  /** Which part of a movie split over several files it is, from 1; absent for a whole file. */
+  part?: number;
 }
 
 /** Where a title's details came from, each as a name to show ("TMDB", "Sonarr"). */
@@ -89,6 +91,15 @@ interface LibraryTitleMatch {
 interface LibraryTitleProps {
   title: LibraryTitleDetail;
   onBack: () => void;
+  /**
+   * What an admin does about the title. Absent for a member, who reads the page only: no Update
+   * details, Check files again or Wrong title?, no file cards and no Technical details.
+   */
+  fix?: LibraryTitleFix;
+}
+
+/** The title page's admin actions. */
+interface LibraryTitleFix {
   /** Update details: settles once the details are fetched; rejects when they couldn't be. */
   onUpdateDetails: () => Promise<void>;
   /** Check files again: settles once the files are queued to be read; rejects when they couldn't be. */
@@ -112,6 +123,7 @@ export type {
   LibraryTitleDetail,
   LibraryTitleEpisode,
   LibraryTitleFile,
+  LibraryTitleFix,
   LibraryTitleMatch,
   LibraryTitleProps,
   LibraryTitleSeason,

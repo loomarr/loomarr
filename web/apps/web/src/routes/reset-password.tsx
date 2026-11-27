@@ -29,7 +29,7 @@ const ResetPasswordScreen = () => {
   useEffect(() => () => clearAccountActionGrant(), []);
 
   return (
-    <LoginShell className="py-10">
+    <LoginShell paddingVertical={40}>
       <PasswordRecoveryReset
         expiresAt={preview.data?.status === 200 ? preview.data.data.expiresAt : undefined}
         isLoading={Boolean(grant) && preview.isPending}
@@ -45,6 +45,7 @@ const ResetPasswordScreen = () => {
   );
 };
 
+// no-loader: the recovery preview is a POST made with a grant taken from the URL fragment, not a query
 const Route = createFileRoute("/reset-password")({
   beforeLoad: () => ({ grant: takeAccountActionGrantFromLocation() }),
   component: ResetPasswordScreen,

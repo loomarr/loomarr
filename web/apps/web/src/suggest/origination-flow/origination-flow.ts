@@ -25,9 +25,9 @@ const parseOriginationSearch = (search: Record<string, unknown>): OriginationSea
   ideaId: typeof search.ideaId === "string" ? search.ideaId : undefined,
 });
 
-// The flow used to live on the Guide route (`/guide?new=1`, `?job=`, `?manual=1`, `?intent=`). Where
-// an old URL of that kind should go now: the request route's params, or nothing for an ordinary
-// Guide visit. `?new=1` was the empty describe form, which is now just the route itself.
+// A legacy Guide origination URL (`/guide?new=1`, `?job=`, `?manual=1`, `?intent=`), as an old
+// bookmark carries it, mapped to where it goes: the request route's params, or nothing for an
+// ordinary Guide visit. `?new=1` means the empty describe form, which is the route itself.
 const legacyGuideOrigination = (search: Record<string, unknown>): OriginationSearch | undefined => {
   const next = parseOriginationSearch(search);
   const arrived = Boolean(flag(search.new) || next.manual || next.intent || next.job || next.ideaId);

@@ -23,6 +23,9 @@ type DesiredLineup struct {
 	// at reconcile + proposal so a metadata gap is visible. Empty when nothing was
 	// filtered (or no policy is set).
 	Excluded ExclusionReport
+	// Unairable lists the lineup titles that put nothing into the cycle, with why (#4140), in
+	// lineup order. Reconcile writes it onto the channel's policy for the channel page.
+	Unairable []UnairableTitle
 	// Applied records the relaxation-ladder steps taken this computation (§7),
 	// written back onto the channel's policy by the reconcile engine and surfaced in
 	// the UI. Empty when the eligible pool satisfied the policy with no relaxation.
@@ -261,6 +264,9 @@ type LineupEntry struct {
 	// manual add, or an entry that predates the field). It bounds how long a never-aired
 	// title has been waiting. Internal: never on the wire.
 	AddedAt time.Time `json:"addedAt,omitzero"`
+	// Grown names the growth batch that added this title by itself (#4333), so a batch can be undone
+	// as one; empty means a seed, which the channel's own picks are and which draw its line.
+	Grown string `json:"grown,omitempty"`
 }
 
 // MinFit is the smallest Fit a scored entry stores; a pick scored at (or rounded to) zero
@@ -423,9 +429,21 @@ func computeDesiredAt(ctx context.Context, ch Channel, entries []LineupEntry, av
 	if rp.Seasonal.Mode == SeasonalAuto && !now.IsZero() {
 		holidayMatches = map[string][]string{}
 	}
+	resolved := make(map[provision.Key][]Slot, len(eligible))
 	for _, e := range eligible {
-		slots = append(slots, resolveEntryWithTrace(e, avail, pending, franchiseGroups, rp, rule.What, seasonalHolidays, holidayMatches, &report, trace)...)
+		got := resolveEntryWithTrace(e, avail, pending, franchiseGroups, rp, rule.What, seasonalHolidays, holidayMatches, &report, trace)
+		resolved[e.Key] = got
+		slots = append(slots, got...)
 	}
+	// What the rule or the seasonal bench rests for now is not unairable: it airs at its time.
+	rested := make(map[provision.Key]bool, len(channelEligible))
+	for _, e := range channelEligible {
+		rested[e.Key] = true
+	}
+	for _, e := range eligible {
+		delete(rested, e.Key)
+	}
+	unairable := unairableTitles(entries, channelEligible, rested, resolved, report, avail)
 
 	// EligibleKeys: the distinct program keys the library can currently supply, captured
 	// from the CHANNEL-eligible set (post-audience/scope, but PRE-rule-narrowing, PRE-
@@ -562,6 +580,7 @@ func computeDesiredAt(ctx context.Context, ch Channel, entries []LineupEntry, av
 		Slots:           finalSlots,
 		Trace:           trace.finish(applied),
 		Excluded:        report,
+		Unairable:       unairable,
 		Applied:         applied,
 		EligibleKeys:    eligibleKeys,
 		HolidayEpisodes: holidayEpisodes,

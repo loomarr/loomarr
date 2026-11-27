@@ -29,7 +29,7 @@ func TestSystemEncryptionStatusAndRotationAreAdminOnly(t *testing.T) {
 	fake := &fakeEncryption{status: system.EncryptionStatus{
 		Enabled: true, InstallationKeyFingerprint: "sha256:1234", DataKeyCount: 2,
 	}}
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{Auth: testAuthorizer{}, Encryption: fake})
+	h := api.Router(slog.New(slog.DiscardHandler), api.Options{Auth: testAuthorizer{}, System: api.SystemOptions{Encryption: fake}})
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	for _, path := range []string{"/v1/system/security/encryption", "/v1/system/security/encryption/rotate"} {

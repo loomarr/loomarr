@@ -2,8 +2,15 @@ import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLevel";
 import { formatClipDuration } from "@loomarr/core/format";
 import { guideFillerEntryLabel } from "@loomarr/core/guide";
-import { Badge, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
+import {
+  Badge,
+  MediaTile,
+  Stack,
+  StatusLabel,
+  type StatusTone,
+  Text,
+  VisuallyHidden,
+} from "@loomarr/design-system";
 import type { PodTimelineProps } from "./pod-timeline.type";
 
 // PodTimeline — a commercial break made legible (§3, §10): bumper → ads → bumper, each
@@ -16,7 +23,6 @@ import type { PodTimelineProps } from "./pod-timeline.type";
 const MATCH: Record<PodPoolDTOMatchLevel, { label: string; tone: StatusTone } | null> = {
   exact: null,
   widened: { label: "Era widened", tone: "warn" },
-  audience: { label: "Any era", tone: "warn" },
   bumper_card: { label: "Bumper only", tone: "off" },
 };
 
@@ -25,15 +31,15 @@ const MATCH: Record<PodPoolDTOMatchLevel, { label: string; tone: StatusTone } | 
 const clipName = (entry: PodEntryDTO): string => entry.name.trim() || guideFillerEntryLabel(entry);
 
 const SEGMENT_FILL: Record<PodEntryDTO["role"], string> = {
-  bumper: "bg-tune-tint-30",
-  station_id: "bg-tune-tint-30",
-  commercial: "bg-suggest-tint-30",
-  trailer: "bg-signal-tint-30",
-  psa: "bg-signal-tint-30",
-  interstitial: "bg-static-700",
+  bumper: "var(--color-tune-tint-30)",
+  station_id: "var(--color-tune-tint-30)",
+  commercial: "var(--color-suggest-tint-30)",
+  trailer: "var(--color-signal-tint-30)",
+  psa: "var(--color-signal-tint-30)",
+  interstitial: "var(--color-static-700)",
   // A political ad is an ad, and news is an interstitial (#2037): each reads as its family.
-  political: "bg-suggest-tint-30",
-  news: "bg-static-700",
+  political: "var(--color-suggest-tint-30)",
+  news: "var(--color-static-700)",
 };
 
 // Each segment prints its role in words and its length ("Trailer, 41s"), so no legend is needed.
@@ -64,9 +70,9 @@ const PodTimeline = ({
   const total = entries.reduce((sum, e) => sum + e.durationMs, 0) || 1;
   const chip = MATCH[matchLevel];
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-static-400 text-xs">{`Pod · ${formatClipDuration(total)}`}</span>
+    <Stack className={className} gap="inline">
+      <Stack align="center" direction="row" gap="inline" wrap>
+        <Text as="span" textRole="hint" tone="secondary">{`Pod · ${formatClipDuration(total)}`}</Text>
         {era ? <Badge shape="square" tone="neutral">{`${era}s`}</Badge> : null}
         {audience ? (
           <Badge shape="square" tone="neutral">
@@ -74,11 +80,18 @@ const PodTimeline = ({
           </Badge>
         ) : null}
         {chip && <StatusLabel tone={chip.tone}>{chip.label}</StatusLabel>}
-      </div>
+      </Stack>
 
-      <ul
-        className="border-border flex h-9 w-full overflow-hidden rounded-md border"
+      <Stack
         aria-label="Pod segments"
+        borderColor="$borderDecorative"
+        borderRadius={6}
+        borderWidth={1}
+        direction="row"
+        height={36}
+        overflow="hidden"
+        render="ul"
+        width="100%"
       >
         {entries.map((entry, i) => (
           <li
@@ -90,33 +103,54 @@ const PodTimeline = ({
             // biome-ignore lint/suspicious/noArrayIndexKey: position is identity in a pod
             key={`${entry.hash ?? entry.path ?? "card"}-${i}`}
             title={`${clipName(entry)} · ${formatClipDuration(entry.durationMs)}`}
-            style={{ flexBasis: `${(entry.durationMs / total) * 100}%` }}
-            className={cn("border-border min-w-0 border-r last:border-r-0", SEGMENT_FILL[entry.role])}
+            style={{
+              backgroundColor: SEGMENT_FILL[entry.role],
+              flexBasis: `${(entry.durationMs / total) * 100}%`,
+              minWidth: 0,
+              // The bar's own frame is the last segment's right edge.
+              ...(i < entries.length - 1 ? { borderRight: "1px solid var(--border)" } : {}),
+            }}
           >
             {onPreview && entry.hash && !entry.isFallbackCard ? (
-              <button
-                type="button"
-                aria-label={`Preview ${clipName(entry)}`}
-                className="focus-visible:ring-ring flex h-full w-full min-w-0 cursor-pointer items-center justify-center px-1 outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-inset"
-                onClick={() => onPreview(entry)}
+              // The segment's fill is the list item's own, so the tile draws none; its ring is drawn
+              // inside the bar, which clips anything outside it.
+              <MediaTile
+                bordered={false}
+                fill={false}
+                focusInset
+                height="100%"
+                // The name holds the visible caption (WCAG 2.5.3), after the verb and the clip.
+                label={`Preview ${clipName(entry)}, ${segmentLabel(entry)}`}
+                onPress={() => onPreview(entry)}
+                radius="none"
+                width="100%"
               >
-                <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
-                <Text aria-hidden as="span" className="truncate" textRole="caption" tone="primary">
-                  {segmentLabel(entry)}
-                </Text>
-              </button>
+                <Stack minWidth={0} paddingHorizontal={4} render="span">
+                  <Text as="span" numberOfLines={1} textRole="caption" tone="primary">
+                    {segmentLabel(entry)}
+                  </Text>
+                </Stack>
+              </MediaTile>
             ) : (
-              <span className="flex h-full min-w-0 items-center justify-center px-1">
-                <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
-                <Text aria-hidden as="span" className="truncate" textRole="caption" tone="primary">
+              <Stack
+                align="center"
+                direction="row"
+                height="100%"
+                justify="center"
+                minWidth={0}
+                paddingHorizontal={4}
+                render="span"
+              >
+                <VisuallyHidden as="span">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</VisuallyHidden>
+                <Text aria-hidden as="span" numberOfLines={1} textRole="caption" tone="primary">
                   {segmentLabel(entry)}
                 </Text>
-              </span>
+              </Stack>
             )}
           </li>
         ))}
-      </ul>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 

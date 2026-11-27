@@ -1,3 +1,4 @@
+import { Text } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { WizardShell } from "./wizard-shell";
 
@@ -11,15 +12,18 @@ const steps = [
   { id: "channel", title: "First channel" },
 ];
 
-const body = <p className="text-muted-foreground text-sm">The step's form renders here.</p>;
+const body = (
+  <Text as="p" textRole="compact" tone="secondary">
+    The step's form renders here.
+  </Text>
+);
 
 // The operator first-run frame (§13): the rail is resume-safe — it renders whatever the
-// caller derived from GET /v1/setup/status, so a refresh loses nothing. Tagged `motion`, as
-// LoginShell is, so the gallery keeps the idle snow that reduced motion hides.
+// caller derived from GET /v1/setup/status, so a refresh loses nothing.
 const meta = {
   title: "Setup/WizardShell",
   component: WizardShell,
-  tags: ["route", "motion"],
+  tags: ["route"],
   parameters: { layout: "fullscreen" },
   args: {
     steps,

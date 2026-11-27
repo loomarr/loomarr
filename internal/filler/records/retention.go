@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/research"
 )
 
@@ -20,8 +21,7 @@ const (
 	FillerAiringHistory = 8 * 7 * 24 * time.Hour
 	// DownloadHistory is how long a finished download run with nothing left to show is kept.
 	DownloadHistory = 90 * 24 * time.Hour
-	// DecisionHistory is how long a dismissed pull, or the evidence of a split proposal that is
-	// gone, is kept.
+	// DecisionHistory is how long a dismissed pull is kept.
 	DecisionHistory = 180 * 24 * time.Hour
 	// CallHistory is how long a settled model call is kept. Older than this, a source assessed
 	// again starts a fresh lifetime budget, and the daily ceiling only ever reads today.
@@ -87,20 +87,22 @@ func (s *sqlStore) PurgeSpentFillerRecords(ctx context.Context, now time.Time) (
 			clipGone("filler_airings"), []any{airedMs}},
 		{"clip variant pairs", `DELETE FROM filler_clip_variants WHERE ` + gone("filler_clip_variants.a_hash") +
 			` AND NOT EXISTS (SELECT 1 FROM clips c WHERE c.hash = filler_clip_variants.b_hash)`, nil},
-		{"split shadow decisions", `DELETE FROM filler_split_shadow_decisions WHERE observed_at < ?
-			AND NOT EXISTS (SELECT 1 FROM filler_split_proposals p WHERE p.id = filler_split_shadow_decisions.proposal_id)`,
-			[]any{decision}},
 		{"structure window calls", `DELETE FROM filler_structure_window_call_ledger
 			WHERE state = 'settled' AND requested_at < ?`, []any{call}},
 		{"inference evaluations", `DELETE FROM filler_inference_evaluations WHERE state <> ? AND created_at < ?
 			AND NOT EXISTS (SELECT 1 FROM filler_structure_window_call_ledger l
 			    WHERE l.evaluation_id = filler_inference_evaluations.id)`, []any{string(InferenceReserved), call}},
+		// An item of a source that was deleted has nowhere to be attributed, so it is not retried.
+		{"failed downloads of deleted sources", `DELETE FROM filler_download_failures
+			WHERE source_id <> '' AND source_id <> ?
+			AND NOT EXISTS (SELECT 1 FROM filler_sources s WHERE s.id = filler_download_failures.source_id)`,
+			[]any{acquisition.OpenSearchSourceID}},
 		{"download artifacts", `DELETE FROM filler_acquisition_artifacts WHERE state = 'consumed' AND remote_id = ''
 			AND updated_at < ? AND ` + clipGone("filler_acquisition_artifacts"), []any{download}},
 		{"pull commits", `DELETE FROM filler_pull_commits WHERE acquisition_id IN (
 			SELECT id FROM filler_acquisition_runs WHERE ` + doomedRun + `)`, []any{download}},
 		{"approved pulls", `DELETE FROM filler_pulls WHERE status = 'approved' AND id IN (
-			SELECT pull_id FROM filler_acquisition_runs WHERE pull_id <> '' AND ` + doomedRun + `)
+			SELECT pull_id FROM filler_acquisition_runs WHERE pull_id IS NOT NULL AND ` + doomedRun + `)
 			AND NOT EXISTS (SELECT 1 FROM filler_pull_commits c WHERE c.pull_id = filler_pulls.id)`, []any{download}},
 		{"download runs", `DELETE FROM filler_acquisition_runs WHERE ` + doomedRun, []any{download}},
 		{"dismissed pulls", `DELETE FROM filler_pulls WHERE status = 'dismissed' AND decided_at < ?`, []any{decision}},

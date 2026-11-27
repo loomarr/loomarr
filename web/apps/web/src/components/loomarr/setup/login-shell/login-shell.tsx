@@ -1,6 +1,5 @@
-import { Card } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
-import { BrandLockup, TvStatic } from "../../shell";
+import { BrandLockup, Card, Stack } from "@loomarr/design-system";
+import { IdleSnow } from "../../shell";
 import type { LoginShellProps } from "./login-shell.type";
 
 // LoginShell — the presentational frame for the sign-in page (§11, §13): the test-card
@@ -8,22 +7,31 @@ import type { LoginShellProps } from "./login-shell.type";
 // login route (which owns the router + mutation) so the assembled page — brand, static,
 // and card together — is a gallery-testable unit; the route only supplies `children`.
 // Same split as WizardShell / SettingsFields: presentation here, data-binding at the route.
-const LoginShell = ({ children, className }: LoginShellProps) => (
-  <main
-    className={cn(
-      "bg-background relative flex min-h-screen flex-col items-center justify-center gap-8 p-6",
-      className,
-    )}
+const LoginShell = ({ children, paddingVertical = 24 }: LoginShellProps) => (
+  <Stack
+    align="center"
+    backgroundColor="$surfaceCanvas"
+    gap="8"
+    justify="center"
+    paddingHorizontal={24}
+    paddingVertical={paddingVertical}
+    // A prop, not `min-h-screen`: the View base rule's `min-height: 0` is unlayered and beats the
+    // utility, which collapsed the page to its content and lifted the card off centre.
+    minHeight="100vh"
+    position="relative"
+    render="main"
   >
     {/* Static sits behind; content siblings get an explicit stacking context above it, since
         a position:absolute layer paints OVER position:static content regardless of DOM order. */}
-    <TvStatic className="z-0" />
-    <BrandLockup variant="hero" className="relative z-10" />
+    <IdleSnow />
+    <Stack position="relative" zIndex={10}>
+      <BrandLockup orientation="stacked" showTagline size="large" />
+    </Stack>
     {/* `gap` spaces the demo site's sign-in card (#2268) from the form; one child is unaffected. */}
     <Card gap={20} maxWidth={384} padding={32} position="relative" width="100%" zIndex={10}>
       {children}
     </Card>
-  </main>
+  </Stack>
 );
 
 export { LoginShell };

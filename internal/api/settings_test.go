@@ -303,21 +303,25 @@ func newSettingsHarness(t *testing.T, configs ...settingsHarnessConfig) *setting
 
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		opts := api.Options{
-			Store:             defaults.Store,
-			Auth:              defaults.Auth,
-			Log:               defaults.Log,
-			Settings:          settings,
-			Channels:          config.Channels,
-			LiveTV:            config.LiveTV,
-			BackendTransition: transition,
-			LiveSettings:      stringSettings(func(key string) string { return config.Config[key] }),
-			LibraryConfigured: func() bool {
-				return config.Config["library.flavor"] != "" &&
-					config.Config["library.url"] != "" && config.Config["library.token"] != ""
+			Store:        defaults.Store,
+			Auth:         defaults.Auth,
+			Log:          defaults.Log,
+			Settings:     settings,
+			LiveSettings: stringSettings(func(key string) string { return config.Config[key] }),
+			Channels:     api.ChannelsOptions{Service: config.Channels},
+			Setup: api.SetupOptions{
+				LiveTV:            config.LiveTV,
+				BackendTransition: transition,
+			},
+			Library: api.LibraryOptions{
+				Configured: func() bool {
+					return config.Config["library.flavor"] != "" &&
+						config.Config["library.url"] != "" && config.Config["library.token"] != ""
+				},
 			},
 		}
 		if config.Source != nil {
-			opts.TunarrConnect = mediaSourceAdapter{inner: config.Source}
+			opts.Setup.TunarrConnect = mediaSourceAdapter{inner: config.Source}
 		}
 		return api.Router(defaults.Log, opts)
 	})

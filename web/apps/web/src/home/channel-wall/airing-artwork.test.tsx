@@ -41,6 +41,12 @@ describe("AiringArtwork (#2762)", () => {
     expect(document.querySelector("img")?.getAttribute("src")).toBe("/img/still");
   });
 
+  it("draws the hue wash without its monogram when wordless, so no letters sit under a phone tile's words", () => {
+    render(<AiringArtwork airing={{}} channel={channel} sizes="100vw" wordless />);
+    expect(screen.queryByText("FN")).toBeNull();
+    expect(document.querySelector('[role="presentation"]')).not.toBeNull();
+  });
+
   it("falls to generated channel art when a still URL fails, never a blank box", () => {
     render(<AiringArtwork airing={{ thumbUrl: "/img/gone" }} channel={channel} sizes="100vw" />);
     fireEvent.error(document.querySelector("img") as HTMLImageElement);

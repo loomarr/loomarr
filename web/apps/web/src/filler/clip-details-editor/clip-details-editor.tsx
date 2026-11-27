@@ -4,7 +4,18 @@ import { ClipDTOGeographicScope } from "@loomarr/api/models/clipDTOGeographicSco
 import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { PatchClipInputBodyRole } from "@loomarr/api/models/patchClipInputBodyRole";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
-import { Action, Chip, DateField, Field } from "@loomarr/design-system";
+import {
+  Action,
+  Card,
+  Chip,
+  DateField,
+  Details,
+  Field,
+  Grid,
+  GridItem,
+  Stack,
+  Text,
+} from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useEffect, useRef } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
@@ -144,8 +155,8 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
   const tags = useStore(form.store, (state) => state.values.tags);
   const derivedTags = (clip?.tags ?? []).filter((tag) => !(clip?.assertedTags ?? []).includes(tag));
 
-  // The tag vocabulary comes from the taxonomy graph — the ONE source of truth (§10 V45a), replacing
-  // the old hardcoded CATEGORIES mirror. A member-readable read, so it loads for any operator.
+  // The tag vocabulary comes from the taxonomy graph — the ONE source of truth (§10 V45a), never a
+  // hardcoded CATEGORIES mirror. A member-readable read, so it loads for any operator.
   const vocab = fillerApi.useListTaxonomy();
   // The orval hook wraps the body: data.status===200 ? data.data.<body>. undefined while loading.
   const vocabTaxa = vocab.data?.status === 200 ? (vocab.data.data.taxa ?? []) : undefined;
@@ -167,207 +178,225 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
       ref={editorRef}
       tabIndex={-1}
       aria-label={`Edit details: ${clip.name}`}
-      className="flex flex-col gap-4 outline-none"
+      style={{ outline: "none" }}
     >
-      <p className="text-muted-foreground text-sm">
-        Change a detail if it is wrong. You do not need to fill in everything.
-      </p>
+      <Stack gap="4">
+        <Text as="p" textRole="compact" tone="secondary">
+          Change a detail if it is wrong. You do not need to fill in everything.
+        </Text>
 
-      {patch.error != null && <ErrorState error={patch.error} />}
+        {patch.error != null && <ErrorState error={patch.error} />}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <form.Field name="name">
-          {(field) => (
-            <Field
-              description="The name viewers see during a break."
-              id="tag-name"
-              label="Name"
-              maxLength={120}
-              onChangeText={field.handleChange}
-              placeholder="Clip name"
-              value={field.state.value}
-            />
-          )}
-        </form.Field>
-        <form.Field name="role">
-          {(field) => (
-            <BrowserSelectControl
-              appearance="field"
-              label="Type"
-              onValueChange={field.handleChange}
-              options={ROLE_OPTIONS}
-              value={field.state.value}
-            />
-          )}
-        </form.Field>
-        <form.Field name="era">
-          {(field) => (
-            <Field
-              id="tag-era"
-              keyboardType="number-pad"
-              label="Year"
-              maxLength={4}
-              onChangeText={field.handleChange}
-              placeholder="e.g. 1977"
-              value={field.state.value}
-            />
-          )}
-        </form.Field>
-        <form.Field name="audience">
-          {(field) => (
-            <BrowserSelectControl
-              appearance="field"
-              label="Audience"
-              onValueChange={field.handleChange}
-              options={AUDIENCE_OPTIONS}
-              value={field.state.value}
-            />
-          )}
-        </form.Field>
-        <form.Field name="brand">
-          {(field) => (
-            <Field
-              description="The advertiser or sponsor shown in the clip."
-              id="tag-brand"
-              label="Advertiser"
-              maxLength={120}
-              onChangeText={field.handleChange}
-              placeholder="Advertiser or sponsor"
-              value={field.state.value}
-            />
-          )}
-        </form.Field>
-      </div>
-
-      <details className="border-border rounded-lg border p-3">
-        <summary className="cursor-pointer text-sm font-medium">Location and broadcast details</summary>
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <form.Field name="geoScope">
-              {(field) => (
-                <BrowserSelectControl
-                  appearance="field"
-                  label="Applies to"
-                  onValueChange={field.handleChange}
-                  options={SCOPE_OPTIONS}
-                  value={field.state.value}
-                />
-              )}
-            </form.Field>
-          </div>
-          <div className="sm:col-span-2">
-            <form.Field name="country">
-              {(field) => (
-                <LocationPicker
-                  value={{ country: geoScope === "unknown" ? "" : field.state.value }}
-                  allowDetection={false}
-                  emptyHint="Leave this unknown if you are not sure."
-                  onChange={(location) => {
-                    field.handleChange(location.country);
-                    if (geoScope === "unknown") form.setFieldValue("geoScope", "national");
-                  }}
-                />
-              )}
-            </form.Field>
-          </div>
-          <form.Field name="network">
+        <Grid columns={{ base: 1, sm: 2 }} gap="3">
+          <form.Field name="name">
             {(field) => (
               <Field
-                id="tag-network"
-                label="Network (optional)"
+                description="The name viewers see during a break."
+                id="tag-name"
+                label="Name"
                 maxLength={120}
                 onChangeText={field.handleChange}
-                placeholder="Fox"
+                placeholder="Clip name"
                 value={field.state.value}
               />
             )}
           </form.Field>
-          {/* A national clip keeps the station it was recorded off; a local one airs near it. */}
-          {geoScope !== "unknown" && (
-            <form.Field name="station">
-              {(field) => (
-                <Field
-                  autoCapitalize="characters"
-                  id="tag-station"
-                  label={geoScope === "local" ? "Station call sign" : "Station call sign (optional)"}
-                  maxLength={120}
-                  onChangeText={field.handleChange}
-                  placeholder="WEWS"
-                  value={field.state.value}
-                />
-              )}
-            </form.Field>
-          )}
-          <form.Field name="airDate">
+          <form.Field name="role">
             {(field) => (
-              <DateField
-                id="tag-air-date"
-                label="Air date (optional)"
+              <BrowserSelectControl
+                appearance="field"
+                label="Type"
                 onValueChange={field.handleChange}
+                options={ROLE_OPTIONS}
                 value={field.state.value}
               />
             )}
           </form.Field>
-          <p className="text-muted-foreground text-xs sm:col-span-2">
-            Use the area this clip was made for, not necessarily your home location. Leave it unknown if you
-            are not sure.
-          </p>
-        </div>
-      </details>
+          <form.Field name="era">
+            {(field) => (
+              <Field
+                id="tag-era"
+                keyboardType="number-pad"
+                label="Year"
+                maxLength={4}
+                onChangeText={field.handleChange}
+                placeholder="e.g. 1977"
+                value={field.state.value}
+              />
+            )}
+          </form.Field>
+          <form.Field name="audience">
+            {(field) => (
+              <BrowserSelectControl
+                appearance="field"
+                label="Audience"
+                onValueChange={field.handleChange}
+                options={AUDIENCE_OPTIONS}
+                value={field.state.value}
+              />
+            )}
+          </form.Field>
+          <form.Field name="brand">
+            {(field) => (
+              <Field
+                description="The advertiser or sponsor shown in the clip."
+                id="tag-brand"
+                label="Advertiser"
+                maxLength={120}
+                onChangeText={field.handleChange}
+                placeholder="Advertiser or sponsor"
+                value={field.state.value}
+              />
+            )}
+          </form.Field>
+        </Grid>
 
-      {/* Tags: the taxonomy vocabulary as toggleable chips, grouped by axis (§10 V45a). This
+        <Card padding={12}>
+          <Details summary="Location and broadcast details" textRole="cardLabel">
+            <Grid columns={{ base: 1, sm: 2 }} gap="3" marginTop={12}>
+              <GridItem span={{ base: 1, sm: 2 }}>
+                <form.Field name="geoScope">
+                  {(field) => (
+                    <BrowserSelectControl
+                      appearance="field"
+                      label="Applies to"
+                      onValueChange={field.handleChange}
+                      options={SCOPE_OPTIONS}
+                      value={field.state.value}
+                    />
+                  )}
+                </form.Field>
+              </GridItem>
+              <GridItem span={{ base: 1, sm: 2 }}>
+                <form.Field name="country">
+                  {(field) => (
+                    <LocationPicker
+                      value={{ country: geoScope === "unknown" ? "" : field.state.value }}
+                      allowDetection={false}
+                      emptyHint="Leave this unknown if you are not sure."
+                      onChange={(location) => {
+                        field.handleChange(location.country);
+                        if (geoScope === "unknown") form.setFieldValue("geoScope", "national");
+                      }}
+                    />
+                  )}
+                </form.Field>
+              </GridItem>
+              <form.Field name="network">
+                {(field) => (
+                  <Field
+                    id="tag-network"
+                    label="Network (optional)"
+                    maxLength={120}
+                    onChangeText={field.handleChange}
+                    placeholder="Fox"
+                    value={field.state.value}
+                  />
+                )}
+              </form.Field>
+              {/* A national clip keeps the station it was recorded off; a local one airs near it. */}
+              {geoScope !== "unknown" && (
+                <form.Field name="station">
+                  {(field) => (
+                    <Field
+                      autoCapitalize="characters"
+                      id="tag-station"
+                      label={geoScope === "local" ? "Station call sign" : "Station call sign (optional)"}
+                      maxLength={120}
+                      onChangeText={field.handleChange}
+                      placeholder="WEWS"
+                      value={field.state.value}
+                    />
+                  )}
+                </form.Field>
+              )}
+              <form.Field name="airDate">
+                {(field) => (
+                  <DateField
+                    id="tag-air-date"
+                    label="Air date (optional)"
+                    onValueChange={field.handleChange}
+                    value={field.state.value}
+                  />
+                )}
+              </form.Field>
+              <GridItem span={{ base: 1, sm: 2 }}>
+                <Text as="p" textRole="hint" tone="secondary">
+                  Use the area this clip was made for, not necessarily your home location. Leave it unknown if
+                  you are not sure.
+                </Text>
+              </GridItem>
+            </Grid>
+          </Details>
+        </Card>
+
+        {/* Tags: the taxonomy vocabulary as toggleable chips, grouped by axis (§10 V45a). This
             REPLACES the free-text category input — a tag must be a real taxon, so a checklist of the
             actual vocabulary is both easier and impossible to mis-type. The category shadow is derived
             server-side, so it is not edited here. */}
-      <details className="border-border rounded-lg border p-3">
-        <summary className="cursor-pointer text-sm font-medium">Topics and tags</summary>
-        <div className="mt-3 flex flex-col gap-3">
-          <p className="text-muted-foreground text-xs">Choose what this clip shows or advertises.</p>
-          {vocab.error != null && <ErrorState error={vocab.error} />}
-          {vocabTaxa == null ? (
-            <p className="text-muted-foreground text-sm">Loading the tag vocabulary…</p>
-          ) : (
-            AXES.map((axis) => {
-              const inAxis = flattenAxis(vocabTaxa, axis);
-              if (inAxis.length === 0) return null;
-              return (
-                <div key={axis} className="flex flex-col gap-1.5">
-                  <span className="text-muted-foreground text-xs">{AXIS_LABEL[axis]}</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {inAxis.map(({ taxon: t, depth }) => {
-                      const on = tags.includes(t.slug);
-                      return (
-                        <Chip key={t.slug} onPress={() => toggleTag(t.slug)} selected={on} shape="pill">
-                          {depth > 0 ? `${"↳ ".repeat(Math.min(depth, 2))}${t.label}` : t.label}
-                        </Chip>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </details>
+        <Card padding={12}>
+          <Details summary="Topics and tags" textRole="cardLabel">
+            <Stack gap="control" marginTop={12}>
+              <Text as="p" textRole="hint" tone="secondary">
+                Choose what this clip shows or advertises.
+              </Text>
+              {vocab.error != null && <ErrorState error={vocab.error} />}
+              {vocabTaxa == null ? (
+                <Text as="p" textRole="compact" tone="secondary">
+                  Loading the tag vocabulary…
+                </Text>
+              ) : (
+                AXES.map((axis) => {
+                  const inAxis = flattenAxis(vocabTaxa, axis);
+                  if (inAxis.length === 0) return null;
+                  return (
+                    <Stack gap="1.5" key={axis}>
+                      <Text as="span" textRole="hint" tone="secondary">
+                        {AXIS_LABEL[axis]}
+                      </Text>
+                      <Stack direction="row" gap="1.5" wrap>
+                        {inAxis.map(({ taxon: t, depth }) => {
+                          const on = tags.includes(t.slug);
+                          return (
+                            <Chip key={t.slug} onPress={() => toggleTag(t.slug)} selected={on} shape="pill">
+                              {depth > 0 ? `${"↳ ".repeat(Math.min(depth, 2))}${t.label}` : t.label}
+                            </Chip>
+                          );
+                        })}
+                      </Stack>
+                    </Stack>
+                  );
+                })
+              )}
+            </Stack>
+          </Details>
+        </Card>
 
-      {derivedTags.length > 0 ? (
-        <section className="border-border bg-surface/40 rounded-md border p-3" aria-label="Derived matches">
-          <p className="text-sm font-medium">Derived matches — read only</p>
-          <p className="text-muted-foreground mt-1 text-xs">
-            Inherited from the observed facts above and updated automatically when the hierarchy changes.
-          </p>
-          <p className="mt-2 text-sm break-words">{derivedLabels.join(", ")}</p>
-        </section>
-      ) : null}
+        {derivedTags.length > 0 ? (
+          <Card aria-label="Derived matches" padding={12} render="section">
+            <Stack gap="1.5">
+              <Text as="p" textRole="cardLabel">
+                Derived matches — read only
+              </Text>
+              <Text as="p" textRole="hint" tone="secondary">
+                Inherited from the observed facts above and updated automatically when the hierarchy changes.
+              </Text>
+              <Text as="p" overflowWrap="break-word" textRole="compact">
+                {derivedLabels.join(", ")}
+              </Text>
+            </Stack>
+          </Card>
+        ) : null}
 
-      <div className="flex justify-end gap-2">
-        <Action onPress={onClose} variant="outline">
-          Cancel
-        </Action>
-        <Action disabled={patch.isPending} onPress={() => void form.handleSubmit()}>
-          {patch.isPending ? "Saving…" : "Save details"}
-        </Action>
-      </div>
+        <Stack direction="row" gap="inline" justify="end">
+          <Action onPress={onClose} variant="outline">
+            Cancel
+          </Action>
+          <Action disabled={patch.isPending} onPress={() => void form.handleSubmit()}>
+            {patch.isPending ? "Saving…" : "Save details"}
+          </Action>
+        </Stack>
+      </Stack>
     </section>
   );
 };

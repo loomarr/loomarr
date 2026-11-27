@@ -7,9 +7,10 @@ import {
 } from "@loomarr/core/requests";
 import { intentSchema } from "@loomarr/core/schemas";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Action, Badge, Field, ScrollFrame, Surface, Text } from "@loomarr/design-system";
+import { Action, Badge, ScrollFrame, Surface, Text } from "@loomarr/design-system";
 import { useState } from "react";
 
+import { useUiForm } from "../../form-kit";
 import { ScreenHeader } from "../../screen-header";
 import { StatePanel } from "../../state-panel";
 import { RequestsBack } from "../requests-back";
@@ -191,20 +192,26 @@ const RequestChannel = ({
   requestingIdeaId,
   viewer,
 }: RequestChannelProps) => {
-  const [description, setDescription] = useState(initialIntent?.description ?? "");
-  const [problem, setProblem] = useState<string>();
   const sending = brief.kind === "sending";
-
-  const submit = () => {
-    // The same schema Web's form validates with; a resumed request keeps its constraints.
-    const parsed = intentSchema.safeParse({ ...initialIntent, description });
-    if (!parsed.success) {
-      setProblem(parsed.error.issues[0]?.message ?? "Check the channel request and try again.");
-      return;
-    }
-    setProblem(undefined);
-    onSubmitBrief(parsed.data as Intent);
-  };
+  // The same schema Web's form validates with; a resumed request keeps its constraints.
+  const form = useUiForm({
+    defaultValues: { description: initialIntent?.description ?? "" },
+    validators: {
+      onSubmit: ({ value }) => {
+        const parsed = intentSchema.safeParse({ ...initialIntent, description: value.description });
+        if (parsed.success) return undefined;
+        return {
+          fields: {
+            description: parsed.error.issues[0]?.message ?? "Check the channel request and try again.",
+          },
+        };
+      },
+    },
+    onSubmit: ({ value }) => {
+      const parsed = intentSchema.safeParse({ ...initialIntent, description: value.description });
+      if (parsed.success) onSubmitBrief(parsed.data as Intent);
+    },
+  });
 
   return (
     <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap="control">
@@ -219,22 +226,20 @@ const RequestChannel = ({
         <Text density="touch" textRole="headline">
           Describe your own
         </Text>
-        <Field
-          density="touch"
-          disabled={sending}
-          error={problem}
-          label="Describe the channel"
-          multiline
-          onChangeText={(text) => {
-            setDescription(text);
-            setProblem(undefined);
-          }}
-          placeholder="Saturday-morning cartoons like I watched as a kid — bright, silly, kid-safe"
-          // One brief, no paragraphs: the return key is Done and puts the keyboard away.
-          returnKeyType="done"
-          submitBehavior="blurAndSubmit"
-          value={description}
-        />
+        <form.AppField name="description">
+          {(field) => (
+            <field.TextField
+              density="touch"
+              disabled={sending}
+              label="Describe the channel"
+              multiline
+              placeholder="Saturday-morning cartoons like I watched as a kid — bright, silly, kid-safe"
+              // One brief, no paragraphs: the return key is Done and puts the keyboard away.
+              returnKeyType="done"
+              submitBehavior="blurAndSubmit"
+            />
+          )}
+        </form.AppField>
         <Surface backgroundColor="transparent" borderWidth={0} gap="inline" role="group">
           <Text density="touch" textRole="caption" tone="secondary">
             Start from a template
@@ -245,10 +250,7 @@ const RequestChannel = ({
               density="touch"
               disabled={sending}
               key={template.id}
-              onPress={() => {
-                setDescription(template.description);
-                setProblem(undefined);
-              }}
+              onPress={() => form.setFieldValue("description", template.description)}
               tone="secondary"
             >
               {template.label}
@@ -270,7 +272,13 @@ const RequestChannel = ({
             title="Couldn't send that request"
           />
         ) : null}
-        <Action accessibilityRole="button" density="touch" disabled={sending} onPress={submit} tone="primary">
+        <Action
+          accessibilityRole="button"
+          density="touch"
+          disabled={sending}
+          onPress={() => void form.handleSubmit()}
+          tone="primary"
+        >
           {sending ? "Sending…" : "Suggest titles"}
         </Action>
 

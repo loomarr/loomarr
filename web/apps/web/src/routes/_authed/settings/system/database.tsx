@@ -1,14 +1,18 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
 import type { DatabaseCheck } from "@loomarr/api/models/databaseCheck";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Stack } from "@loomarr/design-system";
+import { useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import type { MigrationStep } from "@/components/loomarr/settings/database-migration";
 import { DatabaseMigration } from "@/components/loomarr/settings/database-migration";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useLoomarrEventListener } from "@/events/events-provider";
+import { useAppForm } from "@/lib/app-form";
 
 // Settings → System → Database (§18, V11) — the SQLite → PostgreSQL migration stepper.
 //
@@ -19,11 +23,15 @@ import { useLoomarrEventListener } from "@/events/events-provider";
 const DatabasePage = () => {
   const queryClient = useQueryClient();
   const [step, setStep] = useState<MigrationStep | null>(null);
-  const [dsn, setDsn] = useState("");
+  // The connection string the operator types; the migration steps read it, nothing submits it.
+  const dsnForm = useAppForm({ defaultValues: { dsn: "" } });
+  const dsn = useStore(dsnForm.store, (state) => state.values.dsn);
   const [checks, setChecks] = useState<DatabaseCheck[]>([]);
   const [passed, setPassed] = useState(false);
   // After migrate acknowledges, a dropped connection is expected rather than an error
   // screen. Poll until the fresh generation answers on PostgreSQL or carries a failure.
+  // ⚠ A poll by design (#3352): the server is restarting onto the new database, so there is no
+  // stream to carry a frame. Like the restart watch, it asks whether the server is back.
   const status = systemApi.useSystemDatabaseStatus({
     query: { refetchInterval: step === "reconnect" ? 1_000 : false },
   });
@@ -95,18 +103,18 @@ const DatabasePage = () => {
     view.error ?? migrate.error?.detail ?? backup.error?.detail ?? preflight.error?.detail ?? null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack height="100%" minHeight={0}>
       <PageHeader
         title="Database"
         description="Which database Loomarr stores everything in, and how to move to another one."
       />
-      <div className="min-h-0 flex-1 overflow-auto p-6">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} overflow="auto" padding={24}>
         <DatabaseMigration
           status={view}
           step={step}
           onStepChange={setStep}
           dsn={dsn}
-          onDsnChange={setDsn}
+          onDsnChange={(value) => dsnForm.setFieldValue("dsn", value)}
           checks={checks}
           preflightPassed={passed}
           onPreflight={() => preflight.mutate({ data: { dsn } })}
@@ -116,13 +124,18 @@ const DatabasePage = () => {
           error={error}
           envPinned={envPinned}
         />
-      </div>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 
 const Route = createFileRoute("/_authed/settings/system/database")({
   component: DatabasePage,
+  // The backend the stepper starts from. Admin-only like the page.
+  loader: async ({ context: { queryClient } }) => {
+    if (!(await viewerIsAdmin(queryClient))) return;
+    await queryClient.ensureQueryData(systemApi.getSystemDatabaseStatusQueryOptions());
+  },
 });
 
 export { Route };

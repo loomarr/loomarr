@@ -15,7 +15,8 @@ type LibraryItemFacts struct {
 	// Rating is the item's own content rating, else its series'.
 	Rating string
 	// RuntimeMs is the playing file's own duration (the default edition's, when a movie plays one
-	// in each), else the catalog's runtime.
+	// in each), its parts' together for a movie in parts, else the catalog's runtime while any of
+	// them is unread.
 	RuntimeMs int64
 }
 
@@ -24,6 +25,49 @@ type LibraryItemFactsReader interface {
 	// LibraryItemFacts answers each id that is a library item; any other id is absent. An episode
 	// with no genres of its own takes its series'.
 	LibraryItemFacts(ctx context.Context, ids []string) (map[string]LibraryItemFacts, error)
+}
+
+// SeriesEpisodes is how much of a series the library can play: its listed episodes and their
+// catalog runtime together.
+type SeriesEpisodes struct {
+	Episodes  int
+	RuntimeMs int64
+}
+
+// SeriesEpisodesReader reads every series' playable episode totals in one query, for sizing a
+// channel against what the library holds (#4333).
+type SeriesEpisodesReader interface {
+	// SeriesEpisodeTotals answers each series with at least one listed episode, by its item id.
+	SeriesEpisodeTotals(ctx context.Context) (map[string]SeriesEpisodes, error)
+}
+
+func (s *Store) SeriesEpisodeTotals(ctx context.Context) (map[string]SeriesEpisodes, error) {
+	// An episode counts toward the series its present file names, the link a series is listed by.
+	rows, err := s.h.QueryContext(ctx, `SELECT e.series, COUNT(*), COALESCE(SUM(i.runtime_ms), 0)
+		FROM (SELECT DISTINCT f.inventory_series_id AS series, f.inventory_item_id AS item FROM library_files f
+			WHERE f.inventory_series_id <> '' AND `+presentFile+`) e
+		JOIN library_items i ON i.id = e.item AND i.kind = 'episode'
+		GROUP BY e.series`)
+	if err != nil {
+		return nil, fmt.Errorf("series episode totals: %w", err)
+	}
+	out := map[string]SeriesEpisodes{}
+	for rows.Next() {
+		var id string
+		var t SeriesEpisodes
+		if err := rows.Scan(&id, &t.Episodes, &t.RuntimeMs); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("series episode totals: %w", err)
+		}
+		out[id] = t
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("series episode totals: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("series episode totals: %w", err)
+	}
+	return out, nil
 }
 
 // libraryFactsChunk bounds one IN list, under SQLite's variable limit.
@@ -48,8 +92,9 @@ func (s *Store) libraryItemFacts(ctx context.Context, ids []string, out map[stri
 	}
 	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT i.id, COALESCE(i.series_id, ''), i.overview, i.year,
 		COALESCE(NULLIF(i.rating, ''), sr.rating, ''),
-		COALESCE(NULLIF((SELECT src.duration_ms FROM library_sources src WHERE src.item_id = i.id AND src.plays
-			ORDER BY src.edition <> '', src.path LIMIT 1), 0), i.runtime_ms)
+		COALESCE(NULLIF((SELECT CAST(CASE WHEN MIN(src.duration_ms) > 0 THEN SUM(src.duration_ms) ELSE 0 END AS BIGINT)
+			FROM library_sources src WHERE src.item_id = i.id AND src.plays AND src.edition = (SELECT e.edition
+			FROM library_sources e WHERE e.item_id = i.id AND e.plays ORDER BY e.edition <> '', e.path LIMIT 1)), 0), i.runtime_ms)
 		FROM library_items i LEFT JOIN library_items sr ON sr.id = i.series_id
 		WHERE i.id IN (`+in+`)`), args...)
 	if err != nil {

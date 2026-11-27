@@ -1,15 +1,15 @@
-import { cn } from "@/lib/utils";
+import { Stack, StatusDot, Text } from "@loomarr/design-system";
 import type { OnAirIndicatorProps, OnAirState } from "./on-air-indicator.type";
 
 // OnAirIndicator — the red dot (§3). `live` pulses (the one live-motion signature,
-// §2.4) and is off under reduced-motion; `reconciling` is a steady caution dot;
-// `off` is a muted dot. A sr-only sentence makes screen readers say "On air", not
-// a bare glyph (§5.3).
-const DOT: Record<OnAirState, string> = {
-  off: "bg-static-500",
-  live: "bg-onair",
-  reconciling: "bg-caution",
-};
+// §2.4) and is still under reduced-motion; `reconciling` is a steady caution dot;
+// `off` is a muted dot. The dot is labelled, or the visible label says it, so screen readers
+// say "On air", not a bare glyph (§5.3).
+const TONE = {
+  off: "off",
+  live: "live",
+  reconciling: "pending",
+} as const satisfies Record<OnAirState, string>;
 
 const SR: Record<OnAirState, string> = {
   off: "Off air",
@@ -18,23 +18,14 @@ const SR: Record<OnAirState, string> = {
 };
 
 const OnAirIndicator = ({ state, showLabel = false, className }: OnAirIndicatorProps) => (
-  <span className={cn("inline-flex items-center gap-1.5", className)}>
-    <span className="relative flex size-2.5">
-      {state === "live" && (
-        <span
-          className="bg-onair absolute inline-flex size-full rounded-full opacity-60 motion-safe:animate-ping"
-          aria-hidden
-        />
-      )}
-      <span className={cn("relative inline-flex size-2.5 rounded-full", DOT[state])} aria-hidden />
-    </span>
+  <Stack align="center" className={className} direction="row" gap="1.5" render="span">
+    <StatusDot label={showLabel ? "" : SR[state]} tone={TONE[state]} />
     {showLabel && (
-      <span className={cn("text-2xs", state === "live" ? "text-onair-300" : "text-static-400")}>
+      <Text as="span" textRole="guideCell" tone={state === "live" ? "live" : "secondary"}>
         {SR[state]}
-      </span>
+      </Text>
     )}
-    <span className="sr-only">{SR[state]}</span>
-  </span>
+  </Stack>
 );
 
 export { OnAirIndicator };

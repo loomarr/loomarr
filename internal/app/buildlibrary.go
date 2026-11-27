@@ -112,6 +112,9 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Disk:    scan.OSDisk{},
 		Now:     time.Now,
 	}
+	if deps.frames != nil {
+		roots.Summarized = deps.frames.LibraryFolderSummarized
+	}
 	inv := inventory.New(st)
 	resolver, err := precedence.New("US")
 	if err != nil {
@@ -170,10 +173,17 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Log:      deps.log,
 	}
 	im.Busy = deps.watched
+	if deps.frames != nil {
+		im.RootsChanged = deps.frames.LibraryRootsChanged
+	}
 	if deps.notify != nil {
 		im.RootReadability = deps.notify.LibraryFolder
 	}
 	scanner := scan.NewScanner(im, scan.ReconcileInterval)
+	// The Enricher's rewrites of a folder wait for its header reads (Scanner.Rewrite); each folder's
+	// last read, or the stage's end, lets them go.
+	im.AfterReading = scanner.ReleaseHeld
+	im.FolderRead = scanner.ReleaseFolder
 	watcher := &scan.Watcher{Scanner: scanner}
 	hooks := &scan.ArrHooks{
 		Scanner: scanner,
@@ -199,7 +209,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Orders: st, CollectionStore: st, Records: st, Keys: keys}
 	if provider != nil {
 		enricher = &scan.Enricher{
-			Store: st, Provider: provider, Rewrite: scanner.PassFolders,
+			Store: st, Provider: provider, Rewrite: scanner.Rewrite,
 			Language: func() string {
 				language, err := provider.Language()
 				if err != nil {
@@ -217,6 +227,9 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		lib.Enricher = enricher
 		filmographer := &scan.Filmographer{Store: st, Catalog: provider, Enabled: im.Enabled, Log: deps.log}
 		deps.owner.goRunAfterBuild(filmographer.Run)
+		// Nightly, what TMDB changed is fetched again ahead of the refresh (#3225).
+		changes := &scan.ChangeFollower{Store: st, Feed: provider, Catalog: string(mp.NamespaceTMDB), Enabled: im.Enabled, Log: deps.log}
+		deps.owner.goRunAfterBuild(changes.Run)
 		lib.Search = tmdbSearcher(deps.tmdb)
 		matcher := &scan.Matcher{
 			Store: st, Search: lib.Search, Provider: provider, Inventory: inv,

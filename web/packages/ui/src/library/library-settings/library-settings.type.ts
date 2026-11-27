@@ -3,8 +3,11 @@ import type { ReactNode } from "react";
 /** An app that names library folders: the media server, Sonarr or Radarr. */
 type LibraryAuthority = "emby" | "jellyfin" | "sonarr" | "radarr";
 
-/** Whether any folder is in use, and whether every folder in use opened at its last check. */
-type LibraryHealth = "needs_folders" | "folder_offline" | "ok";
+/**
+ * Whether any folder is in use, whether every folder in use opened at its last check, and whether
+ * one of them held nothing (folder_empty: usually a drive or share that isn't connected).
+ */
+type LibraryHealth = "needs_folders" | "folder_offline" | "folder_empty" | "ok";
 
 /** One media folder on this machine. */
 interface LibraryFolder {
@@ -13,6 +16,8 @@ interface LibraryFolder {
   inUse: boolean;
   /** Loomarr opened it at the last check. */
   readable: boolean;
+  /** Loomarr opened it and found nothing in it at the last check. */
+  empty?: boolean;
   /** The last check, ISO; absent when never checked. */
   checkedAt?: string;
   addedByHand: boolean;
@@ -51,10 +56,22 @@ interface LibraryScan {
   quiet: boolean;
 }
 
+/** How the titles' details are getting on. */
+interface LibraryDetails {
+  /** Movies and series whose details haven't been looked up yet. */
+  waiting: number;
+  /** TMDB didn't answer the last lookup. */
+  unreachable: boolean;
+  /** When looking up is tried again, ISO; absent when nothing waits on a retry. */
+  retryAt?: string;
+}
+
 /** A title that became ready while the import runs (decision 29). */
 interface LibraryReadyTitle {
   id: string;
   name: string;
+  /** Whether it is ready to watch; one still being prepared shows faded. */
+  ready: boolean;
   /** Its poster; absent draws a plain tile. */
   poster?: ReactNode;
 }
@@ -65,12 +82,79 @@ interface LibraryHeldRemoval {
   movies: number;
   episodes: number;
   other: number;
+  /** A few of the titles those files are, by name: a show once for all its episodes. */
+  titles: readonly string[];
+  /** How many titles those files are in all. */
+  titleCount: number;
+}
+
+/** One reason the scan skips files, how many it skips for it, and the first few by path. */
+interface LibrarySkipped {
+  reason:
+    | "broken_link"
+    | "link_outside"
+    | "disc_image"
+    | "empty_file"
+    | "identity_conflict"
+    | "invalid_facts";
+  total: number;
+  paths: readonly string[];
 }
 
 /** Whether an arr tells Loomarr about new downloads. */
 interface LibraryHook {
   app: "sonarr" | "radarr";
   state: "registered" | "not_configured" | "no_address" | "failed";
+}
+
+/** What one look inside a folder found; it arrives after the folder is listed. */
+interface LibraryFolderSummary {
+  /** The folders in it the scan would walk. */
+  folders: number;
+  /** The videos directly in it. */
+  videos: number;
+  /** slow: it didn't answer in time; unreadable: Loomarr couldn't open it. */
+  state: "counted" | "slow" | "unreadable";
+}
+
+/** One folder the folder browser lists. */
+interface LibraryBrowseFolder {
+  path: string;
+  /** Its own name, or its whole path at the top. */
+  name: string;
+  /** An app (Sonarr, Radarr, the media server) names it. */
+  named: boolean;
+  inUse: boolean;
+  /** The folder in use that holds it. */
+  within?: string;
+  /** The folders in use inside it. */
+  holds: readonly string[];
+  /** Absent until it is counted. */
+  summary?: LibraryFolderSummary;
+}
+
+/** The folders in one folder; path "" is the top: the apps' folders, then this machine's drives. */
+interface LibraryBrowseListing {
+  path: string;
+  /** The folder above; "" when that is the top. */
+  parent: string;
+  /** The folder listed is in use, inside one (within), or holds some (holds). */
+  inUse: boolean;
+  within?: string;
+  holds: readonly string[];
+  folders: readonly LibraryBrowseFolder[];
+}
+
+/** The folder browser's data, which the app reads: the folder open now, and how to open another. */
+interface LibraryFolderBrowser {
+  /** The folder listed last; it stays while the next one opens. */
+  listing?: LibraryBrowseListing;
+  /** The folder being opened, until it is listed; "" is the top. */
+  opening?: string;
+  /** Why the folder couldn't be listed. */
+  error?: string;
+  /** Opens a folder; "" opens the top. */
+  onOpen: (path: string) => void;
 }
 
 interface LibrarySettingsProps {
@@ -81,7 +165,13 @@ interface LibrarySettingsProps {
   /** The latest few titles that became ready, last first, shown while the import runs. */
   readySoFar?: readonly LibraryReadyTitle[];
   held: readonly LibraryHeldRemoval[];
+  /** Files the scan can't keep because their names can't be read, by path: to rename. */
+  unreadable?: readonly string[];
+  /** The files the scan skips, by why: each reason's count and its first few paths. */
+  skipped?: readonly LibrarySkipped[];
   hooks: readonly LibraryHook[];
+  /** How the titles' details are getting on; absent reads as nothing waiting. */
+  details?: LibraryDetails;
   /** A check of every folder is running. */
   checking: boolean;
   onCheckAgain: () => void;
@@ -92,12 +182,19 @@ interface LibrarySettingsProps {
   /** The maintainer says the held files are gone. */
   onConfirmRemoval: (path: string) => void;
   onUseFolder: (path: string, inUse: boolean) => void;
-  /** Resolves to a sentence saying why the folder was refused, or undefined when it was added. */
-  onAddFolder: (path: string) => Promise<string | undefined>;
+  /**
+   * Resolves to a sentence saying why the folder was refused, or undefined when it was added. With
+   * replace, the folder is used in place of the folders in use inside it.
+   */
+  onAddFolder: (path: string, options?: { replace?: boolean }) => Promise<string | undefined>;
+  /** Picks a folder by opening folders; absent, a folder is typed. */
+  folderBrowser?: LibraryFolderBrowser;
   /** An empty localPath hands the row back to Loomarr. */
   onMapFolder: (mapping: { authority: LibraryAuthority; authorityPath: string; localPath: string }) => void;
   /** Injected for stories and tests; defaults to the current time. */
   now?: number;
+  /** The household's timezone, which times are told in; the device's while undefined. */
+  timeZone?: string;
 }
 
 /** The setup wizard's Library step: the folders, each with Use this folder, and Check again. */
@@ -111,6 +208,7 @@ type LibraryWizardStepProps = Pick<
   | "onCheckAgain"
   | "onUseFolder"
   | "onAddFolder"
+  | "folderBrowser"
   | "now"
 > & {
   /** A Check again finished a moment ago. */
@@ -119,7 +217,12 @@ type LibraryWizardStepProps = Pick<
 
 export type {
   LibraryAuthority,
+  LibraryBrowseFolder,
+  LibraryBrowseListing,
+  LibraryDetails,
   LibraryFolder,
+  LibraryFolderBrowser,
+  LibraryFolderSummary,
   LibraryHealth,
   LibraryHeldRemoval,
   LibraryHook,
@@ -127,5 +230,6 @@ export type {
   LibraryReadyTitle,
   LibraryScan,
   LibrarySettingsProps,
+  LibrarySkipped,
   LibraryWizardStepProps,
 };

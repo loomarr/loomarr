@@ -81,6 +81,7 @@ type fakeFiller struct {
 	splits                []fakeSplitCall
 	splitUnavailable      bool
 	splitNotFound         bool
+	splitLetGo            bool
 	confirmNotFound       bool
 	confirmInvalid        bool
 	confirmFiled          bool
@@ -305,6 +306,9 @@ func (f *fakeFiller) Split(_ context.Context, clipID string) (string, error) {
 	if f.splitNotFound {
 		return "", store.ErrNotFound
 	}
+	if f.splitLetGo {
+		return "", operator.ErrReelLetGo
+	}
 	f.splits = append(f.splits, fakeSplitCall{clipID: clipID})
 	return "split-job-1", nil
 }
@@ -353,13 +357,12 @@ func newFillerServerWithRuntimeConfig(t *testing.T, imageService imagesapi.Image
 		// with it a test that passes `memberToken` is really testing an anonymous caller — which
 		// is the exact gap api_test.go records four tests once falling into. `/v1/filler/watch`
 		// is member-readable and that has to be provable.
-		Auth:            testAuthorizer{},
-		Log:             slog.New(slog.DiscardHandler),
-		Filler:          ff,
-		SourceProviders: testSourceProviders(t),
-		Images:          imageService,
-		LiveSettings:    live,
-		Now:             now,
+		Auth:         testAuthorizer{},
+		Log:          slog.New(slog.DiscardHandler),
+		Filler:       api.FillerOptions{Service: ff, SourceProviders: testSourceProviders(t)},
+		Images:       imageService,
+		LiveSettings: live,
+		Now:          now,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -410,8 +413,10 @@ func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
 		t.Fatalf("got %d clips, want 1", len(body.Clips))
 	}
 	still, hover := body.Clips[0].ThumbImage, body.Clips[0].HoverImage
-	if still == nil || still.Hash != "still-art" || still.Src != "/v1/images/still-art/w780.jpg" {
-		t.Errorf("still image = %+v, want content-addressed image record", still)
+	// A 320-wide clip still is served at the thumb ladder's 300 rung, never upscaled to 780 (#4476).
+	if still == nil || still.Hash != "still-art" || still.Src != "/v1/images/still-art/w300.jpg" ||
+		still.SrcSetWebP != "/v1/images/still-art/w300.webp 300w" {
+		t.Errorf("still image = %+v, want content-addressed image record at its 300 rung", still)
 	}
 	if hover == nil || hover.Hash != "hover-art" || !hover.Animated || hover.SrcSetWebP != "/v1/images/hover-art/w320.webp 320w" {
 		t.Errorf("hover image = %+v, want animated image record", hover)
@@ -1380,6 +1385,14 @@ func TestSplitFiller_Route(t *testing.T) {
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("split with no drop-folder → %d, want 409", resp.StatusCode)
 	}
+	ff.splitUnavailable = false
+
+	// A reel whose recording was let go (#4421) → 409 saying so.
+	ff.splitLetGo = true
+	resp = do(t, srv, http.MethodPost, "/v1/filler/split", adminToken, `{"hash":"comps/1987.mp4"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("split of a let-go reel → %d, want 409", resp.StatusCode)
+	}
 }
 
 // The proposal read comes straight from the store — the review's reconnect truth.
@@ -1449,8 +1462,10 @@ func TestGetFillerSplit_ReportsCheckedAndCurrentLanguages(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	current := "en,fr"
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Filler: &fakeFiller{},
-		IntakeLanguages: func(context.Context) (string, error) { return current, nil },
+		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Filler: api.FillerOptions{
+			Service:         &fakeFiller{},
+			IntakeLanguages: func(context.Context) (string, error) { return current, nil },
+		},
 	}))
 	t.Cleanup(srv.Close)
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
@@ -1489,8 +1504,10 @@ func TestGetFillerSplit_AFailedLanguageReadKeepsReviewOpen(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Filler: &fakeFiller{},
-		IntakeLanguages: func(context.Context) (string, error) { return "", errors.New("db down") },
+		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Filler: api.FillerOptions{
+			Service:         &fakeFiller{},
+			IntakeLanguages: func(context.Context) (string, error) { return "", errors.New("db down") },
+		},
 	}))
 	t.Cleanup(srv.Close)
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{

@@ -132,11 +132,13 @@ func (s *sqlStore) commitProposalApproval(
 	if err != nil {
 		return 0, err
 	}
+	decidedBy, decidedVia := proposalstore.DecisionArgs(p)
 	result, err := tx.ExecContext(ctx, s.ph(
-		`UPDATE proposals SET job_id=?, status=?, created_by=?, decided_by=?, deny_reason=?,
+		`UPDATE proposals SET status=?, created_by=`+proposalstore.MemberValue+`,
+		   decided_by=`+proposalstore.MemberValue+`, decided_via=?, deny_reason=?,
 		   mod_summary=?, note=?, proposal_json=?, approved_at=?, updated_at=?
 		 WHERE id=? AND status='submitted'`),
-		p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
+		p.Status, p.CreatedBy, decidedBy, decidedVia, p.DenyReason, p.ModSummary, p.Note,
 		body, epoch(p.ApprovedAt), epoch(p.UpdatedAt), p.ID)
 	if err != nil {
 		return 0, fmt.Errorf("approve proposal %s: %w", p.ID, err)
@@ -207,7 +209,7 @@ func (s *sqlStore) commitProposalApproval(
 			   requested_at=excluded.requested_at, deadline=excluded.deadline, attempts=excluded.attempts,
 			   last_error=excluded.last_error, updated_at=excluded.updated_at
 			 WHERE titles.state = ?`),
-			string(r.Key), item.json, string(r.State), r.LibraryID,
+			string(r.Key), item.json, string(r.State), storedb.OptionalID(r.LibraryID),
 			epoch(r.RequestedAt), epoch(r.Deadline), r.Attempts, r.LastError, epoch(r.UpdatedAt),
 			storedb.PendingTitle)
 		if err != nil {
@@ -288,7 +290,8 @@ func (r proposalApprovalTxReader) GetUser(ctx context.Context, id string) (User,
 }
 
 func (r proposalApprovalTxReader) ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error) {
-	rows, err := r.tx.QueryContext(ctx, r.s.ph(proposalstore.ProposalSelect+` WHERE created_by = ? ORDER BY created_at DESC`), userID)
+	creator, args := proposalstore.CreatorMatch("created_by", userID)
+	rows, err := r.tx.QueryContext(ctx, r.s.ph(proposalstore.ProposalSelect+` WHERE `+creator+` ORDER BY created_at DESC`), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -313,9 +316,8 @@ func validateApprovalChannel(p Proposal, ch Channel) error {
 	if err := ch.Validate(); err != nil {
 		return fmt.Errorf("invalid channel: %w", err)
 	}
-	if err := ch.Policy.Validate(); err != nil {
-		return fmt.Errorf("invalid channel policy: %w", err)
-	}
+	// The policy is checked inside the transaction (validateApprovalBinding), against the policy the
+	// channel already stores: a rule an older writer allowed is kept, not re-judged.
 	if !ch.FromRequest {
 		return fmt.Errorf("channel %s was not made from a request", ch.ID)
 	}
@@ -334,10 +336,16 @@ func (s *sqlStore) validateApprovalBinding(ctx context.Context, q channelstore.D
 			// reloads and replans, exactly as for a lost uniqueness race.
 			return fmt.Errorf("%w: proposal job %q belongs to channel %s, not %s", ErrChannelConflict, p.JobID, bound.ID, ch.ID)
 		}
+		if err := ch.Policy.ValidateKeeping(bound.Policy); err != nil {
+			return fmt.Errorf("invalid channel policy: %w", err)
+		}
 		return nil
 	case errors.Is(err, ErrNotFound):
 		if ch.IntentRef != p.JobID {
 			return fmt.Errorf("new channel %s intent ref %q does not match proposal job %q", ch.ID, ch.IntentRef, p.JobID)
+		}
+		if err := ch.Policy.Validate(); err != nil {
+			return fmt.Errorf("invalid channel policy: %w", err)
 		}
 		return nil
 	default:
@@ -388,10 +396,13 @@ func (s *sqlStore) CommitProposalDenial(ctx context.Context, p Proposal) error {
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("deny proposal %s: read job status: %w", p.ID, err)
 	}
+	denied := p
+	denied.Status = "denied"
+	decidedBy, decidedVia := proposalstore.DecisionArgs(denied)
 	result, err := tx.ExecContext(ctx, s.ph(
-		`UPDATE proposals SET status='denied', decided_by=?, deny_reason=?, updated_at=?
+		`UPDATE proposals SET status='denied', decided_by=`+proposalstore.MemberValue+`, decided_via=?, deny_reason=?, updated_at=?
 		 WHERE id=? AND status='submitted'`),
-		p.ApprovedBy, p.DenyReason, epoch(p.UpdatedAt), p.ID)
+		decidedBy, decidedVia, p.DenyReason, epoch(p.UpdatedAt), p.ID)
 	if err != nil {
 		return fmt.Errorf("deny proposal %s: %w", p.ID, err)
 	}

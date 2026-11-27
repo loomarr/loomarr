@@ -3,13 +3,13 @@ package store
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestIndexNamesFollowConvention(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "index-names.db"))
+	// The migrated template is the latest schema; the helper's Up finds nothing pending.
+	db, err := sql.Open("sqlite", "file:"+migratedSQLiteFile(t))
 	if err != nil {
 		t.Fatal(err)
 	}

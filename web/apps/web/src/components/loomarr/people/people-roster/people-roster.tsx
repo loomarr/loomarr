@@ -1,11 +1,10 @@
 import { UserBodyRole } from "@loomarr/api/models/userBodyRole";
 import { formatRelative } from "@loomarr/core/format";
-import { Text } from "@loomarr/design-system";
+import { Card, Grid, Stack, Text } from "@loomarr/design-system";
 import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
 import { useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
-import { cn } from "@/lib/utils";
 import type { PeopleRosterProps } from "./people-roster.type";
 
 const ROLE_FILTERS = [
@@ -43,17 +42,17 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
   }, [query, role, status, users]);
 
   return (
-    <section aria-labelledby="people-roster-title" className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-        <div className="min-w-0 flex-1">
-          <h2 id="people-roster-title" className="text-lg font-semibold">
+    <Stack aria-labelledby="people-roster-title" gap="control" render="section">
+      <Stack align={{ base: "stretch", lg: "end" }} direction={{ base: "column", lg: "row" }} gap="3">
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+          <Text as="h2" id="people-roster-title" strong textRole="headline">
             People
-          </h2>
-          <p className="text-muted-foreground text-sm">
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             Select a person to manage access, requests, and sessions.
-          </p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_9rem_9rem] lg:w-auto">
+          </Text>
+        </Stack>
+        <Grid columns={{ base: 1, sm: ["minmax(12rem,1fr)", "9rem", "9rem"] }} flexShrink={1} gap="3">
           <SearchField label="Search people" onChangeText={setQuery} placeholder="Name" value={query} />
           <BrowserSelectControl
             appearance="field"
@@ -69,32 +68,36 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
             options={STATUS_FILTERS}
             value={status}
           />
-        </div>
-      </div>
+        </Grid>
+      </Stack>
 
       {users === undefined ? (
-        <div className="grid gap-2" role="status" aria-label="Loading people">
+        <Grid gap="2" role="status" aria-label="Loading people">
           {[0, 1, 2].map((item) => (
-            <div key={item} className="border-border bg-card h-20 animate-pulse rounded-lg border" />
+            <Card data-pulse="loading" height={80} key={item} />
           ))}
-        </div>
+        </Grid>
       ) : users.length === 0 ? (
         <EmptyState
           title="No people yet"
           description="Use the actions above to import a media-server account or add a local one."
         />
       ) : filtered.length === 0 ? (
-        <div className="border-border bg-card rounded-lg border p-6 text-center">
-          <p className="font-medium">No matching people</p>
-          <p className="text-muted-foreground text-sm">Try another name, role, or status.</p>
-        </div>
+        <Card padding={24}>
+          <Text as="p" textAlign="center" textRole="cardLabel">
+            No matching people
+          </Text>
+          <Text as="p" textAlign="center" textRole="compact" tone="secondary">
+            Try another name, role, or status.
+          </Text>
+        </Card>
       ) : (
         <ListGroup aria-labelledby="people-roster-title">
           {filtered.map((user) => (
-            <div
+            <Stack
               key={user.id}
               aria-current={selectedId === user.id ? "true" : undefined}
-              className={cn(selectedId === user.id && "bg-accent")}
+              backgroundColor={selectedId === user.id ? "surfaceElevated" : undefined}
             >
               <RowCard
                 action={
@@ -124,11 +127,11 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
                 ]}
                 title={user.name}
               />
-            </div>
+            </Stack>
           ))}
         </ListGroup>
       )}
-    </section>
+    </Stack>
   );
 };
 

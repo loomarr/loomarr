@@ -1,12 +1,11 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, pluralize } from "@loomarr/core/format";
-import { Action, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { cn } from "@/lib/utils";
 
 // The Storage card at the top of the Sources tab: how much the filler library uses, why new filler
 // is paused (if it is), and — when the host drive's reserve is what paused it — the one-click
@@ -56,22 +55,24 @@ const SourceStorageCard = () => {
   // warning with the way out (#2737).
   const allowanceFull = storage.state === "approaching" || storage.pausedBy === "library_limit";
   return (
-    <section
+    <Card
       aria-labelledby="filler-storage-heading"
-      className={cn(
-        "rounded-lg border p-4",
-        allowanceFull ? "border-caution/40 bg-caution/5" : "border-border bg-card",
-      )}
+      borderRadius={8}
+      padding={16}
+      render="section"
+      {...(allowanceFull ? { tone: "caution" as const } : {})}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <h2 id="filler-storage-heading" className="text-sm font-medium">
+      <Stack align="start" direction="row" gap="control" justify="between" wrap>
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+          <Text as="h2" id="filler-storage-heading" textRole="cardLabel">
             Storage
-          </h2>
-          <p className="mt-1 text-sm">
-            {formatBytes(storage.managedBytes)} used for filler · {formatBytes(storage.freeBytes)} free on
-            this drive
-          </p>
+          </Text>
+          <Stack marginTop={4}>
+            <Text as="p" textRole="compact">
+              {formatBytes(storage.managedBytes)} used for filler · {formatBytes(storage.freeBytes)} free on
+              this drive
+            </Text>
+          </Stack>
           <Text as="p" style={{ marginTop: 4 }} textRole="hint" tone={allowanceFull ? "warning" : "muted"}>
             {storage.pausedBy === "host_reserve"
               ? `New filler is paused so this drive keeps ${formatBytes(storage.hardReserveBytes)} free.`
@@ -88,7 +89,7 @@ const SourceStorageCard = () => {
               ? ` ${formatBytes(storage.reservedBytes)} is set aside for work in progress.`
               : ""}
           </Text>
-        </div>
+        </Stack>
         <Action
           accessibilityRole="link"
           render={
@@ -104,45 +105,49 @@ const SourceStorageCard = () => {
               ? "Raise allowance"
               : "Storage options"}
         </Action>
-      </div>
+      </Stack>
 
       {storage.pausedBy === "host_reserve" ? (
-        <div className="border-border mt-3 border-t pt-3">
+        <Stack borderColor="$borderDecorative" borderTopWidth={1} marginTop={12} paddingTop={12}>
           {cleanupPreviewQuery.isLoading ? (
-            <p aria-live="polite" className="text-muted-foreground text-sm">
+            <Text as="p" aria-live="polite" textRole="compact" tone="secondary">
               Checking for old temporary downloads…
-            </p>
+            </Text>
           ) : cleanupPreview && cleanupPreview.items > 0 ? (
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-muted-foreground text-sm">
+            <Stack align="center" direction="row" gap="control" justify="between" wrap>
+              <Text as="p" textRole="compact" tone="secondary">
                 {formatBytes(cleanupPreview.bytes)} in{" "}
                 {pluralize(cleanupPreview.items, "unfinished download")} is safe to remove. Clips in your
                 library stay untouched.
-              </p>
+              </Text>
               <Action disabled={cleanupStorage.isPending} onPress={() => cleanupStorage.mutate()}>
                 {cleanupStorage.isPending ? "Freeing space…" : `Free ${formatBytes(cleanupPreview.bytes)}`}
               </Action>
-            </div>
+            </Stack>
           ) : (
-            <p className="text-muted-foreground text-sm">
+            <Text as="p" textRole="compact" tone="secondary">
               There are no old temporary downloads Loomarr can safely remove. Free space elsewhere on this
               drive or remove filler clips you no longer want.
-            </p>
+            </Text>
           )}
           {cleanupResult && cleanupResult.removedItems > 0 ? (
-            <p role="status" className="text-muted-foreground mt-2 text-xs">
-              Removed {pluralize(cleanupResult.removedItems, "temporary folder")} · freed{" "}
-              {formatBytes(cleanupResult.removedBytes)}.
-            </p>
+            <Stack marginTop={8} role="status">
+              <Text as="p" textRole="hint" tone="secondary">
+                Removed {pluralize(cleanupResult.removedItems, "temporary folder")} · freed{" "}
+                {formatBytes(cleanupResult.removedBytes)}.
+              </Text>
+            </Stack>
           ) : null}
           {cleanupPreviewQuery.error || cleanupStorage.error ? (
-            <p role="alert" className="text-destructive mt-2 text-sm">
-              Temporary files could not be checked or removed. Nothing in your library was changed.
-            </p>
+            <Stack marginTop={8} role="alert">
+              <Text as="p" textRole="compact" tone="danger">
+                Temporary files could not be checked or removed. Nothing in your library was changed.
+              </Text>
+            </Stack>
           ) : null}
-        </div>
+        </Stack>
       ) : null}
-    </section>
+    </Card>
   );
 };
 

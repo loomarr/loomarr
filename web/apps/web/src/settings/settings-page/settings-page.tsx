@@ -2,14 +2,14 @@ import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action } from "@loomarr/design-system";
+import { Action, Card, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { cn } from "@/lib/utils";
+import { everyEditSaved } from "../saved-edits";
 import { useSettingsEdits } from "../settings-edits";
 import {
   announceSettingsChange,
@@ -164,14 +164,7 @@ const SettingsPage = ({
     try {
       if (Object.keys(edits).length > 0) {
         const saved = await patch.mutateAsync({ data: { edits } });
-        const results = unwrap(saved, (body) => body.results) ?? [];
-        if (
-          !Object.keys(edits).every((key) =>
-            results.some((result) => result.key === key && result.status === "saved"),
-          )
-        ) {
-          return;
-        }
+        if (!everyEditSaved(saved, edits)) return;
       }
       const res = await runTest.mutateAsync({ data: { check } });
       if (res.status === 200) {
@@ -185,17 +178,30 @@ const SettingsPage = ({
   };
 
   return (
-    <div className={cn("flex flex-col", !embedded && "h-full")}>
+    <Stack height={embedded ? undefined : "100%"}>
       {embedded ? (
         <div>
-          <h2 className="text-xl font-semibold">{title}</h2>
-          {description && <p className="text-muted-foreground mt-1 text-sm">{description}</p>}
+          <Text as="h2" textRole="title">
+            {title}
+          </Text>
+          {description && (
+            <Stack marginTop={4}>
+              <Text as="p" textRole="compact" tone="secondary">
+                {description}
+              </Text>
+            </Stack>
+          )}
         </div>
       ) : (
         <PageHeader title={title} description={description} />
       )}
 
-      <div className={cn("flex flex-col gap-8", embedded ? "mt-6" : "flex-1 overflow-auto p-6")}>
+      <Stack
+        gap="8"
+        {...(embedded
+          ? { marginTop: 24 }
+          : { flexBasis: "0%", flexGrow: 1, flexShrink: 1, overflow: "auto" as const, padding: 24 })}
+      >
         {typeof children === "function" ? children({ liveValue, setEdit }) : children}
 
         {/* Preserve the declared information hierarchy. A prior two-pass renderer moved every
@@ -219,7 +225,7 @@ const SettingsPage = ({
                 ? (block.dirtyCheckLabel ?? "Save & test connection")
                 : (block.checkLabel ?? "Test connection");
             return (
-              <div key={block.title} className="flex flex-col gap-3">
+              <Stack flexShrink={0} gap="control" key={block.title}>
                 <ConnectionBlock
                   title={block.title}
                   optional={block.optional}
@@ -243,7 +249,9 @@ const SettingsPage = ({
                   }
                 >
                   {block.description && (
-                    <p className="text-muted-foreground text-sm leading-relaxed">{block.description}</p>
+                    <Text as="p" textRole="compact" tone="secondary">
+                      {block.description}
+                    </Text>
                   )}
                   <SettingsFields
                     entries={blockEntries}
@@ -254,20 +262,20 @@ const SettingsPage = ({
                     disabledReasons={block.disabledReasons}
                   />
                 </ConnectionBlock>
-              </div>
+              </Stack>
             );
           }
-          return (
-            <section
-              key={block.title}
-              className={cn(
-                "flex flex-col gap-4",
-                block.surface === "card" && "border-border bg-card rounded-xl border p-5 shadow-sm sm:p-6",
-              )}
-            >
+          const content = (
+            <>
               <div>
-                <h2 className="text-lg font-semibold">{block.title}</h2>
-                {block.description && <p className="text-muted-foreground text-sm">{block.description}</p>}
+                <Text as="h2" strong textRole="headline">
+                  {block.title}
+                </Text>
+                {block.description && (
+                  <Text as="p" textRole="compact" tone="secondary">
+                    {block.description}
+                  </Text>
+                )}
               </div>
               <SettingsFields
                 entries={blockEntries}
@@ -279,19 +287,33 @@ const SettingsPage = ({
                 disabledReasons={block.disabledReasons}
               />
               {typeof block.footer === "function" ? block.footer({ liveValue, setEdit }) : block.footer}
-            </section>
+            </>
+          );
+          if (block.surface !== "card") {
+            return (
+              <Stack flexShrink={0} gap="4" key={block.title} render="section">
+                {content}
+              </Stack>
+            );
+          }
+          return (
+            <Card flexShrink={0} key={block.title} render="section">
+              <Stack gap="4" padding={{ base: 20, sm: 24 }}>
+                {content}
+              </Stack>
+            </Card>
           );
         })}
 
         {typeof footer === "function" ? footer({ liveValue, setEdit }) : footer}
 
         {patch.error != null && <ErrorState error={patch.error} />}
-      </div>
+      </Stack>
 
       {/* The save bar lives in the layout, not here: Advanced settings is a destination that is
           not a SettingsPage, and an edit staged there had no Save button on screen. One bar
           above the outlet also means two pages can never render two bars. */}
-    </div>
+    </Stack>
   );
 };
 

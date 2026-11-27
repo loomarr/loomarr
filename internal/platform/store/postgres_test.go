@@ -10,8 +10,9 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/platform/store/storetest"
 	"github.com/testcontainers/testcontainers-go"
+
+	"github.com/loomarr/loomarr/internal/platform/store/storetest"
 )
 
 // startPostgres spins up an ephemeral Postgres via testcontainers (§14, §19) and
@@ -54,7 +55,7 @@ func TestPostgresConformance(t *testing.T) {
 	RunConformance(t, newStore)
 
 	t.Run("ApprovalQuotaAcrossIndependentPools", func(t *testing.T) {
-		primary := newStore(t)
+		primary := withJobMembers(newStore)(t)
 		secondary, err := openPostgres(context.Background(), primary.(*sqlStore).dsn)
 		if err != nil {
 			t.Fatalf("open independent postgres pool: %v", err)

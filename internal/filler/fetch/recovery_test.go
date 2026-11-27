@@ -25,6 +25,7 @@ func openRecoveryStore(t *testing.T) records.Store {
 
 func seedRecoveryArtifact(t *testing.T, db records.Store, artifact acquisition.Artifact) {
 	t.Helper()
+	testkit.SaveFillerSources(t, db, artifact.SourceID)
 	if err := db.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{
 		ID: artifact.AcquisitionID, Trigger: acquisition.TriggerPull, SourceID: artifact.SourceID,
 		Status: acquisition.RunSuccess, Requested: 1, UpdatedAt: artifact.UpdatedAt,

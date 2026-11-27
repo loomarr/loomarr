@@ -116,8 +116,14 @@ type Descriptive struct {
 	Status string
 	// Runtime is the nominal running time, not a measurement of a file.
 	Runtime time.Duration
+	// OverviewLanguage is the language Overview is in when it is not the record's Language: a
+	// catalog with no translation in the installation's language fills it from another. Empty is
+	// the record's own language. A later fetch that finds the installation's text replaces it.
+	OverviewLanguage string `json:",omitempty"`
 	// Tagline is the one-line pitch printed on a poster.
 	Tagline string
+	// TaglineLanguage is OverviewLanguage for Tagline.
+	TaglineLanguage string `json:",omitempty"`
 	// Countries are the production countries, as the source names them.
 	Countries []string
 	// Trailer is a web page that plays the trailer: an http(s) URL.

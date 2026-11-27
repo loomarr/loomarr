@@ -67,10 +67,10 @@ const GALLERY_NOW = new Date("2026-10-27T12:00:00Z");
 // shoots only those (playwright.config.ts).
 //
 // Every story is shot under the shared kit's reduced motion, except one tagged `motion`: a story that
-// exists to show motion (the idle snow behind the login and setup surfaces), which reduced motion
-// would hide. It gets `no-preference` before it loads, because TvStatic and the design system read
-// the preference once, at mount. A tag rather than a story parameter, because index.json carries
-// tags and a parameter is only readable after the story has rendered under the wrong preference.
+// exists to show motion, which reduced motion would hide. It gets `no-preference` before it loads,
+// because a component may read the preference once, at mount. A tag rather than a story parameter,
+// because index.json carries tags and a parameter is only readable after the story has rendered under
+// the wrong preference.
 // The style tag below still freezes its CSS animation at frame 0, so the story must be still in
 // every other way (a seeded tile, no JS-driven loop) — docs/contributing/testing.md.
 for (const story of stories) {
@@ -124,14 +124,6 @@ for (const story of stories) {
     await page.evaluate(async () => {
       await document.fonts.ready;
     });
-    // TvStatic's snow is a tile rendered after the first frame (the content paints first), so a
-    // shown snow layer is still `data-snow-pending` for a moment after mount — the same race as
-    // fonts. An idle layer hidden by reduced motion never renders one, so only visible ones count;
-    // a `motion` story shows its idle snow and waits here.
-    await page.waitForFunction(() =>
-      Array.from(document.querySelectorAll("[data-snow-pending]")).every((el) => !el.checkVisibility()),
-    );
-
     // Kill animations/transitions/caret OUTRIGHT — reduced-motion only fast-forwards
     // (`duration: 0.001ms`), which leaves an infinite spinner frozen at a random frame
     // and flakes the diff. `animation: none` freezes it at its initial state (§5.2).

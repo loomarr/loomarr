@@ -1,4 +1,6 @@
+import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import { createFileRoute } from "@tanstack/react-router";
+import { viewerIsAdmin } from "@/auth/me-query";
 // The search defaults come from their own module: this route's config loads with the app, and the
 // diagnostics barrel would bring the whole page (and its dialogs) along with it.
 import { DiagnosticsPage, type DiagnosticsSearch } from "@/diagnostics";
@@ -86,6 +88,15 @@ const DiagnosticsRoute = () => {
 const Route = createFileRoute("/_authed/settings/system/diagnostics")({
   validateSearch,
   component: DiagnosticsRoute,
+  // The log stream is a cursor-paged read whose window follows the clock and the filters in the
+  // URL, so the page owns it. What every visit shows is the verbose-capture control, so that is
+  // warmed. Admin-only, like the page.
+  loader: async ({ context: { queryClient } }) => {
+    if (!(await viewerIsAdmin(queryClient))) return;
+    await queryClient.prefetchQuery(
+      diagnosticsApi.getGetDiagnosticVerboseCaptureQueryOptions({ query: { retry: false } }),
+    );
+  },
 });
 
 export { Route };

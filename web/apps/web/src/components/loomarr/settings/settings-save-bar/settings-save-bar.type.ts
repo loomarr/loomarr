@@ -4,7 +4,6 @@ interface SettingsSaveBarProps {
   onSave: () => void;
   onDiscard: () => void;
   saving?: boolean;
-  className?: string;
 }
 
 export type { SettingsSaveBarProps };

@@ -1,38 +1,55 @@
-import { type Density, Text, Toggle } from "@loomarr/design-system";
+import { type Density, playerChrome, Text, Toggle } from "@loomarr/design-system";
 import { View } from "react-native";
 
 import { type PlayerOption, PlayerOptions } from "../player-options";
 
-// The Audio sheet's body (§9.5): the channel's audio languages, the one airing marked and read-only
-// (an admin sets it on the channel's page, until a second rendition lets each viewer choose), then
-// the channel-change sound.
+// Audio's body (§9.5): the channel's audio languages, the one airing marked and read-only (an admin
+// sets it on the channel's page, until a second rendition lets each viewer choose), the line that
+// says so, then the channel-change sound under a hairline. The sound is the web player's own
+// preference; a client without one (phone, TV) passes no switch and the body ends at the line.
+
+interface PlayerAudioSwitch {
+  on: boolean;
+  onChange: (on: boolean) => void;
+}
 
 interface PlayerAudioProps {
   density: Density;
-  onSwitchSound: (on: boolean) => void;
   options: readonly PlayerOption[];
-  switchSound: boolean;
+  switchSound?: PlayerAudioSwitch;
 }
 
-const PlayerAudio = ({ density, onSwitchSound, options, switchSound }: PlayerAudioProps) => (
-  <View style={{ gap: 24 }}>
-    <View style={{ gap: 8 }}>
+const PlayerAudio = ({ density, options, switchSound }: PlayerAudioProps) => {
+  const inset = density === "pointer" ? 10 : 12;
+  return (
+    <View style={{ gap: 4 }}>
       <PlayerOptions density={density} label="Audio language" options={options} />
-      <View style={{ paddingHorizontal: 16 }}>
-        <Text density={density} textRole="hint" tone="muted">
+      <View style={{ paddingBottom: 8, paddingHorizontal: inset }}>
+        <Text density={density} textRole="cardMeta" tone="muted">
           The channel’s language. An admin sets it on the channel’s page.
         </Text>
       </View>
+      {switchSound ? (
+        <View
+          style={{
+            borderTopColor: playerChrome.hairline,
+            borderTopWidth: 1,
+            paddingHorizontal: inset,
+            paddingVertical: 10,
+          }}
+        >
+          <Toggle
+            checked={switchSound.on}
+            density={density}
+            kind="switch"
+            label="Channel-change sound"
+            onCheckedChange={switchSound.onChange}
+          />
+        </View>
+      ) : null}
     </View>
-    <Toggle
-      checked={switchSound}
-      density={density}
-      kind="switch"
-      label="Channel-change sound"
-      onCheckedChange={onSwitchSound}
-    />
-  </View>
-);
+  );
+};
 
 export type { PlayerAudioProps };
 export { PlayerAudio };

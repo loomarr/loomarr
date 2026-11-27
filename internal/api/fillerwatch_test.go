@@ -50,7 +50,7 @@ func TestFillerWatch_CountsAppliedLayoutUntilRestart(t *testing.T) {
 		Store:        st,
 		Auth:         testAuthorizer{},
 		Log:          slog.New(slog.DiscardHandler),
-		FillerLayout: layout,
+		Filler:       api.FillerOptions{Layout: layout},
 		LiveSettings: live,
 	})
 

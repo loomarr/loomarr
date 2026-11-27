@@ -70,8 +70,9 @@ func TestRegistry_FillerLanguageOwnsTheClientOptions(t *testing.T) {
 
 func TestRegistry_RestartKeys(t *testing.T) {
 	reg := NewRegistry()
-	// Only the filler folders wait for a restart (#1659). The long-reel files apply live.
-	want := []string{"filler.dir", "filler.watch_dir"}
+	// Only the filler folders and the trusted proxies, which the HTTP layer reads once per
+	// generation, wait for a restart (#1659). The long-reel files apply live.
+	want := []string{"filler.dir", "filler.watch_dir", "security.trusted_proxies"}
 	got := reg.RestartKeys()
 	if len(got) != len(want) {
 		t.Fatalf("RestartKeys = %v, want %v", got, want)
@@ -389,6 +390,17 @@ func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
 	for _, retired := range []string{"filler.autofile.enabled", "filler.autofile.min_confidence", "filler.autofile.normalize_loudness", "filler.conditioning.normalize_loudness"} {
 		if _, ok := r.Get(retired); ok {
 			t.Errorf("retired publication setting %s is still declared", retired)
+		}
+	}
+}
+
+// #4414: the certified long-reel structure path is retired, and its authority and deployment
+// files with it; nothing reads either path.
+func TestRegistry_StructureWindowPathsRetired(t *testing.T) {
+	r := NewRegistry()
+	for _, retired := range []string{"filler.structure_window_authority_path", "filler.structure_window_deployment_path"} {
+		if _, ok := r.Get(retired); ok {
+			t.Errorf("retired structure-window setting %s is still declared", retired)
 		}
 	}
 }

@@ -1,8 +1,10 @@
 import {
+  getHouseholdMockHandler,
   getLibraryStatusMockHandler,
   getListCollectionsMockHandler,
   getListLibraryItemsMockHandler,
   getListLibraryNeedsMockHandler,
+  getMeMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, screen, waitFor } from "@testing-library/react";
@@ -12,6 +14,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LoomarrEventsProvider } from "@/events/events-provider";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { libraryStatus } from "@/test/fixtures/library";
+import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
 import { LibraryPage } from "./library-page";
@@ -53,8 +56,16 @@ const renderPage = (props: Parameters<typeof LibraryPage>[0] = { filter: "all", 
 describe("LibraryPage", () => {
   beforeEach(() => {
     mocks.navigate.mockReset();
-    server.use(getListLibraryNeedsMockHandler({ needs: [], orders: [], problems: [] }));
+    // The page tells times in the household's zone, which the household read carries.
+    server.use(
+      getMeMockHandler(me()),
+      getListLibraryNeedsMockHandler({ needs: [], orders: [], problems: [] }),
+      getHouseholdMockHandler({ timeZone: "" }),
+    );
   });
+
+  // The tabs' counts ask for one title of each kind; the grid's pages ask for many.
+  const isCount = (url: URL) => url.searchParams.get("limit") === "1";
 
   it("lists the titles the server found and opens one", async () => {
     server.use(
@@ -63,9 +74,9 @@ describe("LibraryPage", () => {
     );
     renderPage();
 
-    // A title whose files aren't read yet says so in its name, which is what its tile shows.
+    // A title whose files aren't read yet says so under its name, which is what its tile shows.
     // jsdom lays nothing out, so the tile's lines join without spaces in the computed name.
-    expect(await screen.findByRole("button", { name: /^Getting ready\s*Bravo/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^Bravo\s*Getting ready$/ })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /^Alpha/ }));
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library/$id", params: { id: "90000001" } });
   });
@@ -113,7 +124,7 @@ describe("LibraryPage", () => {
     // A titles frame refetches the grid, and the new title shows up.
     items = [alpha, bravo];
     act(() => stream.emit("library_titles", {}));
-    expect(await screen.findByRole("button", { name: /^Getting ready\s*Bravo/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^Bravo\s*Getting ready$/ })).toBeInTheDocument();
   });
 
   it("loads the next page when the grid reaches its last rows, and stops at the total", async () => {
@@ -127,7 +138,9 @@ describe("LibraryPage", () => {
     server.use(
       getLibraryStatusMockHandler(libraryStatus()),
       http.get("*/v1/library/items", ({ request }) => {
-        const offset = Number(new URL(request.url).searchParams.get("offset") ?? 0);
+        const url = new URL(request.url);
+        if (isCount(url)) return HttpResponse.json({ items: [], total: 18 });
+        const offset = Number(url.searchParams.get("offset") ?? 0);
         offsets.push(String(offset));
         return HttpResponse.json({ items: page(offset, offset === 0 ? 12 : 6), total: 18 });
       }),
@@ -144,14 +157,15 @@ describe("LibraryPage", () => {
     server.use(
       getLibraryStatusMockHandler(libraryStatus()),
       http.get("*/v1/library/items", ({ request }) => {
-        asked.push(new URL(request.url).searchParams);
+        const url = new URL(request.url);
+        if (!isCount(url)) asked.push(url.searchParams);
         return HttpResponse.json({ items: [alpha], total: 1 });
       }),
     );
     renderPage({ filter: "movie", search: "" });
 
     await waitFor(() => expect(asked.at(-1)?.get("kind")).toBe("movie"));
-    await userEvent.type(await screen.findByLabelText("Search your library"), "alp");
+    await userEvent.type(await screen.findByLabelText("Search titles"), "alp");
 
     await waitFor(() => expect(asked.at(-1)?.get("search")).toBe("alp"));
     expect(asked.at(-1)?.get("kind")).toBe("movie");
@@ -170,12 +184,14 @@ describe("LibraryPage", () => {
         collections: [{ id: "c1", name: "Rainy Sundays", description: "", titles: [alpha], usedBy: [] }],
         sets: [],
       }),
+      // The tabs keep their counts on Collections.
+      getListLibraryItemsMockHandler({ items: [alpha], total: 1 }),
     );
     renderPage({ filter: "collections", search: "", view: "collections" });
 
     await userEvent.click(await screen.findByRole("button", { name: "Edit Rainy Sundays" }));
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library/collections/$id", params: { id: "c1" } });
-    expect(screen.queryByLabelText("Search your library")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Search titles")).not.toBeInTheDocument();
   });
 
   it("goes to the Collections tab's own address", async () => {
@@ -202,5 +218,89 @@ describe("LibraryPage", () => {
     renderPage();
 
     expect(await screen.findByRole("button", { name: /try again/i })).toBeInTheDocument();
+  });
+
+  it("says how many need you from the status, and Review opens Needs you's own page", async () => {
+    server.use(
+      getLibraryStatusMockHandler({ ...libraryStatus(), needsYou: 6 }),
+      getListLibraryItemsMockHandler({ items: [alpha], total: 1 }),
+    );
+    renderPage();
+
+    expect(await screen.findByText("6 need you")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("Review"));
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library/needs" });
+  });
+
+  it("counts each tab across the whole library", async () => {
+    server.use(
+      getLibraryStatusMockHandler(libraryStatus()),
+      http.get("*/v1/library/items", ({ request }) => {
+        const url = new URL(request.url);
+        if (!isCount(url)) return HttpResponse.json({ items: [alpha], total: 1 });
+        const kind = url.searchParams.get("kind");
+        const total = kind === "movie" ? 2180 : kind === "series" ? 1232 : 3412;
+        return HttpResponse.json({ items: [alpha], total });
+      }),
+    );
+    // The tabs carry the counts on a wide window and a phone says the chosen tab's beside the
+    // order (both pinned in @loomarr/ui); either way the tab's count is the library's.
+    const all = renderPage();
+    expect(await screen.findByText(/3,412/)).toBeInTheDocument();
+    all.unmount();
+
+    renderPage({ filter: "movie", search: "" });
+    expect(await screen.findByText(/2,180/)).toBeInTheDocument();
+  });
+
+  it("asks for the titles added last when the order says so, and keeps it in the URL", async () => {
+    const asked: URLSearchParams[] = [];
+    server.use(
+      getLibraryStatusMockHandler(libraryStatus()),
+      http.get("*/v1/library/items", ({ request }) => {
+        const url = new URL(request.url);
+        if (!isCount(url)) asked.push(url.searchParams);
+        return HttpResponse.json({ items: [alpha], total: 1 });
+      }),
+    );
+    renderPage({ filter: "all", search: "" });
+
+    await waitFor(() => expect(asked.at(-1)?.get("sort")).toBeNull());
+    await userEvent.selectOptions(await screen.findByLabelText("Order"), "recent");
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library", search: { sort: "recent" } });
+
+    renderPage({ filter: "all", search: "", sort: "recent" });
+    await waitFor(() => expect(asked.at(-1)?.get("sort")).toBe("recent"));
+  });
+
+  // #4476: a member browses the wall read-only. Every request it makes is one a member may make;
+  // the status, Needs you and the folders are an admin's and answer a member 403.
+  it("gives a member the wall and its collections without asking for anything admin-only", async () => {
+    const paths: string[] = [];
+    server.events.on("request:start", ({ request }) => {
+      paths.push(new URL(request.url).pathname);
+    });
+    server.use(
+      getMeMockHandler(me({ role: "member" })),
+      getListLibraryItemsMockHandler({ items: [{ ...alpha, files: undefined }], total: 1 }),
+      getListCollectionsMockHandler({ collections: [], sets: [] }),
+    );
+    try {
+      const wall = renderPage();
+      await userEvent.click(await screen.findByRole("button", { name: /^Alpha/ }));
+      expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library/$id", params: { id: "90000001" } });
+      expect(screen.queryByText(/need you/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Library settings" })).not.toBeInTheDocument();
+      wall.unmount();
+
+      renderPage({ filter: "collections", search: "", view: "collections" });
+      expect(await screen.findByText("No collections yet")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "New collection" })).not.toBeInTheDocument();
+    } finally {
+      server.events.removeAllListeners();
+    }
+    const library = paths.filter((p) => p.startsWith("/v1/library") || p.startsWith("/v1/collections"));
+    expect(library.length).toBeGreaterThan(0);
+    for (const path of library) expect(["/v1/library/items", "/v1/collections"]).toContain(path);
   });
 });

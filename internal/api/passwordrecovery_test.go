@@ -40,7 +40,7 @@ func newPasswordRecoveryHarness(t *testing.T, service people.PasswordRecoverySer
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
 			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log,
-			PasswordRecovery: service,
+			People: api.PeopleOptions{PasswordRecovery: service},
 		})
 	})
 }

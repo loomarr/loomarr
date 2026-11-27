@@ -48,6 +48,15 @@ func newFakeTMDB(t *testing.T) *fakeTMDB {
 		serve(w, "provider_collection_90000611.json")
 	})
 	mux.HandleFunc("/find/90001201", func(w http.ResponseWriter, _ *http.Request) { serve(w, "provider_find_tvdb_episode_90001201.json") })
+	mux.HandleFunc("/find/90000711", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"movie_results":[],"tv_results":[{"id":90000701}],"tv_episode_results":[]}`))
+	})
+	mux.HandleFunc("/find/tt9000701", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"movie_results":[],"tv_results":[{"id":90000701}],"tv_episode_results":[]}`))
+	})
+	mux.HandleFunc("/find/tt9000601", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"movie_results":[{"id":90000601}],"tv_results":[],"tv_episode_results":[]}`))
+	})
 	mux.HandleFunc("/find/90009998", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"movie_results":[],"person_results":[],"tv_results":[],"tv_episode_results":[],"tv_season_results":[]}`))
 	})
@@ -245,6 +254,40 @@ func TestFetchCollection(t *testing.T) {
 	}
 }
 
+// A title an NFO knows only by its TVDB or IMDb id is found through /find, by that id, and is
+// TMDB's record by its own; one TMDB does not know is not found.
+func TestFetch_FindsATitleByAnotherCatalogsID(t *testing.T) {
+	f := newFakeTMDB(t)
+	ctx := context.Background()
+	for _, c := range []struct {
+		ref    mp.Ref
+		source string
+		want   mp.ExternalID
+	}{
+		{ref(mp.KindSeries, mp.NamespaceTVDB, "90000711"), "tvdb_id", mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
+		{ref(mp.KindSeries, mp.NamespaceIMDB, "tt9000701"), "imdb_id", mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
+		{ref(mp.KindMovie, mp.NamespaceIMDB, "tt9000601"), "imdb_id", mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: "90000601"}},
+	} {
+		before := f.count()
+		rec, err := f.provider(nil).Fetch(ctx, c.ref)
+		if err != nil {
+			t.Fatalf("%s by %s: %v", c.ref.Kind, c.ref.ID.Namespace, err)
+		}
+		if len(rec.IDs) == 0 || rec.IDs[0] != c.want || rec.Kind != c.ref.Kind {
+			t.Errorf("%s by %s = %s %+v, want TMDB's %+v first", c.ref.Kind, c.ref.ID.Namespace, rec.Kind, rec.IDs, c.want)
+		}
+		f.mu.Lock()
+		find := f.requests[before]
+		f.mu.Unlock()
+		if find.URL.Path != "/find/"+c.ref.ID.Value || find.URL.Query().Get("external_source") != c.source {
+			t.Errorf("asked %s?%s, want /find/%s by %s", find.URL.Path, find.URL.RawQuery, c.ref.ID.Value, c.source)
+		}
+	}
+	if _, err := f.provider(nil).Fetch(ctx, ref(mp.KindSeries, mp.NamespaceTVDB, "90009998")); !errors.Is(err, mp.ErrNotFound) {
+		t.Fatalf("a TVDB id TMDB does not know = %v, want ErrNotFound", err)
+	}
+}
+
 func TestFetchSeries(t *testing.T) {
 	rec, err := newFakeTMDB(t).provider(nil).Fetch(context.Background(), seriesRef)
 	if err != nil {
@@ -405,8 +448,10 @@ func TestFetchEpisode_BridgesByItsOwnTVDBID(t *testing.T) {
 	if rec.Certification != nil {
 		t.Error("an episode takes its series' rating; TMDB's find answer carries none")
 	}
-	if want := []mp.ArtworkRef{{Kind: "thumb", Ref: "https://image.tmdb.org/t/p/original/episode-still-90001301.jpg"}}; !reflect.DeepEqual(rec.Artwork, want) {
-		t.Errorf("artwork = %+v, want the episode's own still", rec.Artwork)
+	// The still is requested at TMDB's 300-wide size (#4476), where posters, fanart and logos
+	// (above) are requested at original.
+	if want := []mp.ArtworkRef{{Kind: "thumb", Ref: "https://image.tmdb.org/t/p/w300/episode-still-90001301.jpg"}}; !reflect.DeepEqual(rec.Artwork, want) {
+		t.Errorf("artwork = %+v, want the episode's own still at w300", rec.Artwork)
 	}
 }
 
@@ -468,6 +513,90 @@ func TestFetch_ReadsInTheHouseholdLanguage(t *testing.T) {
 	}
 }
 
+// Outside English, a text TMDB has no translation for is filled from English and says so; a text
+// it has keeps the installation's language. English text never costs a second request.
+func TestFetch_FillsUntranslatedTextFromEnglish(t *testing.T) {
+	var mu sync.Mutex
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		language := r.URL.Query().Get("language")
+		mu.Lock()
+		asked = append(asked, r.URL.Path+" "+language)
+		mu.Unlock()
+		english := `{"translations":{"translations":[
+			{"iso_3166_1":"GB","iso_639_1":"en","data":{"overview":"British text.","tagline":"British line."}},
+			{"iso_3166_1":"US","iso_639_1":"en","data":{"overview":"A keeper's last winter.","tagline":"The light stays on."}}]}}`
+		switch r.URL.Path {
+		case "/movie/90000601": // no German text at all
+			_, _ = w.Write([]byte(`{"id":90000601,"title":"Leuchtturm","overview":"","tagline":"",` + english[1:]))
+		case "/movie/90000602": // German text of its own
+			_, _ = w.Write([]byte(`{"id":90000602,"title":"Ebbe","overview":"Ein Winter.","tagline":"Es bleibt.",` + english[1:]))
+		case "/tv/90000701/season/1":
+			second := `""`
+			if language == "en-US" {
+				second = `"The tide goes out."`
+			}
+			_, _ = w.Write([]byte(`{"season_number":1,"episodes":[
+				{"id":90000791,"episode_number":1,"name":"Erstes Licht","overview":"Es wird hell."},
+				{"id":90000792,"episode_number":2,"name":"Niedrigwasser","overview":` + second + `}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	german := provider.New(tmdbclient.NewWithBase(srv.URL, apiKey), func() (string, string) { return "de-DE", "US" })
+	ctx := context.Background()
+
+	rec, err := german.Fetch(ctx, movieRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := rec.Descriptive
+	if d.Overview != "A keeper's last winter." || d.OverviewLanguage != "en-US" ||
+		d.Tagline != "The light stays on." || d.TaglineLanguage != "en-US" || rec.Language != "de-DE" {
+		t.Errorf("untranslated film = %+v in %s, want the US English text, marked en-US", d, rec.Language)
+	}
+
+	rec, err = german.Fetch(ctx, ref(mp.KindMovie, mp.NamespaceTMDB, "90000602"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := rec.Descriptive; d.Overview != "Ein Winter." || d.OverviewLanguage != "" || d.Tagline != "Es bleibt." || d.TaglineLanguage != "" {
+		t.Errorf("translated film = %+v, want its German text, unmarked", d)
+	}
+
+	rec, err = german.Fetch(ctx, ref(mp.KindSeason, mp.NamespaceTMDB, "90000701/1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, second := rec.Children[0].Descriptive, rec.Children[1].Descriptive
+	if first.Overview != "Es wird hell." || first.OverviewLanguage != "" ||
+		second.Overview != "The tide goes out." || second.OverviewLanguage != "en-US" {
+		t.Errorf("episodes = %+v, %+v: want the German one kept and the empty one filled from English", first, second)
+	}
+
+	mu.Lock()
+	want := []string{"/movie/90000601 de-DE", "/movie/90000602 de-DE", "/tv/90000701/season/1 de-DE", "/tv/90000701/season/1 en-US"}
+	if !reflect.DeepEqual(asked, want) {
+		t.Errorf("requests = %q, want %q: a film's English text rides the detail call", asked, want)
+	}
+	asked = nil
+	mu.Unlock()
+
+	english := provider.New(tmdbclient.NewWithBase(srv.URL, apiKey), func() (string, string) { return "en-US", "US" })
+	if _, err := english.Fetch(ctx, ref(mp.KindSeason, mp.NamespaceTMDB, "90000701/1")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := english.Fetch(ctx, movieRef); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(asked) != 2 {
+		t.Errorf("requests = %q: in English there is nothing to fall back to", asked)
+	}
+}
+
 func TestFetch_RefusesWhatItCannotAnswer(t *testing.T) {
 	f := newFakeTMDB(t)
 	ctx := context.Background()
@@ -478,8 +607,8 @@ func TestFetch_RefusesWhatItCannotAnswer(t *testing.T) {
 			t.Fatalf("err = %v, want ErrUnsupported", err)
 		}
 	})
-	t.Run("a series by a TVDB id is outside the capabilities", func(t *testing.T) {
-		_, err := f.provider(nil).Fetch(ctx, ref(mp.KindSeries, mp.NamespaceTVDB, "90000711"))
+	t.Run("a collection by an IMDb id is outside the capabilities", func(t *testing.T) {
+		_, err := f.provider(nil).Fetch(ctx, ref(mp.KindCollection, mp.NamespaceIMDB, "tt9000611"))
 		if !errors.Is(err, mp.ErrUnsupported) {
 			t.Fatalf("err = %v, want ErrUnsupported", err)
 		}

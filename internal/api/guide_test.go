@@ -28,7 +28,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // GET /v1/guide — the time-grid endpoint (V13b). Distinct from /v1/playout/guide.xml, which the
@@ -138,13 +138,12 @@ func newGuideHarness(t *testing.T, config guideHarnessConfig) *guideHarness {
 	t.Helper()
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		opts := api.Options{
-			Store:          defaults.Store,
-			Auth:           defaults.Auth,
-			Log:            defaults.Log,
-			PlayoutGuide:   config.Guide,
-			Pods:           config.Pods,
-			TimelineThumbs: config.TimelineThumbs,
-			Images:         config.Images,
+			Store:   defaults.Store,
+			Auth:    defaults.Auth,
+			Log:     defaults.Log,
+			Playout: api.PlayoutOptions{Guide: config.Guide},
+			Guide:   api.GuideOptions{Pods: config.Pods, TimelineThumbs: config.TimelineThumbs},
+			Images:  config.Images,
 		}
 		live := mapSettings{}
 		if config.Timezone != "" {
@@ -190,9 +189,9 @@ func ms(v int64) string { return strconv.FormatInt(v, 10) }
 // errGridBoom stands in for any per-channel failure (a store hiccup, a scheduler error).
 var errGridBoom = errors.New("timeline unavailable")
 
-func gridBlock(kind schedule.SlotKind, title string, offset time.Duration, mins int) playout.Broadcast {
+func gridBlock(kind schedule.SlotKind, title string, offset time.Duration, mins int) timeline.Broadcast {
 	start := time.Now().Add(offset)
-	return playout.Broadcast{
+	return timeline.Broadcast{
 		Kind: kind, Title: title,
 		Start: start, Stop: start.Add(time.Duration(mins) * time.Minute),
 	}
@@ -200,8 +199,8 @@ func gridBlock(kind schedule.SlotKind, title string, offset time.Duration, mins 
 
 // gridBlockAfter starts exactly where prev stopped. Two gridBlock calls read the clock twice, so
 // blocks meant to touch can land a millisecond apart.
-func gridBlockAfter(prev playout.Broadcast, kind schedule.SlotKind, title string, mins int) playout.Broadcast {
-	return playout.Broadcast{
+func gridBlockAfter(prev timeline.Broadcast, kind schedule.SlotKind, title string, mins int) timeline.Broadcast {
+	return timeline.Broadcast{
 		Kind: kind, Title: title,
 		Start: prev.Stop, Stop: prev.Stop.Add(time.Duration(mins) * time.Minute),
 	}
@@ -212,7 +211,7 @@ func gridBlockAfter(prev playout.Broadcast, kind schedule.SlotKind, title string
 // "commercials are playing" differently from "we are still acquiring this" — two completely
 // different situations with one rendering.
 func TestGuide_PendingAndFillerAreDistinguishable(t *testing.T) {
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {
 			gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 0, 60),
 			gridBlock(schedule.SlotFiller, "Break", time.Hour, 2),
@@ -303,7 +302,7 @@ func TestGuide_RowCarriesTheEraDecade(t *testing.T) {
 // so. A client that treated them as scheduled airtime would promise the user a programme at a
 // moment nothing will actually air.
 func TestGuide_PendingBlocksAreMarkedNominal(t *testing.T) {
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {
 			gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 0, 60),
 			{
@@ -333,7 +332,7 @@ func TestGuide_PendingBlocksAreMarkedNominal(t *testing.T) {
 func TestGuide_GapsArePreservedNotFiltered(t *testing.T) {
 	programme := gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 0, 60)
 	brk := gridBlockAfter(programme, schedule.SlotFiller, "Break", 2)
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {programme, brk, gridBlockAfter(brk, schedule.SlotProgram, "Emberfall Canyon", 30)},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
@@ -357,7 +356,7 @@ func TestGuide_GapsArePreservedNotFiltered(t *testing.T) {
 // THE GATE'S FIRST CLAUSE: a window spanning past AND future returns per-channel timelines. The
 // grid scrolls backwards to "what did I miss", so a window that begins before now is normal.
 func TestGuide_WindowSpanningPastAndFutureReturnsTimelines(t *testing.T) {
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", -30*time.Minute, 60)},
 		"ch2": {gridBlock(schedule.SlotProgram, "Ashgrove Anomaly", -10*time.Minute, 90)},
 	}}
@@ -405,7 +404,7 @@ func TestGuide_OversizedWindowIsClampedNotRejected(t *testing.T) {
 // "nothing scheduled here" rather than as a deleted channel.
 func TestGuide_OneChannelFailingKeepsTheRest(t *testing.T) {
 	g := &fakeXMLTVGuide{
-		withPending: map[string][]playout.Broadcast{
+		withPending: map[string][]timeline.Broadcast{
 			"ok": {gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 0, 60)},
 		},
 		errFor: map[string]error{"broken": errGridBoom},
@@ -446,7 +445,7 @@ func TestGuide_NoResolverIsEmptyNotAnError(t *testing.T) {
 // internal backend so a media server does not see two tuners offering one channel — but this is
 // Loomarr's own UI, where hiding a channel would look like it had been deleted.
 func TestGuide_IncludesTunarrBackedChannels(t *testing.T) {
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"tunarr-ch": {gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 0, 60)},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
@@ -476,7 +475,7 @@ func TestGuide_IncludesTunarrBackedChannels(t *testing.T) {
 // but-not-admin gate to assert against. The regression worth catching is someone later adding
 // requireAdmin to this route and silently removing the grid from every non-admin account.
 func TestGuide_IsNotAdminGated(t *testing.T) {
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 0, 60)},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
@@ -500,7 +499,7 @@ func TestGuide_IsNotAdminGated(t *testing.T) {
 // card's whole purpose. Without it, "why are my commercials wrong" has no answer on the
 // surface where the question occurs.
 func TestGuide_FillerBlocksCarryTheirPodComposition(t *testing.T) {
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "Break", 0, 4)},
 	}}
 	fp := &fakePods{pod: pod.Pod{
@@ -536,7 +535,7 @@ func TestGuide_FillerBlocksCarryTheirPodComposition(t *testing.T) {
 // wire; a curated name in the same break still does.
 func TestGuide_FillerPodNeverSendsAFileSlug(t *testing.T) {
 	const slug = "commercial-widgetmax-1991"
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "", 0, 4)},
 	}}
 	fp := &fakePods{pod: pod.Pod{
@@ -578,7 +577,7 @@ func TestGuide_FillerPodNeverSendsAFileSlug(t *testing.T) {
 // like a title never reaches a member; an operator's segment name and a sidecar title do, even a
 // slug-shaped one, because their recorded source says they are copy.
 func TestGuide_FillerPodWithholdsFilenameByProvenance(t *testing.T) {
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "", 0, 4)},
 	}}
 	fp := &fakePods{pod: pod.Pod{
@@ -625,7 +624,7 @@ func TestGuide_FillerPodWithholdsFilenameByProvenance(t *testing.T) {
 // programme artwork, but /v1/guide used the shared DTO without populating either shape.
 func TestGuide_HoverCardsCarryProgrammeAndFillerArtwork(t *testing.T) {
 	now := time.Now()
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {
 			{
 				Kind: schedule.SlotProgram, Key: "movie:tmdb:90000089", Title: "Bellwether Junction",
@@ -690,7 +689,7 @@ func TestGuide_HoverCardsCarryProgrammeAndFillerArtwork(t *testing.T) {
 func TestGuide_ProgrammesCarryTheirTitlesLogoAndBackdrop(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {
 			{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000091", Title: "Bellwether Junction",
 				Start: now, Stop: now.Add(2 * time.Hour)},
@@ -772,11 +771,11 @@ func TestGuide_ProgrammesCarryTheirTitlesLogoAndBackdrop(t *testing.T) {
 func TestGuide_BatchesProgrammeArtworkWithoutSerializingFirstPaint(t *testing.T) {
 	const delay = 60 * time.Millisecond
 	now := time.Now()
-	blocks := make([]playout.Broadcast, 0, 8)
+	blocks := make([]timeline.Broadcast, 0, 8)
 	for i := range 8 {
 		// Four identities, each repeated once. Dedupe is across airings, not merely adjacent blocks.
 		identity := i % 4
-		blocks = append(blocks, playout.Broadcast{
+		blocks = append(blocks, timeline.Broadcast{
 			Kind: schedule.SlotProgram, Key: provision.Key("movie:tmdb:" + strconv.Itoa(90000100+identity)),
 			Title: "Movie " + strconv.Itoa(identity), Start: now.Add(time.Duration(i) * time.Hour),
 			Stop: now.Add(time.Duration(i+1) * time.Hour),
@@ -784,7 +783,7 @@ func TestGuide_BatchesProgrammeArtworkWithoutSerializingFirstPaint(t *testing.T)
 	}
 	thumbs := &slowGuideThumbs{delay: delay, calls: map[string]int{}}
 	harness := newGuideHarness(t, guideHarnessConfig{
-		Guide:          &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{"ch1": blocks}},
+		Guide:          &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{"ch1": blocks}},
 		TimelineThumbs: thumbs,
 	})
 	srv, st := harness.Server, harness.Store
@@ -819,7 +818,7 @@ func TestGuide_BatchesProgrammeArtworkWithoutSerializingFirstPaint(t *testing.T)
 // not just when it is from. These are display-only passengers carried straight from the catalog
 // row — the mapper must not drop them, or the whole V44 surfacing is invisible to the guide.
 func TestGuide_FillerPodCarriesRicherClipMetadata(t *testing.T) {
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "Break", 0, 4)},
 	}}
 	fp := &fakePods{pod: pod.Pod{
@@ -865,7 +864,7 @@ func TestGuide_FillerPodCarriesRicherClipMetadata(t *testing.T) {
 // not a failure), and a present-but-empty `brand` would read as "we looked and found none" when
 // we simply never grounded one. Proven at the JSON level, since that is where omitempty acts.
 func TestGuide_UntaggedClipOmitsRicherMetadata(t *testing.T) {
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "Break", 0, 4)},
 	}}
 	fp := &fakePods{pod: pod.Pod{
@@ -895,7 +894,7 @@ func TestGuide_UntaggedClipOmitsRicherMetadata(t *testing.T) {
 // consecutive breaks can differ. Asking once per channel would show one representative pod
 // and quietly misdescribe every other break.
 func TestGuide_ResolvesEachBreakAtItsOwnStart(t *testing.T) {
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {
 			gridBlock(schedule.SlotFiller, "Break", 0, 4),
 			gridBlock(schedule.SlotFiller, "Break", 30*time.Minute, 4),
@@ -933,7 +932,7 @@ func TestGuide_ResolvesEachBreakAtItsOwnStart(t *testing.T) {
 // A non-filler block has no pod: a programme is not a break, and an empty pod object would
 // make the client guard a case that cannot happen.
 func TestGuide_ProgrammesCarryNoPod(t *testing.T) {
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 0, 60)},
 	}}
 	fp := &fakePods{pod: pod.Pod{Entries: []pod.Entry{{Name: "Ad", DurationMs: 30000}}}}
@@ -952,7 +951,7 @@ func TestGuide_CarriesRuntimeAndProvenance(t *testing.T) {
 	b := gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 0, 60)
 	b.RuntimeMs = 170 * 60 * 1000
 	b.Provenance = "in library"
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{"ch1": {b}}}
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{"ch1": {b}}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
 	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)

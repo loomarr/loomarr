@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
@@ -14,7 +13,8 @@ import (
 const proposalDeniedMigration = 164
 
 func TestProposalDeniedTopicMigration(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "proposal-denied.db"))
+	t.Parallel()
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, proposalDeniedMigration-1, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

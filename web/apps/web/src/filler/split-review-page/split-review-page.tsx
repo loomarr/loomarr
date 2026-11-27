@@ -5,7 +5,7 @@ import type { SplitLanguageExclusion } from "@loomarr/api/models/splitLanguageEx
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { formatMmSs, pluralize } from "@loomarr/core/format";
-import { Action, Icon, icons } from "@loomarr/design-system";
+import { Action, Card, Details, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -31,28 +31,45 @@ const LanguageReceipt = ({
 }) => {
   if (exclusions.length === 0) return null;
   return (
-    <details className="border-border bg-muted/20 rounded-lg border p-4 text-sm">
-      <summary className="cursor-pointer font-medium">
-        Loomarr left out {pluralize(exclusions.length, "clip")} spoken in another language
-        <span className="text-muted-foreground ml-1 font-normal">
-          · Show skipped {exclusions.length === 1 ? "clip" : "clips"}
-        </span>
-      </summary>
-      <p className="text-muted-foreground mt-2">
-        This split was checked for {languageList(checkedFor)}. These clips remain in the original compilation
-        but won’t be added as filler.
-      </p>
-      <ul className="mt-3 space-y-2">
-        {exclusions.map((item) => (
-          <li key={`${item.startMs}-${item.endMs}`} className="bg-background/60 rounded-md px-3 py-2">
-            <span className="block font-medium">{item.name}</span>
-            <span className="text-muted-foreground text-xs">
-              {`${languageName(item.detectedLanguage)} · ${formatMmSs(item.startMs)}–${formatMmSs(item.endMs)}`}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </details>
+    <Card padding={16}>
+      <Details
+        summary={
+          <>
+            Loomarr left out {pluralize(exclusions.length, "clip")} spoken in another language
+            <Text as="span" marginLeft={4} textRole="compact" tone="secondary">
+              · Show skipped {exclusions.length === 1 ? "clip" : "clips"}
+            </Text>
+          </>
+        }
+        textRole="cardLabel"
+      >
+        <Stack marginTop={8}>
+          <Text as="p" textRole="compact" tone="secondary">
+            This split was checked for {languageList(checkedFor)}. These clips remain in the original
+            compilation but won’t be added as filler.
+          </Text>
+        </Stack>
+        <Stack gap="2" marginTop={12} render="ul">
+          {exclusions.map((item) => (
+            <Stack
+              backgroundColor="surfaceCanvas"
+              borderRadius={8}
+              key={`${item.startMs}-${item.endMs}`}
+              paddingHorizontal={12}
+              paddingVertical={8}
+              render="li"
+            >
+              <Text as="span" textRole="cardLabel">
+                {item.name}
+              </Text>
+              <Text as="span" textRole="hint" tone="secondary">
+                {`${languageName(item.detectedLanguage)} · ${formatMmSs(item.startMs)}–${formatMmSs(item.endMs)}`}
+              </Text>
+            </Stack>
+          ))}
+        </Stack>
+      </Details>
+    </Card>
   );
 };
 
@@ -111,7 +128,9 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
     return <ErrorState error={proposal.error} onRetry={() => proposal.refetch()} />;
   }
   const p = persistedProposal;
-  if (!p) return <p className="text-muted-foreground text-sm">Loading the proposal…</p>;
+  // The route's loader ensured the proposal, and its error view takes a first read that fails, so
+  // the page always opens on it. A failed refresh after that is the branch above.
+  if (!p) return null;
   const parentName = unwrap(parent.data, (body) => body.clips[0]?.name) || "this compilation";
   const minClipDurationMs = durationSettingMs(
     unwrap(
@@ -138,41 +157,57 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
   return (
     // p-6 for the same reason as the catalog page: the shell adds no gutter, so a page
     // without one renders flush against the sidebar.
-    <div className="flex flex-col gap-4 p-6">
+    <Stack gap="4" padding={24}>
       <div>
         {/* This route sits outside the Filler header and tabs, so it names its way back: to
             wherever review was opened (#1817, decided on #1908). The Settings index's "← Manage"
             link is the pattern. */}
-        <Link
-          to={backTo}
-          className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1.5 text-sm"
-        >
-          <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
-          {from === "incoming" ? "Incoming" : "Library"}
-        </Link>
-        <h1 className="text-xl font-semibold">Review clips</h1>
-        <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
-          Loomarr found these clips in <span className="text-static-200 font-medium">{parentName}</span>.
-          Preview anything that needs a closer look, then keep the clips you want. The original recording
-          stays available if you need it later.
-        </p>
+        <Stack align="start" marginBottom={12}>
+          <Action accessibilityRole="link" icon="goBack" render={<Link to={backTo} />} variant="ghost">
+            {from === "incoming" ? "Incoming" : "Library"}
+          </Action>
+        </Stack>
+        <Text as="h1" textRole="title">
+          Review clips
+        </Text>
+        <Stack marginTop={4} maxWidth={672}>
+          <Text as="p" textRole="compact" tone="secondary">
+            Loomarr found these clips in{" "}
+            <Text as="span" textRole="cardLabel" tone="primary">
+              {parentName}
+            </Text>
+            . Preview anything that needs a closer look, then keep the clips you want. The original recording
+            stays available if you need it later.
+          </Text>
+        </Stack>
       </div>
       {languageChanged ? (
-        <div className="border-caution/40 bg-caution-tint-15 flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="font-medium">{currentLanguageHeadline}</p>
-            <p className="text-muted-foreground mt-1 text-sm">
-              This split was checked for {languageList(checked)}. Recheck it before you confirm.
-            </p>
-          </div>
-          <Action
-            disabled={recheck.isPending}
-            onPress={() => recheck.mutate({ data: { hash: p.clipHash, from: "split" } })}
-            variant="outline"
+        <Card padding={16} tone="caution">
+          <Stack
+            align={{ base: "stretch", sm: "center" }}
+            direction={{ base: "column", sm: "row" }}
+            gap="3"
+            justify={{ base: "start", sm: "between" }}
           >
-            {recheck.isPending ? "Starting recheck…" : recheckLabel}
-          </Action>
-        </div>
+            <div>
+              <Text as="p" textRole="heading">
+                {currentLanguageHeadline}
+              </Text>
+              <Stack marginTop={4}>
+                <Text as="p" textRole="compact" tone="secondary">
+                  This split was checked for {languageList(checked)}. Recheck it before you confirm.
+                </Text>
+              </Stack>
+            </div>
+            <Action
+              disabled={recheck.isPending}
+              onPress={() => recheck.mutate({ data: { hash: p.clipHash, from: "split" } })}
+              variant="outline"
+            >
+              {recheck.isPending ? "Starting recheck…" : recheckLabel}
+            </Action>
+          </Stack>
+        </Card>
       ) : null}
       <LanguageReceipt exclusions={p.languageExclusions ?? []} checkedFor={checked} />
       <SplitReviewEditor
@@ -182,7 +217,7 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
         onConfirm={(segments) => confirm.mutate({ proposalId, data: { segments } })}
         onBack={() => void navigate({ to: backTo })}
       />
-    </div>
+    </Stack>
   );
 };
 

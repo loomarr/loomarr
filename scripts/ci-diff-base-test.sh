@@ -33,13 +33,17 @@ b=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 c=cccccccccccccccccccccccccccccccccccccccc
 zero=0000000000000000000000000000000000000000
 
+# A JSON body with a comma goes in a variable first: bash 3.2 brace-expands one written inside a
+# quoted "$(...)" and splits it into several arguments.
+pr_json="{\"before\":\"$c\",\"pull_request\":{\"base\":{\"sha\":\"$a\"},\"head\":{\"sha\":\"$b\"}}}"
 assert_base 'pull_request uses the PR base, not the previous push' pull_request \
-  "$(event pr "{\"before\":\"$c\",\"pull_request\":{\"base\":{\"sha\":\"$a\"},\"head\":{\"sha\":\"$b\"}}}")" "$a"
+  "$(event pr "$pr_json")" "$a"
 # ⚠ merge_group carries NEITHER pull_request.base.sha NOR before. Without base_sha the queue fails
 # closed and every batch pays the full native matrix.
-assert_base 'merge_group uses the queue base' merge_group \
-  "$(event mg "{\"merge_group\":{\"base_sha\":\"$a\",\"head_sha\":\"$b\",\"base_ref\":\"refs/heads/main\"}}")" "$a"
-assert_base 'push uses the previous head' push "$(event push "{\"before\":\"$a\",\"after\":\"$b\"}")" "$a"
+mg_json="{\"merge_group\":{\"base_sha\":\"$a\",\"head_sha\":\"$b\",\"base_ref\":\"refs/heads/main\"}}"
+assert_base 'merge_group uses the queue base' merge_group "$(event mg "$mg_json")" "$a"
+push_json="{\"before\":\"$a\",\"after\":\"$b\"}"
+assert_base 'push uses the previous head' push "$(event push "$push_json")" "$a"
 
 # Fail closed: no usable base prints nothing, and the caller then selects every gate.
 assert_base 'merge_group without base_sha' merge_group "$(event mg-bare '{"merge_group":{"head_sha":"'"$b"'"}}')" ''
@@ -58,7 +62,8 @@ repo="$tmp/repo"
 git init -q "$repo"
 git -C "$repo" -c user.email=ci@example.invalid -c user.name=ci commit -q --allow-empty -m main
 main_sha="$(git -C "$repo" rev-parse HEAD)"
-queue_payload="$(event mg-real "{\"merge_group\":{\"base_sha\":\"$main_sha\",\"head_sha\":\"unused\"}}")"
+queue_json="{\"merge_group\":{\"base_sha\":\"$main_sha\",\"head_sha\":\"unused\"}}"
+queue_payload="$(event mg-real "$queue_json")"
 
 assert_batch_gates() {
   local label="$1" want="$2" path got base

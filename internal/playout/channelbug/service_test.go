@@ -203,9 +203,9 @@ func TestChannelWatermarks_FailedCheckIsAWarningWithItsReason(t *testing.T) {
 	events := &recordedEvents{}
 	c := &Service{dir: t.TempDir(), channels: staticChannelReader{channel: channelstore.Channel{}}, log: slog.New(slog.DiscardHandler),
 		ffmpeg: func() string { return ffmpeg }, tonemap: func() bool { return false }, gpu: func() encode.GPUFilters { return encode.GPUFilters{} },
-		events: events, lifetime: t.Context()}
+		events: events}
 	g := &watermarkGate{}
-	c.check(encode.EncoderVAAPI, g)
+	c.check(t.Context(), encode.EncoderVAAPI, g)
 
 	if g.works.Load() {
 		t.Fatal("a failed self-check left the watermark on")
@@ -218,6 +218,26 @@ func TestChannelWatermarks_FailedCheckIsAWarningWithItsReason(t *testing.T) {
 	if e.Level != diagnostics.LevelWarn || e.Name != "watermark.disabled" || !strings.Contains(detail, "no such encoder") ||
 		!strings.Contains(e.Message, detail) || e.Attributes["encoder"] != string(encode.EncoderVAAPI) {
 		t.Errorf("the event does not say why the watermark is off: %+v", e)
+	}
+}
+
+// A self-check that shutdown cancelled reached no verdict: it must not log or record that this host
+// cannot draw watermarks.
+func TestChannelWatermarks_CancelledCheckRecordsNoVerdict(t *testing.T) {
+	ffmpeg := filepath.Join(t.TempDir(), "ffmpeg")
+	if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\necho 'killed' >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	events := &recordedEvents{}
+	c := &Service{dir: t.TempDir(), channels: staticChannelReader{channel: channelstore.Channel{}}, log: slog.New(slog.DiscardHandler),
+		ffmpeg: func() string { return ffmpeg }, tonemap: func() bool { return false }, gpu: func() encode.GPUFilters { return encode.GPUFilters{} },
+		events: events}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	c.check(ctx, encode.EncoderVAAPI, &watermarkGate{})
+
+	if len(events.got) != 0 {
+		t.Fatalf("a cancelled check recorded %d Diagnostics events: %+v", len(events.got), events.got)
 	}
 }
 

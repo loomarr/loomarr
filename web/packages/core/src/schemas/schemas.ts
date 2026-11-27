@@ -4,11 +4,10 @@
 //
 // ⚠ **FIELD NAMES ARE DERIVED, NOT MIRRORED (§14).** Each schema is `.pick()`ed off the
 // generated wire schema in `@loomarr/api/zod`, so a name that is not on the wire is a COMPILE
-// error here rather than a value the server silently ignores. This schema once said
-// `maxAcquire` where the wire says `maxAcquisitions`, and `runtimeTarget` where it says
-// `runtimeTargetMin`: both parsed, both serialized to JSON the server dropped on the floor, and
-// a user's acquisition cap and runtime target just vanished. Types alone did not catch it,
-// because the form never had to satisfy `Intent`.
+// error here rather than a value the server silently ignores. A near-miss name (`maxAcquire`
+// for `maxAcquisitions`, `runtimeTarget` for `runtimeTargetMin`) would parse, serialize to JSON
+// the server drops on the floor, and silently lose a user's acquisition cap or runtime target.
+// Types alone do not catch it, because the form never has to satisfy `Intent`.
 //
 // ⚠ **The error message is cryptic — recognise it.** Picking a key that is not on the wire
 // fails with `Type 'true' is not assignable to type 'never'` on that line. It means exactly

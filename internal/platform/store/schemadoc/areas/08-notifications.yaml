@@ -19,7 +19,9 @@ tables:
       scope: >
         installation for a destination an admin set up for the whole household; person for one that
         belongs to a single person.
-      owner_id: The person a person-scoped destination belongs to, from users. Empty for installation scope.
+      owner_id: >
+        The person a person-scoped destination belongs to, from users; it goes with them. Null for
+        installation scope.
       audience: >
         Who the destination is for. person means its owner's own notifications; approvers means the admins
         who review requests; operators means the admins who look after the server and library.

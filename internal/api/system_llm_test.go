@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/platform/llm/picker"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 )
 
 // fakeSystemLLM is a scriptable SystemLLMService for the API-layer tests.
@@ -60,10 +60,10 @@ func newSystemLLMHarness(t *testing.T, svc system.SystemLLMService) *apiHarness 
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
-			Store:     defaults.Store,
-			Auth:      defaults.Auth,
-			Log:       defaults.Log,
-			SystemLLM: svc,
+			Store:  defaults.Store,
+			Auth:   defaults.Auth,
+			Log:    defaults.Log,
+			System: api.SystemOptions{LLM: svc},
 		})
 	})
 }
@@ -275,9 +275,9 @@ func TestSystemLLM_PullOperationRecoversProgressWithoutEvents(t *testing.T) {
 	harness := newSystemLLMHarness(t, &fakeSystemLLM{})
 	srv, st := harness.Server, harness.Store
 	now := time.Now().UTC()
-	operation := store.InteractiveOperation{
-		ID: "pull-1", Kind: store.InteractiveOperationLLMPull, Subject: "qwen3:8b",
-		Status: store.InteractiveOperationRunning, Percent: 42, Completed: 420, Total: 1000,
+	operation := operationstore.InteractiveOperation{
+		ID: "pull-1", Kind: operationstore.InteractiveOperationLLMPull, Subject: "qwen3:8b",
+		Status: operationstore.InteractiveOperationRunning, Percent: 42, Completed: 420, Total: 1000,
 		StartedAt: now.Add(-time.Minute), UpdatedAt: now,
 	}
 	if err := st.UpsertInteractiveOperation(t.Context(), operation); err != nil {

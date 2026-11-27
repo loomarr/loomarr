@@ -15,4 +15,16 @@ describe("CopyValue", () => {
     expect(writeText).toHaveBeenCalledWith("run-42");
     expect(screen.getByText("run-42")).toBeVisible();
   });
+
+  it("copies by selection on a plain-HTTP origin instead of throwing", async () => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    const execCommand = vi.fn().mockReturnValue(true);
+    Object.defineProperty(document, "execCommand", { configurable: true, value: execCommand });
+    render(<CopyValue label="Run ID" value="run-42" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Copy Run ID: run-42" }));
+
+    expect(execCommand).toHaveBeenCalledWith("copy");
+    Reflect.deleteProperty(document, "execCommand");
+  });
 });

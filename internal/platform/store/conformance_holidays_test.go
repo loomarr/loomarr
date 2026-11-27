@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // Holidays (#2030): seeded at boot from the shipped definitions, each owning its seasonal taxon,
@@ -71,17 +72,17 @@ func testHolidaysFollowSeasonalTaxa(t *testing.T, newStore NewStoreFunc) {
 
 	// A dated holiday holds seasons and calendars: the taxonomy cannot take it away.
 	before := holidayIDs(t, s)
-	if _, err := s.PreviewTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: "halloween"}); !errors.Is(err, ErrTaxonConflict) {
+	if _, err := s.PreviewTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: "halloween"}); !errors.Is(err, clipstore.ErrTaxonConflict) {
 		t.Fatalf("previewing a dated holiday's taxon deletion = %v, want ErrTaxonConflict", err)
 	}
-	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: "halloween"}, at); !errors.Is(err, ErrTaxonConflict) {
+	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: "halloween"}, at); !errors.Is(err, clipstore.ErrTaxonConflict) {
 		t.Fatalf("deleting a dated holiday's taxon = %v, want ErrTaxonConflict", err)
 	}
 	halloween := taxonomy.Taxon{Slug: "halloween", Label: "Halloween", Axis: taxonomy.AxisFormat}
-	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Taxon: halloween}, at); !errors.Is(err, ErrTaxonConflict) {
+	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Taxon: halloween}, at); !errors.Is(err, clipstore.ErrTaxonConflict) {
 		t.Fatalf("moving a dated holiday's taxon off seasonal = %v, want ErrTaxonConflict", err)
 	}
-	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: holidayvocab.GenericHoliday}, at); !errors.Is(err, ErrTaxonConflict) {
+	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: holidayvocab.GenericHoliday}, at); !errors.Is(err, clipstore.ErrTaxonConflict) {
 		t.Fatalf("deleting a group holiday's taxon = %v, want ErrTaxonConflict", err)
 	}
 	if got := holidayIDs(t, s); !slices.Equal(got, before) {

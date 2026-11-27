@@ -18,6 +18,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout/packager"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 type fakeHLSOrigin struct {
@@ -121,7 +122,7 @@ func TestPackagerItemArgsApplyTheFillerGain(t *testing.T) {
 		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}
 	slot := packager.Slot{Frames: 250, AudioFrames: 469}
 	for gain, want := range map[float64]string{-2.5: "volume=-2.5dB", 0: ""} {
-		_, args, err := packagerItemArgs(host, out, PackagerItem{Input: "clip.mp4", Format: format, GainDB: gain}, nil, slot, itemFault{})
+		_, args, err := packagerItemArgs(host, out, PackagerItem{Input: "clip.mp4", Format: format, GainDB: gain}, nil, nil, slot, itemFault{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -400,20 +401,20 @@ func TestPackagerRetriesAFailedGPUTonemapWithTheNextOne(t *testing.T) {
 func TestFillerGainIsFillerOnly(t *testing.T) {
 	lufs, hot, quiet, peaky := -20.0, -12.2, -27.0, -3.0
 	for name, tc := range map[string]struct {
-		a      Airing
+		a      timeline.Airing
 		target string
 		gain   float64
 		noted  bool
 	}{
-		"filler measured": {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "-23", -3, false},
+		"filler measured": {timeline.Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "-23", -3, false},
 		// #2032: the household's most-aired ad, which the old ±6 dB clamp left 4.8 dB hot.
-		"hot clip cut fully": {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &hot}, "-23", -10.8, false},
+		"hot clip cut fully": {timeline.Airing{Source: "/f/clip.mp4", MeasuredLUFS: &hot}, "-23", -10.8, false},
 		// A boost stops where the true peak would pass -1 dBTP.
-		"boost capped by peak": {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &quiet, MeasuredTruePeak: &peaky}, "-23", 2, false},
-		"library title":        {Airing{LibraryItemID: "x", MeasuredLUFS: &lufs}, "-23", 0, false},
-		"filler unmeasured":    {Airing{Source: "/f/clip.mp4"}, "-23", 0, true},
-		"target not a number":  {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "loud", 0, true},
-		"no target":            {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "", 0, false},
+		"boost capped by peak": {timeline.Airing{Source: "/f/clip.mp4", MeasuredLUFS: &quiet, MeasuredTruePeak: &peaky}, "-23", 2, false},
+		"library title":        {timeline.Airing{LibraryItemID: "x", MeasuredLUFS: &lufs}, "-23", 0, false},
+		"filler unmeasured":    {timeline.Airing{Source: "/f/clip.mp4"}, "-23", 0, true},
+		"target not a number":  {timeline.Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "loud", 0, true},
+		"no target":            {timeline.Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "", 0, false},
 	} {
 		gain, note := FillerGain(tc.a, tc.target)
 		if gain != tc.gain || (note != "") != tc.noted {
@@ -531,6 +532,47 @@ func TestSlateEncodeWaitsForTheFirstItem(t *testing.T) {
 	time.Sleep(time.Second)
 	if _, err := os.Stat(mark); err == nil {
 		t.Fatal("the slate encode started beside the tune-in item's encoder")
+	}
+}
+
+// deadlineSource reports the first ItemAt's deadline: the admission-pricing lookup in start.
+type deadlineSource struct {
+	slowItemSource
+	first chan time.Time
+}
+
+func (s deadlineSource) ItemAt(ctx context.Context, ch string, at time.Time) (PackagerItem, error) {
+	deadline, _ := ctx.Deadline() // zero when unbounded
+	select {
+	case s.first <- deadline:
+	default:
+	}
+	return s.slowItemSource.ItemAt(ctx, ch, at)
+}
+
+// start's first lookup runs under the Origin's lifecycle read lock: unbounded, a stuck store
+// would wedge StopAll and Quiesce, and every tune queued behind them.
+func TestStartBoundsTheFirstItemLookup(t *testing.T) {
+	dir := t.TempDir()
+	ffmpeg := filepath.Join(dir, "ffmpeg")
+	if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\nexec sleep 5\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	source := deadlineSource{first: make(chan time.Time, 1)}
+	m, err := NewPackagerHLS(source, ffmpeg, t.TempDir(), time.Second, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Stop)
+	before := time.Now()
+	lease, err := m.acquirePlaylist("ch", false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.release()
+	deadline := <-source.first
+	if deadline.IsZero() || deadline.After(before.Add(firstItemLookupTimeout+time.Second)) {
+		t.Fatalf("first-item lookup deadline = %v, want within %v of the tune", deadline, firstItemLookupTimeout)
 	}
 }
 

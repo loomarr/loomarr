@@ -3,6 +3,8 @@
 package catalog
 
 import (
+	"time"
+
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -23,6 +25,8 @@ type Deps struct {
 	LiveSettings settings.Reader
 	// Search is the catalog behind /v1/search.
 	Search SearchService
+	// Now is the request clock; nil is time.Now.
+	Now func() time.Time
 }
 
 // Handlers serves the catalog routes.
@@ -30,11 +34,20 @@ type Handlers struct {
 	store        Store
 	liveSettings settings.Reader
 	search       SearchService
+	now          func() time.Time
 }
 
 // New returns the catalog handlers over d.
 func New(d Deps) *Handlers {
-	return &Handlers{store: d.Store, liveSettings: d.LiveSettings, search: d.Search}
+	return &Handlers{store: d.Store, liveSettings: d.LiveSettings, search: d.Search, now: d.Now}
+}
+
+// clock is the request clock: the pinned one in tests, time.Now otherwise.
+func (s *Handlers) clock() time.Time {
+	if s.now != nil {
+		return s.now()
+	}
+	return time.Now()
 }
 
 // Register mounts every route this package serves.

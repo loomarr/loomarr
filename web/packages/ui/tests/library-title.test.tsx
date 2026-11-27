@@ -5,7 +5,12 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
-import { LibraryTitle, type LibraryTitleDetail, type LibraryTitleProps } from "../index";
+import {
+  LibraryTitle,
+  type LibraryTitleDetail,
+  type LibraryTitleFix,
+  type LibraryTitleProps,
+} from "../index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -75,11 +80,10 @@ const SERIES: LibraryTitleDetail = {
   channels: [],
 };
 
-const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleProps> = {}) => {
+// An admin's page unless `member`, whose page has no fixes.
+const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleFix> = {}, member = false) => {
   const onBack = vi.fn();
-  const props: LibraryTitleProps = {
-    title,
-    onBack,
+  const fix: LibraryTitleFix = {
     onUpdateDetails: vi.fn(() => Promise.resolve()),
     onCheckFiles: vi.fn(() => Promise.resolve()),
     onSearch: vi.fn(() => Promise.resolve([])),
@@ -88,6 +92,7 @@ const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleProps> = {}
     onRemoveExtra: vi.fn(() => Promise.resolve()),
     ...over,
   };
+  const props: LibraryTitleProps = { title, onBack, fix: member ? undefined : fix };
   const host = doc.createElement("div");
   doc.body.append(host);
   const root = createRoot(host);
@@ -151,6 +156,21 @@ describe("LibraryTitle", () => {
     cleanup();
   });
 
+  it("names each part of a movie split over several files", () => {
+    const part = (n: number) =>
+      ({
+        ...MOVIE.files[0],
+        path: `/media/movies/Paper Kites (1996)/Paper Kites - cd${n}.mkv`,
+        part: n,
+      }) as LibraryTitleDetail["files"][number];
+    const { host, button, cleanup } = render({ ...MOVIE, files: [part(1), part(2)] });
+    act(() => button("Technical details").click());
+    expect(host.textContent).toContain("Part 1 of 2");
+    expect(host.textContent).toContain("Part 2 of 2");
+    expect(host.textContent).not.toContain("An extra copy");
+    cleanup();
+  });
+
   it("offers to remove an extra copy, and says when it couldn't", async () => {
     const extra = {
       ...MOVIE.files[0],
@@ -183,7 +203,7 @@ describe("LibraryTitle", () => {
     const movie = render({ ...MOVIE, unplayable: 1 });
     expect(movie.host.textContent).toContain("This movie can't be played — the file may be damaged");
     await act(async () => movie.button("Check again").click());
-    expect(movie.props.onCheckFiles).toHaveBeenCalled();
+    expect(movie.props.fix?.onCheckFiles).toHaveBeenCalled();
     expect(movie.host.textContent).toContain("Checked just now");
     movie.cleanup();
 
@@ -237,6 +257,20 @@ describe("LibraryTitle", () => {
     cleanup();
   });
 
+  it("shows no number for a special that has none", () => {
+    const unnumbered: LibraryTitleDetail = {
+      ...SERIES,
+      seasons: [
+        { number: 0, episodes: [{ id: "90000921", name: "Harbour - The Movie", number: 0, ready: true }] },
+      ],
+    };
+    const { host, button, cleanup } = render(unnumbered);
+    act(() => button("Specials").click());
+    expect(host.textContent).toContain("Harbour - The Movie");
+    expect(host.textContent).not.toContain("0Harbour - The Movie");
+    cleanup();
+  });
+
   // #2151 decision 53: episodes that wait on the show's order say so, and Choose opens Needs you.
   it("says which episodes wait on the show's episode order, and opens Needs you", () => {
     const onChooseOrder = vi.fn();
@@ -269,7 +303,7 @@ describe("LibraryTitle", () => {
     const onUpdateDetails = vi.fn(() => Promise.reject(new Error("tmdb down")));
     const { host, props, button, cleanup } = render(MOVIE, { onUpdateDetails });
     await act(async () => button("Check files again").click());
-    expect(props.onCheckFiles).toHaveBeenCalled();
+    expect(props.fix?.onCheckFiles).toHaveBeenCalled();
     expect(host.textContent).toContain("Checked just now");
     await act(async () => button("Update details").click());
     expect(onUpdateDetails).toHaveBeenCalled();
@@ -311,5 +345,39 @@ describe("LibraryTitle", () => {
     await act(async () => answered.button("Forget my answer").click());
     expect(onForget).toHaveBeenCalled();
     answered.cleanup();
+  });
+
+  // #4476: a member reads the page with nothing to fix, so nothing on it calls an admin route.
+  it("gives a member the story and the channels, with no fixes and no file cards", () => {
+    const extra = {
+      ...MOVIE.files[0],
+      path: "/media/movies/Paper Kites (1996)/copy.mkv",
+      size: 4_300_000_000,
+      extra: true,
+    } as LibraryTitleDetail["files"][number];
+    const { host, props, cleanup } = render(
+      { ...MOVIE, files: [...MOVIE.files, extra], unplayable: 1 },
+      {},
+      true,
+    );
+    expect(host.textContent).toContain(MOVIE.name);
+    for (const word of [
+      "Update details",
+      "Check files again",
+      "Wrong title?",
+      "Technical details",
+      "can't be played",
+      "Remove extra copy",
+    ]) {
+      expect(host.textContent).not.toContain(word);
+    }
+    act(() => {
+      const back = Array.from(host.querySelectorAll('[role="button"], button')).find((n) =>
+        n.textContent?.includes("Library"),
+      );
+      back?.click();
+    });
+    expect(props.onBack).toHaveBeenCalled();
+    cleanup();
   });
 });

@@ -57,7 +57,7 @@ func newWatermarkServer(t *testing.T, wm channelsapi.WatermarkPreviewer, now tim
 	t.Helper()
 	opts := api.Options{Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Now: func() time.Time { return now }}
 	if wm != nil {
-		opts.WatermarkPreview = wm
+		opts.Channels.WatermarkPreview = wm
 	}
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), opts))
 	t.Cleanup(srv.Close)

@@ -3,14 +3,14 @@ package store
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 func TestInvitationMigrationPreservesExistingContactAddresses(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "invitation-upgrade.db"))
+	t.Parallel()
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 77, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

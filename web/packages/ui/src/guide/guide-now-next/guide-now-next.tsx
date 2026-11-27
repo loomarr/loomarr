@@ -374,7 +374,8 @@ const GuideNowNext = ({
   );
 };
 
-// The guide's heading: its title and a line under it, with the view switch to the right.
+// The guide's heading: its title and a line under it, with the view switch to the right. A view
+// whose page heading already names it passes no title and keeps the line.
 const GuidePhoneHeader = ({ children, subtitle, title, wide }: GuidePhoneHeaderProps) => (
   <View
     style={{
@@ -388,9 +389,11 @@ const GuidePhoneHeader = ({ children, subtitle, title, wide }: GuidePhoneHeaderP
     }}
   >
     <View style={{ flexShrink: 1, gap: 2, minWidth: 0 }}>
-      <Text as="h2" density={wide ? "pointer" : "touch"} textRole="title">
-        {title}
-      </Text>
+      {title ? (
+        <Text as="h2" density={wide ? "pointer" : "touch"} textRole="title">
+          {title}
+        </Text>
+      ) : null}
       <Text density={wide ? "pointer" : "touch"} textRole="cardMeta" tone="secondary">
         {subtitle}
       </Text>

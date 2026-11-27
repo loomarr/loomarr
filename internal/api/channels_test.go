@@ -179,14 +179,16 @@ func newChannelsHarness(t *testing.T) *channelsHarness {
 	ltv := &fakeLiveTVSvc{}
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
-			Store:    defaults.Store,
-			Auth:     defaults.Auth,
-			Log:      defaults.Log,
-			Channels: chSvc,
-			LiveTV:   ltv,
-			// chSvc satisfies approval.Reconciler (Reconcile(ctx, id) error), so the number check
-			// (channeledit asks the binder) matches production wiring.
-			Binder: approval.New(defaults.Store, chSvc, nil, defaults.Log),
+			Store: defaults.Store,
+			Auth:  defaults.Auth,
+			Log:   defaults.Log,
+			Setup: api.SetupOptions{LiveTV: ltv},
+			Channels: api.ChannelsOptions{
+				Service: chSvc,
+				// chSvc satisfies approval.Reconciler (Reconcile(ctx, id) error), so the number check
+				// (channeledit asks the binder) matches production wiring.
+				Binder: approval.New(defaults.Store, chSvc, nil, defaults.Log),
+			},
 		})
 	})
 	return &channelsHarness{apiHarness: base, Channels: chSvc, LiveTV: ltv}
@@ -202,8 +204,8 @@ func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, records.Sto
 	chSvc := &fakeChannelSvc{}
 	log := slog.New(slog.DiscardHandler)
 	h := api.Router(log, api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: log, Channels: chSvc,
-		Binder: approval.New(st, chSvc, nil, log),
+		Store: st, Auth: testAuthorizer{}, Log: log,
+		Channels: api.ChannelsOptions{Service: chSvc, Binder: approval.New(st, chSvc, nil, log)},
 		// In particular: tunarr.url is unconfigured.
 		LiveSettings: mapSettings{"playout.backend": schedule.PlayoutBackendInternal},
 	})
@@ -891,11 +893,11 @@ func newServerWithSchedulerAndSuggest(t *testing.T) (*httptest.Server, records.S
 	t.Cleanup(func() { _ = st.Close() })
 	fs := &fakeSuggest{}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:    st,
-		Auth:     testAuthorizer{},
-		Log:      slog.New(slog.DiscardHandler),
-		Channels: &fakeChannelSvc{},
-		Suggest:  fs,
+		Store:     st,
+		Auth:      testAuthorizer{},
+		Log:       slog.New(slog.DiscardHandler),
+		Channels:  api.ChannelsOptions{Service: &fakeChannelSvc{}},
+		Proposals: api.ProposalsOptions{Suggest: fs},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -1291,56 +1293,24 @@ func TestUpdateChannel_RejectsMalformedDateScopes(t *testing.T) {
 	}
 }
 
-// `era` is still accepted as a request alias for era-shaped dates (#1877), but it is
-// stored and returned only as `dates`.
-func TestUpdateChannel_EraAliasIsStoredAndReturnedAsDates(t *testing.T) {
-	harness := newChannelsHarness(t)
-	srv, st := harness.Server, harness.Store
-	mkChannel(t, srv, "c1", "A", 5)
-
-	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		channelPatchBody(t, st, "c1", `{"policy":{"scope":{"era":{"from":1990}},"rules":[{"id":"r","what":{"era":{"from":1980,"to":1989}}}]}}`))
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("era patch → %d, want 200", resp.StatusCode)
-	}
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), `"era":{`) {
-		t.Errorf("response carried a scope era: %s", raw)
-	}
-	if !strings.Contains(string(raw), `"seriesAiring":[{"from":1990}]`) {
-		t.Errorf("response did not carry the era as dates: %s", raw)
-	}
-	ch, err := st.GetChannel(context.Background(), "c1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if era, ok := ch.Policy.Scope.Dates.Era(); !ok || era != (schedule.Range{From: 1990}) {
-		t.Errorf("stored scope dates = %+v, want era-shaped 1990 onwards", ch.Policy.Scope.Dates)
-	}
-	if era, ok := ch.Policy.Rules[0].What.Dates.Era(); !ok || era != (schedule.Range{From: 1980, To: 1989}) {
-		t.Errorf("stored rule dates = %+v, want era-shaped 1980-1989", ch.Policy.Rules[0].What.Dates)
-	}
-}
-
-func TestPolicyRequestsWithEraAndDatesAreAmbiguous(t *testing.T) {
+// The scope `era` alias is retired (#2147): a request that sends one is refused rather than
+// silently dropped, on a channel's scope and on a rule's.
+func TestPolicyRequestsWithEraAreRefused(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, st := harness.Server, harness.Store
 	mkChannel(t, srv, "c1", "A", 5)
 
 	for _, policy := range []string{
-		`{"scope":{"era":{"from":1990,"to":1999},"dates":{"movieRelease":[{"from":1990,"to":1999}]}}}`,
-		`{"rules":[{"id":"r","what":{"era":{"from":1990,"to":1999},"dates":{"seriesAiring":[{"from":1990,"to":1999}]}}}]}`,
+		`{"scope":{"era":{"from":1990,"to":1999}}}`,
+		`{"rules":[{"id":"r","what":{"era":{"from":1990,"to":1999}}}]}`,
 	} {
 		for name, resp := range map[string]*http.Response{
 			"patch":   do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, channelPatchBody(t, st, "c1", `{"policy":`+policy+`}`)),
 			"preview": do(t, srv, http.MethodPost, "/v1/channels/c1/programming/preview", adminToken, `{"policy":`+policy+`}`),
 		} {
 			raw, _ := io.ReadAll(resp.Body)
-			if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(string(raw), "not both") {
-				t.Errorf("%s %s → %d %s, want 422 naming the ambiguity", name, policy, resp.StatusCode, raw)
+			if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(string(raw), ".era") {
+				t.Errorf("%s %s → %d %s, want 422 naming the era", name, policy, resp.StatusCode, raw)
 			}
 		}
 	}
@@ -1405,7 +1375,8 @@ func TestChannelLifecycle_StopsInternalPlayoutAndRescansOnRemoval(t *testing.T) 
 	log := slog.New(slog.DiscardHandler)
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log,
-		Channels: channelSvc, Playout: playback, TunerRescanner: rescanner,
+		Channels:     api.ChannelsOptions{Service: channelSvc, TunerRescanner: rescanner},
+		Playout:      api.PlayoutOptions{Service: playback},
 		LiveSettings: mapSettings{"playout.backend": schedule.PlayoutBackendInternal},
 	}))
 	t.Cleanup(srv.Close)
@@ -1475,13 +1446,14 @@ func TestChannelLifecycle_StopsPreparedInternalTransportOnPauseAndDetach(t *test
 	log := slog.New(slog.DiscardHandler)
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log,
-		Channels: &fakeChannelSvc{}, Playout: playback, TunerRescanner: rescanner,
-		BackendCheckpoint: func(context.Context) (httpcore.BackendCheckpoint, error) {
+		Channels: api.ChannelsOptions{Service: &fakeChannelSvc{}, TunerRescanner: rescanner},
+		Playout:  api.PlayoutOptions{Service: playback},
+		Setup: api.SetupOptions{BackendCheckpoint: func(context.Context) (httpcore.BackendCheckpoint, error) {
 			return httpcore.BackendCheckpoint{
 				Applied: schedule.PlayoutBackendTunarr, Prepared: schedule.PlayoutBackendInternal,
 				PublishedInternal: true,
 			}, nil
-		},
+		}},
 	}))
 	t.Cleanup(srv.Close)
 
@@ -1943,8 +1915,9 @@ func TestSetupStatusRequiresAdmin(t *testing.T) {
 
 // fakeGuide is a scripted api.GuideReader keyed by Loomarr channel id.
 type fakeGuide struct {
-	byChannel map[string]guideapi.ChannelNowNext
-	upcoming  map[string][]guideapi.NowNextEntry // per-Loomarr-channel-id "what's on later"; nil ⇒ empty
+	byChannel   map[string]guideapi.ChannelNowNext
+	upcoming    map[string][]guideapi.NowNextEntry // per-Loomarr-channel-id "what's on later"; nil ⇒ empty
+	upcomingErr error                              // when set, Upcoming fails with it
 }
 
 func (f fakeGuide) NowNext(context.Context, time.Time) (map[string]guideapi.ChannelNowNext, error) {
@@ -1952,6 +1925,9 @@ func (f fakeGuide) NowNext(context.Context, time.Time) (map[string]guideapi.Chan
 }
 
 func (f fakeGuide) Upcoming(_ context.Context, channelID string, _ time.Time, limit int) ([]guideapi.NowNextEntry, error) {
+	if f.upcomingErr != nil {
+		return nil, f.upcomingErr
+	}
 	got := f.upcoming[channelID]
 	if limit > 0 && len(got) > limit {
 		got = got[:limit]
@@ -1983,10 +1959,10 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 		Store: st,
 		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
-		Guide: fakeGuide{byChannel: map[string]guideapi.ChannelNowNext{
+		Guide: api.GuideOptions{Reader: fakeGuide{byChannel: map[string]guideapi.ChannelNowNext{
 			"ch-live": {Now: &guideapi.NowNextEntry{Title: "On Now"}, Next: &guideapi.NowNextEntry{Title: "Up Next", Gap: true}},
 			"ch-new":  {Now: &guideapi.NowNextEntry{Title: "Internal Now"}},
-		}},
+		}}},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -2025,9 +2001,9 @@ func TestChannelUpcoming_PassesLoomarrIDWithoutRequiringTunarrID(t *testing.T) {
 	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler),
-		Guide: fakeGuide{upcoming: map[string][]guideapi.NowNextEntry{
+		Guide: api.GuideOptions{Reader: fakeGuide{upcoming: map[string][]guideapi.NowNextEntry{
 			"ch-internal": {{Title: "Playing locally"}},
-		}},
+		}}},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -2044,6 +2020,61 @@ func TestChannelUpcoming_PassesLoomarrIDWithoutRequiringTunarrID(t *testing.T) {
 	}
 	if len(body.Upcoming) != 1 || body.Upcoming[0].Title != "Playing locally" {
 		t.Fatalf("upcoming = %+v, want local-id guide result", body.Upcoming)
+	}
+}
+
+// locked is a log sink the server goroutine and the test can share under -race.
+type locked struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (l *locked) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *locked) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
+// A guide failure keeps the Overview strip empty, but it is logged: an empty strip that is
+// really a broken guide must be findable by the operator.
+func TestChannelUpcoming_AGuideFailureStaysEmptyButIsLogged(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/upcoming-fail.db")
+	t.Cleanup(func() { _ = st.Close() })
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
+		Channel: schedule.Channel{ID: "ch-internal", Name: "Internal", Number: 42, Status: schedule.StatusLive},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	logs := &locked{}
+	log := slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	h := api.Router(log, api.Options{
+		Store: st, Auth: testAuthorizer{}, Log: log,
+		Guide: api.GuideOptions{Reader: fakeGuide{upcomingErr: errors.New("playout timeline unavailable")}},
+	})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	resp := do(t, srv, http.MethodGet, "/v1/channels/ch-internal/upcoming", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("upcoming with a failing guide → %d, want 200 (the strip stays empty)", resp.StatusCode)
+	}
+	var body struct {
+		Upcoming []guideapi.NowNextEntry `json:"upcoming"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Upcoming == nil || len(body.Upcoming) != 0 {
+		t.Fatalf("upcoming = %#v, want an empty list", body.Upcoming)
+	}
+	if got := logs.String(); !strings.Contains(got, "level=WARN") || !strings.Contains(got, "playout timeline unavailable") {
+		t.Fatalf("a guide failure was swallowed without a WARN; log:\n%s", got)
 	}
 }
 

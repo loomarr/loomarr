@@ -30,7 +30,7 @@ import (
 
 func newStore(t *testing.T) store.Store {
 	t.Helper()
-	return testkit.MigratedSQLiteStore(t)
+	return testkit.StockedLibrary(t, testkit.MigratedSQLiteStore(t))
 }
 
 // mapAvail is a mutable Availability tests drive to simulate content landing.
@@ -1349,9 +1349,9 @@ func TestSweep_RecoversFromLostEvent(t *testing.T) {
 	r := channels.NewRunner(e, st, time.Minute, 5*time.Minute, 50,
 		func() time.Time { return now }, testkit.Logger())
 
-	n := r.Sweep(context.Background())
-	if n != 1 {
-		t.Fatalf("sweep reconciled %d channels, want 1", n)
+	report := r.Sweep(context.Background())
+	if report.Reconciled != 1 || report.Claimed != 1 || report.SlowestChannel != "c1" {
+		t.Fatalf("sweep = %+v, want c1 claimed, reconciled and named the slowest", report)
 	}
 	ch, _ := st.GetChannel(context.Background(), "c1")
 	if got := programCount(ch); got != 2 {
@@ -1370,7 +1370,7 @@ func TestSweep_MaterializesInternalChannelWithoutProgrammer(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	r := channels.NewRunner(e, st, time.Minute, 5*time.Minute, 50,
 		func() time.Time { return now }, testkit.Logger())
-	if n := r.Sweep(context.Background()); n != 1 {
+	if n := r.Sweep(context.Background()).Reconciled; n != 1 {
 		t.Fatalf("sweep reconciled %d internal channels, want 1", n)
 	}
 	ch, err := st.GetChannel(context.Background(), "internal-sweep")

@@ -3,6 +3,7 @@ package api_test
 import (
 	"encoding/json"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"testing"
@@ -27,12 +28,19 @@ type locationResult struct {
 	Attribution string `json:"attribution"`
 }
 
-func newLocationHarness(t *testing.T, trustProxy bool) *apiHarness {
+// newLocationHarness serves the API with the given trusted proxy ranges. The harness's clients
+// connect from loopback, so listing 127.0.0.0/8 makes them a proxy and listing anything else
+// leaves them an ordinary client.
+func newLocationHarness(t *testing.T, trusted ...string) *apiHarness {
 	t.Helper()
+	var proxies []netip.Prefix
+	for _, cidr := range trusted {
+		proxies = append(proxies, netip.MustParsePrefix(cidr))
+	}
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
 			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log,
-			TrustProxy: trustProxy,
+			TrustedProxies: proxies,
 		})
 	})
 }
@@ -63,7 +71,7 @@ func locationRequest(t *testing.T, client *http.Client, method, rawURL, body str
 }
 
 func TestLocationsSearchAndResolveUseTheEmbeddedIndex(t *testing.T) {
-	server := newLocationHarness(t, false).Server
+	server := newLocationHarness(t).Server
 
 	response, body := locationRequest(t, server.Client(), http.MethodGet,
 		server.URL+"/v1/locations?q="+url.QueryEscape("New York City")+"&limit=3", "", nil)
@@ -91,7 +99,7 @@ func TestLocationsSearchAndResolveUseTheEmbeddedIndex(t *testing.T) {
 }
 
 func TestLocationsSearchIncludesPopulatedMunicipalityContext(t *testing.T) {
-	server := newLocationHarness(t, false).Server
+	server := newLocationHarness(t).Server
 
 	response, body := locationRequest(t, server.Client(), http.MethodGet,
 		server.URL+"/v1/locations?q="+url.QueryEscape("North Greenbush")+"&limit=3", "", nil)
@@ -102,7 +110,7 @@ func TestLocationsSearchIncludesPopulatedMunicipalityContext(t *testing.T) {
 }
 
 func TestLocationSuggestionAcceptsKnownAndNeutralHeadersOnlyBehindTrustProxy(t *testing.T) {
-	trusted := newLocationHarness(t, true).Server
+	trusted := newLocationHarness(t, "127.0.0.0/8", "::1/128").Server
 
 	for _, test := range []struct {
 		name    string
@@ -123,15 +131,34 @@ func TestLocationSuggestionAcceptsKnownAndNeutralHeadersOnlyBehindTrustProxy(t *
 		})
 	}
 
-	untrusted := newLocationHarness(t, false).Server
-	response, body := locationRequest(t, untrusted.Client(), http.MethodGet, untrusted.URL+"/v1/locations/suggestion", "", map[string]string{"CF-IPCountry": "CA"})
-	if response.StatusCode != http.StatusOK || body.Suggestion != nil {
-		t.Fatalf("untrusted header suggestion = %d %#v, want none", response.StatusCode, body)
+	// No proxy listed, and a proxy listed that is not the peer (documentation ranges, IPv4 and
+	// IPv6): the geography header is the client's own claim in every case.
+	for name, harness := range map[string]*apiHarness{
+		"nothing listed":               newLocationHarness(t),
+		"another IPv4 proxy listed":    newLocationHarness(t, "192.0.2.10/32"),
+		"another IPv6 range listed":    newLocationHarness(t, "2001:db8::/32"),
+		"loopback range one-off v4":    newLocationHarness(t, "127.0.0.2/32"),
+		"IPv6 loopback only is listed": newLocationHarness(t, "::1/128"),
+	} {
+		t.Run("untrusted/"+name, func(t *testing.T) {
+			server := harness.Server
+			for _, headers := range []map[string]string{
+				{"CF-IPCountry": "CA"},
+				{"X-Loomarr-Geo-Country": "AU"},
+				{"X-Vercel-IP-Country": "GB"},
+				{"CloudFront-Viewer-Country": "US"},
+			} {
+				response, body := locationRequest(t, server.Client(), http.MethodGet, server.URL+"/v1/locations/suggestion", "", headers)
+				if response.StatusCode != http.StatusOK || body.Suggestion != nil {
+					t.Fatalf("untrusted header %v suggestion = %d %#v, want none", headers, response.StatusCode, body)
+				}
+			}
+		})
 	}
 }
 
 func TestLocationRoutesAreAdminOnly(t *testing.T) {
-	server := newLocationHarness(t, true).Server
+	server := newLocationHarness(t, "127.0.0.0/8", "::1/128").Server
 	req, err := http.NewRequest(http.MethodGet, server.URL+"/v1/locations?q=London", nil)
 	if err != nil {
 		t.Fatal(err)

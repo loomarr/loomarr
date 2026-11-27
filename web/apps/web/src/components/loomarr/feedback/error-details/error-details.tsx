@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { Card, Details, Text } from "@loomarr/design-system";
 import type { ErrorDetailsProps } from "./error-details.type";
 
 // ErrorDetails — a failure message that OPENS UP rather than being clipped to one line.
@@ -13,22 +13,30 @@ import type { ErrorDetailsProps } from "./error-details.type";
 //
 // ⚠ A native `<details>`, not a hand-rolled disclosure. It is keyboard-operable and announced
 // as an expandable region by screen readers with no ARIA of our own, and it survives a page
-// print. The repo has been bitten before by hand-rolled widgets that looked right and had no
-// keyboard path (SearchCommand's arrow keys, §12 drift `:757`).
-const ErrorDetails = ({ message, showLabel, hideLabel, className }: ErrorDetailsProps) => {
+// print. A hand-rolled widget can look right and have no keyboard path (SearchCommand's arrow
+// keys, §12 drift `:757`).
+const ErrorDetails = ({ message, showLabel, hideLabel }: ErrorDetailsProps) => {
   if (!message) return null;
   return (
-    <details className={cn("group", className)}>
-      <summary className="text-onair-300 cursor-pointer list-none text-xs hover:underline">
-        <span className="group-open:hidden">{showLabel ?? "Show error"}</span>
-        <span className="hidden group-open:inline">{hideLabel ?? "Hide error"}</span>
-      </summary>
-      {/* `whitespace-pre-wrap` keeps a multi-line error readable as written; `wrap-break-word`
-          stops a long unbroken token (a URL, a stack frame) widening the whole container. */}
-      <pre className="border-onair/30 bg-onair/5 text-2xs text-onair-300 mt-1 max-w-prose overflow-x-auto rounded border p-2 font-mono wrap-break-word whitespace-pre-wrap">
-        {message}
-      </pre>
-    </details>
+    <Details
+      summary={(open) => (open ? (hideLabel ?? "Hide error") : (showLabel ?? "Show error"))}
+      textRole="hint"
+      tone="danger"
+    >
+      <Card marginTop={4} maxWidth="65ch" padding={8} tone="caution">
+        {/* `pre-wrap` keeps a multi-line error readable as written; `break-word` stops a long
+            unbroken token (a URL, a stack frame) widening the whole container. */}
+        <Text
+          as="pre"
+          overflowWrap="break-word"
+          style={{ margin: 0, whiteSpace: "pre-wrap" }}
+          textRole="mono"
+          tone="danger"
+        >
+          {message}
+        </Text>
+      </Card>
+    </Details>
   );
 };
 

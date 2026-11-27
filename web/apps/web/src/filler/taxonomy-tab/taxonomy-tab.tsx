@@ -1,481 +1,13 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
-import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
-import type { TaxonomyImpactCommandDTO } from "@loomarr/api/models/taxonomyImpactCommandDTO";
-import type { TaxonomyImpactDTO } from "@loomarr/api/models/taxonomyImpactDTO";
-import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Card, Field, Icon, icons } from "@loomarr/design-system";
-import { useStore } from "@tanstack/react-form";
-import { useQueryClient } from "@tanstack/react-query";
+import { Action, Card, Details, Grid, GridItem, Stack, Text, TextLink } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
-import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { useAppForm } from "@/lib/app-form";
 import { TAXONOMY_AXES as AXES, type TaxonomyAxis as Axis } from "../taxonomy-axes";
-
-const AXIS_COPY: Record<Axis, { label: string; help: string; example: string }> = {
-  product: {
-    label: "Products & topics",
-    help: "What the clip is about or advertising.",
-    example: "For example: cereal, cars, local businesses",
-  },
-  format: {
-    label: "Format",
-    help: "Descriptive browsing tags. Clip kind separately controls how Loomarr may play it.",
-    example: "For example: commercial, promo, station ident",
-  },
-  presentation: {
-    label: "Presentation",
-    help: "How the pictures are made, separate from what the clip is about or who may watch it.",
-    example: "For example: animated, live action",
-  },
-  seasonal: {
-    label: "Seasonal",
-    help: "A holiday or time-of-year cue.",
-    example: "For example: Christmas, Halloween, back to school",
-  },
-  "audience-cue": {
-    label: "Audience cues",
-    help: "Signals useful for matching a channel's audience.",
-    example: "For example: kids-oriented, family, late night",
-  },
-};
-
-type Editor = { mode: "create" | "edit"; axis: Axis; taxon?: TaxonDTO };
-type Review = { action: "save" | "delete"; command: TaxonomyImpactCommandDTO; impact: TaxonomyImpactDTO };
-
-const splitTerms = (value: string) =>
-  value
-    .split(",")
-    .map((term) => term.trim())
-    .filter(Boolean);
-
-const descendantsOf = (taxa: TaxonDTO[], slug: string): Set<string> => {
-  const out = new Set<string>();
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const taxon of taxa) {
-      if (taxon.parent && (taxon.parent === slug || out.has(taxon.parent)) && !out.has(taxon.slug)) {
-        out.add(taxon.slug);
-        changed = true;
-      }
-    }
-  }
-  return out;
-};
-
-type TaxonTreeNode = { taxon: TaxonDTO; children: TaxonTreeNode[] };
-
-const treeForAxis = (taxa: TaxonDTO[], axis: Axis): TaxonTreeNode[] => {
-  const nodes = taxa.filter((taxon) => taxon.axis === axis);
-  const slugs = new Set(nodes.map((taxon) => taxon.slug));
-  const children = new Map<string, TaxonDTO[]>();
-  for (const taxon of nodes) {
-    const parent = taxon.parent && slugs.has(taxon.parent) ? taxon.parent : "";
-    children.set(parent, [...(children.get(parent) ?? []), taxon]);
-  }
-  for (const rows of children.values()) rows.sort((a, b) => a.label.localeCompare(b.label));
-  const build = (parent: string): TaxonTreeNode[] =>
-    (children.get(parent) ?? []).map((taxon) => ({ taxon, children: build(taxon.slug) }));
-  return build("");
-};
-
-const TaxonTree = ({
-  nodes,
-  axis,
-  isAdmin,
-  onEdit,
-  nested = false,
-}: {
-  nodes: TaxonTreeNode[];
-  axis: Axis;
-  isAdmin: boolean;
-  onEdit: (taxon: TaxonDTO) => void;
-  nested?: boolean;
-}) => (
-  <ul
-    className={nested ? "border-border ml-5 border-l" : "divide-border divide-y"}
-    {...(!nested ? { "aria-label": `${AXIS_COPY[axis].label} vocabulary` } : {})}
-  >
-    {nodes.map(({ taxon, children }) => {
-      const synonyms = taxon.synonyms ?? [];
-      const aliases = taxon.retiredAliases ?? [];
-      const resolverTermCount = synonyms.length + aliases.length;
-      return (
-        <li key={taxon.slug}>
-          <div className="flex items-start gap-2 px-4 py-3">
-            {nested ? (
-              <span className="mt-1 flex">
-                <Icon decorative glyph={icons.rowExpand} size="compact" tone="muted" />
-              </span>
-            ) : null}
-            <div className="min-w-0 flex-1">
-              <Action
-                disabled={!isAdmin}
-                layout="text"
-                onPress={() => onEdit(taxon)}
-                style={{ alignSelf: "flex-start" }}
-                variant="ghost"
-              >
-                {taxon.label}
-              </Action>
-              <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                <span className="text-muted-foreground font-mono text-xs break-all">{taxon.slug}</span>
-                {resolverTermCount > 0 ? (
-                  <details className="text-muted-foreground text-xs">
-                    <summary className="cursor-pointer">
-                      {resolverTermCount} classifier {resolverTermCount === 1 ? "term" : "terms"}
-                    </summary>
-                    <div className="mt-1 max-w-sm space-y-1 break-words">
-                      {synonyms.length > 0 ? <p>Synonyms: {synonyms.join(", ")}</p> : null}
-                      {aliases.length > 0 ? <p>Retired slugs: {aliases.join(", ")}</p> : null}
-                    </div>
-                  </details>
-                ) : null}
-              </div>
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-              {(taxon.assertedClips ?? 0) > 0 && taxon.assertedClips !== taxon.matchedClips ? (
-                <Badge shape="square" title="Clips directly assigned this tag" tone="neutral">
-                  {taxon.assertedClips.toLocaleString()} direct
-                </Badge>
-              ) : null}
-              <Link
-                to="/filler/library"
-                search={{ taxon: taxon.slug }}
-                className="text-signal focus-visible:ring-ring rounded-sm font-mono text-xs underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:outline-none"
-                title={`Browse clips matching ${taxon.label}, including descendants`}
-              >
-                {taxon.matchedClips.toLocaleString()} {taxon.matchedClips === 1 ? "clip" : "clips"}
-              </Link>
-            </div>
-          </div>
-          {children.length > 0 ? (
-            <TaxonTree nodes={children} axis={axis} isAdmin={isAdmin} onEdit={onEdit} nested />
-          ) : null}
-        </li>
-      );
-    })}
-  </ul>
-);
-
-const TaxonEditor = ({
-  editor,
-  taxa,
-  onClose,
-}: {
-  editor: Editor;
-  taxa: TaxonDTO[];
-  onClose: () => void;
-}) => {
-  const queryClient = useQueryClient();
-  const current = editor.taxon;
-  // The term's fields. Saving never submits the form: it asks for an impact review first, so the
-  // buttons below run the review and the form only holds the values.
-  const form = useAppForm({
-    defaultValues: {
-      slug: current?.slug ?? "",
-      label: current?.label ?? "",
-      axis: editor.axis as Axis,
-      parent: current?.parent ?? "",
-      synonyms: (current?.synonyms ?? []).join(", "),
-      aliases: (current?.retiredAliases ?? []).join(", "),
-    },
-  });
-  const { slug, label, axis, parent, synonyms, aliases } = useStore(form.store, (state) => state.values);
-  const [review, setReview] = useState<Review>();
-
-  const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: fillerApi.getListTaxonomyQueryKey() });
-    onClose();
-  };
-  const fail = (error: unknown) => {
-    const problem = toProblem(error);
-    toast.error(problem?.title ?? "Couldn't update the taxonomy", {
-      ...(problem?.detail ? { description: problem.detail } : {}),
-    });
-  };
-  const create = fillerApi.useCreateTaxon({
-    mutation: { onSuccess: () => void refresh(), onError: fail },
-  });
-  const update = fillerApi.useUpdateTaxon({
-    mutation: { onSuccess: () => void refresh(), onError: fail },
-  });
-  const remove = fillerApi.useDeleteTaxon({
-    mutation: {
-      onSuccess: () => {
-        toast.success("Tag removed", { description: "Its children were kept and moved up one level." });
-        void refresh();
-      },
-      onError: fail,
-    },
-  });
-  const preview = fillerApi.usePreviewTaxonomyEdit();
-  const excluded = current ? descendantsOf(taxa, current.slug) : new Set<string>();
-  const nodeHasDescendants = excluded.size > 0;
-  if (current) excluded.add(current.slug);
-  const parentOptions = taxa
-    .filter((taxon) => taxon.axis === axis && !excluded.has(taxon.slug))
-    .sort((a, b) => a.label.localeCompare(b.label));
-  const busy = create.isPending || update.isPending || remove.isPending || preview.isPending;
-
-  const saveCommand = (): TaxonomyImpactCommandDTO => ({
-    operation: editor.mode === "create" ? "create" : "update",
-    slug: editor.mode === "create" ? slug.trim() : (current?.slug ?? ""),
-    label: label.trim(),
-    axis,
-    ...(parent ? { parent } : {}),
-    synonyms: splitTerms(synonyms),
-    retiredAliases: splitTerms(aliases),
-  });
-
-  const requestReview = (action: Review["action"], command: TaxonomyImpactCommandDTO) => {
-    preview.mutate(
-      { data: command },
-      {
-        onSuccess: (response) => {
-          if (response.status === 200) setReview({ action, command, impact: response.data });
-        },
-        onError: fail,
-      },
-    );
-  };
-
-  const applyReview = () => {
-    if (!review) return;
-    if (review.action === "delete") {
-      remove.mutate({ slug: review.command.slug });
-      return;
-    }
-    const command = review.command;
-    const common = {
-      label: command.label ?? "",
-      axis: (command.axis ?? axis) as Axis,
-      ...(command.parent ? { parent: command.parent } : {}),
-      synonyms: command.synonyms ?? [],
-      retiredAliases: command.retiredAliases ?? [],
-    };
-    if (command.operation === "create") {
-      create.mutate({ data: { slug: command.slug, ...common } });
-    } else {
-      update.mutate({ slug: command.slug, data: common });
-    }
-  };
-
-  const edit = (change: () => void) => {
-    setReview(undefined);
-    change();
-  };
-
-  return (
-    <Card aria-label={current ? `Edit ${current.label}` : "Add tag"} gap={16} padding={16} role="region">
-      <div>
-        <h3 className="font-medium">{current ? `Edit ${current.label}` : "Add a tag"}</h3>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Slugs are what classifiers and saved clips use. Labels are what people see.
-        </p>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <form.Field name="label">
-          {(field) => (
-            <Field
-              id="taxon-label"
-              label="Label"
-              onChangeText={(text) => edit(() => field.handleChange(text))}
-              value={field.state.value}
-            />
-          )}
-        </form.Field>
-        <form.Field name="slug">
-          {(field) => (
-            <Field
-              autoCapitalize="none"
-              autoCorrect={false}
-              disabled={editor.mode === "edit"}
-              id="taxon-slug"
-              label="Slug"
-              onChangeText={(text) =>
-                edit(() => field.handleChange(text.toLowerCase().replace(/[^a-z0-9_-]/g, "-")))
-              }
-              placeholder="breakfast-cereal"
-              value={field.state.value}
-            />
-          )}
-        </form.Field>
-        <div>
-          <BrowserSelectControl
-            appearance="field"
-            disabled={Boolean(current && nodeHasDescendants)}
-            label="Axis"
-            onValueChange={(value) => {
-              edit(() => {
-                form.setFieldValue("axis", value);
-                form.setFieldValue("parent", "");
-              });
-            }}
-            options={AXES.map((value) => ({ label: AXIS_COPY[value].label, value }))}
-            value={axis}
-          />
-          {current && nodeHasDescendants ? (
-            <p className="text-muted-foreground mt-1 text-xs">
-              Move this tag&rsquo;s children before changing its axis.
-            </p>
-          ) : null}
-        </div>
-        <BrowserSelectControl
-          appearance="field"
-          label="Parent"
-          onValueChange={(value) => edit(() => form.setFieldValue("parent", value))}
-          options={[
-            { label: "Top level", value: "" },
-            ...parentOptions.map((taxon) => ({ label: `${taxon.label} (${taxon.slug})`, value: taxon.slug })),
-          ]}
-          value={parent}
-        />
-        <form.Field name="synonyms">
-          {(field) => (
-            <Field
-              autoCapitalize="none"
-              id="taxon-synonyms"
-              label="Classifier synonyms"
-              onChangeText={(text) => edit(() => field.handleChange(text))}
-              placeholder="soda, soft drink"
-              value={field.state.value}
-            />
-          )}
-        </form.Field>
-        <form.Field name="aliases">
-          {(field) => (
-            <Field
-              autoCapitalize="none"
-              autoCorrect={false}
-              id="taxon-aliases"
-              label="Retired slugs"
-              onChangeText={(text) => edit(() => field.handleChange(text))}
-              placeholder="old-machine-name"
-              value={field.state.value}
-            />
-          )}
-        </form.Field>
-      </div>
-      <p className="text-muted-foreground text-xs">
-        Synonyms help the classifier resolve ordinary wording. Retired slugs preserve old integrations; both
-        must be unique across the whole vocabulary.
-      </p>
-      {review ? (
-        <Card
-          aria-label="Change impact"
-          aria-live="polite"
-          className="border-signal/40! bg-signal/5!"
-          gap={12}
-          padding={16}
-        >
-          <div>
-            <h4 className="font-medium">Review the impact</h4>
-            <p className="text-muted-foreground mt-1 text-sm">
-              {review.impact.affectedStoredClips > 0
-                ? `${review.impact.affectedStoredClips.toLocaleString()} stored clips may have different inherited classification (${review.impact.directStoredClips.toLocaleString()} direct, ${review.impact.descendantStoredClips.toLocaleString()} through descendants).`
-                : "No stored clip classifications will change."}
-            </p>
-            <p className="text-muted-foreground mt-1 text-sm">
-              {review.impact.affectedPlayableClips > 0
-                ? `${review.impact.affectedPlayableClips.toLocaleString()} playable clips will be checked against channel filler rules after this change.`
-                : "No playable clips need channel eligibility checks."}
-            </p>
-          </div>
-          {review.impact.descendants.length > 0 ? (
-            <p className="text-sm">
-              Descendants kept: {review.impact.descendants.map((node) => node.label).join(", ")}
-            </p>
-          ) : null}
-          {review.impact.savedChannelSelections.length > 0 ? (
-            <div className="text-sm">
-              <p className="font-medium">Saved channel selections that reference this branch</p>
-              <ul className="mt-1 list-disc pl-5">
-                {review.impact.savedChannelSelections.map((channel) => (
-                  <li key={channel.id}>
-                    Channel {channel.number}: {channel.name}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-sm">
-              No saved channel selections reference this branch.
-            </p>
-          )}
-          {review.impact.resolverTermsAdded.length > 0 || review.impact.resolverTermsRemoved.length > 0 ? (
-            <div className="text-sm">
-              <p className="font-medium">Classifier wording</p>
-              {review.impact.resolverTermsAdded.length > 0 ? (
-                <p className="mt-1">Starts resolving: {review.impact.resolverTermsAdded.join(", ")}</p>
-              ) : null}
-              {review.impact.resolverTermsRemoved.length > 0 ? (
-                <p className="mt-1">Stops resolving: {review.impact.resolverTermsRemoved.join(", ")}</p>
-              ) : null}
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-sm">Classifier wording is unchanged.</p>
-          )}
-          {review.impact.deleteBlocked ? (
-            <p className="text-caution text-sm">
-              Retag {review.impact.directStoredClips.toLocaleString()} directly assigned stored clips before
-              removing this tag. This includes clips in Incoming, removed clips, and compilations.
-            </p>
-          ) : null}
-        </Card>
-      ) : null}
-      <div className="flex flex-wrap items-center gap-2">
-        {current ? (
-          <Action
-            disabled={busy}
-            onPress={() => requestReview("delete", { operation: "delete", slug: current.slug })}
-            variant="ghost"
-          >
-            Review removal
-          </Action>
-        ) : (
-          <span className="mr-auto" />
-        )}
-        {review ? (
-          <>
-            <Action disabled={busy} onPress={() => setReview(undefined)} variant="outline">
-              Back
-            </Action>
-            <Action
-              disabled={busy || review.impact.deleteBlocked}
-              onPress={applyReview}
-              {...(review.action === "delete" ? { variant: "outline", tone: "danger" } : {})}
-            >
-              {busy
-                ? "Applying…"
-                : review.action === "delete"
-                  ? "Confirm removal"
-                  : editor.mode === "create"
-                    ? "Confirm add"
-                    : "Confirm update"}
-            </Action>
-          </>
-        ) : (
-          <>
-            <Action disabled={busy} onPress={onClose} variant="outline">
-              Cancel
-            </Action>
-            <Action
-              disabled={busy || !label.trim() || (editor.mode === "create" && !slug.trim())}
-              onPress={() => requestReview("save", saveCommand())}
-            >
-              {busy ? "Checking impact…" : "Review changes"}
-            </Action>
-          </>
-        )}
-      </div>
-    </Card>
-  );
-};
+import { type Editor, TaxonEditor } from "./taxon-editor";
+import { TaxonTree, type TaxonTreeNode, treeForAxis } from "./taxon-tree";
+import { AXIS_COPY } from "./taxonomy-axis-copy";
 
 const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
   const query = fillerApi.useListTaxonomy();
@@ -492,52 +24,72 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
   );
 
   if (query.error) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  if (!data) return <p className="text-muted-foreground text-sm">Loading the taxonomy…</p>;
+  // The route's loader ensured the vocabulary, and its error view takes a first read that fails, so
+  // the tab always opens on it. A failed refresh after that is the line above.
+  if (!data) return null;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card padding={16}>
-          <p className="text-muted-foreground text-xs">Library coverage</p>
+    <Stack gap="section">
+      <Grid columns={{ base: 1, sm: 3 }} gap="3">
+        <Card gap={4} padding={16}>
+          <Text as="p" textRole="hint" tone="secondary">
+            Library coverage
+          </Text>
           {data.totalClips === 0 ? (
             <>
-              <p className="mt-1 text-xl font-semibold">No playable clips yet</p>
-              <p className="text-muted-foreground mt-1 text-sm">Coverage begins after clips are ready.</p>
+              <Text as="p" textRole="title">
+                No playable clips yet
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
+                Coverage begins after clips are ready.
+              </Text>
             </>
           ) : (
             <>
-              <p className="mt-1 text-2xl font-semibold">
+              <Text as="p" textRole="display">
                 {data.taggedClips.toLocaleString()} / {data.totalClips.toLocaleString()}
-              </p>
-              <p className="text-muted-foreground mt-1 text-sm">
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
                 playable clips have at least one classification signal
-              </p>
+              </Text>
             </>
           )}
         </Card>
-        <Card className="sm:col-span-2" padding={16}>
-          <p className="font-medium">What belongs here</p>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Classification describes what a clip contains. Kind is the closed playout role; format and
-            presentation are optional browsing details. Era, audience, and grounded brand remain separate
-            facts too.
-          </p>
-          {data.totalClips === 0 ? (
-            <p className="text-muted-foreground mt-2 text-sm">Nothing to classify yet.</p>
-          ) : data.unclassifiedClips > 0 ? (
-            <Link
-              to="/filler/library"
-              search={{ unclassified: true }}
-              className="text-signal mt-2 inline-flex self-start text-sm underline-offset-2 hover:underline"
-            >
-              Review {data.unclassifiedClips.toLocaleString()} unclassified{" "}
-              {data.unclassifiedClips === 1 ? "clip" : "clips"}
-            </Link>
-          ) : (
-            <p className="text-lock mt-2 text-sm">Every playable clip has at least one taxonomy tag.</p>
-          )}
-        </Card>
-      </div>
+        <GridItem span={{ base: 1, sm: 2 }}>
+          <Card gap={4} padding={16}>
+            <Text as="p" textRole="heading">
+              What belongs here
+            </Text>
+            <Text as="p" textRole="compact" tone="secondary">
+              Classification describes what a clip contains. Kind is the closed playout role; format and
+              presentation are optional browsing details. Era, audience, and grounded brand remain separate
+              facts too.
+            </Text>
+            <Stack align="start" marginTop={4}>
+              {data.totalClips === 0 ? (
+                <Text as="p" textRole="compact" tone="secondary">
+                  Nothing to classify yet.
+                </Text>
+              ) : data.unclassifiedClips > 0 ? (
+                <Text as="span" textRole="compact">
+                  <TextLink
+                    render={<Link to="/filler/library" search={{ unclassified: true }} />}
+                    tone="primary"
+                    underline="hover"
+                  >
+                    Review {data.unclassifiedClips.toLocaleString()} unclassified{" "}
+                    {data.unclassifiedClips === 1 ? "clip" : "clips"}
+                  </TextLink>
+                </Text>
+              ) : (
+                <Text as="p" textRole="compact" tone="success">
+                  Every playable clip has at least one taxonomy tag.
+                </Text>
+              )}
+            </Stack>
+          </Card>
+        </GridItem>
+      </Grid>
 
       {editor ? (
         <TaxonEditor
@@ -549,101 +101,144 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
       ) : null}
 
       <section aria-labelledby="classification-coverage-heading">
-        <div>
-          <h2 id="classification-coverage-heading" className="text-lg font-semibold">
+        <Stack gap="1">
+          <Text as="h2" id="classification-coverage-heading" textRole="headline" strong>
             Classification coverage
-          </h2>
-          <p className="text-muted-foreground mt-1 text-sm">
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             These are independent signals. Missing presentation, seasonal, or audience cues can be perfectly
             normal.
-          </p>
-        </div>
+          </Text>
+        </Stack>
         {data.totalClips === 0 ? (
-          <Card className="text-muted-foreground text-sm" marginTop={12} padding={16}>
-            Coverage will appear after clips are ready. The vocabulary below is ready when they are.
+          <Card marginTop={12} padding={16}>
+            <Text as="p" textRole="compact" tone="secondary">
+              Coverage will appear after clips are ready. The vocabulary below is ready when they are.
+            </Text>
           </Card>
         ) : (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <Grid columnGap="3" columns={{ base: 1, sm: 2, lg: 3 }} marginTop={12} rowGap="3">
             {AXES.map((axis) => {
               const coverage = data.axisCoverage?.find((item) => item.axis === axis);
               return (
-                <Card key={axis} padding={16}>
-                  <h3 className="font-medium">{AXIS_COPY[axis].label}</h3>
-                  <p className="text-muted-foreground mt-1 text-sm">{AXIS_COPY[axis].help}</p>
-                  <p className="text-muted-foreground mt-2 text-xs">{AXIS_COPY[axis].example}</p>
+                <Card gap={4} key={axis} padding={16}>
+                  <Text as="h3" textRole="heading">
+                    {AXIS_COPY[axis].label}
+                  </Text>
+                  <Text as="p" textRole="compact" tone="secondary">
+                    {AXIS_COPY[axis].help}
+                  </Text>
+                  <Stack marginTop={4}>
+                    <Text as="p" textRole="hint" tone="secondary">
+                      {AXIS_COPY[axis].example}
+                    </Text>
+                  </Stack>
                   {coverage ? (
-                    <div className="border-border mt-3 border-t pt-3 text-sm">
-                      <p>
-                        <span className="font-medium">{coverage.taggedClips.toLocaleString()}</span> of{" "}
-                        {data.totalClips.toLocaleString()} playable clips
-                      </p>
+                    <Stack
+                      align="start"
+                      borderColor="borderDecorative"
+                      borderTopWidth={1}
+                      gap="1"
+                      marginTop={8}
+                      paddingTop={12}
+                    >
+                      <Text as="p" textRole="compact">
+                        <Text as="span" textRole="cardLabel">
+                          {coverage.taggedClips.toLocaleString()}
+                        </Text>{" "}
+                        of {data.totalClips.toLocaleString()} playable clips
+                      </Text>
                       {coverage.untaggedClips > 0 ? (
-                        <Link
-                          to="/filler/library"
-                          search={{ withoutAxis: axis }}
-                          className="text-signal mt-1 inline-flex text-xs underline-offset-2 hover:underline"
-                        >
-                          Browse {coverage.untaggedClips.toLocaleString()} without this signal
-                        </Link>
+                        <Text as="span" textRole="hint">
+                          <TextLink
+                            render={<Link to="/filler/library" search={{ withoutAxis: axis }} />}
+                            tone="primary"
+                            underline="hover"
+                          >
+                            Browse {coverage.untaggedClips.toLocaleString()} without this signal
+                          </TextLink>
+                        </Text>
                       ) : (
-                        <p className="text-lock mt-1 text-xs">All playable clips have this signal.</p>
+                        <Text as="p" textRole="hint" tone="success">
+                          All playable clips have this signal.
+                        </Text>
                       )}
-                    </div>
+                    </Stack>
                   ) : null}
                 </Card>
               );
             })}
-          </div>
+          </Grid>
         )}
       </section>
 
-      <details className="border-border bg-panel rounded-lg border">
-        <summary className="focus-visible:ring-ring cursor-pointer px-4 py-3 font-medium focus-visible:ring-2 focus-visible:outline-none">
-          {isAdmin ? "Manage vocabulary" : "Browse vocabulary"}
-        </summary>
-        <div className="border-border border-t p-4">
-          <p className="text-muted-foreground mb-4 text-sm">
-            {isAdmin
-              ? "Advanced: change the hierarchy and the words classifiers resolve. Review the impact before any edit is applied."
-              : "This hierarchy is read-only. Administrators can change classifier vocabulary and relationships."}
-          </p>
-          <div className="grid gap-4 xl:grid-cols-2">
-            {AXES.map((axis) => {
-              return (
-                <Card key={axis} overflow="hidden">
-                  <div className="border-border flex items-start gap-3 border-b p-4">
-                    <div className="min-w-0 flex-1">
-                      <h3 className="font-medium">{AXIS_COPY[axis].label}</h3>
-                      <p className="text-muted-foreground mt-0.5 text-sm">{AXIS_COPY[axis].help}</p>
-                      <p className="text-muted-foreground mt-1 text-xs">{AXIS_COPY[axis].example}</p>
-                    </div>
-                    {isAdmin ? (
-                      <Action
-                        icon="plus"
-                        onPress={() => setEditor({ mode: "create", axis })}
-                        variant="outline"
-                      >
-                        Add
-                      </Action>
-                    ) : null}
-                  </div>
-                  {byAxis[axis].length === 0 ? (
-                    <p className="text-muted-foreground px-4 py-3 text-sm">No terms yet.</p>
-                  ) : (
-                    <TaxonTree
-                      nodes={byAxis[axis]}
-                      axis={axis}
-                      isAdmin={isAdmin}
-                      onEdit={(taxon) => isAdmin && setEditor({ mode: "edit", axis, taxon })}
-                    />
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      </details>
-    </div>
+      <Card padding={16}>
+        <Details summary={isAdmin ? "Manage vocabulary" : "Browse vocabulary"} textRole="heading">
+          <Stack gap="4" marginTop={16}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {isAdmin
+                ? "Advanced: change the hierarchy and the words classifiers resolve. Review the impact before any edit is applied."
+                : "This hierarchy is read-only. Administrators can change classifier vocabulary and relationships."}
+            </Text>
+            <Grid columnGap="4" columns={{ base: 1, lg: 2 }} rowGap="4">
+              {AXES.map((axis) => {
+                return (
+                  <Card key={axis} overflow="hidden">
+                    <Stack
+                      align="start"
+                      borderBottomWidth={1}
+                      borderColor="borderDecorative"
+                      direction="row"
+                      gap="control"
+                      padding={16}
+                    >
+                      <Stack flexBasis="0%" flexGrow={1} minWidth={0}>
+                        <Text as="h3" textRole="heading">
+                          {AXIS_COPY[axis].label}
+                        </Text>
+                        <Stack marginTop={2}>
+                          <Text as="p" textRole="compact" tone="secondary">
+                            {AXIS_COPY[axis].help}
+                          </Text>
+                        </Stack>
+                        <Stack marginTop={4}>
+                          <Text as="p" textRole="hint" tone="secondary">
+                            {AXIS_COPY[axis].example}
+                          </Text>
+                        </Stack>
+                      </Stack>
+                      {isAdmin ? (
+                        <Action
+                          icon="plus"
+                          onPress={() => setEditor({ mode: "create", axis })}
+                          variant="outline"
+                        >
+                          Add
+                        </Action>
+                      ) : null}
+                    </Stack>
+                    {byAxis[axis].length === 0 ? (
+                      <Stack paddingHorizontal={16} paddingVertical={12}>
+                        <Text as="p" textRole="compact" tone="secondary">
+                          No terms yet.
+                        </Text>
+                      </Stack>
+                    ) : (
+                      <TaxonTree
+                        nodes={byAxis[axis]}
+                        axis={axis}
+                        isAdmin={isAdmin}
+                        onEdit={(taxon) => isAdmin && setEditor({ mode: "edit", axis, taxon })}
+                      />
+                    )}
+                  </Card>
+                );
+              })}
+            </Grid>
+          </Stack>
+        </Details>
+      </Card>
+    </Stack>
   );
 };
 

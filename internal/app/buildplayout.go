@@ -27,6 +27,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
+	"github.com/loomarr/loomarr/internal/playout/subtitles"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -75,6 +76,9 @@ type playoutDeps struct {
 	startup       *diagnostics.Startup
 	// watermarks draws the channel's bug on programme items (#1512).
 	watermarks *channelWatermarks
+	// subtitleDecoder decodes the image subtitle tracks a channel burns in (#2088 step 8); nil
+	// decodes nothing.
+	subtitleDecoder playout.SubtitleStillDecoder
 }
 
 func buildPlayout(deps playoutDeps) (playoutBuild, error) {
@@ -171,8 +175,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	})
 	playoutRes = playoutresolve.New(playoutresolve.Config{
 		Engine: channelEngine, Now: time.Now,
-		Metrics:       deps.metrics,
-		DetectContext: rootCtx,
+		Metrics:  deps.metrics,
+		GoDetect: owner.goOnDemand,
 		// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
 		// state and must not be able to change it.
 		Titles: st,
@@ -230,6 +234,9 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		ProcessDiagnostics: deps.processDiagnostics,
 		Log:                log,
 	})
+	// Each committed reconcile of an internal-playout channel stores its next two days from the
+	// guide's own walk, so a title's next airing is one indexed read (#4476).
+	channelEngine.WithUpcomingIndex(upcomingIndex{guide: playoutRes, store: st, log: log})
 	// Loomarr measures each source itself, once per revision, so playout never asks the media
 	// server or re-probes a file at airtime (beta.8 G7). One worker, background priority, tied to
 	// the app's lifetime; sources are read directly through the path map, never through Emby.
@@ -237,7 +244,27 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	measurer := playoutRes.NewMeasurer(
 		measure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)), st)
 	playoutRes.SetMeasurer(measurer, st)
-	go measurer.Run(rootCtx)
+	owner.goRun(measurer.Run)
+	// Soft subtitles (#2088 decision 5): each text track is read once, at background priority, and
+	// kept under the playout state directory so a restart doesn't read it again.
+	subtitleReader := subtitles.NewExtractor(ffmpegBin, filepath.Join(stateDir, "subtitles"), log)
+	playoutRes.SetSubtitles(st, subtitleReader)
+	owner.goRun(subtitleReader.Run)
+	// Image subtitles a channel burns in (#2088 step 8), gated by the bug's GPU overlay self-check
+	// and blended by its kernel. The image worker decodes the track (docs/design/images.md); without
+	// a decoder nothing is looked up and programmes air without their image tracks. The preparer is
+	// generation-owned, so Shutdown joins a preparation in flight.
+	if burnDir, err := filepath.Abs(filepath.Join(stateDir, "subtitle-burn")); err == nil && deps.watermarks != nil {
+		decoder := deps.subtitleDecoder
+		burns := playoutresolve.NewSubtitleBurns(playoutresolve.SubtitleBurnsConfig{
+			Dir: burnDir, Prepare: playout.FFmpegBurnInWith(ffmpegBin, deps.processDiagnostics, decoder),
+			Decodes: playout.SubtitleDecoderAvailable(decoder),
+			Works:   deps.watermarks.OverlayWorks, Kernel: deps.watermarks.BlendKernel,
+			Go: owner.goOnDemand, Log: log,
+		})
+		playoutRes.SetSubtitleBurns(burns)
+		owner.goRun(burns.Run)
+	}
 	playoutResolverSvc = playoutRes
 
 	// Broadcast-codec backfill (§9.1 V50), run on EVERY boot. The migration defaults every

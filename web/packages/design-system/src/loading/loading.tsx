@@ -6,7 +6,7 @@ import { Animated, Easing } from "react-native";
 import { Icon, type IconSize, type IconTone, icons } from "../icon";
 import { useNativeAnimationDriver } from "../motion/animation-driver";
 import { useReducedMotionPreference } from "../motion/use-reduced-motion";
-import { Text } from "../primitives";
+import { Text } from "../text";
 import { brandChroma, type Density, semanticMotion } from "../tokens";
 
 type AccessibleLoading = { accessibilityLabel: string; decorative?: false };

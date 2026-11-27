@@ -49,6 +49,13 @@ describe("useWatchShortcuts", () => {
     expect(onLast).toHaveBeenCalledTimes(1);
   });
 
+  it("steps the subtitles on C, and leaves C to the player while there is nothing to step", () => {
+    const onNextSubtitles = vi.fn();
+    expect(setup({ onNextSubtitles }).press("c")).toBe(true);
+    expect(onNextSubtitles).toHaveBeenCalledTimes(1);
+    expect(setup({ channels: undefined }).press("C")).toBe(false);
+  });
+
   it("toggles Playback details as a sheet on a phone, where there is no panel", () => {
     const { hook, press } = setup({ detailsAsSheet: true });
     expect(press("i")).toBe(true);

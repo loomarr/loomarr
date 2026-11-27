@@ -75,18 +75,18 @@ func newViewingHarness(t *testing.T) *viewingHarness {
 		cfg := map[string]string{"server.public_url": "http://loomarr.local:8080", "playout.backend": "internal"}
 		sessions := pollPlayout{&fakePlayoutSessions{}}
 		return api.Router(defaults.Log, api.Options{
-			Store:           defaults.Store,
-			Auth:            api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
-			Log:             defaults.Log,
-			Login:           auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
-			Sessions:        mgr,
-			Devices:         devices,
-			CookieSecure:    "false",
-			LiveSettings:    stringSettings(func(key string) string { return cfg[key] }),
-			Playout:         sessions,
-			PlayoutObserver: sessions,
-			PlayoutSecret:   func() string { return playoutToken },
-			Now:             clock.now,
+			Store: defaults.Store,
+			Auth:  api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
+			Log:   defaults.Log,
+			People: api.PeopleOptions{
+				Login:    auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+				Sessions: mgr,
+				Devices:  devices,
+			},
+			CookieSecure: "false",
+			LiveSettings: stringSettings(func(key string) string { return cfg[key] }),
+			Playout:      api.PlayoutOptions{Service: sessions, Observer: sessions, Secret: func() string { return playoutToken }},
+			Now:          clock.now,
 		})
 	})
 	return &viewingHarness{apiHarness: h, clock: clock}

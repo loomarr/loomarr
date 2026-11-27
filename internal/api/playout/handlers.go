@@ -96,6 +96,7 @@ func New(d Deps, schemaOnly bool) *Handlers {
 func (s *Handlers) Register(api huma.API) {
 	s.registerPlayout(api)
 	s.registerChannelPlayURL(api)
+	s.registerChannelSubtitles(api)
 	s.registerPlayoutStatus(api)
 }
 

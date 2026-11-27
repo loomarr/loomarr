@@ -26,16 +26,24 @@ import (
 // migration, boot seeding, or startup healing must call Open(..., true) themselves.
 func newSQLiteStore(t *testing.T) Store {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "test.db")
-	if err := os.WriteFile(path, sharedSQLiteTemplate(t), 0o600); err != nil {
-		t.Fatalf("clone sqlite template: %v", err)
-	}
-	s, err := Open(context.Background(), "sqlite://"+path, false)
+	s, err := Open(context.Background(), "sqlite://"+migratedSQLiteFile(t), false)
 	if err != nil {
 		t.Fatalf("open sqlite store: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	return s
+}
+
+// migratedSQLiteFile writes a private copy of the shared migrated template and returns its path, for
+// a test that opens the file itself: across a restart, with Open(..., true) finding nothing pending,
+// or through database/sql. A fresh replay costs about a minute under -race (#2716).
+func migratedSQLiteFile(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "loomarr.db")
+	if err := os.WriteFile(path, sharedSQLiteTemplate(t), 0o600); err != nil {
+		t.Fatalf("clone sqlite template: %v", err)
+	}
+	return path
 }
 
 var (
@@ -95,8 +103,7 @@ func TestSQLiteConformance(t *testing.T) {
 func TestNotificationWorkSurvivesStoreRestart(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "notification-restart.db")
-	dsn := "sqlite://" + path
+	dsn := "sqlite://" + migratedSQLiteFile(t)
 	now := time.Unix(1_900_000_000, 0)
 	st, err := Open(ctx, dsn, true)
 	if err != nil {
@@ -149,7 +156,8 @@ func TestMigrationSourceIsStructurallyReadOnly(t *testing.T) {
 func TestOpenHealsPreAtomicTaxonomyProjections(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "taxonomy-upgrade.db")
+	// Start from the migrated template: the heal under test runs on the reopen below.
+	path := migratedSQLiteFile(t)
 	dsn := "sqlite://" + path
 	s, err := Open(ctx, dsn, true)
 	if err != nil {

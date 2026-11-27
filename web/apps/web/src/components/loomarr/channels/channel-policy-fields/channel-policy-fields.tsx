@@ -1,5 +1,5 @@
 import { tidyGoDuration } from "@loomarr/core/format";
-import { Action, CompactSelect, Text } from "@loomarr/design-system";
+import { Action, CompactSelect, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
 import { CommitField, normalizeYearRanges, YearRangeListField } from "@loomarr/ui";
 import { useState } from "react";
 import { eraDates, eraOf } from "@/lib/era-dates";
@@ -10,10 +10,21 @@ import {
   type PolicyField as PolicyFieldName,
   resetField,
 } from "@/lib/policy-overrides";
-import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { PolicyFieldSource } from "../policy-field-source";
 import type { ChannelPolicyFieldsProps } from "./channel-policy-fields.type";
+
+// What the number boxes take. A blank always passes (it clears the override); anything else that is
+// not the box's kind of number is held back with the reason, never sent as NaN (which the wire
+// spells null, silently clearing the limit).
+const asMinutes = (text: string) =>
+  text.trim() === "" || (Number.isFinite(Number(text)) && Number(text) >= 0)
+    ? undefined
+    : "Enter minutes as a number, like 90";
+const asCount = (text: string) =>
+  text.trim() === "" || /^\d+$/.test(text.trim()) ? undefined : "Enter a whole number, like 3";
+const asYear = (text: string) =>
+  text.trim() === "" || /^\d{4}$/.test(text.trim()) ? undefined : "Enter a year, like 1985";
 
 // One date axis: its title over the shared range list.
 const DateAxisEditor = ({
@@ -25,12 +36,12 @@ const DateAxisEditor = ({
   ranges: { from: number; to: number }[];
   onChange: (next: { from: number; to: number }[]) => void;
 }) => (
-  <div className="border-border flex flex-col gap-2 rounded-md border p-3">
-    <div className="flex items-center justify-between gap-3">
+  <Stack borderColor="borderDecorative" borderRadius={6} borderWidth={1} gap="inline" padding={12}>
+    <Stack align="center" direction="row" gap="control" justify="between">
       <Text textRole="label">{label}</Text>
-    </div>
+    </Stack>
     <YearRangeListField emptyText="No date requirement." label={label} onChange={onChange} ranges={ranges} />
-  </div>
+  </Stack>
 );
 
 // PolicyField — one defaultable field (#1817 item 4): its label and (i) help on the left, where
@@ -59,18 +70,20 @@ const PolicyField = ({
 }) => {
   const labelId = `${id}-label`;
   return (
-    <div className={cn("flex flex-col gap-1.5", wide && "sm:col-span-2")}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <Text as="label" htmlFor={htmlFor} id={labelId} textRole="label">
-            {label}
-          </Text>
-          <FieldHelp label={label}>{help}</FieldHelp>
-        </div>
-        <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
-      </div>
-      {children}
-    </div>
+    <GridItem span={wide ? { base: 1, sm: "full" } : 1}>
+      <Stack gap="1.5">
+        <Stack align="center" direction="row" gap="inline" justify="between" wrap>
+          <Stack align="center" direction="row" gap="1.5">
+            <Text as="label" htmlFor={htmlFor} id={labelId} textRole="label">
+              {label}
+            </Text>
+            <FieldHelp label={label}>{help}</FieldHelp>
+          </Stack>
+          <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
+        </Stack>
+        {children}
+      </Stack>
+    </GridItem>
   );
 };
 
@@ -214,7 +227,7 @@ const ChannelPolicyFields = ({
   return (
     // A responsive 2-column field grid (was a 1-wide stack): the Selects and single inputs sit
     // side by side, while the dates editor spans the full width. gap-x for columns, gap-y for rows.
-    <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
+    <Grid className={className} columnGap="4" columns={{ base: 1, sm: 2 }} rowGap="5">
       {/* Ordering — empty string means "inherit the channel's Strategy"; the select names that
           choice "inherit". */}
       {showOrdering && (
@@ -266,9 +279,9 @@ const ChannelPolicyFields = ({
         </PolicyField>
       )}
 
-      {/* Unrated titles — the safety PAIR to the ceiling, and orphaned until now: the gate has
-          always been enforced (and reported in the exclusion report) while nothing could choose
-          it, so an operator could see "3 skipped: unrated" and had no way to say "allow them".
+      {/* Unrated titles — the safety PAIR to the ceiling: the gate is always enforced (and
+          reported in the exclusion report), so an operator who sees "3 skipped: unrated" needs
+          this to say "allow them".
           Sits beside the ceiling because its default is DERIVED from it. */}
       {showScope && (
         <PolicyField
@@ -314,8 +327,14 @@ const ChannelPolicyFields = ({
           wide
           {...source("dates")}
         >
-          {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would duplicate the visible label row */}
-          <div role="group" aria-labelledby="policy-dates-label" className="flex flex-wrap items-end gap-3">
+          <Stack
+            align="end"
+            aria-labelledby="policy-dates-label"
+            direction="row"
+            gap="control"
+            role="group"
+            wrap
+          >
             {/* Keyed on the stored value: a reset or any outside change re-seeds the box instead
                 of leaving the old year on screen. */}
             <CommitField
@@ -325,8 +344,9 @@ const ChannelPolicyFields = ({
               keyboardType="number-pad"
               label="From year"
               maxLength={4}
+              validate={asYear}
               onCommit={(text) => {
-                const next = text === "" ? undefined : Number(text);
+                const next = text.trim() === "" ? undefined : Number(text);
                 if (next === era?.from) return;
                 const { dates: _dates, ...scope } = policy.scope ?? {};
                 const nextDates = eraDates({ ...era, from: next });
@@ -345,8 +365,9 @@ const ChannelPolicyFields = ({
               keyboardType="number-pad"
               label="To year"
               maxLength={4}
+              validate={asYear}
               onCommit={(text) => {
-                const next = text === "" ? undefined : Number(text);
+                const next = text.trim() === "" ? undefined : Number(text);
                 if (next === era?.to) return;
                 const { dates: _dates, ...scope } = policy.scope ?? {};
                 const nextDates = eraDates({ ...era, to: next });
@@ -367,7 +388,7 @@ const ChannelPolicyFields = ({
             >
               Use separate date windows
             </Action>
-          </div>
+          </Stack>
         </PolicyField>
       )}
 
@@ -383,9 +404,9 @@ const ChannelPolicyFields = ({
             onChange(resetField(policy, "dates"));
           }}
         >
-          <p className="text-muted-foreground text-xs">
+          <Text as="p" textRole="hint" tone="secondary">
             Movie release and series premiere filter titles; episode airing filters individual episodes.
-          </p>
+          </Text>
           {(
             [
               ["Movie release", "movieRelease"],
@@ -402,7 +423,7 @@ const ChannelPolicyFields = ({
                 const hasDates = Object.values(nextDates).some(
                   (ranges) => Array.isArray(ranges) && ranges.length > 0,
                 );
-                const { era: _era, dates: _dates, ...scope } = policy.scope ?? {};
+                const { dates: _dates, ...scope } = policy.scope ?? {};
                 // Editing an axis keeps this editor open even if the windows happen to line up
                 // again, so the field does not swap under the operator mid-edit.
                 setAxesRequested(true);
@@ -427,8 +448,8 @@ const ChannelPolicyFields = ({
         </PolicyField>
       )}
 
-      {/* Longest programme — orphaned until now: the backend has filtered on runtimeMax
-          since the scope policy existed, and nothing could set it. Useful for a channel
+      {/* Longest programme — the backend filters on runtimeMax, and this is the field that
+          sets it. Useful for a channel
           that should stay to half-hour episodes and never pull in a three-hour film. */}
       {showScope && (
         <PolicyField
@@ -447,6 +468,7 @@ const ChannelPolicyFields = ({
             key={policy.scope?.runtimeMax ?? 0}
             keyboardType="number-pad"
             placeholder="e.g. 90"
+            validate={asMinutes}
             width={112}
             onCommit={(text) => {
               const raw = text.trim();
@@ -463,8 +485,8 @@ const ChannelPolicyFields = ({
 
       {/* Repeat spacing — commit-on-blur duration strings, one field per window so each shows
           its own source and Reset. Series gap + block cap are the OTHER half of separation
-          (§3). They were orphaned: the relaxation ladder narrates them in Diagnostics ("series
-          gap was 2h") while nothing could set them. */}
+          (§3). The relaxation ladder narrates them in Diagnostics ("series gap was 2h"), and
+          these fields are what set them. */}
       {showOrdering &&
         DURATION_FIELDS.map(({ field, id, label, help }) => (
           <PolicyField key={field} id={id} htmlFor={id} label={label} help={help} {...source(field)}>
@@ -498,6 +520,7 @@ const ChannelPolicyFields = ({
             key={separation?.blockMax ?? ""}
             keyboardType="number-pad"
             placeholder="Use built-in"
+            validate={asCount}
             width={160}
             onCommit={(text) => {
               // Blank clears the authored cap and returns to the built-in limit. `0` is
@@ -510,7 +533,7 @@ const ChannelPolicyFields = ({
           />
         </PolicyField>
       )}
-    </div>
+    </Grid>
   );
 };
 

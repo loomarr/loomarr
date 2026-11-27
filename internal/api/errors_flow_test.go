@@ -50,6 +50,10 @@ func TestLoginError_IsFriendlyAndCorrelated(t *testing.T) {
 	if resp.Header.Get("X-Request-Id") == "" {
 		t.Error("missing X-Request-Id header")
 	}
+	// …and its server time (#3399), stamped by the same outer chain.
+	if !strings.Contains(resp.Header.Get("Server-Timing"), "total;dur=") {
+		t.Errorf("Server-Timing = %q, want a total", resp.Header.Get("Server-Timing"))
+	}
 	p := decodeProblem(t, resp.Body)
 	// …and the problem body echoes it as the RFC 7807 instance.
 	if p.Instance == "" || p.Instance != resp.Header.Get("X-Request-Id") {

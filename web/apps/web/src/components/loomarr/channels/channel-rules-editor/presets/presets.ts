@@ -5,25 +5,23 @@ import type { WhatVocab } from "@loomarr/api/models/whatVocab";
 import type { WhenVocab } from "@loomarr/api/models/whenVocab";
 import { eraDates, eraOf } from "@/lib/era-dates";
 
-// The rule authoring vocabulary is now SERVED by the backend (GET /v1/programming/vocabulary,
-// §6.6/§8.1) and consumed via a prop — this file no longer hand-mirrors the enumerable
-// WHEN/WHAT/HOW tables from internal/channels/schedule/presets.go (the old byte-for-byte mirror + its
-// drift hazard are gone). What stays here is only the PARAMETRIC lowering the endpoint can't
+// The rule authoring vocabulary is SERVED by the backend (GET /v1/programming/vocabulary,
+// §6.6/§8.1) and consumed via a prop — this file never hand-mirrors the enumerable
+// WHEN/WHAT/HOW tables from internal/channels/schedule/presets.go (a byte-for-byte mirror would
+// drift). What lives here is only the PARAMETRIC lowering the endpoint can't
 // enumerate (series:<key>, genre:<name>, era:<range> are composed from the channel's own
 // lineup) plus the reverse lookups, all parameterized BY the served vocabulary so there is a
 // single source of truth.
 //
-// ⚠ The served arrays are NO LONGER nullable on the wire (V53b — `huma.DefaultArrayNullable` is
-// false and a guard proves no handler returns nil). This comment used to say they were, and the
-// coalescing below existed for that. The coalescing STAYS, for a different and still-real reason:
-// the vocabulary arrives from a query, so it is `undefined` until the fetch resolves, and a
-// not-yet-loaded vocabulary should read as "no options" rather than crash. Null is gone; unloaded
-// is not.
+// ⚠ The served arrays are NOT nullable on the wire (V53b — `huma.DefaultArrayNullable` is
+// false and a guard proves no handler returns nil). The coalescing below is for a different
+// reason: the vocabulary arrives from a query, so it is `undefined` until the fetch resolves, and
+// a not-yet-loaded vocabulary should read as "no options" rather than crash. Never null; sometimes
+// unloaded.
 //
-// ⚠ The generated `VocabularyWhen`/`VocabularyWhat`/`VocabularyHow` aliases these signatures used
-// are gone too, and that is a side effect worth knowing: orval only emitted them because
-// `X[] | null` needed a name. Non-nullable arrays inline to `WhenVocab[]`, so the aliases stopped
-// being generated — nothing was renamed, they simply had no reason to exist.
+// ⚠ The signatures use `WhenVocab[]` etc. directly; there are no `VocabularyWhen` /
+// `VocabularyWhat` / `VocabularyHow` aliases to reach for. orval names an array type only when it
+// is `X[] | null`, and non-nullable arrays inline to `WhenVocab[]`.
 
 const arr = <T>(x: readonly T[] | null | undefined): readonly T[] => x ?? [];
 

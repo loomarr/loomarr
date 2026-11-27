@@ -25,14 +25,10 @@ const tuning: PlayerSnapshot = {
   tuneReason: "step",
 };
 const playing: PlayerSnapshot = { ...tuning, status: "playing" };
-const schedule = {
-  next: { timeLabel: "9:30 PM", title: "Later" },
-  now: {
-    progressPercent: 40,
-    remainingLabel: "12m left",
-    timeLabel: "9:00 PM–9:30 PM",
-    title: "The Current Frontier",
-  },
+const chrome = {
+  band: { channelName: "Science Fiction", channelNumber: "7", title: "The Current Frontier" },
+  segments: [],
+  window: { endMs: 1, nowMs: 0, startMs: 0 },
 };
 
 // This package compiles without the DOM lib, so type just the jsdom surface these tests use.
@@ -57,13 +53,18 @@ const mount = () => {
 const surface = (snapshot: PlayerSnapshot, props: Partial<Parameters<typeof WatchingSurface>[0]> = {}) => (
   <LoomarrProvider>
     <WatchingSurface
+      chrome={chrome}
+      formatTime={String}
       onDismissControls={vi.fn()}
       onGoLive={vi.fn()}
+      onLayer={vi.fn()}
       onOpenGuide={vi.fn()}
-      onPlay={vi.fn()}
+      onOpenSurf={vi.fn()}
       onRetry={vi.fn()}
+      onSeek={vi.fn()}
+      onTuneChannel={vi.fn()}
+      playheadMs={0}
       player={<div data-player="one-native-player" />}
-      schedule={schedule}
       snapshot={snapshot}
       {...props}
     />
@@ -223,7 +224,7 @@ describe("TV channel switch overlay (B4, #1627)", () => {
     dom.document.body.appendChild(container);
     act(() =>
       root.render(
-        surface({ catalog: [], recentChannelIds: [], status: "empty" }, { loading: true, schedule: {} }),
+        surface({ catalog: [], recentChannelIds: [], status: "empty" }, { chrome: undefined, loading: true }),
       ),
     );
     const strip = container.querySelector('[aria-label="Loading channels"]');

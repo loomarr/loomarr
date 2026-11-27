@@ -50,7 +50,7 @@ func TestLibraryHooks_DeliveryAndStatus(t *testing.T) {
 	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
 			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log,
-			LibraryRoots: newScanLibrary(t, defaults.Store), LibraryHooks: hooks,
+			Library: api.LibraryOptions{Roots: newScanLibrary(t, defaults.Store), Hooks: hooks},
 		})
 	})
 	post := func(path, user, password, body string) int {

@@ -1,1 +1,1 @@
-export { PORTRAIT_PICTURE_TOP, PortraitChrome } from "./portrait-chrome";
+export { PortraitChrome } from "./portrait-chrome";

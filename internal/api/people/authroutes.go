@@ -90,7 +90,7 @@ type meOutput struct {
 
 func (s *Handlers) handleLogin(ctx context.Context, in *loginInput) (*meOutput, error) {
 	r := httpcore.RequestFrom(ctx)
-	rateKey := s.origin.ClientIP(r) + "|" + in.Body.Username
+	rateKey := auth.LoginRateKey(s.origin.ClientIP(r), in.Body.Username)
 	token, expires, u, err := s.login.Login(ctx, in.Body.Username, in.Body.Password, rateKey)
 	if err != nil {
 		switch {
@@ -153,7 +153,13 @@ type logoutOutput struct {
 func (s *Handlers) handleLogout(ctx context.Context, _ *struct{}) (*logoutOutput, error) {
 	r := httpcore.RequestFrom(ctx)
 	if c, err := r.Cookie(auth.CookieName); err == nil && c.Value != "" && s.sessions != nil {
-		_ = s.sessions.Revoke(ctx, c.Value)
+		// A revoke that failed leaves the session valid server-side. Answering 204 and clearing the
+		// cookie would hide a live credential the person can no longer find or end, so the failure
+		// is a 500 that keeps the cookie and lets them retry; the transformer logs the cause.
+		if err := s.sessions.Revoke(ctx, c.Value); err != nil {
+			return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Could not sign you out",
+				"Your session is still active because it could not be ended. Try signing out again.", err)
+		}
 	}
 	// Clear the cookie.
 	clear := s.sessionCookie(r, "", time.Unix(0, 0))

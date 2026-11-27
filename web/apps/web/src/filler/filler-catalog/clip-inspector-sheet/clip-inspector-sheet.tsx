@@ -1,6 +1,14 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@loomarr/design-system";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Stack,
+  Text,
+} from "@loomarr/design-system";
 import { type RefObject, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ClipDetails } from "../../clip-details";
@@ -35,7 +43,7 @@ const ClipInspectorBody = ({ hash, isAdmin }: ClipInspectorBodyProps) => {
           {editing ? "Edit details" : clip?.held ? "Preparing" : clip?.isComposite ? "Recording" : "Ready"}
         </DialogDescription>
       </DialogHeader>
-      <div className="space-y-5 p-6">
+      <Stack gap="5" padding={24}>
         {inspection.error ? (
           <ErrorState error={inspection.error} onRetry={() => inspection.refetch()} />
         ) : clip ? (
@@ -56,11 +64,13 @@ const ClipInspectorBody = ({ hash, isAdmin }: ClipInspectorBodyProps) => {
             </>
           )
         ) : (
-          <p role="status" className="text-muted-foreground text-sm">
-            {inspection.isLoading ? "Loading clip…" : "This clip is no longer available."}
-          </p>
+          <div role="status">
+            <Text as="p" textRole="compact" tone="secondary">
+              {inspection.isLoading ? "Loading clip…" : "This clip is no longer available."}
+            </Text>
+          </div>
         )}
-      </div>
+      </Stack>
     </>
   );
 };

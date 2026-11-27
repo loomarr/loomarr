@@ -29,15 +29,23 @@ func testIntentHash(intent proposals.Intent) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func TestStoreWorkflowSubmissionCacheKeepsCallerLifecycleFresh(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
+// openStore opens a migrated store with the people these tests name saved as members.
+func openStore(t *testing.T) store.Store {
+	t.Helper()
+	st, err := store.Open(context.Background(), testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
+	testkit.SaveMembers(t, st, "alice", "bob", "admin", "member-1")
+	return st
+}
+
+func TestStoreWorkflowSubmissionCacheKeepsCallerLifecycleFresh(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	st := openStore(t)
 	now := time.Date(2026, time.August, 22, 15, 0, 0, 0, time.UTC)
 	var next atomic.Int64
 	workflow := New(st, func() string { return "workflow-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now }, testIntentHash)
@@ -107,11 +115,7 @@ func TestStoreWorkflowRecordsAGroundedProposalAwaitingApproval(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := openStore(t)
 	now := time.Date(2026, time.September, 28, 18, 0, 0, 0, time.UTC)
 	var next atomic.Int64
 	workflow := New(st, func() string { return "record-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now }, testIntentHash)
@@ -155,11 +159,7 @@ func TestStoreWorkflowRecoversCrashAndRejectsLateAttemptResult(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := openStore(t)
 
 	started := time.Date(2026, time.August, 22, 16, 0, 0, 0, time.UTC)
 	clock := started
@@ -222,11 +222,7 @@ func TestStoreWorkflowPersistsPrivateDiagnosticButProjectsSafeFailure(t *testing
 	t.Parallel()
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := openStore(t)
 	now := time.Date(2026, time.August, 22, 17, 0, 0, 0, time.UTC)
 	workflow := New(st, func() string { return "unused" }, func() time.Time { return now }, testIntentHash)
 	if err := st.CreateJob(ctx, proposalstore.Job{
@@ -271,11 +267,7 @@ func TestStoreWorkflowListsCallerJourneysIncludingJobsWithoutProposal(t *testing
 	t.Parallel()
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := openStore(t)
 	now := time.Date(2026, time.August, 22, 18, 0, 0, 0, time.UTC)
 	workflow := New(st, func() string { return "unused" }, func() time.Time { return now }, testIntentHash)
 	for _, job := range []proposalstore.Job{
@@ -306,11 +298,7 @@ func TestStoreWorkflowClaimFailsPoisonJobAndReturnsTheRest(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := openStore(t)
 	now := time.Date(2026, time.November, 3, 9, 0, 0, 0, time.UTC)
 	workflow := New(st, func() string { return "unused" }, func() time.Time { return now }, testIntentHash)
 	for _, job := range []proposalstore.Job{
@@ -346,7 +334,7 @@ func TestStoreWorkflowClaimFailsPoisonJobAndReturnsTheRest(t *testing.T) {
 	}
 }
 
-func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testing.T) {
+func TestStoreWorkflowClaimAbandonsAJobThatKeepsKillingItsWorker(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -355,6 +343,46 @@ func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testi
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
+	clock := time.Date(2026, time.November, 11, 9, 0, 0, 0, time.UTC)
+	workflow := New(st, func() string { return "unused" }, func() time.Time { return clock }, testIntentHash)
+	if err := st.CreateJob(ctx, proposalstore.Job{
+		ID: "crasher", Kind: "suggest", Status: "queued", CreatedBy: "alice",
+		IntentJSON: `{"description":"Noir"}`, WorkflowVersion: proposalstore.ProposalWorkflowVersion,
+		Deadline: clock, CreatedAt: clock, UpdatedAt: clock,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Each claim's worker dies before reporting; the lease expires and the next claim recovers it.
+	for attempt := 1; attempt <= MaxInterruptedAttempts; attempt++ {
+		works, err := workflow.Claim(ctx, clock, time.Minute, 1)
+		if err != nil || len(works) != 1 || works[0].Attempt != attempt {
+			t.Fatalf("claim %d = (%+v, %v)", attempt, works, err)
+		}
+		clock = clock.Add(2 * time.Minute)
+	}
+
+	works, err := workflow.Claim(ctx, clock, time.Minute, 1)
+	if err != nil || len(works) != 0 {
+		t.Fatalf("claim after %d interruptions = (%+v, %v), want the Job abandoned", MaxInterruptedAttempts, works, err)
+	}
+	job, err := st.GetJob(ctx, "crasher")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != "failed" || job.FailureCode != string(FailureGenerationFailed) || !strings.Contains(job.LastError, "interrupted") {
+		t.Fatalf("abandoned Job = status %q code %q last_error %q", job.Status, job.FailureCode, job.LastError)
+	}
+	if again, err := workflow.Claim(ctx, clock.Add(time.Hour), time.Minute, 1); err != nil || len(again) != 0 {
+		t.Fatalf("claim after abandonment = (%+v, %v), want nothing", again, err)
+	}
+}
+
+func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	st := openStore(t)
 	now := time.Date(2026, time.September, 22, 3, 0, 0, 0, time.UTC)
 	workflow := New(st, func() string { return "unused" }, func() time.Time { return now }, testIntentHash)
 
@@ -422,11 +450,7 @@ func TestStoreWorkflowSubmitForChannelIsFreshAndNeverCached(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := openStore(t)
 	now := time.Date(2026, time.August, 22, 15, 0, 0, 0, time.UTC)
 	var next atomic.Int64
 	workflow := New(st, func() string { return "workflow-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now }, testIntentHash)

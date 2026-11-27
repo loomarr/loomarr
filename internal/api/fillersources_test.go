@@ -44,10 +44,8 @@ func serverWithClips(t *testing.T, cfg map[string]string, clips []clipstore.Clip
 		Store:        st,
 		Auth:         httpcore.NewTokenAuthorizer(adminToken),
 		Log:          slog.New(slog.DiscardHandler),
-		FillerLayout: layout,
+		Filler:       api.FillerOptions{Layout: layout, SourceProviders: testSourceProviders(t)},
 		LiveSettings: stringSettings(func(k string) string { return cfg[k] }),
-
-		SourceProviders: testSourceProviders(t),
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -460,10 +458,8 @@ func TestFillerSources_ReportsAppliedDirUntilRestart(t *testing.T) {
 		Store:        st,
 		Auth:         httpcore.NewTokenAuthorizer(adminToken),
 		Log:          slog.New(slog.DiscardHandler),
-		FillerLayout: layout,
+		Filler:       api.FillerOptions{Layout: layout, SourceProviders: testSourceProviders(t)},
 		LiveSettings: stringSettings(func(k string) string { return cfg[k] }),
-
-		SourceProviders: testSourceProviders(t),
 	})
 	readSources := func() sourcesBody {
 		req := httptest.NewRequest(http.MethodGet, "/v1/filler/sources", nil)
@@ -521,13 +517,13 @@ func TestFillerSources_FolderSwitchReadsTheRealSettingsService(t *testing.T) {
 		Store: st,
 		Auth:  httpcore.NewTokenAuthorizer(adminToken),
 		Log:   slog.New(slog.DiscardHandler),
-		FillerLayout: func() cliplibrary.Layout {
+		Filler: api.FillerOptions{Layout: func() cliplibrary.Layout {
 			layout, layoutErr := cliplibrary.NewLayout(svc.String("filler.dir"), svc.String("filler.watch_dir"))
 			if layoutErr != nil {
 				t.Fatalf("cliplibrary.NewLayout: %v", layoutErr)
 			}
 			return layout
-		}(),
+		}()},
 		// Wired exactly as the composition root wires them, typed per Kind.
 		LiveSettings: svc,
 	})

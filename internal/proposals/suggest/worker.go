@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -248,29 +249,32 @@ func (s *Service) submitForChannel(ctx context.Context, channelID string, intent
 
 // Run starts the worker pool and blocks until ctx is cancelled (§8). Each worker
 // polls for due jobs and runs them; the pool shares the ClaimDueJobs lease so no
-// job runs twice.
+// job runs twice. It returns only after every job it started has finished, so the
+// store a job records its outcome in is still open when the job does.
 func (s *Service) Run(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	s.log.Info("suggestion worker pool started", "workers", s.workers, "timeout", s.timeout)
 	sem := make(chan struct{}, s.workers)
+	var jobs sync.WaitGroup
+	defer jobs.Wait()
 	// A service start or restart should recover already-due work immediately. Waiting
 	// for the first polling tick adds two seconds to every queued Proposal Job and to
 	// every independent worker lifecycle exercised by the test suite.
-	s.drainOnce(ctx, sem)
+	s.drainOnce(ctx, sem, &jobs)
 	for {
 		select {
 		case <-ctx.Done():
 			s.log.Info("suggestion worker pool stopped")
 			return
 		case <-ticker.C:
-			s.drainOnce(ctx, sem)
+			s.drainOnce(ctx, sem, &jobs)
 		}
 	}
 }
 
-// drainOnce claims up to `workers` due jobs and runs each in a bounded goroutine.
-func (s *Service) drainOnce(ctx context.Context, sem chan struct{}) {
+// drainOnce claims up to `workers` due jobs and runs each in a bounded goroutine joined to jobs.
+func (s *Service) drainOnce(ctx context.Context, sem chan struct{}, jobs *sync.WaitGroup) {
 	available := cap(sem) - len(sem)
 	if available <= 0 {
 		return
@@ -287,11 +291,24 @@ func (s *Service) drainOnce(ctx context.Context, sem chan struct{}) {
 		case <-ctx.Done():
 			return
 		}
-		go func() {
+		jobs.Go(func() {
 			defer func() { <-sem }()
+			defer s.recoverWorkflow(ctx, work)
 			s.runWorkflow(ctx, work)
-		}()
+		})
 	}
+}
+
+// recoverWorkflow turns a panic in one Job into that Job's failure. Without it a single bad
+// suggestion takes the whole server down, and the claim loop then re-runs the same Job on restart.
+func (s *Service) recoverWorkflow(ctx context.Context, work workflow.Work) {
+	recovered := recover()
+	if recovered == nil {
+		return
+	}
+	s.log.Error("suggestion job panicked", "job", work.JobID, "attempt", work.Attempt,
+		"panic", recovered, "stack", string(debug.Stack()))
+	s.failWorkflow(ctx, work, fmt.Errorf("suggestion panicked: %v", recovered), 0, false)
 }
 
 func (s *Service) runWorkflow(ctx context.Context, work workflow.Work) {
@@ -322,6 +339,9 @@ func (s *Service) runWorkflow(ctx context.Context, work workflow.Work) {
 		s.failWorkflow(ctx, work, fmt.Errorf("persist proposal: %w", err), 0, false)
 		return
 	}
+	// The proposal is stored, so the run is done whatever follows: the done frame goes out even if
+	// settling below panics, and screens waiting on this run read it again.
+	defer s.emitPhase(work.JobID, PhaseDone, 0)
 	s.recordSuggestionQuality(ctx, work.JobID, work.Attempt, duration, completed.Proposal, nil)
 	row := proposalstore.Proposal{
 		ID: completed.ID, JobID: completed.JobID, Status: "submitted", CreatedBy: completed.CreatedBy,
@@ -330,7 +350,6 @@ func (s *Service) runWorkflow(ctx context.Context, work workflow.Work) {
 	s.settleSubmitted(ctx, proposalstore.Job{
 		ID: work.JobID, Kind: work.Kind, CreatedBy: work.CreatedBy, ChannelID: work.ChannelID, Attempts: work.Attempt,
 	}, row)
-	s.emitPhase(work.JobID, PhaseDone, 0)
 }
 
 func (s *Service) failWorkflow(ctx context.Context, work workflow.Work, cause error, measuredDuration time.Duration, measured bool) {

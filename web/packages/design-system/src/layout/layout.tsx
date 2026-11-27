@@ -4,7 +4,8 @@ import { forwardRef, useId, useLayoutEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, useWindowDimensions } from "react-native";
 
 import { useFocusLook } from "../focus-look";
-import { StatusDot, type StatusTone, Text } from "../primitives";
+import { StatusDot, type StatusTone } from "../primitives";
+import { Text } from "../text";
 import { type Density, semanticSpace, semanticTargets } from "../tokens";
 import { useViewportScale } from "../viewport";
 
@@ -241,13 +242,15 @@ const Disclosure = ({
           <Text density={density} textAlign="left" textRole="label" tone="primary">
             {label}
           </Text>
+          {/* Hint, not metadata: the same size at every density, in the body face. A description
+              and Show/Hide are words, and mono is for channel numbers and clocks (#2778, #3412). */}
           {description ? (
-            <Text density={density} textAlign="left" textRole="metadata">
+            <Text density={density} textAlign="left" textRole="hint" tone="secondary">
               {description}
             </Text>
           ) : null}
         </View>
-        <Text density={density} textRole="metadata" tone={focused ? "primary" : "secondary"}>
+        <Text density={density} textRole="hint" tone={focused ? "primary" : "secondary"}>
           {expanded ? "Hide" : "Show"}
         </Text>
       </Pressable>

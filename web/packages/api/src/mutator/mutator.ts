@@ -28,6 +28,29 @@ const toProblem = (err: unknown): ErrorModel => {
   return { title: "Something went wrong" };
 };
 
+// readResponse is how every Loomarr client reads an answer: an empty body is undefined, a JSON
+// body is parsed, and a refusal is a typed ApiError carrying its problem+json. The status decides
+// before the body is parsed, because a proxy in front of the server answers a failure with an
+// HTML page; a body that is not JSON (a failure page, or an app page answering an API path) is
+// an ApiError too, never the parser's SyntaxError.
+const readResponse = async (res: Response): Promise<unknown> => {
+  const requestId = res.headers.get("X-Request-Id") ?? undefined;
+  const text = await res.text();
+  let body: unknown;
+  try {
+    body = text ? JSON.parse(text) : undefined;
+  } catch {
+    throw new ApiError(
+      res.status,
+      { status: res.status, title: "Loomarr's server didn't answer properly", detail: `HTTP ${res.status}` },
+      requestId,
+    );
+  }
+  if (!res.ok)
+    throw new ApiError(res.status, (body as ErrorModel | undefined) ?? { status: res.status }, requestId);
+  return body;
+};
+
 const CSRF_HEADER = "X-Loomarr-Csrf";
 type ApiFailure = { requestId: string; status: number };
 let apiFailureObserver: ((failure: ApiFailure) => void) | undefined;
@@ -56,16 +79,12 @@ const customFetch = async <T>(url: string, options: RequestInit = {}): Promise<T
   if (prefetchedAuth) delete initialAuthGlobal.__loomarrInitialAuthResponse;
   const res = await (prefetchedAuth ?? fetch(url, { ...options, headers, credentials: "include" }));
 
-  // 204 / empty body → undefined; otherwise parse JSON (problem+json on error).
-  const text = await res.text();
-  const body = text ? (JSON.parse(text) as unknown) : undefined;
-
   if (!res.ok) {
     const requestId = res.headers.get("X-Request-Id") ?? undefined;
     if (requestId && url !== "/v1/diagnostics/client-events")
       apiFailureObserver?.({ requestId, status: res.status });
-    throw new ApiError(res.status, (body as ErrorModel) ?? { status: res.status }, requestId);
   }
+  const body = await readResponse(res);
   // orval's fetch client expects the response ENVELOPE (like axios's response), not the
   // bare body — the generated hooks type `data` as `{ status, data }`, so a caller reads
   // `useX().data?.data`. Returning the raw body here typechecks (via the cast) but is
@@ -74,4 +93,4 @@ const customFetch = async <T>(url: string, options: RequestInit = {}): Promise<T
 };
 
 export type { ApiFailure };
-export { ApiError, customFetch, observeApiFailures, toProblem };
+export { ApiError, customFetch, observeApiFailures, readResponse, toProblem };

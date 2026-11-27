@@ -1,4 +1,3 @@
-export { LibraryNeedsCards, LibraryNeedsStrip } from "./library-needs";
 export type {
   LibraryExternalId,
   LibraryNeed,
@@ -6,7 +5,7 @@ export type {
   LibraryNeedSearch,
   LibraryNeedsAnswers,
   LibraryNeedsCardsProps,
-  LibraryNeedsStripProps,
   LibraryOrderNeed,
   LibraryProblem,
 } from "./library-needs.type";
+export { LibraryNeedsCards } from "./library-needs-cards";

@@ -1,26 +1,24 @@
-import { Action, Tooltip } from "@loomarr/design-system";
+import { Action, Stack, Tooltip, VisuallyHidden } from "@loomarr/design-system";
 import { useId } from "react";
-import { cn } from "@/lib/utils";
 import type { FieldHelpProps } from "./field-help.type";
 
 // FieldHelp — a small (i) icon that shows a field's guidance on hover/focus, instead of a
 // permanent muted paragraph under every control. This is what lets the settings forms breathe:
 // the help is there when you want it, out of the way when you don't.
 //
-// ⚠ THE `sr-only` COPY IS LOAD-BEARING — do not "de-duplicate" it against the tooltip.
+// ⚠ THE HIDDEN COPY IS LOAD-BEARING — do not "de-duplicate" it against the tooltip.
 //
 // Base UI's Tooltip is deliberately visual-only: its Popup carries no `role="tooltip"` and its
 // Trigger gets no `aria-describedby`, and its docs say so outright — "Tooltips are visual-only
-// elements and are not a replacement for labeling the trigger." Radix wired that association for
-// us, so the swap silently removed it. Everywhere else in the app that costs nothing, because the
-// trigger's `aria-label` already restates the tooltip ("Sign out" → "Sign out"). HERE it does not:
-// the content is the field's DOCUMENTATION (`entry.detail` for a setting), which appears nowhere
-// else in the DOM. A screen-reader user would have heard "About Ordering, button" and nothing more.
+// elements and are not a replacement for labeling the trigger." Everywhere else in the app that
+// costs nothing, because the trigger's `aria-label` already restates the tooltip ("Sign out" →
+// "Sign out"). HERE it does not: the content is the field's DOCUMENTATION (`entry.detail` for a
+// setting), which appears nowhere else in the DOM. Without the wiring below, a screen-reader user
+// hears "About Ordering, button" and nothing more.
 //
 // So the description is declared explicitly and permanently, and `aria-describedby` points at it.
-// That is what Radix did under the hood; it is written out here because the primitive no longer
-// does it. This file's comment previously claimed the SR user "hears the same guidance" — under
-// Base UI that claim would have been false, which is exactly why it is spelled out now.
+// The primitive does not do it, so it is written out here; do not assume the SR user "hears the
+// same guidance" from the tooltip alone.
 const FieldHelp = ({ children, label, describedById, className }: FieldHelpProps) => {
   const ownId = useId();
   // Reuse the consumer's existing description when there is one (SettingField renders the doc for
@@ -28,7 +26,7 @@ const FieldHelp = ({ children, label, describedById, className }: FieldHelpProps
   const descriptionId = describedById ?? ownId;
 
   return (
-    <span className={cn("inline-flex shrink-0", className)}>
+    <Stack className={className} direction="row" flexShrink={0} render="span">
       <Tooltip content={children}>
         <Action
           aria-describedby={descriptionId}
@@ -39,11 +37,11 @@ const FieldHelp = ({ children, label, describedById, className }: FieldHelpProps
         >{`About ${label}`}</Action>
       </Tooltip>
       {!describedById && (
-        <span id={descriptionId} className="sr-only">
-          {children}
-        </span>
+        <VisuallyHidden as="span">
+          <span id={descriptionId}>{children}</span>
+        </VisuallyHidden>
       )}
-    </span>
+    </Stack>
   );
 };
 

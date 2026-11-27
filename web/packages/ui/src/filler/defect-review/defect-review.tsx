@@ -7,13 +7,26 @@ import {
   defectVerdictSummary,
 } from "@loomarr/core/filler-defects";
 import { pluralize } from "@loomarr/core/format";
-import { Action, AdaptiveSplit, StatusLabel, Surface, Text } from "@loomarr/design-system";
+import {
+  Action,
+  AdaptiveSplit,
+  StatusLabel,
+  Surface,
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+  Text,
+} from "@loomarr/design-system";
 
 import { StatePanel } from "../../state-panel";
 import type { DefectReviewProps } from "./defect-review.type";
 
 // Each column starts at the width of its widest word ("Tape", "Precision", "3 of 4") and shares
-// what is left, so all five fit a phone's card without breaking one.
+// what is left, so all five fit a phone's card without breaking one. The table is dense for the
+// same room: plain caption headers, not tracked capitals.
 const columns = [
   ["band", "Era", 32],
   ["labelled", "Labelled", 52],
@@ -22,22 +35,6 @@ const columns = [
   ["judge", "Judge", 40],
 ] as const;
 
-// Caption headers, not monospace metadata, for the same room.
-const Cell = ({ children, header, width }: { children: string; header?: boolean; width: number }) => (
-  <Surface
-    backgroundColor="$transparent"
-    borderWidth={0}
-    flexBasis={width}
-    flexGrow={1}
-    flexShrink={0}
-    role={header ? "columnheader" : "cell"}
-  >
-    <Text textRole={header ? "caption" : "body"} tone={header ? "secondary" : "primary"}>
-      {children}
-    </Text>
-  </Surface>
-);
-
 // The floor against the maintainer's labels, one row per era band that has any (#2034 step 4c).
 const Scores = ({ report }: Pick<DefectReviewProps, "report">) =>
   report.scores.length === 0 ? (
@@ -45,39 +42,31 @@ const Scores = ({ report }: Pick<DefectReviewProps, "report">) =>
       No clips labelled yet. Scores appear here once you label a few below.
     </Text>
   ) : (
-    <Surface
-      aria-label="Scores against your labels"
-      backgroundColor="$transparent"
-      borderWidth={0}
-      role="table"
-    >
-      <Surface backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$inline" role="row">
-        {columns.map(([key, title, width]) => (
-          <Cell header key={key} width={width}>
-            {title}
-          </Cell>
-        ))}
-      </Surface>
-      {report.scores.map((score) => {
-        const cells = defectScoreCells(score);
-        return (
-          <Surface
-            backgroundColor="$transparent"
-            borderWidth={0}
-            flexDirection="row"
-            gap="$inline"
-            key={score.band}
-            role="row"
-          >
-            {columns.map(([key, , width]) => (
-              <Cell key={key} width={width}>
-                {cells[key]}
-              </Cell>
-            ))}
-          </Surface>
-        );
-      })}
-    </Surface>
+    <Table caption="Scores against your labels" dense framed={false}>
+      <TableHeader>
+        <TableRow>
+          {columns.map(([key, title, width]) => (
+            <TableHeaderCell key={key} width={width}>
+              {title}
+            </TableHeaderCell>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {report.scores.map((score) => {
+          const cells = defectScoreCells(score);
+          return (
+            <TableRow key={score.band}>
+              {columns.map(([key, , width]) => (
+                <TableCell key={key} width={width}>
+                  {cells[key]}
+                </TableCell>
+              ))}
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
   );
 
 // The household defect report's labelling queue (#2034 step 4c): the floor's standing and scores,

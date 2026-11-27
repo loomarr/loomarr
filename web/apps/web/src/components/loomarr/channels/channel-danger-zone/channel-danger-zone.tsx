@@ -1,7 +1,6 @@
-import { Action } from "@loomarr/design-system";
+import { Action, Card, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { useDeleteConfirm } from "@/channels/use-delete-confirm";
-import { cn } from "@/lib/utils";
 import type { ChannelDangerZoneProps } from "./channel-danger-zone.type";
 
 // ChannelDangerZone — the destructive-actions section (frontend-design §6: an isolated
@@ -36,106 +35,123 @@ const ChannelDangerZone = ({
   };
 
   return (
-    <div
-      className={cn(
-        "border-onair-tint-15 bg-onair-tint-15 flex flex-col gap-4 rounded-lg border p-4",
-        className,
-      )}
-    >
-      <div>
-        <h3 className="text-onair-300 text-base font-semibold">Danger zone</h3>
-        <p className="text-muted-foreground mt-1 text-xs">
-          These actions affect whether {channelName} broadcasts at all.
-        </p>
-      </div>
+    <Card borderRadius={8} className={className} padding={16} tone="onair">
+      <Stack gap="4">
+        <Stack gap="1">
+          <Text as="h3" textRole="heading" tone="danger">
+            Danger zone
+          </Text>
+          <Text as="p" textRole="hint" tone="secondary">
+            These actions affect whether {channelName} broadcasts at all.
+          </Text>
+        </Stack>
 
-      {/* Pause/resume — fully reversible, so it is a single click with no confirm step. */}
-      <div className="border-onair-tint-15 flex items-center justify-between gap-3 border-t pt-4">
-        <p className="text-sm">
-          {paused ? "Paused: off air but kept." : "Take this channel off air without deleting it."}
-        </p>
-        {paused ? (
-          <Action disabled={busy} onPress={onResume} variant="outline">
-            Resume
-          </Action>
-        ) : (
-          <Action disabled={busy} onPress={onPause} variant="outline">
-            Pause
-          </Action>
-        )}
-      </div>
+        {/* Pause/resume — fully reversible, so it is a single click with no confirm step. */}
+        <Stack
+          align="center"
+          borderTopColor="$borderDecorative"
+          borderTopWidth={1}
+          direction="row"
+          gap="control"
+          justify="between"
+          paddingTop={16}
+        >
+          <Text as="p" textRole="compact" tone="primary">
+            {paused ? "Paused: off air but kept." : "Take this channel off air without deleting it."}
+          </Text>
+          {paused ? (
+            <Action disabled={busy} onPress={onResume} variant="outline">
+              Resume
+            </Action>
+          ) : (
+            <Action disabled={busy} onPress={onPause} variant="outline">
+              Pause
+            </Action>
+          )}
+        </Stack>
 
-      {/* Detach and purge are distinct server operations (§7), never a checkbox under one "delete"
+        {/* Detach and purge are distinct server operations (§7), never a checkbox under one "delete"
           label. The confirmation step replaces both choices so it has one unambiguous action.
           The words are the web mock's. ⚠ Its detach line ("It keeps playing as it is now") holds
           only for a Tunarr-streamed channel: a detached channel Loomarr plays itself goes off
           air (api/channelplayurl.go). Until the maintainer settles it, this row keeps the line
           that is true for both. */}
-      <div className="border-onair-tint-15 flex flex-col gap-3 border-t pt-4">
-        {!confirming ? (
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm">Stop Loomarr from updating this channel.</p>
-                <p className="text-muted-foreground text-xs">
-                  Loomarr keeps its record and leaves any Tunarr channel in place.
-                </p>
-              </div>
-              <div className="shrink-0">
-                <Action disabled={busy} onPress={() => chooseRemoval("detach")} variant="outline">
-                  Stop updating
-                </Action>
-              </div>
-            </div>
+        <Stack borderTopColor="$borderDecorative" borderTopWidth={1} gap="control" paddingTop={16}>
+          {!confirming ? (
+            <Stack gap="4">
+              <Stack align="center" direction="row" gap="control" justify="between">
+                <Stack gap="1">
+                  <Text as="p" textRole="compact" tone="primary">
+                    Stop Loomarr from updating this channel.
+                  </Text>
+                  <Text as="p" textRole="hint" tone="secondary">
+                    Loomarr keeps its record and leaves any Tunarr channel in place.
+                  </Text>
+                </Stack>
+                <Stack flexShrink={0}>
+                  <Action disabled={busy} onPress={() => chooseRemoval("detach")} variant="outline">
+                    Stop updating
+                  </Action>
+                </Stack>
+              </Stack>
 
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm">Delete this channel from Loomarr, and from Tunarr if it's there.</p>
-                <p className="text-onair-300 text-xs">This can't be undone.</p>
-              </div>
-              <div className="shrink-0">
+              <Stack align="center" direction="row" gap="control" justify="between">
+                <Stack gap="1">
+                  <Text as="p" textRole="compact" tone="primary">
+                    Delete this channel from Loomarr, and from Tunarr if it's there.
+                  </Text>
+                  <Text as="p" textRole="hint" tone="danger">
+                    This can't be undone.
+                  </Text>
+                </Stack>
+                <Stack flexShrink={0}>
+                  <Action
+                    disabled={busy}
+                    onPress={() => chooseRemoval("purge")}
+                    tone="danger"
+                    variant="outline"
+                  >
+                    Delete channel
+                  </Action>
+                </Stack>
+              </Stack>
+            </Stack>
+          ) : (
+            <Card borderRadius={6} gap="control" padding={12} tone="onair">
+              {removal === "detach" ? (
+                <Text as="p" textRole="compact" tone="primary">
+                  Stop updating {channelName}? Loomarr will keep its record and leave any Tunarr channel in
+                  place.
+                </Text>
+              ) : (
+                <>
+                  <Text as="p" textRole="compact" tone="primary">
+                    Delete {channelName} from Loomarr, and from Tunarr if it's there?
+                  </Text>
+                  <Text as="p" textRole="hint" tone="danger">
+                    This can't be undone.
+                  </Text>
+                </>
+              )}
+
+              <Stack align="center" direction="row" gap="inline">
                 <Action
                   disabled={busy}
-                  onPress={() => chooseRemoval("purge")}
-                  tone="danger"
+                  onPress={() => onDelete({ purge: removal === "purge" })}
+                  tone={removal === "purge" ? "danger" : undefined}
                   variant="outline"
                 >
-                  Delete channel
+                  {removal === "purge" ? "Delete channel" : "Stop updating"}
                 </Action>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="border-onair-tint-15 bg-background/40 flex flex-col gap-3 rounded-md border p-3">
-            {removal === "detach" ? (
-              <p className="text-sm">
-                Stop updating {channelName}? Loomarr will keep its record and leave any Tunarr channel in
-                place.
-              </p>
-            ) : (
-              <>
-                <p className="text-sm">Delete {channelName} from Loomarr, and from Tunarr if it's there?</p>
-                <p className="text-onair-300 text-xs">This can't be undone.</p>
-              </>
-            )}
-
-            <div className="flex items-center gap-2">
-              <Action
-                disabled={busy}
-                onPress={() => onDelete({ purge: removal === "purge" })}
-                tone={removal === "purge" ? "danger" : undefined}
-                variant="outline"
-              >
-                {removal === "purge" ? "Delete channel" : "Stop updating"}
-              </Action>
-              <Action disabled={busy} onPress={cancel} variant="ghost">
-                Cancel
-              </Action>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+                <Action disabled={busy} onPress={cancel} variant="ghost">
+                  Cancel
+                </Action>
+              </Stack>
+            </Card>
+          )}
+        </Stack>
+      </Stack>
+    </Card>
   );
 };
 

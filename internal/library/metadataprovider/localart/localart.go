@@ -37,6 +37,26 @@ func IsImage(name string) bool {
 	return false
 }
 
+// IsFolderArt reports whether name is a folder's own artwork: an image named for a kind a series
+// folder holds ("poster.jpg", "fanart.png", "logo.png"…) or a season poster ("season01-poster.jpg").
+// A scanner digests these so a replaced show poster rewrites the show (#3226).
+func IsFolderArt(name string) bool {
+	if !IsImage(name) {
+		return false
+	}
+	lower := strings.ToLower(name)
+	base := strings.TrimSuffix(lower, filepath.Ext(lower))
+	if seasonPoster.MatchString(base) {
+		return true
+	}
+	for _, r := range folderRules {
+		if slices.Contains(r.names, base) {
+			return true
+		}
+	}
+	return false
+}
+
 // rule is one artwork kind and the names, without extension, that hold it, best first.
 type rule struct {
 	kind  string

@@ -25,8 +25,11 @@ import type {
 
 const EVENTS_URL = "/v1/events";
 
-// How long the browser stream waits before opening a new EventSource in place of a closed one.
+// How long the browser stream waits before opening a new EventSource in place of a closed one: 3s
+// after the first refusal, twice as long after each one in a row, never more than a minute. A
+// server that is down for a while is asked about once a minute rather than every 3 seconds.
 const STREAM_REOPEN_MS = 3000;
+const STREAM_REOPEN_MAX_MS = 60_000;
 
 // EventSource.CLOSED, by value: a stand-in source in a test may not carry the constant, and an
 // undefined one would make every error look like a source closed for good.
@@ -35,21 +38,27 @@ const SOURCE_CLOSED = 2;
 // The browser retries a dropped connection by itself, but a refused response closes an
 // EventSource for good: a proxy's 502 while the server restarts for an update is enough. This
 // stream opens a new one in its place, with the same listeners, so it outlives a restart. Each
-// source that connects fires "open", which is how openFrameStream hears a reconnect.
+// source that connects fires "open", which is how openFrameStream hears each open, and which
+// starts the wait over.
 const browserEventStreamFactory: EventStreamFactory = (url) => {
   const listeners: [string, (event: EventStreamMessage) => void][] = [];
   let source: EventSource;
   let closed = false;
   let reopen: ReturnType<typeof setTimeout> | undefined;
+  let wait = STREAM_REOPEN_MS;
   const attach = (type: string, listener: (event: EventStreamMessage) => void) =>
     source.addEventListener(type, (event) => listener(event as MessageEvent<string>));
   const connect = () => {
     source = new EventSource(url, { withCredentials: true });
     for (const [type, listener] of listeners) attach(type, listener);
     const current = source;
+    current.addEventListener("open", () => {
+      wait = STREAM_REOPEN_MS;
+    });
     current.addEventListener("error", () => {
       if (closed || current.readyState !== SOURCE_CLOSED) return;
-      reopen = setTimeout(connect, STREAM_REOPEN_MS);
+      reopen = setTimeout(connect, wait);
+      wait = Math.min(wait * 2, STREAM_REOPEN_MAX_MS);
     });
   };
   connect();
@@ -68,24 +77,48 @@ const browserEventStreamFactory: EventStreamFactory = (url) => {
 
 // What a frame invalidates: every query whose first key element (the URL, per orval's fetch
 // client) starts with one of `prefixes`, optionally only when `when` accepts the payload.
+//
+// `fed` names the reads this frame alone keeps current: a query whose URL matches one is trusted
+// (staleTime Infinity) and refetched only when its frame, a reconnect, or its own mutation
+// invalidates it. It is an allowlist of exact URLs: a read that also moves with the clock (now and
+// next, a timeline) or carries a signed URL never belongs here, and stays stale-while-revalidate.
 interface Invalidation<T extends EventType> {
   prefixes: readonly string[];
   when?: (payload: EventPayloads[T]) => boolean;
+  fed?: readonly RegExp[];
 }
+
+// A collection URL and its one-segment detail ("/v1/titles", "/v1/titles/{key}"), nothing deeper.
+// `except` names sibling segments that are a different read ("/v1/channels/now-next").
+const listAndDetail = (url: string, except: readonly string[] = []): RegExp => {
+  const notExcepted = except.length > 0 ? `(?!(?:${except.join("|")})$)` : "";
+  return new RegExp(`^${url}(?:/${notExcepted}[^/]+)?$`);
+};
 
 // Invalidating is the whole job: a frame carries a count or a few ids, and the GETs own the
 // shapes the screens render (§8 — SSE is the latency path, the GET is truth). A frame with no
 // prefixes is a pure hand-off to listeners.
 const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
-  title: { prefixes: ["/v1/titles", "/v1/proposals"] },
+  title: {
+    prefixes: ["/v1/titles", "/v1/proposals"],
+    fed: [listAndDetail("/v1/titles"), listAndDetail("/v1/proposals")],
+  },
   // `/v1/channels` covers the list, now/next, and each channel's detail, pods, upcoming and
   // cycle reads; `/v1/guide` covers every cached guide window, prefetched neighbours included.
-  channel: { prefixes: ["/v1/channels", "/v1/guide"] },
+  // Only the list and a channel's detail are fed: now/next, the timeline and upcoming also move
+  // as the clock passes a programme's end, and a guide window is a view over that same clock.
+  channel: { prefixes: ["/v1/channels", "/v1/guide"], fed: [listAndDetail("/v1/channels", ["now-next"])] },
   // A frame also fires as a running request's stage or picks change, and the journey read
-  // (GET /v1/proposal-jobs) carries that live progress — so the Requests card and detail catch
-  // up on the frame instead of waiting for their poll.
+  // (GET /v1/proposal-jobs) carries that live progress — so the Requests card and detail follow
+  // a request on its frames.
   suggestion: { prefixes: ["/v1/proposals", "/v1/proposal-jobs"] },
-  llm_pull: { prefixes: ["/v1/system/llm"] },
+  // A proposal now waits for a decision, or was approved or denied, perhaps by someone else or
+  // by an automatic grant: the admins' approvals and the requester's journey read again.
+  proposal: { prefixes: ["/v1/proposals", "/v1/proposal-jobs"] },
+  // A download's progress is written into its operation by the screen showing it (useModelPull);
+  // only its end changes what is installed and what is left to download, so only an ended frame
+  // refetches. Every frame refetching would read the provider status several times a second.
+  llm_pull: { prefixes: ["/v1/system/llm"], when: (e) => e.status === "success" || e.status === "error" },
   // A channel started or stopped encoding, so both the telemetry endpoint AND the doctor's
   // answer changed (encoder, cold-start time, GPU contention); the doctor rides the same
   // start/stop cadence as sessions.
@@ -103,30 +136,82 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   // CATALOG, and nothing mounted may be listening, so the bus invalidates rather than a panel.
   filler_clip: { prefixes: ["/v1/filler"], when: (e) => e.disposition !== "running" },
   // A scheduled job changed state (§18.1); BE is the single timing source.
-  job: { prefixes: ["/v1/jobs"] },
+  job: { prefixes: ["/v1/jobs"], fed: [listAndDetail("/v1/jobs")] },
   // The migration page reads progress from the frame itself and refetches its status through
   // its own listener, so the bus has nothing to invalidate.
   database: { prefixes: [] },
   // A Dashboard feed row was written (§12, V32). The frame is empty on purpose — refetch the
-  // list rather than appending, because this bus drops frames for a slow subscriber and a
-  // locally-assembled list would be missing rows.
-  activity: { prefixes: ["/v1/activity"] },
-  health: { prefixes: ["/v1/diagnostics/health"] },
+  // list rather than appending, because a client misses every frame sent while it reconnects and
+  // a locally-assembled list would be missing rows.
+  activity: { prefixes: ["/v1/activity"], fed: [listAndDetail("/v1/activity")] },
+  // A health check changed state. A boot's startup report is written as its checks settle, so
+  // the reports read again with them.
+  health: {
+    prefixes: ["/v1/diagnostics/health", "/v1/diagnostics/startup-reports"],
+    fed: [/^\/v1\/diagnostics\/health$/],
+  },
+  // Who is watching what changed (#3352). Home reads it again; the server scopes it to the viewer.
+  viewing: { prefixes: ["/v1/household/viewing"] },
+  // An invitation, account, session or paired device changed, by an admin, a redeemed link or a
+  // delivered email (#3352). Admin-only, like People.
+  access: { prefixes: ["/v1/users", "/v1/invitations", "/v1/auth/devices"] },
+  // Diagnostic events were stored, or verbose capture started or stopped (#3352). A client crash
+  // report is stored as an event, so its list reads again too. Admin-only.
+  diagnostic_events: {
+    prefixes: ["/v1/diagnostics/events", "/v1/diagnostics/verbose-capture", "/v1/diagnostics/client-crashes"],
+  },
+  // A diagnostic process started, wrote output, or finished (#3352). Admin-only.
+  diagnostic_processes: { prefixes: ["/v1/diagnostics/processes"] },
   // A committed settings write, from any tab or writer. Every read a setting can change
   // refetches here, so no save path lists queries itself: `/v1/setup` is the checklist and wizard
   // state, `/v1/system/llm` the AI provider status, catalog and pull progress, and
-  // `/v1/filler/readiness` the storage summary derived from the filler allowances.
+  // `/v1/filler/readiness` the storage summary derived from the filler allowances, and
+  // `/v1/household` the household's timezone (`guide.timezone`), which every time outside the
+  // Guide is told in.
   settings: {
-    prefixes: ["/v1/settings", "/v1/setup", "/v1/system/llm", "/v1/filler/readiness"],
+    prefixes: ["/v1/settings", "/v1/setup", "/v1/system/llm", "/v1/filler/readiness", "/v1/household"],
+    fed: [listAndDetail("/v1/settings"), /^\/v1\/setup$/],
   },
   // How far a library import is, whole and latest-wins: the screens showing it write each frame
   // into their status read (applyLibraryScanFrame) rather than refetch it a second. Once
   // everything is idle the status refetches once, for the last scan's time and the counts.
-  library_scan: { prefixes: ["/v1/library/status"], when: (e) => e.step === "idle" },
+  library_scan: {
+    prefixes: ["/v1/library/status"],
+    when: (e) => e.step === "idle",
+    fed: [/^\/v1\/library\/status$/],
+  },
   // The Library's titles changed (written, ready, or gone). The frame is empty on purpose:
-  // the grid, a title's page, Ready so far and Needs you refetch, because a list assembled from
-  // frames would lose rows this bus drops.
-  library_titles: { prefixes: ["/v1/library/items", "/v1/library/needs"] },
+  // the grid, a title's page, the import's strip of titles found and Needs you refetch, because a list assembled from
+  // frames would lose the rows a reconnecting client misses. A collection lists only titles still
+  // in the Library, so collections read again too. The status reads again for its Needs you count,
+  // which the wall's line and the nav badge say.
+  library_titles: {
+    prefixes: [
+      "/v1/library/items",
+      "/v1/library/needs",
+      "/v1/library/status",
+      "/v1/collections",
+      "/v1/library/collections",
+    ],
+    fed: [listAndDetail("/v1/library/items"), /^\/v1\/library\/needs$/],
+  },
+  // A media folder stopped or started opening, or emptied or filled (a share unmounted or mounted
+  // again), found by a scan pass rather than by anything done on screen: the folders' cards and
+  // the status read again, so a warning appears and clears without a reload.
+  library_roots: { prefixes: ["/v1/library/roots", "/v1/library/status"] },
+  // One folder the folder browser listed, counted: a whole summary for its row. A hand-off to the
+  // browser, which fills that row; refetching the listing for each folder counted would list it
+  // once per row. A dropped frame leaves its row waiting until the folder is listed again.
+  library_folder: { prefixes: [] },
+};
+
+// isFrameFed: does an SSE frame keep this query current? The client gives such a read
+// staleTime Infinity, so it never refetches on mount or focus; its frame, a reconnect or a
+// mutation does. Keys are orval's `[url, params?]`; anything else is not fed.
+const isFrameFed = (queryKey: readonly unknown[]): boolean => {
+  const url = queryKey[0];
+  if (typeof url !== "string") return false;
+  return Object.values(EVENT_INVALIDATIONS).some((row) => row.fed?.some((pattern) => pattern.test(url)));
 };
 
 // The frame types the stream subscribes to: every event the spec declares.
@@ -153,20 +238,18 @@ const dispatchFrame = <T extends EventType>(
 // `onFrame`. Same-origin with cookie auth (withCredentials). Malformed frames are ignored
 // (latency bus, never load-bearing). Returns a close fn.
 //
-// `onReconnect` runs each time the stream opens again after its first open. The frames sent while
-// it was down are gone, so the caller reads the truth again rather than trusting what it shows.
+// `onOpen` runs each time the stream opens, the first time included. Frames sent before it opened
+// were never heard: those of a drop, and those after a read the page made before subscribing (a
+// route loader reads before the layout opens the stream). So the caller reads the truth again
+// rather than trusting what it shows.
 const openFrameStream = (
   onFrame: FrameHandler,
   url: string = EVENTS_URL,
   createStream: EventStreamFactory = browserEventStreamFactory,
-  onReconnect?: () => void,
+  onOpen?: () => void,
 ): (() => void) => {
   const es = createStream(url);
-  let opened = false;
-  es.addEventListener("open", () => {
-    if (opened) onReconnect?.();
-    opened = true;
-  });
+  es.addEventListener("open", () => onOpen?.());
   for (const type of EVENT_TYPES) {
     es.addEventListener(type, (ev) => {
       try {
@@ -185,8 +268,9 @@ const openEventStream = (
   handlers: EventHandlers,
   url?: string,
   createStream?: EventStreamFactory,
+  onOpen?: () => void,
 ): (() => void) =>
-  openFrameStream((type, payload) => dispatchFrame(handlers, type, payload), url, createStream);
+  openFrameStream((type, payload) => dispatchFrame(handlers, type, payload), url, createStream, onOpen);
 
 // invalidateByPrefix invalidates every query whose first key element (the URL, per
 // orval's fetch client) starts with prefix — coarse but correct.
@@ -212,19 +296,28 @@ const invalidateForFrame = async <T extends EventType>(
 // Awaiting it before clearing staged edits is what keeps a saved field from flashing its old value.
 const invalidateSettings = (qc: QueryClient): Promise<void> => invalidateForFrame(qc, "settings", {});
 
-// invalidateAfterReconnect refetches everything a frame could have changed: every prefix in the
-// table, whatever its `when`, because which frames were missed while the stream was down is not
+// invalidateMissedFrames refetches everything a frame could have changed: every prefix in the
+// table, whatever its `when`, because which frames went unheard before the stream opened is not
 // known. A scan that started or finished in the gap is why a frozen bar or a stale "All caught
-// up" cannot outlast the reconnect.
-const invalidateAfterReconnect = async (qc: QueryClient): Promise<void> => {
-  const prefixes = new Set(EVENT_TYPES.flatMap((type) => EVENT_INVALIDATIONS[type].prefixes));
+// up" cannot outlast the open. Only the reads on screen refetch; the rest wait for their next use.
+//
+// Some reads change only across a restart, which no frame can announce because the stream is down
+// for it; a restart always ends in a reconnect, so they read again here. The server's version is
+// one: an open tab learns of an upgrade as the stream comes back.
+const RECONNECT_ONLY_PREFIXES = ["/v1/system/version"];
+
+const invalidateMissedFrames = async (qc: QueryClient): Promise<void> => {
+  const prefixes = new Set([
+    ...EVENT_TYPES.flatMap((type) => EVENT_INVALIDATIONS[type].prefixes),
+    ...RECONNECT_ONLY_PREFIXES,
+  ]);
   await Promise.all([...prefixes].map((prefix) => invalidateByPrefix(qc, prefix)));
 };
 
 // useLoomarrEvents opens the stream for the app's lifetime and applies the invalidation table
 // to every frame; `onFrame` (e.g. the provider fanning payloads out to screens) runs after the
-// invalidation and is read through a ref so updating it never reconnects the stream. When the
-// stream comes back after a drop, every read a frame feeds refetches.
+// invalidation and is read through a ref so updating it never reconnects the stream. Each time the
+// stream opens, first or after a drop, every read a frame feeds refetches.
 const useLoomarrEvents = (onFrame?: FrameHandler): void => {
   const qc = useQueryClient();
   const onFrameRef = useRef(onFrame);
@@ -238,7 +331,7 @@ const useLoomarrEvents = (onFrame?: FrameHandler): void => {
       },
       undefined,
       undefined,
-      () => void invalidateAfterReconnect(qc),
+      () => void invalidateMissedFrames(qc),
     );
   }, [qc]);
 };
@@ -250,10 +343,12 @@ export {
   EVENT_TYPES,
   EVENTS_URL,
   eventHandlerName,
-  invalidateAfterReconnect,
   invalidateByPrefix,
   invalidateForFrame,
+  invalidateMissedFrames,
   invalidateSettings,
+  isFrameFed,
+  listAndDetail,
   openEventStream,
   openFrameStream,
   useLoomarrEvents,

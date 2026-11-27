@@ -111,12 +111,55 @@ func (r *storeRepository) ClaimAttempts(
 			}
 			continue
 		}
+		abandon, err := r.interruptedTooOften(ctx, job.ID, job.Attempts)
+		if err != nil {
+			return nil, err
+		}
+		if abandon {
+			// Every recent Attempt died with its worker (a crash, OOM or restart mid-run).
+			// Running it again would only take the process down again, so end it here.
+			if ferr := r.store.CommitSuggestionFailure(
+				ctx, job.ID, job.Attempts,
+				fmt.Sprintf("abandoned after %d interrupted Attempts in a row", MaxInterruptedAttempts),
+				string(FailureGenerationFailed), "", r.now(),
+			); ferr != nil {
+				return nil, fmt.Errorf("fail Proposal Job %s after repeated interruption: %w", job.ID, ferr)
+			}
+			continue
+		}
 		works = append(works, Work{
 			Version: job.WorkflowVersion, JobID: job.ID, Attempt: job.Attempts,
 			Kind: job.Kind, CreatedBy: job.CreatedBy, ChannelID: job.ChannelID, Intent: intent,
 		})
 	}
 	return works, nil
+}
+
+// MaxInterruptedAttempts is how many Attempts in a row may die with their worker before the
+// claim gives up on the Job. A revision requeues a Job without resetting its Attempt count,
+// so the cap counts only the unbroken run of interruptions just before the fresh Attempt.
+const MaxInterruptedAttempts = 3
+
+func (r *storeRepository) interruptedTooOften(ctx context.Context, jobID string, current int) (bool, error) {
+	if current <= MaxInterruptedAttempts {
+		return false, nil
+	}
+	attempts, err := r.store.ListProposalJobAttempts(ctx, jobID)
+	if err != nil {
+		return false, fmt.Errorf("read Proposal Job %s Attempts: %w", jobID, err)
+	}
+	run := 0
+	for i := len(attempts) - 1; i >= 0; i-- {
+		attempt := attempts[i]
+		if attempt.Attempt == current {
+			continue
+		}
+		if attempt.Status != string(AttemptInterrupted) {
+			break
+		}
+		run++
+	}
+	return run >= MaxInterruptedAttempts, nil
 }
 
 func (r *storeRepository) CompleteAttempt(ctx context.Context, completion Completion) (CommittedProposal, error) {
