@@ -5,7 +5,7 @@ import type { ProgrammingChangeSideDTO } from "@loomarr/api/models/programmingCh
 import { ProgrammingChangeSideDTOKind } from "@loomarr/api/models/programmingChangeSideDTOKind";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatGuideEpisode, formatGuideTime } from "@loomarr/core/guide";
-import { Stack, Text } from "@loomarr/design-system";
+import { Stack, Text, VisuallyHidden } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 import { PREVIEW_DEBOUNCE_MS } from "@/channels/use-channel-rules-draft";
 import { useBelowSm } from "@/lib/use-phone-width";
@@ -53,7 +53,7 @@ const ChangeRow = ({ change, timeZone }: { change: ProgrammingChangeDTO; timeZon
         <Text aria-hidden as="span" textRole="compact" tone="secondary">
           {" → "}
         </Text>
-        <span className="sr-only"> becomes </span>
+        <VisuallyHidden as="span"> becomes </VisuallyHidden>
         <span>{sideLabel(change.after)}</span>
       </Text>
     </Stack>
@@ -151,7 +151,7 @@ const ChannelProgrammingChanges = ({
           divided
           maxHeight={384}
           overflowY="auto"
-          // `relative` contains each row's absolutely positioned sr-only text: without it they
+          // `relative` contains each row's absolutely positioned hidden text: without it they
           // escape this scroll box's clip and stretch the page by the list's full height.
           position="relative"
           render="ul"
