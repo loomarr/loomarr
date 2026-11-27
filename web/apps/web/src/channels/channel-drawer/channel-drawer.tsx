@@ -1,12 +1,4 @@
-import {
-  Action,
-  DockedPanel,
-  PressableRow,
-  Stack,
-  Text,
-  Tooltip,
-  typography,
-} from "@loomarr/design-system";
+import { Action, DockedPanel, PressableRow, Stack, Text, Tooltip, typography } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ChannelDrawerProps, DrawerBlock, DrawerChannel } from "./channel-drawer.type";
