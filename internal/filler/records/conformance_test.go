@@ -19,7 +19,7 @@ type NewStoreFunc func(t *testing.T) Store
 func saveMembers(t *testing.T, s Store, ids ...string) {
 	t.Helper()
 	for _, id := range ids {
-		if err := s.UpsertUser(context.Background(), store.User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
+		if err := s.UpsertUser(context.Background(), identitystore.User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
 			t.Fatalf("save member %s: %v", id, err)
 		}
 	}
