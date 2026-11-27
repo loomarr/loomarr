@@ -729,9 +729,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   household ignored, from Needs you or from a title's "Wrong title?", newest first, with no age
   limit. Each entry has the title's `id` (the one `DELETE …/answer` takes, which brings it back),
   `kind` (`movie`, a file; `series`, a folder), `name` (the movie's file name, or the show's folder
-  name), `folder` (the folder it sits in, from its media folder's own name down, such as
-  `Movies/Unsorted`, for grouping) and `ignoredAt`. A show with no folder of its own is listed by
-  its title. A title with no present file is left out until a file of it is back. It is its own
+  name), `folder` (the folder it sits in, from its media folder's name as Settings → Library shows
+  it, such as `Movies/Unsorted`, for grouping; two media folders with one name are told apart by
+  their whole paths) and `ignoredAt`. Only files under the title's own media folder name it, while
+  it has one there. A show joined from several folders is named by the folder it is kept by; a show
+  with no folder of its own is listed by its title. A title with no present file is left out until a file of it is back. It is its own
   read, paged by `limit` and `offset` with a `total`, because the set only grows and the Needs you
   read, with its guesses, files and posters, is refetched on every library change.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)

@@ -36,7 +36,7 @@ func TestLibraryNeedsYou(t *testing.T) {
 	ctx := context.Background()
 	at := time.UnixMilli(1_790_000_000_000).UTC()
 	origin := func(key string) librarystore.LibraryOrigin {
-		return librarystore.LibraryOrigin{Authority: "library:/media", Key: key}
+		return librarystore.LibraryOrigin{Authority: string(scan.Authority("/media")), Key: key}
 	}
 	if err := h.Store.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "90000001", Kind: "movie", Name: "Mystery Film", Origin: origin("file:a")},
@@ -177,7 +177,7 @@ func TestLibraryNeedsYou(t *testing.T) {
 	var gone ignored
 	decode(t, h.Do(http.MethodGet, "/v1/library/ignored", adminToken, ""), &gone)
 	if gone.Total != 1 || len(gone.Items) != 1 || gone.Items[0].ID != "90000001" || gone.Items[0].Kind != "movie" ||
-		gone.Items[0].Name != "90000001.mkv" || gone.Items[0].Folder != "media" || gone.Items[0].IgnoredAt.IsZero() {
+		gone.Items[0].Name != "90000001.mkv" || gone.Items[0].Folder != "Media" || gone.Items[0].IgnoredAt.IsZero() {
 		t.Fatalf("ignored = %+v", gone)
 	}
 	if resp := h.Do(http.MethodGet, "/v1/library/ignored", memberToken, ""); resp.StatusCode != http.StatusForbidden {
