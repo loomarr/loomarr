@@ -18,7 +18,7 @@ committed, a `*-verify` target that fails CI on drift.
 | `docs/diagrams/generated/*.svg` | D2 sources | `make diagrams` | `make diagrams-verify` |
 | `web/packages/design-system/generated/` | `packages/design-system/src/tokens` | `make fe-tokens` | `make fe-tokens-verify` |
 | Visual baselines | Playwright, pinned image | [Visual baselines workflow](testing.md#updating-visual-baselines) | `make fe-visual` |
-| e2e snapshots | Playwright, pinned image | `make e2e-update` | `make e2e` |
+| e2e snapshots | Playwright, pinned image | [Visual baselines workflow](testing.md#updating-visual-baselines) (`make e2e-update`) | `make e2e` |
 
 These are committed so a reviewer sees the effect in the diff — a renamed field shows up as a
 spec change in the same PR.
@@ -40,8 +40,13 @@ to drift against. That's also why a fresh clone typechecks red until codegen has
 Goose migrations under `internal/platform/store/migrations/{sqlite,postgres}` are hand-written and applied
 at boot. Never edit an applied migration; add a new one.
 
-Two long-lived branches will both take the next free number and goose silently skips the second.
-Check the highest number on `main` first.
+Number a new migration one above the highest on `main`, in both dialects. A database that already ran
+a newer migration refuses to start when it meets an unapplied lower one, and two branches can both take
+the same next number. `make migration-order-verify` checks a branch against your `origin/main`, so
+fetch first. The Go repository contracts job checks a pull request, and the merge gate checks each
+queued candidate against the main it joins, entries queued ahead of it included (#4450). Renumbering
+a migration that has not merged is safe: rename it in both dialects and fix every reference to the
+old number.
 
 ## Two things generation doesn't give you
 

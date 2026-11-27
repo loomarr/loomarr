@@ -66,6 +66,20 @@ func TestRiverQueues_EveryJobRoutesToAQueueThatHasAProducer(t *testing.T) {
 	}
 }
 
+// The watchdog routes to a queue of its own, whatever its ceiling, and that queue has a producer.
+func TestQueueFor_TheWatchdogWaitsForNobody(t *testing.T) {
+	dog := queueTestJob("health", 10*time.Second)
+	dog.Watchdog = true
+	if got := queueFor(dog); got != watchdogQueue {
+		t.Errorf("the watchdog = %q, want %q", got, watchdogQueue)
+	}
+	s := New(newFakeStore(), NewRegistry().Add(queueTestJob("quick", 0)).Add(dog), nil, time.Now, testLog())
+	queues := s.riverQueues(store.DialectSQLite)
+	if q, ok := queues[watchdogQueue]; !ok || q.MaxWorkers != 1 {
+		t.Errorf("queues = %v, want a one-worker watchdog producer beside default", queues)
+	}
+}
+
 // A registry with no long-running job must not mint an idle producer.
 func TestRiverQueues_NoLongJobsMeansNoLongQueue(t *testing.T) {
 	s := New(newFakeStore(), NewRegistry().

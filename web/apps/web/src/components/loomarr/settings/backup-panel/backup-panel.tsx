@@ -113,7 +113,7 @@ const BackupPanel = ({
           marginTop={16}
           padding={16}
         >
-          <Text as="p" className="text-center" textRole="compact" tone="secondary">
+          <Text as="p" textAlign="center" textRole="compact" tone="secondary">
             No backups yet. One is written on the schedule below, or take the first one now.
           </Text>
         </Stack>
@@ -122,10 +122,10 @@ const BackupPanel = ({
           {backups.map((b) => (
             <Stack
               align="center"
+              backgroundColor="washElevated30"
               borderColor="borderDecorative"
               borderRadius={8}
               borderWidth={1}
-              className="bg-muted/30"
               direction="row"
               gap="control"
               key={b.name}
@@ -133,9 +133,11 @@ const BackupPanel = ({
               paddingVertical={8}
               render="li"
             >
-              <Text as="span" className="min-w-0 flex-1 truncate" textRole="mono" tone="primary">
-                {b.name}
-              </Text>
+              <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+                <Text as="span" numberOfLines={1} textRole="mono" tone="primary">
+                  {b.name}
+                </Text>
+              </Stack>
               <Text flexShrink={0} textRole="mono">
                 {formatBytes(b.bytes)}
               </Text>

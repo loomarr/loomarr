@@ -55,6 +55,26 @@ func TestBoundaryGaps_OffsetsAChunkAndClosesTrailingSilence(t *testing.T) {
 	}
 }
 
+// A short run is a gap only where the other detector agrees (#4409): a four-frame black and silent
+// gap between spots is kept, while a lone dark frame or a pause in speech is not. A run long enough
+// on its own is kept as before, and one touching the chunk's edge is kept because its length there
+// is not known.
+func TestBoundaryGaps_KeepsShortRunsOnlyWhereBothDetectorsAgree(t *testing.T) {
+	stderr := "black_start:5.005 black_end:5.171 black_duration:0.166\n" + // a 4-frame gap: both agree
+		"silence_start: 4.999\nsilence_end: 5.172 | silence_duration: 0.173\n" +
+		"black_start:7.00 black_end:7.05 black_duration:0.05\n" + // one dark frame, sound running
+		"silence_start: 8.0\nsilence_end: 8.2 | silence_duration: 0.2\n" + // a pause in speech
+		"black_start:9.0 black_end:9.2 black_duration:0.2\n" + // black long enough on its own
+		"silence_start: 9.95\n" // runs into the chunk's end
+	black, silence := boundaryGaps(stderr, 0, 10_000)
+	if want := []Interval{{StartMs: 5005, EndMs: 5171}, {StartMs: 9000, EndMs: 9200}}; !reflect.DeepEqual(black, want) {
+		t.Errorf("black = %+v, want %+v", black, want)
+	}
+	if want := []Interval{{StartMs: 4999, EndMs: 5172}, {StartMs: 9950, EndMs: 10_000}}; !reflect.DeepEqual(silence, want) {
+		t.Errorf("silence = %+v, want %+v", silence, want)
+	}
+}
+
 func TestParseFreezedetect_PairsStartsAndEnds(t *testing.T) {
 	got := parseFreezedetect(sampleFFmpegStderr)
 	if len(got) != 2 {

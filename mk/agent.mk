@@ -29,7 +29,7 @@ test-affected: ## run unit tests related to changed files during editing (not fi
 
 agent-worktree: ## create, claim, and bootstrap a sibling worktree (TOPIC=... CLAIMS=...; BASE/DEPENDS_ON for stacks)
 	@COPY_ENV="$(or $(COPY_ENV),0)" BOOTSTRAP_SKIP_FE="$(or $(BOOTSTRAP_SKIP_FE),0)" BASE="$(BASE)" \
-		AGENT_WORKTREE_LIMIT="$(or $(AGENT_WORKTREE_LIMIT),16)" ALLOW_WORKTREE_BACKLOG="$(or $(ALLOW_WORKTREE_BACKLOG),0)" \
+		AGENT_WORKTREE_LIMIT="$(or $(AGENT_WORKTREE_LIMIT),24)" ALLOW_WORKTREE_BACKLOG="$(or $(ALLOW_WORKTREE_BACKLOG),0)" \
 		./scripts/agent.sh worktree "$(TOPIC)" "$(or $(TASK),$(TOPIC))" "$(CLAIMS)" "$(DEPENDS_ON)"
 
 agent-gc: ## audit worktrees; APPLY=1 retires only exact clean merged PR heads
@@ -53,6 +53,7 @@ agent-harness-test: agent-assets-verify ## regression-test coordination, worktre
 	@./scripts/codeql-impact-test.sh
 	@./scripts/test-affected-test.sh
 	@./scripts/dev/watch-test.sh
+	@./scripts/dev/dev-runtime-test.sh
 	@./scripts/dev/agent-launch-test.sh
 	@./scripts/agent-harness-test.sh
 
@@ -71,6 +72,7 @@ release-verify: ## verify release, CI acquisition, Android, and publication poli
 	@./scripts/check-release-image-absence.sh --self-test
 	@./scripts/android-version-code.sh --self-test
 	@./scripts/android-ccache-promotion-test.sh
+	@./scripts/ci-cache-retention-test.sh
 	@./scripts/apple-compilation-cache-test.sh
 	@./scripts/test-android-release-emulator-contract-test.sh
 	@./scripts/shield-cert/test.sh

@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // testLibraryCollections: a collection keeps its titles in the household's order, an edit replaces
@@ -23,21 +25,21 @@ func testLibraryCollections(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 
-	if _, err := st.CreateLibraryCollection(ctx, LibraryCollection{Name: "  "}, at); err == nil {
+	if _, err := st.CreateLibraryCollection(ctx, librarystore.LibraryCollection{Name: "  "}, at); err == nil {
 		t.Fatal("a collection with no name was saved")
 	}
-	if _, err := st.CreateLibraryCollection(ctx, LibraryCollection{
+	if _, err := st.CreateLibraryCollection(ctx, librarystore.LibraryCollection{
 		Name: "Strays", Members: []string{"a", "gone"},
-	}, at); !errors.Is(err, ErrUnknownLibraryItem) {
+	}, at); !errors.Is(err, librarystore.ErrUnknownLibraryItem) {
 		t.Fatalf("a collection naming an unknown title: %v, want ErrUnknownLibraryItem", err)
 	}
-	night, err := st.CreateLibraryCollection(ctx, LibraryCollection{
+	night, err := st.CreateLibraryCollection(ctx, librarystore.LibraryCollection{
 		Name: "Night Ferry Nights", Description: "Late shows", Members: []string{"c", "a", "c", "b"},
 	}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
-	empty, err := st.CreateLibraryCollection(ctx, LibraryCollection{Name: "autumn", ImportedFrom: "emby", ImportedID: "90000077"}, at)
+	empty, err := st.CreateLibraryCollection(ctx, librarystore.LibraryCollection{Name: "autumn", ImportedFrom: "emby", ImportedID: "90000077"}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +62,7 @@ func testLibraryCollections(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	later := at.Add(time.Hour)
-	if err := st.UpdateLibraryCollection(ctx, LibraryCollection{
+	if err := st.UpdateLibraryCollection(ctx, librarystore.LibraryCollection{
 		ID: night, Name: "Nights", Members: []string{"b", "d"},
 	}, later); err != nil {
 		t.Fatal(err)
@@ -74,16 +76,16 @@ func testLibraryCollections(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("after the edit %+v", got)
 	}
 	// A refused edit changes nothing, not even the titles listed before the unknown one.
-	if err := st.UpdateLibraryCollection(ctx, LibraryCollection{
+	if err := st.UpdateLibraryCollection(ctx, librarystore.LibraryCollection{
 		ID: night, Name: "Renamed", Members: []string{"a", "gone"},
-	}, later.Add(time.Hour)); !errors.Is(err, ErrUnknownLibraryItem) {
+	}, later.Add(time.Hour)); !errors.Is(err, librarystore.ErrUnknownLibraryItem) {
 		t.Fatalf("an edit naming an unknown title: %v, want ErrUnknownLibraryItem", err)
 	}
 	if kept, err := st.LibraryCollection(ctx, night); err != nil || kept.Name != "Nights" ||
 		!reflect.DeepEqual(kept.Members, []string{"b", "d"}) {
 		t.Fatalf("after a refused edit %+v, %v", kept, err)
 	}
-	if err := st.UpdateLibraryCollection(ctx, LibraryCollection{ID: "gone", Name: "x"}, later); !errors.Is(err, ErrNotFound) {
+	if err := st.UpdateLibraryCollection(ctx, librarystore.LibraryCollection{ID: "gone", Name: "x"}, later); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("editing a missing collection: %v, want ErrNotFound", err)
 	}
 
@@ -97,7 +99,7 @@ func testLibraryCollections(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("second delete: %v, want ErrNotFound", err)
 	}
 	// Its members went with it: a new collection under no member rows reads empty.
-	again, err := st.CreateLibraryCollection(ctx, LibraryCollection{Name: "Again"}, later)
+	again, err := st.CreateLibraryCollection(ctx, librarystore.LibraryCollection{Name: "Again"}, later)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +113,7 @@ func testLibraryItemIDs(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	set := LibraryCatalogKey{Provider: "tmdb_collection", Kind: "collection", ExternalID: "90000611"}
+	set := librarystore.LibraryCatalogKey{Provider: "tmdb_collection", Kind: "collection", ExternalID: "90000611"}
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{
 		{ID: "a", Kind: "movie", Name: "Alpha"},
 		{ID: "b", Kind: "movie", Name: "Bravo", Set: set},
@@ -119,15 +121,15 @@ func testLibraryItemIDs(t *testing.T, newStore NewStoreFunc) {
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	var files []LibraryFile
+	var files []librarystore.LibraryFile
 	for _, id := range []string{"a", "b", "c"} {
-		files = append(files, LibraryFile{Path: "/media/" + id + ".mkv", Root: "/media", Size: 1, ModifiedNs: 1,
-			Kind: "movie", Header: LibraryHeaderRead, SeenAt: at, ItemID: id})
+		files = append(files, librarystore.LibraryFile{Path: "/media/" + id + ".mkv", Root: "/media", Size: 1, ModifiedNs: 1,
+			Kind: "movie", Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: id})
 	}
 	if err := st.SaveLibraryFiles(ctx, files); err != nil {
 		t.Fatal(err)
 	}
-	page, err := st.ListLibraryItems(ctx, LibraryItemQuery{IDs: []string{"c", "a", "gone"}})
+	page, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{IDs: []string{"c", "a", "gone"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +137,7 @@ func testLibraryItemIDs(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("page %+v, want a and c", page)
 	}
 	// A movie in a ready-made set keeps its set; InSet keeps only those.
-	inSet, err := st.ListLibraryItems(ctx, LibraryItemQuery{InSet: true})
+	inSet, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{InSet: true})
 	if err != nil {
 		t.Fatal(err)
 	}

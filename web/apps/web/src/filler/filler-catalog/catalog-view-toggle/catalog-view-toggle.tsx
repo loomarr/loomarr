@@ -1,6 +1,5 @@
-import { Action, Tooltip } from "@loomarr/design-system";
+import { Action, Stack, Tooltip } from "@loomarr/design-system";
 import { useRef } from "react";
-import { cn } from "@/lib/utils";
 
 // The catalog's two renderings (V35b, the mock's `catViews`). Grid is the default because filler is
 // picked by LOOKING at it — a wall of frames is the point; the list is for scanning a large catalog
@@ -45,10 +44,13 @@ const CatalogViewToggle = ({ view, phone, onChange }: CatalogViewToggleProps) =>
   };
 
   return (
-    <div
-      className={cn("ml-auto flex gap-1", !phone && "order-last")}
-      role="radiogroup"
+    <Stack
       aria-label="Clip view"
+      direction="row"
+      gap="1"
+      marginLeft="auto"
+      role="radiogroup"
+      style={phone ? undefined : { order: 9999 }}
     >
       {VIEWS.map((v, index) => (
         <Tooltip content={v.title} key={v.id}>
@@ -73,7 +75,7 @@ const CatalogViewToggle = ({ view, phone, onChange }: CatalogViewToggleProps) =>
           </Action>
         </Tooltip>
       ))}
-    </div>
+    </Stack>
   );
 };
 

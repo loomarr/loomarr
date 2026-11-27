@@ -1,16 +1,11 @@
 package tools
 
-import (
-	"bytes"
-	"image"
-
-	// Registers the JPEG decoder for image.Decode — Keyframes hands us JPEG bytes.
-	_ "image/jpeg"
-)
+import "bytes"
 
 // Frame heuristics (§10 V44): deterministic, LLM-free era HINTS read off a clip's
-// decoded keyframes. Two signals, both cheap and both computed from the same JPEGs
-// the vision tier would send a model — so this tier runs FIRST and for free:
+// keyframes. Two signals, both cheap and both measured on the same representative
+// frames the vision tier sends a model, as small raw rgb24 frames ffmpeg decodes
+// (FFmpegTools.FrameHintsIn). Go measures those bytes and decodes no encoded image:
 //
 //   - black-and-white: a monochrome transfer (near-zero colour, every pixel a grey)
 //     is a strong "this is old" signal a modern re-broadcast almost never has.
@@ -48,15 +43,20 @@ type FrameHint struct {
 
 // bwChromaThreshold is the per-pixel colour-spread ceiling below which a frame is
 // called monochrome. A truly grey pixel has R==G==B, so max(R,G,B)-min(R,G,B)==0;
-// JPEG's lossy chroma subsampling leaves a few points of spread even on a genuine
-// black-and-white transfer, so the ceiling is a small tolerance rather than zero.
+// codec chroma noise leaves a few points of spread even on a genuine black-and-white
+// transfer, so the ceiling is a small tolerance rather than zero.
 //
-// ⚠ Measured against JPEG artefacts, not chosen for elegance. 12 (of 255) admits
-// the ringing a real B&W scan shows around high-contrast edges while still
-// rejecting any frame with actual colour in it — a skin tone or a red logo spreads
-// far past this. It is a per-pixel mean, so one coloured object cannot by itself
-// flip a mostly-grey frame; the FRAME is B&W only if the average pixel is grey.
-const bwChromaThreshold = 12.0
+// ⚠ Calibrated on the FrameHintsIn measurement: 128 px rgb24 frames ffmpeg scales
+// from synthetic testsrc2 clips encoded with libx264. Downscaling averages chroma
+// noise, so the spread a raw frame shows is lower than the source's. A heavily
+// noised B&W clip measures at most 6.4; a faint, noised colour clip (saturation 0.04)
+// measures at least 11.5. 9 (of 255) sits between them with ~2.5 points of margin
+// each side (an mpeg4 encode of the same clips also separates, with a faint
+// noiseless colour clip ~1 point above); a muted colour clip (~29),
+// sepia (~46) and full colour (~240) are far above it. It is a per-pixel mean, so
+// one coloured object cannot by itself flip a mostly-grey frame; the FRAME is B&W
+// only if the average pixel is grey.
+const bwChromaThreshold = 9.0
 
 // bwFrameFraction is how many of the sampled frames must read monochrome for the
 // CLIP to count as black-and-white. A single grey frame (a fade, a title card on
@@ -74,32 +74,38 @@ const (
 	hintPre1970s = 1960
 )
 
-// AnalyzeFrames measures the heuristic signals across decoded keyframes (the JPEG
-// bytes MediaTools.Keyframes returns). It decodes what it can and IGNORES frames it
-// cannot — a corrupt frame in the middle of a clip must not sink the whole hint.
+// RawFrame is one frame ffmpeg decoded and wrote as packed rgb24: Width×Height
+// pixels, three bytes each, row-major with no padding.
+type RawFrame struct {
+	Width, Height int
+	RGB           []byte
+}
+
+// valid reports whether the frame's bytes are exactly the pixels its size names.
+func (f RawFrame) valid() bool {
+	return f.Width > 0 && f.Height > 0 && len(f.RGB) == 3*f.Width*f.Height
+}
+
+// AnalyzeFrames measures the heuristic signals across raw keyframes. It IGNORES a
+// frame whose bytes do not match its size (a truncated ffmpeg write) — one bad frame
+// in the middle of a clip must not sink the whole hint.
 //
 // ⚠ Pure and deterministic: same frames in, same measurement out, no seed, no
 // clock, no network. That is what lets it run in the free tier and be table-tested.
-func AnalyzeFrames(jpegs [][]byte) FrameHint {
+func AnalyzeFrames(frames []RawFrame) FrameHint {
 	var (
 		decoded int
 		bwCount int
 		arSum   float64
 	)
-	for _, raw := range jpegs {
-		img, _, err := image.Decode(bytes.NewReader(raw))
-		if err != nil {
+	for _, f := range frames {
+		if !f.valid() {
 			// A single unreadable frame is skipped, not fatal — see the doc comment.
 			continue
 		}
-		b := img.Bounds()
-		w, h := b.Dx(), b.Dy()
-		if w == 0 || h == 0 {
-			continue
-		}
 		decoded++
-		arSum += float64(w) / float64(h)
-		if frameIsMonochrome(img) {
+		arSum += float64(f.Width) / float64(f.Height)
+		if frameIsMonochrome(f.RGB) {
 			bwCount++
 		}
 	}
@@ -115,55 +121,19 @@ func AnalyzeFrames(jpegs [][]byte) FrameHint {
 	return hint
 }
 
-// frameIsMonochrome reports whether a decoded frame's average pixel carries
+// frameIsMonochrome reports whether a packed rgb24 frame's average pixel carries
 // essentially no colour — the per-pixel mean of max(R,G,B)-min(R,G,B) is at or
-// below bwChromaThreshold.
-//
-// ⚠ Samples a grid rather than every pixel. A 320-wide keyframe is ~70k pixels and
-// this runs per frame per clip in a background job; a fixed grid of ~gridSteps²
-// samples is the same measurement (the colourfulness of a frame is not a
-// high-frequency property) at a bounded cost that does not grow with resolution.
-func frameIsMonochrome(img image.Image) bool {
-	const gridSteps = 32 // ≤1024 samples per frame regardless of its size.
-	b := img.Bounds()
-	w, h := b.Dx(), b.Dy()
-	if w == 0 || h == 0 {
-		return false
-	}
-	stepX, stepY := w/gridSteps, h/gridSteps
-	if stepX < 1 {
-		stepX = 1
-	}
-	if stepY < 1 {
-		stepY = 1
-	}
+// below bwChromaThreshold. It reads every pixel: FrameHintsIn already scales the
+// frame to FrameHintWidth, so the cost is bounded by that size, not the source's.
+func frameIsMonochrome(rgb []byte) bool {
 	var (
 		spreadSum float64
 		samples   int
 	)
-	for y := b.Min.Y; y < b.Max.Y; y += stepY {
-		for x := b.Min.X; x < b.Max.X; x += stepX {
-			// RGBA() returns 16-bit premultiplied components; shift to 8-bit so the
-			// threshold reads in the familiar 0–255 range.
-			r, g, bl, _ := img.At(x, y).RGBA()
-			r8, g8, b8 := float64(r>>8), float64(g>>8), float64(bl>>8)
-			maxc := r8
-			if g8 > maxc {
-				maxc = g8
-			}
-			if b8 > maxc {
-				maxc = b8
-			}
-			minc := r8
-			if g8 < minc {
-				minc = g8
-			}
-			if b8 < minc {
-				minc = b8
-			}
-			spreadSum += maxc - minc
-			samples++
-		}
+	for i := 0; i+2 < len(rgb); i += 3 {
+		r, g, b := rgb[i], rgb[i+1], rgb[i+2]
+		spreadSum += float64(max(r, g, b) - min(r, g, b))
+		samples++
 	}
 	if samples == 0 {
 		return false

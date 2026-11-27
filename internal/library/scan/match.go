@@ -697,6 +697,12 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 			// An edition between the title and its year is the file's, not the title's:
 			// "Mirefield.Extended.Edition.1985", "Kilner Special Edition (2006)".
 			words = withoutEdition(words[:j])
+			// A year bracketed twice, "Copper Moon (1999) (1999)", is one year written again, as a
+			// rename that adds the year to a name that had it leaves it; "Class of 1999 (1999)"
+			// brackets it once and keeps its title's.
+			for n := strings.Count(name, "("+w+")") + strings.Count(name, "["+w+"]"); n > 1 && len(words) > 1 && words[len(words)-1] == w; n-- {
+				words = words[:len(words)-1]
+			}
 			break
 		}
 	}

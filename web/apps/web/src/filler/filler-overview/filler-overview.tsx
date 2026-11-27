@@ -4,7 +4,7 @@ import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLevel";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
-import { Action, Card, Stack, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, StatusLabel, type StatusTone, Text, TextLink } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -131,7 +131,6 @@ const readinessAction = (readiness: FillerReadinessDTO): ReadinessAction | undef
 const COVERAGE_BADGE: Record<PoolChannelDTOLevel, { label: string; tone: StatusTone }> = {
   exact: { label: "Good match", tone: "ok" },
   widened: { label: "Years loosened", tone: "warn" },
-  audience: { label: "Audience only", tone: "warn" },
   bumper_card: { label: "Bumpers only", tone: "error" },
 };
 
@@ -153,20 +152,24 @@ const CoverageCard = ({ coverage, title }: { coverage: PoolChannelDTO; title: Re
   return (
     <Card padding={16}>
       <Stack align="start" direction="row" gap="control" justify="between">
-        <div className="min-w-0">
+        <Stack align="start" minWidth={0}>
           {title}
-          <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-            {coverage.level === "bumper_card"
-              ? "Only a bumper card"
-              : `${formatDuration(coverage.durationMs)} playable · ${pluralize(coverage.total, "clip")}`}
-          </Text>
-        </div>
+          <Stack marginTop={4}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {coverage.level === "bumper_card"
+                ? "Only a bumper card"
+                : `${formatDuration(coverage.durationMs)} playable · ${pluralize(coverage.total, "clip")}`}
+            </Text>
+          </Stack>
+        </Stack>
         <StatusLabel tone={badge.tone}>{badge.label}</StatusLabel>
       </Stack>
-      <Text as="p" className="mt-3" textRole="hint" tone="secondary">
-        {coverage.categories} {coverage.categories === 1 ? "category" : "categories"} ·{" "}
-        {pluralize(coverage.brands, "brand")}
-      </Text>
+      <Stack marginTop={12}>
+        <Text as="p" textRole="hint" tone="secondary">
+          {coverage.categories} {coverage.categories === 1 ? "category" : "categories"} ·{" "}
+          {pluralize(coverage.brands, "brand")}
+        </Text>
+      </Stack>
     </Card>
   );
 };
@@ -185,9 +188,11 @@ const FillerOverview = () => {
         <Text as="p" textRole="heading">
           Checking filler health…
         </Text>
-        <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-          Finding out what's ready and what's on the way.
-        </Text>
+        <Stack marginTop={4}>
+          <Text as="p" textRole="compact" tone="secondary">
+            Finding out what's ready and what's on the way.
+          </Text>
+        </Stack>
       </Card>
     );
   }
@@ -201,24 +206,30 @@ const FillerOverview = () => {
           action colour, so a state where nothing needs doing doesn't wear it: the ready card is
           plain, with the same green dot as the healthy watch line above it. */}
       {action ? (
-        <Card className="border-caution/40! bg-caution/5!" padding={20}>
+        <Card padding={20} tone="caution">
           <Stack align="start" direction={{ base: "column", sm: "row" }} gap="4">
-            <div className="min-w-0 flex-1">
+            <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
               <StatusLabel tone="warn">Action recommended</StatusLabel>
-              <Text as="h2" className="mt-3" textRole="title">
-                {action.title}
-              </Text>
-              <Text as="p" className="mt-1 max-w-3xl" textRole="compact" tone="secondary">
-                {action.description}
-              </Text>
+              <Stack marginTop={12}>
+                <Text as="h2" textRole="title">
+                  {action.title}
+                </Text>
+              </Stack>
+              <Stack marginTop={4} maxWidth={768}>
+                <Text as="p" textRole="compact" tone="secondary">
+                  {action.description}
+                </Text>
+              </Stack>
               {/* Every destination behind the button is admin-only, so a member got a button
                   that bounced. They get the state and who can act on it instead. */}
               {isAdmin ? null : (
-                <Text as="p" className="mt-2" textRole="compact" tone="secondary">
-                  An admin can sort this out from Filler › Manage.
-                </Text>
+                <Stack marginTop={8}>
+                  <Text as="p" textRole="compact" tone="secondary">
+                    An admin can sort this out from Filler › Manage.
+                  </Text>
+                </Stack>
               )}
-            </div>
+            </Stack>
             {isAdmin ? (
               <Action
                 accessibilityRole="link"
@@ -237,20 +248,28 @@ const FillerOverview = () => {
         </Card>
       ) : (
         <Card alignItems="center" flexDirection="row" gap={10} padding={16}>
-          <span aria-hidden className="bg-lock size-2 shrink-0 rounded-full" />
-          <div className="min-w-0">
+          <Stack
+            aria-hidden
+            backgroundColor="$stateSuccess"
+            borderRadius={999}
+            flexShrink={0}
+            height={8}
+            render="span"
+            width={8}
+          />
+          <Stack minWidth={0}>
             <Text as="h2" textRole="heading">
               Filler is working on its own
             </Text>
             <Text as="p" textRole="compact" tone="secondary">
               Loomarr is preparing clips automatically. Nothing needs your attention.
             </Text>
-          </div>
+          </Stack>
         </Card>
       )}
 
       <section aria-labelledby="coverage-heading">
-        <Stack align="end" className="mb-3" direction="row" gap="control" justify="between" wrap>
+        <Stack align="end" direction="row" gap="control" justify="between" marginBottom={12} wrap>
           <div>
             <Text as="h2" id="coverage-heading" textRole="headline" strong>
               Channel coverage
@@ -282,14 +301,21 @@ const FillerOverview = () => {
                   key={channel.channelId}
                   coverage={channel}
                   title={
-                    <Link
-                      className="font-medium hover:underline"
-                      to="/channels/$id/filler"
-                      params={{ id: channel.channelId }}
-                      search={{ from: "filler" }}
+                    <TextLink
+                      render={
+                        <Link
+                          to="/channels/$id/filler"
+                          params={{ id: channel.channelId }}
+                          search={{ from: "filler" }}
+                        />
+                      }
+                      tone="inherit"
+                      underline="hover"
                     >
-                      {channel.number} · {channel.name}
-                    </Link>
+                      <Text as="span" textRole="cardLabel" tone="primary">
+                        {channel.number} · {channel.name}
+                      </Text>
+                    </TextLink>
                   }
                 />
               ))

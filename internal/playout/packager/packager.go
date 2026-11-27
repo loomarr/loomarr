@@ -34,6 +34,12 @@ type Item struct {
 	// reader is closed. It is not called for an item that never produced, or whose channel stopped
 	// mid-item. An encoder's cost is its CPU over this media, not over its slot.
 	Delivered func(frames int64)
+	// Faulted, if set, receives why the item's encoder produced nothing: it could not be opened, or
+	// it ended without a frame. It is called once per airing and never for an item that is merely
+	// late, whose decoder configuration differs from the channel's, or whose channel stopped, since
+	// those say nothing about the item's own bytes. It runs on the packager's goroutine, so it
+	// must be quick.
+	Faulted func(err error)
 	// Served, if set, is called once when a viewer first receives a segment of this item
 	// (SegmentServed, WaitSegment). An item that is encoded but never fetched, such as a neighbour
 	// warm's, never calls it. It runs on the fetching goroutine, so it must be quick.
@@ -398,6 +404,9 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 	if err != nil {
 		p.cfg.Log.Warn("packager: item did not open; slate", "item", item.Label, "err", err)
 		p.failed(fmt.Errorf("%s did not open: %w", item.Label, err))
+		if item.Faulted != nil && ctx.Err() == nil {
+			item.Faulted(err)
+		}
 		return p.notReady(ctx, nil, slot)
 	}
 	defer func() { _ = rc.Close() }()
@@ -418,6 +427,9 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 			}
 			p.count(func(s *Stats) { s.ZeroFrame++ })
 			p.failed(noFrame(item.Label, stream.err))
+			if item.Faulted != nil && ctx.Err() == nil {
+				item.Faulted(noFrame(item.Label, stream.err))
+			}
 			return p.notReady(ctx, rc, slot)
 		default:
 		}
@@ -436,6 +448,9 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 			p.count(func(s *Stats) { s.ZeroFrame++ })
 			p.cfg.Log.Warn("packager: item ended without a frame; slate", "item", item.Label, "err", stream.err)
 			p.failed(noFrame(item.Label, stream.err))
+			if item.Faulted != nil && ctx.Err() == nil {
+				item.Faulted(noFrame(item.Label, stream.err))
+			}
 			return p.notReady(ctx, rc, slot)
 		}
 		frag = f

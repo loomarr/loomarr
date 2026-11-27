@@ -1,4 +1,4 @@
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, Text, typography } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useState } from "react";
 import { useCopied } from "@/lib/use-copied";
@@ -21,12 +21,7 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
         const isConfirming = confirming === secret.name;
 
         return (
-          <Stack
-            className="border-border bg-card rounded-md border p-3"
-            gap="inline"
-            key={secret.name}
-            render="li"
-          >
+          <Card borderRadius={6} gap={8} key={secret.name} padding={12} render="li">
             <div>
               <Text as="p" textRole="cardLabel">
                 {secret.label}
@@ -37,9 +32,28 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
             </div>
 
             <Stack align="center" direction="row" gap="inline">
-              <code className="border-input bg-static-800 flex-1 truncate rounded-md border px-3 py-1.5 font-mono text-sm">
-                {value ?? "••••••••••••••••"}
-              </code>
+              <Stack
+                backgroundColor="$surfaceElevated"
+                borderColor="$borderControl"
+                borderRadius={6}
+                borderWidth={1}
+                flexBasis="0%"
+                flexGrow={1}
+                flexShrink={1}
+                minWidth={0}
+                paddingHorizontal={12}
+                paddingVertical={6}
+              >
+                <Text
+                  as="code"
+                  numberOfLines={1}
+                  style={{ fontFamily: typography.family.data.web }}
+                  textRole="compact"
+                  tone="primary"
+                >
+                  {value ?? "••••••••••••••••"}
+                </Text>
+              </Stack>
               <Action
                 disabled={busy === secret.name}
                 icon={value ? "conceal" : "reveal"}
@@ -77,7 +91,7 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
                 Regenerate
               </Action>
             )}
-          </Stack>
+          </Card>
         );
       })}
     </Stack>

@@ -16,6 +16,14 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// ClientVocabulary is the version of the client-event vocabulary this server accepts: its event
+// names and fields. A batch is refused whole for one unknown event or field, so a client newer than
+// its server sends only what this number allows. The server reports it in every accepted batch's
+// answer, and a server that reports none is version 0. Version 0 is the original fourteen events;
+// version 1 adds only this report. Raise it in the same change that adds an event or a field, and
+// record which version introduced each one in docs/design/observability.md.
+const ClientVocabulary = 1
+
 const (
 	maxClientBatch       = 20
 	maxClientTokenBytes  = 128

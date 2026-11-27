@@ -1,5 +1,6 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { invalidateSettings } from "@loomarr/core/events";
+import { Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsSaveBar } from "@/components/loomarr/settings/settings-save-bar";
@@ -33,9 +34,9 @@ const SettingsSaveBarHost = () => {
   return (
     <>
       {patch.error != null && (
-        <div className="px-6 pb-2">
+        <Stack paddingBottom={8} paddingHorizontal={24}>
           <ErrorState error={patch.error} />
-        </div>
+        </Stack>
       )}
       <SettingsSaveBar
         dirtyCount={Object.keys(edits).length}

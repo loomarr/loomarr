@@ -22,6 +22,7 @@ const LibraryWizardStep = ({
   onCheckAgain,
   onUseFolder,
   onAddFolder,
+  folderBrowser,
   now,
 }: LibraryWizardStepProps) => {
   const names = [...new Set(pathMap.map((m) => AUTHORITY_NAMES[m.authority]))];
@@ -46,7 +47,7 @@ const LibraryWizardStep = ({
             onUseFolder={onUseFolder}
           />
         ))}
-        <AddFolder onAddFolder={onAddFolder} />
+        <AddFolder folderBrowser={folderBrowser} onAddFolder={onAddFolder} />
         <Line gap="control">
           <Action disabled={checking} onPress={onCheckAgain} variant="outline">
             {checking ? "Checking…" : "Check again"}
@@ -61,7 +62,7 @@ const LibraryWizardStep = ({
           <>
             <Headline readySoFar={readySoFar} scan={scan} />
             <Text textRole="body" tone="secondary">
-              You can carry on — titles appear as they're ready.
+              You can carry on while it adds them.
             </Text>
           </>
         ) : null}

@@ -84,11 +84,11 @@ func TestGapKey(t *testing.T) {
 
 func TestCoverageGapEras_AreTheErasOfChannelsBelowExact(t *testing.T) {
 	channel := func(level pod.MatchLevel, windows ...pod.EraRange) pod.ChannelCoverage {
-		return pod.ChannelCoverage{Report: pod.CoverageReport{Level: level, EraWindows: windows}}
+		return pod.ChannelCoverage{Report: pod.CoverageReport{Level: level, EraWindows: windows, Bookends: 1}}
 	}
 	pool := pod.PoolReport{Channels: []pod.ChannelCoverage{
-		channel(pod.MatchExact, pod.EraRange{From: 1980, To: 1989}),    // covered: no gap
-		channel(pod.MatchAudience, pod.EraRange{From: 1990, To: 1994}), // gap
+		channel(pod.MatchExact, pod.EraRange{From: 1980, To: 1989}),   // covered: no gap
+		channel(pod.MatchWidened, pod.EraRange{From: 1990, To: 1994}), // gap
 		channel(pod.MatchBumperCard, pod.EraRange{From: 1995, To: 1999}),
 		channel(pod.MatchWidened),
 		channel(pod.MatchWidened, pod.EraRange{From: 2010, To: 2012}),
@@ -106,7 +106,7 @@ func TestCoverageGapEras_AreTheErasOfChannelsBelowExact(t *testing.T) {
 func TestCoverageGapsFrom_AChannelShortOfItsTargetIsAGap(t *testing.T) {
 	exact := func(clips int, era pod.EraRange) pod.ChannelCoverage {
 		return pod.ChannelCoverage{Report: pod.CoverageReport{
-			Level: pod.MatchExact, EraWindows: []pod.EraRange{era},
+			Level: pod.MatchExact, EraWindows: []pod.EraRange{era}, Bookends: 1,
 			Rungs: []pod.RungCoverage{{Level: pod.MatchExact, Clips: clips}, {Level: pod.MatchWidened, Clips: clips + 40}},
 		}}
 	}
@@ -140,8 +140,15 @@ func TestCoverageGapsFrom_NoBookendIsARoleGap(t *testing.T) {
 		t.Fatalf("role gaps with no bookends = %v, want %v", got, want)
 	}
 	live.Bookends = 1
+	live.Channels[0].Report.Bookends = 1
 	if got := acquisition.CoverageGapsFrom(live, pod.PoolTargets{}, 2026).Roles; got != nil {
 		t.Fatalf("role gaps with a bookend = %v, want none", got)
+	}
+	// A bookend the catalog holds for other channels does not cover a channel whose audience
+	// ceiling admits none.
+	live.Channels = append(live.Channels, pod.ChannelCoverage{Report: pod.CoverageReport{Level: pod.MatchExact}})
+	if got := acquisition.CoverageGapsFrom(live, pod.PoolTargets{}, 2026).Roles; !reflect.DeepEqual(got, want) {
+		t.Fatalf("role gaps with a channel that admits no bookend = %v, want %v", got, want)
 	}
 	if got := acquisition.CoverageGapsFrom(pod.PoolReport{}, pod.PoolTargets{}, 2026).Roles; got != nil {
 		t.Fatalf("role gaps with no live channel = %v, want none: nothing is airing", got)

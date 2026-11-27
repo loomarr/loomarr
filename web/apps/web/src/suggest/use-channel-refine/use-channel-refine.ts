@@ -31,8 +31,9 @@ const storedRefine = (): ActiveRefine | undefined => {
 };
 
 // Detailed phases are transient SSE hints; the job Journey is the durable
-// result and recovery surface. It is persisted per channel for reload and
-// polled while generating, while SSE only accelerates the same read.
+// result and recovery surface, persisted per channel for reload. The worker
+// stores each step of a run before publishing its suggestion frame, so each
+// frame is the cue to read the Journey again.
 const useChannelRefine = (): ChannelRefine => {
   const queryClient = useQueryClient();
   const [active, setActiveState] = useState<ActiveRefine | undefined>(storedRefine);
@@ -41,11 +42,7 @@ const useChannelRefine = (): ChannelRefine => {
 
   const refine = channelsApi.useRefineChannel();
   const journeyQuery = proposalJobsApi.useGetProposalJob(active?.jobId ?? "", {
-    query: {
-      enabled: active !== undefined,
-      refetchInterval: (query) =>
-        query.state.data?.status === 200 && query.state.data.data.milestone === "generating" ? 2_000 : false,
-    },
+    query: { enabled: active !== undefined },
   });
 
   useLoomarrEventListener({

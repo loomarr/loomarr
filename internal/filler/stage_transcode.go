@@ -816,7 +816,7 @@ func mediaQualityResult(c clipstore.Clip, quality tools.MediaQuality) StageResul
 	case pipelinestate.VerdictReject:
 		result.Reason, result.Detail = reason, detail
 	case pipelinestate.VerdictReview:
-		result.Note = detail
+		result.Note, result.Doubt = detail, true
 	}
 	return result
 }

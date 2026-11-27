@@ -79,12 +79,12 @@ one series per table, so `delta(loomarr_database_table_rows[30d])` graphs the sa
 ## Contents
 
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas), [`viewings`](#viewings)
-- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
+- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`growth_reviews`](#growth_reviews), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
 - [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_catalog_feeds`](#library_catalog_feeds), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
-- [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
-- [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
+- [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_download_failures`](#filler_download_failures), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_breaks`](#filler_breaks), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
+- [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals)
 - [Notifications](#notifications): [`notification_destinations`](#notification_destinations), [`notification_intents`](#notification_intents), [`notification_delivery_attempts`](#notification_delivery_attempts), [`title_requesters`](#title_requesters), [`channel_requesters`](#channel_requesters)
 - [Settings and housekeeping](#settings-and-housekeeping): [`settings`](#settings), [`secret_protection_metadata`](#secret_protection_metadata), [`secret_data_keys`](#secret_data_keys), [`scheduled_jobs`](#scheduled_jobs), [`interactive_operations`](#interactive_operations), [`activity`](#activity), [`diagnostic_events`](#diagnostic_events), [`diagnostic_process_runs`](#diagnostic_process_runs), [`diagnostic_retained_bytes`](#diagnostic_retained_bytes), [`client_crash_reports`](#client_crash_reports), [`database_table_rows`](#database_table_rows)
 - [Tables other libraries own](#tables-other-libraries-own)
@@ -157,6 +157,7 @@ One row per paired device, such as a TV app. The device acts as the person who a
 | `device_name` | The device's name, shown in the person's list of devices. Empty if it gave none. | `TEXT` |
 | `created_at` | When the device was paired, in Unix seconds. | `BIGINT` |
 | `last_seen_at` | When the device last used Loomarr, in Unix seconds, updated at most once a minute. | `BIGINT` |
+| `code_mode` | Whether the device may run scripts against the API through an AI agent's execute tool. Off until its owner turns it on, and used only while the owner is an admin. | `BOOLEAN` |
 
 ### invitations
 
@@ -329,6 +330,8 @@ One row per channel. A channel is created by approving a channel request or by h
 | `requested_by` | The person who asked for the channel (users.id). Set when the channel is created and never changed. Null when no member asked, or once that person is deleted. | `TEXT` · may be empty · → `users.id` |
 | `from_request` | Whether the channel was made from a member's request rather than by hand. Refine and auto-curate re-run that request; it outlives the job intent_ref names. | `BOOLEAN` |
 | `intent_ref` | The channel request job (proposal_jobs.id) the channel was created from, while that job is kept; null once the job is purged, and for a channel made by hand. No two channels share one. | `TEXT` · may be empty · → `proposal_jobs.id` |
+| `dealt_from` | Two fingerprints, joined by a dot: what an operator had decided when the current cycle was dealt (the lineup, the channel's rules, break and window settings), and the deal itself. While the first is unchanged, a change in the library does not move the window on air; a change to it re-deals the schedule after the programme on air. Empty until the channel is next scheduled. | `TEXT` |
+| `playout_anchor_ms` | The milliseconds past `playout_anchor`'s second, 0 to 999. A cycle that starts at the programme on air rarely starts on a whole second, and the schedule is laid out from the exact moment. | `INTEGER` |
 
 ### channel_lineup
 
@@ -342,6 +345,22 @@ A channel's approved lineup, one row per title in order: what should play on it.
 | `position` | Where the title sits in the lineup, from 0. | `INTEGER` · key |
 | `title_key` | The title (a titles key, such as `movie:tmdb:603`). A title added by hand that nothing has asked for yet has a pending titles row. | `TEXT` · → `titles.key` |
 | `entry` | The rest of the entry: its display name, known runtime, any season range or episode selection, the rating, genres and year the channel rules filter on, and its media-server box sets. | `TEXT` |
+
+### growth_reviews
+
+The model's verdict on a title for a channel that grows by itself: whether a title growth added, or one it held back as an unclear fit, belongs on the channel. One row per channel and title, asked once and asked again when the channel's line changes.
+
+**Kept:** Replaced when the title is reviewed again; goes with its channel.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel (a channels id). | `TEXT` · key · → `channels.id` |
+| `title_key` | The title (a titles key, such as `movie:tmdb:603`). | `TEXT` · key |
+| `line` | The channel's line the verdict was given against, in growth's own words. | `TEXT` |
+| `verdict` | `fits` (an unclear title may join) or `does_not_fit` (a title growth added is taken off and declined). | `TEXT` |
+| `reason` | The model's few words for its verdict, shown with the title. | `TEXT` |
+| `model` | The model that gave the verdict. | `TEXT` |
+| `reviewed_at` | When the verdict was given (Unix seconds). | `INTEGER` |
 
 ### airings
 
@@ -588,7 +607,7 @@ One row per media file the scanner found under an in-use folder. A file the scan
 | `identity` | A digest of what said what the file is (its arr record, ids in its name, its NFO sidecar) when it was last written to the library. Cleared to make the scanner write the file again. | `TEXT` |
 | `kind` | What the file was last written as, one of movie, episode or extra; empty for a problem file. | `TEXT` |
 | `header` | Whether the file's container header has been read. One of pending (not yet), read, or failed (it can't be read, so the file can't be played). | `TEXT` |
-| `problem` | Why the file is skipped, or empty for none. One of disc_image (a disc image), identity_conflict (what names the file disagrees), invalid_facts (the library refused what was read from it), broken_link (a symlink whose target is gone), or link_outside (a symlink to a path outside the root, which the scan never follows). | `TEXT` |
+| `problem` | Why the file is skipped, or empty for none. One of disc_image (a disc image), identity_conflict (what names the file disagrees), invalid_facts (the library refused what was read from it), broken_link (a symlink whose target is gone), link_outside (a symlink to a path outside the root, which the scan never follows), or empty_file (a video file with no bytes, which makes no title until it is filled). | `TEXT` |
 | `held` | 1 when a walk no longer found the file and that walk's removals are waiting for a person to confirm them. A held file still counts as present. | `BOOLEAN` |
 | `seen_at_ms` | When a walk last found the file, in Unix milliseconds. | `INTEGER` |
 | `missing_at_ms` | When a walk stopped finding the file, in Unix milliseconds; 0 means it is present. | `INTEGER` |
@@ -830,6 +849,8 @@ Each track of a title's files (video, audio, subtitles), one row each: those ins
 | `hearing_impaired` | True for a track for the deaf and hard of hearing, such as SDH subtitles. | `BOOLEAN` |
 | `descriptive` | True for an audio track that describes the picture. | `BOOLEAN` |
 | `external_ref` | For a track in its own file beside the title's file (such as Film.en.forced.srt), where that file is, as an absolute path; empty for a track inside the file. | `TEXT` |
+| `bitrate` | The track's own bitrate in bits per second, as its container states it (a Matroska BPS tag) or an MP4's sample table measures it; 0 when the file says nothing. | `INTEGER` |
+| `bit_depth` | Bits per sample: a video track's depth (8, 10 or 12), or a lossless or PCM audio track's sample size; 0 for lossy audio or when unknown. | `INTEGER` |
 
 ### library_chapters
 
@@ -1048,6 +1069,11 @@ One row per piece of artwork (posters, channel icons, clip stills and so on). Th
 | `frame_count` | How many frames the original has; 1 for a still image. | `INTEGER` |
 | `duration_ms` | An animation's length in milliseconds; 0 for a still image. | `INTEGER` |
 | `loop_count` | How many times an animation plays. Empty (NULL) for a still image, 0 for an endless loop. | `INTEGER` · may be empty |
+| `fetch_failures` | How many downloads of a remote image have failed in a row; 0 once one lands. | `INTEGER` |
+| `fetch_failed_at` | When the last failed download was tried, in Unix seconds; 0 for none. | `INTEGER` |
+| `fetch_retry_at` | The earliest time, in Unix seconds, the download is tried again after a failure; 0 for none. Each failure doubles the wait, from five minutes up to a day; a failure that waiting will not fix (the image is gone, its host is refused, it is too large or does not decode) waits a day. | `INTEGER` |
+| `fetch_priority` | The image's class in the download queue, which is served class by class: 0 artwork just adopted, 1 an image the expiry purge put back for a refresh, 2 artwork adopted in bulk to download last (episode stills). | `INTEGER` |
+| `fetch_queued_at` | When the image joined the download queue, in Unix seconds: its adoption, or the expiry purge putting it back. Within a priority the queue is served in this order. | `INTEGER` |
 
 ### clip_images
 
@@ -1262,6 +1288,8 @@ One row per filler clip, identified by a hash of its bytes. The folder scan and 
 | `license` | The licence URL the source declared for the clip. Empty means unknown, never public domain. | `TEXT` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
 | `created_at` | When the clip was first added to the catalog, in Unix seconds. | `INTEGER` |
+| `air_start_ms` | Where in the file the clip starts airing, in milliseconds: past black that is also silent at its start, but for a short pad. Set with air_end_ms by the pipeline's air-window sweep. | `BIGINT` |
+| `air_end_ms` | Where in the file the clip stops airing, in milliseconds. 0 means the window has not been measured and the clip airs whole; a break books air_end_ms - air_start_ms. | `BIGINT` |
 
 **What it is.** The facts selection and research read for every clip, one value each. Repeated facts (product tags, defects, research) already live in their own tables.
 
@@ -1503,6 +1531,28 @@ One row per file a download produced, tracking it from download to the clip fold
 | `remote_id` | The provider's id for the item. Empty for older downloads and typed URLs. | `TEXT` |
 | `gap` | The channel coverage gap the download was for, such as era:1990-1999. Empty when it was not chosen for a gap. | `TEXT` |
 
+### filler_download_failures
+
+One row per item whose download has not worked yet. A failed download is tried three times over a day, then rests 30 days; an item that waits for room is kept here too, with no failure counted. The row has what a retry needs, so an item no source listing offers any more is still retried.
+
+**Kept:** Deleted when the item downloads. The nightly housekeeping task also deletes the rows of a source that was deleted. An item that keeps failing stays, tried once every 30 days.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `item_key` | Identifies the item: the provider's id for it within its source, or its address for a typed URL. | `TEXT` · key |
+| `provider` | The provider that downloads it, such as archive or youtube. | `TEXT` |
+| `source_id` | The registered source it came from (filler_sources.id). Empty for a typed URL. | `TEXT` |
+| `remote_id` | The provider's id for the item. Empty for a typed URL. | `TEXT` |
+| `url` | The address to download. | `TEXT` |
+| `duration_ms` | The length the listing gave, in milliseconds; 0 when it gave none. | `INTEGER` |
+| `height` | The picture height the listing gave, in pixels; 0 when it gave none. | `INTEGER` |
+| `gap` | The channel coverage gap the download was for, such as era:1990-1999. Empty when it was not chosen for a gap. | `TEXT` |
+| `failures` | How many attempts have failed. Waiting for room does not count. | `INTEGER` |
+| `first_failed_at` | When the first attempt failed, in Unix seconds; 0 if none has. | `INTEGER` |
+| `last_failed_at` | When the latest attempt failed, in Unix seconds; 0 if none has. | `INTEGER` |
+| `retry_at` | The earliest the item is tried again, in Unix seconds. | `INTEGER` |
+| `last_error` | Why the latest attempt failed or waited. | `TEXT` |
+
 ### filler_clip_pipeline
 
 Each clip's preparation: which step it is at, how that step is going, and the clip's outcome (ready, rejected, waiting for review). One row per clip, deleted with the clip.
@@ -1516,7 +1566,7 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 | `status` | How the current step is going: queued, running, done, failed (retried after a wait) or skipped (did not apply). | `TEXT` |
 | `progress` | Percent done within the current step, 0 to 100. | `INTEGER` |
 | `disposition` | The clip's outcome: running, review (waiting for a person), ready, complete (a composite that has been split), rejected (refused by a check) or dismissed (a person said no). | `TEXT` |
-| `reject_reason` | Why the clip was rejected, as a code: unprobeable, too_short, no_audio, no_video, black_content, silent_content, too_quiet, unplayable, defect, language, duplicate, screening, sliver or unidentified. Empty when not rejected. | `TEXT` |
+| `reject_reason` | Why the clip was rejected, as a code: unprobeable, too_short, no_audio, no_video, black_content, silent_content, too_quiet, unplayable, defect, language, duplicate, screening, sliver, undecided or unidentified. Empty when not rejected. | `TEXT` |
 | `reject_detail` | The measurement behind the rejection, such as a duration under the minimum or the language heard. | `TEXT` |
 | `attempts` | How many times the current step has been tried. Resets when the clip moves on. | `INTEGER` |
 | `next_run` | When the row may next be worked on, in Unix seconds; 0 means now. | `INTEGER` |
@@ -1635,6 +1685,21 @@ Each time a clip aired on a channel, used to rest clips between airings across t
 | `clip_hash` | The clip that aired (clips.hash). | `TEXT` · key |
 | `aired_at_ms` | When the clip was scheduled to start, in Unix milliseconds. | `INTEGER` · key |
 | `recorded_at_ms` | When playout recorded the airing, in Unix milliseconds. | `INTEGER` |
+
+### filler_breaks
+
+Each commercial break Loomarr has planned for a channel. Reconcile assembles a break once, ahead of time, and cuts the break's slot to the media its pod holds, so the programme resumes when the break's own clips end. The guide, the previews and the stream read the stored pod, so what the guide shows is what airs.
+
+**Kept:** Reconcile keeps the breaks of the window on air and deletes a channel's other breaks, including those behind the playout anchor and those whose start moved. A channel's breaks go with it.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel the break is on (channels.id). | `TEXT` · key · → `channels.id` |
+| `start_ms` | When the break starts on the channel's timeline, in Unix milliseconds. | `INTEGER` · key |
+| `ceiling_ms` | The slot length the pod was assembled to, in milliseconds. | `INTEGER` |
+| `length_ms` | The media the pod holds, in milliseconds. The break slot is this long once planned. | `INTEGER` |
+| `pod_json` | The break's clips in order, as the pod assembler returned them. | `TEXT` |
+| `planned_at` | When the break was planned, in Unix seconds. | `INTEGER` |
 
 ### filler_context_reports
 
@@ -1889,23 +1954,6 @@ A proposed cut list for a compilation reel waiting for an admin's review, one pe
 | `created_at` | When the proposal was made, in Unix seconds. | `INTEGER` |
 | `claim_token` | A lock held while a confirm is publishing the segments, so two confirms cannot run at once. Empty when unlocked. | `TEXT` |
 | `claim_expires_at` | When the lock lapses if not renewed, in Unix seconds. 0 when unlocked. | `INTEGER` |
-
-### filler_split_shadow_decisions
-
-A side-by-side record, made while a new splitting rule is being trialled, of what the current rule and the new certified rule would each do with one split proposal. Kept after the proposal itself is gone; rows are never changed.
-
-**Kept:** Kept while the proposal exists; once it is gone, the nightly housekeeping task deletes the decision 180 days after it was made.
-
-| Column | What it holds | Type |
-| --- | --- | --- |
-| `id` | Identifies the decision, derived from its content. | `TEXT` · key |
-| `proposal_id` | The split proposal it was made for (filler_split_proposals.id). The proposal may since have been removed. | `TEXT` |
-| `clip_hash` | The compilation reel (clips.hash). | `TEXT` |
-| `source_sha256` | SHA-256 of the reel's source file. Empty when not known. | `TEXT` |
-| `assessment_sha256` | SHA-256 of the structure assessment the new rule used. Empty when there was none. | `TEXT` |
-| `policy_version` | Version of the splitting policy compared. | `TEXT` |
-| `decision_json` | The full decision as JSON. For each rule (legacy and certified) it holds a verdict and the spans it would confirm, hold (with a reason) or discard. | `TEXT` |
-| `observed_at` | When the comparison was made, in Unix seconds. | `INTEGER` |
 
 ## Notifications
 

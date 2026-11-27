@@ -44,6 +44,7 @@ import { PausedCover } from "./paused-cover";
 import { qualityOptionsFor } from "./quality-options";
 import { sheetFor } from "./sheet-for";
 import { StoppedCover } from "./stopped-cover";
+import { untilNowEnds } from "./until-now-ends";
 import { useExpiryNotice } from "./use-expiry-notice";
 import { useStationIdent } from "./use-station-ident";
 import { useVolumeLevel } from "./use-volume-level";
@@ -133,10 +134,10 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   const tracksBody = unwrap(tracks.data);
 
   // The chrome's data — the channel's schedule strip (programmes and the breaks between them, each
-  // with its stills and every spot in a break). Refetched on an interval so the live edge and what's
-  // coming stay current as programmes roll.
+  // with its stills and every spot in a break). A schedule change reads it again on the channel's
+  // frame; time alone changes it as the airing on now ends, so it is read again then (#3352).
   const timeline = channelsApi.useChannelTimeline(channel.id, undefined, {
-    query: { enabled: !paused, retry: false, refetchInterval: 30_000 },
+    query: { enabled: !paused, retry: false },
   });
   const timelineBody = unwrap(timeline.data);
   const airings = timelineBody?.airings ?? [];
@@ -145,6 +146,13 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     serverAtProjection === undefined
       ? undefined
       : serverAtProjection + Math.max(0, Date.now() - timeline.dataUpdatedAt);
+  const nowEndsInMs = untilNowEnds(airings, serverAtProjection);
+  const { refetch: refetchTimeline } = timeline;
+  useEffect(() => {
+    if (paused || nowEndsInMs === undefined) return;
+    const timer = setTimeout(() => void refetchTimeline(), nowEndsInMs);
+    return () => clearTimeout(timer);
+  }, [paused, nowEndsInMs, refetchTimeline]);
   const viewerTimeMs = player.liveTransport.state.viewerTimeMs;
   useWatchTelemetry({
     channelId: channel.id,
@@ -456,7 +464,17 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
         signature ? (
           <>
             {player.stillURL && (
-              <img src={player.stillURL} alt="" className="absolute inset-0 h-full w-full object-contain" />
+              <img
+                src={player.stillURL}
+                alt=""
+                style={{
+                  height: "100%",
+                  inset: 0,
+                  objectFit: "contain",
+                  position: "absolute",
+                  width: "100%",
+                }}
+              />
             )}
             <TunerLoader backdrop={holdBackdrop} channel={osdChannel} heldFrame={heldFrame} />
           </>
@@ -484,15 +502,15 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   }
 
   return (
-    <Stack className="min-h-0" flexBasis="0%" flexGrow={1} render="section">
-      <div className="relative min-h-0 flex-1">
+    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} render="section">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} position="relative">
         {playerEl}
         {/* The wash's centred channel line is the visible readout; this is the same line for a
             screen reader. */}
         {tuning && (
           <TunerOSD number={osdChannel.number} name={osdChannel.name} currentTitle={player.currentTitle} />
         )}
-      </div>
+      </Stack>
     </Stack>
   );
 };

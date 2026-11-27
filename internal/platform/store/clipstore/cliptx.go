@@ -236,6 +236,26 @@ func (c ClipTx) Reap(ctx context.Context, hash string, untouchedSince, at time.T
 		epoch(at), epoch(at), epoch(at), hash, true, false, epoch(untouchedSince))
 }
 
+// RetireReady takes a clip that is on air off the catalog for good before its files are deleted, as
+// RetireDefectiveCopy does for a copy that failed the floor: removed, so nothing airs it, and
+// reaped, so a sync that no longer finds the file keeps the row. A clip that is held, composite,
+// already removed or already reaped is left alone and reports false.
+func (c ClipTx) RetireReady(ctx context.Context, hash string, at time.Time) (bool, error) {
+	return c.affectedOne(ctx, `UPDATE clips SET removed_at = ?, reaped_at = ?, updated_at = ?
+		WHERE hash = ? AND held = ? AND removed_at = 0 AND is_composite = ? AND reaped_at IS NULL`,
+		epoch(at), epoch(at), epoch(at), hash, false, false)
+}
+
+// ReapComposite marks a split reel reaped before its files are let go (#4421). Only the tombstone:
+// the row stays present (removed_at 0) as the split sweep leaves it, so every piece's parent_hash
+// still resolves and the sync's prune spares it. A clip that is not a composite, or is already
+// removed or reaped, is left alone and reports false.
+func (c ClipTx) ReapComposite(ctx context.Context, hash string, at time.Time) (bool, error) {
+	return c.affectedOne(ctx, `UPDATE clips SET reaped_at = ?, updated_at = ?
+		WHERE hash = ? AND is_composite = ? AND removed_at = 0 AND reaped_at IS NULL`,
+		epoch(at), epoch(at), hash, true)
+}
+
 // ClipPublication is what terminal readiness checks about a clip before publishing it.
 type ClipPublication struct {
 	Held, Removed, Composite bool

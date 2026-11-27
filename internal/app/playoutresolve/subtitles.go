@@ -7,8 +7,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
-	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/subtitles"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // maxSubtitleParts bounds the programme parts and breaks one window walks. A window is minutes
@@ -50,7 +50,7 @@ func (r *Resolver) Subtitles(ctx context.Context, channelID string, from, to tim
 	}
 	at := from
 	for part := 0; at.Before(to) && part < maxSubtitleParts; part++ {
-		airing := playout.AiringAt(slots, epoch, at)
+		airing := timeline.AiringAt(slots, epoch, at)
 		if airing.Remaining <= 0 {
 			break // nothing airable in the cycle
 		}

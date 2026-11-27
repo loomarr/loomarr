@@ -1,5 +1,5 @@
 import { toProblem } from "@loomarr/api/mutator";
-import { Action, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ErrorStateProps } from "./error-state.type";
 
@@ -10,23 +10,27 @@ import type { ErrorStateProps } from "./error-state.type";
 const ErrorState = ({ error, onRetry, retrying = false, className }: ErrorStateProps) => {
   const p = toProblem(error);
   return (
-    <Stack
-      align="center"
-      className={cn("border-onair-tint-30 bg-onair-tint-8 rounded-lg border p-8 text-center", className)}
+    <Card
+      alignItems="center"
+      borderRadius={8}
+      className={cn("p-8", className)}
       flexShrink={0}
-      gap="control"
-      justify="center"
+      gap={12}
+      justifyContent="center"
       role="alert"
+      tone="onair"
     >
       <Icon decorative glyph={icons.alert} size="control" tone="danger" />
       <div>
-        <Text as="p" textRole="cardLabel" tone="danger">
+        <Text as="p" textAlign="center" textRole="cardLabel" tone="danger">
           {p.title ?? "Something went wrong"}
         </Text>
         {p.detail && (
-          <Text as="p" className="mt-1 max-w-md" textRole="compact" tone="secondary">
-            {p.detail}
-          </Text>
+          <Stack marginTop={4} maxWidth={448}>
+            <Text as="p" textAlign="center" textRole="compact" tone="secondary">
+              {p.detail}
+            </Text>
+          </Stack>
         )}
       </div>
       {onRetry && (
@@ -34,7 +38,7 @@ const ErrorState = ({ error, onRetry, retrying = false, className }: ErrorStateP
           {retrying ? "Trying again…" : "Try again"}
         </Action>
       )}
-    </Stack>
+    </Card>
   );
 };
 

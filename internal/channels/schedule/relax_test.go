@@ -1,72 +1,78 @@
 package schedule_test
 
 import (
-	"strings"
+	"fmt"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
-// A tiny pool that can't fill a long no-repeat window forces the relaxation ladder
-// to descend (§7): the ladder records each applied step (surfaced in the UI). Two
-// programs of the same series with a big episodeNoRepeat can't honor the window, so
-// the ladder halves it and records the step.
-func TestRelax_LadderDescendsAndRecords(t *testing.T) {
-	// A single-series channel with a long no-repeat window and few episodes forces
-	// the ladder. Single-series relaxes seriesMinGap/blockMax, so the shortfall is
-	// the no-repeat window → ladder step 1 (halve episodeNoRepeat).
-	eps := []schedule.ResolvedProgram{
-		{LibraryItemID: "e1", Title: "E1", DurationMs: 60000, Season: 1},
-		{LibraryItemID: "e2", Title: "E2", DurationMs: 60000, Season: 1},
+// relaxShows builds a series channel whose shows have the given episode counts, every episode
+// `each` long, and returns its relaxation record under the separation policy.
+func relaxShows(t *testing.T, counts []int, each time.Duration, sep schedule.SeparationPolicy) []schedule.AppliedRelaxation {
+	t.Helper()
+	var entries []schedule.LineupEntry
+	episodes := map[string][]schedule.ResolvedProgram{}
+	for i, n := range counts {
+		key := fmt.Sprintf("series:tvdb:%d", 90000001+i)
+		entries = append(entries, schedule.LineupEntry{Key: provision.Key(key), Title: key})
+		for e := range n {
+			episodes[key] = append(episodes[key], schedule.ResolvedProgram{
+				LibraryItemID: fmt.Sprintf("%d-%d", i, e), Title: key, DurationMs: each.Milliseconds(),
+				Season: 1, Episode: e + 1,
+			})
+		}
 	}
-	entries := []schedule.LineupEntry{{Key: "series:tvdb:90000001", Title: "Show"}}
-	sav := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tvdb:90000001": eps})
-
-	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: schedule.OrderSyndication, Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(720 * time.Hour)}}}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: schedule.OrderSyndication, Separation: sep}}
 	ch := schedule.Channel{ID: "r", Name: "R", Number: 1, Strategy: schedule.Shuffle, Shuffle: schedule.ShuffleParams{Seed: 3}}
-	d := schedule.ComputeDesiredAt(ch, entries, sav, schedule.PodFill, p, time.Time{})
+	return schedule.ComputeDesiredAt(ch, entries, newSeriesAvail(episodes), schedule.PodFill, p, time.Time{}).Applied
+}
 
-	// The two episodes still air (never dropped); the ladder just records the relax.
-	if len(programKeys(d)) < 2 {
-		t.Errorf("episodes should still air after relaxation: got %d", len(programKeys(d)))
-	}
-	if len(d.Applied) == 0 {
-		t.Fatal("a shortfall should have recorded at least one relaxation step")
-	}
-	// The FIRST ladder step is the no-repeat window (§7 order).
-	if d.Applied[0].Kind != "episodeNoRepeat" {
-		t.Errorf("first relaxation should be episodeNoRepeat, got %q", d.Applied[0].Kind)
-	}
-	// The recorded From/To are human-readable durations.
-	if !strings.Contains(d.Applied[0].From, "h") || d.Applied[0].To == "" {
-		t.Errorf("relaxation should record readable from/to: %+v", d.Applied[0])
+// The install's channels all had episodeNoRepeat cut to 24 h because their series gap could not
+// be kept (#4140): the ladder shortened the no-repeat window first whatever had breached. Here the
+// cycle airs 200 h, longer than the week the window asks for, so only the gap relaxes, and only to
+// the 5 h one show holding half the episodes allows.
+func TestRelax_AGapShortfallKeepsTheNoRepeatWindow(t *testing.T) {
+	got := relaxShows(t, []int{20, 10, 10}, 5*time.Hour, schedule.SeparationPolicy{SeriesMinGap: schedule.Duration(12 * time.Hour)})
+	want := []schedule.AppliedRelaxation{{Kind: "seriesMinGap", From: "12h0m0s", To: "5h0m0s"}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("applied %+v, want %+v", got, want)
 	}
 }
 
-// Pool growth un-relaxes automatically (§7): a channel that needed relaxation with a
-// tiny pool records NO relaxation once the pool is large enough to honor the policy.
-func TestRelax_UnRelaxesWhenPoolRecovers(t *testing.T) {
-	// A 2h no-repeat window; the pool below is 4 series × 1h = 4h of cycle, which
-	// comfortably exceeds the window AND has enough distinct series to honor blockMax
-	// — so NO relaxation is needed.
-	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: schedule.OrderSyndication, Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(2 * time.Hour)}}}
-	ch := schedule.Channel{ID: "u", Name: "U", Number: 1, Strategy: schedule.Shuffle, Shuffle: schedule.ShuffleParams{Seed: 1}}
+// Twenty episodes of one show among five of another cannot run fewer than four in a row: the
+// back-to-back cap rises to four, not to unbounded. A run of two always breaches a gap, so the gap
+// goes first, and to zero only because nothing wider holds.
+func TestRelax_ABlockShortfallRisesToTheShortestRunThatHolds(t *testing.T) {
+	got := relaxShows(t, []int{20, 5}, 7*time.Hour, schedule.SeparationPolicy{BlockMax: 1})
+	want := []schedule.AppliedRelaxation{
+		{Kind: "seriesMinGap", From: "2h0m0s", To: "0s"},
+		{Kind: "blockMax", From: "1", To: "4"},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("applied %+v, want %+v", got, want)
+	}
+}
 
-	entries := []schedule.LineupEntry{
-		{Key: "series:tvdb:90000001", Title: "S1"}, {Key: "series:tvdb:90000002", Title: "S2"},
-		{Key: "series:tvdb:90000003", Title: "S3"}, {Key: "series:tvdb:90000004", Title: "S4"},
+// A cycle shorter than its no-repeat window repeats once per loop, so the record says how often:
+// the window becomes the cycle's runtime rather than a floor the channel still cannot keep.
+func TestRelax_AShortCycleRecordsItsOwnRuntime(t *testing.T) {
+	got := relaxShows(t, []int{2}, time.Minute, schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(720 * time.Hour)})
+	want := []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "720h0m0s", To: "2m0s"}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("applied %+v, want %+v", got, want)
 	}
-	eps := func(id string) []schedule.ResolvedProgram {
-		return []schedule.ResolvedProgram{{LibraryItemID: id + "a", Title: id, DurationMs: 3600000, Season: 1}}
-	}
-	sav := newSeriesAvail(map[string][]schedule.ResolvedProgram{
-		"series:tvdb:90000001": eps("1"), "series:tvdb:90000002": eps("2"),
-		"series:tvdb:90000003": eps("3"), "series:tvdb:90000004": eps("4"),
-	})
-	d := schedule.ComputeDesiredAt(ch, entries, sav, schedule.PodFill, p, time.Time{})
-	if len(d.Applied) != 0 {
-		t.Errorf("a healthy pool should apply NO relaxation, got %+v", d.Applied)
+}
+
+// Pool growth un-relaxes automatically (§7): four one-hour shows honor a 2 h no-repeat window and
+// the default gap, so nothing is recorded.
+func TestRelax_UnRelaxesWhenPoolRecovers(t *testing.T) {
+	got := relaxShows(t, []int{1, 1, 1, 1}, time.Hour, schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(2 * time.Hour)})
+	if len(got) != 0 {
+		t.Errorf("a healthy pool should apply NO relaxation, got %+v", got)
 	}
 }
 
@@ -84,5 +90,10 @@ func TestRelax_NeverRelaxesScope(t *testing.T) {
 	d := schedule.ComputeDesiredAt(policyChannel(), entries, avail, schedule.PodFill, p, time.Time{})
 	if hasKey(programKeys(d), "movie:tmdb:90000002") {
 		t.Error("scope (era) must NEVER be relaxed to admit an out-of-era title")
+	}
+	for _, a := range d.Applied {
+		if a.Kind == "era" {
+			t.Errorf("a channel short of titles stays inside its line, got %+v", a)
+		}
 	}
 }

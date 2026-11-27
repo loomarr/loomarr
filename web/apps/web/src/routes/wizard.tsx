@@ -195,9 +195,10 @@ const WizardScreen = () => {
     return (
       <Stack
         align="center"
-        className="bg-background min-h-screen"
+        backgroundColor="$surfaceCanvas"
         direction="row"
         justify="center"
+        minHeight="100vh"
         render="main"
         aria-busy
       >
@@ -214,9 +215,11 @@ const WizardScreen = () => {
     return (
       <Stack
         align="center"
-        className="bg-background min-h-screen p-6"
+        backgroundColor="$surfaceCanvas"
         direction="row"
         justify="center"
+        minHeight="100vh"
+        padding={24}
         render="main"
       >
         <ErrorState error={settings.error} onRetry={() => void settings.refetch()} />

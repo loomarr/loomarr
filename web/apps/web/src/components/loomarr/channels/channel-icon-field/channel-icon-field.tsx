@@ -1,7 +1,19 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, ActivityIndicator, Field, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
+import {
+  Action,
+  ActivityIndicator,
+  Card,
+  Field,
+  Grid,
+  Icon,
+  icons,
+  MediaTile,
+  Stack,
+  Surface,
+  Text,
+} from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useId, useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
@@ -121,11 +133,14 @@ const ChannelIconField = ({
       <Stack align="center" direction="row" gap="control">
         {/* The web mock's 48px tile: a muted placeholder when there's no icon yet, never a
             broken-image glyph. */}
-        <Stack
-          align="center"
-          className="border-border bg-background size-12 overflow-hidden rounded-md border"
+        <Card
+          alignItems="center"
           flexShrink={0}
-          justify="center"
+          height={48}
+          justifyContent="center"
+          level="canvas"
+          overflow="hidden"
+          width={48}
         >
           {/*
             Three states, and the middle one is the interesting one.
@@ -148,19 +163,23 @@ const ChannelIconField = ({
               fallback={<Icon decorative glyph={icons.noImage} size="control" tone="muted" />}
             />
           ) : logo ? (
-            <img src={logo} alt="Channel icon" className="size-full object-cover" />
+            <img
+              src={logo}
+              alt="Channel icon"
+              style={{ height: "100%", objectFit: "cover", width: "100%" }}
+            />
           ) : (
             <Icon decorative glyph={icons.noImage} size="control" tone="muted" />
           )}
-        </Stack>
-        <div className="min-w-0 flex-1">
+        </Card>
+        <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0}>
           <Text as="p" textRole="cardLabel" tone="primary">
             Channel icon
           </Text>
-          <Text as="p" className="mt-0.5" textRole="hint" tone="secondary">
+          <Text as="p" textRole="hint" tone="secondary">
             What your household sees in the media server's guide.
           </Text>
-        </div>
+        </Stack>
         {isAdmin && (
           <Action
             aria-controls={pickerId}
@@ -177,7 +196,7 @@ const ChannelIconField = ({
       {/* The mock draws only the "Change…" button, not what it opens, so the picker keeps
           today's three ways in plus Clear. */}
       {isAdmin && suggestionsOpen && (
-        <div id={pickerId} className="border-border rounded-md border p-4">
+        <Card id={pickerId} padding={16}>
           <Stack gap="4">
             {logo && (
               <Action
@@ -190,12 +209,12 @@ const ChannelIconField = ({
               </Action>
             )}
             {/* (a) From your titles — TMDB posters for the channel's own lineup. */}
-            <div>
+            <Stack gap="2">
               <Text as="p" textRole="cardLabel" tone="primary">
                 From your titles
               </Text>
               {suggestions.isLoading && (
-                <Stack align="center" className="mt-2" direction="row" gap="inline" render="p">
+                <Stack align="center" direction="row" gap="inline" render="p">
                   <ActivityIndicator decorative size="compact" tone="secondary" />
                   <Text as="span" textRole="hint" tone="secondary">
                     Looking for posters…
@@ -203,12 +222,12 @@ const ChannelIconField = ({
                 </Stack>
               )}
               {tmdbUnconfigured && (
-                <Text as="p" className="mt-2" textRole="hint" tone="secondary">
+                <Text as="p" textRole="hint" tone="secondary">
                   Set up a TMDB connection in Settings to suggest icons from this channel's titles.
                 </Text>
               )}
               {!suggestions.isLoading && !tmdbUnconfigured && suggestions.error && (
-                <Text as="p" className="mt-2" textRole="hint" tone="secondary">
+                <Text as="p" textRole="hint" tone="secondary">
                   Couldn't load suggestions right now.
                 </Text>
               )}
@@ -216,20 +235,20 @@ const ChannelIconField = ({
                 !tmdbUnconfigured &&
                 !suggestions.error &&
                 suggestionList.length === 0 && (
-                  <Text as="p" className="mt-2" textRole="hint" tone="secondary">
+                  <Text as="p" textRole="hint" tone="secondary">
                     No posters found for this channel's titles yet.
                   </Text>
                 )}
               {suggestionList.length > 0 && (
-                <ul className="mt-2 grid grid-cols-5 gap-2 sm:grid-cols-8">
+                <Grid columns={{ base: 5, sm: 8 }} gap="2" render="ul">
                   {suggestionList.map((s) => (
                     <li key={s.url}>
-                      <button
-                        type="button"
-                        aria-label={`Use ${s.title}'s poster as the channel icon`}
+                      <MediaTile
+                        aspectRatio={1}
+                        label={`Use ${s.title}'s poster as the channel icon`}
                         title={s.title}
-                        onClick={() => void pickSuggestion(s.url)}
-                        className="border-border hover:border-static-500 focus-visible:ring-ring block aspect-square w-full cursor-pointer overflow-hidden rounded-sm border transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                        onPress={() => void pickSuggestion(s.url)}
+                        width="100%"
                       >
                         {/*
                           ⚠ These were <img src={tmdbUrl}> until V52 phase 7 — a dozen third-party
@@ -251,93 +270,110 @@ const ChannelIconField = ({
                             fallback={<Icon decorative glyph={icons.noImage} size="compact" tone="muted" />}
                           />
                         ) : (
-                          <img src={s.url} alt={s.title} className="size-full object-cover" loading="lazy" />
+                          <img
+                            src={s.url}
+                            alt={s.title}
+                            loading="lazy"
+                            style={{ height: "100%", objectFit: "cover", width: "100%" }}
+                          />
                         )}
-                      </button>
+                      </MediaTile>
                     </li>
                   ))}
-                </ul>
+                </Grid>
               )}
-            </div>
+            </Stack>
 
             {/* (b) Upload a file. */}
-            <div>
-              <Text as="label" htmlFor={`${urlInputId}-file`} textRole="label">
+            <Stack gap="2">
+              <Text as="span" textRole="label">
                 Upload a file
               </Text>
-              <Stack align="center" className="mt-2" direction="row" gap="inline">
-                <input
-                  ref={fileInputRef}
-                  id={`${urlInputId}-file`}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                  disabled={uploading}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void handleFile(file);
-                  }}
-                  className="text-muted-foreground file:bg-static-800 file:text-foreground hover:file:bg-static-700 block w-full text-sm file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-sm file:font-medium"
-                />
-                {uploading && <ActivityIndicator decorative size="compact" tone="muted" />}
-              </Stack>
-              <Text as="p" className="mt-1" textRole="hint" tone="secondary">
-                PNG, JPEG, WebP, or GIF, up to 2 MB.
-              </Text>
-              {uploadError && (
-                <Text as="p" className="mt-1" textRole="hint" tone="danger">
-                  {uploadError}
+              <Stack gap="1">
+                <Stack align="center" direction="row" gap="inline">
+                  <input
+                    ref={fileInputRef}
+                    id={`${urlInputId}-file`}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    disabled={uploading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void handleFile(file);
+                    }}
+                    // The native picker stays out of sight: the Action beside it opens it.
+                    style={{ display: "none" }}
+                  />
+                  <Action
+                    disabled={uploading}
+                    onPress={() => fileInputRef.current?.click()}
+                    variant="outline"
+                  >
+                    Choose file
+                  </Action>
+                  {uploading && <ActivityIndicator decorative size="compact" tone="muted" />}
+                </Stack>
+                <Text as="p" textRole="hint" tone="secondary">
+                  PNG, JPEG, WebP, or GIF, up to 2 MB.
                 </Text>
-              )}
-            </div>
+                {uploadError && (
+                  <Text as="p" textRole="hint" tone="danger">
+                    {uploadError}
+                  </Text>
+                )}
+              </Stack>
+            </Stack>
 
             {/* (c) Paste a direct image URL. */}
-            <div>
+            <Stack gap="2">
               <Text as="label" htmlFor={urlInputId} textRole="label">
                 Paste an image URL
               </Text>
-              <Stack align="center" className="mt-2" direction="row" gap="inline">
-                <Surface
-                  backgroundColor="transparent"
-                  borderWidth={0}
-                  flexGrow={1}
-                  flexShrink={1}
-                  maxWidth={384}
-                  minWidth={0}
-                >
-                  <urlForm.Field name="url">
-                    {(field) => (
-                      <Field
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        disabled={savingUrl}
-                        id={urlInputId}
-                        keyboardType="url"
-                        onChangeText={(text) => {
-                          field.handleChange(text);
-                          setUrlError(undefined);
-                        }}
-                        onSubmitEditing={() => void urlForm.handleSubmit()}
-                        placeholder="https://example.com/icon.png"
-                        value={field.state.value}
-                      />
-                    )}
-                  </urlForm.Field>
-                </Surface>
-                <Action
-                  disabled={savingUrl || urlDraft.trim() === ""}
-                  onPress={() => void urlForm.handleSubmit()}
-                >
-                  {savingUrl ? "Setting…" : "Set"}
-                </Action>
+              <Stack gap="1">
+                <Stack align="center" direction="row" gap="inline">
+                  <Surface
+                    backgroundColor="transparent"
+                    borderWidth={0}
+                    flexGrow={1}
+                    flexShrink={1}
+                    maxWidth={384}
+                    minWidth={0}
+                  >
+                    <urlForm.Field name="url">
+                      {(field) => (
+                        <Field
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          disabled={savingUrl}
+                          id={urlInputId}
+                          keyboardType="url"
+                          onChangeText={(text) => {
+                            field.handleChange(text);
+                            setUrlError(undefined);
+                          }}
+                          onSubmitEditing={() => void urlForm.handleSubmit()}
+                          placeholder="https://example.com/icon.png"
+                          value={field.state.value}
+                        />
+                      )}
+                    </urlForm.Field>
+                  </Surface>
+                  <Action
+                    disabled={savingUrl || urlDraft.trim() === ""}
+                    onPress={() => void urlForm.handleSubmit()}
+                  >
+                    {savingUrl ? "Setting…" : "Set"}
+                  </Action>
+                </Stack>
+                {urlError && (
+                  <Text as="p" textRole="hint" tone="danger">
+                    {urlError}
+                  </Text>
+                )}
               </Stack>
-              {urlError && (
-                <Text as="p" className="mt-1" textRole="hint" tone="danger">
-                  {urlError}
-                </Text>
-              )}
-            </div>
+            </Stack>
           </Stack>
-        </div>
+        </Card>
       )}
     </Stack>
   );

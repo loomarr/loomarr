@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/events"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -146,6 +147,35 @@ func TestHealthEmitterPublishesTypedInvalidation(t *testing.T) {
 		}
 	default:
 		t.Fatal("no Current Health invalidation reached the SSE bus")
+	}
+}
+
+// A proposal waiting for a decision, approved or denied changes what the requester and the admins
+// see without either of them acting, so each notice sends the `proposal` frame (#3352). The
+// notification coordinator is left unwired: the frame does not depend on it.
+func TestEveryProposalNoticeSendsTheProposalFrame(t *testing.T) {
+	t.Parallel()
+	bus := events.NewBus()
+	sub, unsubscribe := bus.Subscribe()
+	defer unsubscribe()
+	emit := &eventEmitter{bus: bus}
+	ctx := context.Background()
+	p := proposalstore.Proposal{ID: "proposal-1"}
+
+	for name, notice := range map[string]func(){
+		"submitted": func() { emit.ProposalSubmitted(ctx, p) },
+		"approved":  func() { emit.ProposalApproved(ctx, p, "channel-1") },
+		"denied":    func() { emit.ProposalDenied(ctx, p) },
+	} {
+		notice()
+		select {
+		case got := <-sub:
+			if _, ok := got.Payload.(opsapi.ProposalEvent); got.Type != "proposal" || !ok {
+				t.Errorf("%s: frame = %q %T, want proposal api.ProposalEvent", name, got.Type, got.Payload)
+			}
+		default:
+			t.Errorf("%s: no proposal frame reached the SSE bus", name)
+		}
 	}
 }
 

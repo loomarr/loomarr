@@ -6,7 +6,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // PremeasureHorizon is how far ahead reconcile asks for measurement (#1518): the items scheduled
@@ -26,7 +26,7 @@ func (e *Engine) premeasureAhead(ctx context.Context, ch channelstore.Channel) {
 	}
 	seen := map[string]bool{}
 	var ids []string
-	for _, b := range playout.BroadcastsBetween(ch.Desired, ch.PlayoutAnchor, from, e.now().Add(PremeasureHorizon)) {
+	for _, b := range timeline.BroadcastsBetween(ch.Desired, ch.PlayoutAnchor, from, e.now().Add(PremeasureHorizon)) {
 		if b.Kind != schedule.SlotProgram || b.LibraryItemID == "" || seen[b.LibraryItemID] {
 			continue
 		}

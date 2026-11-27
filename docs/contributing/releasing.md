@@ -248,6 +248,14 @@ without uploading, and it logs `xcodebuild -version` and `sw_vers`. App Store Co
 number: one past the highest build the record already holds (`web/scripts/asc-next-build-number.mjs`),
 with `github.run_number` only as a floor, so a re-run or an upload made elsewhere never collides.
 
+Each hosted Mac starts with an empty keychain, so the archive's automatic signing creates a new Apple
+Development certificate on every run. Once the export is done (or has failed), the build revokes it
+(`web/scripts/asc-revoke-runner-certificates.mjs`). It revokes only a Development certificate that is in
+that runner's keychain and was issued in the last week, never a Distribution certificate or a Mac's own.
+If an archive fails with "Your account has reached the maximum number of certificates", the Account
+Holder revokes the old Development certificates at developer.apple.com (Certificates, IDs & Profiles),
+keeping the ones for Macs still in use.
+
 The version is `x.y.z` with an optional suffix. Every prerelease of `0.2.0` shares the `0.2.0` TestFlight
 version, and the build number orders them.
 

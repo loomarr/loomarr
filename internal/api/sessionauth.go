@@ -61,7 +61,7 @@ func (a *sessionAuthorizer) Authorize(r *http.Request) httpcore.Identity {
 	if a.devices != nil && len(h) > len(prefix) && h[:len(prefix)] == prefix {
 		if principal, err := a.devices.ResolveDevice(r.Context(), h[len(prefix):]); err == nil {
 			user := principal.User
-			return httpcore.Identity{DeviceID: principal.ID, Role: roleOf(user), User: &user}
+			return httpcore.Identity{DeviceID: principal.ID, CodeMode: principal.CodeMode, Role: roleOf(user), User: &user}
 		}
 	}
 

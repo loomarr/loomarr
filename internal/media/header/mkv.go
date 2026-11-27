@@ -2,6 +2,7 @@ package header
 
 import (
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
@@ -65,6 +66,14 @@ const (
 	idCueTrack        = 0xF7
 	idCueClusterPos   = 0xF1
 	idCluster         = 0x1F43B675
+	idTrackUID        = 0x73C5
+	idTags            = 0x1254C367
+	idTag             = 0x7373
+	idTargets         = 0x63C0
+	idTagTrackUID     = 0x63C5
+	idSimpleTag       = 0x67C8
+	idTagName         = 0x45A3
+	idTagString       = 0x4487
 
 	// headWindow is the first read of every file: the SeekHead, Info and Tracks of nearly every
 	// Matroska file fit in it (#2151 spike: one 64 KiB read at p50).
@@ -82,7 +91,11 @@ type mkvHead struct {
 	info     []byte
 	tracks   []byte
 	chapters []byte
-	cuesPos  int64 // -1 when the file has no Cues
+	// tags is the Tags element when it lies inside the head window, as ffmpeg writes it; nil
+	// otherwise. mkvmerge writes Tags at the end of the file, which the head read never reaches
+	// (#3228): its BPS statistics are not worth a second seek per file here.
+	tags    []byte
+	cuesPos int64 // -1 when the file has no Cues
 }
 
 // readMatroskaHead locates and reads the Segment's Info, Tracks and Chapters, and the Cues
@@ -186,6 +199,9 @@ func readMatroskaHead(r io.ReaderAt, size int64) (mkvHead, bool) {
 				take(cid, body)
 			}
 		}
+		if body := p + int64(cn); cid == idTags && body+clen <= int64(len(head)) {
+			h.tags = head[body : body+clen]
+		}
 		p += int64(cn) + clen
 	}
 
@@ -258,6 +274,7 @@ func readMatroska(r io.ReaderAt, size int64) (Header, bool) {
 
 	index := 0
 	complete := true
+	rates := matroskaTrackRates(h.tags)
 	forEach(h.tracks, func(cid uint64, b []byte) {
 		if cid != idTrackEntry || !complete {
 			return
@@ -267,6 +284,11 @@ func readMatroska(r io.ReaderAt, size int64) (Header, bool) {
 			complete = false
 			return
 		}
+		forEach(b, func(cid uint64, v []byte) {
+			if cid == idTrackUID {
+				stream.BitRate = rates[beUint(v)]
+			}
+		})
 		stream.Index = index
 		index++
 		if stream.Kind != "" {
@@ -449,6 +471,12 @@ func matroskaTrack(b []byte) (stream inventory.Stream, known bool) {
 			return stream, false
 		}
 		stream.SampleRate = int(rate)
+		if statesDepth(stream.Codec) {
+			stream.BitDepth = bitDepth
+			if d := flacDepth(private); stream.Codec == "flac" && d > 0 {
+				stream.BitDepth = d
+			}
+		}
 	case 0x11:
 		stream.Kind = inventory.StreamSubtitle
 		stream.Channels = 0
@@ -462,6 +490,51 @@ func matroskaTrack(b []byte) (stream inventory.Stream, known bool) {
 		stream.Kind = ""
 	}
 	return stream, true
+}
+
+// matroskaTrackRates reads each track's BPS statistics tag (mkvmerge's, or one set with ffmpeg's
+// -metadata:s BPS=) by track UID. A tag no track is targeted by, or one that is not a positive
+// number, is left out.
+func matroskaTrackRates(tags []byte) map[uint64]int {
+	rates := map[uint64]int{}
+	forEach(tags, func(cid uint64, tag []byte) {
+		if cid != idTag {
+			return
+		}
+		var tracks []uint64
+		bps := 0
+		forEach(tag, func(cid uint64, v []byte) {
+			switch cid {
+			case idTargets:
+				forEach(v, func(cid uint64, x []byte) {
+					if cid == idTagTrackUID {
+						tracks = append(tracks, beUint(x))
+					}
+				})
+			case idSimpleTag:
+				var name, value string
+				forEach(v, func(cid uint64, x []byte) {
+					switch cid {
+					case idTagName:
+						name = string(x)
+					case idTagString:
+						value = string(x)
+					}
+				})
+				if name == "BPS" || name == "BPS-eng" {
+					if n, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && n > 0 {
+						bps = n
+					}
+				}
+			}
+		})
+		for _, uid := range tracks {
+			if uid != 0 && bps > 0 {
+				rates[uid] = bps
+			}
+		}
+	})
+	return rates
 }
 
 // matroskaChapters reads the first edition's top-level chapters.

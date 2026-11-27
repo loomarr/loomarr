@@ -1,4 +1,4 @@
-import { SearchField } from "@loomarr/ui";
+import { SearchButton, SearchField } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 // SearchField — a list filter's text box with the magnifier inside its leading edge.
@@ -22,5 +22,13 @@ const Typed: Story = { args: { value: "Morgan" } };
 const Disabled: Story = { args: { disabled: true, value: "Morgan" } };
 const Clearable: Story = { args: { clearLabel: "Clear search", value: "Morgan" } };
 
+// The press-only form: the same box, but a press opens a search that lives elsewhere (the shell's
+// command search). The shortcut hint sits at the trailing edge.
+const PressOnly: Story = {
+  render: () => (
+    <SearchButton hint="⌘K" keyShortcuts="Meta+K" onPress={() => undefined} placeholder="Search…" />
+  ),
+};
+
 export default meta;
-export { Clearable, Disabled, Empty, Typed };
+export { Clearable, Disabled, Empty, PressOnly, Typed };

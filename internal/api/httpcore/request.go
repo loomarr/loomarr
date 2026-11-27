@@ -45,16 +45,29 @@ func UserIDFrom(ctx context.Context) string {
 
 type deviceCtxKey struct{}
 
-// ContextWithDevice is ctx carrying the safe token-hash identity of an authenticated paired device.
-// Only the authorizer that validated the bearer credential sets it.
-func ContextWithDevice(ctx huma.Context, id string) huma.Context {
-	return huma.WithValue(ctx, deviceCtxKey{}, id)
+type deviceCtx struct {
+	id       string
+	codeMode bool
+}
+
+// ContextWithDevice is ctx carrying the safe token-hash identity of an authenticated paired device,
+// and whether that device has Code Mode on (#4486). Only the authorizer that validated the bearer
+// credential sets it.
+func ContextWithDevice(ctx huma.Context, id string, codeMode bool) huma.Context {
+	return huma.WithValue(ctx, deviceCtxKey{}, deviceCtx{id: id, codeMode: codeMode})
 }
 
 // DeviceIDFrom reads the paired device's identity; ok is false for any other caller.
 func DeviceIDFrom(ctx context.Context) (string, bool) {
-	id, ok := ctx.Value(deviceCtxKey{}).(string)
-	return id, ok && id != ""
+	d, ok := ctx.Value(deviceCtxKey{}).(deviceCtx)
+	return d.id, ok && d.id != ""
+}
+
+// DeviceCodeModeFrom reports whether the calling paired device has Code Mode on; false for any
+// other caller, including a browser session or the API token.
+func DeviceCodeModeFrom(ctx context.Context) bool {
+	d, ok := ctx.Value(deviceCtxKey{}).(deviceCtx)
+	return ok && d.id != "" && d.codeMode
 }
 
 type reqCtxKey struct{}

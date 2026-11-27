@@ -31,7 +31,7 @@ const SourcesPanel = ({
   const selectedSource = sources.find((source) => source.id === selectedSourceID);
 
   return (
-    <Stack flexShrink={0} gap="section">
+    <Stack gap="section">
       <SourceStorageCard />
 
       <FillerSources

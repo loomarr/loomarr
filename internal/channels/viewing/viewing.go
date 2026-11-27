@@ -60,6 +60,12 @@ type entry struct {
 
 // Tracker records playlist polls and answers who is watching. Safe for concurrent use.
 type Tracker struct {
+	// OnChange, if set, runs after a viewing starts or ends, outside the tracker's lock. Set it
+	// before the tracker is shared. A viewing is seen to end when the tracker next prunes it: on
+	// the next poll from anyone, or the Recorder's next read, so within a Recorder interval of the
+	// TTL passing.
+	OnChange func()
+
 	mu      sync.Mutex
 	entries map[key]*entry
 }
@@ -73,8 +79,7 @@ func (t *Tracker) Observe(v Viewer, channelID string, at time.Time) {
 		return
 	}
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.pruneLocked(at)
+	changed := t.pruneLocked(at)
 	k := key{v.UserID, v.DeviceKey, channelID}
 	e := t.entries[k]
 	if e == nil {
@@ -86,23 +91,46 @@ func (t *Tracker) Observe(v Viewer, channelID string, at time.Time) {
 		e.last = at
 	}
 	e.label = v.DeviceLabel
+	// The poll that makes a viewing starts it; on a new channel it also replaces the device's old one.
+	changed = changed || e.polls == MinPolls
+	t.mu.Unlock()
+	t.changed(changed)
+}
+
+// Changed announces a change to what the household-viewing read reports that the tracker does
+// not see itself: a person's tune was recorded, which moves their continue-watching channel.
+func (t *Tracker) Changed() {
+	if t != nil {
+		t.changed(true)
+	}
+}
+
+func (t *Tracker) changed(changed bool) {
+	if changed && t.OnChange != nil {
+		t.OnChange()
+	}
 }
 
 // pruneLocked drops every entry whose last poll is older than the TTL, so a viewing that pauses
 // past the TTL starts afresh (new Since, MinPolls again) and the map stays bounded by live players.
-func (t *Tracker) pruneLocked(at time.Time) {
+// It reports whether a viewing ended, rather than a lone warmer fetch expiring.
+func (t *Tracker) pruneLocked(at time.Time) bool {
+	ended := false
 	for k, e := range t.entries {
 		if at.Sub(e.last) > TTL {
+			ended = ended || e.polls >= MinPolls
 			delete(t.entries, k)
 		}
 	}
+	return ended
 }
 
 // Watching returns every live viewing at `at`, one per device, oldest first.
 func (t *Tracker) Watching(at time.Time) []Watch {
 	t.mu.Lock()
+	ended := t.pruneLocked(at)
+	defer t.changed(ended)
 	defer t.mu.Unlock()
-	t.pruneLocked(at)
 	type device struct{ user, device string }
 	current := make(map[device]Watch)
 	for k, e := range t.entries {

@@ -29,7 +29,7 @@ func TestLibraryCollectionsListTheHouseholds(t *testing.T) {
 		{ID: "own-1", Name: "Harbor Films", ImportedFrom: "emby", ImportedID: "emby-coll-1", Members: []string{"m1", "m2"}},
 		{ID: "own-3", Name: "Rainy Days", Members: []string{"m3"}},
 	}}
-	got, err := libraryCollections{own: own}.Collections(context.Background())
+	got, err := libraryCollections{own: own}.Collections(context.Background(), false)
 	want := []libraryapi.LibraryCollection{
 		{ID: "own-1", Name: "Harbor Films", ChildCount: 2},
 		{ID: "own-3", Name: "Rainy Days", ChildCount: 1},
@@ -37,7 +37,7 @@ func TestLibraryCollectionsListTheHouseholds(t *testing.T) {
 	if err != nil || !slices.Equal(got, want) {
 		t.Errorf("picker = %+v, %v; want %+v", got, err, want)
 	}
-	if got, err := (libraryCollections{own: ownCollectionsFake{}}).Collections(context.Background()); err != nil || len(got) != 0 {
+	if got, err := (libraryCollections{own: ownCollectionsFake{}}).Collections(context.Background(), true); err != nil || len(got) != 0 {
 		t.Errorf("no collections = %+v, %v; want none and no error", got, err)
 	}
 }

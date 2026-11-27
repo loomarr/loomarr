@@ -63,7 +63,7 @@ func TestCoverageMatchesTheRungAssembleFills(t *testing.T) {
 func TestCoverageRungsAreInLadderOrder(t *testing.T) {
 	report := pod.Coverage(sampleCatalog(), kidsWindow(1), pod.Policy{})
 
-	want := []pod.MatchLevel{pod.MatchExact, pod.MatchWidened, pod.MatchAudience}
+	want := []pod.MatchLevel{pod.MatchExact, pod.MatchWidened}
 	if len(report.Rungs) != len(want) {
 		t.Fatalf("got %d rungs, want %d", len(report.Rungs), len(want))
 	}
@@ -77,15 +77,15 @@ func TestCoverageRungsAreInLadderOrder(t *testing.T) {
 // ⚠ **Every rung is always reported, even at 0.** A rung at 0 means what a reader assumes: nothing
 // in the catalog reaches it.
 func TestCoverageAlwaysReportsEveryRung(t *testing.T) {
-	// A 2015 window has no exact-era and no widened clip in this catalog, so two rungs are
+	// A 2015 window has no exact-era and no widened clip in this catalog, so both rungs are
 	// genuinely empty — precisely the case the old rule would have hidden.
 	w := pod.Window{ChannelID: "ch1", Seed: 4, Era: pod.Year(2015), Audience: pod.Kids, GapMs: 120000, PodMax: 4}
 	report := pod.Coverage(sampleCatalog(), w, pod.Policy{})
 
-	if len(report.Rungs) != 3 {
-		t.Fatalf("got %d rungs, want 3 (exact, widened, audience) — a rung must never be dropped", len(report.Rungs))
+	if len(report.Rungs) != 2 {
+		t.Fatalf("got %d rungs, want 2 (exact, widened) — a rung must never be dropped", len(report.Rungs))
 	}
-	want := []pod.MatchLevel{pod.MatchExact, pod.MatchWidened, pod.MatchAudience}
+	want := []pod.MatchLevel{pod.MatchExact, pod.MatchWidened}
 	for i, lvl := range want {
 		if report.Rungs[i].Level != lvl {
 			t.Errorf("rung %d is %q, want %q", i, report.Rungs[i].Level, lvl)

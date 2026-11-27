@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type Dispatch, type SetStateAction, useCallback, useState } from "react";
 
 // useCommittedDraft — the draft of one input that is not a form: a single value the viewer edits
 // beside the value that is stored, which only changes when the draft is committed (on blur or
@@ -10,11 +10,26 @@ import { useState } from "react";
 //
 // The draft starts as `committed` and is not reseeded when `committed` changes: a caller that
 // wants the stored value back remounts the box with a `key`, or calls `editDraft` itself.
-const useCommittedDraft = <T>(committed: T) => {
-  const [draft, editDraft] = useState<T>(committed);
+//
+// `validate` says why a draft cannot be handed over. `commit` then keeps it, with that reason as
+// `problem` for the box to show, until the next edit.
+const useCommittedDraft = <T>(committed: T, validate?: (draft: T) => string | undefined) => {
+  const [draft, setDraft] = useState<T>(committed);
+  const [problem, setProblem] = useState<string>();
+  // Stable, as the state setter it wraps is: callers list it in effect dependencies.
+  const editDraft: Dispatch<SetStateAction<T>> = useCallback((next) => {
+    setProblem(undefined);
+    setDraft(next);
+  }, []);
   // Drop the edit and show the stored value again.
   const discard = () => editDraft(committed);
-  return { discard, draft, editDraft };
+  // Hand the draft over, unless `validate` refuses it.
+  const commit = (handOver: (draft: T) => void) => {
+    const refused = validate?.(draft);
+    setProblem(refused);
+    if (refused === undefined) handOver(draft);
+  };
+  return { commit, discard, draft, editDraft, problem };
 };
 
 export { useCommittedDraft };

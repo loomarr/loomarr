@@ -3,11 +3,12 @@ import {
   ClientDiagnosticsReporter,
   createAuthenticatedBatchSender,
   type SendBatch,
+  vocabularyIn,
 } from "./client-diagnostics";
 
 const deferred = () => {
   let reject!: (error: unknown) => void;
-  const promise = new Promise<void>((_resolve, onReject) => {
+  const promise = new Promise<undefined>((_resolve, onReject) => {
     reject = onReject;
   });
   return { promise, reject };
@@ -134,6 +135,44 @@ describe("createAuthenticatedBatchSender", () => {
 
     request.mockResolvedValueOnce(new Response(null, { status: 429 }));
     await expect(send(events)).rejects.toThrow("429");
+  });
+});
+
+describe("the server's client-event vocabulary", () => {
+  it("is read from an accepted batch's answer, and a server from before vocabularies has none", () => {
+    expect(vocabularyIn({ accepted: 1, vocabulary: 1 })).toBe(1);
+    expect(vocabularyIn({ accepted: 1 })).toBeUndefined();
+    expect(vocabularyIn({ vocabulary: "1" })).toBeUndefined();
+    expect(vocabularyIn(undefined)).toBeUndefined();
+  });
+
+  it("comes back from the authenticated sender, and an old server's empty answer still counts as sent", async () => {
+    const reporter = new ClientDiagnosticsReporter(async () => undefined);
+    const answer = (body: unknown) =>
+      vi.fn<typeof fetch>(async () => new Response(JSON.stringify(body), { status: 202 }));
+    const current = createAuthenticatedBatchSender(answer({ accepted: 1, vocabulary: 1 }), (events) =>
+      reporter.wireBatch(events),
+    );
+    const old = createAuthenticatedBatchSender(answer({ accepted: 1 }), (events) =>
+      reporter.wireBatch(events),
+    );
+    const events = [{ event: "player.ready" as const, occurredAt: 1 }];
+    await expect(current(events)).resolves.toBe(1);
+    await expect(old(events)).resolves.toBeUndefined();
+  });
+
+  it("keeps sending the original events to a server that reports no vocabulary", async () => {
+    const send = vi.fn<SendBatch>(async () => undefined);
+    const reporter = new ClientDiagnosticsReporter(send);
+    reporter.record({ event: "player.ready", playbackSessionId: "native-1", transport: "native_hls" });
+    await reporter.flush();
+    reporter.record({ event: "player.detached", playbackSessionId: "native-1", transport: "native_hls" });
+    await reporter.flush();
+    expect(send.mock.calls.flatMap(([events]) => events.map(({ event }) => event))).toEqual([
+      "player.ready",
+      "player.detached",
+    ]);
+    reporter.dispose();
   });
 });
 

@@ -1,6 +1,6 @@
 import { UserBodyRole } from "@loomarr/api/models/userBodyRole";
 import { formatRelative } from "@loomarr/core/format";
-import { Stack, Text } from "@loomarr/design-system";
+import { Card, Grid, Stack, Text } from "@loomarr/design-system";
 import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
 import { useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
@@ -44,23 +44,16 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
 
   return (
     <Stack aria-labelledby="people-roster-title" gap="control" render="section">
-      {/* flexShrink 0: a Stack's View base lets it shrink below its content, which squashes this
-          header into the filters and list under it when the page's column is height-capped. */}
-      <Stack
-        align={{ base: "stretch", lg: "end" }}
-        direction={{ base: "column", lg: "row" }}
-        flexShrink={0}
-        gap="3"
-      >
-        <div className="min-w-0 flex-1">
+      <Stack align={{ base: "stretch", lg: "end" }} direction={{ base: "column", lg: "row" }} gap="3">
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
           <Text as="h2" id="people-roster-title" strong textRole="headline">
             People
           </Text>
           <Text as="p" textRole="compact" tone="secondary">
             Select a person to manage access, requests, and sessions.
           </Text>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_9rem_9rem] lg:w-auto">
+        </Stack>
+        <Grid columns={{ base: 1, sm: ["minmax(12rem,1fr)", "9rem", "9rem"] }} flexShrink={1} gap="3">
           <SearchField label="Search people" onChangeText={setQuery} placeholder="Name" value={query} />
           <BrowserSelectControl
             appearance="field"
@@ -76,29 +69,29 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
             options={STATUS_FILTERS}
             value={status}
           />
-        </div>
+        </Grid>
       </Stack>
 
       {users === undefined ? (
-        <div className="grid gap-2" role="status" aria-label="Loading people">
+        <Grid gap="2" role="status" aria-label="Loading people">
           {[0, 1, 2].map((item) => (
-            <div key={item} className="border-border bg-card h-20 animate-pulse rounded-lg border" />
+            <Card className="animate-pulse" height={80} key={item} />
           ))}
-        </div>
+        </Grid>
       ) : users.length === 0 ? (
         <EmptyState
           title="No people yet"
           description="Use the actions above to import a media-server account or add a local one."
         />
       ) : filtered.length === 0 ? (
-        <div className="border-border bg-card rounded-lg border p-6 text-center">
-          <Text as="p" textRole="cardLabel">
+        <Card padding={24}>
+          <Text as="p" textAlign="center" textRole="cardLabel">
             No matching people
           </Text>
-          <Text as="p" textRole="compact" tone="secondary">
+          <Text as="p" textAlign="center" textRole="compact" tone="secondary">
             Try another name, role, or status.
           </Text>
-        </div>
+        </Card>
       ) : (
         <ListGroup aria-labelledby="people-roster-title">
           {filtered.map((user) => (

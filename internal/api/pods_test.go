@@ -309,7 +309,7 @@ func TestPreviewDraftPods_RejectsTooShortBreakDuration(t *testing.T) {
 func TestPreviewDraftPods_MeterAndPodDescribeTheSameSelection(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
 	fp.coverage = pod.CoverageReport{
-		Level: pod.MatchAudience,
+		Level: pod.MatchWidened,
 		Total: 7,
 		Criteria: []pod.CriterionCoverage{
 			{Criterion: pod.CriterionAudience, Clips: 0},
@@ -352,7 +352,7 @@ func TestPreviewDraftPods_MeterAndPodDescribeTheSameSelection(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatalf("decode draft preview body: %v", err)
 	}
-	if got.Coverage.Level != "audience" || got.Coverage.Total != 7 {
+	if got.Coverage.Level != "widened" || got.Coverage.Total != 7 {
 		t.Errorf("coverage = %+v, want the draft's report on the wire", got.Coverage)
 	}
 	if len(got.Coverage.Criteria) != 2 || got.Coverage.Criteria[0].Criterion != "audience" {

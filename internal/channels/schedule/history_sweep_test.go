@@ -11,7 +11,7 @@ import (
 
 // Viewing history (#1939). Production always has it after the first day: each window opens with
 // what the windows before it aired on record. These tests air a channel window after window through
-// ComputeDesiredAt, loop a short window the way playout does (internal/playout/timeline.go,
+// ComputeDesiredAt, loop a short window the way playout does (internal/playout/timeline,
 // elapsed % total), and feed every airing back as history before the next window opens.
 
 // historyAiring is one programme as it aired, in ms from the first window's open.

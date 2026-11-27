@@ -58,6 +58,9 @@ func (f *thumbFailure) Unwrap() error { return f.err }
 var (
 	errThumbNoFetcher   = errors.New("no image fetcher wired")
 	errThumbFetchFailed = errors.New("image not fetched within budget")
+	// errThumbBackingOff is an image whose last download failed and whose next attempt is not
+	// due: nothing was tried, and the fetch job retries it when it is.
+	errThumbBackingOff = errors.New("image download backing off after a failure")
 )
 
 // failureClassOf names why a resolve failed: a TMDB class, or the image pipeline stage.
@@ -118,9 +121,12 @@ func (a timelineThumbResolver) resolve(ctx context.Context, key string, season, 
 	// ⚠ **Adopted but not yet fetched ⇒ warm it now, then use the RETURNED row.** FetchNow re-keys
 	// the URL-placeholder hash to the content hash, so continuing to use `rec` would mint a URL
 	// that 404s as soon as the fetch finishes.
-	if rec.OriginFetchedAt.IsZero() {
+	if !rec.HasBytes() {
 		if a.fetch == nil {
 			return "", "", &thumbFailure{class: "image_fetch", err: errThumbNoFetcher}
+		}
+		if rec.BackingOff(time.Now()) {
+			return "", "", &thumbFailure{class: "image_backoff", err: errThumbBackingOff}
 		}
 		warm := a.fetch.FetchNow(ctx, []images.Image{rec}, timelineThumbWarmBudget)
 		rec, ok = warm[src]

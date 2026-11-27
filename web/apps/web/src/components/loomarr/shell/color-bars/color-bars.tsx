@@ -16,6 +16,8 @@ const SEGMENTS = [
   "bg-static-400",
 ] as const;
 
+// A caller's `className` (the guide's dead-air card sets `h-16 w-50`) replaces these through
+// `cn`, so the size stays a class; a size prop would beat the caller's class.
 const HEIGHT: Record<ColorBarsSize, string> = {
   sm: "h-1.5", // ~6px — the sidebar lockup
   lg: "h-3.5", // 14px — the login/wizard hero (matches the prototype)
@@ -34,8 +36,10 @@ const BREATHE_STAGGER_S = 0.28;
 const ColorBars = ({ size = "lg", breathe = false, className }: ColorBarsProps) => (
   <Stack
     aria-hidden
-    className={cn("overflow-hidden rounded-[2px]", HEIGHT[size], WIDTH[size], className)}
+    borderRadius={2}
+    className={cn(HEIGHT[size], WIDTH[size], className)}
     direction="row"
+    overflow="hidden"
   >
     {SEGMENTS.map((bg, i) => (
       <span

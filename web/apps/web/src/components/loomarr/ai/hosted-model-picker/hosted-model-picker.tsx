@@ -1,9 +1,8 @@
 import type { HostedModelView } from "@loomarr/api/models/hostedModelView";
 import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView";
-import { Action, Badge, Stack, Text } from "@loomarr/design-system";
+import { Action, Badge, Card, Stack, Text, TextLink } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import type { HostedModelPickerProps } from "./hosted-model-picker.type";
 
 const GUIDED_ALTERNATIVES = 2;
@@ -61,19 +60,19 @@ const ModelRow = ({
           : "Use this";
 
   return (
-    <Stack
-      align="start"
-      className={cn(
-        "border-border bg-card rounded-md border px-3 py-2.5",
-        primary && !isActive && "border-signal-tint-30 bg-signal-tint-5",
-        // The model in use is neutral, an elevated row like the drawer's tuned one (#1909 Q2).
-        isActive && "bg-static-800",
-      )}
-      direction="row"
-      gap="control"
+    // The model in use is neutral, an elevated row like the drawer's tuned one (#1909 Q2).
+    <Card
+      alignItems="flex-start"
+      borderRadius={6}
+      flexDirection="row"
+      gap={12}
+      level={isActive ? "elevated" : "raised"}
+      paddingHorizontal={12}
+      paddingVertical={10}
       render="li"
+      tone={primary && !isActive ? "signal" : undefined}
     >
-      <div className="min-w-0 flex-1">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
         <Stack align="center" direction="row" gap="inline" render="p" wrap>
           <Text as="span" textRole="cardLabel">
             {model.label}
@@ -96,16 +95,20 @@ const ModelRow = ({
           )}
         </Stack>
         {model.why && (
-          <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
-            {model.why}
-          </Text>
+          <Stack marginTop={2}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {model.why}
+            </Text>
+          </Stack>
         )}
         {unusable && !model.why && (
-          <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
-            Loomarr requires advertised tool-calling to ground suggestions safely.
-          </Text>
+          <Stack marginTop={2}>
+            <Text as="p" textRole="compact" tone="secondary">
+              Loomarr requires advertised tool-calling to ground suggestions safely.
+            </Text>
+          </Stack>
         )}
-      </div>
+      </Stack>
       <Action
         disabled={busy || isActive || !provider.keyConfigured || unusable}
         icon={isActive ? "success" : undefined}
@@ -114,7 +117,7 @@ const ModelRow = ({
       >
         {action}
       </Action>
-    </Stack>
+    </Card>
   );
 };
 
@@ -184,14 +187,9 @@ const HostedModelPicker = ({
                 {hp.keysUrl && (
                   <>
                     {" "}
-                    <a
-                      href={hp.keysUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-signal underline underline-offset-2"
-                    >
-                      Get a key ↗
-                    </a>
+                    <TextLink external href={hp.keysUrl}>
+                      Get a key
+                    </TextLink>
                   </>
                 )}
               </Text>
@@ -263,9 +261,11 @@ const HostedModelPicker = ({
                 )}
                 {alternatives.length > 0 && (
                   <>
-                    <Text as="p" className="mt-1" textRole="label">
-                      {primary ? "Strong alternatives" : "Available models"}
-                    </Text>
+                    <Stack marginTop={4}>
+                      <Text as="p" textRole="label">
+                        {primary ? "Strong alternatives" : "Available models"}
+                      </Text>
+                    </Stack>
                     <Stack gap="inline" render="ul">
                       {alternatives.map((model) => (
                         <ModelRow
@@ -282,9 +282,11 @@ const HostedModelPicker = ({
                 )}
                 {current && (
                   <>
-                    <Text as="p" className="mt-1" textRole="label">
-                      Currently active
-                    </Text>
+                    <Stack marginTop={4}>
+                      <Text as="p" textRole="label">
+                        Currently active
+                      </Text>
+                    </Stack>
                     <ul>
                       <ModelRow
                         model={current}

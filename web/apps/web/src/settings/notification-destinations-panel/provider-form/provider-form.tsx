@@ -1,5 +1,5 @@
 import { notificationProviderFormSchema } from "@loomarr/core/schemas";
-import { Action, Card, Stack, Text, Toggle } from "@loomarr/design-system";
+import { Action, Card, Grid, GridItem, Stack, Text, Toggle } from "@loomarr/design-system";
 import { useId, useMemo } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
@@ -72,9 +72,11 @@ const ProviderForm = ({ definition, provider, pending, error, onCancel, onSave }
             <Text as="h3" strong textRole="heading">
               {provider ? `Edit ${provider.label}` : `Add ${definition.name}`}
             </Text>
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-              Enter the provider settings, choose events, and save.
-            </Text>
+            <Stack marginTop={4}>
+              <Text as="p" textRole="compact" tone="secondary">
+                Enter the provider settings, choose events, and save.
+              </Text>
+            </Stack>
           </div>
           <Action icon="close" layout="icon" onPress={onCancel} variant="ghost">
             Close provider form
@@ -89,7 +91,7 @@ const ProviderForm = ({ definition, provider, pending, error, onCancel, onSave }
           )}
         </form.AppField>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <Grid columns={{ base: 1, sm: 2 }} gap="4">
           {definition.fields.map((field) => (
             <form.Field name={`settings.${field.key}`} key={field.key}>
               {(settingField) => (
@@ -121,11 +123,11 @@ const ProviderForm = ({ definition, provider, pending, error, onCancel, onSave }
               )}
             </form.Field>
           ))}
-        </div>
+        </Grid>
 
         <form.Field name="events">
           {(field) => (
-            <fieldset className="grid gap-2 sm:grid-cols-2">
+            <Grid columns={{ base: 1, sm: 2 }} gap="2" render="fieldset">
               <Text as="legend" className="mb-2" textRole="cardLabel">
                 Events *
               </Text>
@@ -148,13 +150,13 @@ const ProviderForm = ({ definition, provider, pending, error, onCancel, onSave }
                 );
               })}
               {field.state.meta.errors[0] ? (
-                <div className="sm:col-span-2" role="alert">
+                <GridItem role="alert" span={{ base: 1, sm: "full" }}>
                   <Text as="p" textRole="compact" tone="danger">
                     {field.state.meta.errors[0].message}
                   </Text>
-                </div>
+                </GridItem>
               ) : null}
-            </fieldset>
+            </Grid>
           )}
         </form.Field>
 

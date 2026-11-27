@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // The packager asks for the channel's bug only for a library programme (#1512 phase 1d, which the
@@ -15,18 +16,18 @@ import (
 // host whose GPU overlay has not passed its self-check draws none.
 func TestPackagerSourceWatermarksProgrammesOnly(t *testing.T) {
 	ch := channelstore.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}
-	programme := playout.Airing{Kind: schedule.SlotProgram, LibraryItemID: "title"}
+	programme := timeline.Airing{Kind: schedule.SlotProgram, LibraryItemID: "title"}
 	for _, tc := range []struct {
 		name       string
-		airing     playout.Airing
+		airing     timeline.Airing
 		gatePassed bool
 		want       bool
 	}{
 		{"programme", programme, true, true},
 		{"programme, overlay unverified", programme, false, false},
-		{"break commercial", playout.Airing{Kind: schedule.SlotFiller, Source: "/filler/clip.mp4"}, true, false},
-		{"filler clip in a programme slot", playout.Airing{Kind: schedule.SlotProgram, Source: "/filler/clip.mp4"}, true, false},
-		{"flex", playout.Airing{Kind: schedule.SlotFlex}, true, false},
+		{"break commercial", timeline.Airing{Kind: schedule.SlotFiller, Source: "/filler/clip.mp4"}, true, false},
+		{"filler clip in a programme slot", timeline.Airing{Kind: schedule.SlotProgram, Source: "/filler/clip.mp4"}, true, false},
+		{"flex", timeline.Airing{Kind: schedule.SlotFlex}, true, false},
 	} {
 		s := playoutresolve.PackagerSource{Watermark: testWatermarks(t, ch, tc.gatePassed).For}
 		var wm *playout.Watermark

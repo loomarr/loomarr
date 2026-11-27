@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -249,7 +249,7 @@ func TestReconcile_InternalBreakEndsWhenItsPodIsExhausted(t *testing.T) {
 			if slot.DurationMs != 40_000 {
 				t.Fatalf("commercial break duration = %dms, want the two configured clips' 40000ms", slot.DurationMs)
 			}
-			atBoundary := playout.AiringAt(ch.Desired, ch.PlayoutAnchor,
+			atBoundary := timeline.AiringAt(ch.Desired, ch.PlayoutAnchor,
 				ch.PlayoutAnchor.Add(beforeBreak+40*time.Second))
 			if atBoundary.Kind != schedule.SlotProgram || atBoundary.LibraryItemID != "lib-2" {
 				t.Fatalf("airing after commercial two = %+v, want the following programme", atBoundary)

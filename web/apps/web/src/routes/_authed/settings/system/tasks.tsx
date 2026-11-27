@@ -10,11 +10,11 @@ const Tasks = () => <TasksPage />;
 
 const Route = createFileRoute("/_authed/settings/system/tasks")({
   component: Tasks,
-  // The job list the page is made of, so it opens on its rows. Admin-only like the page, and
-  // warmed: the page shows its own error for a failed read.
+  // The job list the page is made of, so it opens on its rows and a failed read is the route's
+  // error view. Admin-only like the page.
   loader: async ({ context: { queryClient } }) => {
     if (!(await viewerIsAdmin(queryClient))) return;
-    await queryClient.prefetchQuery(jobsApi.getJobsListQueryOptions({ query: { retry: false } }));
+    await queryClient.ensureQueryData(jobsApi.getJobsListQueryOptions({ query: { retry: false } }));
   },
 });
 

@@ -3,6 +3,7 @@
 
 export * from "./channel-policy";
 export * from "./client-platform";
+export * from "./library";
 export * from "./paired-server";
 export * from "./people";
 export * from "./requests";

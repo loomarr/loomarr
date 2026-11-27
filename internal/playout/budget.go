@@ -166,6 +166,9 @@ type ResourceBudget struct {
 	// background is the work to interrupt when a live transcode is admitted (BackgroundContext),
 	// under mu.
 	background map[*byte]context.CancelCauseFunc
+	// media is filler media work (MediaWorkContext): interrupted only when an admission leaves
+	// playout tight.
+	media map[*byte]context.CancelCauseFunc
 }
 
 // ErrYielded is the cause of a background context that ended because live playback started.
@@ -448,6 +451,7 @@ func (b *ResourceBudget) Reserve(req AdmitRequest) (*Lease, error) {
 	b.leases[l] = struct{}{}
 	if req.Class != ClassCopy {
 		b.yieldLocked()
+		b.yieldMediaLocked(facts)
 	}
 	return l, nil
 }
@@ -525,6 +529,7 @@ func (l *Lease) reclass(class StreamClass, repick bool) bool {
 	l.class, l.demand, l.software = class, d, sw
 	if starting {
 		b.yieldLocked()
+		b.yieldMediaLocked(facts)
 	}
 	release := l.release
 	if class == ClassCopy {
@@ -596,15 +601,94 @@ func (b *ResourceBudget) Sessions() int {
 	return b.useLocked(nil).Sessions
 }
 
-// PlaybackBusy is filler.PlaybackHeadroom (#1514): background media work waits while a live
-// transcode holds a lease. A copy holds no encoder and costs almost no CPU, so it does not count.
+// PlaybackBusy is filler.PlaybackHeadroom (#1514): background media work waits while live playout
+// is near its measured capacity. A copy holds no encoder and costs almost no CPU, so it does not
+// count. See tightLocked for what "near" means.
 func (b *ResourceBudget) PlaybackBusy() (bool, string) {
+	facts := b.currentFacts()
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if n := b.useLocked(nil).Transcodes; n > 0 {
-		return true, fmt.Sprintf("live playout is transcoding %d stream(s)", n)
+	return b.tightLocked(facts)
+}
+
+// tightLocked reports whether live playout leaves too little room for background media work: room
+// for two more streams like the ones running, one for the media work itself and one for the next
+// viewer to tune in. Waiting while ANY stream ran starved filler for weeks on a household that
+// watches all day (2026-11-18: 16 clips queued since early November). An install whose capacity was
+// never measured has nothing to judge room by, so it keeps that rule: busy while anything transcodes.
+func (b *ResourceBudget) tightLocked(f BudgetFacts) (bool, string) {
+	use := b.useLocked(nil)
+	if use.Transcodes == 0 {
+		return false, ""
+	}
+	n := float64(use.Transcodes)
+	measured := false
+	limit := f.SessionLimit
+	if f.OperatorCap > 0 && (limit == 0 || f.OperatorCap < limit) {
+		limit = f.OperatorCap
+	}
+	if limit > 0 {
+		measured = true
+		if use.Transcodes+2 > limit {
+			return true, fmt.Sprintf("live playout uses %d of %d encoders", use.Transcodes, limit)
+		}
+	}
+	if use.GPUShare > 0 {
+		measured = true
+		if use.GPUShare*(n+2)/n > 1+capacityEpsilon {
+			return true, fmt.Sprintf("live playout uses %.0f%% of the GPU", use.GPUShare*100)
+		}
+	}
+	if f.CPUAllowance > 0 && use.CPUCores > 0 {
+		measured = true
+		if use.CPUCores*(n+2)/n > f.CPUAllowance+capacityEpsilon {
+			return true, fmt.Sprintf("live playout uses %.1f of %.1f CPU cores", use.CPUCores, f.CPUAllowance)
+		}
+	}
+	if !measured {
+		return true, fmt.Sprintf("live playout is transcoding %d stream(s) and its capacity is unmeasured", use.Transcodes)
 	}
 	return false, ""
+}
+
+// MediaWorkContext derives the context filler media work runs under (filler.PlaybackHeadroom,
+// #2121). Unlike BackgroundContext it ends only when a live transcode is admitted AND playout is
+// then tight, so a second viewer on a roomy GPU does not cut a short filler encode. It is born
+// ended while playout is already tight, unless the work is overdue: work held back past its bound
+// starts anyway, and still yields to the next admission that leaves no room.
+func (b *ResourceBudget) MediaWorkContext(ctx context.Context, overdue bool) (context.Context, context.CancelFunc) {
+	facts := b.currentFacts()
+	bctx, cancel := context.WithCancelCause(ctx)
+	key := new(byte)
+	b.mu.Lock()
+	if tight, _ := b.tightLocked(facts); tight && !overdue {
+		b.mu.Unlock()
+		cancel(ErrYielded)
+		return bctx, func() {}
+	}
+	if b.media == nil {
+		b.media = map[*byte]context.CancelCauseFunc{}
+	}
+	b.media[key] = cancel
+	b.mu.Unlock()
+	return bctx, func() {
+		b.mu.Lock()
+		delete(b.media, key)
+		b.mu.Unlock()
+		cancel(context.Canceled)
+	}
+}
+
+// yieldMediaLocked interrupts filler media work when a live transcode was just admitted and
+// playout is now tight.
+func (b *ResourceBudget) yieldMediaLocked(f BudgetFacts) {
+	if tight, _ := b.tightLocked(f); !tight {
+		return
+	}
+	for key, cancel := range b.media {
+		cancel(ErrYielded)
+		delete(b.media, key)
+	}
 }
 
 func (b *ResourceBudget) fitsLocked(facts BudgetFacts, d demand, except *Lease) bool {

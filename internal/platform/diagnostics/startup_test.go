@@ -206,6 +206,31 @@ func TestCurrentHealthExpiresContinuousObservation(t *testing.T) {
 	}
 }
 
+// A page reads the report again at nextRefreshAt, so it names the soonest a fresh result runs
+// out: a check already stale has nothing left to run out, and would pin it in the past.
+func TestCurrentHealthNextRefreshIsTheSoonestFreshResultToRunOut(t *testing.T) {
+	now := time.Unix(100, 0)
+	report := NewStartup(now, 1, "v1", []StartupCheck{
+		{Key: "database", Label: "Database", Required: true, Mode: HealthCheckContinuous, FreshFor: time.Minute},
+		{Key: "media", Label: "Media", Mode: HealthCheckContinuous, FreshFor: 3 * time.Minute},
+	}, func() time.Time { return now })
+	report.Complete("database", StartupPassed, "available", "", "")
+	report.Complete("media", StartupPassed, "available", "", "")
+	if got, want := report.Health().NextRefreshAt, now.Add(time.Minute).UnixMilli(); got != want {
+		t.Fatalf("nextRefreshAt = %d, want the database result's end %d", got, want)
+	}
+
+	now = now.Add(2 * time.Minute)
+	if got, want := report.Health().NextRefreshAt, time.Unix(100, 0).Add(3*time.Minute).UnixMilli(); got != want {
+		t.Fatalf("nextRefreshAt with the database stale = %d, want the media result's end %d", got, want)
+	}
+
+	now = now.Add(2 * time.Minute)
+	if got := report.Health().NextRefreshAt; got != 0 {
+		t.Fatalf("nextRefreshAt with every check stale = %d, want none", got)
+	}
+}
+
 func TestRequiredStartupSkipIsUnhealthy(t *testing.T) {
 	now := time.Unix(100, 0)
 	report := NewStartup(now, 1, "v1", []StartupCheck{{Key: "database", Required: true}}, func() time.Time { return now })

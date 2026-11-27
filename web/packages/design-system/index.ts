@@ -25,6 +25,8 @@ export type { CompactSelectOption, CompactSelectProps } from "./src/compact-sele
 export { CompactSelect } from "./src/compact-select";
 export type { DateFieldProps } from "./src/date-field";
 export { DateField } from "./src/date-field";
+export type { DetailsProps } from "./src/details";
+export { Details } from "./src/details";
 export type {
   DialogActionProps,
   DialogContentProps,
@@ -44,7 +46,11 @@ export {
 } from "./src/dialog";
 export type { DockedPanelProps } from "./src/docked-panel";
 export { DockedPanel } from "./src/docked-panel";
+export type { FileNameProps } from "./src/file-name";
+export { FileName } from "./src/file-name";
 export { useFocusLook } from "./src/focus-look";
+export type { GridColumnSpec, GridItemProps, GridProps, GridSpan, GridTrack } from "./src/grid";
+export { Grid, GridItem } from "./src/grid";
 export type { IconName, IconProps, IconSize, IconTone } from "./src/icon";
 export { Icon, icons } from "./src/icon";
 export type { InlineActionProps } from "./src/inline-action";
@@ -93,6 +99,8 @@ export {
 } from "./src/loading";
 export type { LogoSceneKind, LogoSceneProps } from "./src/logo-scene";
 export { LogoScene } from "./src/logo-scene";
+export type { MediaTileProps } from "./src/media-tile";
+export { MediaTile } from "./src/media-tile";
 export type {
   MenuActionProps,
   MenuContentProps,
@@ -113,6 +121,7 @@ export { PressableRow } from "./src/pressable-row";
 export type { PreviewAnchorProps, PreviewGroupProps } from "./src/preview";
 export { PreviewAnchor, PreviewGroup } from "./src/preview";
 export type {
+  ArtworkRatio,
   ArtworkState,
   BadgeShape,
   BadgeTone,
@@ -140,6 +149,8 @@ export type { LoomarrProviderProps, LoomarrTheme } from "./src/provider";
 export { LoomarrProvider, resolveLoomarrTheme, ThemeScope } from "./src/provider";
 export type { QrCodeProps } from "./src/qr-code";
 export { QrCode } from "./src/qr-code";
+export type { RevealProps, RevealRowProps } from "./src/reveal";
+export { Reveal, useRevealOnHover } from "./src/reveal";
 export type { SegmentedControlProps, SegmentOption } from "./src/segmented-control";
 export { SegmentedControl } from "./src/segmented-control";
 export type {
@@ -152,10 +163,13 @@ export type {
   SelectOption,
   TabOption,
   TabsProps,
+  UnderlineTabOption,
 } from "./src/selection";
 export { Hint, MenuList, RadioGroup, RadioItem, SelectControl, Tabs } from "./src/selection";
 export type { BottomSheetProps } from "./src/sheet";
 export { BottomSheet } from "./src/sheet";
+export type { SkipLinkProps } from "./src/skip-link";
+export { SkipLink } from "./src/skip-link";
 export type { AnalogSnowProps } from "./src/snow";
 export { AnalogSnow } from "./src/snow";
 export type {
@@ -181,6 +195,8 @@ export type {
 export { Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from "./src/table";
 export type { TextProps, TextTone } from "./src/text";
 export { Text } from "./src/text";
+export type { TextLinkProps } from "./src/text-link";
+export { TextLink } from "./src/text-link";
 export type { ToggleProps } from "./src/toggle";
 export { Toggle } from "./src/toggle";
 export type { DecadeFill, Density, FontFamilyRole, TextRole } from "./src/tokens";
@@ -193,6 +209,7 @@ export {
   iconography,
   nativeFontFace,
   playerChrome,
+  roleLetterSpacing,
   semanticColors,
   semanticMotion,
   semanticRadius,
@@ -215,3 +232,5 @@ export {
   useViewportInsets,
   ViewportStage,
 } from "./src/viewport";
+export type { VisuallyHiddenProps } from "./src/visually-hidden";
+export { VisuallyHidden } from "./src/visually-hidden";

@@ -1,12 +1,11 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, pluralize } from "@loomarr/core/format";
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { cn } from "@/lib/utils";
 
 // The Storage card at the top of the Sources tab: how much the filler library uses, why new filler
 // is paused (if it is), and — when the host drive's reserve is what paused it — the one-click
@@ -56,22 +55,24 @@ const SourceStorageCard = () => {
   // warning with the way out (#2737).
   const allowanceFull = storage.state === "approaching" || storage.pausedBy === "library_limit";
   return (
-    <section
+    <Card
       aria-labelledby="filler-storage-heading"
-      className={cn(
-        "rounded-lg border p-4",
-        allowanceFull ? "border-caution/40 bg-caution/5" : "border-border bg-card",
-      )}
+      borderRadius={8}
+      padding={16}
+      render="section"
+      {...(allowanceFull ? { tone: "caution" as const } : {})}
     >
       <Stack align="start" direction="row" gap="control" justify="between" wrap>
-        <div className="min-w-0 flex-1">
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
           <Text as="h2" id="filler-storage-heading" textRole="cardLabel">
             Storage
           </Text>
-          <Text as="p" className="mt-1" textRole="compact">
-            {formatBytes(storage.managedBytes)} used for filler · {formatBytes(storage.freeBytes)} free on
-            this drive
-          </Text>
+          <Stack marginTop={4}>
+            <Text as="p" textRole="compact">
+              {formatBytes(storage.managedBytes)} used for filler · {formatBytes(storage.freeBytes)} free on
+              this drive
+            </Text>
+          </Stack>
           <Text as="p" style={{ marginTop: 4 }} textRole="hint" tone={allowanceFull ? "warning" : "muted"}>
             {storage.pausedBy === "host_reserve"
               ? `New filler is paused so this drive keeps ${formatBytes(storage.hardReserveBytes)} free.`
@@ -88,7 +89,7 @@ const SourceStorageCard = () => {
               ? ` ${formatBytes(storage.reservedBytes)} is set aside for work in progress.`
               : ""}
           </Text>
-        </div>
+        </Stack>
         <Action
           accessibilityRole="link"
           render={
@@ -107,7 +108,7 @@ const SourceStorageCard = () => {
       </Stack>
 
       {storage.pausedBy === "host_reserve" ? (
-        <div className="border-border mt-3 border-t pt-3">
+        <Stack borderColor="$borderDecorative" borderTopWidth={1} marginTop={12} paddingTop={12}>
           {cleanupPreviewQuery.isLoading ? (
             <Text as="p" aria-live="polite" textRole="compact" tone="secondary">
               Checking for old temporary downloads…
@@ -130,23 +131,23 @@ const SourceStorageCard = () => {
             </Text>
           )}
           {cleanupResult && cleanupResult.removedItems > 0 ? (
-            <div role="status" className="mt-2">
+            <Stack marginTop={8} role="status">
               <Text as="p" textRole="hint" tone="secondary">
                 Removed {pluralize(cleanupResult.removedItems, "temporary folder")} · freed{" "}
                 {formatBytes(cleanupResult.removedBytes)}.
               </Text>
-            </div>
+            </Stack>
           ) : null}
           {cleanupPreviewQuery.error || cleanupStorage.error ? (
-            <div role="alert" className="mt-2">
+            <Stack marginTop={8} role="alert">
               <Text as="p" textRole="compact" tone="danger">
                 Temporary files could not be checked or removed. Nothing in your library was changed.
               </Text>
-            </div>
+            </Stack>
           ) : null}
-        </div>
+        </Stack>
       ) : null}
-    </section>
+    </Card>
   );
 };
 
