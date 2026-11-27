@@ -1582,7 +1582,7 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 | `stage_queued_at` | When the current step was queued, in Unix seconds. | `INTEGER` |
 | `stage_started_at` | When the current step started running, in Unix seconds. | `INTEGER` |
 | `files_deleted_at` | When Loomarr deleted the files of a clip it fetched and rejected a week earlier, in Unix seconds; the row stays as the record of why. 0 while the files are kept. | `INTEGER` |
-| `acquisition_id` | The download run that brought the clip in, pointing at filler_acquisition_runs, which is kept while this row names it. NULL for clips dropped into the folder by hand. | `TEXT` · may be empty · → `filler_acquisition_runs.id` |
+| `acquisition_id` | The download run that brought the clip in, pointing at filler_acquisition_runs, which is kept while this row names it. NULL for clips dropped into the folder by hand, and for a file whose sidecar names a run the database doesn't hold; checks that read this column don't count either as Loomarr's own download. | `TEXT` · may be empty · → `filler_acquisition_runs.id` |
 
 ### filler_clip_variants
 

@@ -110,7 +110,7 @@ func (s *sqlStore) writeClipPipeline(ctx context.Context, exec pipelineExecer, p
 	}
 	// acquisition_id is looked up rather than written as given: enrolment reads it from the file's
 	// sidecar, which can name a run that is purged or that this database never had. Such a row
-	// names no run.
+	// names no run, and the checks that read acquisition_id don't count it as Loomarr's download.
 	_, err = exec.ExecContext(ctx, s.ph(
 		`INSERT INTO filler_clip_pipeline (clip_hash, acquisition_id, stage, status, progress, disposition,
 		   reject_reason, reject_detail, attempts, force_run, next_run,

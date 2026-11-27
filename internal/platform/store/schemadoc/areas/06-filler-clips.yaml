@@ -443,7 +443,9 @@ tables:
         skipped. Cleared once the step runs.
       acquisition_id: >
         The download run that brought the clip in, pointing at filler_acquisition_runs, which is kept
-        while this row names it. NULL for clips dropped into the folder by hand.
+        while this row names it. NULL for clips dropped into the folder by hand, and for a file whose
+        sidecar names a run the database doesn't hold; checks that read this column don't count
+        either as Loomarr's own download.
       preparation_attempt: >
         Which attempt at preparing the clip this is, counting from 1. 0 for clips enrolled before
         this was tracked.
