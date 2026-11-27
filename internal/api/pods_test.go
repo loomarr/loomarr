@@ -33,7 +33,8 @@ type fakePods struct {
 	// would make "both got the draft" indistinguishable from "one got it twice".
 	draftCoverageAsked []pod.Selection
 	atAsked            []pod.BreakSlot // the break slots PreviewAt / PreviewAtMany received
-	batches            int             // PreviewAtMany calls: the guide's one-per-channel-row contract (#1420)
+	batches            int             // PreviewAtMany calls: a channel timeline's one batch (#1420)
+	gridBatches        int             // PreviewAtChannels calls: the Guide's one batch for every row (#2147)
 	pod                pod.Pod
 	coverage           pod.CoverageReport
 	pool               pod.PoolReport
@@ -74,6 +75,28 @@ func (f *fakePods) PreviewAtMany(_ context.Context, channelID string, slots []po
 		pods[i] = f.pod
 	}
 	return pods, f.err
+}
+
+// PreviewAtChannels records the batch and every break slot in it, channel by channel, so a test can
+// prove the Guide asks once for the whole grid and still resolves each break.
+func (f *fakePods) PreviewAtChannels(_ context.Context, chans []channelstore.Channel, slots [][]pod.BreakSlot) ([][]pod.Pod, error) {
+	f.gridBatches++
+	if f.err != nil {
+		return nil, f.err
+	}
+	out := make([][]pod.Pod, len(chans))
+	for i, ch := range chans {
+		if len(slots[i]) == 0 {
+			continue
+		}
+		f.asked = append(f.asked, ch.ID)
+		f.atAsked = append(f.atAsked, slots[i]...)
+		out[i] = make([]pod.Pod, len(slots[i]))
+		for j := range out[i] {
+			out[i][j] = f.pod
+		}
+	}
+	return out, nil
 }
 
 // Coverage records the channel so a test can prove the route resolves the id it was given

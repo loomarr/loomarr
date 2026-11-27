@@ -15,6 +15,13 @@ interface LibraryGridProps<Row> {
   onEndReached?: () => void;
   /** The list's accessible name. */
   label: string;
+  /**
+   * Scrolls the row to the top of the view, once per `request`. Web only: the other platforms
+   * draw no control that asks.
+   */
+  scrollTo?: { row: number; request: number };
+  /** Told the row at the top of the view as it changes. Web only. */
+  onTopRowChange?: (row: number) => void;
 }
 
 export type { LibraryGridProps };

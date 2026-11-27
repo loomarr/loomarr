@@ -152,11 +152,9 @@ func (s *Store) detailNames(ctx context.Context, q storedb.Querier, table, id st
 	return out, errors.Join(rows.Err(), rows.Close())
 }
 
-// detailCredits reads an item's credits in billing order, each with its person's name and
-// catalog id, so PersonID names the same library_people row.
+// detailCredits reads an item's credits in billing order, each with its person's name.
 func (s *Store) detailCredits(ctx context.Context, q storedb.Querier, id string) ([]LibraryCredit, error) {
-	rows, err := q.QueryContext(ctx, s.ph(`SELECT p.name, c.role, c.character_name, p.namespace, p.external_id
-		FROM library_credits c
+	rows, err := q.QueryContext(ctx, s.ph(`SELECT p.name, c.role, c.character_name FROM library_credits c
 		JOIN library_people p ON p.id = c.person_id WHERE c.item_id = ? ORDER BY c.position`), id)
 	if err != nil {
 		return nil, err
@@ -164,7 +162,7 @@ func (s *Store) detailCredits(ctx context.Context, q storedb.Querier, id string)
 	var out []LibraryCredit
 	for rows.Next() {
 		var c LibraryCredit
-		if err := rows.Scan(&c.Name, &c.Role, &c.Character, &c.ID.Namespace, &c.ID.Value); err != nil {
+		if err := rows.Scan(&c.Name, &c.Role, &c.Character); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}

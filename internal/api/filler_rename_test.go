@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
@@ -193,6 +194,18 @@ func (p *storePods) PreviewAtMany(ctx context.Context, _ string, slots []pod.Bre
 	out := make([]pod.Pod, len(slots))
 	for i := range out {
 		out[i] = brk
+	}
+	return out, nil
+}
+
+func (p *storePods) PreviewAtChannels(ctx context.Context, chans []channelstore.Channel, slots [][]pod.BreakSlot) ([][]pod.Pod, error) {
+	out := make([][]pod.Pod, len(chans))
+	for i, ch := range chans {
+		pods, err := p.PreviewAtMany(ctx, ch.ID, slots[i])
+		if err != nil {
+			return nil, err
+		}
+		out[i] = pods
 	}
 	return out, nil
 }

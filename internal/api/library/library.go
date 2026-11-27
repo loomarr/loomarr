@@ -44,9 +44,6 @@ type LibraryRootService interface {
 
 	Items(ctx context.Context, q librarystore.LibraryItemQuery) (librarystore.LibraryItemPage, error)
 	Genres(ctx context.Context, kind string, member bool) ([]librarystore.LibraryGenre, error)
-	Facets(ctx context.Context, kind string, member bool) (librarystore.LibraryFacets, error)
-	People(ctx context.Context, term, kind string, member bool, limit int) ([]librarystore.LibraryPerson, error)
-	Person(ctx context.Context, id string, member bool) (librarystore.LibraryPerson, error)
 	// Item, Collections, Collection and Sets take member: true reads only what a household
 	// member reads (librarystore.MemberLibraryItem); Items takes it in the query.
 	Item(ctx context.Context, id string, member bool) (scan.ItemDetail, error)
@@ -146,7 +143,6 @@ func (s *Handlers) registerLibrary(api huma.API) {
 	}, httpcore.RoleAdmin), s.confirmLibraryRemoval)
 	s.registerLibraryHooks(api)
 	s.registerLibraryItems(api)
-	s.registerLibraryFilters(api)
 	s.registerLibraryNeeds(api)
 	s.registerLibraryCollections(api)
 }

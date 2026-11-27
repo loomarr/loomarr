@@ -4,6 +4,8 @@ export type {
   LibraryKind,
   LibraryShelfAdmin,
   LibraryShelfCounts,
+  LibraryShelfGenre,
+  LibraryShelfLetter,
   LibraryShelfProps,
   LibraryShelfStatus,
   LibraryShelfTitle,

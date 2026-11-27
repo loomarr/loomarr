@@ -316,7 +316,8 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   stored for its channel and start, and cuts the break's slot to the media its pod holds. The
   programme after a break therefore resumes when the break's own clips end, and the offline card
   never fills the gap. A break with nothing to air takes no time. The guide, the previews and the
-  stream read the stored pod (`PreviewAtMany`), so the guide shows what airs, and a half-aired
+  stream read the stored pod (`PreviewAtMany`; the Guide's one batch for every row is
+  `PreviewChannels`, the same read), so the guide shows what airs, and a half-aired
   break keeps its pod and length. A break is keyed by its channel and start: a lineup edit that
   moves a break gives it nothing stored, so it is assembled fresh, and reconcile deletes the
   breaks behind the anchor and the ones that moved. A stored break assembled to another ceiling

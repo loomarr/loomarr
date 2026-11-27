@@ -3,6 +3,9 @@ package pod
 import (
 	"context"
 	"log/slog"
+	"runtime"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
@@ -291,19 +294,52 @@ type Break struct {
 // PreviewAtMany assembles several breaks of one channel — the guide's per-airing hover cards
 // (#1420). Each pod is exactly what PreviewAt returns for that break; the catalog, the policy and
 // the household's airing history are read ONCE and each break's snapshot is cut from them in
-// memory. It used to be a catalog read plus an exposure query per break, 40-80 full-catalog reads
-// for a four-hour guide once breaks were on.
+// memory, so a four-hour guide makes one catalog read rather than one per break.
 func (a *Adapter) PreviewAtMany(ctx context.Context, channelID string, sel Selection, breaks []Break) ([]Pod, error) {
-	if len(breaks) == 0 {
-		return nil, nil
+	pods, err := a.PreviewChannels(ctx, []ChannelBreaks{{ChannelID: channelID, Selection: sel, Breaks: breaks}})
+	if err != nil {
+		return nil, err
+	}
+	return pods[0], nil
+}
+
+// ChannelBreaks names one channel's breaks for PreviewChannels: the channel, the selection its
+// breaks are assembled under, and the breaks themselves.
+type ChannelBreaks struct {
+	ChannelID string
+	Selection Selection
+	Breaks    []Break
+}
+
+// PreviewChannels is PreviewAtMany for several channels at once: the whole Guide's hover cards
+// (#2147). The pods at index i are exactly what PreviewAtMany returns for chans[i], and a channel
+// with no breaks gets nil. The catalog, the policy and the household's airing history are read
+// ONCE for every channel: read per channel, they would be a full catalog read for each row of the
+// Guide, queued on the store's small connection pool.
+//
+// One copy serves every break of every channel because assembly only reads it: each filter builds
+// a new slice and each sort runs on a copy, as PreviewAtMany's sharing across one channel's breaks
+// already requires. The airing history spans every channel anyway (ExposuresBefore), so one read
+// is the same history each channel would have read.
+//
+// A context cancelled before the batch finishes returns its error and no pods: the rows it
+// skipped would otherwise read as breaks with nothing to air.
+func (a *Adapter) PreviewChannels(ctx context.Context, chans []ChannelBreaks) ([][]Pod, error) {
+	out := make([][]Pod, len(chans))
+	if !slices.ContainsFunc(chans, func(c ChannelBreaks) bool { return len(c.Breaks) > 0 }) {
+		return out, nil
 	}
 	clips, err := a.catalog.AllClips(ctx)
 	if err != nil {
 		return nil, err
 	}
-	pods := make([]Pod, len(breaks))
+	for i, c := range chans {
+		if len(c.Breaks) > 0 {
+			out[i] = make([]Pod, len(c.Breaks))
+		}
+	}
 	if len(clips) == 0 {
-		return pods, nil
+		return out, nil
 	}
 	var history *AiringHistory
 	if a.airings != nil {
@@ -316,16 +352,55 @@ func (a *Adapter) PreviewAtMany(ctx context.Context, channelID string, sel Selec
 	// ⚠ Resolved ONCE for the whole batch, for the same reason assemble resolves it once per pod:
 	// a concurrent settings write must not size some breaks by one policy and some by another.
 	pol := a.pol()
-	// A break planned ahead is read, not assembled again: the guide shows what airs (#3838).
-	stored := a.storedPods(ctx, channelID, breaks)
-	for i, b := range breaks {
-		if p, ok := stored[b.Start.UnixMilli()]; ok && !b.Start.IsZero() && !b.yearRound {
-			pods[i] = p
-			continue
+	row := func(i int) {
+		c := chans[i]
+		if ctx.Err() != nil {
+			return // the caller is gone: nobody receives these pods
 		}
-		pods[i] = a.assemble(clips, history, channelID, b, sel, pol)
+		// A break planned ahead is read, not assembled again: the guide shows what airs (#3838).
+		stored := a.storedPods(ctx, c.ChannelID, c.Breaks)
+		for j, b := range c.Breaks {
+			if p, ok := stored[b.Start.UnixMilli()]; ok && !b.Start.IsZero() && !b.yearRound {
+				out[i][j] = p
+				continue
+			}
+			out[i][j] = a.assemble(clips, history, c.ChannelID, b, c.Selection, pol)
+		}
 	}
-	return pods, nil
+	var rows []int
+	for i, c := range chans {
+		if len(c.Breaks) > 0 {
+			rows = append(rows, i)
+		}
+	}
+	// One channel (playout's tune, a channel page, reconcile) assembles on the caller's goroutine,
+	// so a panic stays inside the caller's own recovery. Several channels (the Guide) assemble
+	// concurrently: a break with no stored plan is assembled live, which is CPU, and one row's
+	// breaks do not depend on another's. Each goroutine writes only its own row.
+	if len(rows) == 1 {
+		row(rows[0])
+		return finished(out, ctx)
+	}
+	sem := make(chan struct{}, max(2, runtime.NumCPU()))
+	var wg sync.WaitGroup
+	for _, i := range rows {
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			row(i)
+		})
+	}
+	wg.Wait()
+	return finished(out, ctx)
+}
+
+// finished is the batch's pods, or the context's error once the caller is gone: rows skipped
+// after a cancel hold zero pods, so none of them is returned.
+func finished(out [][]Pod, ctx context.Context) ([][]Pod, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (a *Adapter) previewAt(ctx context.Context, channelID string, seed int64, sel Selection, breakStart time.Time) (Pod, error) {

@@ -99,6 +99,7 @@ const shelf: LibraryShelfProps = {
   counts: COUNTS,
   sort: "name",
   onSortChange: () => {},
+  onGenreChange: () => {},
   search: "",
   onSearchChange: () => {},
   titles: TITLES,
@@ -168,6 +169,46 @@ const Fresh: Story = {
 };
 
 const NoMatch: Story = { args: { admin: admin({ needsYou: 6 }), search: "zebra 1977", titles: [] } };
+
+const GENRES = [
+  { name: "Comedy", titles: 640 },
+  { name: "Documentary", titles: 212 },
+  { name: "Drama", titles: 1204 },
+];
+
+// One genre of the wall, chosen beside the order.
+const GenreChosen: Story = { args: { genres: GENRES, genre: "Drama" } };
+
+// The letter rail beside the wall, on a desktop window: letters with no titles are disabled.
+const LetterJump: Story = {
+  args: {
+    genres: GENRES,
+    letters: [
+      { letter: "#", offset: 0 },
+      { letter: "A", offset: 12 },
+      { letter: "B", offset: 240 },
+      { letter: "H", offset: 1310 },
+      { letter: "P", offset: 2204 },
+      { letter: "T", offset: 2890 },
+    ],
+    onJump: () => {},
+  },
+};
+
+// Under a search the list is in match order, so a letter is its first occurrence; the rail still
+// reads A to Z.
+const LetterJumpSearch: Story = {
+  args: {
+    genres: GENRES,
+    search: "light",
+    letters: [
+      { letter: "P", offset: 0 },
+      { letter: "H", offset: 1 },
+      { letter: "N", offset: 3 },
+    ],
+    onJump: () => {},
+  },
+};
 
 // A member browses the same wall read-only: no status line, no Needs you, no settings.
 const Member: Story = { args: { admin: undefined } };
@@ -758,8 +799,11 @@ export {
   CollectionsNoneYet,
   FolderOffline,
   Fresh,
+  GenreChosen,
   HeldRemoval,
   HomeVideo,
+  LetterJump,
+  LetterJumpSearch,
   Loading,
   Member,
   MemberCollections,

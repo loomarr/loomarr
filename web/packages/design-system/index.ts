@@ -80,6 +80,8 @@ export {
   SectionHeader,
   useWindowWidth,
 } from "./src/layout";
+export type { LetterRailProps } from "./src/letter-rail";
+export { LetterRail } from "./src/letter-rail";
 export type {
   ActivityIndicatorProps,
   LoadingStripProps,
