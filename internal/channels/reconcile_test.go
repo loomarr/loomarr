@@ -1303,6 +1303,38 @@ func TestReconcile_BoxSetLookupFailureKeepsTheLastStamp(t *testing.T) {
 	}
 }
 
+// unreadableCollections is a household whose collections cannot be read, counting the attempts.
+type unreadableCollections struct{ reads int }
+
+func (u *unreadableCollections) LibraryCollectionMemberIDs(context.Context) ([]librarystore.LibraryCollectionMember, error) {
+	u.reads++
+	return nil, errors.New("collections unreadable")
+}
+
+func (u *unreadableCollections) ListLibraryCollections(context.Context) ([]librarystore.LibraryCollection, error) {
+	return nil, errors.New("collections unreadable")
+}
+
+// A collections index that cannot be read is tried once per reconcile pass, not once per entry,
+// and the next pass tries again.
+func TestReconcile_UnreadableCollectionsAreReadOncePerPass(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
+	own := &unreadableCollections{}
+	e := newEngine(st, tunarrtest.NewTunarr(), avail, nil).WithBoxSets(resolvers.NewBoxSets(own, time.Hour))
+	seedChannel(t, st, "cbs4", 11, entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
+
+	for pass := 1; pass <= 2; pass++ {
+		if err := e.Reconcile(ctx, "cbs4"); err != nil {
+			t.Fatal(err)
+		}
+		if own.reads != pass {
+			t.Fatalf("index reads after pass %d = %d, want %d", pass, own.reads, pass)
+		}
+	}
+}
+
 type failingBoxSets struct{}
 
 func (failingBoxSets) BoxSets(context.Context, provision.Key) ([]string, bool, error) {
