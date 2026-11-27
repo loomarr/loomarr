@@ -121,7 +121,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             </Text>
           </Card>
         ) : (
-          <Grid columnGap="3" columns={{ base: 1, sm: 2, lg: 5 }} marginTop={12} rowGap="3">
+          <Grid columnGap="3" columns={{ base: 1, sm: 2, lg: 3 }} marginTop={12} rowGap="3">
             {AXES.map((axis) => {
               const coverage = data.axisCoverage?.find((item) => item.axis === axis);
               return (

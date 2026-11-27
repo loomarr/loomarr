@@ -413,7 +413,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                 </RadioItem>
                 <Card padding={16}>
                   <Details
-                    defaultOpen={provider === "searxng"}
+                    open={provider === "searxng"}
                     summary="Advanced / self-hosted"
                     textRole="cardLabel"
                   >
