@@ -6,7 +6,15 @@ import { ChannelDrawer } from "./channel-drawer";
 // The drawer docks itself inside the player's frame, over its right edge. The frame here is a
 // stand-in for the picture, 640px tall, so the drawer's 95% canvas shows it faintly.
 const inPlayerFrame: Decorator = (Story) => (
-  <div className="bg-static-700 relative h-[640px] w-full overflow-hidden">
+  <div
+    style={{
+      backgroundColor: "var(--color-static-700)",
+      height: 640,
+      overflow: "hidden",
+      position: "relative",
+      width: "100%",
+    }}
+  >
     <Story />
   </div>
 );

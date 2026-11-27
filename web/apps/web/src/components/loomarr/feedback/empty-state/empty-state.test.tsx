@@ -24,8 +24,10 @@ describe("EmptyState", () => {
   it("titles in sentence case, not mono caps (#2783)", () => {
     render(<EmptyState title="Dead air" />);
     const heading = screen.getByText("Dead air");
-    expect(heading.className).not.toMatch(/uppercase|font-mono/);
-    expect(heading.closest("[class*='uppercase']")).toBeNull();
+    for (let el: HTMLElement | null = heading; el; el = el.parentElement) {
+      expect(getComputedStyle(el).textTransform).not.toBe("uppercase");
+    }
+    expect(getComputedStyle(heading).fontFamily).not.toMatch(/mono/i);
   });
 
   it("renders without an action", () => {

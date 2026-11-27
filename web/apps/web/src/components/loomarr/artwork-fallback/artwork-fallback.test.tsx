@@ -52,10 +52,9 @@ describe("ArtworkFallback", () => {
     expect(screen.queryByText("OT")).not.toBeInTheDocument();
   });
 
-  it("keeps a caller className and fills its frame", () => {
-    render(<ArtworkFallback className="rounded-md" />);
+  it("fills its frame", () => {
+    render(<ArtworkFallback />);
     const el = screen.getByRole("presentation");
-    expect(el.className).toContain("rounded-md");
     expect(getComputedStyle(el).width).toBe("100%");
     expect(getComputedStyle(el).height).toBe("100%");
   });

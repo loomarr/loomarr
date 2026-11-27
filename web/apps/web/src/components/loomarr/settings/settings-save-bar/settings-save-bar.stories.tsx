@@ -36,8 +36,10 @@ const PersistentHealthNoticeFixture = () => {
   }, []);
 
   return (
-    <main className="relative min-h-screen">
-      <SettingsSaveBar dirtyCount={2} onSave={noop} onDiscard={noop} className="fixed inset-x-0 bottom-0" />
+    <main style={{ minHeight: "100vh", position: "relative" }}>
+      <div style={{ bottom: 0, left: 0, position: "fixed", right: 0 }}>
+        <SettingsSaveBar dirtyCount={2} onSave={noop} onDiscard={noop} />
+      </div>
       <Toaster theme="dark" position="top-right" richColors />
     </main>
   );

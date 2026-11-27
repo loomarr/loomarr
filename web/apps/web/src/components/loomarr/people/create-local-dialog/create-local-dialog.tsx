@@ -89,7 +89,7 @@ const CreateLocalDialog = ({
               {(field) => <field.SelectField disabled={creating} label="Role" options={ROLE_OPTIONS} />}
             </form.AppField>
 
-            {error != null && <ErrorState error={error} className="p-4" />}
+            {error != null && <ErrorState error={error} compact />}
 
             <DialogFooter>
               <Action disabled={creating} onPress={() => changeOpen(false)} variant="outline">

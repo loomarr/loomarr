@@ -6,18 +6,16 @@ import type { ErrorStateProps } from "./error-state.type";
 // `title`/`detail` as words, never raw JSON (§6). Retry is offered only when the
 // caller says the operation is idempotent. Field-level 422 errors render inline via
 // TanStack Form instead (this is the block/list-level error).
-const ErrorState = ({ error, onRetry, retrying = false, className }: ErrorStateProps) => {
+const ErrorState = ({ error, onRetry, retrying = false, compact = false }: ErrorStateProps) => {
   const p = toProblem(error);
   return (
     <Card
       alignItems="center"
       borderRadius={8}
-      className={className}
       flexShrink={0}
       gap={12}
       justifyContent="center"
-      // A caller's `className` sets its own padding, so the default 32 stands only without one.
-      {...(className ? {} : { padding: 32 })}
+      padding={compact ? 16 : 32}
       role="alert"
       tone="onair"
     >

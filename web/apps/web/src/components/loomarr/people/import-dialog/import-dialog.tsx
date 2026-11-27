@@ -172,10 +172,10 @@ const ImportDialog = ({
                   />
                 </Grid>
 
-                {mutationError != null && <ErrorState error={mutationError} className="p-4" />}
+                {mutationError != null && <ErrorState error={mutationError} compact />}
 
                 {candidateError != null ? (
-                  <ErrorState error={candidateError} onRetry={onRetry} className="p-4" />
+                  <ErrorState error={candidateError} onRetry={onRetry} compact />
                 ) : candidates === undefined ? (
                   <Stack aria-label="Loading media-server accounts" gap="2" role="status">
                     {[0, 1, 2].map((item) => (

@@ -19,7 +19,7 @@ const meta = {
   parameters: { layout: "fullscreen" },
   decorators: [
     (Story) => (
-      <div className="w-full p-6">
+      <div style={{ boxSizing: "border-box", padding: 24, width: "100%" }}>
         <Story />
       </div>
     ),
