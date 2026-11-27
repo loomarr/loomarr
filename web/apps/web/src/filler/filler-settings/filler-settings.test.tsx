@@ -213,8 +213,6 @@ describe("focused Filler settings", () => {
     const field = await screen.findByRole("textbox", { name: "Filler storage allowance" });
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent(/available to Loomarr/);
-    // The caution frame is the DS Card; the calm summary is the muted strip.
-    expect(status.className).not.toContain("bg-muted");
     await userEvent.click(screen.getByRole("button", { name: "Raise allowance" }));
     expect(field).toHaveFocus();
   });

@@ -17,7 +17,7 @@ func TestReconcile_RecordsTheScheduledAiringsNobodyWatched(t *testing.T) {
 	entries, avail := films(40, 100*time.Minute) // a 67 h pool on a 24 h window
 	opened := time.Unix(1_800_000_000, 0).UTC().Truncate(24 * time.Hour)
 	now := opened.Add(time.Hour)
-	e := recencyEngine(st, avail, &now)
+	e := recencyEngine(t, st, avail, &now)
 	seedShuffleChannel(t, st, "sl", entries)
 
 	first := reconcileDesired(t, e, st, "sl")

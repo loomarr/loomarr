@@ -183,12 +183,12 @@ const RequestList = ({ tab }: { tab: "in-progress" | "done" }) => {
   // A finished request links to the channel it became; its titles are part of that channel,
   // which is why there is no separate "ready" list.
   return (
-    <div className="max-w-reading mx-auto w-full">
+    <Stack marginHorizontal="auto" maxWidth={768} width="100%">
       <ListGroup aria-label={tab === "done" ? "Finished requests" : "Requests in progress"}>
         {entries.map(rowFor)}
         {decidedPulls.map(pullRowFor)}
       </ListGroup>
-    </div>
+    </Stack>
   );
 };
 
@@ -215,7 +215,7 @@ const NeedsYouList = () => {
     );
   }
   return (
-    <Stack className="max-w-reading mx-auto w-full" gap="section">
+    <Stack gap="section" marginHorizontal="auto" maxWidth={768} width="100%">
       {showApprovals && (
         <Stack aria-labelledby="needs-approvals" gap="control" render="section">
           <Text as="h2" id="needs-approvals" strong textRole="headline">

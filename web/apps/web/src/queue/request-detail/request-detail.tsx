@@ -122,12 +122,13 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
         }
       />
       <Stack
-        className="max-w-reading overflow-auto"
         flexBasis="0%"
         flexGrow={1}
         flexShrink={1}
         gap="6"
         marginHorizontal="auto"
+        maxWidth={768}
+        overflow="auto"
         padding={24}
         width="100%"
       >
@@ -251,18 +252,17 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
           <Section title="Titles being added">
             <Stack gap="inline" render="ul">
               {acquisitions.map(({ item, title }, index) => (
-                <Stack
-                  align="center"
+                <Card
+                  alignItems="center"
+                  flexDirection="row"
+                  gap={12}
                   // biome-ignore lint/suspicious/noArrayIndexKey: a title can repeat within a proposal
                   key={`${index}:${item.mediaType}:${item.tmdbId ?? item.name}`}
                   paddingHorizontal={12}
                   paddingVertical={10}
-                  className="border-border bg-card rounded-md border"
-                  direction="row"
-                  gap="control"
                   render="li"
                 >
-                  <Text as="span" className="min-w-0 flex-1 truncate" textRole="compact">
+                  <Text as="span" flex={1} minWidth={0} numberOfLines={1} textRole="compact">
                     {item.name}
                     {item.year ? (
                       <Text as="span" textRole="compact" tone="secondary">
@@ -272,7 +272,13 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
                     ) : null}
                     {/* WHY it was given up (e.g. "deadline exceeded"); otherwise the row only says it failed. */}
                     {title?.state === "unavailable" && title.lastError ? (
-                      <Text as="span" className="block truncate" textRole="hint" tone="secondary">
+                      <Text
+                        as="span"
+                        numberOfLines={1}
+                        style={{ display: "block" }}
+                        textRole="hint"
+                        tone="secondary"
+                      >
                         {title.lastError}
                       </Text>
                     ) : null}
@@ -306,7 +312,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
                       Try again
                     </Action>
                   )}
-                </Stack>
+                </Card>
               ))}
             </Stack>
             {retryTitle.error != null && <ErrorState error={retryTitle.error} />}

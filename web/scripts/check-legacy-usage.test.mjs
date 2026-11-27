@@ -12,46 +12,8 @@ import {
 const appFile = (path) => fileURLToPath(new URL(`../apps/web/src/${path}`, import.meta.url));
 
 describe("measureSource", () => {
-  it("counts class tokens that reach a class name, and nothing else", () => {
-    const source = `
-      import { cn } from "@/lib/utils";
-      const tone = "not a class";
-      export function Row({ active, variant }: { active: boolean; variant: "ghost" | "solid" }) {
-        return (
-          <div className="flex gap-2" title="plain text">
-            <span className={cn("px-2 py-1", active && "font-bold", variant === "ghost" ? "opacity-50" : "")} />
-            <Button className={buttonVariants({ variant: "ghost", size: "sm" })} />
-            <p className={\`text-sm \${active ? "underline" : "no-underline"}\`} />
-          </div>
-        );
-      }
-    `;
-    // flex gap-2 (2) + px-2 py-1 font-bold opacity-50 (4) + text-sm underline no-underline (3).
-    // Of those, text-sm is a raw type size and font-bold a raw type weight.
-    assert.deepEqual(measureSource(source, appFile("feature/row.tsx")), {
-      tailwindClasses: 9,
-      rawTypeSize: 1,
-      rawTypeWeight: 1,
-    });
-  });
-
-  it("counts cva bases and variant values but not defaults or compound selectors", () => {
-    const source = `
-      import { cva, type VariantProps } from "class-variance-authority";
-      export const badge = cva("inline-flex rounded", {
-        variants: { tone: { neutral: "bg-muted text-muted-foreground", alert: "bg-destructive" } },
-        compoundVariants: [{ tone: "alert", size: "sm", class: "ring-1" }],
-        defaultVariants: { tone: "neutral" },
-      });
-    `;
-    // inline-flex rounded (2) + bg-muted text-muted-foreground (2) + bg-destructive (1) + ring-1 (1).
-    assert.deepEqual(measureSource(source, appFile("feature/badge.ts")), { tailwindClasses: 6, cva: 1 });
-  });
-
   it("classifies every import form by the legacy module it names", () => {
     const source = `
-      import { twMerge } from "tailwind-merge";
-      import clsx from "clsx";
       import type { VariantProps } from "class-variance-authority";
       import { Dialog } from "@base-ui/react/dialog";
       import { Button } from "@/components/ui/button";
@@ -61,8 +23,6 @@ describe("measureSource", () => {
       import { formatTime } from "@/lib/time";
     `;
     assert.deepEqual(measureSource(source, appFile("feature/nested/view.ts")), {
-      tailwindMerge: 1,
-      clsx: 1,
       cva: 1,
       baseUi: 1,
       legacyUi: 4,
@@ -100,75 +60,36 @@ describe("measureSource", () => {
     assert.deepEqual(measureSource(source, appFile("feature/row.tsx")), { rawButton: 2 });
   });
 
-  it("counts raw type sizes and type weights separately, and each also as a Tailwind class", () => {
-    const source = `
-      export const Row = ({ on }: { on: boolean }) => (
-        <div className="flex text-sm md:text-lg">
-          <span className={cn("text-[13px] text-[0.8rem] text-muted-foreground", on && "font-semibold")} />
-          <b className="font-mono font-bold tracking-wide leading-tight uppercase" />
-          <i className="text-2xs dark:text-xl !text-base" />
-        </div>
-      );
-    `;
-    // Sizes: text-sm, md:text-lg, text-[13px], text-[0.8rem], text-2xs, dark:text-xl, !text-base.
-    // Weights: font-semibold, font-bold, tracking-wide, leading-tight. font-mono and
-    // text-muted-foreground are neither.
-    assert.deepEqual(measureSource(source, appFile("feature/row.tsx")), {
-      tailwindClasses: 15,
-      rawTypeSize: 7,
-      rawTypeWeight: 4,
-    });
-  });
-
-  it("does not count a type role's size or weight that is not in a class name", () => {
-    const source = `
-      const size = "text-sm";
-      export const Row = () => <Text textRole="cardLabel" tone="secondary" title="font-bold" />;
-    `;
-    assert.deepEqual(measureSource(source, appFile("feature/row.tsx")), {});
-  });
-
   it("counts legacy component imports in CSS", () => {
-    const css = `@import "tailwindcss";\n@import "@/components/ui/button/button.css";\n`;
+    const css = `@import "@loomarr/design-system/theme.css";\n@import "@/components/ui/button/button.css";\n`;
     assert.deepEqual(measureSource(css, appFile("styles.css")), { legacyUi: 1 });
   });
 });
 
 describe("compareToLedger", () => {
-  const ledger = { "src/a.tsx": { tailwindClasses: 10, cva: 1 } };
+  const ledger = { "src/a.tsx": { rawButton: 10, cva: 1 } };
 
   it("fails a rise and a file the ledger does not list", () => {
     const { violations } = compareToLedger(
-      { "src/a.tsx": { tailwindClasses: 11, cva: 1 }, "src/b.tsx": { baseUi: 1 } },
+      { "src/a.tsx": { rawButton: 11, cva: 1 }, "src/b.tsx": { baseUi: 1 } },
       ledger,
     );
     assert.deepEqual(violations, [
-      "src/a.tsx: tailwindClasses rose from 10 to 11",
+      "src/a.tsx: rawButton rose from 10 to 11",
       "src/b.tsx: new file with legacy usage (baseUi 1)",
     ]);
   });
 
-  it("fails a rise in the icon and raw-button measures", () => {
+  it("fails a rise in the icon measure", () => {
     const { violations } = compareToLedger(
-      { "src/a.tsx": { tailwindClasses: 10, cva: 1, lucideReact: 3, rawButton: 2 } },
-      { "src/a.tsx": { tailwindClasses: 10, cva: 1, lucideReact: 2, rawButton: 2 } },
+      { "src/a.tsx": { cva: 1, lucideReact: 3, rawButton: 2 } },
+      { "src/a.tsx": { cva: 1, lucideReact: 2, rawButton: 2 } },
     );
     assert.deepEqual(violations, ["src/a.tsx: lucideReact rose from 2 to 3"]);
   });
 
-  it("fails a rise in the raw type size and weight measures", () => {
-    const { violations } = compareToLedger(
-      { "src/a.tsx": { tailwindClasses: 10, cva: 1, rawTypeSize: 3, rawTypeWeight: 2 } },
-      { "src/a.tsx": { tailwindClasses: 10, cva: 1, rawTypeSize: 2, rawTypeWeight: 1 } },
-    );
-    assert.deepEqual(violations, [
-      "src/a.tsx: rawTypeSize rose from 2 to 3",
-      "src/a.tsx: rawTypeWeight rose from 1 to 2",
-    ]);
-  });
-
   it("passes a fall and reports that the ledger can shrink", () => {
-    assert.deepEqual(compareToLedger({ "src/a.tsx": { tailwindClasses: 4 } }, ledger), {
+    assert.deepEqual(compareToLedger({ "src/a.tsx": { rawButton: 4 } }, ledger), {
       violations: [],
       canShrink: true,
     });
@@ -216,8 +137,8 @@ describe("compareRetired", () => {
 
 describe("shrinkLedger", () => {
   it("lowers counts and drops emptied files but never raises or adds", () => {
-    const ledger = { "src/a.tsx": { tailwindClasses: 10, cva: 1 }, "src/gone.tsx": { baseUi: 2 } };
-    const current = { "src/a.tsx": { tailwindClasses: 12 }, "src/new.tsx": { baseUi: 1 } };
-    assert.deepEqual(shrinkLedger(current, ledger), { "src/a.tsx": { tailwindClasses: 10 } });
+    const ledger = { "src/a.tsx": { rawButton: 10, cva: 1 }, "src/gone.tsx": { baseUi: 2 } };
+    const current = { "src/a.tsx": { rawButton: 12 }, "src/new.tsx": { baseUi: 1 } };
+    assert.deepEqual(shrinkLedger(current, ledger), { "src/a.tsx": { rawButton: 10 } });
   });
 });

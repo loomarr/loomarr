@@ -8,7 +8,7 @@ const meta = {
   component: IdleSnow,
   decorators: [
     (Story) => (
-      <div style={{ background: "var(--background)", height: 160, position: "relative", width: 320 }}>
+      <div style={{ background: "var(--color-static-950)", height: 160, position: "relative", width: 320 }}>
         <Story />
       </div>
     ),

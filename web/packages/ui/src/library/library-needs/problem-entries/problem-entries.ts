@@ -14,7 +14,6 @@ const problemEntries = (problems: readonly LibraryProblem[]): ProblemEntry[] =>
       out.push({
         ...base,
         key: `${p.id}:unplayable`,
-        line: movie ? `${p.name} — can't be played` : `${p.name} — ${episodes} can't be played`,
         headline: movie
           ? `${p.name} can't be played`
           : p.unplayable === 1
@@ -30,7 +29,6 @@ const problemEntries = (problems: readonly LibraryProblem[]): ProblemEntry[] =>
       out.push({
         ...base,
         key: `${p.id}:extra`,
-        line: `${p.name} — an extra copy is taking ${size}`,
         headline: `${p.name} has an extra copy`,
         reason: `The extra copy is taking ${size} and never plays. Removing it gets the space back.`,
       });

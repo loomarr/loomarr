@@ -46,6 +46,9 @@ func channelEditProblem(err error) error {
 		return httpcore.Conflict("Channel already exists", "A channel with that id already exists.")
 	case errors.Is(err, edit.ErrClaimed):
 		return httpcore.Conflict("Channel already exists", "That channel number was claimed by another channel. Refresh and try again.")
+	case errors.Is(err, channelstore.ErrUnknownLibraryReference):
+		return httpcore.Conflict("Not in your library",
+			"A collection or title this channel names is no longer in your library. Refresh and try again.")
 	case errors.Is(err, edit.ErrInvalidSeries):
 		return httpcore.Unprocessable("Invalid series", "For a single-series channel, pick a series (not a movie or episode).")
 	case errors.Is(err, edit.ErrInvalid):

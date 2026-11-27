@@ -75,7 +75,10 @@ const UsersStep = () => {
           return (
             <Stack
               align="center"
-              className="border-border bg-card rounded-md border"
+              backgroundColor="surfaceRaised"
+              borderColor="borderDecorative"
+              borderRadius={6}
+              borderWidth={1}
               direction="row"
               gap="control"
               key={c.id}
@@ -83,7 +86,7 @@ const UsersStep = () => {
               paddingVertical={10}
               render="li"
             >
-              <div className="flex-1">
+              <Stack flexBasis="0%" flexGrow={1} flexShrink={1}>
                 <Toggle
                   id={id}
                   label={c.name}
@@ -91,7 +94,7 @@ const UsersStep = () => {
                   disabled={c.imported}
                   onCheckedChange={() => toggle(c.id)}
                 />
-              </div>
+              </Stack>
               {c.isAdmin && (
                 <Text as="span" textRole="hint" tone="secondary">
                   server admin

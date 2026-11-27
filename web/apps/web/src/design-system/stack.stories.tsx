@@ -148,7 +148,7 @@ const AxisGapsWorkshop = () => (
 );
 
 // Responsive values: a column of title over actions below 640 wide, a row with the actions pushed to
-// the far end from there up (`{ base, sm }`, as Tailwind's `flex-col sm:flex-row`). Resize the
+// the far end from there up (`{ base: "column", sm: "row" }`). Resize the
 // window across 640 to watch it flip; at the width the visual suite renders, it is the row.
 const ResponsiveWorkshop = () => (
   <Screen gap="section">

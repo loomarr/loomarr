@@ -23,7 +23,7 @@ const meta = {
   },
   parameters: { layout: "fullscreen" },
   render: (args) => (
-    <div className="h-screen w-screen">
+    <div style={{ height: "100vh", width: "100vw" }}>
       <ImportDialog {...args} portalContainer={document.getElementById("storybook-root")} />
     </div>
   ),

@@ -44,9 +44,14 @@ const GroupTable = ({ name, group }: { name: string; group: TokenGroup }) => (
             <TableCell mono>{value}</TableCell>
             <TableCell width={48}>
               {isColor(value) && (
-                <span
-                  className="border-border block size-5 rounded border"
+                <Stack
+                  borderColor="borderDecorative"
+                  borderRadius={4}
+                  borderWidth={1}
+                  height={20}
+                  render="span"
                   style={{ backgroundColor: String(value) }}
+                  width={20}
                 />
               )}
             </TableCell>
@@ -62,12 +67,12 @@ const Tokens = () => {
   const total = groups.reduce((n, [, g]) => n + asRows(g).length, 0);
 
   return (
-    <Stack className="p-6" gap="screen">
-      <Stack gap="1" render="header">
+    <Stack gap="screen" padding="6">
+      <Stack gap="1" maxWidth={672} render="header">
         <Text as="h1" textRole="title">
           Tokens
         </Text>
-        <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
+        <Text as="p" textRole="compact" tone="secondary">
           {`All ${total} generated tokens, read from the same data `}
           <Text as="code" textRole="mono" tone="secondary">
             theme.css

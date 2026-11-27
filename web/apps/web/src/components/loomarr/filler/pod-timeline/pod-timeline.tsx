@@ -108,7 +108,7 @@ const PodTimeline = ({
               flexBasis: `${(entry.durationMs / total) * 100}%`,
               minWidth: 0,
               // The bar's own frame is the last segment's right edge.
-              ...(i < entries.length - 1 ? { borderRight: "1px solid var(--border)" } : {}),
+              ...(i < entries.length - 1 ? { borderRight: "1px solid var(--color-static-700)" } : {}),
             }}
           >
             {onPreview && entry.hash && !entry.isFallbackCard ? (

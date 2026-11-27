@@ -60,7 +60,7 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
         <Text as="h3" id={nameId} textRole="heading">
           {idea.name}
         </Text>
-        <Text as="p" className="text-pretty" textRole="compact" tone="secondary">
+        <Text as="p" style={{ textWrap: "pretty" }} textRole="compact" tone="secondary">
           {idea.pitch}
         </Text>
       </Stack>
@@ -196,7 +196,7 @@ const ChannelIdeas = ({ empty, inset = false, nowMs }: ChannelIdeasProps) => {
           </Text>
         </Card>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(272px,1fr))] gap-3">
+        <Grid columns={1} gap="3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(272px, 1fr))" }}>
           {shown.map((idea) => (
             <IdeaCard
               key={idea.id}
@@ -222,7 +222,7 @@ const ChannelIdeas = ({ empty, inset = false, nowMs }: ChannelIdeasProps) => {
               }}
             />
           ))}
-        </div>
+        </Grid>
       )}
       {/* Describe your own channel (#1817): the same manual builder "Edit first" opens, started
           blank. The shipped grid above already names this as waiting on the mock; #1872 is the

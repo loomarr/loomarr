@@ -46,7 +46,7 @@ func TestReconcile_LibraryFactsDoNotMoveTheWindowOnAir(t *testing.T) {
 			entries, avail := twoRotatingShows(show)
 			st := newStore(t)
 			now := time.Unix(1_800_000_000, 0).UTC() // 08:00 UTC, mid-window
-			e := recencyEngine(st, avail, &now)
+			e := recencyEngine(t, st, avail, &now)
 			seedShuffleChannel(t, st, "wh", entries)
 
 			before := reconcileDesired(t, e, st, "wh")
@@ -94,7 +94,7 @@ func TestReconcile_AnEditReDealsAfterTheProgrammeOnAir(t *testing.T) {
 	entries, avail := films(20, 2*time.Hour) // a 40 h pool on a 24 h window
 	st := newStore(t)
 	now := time.Unix(1_800_000_000, 0).UTC().Add(30 * time.Minute) // 08:30 UTC, mid-window
-	e := recencyEngine(st, avail, &now)
+	e := recencyEngine(t, st, avail, &now)
 	seedShuffleChannel(t, st, "ed", entries)
 	before := reconcileDesired(t, e, st, "ed")
 
@@ -163,7 +163,7 @@ func TestReconcile_AVanishedProgrammeIsHealedInPlace(t *testing.T) {
 	entries, avail := films(20, 2*time.Hour)
 	st := newStore(t)
 	now := time.Unix(1_800_000_000, 0).UTC()
-	e := recencyEngine(st, avail, &now)
+	e := recencyEngine(t, st, avail, &now)
 	seedShuffleChannel(t, st, "hl", entries)
 	before := reconcileDesired(t, e, st, "hl")
 

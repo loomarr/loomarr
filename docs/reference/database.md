@@ -79,7 +79,7 @@ one series per table, so `delta(loomarr_database_table_rows[30d])` graphs the sa
 ## Contents
 
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas), [`viewings`](#viewings)
-- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`growth_reviews`](#growth_reviews), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
+- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`growth_reviews`](#growth_reviews), [`channel_planned_items`](#channel_planned_items), [`channel_scope_collections`](#channel_scope_collections), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`channel_upcoming_airings`](#channel_upcoming_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
 - [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_catalog_feeds`](#library_catalog_feeds), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
@@ -362,6 +362,28 @@ The model's verdict on a title for a channel that grows by itself: whether a tit
 | `model` | The model that gave the verdict. | `TEXT` |
 | `reviewed_at` | When the verdict was given (Unix seconds). | `INTEGER` |
 
+### channel_planned_items
+
+The library items a channel's current schedule (channels.desired_json) plans to air, one row per item, so the library keeps them and nothing reads the schedule to find them.
+
+**Kept:** Rewritten whenever the channel is saved; goes with its channel.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel (a channels id). | `TEXT` · key · → `channels.id` |
+| `library_item_id` | A library item one of its programme slots plays (library_items.id). The item can't be deleted while a channel plans to air it. | `TEXT` · key · → `library_items.id` |
+
+### channel_scope_collections
+
+The collections a channel's rules name (channels.policy_json): its scope's and each scheduling rule's. One row per collection, so the library knows which channels use one.
+
+**Kept:** Rewritten whenever the channel is saved; goes with its channel.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel (a channels id). | `TEXT` · key · → `channels.id` |
+| `collection_id` | A collection its scope or a rule limits it to (library_collections.id). The collection can't be deleted while a channel names it; take it off the channel first. | `TEXT` · key · → `library_collections.id` |
+
 ### airings
 
 What a channel actually broadcast: one row each time an episode or film started playing on a channel. Written when the programme is really streamed, not when it is scheduled. The schedule uses it to prefer what hasn't aired recently. Rows older than 8 days are pruned down to the latest airing of each episode or film; rows go when their channel is deleted.
@@ -371,7 +393,7 @@ What a channel actually broadcast: one row each time an episode or film started 
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `channel_id` | The channel it aired on (channels.id). | `TEXT` · key · → `channels.id` |
-| `library_item_id` | The library item id of the episode or film that aired. | `TEXT` · key |
+| `library_item_id` | The episode or film that aired, pointing at library_items. | `TEXT` · key · → `library_items.id` |
 | `aired_at` | When the programme started, in Unix seconds. | `BIGINT` · key |
 | `recorded_at` | When Loomarr first recorded the airing, in Unix seconds. | `BIGINT` |
 | `key` | The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a show. Kept for diagnosis. | `TEXT` |
@@ -385,10 +407,26 @@ What a channel's schedule put on air: one row each time an episode or film start
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `channel_id` | The channel it aired on (channels.id). | `TEXT` · key · → `channels.id` |
-| `library_item_id` | The library item id of the episode or film. | `TEXT` · key |
+| `library_item_id` | The episode or film, pointing at library_items. | `TEXT` · key · → `library_items.id` |
 | `aired_at` | When the programme started, in Unix seconds. | `BIGINT` · key |
 | `recorded_at` | When Loomarr first recorded the airing, in Unix seconds. | `BIGINT` |
 | `key` | The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a show. Kept for diagnosis. | `TEXT` |
+
+### channel_upcoming_airings
+
+What a channel airs in the next two days: one row per episode or film on its timeline, so a title's page can say when it is next on, and where, without walking every channel's schedule. Each reconcile of a channel that Loomarr plays itself replaces the channel's rows with what the guide shows; Tunarr channels have none.
+
+**Kept:** Replaced whole at each reconcile of its channel; goes with its channel, or with its library item (deleted when either is).
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel it airs on (channels.id). | `TEXT` · key · → `channels.id` |
+| `starts_at_ms` | When the programme starts, in Unix milliseconds. | `BIGINT` · key |
+| `ends_at_ms` | When the programme ends, in Unix milliseconds. | `BIGINT` |
+| `library_item_id` | The episode or film (library_items.id). | `TEXT` · → `library_items.id` |
+| `title_key` | The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a show. A series finds its next episode through it. | `TEXT` |
+| `forecast` | True when the programme lies past the rolling window on air, so a later reconcile may still change it. | `BOOLEAN` |
+| `revision` | The channel revision the row was computed at. | `BIGINT` |
 
 ### holidays
 
@@ -1029,7 +1067,6 @@ One row per movie or show a channel wants that has gone through Seerr or the arr
 | `key` | Identifies the title, as series:tvdb:id for a show with a TVDB id, otherwise movie:tmdb:id or series:tmdb:id. | `TEXT` · key |
 | `title_json` | The title as JSON, with its media type (movie or series), TMDB and TVDB ids, name, year and, for a show, the seasons wanted (none listed means all). | `TEXT` |
 | `state` | Where it is. One of pending (on a lineup, but nothing has asked for it; read as no record), wanted (not yet accepted by Seerr or an arr), requested (accepted, waiting for a release), downloading (a release was grabbed), available (in the library), or unavailable (given up on). | `TEXT` |
-| `library_id` | The media server's id for the title once it is in the library; empty before. | `TEXT` |
 | `requested_at` | When Seerr or an arr first accepted the request, in Unix seconds; 0 means not yet. | `BIGINT` |
 | `deadline` | When a requested or downloading title is given up on, in Unix seconds; it is also pushed forward briefly while a check is working on the title. 0 for none. | `BIGINT` |
 | `attempts` | How many times sending the request has failed. | `INTEGER` |
@@ -1041,6 +1078,7 @@ One row per movie or show a channel wants that has gone through Seerr or the arr
 | `arrived_at` | When the title arrived in the library after being requested, in Unix seconds. 0 when it never arrived or was already in the library when picked. | `BIGINT` |
 | `episodes_have` | For a downloading show, how many wanted episodes are on disk; 0 otherwise. | `INTEGER` |
 | `episodes_wanted` | For a downloading show, how many episodes are wanted; 0 otherwise. | `INTEGER` |
+| `library_id` | The title's library item once it is in the library, pointing at library_items. NULL before it arrives. | `TEXT` · may be empty · → `library_items.id` |
 
 ### images
 
@@ -1542,7 +1580,7 @@ One row per item whose download has not worked yet. A failed download is tried t
 | --- | --- | --- |
 | `item_key` | Identifies the item: the provider's id for it within its source, or its address for a typed URL. | `TEXT` · key |
 | `provider` | The provider that downloads it, such as archive or youtube. | `TEXT` |
-| `source_id` | The registered source it came from (filler_sources.id). Empty for a typed URL. | `TEXT` |
+| `source_id` | The registered source it came from (filler_sources.id). Empty for a typed URL, and search:archive for an open-search hit. Deliberately not a foreign key: no source row has that value. | `TEXT` |
 | `remote_id` | The provider's id for the item. Empty for a typed URL. | `TEXT` |
 | `url` | The address to download. | `TEXT` |
 | `duration_ms` | The length the listing gave, in milliseconds; 0 when it gave none. | `INTEGER` |
@@ -1775,10 +1813,9 @@ One row per model call made about a filler clip, written before the call (as a s
 | `id` | Identifies the call. Spoken-safety events and the structure call journal point here. | `TEXT` · key |
 | `cache_key` | SHA-256 of every input that could change the answer (clip, role, model, media sizes and all the version columns), so identical retries can be recognised. Run, times and cost are not part of it. | `TEXT` |
 | `clip_hash` | The filler clip the call was about (clips.hash). For a long-reel structure check it is the SHA-256 of the reel's source file. | `TEXT` |
-| `run_id` | The batch run the call belonged to, used for the per-run spend ceiling. Empty when the call was not part of a run. | `TEXT` |
 | `role` | Which check made the call, for example defect_judge or complete_timeline_structure. | `TEXT` |
 | `rung` | The step within that check, for example defects or window_video. Empty when the check has no steps. | `TEXT` |
-| `state` | Where the call stands. reserved means spend is set aside and the call is under way; completed means it answered; failed means it did not; held_budget means a spend ceiling (per clip, per day or per run) stopped it, or the provider charged more than was reserved. | `TEXT` |
+| `state` | Where the call stands. reserved means spend is set aside and the call is under way; completed means it answered; failed means it did not; held_budget means a spend ceiling (per clip or per day) stopped it, or the provider charged more than was reserved. | `TEXT` |
 | `latency_ms` | How long the call took, in milliseconds. | `INTEGER` |
 | `attempts` | How many times the request was sent to the provider. | `INTEGER` |
 | `outcome` | window_complete once a structure-window call has answered; empty for every other call. | `TEXT` |
@@ -1820,7 +1857,7 @@ One row per model call made about a filler clip, written before the call (as a s
 | `audio_tokens` | Tokens the provider counted for audio. | `INTEGER` |
 | `video_tokens` | Tokens the provider counted for video. | `INTEGER` |
 
-**Cost.** The spend ceilings (per clip, per day, per run) add up reserved_nano_usd across calls in one statement, which needs it on the call's own row.
+**Cost.** The spend ceilings (per clip, per day) add up reserved_nano_usd across calls in one statement, which needs it on the call's own row.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -2125,7 +2162,6 @@ Progress of one long action someone started in the app (downloading an AI model,
 | `percent` | How far along it is, 0 to 100. For a model download, -1 means the size isn't known yet. | `INTEGER` |
 | `completed` | For a model download, bytes downloaded so far of the current layer. 0 otherwise. | `BIGINT` |
 | `total` | For a model download, total bytes of the current layer. 0 otherwise. | `BIGINT` |
-| `result_id` | For filler_split, the id of the split proposal it produced. Empty otherwise. | `TEXT` |
 | `error` | Why it failed, or empty. | `TEXT` |
 | `started_at` | When it was started, in Unix seconds. | `BIGINT` |
 | `completed_at` | When it finished, in Unix seconds. 0 while it is still queued or running. | `BIGINT` |

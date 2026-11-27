@@ -1,4 +1,4 @@
-import { Action, Stack, Text, Tooltip } from "@loomarr/design-system";
+import { Action, Card, Stack, Text, Tooltip } from "@loomarr/design-system";
 
 const DiagnosticsPager = ({
   label,
@@ -17,12 +17,11 @@ const DiagnosticsPager = ({
   onNewer: () => void;
   onOlder: () => void;
 }) => (
-  <Stack
-    align="center"
+  <Card
+    alignItems="center"
     aria-label={label}
-    className="border-border bg-card rounded-lg border"
-    direction="row"
-    justify="between"
+    flexDirection="row"
+    justifyContent="space-between"
     paddingHorizontal={8}
     paddingVertical={6}
     render="nav"
@@ -32,7 +31,7 @@ const DiagnosticsPager = ({
         Newer
       </Action>
     </Tooltip>
-    <Stack align="center" render="span">
+    <Stack align="center" flexShrink={1} render="span">
       <Text as="strong" textRole="label" tone="primary">
         Page {page}
       </Text>
@@ -45,7 +44,7 @@ const DiagnosticsPager = ({
         Older
       </Action>
     </Tooltip>
-  </Stack>
+  </Card>
 );
 
 export { DiagnosticsPager };

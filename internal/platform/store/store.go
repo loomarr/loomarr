@@ -92,6 +92,9 @@ type ChannelStore interface {
 	// SaveGrowthReview replaces one.
 	GrowthReviews(ctx context.Context, channelID string) (map[provision.Key]channelstore.GrowthReview, error)
 	SaveGrowthReview(ctx context.Context, r channelstore.GrowthReview) error
+	// ChannelsNamingCollections maps each collection a channel's scope or rules name to those
+	// channels' ids, read from channel_scope_collections (#2793).
+	ChannelsNamingCollections(ctx context.Context) (map[string][]string, error)
 	// ChannelRequesters maps channel id to the name of the person whose request made it (#1663).
 	ChannelRequesters(ctx context.Context) (map[string]string, error)
 	// DeleteChannel hard-deletes the revision-matched Channel and only its channel-scoped
@@ -709,6 +712,7 @@ type Store interface {
 	DiscoveryFeedbackStore
 	ChannelPreferenceStore
 	HiddenIdeaStore
+	UpcomingAiringStore
 	ViewingStore
 	DiscoveryQualityStore
 	InventoryStore
@@ -726,7 +730,6 @@ type Store interface {
 	LibraryEvidenceReader
 	LibraryEpisodeReader
 	LibraryTitleReader
-	LibraryReferenceStore
 	LibraryArtReader
 	CatalogRetentionStore
 	LibraryTitleSearcher

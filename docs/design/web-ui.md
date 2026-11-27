@@ -29,8 +29,8 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
 
 | Role | Items |
 | --- | --- |
-| admin | Home · Guide · Requests · Filler · People · Settings · Help |
-| member | Home · Guide · Requests · Notifications · Help |
+| admin | Home · Guide · Library · Requests · Filler · People · Settings · Help |
+| member | Home · Guide · Library · Requests · Notifications · Help |
 
 - **Guide** (`/guide`, headed "Guide" like its nav item; #3413) is the single channels surface: a cross-channel time grid,
   with channel creation (describe → review → approve) as a header action. The old Channels and Suggest

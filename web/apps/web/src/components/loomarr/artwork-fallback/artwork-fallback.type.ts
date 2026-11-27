@@ -6,7 +6,6 @@ interface ArtworkFallbackProps {
   label?: string;
   // Picks the hue when there is no channel, so the same title always gets the same colour.
   seed?: number;
-  className?: string;
 }
 
 export type { ArtworkFallbackProps };

@@ -346,7 +346,7 @@ describe("AppShell", () => {
         .getAllByRole("link")
         .filter((a) => !a.getAttribute("aria-label")?.startsWith("Your account"))
         .map((a) => a.textContent?.trim());
-      expect(labels).toEqual(["Home", "Watch", "Guide", "Requests", "Notifications", "Help"]);
+      expect(labels).toEqual(["Home", "Watch", "Guide", "Library", "Requests", "Notifications", "Help"]);
     });
 
     it("hides Watch's slot entirely when no channel exists, for either role", async () => {

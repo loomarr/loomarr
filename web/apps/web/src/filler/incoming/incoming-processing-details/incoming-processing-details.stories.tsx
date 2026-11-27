@@ -4,7 +4,7 @@ import { IncomingProcessingDetails } from "./incoming-processing-details";
 
 const at = new Date().toISOString();
 const frame = (processing: IncomingProcessingDTO) => (
-  <div className="w-full max-w-md">
+  <div style={{ maxWidth: 448, width: "100%" }}>
     <IncomingProcessingDetails processing={processing} />
   </div>
 );

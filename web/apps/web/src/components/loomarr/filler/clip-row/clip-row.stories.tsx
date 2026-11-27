@@ -44,8 +44,8 @@ const LongName: Story = {
 export default meta;
 export { LongName, Selectable, Selected, Tagged, Untagged, WithThumbnail };
 
-// ⚠ There is deliberately NO "narrow" story. The row's responsive steps are `md:`/`lg:`, which
-// Tailwind resolves against the VIEWPORT — a `widthFrame(360)` decorator narrows the container
+// ⚠ There is deliberately NO "narrow" story. The row's responsive steps are `md`/`lg`, which
+// resolve against the VIEWPORT — a `widthFrame(360)` decorator narrows the container
 // and changes nothing about which columns render, so such a story would draw a squashed
 // desktop row and look like proof of a mobile layout it never exercised. The visual suite
 // already runs every story at a mobile viewport, which is what actually tests the collapse.

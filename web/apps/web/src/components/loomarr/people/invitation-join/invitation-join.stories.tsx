@@ -18,7 +18,7 @@ const meta = {
   parameters: { layout: "fullscreen" },
   decorators: [
     (Story) => (
-      <LoginShell className="py-10">
+      <LoginShell paddingVertical={40}>
         <Story />
       </LoginShell>
     ),

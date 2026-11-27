@@ -1,9 +1,9 @@
 // The Web legacy-usage ledger (#970 step 5). It counts, per production file under apps/web/src,
-// the legacy presentation stack that the Web migration retires: Tailwind utility classes,
-// class-name helpers (tailwind-merge, clsx), CVA, Base UI, the copied shadcn components in
-// src/components/ui, direct lucide-react imports (the design system's Icon is the icon), raw
-// <button> elements (its Action is the button), and raw type utilities (text sizes; font weights,
-// tracking and leading; its Text role is the typography). Tests, stories and test helpers are not production code and are not counted.
+// the legacy presentation stack that the Web migration retires: CVA, Base UI, the copied shadcn
+// components in src/components/ui, direct lucide-react imports (the design system's Icon is the
+// icon) and raw <button> elements (its Action is the button). Tests, stories and test helpers are
+// not production code and are not counted. The retired utility-class framework and its class-name
+// helpers are banned outright by scripts/check-retired.sh (#4451).
 //
 // The committed ledger (apps/web/legacy-usage.json) is a ratchet:
 //   - the check fails when any count rises or a file with legacy usage is not in the ledger;
@@ -22,18 +22,7 @@ const legacyUiRoot = join(sourceRoot, "components", "ui");
 const ledgerPath = join(appRoot, "legacy-usage.json");
 
 // Every measure, in report order. A file's entry lists only its non-zero measures.
-const MEASURES = [
-  "tailwindClasses",
-  "tailwindMerge",
-  "clsx",
-  "cva",
-  "baseUi",
-  "legacyUi",
-  "lucideReact",
-  "rawButton",
-  "rawTypeSize",
-  "rawTypeWeight",
-];
+const MEASURES = ["cva", "baseUi", "legacyUi", "lucideReact", "rawButton"];
 
 // Copied components the design system has replaced (#2147), each with its Base UI primitive and the
 // only files still allowed to import either. Every other file fails, tests and stories included, and
@@ -73,8 +62,6 @@ const legacyComponentOf = (path, isFile) => {
 // importCategory names the measure an import specifier counts toward, or null.
 const importCategory = (specifier, file) => {
   const under = (name) => specifier === name || specifier.startsWith(`${name}/`);
-  if (under("tailwind-merge")) return "tailwindMerge";
-  if (under("clsx")) return "clsx";
   if (under("class-variance-authority")) return "cva";
   if (under("@base-ui/react")) return "baseUi";
   if (under("lucide-react")) return "lucideReact";
@@ -87,7 +74,6 @@ const importCategory = (specifier, file) => {
   return component !== "" && component === legacyComponentOf(file, true) ? null : "legacyUi";
 };
 
-const CLASS_HELPERS = new Set(["cn", "cx", "clsx", "twMerge", "cva"]);
 const NON_CHILD_KEYS = new Set([
   "loc",
   "start",
@@ -97,77 +83,6 @@ const NON_CHILD_KEYS = new Set([
   "trailingComments",
   "innerComments",
 ]);
-
-const classTokens = (text) => text.split(/\s+/).filter(Boolean);
-
-// The design system's Text owns size, weight, leading and tracking (#2147). A utility that sets one
-// by hand in a class name is a raw type utility. `md:text-lg`, `dark:font-bold` and `!text-sm` are
-// the same utility under a variant or an important flag, so those are stripped first.
-const RAW_TYPE_SIZE = /^text-(?:2xs|xs|sm|base|md|lg|xl|[2-9]xl|\[\d*\.?\d+(?:px|rem)\])$/;
-const RAW_TYPE_WEIGHT =
-  /^(?:font-(?:thin|extralight|light|normal|medium|semibold|bold|extrabold|black)|tracking-.+|leading-.+)$/;
-const utilityOf = (token) => token.slice(token.lastIndexOf(":") + 1).replace(/^[!-]/, "");
-
-const keyName = (key) => {
-  if (!key) return undefined;
-  if (key.type === "Identifier" || key.type === "JSXIdentifier") return key.name;
-  if (key.type === "StringLiteral") return key.value;
-  return undefined;
-};
-
-const isClassKey = (key) => keyName(key) === "className" || keyName(key) === "class";
-
-// countClasses counts the class tokens in string literals that reach a class name: a className
-// (or class) attribute or property value, or an argument of a class helper (cn, cx, clsx,
-// twMerge, cva). Object keys, comparison operands, conditions, cva's defaultVariants and the
-// selectors of its compoundVariants are not classes. The arguments of any other call inside a
-// class name (buttonVariants({ variant: "ghost" })) are variant choices, not classes.
-const collectClasses = (node, inClass = false) => {
-  if (!node || typeof node !== "object") return [];
-  if (Array.isArray(node)) return node.flatMap((child) => collectClasses(child, inClass));
-  switch (node.type) {
-    case "StringLiteral":
-      return inClass ? classTokens(node.value) : [];
-    case "TemplateLiteral":
-      return [
-        ...(inClass ? node.quasis.flatMap((quasi) => classTokens(quasi.value.cooked ?? "")) : []),
-        ...collectClasses(node.expressions, inClass),
-      ];
-    case "JSXAttribute":
-      return collectClasses(node.value, inClass || isClassKey(node.name));
-    case "ObjectProperty": {
-      if (isClassKey(node.key)) return collectClasses(node.value, true);
-      const name = keyName(node.key);
-      if (inClass && name === "defaultVariants") return [];
-      return collectClasses(node.value, inClass && name !== "compoundVariants");
-    }
-    case "CallExpression":
-      if (node.callee.type === "Identifier" && CLASS_HELPERS.has(node.callee.name)) {
-        return collectClasses(node.arguments, true);
-      }
-      return [...collectClasses(node.callee), ...collectClasses(node.arguments)];
-    case "BinaryExpression":
-      return [...collectClasses(node.left), ...collectClasses(node.right)];
-    case "ConditionalExpression":
-      return [
-        ...collectClasses(node.test),
-        ...collectClasses(node.consequent, inClass),
-        ...collectClasses(node.alternate, inClass),
-      ];
-    default: {
-      // Type positions never hold classes: `"primary" | "ghost"` is a variant name.
-      const childInClass = inClass && !/^TS.*(?:Type|Keyword)/.test(node.type);
-      const found = [];
-      for (const [key, child] of Object.entries(node)) {
-        if (!NON_CHILD_KEYS.has(key) && child && typeof child === "object")
-          found.push(...collectClasses(child, childInClass));
-      }
-      return found;
-    }
-  }
-};
-
-const countClasses = (node) => collectClasses(node).length;
 
 // countRawButtons counts the native <button> elements a source renders. The design system's Action
 // is the button; a <button> in app code is a hand-styled control that skips its focus, press and
@@ -231,10 +146,6 @@ const measureSource = (source, file) => {
     sourceType: "module",
     plugins: file.endsWith(".tsx") ? ["typescript", "jsx"] : ["typescript"],
   }).program;
-  const classes = collectClasses(program);
-  counts.tailwindClasses = classes.length;
-  counts.rawTypeSize = classes.filter((token) => RAW_TYPE_SIZE.test(utilityOf(token))).length;
-  counts.rawTypeWeight = classes.filter((token) => RAW_TYPE_WEIGHT.test(utilityOf(token))).length;
   counts.rawButton = countRawButtons(program);
   for (const specifier of importSpecifiers(program)) {
     const category = importCategory(specifier, file);
@@ -408,7 +319,6 @@ if (isMain) {
 export {
   compareRetired,
   compareToLedger,
-  countClasses,
   importCategory,
   measureApp,
   measureSource,

@@ -29,7 +29,7 @@ const ResetPasswordScreen = () => {
   useEffect(() => () => clearAccountActionGrant(), []);
 
   return (
-    <LoginShell className="py-10">
+    <LoginShell paddingVertical={40}>
       <PasswordRecoveryReset
         expiresAt={preview.data?.status === 200 ? preview.data.data.expiresAt : undefined}
         isLoading={Boolean(grant) && preview.isPending}

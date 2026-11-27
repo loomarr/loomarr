@@ -76,7 +76,7 @@ const ConnectionBlock = ({
                 {failing && <Icon decorative glyph={icons.close} size="compact" tone="danger" />}
                 <Text
                   as="span"
-                  className="min-w-0"
+                  minWidth={0}
                   textRole="compact"
                   tone={verdict.ok ? "success" : failing ? "danger" : "secondary"}
                 >

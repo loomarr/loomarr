@@ -2,7 +2,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
@@ -97,7 +96,6 @@ export default defineConfig({
     firstPaintCanvas(),
     tanstackRouter({ target: "react", autoCodeSplitting: true }),
     react(),
-    tailwindcss(),
   ],
   // react-native-web's vendored Animated and VirtualizedList code reads Node's bare `global`
   // (`global.cancelAnimationFrame`, `global.performance`), which browsers do not define. Without

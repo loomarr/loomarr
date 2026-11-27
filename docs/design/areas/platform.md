@@ -85,7 +85,7 @@ One area of the [package map](../package-map.md#start-here).
   Media-inventory cluster (#2151): the items, origins, sources, measurements and analyses the scanner records under inventory_*.
 - **`platform/store/jobstore`** · 2 importers · → `platform/store/storedb`
   Persists the background-job scheduler's state (§18.1): the last-run and next-run lease of each named recurring job and its operator-set pause flag (the scheduled_jobs table).
-- **`platform/store/librarystore`** · 11 importers · → `platform/store/storedb`
+- **`platform/store/librarystore`** · 12 importers · → `platform/store/storedb`
   Persists the Library: its scan roots, files, items, titles, catalog keys, collections, people, episodes, episode orders and the needs that ask the household a question.
 - **`platform/store/operationstore`** · 5 importers · → `platform/store/storedb`
   Keeps interactive operations: the reconnect snapshot of work a request launches (a filler split, an LLM model pull), so a page can pick its operation up again.

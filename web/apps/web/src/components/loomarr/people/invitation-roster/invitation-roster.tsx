@@ -42,7 +42,7 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
     </div>
 
     {invitations === undefined ? (
-      <Card aria-label="Loading invitations" className="animate-pulse" height={96} role="status" />
+      <Card aria-label="Loading invitations" data-pulse="loading" height={96} role="status" />
     ) : invitations.length === 0 ? (
       <Card padding={20}>
         <Text as="p" textRole="compact" tone="secondary">
@@ -96,9 +96,11 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
                     {value.contactAddress?.email ?? "Add a contact address before sending email."}
                   </Text>
                   {hint && (
-                    <Text as="p" className="max-w-3xl" textRole="compact" tone="secondary">
-                      {hint}
-                    </Text>
+                    <Stack maxWidth={768}>
+                      <Text as="p" textRole="compact" tone="secondary">
+                        {hint}
+                      </Text>
+                    </Stack>
                   )}
                 </Stack>
 

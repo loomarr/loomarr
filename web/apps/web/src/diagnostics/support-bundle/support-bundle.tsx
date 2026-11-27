@@ -8,6 +8,7 @@ import {
   Action,
   Card,
   CompactSelect,
+  Details,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -309,13 +310,17 @@ const SupportBundle = ({
             )}
 
             <Card padding={16}>
-              <details>
-                <Text as="summary" cursor="pointer" textRole="cardLabel">
-                  <span className="mr-2 inline-flex align-middle">
-                    <Icon decorative glyph={icons.settingsAdjust} size="compact" tone="inherit" />
-                  </span>{" "}
-                  Customize report
-                </Text>
+              <Details
+                summary={
+                  <>
+                    <span style={{ display: "inline-flex", marginRight: 8, verticalAlign: "middle" }}>
+                      <Icon decorative glyph={icons.settingsAdjust} size="compact" tone="inherit" />
+                    </span>{" "}
+                    Customize report
+                  </>
+                }
+                textRole="cardLabel"
+              >
                 <Stack gap="4" paddingTop={16}>
                   <fieldset>
                     <Text as="legend" textRole="cardLabel">
@@ -354,10 +359,7 @@ const SupportBundle = ({
                     </Grid>
                   </Stack>
                   {preview && (
-                    <details>
-                      <Text as="summary" cursor="pointer" textRole="compact" tone="secondary">
-                        Files included
-                      </Text>
+                    <Details summary="Files included" tone="secondary">
                       <Stack paddingTop={8}>
                         <Grid columns={{ base: 1, sm: 2 }} gap="1" render="ul">
                           {["manifest.json", ...preview.manifest.entries.map((entry) => entry.name)].map(
@@ -369,10 +371,10 @@ const SupportBundle = ({
                           )}
                         </Grid>
                       </Stack>
-                    </details>
+                    </Details>
                   )}
                 </Stack>
-              </details>
+              </Details>
             </Card>
           </Stack>
 

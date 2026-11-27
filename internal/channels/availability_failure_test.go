@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // A reconcile that cannot read what the library holds does not know what the channel can air.
@@ -32,6 +33,7 @@ func (f *failingTitles) GetTitle(ctx context.Context, key provision.Key) (provis
 
 func seedAvailableTitle(t *testing.T, st store.Store, key provision.Key, title provision.Title, libraryID string) {
 	t.Helper()
+	testkit.SaveLibraryItems(t, st, libraryID) // a title names its library item by a foreign key
 	rec := provision.Record{Key: key, Title: title, State: provision.Available, LibraryID: libraryID}
 	if err := st.UpsertTitle(context.Background(), rec); err != nil {
 		t.Fatalf("seed title %s: %v", key, err)
@@ -93,6 +95,7 @@ func TestReconcileFailsAndKeepsTheLineupWhenASeriesEpisodeReadFails(t *testing.T
 	ctx := context.Background()
 	st := newStore(t)
 	seedAvailableTitle(t, st, "series:tvdb:90000701", provision.Title{MediaType: provision.Series, TVDBID: 90000701}, "lib-show")
+	testkit.SaveLibraryItems(t, st, "ep-1", "ep-2") // the episodes the schedule plans
 	seedChannel(t, st, "c1", 5, entry("series:tvdb:90000701", "Quiet Harbour"))
 
 	var failEpisodes atomic.Bool

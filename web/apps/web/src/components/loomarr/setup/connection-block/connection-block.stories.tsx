@@ -1,4 +1,4 @@
-import { Action, Text } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame, withRouter } from "@/test/story-utils";
 import { ConnectionBlock } from "./connection-block";
@@ -19,11 +19,11 @@ type Story = StoryObj<typeof meta>;
 // Stand-in for a SettingsFields group — the block is presentational, so the story doesn't
 // need the real field controls, just something in the body to prove the reveal.
 const fields = (
-  <div className="flex flex-col gap-3">
+  <Stack gap="3">
     <Text as="p" textRole="compact" tone="secondary">
       Library URL, token, and flavor render here (a SettingsFields group).
     </Text>
-  </div>
+  </Stack>
 );
 
 const testBtn = <Action variant="outline">Test connection</Action>;

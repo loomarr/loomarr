@@ -1,4 +1,4 @@
-import { Action, Stack, Tooltip } from "@loomarr/design-system";
+import { Action, Stack, Tooltip, VisuallyHidden } from "@loomarr/design-system";
 import { useId } from "react";
 import type { FieldHelpProps } from "./field-help.type";
 
@@ -6,7 +6,7 @@ import type { FieldHelpProps } from "./field-help.type";
 // permanent muted paragraph under every control. This is what lets the settings forms breathe:
 // the help is there when you want it, out of the way when you don't.
 //
-// ⚠ THE `sr-only` COPY IS LOAD-BEARING — do not "de-duplicate" it against the tooltip.
+// ⚠ THE HIDDEN COPY IS LOAD-BEARING — do not "de-duplicate" it against the tooltip.
 //
 // Base UI's Tooltip is deliberately visual-only: its Popup carries no `role="tooltip"` and its
 // Trigger gets no `aria-describedby`, and its docs say so outright — "Tooltips are visual-only
@@ -37,9 +37,9 @@ const FieldHelp = ({ children, label, describedById, className }: FieldHelpProps
         >{`About ${label}`}</Action>
       </Tooltip>
       {!describedById && (
-        <span id={descriptionId} className="sr-only">
-          {children}
-        </span>
+        <VisuallyHidden as="span">
+          <span id={descriptionId}>{children}</span>
+        </VisuallyHidden>
       )}
     </Stack>
   );

@@ -69,7 +69,7 @@ const DiagnosticsPage = ({
           />
         }
       />
-      <Stack className="px-4 sm:px-6" paddingTop={8}>
+      <Stack paddingHorizontal={{ base: 16, sm: 24 }} paddingTop={8}>
         <NavTabs
           activeId={search.view}
           label="Diagnostics views"
@@ -83,14 +83,14 @@ const DiagnosticsPage = ({
           tabs={tabs}
         />
       </Stack>
-      {/* ⚠ `position: relative` is load-bearing: visually-hidden (`sr-only`) text is absolutely
-          positioned, and without a positioned scroller it stretches the document instead of
-          scrolling in here (#3404, #2724). */}
+      {/* ⚠ `position: relative` is load-bearing: visually-hidden text is absolutely positioned, and
+          without a positioned scroller it stretches the document instead of scrolling in here
+          (#3404, #2724). */}
       <Stack
-        className="p-4 sm:p-6"
         data-testid="diagnostics-scroller"
         flex={1}
         flexShrink={1}
+        padding={{ base: 16, sm: 24 }}
         minHeight={0}
         overflowY="auto"
         style={{ position: "relative" }}

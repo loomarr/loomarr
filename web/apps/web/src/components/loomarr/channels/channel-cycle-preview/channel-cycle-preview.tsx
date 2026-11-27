@@ -489,8 +489,8 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
             // A long cycle (a whole-run marathon resolves to 50 slots) would run off the
             // page; cap the list to a comfortable window and let it scroll INSIDE. max-height
             // means a short cycle isn't boxed — the scroll only appears once it's actually long.
-            // scroll-thin (styles.css) is the token-keyed slim scrollbar (thin thumb, no
-            // reserved gutter — short lists render unshifted; see the utility's note).
+            // data-scroll="thin" (styles.css) is the token-keyed slim scrollbar (thin thumb, no
+            // reserved gutter — short lists render unshifted; see the rule's note).
             // tabIndex + aria-label make the scroll region keyboard-reachable (WCAG 2.1.1,
             // scrollable-region-focusable): rows are non-focusable text, so without a Tab stop
             // on the region itself a keyboard user couldn't scroll past the fold. NOTE: no

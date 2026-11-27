@@ -38,7 +38,7 @@ type InferenceVersions struct {
 }
 
 type InferenceEvaluation struct {
-	ID, CacheKey, ClipHash, RunID, Role, Rung                                            string
+	ID, CacheKey, ClipHash, Role, Rung                                                   string
 	State                                                                                InferenceEvaluationState
 	RequestedProvider, RequestedModel, ResolvedProvider, ResolvedModel, UpstreamProvider string
 	Modalities                                                                           []string
@@ -57,7 +57,6 @@ type InferenceEvaluation struct {
 type InferenceBudget struct {
 	PerClipNanoUSD int64
 	PerDayNanoUSD  int64
-	PerRunNanoUSD  int64
 }
 
 type InferenceSettlement struct {
@@ -76,11 +75,10 @@ type InferenceSettlement struct {
 
 type InferenceEvaluationFilter struct {
 	ClipHash string
-	RunID    string
 	Limit    int
 }
 
-const inferenceEvaluationSelect = `SELECT id, cache_key, clip_hash, run_id, role, rung, state,
+const inferenceEvaluationSelect = `SELECT id, cache_key, clip_hash, role, rung, state,
 	requested_provider, requested_model, resolved_provider, resolved_model, upstream_provider,
 	modalities_json, derivative_bytes, derivative_duration_ms, derivative_pixels,
 	prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, cache_write_tokens,
@@ -113,9 +111,6 @@ func (s *sqlStore) ReserveInferenceEvaluation(ctx context.Context, e InferenceEv
 func (s *sqlStore) reserveInferenceEvaluation(ctx context.Context, tx store.Tx, e InferenceEvaluation, budget InferenceBudget) (InferenceEvaluation, error) {
 	dayStart := e.CreatedAt.UTC().Truncate(24 * time.Hour)
 	scopes := []string{"clip:" + e.ClipHash, "day:" + dayStart.Format("2006-01-02")}
-	if e.RunID != "" {
-		scopes = append(scopes, "run:"+e.RunID)
-	}
 	slices.Sort(scopes)
 	for _, scope := range scopes {
 		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_inference_budget_guards (scope) VALUES (?) ON CONFLICT(scope) DO NOTHING`), scope); err != nil {
@@ -136,19 +131,11 @@ func (s *sqlStore) reserveInferenceEvaluation(ctx context.Context, tx store.Tx, 
 	if err != nil {
 		return InferenceEvaluation{}, err
 	}
-	runUsed := int64(0)
-	if e.RunID != "" {
-		runUsed, err = sumInferenceBudget(ctx, tx, s.ph, `run_id = ?`, e.RunID)
-		if err != nil {
-			return InferenceEvaluation{}, err
-		}
-	}
 
 	e.CacheKey = InferenceCacheKey(e)
 	e.State = InferenceReserved
 	if exceedsBudget(clipUsed, e.ReservedNanoUSD, budget.PerClipNanoUSD) ||
-		exceedsBudget(dayUsed, e.ReservedNanoUSD, budget.PerDayNanoUSD) ||
-		(e.RunID != "" && exceedsBudget(runUsed, e.ReservedNanoUSD, budget.PerRunNanoUSD)) {
+		exceedsBudget(dayUsed, e.ReservedNanoUSD, budget.PerDayNanoUSD) {
 		e.State = InferenceHeldBudget
 		e.FailureReason = "inference spend ceiling reached"
 		e.ReservedNanoUSD = 0
@@ -161,7 +148,7 @@ func (s *sqlStore) reserveInferenceEvaluation(ctx context.Context, tx store.Tx, 
 }
 
 // InferenceCacheKey identifies all semantic and evidence inputs that can change an
-// inference answer. Operational identity (ID, run, timestamps) and accounting do not
+// inference answer. Operational identity (ID, timestamps) and accounting do not
 // participate, so retries of exactly the same evaluation remain comparable.
 func InferenceCacheKey(e InferenceEvaluation) string {
 	modalities := append([]string(nil), e.Modalities...)
@@ -193,7 +180,7 @@ func validateInferenceReservation(e InferenceEvaluation, budget InferenceBudget)
 	if e.CreatedAt.IsZero() {
 		return fmt.Errorf("inference reservation requires created time")
 	}
-	if e.ReservedNanoUSD < 0 || budget.PerClipNanoUSD < 0 || budget.PerDayNanoUSD < 0 || budget.PerRunNanoUSD < 0 {
+	if e.ReservedNanoUSD < 0 || budget.PerClipNanoUSD < 0 || budget.PerDayNanoUSD < 0 {
 		return fmt.Errorf("inference budgets cannot be negative")
 	}
 	versions := []string{e.Versions.Evidence, e.Versions.Extractor, e.Versions.Prompt, e.Versions.Schema,
@@ -229,7 +216,7 @@ func insertInferenceEvaluation(ctx context.Context, tx store.Tx, ph placeholder,
 		return fmt.Errorf("marshal inference modalities: %w", err)
 	}
 	_, err = tx.ExecContext(ctx, ph(`INSERT INTO filler_inference_evaluations (
-		id, cache_key, clip_hash, run_id, role, rung, state, requested_provider, requested_model,
+		id, cache_key, clip_hash, role, rung, state, requested_provider, requested_model,
 		resolved_provider, resolved_model, upstream_provider, modalities_json,
 		derivative_bytes, derivative_duration_ms, derivative_pixels,
 		prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, cache_write_tokens,
@@ -238,8 +225,8 @@ func insertInferenceEvaluation(ctx context.Context, tx store.Tx, ph placeholder,
 		latency_ms, attempts, generation_id, evidence_version, extractor_version, prompt_version,
 		schema_version, taxonomy_version, admission_policy_version, role_policy_version,
 		capability_snapshot, outcome, failure_reason, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		e.ID, e.CacheKey, e.ClipHash, e.RunID, e.Role, e.Rung, string(e.State), e.RequestedProvider, e.RequestedModel,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		e.ID, e.CacheKey, e.ClipHash, e.Role, e.Rung, string(e.State), e.RequestedProvider, e.RequestedModel,
 		e.ResolvedProvider, e.ResolvedModel, e.UpstreamProvider, string(modalities),
 		e.DerivativeBytes, e.DerivativeDurationMS, e.DerivativePixels,
 		e.Tokens.Prompt, e.Tokens.Completion, e.Tokens.Reasoning, e.Tokens.Cached, e.Tokens.CacheWrite,
@@ -357,10 +344,6 @@ func (s *sqlStore) ListInferenceEvaluations(ctx context.Context, filter Inferenc
 		clauses = append(clauses, "clip_hash = ?")
 		args = append(args, filter.ClipHash)
 	}
-	if filter.RunID != "" {
-		clauses = append(clauses, "run_id = ?")
-		args = append(args, filter.RunID)
-	}
 	q := inferenceEvaluationSelect
 	if len(clauses) > 0 {
 		q += " WHERE " + strings.Join(clauses, " AND ")
@@ -387,7 +370,7 @@ func scanInferenceEvaluation(sc scannable) (InferenceEvaluation, error) {
 	var e InferenceEvaluation
 	var state, modalities string
 	var createdAt, updatedAt int64
-	err := sc.Scan(&e.ID, &e.CacheKey, &e.ClipHash, &e.RunID, &e.Role, &e.Rung, &state,
+	err := sc.Scan(&e.ID, &e.CacheKey, &e.ClipHash, &e.Role, &e.Rung, &state,
 		&e.RequestedProvider, &e.RequestedModel, &e.ResolvedProvider, &e.ResolvedModel, &e.UpstreamProvider,
 		&modalities, &e.DerivativeBytes, &e.DerivativeDurationMS, &e.DerivativePixels,
 		&e.Tokens.Prompt, &e.Tokens.Completion, &e.Tokens.Reasoning, &e.Tokens.Cached, &e.Tokens.CacheWrite,

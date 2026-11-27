@@ -478,7 +478,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   plays and nothing that names a file: its picture (width, height, high dynamic range), the
   channels of the sound that plays and its subtitle languages.
 - **Who reads the Library** (#4476, decided 2026-11-21). A household member browses the
-  Library read-only: the wall and a title's page, and the Collections tab. The member-readable
+  Library read-only: the wall and a title's page, and the Collections tab. On the web, Library is
+  in a member's navigation and fourth in their phone bar (Home · Watch · Guide · Library), with no
+  Needs you count; an admin's phone bar keeps Requests there. The member-readable
   routes are `GET /v1/library/items`, `GET /v1/library/items/{id}`, `GET /v1/library/genres`,
   `GET /v1/collections`,
   `GET /v1/collections/{id}`, and `GET /v1/library/collections` (names and sizes, for the channel
@@ -714,7 +716,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   (`/library/{id}`) shows the poster, year and length or seasons, the rating, genres and
   overview, each season's episodes in a disclosure (specials last), and Technical details. Still
   to come: Collections (step 12); On these channels, once channels name library items (step 15's
-  id migration).
+  id migration). A title's next airing on each channel comes from `channel_upcoming_airings`,
+  which reconcile fills with each internal-playout channel's next 48 hours of programmes
+  (scheduling.md "Upcoming airings"): a movie by its item id and its title key, a series by its
+  title key. A removed file's airing stays until the channel's next sweep (by default within about
+  twenty minutes), as in the guide. The store read does no member filtering; the API field that
+  serves it blanks a hidden episode's item id and name for a member. Nothing reads it over the API
+  yet (#4476).
 - **Needs you on the page** (step 11b). The Library page's strip asks about the first four
   titles that need the household ("X — is this the 1999 movie?", Yes, that's it / Pick a
   different title, or Find it with no guess); `/library/needs` holds one card each with the
