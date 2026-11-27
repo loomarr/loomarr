@@ -58,7 +58,8 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled.
 | `cross`, `playing` | Beat two: the film strip for the tuned channel. In a window and on an upright phone both arms are always up, and the state is `playing`. |
 | `peek` | Desktop in a window: pointing at a channel shows its day in the strip before a click tunes. |
 | `later` | A later programme pointed at or focused: its facts as type (a sheet on an upright phone). |
-| `find`, `typing` | Typing letters filters the column; typing digits replaces the numeral and counts down to the tune. |
+| `find`, `typing` | The find control, or typing letters, filters the column; typing digits replaces the numeral and counts down to the tune. |
+| `focus`, `paused` | Keyboard focus drawn on the tuned row, and the paused state with its key. |
 | `tune`, `cold` | Changing channel (a short burst of static, the seven bars along the crossing) and tuning in (static for the real wait, the bars in grey). |
 | `break`, `behind`, `nothing` | In a break, behind live with Go live, and nothing scheduled. |
 | `subtitles`, `more` | What a key opens: a menu from the quiet row, a sheet on a phone. |
@@ -86,14 +87,22 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled.
    with the aired part dimmed. The tuned channel's row is the film strip at full height. A run of one
    series is one block that says how many episodes. A later programme shows its start time. A break
    is a thin tick. A click on a row tunes; a click on a later programme shows its facts.
-6. **Getting to the Guide.** One control at the end of the group tabs swaps the column for the Guide
-   (with its word on desktop, the glyph alone on a phone), and the Guide nav item opens the same
-   view. On a television OK on the picture opens the Guide, as it does today, and Up or Down opens
-   the column.
-7. **30 channels and more.** Group tabs (Favourites, All, Recent, By decade) head the column, the
-   Guide and the wall. Digits tune direct. Typing letters filters; there is no search field.
-8. **Decade colour is the channel's numeral**, everywhere a channel is listed. A channel with no
-   decade is plain, so amber stays for focus alone. The tuned channel's numeral is the large one.
+   - **Television:** the header is one line beside a small picture, so eight channels fit.
+   - **Phone:** the Guide is a list, not a grid. Each channel is a row with what is on now and its
+     next two programmes.
+6. **Getting to the Guide.** One control, always with its word, "Guide": in the column's header on
+   desktop, at the end of the group tabs over the picture, and pinned at the end of the tabs on a
+   phone. The Guide nav item opens the same view. On a television OK on the picture opens the Guide,
+   as it does today, and Up or Down opens the column; one hint line says so.
+7. **30 channels and more, in one order.** Every list of channels is in number order, scrolled so
+   the tuned channel sits on the crossing. It never wraps on screen, though flipping past the last
+   channel still reaches the first. On an upright phone the lower third is the tuned row, so the
+   list under it carries on from the next channel. Group tabs (Favourites, All, Recent, By decade)
+   head the column, the Guide and the wall. Digits tune direct. A find control opens the query,
+   typing letters does the same, and results list straight under it.
+8. **Decade colour belongs to the channel you are watching.** Its numeral, the large one, takes the
+   decade's colour; every other channel number is plain. Breaks are neutral grey. So amber means
+   focus and typed digits, red means live, and neither is borrowed for anything else.
 9. **The tune is static and seven bars, and it is never a nuisance** (maintainer, 2026-11-27). The
    station-ident card goes: the lower third on a settled tune does its job.
    - **Changing channel** (the next channel is already streaming): the picture dips into a burst of
@@ -108,11 +117,24 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled.
      resolves once when they stop, so nothing flashes more than three times a second.
    - **Reduced motion** gets a plain crossfade and no static.
    - Sound is unchanged: the web's Channel-change sound switch still decides it.
-10. **More holds only what has no key of its own**: Picture, Playback details, and Picture in picture
-    on desktop. Channels and Info left it: the column and the synopsis under the strip do those jobs.
-11. **Administration leaves the watching path.** "Request a channel" and the Guide's per-row Actions
-    menu move to channel management.
-12. **Sizes.** The numeral and title are 64 and 34 px full screen, 56 and 28 px in a window, 52 and
+10. **One key set, with its omissions written down.** In order: Pause, Subtitles, Audio, Volume,
+    Full screen, More. A television drops Pause, Volume and Full screen, which its remote has. A
+    phone drops Volume and Full screen and adds AirPlay; upright, Pause and More sit by the lower
+    third, under the thumb, and the rest at the top. Home is always named beside its arrow.
+11. **More holds only what has no key of its own**: Last channel, Picture, Playback details, Picture
+    in picture on desktop, and Manage this channel for an admin. Channels and Info left it: the
+    column and the synopsis under the strip do those jobs.
+12. **Administration leaves the watching path.** "Request a channel" and the Guide's per-row Actions
+    menu move to channel management, reached from More.
+13. **Words over the picture always read.** The left scrim is as wide as what stands on it, list rows
+    do not fade, and facts set over the picture stand on a solid ink plate. `bright` proves it over a
+    washed-out frame on desktop, a television and a phone on its side.
+14. **Every touch control is at least 44 px**, and no text is under 12 px.
+15. **Focus is always drawn.** On a television the tuned row carries the amber ring while the column
+    is up, and a strip block carries it when focus moves there. On desktop the same ring shows for
+    keyboard focus.
+16. **The rating reads with the programme's facts** in the lower third, not beside the back arrow.
+17. **Sizes.** The numeral and title are 64 and 34 px full screen, 56 and 28 px in a window, 52 and
     30 px on a television, 44 and 22 px on an upright phone.
 
 ## Unchanged from variant J
