@@ -805,8 +805,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   was, then passes over its folder as for a file that appeared, so the title has its extra copy
   again. The token names the title, media folder, file and trash day, signed with a key the
   running process makes for itself: a request never carries a path, and nothing about removals is
-  stored. A token that is forged, for another title or from before a restart is refused (400), as
-  is one whose file is not in the trash (410). A restore never overwrites: when something is at the
+  stored. A restart voids pending undos, and the 30-day trash folder is then the way back. A token
+  that is forged, for another title or from before a restart is refused (400), and one whose file
+  is not in the trash is refused (410). A restore never overwrites: when something is at the
   file's old place, or the folder can't be changed, it answers 409 and the file stays in the trash.
   The undo is offered only right after removing; afterwards the way back is the trash folder, for
   the 30 days it keeps the file, and the card says so.

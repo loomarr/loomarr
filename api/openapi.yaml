@@ -11097,6 +11097,22 @@ components:
       required:
         - path
       type: object
+    RemoveLibraryExtraCopyOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/RemoveLibraryExtraCopyOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        undo:
+          description: Give this to restore-copy to put the file back
+          type: string
+      required:
+        - undo
+      type: object
     RequestChannelIdeaOutputBody:
       additionalProperties: false
       properties:
@@ -11207,6 +11223,24 @@ components:
         - streamingChannels
         - restartRequired
         - available
+      type: object
+    RestoreLibraryExtraCopyInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/RestoreLibraryExtraCopyInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        undo:
+          description: The token the removal answered with
+          maxLength: 16384
+          minLength: 1
+          type: string
+      required:
+        - undo
       type: object
     ReviseProposalJourneyOutputBody:
       additionalProperties: false
@@ -19909,7 +19943,7 @@ paths:
         - library
   /v1/library/items/{id}/remove-copy:
     post:
-      description: Moves one of the title's files that never plays into its media folder's trash (.loomarr-trash), which empties after 30 days.
+      description: Moves one of the title's files that never plays into its media folder's trash (.loomarr-trash), which empties after 30 days. Answers with the token that undoes it.
       operationId: removeLibraryExtraCopy
       parameters:
         - in: path
@@ -19925,6 +19959,39 @@ paths:
               $ref: "#/components/schemas/RemoveLibraryExtraCopyInputBody"
         required: true
       responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemoveLibraryExtraCopyOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a title's extra copy
+      tags:
+        - library
+  /v1/library/items/{id}/restore-copy:
+    post:
+      description: Moves the copy a removal put in the trash back to where it was; the title has it again once the folder is read. Takes the token that removal answered with, which stops working when Loomarr restarts. 400 for a token that isn't valid for this title, 410 when the copy isn't in the trash, 409 when something is where it was or the folder can't be changed.
+      operationId: restoreLibraryExtraCopy
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestoreLibraryExtraCopyInputBody"
+        required: true
+      responses:
         "204":
           description: No Content
         default:
@@ -19933,7 +20000,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Remove a title's extra copy
+      summary: Undo removing an extra copy
       tags:
         - library
   /v1/library/needs:
