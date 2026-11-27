@@ -139,7 +139,7 @@ func (c *Curator) Consider(ctx context.Context, p proposalstore.Proposal) (propo
 	if c.approver == nil {
 		return proposals.AutoDecision{Reason: "approval unavailable"}, errors.New("auto-curate: approval gate is not configured")
 	}
-	approval, err := c.approver.Approve(ctx, filtered, nil, accept.AutoCuratedBy)
+	approval, err := c.approver.Approve(ctx, filtered, nil, proposalstore.AutoCuratedBy)
 	if err != nil {
 		return proposals.AutoDecision{Reason: "approval failed"}, err
 	}

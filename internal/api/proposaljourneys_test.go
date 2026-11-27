@@ -13,8 +13,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 )
@@ -282,7 +282,7 @@ func TestProposalJourneyReportsWhoApprovedAndWhen(t *testing.T) {
 		Intent:    proposals.Intent{Description: "Saturday morning cartoons"},
 		Proposal: &workflow.ProposalRef{
 			ID: "proposal-1", Status: workflow.ProposalApproved,
-			ApprovedBy: accept.AutoApprovedBy, ApprovedAt: approvedAt,
+			ApprovedBy: proposalstore.AutoApprovedBy, ApprovedAt: approvedAt,
 		},
 	}}
 	srv := proposalJourneyServer(t, flow)
