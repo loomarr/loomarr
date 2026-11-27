@@ -699,8 +699,8 @@ step 5). Nothing reads the scanner's origins until the cutover.
   id migration). A title's next airing on each channel comes from `channel_upcoming_airings`,
   which reconcile fills with each internal-playout channel's next 48 hours of programmes
   (scheduling.md "Upcoming airings"): a movie by its item id and its title key, a series by its
-  title key. A removed file's airing stays until the next sweep (at most ten minutes), as in the
-  guide. The store read does no member filtering; the API field that serves it blanks a hidden
+  title key. A removed file's airing stays until the channel's next sweep (by default within ten
+  minutes), as in the guide. The store read does no member filtering; the API field that serves it blanks a hidden
   episode's item id and name for a member. Nothing reads it over the API yet (#4476).
 - **Needs you on the page** (step 11b). The Library page's strip asks about the first four
   titles that need the household ("X — is this the 1999 movie?", Yes, that's it / Pick a

@@ -235,10 +235,13 @@ channel revision it was computed at.
   `Resolver.UpcomingProgrammes`, the guide's own window-by-window walk (the window on air from the
   accepted cycle, the next one with its planned breaks, later ones forecast), without the guide's
   metadata pass. Only programmes count: a programme slot with a library item, never a pending
-  placeholder.
+  placeholder. The walk covers at most eight rolling windows, counting the one on air, so a channel
+  with a short window stores less than 48 hours; a window under 6 hours always does.
 - **The replace** runs in one transaction and only while the channel is still at the revision the
   rows were computed from; a write from a stale revision changes nothing. It is best-effort: a
-  failure is logged and the reconcile stands.
+  failure is logged and the reconcile stands. When the walk or the replace fails, the channel's rows
+  are cleared at the committed revision, also best-effort, so a title's page shows no airing rather
+  than an earlier revision's.
 - **The read** for a library item returns the rows still airing (`ends_at_ms` after now, so the
   programme on air is included) on channels neither paused nor detached, earliest first. A row
   matches the item by its own item id or through `titles.key = title_key` for that item, the key
@@ -246,12 +249,14 @@ channel revision it was computed at.
   read does no member filtering; the API that serves it blanks a hidden episode's item id and name.
 - **Freshness.** Pausing and detaching save without a reconcile, which is why the read filters the
   channel's status. Purging a channel deletes its rows. A settings change reaches the rows at the
-  next sweep, and so does a removed file: its airing stays until then (at most ten minutes), as it
-  does in the guide. Forecast rows can lag the guide by one sweep; the window on air never does, because
-  its programmes are fixed when it opens.
-- **Tunarr channels** store no upcoming airings, the same as the scheduled ledger. Each committed
-  reconcile of a channel that does not play internally replaces its rows with none, through the
-  same guarded write, so a channel moved to Tunarr is not named on a title's page.
+  next sweep, and so does a removed file: its airing stays until the channel's next sweep
+  (`channel.reconcile_every`, by default within ten minutes), as it does in the guide. Forecast rows
+  can lag the guide by one sweep; the window on air never does, because its programmes are fixed
+  when it opens.
+- **Tunarr channels** store no upcoming airings, the same as the scheduled ledger. Each reconcile
+  of a channel that does not play internally replaces its rows with none, through the same guarded
+  write, before it projects onto Tunarr and again after it commits. A channel moved to Tunarr is
+  therefore not named on a title's page, even when the projection fails.
 
 ## Breaks and pods
 

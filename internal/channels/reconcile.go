@@ -171,6 +171,10 @@ func (e *Engine) reconcileOnce(
 		return err
 	}
 	if !plan.playsInternally {
+		// Cleared before the projection, which can fail and end the attempt: a channel Loomarr
+		// does not play must not keep airings from when it did (#4476). The plan's revision is
+		// still the stored one, so the guarded write applies.
+		e.clearUpcoming(ctx, plan.ch)
 		if err := e.projectToTunarr(ctx, plan, run); err != nil {
 			return err
 		}

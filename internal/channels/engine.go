@@ -347,7 +347,8 @@ func (e *Engine) WithUpcomingIndex(indexer UpcomingIndexer) *Engine {
 }
 
 // indexUpcoming stores the channel's programmes for the next PremeasureHorizon. Best-effort: a
-// failure is logged and the reconcile stands.
+// failure is logged and the reconcile stands. A failure also clears the channel's rows at the
+// committed revision, because the read cannot tell an earlier revision's rows from fresh ones.
 func (e *Engine) indexUpcoming(ctx context.Context, ch channelstore.Channel) {
 	if e.upcoming == nil {
 		return
@@ -355,11 +356,12 @@ func (e *Engine) indexUpcoming(ctx context.Context, ch channelstore.Channel) {
 	now := e.now()
 	if err := e.upcoming.IndexUpcoming(ctx, ch, now, now.Add(PremeasureHorizon)); err != nil {
 		e.log.Warn("upcoming airings: not stored", "channel", ch.ID, "err", err)
+		e.clearUpcoming(ctx, ch)
 	}
 }
 
-// clearUpcoming removes the stored airings of a committed channel that does not play internally.
-// Best-effort, like indexUpcoming.
+// clearUpcoming removes the channel's stored airings at ch's revision. Best-effort, like
+// indexUpcoming.
 func (e *Engine) clearUpcoming(ctx context.Context, ch channelstore.Channel) {
 	if e.upcoming == nil {
 		return

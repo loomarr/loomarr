@@ -86,6 +86,81 @@ func TestReconcile_SwitchToTunarrClearsUpcoming(t *testing.T) {
 	}
 }
 
+// A channel moved to Tunarr loses its stored airings even when the Tunarr projection then fails,
+// which ends the reconcile before its commit.
+func TestReconcile_SwitchToTunarrClearsUpcomingWhenProjectionFails(t *testing.T) {
+	st := newStore(t)
+	backend := "tunarr"
+	tun := tunarrtest.NewTunarr()
+	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, &fakeGuide{},
+		func() string { return backend })
+	e.WithUpcomingIndex(storeUpcoming{st: st})
+	seedChannel(t, st, "up-switch-fails", 6, entry("movie:tmdb:90000001", "A"))
+	now := time.Unix(1_800_000_000, 0).UTC()
+
+	// A first Tunarr reconcile gives the channel its Tunarr id, so the later one reads a lineup.
+	if err := e.Reconcile(context.Background(), "up-switch-fails"); err != nil {
+		t.Fatal(err)
+	}
+	backend = schedule.PlayoutBackendInternal
+	if err := e.Reconcile(context.Background(), "up-switch-fails"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := st.UpcomingAiringsForItem(context.Background(), "lib-1", now); err != nil || len(got) == 0 {
+		t.Fatalf("internal reconcile stored %+v, %v; want lib-1's airing", got, err)
+	}
+
+	backend = "tunarr"
+	lineupErr := errors.New("tunarr unreachable")
+	tun.GetLineupErr = lineupErr
+	if err := e.Reconcile(context.Background(), "up-switch-fails"); !errors.Is(err, lineupErr) {
+		t.Fatalf("reconcile error = %v, want the lineup read failure", err)
+	}
+	if got, err := st.UpcomingAiringsForItem(context.Background(), "lib-1", now); err != nil || len(got) != 0 {
+		t.Fatalf("after a failed move to Tunarr, stored %+v, %v; want none", got, err)
+	}
+}
+
+// failingIndex writes through the real store until fail is set; then indexing fails and clearing
+// still works, as when the guide walk breaks.
+type failingIndex struct {
+	storeUpcoming
+	fail bool
+}
+
+func (f *failingIndex) IndexUpcoming(ctx context.Context, ch channelstore.Channel, from, to time.Time) error {
+	if f.fail {
+		return errors.New("guide walk failed")
+	}
+	return f.storeUpcoming.IndexUpcoming(ctx, ch, from, to)
+}
+
+// When indexing fails, the rows an earlier reconcile stored are cleared rather than served.
+func TestReconcile_UpcomingIndexFailureClearsEarlierRows(t *testing.T) {
+	st := newStore(t)
+	e := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:90000001": "lib-1"}, &fakeGuide{},
+		func() string { return schedule.PlayoutBackendInternal })
+	index := &failingIndex{storeUpcoming: storeUpcoming{st: st}}
+	e.WithUpcomingIndex(index)
+	seedChannel(t, st, "up-walk-fails", 6, entry("movie:tmdb:90000001", "A"))
+	now := time.Unix(1_800_000_000, 0).UTC()
+
+	if err := e.Reconcile(context.Background(), "up-walk-fails"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := st.UpcomingAiringsForItem(context.Background(), "lib-1", now); err != nil || len(got) == 0 {
+		t.Fatalf("first reconcile stored %+v, %v; want lib-1's airing", got, err)
+	}
+
+	index.fail = true
+	if err := e.Reconcile(context.Background(), "up-walk-fails"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := st.UpcomingAiringsForItem(context.Background(), "lib-1", now); err != nil || len(got) != 0 {
+		t.Fatalf("after a failed index, stored %+v, %v; want none", got, err)
+	}
+}
+
 // After a committed reconcile of an internal-playout channel, the upcoming index is asked for the
 // next PremeasureHorizon at the committed revision (#4476).
 func TestReconcile_IndexesUpcomingAfterTheCommit(t *testing.T) {
@@ -176,8 +251,13 @@ func TestReconcile_UpcomingIndexSkipsTunarrChannels(t *testing.T) {
 	if len(upcoming.calls) != 0 {
 		t.Fatalf("Tunarr channel indexed: %+v", upcoming.calls)
 	}
-	if len(upcoming.clears) != 1 {
-		t.Fatalf("Tunarr channel clears = %+v, want one after the commit", upcoming.clears)
+	ch, err := st.GetChannel(context.Background(), "up-tunarr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// One before the projection and one at the committed revision.
+	if len(upcoming.clears) != 2 || upcoming.clears[1].revision != ch.Revision {
+		t.Fatalf("Tunarr channel clears = %+v, want two, the last at revision %d", upcoming.clears, ch.Revision)
 	}
 }
 
