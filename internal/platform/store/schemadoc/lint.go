@@ -23,7 +23,8 @@ import (
 //     and a Unix-seconds one in neither, so a reader never multiplies by the wrong thousand.
 //   - reference: a column named for another row (_id, _by or _ref) is a foreign key (#2793), so it
 //     can't name a row that isn't there. One that must not be (another system's id, a log tag, a
-//     column naming rows of several tables) is listed in NonKeys with why.
+//     column naming rows of several tables) is listed in NonKeys with why. Primary key columns,
+//     members of a composite key included, are not checked.
 //   - json: a column named _json, or one defaulting to a JSON object or array, is declared JSON
 //     (CHECK (json_valid(column)), jsonb in Postgres), so neither engine stores text that isn't.
 //
