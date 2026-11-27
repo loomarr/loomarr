@@ -107,9 +107,11 @@ classify() {
       ;;
   esac
   # The watermark goldens are rendered on amd64. The macOS agent job runs them on arm64, which
-  # catches any arithmetic that rounds per architecture (#4646).
+  # catches any arithmetic that rounds per architecture (#4646). go.mod pins the Go toolchain and
+  # go.sum golang.org/x/image: a compiler or x/image bump can change which products fuse. The path
+  # is the classifier's grain, so any go.sum change selects the job.
   case "$path" in
-    internal/playout/watermark/*)
+    internal/playout/watermark/*|go.mod|go.sum)
       select_gate agent
       ;;
   esac

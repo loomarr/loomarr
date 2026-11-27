@@ -40,4 +40,4 @@ One area of the [package map](../package-map.md#start-here).
 - **`playout/watermark`** · 1 importer · → `playout/watermark/raster`
   Renders a channel's bug (#1512): the small mark burned into a channel's programmes by the GPU overlay (internal/playout, watermark.go).
 - **`playout/watermark/raster`** · 1 importer
-  Golang.org/x/image/vector v0.47.0 (commit c437a9130dcb), cut to the opaque alpha masks the watermark draws, so that every CPU architecture rounds the same way and the watermark render is bit-identical everywhere (#4646).
+  Rasterises the watermark's opaque alpha masks identically on every CPU architecture, so the watermark render is bit-identical everywhere (#4646).

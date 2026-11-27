@@ -18,6 +18,8 @@ watermark-render-go	internal/playout/watermark/render.go	contracts,go,postgres,i
 watermark-raster-go	internal/playout/watermark/raster/raster.go	contracts,go,postgres,image,agent
 watermark-golden	internal/playout/watermark/testdata/looks.golden	contracts,go,agent
 watermark-raster-licence	internal/playout/watermark/raster/LICENSE	contracts,agent
+go-toolchain-pin	go.mod	contracts,go,go_full,postgres,image,agent
+go-module-sums	go.sum	contracts,go,go_full,postgres,image,agent
 rust-worker	rust/loomarr-image/src/lib.rs	rust,image
 migration	internal/platform/store/migrations/sqlite/00001_init.sql	contracts,go,go_full,postgres,image
 schema-reference-words	internal/platform/store/schemadoc/areas/01-people.yaml	go,postgres,image,policy

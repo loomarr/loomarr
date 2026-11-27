@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package raster is golang.org/x/image/vector v0.47.0 (commit c437a9130dcb), cut to the opaque
-// alpha masks the watermark draws, so that every CPU architecture rounds the same way and the
-// watermark render is bit-identical everywhere (#4646).
+// Package raster rasterises the watermark's opaque alpha masks identically on every CPU
+// architecture, so the watermark render is bit-identical everywhere (#4646). It is
+// golang.org/x/image/vector v0.47.0 (commit c437a9130dcb), cut to those masks.
 //
 // Upstream rounds differently per architecture in two places. On amd64 its SSE4.1 assembly sums
 // the coverage of each row four lanes at a time, while other architectures run a sequential loop.

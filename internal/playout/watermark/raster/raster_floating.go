@@ -130,12 +130,14 @@ const (
 	almost65536 = almost256 * 256
 )
 
-// runningSums writes into sums each running sum of src, the cumulative area of every pixel along
-// its row. It adds in the order of upstream's amd64 SSE4.1 accumulator, so that every
-// architecture rounds as the goldens' amd64 renders do. Float addition is not associative, and a
-// sequential sum rounds differently. That accumulator takes four values at a time: it adds the
-// neighbouring pairs, then each lane the sum two lanes before it, then the last total of the
-// previous four. A tail of fewer than four adds one value at a time.
+// runningSums writes into sums each running sum of src, the cumulative area of every pixel. The
+// sum runs across the whole flat buffer, row after row, as upstream's does: each row's areas net
+// to zero, so the total carries no coverage into the next row. It adds in the order of upstream's
+// amd64 SSE4.1 accumulator, so that every architecture rounds as the goldens' amd64 renders do.
+// Float addition is not associative, and a sequential sum rounds differently. That accumulator
+// takes four values at a time: it adds the neighbouring pairs, then each lane the sum two lanes
+// before it, then the last total of the previous four. A tail of fewer than four values at the
+// end of the buffer adds one value at a time.
 func runningSums(sums, src []float32) {
 	var offset float32
 	i := 0
