@@ -116,7 +116,7 @@ const StatusLine = ({
       {status.needsYou > 0 ? <NeedsYouLine needsYou={status.needsYou} onOpenNeeds={onOpenNeeds} /> : null}
       {held ? (
         <Action onPress={onRescan} tone="primary">
-          Check again
+          Check files again
         </Action>
       ) : offline ? (
         <Action disabled={checking} onPress={onCheckAgain} tone="primary">

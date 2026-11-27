@@ -300,22 +300,24 @@ step 5). Nothing reads the scanner's origins until the cutover.
   the pass lock, a pass that finds it taking files hands its files over, and a read whose file a
   later pass wrote meanwhile is dropped. The scanner runs each pass's reads behind it
   (`Importer.Walk`), so a pass asked for while a first import reads (a folder added, Use this
-  folder, Scan now) walks at once, and its new files are listed then, not once every header is
+  folder, Check files again) walks at once, and its new files are listed then, not once every header is
   read.
 - **Removals.** An unreadable root or folder makes the walk incomplete, and nothing is marked
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
   maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once;
   one step 1 is walking or writing stops at the file it is on, and the pass goes on to the next
-  root.
+  root. Settings → Library's Stop using asks first, with Cancel focused: titles found only in that
+  folder leave the Library and channels cannot play them; the files stay on disk.
 - **Passes.** `scan.Scanner` makes one when the app starts, hourly, when a folder is used,
   added or released (its files are forgotten first thing), when a path mapping is set by hand (#3359: a corrected mapping takes without a restart or
-  the hourly wait), and on `POST /v1/library/scan` (Settings → Library's Scan now, as in Emby and
-  Jellyfin). A pass is *asked* when Scan now, Refresh everything, using or adding a folder or
+  the hourly wait), and on `POST /v1/library/scan` (Check files again, in Settings → Library and on a
+  held removal or a skipped file; Emby and Jellyfin's Scan library). A pass is *asked* when Check
+  files again, the library-wide Update details, using or adding a folder or
   setting a mapping started it, or
   it is the start-up pass of a library with no files yet (its first import); an unasked pass with
   nothing to read or look up is *quiet*, and shows only "Checking your folders…".
-  `POST /v1/library/refresh` (Refresh everything, asked first) clears every present file's identity
+  `POST /v1/library/refresh` (Settings → Library's Update details, asked first) clears every present file's identity
   and marks every fetched catalog row due, then starts a pass: each file is written again from its
   name and its apps, each title looked up again, and the headers already read are kept, so nothing
   stops playing. `library.scanner.enabled` (on by default) stops passes, folder passes
@@ -345,7 +347,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   listed it and once its files are written, because over a share either half can take minutes; the
   time left is worked out afresh from when a root's writes begin), 2 *Reading each file* (header reads, growing as passes hand files over; it names the
   file), and 3 *Looking up details* (the Enricher's fetches of catalog rows due as new: never
-  fetched, an outdated shape or language, or marked by Refresh everything; counted when it starts
+  fetched, an outdated shape or language, or marked by the library-wide Update details; counted when it starts
   and grown as more become due; it names the title). Steps 2 and 3 can run together; the status
   shows the earliest one running. A walk begun once reading has begun, a later pass's behind a
   first import's reading, runs behind it: the status stays on step 2 until the reading ends,
@@ -740,7 +742,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left
   ("Adding your media · Step 1 of 3 · 21% · about 9 min left"), paused, checking the folders on a
-  quiet pass, a held removal or an offline folder with Check again, or dead air before any folder
+  quiet pass, a held removal with Check files again or an offline folder with Check again (which only looks at the folders), or dead air before any folder
   is chosen. An import still running for the other folders stays on the line after a held removal
   or an offline folder ("Can't reach your Movies folder · Adding your media · Step 2 of 3 · 34%"),
   and Settings → Library keeps its bar, step, file and time left below the callout; neither says

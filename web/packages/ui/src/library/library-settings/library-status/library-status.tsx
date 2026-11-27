@@ -79,7 +79,7 @@ const LibraryStatus = ({
           actions={
             <>
               <Action onPress={onRescan} tone="primary">
-                Check again
+                Check files again
               </Action>
               <Action onPress={() => onConfirmRemoval(removal.path)} tone="danger">
                 They're gone, remove them
@@ -98,7 +98,7 @@ const LibraryStatus = ({
         <Callout
           actions={
             <Action onPress={onRescan} tone="primary">
-              Check again
+              Check files again
             </Action>
           }
           title={unreadableTitle(unreadable)}
@@ -110,7 +110,7 @@ const LibraryStatus = ({
         <Callout
           actions={
             <Action onPress={onRescan} tone="primary">
-              Check again
+              Check files again
             </Action>
           }
           key={kind.key}
