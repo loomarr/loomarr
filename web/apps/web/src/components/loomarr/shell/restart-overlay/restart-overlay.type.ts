@@ -5,7 +5,6 @@ interface RestartOverlayProps {
   justCameBack?: boolean;
   /** Set when the app never came back — the operator has to act, so this does not fade. */
   failed?: string | null;
-  className?: string;
 }
 
 export type { RestartOverlayProps };
