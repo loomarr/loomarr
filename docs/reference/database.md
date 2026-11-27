@@ -416,14 +416,14 @@ What a channel's schedule put on air: one row each time an episode or film start
 
 What a channel airs in the next two days: one row per episode or film on its timeline, so a title's page can say when it is next on, and where, without walking every channel's schedule. Each reconcile of a channel that Loomarr plays itself replaces the channel's rows with what the guide shows; Tunarr channels have none.
 
-**Kept:** Replaced whole at each reconcile of its channel; goes with its channel (deleted when that is).
+**Kept:** Replaced whole at each reconcile of its channel; goes with its channel, or with its library item (deleted when either is).
 
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `channel_id` | The channel it airs on (channels.id). | `TEXT` · key · → `channels.id` |
 | `starts_at_ms` | When the programme starts, in Unix milliseconds. | `BIGINT` · key |
 | `ends_at_ms` | When the programme ends, in Unix milliseconds. | `BIGINT` |
-| `library_item_id` | The library item id of the episode or film. | `TEXT` |
+| `library_item_id` | The episode or film (library_items.id). | `TEXT` · → `library_items.id` |
 | `title_key` | The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a show. A series finds its next episode through it. | `TEXT` |
 | `forecast` | True when the programme lies past the rolling window on air, so a later reconcile may still change it. | `BOOLEAN` |
 | `revision` | The channel revision the row was computed at. | `BIGINT` |
@@ -1580,7 +1580,7 @@ One row per item whose download has not worked yet. A failed download is tried t
 | --- | --- | --- |
 | `item_key` | Identifies the item: the provider's id for it within its source, or its address for a typed URL. | `TEXT` · key |
 | `provider` | The provider that downloads it, such as archive or youtube. | `TEXT` |
-| `source_id` | The registered source it came from (filler_sources.id). Empty for a typed URL. | `TEXT` |
+| `source_id` | The registered source it came from (filler_sources.id). Empty for a typed URL, and search:archive for an open-search hit. Deliberately not a foreign key: no source row has that value. | `TEXT` |
 | `remote_id` | The provider's id for the item. Empty for a typed URL. | `TEXT` |
 | `url` | The address to download. | `TEXT` |
 | `duration_ms` | The length the listing gave, in milliseconds; 0 when it gave none. | `INTEGER` |

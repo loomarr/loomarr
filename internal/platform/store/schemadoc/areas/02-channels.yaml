@@ -181,12 +181,13 @@ tables:
       Each reconcile of a channel that Loomarr plays itself replaces the channel's rows with what
       the guide shows; Tunarr channels have none.
     retention: >
-      Replaced whole at each reconcile of its channel; goes with its channel (deleted when that is).
+      Replaced whole at each reconcile of its channel; goes with its channel, or with its library
+      item (deleted when either is).
     columns:
       channel_id: The channel it airs on (channels.id).
       starts_at_ms: When the programme starts, in Unix milliseconds.
       ends_at_ms: When the programme ends, in Unix milliseconds.
-      library_item_id: The library item id of the episode or film.
+      library_item_id: The episode or film (library_items.id).
       title_key: >
         The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a
         show. A series finds its next episode through it.

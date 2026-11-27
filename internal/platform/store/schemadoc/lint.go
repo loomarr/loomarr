@@ -202,6 +202,7 @@ var NonKeys = map[string]string{
 	"channels.tunarr_id":                                 "Tunarr's channel id, from the import",
 	"clips.tunarr_program_id":                            "Tunarr's program id, from the import",
 	"filler_acquisition_artifacts.remote_id":             "the provider's own id for the item downloaded",
+	"filler_download_failures.remote_id":                 "the provider's own id for the item to download",
 	"invitations.library_user_id":                        "the media server's account id",
 	"library_candidates.external_id":                     "a catalog's id for the candidate",
 	"library_collections.imported_id":                    "the media server's collection id",
@@ -215,6 +216,7 @@ var NonKeys = map[string]string{
 	"filler_structure_window_call_ledger.assessor_id":    "the model that assessed, by name",
 	// Names rows of several tables, so no one key fits.
 	"activity.subject_id":                            "a channel, title or proposal",
+	"filler_download_failures.source_id":             "a filler source's id, or search:archive, which no row has",
 	"filler_pulls.proposed_by":                       "a person's id or a job's name",
 	"filler_ready_events.enrollment_ref":             "a folder, source or pull, by enrollment_kind",
 	"notification_delivery_attempts.destination_ref": "a destination, or invitation: or person: and an id",
@@ -223,9 +225,8 @@ var NonKeys = map[string]string{
 	// Not a reference at all.
 	"library_answers.answered_by": "who answered: you or search",
 	// Outlives what it names on purpose, so deleting that must not touch it.
-	"filler_acquisition_artifacts.source_id":    "part of the already-downloaded identity, kept after its source is deleted",
-	"filler_split_shadow_decisions.proposal_id": "a shadow decision outlives the split proposal it judged",
-	"viewings.channel_id":                       "watch history outlives the channel",
+	"filler_acquisition_artifacts.source_id": "part of the already-downloaded identity, kept after its source is deleted",
+	"viewings.channel_id":                    "watch history outlives the channel",
 	// Log correlation tags, written from whatever a log line carried, and kept past what they name.
 	"diagnostic_events.actor_id":                "a log tag",
 	"diagnostic_events.channel_id":              "a log tag",

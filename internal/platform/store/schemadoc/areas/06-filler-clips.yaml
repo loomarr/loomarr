@@ -393,7 +393,10 @@ tables:
         Identifies the item: the provider's id for it within its source, or its address for a typed
         URL.
       provider: The provider that downloads it, such as archive or youtube.
-      source_id: The registered source it came from (filler_sources.id). Empty for a typed URL.
+      source_id: >
+        The registered source it came from (filler_sources.id). Empty for a typed URL, and
+        search:archive for an open-search hit. Deliberately not a foreign key: no source row has
+        that value.
       remote_id: The provider's id for the item. Empty for a typed URL.
       url: The address to download.
       duration_ms: The length the listing gave, in milliseconds; 0 when it gave none.
