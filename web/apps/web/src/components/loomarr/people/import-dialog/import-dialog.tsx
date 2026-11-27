@@ -179,7 +179,7 @@ const ImportDialog = ({
                 ) : candidates === undefined ? (
                   <Stack aria-label="Loading media-server accounts" gap="2" role="status">
                     {[0, 1, 2].map((item) => (
-                      <Card className="animate-pulse" flexShrink={0} height={64} key={item} />
+                      <Card data-pulse="loading" flexShrink={0} height={64} key={item} />
                     ))}
                   </Stack>
                 ) : candidates.length === 0 ? (
@@ -243,7 +243,16 @@ const ImportDialog = ({
                               disabled={candidate.imported || importing}
                               onCheckedChange={() => toggle(candidate.id)}
                             />
-                            <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer py-2">
+                            <Stack
+                              cursor="pointer"
+                              flexBasis="0%"
+                              flexGrow={1}
+                              flexShrink={1}
+                              minWidth={0}
+                              paddingVertical={8}
+                              render="label"
+                              {...{ htmlFor: id }}
+                            >
                               <Stack align="center" direction="row" gap="inline" render="span" wrap>
                                 <Text as="span" textRole="cardLabel">
                                   {candidate.name}
@@ -259,7 +268,7 @@ const ImportDialog = ({
                                   Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}
                                 </Text>
                               </Stack>
-                            </label>
+                            </Stack>
                           </Stack>
                         );
                       })}

@@ -1,5 +1,5 @@
 import { redeemInvitationSchema } from "@loomarr/core/schemas";
-import { Action, Icon, icons, LoadingStrip, Stack, StatusLabel, Text } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, LoadingStrip, Stack, StatusLabel, Text } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
 import type { InvitationJoinProps } from "./invitation-join.type";
@@ -24,16 +24,11 @@ const InvitationJoin = ({
 
   if (isLoading) {
     return (
-      <Stack
-        align="center"
-        className="text-muted-foreground min-h-48"
-        direction="row"
-        gap="inline"
-        justify="center"
-        role="status"
-      >
+      <Stack align="center" direction="row" gap="inline" justify="center" minHeight={192} role="status">
         <LoadingStrip decorative width={32} />
-        Checking invitation…
+        <Text as="span" textRole="compact" tone="secondary">
+          Checking invitation…
+        </Text>
       </Stack>
     );
   }
@@ -77,7 +72,7 @@ const InvitationJoin = ({
         </Text>
       </Stack>
 
-      <Stack borderRadius={12} className="border-border bg-muted/25 border" gap="3" padding={16}>
+      <Card gap={12} padding={16}>
         <Stack align="start" direction="row" gap="control">
           <Stack direction="row" marginTop={2} render="span">
             <Icon decorative glyph={icons.person} size="default" tone="primary" />
@@ -95,24 +90,24 @@ const InvitationJoin = ({
           </StatusLabel>
         </Stack>
         {preview.role === "admin" ? (
-          <Stack className="text-onair-300" direction="row" gap="inline" render="p">
+          <Stack direction="row" gap="inline" render="p">
             <Stack direction="row" marginTop={2} render="span">
-              <Icon decorative glyph={icons.verified} size="compact" tone="inherit" />
+              <Icon decorative glyph={icons.verified} size="compact" tone="danger" />
             </Stack>
             <Text as="span" textRole="compact" tone="danger">
               This account will have administrator access to people, settings, and approvals.
             </Text>
           </Stack>
         ) : null}
-        <Stack className="text-muted-foreground" direction="row" gap="inline" render="p">
+        <Stack direction="row" gap="inline" render="p">
           <Stack direction="row" marginTop={2} render="span">
-            <Icon decorative glyph={icons.schedule} size="compact" tone="inherit" />
+            <Icon decorative glyph={icons.schedule} size="compact" tone="secondary" />
           </Stack>
           <Text as="span" textRole="compact" tone="secondary">
             This invitation expires {expires}.
           </Text>
         </Stack>
-      </Stack>
+      </Card>
 
       <Text as="p" textRole="compact" tone="secondary">
         {library
