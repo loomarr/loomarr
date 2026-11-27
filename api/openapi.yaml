@@ -6880,6 +6880,53 @@ components:
       required:
         - label
       type: object
+    LibraryAiringDTO:
+      additionalProperties: false
+      properties:
+        channel:
+          $ref: "#/components/schemas/LibraryChannelDTO"
+        end:
+          format: date-time
+          type: string
+        episode:
+          $ref: "#/components/schemas/LibraryAiringEpisodeDTO"
+          description: A series' episode that airs; absent for any other title, and for an episode the caller doesn't read
+        forecast:
+          description: Past the window on air, so it can still change
+          type: boolean
+        start:
+          format: date-time
+          type: string
+      required:
+        - channel
+        - start
+        - end
+        - forecast
+      type: object
+    LibraryAiringEpisodeDTO:
+      additionalProperties: false
+      properties:
+        end:
+          description: The last episode a multi-episode file holds
+          format: int64
+          type: integer
+        id:
+          type: string
+        name:
+          type: string
+        number:
+          format: int64
+          type: integer
+        season:
+          description: 0 is the specials
+          format: int64
+          type: integer
+      required:
+        - id
+        - name
+        - season
+        - number
+      type: object
     LibraryCandidateDTO:
       additionalProperties: false
       properties:
@@ -7292,6 +7339,11 @@ components:
         match:
           $ref: "#/components/schemas/LibraryMatchDTO"
           description: What decides which title it is. Admins only
+        nextAirings:
+          description: The next programme of it on each channel with one stored (about the next 48 hours; not paused, detached or Tunarr channels), earliest first. One already on air counts
+          items:
+            $ref: "#/components/schemas/LibraryAiringDTO"
+          type: array
         originalTitle:
           description: Its title in its own language, as the source gives it
           type: string
@@ -7338,6 +7390,7 @@ components:
         - credits
         - seasons
         - channels
+        - nextAirings
       type: object
     LibraryItemFileDTO:
       additionalProperties: false
