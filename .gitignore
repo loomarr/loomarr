@@ -12,6 +12,9 @@ encryption.key
 /filler/
 /diagnostics/
 
+# Repo-local pinned tools that `make bootstrap` installs (scripts/macos-ffmpeg.sh).
+/.tools/
+
 # Build output — anchor to repo root so these ignore ONLY the compiled binaries,
 # not the cmd/loomarr and cmd/loomarr-ingest source directories (a bare pattern
 # matches at any depth).

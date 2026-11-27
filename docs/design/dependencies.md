@@ -122,6 +122,12 @@ Containers a contributor starts on demand, digest-pinned in their Compose file. 
 | --- | --- |
 | CloudBeaver Community (`docker/compose.db-view.yaml`) | `make db-view` browses a copy of a SQLite or Postgres database in the browser. Of the popular browser viewers it covers both engines and takes preconfigured read-only connections; Apache-2.0 |
 
+On Apple Silicon, development and tests also use a static arm64 `ffmpeg`/`ffprobe` 9.0.2
+(martin-riedl build, pinned by SHA-256 in `scripts/macos-ffmpeg.pins`), because Homebrew's bottle has
+no `drawtext`. It is never shipped: `make bootstrap` installs it in the gitignored `.tools/ffmpeg/bin`,
+and `make doctor` checks it. A test that needs it takes `FFMPEG_PATH`, then that directory, then
+`PATH` (`internal/testkit/mediatool`); a build installed from other pins fails the test.
+
 ## Documentation tooling
 
 Build-time only; nothing ships. Astro + Starlight renders `docs/` in place; D2 (pinned, containerized)

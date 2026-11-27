@@ -240,6 +240,7 @@ var areas = []area{
 			"testkit/playoutstreamfixture", "testkit/postgresimage", "testkit/recordfixture",
 			"testkit/channeljourney", "testkit/libraryfixture", "testkit/outlookfixture",
 			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "testkit/imagetestkit",
+			"testkit/mediatool",
 			"platform/store/storetest",
 			"demolibrary", "library/tmdb/tmdbstandin", "integration", "eval",
 		},
