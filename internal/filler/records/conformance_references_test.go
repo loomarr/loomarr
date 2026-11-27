@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 )
 
 // saveFillerSources registers an archive source for each id not yet registered, so a download run
@@ -45,6 +47,33 @@ func saveAcquisitionRun(t *testing.T, s Store, id string) {
 		StartedAt: at, CompletedAt: at, UpdatedAt: at,
 	}); err != nil {
 		t.Fatalf("save acquisition run %s: %v", id, err)
+	}
+}
+
+// testClipPipelineForgetsAMissingRun pins enrolment from a sidecar: the file keeps its run's id for
+// good, so it can name a run that is purged or that this database never had. The row is stored
+// naming no run, as the migration stores such a link, rather than refused by the foreign key.
+func testClipPipelineForgetsAMissingRun(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Unix(1_900_000_000, 0).UTC()
+	c := clipAt("sidecar/returned.mp4", "returned", clips.Commercial, 30_000)
+	if err := s.UpsertClip(ctx, Clip{Clip: c, UpdatedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: c.Hash, AcquisitionID: "run-purged", Stage: pipelinestate.StageProbe,
+		Status: pipelinestate.StatusQueued, Disposition: pipelinestate.DispositionRunning,
+		EnrolledAt: at, UpdatedAt: at,
+	}); err != nil {
+		t.Fatalf("enrol a clip naming a missing run: %v", err)
+	}
+	got, found, err := s.GetClipPipeline(ctx, c.Hash)
+	if err != nil || !found {
+		t.Fatalf("pipeline row found %v: %v", found, err)
+	}
+	if got.AcquisitionID != "" {
+		t.Errorf("acquisition id = %q, want none", got.AcquisitionID)
 	}
 }
 

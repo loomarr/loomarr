@@ -108,12 +108,15 @@ func (s *sqlStore) writeClipPipeline(ctx context.Context, exec pipelineExecer, p
 	if len(p.Stages) == 0 {
 		raw = []byte("[]")
 	}
+	// acquisition_id is looked up rather than written as given: enrolment reads it from the file's
+	// sidecar, which can name a run that is purged or that this database never had. Such a row
+	// names no run.
 	_, err = exec.ExecContext(ctx, s.ph(
 		`INSERT INTO filler_clip_pipeline (clip_hash, acquisition_id, stage, status, progress, disposition,
 		   reject_reason, reject_detail, attempts, force_run, next_run,
 		   preparation_attempt, preparation_started_at, preparation_start_reason, preparation_progress,
 		   stage_queued_at, stage_started_at, stages_json, enrolled_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, (SELECT id FROM filler_acquisition_runs WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(clip_hash) DO UPDATE SET
 		   acquisition_id=excluded.acquisition_id,
 		   stage=excluded.stage, status=excluded.status, progress=excluded.progress,
