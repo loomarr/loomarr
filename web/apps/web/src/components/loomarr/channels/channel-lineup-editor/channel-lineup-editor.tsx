@@ -18,12 +18,11 @@ import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOState";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Card, Chip, Stack, Text, Tooltip, typography } from "@loomarr/design-system";
+import { Action, Badge, Card, Chip, Field, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { DiscoveryFeedbackControls, useDiscoveryFeedback } from "@/discovery-feedback";
-import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../shell";
 import type { ChannelLineupEditorProps } from "./channel-lineup-editor.type";
 
@@ -71,6 +70,43 @@ const LineupStateBadge = ({ state, status }: { state?: LineupEntryDTOState; stat
   }
 };
 
+// A season bound's box. The text is the user's until the box loses focus; a blank (or a number below
+// 1) clears the bound, and only a changed bound is committed.
+const SeasonInput = ({
+  disabled,
+  label,
+  onCommit,
+  placeholder,
+  value,
+}: {
+  disabled: boolean;
+  label: string;
+  onCommit: (next: number | undefined) => void;
+  placeholder: string;
+  value: number | undefined;
+}) => {
+  const [text, setText] = useState(value ? String(value) : "");
+  return (
+    <Stack width={88}>
+      <Field
+        accessibilityLabel={label}
+        disabled={disabled}
+        keyboardType="number-pad"
+        onBlur={() => {
+          const parsed = text.trim() === "" ? undefined : Number(text);
+          if (parsed !== undefined && Number.isNaN(parsed)) return;
+          const next = parsed && parsed >= 1 ? parsed : undefined;
+          if (next === (value || undefined)) return;
+          onCommit(next);
+        }}
+        onChangeText={setText}
+        placeholder={placeholder}
+        value={text}
+      />
+    </Stack>
+  );
+};
+
 // One row: drag handle, name/year, a state badge when the title isn't playing yet (see
 // LineupStateBadge — never an error state except a genuine "gave up"), and remove. Not
 // exported from the barrel — same "internal row" shape as RefineReview's Row or
@@ -100,112 +136,100 @@ const SortableLineupRow = ({
     isDragging,
   } = useSortable({ id: entry.key });
 
+  // A dragged row lifts above its neighbours, dimmed, with a shadow.
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
+    ...(isDragging && {
+      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)",
+      opacity: 0.7,
+      zIndex: 10,
+    }),
   };
 
   // Only a SERIES carries a season window (§9 series expansion) — a movie is one title.
   const isSeries = entry.key.startsWith("series:");
   const seasonInput = (bound: "seasonMin" | "seasonMax", value: number | undefined, placeholder: string) => (
-    <input
-      type="number"
-      min={1}
+    <SeasonInput
       disabled={disabled}
-      defaultValue={value || ""}
+      label={`${entry.name} ${bound === "seasonMin" ? "first" : "last"} season`}
+      onCommit={(next) => onSeasonChange?.({ [bound]: next })}
       placeholder={placeholder}
-      aria-label={`${entry.name} ${bound === "seasonMin" ? "first" : "last"} season`}
-      className="border-border bg-background focus-visible:ring-ring w-16 rounded border px-2 py-1 focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
-      style={{
-        fontSize: typography.pointer.hint.size,
-        fontWeight: typography.pointer.hint.weight,
-        lineHeight: `${typography.pointer.hint.lineHeight}px`,
-      }}
-      onBlur={(e) => {
-        const next = e.target.value === "" ? undefined : Number(e.target.value);
-        if (next === (value || undefined)) return;
-        onSeasonChange?.({ [bound]: next });
-      }}
+      value={value}
     />
   );
 
-  // ⚠ NARROW COLUMNS STACK (#1896). One line of grip · title · Keep/Less/Never/Surprise · remove
-  // needs ~28rem; on a phone the Programming column is ~14rem, and the controls crushed the title
-  // to nothing and ran over the season inputs. Below `@md` of the list (a container query, because
-  // what decides it is the column the editor sits in, not the viewport) the row becomes a grid:
-  // grip and title on top, the seasons under the title, the feedback controls, then remove on its
-  // own line at the right with a 44 px target. Every piece auto-places in DOM order, so what you
-  // see is the Tab order at every width: grip → seasons → feedback → remove (#1899: remove is last
-  // in Tab order, so it is never drawn top right beside the title). From `@md` up the
-  // wrappers below dissolve (`contents`) so the row is one flex line.
+  // ⚠ NARROW COLUMNS WRAP (#1896). One line of grip · title · Keep/Less/Never/Surprise · remove
+  // needs ~28rem, and on a phone the Programming column is ~14rem. The row is a wrapping line: the
+  // title keeps at least 160 px, and the pieces that do not fit drop to the next line, with remove
+  // at the right and a 44 px target. The pieces sit in DOM order, so what you see is the Tab order
+  // at every width: grip → seasons → feedback → remove (#1899: remove is last in Tab order, so it
+  // is never drawn top right beside the title).
   return (
-    <li
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "border-border bg-card grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-md border px-3 py-2.5 @md:flex",
-        isDragging && "z-10 opacity-70 shadow-md",
-      )}
-    >
-      <Action
-        {...attributes}
-        {...listeners}
-        compact
-        disabled={disabled}
-        icon="dragHandle"
-        layout="icon"
-        style={{ flexShrink: 0 }}
-        variant="ghost"
-      >
-        {`Reorder ${entry.name}`}
-      </Action>
-
-      <div className="contents @md:block @md:min-w-0 @md:flex-1">
-        <Stack align="center" direction="row" flexShrink={1} gap="inline" minWidth={0} wrap>
-          <Text as="span" numberOfLines={1} textRole="cardLabel" tone="primary">
-            {entry.name}
-          </Text>
-          {entry.year ? (
-            <Text as="span" textRole="mono" tone="secondary">
-              {entry.year}
-            </Text>
-          ) : null}
-          <LineupStateBadge state={entry.state} status={entry.downloadStatus} />
-        </Stack>
-        {isSeries && onSeasonChange && (
-          <Stack align="center" className="col-[2/-1] @md:mt-1.5" direction="row" gap="1.5" wrap>
-            <Text as="span" textRole="hint" tone="secondary">
-              Seasons
-            </Text>
-            {/* The two bounds wrap as one, never "1" on one line and "– latest" on the next. */}
-            <Stack align="center" direction="row" gap="1.5" render="span">
-              {seasonInput("seasonMin", entry.seasonMin, "1")}
-              <Text aria-hidden as="span" textRole="hint" tone="secondary">
-                –
-              </Text>
-              {seasonInput("seasonMax", entry.seasonMax, "latest")}
-            </Stack>
-          </Stack>
-        )}
-      </div>
-
-      {feedback && <div className="col-[2/-1] @md:contents">{feedback}</div>}
-
-      <div className="col-[2/-1] shrink-0 justify-self-end">
-        <Tooltip content="Remove from lineup">
-          {/* touch density: a narrow row's Remove must be a 44 px target; pointer's 40 is short. */}
+    <li ref={setNodeRef} style={style}>
+      <Card borderRadius={6} paddingHorizontal={12} paddingVertical={10}>
+        <Stack align="center" columnGap="3" direction="row" rowGap="2" wrap>
           <Action
-            density="touch"
+            {...attributes}
+            {...listeners}
+            compact
             disabled={disabled}
-            icon="close"
+            icon="dragHandle"
             layout="icon"
-            onPress={onRemove}
+            style={{ flexShrink: 0 }}
             variant="ghost"
           >
-            {`Remove ${entry.name}`}
+            {`Reorder ${entry.name}`}
           </Action>
-        </Tooltip>
-      </div>
+
+          <Stack flexBasis={160} flexGrow={1} flexShrink={1} gap="1.5" minWidth={0}>
+            <Stack align="center" direction="row" flexShrink={1} gap="inline" minWidth={0} wrap>
+              <Text as="span" numberOfLines={1} textRole="cardLabel" tone="primary">
+                {entry.name}
+              </Text>
+              {entry.year ? (
+                <Text as="span" textRole="mono" tone="secondary">
+                  {entry.year}
+                </Text>
+              ) : null}
+              <LineupStateBadge state={entry.state} status={entry.downloadStatus} />
+            </Stack>
+            {isSeries && onSeasonChange && (
+              <Stack align="center" direction="row" gap="1.5" wrap>
+                <Text as="span" textRole="hint" tone="secondary">
+                  Seasons
+                </Text>
+                {/* The two bounds wrap as one, never "1" on one line and "– latest" on the next. */}
+                <Stack align="center" direction="row" gap="1.5" render="span">
+                  {seasonInput("seasonMin", entry.seasonMin, "1")}
+                  <Text aria-hidden as="span" textRole="hint" tone="secondary">
+                    –
+                  </Text>
+                  {seasonInput("seasonMax", entry.seasonMax, "latest")}
+                </Stack>
+              </Stack>
+            )}
+          </Stack>
+
+          {feedback}
+
+          <Stack flexShrink={0} marginLeft="auto">
+            <Tooltip content="Remove from lineup">
+              {/* touch density: a narrow row's Remove must be a 44 px target; pointer's 40 is short. */}
+              <Action
+                density="touch"
+                disabled={disabled}
+                icon="close"
+                layout="icon"
+                onPress={onRemove}
+                variant="ghost"
+              >
+                {`Remove ${entry.name}`}
+              </Action>
+            </Tooltip>
+          </Stack>
+        </Stack>
+      </Card>
     </li>
   );
 };
@@ -301,7 +325,11 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
           </Text>
         </div>
 
-        {feedback.error && <ErrorState error={feedback.error} onRetry={feedback.retry} className="p-4" />}
+        {feedback.error && (
+          <Stack padding={16}>
+            <ErrorState error={feedback.error} onRetry={feedback.retry} />
+          </Stack>
+        )}
 
         {/* Sort is a VIEW, not an edit — nothing here writes. Newest-first exists because
           auto-curate appends, so the default play order shows the oldest picks first and hides
@@ -354,10 +382,9 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
               <SortableContext items={shown.map((e) => e.key)} strategy={verticalListSortingStrategy}>
                 {/* Cap the lineup at a comfortable height and scroll INSIDE once it's long — a
                 channel with many titles otherwise runs the page off. max-height means a short
-                lineup isn't boxed (the scroll only appears when it overflows). scroll-thin
-                (styles.css) is the same token-keyed slim scrollbar the cycle preview uses.
-                dnd-kit auto-scrolls this container during a drag toward its edges. */}
-                <Stack className="scroll-thin @container max-h-128 overflow-y-auto" gap="inline" render="ul">
+                lineup isn't boxed (the scroll only appears when it overflows). dnd-kit
+                auto-scrolls this container during a drag toward its edges. */}
+                <Stack gap="inline" maxHeight={512} overflowY="auto" render="ul">
                   {shown.map((entry) => (
                     <SortableLineupRow
                       key={entry.key}

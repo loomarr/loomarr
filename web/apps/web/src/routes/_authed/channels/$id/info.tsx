@@ -74,9 +74,7 @@ const InfoScreen = () => {
             channel sounds the way it does. It renders nothing when the channel has no break pool
             (or the install has no filler), so a channel without commercials is simply quiet here
             rather than showing an empty panel. */}
-          <div className="border-border border-t pt-3 empty:hidden">
-            <ChannelBreaks channelId={id} />
-          </div>
+          <ChannelBreaks channelId={id} />
 
           <Stack borderColor="borderDecorative" borderTopWidth={1} paddingTop={12}>
             <Text as="p" textRole="compact">
