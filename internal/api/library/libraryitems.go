@@ -323,7 +323,7 @@ type libraryStreamDTO struct {
 	Height          int    `json:"height,omitempty" doc:"A video track's height in pixels"`
 	FrameRate       string `json:"frameRate,omitempty" doc:"As the file states it, such as 24000/1001"`
 	DynamicRange    string `json:"dynamicRange,omitempty" enum:"Dolby Vision,HDR10,HLG,HDR" doc:"A video track's high dynamic range; absent for standard range"`
-	Language        string `json:"language,omitempty" doc:"ISO 639-1 where one exists, else as the file says it"`
+	Language        string `json:"language,omitempty" doc:"ISO 639-1 where one exists, else what the file says; lower case"`
 	LanguageName    string `json:"languageName,omitempty" doc:"The language's English name"`
 	Channels        int    `json:"channels,omitempty" doc:"An audio track's channel count"`
 	ChannelLayout   string `json:"channelLayout,omitempty" doc:"An audio track's layout, such as 5.1(side)"`

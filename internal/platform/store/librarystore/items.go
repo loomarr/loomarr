@@ -150,8 +150,8 @@ type LibraryStream struct {
 	Kind                  string
 	Codec, Profile, Title string
 	Default, Forced       bool
-	// Language is the ISO 639-1 code where one exists (else as the file says it); LanguageName
-	// its English name.
+	// Language is the ISO 639-1 code where one exists (else what the file says), in lower case;
+	// LanguageName its English name.
 	Language, LanguageName string
 	Channels               int
 	ChannelLayout          string
@@ -507,10 +507,17 @@ var letterBuckets = func() string {
 	return strings.Join(letters, ", ")
 }()
 
-func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
+// ListCountQuery is the statement, and its arguments, that counts q's list, for the plan test.
+func (s *Store) ListCountQuery(q LibraryItemQuery) (string, []any) {
+	from, args, _, _ := s.listFrom(q)
+	return s.ph(`SELECT COUNT(*)` + from), args
+}
+
+// listFrom is q's list as its FROM and WHERE with their arguments, and its order with its own.
+func (s *Store) listFrom(q LibraryItemQuery) (from string, args []any, order string, orderArgs []any) {
 	where, args := listedTitles(q.Kind, q.Member)
 	// order ranks a search's name matches first; orderArgs are its arguments.
-	order, orderArgs := ` ORDER BY i.sort_name, i.id`, []any{}
+	order, orderArgs = ` ORDER BY i.sort_name, i.id`, []any{}
 	if q.Recent {
 		order = ` ORDER BY i.updated_at_ms DESC, i.id`
 	}
@@ -538,7 +545,11 @@ func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Libra
 	if q.Ready {
 		where = append(where, countFiles(` AND f.header = 'pending'`)+` = 0`)
 	}
-	from := ` FROM library_items i WHERE ` + strings.Join(where, " AND ")
+	return ` FROM library_items i WHERE ` + strings.Join(where, " AND "), args, order, orderArgs
+}
+
+func (s *Store) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
+	from, args, order, orderArgs := s.listFrom(q)
 	var page LibraryItemPage
 	if q.Letters && !q.Recent {
 		// The window's ORDER BY precedes the WHERE in the text, so its arguments come first.

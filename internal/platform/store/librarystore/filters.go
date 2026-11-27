@@ -43,12 +43,6 @@ func playingTrack(cond string, args ...any) (string, []any) {
 		slices.Concat(args, args)
 }
 
-// TrackFilterQuery is the list's count under a track filter, for the plan test.
-func TrackFilterQuery() string {
-	cond, _ := playingTrack(`st.kind = 'audio' AND st.language = 'en'`)
-	return `SELECT COUNT(*) FROM library_items i WHERE i.kind = 'movie' AND ` + cond
-}
-
 // filterTitles is the conditions, and their arguments, q's filters put on a title i. They AND
 // together; each track filter may be met by a different file.
 func (s *Store) filterTitles(q LibraryItemQuery) ([]string, []any) {
@@ -72,7 +66,9 @@ func (s *Store) filterTitles(q LibraryItemQuery) ([]string, []any) {
 	}
 	for _, language := range []struct{ kind, code string }{{"audio", q.Audio}, {"subtitle", q.Subtitles}} {
 		if code := strings.ToLower(strings.TrimSpace(language.code)); code != "" {
-			track(`st.kind = '`+language.kind+`' AND `+s.lower("st.language")+` = ?`, code)
+			// The column stays bare, so the (kind, language) index reaches the language: the
+			// scanner writes every code in lower case.
+			track(`st.kind = '`+language.kind+`' AND st.language = ?`, code)
 		}
 	}
 	if q.UHD {
@@ -157,7 +153,7 @@ func (s *Store) trackFacets(ctx context.Context, kind string, member bool, out *
 	rows, err := s.h.QueryContext(ctx, s.ph(`WITH listed AS (SELECT i.id FROM library_items i WHERE `+
 		strings.Join(where, " AND ")+`),
 		played AS (`+under("inventory_item_id")+` UNION ALL `+under("inventory_series_id")+`)
-		SELECT DISTINCT p.title, st.kind, `+s.lower("st.language")+`, st.language_name, st.resolution, st.hdr
+		SELECT DISTINCT p.title, st.kind, st.language, st.language_name, st.resolution, st.hdr
 		FROM played p
 		JOIN library_sources src ON src.item_id = p.item AND src.path = p.path
 		JOIN library_streams st ON st.item_id = src.item_id AND st.path = src.path

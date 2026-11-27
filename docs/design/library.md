@@ -484,8 +484,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   such a track in the copy that plays:** a file that is present, can be imported and whose header
   has not failed, and a source with `plays` set, so an extra copy that never plays counts for
   nothing. A series matches when any one episode listed under it does, and two track filters may
-  be met by different episodes. The matching titles are gathered once per request from the
-  track index; no index of its own is needed.
+  be met by different episodes. Each statement (the count, the page, the letters) gathers the
+  matching titles once from the `(kind, language)` track index, so no index of its own is
+  needed. The scanner stores every language code in lower case and the filter lower-cases what
+  it is asked, so the column is compared as it is.
   `GET /v1/library/facets` lists the choices of those filters except `genre` and `person`, each
   with how many listed titles it keeps, under `kind` like the list: `studios`, `audio` and
   `subtitles` languages (by name; a track that states no language is no choice), the `uhd` and

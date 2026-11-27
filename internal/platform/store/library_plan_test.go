@@ -8,14 +8,13 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
-// The shows waiting for an episode order are read from the partial index on unnumbered episodes,
-// so the Library status and Needs you cost what waits, not the size of the library. Matching on
-// kind as well led SQLite down the kind index instead: a walk over every episode on each read.
 // A track filter gathers its titles once, from the track index to each copy and file by key:
-// nothing is looked for title by title, and no table is read whole.
+// nothing is looked for title by title, no table is read whole, and a language is matched in the
+// index, not read from every track of the kind. The statement explained is the list's own.
 func TestTrackFiltersReadTheirIndexes(t *testing.T) {
 	s := newSQLiteStore(t).(*sqlStore)
-	rows, err := s.db.QueryContext(context.Background(), `EXPLAIN QUERY PLAN `+librarystore.TrackFilterQuery())
+	query, args := s.ListCountQuery(librarystore.LibraryItemQuery{Kind: "movie", Audio: "EN", Subtitles: "fr"})
+	rows, err := s.db.QueryContext(context.Background(), `EXPLAIN QUERY PLAN `+query, args...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,18 +32,36 @@ func TestTrackFiltersReadTheirIndexes(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log(strings.Join(plan, "\n"))
+	indexed := 0
 	for _, step := range plan {
+		if strings.Contains(step, "idx_library_streams_language (kind=? AND language=?)") {
+			indexed++
+		}
 		for _, table := range []string{"f", "src", "st"} {
 			if step == "SCAN "+table || strings.HasPrefix(step, "SCAN "+table+" ") {
 				t.Errorf("a track filter scans a table: %q", step)
 			}
 		}
-		if strings.HasPrefix(step, "CORRELATED") {
-			t.Errorf("a track filter is looked for title by title: %q", step)
+	}
+	// Two language filters, each a movie's own files and a series' episodes.
+	if indexed != 4 {
+		t.Errorf("%d of 4 track reads match the language in the index:\n%s", indexed, strings.Join(plan, "\n"))
+	}
+	// Each filter's titles are one list, not a subquery run again for each title.
+	lists := 0
+	for _, step := range plan {
+		if strings.HasPrefix(step, "LIST SUBQUERY") {
+			lists++
 		}
+	}
+	if lists != 2 {
+		t.Errorf("%d of 2 track filters gather their titles once:\n%s", lists, strings.Join(plan, "\n"))
 	}
 }
 
+// The shows waiting for an episode order are read from the partial index on unnumbered episodes,
+// so the Library status and Needs you cost what waits, not the size of the library. Matching on
+// kind as well led SQLite down the kind index instead: a walk over every episode on each read.
 func TestWaitingShowsReadTheirIndex(t *testing.T) {
 	s := newSQLiteStore(t).(*sqlStore)
 	rows, err := s.db.QueryContext(context.Background(), `EXPLAIN QUERY PLAN `+librarystore.WaitingShowsQuery())

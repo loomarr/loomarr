@@ -37,6 +37,9 @@ func TestLibraryFiltersFacetsAndPeople(t *testing.T) {
 		title("90000201", "Alpha", "Larkfield", "Ada/Quill", "fr", true),
 		title("90000202", "folder name", "Hidden House", "Unseen Person", "ja", false),
 	}
+	// A person a catalog identifies, whose title carries the credit by that id.
+	items[0].Credits = append(items[0].Credits, librarystore.LibraryCredit{Name: "Bram Fen", Role: "director",
+		ID: librarystore.LibraryID{Namespace: "tmdb", Value: "90000901"}})
 	if err := h.Store.SaveLibraryItems(ctx, items, at); err != nil {
 		t.Fatal(err)
 	}
@@ -100,6 +103,22 @@ func TestLibraryFiltersFacetsAndPeople(t *testing.T) {
 				t.Errorf("member %s carries %q: %s", route, hidden, got)
 			}
 		}
+	}
+	// A search only a hidden title's person matches finds them for an admin alone.
+	if got := body("/v1/library/people?q=unseen", memberToken, http.StatusOK); !strings.Contains(got, `"people":[]`) {
+		t.Errorf("member search for a hidden title's person = %s", got)
+	}
+	if got := body("/v1/library/people?q=unseen", adminToken, http.StatusOK); !strings.Contains(got, "Unseen Person") {
+		t.Errorf("admin search for the same person = %s", got)
+	}
+	// A linked person's credit carries their catalog id, which reads them and lists their titles.
+	linked := "tmdb:90000901"
+	if !strings.Contains(detail, `"personId":"`+linked+`"`) {
+		t.Errorf("title lacks the linked person's id: %s", detail)
+	}
+	body("/v1/library/people/"+linked, memberToken, http.StatusOK)
+	if p := wallList(t, h, memberToken, url.Values{"person": {linked}}); wallNames(p) != "Alpha" {
+		t.Errorf("linked person's titles = %q", wallNames(p))
 	}
 	body("/v1/library/people/"+url.PathEscape("name:Unseen Person"), memberToken, http.StatusNotFound)
 	body("/v1/library/people/"+url.PathEscape("name:Unseen Person"), adminToken, http.StatusOK)

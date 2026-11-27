@@ -8132,7 +8132,7 @@ components:
             - subtitle
           type: string
         language:
-          description: ISO 639-1 where one exists, else as the file says it
+          description: ISO 639-1 where one exists, else what the file says; lower case
           type: string
         languageName:
           description: The language's English name

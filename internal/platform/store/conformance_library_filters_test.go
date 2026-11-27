@@ -150,6 +150,15 @@ func testLibraryFilters(t *testing.T, newStore NewStoreFunc) {
 	if people, err = st.LibraryPeople(ctx, "QUILL", "series", false, 10); err != nil || len(people) != 0 {
 		t.Errorf("series people named quill = %+v, %v", people, err)
 	}
+	// LIKE's wildcards are text in a search, and the limit cuts the list.
+	for _, wildcard := range []string{"%", "_"} {
+		if got, err := st.LibraryPeople(ctx, wildcard, "", false, 10); err != nil || len(got) != 0 {
+			t.Errorf("people named %q = %+v, %v", wildcard, got, err)
+		}
+	}
+	if got, err := st.LibraryPeople(ctx, "", "", true, 1); err != nil || !slices.Equal(got, want[:1]) {
+		t.Errorf("the first person = %+v, %v", got, err)
+	}
 	if p, err := st.LibraryPerson(ctx, "tmdb:90000901", true); err != nil || p != want[0] {
 		t.Errorf("person = %+v, %v", p, err)
 	}
