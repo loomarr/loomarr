@@ -39,6 +39,8 @@ REPO_ROOT="$(CDPATH='' cd -- "$REPO_ROOT" && pwd -P)"
 # shellcheck source=scripts/dev-processes.sh
 . "$REPO_ROOT/scripts/dev-processes.sh"
 BIN="$REPO_ROOT/tmp/loomarr-dev"
+# Air appends to this log on every failed build and never on a successful one.
+BUILD_LOG="$REPO_ROOT/tmp/build-errors.log"
 POLL_SECONDS="${DEV_BE_WATCHDOG_POLL:-10}"
 # 3 strikes × 10s = 30s of continuous staleness before we act. Air's poll_interval (0.5s) + delay
 # (0.4s) + a cold incremental Go/Rust build is comfortably under that, so a healthy rebuild never
@@ -98,6 +100,20 @@ while air_alive; do
   stale="$(newest_src_after_bin)"
   if [ -z "$stale" ] || [ "$stale" = "nobin" ]; then
     # Not stale (or no binary yet — Air's first build hasn't finished). Reset.
+    strikes=0
+    nudged=0
+    continue
+  fi
+
+  # A failing build leaves the binary stale as well, but Air is rebuilding: its build log is newer
+  # than the binary exactly when the last build failed. Restarting would only rerun the same old
+  # binary, so say so once per failure and wait for the fix.
+  if [ -n "$(find "$BUILD_LOG" -newer "$BIN" 2>/dev/null)" ]; then
+    failure="$(ls -ln "$BUILD_LOG" 2>/dev/null)"
+    if [ "$failure" != "${reported_failure:-}" ]; then
+      echo "dev-be-watchdog: the build is failing, so Air is serving the last binary that built. Air's output above has the error." >&2
+      reported_failure="$failure"
+    fi
     strikes=0
     nudged=0
     continue

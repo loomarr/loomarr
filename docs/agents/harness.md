@@ -168,7 +168,8 @@ checked-in `orca.yaml` is a thin adapter over `scripts/agent.sh`:
 - **setup** registers the worktree under its branch name, which allocates its ports and database,
   then runs `make bootstrap`'s steps. Agents wait for setup (`setupAgentStartupPolicy:
   wait-for-setup`), so none starts against a half-installed tree.
-- **archive** releases the registration when Orca removes the worktree.
+- **archive** stops every process still running in the worktree (`make agent-reap`'s reaper), then
+  releases the registration, when Orca removes the worktree.
 
 Registration from the hook carries no claims. Add them before editing a shared output:
 `make agent-start TASK=<branch> CLAIMS=...`.
@@ -183,6 +184,9 @@ Orca keeps its settings for each repo outside the repository, so each machine ne
   settings with `orca repo show --repo <id> --json`; the CLI has no hook-settings setter.
 - **Agent status hooks** enabled for both Codex and Claude: `orca agent hooks status --json`.
   A launch receipt or visible idle pane alone does not prove worker readiness.
+
+`make doctor` compares the base ref, setup run policy, agent startup policy and local scripts with
+this list and prints a warning, with the fix, for each that differs.
 
 #### Select a model for the task
 
@@ -365,7 +369,16 @@ instead of silently moving.
 
 Air and its watchdog match processes by command and worktree directory. `DEV_BE_REPLACE=1` can
 replace only this worktree's processes. A listener owned by another worktree is reported and left
-alone.
+alone. One left by a removed worktree (deleted, or in the Trash or Orca's trash) is stopped by
+`make dev-be` and `make dev-fe` before they bind.
+
+`make dev-be` builds before it serves: it removes the last session's binary, so a tree that does
+not compile serves nothing rather than an old build. During a session a failing build keeps the
+last good binary running, and the watchdog reports the failure instead of restarting it.
+
+`make dev-fe` runs `pnpm install` and codegen when the lockfile, `api/openapi.yaml` or the design
+system changed since its last run, which covers a pull, rebase or branch switch in a long-lived
+worktree or the primary checkout.
 
 ## Baselines and gates
 
