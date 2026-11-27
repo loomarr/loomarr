@@ -1,6 +1,6 @@
 import { Action, Text } from "@loomarr/design-system";
 import { Line, PAGE_GUTTER, Stack } from "../library-poster";
-import { useTitleLayout } from "./title-parts";
+import { useTitleLayout } from "../title-parts";
 
 // A title the Library doesn't hold for this viewer: an unknown id, or one hidden from a member.
 // There is nothing to retry, so the page offers only the way back.

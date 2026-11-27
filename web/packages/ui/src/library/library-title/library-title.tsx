@@ -16,6 +16,7 @@ import { type ReactNode, useState } from "react";
 import { Line, PAGE_GUTTER, Stack, Twirl } from "../library-poster";
 import { PickTitle } from "../pick-title";
 import { TechnicalDetails } from "../technical-details";
+import { CastAndCrew, Hero, OnChannels, playingLine, useTitleLayout } from "../title-parts";
 import type {
   LibraryTitleDetail,
   LibraryTitleFile,
@@ -23,7 +24,6 @@ import type {
   LibraryTitleProps,
   LibraryTitleSeason,
 } from "./library-title.type";
-import { CastAndCrew, Hero, OnChannels, playingLine, useTitleLayout } from "./title-parts";
 
 // The title and what an admin can do about it.
 type TitleFixes = LibraryTitleFix & Pick<LibraryTitleProps, "title">;

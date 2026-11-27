@@ -1,3 +1,4 @@
+export { LibraryTitleMissing } from "../title-missing";
 export { LibraryTitle } from "./library-title";
 export type {
   LibraryTitleAiring,
@@ -12,4 +13,3 @@ export type {
   LibraryTitleProps,
   LibraryTitleSeason,
 } from "./library-title.type";
-export { LibraryTitleMissing } from "./title-missing";

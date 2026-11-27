@@ -2,13 +2,13 @@ import { Surface, Text, useWindowWidth, VisuallyHidden } from "@loomarr/design-s
 import type { ReactNode } from "react";
 import { ChannelIdentity } from "../../identity";
 import { Line, Stack } from "../library-poster";
-import { lengthPhrase, picturePhrase, soundPhrase } from "../technical-details";
 import type {
   LibraryTitleAiring,
   LibraryTitleDetail,
   LibraryTitlePerson,
   LibraryTitlePlaying,
-} from "./library-title.type";
+} from "../library-title/library-title.type";
+import { lengthPhrase, picturePhrase, soundPhrase } from "../technical-details";
 
 // The parts of the TV-app title page (#4476): the hero, the channels and the people.
 
