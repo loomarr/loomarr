@@ -1,10 +1,14 @@
 import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { render } from "@/test/render";
+import { setWindowWidth } from "@/test/window-width";
 import { DiagnosticsSplitPane } from "./diagnostics-split-pane";
 
 describe("DiagnosticsSplitPane", () => {
+  beforeEach(() => setWindowWidth(1440));
+  afterEach(() => setWindowWidth(0));
+
   it("resizes accessibly and remembers the detail width for this session", () => {
     render(
       <DiagnosticsSplitPane
@@ -35,7 +39,7 @@ describe("DiagnosticsSplitPane", () => {
     await userEvent.click(screen.getByRole("button", { name: "Hide details" }));
     expect(screen.getByText("Evidence list")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show details" })).toBeInTheDocument();
-    expect(screen.getByTestId("diagnostics-secondary-pane")).toHaveClass("hidden");
+    expect(screen.queryByText("Selected evidence")).not.toBeVisible();
 
     await userEvent.click(screen.getByRole("button", { name: "Show details" }));
     expect(screen.getByRole("separator", { name: "Resize details" })).toBeInTheDocument();
