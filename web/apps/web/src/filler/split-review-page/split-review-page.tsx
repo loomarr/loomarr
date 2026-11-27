@@ -5,7 +5,7 @@ import type { SplitLanguageExclusion } from "@loomarr/api/models/splitLanguageEx
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { formatMmSs, pluralize } from "@loomarr/core/format";
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Details, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -31,39 +31,45 @@ const LanguageReceipt = ({
 }) => {
   if (exclusions.length === 0) return null;
   return (
-    <details className="border-border bg-muted/20 rounded-lg border p-4">
-      <Text as="summary" cursor="pointer" textRole="cardLabel">
-        Loomarr left out {pluralize(exclusions.length, "clip")} spoken in another language
-        <Text as="span" className="ml-1" textRole="compact" tone="secondary">
-          · Show skipped {exclusions.length === 1 ? "clip" : "clips"}
-        </Text>
-      </Text>
-      <Stack marginTop={8}>
-        <Text as="p" textRole="compact" tone="secondary">
-          This split was checked for {languageList(checkedFor)}. These clips remain in the original
-          compilation but won’t be added as filler.
-        </Text>
-      </Stack>
-      <Stack gap="2" marginTop={12} render="ul">
-        {exclusions.map((item) => (
-          <Stack
-            borderRadius={8}
-            className="bg-background/60"
-            key={`${item.startMs}-${item.endMs}`}
-            paddingHorizontal={12}
-            paddingVertical={8}
-            render="li"
-          >
-            <Text as="span" textRole="cardLabel">
-              {item.name}
+    <Card padding={16}>
+      <Details
+        summary={
+          <>
+            Loomarr left out {pluralize(exclusions.length, "clip")} spoken in another language
+            <Text as="span" marginLeft={4} textRole="compact" tone="secondary">
+              · Show skipped {exclusions.length === 1 ? "clip" : "clips"}
             </Text>
-            <Text as="span" textRole="hint" tone="secondary">
-              {`${languageName(item.detectedLanguage)} · ${formatMmSs(item.startMs)}–${formatMmSs(item.endMs)}`}
-            </Text>
-          </Stack>
-        ))}
-      </Stack>
-    </details>
+          </>
+        }
+        textRole="cardLabel"
+      >
+        <Stack marginTop={8}>
+          <Text as="p" textRole="compact" tone="secondary">
+            This split was checked for {languageList(checkedFor)}. These clips remain in the original
+            compilation but won’t be added as filler.
+          </Text>
+        </Stack>
+        <Stack gap="2" marginTop={12} render="ul">
+          {exclusions.map((item) => (
+            <Stack
+              backgroundColor="surfaceCanvas"
+              borderRadius={8}
+              key={`${item.startMs}-${item.endMs}`}
+              paddingHorizontal={12}
+              paddingVertical={8}
+              render="li"
+            >
+              <Text as="span" textRole="cardLabel">
+                {item.name}
+              </Text>
+              <Text as="span" textRole="hint" tone="secondary">
+                {`${languageName(item.detectedLanguage)} · ${formatMmSs(item.startMs)}–${formatMmSs(item.endMs)}`}
+              </Text>
+            </Stack>
+          ))}
+        </Stack>
+      </Details>
+    </Card>
   );
 };
 
@@ -168,43 +174,44 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
         <Text as="h1" textRole="title">
           Review clips
         </Text>
-        <Text as="p" className="mt-1 max-w-2xl" textRole="compact" tone="secondary">
-          Loomarr found these clips in{" "}
-          <Text as="span" textRole="cardLabel" tone="primary">
-            {parentName}
+        <Stack marginTop={4} maxWidth={672}>
+          <Text as="p" textRole="compact" tone="secondary">
+            Loomarr found these clips in{" "}
+            <Text as="span" textRole="cardLabel" tone="primary">
+              {parentName}
+            </Text>
+            . Preview anything that needs a closer look, then keep the clips you want. The original recording
+            stays available if you need it later.
           </Text>
-          . Preview anything that needs a closer look, then keep the clips you want. The original recording
-          stays available if you need it later.
-        </Text>
+        </Stack>
       </div>
       {languageChanged ? (
-        <Stack
-          align={{ base: "stretch", sm: "center" }}
-          borderRadius={12}
-          className="border-caution/40 bg-caution-tint-15 border"
-          direction={{ base: "column", sm: "row" }}
-          gap="3"
-          justify={{ base: "start", sm: "between" }}
-          padding={16}
-        >
-          <div>
-            <Text as="p" textRole="heading">
-              {currentLanguageHeadline}
-            </Text>
-            <Stack marginTop={4}>
-              <Text as="p" textRole="compact" tone="secondary">
-                This split was checked for {languageList(checked)}. Recheck it before you confirm.
-              </Text>
-            </Stack>
-          </div>
-          <Action
-            disabled={recheck.isPending}
-            onPress={() => recheck.mutate({ data: { hash: p.clipHash, from: "split" } })}
-            variant="outline"
+        <Card padding={16} tone="caution">
+          <Stack
+            align={{ base: "stretch", sm: "center" }}
+            direction={{ base: "column", sm: "row" }}
+            gap="3"
+            justify={{ base: "start", sm: "between" }}
           >
-            {recheck.isPending ? "Starting recheck…" : recheckLabel}
-          </Action>
-        </Stack>
+            <div>
+              <Text as="p" textRole="heading">
+                {currentLanguageHeadline}
+              </Text>
+              <Stack marginTop={4}>
+                <Text as="p" textRole="compact" tone="secondary">
+                  This split was checked for {languageList(checked)}. Recheck it before you confirm.
+                </Text>
+              </Stack>
+            </div>
+            <Action
+              disabled={recheck.isPending}
+              onPress={() => recheck.mutate({ data: { hash: p.clipHash, from: "split" } })}
+              variant="outline"
+            >
+              {recheck.isPending ? "Starting recheck…" : recheckLabel}
+            </Action>
+          </Stack>
+        </Card>
       ) : null}
       <LanguageReceipt exclusions={p.languageExclusions ?? []} checkedFor={checked} />
       <SplitReviewEditor

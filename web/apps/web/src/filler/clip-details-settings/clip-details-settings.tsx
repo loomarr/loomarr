@@ -7,6 +7,7 @@ import { invalidateSettings } from "@loomarr/core/events";
 import {
   Action,
   Card,
+  Details,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -15,7 +16,10 @@ import {
   Field,
   Icon,
   icons,
+  RadioGroup,
+  RadioItem,
   Stack,
+  Surface,
   Text,
 } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
@@ -31,6 +35,24 @@ interface ClipDetailsSettingsProps {
   liveValue: (key: SettingKey) => string;
   setEdit: (key: SettingKey, value: string) => void;
 }
+
+const ProviderChoice = ({ checked, detail, name }: { checked: boolean; detail: string; name: string }) => (
+  <Surface
+    backgroundColor={checked ? "surfaceFocus" : "surfaceRaised"}
+    borderColor={checked ? "contentPrimary" : "borderControl"}
+    borderRadius="control"
+    borderWidth={checked ? 2 : 1}
+    gap={4}
+    padding={16}
+  >
+    <Text strong={checked} textRole="cardLabel">
+      {name}
+    </Text>
+    <Text textRole="hint" tone="secondary">
+      {detail}
+    </Text>
+  </Surface>
+);
 
 const providerLabel = (provider: string) => (provider === "searxng" ? "SearXNG" : "Brave Search");
 
@@ -181,7 +203,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
   return (
     <Stack borderColor="borderDecorative" borderTopWidth={1} gap="4" paddingTop={16}>
       {statusQuery.isError || !enabled || configured ? (
-        <Stack borderRadius={12} className="bg-muted/40" padding={16}>
+        <Card padding={16}>
           <Stack align="start" direction="row" gap="control">
             {configured && status?.state === "ready" ? (
               <Stack direction="row" marginTop={2} render="span">
@@ -226,121 +248,128 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
               ) : null}
             </Stack>
           </Stack>
-        </Stack>
+        </Card>
       ) : null}
 
-      <Card padding={16} render="details">
-        <Text as="summary" cursor="pointer" textRole="cardLabel">
-          <span>Where Loomarr looks</span>
-          <Text as="span" className="ml-2" textRole="compact" tone="secondary">
-            ·{" "}
-            {enabled
-              ? `${enabledSourceCount} of ${structuredSources.length} sources on`
-              : `${enabledSourceCount} selected`}
-          </Text>
-        </Text>
-        <Stack gap="6" marginTop={20}>
-          <Stack aria-labelledby="clip-detail-sources-heading" gap="3" render="section">
-            <Stack gap="1">
-              <Text as="h3" id="clip-detail-sources-heading" textRole="cardLabel">
-                Public sources
+      <Card padding={16}>
+        <Details
+          summary={
+            <>
+              <span>Where Loomarr looks</span>
+              <Text as="span" marginLeft={8} textRole="compact" tone="secondary">
+                ·{" "}
+                {enabled
+                  ? `${enabledSourceCount} of ${structuredSources.length} sources on`
+                  : `${enabledSourceCount} selected`}
               </Text>
-              <Text as="p" textRole="hint" tone="secondary">
-                All are on by default. Turn off any source you don't want Loomarr to use.
-              </Text>
+            </>
+          }
+          textRole="cardLabel"
+        >
+          <Stack gap="6" marginTop={20}>
+            <Stack aria-labelledby="clip-detail-sources-heading" gap="3" render="section">
+              <Stack gap="1">
+                <Text as="h3" id="clip-detail-sources-heading" textRole="cardLabel">
+                  Public sources
+                </Text>
+                <Text as="p" textRole="hint" tone="secondary">
+                  All are on by default. Turn off any source you don't want Loomarr to use.
+                </Text>
+              </Stack>
+              <Card>
+                <Stack divided>
+                  {structuredSources.map((entry) => {
+                    const labelID = `clip-detail-source-${entry.key.replaceAll(".", "-")}`;
+                    return (
+                      <Stack
+                        align="center"
+                        direction="row"
+                        gap="4"
+                        justify="between"
+                        key={entry.key}
+                        minHeight={48}
+                        paddingHorizontal={12}
+                        paddingVertical={10}
+                      >
+                        <Text as="span" id={labelID} textRole="cardLabel">
+                          {entry.label}
+                        </Text>
+                        <SettingField
+                          compact
+                          labelledBy={labelID}
+                          entry={entry}
+                          value={liveValue(entry.key)}
+                          onChange={(value) => setEdit(entry.key, value)}
+                          disabledReason={!enabled ? "Turn on automatic clip details first." : undefined}
+                        />
+                      </Stack>
+                    );
+                  })}
+                </Stack>
+              </Card>
+              {!enabled ? (
+                <Text as="p" textRole="hint" tone="secondary">
+                  Turn on automatic lookups to use these sources.
+                </Text>
+              ) : null}
             </Stack>
-            <Card className="divide-border divide-y">
-              {structuredSources.map((entry) => {
-                const labelID = `clip-detail-source-${entry.key.replaceAll(".", "-")}`;
-                return (
-                  <Stack
-                    align="center"
-                    direction="row"
-                    gap="4"
-                    justify="between"
-                    key={entry.key}
-                    minHeight={48}
-                    paddingHorizontal={12}
-                    paddingVertical={10}
-                  >
-                    <Text as="span" id={labelID} textRole="cardLabel">
-                      {entry.label}
-                    </Text>
-                    <SettingField
-                      compact
-                      labelledBy={labelID}
-                      entry={entry}
-                      value={liveValue(entry.key)}
-                      onChange={(value) => setEdit(entry.key, value)}
-                      disabledReason={!enabled ? "Turn on automatic clip details first." : undefined}
-                    />
-                  </Stack>
-                );
-              })}
-            </Card>
-            {!enabled ? (
-              <Text as="p" textRole="hint" tone="secondary">
-                Turn on automatic lookups to use these sources.
-              </Text>
+
+            {configured ? (
+              <Stack
+                aria-label="Web search controls"
+                borderColor="borderDecorative"
+                borderTopWidth={1}
+                gap="5"
+                paddingTop={20}
+                render="section"
+              >
+                {monthly ? (
+                  <SettingField
+                    entry={monthly}
+                    value={liveValue(monthly.key)}
+                    onChange={(value) => setEdit(monthly.key, value)}
+                  />
+                ) : null}
+                <Stack direction="row" gap="inline" wrap>
+                  <Action disabled={busy} onPress={() => void runCurrentTest()} variant="outline">
+                    {testProvider.isPending ? "Checking…" : "Test connection"}
+                  </Action>
+                  <Action disabled={busy} onPress={openSetup} variant="outline">
+                    Replace provider
+                  </Action>
+                  <Action disabled={busy} onPress={() => void remove()} variant="ghost">
+                    Remove web search
+                  </Action>
+                </Stack>
+              </Stack>
             ) : null}
           </Stack>
-
-          {configured ? (
-            <Stack
-              aria-label="Web search controls"
-              borderColor="borderDecorative"
-              borderTopWidth={1}
-              gap="5"
-              paddingTop={20}
-              render="section"
-            >
-              {monthly ? (
-                <SettingField
-                  entry={monthly}
-                  value={liveValue(monthly.key)}
-                  onChange={(value) => setEdit(monthly.key, value)}
-                />
-              ) : null}
-              <Stack direction="row" gap="inline" wrap>
-                <Action disabled={busy} onPress={() => void runCurrentTest()} variant="outline">
-                  {testProvider.isPending ? "Checking…" : "Test connection"}
-                </Action>
-                <Action disabled={busy} onPress={openSetup} variant="outline">
-                  Replace provider
-                </Action>
-                <Action disabled={busy} onPress={() => void remove()} variant="ghost">
-                  Remove web search
-                </Action>
-              </Stack>
-            </Stack>
-          ) : null}
-        </Stack>
+        </Details>
       </Card>
 
       {!configured ? (
-        <Stack
-          align={{ base: "stretch", sm: "center" }}
-          borderRadius={12}
-          className="bg-muted/40"
-          direction={{ base: "column", sm: "row" }}
-          gap="3"
-          justify={{ base: "start", sm: "between" }}
-          padding={16}
-        >
-          <Stack flexShrink={1} gap="1">
-            <Text as="p" textRole="cardLabel">
-              Web search is optional
-            </Text>
-            <Text as="p" textRole="compact" tone="secondary">
-              Add it if you want Loomarr to search more broadly when these sources come up short.
-            </Text>
+        <Card padding={16}>
+          <Stack
+            align={{ base: "stretch", sm: "center" }}
+            direction={{ base: "column", sm: "row" }}
+            gap="3"
+            justify={{ base: "start", sm: "between" }}
+          >
+            <Stack flexShrink={1} gap="1">
+              <Text as="p" textRole="cardLabel">
+                Web search is optional
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
+                Add it if you want Loomarr to search more broadly when these sources come up short.
+              </Text>
+            </Stack>
+            <Stack align={{ base: "start", sm: "stretch" }} flexShrink={0}>
+              <Action disabled={!enabled || statusQuery.isLoading || statusQuery.isError} onPress={openSetup}>
+                Add web search
+              </Action>
+            </Stack>
           </Stack>
-          <div className="shrink-0 self-start sm:self-auto">
-            <Action disabled={!enabled || statusQuery.isLoading || statusQuery.isError} onPress={openSetup}>
-              Add web search
-            </Action>
-          </div>
-        </Stack>
+        </Card>
       ) : null}
 
       {message ? (
@@ -362,61 +391,46 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
               <Text as="legend" textRole="cardLabel">
                 Choose a provider
               </Text>
-              <Stack gap="3" marginTop={12}>
-                <Stack
-                  align="start"
-                  className="border-border has-[:checked]:border-foreground has-[:checked]:bg-static-800 cursor-pointer rounded-lg border"
-                  direction="row"
-                  gap="3"
-                  padding={16}
-                  render="label"
-                >
-                  <input
-                    type="radio"
-                    name="web-search-provider"
-                    value="brave"
-                    checked={provider === "brave"}
-                    onChange={() => form.setFieldValue("provider", "brave")}
-                  />
-                  <Stack gap="1" render="span">
-                    <Text as="span" textRole="cardLabel">
-                      Brave Search
-                    </Text>
-                    <Text as="span" textRole="hint" tone="secondary">
-                      Recommended hosted option.
-                    </Text>
-                  </Stack>
-                </Stack>
-                <Card padding={16} render="details">
-                  <Text as="summary" cursor="pointer" textRole="cardLabel">
-                    Advanced / self-hosted
-                  </Text>
-                  <Stack
-                    align="start"
-                    className="cursor-pointer"
-                    direction="row"
-                    gap="3"
-                    marginTop={16}
-                    render="label"
-                  >
-                    <input
-                      type="radio"
-                      name="web-search-provider"
-                      value="searxng"
-                      checked={provider === "searxng"}
-                      onChange={() => form.setFieldValue("provider", "searxng")}
+              <RadioGroup
+                borderWidth={0}
+                gap={12}
+                label="Choose a provider"
+                marginTop={12}
+                onValueChange={(value) => {
+                  if (value === "brave" || value === "searxng") form.setFieldValue("provider", value);
+                }}
+                value={provider}
+                values={["brave", "searxng"]}
+              >
+                <RadioItem label="Brave Search" value="brave">
+                  {({ checked }) => (
+                    <ProviderChoice
+                      checked={checked}
+                      detail="Recommended hosted option."
+                      name="Brave Search"
                     />
-                    <Stack gap="1" render="span">
-                      <Text as="span" textRole="cardLabel">
-                        SearXNG
-                      </Text>
-                      <Text as="span" textRole="hint" tone="secondary">
-                        Use a server you operate.
-                      </Text>
+                  )}
+                </RadioItem>
+                <Card padding={16}>
+                  <Details
+                    defaultOpen={provider === "searxng"}
+                    summary="Advanced / self-hosted"
+                    textRole="cardLabel"
+                  >
+                    <Stack marginTop={16}>
+                      <RadioItem label="SearXNG" value="searxng">
+                        {({ checked }) => (
+                          <ProviderChoice
+                            checked={checked}
+                            detail="Use a server you operate."
+                            name="SearXNG"
+                          />
+                        )}
+                      </RadioItem>
                     </Stack>
-                  </Stack>
+                  </Details>
                 </Card>
-              </Stack>
+              </RadioGroup>
             </Stack>
 
             {provider === "brave" ? (

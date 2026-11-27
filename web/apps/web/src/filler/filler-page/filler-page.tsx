@@ -65,11 +65,11 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
     return (
       <Stack height="100%" minHeight={0}>
         <FillerHeader />
-        <div className="min-h-0 flex-1 p-6" role="status">
+        <Stack flex={1} minHeight={0} padding={24} role="status">
           <Text as="p" textRole="compact" tone="secondary">
             Loading filler…
           </Text>
-        </div>
+        </Stack>
       </Stack>
     );
   }
@@ -78,7 +78,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
     return (
       <Stack height="100%" minHeight={0}>
         <FillerHeader />
-        <div className="min-h-0 flex-1 overflow-auto p-6">
+        <Stack flex={1} minHeight={0} padding={24} style={{ overflow: "auto" }}>
           <EmptyState
             title="No filler folder configured"
             description="Choose a folder for commercials, bumpers, and station IDs. Loomarr indexes it for scheduling; point Tunarr at the same folder so it can play the clips."
@@ -92,7 +92,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
                 }
               : {})}
           />
-        </div>
+        </Stack>
       </Stack>
     );
   }
@@ -113,7 +113,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
   return (
     <Stack height="100%" minHeight={0}>
       <FillerHeader status={watch && <WatchLine status={statusLine} health={watch.health} />} />
-      <Stack className="flex-1 overflow-auto" flexShrink={1} gap="section" minHeight={0} padding={24}>
+      <Stack flex={1} flexShrink={1} gap="section" minHeight={0} padding={24} style={{ overflow: "auto" }}>
         {/* The web mock's three sections. Sources and Incoming open from the Manage hub, so their
             pages light Manage, as Settings and Tags already did. */}
         <NavTabs
@@ -160,17 +160,19 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
 
         {watch?.autoFetch?.stoppedBy === "catalog" && tab === "library" ? (
           <Card alignItems="center" flexDirection="row" flexWrap="wrap" gap={12} padding={16} tone="caution">
-            <div className="min-w-0 flex-1">
+            <Stack flex={1} minWidth={0}>
               <Text as="p" textRole="cardLabel">
                 Automatic fetching is paused
               </Text>
-              <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
-                {watch.autoFetch.catalogClips.toLocaleString()} of{" "}
-                {(watch.autoFetch.maxCatalog ?? 0).toLocaleString()} catalog clips are in use. You can still
-                add clips yourself. Remove clips you no longer want or raise this limit to restart automatic
-                downloads.
-              </Text>
-            </div>
+              <Stack marginTop={2}>
+                <Text as="p" textRole="compact" tone="secondary">
+                  {watch.autoFetch.catalogClips.toLocaleString()} of{" "}
+                  {(watch.autoFetch.maxCatalog ?? 0).toLocaleString()} catalog clips are in use. You can still
+                  add clips yourself. Remove clips you no longer want or raise this limit to restart automatic
+                  downloads.
+                </Text>
+              </Stack>
+            </Stack>
             {isAdmin ? (
               <Action
                 accessibilityRole="link"

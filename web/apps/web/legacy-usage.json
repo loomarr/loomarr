@@ -196,50 +196,8 @@
     "src/discovery-feedback/discovery-feedback.tsx": {
       "tailwindClasses": 1
     },
-    "src/filler/clip-details-editor/clip-details-editor.tsx": {
-      "tailwindClasses": 16
-    },
-    "src/filler/clip-details-settings/clip-details-settings.tsx": {
-      "tailwindClasses": 15
-    },
-    "src/filler/clip-details/clip-details.tsx": {
-      "tailwindClasses": 4
-    },
-    "src/filler/confirm-split-dialog/confirm-split-dialog.tsx": {
-      "tailwindClasses": 4
-    },
-    "src/filler/filler-catalog/catalog-toolbar/catalog-toolbar.tsx": {
-      "tailwindClasses": 12
-    },
-    "src/filler/filler-catalog/clip-inspector-sheet/clip-inspector-sheet.tsx": {
-      "tailwindClasses": 2
-    },
-    "src/filler/filler-catalog/clip-more-details/clip-more-details.tsx": {
-      "tailwindClasses": 4
-    },
-    "src/filler/filler-overview/filler-overview.tsx": {
-      "tailwindClasses": 3
-    },
-    "src/filler/filler-page/filler-page.tsx": {
-      "tailwindClasses": 12
-    },
-    "src/filler/filler-settings/filler-settings.tsx": {
-      "tailwindClasses": 4
-    },
     "src/filler/incoming/incoming.tsx": {
       "tailwindClasses": 1
-    },
-    "src/filler/split-review-page/split-review-page.tsx": {
-      "tailwindClasses": 12
-    },
-    "src/filler/taxonomy-tab/taxon-editor/taxon-impact-review/taxon-impact-review.tsx": {
-      "tailwindClasses": 2
-    },
-    "src/filler/taxonomy-tab/taxon-tree/taxon-tree.tsx": {
-      "tailwindClasses": 6
-    },
-    "src/filler/taxonomy-tab/taxonomy-tab.tsx": {
-      "tailwindClasses": 18
     },
     "src/help/doc-view/doc-view.tsx": {
       "tailwindClasses": 14

@@ -1,5 +1,5 @@
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
-import { Action, Badge, Icon, icons, Stack, Text, TextLink } from "@loomarr/design-system";
+import { Action, Badge, Details, Icon, icons, Stack, Text, TextLink } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { TaxonomyAxis as Axis } from "../../taxonomy-axes";
 import { AXIS_COPY } from "../taxonomy-axis-copy";
@@ -33,8 +33,12 @@ const TaxonTree = ({
   onEdit: (taxon: TaxonDTO) => void;
   nested?: boolean;
 }) => (
-  <ul
-    className={nested ? "border-border ml-5 border-l" : "divide-border divide-y"}
+  <Stack
+    borderColor="borderDecorative"
+    borderLeftWidth={nested ? 1 : 0}
+    divided={!nested}
+    marginLeft={nested ? 20 : 0}
+    render="ul"
     {...(!nested ? { "aria-label": `${AXIS_COPY[axis].label} vocabulary` } : {})}
   >
     {nodes.map(({ taxon, children }) => {
@@ -64,11 +68,12 @@ const TaxonTree = ({
                   {taxon.slug}
                 </Text>
                 {resolverTermCount > 0 ? (
-                  <details>
-                    <Text as="summary" cursor="pointer" textRole="hint" tone="secondary">
-                      {resolverTermCount} classifier {resolverTermCount === 1 ? "term" : "terms"}
-                    </Text>
-                    <Stack className="break-words" gap="1" marginTop={4} maxWidth={384}>
+                  <Details
+                    summary={`${resolverTermCount} classifier ${resolverTermCount === 1 ? "term" : "terms"}`}
+                    textRole="hint"
+                    tone="secondary"
+                  >
+                    <Stack gap="1" marginTop={4} maxWidth={384} style={{ overflowWrap: "break-word" }}>
                       {synonyms.length > 0 ? (
                         <Text as="p" textRole="hint" tone="secondary">
                           Synonyms: {synonyms.join(", ")}
@@ -80,7 +85,7 @@ const TaxonTree = ({
                         </Text>
                       ) : null}
                     </Stack>
-                  </details>
+                  </Details>
                 ) : null}
               </Stack>
             </Stack>
@@ -113,7 +118,7 @@ const TaxonTree = ({
         </li>
       );
     })}
-  </ul>
+  </Stack>
 );
 
 export type { TaxonTreeNode };

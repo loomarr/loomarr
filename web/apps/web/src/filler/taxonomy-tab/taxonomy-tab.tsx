@@ -1,6 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Card, Grid, GridItem, Stack, Text, TextLink } from "@loomarr/design-system";
+import { Action, Card, Details, Grid, GridItem, Stack, Text, TextLink } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -121,7 +121,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             </Text>
           </Card>
         ) : (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <Grid columnGap="3" columns={{ base: 1, sm: 2, lg: 5 }} marginTop={12} rowGap="3">
             {AXES.map((axis) => {
               const coverage = data.axisCoverage?.find((item) => item.axis === axis);
               return (
@@ -172,81 +172,76 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                 </Card>
               );
             })}
-          </div>
+          </Grid>
         )}
       </section>
 
-      <details className="border-border bg-panel rounded-lg border">
-        <Text
-          as="summary"
-          className="focus-visible:ring-ring cursor-pointer px-4 py-3 focus-visible:ring-2 focus-visible:outline-none"
-          textRole="heading"
-        >
-          {isAdmin ? "Manage vocabulary" : "Browse vocabulary"}
-        </Text>
-        <Stack borderColor="borderDecorative" borderTopWidth={1} gap="4" padding={16}>
-          <Text as="p" textRole="compact" tone="secondary">
-            {isAdmin
-              ? "Advanced: change the hierarchy and the words classifiers resolve. Review the impact before any edit is applied."
-              : "This hierarchy is read-only. Administrators can change classifier vocabulary and relationships."}
-          </Text>
-          <div className="grid gap-4 xl:grid-cols-2">
-            {AXES.map((axis) => {
-              return (
-                <Card key={axis} overflow="hidden">
-                  <Stack
-                    align="start"
-                    borderBottomWidth={1}
-                    borderColor="borderDecorative"
-                    direction="row"
-                    gap="control"
-                    padding={16}
-                  >
-                    <Stack flexBasis="0%" flexGrow={1} minWidth={0}>
-                      <Text as="h3" textRole="heading">
-                        {AXIS_COPY[axis].label}
-                      </Text>
-                      <Stack marginTop={2}>
+      <Card padding={16}>
+        <Details summary={isAdmin ? "Manage vocabulary" : "Browse vocabulary"} textRole="heading">
+          <Stack gap="4" marginTop={16}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {isAdmin
+                ? "Advanced: change the hierarchy and the words classifiers resolve. Review the impact before any edit is applied."
+                : "This hierarchy is read-only. Administrators can change classifier vocabulary and relationships."}
+            </Text>
+            <Grid columnGap="4" columns={{ base: 1, lg: 2 }} rowGap="4">
+              {AXES.map((axis) => {
+                return (
+                  <Card key={axis} overflow="hidden">
+                    <Stack
+                      align="start"
+                      borderBottomWidth={1}
+                      borderColor="borderDecorative"
+                      direction="row"
+                      gap="control"
+                      padding={16}
+                    >
+                      <Stack flexBasis="0%" flexGrow={1} minWidth={0}>
+                        <Text as="h3" textRole="heading">
+                          {AXIS_COPY[axis].label}
+                        </Text>
+                        <Stack marginTop={2}>
+                          <Text as="p" textRole="compact" tone="secondary">
+                            {AXIS_COPY[axis].help}
+                          </Text>
+                        </Stack>
+                        <Stack marginTop={4}>
+                          <Text as="p" textRole="hint" tone="secondary">
+                            {AXIS_COPY[axis].example}
+                          </Text>
+                        </Stack>
+                      </Stack>
+                      {isAdmin ? (
+                        <Action
+                          icon="plus"
+                          onPress={() => setEditor({ mode: "create", axis })}
+                          variant="outline"
+                        >
+                          Add
+                        </Action>
+                      ) : null}
+                    </Stack>
+                    {byAxis[axis].length === 0 ? (
+                      <Stack paddingHorizontal={16} paddingVertical={12}>
                         <Text as="p" textRole="compact" tone="secondary">
-                          {AXIS_COPY[axis].help}
+                          No terms yet.
                         </Text>
                       </Stack>
-                      <Stack marginTop={4}>
-                        <Text as="p" textRole="hint" tone="secondary">
-                          {AXIS_COPY[axis].example}
-                        </Text>
-                      </Stack>
-                    </Stack>
-                    {isAdmin ? (
-                      <Action
-                        icon="plus"
-                        onPress={() => setEditor({ mode: "create", axis })}
-                        variant="outline"
-                      >
-                        Add
-                      </Action>
-                    ) : null}
-                  </Stack>
-                  {byAxis[axis].length === 0 ? (
-                    <Stack paddingHorizontal={16} paddingVertical={12}>
-                      <Text as="p" textRole="compact" tone="secondary">
-                        No terms yet.
-                      </Text>
-                    </Stack>
-                  ) : (
-                    <TaxonTree
-                      nodes={byAxis[axis]}
-                      axis={axis}
-                      isAdmin={isAdmin}
-                      onEdit={(taxon) => isAdmin && setEditor({ mode: "edit", axis, taxon })}
-                    />
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        </Stack>
-      </details>
+                    ) : (
+                      <TaxonTree
+                        nodes={byAxis[axis]}
+                        axis={axis}
+                        isAdmin={isAdmin}
+                        onEdit={(taxon) => isAdmin && setEditor({ mode: "edit", axis, taxon })}
+                      />
+                    )}
+                  </Card>
+                );
+              })}
+            </Grid>
+          </Stack>
+        </Details>
+      </Card>
     </Stack>
   );
 };
