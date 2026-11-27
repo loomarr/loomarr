@@ -1,8 +1,10 @@
 import { getLibraryStatusQueryKey } from "@loomarr/api/endpoints/library";
 import {
+  getGetLibraryPersonMockHandler,
   getHouseholdMockHandler,
   getLibraryStatusMockHandler,
   getListCollectionsMockHandler,
+  getListLibraryFacetsMockHandler,
   getListLibraryGenresMockHandler,
   getListLibraryItemsMockHandler,
   getListLibraryNeedsMockHandler,
@@ -56,6 +58,15 @@ const bravo = {
   extraCopies: 0,
 };
 
+const facets = {
+  studios: [{ value: "Example Studio", name: "Example Studio", titles: 4 }],
+  audio: [{ value: "eng", name: "English", titles: 3 }],
+  subtitles: [{ value: "fre", name: "French", titles: 2 }],
+  hdr: [{ value: "HDR10", name: "HDR10", titles: 1 }],
+  uhd: 2,
+  hdrAny: 1,
+};
+
 const renderPage = (props: Parameters<typeof LibraryPage>[0] = { filter: "all", search: "" }) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -76,6 +87,7 @@ describe("LibraryPage", () => {
       getListLibraryNeedsMockHandler({ needs: [], orders: [], problems: [] }),
       getHouseholdMockHandler({ timeZone: "" }),
       getListLibraryGenresMockHandler({ genres: [] }),
+      getListLibraryFacetsMockHandler(facets),
     );
   });
 
@@ -362,7 +374,9 @@ describe("LibraryPage", () => {
     const library = paths.filter((p) => p.startsWith("/v1/library") || p.startsWith("/v1/collections"));
     expect(library.length).toBeGreaterThan(0);
     for (const path of library) {
-      expect(["/v1/library/items", "/v1/library/genres", "/v1/collections"]).toContain(path);
+      expect(["/v1/library/items", "/v1/library/genres", "/v1/library/facets", "/v1/collections"]).toContain(
+        path,
+      );
     }
   });
 
@@ -639,5 +653,144 @@ describe("LibraryPage", () => {
 
     expect(await screen.findByRole("link", { name: /^Alpha/ })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Jump to a letter" })).not.toBeInTheDocument();
+  });
+
+  // Every title list asked for, past the tabs' one-title counts.
+  const listsAsked = (body: { items: (typeof alpha)[]; total: number }) => {
+    const asked: URLSearchParams[] = [];
+    server.use(
+      getLibraryStatusMockHandler(libraryStatus()),
+      http.get("*/v1/library/items", ({ request }) => {
+        const url = new URL(request.url);
+        if (isCount(url)) return HttpResponse.json({ items: [alpha], total: 9 });
+        asked.push(url.searchParams);
+        return HttpResponse.json(body);
+      }),
+    );
+    return asked;
+  };
+  const openFilters = () => userEvent.click(screen.getByRole("button", { name: /^More filters/ }));
+  const lastSearch = () => mocks.navigate.mock.calls.at(-1)?.[0].search;
+
+  it.each([
+    ["Studio", "Example Studio", { studio: "Example Studio" }],
+    ["Audio language", "eng", { audio: "eng" }],
+    ["Subtitle language", "fre", { subtitles: "fre" }],
+  ])("puts the %s filter in the URL", async (label, value, expected) => {
+    listsAsked({ items: [alpha], total: 1 });
+    renderPage();
+    await screen.findByRole("link", { name: /^Alpha/ });
+    await openFilters();
+    await screen.findByRole("option", { name: "Example Studio · 4" });
+
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: label }), value);
+    expect(lastSearch()).toEqual(expected);
+  });
+
+  it.each([
+    ["4K", { uhd: true }],
+    ["HDR", { hdr: "any" }],
+  ])("puts the %s toggle in the URL", async (label, expected) => {
+    listsAsked({ items: [alpha], total: 1 });
+    renderPage();
+    await screen.findByRole("link", { name: /^Alpha/ });
+    await openFilters();
+
+    await userEvent.click(screen.getByRole("switch", { name: new RegExp(`^${label}`) }));
+    expect(lastSearch()).toEqual(expected);
+  });
+
+  it("asks for every filter in the URL, lists what is on, and counts the titles they leave", async () => {
+    const asked = listsAsked({ items: [alpha], total: 3 });
+    renderPage({
+      filter: "all",
+      search: "",
+      genre: "Drama",
+      filters: {
+        studio: "Example Studio",
+        audio: "eng",
+        subtitles: "fre",
+        uhd: true,
+        hdr: "any",
+      },
+    });
+
+    await waitFor(() => expect(asked.length).toBeGreaterThan(0));
+    const params = Object.fromEntries(asked.at(-1) ?? []);
+    expect(params).toMatchObject({
+      genre: "Drama",
+      studio: "Example Studio",
+      audio: "eng",
+      subtitles: "fre",
+      uhd: "true",
+      hdr: "any",
+    });
+    expect(await screen.findByRole("button", { name: "Remove filter: Audio: English" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "More filters (5)" })).toBeInTheDocument();
+    expect(await screen.findByText("3 titles")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove filter: 4K" }));
+    expect(lastSearch()).toEqual({
+      genre: "Drama",
+      studio: "Example Studio",
+      audio: "eng",
+      subtitles: "fre",
+      hdr: "any",
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(lastSearch()).toEqual({});
+  });
+
+  it("searches people, sets the chosen one in the URL, and a member may", async () => {
+    const searched: string[] = [];
+    listsAsked({ items: [alpha], total: 1 });
+    server.use(
+      getMeMockHandler(me({ role: "member" })),
+      http.get("*/v1/library/people", ({ request }) => {
+        searched.push(new URL(request.url).searchParams.get("q") ?? "");
+        return HttpResponse.json({ people: [{ id: "p1", name: "Ada Example", titles: 2 }] });
+      }),
+    );
+    renderPage();
+    await screen.findByRole("link", { name: /^Alpha/ });
+    await openFilters();
+
+    await userEvent.type(screen.getByRole("combobox", { name: "Person" }), "ada");
+    await userEvent.click(await screen.findByRole("option", { name: /Ada Example/ }));
+    expect(lastSearch()).toEqual({ person: "p1" });
+    // Settled before asking: one request for the word, not one for each letter.
+    expect(searched).toEqual(["ada"]);
+  });
+
+  it("names a person arriving in the URL on a chip that removes them", async () => {
+    const asked = listsAsked({ items: [alpha], total: 1 });
+    server.use(getGetLibraryPersonMockHandler({ id: "p1", name: "Ada Example", titles: 2 }));
+    renderPage({ filter: "all", search: "", filters: { person: "p1" } });
+
+    const chip = await screen.findByRole("button", { name: "Remove filter: Titles with Ada Example" });
+    expect(chip).toHaveTextContent("Titles with Ada Example");
+    expect(asked.at(-1)?.get("person")).toBe("p1");
+    await userEvent.click(chip);
+    expect(lastSearch()).toEqual({});
+  });
+
+  it("offers Clear filters when the filters leave no titles", async () => {
+    listsAsked({ items: [], total: 0 });
+    renderPage({ filter: "all", search: "", filters: { uhd: true } });
+
+    expect(await screen.findByText("No titles match these filters")).toBeInTheDocument();
+    const clear = screen.getByRole("button", { name: "Clear filters" });
+    await userEvent.click(clear);
+    expect(lastSearch()).toEqual({});
+  });
+
+  it("says a search that finds nothing is inside the filters, and clears them", async () => {
+    listsAsked({ items: [], total: 0 });
+    renderPage({ filter: "all", search: "zebra", filters: { uhd: true } });
+
+    expect(await screen.findByText(/only in titles that match your filters/)).toBeInTheDocument();
+    expect(screen.queryByText(/across all/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(lastSearch()).toEqual({ q: "zebra" });
   });
 });

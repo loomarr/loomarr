@@ -1,4 +1,5 @@
 import type { ReactElement, ReactNode } from "react";
+import type { LibraryShelfFiltering } from "../library-filters";
 import type {
   LibraryDetails,
   LibraryHealth,
@@ -95,6 +96,8 @@ interface LibraryShelfProps {
   /** The chosen genre; absent is every genre. */
   genre?: string;
   onGenreChange: (genre: string | undefined) => void;
+  /** The filters past the genre; absent offers none. */
+  filtering?: LibraryShelfFiltering;
   /** The list's letters, drawn as a rail on a desktop window; absent (as by Recently added) draws none. */
   letters?: readonly LibraryShelfLetter[];
   /** A letter on the rail was pressed: load as far as it. */
