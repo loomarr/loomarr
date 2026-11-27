@@ -213,10 +213,17 @@ partition() {
   '
 }
 
+# A package the race policy runs in both phases (RACE_AND_PLAIN) costs its serial lane twice, as it
+# does an ordinary one in partition().
 certification_load() {
-  local lane="$1" module
+  local lane="$1" module paths race plain twice
   module="$(go list -m)"
-  certification_lane_paths "$lane" | awk -v module="$module" -v weights_file="$WEIGHTS" '
+  # Captured first, as in partition: a failure inside `<(...)` reaches no exit status.
+  paths="$(certification_lane_paths "$lane")"
+  race="$(printf '%s\n' "$paths" | "$RACE_POLICY" --race | sort)"
+  plain="$(printf '%s\n' "$paths" | "$RACE_POLICY" --no-race | sort)"
+  twice="$(comm -12 <(printf '%s\n' "$race") <(printf '%s\n' "$plain") | tr '\n' ' ')"
+  printf '%s\n' "$paths" | awk -v module="$module" -v weights_file="$WEIGHTS" -v twice="$twice" '
     BEGIN {
       while ((getline line < weights_file) > 0) {
         if (line ~ /^[[:space:]]*(#|$)/) continue
@@ -224,12 +231,14 @@ certification_load() {
         weight[part[1]] = part[2] + 0
       }
       close(weights_file)
+      split(twice, both, " ")
+      for (i in both) if (both[i] != "") in_both[both[i]] = 1
     }
     {
-      relative = $0
-      prefix = module "/"
-      if (index(relative, prefix) == 1) relative = substr(relative, length(prefix) + 1)
-      total += (relative in weight) ? weight[relative] : 1
+      relative = substr($0, length(module "/") + 1)
+      cost = (relative in weight) ? weight[relative] : 1
+      if ($0 in in_both) cost *= 2
+      total += cost
     }
     END { print total + 0 }
   '

@@ -16,8 +16,8 @@ import (
 const goRaceShardCount = 2
 
 // goCertificationLaneCount is scripts/go-certification-lanes.tsv's highest lane, which ci-go.yml's
-// matrix names as certification-<lane>/3.
-const goCertificationLaneCount = 3
+// matrix names as certification-<lane>/5.
+const goCertificationLaneCount = 5
 
 func TestGoShardUsesMeasuredLongestProcessingTime(t *testing.T) {
 	t.Parallel()
@@ -497,11 +497,11 @@ func TestGoCertificationLanePackageSetIsReviewed(t *testing.T) {
 	want := []string{
 		"1 internal/platform/store",
 		"2 internal/demolibrary",
-		"3 internal/playout/watermark",
-		"3 internal/playout",
+		"2 internal/playout",
+		"3 internal/channels/schedule",
 		"4 internal/api",
 		"4 internal/integration",
-		"5 internal/channels/schedule",
+		"5 internal/playout/watermark",
 		"5 internal/app",
 	}
 	if strings.Join(packages, "\n") != strings.Join(want, "\n") {
@@ -514,6 +514,15 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 
 	root := filepath.Clean(filepath.Join("..", "..", ".."))
 	weights := readGoRaceWeights(t, filepath.Join(root, "scripts", "go-race-weights.tsv"))
+	// A package the race policy runs in both phases costs its lane twice, as go-shard.sh models it.
+	twice := racePolicyBothPhases(t, root)
+	cost := func(relative string) int {
+		c := max(weights[relative], 1)
+		if twice[relative] {
+			c *= 2
+		}
+		return c
+	}
 	loads := make([]int, goRaceShardCount)
 	seenPackages := make(map[string]bool)
 
@@ -529,7 +538,7 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 		for _, pkg := range strings.Fields(string(output)) {
 			relative := strings.TrimPrefix(pkg, "github.com/loomarr/loomarr/")
 			seenPackages[relative] = true
-			loads[shard-1] += max(weights[relative], 1)
+			loads[shard-1] += cost(relative)
 		}
 	}
 	certificationLoads := make([]int, goCertificationLaneCount)
@@ -546,7 +555,7 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 		for _, pkg := range strings.Fields(string(output)) {
 			relative := strings.TrimPrefix(pkg, "github.com/loomarr/loomarr/")
 			seenPackages[relative] = true
-			certificationLoads[lane-1] += max(weights[relative], 1)
+			certificationLoads[lane-1] += cost(relative)
 		}
 	}
 	for weightedPackage := range weights {
@@ -730,6 +739,44 @@ func TestOnlyTheCacheWarmerCompilesWithoutRunning(t *testing.T) {
 			t.Errorf("%s runs go test with -exec true; compile-only belongs to go-test-packages.sh behind GO_TEST_COMPILE_ONLY", path)
 		}
 	}
+}
+
+// racePolicyBothPhases is the module-relative packages scripts/go-race-policy.sh runs both under
+// -race and without it.
+func racePolicyBothPhases(t *testing.T, root string) map[string]bool {
+	t.Helper()
+
+	list := exec.Command("go", "list", "./...")
+	list.Dir = root
+	packages, err := list.Output()
+	if err != nil {
+		t.Fatalf("go list ./...: %v", err)
+	}
+	phase := func(flag string) map[string]bool {
+		t.Helper()
+		cmd := exec.Command("bash", filepath.Join("scripts", "go-race-policy.sh"), flag)
+		cmd.Dir = root
+		cmd.Stdin = strings.NewReader(string(packages))
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		output, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("go-race-policy.sh %s: %v\n%s", flag, err, stderr.String())
+		}
+		selected := make(map[string]bool)
+		for _, pkg := range strings.Fields(string(output)) {
+			selected[strings.TrimPrefix(pkg, "github.com/loomarr/loomarr/")] = true
+		}
+		return selected
+	}
+	race, plain := phase("--race"), phase("--no-race")
+	both := make(map[string]bool)
+	for pkg := range race {
+		if plain[pkg] {
+			both[pkg] = true
+		}
+	}
+	return both
 }
 
 func readGoRaceWeights(t *testing.T, path string) map[string]int {

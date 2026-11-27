@@ -19,17 +19,18 @@
 # internal/demolibrary encodes filler and scans the tree in parallel tests. Sharing an ordinary
 # -p=4 lane it measured 743s; at -p=1 it measures 138s to 235s (#2716).
 2	internal/demolibrary
-# internal/playout/watermark renders and compares frames on every core. In an ordinary -p=4 lane it
-# measured 445s to 619s beside three other packages, over the per-package cap (#2716).
-3	internal/playout/watermark
-3	internal/playout
+2	internal/playout
+# internal/channels/schedule runs under -race and again without it (go-race-policy.sh), and its
+# seasonal walks are hundreds of CPU-seconds of parallel subtests. Sharing an ordinary -p=4 lane the
+# two runs measured 836s and 730s; at -p=1 they measure about 200s and 150s (#2716). Its lane pays
+# for both runs, so it has the lane to itself.
+3	internal/channels/schedule
 # internal/api serves the channel packager's HLS and MPEG-TS (#1512 phase 2c).
 4	internal/api
 # internal/integration is here for balance. Its tests are serial, so it gains little from a runner
 # of its own.
 4	internal/integration
-# internal/channels/schedule runs under -race and again without it (go-race-policy.sh), and its
-# seasonal walks are hundreds of CPU-seconds of parallel subtests. Sharing an ordinary -p=4 lane the
-# two runs measured 836s and 730s; at -p=1 they measure about 200s and 150s (#2716).
-5	internal/channels/schedule
+# internal/playout/watermark renders and compares frames on every core. In an ordinary -p=4 lane it
+# measured 445s to 619s beside three other packages, over the per-package cap (#2716).
+5	internal/playout/watermark
 5	internal/app
