@@ -725,6 +725,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
   title (503 without a key), and the status counts `needsYou`. The API says which facts agree;
   the sentence is the UI's. A candidate's poster is adopted by the image service under the
   title, and the API leaves it out until its bytes are here.
+- **The Ignored list** (#4476). `GET /v1/library/ignored` (admin only) lists every title the
+  household ignored, from Needs you or from a title's "Wrong title?", newest first, with no age
+  limit. Each entry has the title's `id` (the one `DELETE …/answer` takes, which brings it back),
+  `kind` (`movie`, a file; `series`, a folder), `name` (the movie's file name, or the show's folder
+  name), `folder` (the folder it sits in, from its media folder's own name down, such as
+  `Movies/Unsorted`, for grouping) and `ignoredAt`. A show with no folder of its own is listed by
+  its title. A title with no present file is left out until a file of it is back. It is its own
+  read, paged by `limit` and `offset` with a `total`, because the set only grows and the Needs you
+  read, with its guesses, files and posters, is refetched on every library change.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left

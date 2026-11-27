@@ -163,6 +163,38 @@ func TestLibraryNeedsYou(t *testing.T) {
 		t.Fatalf("library after the ignore has %d titles, want 2", list.Total)
 	}
 
+	// The ignored list holds it; taking the answer back empties the list and Needs you asks again.
+	type ignored struct {
+		Items []struct {
+			ID        string    `json:"id"`
+			Kind      string    `json:"kind"`
+			Name      string    `json:"name"`
+			Folder    string    `json:"folder"`
+			IgnoredAt time.Time `json:"ignoredAt"`
+		} `json:"items"`
+		Total int `json:"total"`
+	}
+	var gone ignored
+	decode(t, h.Do(http.MethodGet, "/v1/library/ignored", adminToken, ""), &gone)
+	if gone.Total != 1 || len(gone.Items) != 1 || gone.Items[0].ID != "90000001" || gone.Items[0].Kind != "movie" ||
+		gone.Items[0].Name != "90000001.mkv" || gone.Items[0].Folder != "media" || gone.Items[0].IgnoredAt.IsZero() {
+		t.Fatalf("ignored = %+v", gone)
+	}
+	if resp := h.Do(http.MethodGet, "/v1/library/ignored", memberToken, ""); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("member reading the ignored list = %d, want 403", resp.StatusCode)
+	}
+	if resp := h.Do(http.MethodDelete, "/v1/library/items/90000001/answer", adminToken, ""); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("bring back = %d", resp.StatusCode)
+	}
+	decode(t, h.Do(http.MethodGet, "/v1/library/ignored", adminToken, ""), &gone)
+	decode(t, h.Do(http.MethodGet, "/v1/library/needs", adminToken, ""), &got)
+	if gone.Total != 0 || len(gone.Items) != 0 || len(got.Needs) != 1 || got.Needs[0].Item.ID != "90000001" {
+		t.Fatalf("after bringing it back: ignored = %+v, needs = %+v", gone, got.Needs)
+	}
+	if resp := h.Do(http.MethodPost, "/v1/library/items/90000001/ignore", adminToken, ""); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("ignore again = %d", resp.StatusCode)
+	}
+
 	// No catalog: the search says so.
 	if resp := h.Do(http.MethodGet, "/v1/library/search?q=mystery", adminToken, ""); resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("search without TMDB = %d, want 503", resp.StatusCode)

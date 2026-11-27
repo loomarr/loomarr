@@ -171,6 +171,28 @@ func testLibraryNeeds(t *testing.T, newStore NewStoreFunc) {
 	if needs, _ := st.LibraryNeeds(ctx); len(needs) != 0 {
 		t.Fatalf("needs after answers = %+v", needs)
 	}
+	// The ignored list is newest first and paged; a link is not on it, and neither is an ignored
+	// title with no present file.
+	later := at.Add(time.Hour)
+	for key, when := range map[string]time.Time{"/media/b/b.mkv": later, "/media/c/c.mkv": later.Add(time.Hour)} {
+		if err := st.SaveLibraryAnswer(ctx, librarystore.LibraryAnswer{Origin: origin(key), Kind: "movie", Ignored: true, AnsweredAt: when}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	newest := librarystore.LibraryIgnoredTitle{ID: "m2", Kind: "movie", Name: "Mystery Film", Origin: origin("/media/b/b.mkv"), IgnoredAt: later}
+	oldest := librarystore.LibraryIgnoredTitle{ID: "s1", Kind: "series", Name: "Mystery Show", Origin: origin("/media/show"), IgnoredAt: at}
+	for offset, want := range []librarystore.LibraryIgnoredTitle{newest, oldest} {
+		got, total, err := st.LibraryIgnored(ctx, 1, offset)
+		if err != nil || total != 2 || len(got) != 1 || got[0] != want {
+			t.Fatalf("ignored at %d = %+v of %d, %v; want %+v of 2", offset, got, total, err, want)
+		}
+	}
+	if err := st.SaveLibraryAnswer(ctx, link); err != nil {
+		t.Fatal(err)
+	}
+	if got, total, err := st.LibraryIgnored(ctx, 10, 0); err != nil || total != 1 || len(got) != 1 || got[0] != oldest {
+		t.Fatalf("ignored after a link = %+v of %d, %v", got, total, err)
+	}
 	page, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{})
 	if err != nil {
 		t.Fatal(err)
