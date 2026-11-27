@@ -91,6 +91,15 @@ interface LibraryTitleMatch {
 interface LibraryTitleProps {
   title: LibraryTitleDetail;
   onBack: () => void;
+  /**
+   * What an admin does about the title. Absent for a member, who reads the page only: no Update
+   * details, Check files again or Wrong title?, no file cards and no Technical details.
+   */
+  fix?: LibraryTitleFix;
+}
+
+/** The title page's admin actions. */
+interface LibraryTitleFix {
   /** Update details: settles once the details are fetched; rejects when they couldn't be. */
   onUpdateDetails: () => Promise<void>;
   /** Check files again: settles once the files are queued to be read; rejects when they couldn't be. */
@@ -114,6 +123,7 @@ export type {
   LibraryTitleDetail,
   LibraryTitleEpisode,
   LibraryTitleFile,
+  LibraryTitleFix,
   LibraryTitleMatch,
   LibraryTitleProps,
   LibraryTitleSeason,

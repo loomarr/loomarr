@@ -66,21 +66,6 @@ func sweepCatalog(mix []int64, pool int, bookends []int64) []pod.Clip {
 	return cat
 }
 
-// sweepUnused is the catalog clips a break could still have used: nothing in the pod, whole.
-func sweepUnused(cat []pod.Clip, brk pod.Pod) []pod.Clip {
-	in := map[string]bool{}
-	for _, e := range brk.Entries {
-		in[e.Hash] = true
-	}
-	var out []pod.Clip
-	for _, c := range cat {
-		if !in[c.Hash] {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
 func sweepCheck(t *testing.T, label string, cat []pod.Clip, gapMs int64, brk pod.Pod) {
 	t.Helper()
 	var sum int64
@@ -107,17 +92,8 @@ func sweepCheck(t *testing.T, label string, cat []pod.Clip, gapMs int64, brk pod
 	if adFits && ads == 0 {
 		t.Errorf("%s: an ad fits the %dms slot but the pod has none: %v", label, gapMs, podShape(brk))
 	}
-	if !adFits || ads == 0 {
-		return // the card (or nothing to air) is the only honest answer; no tail to judge
-	}
-
-	tail := gapMs - brk.TotalMs
-	for _, c := range sweepUnused(cat, brk) {
-		if c.DurationMs <= tail {
-			t.Errorf("%s: %dms tail left while unused %q (%dms) fits: %v", label, tail, c.Name, c.DurationMs, podShape(brk))
-			return
-		}
-	}
+	// The slot is a ceiling: the leftover is not handed to a clip out of rotation order, so a tail
+	// is not an error (a clip longer than the whole slot is skipped; the rest keep their order).
 }
 
 func podShape(p pod.Pod) string {

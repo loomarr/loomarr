@@ -1,12 +1,13 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { Stack, Text } from "@loomarr/design-system";
+import { Card, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import { viewerIsAdmin } from "@/auth/me-query";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { BackupPanel } from "@/components/loomarr/settings/backup-panel";
+import { useLoomarrEventListener } from "@/events/events-provider";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 
@@ -25,6 +26,14 @@ const BackupPage = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const list = systemApi.useSystemBackupsList();
+  // A scheduled backup writes a file behind the viewer: the list reads again on the backup job's
+  // own frames, not every job's.
+  useLoomarrEventListener({
+    onJob: (frame) => {
+      if (frame.name === "backup")
+        void queryClient.invalidateQueries({ queryKey: systemApi.getSystemBackupsListQueryKey() });
+    },
+  });
   const entries = useSettingsEntries();
   const [error, setError] = useState<string | null>(null);
 
@@ -64,15 +73,17 @@ const BackupPage = () => {
       ]}
       footer={
         <Stack gap="control">
-          <aside className="border-caution/40 bg-caution/5 rounded-lg border p-4">
-            <Text as="h2" textRole="cardLabel">
-              The image volume is separate
-            </Text>
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-              This backup contains the database, including settings, channels, people, and generated secrets.
-              It does not copy image files or operator-uploaded artwork.
-            </Text>
-          </aside>
+          <Card borderRadius={8} padding={16} render="aside" tone="caution">
+            <Stack gap="1">
+              <Text as="h2" textRole="cardLabel">
+                The image volume is separate
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
+                This backup contains the database, including settings, channels, people, and generated
+                secrets. It does not copy image files or operator-uploaded artwork.
+              </Text>
+            </Stack>
+          </Card>
           <BackupPanel
             list={list.data.data}
             onBackUpNow={handleBackUpNow}

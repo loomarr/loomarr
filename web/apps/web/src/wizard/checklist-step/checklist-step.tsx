@@ -213,13 +213,15 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
           than a hardcoded pair is what keeps the sentence honest on the internal path, where
           it would otherwise promise the operator a Tunarr requirement that does not exist there. */}
       {only === undefined && (
-        <Text as="p" className="mt-1" textRole="hint" tone="secondary">
-          {requiredChecks(backend)
-            .map((c) => BLOCKS.find((b) => b.id === c)?.title ?? c)
-            .join(" and ")}{" "}
-          must pass to continue. The rest add features you can wire up later, and Settings re-runs these
-          checks for the life of the install.
-        </Text>
+        <Stack marginTop={4}>
+          <Text as="p" textRole="hint" tone="secondary">
+            {requiredChecks(backend)
+              .map((c) => BLOCKS.find((b) => b.id === c)?.title ?? c)
+              .join(" and ")}{" "}
+            must pass to continue. The rest add features you can wire up later, and Settings re-runs these
+            checks for the life of the install.
+          </Text>
+        </Stack>
       )}
 
       {patch.error != null && <ErrorState error={patch.error} />}

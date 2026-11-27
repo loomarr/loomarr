@@ -1,7 +1,7 @@
 import type { FetchFillerSourceOutputBody } from "@loomarr/api/models/fetchFillerSourceOutputBody";
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import { formatRelative } from "@loomarr/core/format";
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, Text, TextLink } from "@loomarr/design-system";
 import { useState } from "react";
 
 const checkResultText = (source: FillerSourceDTO, result: FetchFillerSourceOutputBody) => {
@@ -60,32 +60,33 @@ const SourceStatus = ({ source, fetching, fetchError, onFetch }: SourceStatusPro
         <Text as="h3" id="source-status-heading" textRole="heading">
           {readinessLabel(source)}
         </Text>
-        <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-          {source.detail}
-          {source.onForPlace &&
-            source.enabled &&
-            " Loomarr switched this on because it covers TV stations near your location. If you switch it off, it stays off."}
-        </Text>
-        <Text as="p" className="mt-1" textRole="hint" tone="secondary">
-          {source.incoming > 0
-            ? `${source.count} ready · `
-            : `${source.count} ${source.count === 1 ? "clip" : "clips"}`}
-          {source.incoming > 0 && (
-            <a
-              href="/filler/incoming"
-              className="decoration-border hover:text-foreground underline underline-offset-2"
-            >
-              {`${source.incoming} being checked`}
-            </a>
-          )}
-          {source.lastCheckedAt
-            ? ` · last checked ${formatRelative(source.lastCheckedAt)}`
-            : " · not checked yet"}
-        </Text>
-        {source.kind === "folder" && (
-          <Text as="p" className="mt-3 break-all" textRole="mono">
-            {source.uri ?? source.target}
+        <Stack marginTop={4}>
+          <Text as="p" textRole="compact" tone="secondary">
+            {source.detail}
+            {source.onForPlace &&
+              source.enabled &&
+              " Loomarr switched this on because it covers TV stations near your location. If you switch it off, it stays off."}
           </Text>
+        </Stack>
+        <Stack marginTop={4}>
+          <Text as="p" textRole="hint" tone="secondary">
+            {source.incoming > 0
+              ? `${source.count} ready · `
+              : `${source.count} ${source.count === 1 ? "clip" : "clips"}`}
+            {source.incoming > 0 && (
+              <TextLink href="/filler/incoming" tone="muted">{`${source.incoming} being checked`}</TextLink>
+            )}
+            {source.lastCheckedAt
+              ? ` · last checked ${formatRelative(source.lastCheckedAt)}`
+              : " · not checked yet"}
+          </Text>
+        </Stack>
+        {source.kind === "folder" && (
+          <Stack marginTop={12}>
+            <Text as="p" textRole="mono" wordBreak="break-all">
+              {source.uri ?? source.target}
+            </Text>
+          </Stack>
         )}
       </div>
 
@@ -103,18 +104,24 @@ const SourceStatus = ({ source, fetching, fetchError, onFetch }: SourceStatusPro
       )}
 
       {checkResult && checkResult.sourceId === source.id && (
-        <div role="status" className="bg-muted/40 rounded-md px-3 py-2">
+        <Stack
+          backgroundColor="washElevated40"
+          borderRadius={6}
+          paddingHorizontal={12}
+          paddingVertical={8}
+          role="status"
+        >
           <Text as="p" textRole="compact">
             {checkResultText(source, checkResult)}
           </Text>
-        </div>
+        </Stack>
       )}
       {fetchError && (
-        <div role="alert" className="bg-destructive/10 rounded-md px-3 py-2">
+        <Card paddingHorizontal={12} paddingVertical={8} role="alert" tone="caution">
           <Text as="p" textRole="compact" tone="danger">
             {fetchError.detail}
           </Text>
-        </div>
+        </Card>
       )}
     </Stack>
   );

@@ -14,22 +14,23 @@ type Collection struct {
 	Titles []librarystore.LibraryItemSummary
 }
 
-// Collections lists the household's collections, by name.
-func (l *Library) Collections(ctx context.Context) ([]Collection, error) {
+// Collections lists the household's collections, by name. A member's titles are only the ones a
+// household member reads.
+func (l *Library) Collections(ctx context.Context, member bool) ([]Collection, error) {
 	rows, err := l.CollectionStore.ListLibraryCollections(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return l.withTitles(ctx, rows)
+	return l.withTitles(ctx, rows, member)
 }
 
 // Collection reads one collection; store.ErrNotFound when there is none.
-func (l *Library) Collection(ctx context.Context, id string) (Collection, error) {
+func (l *Library) Collection(ctx context.Context, id string, member bool) (Collection, error) {
 	row, err := l.CollectionStore.LibraryCollection(ctx, id)
 	if err != nil {
 		return Collection{}, err
 	}
-	out, err := l.withTitles(ctx, []librarystore.LibraryCollection{row})
+	out, err := l.withTitles(ctx, []librarystore.LibraryCollection{row}, member)
 	if err != nil {
 		return Collection{}, err
 	}
@@ -58,14 +59,14 @@ func (l *Library) DeleteCollection(ctx context.Context, id string) error {
 }
 
 // withTitles reads every collection's titles in one query and puts them in each one's order.
-func (l *Library) withTitles(ctx context.Context, rows []librarystore.LibraryCollection) ([]Collection, error) {
+func (l *Library) withTitles(ctx context.Context, rows []librarystore.LibraryCollection, member bool) ([]Collection, error) {
 	var ids []string
 	for _, c := range rows {
 		ids = append(ids, c.Members...)
 	}
 	byID := map[string]librarystore.LibraryItemSummary{}
 	if len(ids) > 0 {
-		page, err := l.ItemStore.ListLibraryItems(ctx, librarystore.LibraryItemQuery{IDs: ids})
+		page, err := l.ItemStore.ListLibraryItems(ctx, librarystore.LibraryItemQuery{IDs: ids, Member: member})
 		if err != nil {
 			return nil, err
 		}

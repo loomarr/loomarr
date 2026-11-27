@@ -1,20 +1,32 @@
-# Keeps the Go build caches that the merge queue restores warm (#1570). Not a gate: nothing here is
-# a required check, and it runs no tests.
+# Keeps the caches that pull requests and the merge queue restore warm (#1570): the Go build caches,
+# the pnpm store and the production FFmpeg archive. Not a gate: nothing here is a required check, and
+# it runs no tests.
 #
-# ⚠ Why this exists: the race lanes (ci-go.yml) and Store conformance (ci-postgres.yml) save their
-# Go caches only on `refs/heads/main`, because a cache saved on a PR or merge-queue ref is never read
-# again. But ci.yml never runs on a main push, so nothing ever saved them, and every queue run
-# compiled the race-instrumented standard library and dependencies from cold ("Cache not found").
+# ⚠ Why this exists: a cache saved on a PR or merge-queue ref is never read by another run (#1679);
+# only the default branch's caches are shared. ci.yml never runs on a main push, so this workflow is
+# the one writer of the Go caches that the race lanes (ci-go.yml) and Store conformance
+# (ci-postgres.yml) restore. Those lanes only restore. Without it every queue run compiled the
+# race-instrumented standard library and dependencies from cold ("Cache not found").
 #
 # ⚠ One save per (ISO week, go.sum, gate), not one per merge. Each lane's cache is ~1.4 GB; saving
 # on every merge would churn the repository's 10 GB cache quota and evict the Android and client
 # caches. Go's build cache is content-addressed, so a cache built earlier in the week still serves
 # the standard library and every dependency; only packages changed since then recompile.
 #
-# Each key ends in `-warm` so the consumer's existing restore prefix (`…-<go.sum hash>-`) matches.
+# Each key ends in `-warm`, and the consumers restore exactly that key, falling back to the week's
+# prefix (`…-<week>-<lane>-`) when `go.sum` changed mid-week.
 #
 # `contracts` is its own job because it caches a third path, the lint cache, and GitHub versions a
-# cache by its paths. Go contracts and the merge gate restore it, so it compiles what they compile.
+# cache by its paths. Go contracts restores it, so it compiles what they compile. The merge gate has
+# its own cache, written by merge-gate-cache.yml.
+#
+# A changed `go.sum`, a new week, a new lockfile or a new pin saves a new entry and leaves the old
+# one behind. `scripts/ci-cache-retention.sh`, run from merge-gate-cache.yml, deletes the superseded
+# entry of each family.
+#
+# `pnpm` and `ffmpeg` seed the exact keys the consumers restore, and only when that key is missing:
+# one pnpm store per lockfile, one archive per FFmpeg pin. The pnpm seed installs from an empty store
+# (no restore-keys), so it holds exactly this lockfile's packages and never accretes old ones.
 name: CI / Go cache warm
 
 on:
@@ -98,7 +110,7 @@ jobs:
           lookup-only: true
       - name: Compile what the contracts analyse
         if: steps.warm.outputs.cache-hit != 'true'
-        run: make vet vet-tags lint
+        run: make vet vet-tags lint platform-vet
       - name: Save the warm cache
         if: steps.warm.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -107,4 +119,60 @@ jobs:
             ~/go/pkg/mod
             ~/.cache/go-build
             ~/.cache/golangci-lint
+          key: ${{ steps.warm.outputs.cache-primary-key }}
+
+  pnpm:
+    name: Warm pnpm store
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable pnpm (pinned via web/package.json packageManager)
+        run: corepack enable
+      # The key Frontend, Playwright and the shared-client lanes restore.
+      - name: Is this lockfile's store already saved?
+        id: warm
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
+          lookup-only: true
+      - name: Fill the store from the lockfile
+        if: steps.warm.outputs.cache-hit != 'true'
+        run: make fe-install
+      - name: Save the warm store
+        if: steps.warm.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ steps.warm.outputs.cache-primary-key }}
+
+  ffmpeg:
+    name: Warm production FFmpeg archive
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Resolve production FFmpeg pin
+        id: ffmpeg-pin
+        run: ./scripts/ci-ffmpeg.sh metadata >> "$GITHUB_OUTPUT"
+      # The key the Go race lanes and the playout bench restore.
+      - name: Is this pin's archive already saved?
+        id: warm
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/loomarr-ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ steps.ffmpeg-pin.outputs.sha256 }}
+          lookup-only: true
+      - name: Download and verify production FFmpeg
+        if: steps.warm.outputs.cache-hit != 'true'
+        run: ./scripts/ci-ffmpeg.sh download "$HOME/.cache/loomarr-ffmpeg"
+      - name: Save the warm archive
+        if: steps.warm.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/loomarr-ffmpeg
           key: ${{ steps.warm.outputs.cache-primary-key }}

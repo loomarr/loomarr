@@ -3,6 +3,7 @@ package playoutresolve
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -173,6 +174,32 @@ func TestTimelineThumbWarmsAColdImageBeforeReturning(t *testing.T) {
 	}
 	if len(fetch.work) != 1 || fetch.work[0].SourceURL != src || !fetch.work[0].OriginFetchedAt.IsZero() {
 		t.Fatalf("FetchNow work = %+v, want the one cold adopted still", fetch.work)
+	}
+}
+
+// An image whose last download failed and is not yet due again is not fetched in the request, and
+// the miss is recorded as backing off, not as a fetch that failed.
+func TestTimelineThumbBackingOffIsItsOwnReason(t *testing.T) {
+	t.Parallel()
+	st := imagetestkit.NewMemStore()
+	src := imgBase + "/pip.jpg"
+	if err := st.PutImage(context.Background(), images.Image{
+		Hash: strings.Repeat("e", 64), Origin: images.OriginRemote, SourceURL: src, Role: images.RoleBackdrop,
+		FetchFailures: 3, FetchRetryAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fetch := &timelineFetchStub{}
+	r := timelineThumbResolver{
+		tmdb: newTimelineTMDB(t), images: imagetestkit.NewService(t, t.TempDir(), "https://machine-client-only.invalid", st),
+		fetch: fetch,
+	}
+	_, _, err := r.resolve(context.Background(), "series:tmdb:90000456", 1, 6)
+	if !errors.Is(err, errThumbBackingOff) || failureClassOf(err) != "image_backoff" {
+		t.Fatalf("resolve = %v (class %q), want the backing-off reason", err, failureClassOf(err))
+	}
+	if len(fetch.work) != 0 {
+		t.Fatalf("FetchNow was asked for %d images, want none while it backs off", len(fetch.work))
 	}
 }
 

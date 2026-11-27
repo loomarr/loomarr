@@ -78,8 +78,16 @@ const StorySurface = ({ state }: { state: State }) => {
   const client = useMemo(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }), []);
   return (
     <QueryClientProvider client={client}>
-      <div className="bg-background text-foreground min-h-screen p-6">
-        <div className="mx-auto max-w-3xl">
+      <div
+        style={{
+          backgroundColor: "var(--color-static-950)",
+          boxSizing: "border-box",
+          color: "var(--color-static-100)",
+          minHeight: "100vh",
+          padding: 24,
+        }}
+      >
+        <div style={{ marginInline: "auto", maxWidth: 768 }}>
           <NotificationDestinationsPanel />
         </div>
       </div>

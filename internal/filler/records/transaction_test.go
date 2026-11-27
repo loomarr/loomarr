@@ -78,7 +78,8 @@ func sampleChannel(id string, number int, deadline time.Time) channelstore.Chann
 	ch.UpdatedAt = 1_700_000_000
 	ch.Lineup = []schedule.LineupEntry{{Key: "movie:tmdb:90000001", Title: "A", DurationMs: 3600000}}
 	ch.Desired = []schedule.Slot{
-		{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000001", LibraryItemID: "lib-1", Title: "A", DurationMs: 3600000},
+		// No library item: a planned item is a foreign key, and these tests keep no library.
+		{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000001", Title: "A", DurationMs: 3600000},
 	}
 	ch.ReconcileDeadline = deadline
 	return ch

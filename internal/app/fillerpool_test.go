@@ -168,8 +168,9 @@ func TestPool_ListsChannelsWorstFirst(t *testing.T) {
 		id    string
 		level pod.MatchLevel
 	}{
-		// Nothing from the 1930s exists, so this one falls to any-audience — the worse rung.
-		{"ch-30s", pod.MatchAudience},
+		// Nothing from the 1930s exists, nor from a decade either side, so this one has nothing to
+		// air and reads as the card — the worst level.
+		{"ch-30s", pod.MatchBumperCard},
 		// ⚠ **This was `MatchWidened`, and the change IS the V51f fix — visible in a fixture that
 		// had encoded the right answer all along.** `liveChannel` builds a scope era of
 		// `{From: 1990, To: 1999}`, a real decade. The old code read `.From` and threw the rest

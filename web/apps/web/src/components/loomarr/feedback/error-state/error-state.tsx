@@ -1,32 +1,35 @@
 import { toProblem } from "@loomarr/api/mutator";
-import { Action, Icon, icons, Stack, Text } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
+import { Action, Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import type { ErrorStateProps } from "./error-state.type";
 
 // ErrorState — the RFC 7807 renderer (§3). Every failure surfaces the problem's
 // `title`/`detail` as words, never raw JSON (§6). Retry is offered only when the
 // caller says the operation is idempotent. Field-level 422 errors render inline via
 // TanStack Form instead (this is the block/list-level error).
-const ErrorState = ({ error, onRetry, retrying = false, className }: ErrorStateProps) => {
+const ErrorState = ({ error, onRetry, retrying = false, compact = false }: ErrorStateProps) => {
   const p = toProblem(error);
   return (
-    <Stack
-      align="center"
-      className={cn("border-onair-tint-30 bg-onair-tint-8 rounded-lg border p-8 text-center", className)}
+    <Card
+      alignItems="center"
+      borderRadius={8}
       flexShrink={0}
-      gap="control"
-      justify="center"
+      gap={12}
+      justifyContent="center"
+      padding={compact ? 16 : 32}
       role="alert"
+      tone="onair"
     >
       <Icon decorative glyph={icons.alert} size="control" tone="danger" />
       <div>
-        <Text as="p" textRole="cardLabel" tone="danger">
+        <Text as="p" textAlign="center" textRole="cardLabel" tone="danger">
           {p.title ?? "Something went wrong"}
         </Text>
         {p.detail && (
-          <Text as="p" className="mt-1 max-w-md" textRole="compact" tone="secondary">
-            {p.detail}
-          </Text>
+          <Stack marginTop={4} maxWidth={448}>
+            <Text as="p" textAlign="center" textRole="compact" tone="secondary">
+              {p.detail}
+            </Text>
+          </Stack>
         )}
       </div>
       {onRetry && (
@@ -34,7 +37,7 @@ const ErrorState = ({ error, onRetry, retrying = false, className }: ErrorStateP
           {retrying ? "Trying again…" : "Try again"}
         </Action>
       )}
-    </Stack>
+    </Card>
   );
 };
 

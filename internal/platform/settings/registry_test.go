@@ -394,6 +394,17 @@ func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
 	}
 }
 
+// #4414: the certified long-reel structure path is retired, and its authority and deployment
+// files with it; nothing reads either path.
+func TestRegistry_StructureWindowPathsRetired(t *testing.T) {
+	r := NewRegistry()
+	for _, retired := range []string{"filler.structure_window_authority_path", "filler.structure_window_deployment_path"} {
+		if _, ok := r.Get(retired); ok {
+			t.Errorf("retired structure-window setting %s is still declared", retired)
+		}
+	}
+}
+
 func TestRegistry_FillerStoragePaths(t *testing.T) {
 	reg := NewRegistry()
 	clip, ok := reg.Get("filler.dir")

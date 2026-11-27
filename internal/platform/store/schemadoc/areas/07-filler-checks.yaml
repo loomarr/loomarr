@@ -22,15 +22,14 @@ tables:
       clip_hash: >
         The filler clip the call was about (clips.hash). For a long-reel structure check it is the
         SHA-256 of the reel's source file.
-      run_id: The batch run the call belonged to, used for the per-run spend ceiling. Empty when the call was not part of a run.
       role: >
         Which check made the call, for example defect_judge or complete_timeline_structure.
       rung: >
         The step within that check, for example defects or window_video. Empty when the check has no steps.
       state: >
         Where the call stands. reserved means spend is set aside and the call is under way; completed
-        means it answered; failed means it did not; held_budget means a spend ceiling (per clip, per day
-        or per run) stopped it, or the provider charged more than was reserved.
+        means it answered; failed means it did not; held_budget means a spend ceiling (per clip or per
+        day) stopped it, or the provider charged more than was reserved.
       requested_provider: The AI provider Loomarr asked, such as ollama or openrouter.
       requested_model: The model Loomarr asked for.
       resolved_provider: The provider that actually answered, as reported back. Empty until the call settles.
@@ -80,7 +79,7 @@ tables:
     groups:
       - group: The call
         why: One row is one call to a model; these say which check made it and how it ended.
-        columns: [id, cache_key, clip_hash, run_id, role, rung, state, outcome, failure_reason, attempts, latency_ms, created_at, updated_at]
+        columns: [id, cache_key, clip_hash, role, rung, state, outcome, failure_reason, attempts, latency_ms, created_at, updated_at]
       - group: Who answered
         why: >
           One provider and model asked, and one that answered, per call. Comparing them is how a
@@ -96,7 +95,7 @@ tables:
         columns: [prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, cache_write_tokens, image_tokens, audio_tokens, video_tokens]
       - group: Cost
         why: >
-          The spend ceilings (per clip, per day, per run) add up reserved_nano_usd across calls in
+          The spend ceilings (per clip, per day) add up reserved_nano_usd across calls in
           one statement, which needs it on the call's own row.
         columns: [charged_amount, charged_currency, charged_nano_usd, estimated_nano_usd, reserved_nano_usd, price_snapshot]
       - group: Versions
@@ -246,23 +245,3 @@ tables:
         A lock held while a confirm is publishing the segments, so two confirms cannot run at once. Empty
         when unlocked.
       claim_expires_at: When the lock lapses if not renewed, in Unix seconds. 0 when unlocked.
-
-  - name: filler_split_shadow_decisions
-    about: >
-      A side-by-side record, made while a new splitting rule is being trialled, of what the current rule
-      and the new certified rule would each do with one split proposal. Kept after the proposal itself is
-      gone; rows are never changed.
-    retention: >
-      Kept while the proposal exists; once it is gone, the nightly housekeeping task deletes the
-      decision 180 days after it was made.
-    columns:
-      id: Identifies the decision, derived from its content.
-      proposal_id: The split proposal it was made for (filler_split_proposals.id). The proposal may since have been removed.
-      clip_hash: The compilation reel (clips.hash).
-      source_sha256: SHA-256 of the reel's source file. Empty when not known.
-      assessment_sha256: SHA-256 of the structure assessment the new rule used. Empty when there was none.
-      policy_version: Version of the splitting policy compared.
-      decision_json: >
-        The full decision as JSON. For each rule (legacy and certified) it holds a verdict and the spans it
-        would confirm, hold (with a reason) or discard.
-      observed_at: When the comparison was made, in Unix seconds.

@@ -10,7 +10,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/activity"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -22,7 +23,7 @@ type BackupStreamer interface {
 
 // InteractiveOperations reads a recorded long operation, such as a model pull.
 type InteractiveOperations interface {
-	GetInteractiveOperation(ctx context.Context, id string) (store.InteractiveOperation, error)
+	GetInteractiveOperation(ctx context.Context, id string) (operationstore.InteractiveOperation, error)
 }
 
 // SessionObserver counts the live encoders the restart page warns about.
@@ -58,6 +59,8 @@ type Deps struct {
 	PlayoutObserver SessionObserver
 	// ConnectionChecks runs the connection probes the restart page shows.
 	ConnectionChecks func(ctx context.Context) []httpcore.SetupCheck
+	// Activity records who restarted Loomarr and when (#3359); nil records nothing.
+	Activity *activity.Recorder
 }
 
 // Handlers serves the system routes.
@@ -77,6 +80,7 @@ type Handlers struct {
 	restartDrift       func() []string
 	playoutObserver    SessionObserver
 	runConnectionCheck func(ctx context.Context) []httpcore.SetupCheck
+	activity           *activity.Recorder
 
 	// schemaOnly is set only by the OpenAPI exporter: it mounts every route whatever is configured,
 	// so the generated spec lists them all.
@@ -92,6 +96,7 @@ func New(d Deps, schemaOnly bool) *Handlers {
 		backups: d.Backups, database: d.Database, encryption: d.Encryption, jobs: d.Jobs,
 		systemLLM: d.SystemLLM, restart: d.Restart, restartDrift: d.RestartDrift,
 		playoutObserver: d.PlayoutObserver, runConnectionCheck: d.ConnectionChecks,
+		activity:   d.Activity,
 		schemaOnly: schemaOnly,
 	}
 }

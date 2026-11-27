@@ -1,5 +1,5 @@
 import type { ClipDTO } from "@loomarr/api";
-import { Text } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ClipRow } from "@/components/loomarr/filler/clip-row";
 import { widthFrame } from "@/test/story-utils";
@@ -21,19 +21,21 @@ const clips: ClipDTO[] = Array.from({ length: 60 }, (_, index) => ({
 
 const LargeCatalogState = () => (
   <section aria-labelledby="large-catalog-heading">
-    <div className="mb-3">
+    <Stack marginBottom={12}>
       <Text as="h2" id="large-catalog-heading" textRole="headline" strong>
         60 clips
       </Text>
       <Text as="p" textRole="compact" tone="secondary">
         Showing 1–60 of 1,240
       </Text>
-    </div>
-    <div className="border-border overflow-hidden rounded-lg border">
-      {clips.map((clip) => (
-        <ClipRow key={clip.hash} clip={clip} />
-      ))}
-    </div>
+    </Stack>
+    <Stack borderColor="$borderDecorative" borderRadius={8} borderWidth={1} overflow="hidden">
+      <Stack marginBottom={-1}>
+        {clips.map((clip) => (
+          <ClipRow key={clip.hash} clip={clip} />
+        ))}
+      </Stack>
+    </Stack>
   </section>
 );
 

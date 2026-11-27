@@ -14,8 +14,9 @@ import type { SuggestionRun, SuggestionRunJob } from "./use-suggestion-run.type"
 // surface the proposal it produced.
 //
 // Detailed phases (searching · reasoning · scoring) are transient SSE hints. The
-// Proposal Job Journey is the durable source of truth, polled while generating; SSE only
-// invalidates that same read sooner. Which Job that is belongs to the caller (the Guide keeps
+// Proposal Job Journey is the durable source of truth: the worker stores each step of a run
+// before it publishes that step's suggestion frame, ending in done or failed, so each frame
+// is the cue to read the Journey again. Which Job that is belongs to the caller (the Guide keeps
 // it in the URL): a submit or resume reports the new Job through `onJob`, and the run stays
 // pending until `onJob` settles, so no frame shows the form between the two.
 const useSuggestionRun = ({ jobId, onJob }: SuggestionRunJob): SuggestionRun => {
@@ -51,13 +52,7 @@ const useSuggestionRun = ({ jobId, onJob }: SuggestionRunJob): SuggestionRun => 
     },
   });
   const journeyQuery = proposalJobsApi.useGetProposalJob(jobId ?? "", {
-    query: {
-      enabled: jobId !== undefined,
-      refetchInterval: (query) => {
-        const response = query.state.data;
-        return response?.status === 200 && response.data.milestone === "generating" ? 2_000 : false;
-      },
-    },
+    query: { enabled: jobId !== undefined },
   });
 
   useLoomarrEventListener({

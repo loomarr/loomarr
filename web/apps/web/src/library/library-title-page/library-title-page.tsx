@@ -5,6 +5,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { LibraryTitle } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
+import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -33,6 +34,7 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
   const navigate = useNavigate();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { isAdmin } = useAuth();
   const detail = libraryApi.useGetLibraryItem(id);
   const body = unwrap(detail.data);
   useDocumentTitle(body?.item.name ?? "Library");
@@ -55,22 +57,31 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
     await refresh();
   };
 
-  const { item, match } = body;
+  // match, files, detailsFrom and the counts are admin-only, and so is every fix: a member's page
+  // offers none, so it calls nothing a member would be refused.
+  const { item } = body;
+  const match = body.match ?? { by: "none" as const };
   const page = match.page;
   return (
     <LibraryTitle
+      fix={
+        isAdmin
+          ? {
+              onCheckFiles: () => act(libraryApi.checkLibraryItemFiles(id)),
+              onChooseOrder: () => void navigate({ to: "/library/needs" }),
+              onForget: () => act(libraryApi.unanswerLibraryItem(id)),
+              onLink: (externalId) => act(libraryApi.linkLibraryItem(id, { externalId })),
+              onOpenApp: page ? () => window.open(page, "_blank", "noopener,noreferrer") : undefined,
+              onRemoveExtra: (path) => act(libraryApi.removeLibraryExtraCopy(id, { path })),
+              onSearch: searchLibraryTitles,
+              onUpdateDetails: () => act(libraryApi.updateLibraryItemDetails(id)),
+            }
+          : undefined
+      }
       onBack={() => {
         if (router.history.canGoBack()) router.history.back();
         else void navigate({ to: "/library" });
       }}
-      onCheckFiles={() => act(libraryApi.checkLibraryItemFiles(id))}
-      onChooseOrder={() => void navigate({ to: "/library/needs" })}
-      onForget={() => act(libraryApi.unanswerLibraryItem(id))}
-      onLink={(externalId) => act(libraryApi.linkLibraryItem(id, { externalId }))}
-      onOpenApp={page ? () => window.open(page, "_blank", "noopener,noreferrer") : undefined}
-      onRemoveExtra={(path) => act(libraryApi.removeLibraryExtraCopy(id, { path }))}
-      onSearch={searchLibraryTitles}
-      onUpdateDetails={() => act(libraryApi.updateLibraryItemDetails(id))}
       title={{
         kind: item.kind,
         name: item.name,
@@ -80,15 +91,15 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
         genres: body.genres,
         rating: body.rating,
         runtimeMillis: body.runtimeMillis,
-        files: body.files,
-        unplayable: item.unplayable,
+        files: body.files ?? [],
+        unplayable: item.unplayable ?? 0,
         seasons: body.seasons,
         match: { by: match.by, app: match.app ? APP_NAMES[match.app] : undefined },
         channels: body.channels,
         detailsFrom: {
-          description: sourceName(body.detailsFrom.description),
-          rating: sourceName(body.detailsFrom.rating),
-          episodeNames: sourceName(body.detailsFrom.episodeNames),
+          description: sourceName(body.detailsFrom?.description),
+          rating: sourceName(body.detailsFrom?.rating),
+          episodeNames: sourceName(body.detailsFrom?.episodeNames),
         },
       }}
     />

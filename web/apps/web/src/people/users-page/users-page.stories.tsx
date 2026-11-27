@@ -73,7 +73,7 @@ const UsersPageStory = ({ roster }: UsersPageStoryProps) => {
   const queryClient = useMemo(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }), []);
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="bg-background h-screen w-screen">
+      <div style={{ backgroundColor: "var(--color-static-950)", height: "100vh", width: "100vw" }}>
         <UsersPage />
       </div>
     </QueryClientProvider>

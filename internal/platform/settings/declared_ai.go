@@ -118,6 +118,18 @@ func declaredAI() []Setting {
 			Detail: "How often auto-curate channels re-evaluate their intent against the library (cron). Weekly by default — this runs the AI, so keep it infrequent.",
 		},
 		{
+			Key: "job.growth.schedule", EnvVar: "JOB_GROWTH_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 5 0 * * *", Advanced: true,
+			Doc:    "When channels take in new library titles that fit them.",
+			Detail: "When each channel adds the library titles inside the line its own picks draw, up to its target (cron). Nightly just after midnight by default; it uses no AI.",
+		},
+		{
+			Key: "job.growth_review.schedule", EnvVar: "JOB_GROWTH_REVIEW_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */5 * * * *", Advanced: true,
+			Doc:    "How often the AI checks the titles channels took in by themselves.",
+			Detail: "How often the AI reviews a few of the titles channels added by themselves, and the unclear ones they held back (cron). Each run asks about at most four titles and waits while someone is using the AI.",
+		},
+		{
 			Key: "recurate.min_score_pct", Label: "Auto-curation request threshold", EnvVar: "RECURATE_MIN_SCORE_PCT", Group: GroupAI,
 			Kind: KindInt, Unit: UnitPercent, Default: 60, Advanced: true,
 			Doc:    "How good a match a title you don't have must be before auto-curate downloads it.",

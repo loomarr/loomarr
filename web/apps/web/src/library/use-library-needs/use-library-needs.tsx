@@ -28,7 +28,8 @@ const problemOf = (p: LibraryProblemDTO): LibraryProblem => ({
   kind: p.item.kind,
   name: p.item.name,
   poster: p.item.poster ? <ServedImage alt="" image={p.item.poster} sizes={THUMB_SIZES} /> : undefined,
-  unplayable: p.item.unplayable,
+  // Needs you is admin-only, and an admin's titles always carry the count.
+  unplayable: p.item.unplayable ?? 0,
   extraBytes: p.extraBytes,
 });
 
@@ -85,9 +86,11 @@ const searchLibraryTitles: LibraryNeedSearch = async (query, kind) => {
   }));
 };
 
-const useLibraryNeeds = () => {
+// Asks for the list only while `enabled`: the wall says the count from the status, so only Needs
+// you's own screen reads the cards.
+const useLibraryNeeds = (enabled = true) => {
   const queryClient = useQueryClient();
-  const list = libraryApi.useListLibraryNeeds();
+  const list = libraryApi.useListLibraryNeeds({ query: { enabled } });
   const needs = useMemo(() => (unwrap(list.data)?.needs ?? []).map(needOf), [list.data]);
   const orders = useMemo(() => (unwrap(list.data)?.orders ?? []).map(orderNeedOf), [list.data]);
   const problems = useMemo(() => (unwrap(list.data)?.problems ?? []).map(problemOf), [list.data]);

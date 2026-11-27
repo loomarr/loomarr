@@ -827,6 +827,7 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, old); err != nil {
 		t.Fatal(err)
 	}
+	saveFillerSources(t, s, "youtube:ads")
 	run := acquisition.AcquisitionRun{
 		ID: "identity-acquisition", Trigger: acquisition.TriggerSource, SourceID: "youtube:ads",
 		Status: acquisition.RunSuccess, Requested: 1, Fetched: 1,
@@ -969,6 +970,7 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	}, at); err != nil {
 		t.Fatal(err)
 	}
+	saveAcquisitionRun(t, s, "ready-acquisition")
 	pipeline := pipelinestate.ClipPipeline{
 		ClipHash: old.Hash, AcquisitionID: "ready-acquisition", Stage: pipelinestate.StageFinish,
 		Status: pipelinestate.StatusRunning, Progress: 100, Disposition: pipelinestate.DispositionRunning,
@@ -1081,6 +1083,7 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, source); err != nil {
 		t.Fatal(err)
 	}
+	saveFillerSources(t, s, "youtube:ads")
 	run := acquisition.AcquisitionRun{
 		ID: "conditioning-acquisition", Trigger: acquisition.TriggerSource, SourceID: "youtube:ads",
 		Status: acquisition.RunSuccess, Requested: 1, Fetched: 1,
@@ -1400,6 +1403,7 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
+	saveFillerSources(t, s, "archive:classic", "archive:vault")
 	older := acquisition.AcquisitionRun{
 		ID: "acq-old", Trigger: acquisition.TriggerScheduled, SourceID: "archive:classic",
 		Status: acquisition.RunRunning, Requested: 3, StartedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
@@ -1527,6 +1531,7 @@ func testFillerAcquisitionArtifacts(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
+	saveFillerSources(t, s, "archive:classic")
 	run := acquisition.AcquisitionRun{
 		ID: "acq-manifest", Trigger: acquisition.TriggerSource, SourceID: "archive:classic",
 		Status: acquisition.RunRunning, Requested: 2, StartedAt: now, UpdatedAt: now,
@@ -1619,7 +1624,6 @@ func testInteractiveOperations(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	split.Status = InteractiveOperationSuccess
-	split.ResultID = "sp-1"
 	split.CompletedAt, split.UpdatedAt = now.Add(time.Minute), now.Add(time.Minute)
 	if err := s.UpsertInteractiveOperation(ctx, split); err != nil {
 		t.Fatal(err)
@@ -1732,6 +1736,7 @@ func testClipPipelineRetireRejected(t *testing.T, newStore NewStoreFunc) {
 		}
 		return Clip{Clip: c}
 	}
+	saveAcquisitionRun(t, s, "run-1")
 	old := reject("old", "run-1", week.Add(-time.Hour))
 	recent := reject("recent", "run-1", week.Add(time.Hour))
 	byHand := reject("by-hand", "", week.Add(-time.Hour))
@@ -1797,6 +1802,99 @@ func testClipPipelineRetireRejected(t *testing.T, newStore NewStoreFunc) {
 	// Five rejects remain in the audit count; the retired one is no longer recoverable.
 	if overview.Rejected != 5 || overview.Recoverable != 4 {
 		t.Fatalf("overview = %+v, want 5 rejected and 4 recoverable", overview)
+	}
+}
+
+// testClipPipelineRetireReady pins decision 13 of #3838 (#3855): a full budget may evict a clip
+// Loomarr fetched that is on air, taking it off the catalog and marking its row files-deleted in one
+// transaction, and may evict nothing else: a hand-added clip, a pinned one, a held one, a composite
+// and one already let go all stay.
+func testClipPipelineRetireReady(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_900_000_000, 0).UTC()
+	ready := func(name, acquisition string, mutate func(*clips.Clip)) Clip {
+		t.Helper()
+		c := clipAt("ready/"+name+".mp4", name, clips.Commercial, 30_000)
+		if mutate != nil {
+			mutate(&c)
+		}
+		if err := s.UpsertClip(ctx, Clip{Clip: c, UpdatedAt: now.Add(-time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+			ClipHash: c.Hash, AcquisitionID: acquisition, Stage: pipelinestate.StageFinish,
+			Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionReady,
+			EnrolledAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return Clip{Clip: c}
+	}
+	saveAcquisitionRun(t, s, "run-1")
+	fetched := ready("fetched", "run-1", nil)
+	byHand := ready("by-hand", "", nil)
+	pinned := ready("pinned", "run-1", nil)
+	held := ready("held", "run-1", func(c *clips.Clip) { c.Held = true })
+	composite := ready("composite", "run-1", func(c *clips.Clip) { c.IsComposite = true })
+	channel := sampleChannel("pins-a-ready-clip", 713, now)
+	channel.Policy.Filler = &schedule.FillerSelection{Pinned: []string{pinned.Hash}}
+	if _, err := s.SaveChannel(ctx, channel); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		clip Clip
+		want bool
+	}{{fetched, true}, {byHand, false}, {pinned, false}, {held, false}, {composite, false}, {fetched, false}} {
+		got, err := s.RetireReadyClip(ctx, tc.clip.Hash, now)
+		if err != nil || got != tc.want {
+			t.Fatalf("RetireReadyClip(%s) = %v, %v; want %v", tc.clip.Name, got, err, tc.want)
+		}
+	}
+	if got, err := s.RetireReadyClip(ctx, "no-such-clip", now); err != nil || got {
+		t.Fatalf("RetireReadyClip(unknown) = %v, %v; want false", got, err)
+	}
+
+	got, err := s.GetClip(ctx, fetched.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := s.LiveClipPaths(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, stillLive := live[fetched.Hash]; got.RemovedAt.IsZero() || stillLive {
+		t.Fatalf("evicted clip removed=%v live=%v, want removed and reaped", got.RemovedAt, stillLive)
+	}
+	for _, kept := range []Clip{byHand, pinned, held, composite} {
+		if _, ok := live[kept.Hash]; !ok {
+			t.Errorf("%s was reaped", kept.Name)
+		}
+	}
+	row, _, err := s.GetClipPipeline(ctx, fetched.Hash)
+	if err != nil || !row.FilesDeletedAt.Equal(now) || row.Disposition != pipelinestate.DispositionReady {
+		t.Fatalf("evicted row = %+v, %v; want files deleted at %v and the row otherwise as it was", row, err, now)
+	}
+	// A runner write carrying the row as it was read before the eviction cannot clear the mark.
+	stale := row
+	stale.FilesDeletedAt, stale.UpdatedAt = time.Time{}, now.Add(time.Minute)
+	if err := s.UpsertClipPipeline(ctx, stale); err != nil {
+		t.Fatal(err)
+	}
+	if row, _, _ = s.GetClipPipeline(ctx, fetched.Hash); !row.FilesDeletedAt.Equal(now) {
+		t.Fatalf("files_deleted_at after a stale runner write = %v, want %v", row.FilesDeletedAt, now)
+	}
+	// The on-air list no longer holds it.
+	onAir, err := s.ListClips(ctx, clipstore.ClipFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range onAir {
+		if c.Hash == fetched.Hash {
+			t.Fatal("the evicted clip is still in the on-air catalog")
+		}
 	}
 }
 
@@ -3702,6 +3800,7 @@ func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	ctx := context.Background()
 	s := newStore(t)
+	saveMembers(t, s, "admin-2")
 	created := time.Now().UTC().Truncate(time.Second)
 
 	p := acquisition.Pull{
@@ -5236,11 +5335,11 @@ func testFillerInferenceAccountingAndBudgets(t *testing.T, newStore NewStoreFunc
 	}
 	reserve := func(id, clip string, nano int64) InferenceEvaluation {
 		e, err := s.ReserveInferenceEvaluation(ctx, InferenceEvaluation{
-			ID: id, ClipHash: clip, RunID: "cert-1", Role: "filler_frames", Rung: "frames",
+			ID: id, ClipHash: clip, Role: "filler_frames", Rung: "frames",
 			RequestedProvider: "openrouter", RequestedModel: "openai/gpt-5-mini",
 			Modalities: []string{"text", "image"}, DerivativeBytes: 4096, DerivativePixels: 2_073_600,
 			ReservedNanoUSD: nano, Versions: versions, CreatedAt: at,
-		}, InferenceBudget{PerClipNanoUSD: 100, PerDayNanoUSD: 1000, PerRunNanoUSD: 1000})
+		}, InferenceBudget{PerClipNanoUSD: 100, PerDayNanoUSD: 1000})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -5287,9 +5386,9 @@ func testFillerInferenceAccountingAndBudgets(t *testing.T, newStore NewStoreFunc
 
 	dayDenied := reserve("eval-4", "clip-b", 906)
 	if dayDenied.State != InferenceHeldBudget {
-		t.Fatalf("daily/run ceiling did not hold request: %+v", dayDenied)
+		t.Fatalf("daily ceiling did not hold request: %+v", dayDenied)
 	}
-	rows, err := s.ListInferenceEvaluations(ctx, InferenceEvaluationFilter{RunID: "cert-1", Limit: 10})
+	rows, err := s.ListInferenceEvaluations(ctx, InferenceEvaluationFilter{Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5300,6 +5399,26 @@ func testFillerInferenceAccountingAndBudgets(t *testing.T, newStore NewStoreFunc
 	if err != nil || got.GenerationID != "gen-1" || got.Versions.RolePolicy != "r1" || len(got.Modalities) != 2 || got.CacheKey == "" {
 		t.Fatalf("inspect evaluation = %+v, %v", got, err)
 	}
+
+	// Each ceiling holds on its own, exactly at its boundary. clip-a and the day have both spent
+	// 95: 40 settled on eval-1 and 55 charged on eval-3. A held request spends nothing, and
+	// clip-at brings the day to 100.
+	boundary := func(id, clip string, nano int64, budget InferenceBudget, want InferenceEvaluationState) {
+		t.Helper()
+		e, err := s.ReserveInferenceEvaluation(ctx, InferenceEvaluation{
+			ID: id, ClipHash: clip, Role: "filler_frames", RequestedProvider: "openrouter",
+			RequestedModel: "openai/gpt-5-mini", ReservedNanoUSD: nano, Versions: versions, CreatedAt: at,
+		}, budget)
+		if err != nil || e.State != want {
+			t.Fatalf("%s: state %q, %v, want %q", id, e.State, err, want)
+		}
+	}
+	clipOnly := InferenceBudget{PerClipNanoUSD: 100, PerDayNanoUSD: 1_000_000}
+	boundary("clip-over", "clip-a", 6, clipOnly, InferenceHeldBudget)
+	boundary("clip-at", "clip-a", 5, clipOnly, InferenceReserved)
+	dayOnly := InferenceBudget{PerClipNanoUSD: 1_000_000, PerDayNanoUSD: 1000}
+	boundary("day-over", "clip-c", 901, dayOnly, InferenceHeldBudget)
+	boundary("day-at", "clip-c", 900, dayOnly, InferenceReserved)
 }
 
 // The ordinary scan upsert cannot release a hold, even when its caller supplies held=false. An
@@ -5355,6 +5474,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
 	}
+	saveAcquisitionRun(t, s, "acquisition-1")
 	current := pipelinestate.ClipPipeline{
 		ClipHash: hash, AcquisitionID: "acquisition-1", Stage: pipelinestate.StageFinish,
 		Status: pipelinestate.StatusRunning, Progress: 100, Disposition: pipelinestate.DispositionRunning,
@@ -5501,58 +5621,6 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	}
 	if _, found, err := s.GetFillerReadyEvent(ctx, driftHash); err != nil || found {
 		t.Fatalf("drifted transaction recorded event, found=%t err=%v", found, err)
-	}
-}
-
-func testFillerSplitShadowDecisions(t *testing.T, newStore NewStoreFunc) {
-	t.Helper()
-	s := newStore(t)
-	ctx := context.Background()
-	decision := filler.StructureSplitShadowDecision{
-		SchemaVersion: filler.StructureSplitShadowSchemaVersion, ContractVersion: filler.StructureSplitShadowContractVersion,
-		ProposalID: "proposal-shadow-1", ClipHash: "clip-shadow-1",
-		SourceSHA256: strings.Repeat("a", 64), AssessmentSHA256: strings.Repeat("b", 64),
-		PolicyVersion: "production-shadow-no-certified-slices-v1",
-		Legacy: filler.StructureSplitShadowOutcome{
-			Confirm: []filler.StructureSplitShadowSpan{{StartMs: 0, EndMs: 30_000}, {StartMs: 30_000, EndMs: 60_000}},
-		},
-		Certified: filler.StructureSplitShadowOutcome{
-			Verdict: filler.RejectStructureUncertified,
-			Hold: []filler.StructureSplitShadowSpan{
-				{StartMs: 0, EndMs: 30_000, HoldReason: string(filler.RejectStructureUncertified)},
-				{StartMs: 30_000, EndMs: 60_000, HoldReason: string(filler.RejectStructureUncertified)},
-			},
-		},
-		ObservedAt: time.Unix(1_900_000_000, 123).UTC(),
-	}
-	decision.SHA256 = filler.StructureSplitShadowDecisionSHA256(decision)
-	decision.ID = "split-shadow-" + decision.SHA256
-	if err := filler.ValidateStructureSplitShadowDecision(decision); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.PutStructureSplitShadowDecision(ctx, decision); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.PutStructureSplitShadowDecision(ctx, decision); err != nil {
-		t.Fatalf("idempotent retry failed: %v", err)
-	}
-	got, found, err := s.GetStructureSplitShadowDecision(ctx, decision.ID)
-	if err != nil || !found || !reflect.DeepEqual(got, decision) {
-		t.Fatalf("get split shadow = %+v, %v, %v; want %+v", got, found, err, decision)
-	}
-	if _, found, err := s.GetStructureSplitShadowDecision(ctx, "missing-split-shadow"); err != nil || found {
-		t.Fatalf("missing split shadow found = %v, error = %v", found, err)
-	}
-	rows, err := s.ListStructureSplitShadowDecisions(ctx, decision.ClipHash, 10)
-	if err != nil || len(rows) != 1 || !reflect.DeepEqual(rows[0], decision) {
-		t.Fatalf("split shadow round trip = %+v, %v; want %+v", rows, err, decision)
-	}
-	other, err := s.ListStructureSplitShadowDecisions(ctx, "another-clip", 10)
-	if err != nil || len(other) != 0 {
-		t.Fatalf("split shadow clip filter = %+v, %v", other, err)
-	}
-	if _, err := s.ListStructureSplitShadowDecisions(ctx, "", 0); err == nil {
-		t.Fatal("invalid split shadow page limit was accepted")
 	}
 }
 

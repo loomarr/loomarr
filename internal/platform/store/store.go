@@ -23,9 +23,9 @@ import (
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
-	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
-	"github.com/loomarr/loomarr/internal/platform/store/qualitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
@@ -37,39 +37,6 @@ import (
 // It is storedb.ErrNotFound, the same value under a second name, so errors.Is matches an error
 // created in either package.
 var ErrNotFound = storedb.ErrNotFound
-
-// ErrConditionedClipMismatch reports a conditioned clip adoption whose catalog rows are not one
-// of the exact source-only, source-plus-held-reconstruction, or target-only states the owner-bound
-// recovery protocol permits. Callers must hold it for review.
-//
-// It is clipstore.ErrConditionedClipMismatch, the same value under a second name, so errors.Is
-// matches an error created in either package.
-var ErrConditionedClipMismatch = clipstore.ErrConditionedClipMismatch
-
-// ErrTaxonConflict marks a taxonomy mutation that cannot safely apply: create over an existing
-// slug, or delete of a taxon still directly asserted on clips. The caller should reload/retag,
-// never retry the same write blindly.
-//
-// It is clipstore.ErrTaxonConflict, the same value under a second name.
-var ErrTaxonConflict = clipstore.ErrTaxonConflict
-
-// ErrQualitySnapshotConflict reports reuse of an immutable evaluation-run id
-// with different facts. It is qualitystore.ErrSnapshotConflict, the same value under a second name.
-var ErrQualitySnapshotConflict = qualitystore.ErrSnapshotConflict
-
-// ErrContactAddressConflict means the normalized mailbox is already attached to another person
-// or pending replacement. Public recovery must never resolve one address ambiguously.
-//
-// It is identitystore.ErrContactAddressConflict, the same value under a second name, so errors.Is
-// matches an error created in either package.
-var ErrContactAddressConflict = identitystore.ErrContactAddressConflict
-
-// ErrInvitationIdentityConflict means an allowlist row or active Invitation already owns the
-// reserved local username or exact Library account id.
-//
-// It is identitystore.ErrInvitationIdentityConflict, the same value under a second name, so
-// errors.Is matches an error created in either package.
-var ErrInvitationIdentityConflict = identitystore.ErrInvitationIdentityConflict
 
 // TitleStore is the provisioning surface (§3–§4).
 type TitleStore interface {
@@ -121,6 +88,13 @@ type ChannelStore interface {
 	// a targeted revision-checked write used after the lineup is bound.
 	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 	ListChannels(ctx context.Context) ([]Channel, error)
+	// GrowthReviews is the model's verdict on each title it reviewed for the channel (#4333);
+	// SaveGrowthReview replaces one.
+	GrowthReviews(ctx context.Context, channelID string) (map[provision.Key]channelstore.GrowthReview, error)
+	SaveGrowthReview(ctx context.Context, r channelstore.GrowthReview) error
+	// ChannelsNamingCollections maps each collection a channel's scope or rules name to those
+	// channels' ids, read from channel_scope_collections (#2793).
+	ChannelsNamingCollections(ctx context.Context) (map[string][]string, error)
 	// ChannelRequesters maps channel id to the name of the person whose request made it (#1663).
 	ChannelRequesters(ctx context.Context) (map[string]string, error)
 	// DeleteChannel hard-deletes the revision-matched Channel and only its channel-scoped
@@ -301,6 +275,7 @@ type UserStore interface {
 	TouchDeviceToken(ctx context.Context, tokenHash string, at time.Time) error
 	ListDeviceTokensForUser(ctx context.Context, userID string) ([]DeviceToken, error)
 	DeleteDeviceToken(ctx context.Context, tokenHash, userID string) (bool, error)
+	SetDeviceCodeMode(ctx context.Context, tokenHash, userID string, on bool) (bool, error)
 }
 
 // ClipStore is the filler clip catalog (§10).
@@ -381,6 +356,10 @@ type ClipStore interface {
 	// ONLY writer of `is_composite`; UpsertClip omits it so a re-sync cannot flip a confirmed
 	// composite back to an airable clip. Keyed by hash.
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
+	// ClipsWithoutAirWindow and SetClipAirWindow back the air-window sweep (#3384). The setter is
+	// the ONLY writer of `air_start_ms`/`air_end_ms`; UpsertClip leaves them alone.
+	ClipsWithoutAirWindow(ctx context.Context) ([]clipstore.Clip, error)
+	SetClipAirWindow(ctx context.Context, hash string, startMs, endMs int64, at time.Time) error
 	// SetClipArtworkImages records the image-service identities of a clip's still and hover loop
 	// (§22, V52 phase 6). Sole writer of those columns — they are omitted from UpsertClip's
 	// DO UPDATE so a folder re-sync cannot blank them.
@@ -481,10 +460,22 @@ type ClipStore interface {
 // InteractiveOperationStore is the reconnect truth for request-launched asynchronous work. It
 // stores snapshots only; recurring/distributed scheduling remains owned by ScheduledJobStore.
 type InteractiveOperationStore interface {
-	UpsertInteractiveOperation(ctx context.Context, operation InteractiveOperation) error
-	GetInteractiveOperation(ctx context.Context, id string) (InteractiveOperation, error)
+	UpsertInteractiveOperation(ctx context.Context, operation operationstore.InteractiveOperation) error
+	GetInteractiveOperation(ctx context.Context, id string) (operationstore.InteractiveOperation, error)
 	RecoverInterruptedInteractiveOperations(ctx context.Context, at time.Time) (int, error)
 	PurgeFinishedInteractiveOperations(ctx context.Context, before time.Time) (int, error)
+}
+
+// FillerBreakStore keeps each channel's assembled breaks (#3838 step 2): reconcile plans them ahead
+// and writes them; the guide, the previews and the stream read them.
+type FillerBreakStore interface {
+	// SaveFillerBreaks stores breaks, replacing any at the same channel and start.
+	SaveFillerBreaks(ctx context.Context, breaks []clipstore.FillerBreak) error
+	// ListFillerBreaks returns a channel's stored breaks starting in [from, to], earliest first.
+	ListFillerBreaks(ctx context.Context, channelID string, from, to time.Time) ([]clipstore.FillerBreak, error)
+	// KeepFillerBreaks deletes a channel's stored breaks starting in [from, until) other than those
+	// starting at `starts`; a zero bound is open.
+	KeepFillerBreaks(ctx context.Context, channelID string, from, until time.Time, starts []time.Time) error
 }
 
 // AiringStore records what actually went to air — written from playout only.
@@ -706,6 +697,7 @@ type Store interface {
 	ClipStore
 	InteractiveOperationStore
 	AiringStore
+	FillerBreakStore
 	ActivityStore
 	InvitationStore
 	PasswordRecoveryStore
@@ -720,6 +712,7 @@ type Store interface {
 	DiscoveryFeedbackStore
 	ChannelPreferenceStore
 	HiddenIdeaStore
+	UpcomingAiringStore
 	ViewingStore
 	DiscoveryQualityStore
 	InventoryStore
@@ -733,13 +726,14 @@ type Store interface {
 	LibraryCollectionStore
 	LibraryPeopleStore
 	LibraryItemFactsReader
+	SeriesEpisodesReader
 	LibraryEvidenceReader
 	LibraryEpisodeReader
 	LibraryTitleReader
-	LibraryReferenceStore
 	LibraryArtReader
 	CatalogRetentionStore
 	LibraryTitleSearcher
+	MemberTitleReader
 
 	// Close releases the underlying database handle.
 	Close() error

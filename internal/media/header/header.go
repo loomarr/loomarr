@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
 )
@@ -44,7 +45,8 @@ func (h Header) SourceFacts() inventory.SourceFacts {
 //	1: containers, durations, streams, colour and chapters.
 //	2: commentary, hearing-impaired and described tracks, and a video track's Dolby Vision profile.
 //	3: a file's chapters are kept with its facts.
-const Version = 3
+//	4: each track's bitrate and bit depth (#3228).
+const Version = 4
 
 // Read returns a file's header facts from its container. ok is false for a container this package
 // does not read (AVI, MPEG-TS, …), one whose header does not parse, or one where a fact playout
@@ -68,6 +70,9 @@ func Read(r io.ReaderAt, size int64) (Header, bool) {
 // neither container records, so this reader leaves a stream's ChannelLayout empty: "" where it
 // depends on the bitstream.
 func ChannelLayout(codec string, channels int) string {
+	if strings.HasPrefix(codec, "pcm_") {
+		return "" // a PCM decoder states no layout for a container that records none
+	}
 	switch channels {
 	case 1:
 		return "mono"

@@ -10,7 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/viewingstore"
 )
 
 // /v1/household/watch-history — who watched what, for admins (#3010).
@@ -77,7 +77,7 @@ type watchHistoryClearOutput struct {
 }
 
 func (s *Handlers) listWatchHistory(ctx context.Context, in *watchHistoryListInput) (*watchHistoryListOutput, error) {
-	q := store.ViewingQuery{UserID: in.UserID, From: in.From, To: in.To, Limit: in.Limit + 1}
+	q := viewingstore.ViewingQuery{UserID: in.UserID, From: in.From, To: in.To, Limit: in.Limit + 1}
 	if in.Cursor != "" {
 		at, id, ok := parseWatchHistoryCursor(in.Cursor)
 		if !ok {

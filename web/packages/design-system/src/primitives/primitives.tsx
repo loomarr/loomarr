@@ -6,10 +6,8 @@ import { Animated, Easing } from "react-native";
 import { themeColors } from "../config";
 import { useNativeAnimationDriver } from "../motion/animation-driver";
 import { useReducedMotionPreference } from "../motion/use-reduced-motion";
-import { lineHeightPx, Text, type TextTone, textTones, withAlpha } from "../text";
-import { TamaguiText } from "../text-base";
-import { brandChroma, type Density, typography } from "../tokens";
-import { Tooltip } from "../tooltip";
+import { Text, type TextTone, textTones } from "../text";
+import { brandChroma, type Density } from "../tokens";
 import { resolveViewportInsets, useViewportInsets } from "../viewport";
 
 const ScreenFrame = styled(View, {
@@ -162,181 +160,18 @@ const channelIdentColors = (mode: "dark" | "light") => {
   ) as Record<ChannelIdentColorHue, { text: string; wash: string }>;
 };
 
-type BadgeTone =
-  | "caution"
-  | "danger"
-  | "info"
-  | "live"
-  | "lock"
-  | "neutral"
-  | "onair"
-  | "override"
-  | "signal"
-  | "success"
-  | "suggest"
-  | "tune"
-  | "warning";
-type BadgeShape = "pill" | "square";
-type BadgeProps = Omit<ComponentProps<typeof View>, "children"> & {
-  children: ReactNode;
-  density?: Density;
-  /** Square only: a glyph before the label, 4px from it. On web it inherits the badge's colour. */
-  icon?: ReactNode;
-  /**
-   * `pill` is the rounded state chip (danger/info/live/neutral/success/warning). `square` is the
-   * machine-data tag (#970 legacy Badge): mono, sentence case (#2778), a hairline-free tinted-15% background,
-   * no border. The two shapes intentionally do not share a tone vocabulary below.
-   */
-  shape?: BadgeShape;
-  /** Square only: the accent tones' tint strength, lowered for a badge on a raised surface. */
-  tintOpacity?: number;
-  /** Web only: the browser's tooltip, for a tag whose short label needs explaining. */
-  title?: string;
-  tone?: BadgeTone;
-};
-
-const badgeTone = {
-  danger: { backgroundColor: "stateDangerSurface", borderColor: "stateDanger", color: "stateDanger" },
-  info: { backgroundColor: "stateInfoSurface", borderColor: "stateInfo", color: "stateInfo" },
-  live: { backgroundColor: "stateLiveSurface", borderColor: "stateLive", color: "stateLive" },
-  neutral: {
-    backgroundColor: "surfaceElevated",
-    borderColor: "actionDisabled",
-    color: "contentSecondary",
-  },
-  // A channel override or Custom value (#1909 Q5): neutral with a foreground label.
-  override: {
-    backgroundColor: "surfaceElevated",
-    borderColor: "borderControl",
-    color: "contentPrimary",
-  },
-  success: {
-    backgroundColor: "stateSuccessSurface",
-    borderColor: "stateSuccess",
-    color: "stateSuccess",
-  },
-  warning: {
-    backgroundColor: "stateWarningSurface",
-    borderColor: "stateWarning",
-    color: "stateWarning",
-  },
-} as const;
-
-// "#0B0C0E" + 0.15 → "rgba(11,12,14,0.15)", the same formula CSS `color-mix(in srgb, X 15%,
-// transparent)` resolves to (shared with Text's halo: `withAlpha` lives in ../text).
-const squareBadgeTone = (theme: ReturnType<typeof useTheme>, tint: number) =>
-  ({
-    // The only square tone with a flat, non-tinted background — the legacy ledger's "neutral".
-    neutral: { backgroundColor: theme.surfaceElevated.val, color: theme.contentSecondary.val },
-    // A channel override or Custom value (#1909 Q5): neutral, with a foreground label and a control
-    // hairline. The word carries the meaning; amber stays for focus and the primary action.
-    override: {
-      backgroundColor: "surfaceElevated",
-      borderColor: "borderControl",
-      color: theme.contentPrimary.get(),
-    },
-    tune: { backgroundColor: withAlpha(theme.stateInfo.val, tint), color: theme.stateInfo.val },
-    lock: { backgroundColor: withAlpha(theme.stateSuccess.val, tint), color: theme.stateSuccess.val },
-    caution: { backgroundColor: withAlpha(theme.stateWarning.val, tint), color: theme.stateWarning.val },
-    // `danger`/`stateDanger` already resolves to the AA-safe onair-300 stop; the tint itself uses
-    // the stronger base onair red, same split as the legacy `bg-onair-tint-15 text-onair-300`.
-    onair: { backgroundColor: withAlpha(theme.guideOnAir.val, tint), color: theme.stateDanger.val },
-    // The brand chroma stops are theme-invariant (same as `guide.onAir`), so the base suggest tint
-    // comes straight from `brandChroma` rather than a theme entry.
-    suggest: { backgroundColor: withAlpha(brandChroma[4], tint), color: theme.accentSuggest.val },
-    signal: { backgroundColor: withAlpha(theme.actionPrimary.val, tint), color: theme.actionPrimary.val },
-  }) as const;
-
-const Badge = ({
-  children,
-  density = "pointer",
-  flexShrink,
-  icon,
-  shape = "pill",
-  tintOpacity = 0.15,
-  tone = "neutral",
-  ...props
-}: BadgeProps) => {
-  const theme = useTheme();
-
-  if (shape === "square") {
-    const squareTones = squareBadgeTone(theme, tintOpacity);
-    const colors: { backgroundColor: string; borderColor?: string; color: string } =
-      tone in squareTones ? squareTones[tone as keyof typeof squareTones] : squareTones.neutral;
-    // A hairline takes its 1px from the padding, so an override badge is no taller than Default.
-    const hairline = colors.borderColor ? 1 : 0;
-    // On web the tag behaves as an inline element: it hugs its label in a block parent, follows its
-    // row's alignment, and may shrink. The colour sits on the wrapper so an icon's `currentColor`
-    // and a hover class on the badge both reach the label.
-    const placement = isWeb
-      ? ({
-          display: "inline-flex",
-          render: "span",
-          style: { color: colors.color },
-          width: "fit-content",
-        } as const)
-      : ({ alignSelf: "flex-start" } as const);
-    return (
-      <View
-        {...props}
-        {...placement}
-        alignItems="center"
-        backgroundColor={colors.backgroundColor}
-        borderColor={colors.borderColor}
-        borderRadius={4}
-        borderWidth={hairline}
-        flexDirection="row"
-        flexShrink={flexShrink ?? (isWeb ? 1 : 0)}
-        gap={icon ? 4 : undefined}
-        paddingHorizontal={6 - hairline}
-        paddingVertical={2 - hairline}
-      >
-        {icon}
-        <TamaguiText
-          color={isWeb ? undefined : colors.color}
-          fontFamily="data"
-          fontSize={11}
-          fontWeight="500"
-          lineHeight={lineHeightPx(14)}
-          whiteSpace={isWeb ? "inherit" : undefined}
-        >
-          {children}
-        </TamaguiText>
-      </View>
-    );
-  }
-
-  const colors = badgeTone[tone as keyof typeof badgeTone] ?? badgeTone.neutral;
-  return (
-    <View
-      {...props}
-      alignItems="center"
-      alignSelf="flex-start"
-      backgroundColor={colors.backgroundColor}
-      borderColor={colors.borderColor}
-      borderRadius="round"
-      borderWidth={1}
-      flexShrink={0}
-      paddingHorizontal="inline"
-      paddingVertical={4}
-    >
-      <TamaguiText
-        color={colors.color}
-        fontFamily="data"
-        fontSize={typography[density].metadata.size}
-        fontWeight="600"
-        lineHeight={lineHeightPx(typography[density].metadata.lineHeight)}
-      >
-        {children}
-      </TamaguiText>
-    </View>
-  );
-};
-
 type ArtworkState = "error" | "loading" | "missing" | "ready";
-type ArtworkFrameProps = Omit<ComponentProps<typeof Surface>, "children"> & {
+/**
+ * The frame's shape: `16:9` for a still, a channel or a programme (the default); `2:3` for a film or
+ * series poster.
+ */
+type ArtworkRatio = "16:9" | "2:3";
+const artworkRatios: Record<ArtworkRatio, number> = { "16:9": 16 / 9, "2:3": 2 / 3 };
+
+type ArtworkFrameProps = Omit<ComponentProps<typeof Surface>, "aspectRatio" | "children"> & {
   children?: ReactNode;
   density?: Density;
+  ratio?: ArtworkRatio;
   state: ArtworkState;
 };
 
@@ -346,19 +181,26 @@ const artworkCopy: Record<Exclude<ArtworkState, "ready">, string> = {
   missing: "No artwork",
 };
 
-const ArtworkFrame = ({ children, density = "pointer", state, ...props }: ArtworkFrameProps) => (
+const ArtworkFrame = ({
+  children,
+  density = "pointer",
+  ratio = "16:9",
+  state,
+  ...props
+}: ArtworkFrameProps) => (
   <Surface
     {...props}
     alignItems="center"
-    aspectRatio={16 / 9}
+    aspectRatio={artworkRatios[ratio]}
     backgroundColor="artworkPlaceholder"
     justifyContent="center"
     overflow="hidden"
+    padding={state === "ready" && children ? undefined : "inline"}
   >
     {state === "ready" && children ? (
       children
     ) : (
-      <Text density={density} textRole="metadata">
+      <Text density={density} textAlign="center" textRole="metadata">
         {artworkCopy[state === "ready" ? "missing" : state]}
       </Text>
     )}
@@ -469,158 +311,14 @@ const ProgressTrack = ({
   );
 };
 
-type StatusTone = "attention" | "error" | "live" | "notice" | "off" | "ok" | "pending" | "progress" | "warn";
-type StatusDotProps = {
-  /**
-   * What the dot MEANS, for assistive tech — required, because a bare coloured circle conveys
-   * nothing without it. Pass "" to opt out explicitly, for a dot beside text that already says it.
-   */
-  label: string;
-  reducedMotion?: boolean;
-  /** 8px by default; `compact` is 6px (a tighter row of dots). */
-  size?: "compact" | "default";
-  tone: StatusTone;
-};
-
-const statusDotTone = (theme: ReturnType<typeof useTheme>) =>
-  ({
-    live: theme.guideOnAir.val,
-    error: theme.guideOnAir.val,
-    pending: theme.guideReconciling.val,
-    ok: theme.stateSuccess.val,
-    warn: theme.stateWarning.val,
-    off: theme.actionDisabled.val,
-    attention: theme.accentSuggest.val,
-    progress: theme.stateInfo.val,
-    notice: theme.actionPrimary.val,
-  }) as const;
-
-/**
- * The pulse is reserved for `live` alone (§970 PR B, carried over from the legacy StatusDot):
- * motion means "happening right now", so `error` shares `live`'s colour but never animates — a
- * job that failed hours ago has nothing happening, and pulsing would say otherwise.
- */
-const StatusDot = ({ label, reducedMotion, size = "default", tone }: StatusDotProps) => {
-  const theme = useTheme();
-  const prefersReducedMotion = useReducedMotionPreference(reducedMotion);
-  const pulse = useRef(new Animated.Value(1)).current;
-  const pulses = tone === "live";
-
-  useEffect(() => {
-    if (!pulses || prefersReducedMotion !== false) {
-      pulse.stopAnimation();
-      pulse.setValue(1);
-      return undefined;
-    }
-    pulse.setValue(1);
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          duration: 1000,
-          easing: Easing.inOut(Easing.quad),
-          toValue: 0.5,
-          useNativeDriver: useNativeAnimationDriver,
-        }),
-        Animated.timing(pulse, {
-          duration: 1000,
-          easing: Easing.inOut(Easing.quad),
-          toValue: 1,
-          useNativeDriver: useNativeAnimationDriver,
-        }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [pulses, prefersReducedMotion, pulse]);
-
-  const dimension = size === "compact" ? 6 : 8;
-  return (
-    <Animated.View
-      {...(label ? { role: "img", "aria-label": label } : { "aria-hidden": true })}
-      style={{
-        backgroundColor: statusDotTone(theme)[tone],
-        borderRadius: 999,
-        flexShrink: 0,
-        height: dimension,
-        opacity: pulse,
-        width: dimension,
-      }}
-    />
-  );
-};
-
-/**
- * The five states a Settings row can be in, and nothing else. Every surface that reports a service,
- * a task or a credential picks one of these rather than writing its own word, so the same state
- * reads the same on the index, Connections, Diagnostics and Tasks.
- */
-type StatusWordKind = "attention" | "expired" | "notSetUp" | "ok" | "overdue";
-
-const statusWords: Record<
-  StatusWordKind,
-  { dot: StatusTone; label: string; text: TextTone; explanation?: string }
-> = {
-  ok: { dot: "ok", label: "OK", text: "success" },
-  attention: { dot: "error", label: "Needs attention", text: "danger" },
-  notSetUp: { dot: "off", label: "Not set up", text: "muted" },
-  overdue: { dot: "warn", label: "Overdue", text: "warning" },
-  expired: {
-    dot: "progress",
-    label: "Expired",
-    text: "info",
-    explanation: "This is no longer valid. Sign in or enter it again to keep it working.",
-  },
-};
-
-type StatusWordProps = {
-  kind: StatusWordKind;
-};
-
-/**
- * A status as a coloured dot and a plain word. The word is the meaning and the colour backs it up,
- * so it reads without colour vision. `expired` is the one word that needs explaining, so it carries
- * a tooltip.
- */
-const StatusWord = ({ kind }: StatusWordProps) => {
-  const { dot, explanation, label, text } = statusWords[kind];
-  const word = (
-    <View
-      alignItems="center"
-      flexDirection="row"
-      gap={6}
-      {...(isWeb ? ({ display: "inline-flex", render: "span" } as const) : {})}
-      {...(explanation ? { focusable: true } : {})}
-    >
-      <StatusDot label="" tone={dot} />
-      <Text textRole="compact" tone={text} strong>
-        {label}
-      </Text>
-    </View>
-  );
-  return explanation ? <Tooltip content={explanation}>{word}</Tooltip> : word;
-};
-
-export type {
-  ArtworkState,
-  BadgeShape,
-  BadgeTone,
-  ChannelIdentColorHue,
-  ProgressTone,
-  ScreenProps,
-  StatusTone,
-  StatusWordKind,
-  StatusWordProps,
-};
+export type { ArtworkRatio, ArtworkState, ChannelIdentColorHue, ProgressTone, ScreenProps };
 export {
   ArtworkFrame,
-  Badge,
   CHANNEL_IDENT_WASH_PERCENT,
   channelIdentColors,
   channelIdentHues,
   FocusSurface,
   ProgressTrack,
   Screen,
-  StatusDot,
-  StatusWord,
   Surface,
 };

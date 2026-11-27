@@ -11,6 +11,27 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
+// A file's title is another entry's when the two are one title, but a one-word title within a
+// longer one's words is not: "Storm" names many titles in passing.
+func TestAFileNamesAnotherEntryByMoreThanAWordInPassing(t *testing.T) {
+	for _, c := range []struct {
+		title, told string
+		names       bool
+	}{
+		{"Storm", "The Storm Begins", false},
+		{"Storm", "Storm", true},
+		{"Pilot", "Pilot (1)", true},
+		{"Copper Gate", "Copper Gate (2)", true},
+		{"Copper Gate", "The Copper Gate Inn", true},
+		{"Saltmarsh", "Salt Marsh", true},
+		{"Weir Road", "Gull Tower", false},
+	} {
+		if got := namesAs(c.title, c.told); got != c.names {
+			t.Errorf("namesAs(%q, %q) = %v, want %v", c.title, c.told, got, c.names)
+		}
+	}
+}
+
 // A series' season posters reach its library art, each by its season, beside its own poster.
 func TestASeriesListsItsSeasonPosters(t *testing.T) {
 	h := newHarness(t)

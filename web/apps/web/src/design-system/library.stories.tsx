@@ -3,11 +3,11 @@ import {
   LibraryCollections,
   type LibraryNeed,
   LibraryNeedsCards,
-  LibraryNeedsStrip,
   type LibraryOrderNeed,
   type LibraryProblem,
   type LibraryScan,
   LibraryShelf,
+  type LibraryShelfAdmin,
   type LibraryShelfProps,
   type LibraryShelfTitle,
   LibraryTitle,
@@ -28,7 +28,15 @@ const TITLES: LibraryShelfTitle[] = [
   { id: "90000805", kind: "series", name: "Saturday Club", year: 1987, ready: false },
   { id: "90000806", kind: "movie", name: "Quiet Orchard", year: 2019, ready: true, poster: art("#2f5a46") },
   { id: "90000807", kind: "movie", name: "Lantern Season", ready: true },
+  { id: "90000808", kind: "movie", name: "Copper Hill", year: 1971, ready: true, poster: art("#5a4a1f") },
+  { id: "90000809", kind: "series", name: "The Glass Pier", year: 2015, ready: true, poster: art("#284e5c") },
+  { id: "90000810", kind: "movie", name: "Winter Lantern", year: 1958, ready: true },
+  { id: "90000811", kind: "movie", name: "Field Notes", year: 2022, ready: true, poster: art("#4a2f5a") },
+  { id: "90000812", kind: "series", name: "Upriver", year: 2008, ready: true, poster: art("#2e4a2b") },
 ];
+
+// The tabs' counts: the whole library, whatever the search.
+const COUNTS = { all: 3412, movie: 2180, series: 1232 };
 
 const IDLE: LibraryScan = {
   enabled: true,
@@ -67,21 +75,29 @@ const LOOKING_UP: LibraryScan = {
   etaSeconds: 1500,
 };
 const PAUSED: LibraryScan = { ...READING, paused: true };
-const status = (scan: LibraryScan): LibraryShelfProps["status"] => ({
-  health: "ok",
-  scan,
-  held: [],
-  offline: [],
-});
+type ShelfStatus = LibraryShelfAdmin["status"];
 
-const shelf: LibraryShelfProps = {
-  status: { health: "ok", scan: IDLE, held: [], offline: [] },
+const CLEAR: ShelfStatus = { health: "ok", scan: IDLE, held: [], offline: [], needsYou: 0 };
+
+// An admin's wall: the status line, Needs you's count and Library settings.
+const admin = (status: Partial<ShelfStatus> = {}): LibraryShelfAdmin => ({
+  status: { ...CLEAR, ...status },
   checking: false,
   onCheckAgain: () => {},
   onRescan: () => {},
   onOpenSettings: () => {},
+  onOpenNeeds: () => {},
+});
+
+const status = (scan: LibraryScan) => admin({ scan });
+
+const shelf: LibraryShelfProps = {
+  admin: admin(),
   filter: "all",
   onFilterChange: () => {},
+  counts: COUNTS,
+  sort: "name",
+  onSortChange: () => {},
   search: "",
   onSearchChange: () => {},
   titles: TITLES,
@@ -107,17 +123,27 @@ type Story = StoryObj<typeof meta>;
 
 const CaughtUp: Story = {};
 
-const AddingStep1: Story = { args: { status: status(WALKING) } };
-const Adding: Story = { args: { status: status(READING) } };
-const AddingStep3: Story = { args: { status: status(LOOKING_UP) } };
-const Paused: Story = { args: { status: status(PAUSED) } };
-const Checking: Story = { args: { status: status({ ...WALKING, quiet: true }) } };
+// The mock's "titles needing a look": the count on the status line, Review beside it.
+const NeedsYou: Story = { args: { admin: admin({ needsYou: 6 }) } };
+
+// Importing: the step's words over the preparation bar, with Needs you beside them.
+const AddingStep1: Story = { args: { admin: status(WALKING) } };
+const Adding: Story = { args: { admin: admin({ scan: READING, needsYou: 3 }) } };
+const AddingStep3: Story = { args: { admin: status(LOOKING_UP) } };
+const Paused: Story = { args: { admin: status(PAUSED) } };
+const Checking: Story = { args: { admin: status({ ...WALKING, quiet: true }) } };
+
+// The first page on its way: the tabs and the search, then placeholders where the posters go.
+const Loading: Story = {
+  args: { admin: admin({ needsYou: 6 }), counts: undefined, loading: true, titles: [] },
+};
+
+// Recently added first: the order the mock's home videos are shown in.
+const RecentlyAdded: Story = { args: { sort: "recent", titles: [...TITLES].reverse() } };
 
 const HeldRemoval: Story = {
   args: {
-    status: {
-      health: "ok",
-      scan: IDLE,
+    admin: admin({
       held: [
         {
           path: "/media/movies",
@@ -128,20 +154,26 @@ const HeldRemoval: Story = {
           titleCount: 2406,
         },
       ],
-      offline: [],
-    },
+    }),
   },
 };
 
 const FolderOffline: Story = {
-  args: { status: { health: "folder_offline", scan: IDLE, held: [], offline: ["/media/movies"] } },
+  args: { admin: admin({ health: "folder_offline", offline: ["/media/movies"] }) },
 };
 
 const Fresh: Story = {
-  args: { status: { health: "needs_folders", scan: IDLE, held: [], offline: [] }, titles: [] },
+  args: { admin: admin({ health: "needs_folders" }), titles: [] },
 };
 
-const NoMatch: Story = { args: { search: "zebra", titles: [] } };
+const NoMatch: Story = { args: { admin: admin({ needsYou: 6 }), search: "zebra 1977", titles: [] } };
+
+// A member browses the same wall read-only: no status line, no Needs you, no settings.
+const Member: Story = { args: { admin: undefined } };
+const MemberNoMatch: Story = { args: { admin: undefined, search: "zebra 1977", titles: [] } };
+const MemberEmpty: Story = {
+  args: { admin: undefined, counts: { all: 0, movie: 0, series: 0 }, titles: [] },
+};
 
 // Needs you: one guess the name agrees with, one with nothing to go on.
 const NEEDS: LibraryNeed[] = [
@@ -257,28 +289,9 @@ const ORDERS: LibraryOrderNeed[] = [
 const answered = () => Promise.resolve();
 const search = () => Promise.resolve([]);
 
-// With Needs you waiting, the status line says only "Up to date" (#2779).
-const NEEDS_WAITING = { ...shelf.status, needsYou: true };
-
-const NeedsStrip: Story = {
-  args: {
-    status: NEEDS_WAITING,
-    needs: (
-      <LibraryNeedsStrip
-        needs={NEEDS}
-        onLink={answered}
-        onOpenNeeds={() => {}}
-        onOpenTitle={() => {}}
-        orders={ORDERS}
-        problems={PROBLEMS}
-      />
-    ),
-  },
-};
-
 const NeedsCards: Story = {
   args: {
-    status: NEEDS_WAITING,
+    admin: admin({ needsYou: 6 }),
     showTitles: false,
     needs: (
       <LibraryNeedsCards
@@ -314,8 +327,7 @@ const NothingNeedsYou: Story = {
 };
 
 // A title's page acts through these; in a story every action goes through.
-const titleActions = {
-  onBack: () => {},
+const titleFixes = {
   onUpdateDetails: answered,
   onCheckFiles: answered,
   onSearch: search,
@@ -327,8 +339,8 @@ const titleActions = {
 const Movie: Story = {
   render: () => (
     <LibraryTitle
-      {...titleActions}
-      onOpenApp={() => {}}
+      fix={{ ...titleFixes, onOpenApp: () => {} }}
+      onBack={() => {}}
       title={{
         kind: "movie",
         name: "Paper Kites",
@@ -369,10 +381,37 @@ const Movie: Story = {
   ),
 };
 
+// A member's movie (#4476): the server leaves out its files and match, and the page offers no fix.
+const MemberMovie: Story = {
+  render: () => (
+    <LibraryTitle
+      onBack={() => {}}
+      title={{
+        kind: "movie",
+        name: "Paper Kites",
+        year: 1996,
+        poster: art("#6b3a2e"),
+        overview:
+          "A small-town salesman, bursting at the seams with debt, hatches a plan that goes wrong the moment it starts.",
+        genres: ["Crime", "Thriller"],
+        rating: "R",
+        runtimeMillis: 5_880_000,
+        files: [],
+        unplayable: 0,
+        seasons: [],
+        match: { by: "none" },
+        detailsFrom: {},
+        channels: [{ id: "90000971", name: "Quiet Hours", number: 21 }],
+      }}
+    />
+  ),
+};
+
 const Series: Story = {
   render: () => (
     <LibraryTitle
-      {...titleActions}
+      fix={titleFixes}
+      onBack={() => {}}
       title={{
         kind: "series",
         name: "Harbour Lights",
@@ -408,8 +447,8 @@ const Series: Story = {
 const SeriesOrderWaiting: Story = {
   render: () => (
     <LibraryTitle
-      {...titleActions}
-      onChooseOrder={() => {}}
+      fix={{ ...titleFixes, onChooseOrder: () => {} }}
+      onBack={() => {}}
       title={{
         kind: "series",
         name: "Tidewater",
@@ -443,36 +482,59 @@ const SeriesOrderWaiting: Story = {
 const pile = (...colors: (string | undefined)[]) =>
   colors.map((color, i) => ({ name: TITLES[i]?.name ?? "", poster: color ? art(color) : undefined }));
 
+const COLLECTIONS = [
+  {
+    id: "c1",
+    name: "Rainy Sundays",
+    titles: 12,
+    pile: pile("#3b4a63", "#6b3a2e", "#2f5a46"),
+    importedFrom: "Emby",
+    usedBy: [{ name: "Saturday Morning", number: 4 }],
+  },
+  { id: "c2", name: "Harbour nights", titles: 2, pile: pile("#3b4a63", undefined), usedBy: [] },
+];
+
+const SETS = [
+  {
+    id: "90000611",
+    name: "The Lantern Keeper Collection",
+    have: 2,
+    total: 3,
+    pile: pile("#6b3a2e", "#2f5a46"),
+  },
+  { id: "90000612", name: "Copper Hill films", have: 5, total: 9, pile: pile("#5a4a1f", "#284e5c") },
+];
+
+const manage = { onCopy: answered, onEdit: () => {}, onNew: () => {} };
+
 const Collections: Story = {
   args: {
     filter: "collections",
-    collections: (
-      <LibraryCollections
-        collections={[
-          {
-            id: "c1",
-            name: "Rainy Sundays",
-            titles: 12,
-            pile: pile("#3b4a63", "#6b3a2e", "#2f5a46"),
-            importedFrom: "Emby",
-            usedBy: [{ name: "Saturday Morning", number: 4 }],
-          },
-          { id: "c2", name: "Harbour nights", titles: 2, pile: pile("#3b4a63", undefined), usedBy: [] },
-        ]}
-        onCopy={answered}
-        onEdit={() => {}}
-        onNew={() => {}}
-        sets={[
-          {
-            id: "90000611",
-            name: "The Lantern Keeper Collection",
-            have: 2,
-            total: 3,
-            pile: pile("#6b3a2e", "#2f5a46"),
-          },
-        ]}
-      />
-    ),
+    collections: <LibraryCollections collections={COLLECTIONS} manage={manage} sets={SETS} />,
+  },
+};
+
+// None made yet: what a collection is, New collection, and the ready-made sets to start from.
+const CollectionsNoneYet: Story = {
+  args: {
+    filter: "collections",
+    collections: <LibraryCollections collections={[]} manage={manage} sets={SETS} />,
+  },
+};
+
+// A member's Collections: the household's, read-only, and where they come from when there are none.
+const MemberCollections: Story = {
+  args: {
+    admin: undefined,
+    filter: "collections",
+    collections: <LibraryCollections collections={COLLECTIONS} sets={SETS} />,
+  },
+};
+const MemberCollectionsNoneYet: Story = {
+  args: {
+    admin: undefined,
+    filter: "collections",
+    collections: <LibraryCollections collections={[]} sets={SETS} />,
   },
 };
 
@@ -574,7 +636,7 @@ const WizardStepAdding: Story = {
     <LibraryWizardStep
       {...wizardStep}
       folders={[{ ...wizardFolders[0], inUse: true } as (typeof wizardFolders)[number]]}
-      readySoFar={TITLES.filter((t) => t.ready).map((t) => ({ id: t.id, name: t.name, poster: t.poster }))}
+      readySoFar={TITLES.map((t) => ({ id: t.id, name: t.name, ready: t.ready, poster: t.poster }))}
       scan={READING}
     />
   ),
@@ -602,16 +664,25 @@ export {
   CollectionEditor,
   CollectionEditorInUse,
   Collections,
+  CollectionsNoneYet,
   FolderOffline,
   Fresh,
   HeldRemoval,
+  Loading,
+  Member,
+  MemberCollections,
+  MemberCollectionsNoneYet,
+  MemberEmpty,
+  MemberMovie,
+  MemberNoMatch,
   Movie,
   NeedsCards,
-  NeedsStrip,
+  NeedsYou,
   NewCollection,
   NoMatch,
   NothingNeedsYou,
   Paused,
+  RecentlyAdded,
   Series,
   SeriesOrderWaiting,
   WizardStep,

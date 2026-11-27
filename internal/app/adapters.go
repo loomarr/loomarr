@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
@@ -157,15 +158,20 @@ func bulkDurations(lib playoutresolve.ItemMetadata) channels.DurationsResolver {
 }
 
 // searchAdapter maps titlesearch.Catalog to api.SearchService (converts candidates
-// to the API's dependency-light shape).
-type searchAdapter struct{ cat *titlesearch.Catalog }
+// to the API's dependency-light shape). cat reads every Library title; member reads only the
+// titles a household member reads, for a request that is the member's.
+type searchAdapter struct{ cat, member *titlesearch.Catalog }
 
 func (a searchAdapter) Search(ctx context.Context, request catalogapi.SearchRequest) ([]httpcore.SearchCandidate, error) {
+	cat := a.cat
+	if request.Member {
+		cat = a.member
+	}
 	var cands []titlesearch.Candidate
 	var err error
 	if request.Discovery != nil {
 		discovery := request.Discovery
-		cands, err = a.cat.Discover(ctx, titlesearch.DiscoveryQuery{
+		cands, err = cat.Discover(ctx, titlesearch.DiscoveryQuery{
 			MediaType: provision.MediaType(discovery.MediaType), Keywords: discovery.Keywords, Genres: discovery.Genres,
 			YearFrom: discovery.YearFrom, YearTo: discovery.YearTo,
 			OriginalLanguage: discovery.OriginalLanguage, OriginCountry: discovery.OriginCountry,
@@ -174,7 +180,7 @@ func (a searchAdapter) Search(ctx context.Context, request catalogapi.SearchRequ
 			Network: discovery.Network, Cast: discovery.Cast, Creators: discovery.Creators,
 		}, request.Limit)
 	} else {
-		cands, err = a.cat.Search(ctx, request.Query, titlesearch.ParseScope(request.Scope), request.Limit)
+		cands, err = cat.Search(ctx, request.Query, titlesearch.ParseScope(request.Scope), request.Limit)
 		if request.MediaType != "" {
 			filtered := make([]titlesearch.Candidate, 0, len(cands))
 			for _, candidate := range cands {
@@ -195,7 +201,9 @@ func (a searchAdapter) Search(ctx context.Context, request catalogapi.SearchRequ
 	return out, nil
 }
 
-type movieCollectionAdapter struct{ resolver *tmdb.CollectionResolver }
+// movieCollectionAdapter resolves rosters; member marks presence from the titles a household
+// member reads, for a request that is the member's.
+type movieCollectionAdapter struct{ resolver, member *tmdb.CollectionResolver }
 
 func (a movieCollectionAdapter) ResolveMovieCollections(
 	ctx context.Context,
@@ -205,7 +213,11 @@ func (a movieCollectionAdapter) ResolveMovieCollections(
 	for _, key := range request.Keys {
 		keys = append(keys, provision.Key(key))
 	}
-	resolved, err := a.resolver.Resolve(ctx, keys)
+	resolver := a.resolver
+	if request.Member {
+		resolver = a.member
+	}
+	resolved, err := resolver.Resolve(ctx, keys)
 	if err != nil {
 		return libraryapi.MovieCollectionResolution{}, err
 	}
@@ -265,17 +277,57 @@ func (a tunarrNumbers) TakenChannelNumbers(ctx context.Context) (map[int]bool, e
 // lookups and is TTL-stale by design (membership is only read at reconcile), whereas an
 // operator who just made a collection and opened the picker expects to see it.
 type libraryCollections struct {
-	own resolvers.OwnCollections
+	own   resolvers.OwnCollections
+	items libraryItemLister
 }
 
-func (a libraryCollections) Collections(ctx context.Context) ([]libraryapi.LibraryCollection, error) {
+type libraryItemLister interface {
+	ListLibraryItems(ctx context.Context, q librarystore.LibraryItemQuery) (librarystore.LibraryItemPage, error)
+}
+
+func (a libraryCollections) Collections(ctx context.Context, member bool) ([]libraryapi.LibraryCollection, error) {
 	own, err := a.own.ListLibraryCollections(ctx)
 	if err != nil {
 		return nil, err
 	}
+	var readable map[string]bool
+	if member {
+		if readable, err = a.memberReadable(ctx, own); err != nil {
+			return nil, err
+		}
+	}
 	out := make([]libraryapi.LibraryCollection, 0, len(own))
 	for _, c := range own {
-		out = append(out, libraryapi.LibraryCollection{ID: c.ID, Name: c.Name, ChildCount: len(c.Members)})
+		count := len(c.Members)
+		if member {
+			count = 0
+			for _, id := range c.Members {
+				if readable[id] {
+					count++
+				}
+			}
+		}
+		out = append(out, libraryapi.LibraryCollection{ID: c.ID, Name: c.Name, ChildCount: count})
 	}
 	return out, nil
+}
+
+// memberReadable is the set of the collections' titles a household member reads.
+func (a libraryCollections) memberReadable(ctx context.Context, own []librarystore.LibraryCollection) (map[string]bool, error) {
+	var ids []string
+	for _, c := range own {
+		ids = append(ids, c.Members...)
+	}
+	readable := map[string]bool{}
+	if len(ids) == 0 {
+		return readable, nil
+	}
+	page, err := a.items.ListLibraryItems(ctx, librarystore.LibraryItemQuery{IDs: ids, Member: true})
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range page.Items {
+		readable[it.ID] = true
+	}
+	return readable, nil
 }

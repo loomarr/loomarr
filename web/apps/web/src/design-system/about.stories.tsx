@@ -28,6 +28,9 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 
+// The demo site: its openly licensed films, cartoons and ads, and where their sources are listed.
+export const DemoSite: Story = { args: { demo: true } };
+
 // A source build: no linker stamps, so only the version and status rows exist.
 export const SourceBuild: Story = {
   args: {

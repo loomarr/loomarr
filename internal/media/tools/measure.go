@@ -30,6 +30,19 @@ func SilenceWindowArgs(file string, startMs, lenMs int64) []string {
 		"-af", "asetpts=PTS-STARTPTS,"+qualityAudioFilter, "-f", "null", "-")
 }
 
+// SpeechSilenceArgs reads lenMs of audio from startMs and reports the spans at or below -50 dB
+// for at least half a second: true silence, not quiet dialogue, which -35 dB catches.
+func SpeechSilenceArgs(file string, startMs, lenMs int64) []string {
+	return append(windowArgs(file, startMs, lenMs), "-vn", "-map", "0:a:0",
+		"-af", "asetpts=PTS-STARTPTS,silencedetect=n=-50dB:d=0.5", "-f", "null", "-")
+}
+
+// ParseSilenceSpans returns the silent spans a SpeechSilenceArgs run reported, relative to the
+// window's start and clamped to lenMs; a silence still open at the window's end runs to lenMs.
+func ParseSilenceSpans(stderr string, lenMs int64) []Interval {
+	return normaliseIntervals(parseSilencedetect(stderr), lenMs)
+}
+
 // BlackWindowArgs decodes lenMs of the first video stream from startMs, downscaled, and reports
 // black spans with the same threshold the filler detectors use. It is meant for a second or two
 // around a silence point, not for scanning.

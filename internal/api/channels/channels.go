@@ -336,9 +336,6 @@ func applyChannelPatch(ch *channelstore.Channel, in *updateChannelInput, holiday
 	// OperatorSet so a later refine can't silently revert it (§8.2 stickiness). Validate
 	// rejects an off-ladder audience ceiling / bad enum values (§4 safety).
 	if in.Body.Policy != nil {
-		if err := in.Body.Policy.DateAliasConflict(); err != nil {
-			return httpcore.AmbiguousDatesError(err)
-		}
 		next := ch.Policy.MergeFromOperator(*in.Body.Policy)
 		// A rule saved before today's checks (one that never fires) is not held against an edit that
 		// leaves it alone; one the edit touches is, and the 422 names it.

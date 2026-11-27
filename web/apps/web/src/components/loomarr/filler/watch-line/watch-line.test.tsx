@@ -18,8 +18,9 @@ describe("WatchLine", () => {
   it("renders the status line", () => {
     render(<WatchLine status="4 of 5 sources on · 9 clips" health="healthy" />);
     const status = screen.getByText("4 of 5 sources on · 9 clips");
-    expect(status).toHaveClass("min-w-0");
-    expect(status).not.toHaveClass("truncate");
+    expect(status.style.minWidth).toBe("0px");
+    expect(status.style.whiteSpace).not.toBe("nowrap");
+    expect(status.style.textOverflow).not.toBe("ellipsis");
   });
 
   // ⚠ The dot is aria-hidden, so its meaning has to reach a screen reader as WORDS. A colour with

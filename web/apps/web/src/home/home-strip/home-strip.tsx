@@ -1,4 +1,4 @@
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Grid, Stack, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { HomeStripProps } from "./home-strip.type";
 
@@ -17,18 +17,25 @@ const HomeStrip = ({ state, isAdmin, onRetry }: HomeStripProps) => {
         <Text as="p" textRole="compact" tone="secondary">
           Loading your channels…
         </Text>
-        <div aria-hidden className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Grid aria-hidden columns={{ base: 1, sm: 2, lg: 3 }} gap="3" marginTop={16}>
           {[0, 1, 2].map((i) => (
-            <div key={i} className="bg-static-800 aspect-video w-full animate-pulse rounded-md" />
+            <Stack
+              aspectRatio={16 / 9}
+              backgroundColor="$surfaceElevated"
+              borderRadius={6}
+              data-pulse="loading"
+              key={i}
+              width="100%"
+            />
           ))}
-        </div>
+        </Grid>
       </section>
     );
   }
 
   if (state === "error") {
     return (
-      <Stack align="start" className="max-w-[460px] py-10" gap="4" render="section">
+      <Stack align="start" gap="4" maxWidth={460} paddingVertical={40} render="section">
         <Text as="h2" strong textRole="headline">
           Couldn’t load your channels.
         </Text>
@@ -39,7 +46,7 @@ const HomeStrip = ({ state, isAdmin, onRetry }: HomeStripProps) => {
 
   if (state === "empty") {
     return (
-      <Stack align="start" className="max-w-[460px] py-10" gap="4" render="section">
+      <Stack align="start" gap="4" maxWidth={460} paddingVertical={40} render="section">
         <Text as="h2" strong textRole="headline">
           Your first channel starts here
         </Text>

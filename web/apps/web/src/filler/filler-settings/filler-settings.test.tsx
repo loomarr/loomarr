@@ -50,6 +50,7 @@ const renderSettings = (
         scheduled: 0,
         inProgress: 0,
         needsDecision: 0,
+        awaitingSplit: 0,
         recoverable: 0,
         ready: 12,
         complete: 0,
@@ -212,7 +213,6 @@ describe("focused Filler settings", () => {
     const field = await screen.findByRole("textbox", { name: "Filler storage allowance" });
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent(/available to Loomarr/);
-    expect(status.className).toContain("border-caution");
     await userEvent.click(screen.getByRole("button", { name: "Raise allowance" }));
     expect(field).toHaveFocus();
   });
@@ -220,6 +220,7 @@ describe("focused Filler settings", () => {
   it("keeps a healthy allowance calm", async () => {
     renderSettings("storage");
     await screen.findByText("Automatic 20.0 GB allowance");
+    expect(screen.getByRole("status")).toHaveTextContent("Automatic 20.0 GB allowance");
     expect(screen.queryByRole("button", { name: "Raise allowance" })).not.toBeInTheDocument();
   });
 

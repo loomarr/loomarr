@@ -1,5 +1,5 @@
 import { redeemInvitationSchema } from "@loomarr/core/schemas";
-import { Action, Icon, icons, LoadingStrip, Stack, StatusLabel, Text } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, LoadingStrip, Stack, StatusLabel, Text } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
 import type { InvitationJoinProps } from "./invitation-join.type";
@@ -24,16 +24,11 @@ const InvitationJoin = ({
 
   if (isLoading) {
     return (
-      <Stack
-        align="center"
-        className="text-muted-foreground min-h-48"
-        direction="row"
-        gap="inline"
-        justify="center"
-        role="status"
-      >
+      <Stack align="center" direction="row" gap="inline" justify="center" minHeight={192} role="status">
         <LoadingStrip decorative width={32} />
-        Checking invitation…
+        <Text as="span" textRole="compact" tone="secondary">
+          Checking invitation…
+        </Text>
       </Stack>
     );
   }
@@ -41,14 +36,14 @@ const InvitationJoin = ({
     return error ? (
       <ErrorState error={error} />
     ) : (
-      <div className="space-y-2 text-center">
-        <Text as="h1" strong textRole="display">
+      <Stack gap="2">
+        <Text as="h1" strong textAlign="center" textRole="display">
           Invitation unavailable
         </Text>
-        <Text as="p" textRole="compact" tone="secondary">
+        <Text as="p" textAlign="center" textRole="compact" tone="secondary">
           This invitation is missing, expired, revoked, or already used. Ask an administrator for a new one.
         </Text>
-      </div>
+      </Stack>
     );
   }
 
@@ -68,51 +63,51 @@ const InvitationJoin = ({
       render="form"
       width="100%"
     >
-      <div className="space-y-2 text-center">
-        <Text as="h1" strong textRole="display">
+      <Stack gap="2">
+        <Text as="h1" strong textAlign="center" textRole="display">
           Join Loomarr
         </Text>
-        <Text as="p" textRole="compact" tone="secondary">
+        <Text as="p" textAlign="center" textRole="compact" tone="secondary">
           Review the account below before activating it.
         </Text>
-      </div>
+      </Stack>
 
-      <div className="border-border bg-muted/25 space-y-3 rounded-lg border p-4">
+      <Card gap={12} padding={16}>
         <Stack align="start" direction="row" gap="control">
-          <Stack className="mt-0.5" direction="row" render="span">
+          <Stack direction="row" marginTop={2} render="span">
             <Icon decorative glyph={icons.person} size="default" tone="primary" />
           </Stack>
-          <div className="min-w-0 flex-1">
+          <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
             <Text as="p" textRole="hint" tone="secondary">
               Invited identity
             </Text>
-            <Text as="p" className="break-words" textRole="cardLabel">
+            <Text as="p" overflowWrap="break-word" textRole="cardLabel">
               {identity}
             </Text>
-          </div>
+          </Stack>
           <StatusLabel tone={preview.role === "admin" ? "error" : "off"}>
             {preview.role === "admin" ? "Admin" : "Member"}
           </StatusLabel>
         </Stack>
         {preview.role === "admin" ? (
-          <Stack className="text-onair-300" direction="row" gap="inline" render="p">
-            <Stack className="mt-0.5" direction="row" render="span">
-              <Icon decorative glyph={icons.verified} size="compact" tone="inherit" />
+          <Stack direction="row" gap="inline" render="p">
+            <Stack direction="row" marginTop={2} render="span">
+              <Icon decorative glyph={icons.verified} size="compact" tone="danger" />
             </Stack>
             <Text as="span" textRole="compact" tone="danger">
               This account will have administrator access to people, settings, and approvals.
             </Text>
           </Stack>
         ) : null}
-        <Stack className="text-muted-foreground" direction="row" gap="inline" render="p">
-          <Stack className="mt-0.5" direction="row" render="span">
-            <Icon decorative glyph={icons.schedule} size="compact" tone="inherit" />
+        <Stack direction="row" gap="inline" render="p">
+          <Stack direction="row" marginTop={2} render="span">
+            <Icon decorative glyph={icons.schedule} size="compact" tone="secondary" />
           </Stack>
           <Text as="span" textRole="compact" tone="secondary">
             This invitation expires {expires}.
           </Text>
         </Stack>
-      </div>
+      </Card>
 
       <Text as="p" textRole="compact" tone="secondary">
         {library

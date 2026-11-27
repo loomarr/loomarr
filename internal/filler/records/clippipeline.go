@@ -44,6 +44,7 @@ func scanClipPipeline(sc scannable) (pipelinestate.ClipPipeline, error) {
 		dispo                  string
 		reason                 string
 		raw                    string
+		acquisitionID          storedb.OptionalID
 		nextRun                int64
 		preparationStartedAt   int64
 		preparationStartReason string
@@ -53,12 +54,13 @@ func scanClipPipeline(sc scannable) (pipelinestate.ClipPipeline, error) {
 		updatedAt              int64
 		filesDeletedAt         int64
 	)
-	if err := sc.Scan(&p.ClipHash, &p.AcquisitionID, &stage, &status, &p.Progress, &dispo,
+	if err := sc.Scan(&p.ClipHash, &acquisitionID, &stage, &status, &p.Progress, &dispo,
 		&reason, &p.RejectDetail, &p.Attempts, &p.ForceRun, &nextRun,
 		&p.PreparationAttempt, &preparationStartedAt, &preparationStartReason, &p.PreparationProgress,
 		&stageQueuedAt, &stageStartedAt, &raw, &enrolledAt, &updatedAt, &filesDeletedAt); err != nil {
 		return pipelinestate.ClipPipeline{}, err
 	}
+	p.AcquisitionID = string(acquisitionID)
 	p.Stage = pipelinestate.StageID(stage)
 	p.Status = pipelinestate.StageStatus(status)
 	p.Disposition = pipelinestate.Disposition(dispo)
@@ -106,12 +108,15 @@ func (s *sqlStore) writeClipPipeline(ctx context.Context, exec pipelineExecer, p
 	if len(p.Stages) == 0 {
 		raw = []byte("[]")
 	}
+	// acquisition_id is looked up rather than written as given: enrolment reads it from the file's
+	// sidecar, which can name a run that is purged or that this database never had. Such a row
+	// names no run, and the checks that read acquisition_id don't count it as Loomarr's download.
 	_, err = exec.ExecContext(ctx, s.ph(
 		`INSERT INTO filler_clip_pipeline (clip_hash, acquisition_id, stage, status, progress, disposition,
 		   reject_reason, reject_detail, attempts, force_run, next_run,
 		   preparation_attempt, preparation_started_at, preparation_start_reason, preparation_progress,
 		   stage_queued_at, stage_started_at, stages_json, enrolled_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, (SELECT id FROM filler_acquisition_runs WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(clip_hash) DO UPDATE SET
 		   acquisition_id=excluded.acquisition_id,
 		   stage=excluded.stage, status=excluded.status, progress=excluded.progress,
@@ -126,7 +131,7 @@ func (s *sqlStore) writeClipPipeline(ctx context.Context, exec pipelineExecer, p
 		   stage_started_at=excluded.stage_started_at,
 		   next_run=excluded.next_run, stages_json=excluded.stages_json,
 		   updated_at=excluded.updated_at`),
-		p.ClipHash, p.AcquisitionID, string(p.Stage), string(p.Status), p.Progress, string(p.Disposition),
+		p.ClipHash, storedb.OptionalID(p.AcquisitionID), string(p.Stage), string(p.Status), p.Progress, string(p.Disposition),
 		string(p.RejectReason), p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun),
 		p.PreparationAttempt, epoch(p.PreparationStartedAt), string(p.PreparationStartReason), p.PreparationProgress,
 		epoch(p.StageQueuedAt), epoch(p.StageStartedAt), string(raw), epoch(p.EnrolledAt), epoch(p.UpdatedAt))
@@ -255,6 +260,127 @@ func (s *sqlStore) RetireRejectedClip(ctx context.Context, hash string, rejected
 	}
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit retire rejected clip %s: %w", hash, err)
+	}
+	return true, nil
+}
+
+// RetireReadyClip commits to deleting the files of a clip Loomarr fetched that is on air (#3855,
+// decision 13 of #3838): a full budget evicts it for room. In one transaction it re-checks the row
+// is still Ready, fetched and not yet let go, and that no channel pins it; then it removes and reaps
+// the clip and stamps the row's files_deleted_at. The row, its fingerprint and its airings stay, and
+// the consumed acquisition still blocks a re-download. It reports whether it retired the clip; the
+// caller deletes the files after it commits.
+func (s *sqlStore) RetireReadyClip(ctx context.Context, hash string, at time.Time) (bool, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin retire ready clip %s: %w", hash, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	clipTx := s.db.Clips(tx)
+	if _, err := clipTx.LockPublication(ctx, hash); errors.Is(err, clipstore.ErrNotFound) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("lock ready clip %s: %w", hash, err)
+	}
+	query := storedb.LockRows(s.dialect, `SELECT clip_hash FROM filler_clip_pipeline
+		WHERE clip_hash = ? AND disposition = ? AND acquisition_id <> '' AND files_deleted_at = 0`)
+	var found string
+	err = tx.QueryRowContext(ctx, s.ph(query), hash, string(pipelinestate.DispositionReady)).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("lock ready clip %s: %w", hash, err)
+	}
+	if pinned, err := clipTx.Pinned(ctx, hash); err != nil {
+		return false, fmt.Errorf("retire ready clip %s: %w", hash, err)
+	} else if pinned {
+		return false, nil
+	}
+	if retired, err := clipTx.RetireReady(ctx, hash, at); err != nil {
+		return false, fmt.Errorf("retire ready clip %s: %w", hash, err)
+	} else if !retired {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_clip_pipeline SET files_deleted_at = ? WHERE clip_hash = ?`),
+		epoch(at), hash); err != nil {
+		return false, fmt.Errorf("mark ready clip %s files deleted: %w", hash, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit retire ready clip %s: %w", hash, err)
+	}
+	return true, nil
+}
+
+// settledReelWhere is a split reel Loomarr fetched whose file may be let go (#4421): off the belt,
+// not let go yet, no split proposal left, and every piece cut from it that is still present is in a
+// final state. A piece still running or waiting on a person keeps its reel, as does one with no
+// pipeline row. Over `clips c` joined to its row `p`; binds is_composite as one argument.
+const settledReelWhere = `p.disposition = 'complete' AND p.acquisition_id <> '' AND p.files_deleted_at = 0
+	AND c.is_composite = ? AND c.removed_at = 0 AND c.reaped_at IS NULL
+	AND NOT EXISTS (SELECT 1 FROM filler_split_proposals s WHERE s.clip_hash = c.hash)
+	AND NOT EXISTS (SELECT 1 FROM clips k LEFT JOIN filler_clip_pipeline kp ON kp.clip_hash = k.hash
+		WHERE k.parent_hash = c.hash AND k.removed_at = 0
+		  AND (kp.clip_hash IS NULL OR kp.disposition NOT IN ('ready', 'rejected', 'dismissed', 'complete')))`
+
+// ListSettledReels lists the split reels Loomarr fetched whose file may be let go (#4421), by hash.
+func (s *sqlStore) ListSettledReels(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.hash FROM clips c
+		JOIN filler_clip_pipeline p ON p.clip_hash = c.hash
+		WHERE `+settledReelWhere+` ORDER BY c.hash`), true)
+	if err != nil {
+		return nil, fmt.Errorf("list settled reels: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var hash string
+		if err := rows.Scan(&hash); err != nil {
+			return nil, fmt.Errorf("scan settled reel: %w", err)
+		}
+		out = append(out, hash)
+	}
+	return out, rows.Err()
+}
+
+// RetireSettledReel commits to letting go of a split reel's file (#4421). In one transaction it
+// re-checks the reel is still settled, then reaps it and stamps its row's files_deleted_at. The row
+// stays present for provenance and every piece's parent_hash, and the sync's prune spares a reaped
+// row. It reports whether it retired the reel; the caller moves the files after it commits.
+func (s *sqlStore) RetireSettledReel(ctx context.Context, hash string, at time.Time) (bool, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin retire settled reel %s: %w", hash, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	clipTx := s.db.Clips(tx)
+	if _, err := clipTx.LockPublication(ctx, hash); errors.Is(err, clipstore.ErrNotFound) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("lock settled reel %s: %w", hash, err)
+	}
+	query := storedb.LockRows(s.dialect, `SELECT p.clip_hash FROM filler_clip_pipeline p
+		JOIN clips c ON c.hash = p.clip_hash
+		WHERE p.clip_hash = ? AND `+settledReelWhere)
+	var found string
+	err = tx.QueryRowContext(ctx, s.ph(query), hash, true).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("lock settled reel %s: %w", hash, err)
+	}
+	if reaped, err := clipTx.ReapComposite(ctx, hash, at); err != nil {
+		return false, fmt.Errorf("reap settled reel %s: %w", hash, err)
+	} else if !reaped {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_clip_pipeline SET files_deleted_at = ? WHERE clip_hash = ?`),
+		epoch(at), hash); err != nil {
+		return false, fmt.Errorf("mark settled reel %s files deleted: %w", hash, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit retire settled reel %s: %w", hash, err)
 	}
 	return true, nil
 }

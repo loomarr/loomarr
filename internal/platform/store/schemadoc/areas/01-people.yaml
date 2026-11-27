@@ -95,6 +95,9 @@ tables:
       device_name: The device's name, shown in the person's list of devices. Empty if it gave none.
       created_at: When the device was paired, in Unix seconds.
       last_seen_at: When the device last used Loomarr, in Unix seconds, updated at most once a minute.
+      code_mode: >
+        Whether the device may run scripts against the API through an AI agent's execute tool. Off
+        until its owner turns it on, and used only while the owner is an admin.
 
   - name: invitations
     about: >
@@ -123,7 +126,9 @@ tables:
       expires_at: When it stops working, in Unix seconds (always 7 days after created_at).
       terminal_at: >
         When it was redeemed, revoked or expired, in Unix seconds. 0 while still pending.
-      redeemed_by: The id of the account created from it, in users. Empty unless redeemed.
+      redeemed_by: >
+        The id of the account created from it, in users. Null unless redeemed, and once that account
+        is deleted.
 
   - name: invitation_grants
     about: >

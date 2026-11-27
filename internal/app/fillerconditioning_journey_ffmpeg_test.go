@@ -30,6 +30,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/packager"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -260,16 +261,16 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 	// admission is independently covered by its transaction suite; this test owns media
 	// compatibility, not release authority.
 	epoch := time.Unix(1_900_000_000, 0).UTC()
-	first := playout.Airing{StartedAt: epoch, Kind: schedule.SlotProgram, Remaining: 2 * time.Second}
-	fillerAiring := playout.Airing{
+	first := timeline.Airing{StartedAt: epoch, Kind: schedule.SlotProgram, Remaining: 2 * time.Second}
+	fillerAiring := timeline.Airing{
 		StartedAt: epoch.Add(2 * time.Second), Kind: schedule.SlotFiller,
 		Identity: conditioned.Hash, Offset: 5 * time.Second, Remaining: 3 * time.Second,
 	}
-	last := playout.Airing{StartedAt: epoch.Add(5 * time.Second), Kind: schedule.SlotProgram, Remaining: 2 * time.Second}
+	last := timeline.Airing{StartedAt: epoch.Add(5 * time.Second), Kind: schedule.SlotProgram, Remaining: 2 * time.Second}
 	fillerSource := mezzanine
 
 	airings := []struct {
-		airing playout.Airing
+		airing timeline.Airing
 		input  string
 	}{
 		{airing: first, input: fixtures.WhiteFrozen},

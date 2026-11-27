@@ -43,7 +43,7 @@ const SourceDetailSheet = ({ source, actions, finalFocus, onClose }: SourceDetai
             <DialogDescription>{providers.find(source.kind)?.sourceNoun}</DialogDescription>
           </DialogHeader>
 
-          <Stack className="p-6" gap="section" key={source.id}>
+          <Stack gap="section" key={source.id} padding={24}>
             <SourceStatus
               source={source}
               fetching={actions.fetchSource.pending}

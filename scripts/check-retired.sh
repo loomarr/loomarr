@@ -253,6 +253,9 @@ RETIRED=(
   'filler.autofile.enabled|retired: no confidence-to-publication switch'
   'filler.autofile.min_confidence|retired: classification confidence is diagnostic'
   'filler.autofile.normalize_loudness|retired: files are never levelled on disk; playout corrects at air time (#2032)'
+  'DateAliasConflict|retired (#2147): the scope era alias is folded into dates by migration 00246; a request with era is refused'
+  'ErrEraAndDates|retired (#2147): the scope era alias is folded into dates by migration 00246; a request with era is refused'
+  'AmbiguousDatesError|retired (#2147): the scope era alias is folded into dates by migration 00246; a request with era is refused'
   'filler.conditioning.normalize_loudness|retired: files are never levelled on disk; playout corrects at air time (#2032)'
   'FILLER_AUTOFILE_ENABLED|retired: no confidence-to-publication switch'
   'FILLER_AUTOFILE_MIN_CONFIDENCE|retired: classification confidence is diagnostic'
@@ -453,6 +456,28 @@ RETIRED=(
   'filler-decision-activity|#2147: the filler decision routes were deleted with their ledger'
   'filler-decision-diagnostics|#2147: the filler decision routes were deleted with their ledger'
   'act-on-filler-diagnostic|#2147: the filler decision routes were deleted with their ledger'
+  # #4414: AutoCuttable is the split's only gate (#4409), so the certified long-reel structure path,
+  # its authority and deployment files, its OpenRouter runtime and the shadow comparison were deleted.
+  'filler.structure_window_authority_path|retired (#4414): the certified long-reel structure path is gone; AutoCuttable is the split gate'
+  'filler.structure_window_deployment_path|retired (#4414): the certified long-reel structure path is gone; AutoCuttable is the split gate'
+  'FILLER_STRUCTURE_WINDOW_AUTHORITY_PATH|retired (#4414): the certified long-reel structure path is gone; AutoCuttable is the split gate'
+  'FILLER_STRUCTURE_WINDOW_DEPLOYMENT_PATH|retired (#4414): the certified long-reel structure path is gone; AutoCuttable is the split gate'
+  'CertifiedStructureMaterializable|retired (#4414): the certified complete-plan gate is gone; use AutoCuttable'
+  'AutoConfirmable|retired (#4414): the legacy partition is gone; use AutoCuttable'
+  'StructureSplitShadow|retired (#4414): the shadow comparison is gone; AutoCuttable is the only gate'
+  'filler_split_shadow_decisions|retired (#4414): the shadow-comparison table was dropped; AutoCuttable is the only gate'
+  # #4451 U2: the guide's channel card and now/next line are @loomarr/ui compositions.
+  'NowNextStrip|#4451: the web now/next strip was deleted; the guide renders now/next through @loomarr/ui'
+  'TvStatic|#4451: the web TvStatic was deleted; use the design system AnalogSnow (IdleSnow behind entry surfaces)'
+  'snow-tile|#4451: the web snow tile was deleted; the design system AnalogSnow draws the snow'
+  'ColorBars|#4451: the web ColorBars was deleted; the design system BrandLockup draws the strip'
+  'shell/color-bars|#4451: the web ColorBars was deleted; the design system BrandLockup draws the strip'
+  '"../color-bars"|#4451: the web ColorBars was deleted; the design system BrandLockup draws the strip'
+  'channels/channel-card|#4451: the web ChannelCard was deleted; the guide renders channels through @loomarr/ui'
+  'channels/channel-ident"|#4451: the web channel-ident was deleted; @loomarr/ui owns the one ChannelIdent'
+  'channels/now-next-strip|#4451: the web NowNextStrip was deleted; the guide renders now/next through @loomarr/ui'
+  'shell/brand-lockup|#4451: the web BrandLockup was deleted; the design system owns the one BrandLockup'
+  '"../brand-lockup"|#4451: the web BrandLockup was deleted; the design system owns the one BrandLockup'
 
 )
 # ⚠ `internal/platform/store/migrations/` is exempt, and it is the one exemption that is forced rather than
@@ -495,7 +520,7 @@ ALLOW_LINE='retired-ok|[Rr]etired|[Ss]uperseded|no longer exist|was deleted|was 
 # product belongs here. docs-site/ is deliberately absent — it renders docs/ and holds no prose
 # of its own (design §13).
 SEARCH=(docs internal docker scripts android web/apps/web/src .github README.md SECURITY.md
-        CODE_OF_CONDUCT.md CLAUDE.md AGENTS.md CONTRIBUTING.md CONTEXT.md CHANGELOG.md
+        CODE_OF_CONDUCT.md CLAUDE.md AGENTS.md CONTRIBUTING.md CONTEXT.md PRODUCT.md CHANGELOG.md
         THIRD_PARTY_NOTICES.md Dockerfile Makefile go.mod .env.example)
 fail=0
 for row in "${RETIRED[@]}"; do

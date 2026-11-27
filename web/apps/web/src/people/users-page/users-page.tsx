@@ -24,6 +24,8 @@ import { InvitationRoster } from "@/components/loomarr/people/invitation-roster"
 import { PeopleRoster } from "@/components/loomarr/people/people-roster";
 import { PersonDetail } from "@/components/loomarr/people/person-detail";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { useRefetchAt } from "@/lib/use-refetch-at";
+import { soonestExpiry } from "../soonest-expiry";
 
 // UsersPage — the §11 allowlist. You can sign in iff you have a row here, so this screen
 // is the access-control surface: import who may sign in, set what they may spend, and end
@@ -49,7 +51,15 @@ const UsersPage = () => {
   const importUsers = usersApi.useImportUsers();
   const syncUsers = usersApi.useSyncUsers();
   const createLocal = usersApi.useCreateLocalUser();
-  const invitations = invitationsApi.useListInvitations({ query: { refetchInterval: 5_000 } });
+  // Invitations change behind the admin too, as a link is redeemed or its email delivered: the
+  // `access` frame reads them again (#3352). A pending link also expires on time alone, with
+  // nothing stored, so the list is read again as the soonest one does.
+  const invitations = invitationsApi.useListInvitations();
+  useRefetchAt({
+    deadline: soonestExpiry(unwrap(invitations.data, (body) => body.invitations) ?? []),
+    answeredAt: invitations.dataUpdatedAt,
+    refetch: invitations.refetch,
+  });
   const invalidateInvitations = () =>
     queryClient.invalidateQueries({ queryKey: invitationsApi.getListInvitationsQueryKey() });
   const sendInvitationEmail = invitationsApi.useSendInvitationEmail({
@@ -135,12 +145,12 @@ const UsersPage = () => {
   const selected = rows?.find((user) => user.id === selectedId);
 
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <PageHeader
         title="People"
         description="Who can sign in, and what they can ask for."
         actions={
-          <Stack direction="row" gap="inline" wrap>
+          <Stack direction="row" flexShrink={1} gap="inline" minWidth={0} wrap>
             <InvitationDialog
               libraryAvailable={importAvailable}
               candidates={
@@ -186,7 +196,15 @@ const UsersPage = () => {
         }
       />
 
-      <Stack className="min-h-0 overflow-auto p-6" flexBasis="0%" flexGrow={1} gap="6">
+      <Stack
+        style={{ overflow: "auto" }}
+        flexBasis="0%"
+        flexGrow={1}
+        flexShrink={1}
+        gap="6"
+        minHeight={0}
+        padding={24}
+      >
         {patch.error != null && <ErrorState error={patch.error} />}
         {revoke.error != null && <ErrorState error={revoke.error} />}
         {invitations.error != null && (

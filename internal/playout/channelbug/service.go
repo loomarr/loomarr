@@ -61,6 +61,13 @@ type Service struct {
 	kernel     string // the VAAPI family's blend kernel beside the bugs, written on first use
 }
 
+// OverlayWorks reports whether an encoder's GPU overlay passed its self-check; the first ask
+// starts the check, and until it passes nothing is drawn. Burned-in subtitles share the gate.
+func (c *Service) OverlayWorks(enc encode.Encoder) bool { return c.gate(enc).works.Load() }
+
+// BlendKernel is the VAAPI blend kernel's path (blendKernel), shared by burned-in subtitles.
+func (c *Service) BlendKernel() string { return c.blendKernel() }
+
 // blendKernel is the path of the VAAPI blend kernel, or "" when it could not be written: the VAAPI
 // graph then airs the programme bug-free and says why.
 func (c *Service) blendKernel() string {
@@ -167,7 +174,7 @@ func (c *Service) holidayCalendar() schedule.Calendar {
 const renderVersion = "1"
 
 // For is the channel packager's resolver: the channel's rendered bug for this output, or nil. at is
-// the airing's start (playout.Airing.StartedAt), which picks the holiday version: stable across a
+// the airing's start (timeline.Airing.StartedAt), which picks the holiday version: stable across a
 // retried open and a mid-programme tune-in, so the version changes only at a programme boundary.
 func (c *Service) For(ctx context.Context, channelID string, enc encode.Encoder, width, height int, at time.Time) *playout.Watermark {
 	gate := c.gate(enc)

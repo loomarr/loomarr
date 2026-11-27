@@ -3,8 +3,9 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as jobsApi from "@loomarr/api/endpoints/jobs";
 import * as notificationsApi from "@loomarr/api/endpoints/notifications";
 import * as systemApi from "@loomarr/api/endpoints/system";
-import { Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Card, Icon, icons, PressableRow, Stack, Text } from "@loomarr/design-system";
 import { SearchField, SettingsOverview, type SettingsOverviewCard } from "@loomarr/ui";
+import type { EnsureQueryDataOptions, QueryKey } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   type CSSProperties,
@@ -110,7 +111,7 @@ const SettingsHome = () => {
   return (
     <Stack height="100%" minHeight={0}>
       <PageHeader title="Settings" description="Search reaches any setting directly." />
-      <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} minHeight={0}>
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} overflow="auto">
         <SettingsOverview
           advanced={
             advanced
@@ -166,30 +167,43 @@ const SettingsHome = () => {
                           {results.length} {results.length === 1 ? "match" : "matches"}
                         </Text>
                       </Stack>
-                      <nav aria-label="Settings search results" className="divide-border divide-y">
-                        {results.slice(0, 10).map((result, index) => (
-                          <DestinationAnchor
+                      <Stack aria-label="Settings search results" render="nav">
+                        {results.slice(0, 10).map((result, index, shown) => (
+                          <PressableRow
+                            divided={index < shown.length - 1}
+                            inset={{ x: 16, y: 12 }}
                             key={result.destination.id}
                             ref={(node) => {
-                              resultLinks.current[index] = node;
+                              // On the web the row is the anchor `render` draws.
+                              resultLinks.current[index] = node as unknown as HTMLAnchorElement | null;
                             }}
-                            destination={result.destination}
-                            onKeyDown={(event) => moveResultFocus(event, index)}
-                            className="group hover:bg-muted/40 focus-visible:ring-ring flex items-center gap-3 px-4 py-3 focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
+                            render={
+                              <DestinationAnchor
+                                destination={result.destination}
+                                onKeyDown={(event) => moveResultFocus(event, index)}
+                              />
+                            }
                           >
-                            <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0} render="span">
+                            <Stack
+                              flexBasis="0%"
+                              flexGrow={1}
+                              flexShrink={1}
+                              gap="0.5"
+                              minWidth={0}
+                              render="span"
+                            >
                               <Text as="span" textRole="cardLabel">
                                 {result.setting?.label || result.destination.label}
                               </Text>
-                              <Text as="span" className="truncate" textRole="hint" tone="secondary">
+                              <Text as="span" numberOfLines={1} textRole="hint" tone="secondary">
                                 {result.groupLabel} · {result.destination.label}
                                 {result.setting ? ` · ${result.setting.key}` : ""}
                               </Text>
                             </Stack>
                             <Icon decorative glyph={icons.goForward} size="compact" tone="muted" />
-                          </DestinationAnchor>
+                          </PressableRow>
                         ))}
-                      </nav>
+                      </Stack>
                     </Card>
                   )}
                 </Stack>
@@ -205,18 +219,24 @@ const SettingsHome = () => {
 const Route = createFileRoute("/_authed/settings/")({
   component: SettingsHome,
   // The reads behind each card's status word (see `useSettingsStatus`). A card whose check fails
-  // settles without a problem, so these are warmed rather than awaited into an error view: a
-  // prefetch never rejects. The admin-only reads are skipped for a member, as the page skips them.
+  // settles without a problem, so a failed read is swallowed rather than awaited into an error view.
+  // The admin-only reads are skipped for a member, as the page skips them.
+  //
+  // ⚠ Await a read only when it has NO data. A cached-but-stale read is shown at once and refreshed
+  // behind the page (`revalidateIfStale`). Awaiting a `prefetchQuery` instead re-fetched whichever
+  // read had gone stale on every return visit and held the navigation for that round trip: warm
+  // Settings landed at ~100 ms (the e2e API delay) whenever one had, against a 70 ms budget.
   loader: async ({ context: { queryClient } }) => {
     const isAdmin = await viewerIsAdmin(queryClient);
+    const warm = <TQueryFnData, TError, TData, TQueryKey extends QueryKey>(
+      options: EnsureQueryDataOptions<TQueryFnData, TError, TData, TQueryKey>,
+    ) => queryClient.ensureQueryData({ ...options, revalidateIfStale: true }).catch(() => undefined);
     await Promise.all([
-      queryClient.prefetchQuery(
-        notificationsApi.getNotificationProvidersListQueryOptions({ query: { retry: false } }),
-      ),
-      isAdmin ? queryClient.prefetchQuery(diagnosticsApi.getGetCurrentHealthQueryOptions()) : undefined,
-      isAdmin ? queryClient.prefetchQuery(jobsApi.getJobsListQueryOptions()) : undefined,
-      isAdmin ? queryClient.prefetchQuery(systemApi.getSystemBackupsListQueryOptions()) : undefined,
-      isAdmin ? queryClient.prefetchQuery(fillerApi.getFillerReadinessQueryOptions()) : undefined,
+      warm(notificationsApi.getNotificationProvidersListQueryOptions({ query: { retry: false } })),
+      isAdmin ? warm(diagnosticsApi.getGetCurrentHealthQueryOptions()) : undefined,
+      isAdmin ? warm(jobsApi.getJobsListQueryOptions()) : undefined,
+      isAdmin ? warm(systemApi.getSystemBackupsListQueryOptions()) : undefined,
+      isAdmin ? warm(fillerApi.getFillerReadinessQueryOptions()) : undefined,
     ]);
   },
 });

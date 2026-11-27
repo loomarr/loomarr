@@ -78,6 +78,14 @@ const (
 	// ReasonUnidentified is retained for historical refusal rows. Runtime classification no longer
 	// produces it: "we could not identify it" is not an objective reason to reject enrolled filler.
 	ReasonUnidentified RejectReason = "unidentified"
+
+	// ReasonUndecided — a check on a clip Loomarr found could not reach a verdict, and a check that
+	// cannot decide is a fail (#3838 decision 18). The detail carries what the check measured.
+	ReasonUndecided RejectReason = "undecided"
+
+	// ReasonRetired — a person asked to re-run a step that needs the original download, and the
+	// original was already deleted (#3855, decision 0048). The clip comes off air and is replaced.
+	ReasonRetired RejectReason = "retired"
 )
 
 // Soft reports whether an operator may override this rejection.

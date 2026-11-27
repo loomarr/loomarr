@@ -100,10 +100,8 @@ func New(st Store, win Windows, now func() time.Time, log *slog.Logger) *Service
 
 // PurgeRecords removes denied proposals and finished jobs past their windows.
 //
-// ⚠ **PROPOSALS FIRST, THEN JOBS.** `proposals.job_id` has no foreign key, so the ordering
-// constraint is ours to keep: removing a job first would leave a proposal pointing at
-// nothing. No read path joins the two, so an orphan is cosmetic — but a purge that
-// manufactures one on every run makes the data harder to reason about for no gain.
+// ⚠ **PROPOSALS FIRST, THEN JOBS.** `proposals.job_id` is a foreign key (SET NULL), so purging
+// a job first clears the link on a proposal this same run is about to delete.
 //
 // ⚠ What it must NOT remove is the substance: `approved` proposals are the audit trail
 // behind `decided_by`, `submitted` ones are members still waiting for an answer, and

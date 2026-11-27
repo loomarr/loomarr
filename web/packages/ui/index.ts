@@ -10,12 +10,20 @@ export type {
   ChannelAudioOption,
   ChannelAudioSectionProps,
   ChannelSeasonalFieldsProps,
+  ChannelUnairableProps,
   SeasonalHoliday,
   SeasonalMode,
   SeasonalOffSeason,
   SeasonalStrength,
+  UnairableReason,
+  UnairableTitle,
 } from "./src/channels";
-export { ChannelAudioSection, ChannelSeasonalFields, seasonalModeLabel } from "./src/channels";
+export {
+  ChannelAudioSection,
+  ChannelSeasonalFields,
+  ChannelUnairable,
+  seasonalModeLabel,
+} from "./src/channels";
 export type { ClientDestination, ClientNavigationProps } from "./src/client-navigation";
 export { ClientNavigation, clientBackDestination, clientDestinationLabel } from "./src/client-navigation";
 export { ClientPlatformProof } from "./src/client-platform-proof";
@@ -75,6 +83,7 @@ export type {
 export { ChannelIdentity, ProgrammeIdentity } from "./src/identity";
 export type {
   LibraryAuthority,
+  LibraryBrowseListing,
   LibraryCollectionCard,
   LibraryCollectionChannel,
   LibraryCollectionEditorProps,
@@ -85,6 +94,7 @@ export type {
   LibraryExternalId,
   LibraryFilter,
   LibraryFolder,
+  LibraryFolderBrowser,
   LibraryHealth,
   LibraryHeldRemoval,
   LibraryHook,
@@ -94,7 +104,6 @@ export type {
   LibraryNeedSearch,
   LibraryNeedsAnswers,
   LibraryNeedsCardsProps,
-  LibraryNeedsStripProps,
   LibraryOrderNeed,
   LibraryPathMapping,
   LibraryProblem,
@@ -102,13 +111,17 @@ export type {
   LibraryScan,
   LibrarySetCard,
   LibrarySettingsProps,
+  LibraryShelfAdmin,
+  LibraryShelfCounts,
   LibraryShelfProps,
   LibraryShelfStatus,
   LibraryShelfTitle,
+  LibrarySort,
   LibraryTitleChannel,
   LibraryTitleDetail,
   LibraryTitleEpisode,
   LibraryTitleFile,
+  LibraryTitleFix,
   LibraryTitleMatch,
   LibraryTitleProps,
   LibraryTitleSeason,
@@ -118,7 +131,6 @@ export {
   LibraryCollectionEditor,
   LibraryCollections,
   LibraryNeedsCards,
-  LibraryNeedsStrip,
   LibrarySettings,
   LibraryShelf,
   LibraryTitle,
@@ -190,6 +202,8 @@ export type { RowCardProps } from "./src/row-card";
 export { RowCard } from "./src/row-card";
 export type { ScreenHeaderAction, ScreenHeaderProps } from "./src/screen-header";
 export { ScreenHeader } from "./src/screen-header";
+export type { SearchButtonProps } from "./src/search-button";
+export { SearchButton } from "./src/search-button";
 export type { SearchFieldProps } from "./src/search-field";
 export { SearchField } from "./src/search-field";
 export type {

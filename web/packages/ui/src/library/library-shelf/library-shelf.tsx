@@ -1,33 +1,64 @@
-import { Action, Badge, Field, StatusDot, Surface, Tabs, Text, useWindowWidth } from "@loomarr/design-system";
-import { type ComponentProps, useState } from "react";
-import { Pressable } from "react-native";
+import {
+  Action,
+  CompactSelect,
+  Field,
+  ProgressTrack,
+  Skeleton,
+  StatusDot,
+  Surface,
+  Tabs,
+  Text,
+  TextLink,
+  useReducedMotionPreference,
+  useWindowWidth,
+} from "@loomarr/design-system";
+import { type ComponentProps, type ReactNode, useState } from "react";
+import { Pressable, View } from "react-native";
 
 import { StatePanel } from "../../state-panel";
 import { LibraryGrid } from "../library-grid";
 import { LibraryPoster, Line, PAGE_GUTTER, Stack, Twirl } from "../library-poster";
 import { detailsWaiting, folderName, heldTitle, scanHeadline } from "../library-words";
-import type { LibraryFilter, LibraryShelfProps, LibraryShelfTitle } from "./library-shelf.type";
+import type {
+  LibraryShelfAdmin,
+  LibraryShelfCounts,
+  LibraryShelfProps,
+  LibraryShelfTitle,
+  LibrarySort,
+} from "./library-shelf.type";
 
-// LIBRARY (#2151 decision 22, design/library variant D): one line about the library, the tabs and a
-// search, then the poster grid. Presentational: the app owns the requests and draws the artwork.
+// THE WALL (#4476, design/library 2026-11-21): the posters first. An admin's one line about the
+// library sits above them, with Needs you as a count and Review; then the tabs with their counts,
+// the search and the order, and the 2:3 poster grid. A member gets the same wall with no line and
+// no settings. Presentational: the app owns the requests and draws the artwork.
 // Plain words per the mock's word sheet: "Getting ready", never a facts state.
 
 // The grid is 6 across on a desktop, 4 on a tablet and 3 on a phone, by the window as in the mock.
 const columnsFor = (width: number) => (width >= 1024 ? 6 : width >= 768 ? 4 : 3);
 
-// The one line under the heading: what's going on, the one action it needs, and the way to Settings.
+const count = (n: number) => n.toLocaleString("en-US");
+const titlesWord = (n: number) => (n === 1 ? "1 title" : `${count(n)} titles`);
+
+// "6 need you · Review": the count and the way to Needs you's own page, which has no Review.
+const NeedsYouLine = ({ needsYou, onOpenNeeds }: { needsYou: number; onOpenNeeds?: () => void }) => (
+  <Line flexWrap="nowrap">
+    <StatusDot label="Needs you" tone="warn" />
+    <Text textRole="label">{needsYou === 1 ? "1 needs you" : `${count(needsYou)} need you`}</Text>
+    {onOpenNeeds ? <TextLink onPress={onOpenNeeds}>Review</TextLink> : null}
+  </Line>
+);
+
+// The one line under the heading: what's going on, the one action it needs, and Needs you.
 const StatusLine = ({
-  status,
-  checking,
-  onCheckAgain,
-  onRescan,
-  onOpenSettings,
+  admin: { status, checking, onCheckAgain, onRescan, onOpenNeeds },
   timeZone,
-}: Pick<
-  LibraryShelfProps,
-  "status" | "checking" | "onCheckAgain" | "onRescan" | "onOpenSettings" | "timeZone"
->) => {
-  const scan = scanHeadline(status.scan, status.needsYou || status.health === "folder_empty");
+}: {
+  admin: LibraryShelfAdmin;
+  timeZone?: string;
+}) => {
+  // The wall says "Up to date" once nothing is being added; the long "All caught up" belongs to
+  // Settings, where the whole import is told.
+  const scan = scanHeadline(status.scan, true);
   const held = status.held[0];
   const offline = status.health === "folder_offline" ? status.offline[0] : undefined;
   const waiting = detailsWaiting(status.details, status.scan, timeZone);
@@ -51,20 +82,34 @@ const StatusLine = ({
     alert !== undefined && status.health !== "needs_folders" && scan.shortLine
       ? `${scan.text} · ${scan.shortLine}`
       : "";
+  // An import that is adding titles draws its bar under its words: the preparation hue while it
+  // runs, the neutral foreground while it waits for someone watching.
+  const bar = importing && scan.running;
   return (
-    <Line columnGap="control" paddingVertical="inline" rowGap="inline">
-      <Line>
-        {/* A step moving twirls; paused, done or off keeps the still dot. */}
-        {importing && scan.moving ? <Twirl /> : <StatusDot label={text} tone={tone} />}
-        <Text textRole="label">
-          {/* "Adding your media · Step 1 of 3 · 21% · about 9 min left". */}
-          {importing && scan.shortLine
-            ? `${text} · ${scan.shortLine}`
-            : alongside
-              ? `${text} · ${alongside}`
-              : text}
-        </Text>
-      </Line>
+    <Line columnGap="section" paddingVertical="inline" rowGap="inline">
+      <Stack gap={6}>
+        <Line flexWrap="nowrap">
+          {/* A step moving twirls; paused, done or off keeps the still dot. */}
+          {importing && scan.moving ? <Twirl /> : <StatusDot label={text} tone={tone} />}
+          <Text textRole="label">
+            {/* "Adding your media · Step 1 of 3 · 21% · about 9 min left". */}
+            {importing && scan.shortLine
+              ? `${text} · ${scan.shortLine}`
+              : alongside
+                ? `${text} · ${alongside}`
+                : text}
+          </Text>
+        </Line>
+        {bar ? (
+          <ProgressTrack
+            maxWidth={240}
+            percent={scan.percent}
+            tone={status.scan.paused ? "elapsed" : "tune"}
+            width="100%"
+          />
+        ) : null}
+      </Stack>
+      {status.needsYou > 0 ? <NeedsYouLine needsYou={status.needsYou} onOpenNeeds={onOpenNeeds} /> : null}
       {held ? (
         <Action onPress={onRescan} tone="primary">
           Check again
@@ -74,11 +119,6 @@ const StatusLine = ({
           {checking ? "Checking…" : "Check again"}
         </Action>
       ) : null}
-      <Stack marginLeft="auto">
-        <Action onPress={onOpenSettings} variant="ghost">
-          Library settings
-        </Action>
-      </Stack>
     </Line>
   );
 };
@@ -90,6 +130,15 @@ const DeadAir = ({ onOpenSettings }: { onOpenSettings: () => void }) => (
     description="Point it at your movie and show folders and your shelf fills up on its own."
     kind="empty"
     title="Dead air"
+  />
+);
+
+// A member's wall with no titles at all: there is nothing for them to set up, so no action.
+const EmptyLibrary = () => (
+  <StatePanel
+    description="Movies and shows appear here once they're added."
+    kind="empty"
+    title="Nothing in the Library yet"
   />
 );
 
@@ -106,61 +155,106 @@ const EmptyTab = ({ kind, onShowEverything }: { kind: "movie" | "series"; onShow
   );
 };
 
+// A search that found nothing: what was asked, what the search reads, and the way back. The search
+// matches names only, so it says so; years and genres join it with #4476 A2b.
+const NoMatch = ({ search, total, onClear }: { search: string; total?: number; onClear: () => void }) => {
+  const wide = useWindowWidth() >= 768;
+  return (
+    <Stack
+      alignItems={wide ? "center" : "flex-start"}
+      gap="control"
+      paddingVertical={wide ? 64 : "section"}
+      role="status"
+    >
+      <Text as="h2" textAlign={wide ? "center" : "left"} textRole="headline">
+        {`Nothing here matches “${search}”`}
+      </Text>
+      <Text textAlign={wide ? "center" : "left"} textRole="body" tone="secondary">
+        {total === undefined
+          ? "Search looks at the names of your titles."
+          : `Search looks at the names of all ${titlesWord(total)}.`}
+      </Text>
+      <Line>
+        <Action onPress={onClear} variant="outline">
+          Clear search
+        </Action>
+      </Line>
+    </Stack>
+  );
+};
+
 const subtitle = (title: LibraryShelfTitle) => {
   const kind = title.kind === "series" ? "Show" : "Movie";
   return title.year ? `${title.year} · ${kind}` : kind;
 };
 
+// A poster grows a little under the pointer, so a household sees it opens (the maintainer's call,
+// 2026-11-21: an exception to #2789's motion rule, for the Library's posters only). It grows over
+// the base interaction time and not at all with reduced motion.
+const HOVER_SCALE = 1.04;
+const HOVER_MS = 200;
+
 const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void }) => {
   const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const reduced = useReducedMotionPreference();
+  const grow =
+    reduced === false
+      ? {
+          transform: [{ scale: hovered ? HOVER_SCALE : 1 }],
+          transitionDuration: `${HOVER_MS}ms`,
+          transitionProperty: "transform",
+          transitionTimingFunction: "ease-out",
+        }
+      : {};
   return (
-    // ⚠ Named by what it shows (the badge or dot, the title, its year and kind), not a label of its
-    // own: a label that leaves out visible words fails WCAG 2.5.3, and voice control users say
-    // what they see.
+    // ⚠ Named by what it shows (the dot, the title, its year and kind or Getting ready), not a
+    // label of its own: a label that leaves out visible words fails WCAG 2.5.3, and voice control
+    // users say what they see.
     <Pressable
       accessibilityRole="button"
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
       onPress={onOpen}
       style={{ minWidth: 0, width: "100%" }}
     >
       <Stack gap="inline">
-        <Surface
-          backgroundColor="transparent"
-          borderColor={focused ? "actionFocus" : "transparent"}
-          borderRadius="control"
-          borderWidth={2}
-        >
-          <LibraryPoster art={title.poster} dim={!title.ready} name={title.name}>
-            {title.ready ? null : (
-              <Line flexWrap="nowrap" left={8} position="absolute" top={8}>
-                <Badge tone="neutral">Getting ready</Badge>
-                <Twirl />
-              </Line>
-            )}
-            {title.ready && title.attention ? (
-              // A dot, not a badge: a three-across phone grid has no room for a word on the poster.
-              <Surface
-                backgroundColor="surfaceCanvas"
-                borderRadius="round"
-                borderWidth={0}
-                padding={6}
-                position="absolute"
-                right={8}
-                top={8}
-              >
-                <StatusDot label="Needs a look" tone="warn" />
-              </Surface>
-            ) : null}
-          </LibraryPoster>
-        </Surface>
-        <Stack gap={2} minHeight={56} minWidth={0}>
+        <View style={grow as object}>
+          <Surface
+            backgroundColor="transparent"
+            borderColor={focused ? "actionFocus" : "transparent"}
+            borderRadius="control"
+            borderWidth={2}
+          >
+            {/* A title getting ready is dimmed, and its caption says so: a word on the poster
+                doesn't fit a three-across phone grid. */}
+            <LibraryPoster art={title.poster} dim={!title.ready} name={title.name}>
+              {title.ready && title.attention ? (
+                // A dot, not a badge, for the same reason.
+                <Surface
+                  backgroundColor="surfaceCanvas"
+                  borderRadius="round"
+                  borderWidth={0}
+                  padding={6}
+                  position="absolute"
+                  right={8}
+                  top={8}
+                >
+                  <StatusDot label="Needs a look" tone="warn" />
+                </Surface>
+              ) : null}
+            </LibraryPoster>
+          </Surface>
+        </View>
+        <Stack flexShrink={1} gap={2} minHeight={56} minWidth={0}>
           {/* Left-aligned: on the web the tile is a <button>, which centres its text. */}
           <Text numberOfLines={2} textAlign="left" textRole="label">
             {title.name}
           </Text>
           <Text textAlign="left" textRole="compact" tone="secondary">
-            {subtitle(title)}
+            {title.ready ? subtitle(title) : "Getting ready"}
           </Text>
         </Stack>
       </Stack>
@@ -177,8 +271,19 @@ const estimateRowHeight = (width: number, columns: number) => {
   return Math.round(poster * 1.5 + 8 + 56 + 24);
 };
 
-// The grid as rows, each filled out with empty cells so the last row's posters keep their width.
-// LibraryGrid mounts only the rows near the screen.
+// One row of cells, each filled out with empty cells so the last row's posters keep their width.
+const Row = ({ columns, children }: { columns: number; children: ReactNode[] }) => (
+  // A row is layout only; the titles are the list's items.
+  <Line alignItems="flex-start" flexWrap="nowrap" gap="control" paddingBottom="section" role="none">
+    {children}
+    {Array.from({ length: columns - children.length }, (_, i) => `slot-${i}`).map((slot) => (
+      <Stack aria-hidden flexBasis={0} flexGrow={1} flexShrink={1} key={slot} />
+    ))}
+  </Line>
+);
+
+// The grid as rows. LibraryGrid mounts only the rows near the screen.
+// TODO(#4476 A2b): the desktop letter rail sits beside this grid once the list can jump to a letter.
 const Grid = ({
   titles,
   onOpenTitle,
@@ -188,24 +293,19 @@ const Grid = ({
   const columns = columnsFor(width);
   const rows: LibraryShelfTitle[][] = [];
   for (let i = 0; i < titles.length; i += columns) rows.push(titles.slice(i, i + columns));
-  const slots = Array.from({ length: columns }, (_, i) => `slot-${i}`);
   return (
     <LibraryGrid
       estimateRowHeight={estimateRowHeight(width, columns)}
       label="Titles"
       onEndReached={onEndReached}
       renderRow={(row) => (
-        // A row is layout only; the titles are the list's items.
-        <Line alignItems="flex-start" flexWrap="nowrap" gap="control" paddingBottom="section" role="none">
+        <Row columns={columns}>
           {row.map((title) => (
-            <Stack flexBasis={0} flexGrow={1} key={title.id} minWidth={0} role="listitem">
+            <Stack flexBasis={0} flexGrow={1} flexShrink={1} key={title.id} minWidth={0} role="listitem">
               <Tile onOpen={() => onOpenTitle(title.id)} title={title} />
             </Stack>
           ))}
-          {slots.slice(row.length).map((slot) => (
-            <Stack aria-hidden flexBasis={0} flexGrow={1} key={slot} />
-          ))}
-        </Line>
+        </Row>
       )}
       rowKey={(row, index) => row[0]?.id ?? `row-${index}`}
       rows={rows}
@@ -213,21 +313,123 @@ const Grid = ({
   );
 };
 
-const FILTERS: { label: string; value: LibraryFilter }[] = [
-  { label: "All", value: "all" },
-  { label: "Movies", value: "movie" },
-  { label: "Shows", value: "series" },
-  { label: "Collections", value: "collections" },
+// The first page on its way: two rows of poster-shaped placeholders with their captions' lines.
+const LOADING_ROWS = 2;
+const Loading = () => {
+  const columns = columnsFor(useWindowWidth());
+  const cells = Array.from({ length: columns }, (_, i) => `cell-${i}`);
+  return (
+    <Stack aria-busy aria-label="Loading your titles" role="status">
+      {Array.from({ length: LOADING_ROWS }, (_, r) => `row-${r}`).map((row) => (
+        <Row columns={columns} key={row}>
+          {cells.map((cell) => (
+            <Stack flexBasis={0} flexGrow={1} flexShrink={1} gap="inline" key={cell} minWidth={0}>
+              <Stack aspectRatio={2 / 3} width="100%">
+                <Skeleton height="100%" shape="media" width="100%" />
+              </Stack>
+              <Skeleton width="80%" />
+              <Skeleton width="50%" />
+            </Stack>
+          ))}
+        </Row>
+      ))}
+    </Stack>
+  );
+};
+
+const SORTS: { label: string; value: LibrarySort }[] = [
+  { label: "A–Z", value: "name" },
+  { label: "Recently added", value: "recent" },
 ];
 
-const LibraryShelf = ({
-  status,
-  checking,
-  onCheckAgain,
-  onRescan,
-  onOpenSettings,
+const filterOptions = (counts: LibraryShelfCounts | undefined, withCounts: boolean) => {
+  const counted = (label: string, value: "all" | "movie" | "series") =>
+    withCounts && counts
+      ? { label, value, count: count(counts[value]), countLabel: titlesWord(counts[value]) }
+      : { label, value };
+  return [
+    counted("All", "all"),
+    counted("Movies", "movie"),
+    counted("Shows", "series"),
+    { label: "Collections", value: "collections" as const },
+  ];
+};
+
+// The tabs, then the search and the order. From a tablet up they share a line and the tabs carry
+// their counts; on a phone the search takes its own line and the count sits beside the order.
+const Controls = ({
   filter,
   onFilterChange,
+  counts,
+  sort,
+  onSortChange,
+  search,
+  onSearchChange,
+  showSearch,
+}: Pick<
+  LibraryShelfProps,
+  "filter" | "onFilterChange" | "counts" | "sort" | "onSortChange" | "search" | "onSearchChange"
+> & { showSearch: boolean }) => {
+  const wide = useWindowWidth() >= 768;
+  const tabs = (
+    <Tabs
+      appearance="underline"
+      label="What to show"
+      onValueChange={onFilterChange}
+      options={filterOptions(counts, wide)}
+      value={filter}
+    />
+  );
+  if (!showSearch) return tabs;
+  const searchField = (
+    <Field
+      accessibilityLabel="Search titles"
+      onChangeText={onSearchChange}
+      placeholder="Search titles"
+      value={search}
+    />
+  );
+  const order = (
+    <CompactSelect label="Order" onValueChange={onSortChange} options={SORTS} value={sort} width={168} />
+  );
+  // TODO(#4476 A2b): the genre filter sits after the order once the list can filter by genre.
+  if (wide) {
+    return (
+      <Line columnGap="control" flexWrap="nowrap" justifyContent="space-between">
+        {tabs}
+        <Line flexShrink={1} flexWrap="nowrap" gap="control">
+          <Stack width={288}>{searchField}</Stack>
+          {order}
+        </Line>
+      </Line>
+    );
+  }
+  const shown = counts && filter !== "collections" ? counts[filter] : undefined;
+  return (
+    <Stack gap="control">
+      {tabs}
+      {searchField}
+      <Line flexWrap="nowrap" gap="control">
+        {order}
+        {shown === undefined ? null : (
+          <Stack marginLeft="auto">
+            <Text textRole="compact" tone="secondary">
+              {titlesWord(shown)}
+            </Text>
+          </Stack>
+        )}
+      </Line>
+    </Stack>
+  );
+};
+
+const LibraryShelf = ({
+  admin,
+  filter,
+  onFilterChange,
+  counts,
+  sort,
+  onSortChange,
   search,
   onSearchChange,
   titles,
@@ -239,11 +441,19 @@ const LibraryShelf = ({
   collections,
   timeZone,
 }: LibraryShelfProps) => {
-  const fresh = status.health === "needs_folders";
+  const fresh = admin?.status.health === "needs_folders";
   const onCollections = filter === "collections";
   const showTitles = showGrid && !onCollections;
-  // From a tablet up the search sits beside the tabs; on a phone it takes its own full-width line.
-  const wide = useWindowWidth() >= 768;
+  const width = useWindowWidth();
+  const wide = width >= 768;
+  const searched = search.trim();
+  // The All tab with no titles. While an import is adding them, an admin's status line tells that
+  // story, so the dead air panel waits until nothing is running.
+  const emptyLibrary = !admin ? (
+    <EmptyLibrary />
+  ) : scanHeadline(admin.status.scan, true).running ? null : (
+    <DeadAir onOpenSettings={admin.onOpenSettings} />
+  );
   return (
     <Stack
       alignSelf="center"
@@ -252,44 +462,48 @@ const LibraryShelf = ({
       padding={wide ? PAGE_GUTTER.wide : PAGE_GUTTER.phone}
       width="100%"
     >
-      <Stack gap="control">
-        <Text as="h1" textRole="display">
-          Library
-        </Text>
-        <StatusLine
-          checking={checking}
-          onCheckAgain={onCheckAgain}
-          onOpenSettings={onOpenSettings}
-          onRescan={onRescan}
-          status={status}
-          timeZone={timeZone}
-        />
+      <Stack gap="inline">
+        <Line flexWrap="nowrap" justifyContent="space-between">
+          <Text as="h1" textRole="display">
+            Library
+          </Text>
+          {admin ? (
+            <Action
+              icon="settings"
+              layout={wide ? "inline" : "icon"}
+              onPress={admin.onOpenSettings}
+              variant="ghost"
+            >
+              Library settings
+            </Action>
+          ) : null}
+        </Line>
+        {admin ? <StatusLine admin={admin} timeZone={timeZone} /> : null}
       </Stack>
-      {fresh ? (
-        <DeadAir onOpenSettings={onOpenSettings} />
+      {fresh && admin ? (
+        <DeadAir onOpenSettings={admin.onOpenSettings} />
       ) : (
         <>
+          <Controls
+            counts={counts}
+            filter={filter}
+            onFilterChange={onFilterChange}
+            onSearchChange={onSearchChange}
+            onSortChange={onSortChange}
+            search={search}
+            showSearch={showTitles}
+            sort={sort}
+          />
           {needs}
-          <Line columnGap="control" justifyContent="space-between" rowGap="control">
-            <Tabs label="What to show" onValueChange={onFilterChange} options={FILTERS} value={filter} />
-            {showTitles ? (
-              <Stack width={wide ? 288 : "100%"}>
-                <Field
-                  accessibilityLabel="Search your library"
-                  onChangeText={onSearchChange}
-                  placeholder="Search your library"
-                  value={search}
-                />
-              </Stack>
-            ) : null}
-          </Line>
           {onCollections ? collections : null}
-          {!showTitles || loading ? null : titles.length === 0 && search.trim() !== "" ? (
-            <Text textRole="body" tone="secondary">
-              {`Nothing here matches "${search.trim()}".`}
-            </Text>
+          {!showTitles ? null : loading ? (
+            <Loading />
+          ) : titles.length === 0 && searched !== "" ? (
+            <NoMatch onClear={() => onSearchChange("")} search={searched} total={counts?.[filter]} />
           ) : titles.length === 0 && (filter === "movie" || filter === "series") ? (
             <EmptyTab kind={filter} onShowEverything={() => onFilterChange("all")} />
+          ) : titles.length === 0 && filter === "all" && searched === "" ? (
+            emptyLibrary
           ) : (
             <Grid onEndReached={onEndReached} onOpenTitle={onOpenTitle} titles={titles} />
           )}

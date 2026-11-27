@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -35,16 +36,91 @@ type fakeStore struct {
 	clips   map[string]clipstore.Clip
 	pinned  map[string]bool
 	retires int
+	// artifacts is each fetched clip's acquisition, by clip hash.
+	artifacts map[string]acquisition.Artifact
+	// reaped and proposals are a reel's tombstone and whether a split proposal is left for it.
+	reaped, proposals map[string]bool
 }
 
-func (f *fakeStore) ListClipPipelines(_ context.Context, _ pipelinestate.PipelineFilter) ([]pipelinestate.ClipPipeline, error) {
+func (f *fakeStore) AcquisitionArtifactForClip(_ context.Context, _, clipHash string) (acquisition.Artifact, bool, error) {
+	a, ok := f.artifacts[clipHash]
+	return a, ok, nil
+}
+
+func (f *fakeStore) AcquisitionHasArtifacts(_ context.Context, acquisitionID string) (bool, error) {
+	for _, a := range f.artifacts {
+		if acquisitionID != "" && a.AcquisitionID == acquisitionID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (f *fakeStore) ListClipPipelines(_ context.Context, filter pipelinestate.PipelineFilter) ([]pipelinestate.ClipPipeline, error) {
 	var out []pipelinestate.ClipPipeline
 	for _, r := range f.rows {
-		if r.Disposition == pipelinestate.DispositionRejected {
+		if slices.Contains(filter.Dispositions, r.Disposition) {
 			out = append(out, r)
 		}
 	}
 	return out, nil
+}
+
+// RetireReadyClip applies the same qualification as the SQL store: a fetched, unpinned Ready clip
+// not yet let go.
+func (f *fakeStore) RetireReadyClip(_ context.Context, hash string, at time.Time) (bool, error) {
+	r, c := f.rows[hash], f.clips[hash]
+	if r.Disposition != pipelinestate.DispositionReady || r.AcquisitionID == "" || !r.FilesDeletedAt.IsZero() ||
+		f.pinned[hash] || c.Held || !c.RemovedAt.IsZero() || c.IsComposite {
+		return false, nil
+	}
+	f.retires++
+	r.FilesDeletedAt = at
+	c.RemovedAt = at
+	f.rows[hash], f.clips[hash] = r, c
+	return true, nil
+}
+
+// settledReel applies the SQL store's rule (records.settledReelWhere): a fetched composite off the
+// belt, not let go, with no proposal left and every present piece in a final state.
+func (f *fakeStore) settledReel(hash string) bool {
+	r, c := f.rows[hash], f.clips[hash]
+	if r.Disposition != pipelinestate.DispositionComplete || r.AcquisitionID == "" || !r.FilesDeletedAt.IsZero() ||
+		!c.IsComposite || !c.RemovedAt.IsZero() || f.reaped[hash] || f.proposals[hash] {
+		return false
+	}
+	for _, k := range f.clips {
+		if k.ParentHash != hash || !k.RemovedAt.IsZero() {
+			continue
+		}
+		kr, ok := f.rows[k.Hash]
+		if !ok || !slices.Contains([]pipelinestate.Disposition{pipelinestate.DispositionReady, pipelinestate.DispositionRejected,
+			pipelinestate.DispositionDismissed, pipelinestate.DispositionComplete}, kr.Disposition) {
+			return false
+		}
+	}
+	return true
+}
+
+func (f *fakeStore) ListSettledReels(context.Context) ([]string, error) {
+	var out []string
+	for hash := range f.clips {
+		if f.settledReel(hash) {
+			out = append(out, hash)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) RetireSettledReel(_ context.Context, hash string, at time.Time) (bool, error) {
+	if !f.settledReel(hash) {
+		return false, nil
+	}
+	f.retires++
+	r := f.rows[hash]
+	r.FilesDeletedAt = at
+	f.rows[hash], f.reaped[hash] = r, true
+	return true, nil
 }
 
 func (f *fakeStore) RetireRejectedClip(_ context.Context, hash string, rejectedBy, at time.Time) (bool, error) {
@@ -64,6 +140,21 @@ func (f *fakeStore) GetClip(_ context.Context, hash string) (clipstore.Clip, boo
 	return c, ok, nil
 }
 
+func (f *fakeStore) ListReadyClips(context.Context) ([]clipstore.Clip, error) {
+	var out []clipstore.Clip
+	for _, c := range f.clips {
+		if !c.Held && c.RemovedAt.IsZero() && !c.IsComposite {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) GetClipPipeline(_ context.Context, hash string) (pipelinestate.ClipPipeline, bool, error) {
+	r, ok := f.rows[hash]
+	return r, ok, nil
+}
+
 func (f *fakeStore) ListClipPaths(context.Context) ([]string, error) {
 	var out []string
 	for _, c := range f.clips {
@@ -80,32 +171,48 @@ type fixture struct {
 func newFixture(t *testing.T) *fixture {
 	return &fixture{dir: t.TempDir(), store: &fakeStore{
 		rows: map[string]pipelinestate.ClipPipeline{}, clips: map[string]clipstore.Clip{}, pinned: map[string]bool{},
+		artifacts: map[string]acquisition.Artifact{}, reaped: map[string]bool{}, proposals: map[string]bool{},
 	}}
 }
 
 func (f *fixture) write(t *testing.T, rel string) string {
 	t.Helper()
+	return f.writeContent(t, rel, rel)
+}
+
+func (f *fixture) writeContent(t *testing.T, rel, content string) string {
+	t.Helper()
 	full := filepath.Join(f.dir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(full, []byte(rel), 0o644); err != nil {
+	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return full
 }
 
 // reject adds a rejected clip with a playback file and a sidecar naming master, and returns the
-// playback file's full path.
+// playback file's full path. With a master, the playback file holds the master's bytes, as a clip
+// with no separate playback copy does, so its airing copy checks against the master's identity.
 func (f *fixture) reject(t *testing.T, hash, acquisition, master string, rejectedAt time.Time) string {
 	t.Helper()
 	rel := cliplibrary.ClipRelPath(hash, ".mp4")
 	full := f.write(t, rel)
 	var tags asset.SidecarTags
 	if master != "" {
-		f.write(t, master)
+		masterFull := f.writeContent(t, master, master)
+		f.writeContent(t, rel, master)
+		sum, size, err := asset.FileSHA256(masterFull)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sparse, err := asset.ClipID(masterFull)
+		if err != nil {
+			t.Fatal(err)
+		}
 		tags.MediaAssets = &asset.Manifest{Version: 1, SourceMaster: asset.Identity{
-			Role: asset.RoleSourceMaster, SHA256: hashOf(master), Bytes: int64(len(master)), ClipHash: hash, Path: master,
+			Role: asset.RoleSourceMaster, SHA256: sum, Bytes: size, ClipHash: sparse, Path: master,
 		}}
 	}
 	if err := asset.WriteSidecarTags(full, tags, false); err != nil {
@@ -118,6 +225,37 @@ func (f *fixture) reject(t *testing.T, hash, acquisition, master string, rejecte
 		Disposition: pipelinestate.DispositionRejected, RejectReason: pipelinestate.ReasonUnplayable,
 		UpdatedAt: rejectedAt}
 	return full
+}
+
+// ready adds a clip on air with a playback file whose sidecar names master, and returns the
+// playback file's full path. A fetched one's acquisition is consumed, as intake leaves it.
+func (f *fixture) ready(t *testing.T, hash, run, master string) string {
+	t.Helper()
+	full := f.reject(t, hash, run, master, t0)
+	c := f.store.clips[hash]
+	c.Held = false
+	f.store.clips[hash] = c
+	row := f.store.rows[hash]
+	row.Disposition, row.RejectReason = pipelinestate.DispositionReady, ""
+	f.store.rows[hash] = row
+	if run != "" {
+		f.store.artifacts[hash] = acquisition.Artifact{AcquisitionID: run, ClipHash: hash, State: acquisition.ArtifactConsumed}
+	}
+	return full
+}
+
+func masterRel(name string) string {
+	return filepath.ToSlash(filepath.Join(split.MediaAssetRootName, "masters", "aa", "bb", name+".mkv"))
+}
+
+// sidecarMaster is the source master a playback file's sidecar records.
+func sidecarMaster(t *testing.T, full string) asset.Identity {
+	t.Helper()
+	tags, ok := asset.ReadSidecarTags(full)
+	if !ok || tags.MediaAssets == nil {
+		t.Fatalf("no manifest beside %s", full)
+	}
+	return tags.MediaAssets.SourceMaster
 }
 
 func exists(path string) bool {

@@ -9,8 +9,8 @@ import {
   Stack,
   StatusLabel,
   Text,
+  typography,
 } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
 import type { DatabaseMigrationProps, MigrationStep } from "./database-migration.type";
 
 // DatabaseMigration — the SQLite → PostgreSQL stepper (§18, V11; v2 mock System → Database).
@@ -141,16 +141,27 @@ const DatabaseMigration = ({
                 <Stack align="center" direction="row" gap="inline" key={s.key} render="li">
                   <Stack
                     align="center"
-                    className={cn(
-                      "text-2xs size-5 rounded-full border font-mono",
-                      done && "border-signal bg-signal-tint-15 text-signal",
-                      current && "border-tune bg-tune-tint-15 text-tune",
-                      !done && !current && "border-border text-muted-foreground",
-                    )}
+                    backgroundColor={done ? "$washSignal10" : current ? "$washTune5" : undefined}
+                    borderColor={done ? "$actionPrimary" : current ? "$stateInfo" : "$borderDecorative"}
+                    borderRadius={999}
+                    borderWidth={1}
+                    height={20}
                     justify="center"
                     render="span"
+                    width={20}
                   >
-                    {done ? <Icon decorative glyph={icons.selected} size="compact" tone="inherit" /> : i + 1}
+                    <Text
+                      as="span"
+                      style={{ fontFamily: typography.family.data.web }}
+                      textRole="guideCell"
+                      tone={done ? "signal" : current ? "info" : "secondary"}
+                    >
+                      {done ? (
+                        <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
+                      ) : (
+                        i + 1
+                      )}
+                    </Text>
                   </Stack>
                   <Text
                     as="span"
@@ -214,11 +225,8 @@ const DatabaseMigration = ({
                       <Stack
                         align="center"
                         aria-hidden
+                        backgroundColor={c.ok ? "$washSignal10" : "$washOnair10"}
                         borderRadius={999}
-                        className={cn(
-                          "text-2xs font-mono",
-                          c.ok ? "bg-signal-tint-15 text-signal" : "bg-onair-tint-15 text-onair-300",
-                        )}
                         flexShrink={0}
                         height={16}
                         justify="center"
@@ -226,13 +234,20 @@ const DatabaseMigration = ({
                         render="span"
                         width={16}
                       >
-                        {c.ok ? "✓" : "✕"}
+                        <Text
+                          as="span"
+                          style={{ fontFamily: typography.family.data.web }}
+                          textRole="guideCell"
+                          tone={c.ok ? "signal" : "danger"}
+                        >
+                          {c.ok ? "✓" : "✕"}
+                        </Text>
                       </Stack>
                       <Text as="span" textRole="compact">
                         {c.name}
                         <Text
                           as="span"
-                          className="ml-2"
+                          style={{ marginLeft: 8 }}
                           textRole="compact"
                           tone={c.ok ? "secondary" : "danger"}
                         >

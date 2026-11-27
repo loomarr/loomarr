@@ -273,16 +273,40 @@ build() {
     -authenticationKeyID "$LOOMARR_ASC_KEY_ID"
     -authenticationKeyIssuerID "$LOOMARR_ASC_ISSUER_ID"
   )
+  # The archive and export run as one block, so the Development certificate the archive made this
+  # runner create is revoked whether or not they succeed.
+  local signing_status=0
+  archive_and_export "$workspace" "$archive" "$export_dir" "${auth[@]}" || signing_status=$?
+  revoke_runner_certificates
+  if ((signing_status != 0)); then
+    fail "the archive or export failed (status ${signing_status})"
+  fi
+
+  local exported_ipa final_ipa
+  exported_ipa="$(find "$export_dir" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+  if [[ -z "$exported_ipa" ]]; then
+    fail 'export produced no IPA'
+  fi
+  final_ipa="${OUTPUT_DIR}/loomarr-${APP}-${release_version#v}-${LOOMARR_APPLE_BUILD_NUMBER}.ipa"
+  cp -- "$exported_ipa" "$final_ipa"
+  verify_ipa "$final_ipa" "$short_version" "$xcode_version" "$release_version"
+}
+
+# Archive with automatic signing, then export for App Store Connect. Called from an `||` list, where
+# bash ignores set -e, so each step returns its own failure.
+archive_and_export() {
+  local workspace="$1" archive="$2" export_dir="$3"
+  shift 3
   NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 \
     REACT_NATIVE_NODE_MODULES_DIR="${APP_DIR}/node_modules" \
     xcodebuild archive \
     -workspace "$workspace" -scheme "$SCHEME" -configuration Release \
     -destination "$DESTINATION" -archivePath "$archive" \
     DEVELOPMENT_TEAM="$LOOMARR_APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
-    "${auth[@]}"
+    "$@" || return $?
 
   local export_options="${OUTPUT_DIR}/ExportOptions.plist"
-  cat > "$export_options" <<PLIST
+  cat > "$export_options" <<PLIST || return $?
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -299,16 +323,18 @@ PLIST
   xcodebuild -exportArchive \
     -archivePath "$archive" -exportPath "$export_dir" \
     -exportOptionsPlist "$export_options" \
-    "${auth[@]}"
+    "$@"
+}
 
-  local exported_ipa final_ipa
-  exported_ipa="$(find "$export_dir" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
-  if [[ -z "$exported_ipa" ]]; then
-    fail 'export produced no IPA'
+# Revoke the Development certificate the archive made this runner create (asc-revoke-runner-certificates.mjs).
+# Every hosted Mac starts with an empty keychain, so each run creates one, and unrevoked they reach
+# Apple's limit and stop every upload. A failure here only warns: the IPA is already signed.
+revoke_runner_certificates() {
+  local certificates
+  certificates="$(security find-certificate -a -p -c "Apple Development" 2>/dev/null || true)"
+  if ! printf '%s\n' "$certificates" | node "${WEB_ROOT}/scripts/asc-revoke-runner-certificates.mjs"; then
+    printf '%s\n' '::warning::apple-testflight: the Development certificate this run created was not revoked; it counts toward the team limit until revoked by hand'
   fi
-  final_ipa="${OUTPUT_DIR}/loomarr-${APP}-${release_version#v}-${LOOMARR_APPLE_BUILD_NUMBER}.ipa"
-  cp -- "$exported_ipa" "$final_ipa"
-  verify_ipa "$final_ipa" "$short_version" "$xcode_version" "$release_version"
 }
 
 # Inspect the exact bytes that will be validated and uploaded, then write evidence beside them.

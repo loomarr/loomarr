@@ -43,9 +43,44 @@ benefits from fresh context. The owning agent still integrates the result and ow
 | `to-tickets` | Explicit | Splitting a plan into tracer-bullet issues with blocking edges |
 | `wayfinder` | Explicit | Mapping a large, foggy initiative as decision tickets |
 | `improve-codebase-architecture` | Explicit | Surveying deepening opportunities before choosing a refactor |
+| `grill-with-docs` | Explicit | A grilling that records ADRs and glossary terms as decisions land |
+| `to-questionnaire` | Explicit | A decision only someone else can answer, sent as a questionnaire |
 
 The issue-oriented skills read `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, and
 `CONTEXT.md`. They do not replace `PROGRESS.md` for active work or phase evidence.
+
+## Delivery and the agent environment
+
+| Skill | Invocation | Use it for |
+| --- | --- | --- |
+| `pr` | Automatic | Shaping a PR body: summary sketch, evidence, merge danger |
+| `retro` | Explicit | A session retrospective that proposes checks, pointers and rule changes |
+| `writing-for-agents` | Automatic | Editing a skill, `AGENTS.md` or `CLAUDE.md` |
+| `wait-what` | Explicit | Re-pitching an answer that did not land |
+| `teach` | Explicit | Teaching the maintainer a concept inside this workspace |
+
+`pr` shapes the body only. The repository's PR template and `AGENTS.md` still decide what a PR
+must say, and what a public repo may not say (replay evidence as counts, never household titles).
+
+## Design, security and the build
+
+| Skill | Invocation | Use it for |
+| --- | --- | --- |
+| `impeccable` | Explicit | Planning (`shape`), critiquing, auditing or polishing a UI surface |
+| `security-audit` | Automatic | Security questions and focused reviews; a full audit only when asked |
+| `turborepo` | Automatic | `web/turbo.json`, task pipelines, caching and filters |
+
+Loomarr's visual world is already committed, so Impeccable refines within it and never replaces it.
+`docs/frontend-design.md`, `@loomarr/design-system` and the mocks under `design/` stay the authority.
+For an Impeccable verdict that conflicts with them, raise it with the maintainer; don't apply it.
+Its launcher downloads a pinned engine binary from the project's GitHub releases. It checks the
+binary against `.agents/skills/impeccable/scripts/engine-checksums.txt` and keeps it in the
+ignored `bin/` beside it.
+
+`security-audit` is guidance by default. Its six-phase workflow and report files run only on an
+explicit request for a full audit or pen test, and it runs target code only inside a sandbox with
+no network. `turborepo` points at the docs bundled with the installed `turbo` package
+(`web/node_modules/turbo/docs/`), so its advice always matches our version.
 
 ## What was removed
 
@@ -56,5 +91,7 @@ Obsidian vault, exercise scaffolding, generic Husky setup, Shoehorn migration, a
 flows, handoff wrappers tied to one harness, and an implementation wrapper that stopped at a local
 commit instead of the required pull request.
 
-The retained 17 skills stay pinned in `skills-lock.json`. `make agent-assets-verify` checks that the
-lock, skill directories, Claude adapters, durable workflows, and this catalog agree.
+The retained 17 skills, and the 10 added since (on 2026-11-21: `impeccable`, `security-audit`,
+`turborepo`, and seven more from the same Matt Pocock source), stay pinned in `skills-lock.json`.
+Entries added since carry the `commit` they were taken from. `make agent-assets-verify` checks that
+the lock, skill directories, Claude adapters, durable workflows, and this catalog agree.

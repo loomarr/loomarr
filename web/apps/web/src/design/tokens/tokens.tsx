@@ -1,4 +1,4 @@
-import { Stack, Table, TableBody, TableCell, TableRow, Text } from "@loomarr/design-system";
+import { Stack, Table, TableBody, TableCell, TableRow, Text, typography } from "@loomarr/design-system";
 import { webTokenSet } from "@loomarr/design-system/web-theme";
 
 // Tokens — the complete web token set, as data (§2.5, §5.1a).
@@ -31,7 +31,9 @@ const isColor = (v: TokenLeaf) => typeof v === "string" && v.startsWith("#");
 
 const GroupTable = ({ name, group }: { name: string; group: TokenGroup }) => (
   <Stack gap="inline" render="section">
-    <h2 className="font-mono text-base font-semibold">{name}</h2>
+    <Text as="h2" style={{ fontFamily: typography.family.data.web }} textRole="cardTitle" tone="primary">
+      {name}
+    </Text>
     <Table caption={`${name} tokens`} minWidth={384}>
       <TableBody>
         {asRows(group).map(([key, value]) => (
@@ -42,9 +44,14 @@ const GroupTable = ({ name, group }: { name: string; group: TokenGroup }) => (
             <TableCell mono>{value}</TableCell>
             <TableCell width={48}>
               {isColor(value) && (
-                <span
-                  className="border-border block size-5 rounded border"
+                <Stack
+                  borderColor="borderDecorative"
+                  borderRadius={4}
+                  borderWidth={1}
+                  height={20}
+                  render="span"
                   style={{ backgroundColor: String(value) }}
+                  width={20}
                 />
               )}
             </TableCell>
@@ -60,14 +67,16 @@ const Tokens = () => {
   const total = groups.reduce((n, [, g]) => n + asRows(g).length, 0);
 
   return (
-    <Stack className="p-6" gap="screen">
-      <Stack gap="1" render="header">
+    <Stack gap="screen" padding="6">
+      <Stack gap="1" maxWidth={672} render="header">
         <Text as="h1" textRole="title">
           Tokens
         </Text>
-        <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
+        <Text as="p" textRole="compact" tone="secondary">
           {`All ${total} generated tokens, read from the same data `}
-          <code className="font-mono text-xs">theme.css</code>
+          <Text as="code" textRole="mono" tone="secondary">
+            theme.css
+          </Text>
           {" is built from. If it is not on this page, it does not exist at build time."}
         </Text>
       </Stack>

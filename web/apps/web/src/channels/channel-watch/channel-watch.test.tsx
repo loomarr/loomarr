@@ -1110,7 +1110,7 @@ describe("ChannelWatch switch readout", () => {
     const osd = await screen.findByRole("status");
     expect(osd).toHaveTextContent("CH 12");
     // The wash's centred channel line is the visible readout; the card would repeat it on screen.
-    expect(osd).toHaveClass("sr-only");
+    expect(osd.parentElement).toHaveStyle({ height: "1px", overflow: "hidden" });
     await tuningIn();
     expect(wash()?.closest("[aria-hidden]")).toHaveTextContent("CH 12Saturday Cartoons");
   });

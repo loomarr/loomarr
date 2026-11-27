@@ -1,7 +1,6 @@
 import { pluralize } from "@loomarr/core/format";
-import { Action, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import type { ServiceControlProps } from "./service-control.type";
 
 // ServiceControl — the restart control (§9.2, V13; v2 mock Dashboard § service control).
@@ -31,16 +30,18 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
       : null;
 
   return (
-    <section className={cn("border-border rounded-lg border p-4", className)}>
+    <Card className={className} padding={16} render="section">
       <Stack align="center" direction="row" gap="control">
-        <div className="min-w-0 flex-1">
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
           <Text as="h2" textRole="cardLabel">
             Restart Loomarr
           </Text>
-          <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
-            {dropWarning ?? "Sessions survive; nobody has to sign in again."}
-          </Text>
-        </div>
+          <Stack marginTop={2}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {dropWarning ?? "Sessions survive; nobody has to sign in again."}
+            </Text>
+          </Stack>
+        </Stack>
         {cost.available ? (
           <Action
             disabled={restarting || confirming}
@@ -57,34 +58,43 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
           what to do instead — hiding the control would leave an operator hunting for a
           feature the docs mention. */}
       {!cost.available && (
-        <Text
-          as="p"
-          className="border-border mt-3 rounded-md border border-dashed p-3"
-          textRole="compact"
-          tone="secondary"
-        >
-          This build can't restart itself. Restart the container or service the way you started it.
-        </Text>
+        <Stack marginTop={12}>
+          <Card borderStyle="dashed" padding={12}>
+            <Text as="p" textRole="compact" tone="secondary">
+              This build can't restart itself. Restart the container or service the way you started it.
+            </Text>
+          </Card>
+        </Stack>
       )}
 
       {error ? (
-        <div className="mt-3" role="alert">
+        <Stack marginTop={12} role="alert">
           <Stack align="start" direction="row" gap="inline">
-            <Stack className="mt-0.5" direction="row" render="span">
+            <Stack direction="row" marginTop={2} render="span">
               <Icon decorative glyph={icons.alert} size="compact" tone="danger" />
             </Stack>
             <Text as="p" textRole="compact" tone="danger">
               {error}
             </Text>
           </Stack>
-        </div>
+        </Stack>
       ) : null}
 
       {confirming && (
-        <Stack align="center" className="border-border mt-3 border-t pt-3" direction="row" gap="inline">
-          <Text as="p" className="min-w-0 flex-1" textRole="compact">
-            {dropWarning ? `Restart now? ${dropWarning}` : "Restart now?"}
-          </Text>
+        <Stack
+          align="center"
+          borderColor="borderDecorative"
+          borderTopWidth={1}
+          direction="row"
+          gap="inline"
+          marginTop={12}
+          paddingTop={12}
+        >
+          <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+            <Text as="p" textRole="compact">
+              {dropWarning ? `Restart now? ${dropWarning}` : "Restart now?"}
+            </Text>
+          </Stack>
           <Action
             disabled={restarting}
             onPress={() => {
@@ -99,7 +109,7 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
           </Action>
         </Stack>
       )}
-    </section>
+    </Card>
   );
 };
 

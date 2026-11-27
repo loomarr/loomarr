@@ -13,6 +13,7 @@ import (
 func TestFetchStoreAdapter_ListAcquisitionRemoteStatesMapsArtifactLifecycle(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
+	testkit.SaveFillerSources(t, st, "archive:classic")
 	run := acquisition.AcquisitionRun{ID: "identity-roundtrip", Trigger: acquisition.TriggerSource, SourceID: "archive:classic", Status: acquisition.RunRunning, Requested: 1, StartedAt: now, UpdatedAt: now}
 	if err := st.UpsertAcquisitionRun(t.Context(), run); err != nil {
 		t.Fatal(err)

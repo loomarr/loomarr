@@ -39,6 +39,9 @@ type DeviceToken struct {
 	DeviceName string
 	CreatedAt  time.Time
 	LastSeenAt time.Time
+	// CodeMode lets the device run JavaScript against the API through the MCP execute tool
+	// (#4486). Its owner turns it on; it matters only while the owner is an admin.
+	CodeMode bool
 }
 
 // --- device pairings ---
@@ -206,11 +209,11 @@ func (s *Store) CreateDeviceToken(ctx context.Context, t DeviceToken) error {
 // device token lives until it is revoked.
 func (s *Store) GetDeviceToken(ctx context.Context, tokenHash string) (DeviceToken, error) {
 	row := s.h.QueryRowContext(ctx, s.h.Rebind(
-		`SELECT token_hash, user_id, device_name, created_at, last_seen_at
+		`SELECT token_hash, user_id, device_name, created_at, last_seen_at, code_mode
 		 FROM device_tokens WHERE token_hash = ?`), tokenHash)
 	var t DeviceToken
 	var created, seen int64
-	err := row.Scan(&t.TokenHash, &t.UserID, &t.DeviceName, &created, &seen)
+	err := row.Scan(&t.TokenHash, &t.UserID, &t.DeviceName, &created, &seen, &t.CodeMode)
 	if err == sql.ErrNoRows {
 		return DeviceToken{}, ErrNotFound
 	}
@@ -237,7 +240,7 @@ func (s *Store) TouchDeviceToken(ctx context.Context, tokenHash string, at time.
 // ListDeviceTokensForUser returns a user's paired devices, newest first — the revocation UI's read.
 func (s *Store) ListDeviceTokensForUser(ctx context.Context, userID string) ([]DeviceToken, error) {
 	rows, err := s.h.QueryContext(ctx, s.h.Rebind(
-		`SELECT token_hash, user_id, device_name, created_at, last_seen_at
+		`SELECT token_hash, user_id, device_name, created_at, last_seen_at, code_mode
 		 FROM device_tokens WHERE user_id = ? ORDER BY created_at DESC`), userID)
 	if err != nil {
 		return nil, err
@@ -247,7 +250,7 @@ func (s *Store) ListDeviceTokensForUser(ctx context.Context, userID string) ([]D
 	for rows.Next() {
 		var t DeviceToken
 		var created, seen int64
-		if err := rows.Scan(&t.TokenHash, &t.UserID, &t.DeviceName, &created, &seen); err != nil {
+		if err := rows.Scan(&t.TokenHash, &t.UserID, &t.DeviceName, &created, &seen, &t.CodeMode); err != nil {
 			return nil, err
 		}
 		t.CreatedAt = fromEpoch(created)
@@ -262,6 +265,18 @@ func (s *Store) ListDeviceTokensForUser(ctx context.Context, userID string) ([]D
 func (s *Store) DeleteDeviceToken(ctx context.Context, tokenHash, userID string) (bool, error) {
 	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM device_tokens WHERE token_hash = ? AND user_id = ?`), tokenHash, userID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// SetDeviceCodeMode turns Code Mode on or off for one device. Scoped by user like DeleteDeviceToken,
+// so the WHERE clause is the authorisation: false means no such device of this user's.
+func (s *Store) SetDeviceCodeMode(ctx context.Context, tokenHash, userID string, on bool) (bool, error) {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(
+		`UPDATE device_tokens SET code_mode = ? WHERE token_hash = ? AND user_id = ?`), on, tokenHash, userID)
 	if err != nil {
 		return false, err
 	}

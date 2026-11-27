@@ -4,4 +4,8 @@ export type {
   ClientObservation,
   SendBatch,
 } from "./client-diagnostics";
-export { ClientDiagnosticsReporter, createAuthenticatedBatchSender } from "./client-diagnostics";
+export {
+  ClientDiagnosticsReporter,
+  createAuthenticatedBatchSender,
+  vocabularyIn,
+} from "./client-diagnostics";

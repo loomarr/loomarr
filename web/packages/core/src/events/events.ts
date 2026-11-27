@@ -109,10 +109,16 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   // as the clock passes a programme's end, and a guide window is a view over that same clock.
   channel: { prefixes: ["/v1/channels", "/v1/guide"], fed: [listAndDetail("/v1/channels", ["now-next"])] },
   // A frame also fires as a running request's stage or picks change, and the journey read
-  // (GET /v1/proposal-jobs) carries that live progress — so the Requests card and detail catch
-  // up on the frame instead of waiting for their poll.
+  // (GET /v1/proposal-jobs) carries that live progress — so the Requests card and detail follow
+  // a request on its frames.
   suggestion: { prefixes: ["/v1/proposals", "/v1/proposal-jobs"] },
-  llm_pull: { prefixes: ["/v1/system/llm"] },
+  // A proposal now waits for a decision, or was approved or denied, perhaps by someone else or
+  // by an automatic grant: the admins' approvals and the requester's journey read again.
+  proposal: { prefixes: ["/v1/proposals", "/v1/proposal-jobs"] },
+  // A download's progress is written into its operation by the screen showing it (useModelPull);
+  // only its end changes what is installed and what is left to download, so only an ended frame
+  // refetches. Every frame refetching would read the provider status several times a second.
+  llm_pull: { prefixes: ["/v1/system/llm"], when: (e) => e.status === "success" || e.status === "error" },
   // A channel started or stopped encoding, so both the telemetry endpoint AND the doctor's
   // answer changed (encoder, cold-start time, GPU contention); the doctor rides the same
   // start/stop cadence as sessions.
@@ -135,10 +141,27 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   // its own listener, so the bus has nothing to invalidate.
   database: { prefixes: [] },
   // A Dashboard feed row was written (§12, V32). The frame is empty on purpose — refetch the
-  // list rather than appending, because this bus drops frames for a slow subscriber and a
-  // locally-assembled list would be missing rows.
+  // list rather than appending, because a client misses every frame sent while it reconnects and
+  // a locally-assembled list would be missing rows.
   activity: { prefixes: ["/v1/activity"], fed: [listAndDetail("/v1/activity")] },
-  health: { prefixes: ["/v1/diagnostics/health"], fed: [/^\/v1\/diagnostics\/health$/] },
+  // A health check changed state. A boot's startup report is written as its checks settle, so
+  // the reports read again with them.
+  health: {
+    prefixes: ["/v1/diagnostics/health", "/v1/diagnostics/startup-reports"],
+    fed: [/^\/v1\/diagnostics\/health$/],
+  },
+  // Who is watching what changed (#3352). Home reads it again; the server scopes it to the viewer.
+  viewing: { prefixes: ["/v1/household/viewing"] },
+  // An invitation, account, session or paired device changed, by an admin, a redeemed link or a
+  // delivered email (#3352). Admin-only, like People.
+  access: { prefixes: ["/v1/users", "/v1/invitations", "/v1/auth/devices"] },
+  // Diagnostic events were stored, or verbose capture started or stopped (#3352). A client crash
+  // report is stored as an event, so its list reads again too. Admin-only.
+  diagnostic_events: {
+    prefixes: ["/v1/diagnostics/events", "/v1/diagnostics/verbose-capture", "/v1/diagnostics/client-crashes"],
+  },
+  // A diagnostic process started, wrote output, or finished (#3352). Admin-only.
+  diagnostic_processes: { prefixes: ["/v1/diagnostics/processes"] },
   // A committed settings write, from any tab or writer. Every read a setting can change
   // refetches here, so no save path lists queries itself: `/v1/setup` is the checklist and wizard
   // state, `/v1/system/llm` the AI provider status, catalog and pull progress, and
@@ -158,16 +181,28 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
     fed: [/^\/v1\/library\/status$/],
   },
   // The Library's titles changed (written, ready, or gone). The frame is empty on purpose:
-  // the grid, a title's page, Ready so far and Needs you refetch, because a list assembled from
-  // frames would lose rows this bus drops.
+  // the grid, a title's page, the import's strip of titles found and Needs you refetch, because a list assembled from
+  // frames would lose the rows a reconnecting client misses. A collection lists only titles still
+  // in the Library, so collections read again too. The status reads again for its Needs you count,
+  // which the wall's line and the nav badge say.
   library_titles: {
-    prefixes: ["/v1/library/items", "/v1/library/needs"],
+    prefixes: [
+      "/v1/library/items",
+      "/v1/library/needs",
+      "/v1/library/status",
+      "/v1/collections",
+      "/v1/library/collections",
+    ],
     fed: [listAndDetail("/v1/library/items"), /^\/v1\/library\/needs$/],
   },
   // A media folder stopped or started opening, or emptied or filled (a share unmounted or mounted
   // again), found by a scan pass rather than by anything done on screen: the folders' cards and
   // the status read again, so a warning appears and clears without a reload.
   library_roots: { prefixes: ["/v1/library/roots", "/v1/library/status"] },
+  // One folder the folder browser listed, counted: a whole summary for its row. A hand-off to the
+  // browser, which fills that row; refetching the listing for each folder counted would list it
+  // once per row. A dropped frame leaves its row waiting until the folder is listed again.
+  library_folder: { prefixes: [] },
 };
 
 // isFrameFed: does an SSE frame keep this query current? The client gives such a read
@@ -265,8 +300,17 @@ const invalidateSettings = (qc: QueryClient): Promise<void> => invalidateForFram
 // table, whatever its `when`, because which frames went unheard before the stream opened is not
 // known. A scan that started or finished in the gap is why a frozen bar or a stale "All caught
 // up" cannot outlast the open. Only the reads on screen refetch; the rest wait for their next use.
+//
+// Some reads change only across a restart, which no frame can announce because the stream is down
+// for it; a restart always ends in a reconnect, so they read again here. The server's version is
+// one: an open tab learns of an upgrade as the stream comes back.
+const RECONNECT_ONLY_PREFIXES = ["/v1/system/version"];
+
 const invalidateMissedFrames = async (qc: QueryClient): Promise<void> => {
-  const prefixes = new Set(EVENT_TYPES.flatMap((type) => EVENT_INVALIDATIONS[type].prefixes));
+  const prefixes = new Set([
+    ...EVENT_TYPES.flatMap((type) => EVENT_INVALIDATIONS[type].prefixes),
+    ...RECONNECT_ONLY_PREFIXES,
+  ]);
   await Promise.all([...prefixes].map((prefix) => invalidateByPrefix(qc, prefix)));
 };
 

@@ -264,6 +264,27 @@ func benchesForAny(e LineupEntry, cal Calendar) bool {
 	return false
 }
 
+// FitsHolidayChannel reports whether e could air in season on a channel with policy p. An
+// exclusive holiday channel airs only titles that fit one of its holidays (any holiday, when none
+// is chosen), by the same judgment its in-season filter uses; every other channel admits any
+// title. Growth reads it so a holiday channel never grows by its genres alone (#4333): a Christmas
+// channel scoped to Comedy must not take every comedy.
+func FitsHolidayChannel(e LineupEntry, p ChannelPolicy, v holidayvocab.Vocabulary) bool {
+	if p.Seasonal.Mode != SeasonalExclusive {
+		return true
+	}
+	chosen := lowerSet(p.Seasonal.Holidays)
+	for _, d := range v.Definitions() {
+		if _, ok := chosen[d.ID]; len(chosen) > 0 && !ok {
+			continue
+		}
+		if v.Judge(d.ID, holidayvocab.Evidence{Title: e.Title, Genres: e.Genres}).Fits() {
+			return true
+		}
+	}
+	return false
+}
+
 // aboutAnyHoliday reports whether an entry is about any built-in holiday, kept by any country: a
 // title that is itself a holiday's, whose episodes are therefore not featured one by one.
 func aboutAnyHoliday(e LineupEntry, v holidayvocab.Vocabulary) bool {

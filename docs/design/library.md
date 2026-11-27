@@ -79,8 +79,19 @@ type Service interface {
 [0046](decisions/0046-loomarr-scans-its-own-media-files.md)). It reads a file's duration, streams
 (codec, size, frame rate, pixel format, colour and HDR, the Dolby Vision profile, field order,
 languages, default, forced, commentary, hearing-impaired and described flags, channels, sample
-rate) and chapters from the Matroska/WebM header or the MP4/MOV `moov`, plus the keyframe index
-from Matroska Cues or the MP4 sample tables, which `media/measure` uses.
+rate, each track's bitrate and bit depth) and chapters from the Matroska/WebM header or the MP4/MOV
+`moov`, plus the keyframe index from Matroska Cues or the MP4 sample tables, which `media/measure`
+uses.
+
+- **A track's bitrate and bit depth** (#3228, decision 46; `library_streams.bitrate` and
+  `bit_depth`, 0 when the file says nothing) are ffprobe's. An MP4 track's rate is its sample
+  table's bytes over its `mdhd` duration, or the rate an AC-3 `dac3` or E-AC-3 `dec3` box states. A
+  Matroska track's rate is its `BPS` statistics tag when the `Tags` element lies in the first read,
+  as ffmpeg writes it. mkvmerge writes `Tags` at the end of the file, and a second seek per file is
+  not spent on it here: such a track reads 0, and taking its tag in the measure pass, which already
+  reads the end of the file for the Cues, is the rest of #3228. A video's depth is
+  its codec configuration's. An audio track has one only when it is lossless or PCM: Matroska's
+  `BitDepth`, FLAC's STREAMINFO or ALAC's configuration.
 
 - **A reader that learns more reads every file once more.** `header.Version` goes up with each new
   fact. The scanner records it with the facts it stores and folds it into each file's digest, so
@@ -221,6 +232,21 @@ the household's language wins over it, and a refresh after TMDB gains a translat
   status again.
 - `GET /v1/library/status` reports `needs_folders`, `folder_offline`, `folder_empty` or `ok`, with
   counts.
+- **Picked, not typed.** `GET /v1/library/browse` lists the folders to pick one from (admin-only):
+  with no path, the folders the apps name, then this machine's mounts; with a path under one of
+  them, its folders, never a file, never above a mount, never through a link that leads out of
+  every mount, and without what the scan never reads (`neverMedia`: a NAS's, an OS's or a
+  downloader's own folders, subtitles' folders). Each folder's summary, the folders and videos one
+  look inside finds within 3 s ("slow" past it), is counted after the list is answered and streamed
+  whole as an admin-only `library_folder` frame; one counted in the last five minutes comes with
+  the list. Typing a path stays.
+- **No folder inside another.** A folder inside one in use is refused (409, "Already part of
+  Movies"), and so is one holding folders in use, unless it is added with `replace`, which uses it
+  in their place in one step. The scan already reads a folder nested in another once, as part of the
+  outer one (`scannedRoots`), so the list would name a folder the scan never walks; the outer one's
+  next pass keys their files under it. Each keeps the header its inner folder read while its bytes
+  are the same (`headerWithin`), so a replace opens only the files that changed, not the whole
+  library again.
 
 ## Scanner
 
@@ -232,10 +258,16 @@ step 5). Nothing reads the scanner's origins until the cutover.
   the media server's origin of the same title does; an id joins only items of its own kind, since
   TVDB numbers shows and episodes from one sequence. A series is an origin keyed by its folder. A
   multi-episode file is one item, its first episode numbered through its last, carrying every
-  episode's own ids (Sonarr's records, or the NFO's further `<episodedetails>`).
+  episode's own ids (Sonarr's records, or the NFO's further `<episodedetails>`). An episode's
+  copies, a 720p beside a 1080p or a "Season 1" beside a "Season 01", join one item with no ids
+  between them: each carries the scanner's own id of its series folder, its mark's numbers and the
+  title its name gives after the mark (`episodeCopyID`), never listed. Two files numbered alike but
+  titled apart stay two.
 - **Identity** is the precedence resolver's, over Sonarr's or Radarr's record for the file (its
   path translated by the path map), ids in names (`{tmdb-1234}`), the name's `S01E02`, and the
-  file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). A movie takes ids only from its
+  file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). An episode's NFO that numbers it
+  as another episode than its name's `S01E02` does is that episode's, copied beside the wrong
+  file, and is set aside whole: its title, overview and ids (`numbersAnother`). A movie takes ids only from its
   file's or its own folder's name, never a tvdb id; an episode's series is the folder above its
   season folder, else the nearest folder named by an id, else its own. An episode loose at a root's
   top, or in a season folder there, is the show its name gives before `S01E02`
@@ -266,14 +298,21 @@ step 5). Nothing reads the scanner's origins until the cutover.
   until its bytes change; a share that stops answering ends the stage and leaves the rest pending.
   The wait never holds up a pass (decision 11): one header stage takes files at a time, outside
   the pass lock, a pass that finds it taking files hands its files over, and a read whose file a
-  later pass wrote meanwhile is dropped.
+  later pass wrote meanwhile is dropped. The scanner runs each pass's reads behind it
+  (`Importer.Walk`), so a pass asked for while a first import reads (a folder added, Use this
+  folder, Scan now) walks at once, and its new files are listed then, not once every header is
+  read.
 - **Removals.** An unreadable root or folder makes the walk incomplete, and nothing is marked
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
-  maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once.
-- **Passes.** `scan.Scanner` makes one when the app starts, hourly, when a folder is used or
-  added, and on `POST /v1/library/scan` (Settings → Library's Scan now, as in Emby and Jellyfin).
-  A pass is *asked* when Scan now, Refresh everything or using or adding a folder started it, or
+  maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once;
+  one step 1 is walking or writing stops at the file it is on, and the pass goes on to the next
+  root.
+- **Passes.** `scan.Scanner` makes one when the app starts, hourly, when a folder is used,
+  added or released (its files are forgotten first thing), when a path mapping is set by hand (#3359: a corrected mapping takes without a restart or
+  the hourly wait), and on `POST /v1/library/scan` (Settings → Library's Scan now, as in Emby and
+  Jellyfin). A pass is *asked* when Scan now, Refresh everything, using or adding a folder or
+  setting a mapping started it, or
   it is the start-up pass of a library with no files yet (its first import); an unasked pass with
   nothing to read or look up is *quiet*, and shows only "Checking your folders…".
   `POST /v1/library/refresh` (Refresh everything, asked first) clears every present file's identity
@@ -288,7 +327,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   inside another in-use root is walked as part of it. Walks skip `trickplay/`,
   `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, extras folders below the top of a root (a
   show at the top named "Shorts" is still a show), names that are not UTF-8 and folders holding
-  an `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
+  an `.ignore` file, list disc images and empty video files (`empty_file`: a copy that never
+  finished, which makes no title until it is filled) as problems, and follow a symlink only inside
+  its root.
   A file is recorded under one path: a folder reached through a link is listed under its real
   place in the root, whichever path a walk or a folder pass took to reach it. A video link to a
   file the walk records itself is skipped, unless its target lies in a folder walks skip (#3227).
@@ -306,7 +347,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   file), and 3 *Looking up details* (the Enricher's fetches of catalog rows due as new: never
   fetched, an outdated shape or language, or marked by Refresh everything; counted when it starts
   and grown as more become due; it names the title). Steps 2 and 3 can run together; the status
-  shows the earliest one running. Each step's time left is remaining × elapsed ÷ done since its
+  shows the earliest one running. A walk begun once reading has begun, a later pass's behind a
+  first import's reading, runs behind it: the status stays on step 2 until the reading ends,
+  never back to step 1. Each step's time left is remaining × elapsed ÷ done since its
   rate baseline, sent only once it has run 30 s and done 2%, never while paused, and the baseline
   restarts when a pause for watching ends. Folder passes show only the header reads they queue.
   `GET /v1/library/status` carries it as `scan` (`step`, `stepNumber`, `done`, `total`, `current`,
@@ -367,11 +410,16 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **A stuck share does not stall the scanner.** A walk that lists no folder and reads no file for 2
   minutes is given up on: the root reads as offline and nothing in it is marked missing. A call
   blocked on a dead mount cannot be cancelled, so the root is not walked again until that one ends.
-  A header read gets the same 2 minutes: one that does not return ends the header stage and stalls
-  its root the same way, so no further reader is sent into the mount. One file the share cannot
-  give back (gone since the walk, an I/O error) stays pending for the next pass and the stage reads
-  on; eight such files in a row with no read between are the share's fault, and end the stage with
-  the rest still pending.
+  A header read gets the same 2 minutes: one that does not return stalls its root the same way, so
+  no further reader is sent into the mount, and the root's other files are set aside while the
+  other roots read on. Once nothing else is left, the stage waits up to 2 minutes more for the read
+  to return, then takes the set-aside files up again, the slow one with them (three times at
+  most). One file the share cannot give back (an I/O error) stays pending for the next pass and the
+  stage reads on; eight such files of one root in a row, with no read of that root between, are
+  its share's fault, and the stage reads no more of that root. Another root's faults never count
+  toward it. A file gone from a folder the share still lists was renamed or
+  deleted by an arr since the walk, which says nothing of the share. A pass that left a root's
+  files unread does not count as a completed scan.
 - **Notifications** (decision 32) go to operators. Each pass records every root's readability
   (`CheckLibraryRoot`), so the status strip shows what the last pass found, and a flip publishes
   `library_folder_offline` or `library_folder_back` once per change. An arr whose webhook
@@ -394,7 +442,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   is written second. An episode with no rating takes its show's (`rating_from = 'show'`); its
   genres and studios are its show's only (decision 42). `library_sources` has one row per present
   file, with its `edition` and the copy that plays in each edition marked (`plays`, decision 37's
-  rule, shared with the title page).
+  rule, which the title page reads).
   `library_streams` has one row per track, with labels computed once from the raw header values
   (decision 44): resolution by height or, for a picture wider than 16:9, by width; HDR type from
   the transfer; audio format; the channel layout where the container states none (neither
@@ -407,9 +455,66 @@ step 5). Nothing reads the scanner's origins until the cutover.
   the item it was written as (`item_id`) and an episode's series (`series_id`). A title is listed
   while it has a present, importable file, and is "getting ready" while any of those files'
   headers is unread. A file row from before these columns has no item, so the next pass writes it
-  again. `GET /v1/library/items` pages and searches the list (admin-only);
+  again. `GET /v1/library/items` pages and searches the list;
   `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's
-  files, or a series' episodes by season.
+  files, or a series' episodes by season. Both are member-readable (see **Who reads the
+  Library** below). Every caller's title also carries `playing`, one line about the copy that
+  plays and nothing that names a file: its picture (width, height, high dynamic range), the
+  channels of the sound that plays and its subtitle languages.
+- **Who reads the Library** (#4476, decided 2026-11-21). A household member browses the
+  Library read-only: the wall and a title's page, and the Collections tab. On the web, Library is
+  in a member's navigation and fourth in their phone bar (Home · Watch · Guide · Library), with no
+  Needs you count; an admin's phone bar keeps Requests there. The member-readable
+  routes are `GET /v1/library/items`, `GET /v1/library/items/{id}`, `GET /v1/collections`,
+  `GET /v1/collections/{id}`, and `GET /v1/library/collections` (names and sizes, for the channel
+  scope picker). Everything else under `/v1/library` and `/v1/collections` is admin-only: the
+  folders, path map, discovery and browse, status, scan, refresh and confirm-removal, Needs you
+  and its answers (link, ignore, unanswer, episode order, search for a different title), a
+  title's refresh, check and remove-copy, the hook test, and every collection write and set copy.
+  `POST /v1/library/hooks/{app}` stays public and answers only its app's shared secret.
+  **A member reads only an identified title named by a catalogue.** A movie or series is one a
+  member reads when a catalogue identifies it (it has a match basis) or the maintainer has
+  answered it, the maintainer has not said it is not a title, and its name came from a catalogue
+  or sidecar (`name_from`). An episode is one when its show is, and its show's catalog numbers and
+  names it. Everything waiting in Needs you is left out, because its name is its file's or its
+  folder's. So is an identified title whose catalogue record isn't read yet, and an episode the
+  scanner left unmarked (no number it can parse, a season not on disk, its show's record not
+  cached yet, or a record with no orders). Each becomes the member's when a catalogue names it.
+  The match basis is read rather than the `grounded` flag because a row written before the
+  scanner recorded either reads grounded by the column's default; it fails closed until a scan
+  writes it again:
+
+  ```text
+  identified(t) = t.kind in {movie, series} and t.name_from != ''
+                  and (t.match_basis != '' or answered(t)) and not ignored(t)
+  member reads t = identified(t)
+                  or (t.kind = episode and not t.unnumbered and t.name_from != ''
+                      and identified(t.series))
+  ```
+
+  One store predicate applies it to the list, its search and filters, its total, one title, an
+  episode's page, and a collection's and a ready-made set's titles. A title a member doesn't
+  read answers the same 404 as an id that names nothing; a set with none of their titles is left
+  out. A member's season lists leave out an episode still named by its file (unnumbered, or with
+  no catalogue name), and a season of only those; the series stays. An admin reads every listed title, unchanged.
+  A member's response is the admin's shape with the admin-only parts left out, decided once in
+  the handlers from the caller's role, never by the client: a title leaves out `files` (paths,
+  sizes, tracks, chapters), `match` and `detailsFrom`; a list entry, a collection's title and a
+  set's title leave out the file count (`files`), `unplayable` and `extraCopies`; an episode
+  leaves out `fromFile`. Each of those fields is optional in the schema and says "admins only".
+  "Getting ready" (`ready`) stays. The list's filters (kind, search, ready, sort) and its total
+  follow the rule above.
+  The other routes a member calls that read Library titles follow the same rule, decided from
+  the caller's role at the route: `GET /v1/search` (its Library half, and a TMDB result's
+  in-Library mark, whether a title search or a structured discovery), `GET /v1/discovery/ideas`
+  and the request made from an idea, `GET /v1/movie-collections` (a roster title's in-Library
+  mark), and the picker's sizes on `GET /v1/library/collections`. They read a member view of
+  the title reads (`MemberTitles`) or the member list. An admin's calls, the suggester's
+  grounding, and the server's own readers (presence, ratings, availability, growth, the guide's
+  art) read every listed title. A member's channel ideas are a listing cached for the ideas
+  cache's refresh time (five minutes), so an Ignore leaves them within that. The proposal outlook
+  is one of the server's readers: a member who submits a catalogue id the Library holds under an
+  ignored title can learn it is held, by the catalogue's name only.
 - **Posters, backdrops and logos** (step 10b, #2567). When the importer writes a title it hands
   the resolved poster, fanart and clear logo to the image service, and the title owns each
   through a `library_item_images` row (role `poster`, `backdrop` or `logo`); that
@@ -429,7 +534,31 @@ step 5). Nothing reads the scanner's origins until the cutover.
   ref, and a title with none lets it go. An artwork file beside the media is one of its sidecars,
   so adding or changing one rewrites the title; a folder's own art (`poster.jpg`) counts only for
   the folder's one video. A poster that fails to import leaves the title as it was, and the next
-  write tries again.
+  write tries again. A movie the walk wrote while its catalog record was still to come takes the
+  record's artwork when the header stage writes it with that record.
+- **Episode stills** (#4476). When the importer writes an episode it hands the resolved still
+  (artwork kind `thumb`) to the image service the same way, and the episode owns it through a
+  `library_item_images` row of role `thumb`, the image service's 16:9 still on the 300/780/1280
+  ladder; an episode imports no other kind. Its `<file>-thumb` file beside it comes first, then a
+  provider's URL (an arr's screenshot, or TMDB's episode still), and a still the header stage's
+  catalogue record names is imported when that record arrives. TMDB's still is requested at
+  `w300`, the size an episode row draws, where a title's poster, fanart and logo are requested at
+  `original`. An episode record cached by an earlier build names its still at `original` until
+  it is refreshed, so the importer moves a TMDB still at `original` to `w300` before handing it
+  over (`tmdb.SmallStill`), and the cached records are not fetched again for it. A `<file>-thumb` file and an arr's screenshot arrive at whatever size they are,
+  which Loomarr does not choose; the image service offers no rung of a still wider than its
+  original (images.md, "Two modes"). A new still replaces the old ref, and an episode with none
+  lets it go. A provider's still is only adopted during the pass: the image fetch job pulls the
+  bytes, at most 64 images a minute under its fixed concurrency cap, so writing a series of
+  hundreds of episodes fetches nothing in the pass. A still is adopted in the fetch queue's bulk
+  class (`fetch_priority` 2), so it arrives after every title's poster, fanart and logo waiting,
+  including one adopted after it; a still file beside the media is ingested when it is written,
+  as a poster file is. Each episode row of a series' page carries `still`, and an episode's own
+  page carries `still`, each absent when it has none or while its bytes are being fetched. The
+  page's one read of its episodes reads each still's hash with its row, and every image the page
+  draws, its own and its episodes' stills, is rendered from one batched image read. A member is
+  sent the still of an episode their season lists hold only, so never a raw provider URL and
+  never a hidden episode's.
 - **Catalog details** (decision 20). A movie or series whose ids include a TMDB id takes its
   details from TMDB: the guide text, genres, rating, poster and fanart, ranked by precedence like
   any other source. The walk never calls TMDB. `library_catalog` caches each record by provider,
@@ -476,7 +605,18 @@ step 5). Nothing reads the scanner's origins until the cutover.
   The kill switch stops it too. An episode whose ids include its own TVDB id (from Sonarr or an
   NFO) is cached the same way, keyed `tvdb:episode:<id>` in its `library_items.catalog`: TMDB's
   view of that episode, found through TMDB's `/find`, never by its season and number when it has
-  that id (decision 53). An episode with no TVDB id takes TMDB's entry for its season and number,
+  that id (decision 53). An NFO's id can still be another episode's: a scraper copies an NFO
+  beside the wrong file, or TMDB's TVDB mapping points one along. So when the file's own mark
+  ("S02E22") places it, and TMDB numbers the show as the disk does (below), TMDB's season entry at
+  that mark is checked against the id's record. An entry that shares no id with it stands over
+  the id: the file is described and keyed by its own number (`ownNumberOver`). In a show TMDB
+  numbers otherwise, the title the file's name gives after its mark (`toldTitle`; "Episode 4"
+  says none) weighs the id instead: an id whose record that title names stands, and one it
+  doesn't gives way to TMDB's season entry at the mark when the title names that, or else to the
+  file's own details, unnumbered, for Needs you. An episode id also
+  grounds only the same episode in the inventory: an episode file never joins a title another of
+  whose files is numbered otherwise, so two episodes sharing a stale id stay two titles, and
+  neither is offered as an extra copy. An episode with no TVDB id takes TMDB's entry for its season and number,
   keyed `tmdb:season:<series id>/<season>` (one record per season, every episode in it), but only
   when TMDB numbers the series the way the disk does: TMDB lists no other episode ordering for it
   (episode groups: DVD, absolute, story arc), and every season on disk ends at TMDB's episode
@@ -495,7 +635,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   makes every file written once more, keeping its header, so a title written before this names
   its catalog row on the next pass.
 - **Needs you** (step 11a, decision 27). A movie or series is grounded when anything gives it a
-  TMDB, TVDB or IMDb id: an arr, an id in its name, a sidecar, or the maintainer's link. Each
+  TMDB, TVDB or IMDb id: an arr, an id in its name, a sidecar, or the maintainer's link. A title
+  known only by another catalog's id (a `tvshow.nfo` with only its TVDB or IMDb id) is looked up by
+  it, through TMDB's `/find` (`tvdb:series:<id>`, `imdb:series:<id>`, `imdb:movie:<id>`). Once
+  found it is cached and keyed by TMDB's own id too, as its seasons and orders are. An id only a
+  name or an NFO gives, that the catalog was asked for and does not know, grounds nothing: the
+  title is in Needs you, not matched in silence. An arr's id always grounds. The first answer for a
+  catalog row, "no such title" included, writes its titles again. Each
   title row keeps its scan origin (a movie's file, a series' folder) and whether it is grounded.
   `scan.Matcher` searches TMDB every minute for present titles nothing grounds and nobody
   answered, up to 20 a tick at the provider's rate hint. A title whose search fails is left for the
@@ -552,7 +698,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   (`/library/{id}`) shows the poster, year and length or seasons, the rating, genres and
   overview, each season's episodes in a disclosure (specials last), and Technical details. Still
   to come: Collections (step 12); On these channels, once channels name library items (step 15's
-  id migration).
+  id migration). A title's next airing on each channel comes from `channel_upcoming_airings`,
+  which reconcile fills with each internal-playout channel's next 48 hours of programmes
+  (scheduling.md "Upcoming airings"): a movie by its item id and its title key, a series by its
+  title key. A removed file's airing stays until the channel's next sweep (by default within about
+  twenty minutes), as in the guide. The store read does no member filtering; the API field that
+  serves it blanks a hidden episode's item id and name for a member. Nothing reads it over the API
+  yet (#4476).
 - **Needs you on the page** (step 11b). The Library page's strip asks about the first four
   titles that need the household ("X — is this the 1999 movie?", Yes, that's it / Pick a
   different title, or Find it with no guess); `/library/needs` holds one card each with the
@@ -570,14 +722,44 @@ step 5). Nothing reads the scanner's origins until the cutover.
   (503 when TMDB fails) and writes the title again, so what its arr and sidecars say now is read
   too. Check files again (`POST …/check`) puts its files' headers back to pending and passes over
   their folders, so they are opened and read again.
-- **Technical details** (step 10d, design review point 3). Each scan origin keeps the provider its
-  name, description and rating came from in its observation's `extension` (`{"from": …}`), so
-  the page says "Description and rating from TMDB. Episode names from Sonarr." (a series takes
-  the provider that named most of its episodes). It then says the title match in words
-  ("Recognised from Radarr", "You picked it"), and for each movie file its path, size, and once
-  its header is read the picture (4K, 1080p HD, 720p HD or standard, "extra-rich colour" for
-  HDR), the sound that plays (its default audio stream), each subtitle language, and the
+- **Technical details** (step 10d, design review point 3). The provider each detail came from is
+  its `_from` column, so the page says "Description and rating from TMDB. Episode names from
+  Sonarr." (a series takes the provider that named most of its episodes' `name_from`). It then
+  says the title match in words ("Recognised from Radarr", "You picked it"), and for each movie
+  file its path, size, and once its header is read the picture (4K, 1080p HD, 720p HD or
+  standard, "extra-rich colour" for HDR: a `hdr` label on its first video track), the sound that
+  plays (its own default audio track, else its first), each subtitle track's language, the
+  file's own then each subtitle file beside it (as two-letter codes where one exists), and the
   measured length.
+- **The title page reads the Library's rows** (#4476). `GET /v1/library/items/{id}` reads one
+  title through `LibraryItemDetail`, in one read transaction: its `library_items` row (with
+  score, tagline, original title, premiere date, and where its year, premiere, score and runtime
+  came from), genres, studios, countries and credits (each person's name, role and character in
+  billing order; no photo yet; an episode has none, they are its show's), its own
+  `library_sources` (container, overall bitrate, edition) with every `library_streams` track (the
+  columns the page shows) and its `library_chapters`, and for a series the rows of the items its
+  present files were written as, with each episode's overview and length: the measured length of
+  its files that play once each is read, else its catalog runtime (#2151 decision 39: features
+  query the tables). A series' episodes' tracks are not read, only their sources' durations; an
+  episode's own file, tracks and chapters are read when its page is asked for by its id. The
+  response sends every list, `[]` for none, and leaves out a value nobody stated. Each write of a title is one transaction: the
+  projector rewrites the whole title inside the inventory write (a pass, a header read, an
+  origin marked unseen; decision 43). The file list (`library_files`) follows the walk and the
+  sources follow the inventory, so the two can disagree while a removal waits, such as a pass
+  that could not hear from an arr and marked no origin unseen, and while a new file waits for
+  its first write. The list can also keep files that are gone from disk: a removal past the hold
+  threshold is held, not marked missing, and nothing is marked missing while an arr does not
+  answer. A listed file is therefore an extra copy only when it has a source row that does not
+  play and another listed file with a source row plays in its place: one in the same edition
+  with the same part, or a whole file of that edition. A file with no source row yet is never an
+  extra and never plays in another's place. So a title's last listed file is never offered for
+  removal. Remove extra copy holds the same rule itself, and before it moves anything it checks
+  on disk that a copy playing in its place is there, refusing (409, "Loomarr can't find the copy
+  that plays right now") when none is. One removal runs at a time, from reading the title to
+  marking the file gone, so two at once cannot take both copies. Each scan origin's observation
+  JSON stays as evidence of what the scan saw, not a source the page reads (decision 40).
+  `library_markers` and `library_trickplay` are stored ahead of use: the player will read them
+  for skipping and scrubbing, and no page reads them.
 - **Editions** (step 14b-1c, decision 54). A movie file can be a labelled version of its title,
   such as a Director's Cut. Its arr's edition counts first (Radarr's, read from the release name),
   then its name's `{edition-…}`, then its NFO's `<edition>`; a catalog never has a say. The label
@@ -611,14 +793,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Your collections** (step 12, decision 28). `library_collections` keeps the household's own
   collections and `library_collection_members` their titles in order, as `library_items` ids. A
   title that leaves the library drops out of the list and stays a member, so it comes back in its
-  place. `/v1/collections` (admin) lists, reads, makes, changes (name, description and titles
-  whole) and deletes them; each says which channels use it: a channel's scope or any rule's
+  place. `/v1/collections` lists and reads them for any signed-in member (the Collections tab),
+  and makes, changes (name, description and titles whole) and deletes them for an admin; each says which channels use it: a channel's scope or any rule's
   `what` that names its id. Delete answers 409 while any do. `imported_from` marks one brought
   over from the media server at cutover (step 15). `/v1/library/collections` lists the same
   collections for a different reader: it is member-readable and returns names and sizes only,
   for the channel scope picker, where a member choosing a collection still goes through
-  submit and approve. The two stay separate routes because merging them would either open the
-  titles and the edits to members or close the picker to them. A channel's collection scope
+  submit and approve. The two stay separate routes, one meaning each: `/v1/library/collections`
+  is the picker's light list, `/v1/collections` the Library's own collections with their titles
+  in order and the ready-made sets. A channel's collection scope
   matches through the reconcile's membership index, which holds the household's collections
   under their own ids (`LibraryCollectionMemberIDs`, keyed by each title's TMDB and TVDB ids).
 - **Ready-made sets** (step 12b, decision 28). A movie's TMDB record names the TMDB collection it
@@ -1011,6 +1194,71 @@ header is kept, so no file is opened again. Each version and what it changed:
   and "HDTV Heroes" keep their first word (`searchQuery`).
 - **81:** a shelf names no show: an episode named by its mark alone, "Downloads/S01E01.mkv",
   "TV/S01E07.mkv", is no show's, as one loose at the top is (`showFolderIn`, `noShowIn`).
+- **82:** a file written without a catalog record it asked for (its own, its season's, or its
+  series') is saved with a waiting identity, never its own, so the next pass over its folder once
+  the record is cached writes it again (#3565). A pass before then finds the same file still
+  waiting and leaves it, and the header read queued for it stays its own (`waitingFor`).
+  The Enricher could fetch the record while that pass was still writing, before the file's row
+  was saved; the pass then saved an identity that said the file was final, and every later pass,
+  a full scan included, left its episodes named by their files. The new version writes every
+  file once more, so a library caught that way takes its catalog names.
+- **83:** a film's disc as MakeMKV left it, every title named "title_tNN", is read by size: the
+  largest is the film, a title under half its size the disc's bonus, never a second copy
+  (`rippedExtras`). An episode's name titled by a kind only an extra is named by, "S01E01 - Behind
+  the Episode", beside that episode titled otherwise is its extra (`extrasBeside`). A films'
+  shelf's "Sample/" holds samples, but a film named as the folder (`shelfSamples`).
+- **84:** a release's single-digit number before a year, "[Grp] Kaze Tori - 7 (2019)", is an
+  episode on an anime's shelf, and beside its show's other numbers in that year
+  (`folderNotes.Released`): a film's sequels never share a year. Alone anywhere else it stays a
+  sequel. Kodi's "extrathumbs" folders are artwork and are not walked. Kodi's "Show - 214 -
+  Title", read as season 2's 14th, is the show's 214th when its catalog's second season holds no
+  14th and its seasons hold a 214th (`acrossOnly`).
+- **85:** "1001 - The Return" in Season 10 is its first: four digits, the season's run before the
+  episode's. A day spelled with its month's name, "March 14th 2023", "14 March 2023", "Sept. 2,
+  2023", is the day an episode aired (`spelledDayIn`). A show's "Chapter 19" beside its "Chapter
+  20" counts across the show, placed by its catalog; a film's chapters give their years. "Show -
+  101", the show's 101st, is season 1's first when its catalog is too short for a 101st and its
+  first season holds a first (`byRunTogether`).
+- **86:** an episode no catalog names yet is named by what its file says after its own mark, its
+  release's notes set aside: Sonarr's "Show (2005) - S01E03 - The Long Tide [WEBDL-1080p]" is "The
+  Long Tide", however the show's folder spells the show. A mark with no title after it, "Show
+  (2005) - S01E04 [HDTV-720p]", is the show and its mark, "Show S01E04"; a Specials' "Show -
+  Holiday Special [1080p]", with no mark, is what follows the show's name (`episodeName`).
+  86 was listed here but never set in the code, so 87 also writes its change.
+- **87:** a film's copies in its own folder are one title (`filmCopyID`): "Harrow Fen (2011) -
+  X265 EAC3 5.1" beside the copy its NFO grounds, with no catalog record of its own. It also
+  rewrites the snapshot-only changes made under 85: an episode's copies joined by the catalog's
+  title or their own (`episodeCopyID`), and a film named as its folder before its release's notes.
+- **88:** a film's copies are one title only as far as their catalogs agree. The store joins a file
+  by an id the library infers (`inventory.ExternalID.Inferred`: a film's folder, an episode's
+  copies, a split file's parts) only to a title that holds no catalog id of a kind the file's own
+  catalog ids have, none of which match. So a second film kept in a film's folder is its own title,
+  whichever pass finds it, and copies grounded by different catalogs (tmdb only, imdb only) are
+  one. Every file is written once more, so a film an earlier build merged with another splits.
+- **89:** only an id that says which title a file is reaches the store (`mp.Namespace.Grounds`:
+  TMDB, TVDB, IMDb), so Sonarr's own episode id, a row number a second Sonarr gives another show's
+  episode too, joins no titles and is no longer listed among a title's ids. The file that founded a
+  title leaves it once its catalog id disagrees with one a joined copy holds, for an item of its
+  own beside its home (`inventoryOwnPlace`), and stays there. Every file is written once more, so
+  titles an earlier build merged either way split.
+- **90:** an NFO's or a file name's id that grounds nothing (its record names another title, or
+  the catalog does not know it) joins the file to no title either: the scanner drops it from the
+  snapshot, so a sequel whose NFO carries the first film's id is a title of its own. Before the
+  catalog answers, an NFO whose film the file's own names call a sequel of ("Harrow Fen 2 (2004)"
+  holding Harrow Fen's NFO, copied whole) is set aside the same way (`namesItsSequel`). Every file
+  is written once more.
+- **91:** a duplicate's mark is no part of an episode's title (`titleIn`): Windows' " - Copy" and
+  " - Copy (2)", and macOS's bare " copy" when it is all that follows the mark. A duplicated
+  episode is named as, and joins, its original. "Carbon Copy" keeps its word, and a part's number
+  ("Equinox (1)") stays its title's, so a browser's " (1)" is not read as a duplicate's.
+- **92:** an episode's still is imported when it is written (#4476, "Episode stills"), so an
+  episode an earlier build wrote takes its still. Every file is written once more with no header
+  read: one inventory write per file (about 33,000 on a library that size), each episode's still
+  file beside it read, hashed and ingested, each provider still recorded for the fetch job, and
+  each movie's and series' artwork handed over again: an artwork file beside the media is read and
+  hashed again but not ingested when the service holds its bytes, an adopted URL is one lookup,
+  and either rewrites its ref row. The fetch job then works through the adopted stills, 64 a
+  minute, in the bulk class behind every title's artwork.
 
 ## Search
 

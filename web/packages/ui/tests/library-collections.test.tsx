@@ -41,9 +41,7 @@ const render = (overrides: Partial<LibraryCollectionsProps>) => {
       { id: "c2", name: "Just One", titles: 1, pile: [{ name: "Night Ferry" }], usedBy: [] },
     ],
     sets: [{ id: "90000611", name: "The Lantern Keeper Collection", have: 2, total: 3, pile: [] }],
-    onNew: vi.fn(),
-    onEdit: vi.fn(),
-    onCopy: vi.fn(() => Promise.resolve()),
+    manage: { onNew: vi.fn(), onEdit: vi.fn(), onCopy: vi.fn(() => Promise.resolve()) },
     ...overrides,
   };
   const host = doc.createElement("div");
@@ -85,18 +83,43 @@ describe("LibraryCollections", () => {
   it("opens a collection to edit, and starts a new one", () => {
     const { props, button, cleanup } = render({});
     act(() => button("Edit Rainy Sundays").click());
-    expect(props.onEdit).toHaveBeenCalledWith("c1");
+    expect(props.manage?.onEdit).toHaveBeenCalledWith("c1");
     act(() => button("New collection").click());
-    expect(props.onNew).toHaveBeenCalled();
+    expect(props.manage?.onNew).toHaveBeenCalled();
     cleanup();
+  });
+
+  it("says what a collection is when none is made, and offers the ready-made sets to start from", () => {
+    const { host, props, button, cleanup } = render({ collections: [] });
+    expect(host.textContent).toContain("No collections yet");
+    expect(host.textContent).toContain("A collection is a set of titles you put together");
+    expect(host.textContent).toContain("Or start from a ready-made set");
+    act(() => button("New collection").click());
+    expect(props.manage?.onNew).toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("gives a member the collections to read, with nothing to change and no sets to copy", () => {
+    const { host, cleanup } = render({ manage: undefined });
+    expect(host.textContent).toContain("Rainy Sundays");
+    expect(host.textContent).toContain("12 titles");
+    expect(host.querySelectorAll('[role="button"], button').length).toBe(0);
+    expect(host.textContent).not.toContain("The Lantern Keeper Collection");
+    cleanup();
+
+    const none = render({ manage: undefined, collections: [] });
+    expect(none.host.textContent).toContain("No collections yet");
+    expect(none.host.textContent).toContain("When someone in your household puts titles together");
+    expect(none.host.querySelectorAll('[role="button"], button').length).toBe(0);
+    none.cleanup();
   });
 
   it("says how much of a ready-made set the library has, and copies it", async () => {
     const { host, props, button, cleanup } = render({});
-    expect(host.textContent).toContain("From TMDB — you have 2 of 3");
+    expect(host.textContent).toContain("From TMDB. You have 2 of 3.");
     act(() => button("Make my own copy").click());
     await settle();
-    expect(props.onCopy).toHaveBeenCalledWith("90000611");
+    expect(props.manage?.onCopy).toHaveBeenCalledWith("90000611");
     expect(
       button("Copied — it's under Yours").hasAttribute("disabled") ||
         button("Copied — it's under Yours").getAttribute("aria-disabled") === "true",
@@ -105,7 +128,9 @@ describe("LibraryCollections", () => {
   });
 
   it("says when a copy didn't work, and lets it be tried again", async () => {
-    const { host, button, cleanup } = render({ onCopy: vi.fn(() => Promise.reject(new Error("no"))) });
+    const { host, button, cleanup } = render({
+      manage: { onNew: vi.fn(), onEdit: vi.fn(), onCopy: vi.fn(() => Promise.reject(new Error("no"))) },
+    });
     act(() => button("Make my own copy").click());
     await settle();
     expect(host.textContent).toContain("Couldn't make a copy just now. Try again in a moment.");

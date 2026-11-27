@@ -325,6 +325,6 @@ func (r *Runner) Job() jobs.Job {
 		Name: "system-health", Group: jobs.GroupSystem, Title: "Check app health",
 		Description: "Checks Loomarr's database and configured connections and refreshes Current Health.",
 		DefaultCron: systemHealthDefaultCron, ScheduleKey: settings.JobSystemHealthSchedule.Key(),
-		Timeout: 10 * time.Second, Run: r.Run,
+		Timeout: 10 * time.Second, Watchdog: true, Run: r.Run,
 	}
 }

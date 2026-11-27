@@ -1,8 +1,17 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Action, Icon, icons, Stack, type StatusTone, Surface, Text, Toggle } from "@loomarr/design-system";
+import {
+  Action,
+  Card,
+  Icon,
+  icons,
+  Stack,
+  type StatusTone,
+  Surface,
+  Text,
+  Toggle,
+} from "@loomarr/design-system";
 import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
 import { type ReactNode, useState } from "react";
-import { cn } from "@/lib/utils";
 import type { FillerSourcesProps } from "./filler-sources.type";
 
 const dormant = (source: { effectiveEnabled: boolean }) => !source.effectiveEnabled;
@@ -27,12 +36,12 @@ interface SourceListProps {
   sources: Source[];
   sectionLabel: string;
   renderRow: (source: Source) => ReactNode;
-  className?: string;
+  marginTop?: number;
 }
 
 // Long lists keep problems visible without letting healthy rows take over the page. Filtering is
 // deliberately local to registered rows; the provider finder above this list remains independent.
-const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListProps) => {
+const SourceList = ({ sources, sectionLabel, renderRow, marginTop }: SourceListProps) => {
   const [expanded, setExpanded] = useState(false);
   const [filter, setFilter] = useState("");
   const scalable = sources.length >= FILTER_THRESHOLD;
@@ -59,7 +68,7 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
     scalable && !normalizedFilter && !expanded ? Math.max(healthy.length - INITIAL_HEALTHY, 0) : 0;
 
   return (
-    <div className={className}>
+    <Stack gap={visible.length > 0 ? "2" : "3"} marginTop={marginTop}>
       {scalable && (
         <Surface backgroundColor="transparent" borderWidth={0} maxWidth={384}>
           <SearchField
@@ -73,21 +82,19 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
       )}
 
       {visible.length > 0 ? (
-        <div className={cn(scalable && "mt-2")}>
-          <ListGroup
-            aria-label={sectionLabel === "Your files" ? "Your file sources" : `Sources under ${sectionLabel}`}
-          >
-            {visible.map(renderRow)}
-          </ListGroup>
-        </div>
+        <ListGroup
+          aria-label={sectionLabel === "Your files" ? "Your file sources" : `Sources under ${sectionLabel}`}
+        >
+          {visible.map(renderRow)}
+        </ListGroup>
       ) : (
-        <Text as="p" className="mt-3" textRole="compact" tone="secondary">
+        <Text as="p" textRole="compact" tone="secondary">
           No sources match your filter.
         </Text>
       )}
 
       {remaining > 0 && (
-        <Stack className="mt-2" direction="row">
+        <Stack direction="row">
           <Action
             accessibilityLabel={`Show ${remaining} more under ${sectionLabel}`}
             onPress={() => setExpanded(true)}
@@ -98,7 +105,7 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
         </Stack>
       )}
       {scalable && expanded && !normalizedFilter && (
-        <Stack className="mt-2" direction="row">
+        <Stack direction="row">
           <Action
             accessibilityLabel={`Show fewer under ${sectionLabel}`}
             onPress={() => setExpanded(false)}
@@ -108,7 +115,7 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
           </Action>
         </Stack>
       )}
-    </div>
+    </Stack>
   );
 };
 
@@ -191,10 +198,12 @@ const FillerSources = ({
     return (
       <Stack
         align="center"
-        className={cn("pl-2", selectedId === source.id && "bg-muted/25")}
+        // Raised, not elevated: RowCard's lead disc is surfaceElevated and would vanish on it.
+        backgroundColor={selectedId === source.id ? "surfaceRaised" : undefined}
         direction="row"
         gap="inline"
         key={source.id}
+        paddingLeft={8}
       >
         {onToggleEnabled && source.switchable && (
           <Toggle
@@ -211,7 +220,7 @@ const FillerSources = ({
             onCheckedChange={(checked) => onToggleEnabled(source.id, checked)}
           />
         )}
-        <div className="min-w-0 flex-1">
+        <Stack flexBasis="0%" flexGrow={1} minWidth={0}>
           <RowCard
             action={
               onSelect ? (
@@ -228,50 +237,46 @@ const FillerSources = ({
             meta={meta}
             title={name}
           />
-        </div>
+        </Stack>
       </Stack>
     );
   };
 
   return (
-    <Stack className={className} flexShrink={0} gap="section">
-      <Stack align="start" direction="row" flexShrink={0} gap="4" wrap>
-        <div className="min-w-0 flex-1">
+    <Stack className={className} gap="section">
+      <Stack align="start" direction="row" gap="4" wrap>
+        <Stack flexBasis="0%" flexGrow={1} gap="1" minWidth={0}>
           <Text as="h2" strong textRole="cardLabel">
             Where filler comes from
           </Text>
-          <Text as="p" className="mt-1 max-w-xl" textRole="compact" tone="secondary">
-            Add sources once and Loomarr checks them for you. Turning one off does not remove clips already
-            added.
-          </Text>
-        </div>
-        <Text as="span" className="shrink-0 whitespace-nowrap" textRole="hint" tone="secondary">
+          <Stack maxWidth={576}>
+            <Text as="p" textRole="compact" tone="secondary">
+              Add sources once and Loomarr checks them for you. Turning one off does not remove clips already
+              added.
+            </Text>
+          </Stack>
+        </Stack>
+        <Text as="span" flexShrink={0} numberOfLines={1} textRole="hint" tone="secondary">
           {`${realSources.filter((source) => source.ready).length} of ${realSources.length} ready`}
         </Text>
       </Stack>
 
       {needsLocation && (
-        <Stack
-          align="center"
-          className="border-caution/30 bg-caution/5 rounded-lg border px-4 py-3"
-          direction="row"
-          flexShrink={0}
-          gap="control"
-          justify="between"
-          wrap
-        >
-          <div>
-            <Text as="p" textRole="cardLabel" tone="primary">
-              Add your location
-            </Text>
-            <Text as="p" textRole="compact" tone="secondary">
-              Loomarr uses it to choose sources that fit your area.
-            </Text>
-          </div>
-          <Action accessibilityRole="link" render={<a href="/settings/access" />} variant="outline">
-            Set location
-          </Action>
-        </Stack>
+        <Card borderRadius={8} paddingHorizontal={16} paddingVertical={12} tone="caution">
+          <Stack align="center" direction="row" gap="control" justify="between" wrap>
+            <div>
+              <Text as="p" textRole="cardLabel" tone="primary">
+                Add your location
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
+                Loomarr uses it to choose sources that fit your area.
+              </Text>
+            </div>
+            <Action accessibilityRole="link" render={<a href="/settings/access" />} variant="outline">
+              Set location
+            </Action>
+          </Stack>
+        </Card>
       )}
 
       {error && (
@@ -281,54 +286,61 @@ const FillerSources = ({
       )}
 
       {(localSources.length > 0 || renderLocalSetup) && (
-        <section aria-labelledby="local-filler-sources" className="border-border/60 border-t pt-5">
+        <Stack
+          aria-labelledby="local-filler-sources"
+          borderColor="borderDecorative"
+          borderTopWidth={1}
+          gap={renderLocalSetup ? "4" : "2"}
+          paddingTop={20}
+          render="section"
+        >
           <Stack align="start" direction="row" gap="4" justify="between">
-            <div className="min-w-0">
+            <Stack gap="1" minWidth={0}>
               <Text as="h3" id="local-filler-sources" textRole="cardLabel" tone="primary">
                 Your files
               </Text>
-              <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+              <Text as="p" textRole="compact" tone="secondary">
                 Folders and media-server libraries you already manage.
               </Text>
-            </div>
-            <Text as="span" className="shrink-0" textRole="hint" tone="secondary">
+            </Stack>
+            <Text as="span" flexShrink={0} textRole="hint" tone="secondary">
               {sourceSummary(localSources)}
             </Text>
           </Stack>
 
-          {renderLocalSetup && <div className="mt-4">{renderLocalSetup}</div>}
+          {renderLocalSetup && <div>{renderLocalSetup}</div>}
           {localSources.length > 0 && (
-            <SourceList
-              className={renderLocalSetup ? "mt-4" : "mt-2"}
-              sources={localSources}
-              sectionLabel="Your files"
-              renderRow={row}
-            />
+            <SourceList sources={localSources} sectionLabel="Your files" renderRow={row} />
           )}
-        </section>
+        </Stack>
       )}
 
       {providers.map((provider) => {
         const children = childrenByProvider.get(provider.id) ?? [];
         const providerBodyOpen = provider.enabled && togglingProvider !== provider.kind;
         return (
-          <section
+          <Stack
             key={provider.id}
             aria-labelledby={`provider-${provider.kind}`}
-            className="border-border/60 border-t pt-5"
+            borderColor="borderDecorative"
+            borderTopWidth={1}
+            paddingTop={20}
+            render="section"
           >
-            <div className="flex flex-wrap items-start justify-between gap-4 sm:flex-nowrap">
-              <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
+            <Stack align={{ base: "stretch", sm: "start" }} direction={{ base: "column", sm: "row" }} gap="4">
+              <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
                 <Text as="h3" id={`provider-${provider.kind}`} textRole="cardLabel" tone="primary">
                   {provider.target}
                 </Text>
-                <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-                  {!provider.enabled
-                    ? `${provider.target} is paused. Sources and clips stay saved.`
-                    : descriptions.find((description) => description.id === provider.kind)?.blurb}
-                </Text>
-              </div>
-              <Stack align="center" direction="row" flexShrink={0} gap="3" marginLeft="auto">
+                <Stack marginTop={4}>
+                  <Text as="p" textRole="compact" tone="secondary">
+                    {!provider.enabled
+                      ? `${provider.target} is paused. Sources and clips stay saved.`
+                      : descriptions.find((description) => description.id === provider.kind)?.blurb}
+                  </Text>
+                </Stack>
+              </Stack>
+              <Stack align="center" direction="row" gap="3" marginLeft="auto">
                 <Text as="span" textRole="hint" tone="secondary">
                   {sourceSummary(children)}
                 </Text>
@@ -344,7 +356,7 @@ const FillerSources = ({
                   />
                 )}
               </Stack>
-            </div>
+            </Stack>
 
             {/* Folded, not unmounted: a paused provider's children keep their saved switches. */}
             <div hidden={!providerBodyOpen}>
@@ -352,18 +364,20 @@ const FillerSources = ({
 
               {children.length > 0 ? (
                 <SourceList
-                  className="mt-3"
+                  marginTop={12}
                   sources={children}
                   sectionLabel={provider.target}
                   renderRow={row}
                 />
               ) : (
-                <Text as="p" className="mt-3" textRole="hint" tone="secondary">
-                  Nothing added yet.
-                </Text>
+                <Stack marginTop={12}>
+                  <Text as="p" textRole="hint" tone="secondary">
+                    Nothing added yet.
+                  </Text>
+                </Stack>
               )}
             </div>
-          </section>
+          </Stack>
         );
       })}
     </Stack>

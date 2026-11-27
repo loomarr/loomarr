@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
   FieldHint,
+  Grid,
   Stack,
   StatusLabel,
   Text,
@@ -256,7 +257,7 @@ const InvitationDialog = ({
                 </form.AppField>
               )}
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <Grid columns={{ base: 1, sm: 2 }} gap="4">
                 <form.AppField name="contactEmail">
                   {(field) => (
                     <field.TextField
@@ -281,7 +282,7 @@ const InvitationDialog = ({
                     </Stack>
                   )}
                 </form.AppField>
-              </div>
+              </Grid>
 
               {onSendEmail && (
                 <form.Field name="sendEmail">
@@ -300,7 +301,7 @@ const InvitationDialog = ({
                 </form.Field>
               )}
 
-              {problem != null && <ErrorState error={problem} className="p-4" />}
+              {problem != null && <ErrorState error={problem} compact />}
               <DialogFooter>
                 <Action disabled={busy} onPress={() => changeOpen(false)} variant="outline">
                   Cancel
@@ -326,14 +327,23 @@ const InvitationDialog = ({
             </Stack>
           ) : grant ? (
             <Stack gap="5">
-              <div className="grid items-center gap-5 sm:grid-cols-[220px_minmax(0,1fr)]">
-                <div className="mx-auto rounded-xl bg-white p-3 forced-colors:border forced-colors:border-current">
+              <Grid align="center" columns={{ base: 1, sm: ["220px", "minmax(0,1fr)"] }} gap="5">
+                {/* A white plate in both themes, so a scanner reads the code; its forced-colors
+                    border is the `data-qr-plate` rule in styles.css. */}
+                <Stack
+                  alignSelf="center"
+                  borderRadius={12}
+                  data-qr-plate=""
+                  marginHorizontal="auto"
+                  padding={12}
+                  style={{ backgroundColor: "white" }}
+                >
                   <QrCode
                     accessibilityLabel={`Scan to accept ${invitationName(invitation)}’s Loomarr invitation`}
                     size={196}
                     value={grant.url}
                   />
-                </div>
+                </Stack>
                 <Stack gap="3">
                   <Stack direction="row" gap="inline" wrap>
                     <StatusLabel tone={invitation.role === "admin" ? "notice" : "off"}>
@@ -348,16 +358,16 @@ const InvitationDialog = ({
                     Regenerating replaces every outstanding invitation link, including links already emailed.
                   </Text>
                 </Stack>
-              </div>
+              </Grid>
 
               {emailProblem && (
-                <Stack borderRadius={12} className="border-destructive/50 border" padding={12} role="alert">
+                <Card padding={12} role="alert" tone="caution">
                   <Text as="p" textRole="compact">
                     The invitation is ready, but email could not be queued. Share this QR code or copied link.
                   </Text>
-                </Stack>
+                </Card>
               )}
-              {problem != null && <ErrorState error={problem} className="p-4" />}
+              {problem != null && <ErrorState error={problem} compact />}
 
               <DialogFooter spread>
                 <Action
@@ -413,7 +423,7 @@ const InvitationDialog = ({
                   invitation.
                 </Text>
               </Card>
-              {problem != null && <ErrorState error={problem} className="p-4" />}
+              {problem != null && <ErrorState error={problem} compact />}
               <DialogFooter>
                 <Action disabled={busy} onPress={() => void issue(invitation)}>
                   {busy ? "Generating…" : "Generate QR and link"}

@@ -3,7 +3,7 @@ import type { PullDTO } from "@loomarr/api/models/pullDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { requestFailureHint, requestFixLabel } from "@loomarr/core/requests";
-import { Stack, Text } from "@loomarr/design-system";
+import { Stack, Text, TextLink } from "@loomarr/design-system";
 import { CardAction, ListGroup } from "@loomarr/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -50,13 +50,9 @@ const When = ({ at, verb }: { at: string; verb: string }) => {
 
 // The title as a link to the request's detail, for a row whose one action goes somewhere else.
 const DetailLink = ({ jobId, title }: { jobId: string; title: string }) => (
-  <Link
-    to="/requests/$jobId"
-    params={{ jobId }}
-    className="focus-visible:ring-ring rounded-sm hover:underline focus-visible:ring-2 focus-visible:outline-none"
-  >
+  <TextLink render={<Link to="/requests/$jobId" params={{ jobId }} />} tone="inherit" underline="hover">
     {title}
-  </Link>
+  </TextLink>
 );
 
 // Requests › In progress and Done: each request is a row you scan (#1817 Q11, #2765), the same row
@@ -187,12 +183,12 @@ const RequestList = ({ tab }: { tab: "in-progress" | "done" }) => {
   // A finished request links to the channel it became; its titles are part of that channel,
   // which is why there is no separate "ready" list.
   return (
-    <div className="max-w-reading mx-auto w-full">
+    <Stack marginHorizontal="auto" maxWidth={768} width="100%">
       <ListGroup aria-label={tab === "done" ? "Finished requests" : "Requests in progress"}>
         {entries.map(rowFor)}
         {decidedPulls.map(pullRowFor)}
       </ListGroup>
-    </div>
+    </Stack>
   );
 };
 
@@ -219,7 +215,7 @@ const NeedsYouList = () => {
     );
   }
   return (
-    <Stack className="max-w-reading mx-auto w-full" gap="section">
+    <Stack gap="section" marginHorizontal="auto" maxWidth={768} width="100%">
       {showApprovals && (
         <Stack aria-labelledby="needs-approvals" gap="control" render="section">
           <Text as="h2" id="needs-approvals" strong textRole="headline">

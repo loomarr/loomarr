@@ -64,6 +64,11 @@ func StageIndex(id StageID) int {
 	return -1
 }
 
+// FailureRest is how long failed work rests once it has used its attempts (decision 12 of #3838):
+// a download that failed three times in a day, and a clip whose terminal commit keeps being refused
+// as stale, are tried again no sooner. Nothing is rejected or deleted for resting.
+const FailureRest = 30 * 24 * time.Hour
+
 // StageStatus is how the CURRENT stage is going.
 type StageStatus string
 

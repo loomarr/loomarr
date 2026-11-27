@@ -123,6 +123,9 @@ describe("ChannelIdentityField", () => {
     await user.type(input, "  Late Night  ");
     await user.click(screen.getByRole("button", { name: /save channel name/i }));
     expect(onSave).toHaveBeenCalledWith("Late Night");
+    // Until the parent passes the stored value, the input keeps showing what was saved.
+    await waitFor(() => expect(input).toBeEnabled());
+    expect(input.value).toBe("Late Night");
 
     // The parent re-renders with the value the server stored: the normalised draft.
     rerender(<ChannelIdentityField label="Channel name" value="Late Night" onSave={onSave} />);
@@ -144,6 +147,152 @@ describe("ChannelIdentityField", () => {
     await waitFor(() =>
       expect((screen.getByLabelText("Channel name") as HTMLInputElement).value).toBe("New Name"),
     );
+  });
+
+  it("adopts a server change that arrives after a save has come back", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(() => Promise.resolve());
+    const { rerender } = render(<ChannelIdentityField label="Channel name" value="A" onSave={onSave} />);
+    const input = screen.getByLabelText("Channel name") as HTMLInputElement;
+
+    await user.type(input, "B{Enter}");
+    expect(onSave).toHaveBeenCalledWith("AB");
+    rerender(<ChannelIdentityField label="Channel name" value="AB" onSave={onSave} />);
+
+    // Someone else renames the channel afterwards: the field shows their name.
+    rerender(<ChannelIdentityField label="Channel name" value="Elsewhere" onSave={onSave} />);
+    await waitFor(() => expect(input.value).toBe("Elsewhere"));
+  });
+
+  it("adopts a server change once the draft is typed back to the stored value", async () => {
+    const user = userEvent.setup();
+    const onSave = () => Promise.resolve();
+    const { rerender } = render(<ChannelIdentityField label="Channel name" value="A" onSave={onSave} />);
+    const input = screen.getByLabelText("Channel name") as HTMLInputElement;
+
+    await user.type(input, "B{Backspace}");
+    expect(input.value).toBe("A");
+
+    rerender(<ChannelIdentityField label="Channel name" value="Elsewhere" onSave={onSave} />);
+    await waitFor(() => expect(input.value).toBe("Elsewhere"));
+  });
+
+  it("keeps an edit in progress when the server value changes underneath it", async () => {
+    const user = userEvent.setup();
+    const onSave = () => Promise.resolve();
+    const { rerender } = render(<ChannelIdentityField label="Channel name" value="A" onSave={onSave} />);
+    const input = screen.getByLabelText("Channel name") as HTMLInputElement;
+
+    await user.type(input, "B");
+    rerender(<ChannelIdentityField label="Channel name" value="Elsewhere" onSave={onSave} />);
+
+    expect(input.value).toBe("AB");
+    expect(screen.getByRole("button", { name: /save channel name/i })).toBeInTheDocument();
+  });
+
+  it("adopts later server changes once the server arrives at the draft", async () => {
+    const user = userEvent.setup();
+    const onSave = () => Promise.resolve();
+    const { rerender } = render(<ChannelIdentityField label="Channel name" value="A" onSave={onSave} />);
+    const input = screen.getByLabelText("Channel name") as HTMLInputElement;
+
+    await user.type(input, "B");
+    // Another tab saved the same name: there is nothing left to save.
+    rerender(<ChannelIdentityField label="Channel name" value="AB" onSave={onSave} />);
+    expect(screen.queryByRole("button", { name: /save channel name/i })).not.toBeInTheDocument();
+
+    rerender(<ChannelIdentityField label="Channel name" value="Elsewhere" onSave={onSave} />);
+    await waitFor(() => expect(input.value).toBe("Elsewhere"));
+  });
+
+  it("keeps the saved value when another change arrives before the save comes back", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(() => Promise.resolve());
+    const { rerender } = render(<ChannelIdentityField label="Channel name" value="A" onSave={onSave} />);
+    const input = screen.getByLabelText("Channel name") as HTMLInputElement;
+
+    await user.type(input, "B{Enter}");
+    await waitFor(() => expect(input).toBeEnabled());
+    rerender(<ChannelIdentityField label="Channel name" value="Elsewhere" onSave={onSave} />);
+
+    expect(input.value).toBe("AB");
+    expect(screen.getByRole("button", { name: /save channel name/i })).toBeInTheDocument();
+  });
+
+  it("keeps the draft through a server change that lands while a save is in flight", async () => {
+    const user = userEvent.setup();
+    let finish = () => {};
+    const onSave = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { rerender } = render(<ChannelIdentityField label="Channel name" value="A" onSave={onSave} />);
+    const input = screen.getByLabelText("Channel name") as HTMLInputElement;
+
+    await user.type(input, "B{Enter}");
+    expect(input).toBeDisabled();
+    rerender(<ChannelIdentityField label="Channel name" value="Elsewhere" onSave={onSave} />);
+    expect(input.value).toBe("AB");
+    expect(input).toBeDisabled();
+
+    finish();
+    await waitFor(() => expect(input).toBeEnabled());
+    expect(input.value).toBe("AB");
+  });
+
+  it("stays disabled until the save resolves, even when the stored value arrives first", async () => {
+    const user = userEvent.setup();
+    let finish = () => {};
+    const onSave = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { rerender } = render(<ChannelIdentityField label="Channel name" value="A" onSave={onSave} />);
+    const input = screen.getByLabelText("Channel name") as HTMLInputElement;
+
+    await user.type(input, "B{Enter}");
+    // The mutation's refetch lands before onSave resolves.
+    rerender(<ChannelIdentityField label="Channel name" value="AB" onSave={onSave} />);
+    expect(input).toBeDisabled();
+
+    finish();
+    await waitFor(() => expect(input).toBeEnabled());
+    expect(input.value).toBe("AB");
+    expect(screen.queryByRole("button", { name: /save channel name/i })).not.toBeInTheDocument();
+  });
+
+  it("after a rejected save, keeps the draft and the reason through a server change, and Cancel shows the latest stored value", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(() => Promise.reject(new Error("That name is taken.")));
+    const { rerender } = render(<ChannelIdentityField label="Channel name" value="A" onSave={onSave} />);
+    const input = screen.getByLabelText("Channel name") as HTMLInputElement;
+
+    await user.type(input, "B{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent("That name is taken.");
+    rerender(<ChannelIdentityField label="Channel name" value="Elsewhere" onSave={onSave} />);
+
+    expect(input.value).toBe("AB");
+    expect(screen.getByRole("alert")).toHaveTextContent("That name is taken.");
+
+    await user.click(screen.getByRole("button", { name: /cancel channel name/i }));
+    expect(input.value).toBe("Elsewhere");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("clears a rejected save's reason once the draft is edited", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn(() => Promise.reject(new Error("That name is taken.")));
+    render(<ChannelIdentityField label="Channel name" value="A" onSave={onSave} />);
+    const input = screen.getByLabelText("Channel name");
+
+    await user.type(input, "B{Enter}");
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await user.type(input, "C");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   // Below `sm` the channel header gives the name its own row, and the field wraps there instead of

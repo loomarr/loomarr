@@ -155,6 +155,10 @@ type Proposal struct {
 	// additive union that ran first would put every retired title straight back. One writer
 	// (the binder), one primitive (schedule.ApplyLineup), and the retirement is an INPUT to it.
 	Retired []provision.Key `json:"retired,omitempty"`
+	// Growth names the growth batch this proposal is (#4333): the titles the channel's line admitted
+	// by themselves. The binder stamps it on the entries it adds, so the batch can be undone as one.
+	// Written only by the growth fill job; empty for every other proposal.
+	Growth string `json:"growth,omitempty"`
 	// Refused are picks the model grounded that this proposal's OWN extracted policy cannot
 	// air (§4). They are moved out of Lineup/Acquisitions and kept here with a reason, so the
 	// approval card shows what will not play instead of offering it.

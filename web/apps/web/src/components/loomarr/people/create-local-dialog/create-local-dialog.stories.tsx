@@ -11,7 +11,7 @@ const meta = {
   },
   parameters: { layout: "fullscreen" },
   render: (args) => (
-    <div className="h-screen w-screen p-6">
+    <div style={{ boxSizing: "border-box", height: "100vh", padding: 24, width: "100vw" }}>
       <CreateLocalDialog {...args} portalContainer={document.getElementById("storybook-root")} />
     </div>
   ),

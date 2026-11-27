@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"golang.org/x/sys/unix"
 )
 
 // watchResync is how often the watched roots are compared with the in-use ones.
@@ -19,7 +18,8 @@ const watchResync = time.Minute
 
 // Watcher hands the scanner the folders a change names (Scanner.PassFolders), for each in-use root:
 // through inotify on a local filesystem, and through the server's change notifications on an SMB
-// share, which report changes any client makes. inotify sees only this machine's own changes, so
+// share, which report changes any client makes. Both are Linux's; elsewhere every root is left to
+// the hourly walk (filesystem_other.go). inotify sees only this machine's own changes, so
 // another network or userspace filesystem (NFS, FUSE) is left to the hourly walk and the arrs'
 // webhooks. A kernel queue overflow asks for a full pass instead.
 type Watcher struct {
@@ -48,7 +48,7 @@ func (w *Watcher) Run(ctx context.Context) {
 		}
 		if err != nil && ctx.Err() == nil {
 			w.log().Warn("library scan: watching stopped; the next walk catches up", "err", err)
-			w.Scanner.Trigger()
+			w.Scanner.PassSoon()
 			t := time.NewTimer(resync)
 			select {
 			case <-ctx.Done():
@@ -129,7 +129,7 @@ func (w *Watcher) watch(ctx context.Context, watched watchedRoots) error {
 			}
 			if errors.Is(err, fsnotify.ErrEventOverflow) {
 				w.log().Warn("library scan: too many changes at once; walking every folder")
-				w.Scanner.Trigger()
+				w.Scanner.PassSoon()
 				continue
 			}
 			return err
@@ -226,27 +226,6 @@ func rootOf(path string, roots []string) string {
 		}
 	}
 	return ""
-}
-
-// Network and userspace filesystems, on which inotify misses changes made elsewhere.
-var remoteFilesystems = map[int64]bool{
-	unix.CIFS_SUPER_MAGIC: true,
-	unix.SMB2_SUPER_MAGIC: true,
-	unix.SMB_SUPER_MAGIC:  true,
-	unix.NFS_SUPER_MAGIC:  true,
-	unix.FUSE_SUPER_MAGIC: true,
-	unix.V9FS_MAGIC:       true,
-	unix.AFS_SUPER_MAGIC:  true,
-	unix.CEPH_SUPER_MAGIC: true,
-}
-
-// localFilesystem reports whether inotify sees every change under path.
-func localFilesystem(path string) bool {
-	var fs unix.Statfs_t
-	if err := unix.Statfs(path, &fs); err != nil {
-		return false
-	}
-	return !remoteFilesystems[int64(fs.Type)]
 }
 
 func orDuration(d, def time.Duration) time.Duration {

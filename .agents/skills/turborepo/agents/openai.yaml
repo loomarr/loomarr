@@ -1,0 +1,3 @@
+interface:
+  display_name: "Turborepo"
+  short_description: "Configure turbo.json, tasks, caching and filters from the bundled docs"

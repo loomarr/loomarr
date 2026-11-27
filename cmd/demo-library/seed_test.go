@@ -44,6 +44,7 @@ func seedTwice(t *testing.T, lib *demolibrary.Library) {
 	items := map[string]string{}
 	for _, ti := range lib.Titles {
 		items[ti.ID()] = "lib-" + ti.ID()
+		testkit.SaveLibraryItems(t, st, items[ti.ID()])
 	}
 	run := func() map[int]string {
 		admin, _, err := ensureAdmin(ctx, st)

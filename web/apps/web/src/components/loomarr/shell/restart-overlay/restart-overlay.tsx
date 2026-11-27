@@ -1,5 +1,4 @@
 import { ActivityIndicator, Icon, icons, Stack, Text } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
 import type { RestartOverlayProps } from "./restart-overlay.type";
 
 // RestartOverlay — the app is unusable while it restarts, so say so and mean it (§9.2, V13).
@@ -31,7 +30,7 @@ import type { RestartOverlayProps } from "./restart-overlay.type";
 //
 // `alert` (assertive) when the restart FAILED, because that is an interruption worth one; `status`
 // (polite) otherwise, so a routine restart does not talk over whatever the operator is reading.
-const RestartOverlay = ({ restarting, justCameBack, failed, className }: RestartOverlayProps) => {
+const RestartOverlay = ({ restarting, justCameBack, failed }: RestartOverlayProps) => {
   const visible = restarting || justCameBack || Boolean(failed);
   if (!visible) return null;
 
@@ -39,13 +38,16 @@ const RestartOverlay = ({ restarting, justCameBack, failed, className }: Restart
     <Stack
       align="center"
       justify="center"
-      className={cn(
-        "bg-background/70 fixed inset-0 z-50 backdrop-blur-[2px]",
-        // Transparent to pointer events ONLY once the app is usable again, so a stray
-        // click during the confirmation moment cannot land on a control behind it.
-        restarting || failed ? "cursor-progress" : "pointer-events-none",
-        className,
-      )}
+      backgroundColor="$artworkScrim"
+      bottom={0}
+      left={0}
+      position="fixed"
+      right={0}
+      top={0}
+      zIndex={50}
+      // Transparent to pointer events ONLY once the app is usable again, so a stray
+      // click during the confirmation moment cannot land on a control behind it.
+      {...(restarting || failed ? { cursor: "progress" } : { pointerEvents: "none" })}
       // It takes the screen, and a screen reader should announce it without waiting for focus to
       // move — which is what a live region does and what `aria-modal` never did here.
       //
@@ -58,25 +60,32 @@ const RestartOverlay = ({ restarting, justCameBack, failed, className }: Restart
     >
       <Stack
         align="center"
-        className="border-border bg-card max-w-sm rounded-lg border p-4 shadow-lg"
+        backgroundColor="$surfaceRaised"
+        borderColor="$borderDecorative"
+        borderRadius={8}
+        borderWidth={1}
         direction="row"
         gap="control"
+        maxWidth={384}
+        padding={16}
       >
         {restarting ? (
           <ActivityIndicator decorative size="default" tone="primary" />
         ) : failed ? null : (
           <Icon decorative glyph={icons.selected} size="default" tone="success" />
         )}
-        <div className="min-w-0">
+        <Stack minWidth={0}>
           <Text as="p" textRole="cardLabel">
             {restarting ? "Restarting Loomarr" : failed ? "Loomarr hasn't come back" : "Loomarr is back"}
           </Text>
-          <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
-            {restarting
-              ? "This takes a few seconds. The app will pick up where it left off."
-              : (failed ?? "Everything is back to normal.")}
-          </Text>
-        </div>
+          <Stack marginTop={2}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {restarting
+                ? "This takes a few seconds. The app will pick up where it left off."
+                : (failed ?? "Everything is back to normal.")}
+            </Text>
+          </Stack>
+        </Stack>
       </Stack>
     </Stack>
   );

@@ -2,15 +2,13 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { LoginShell } from "../login-shell";
 import { PasswordRecoveryRequest, PasswordRecoveryReset } from "./password-recovery";
 
-// Tagged `motion`, as LoginShell is, so the gallery keeps the shell's idle snow.
 const meta = {
   title: "Setup/Password recovery",
   component: PasswordRecoveryRequest,
-  tags: ["motion"],
   parameters: { layout: "fullscreen" },
   decorators: [
     (Story) => (
-      <LoginShell className="py-10">
+      <LoginShell paddingVertical={40}>
         <Story />
       </LoginShell>
     ),

@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) {
@@ -33,7 +34,7 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 			Channels: []pod.ChannelCoverage{{
 				ChannelID: "ch-7", Name: "Saturday Morning", Number: 7,
 				Report: pod.CoverageReport{
-					Level: pod.MatchAudience, Total: 6, DurationMs: 180_000, Categories: 3, Brands: 4,
+					Level: pod.MatchWidened, Total: 6, DurationMs: 180_000, Categories: 3, Brands: 4,
 				},
 			}},
 		},
@@ -128,6 +129,7 @@ func TestFillerStorageCleanupIsAdminOnlyAndReturnsServerOwnedPreview(t *testing.
 func TestFillerAcquisitionReturnsDurableReconnectState(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	now := time.Date(2026, 9, 13, 14, 0, 0, 0, time.UTC)
+	testkit.SaveFillerSources(t, st, "archive:classic")
 	if err := st.UpsertAcquisitionRun(context.Background(), acquisition.AcquisitionRun{
 		ID: "acq-found-clip", Trigger: acquisition.TriggerSource, SourceID: "archive:classic",
 		Status: acquisition.RunError, Requested: 1, Failed: 1, Error: "provider timed out",
