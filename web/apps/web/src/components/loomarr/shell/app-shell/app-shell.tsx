@@ -156,7 +156,8 @@ const AppShell = ({
     // virtualizer measured an 11,000px "viewport" and dutifully mounted all 200 rows.
     <Stack
       backgroundColor="$surfaceCanvas"
-      direction={{ base: "column", md: "row" }}
+      // The same hook that mounts the phone header and bottom bar, so the two cannot disagree.
+      direction={phoneWidth ? "column" : "row"}
       height="100vh"
       overflow="hidden"
     >
