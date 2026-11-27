@@ -96,7 +96,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                   style={{
                     backgroundColor: "var(--color-onair-tint-15)",
                     border: "1px dashed color-mix(in srgb, var(--color-onair-300) 70%, transparent)",
-                    borderRadius: 6,
+                    borderRadius: 8,
                   }}
                   aria-label={label}
                   title={label}

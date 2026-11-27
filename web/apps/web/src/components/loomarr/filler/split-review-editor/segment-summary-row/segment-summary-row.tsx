@@ -41,7 +41,7 @@ const SegmentSummaryRow = ({
           <Stack
             backgroundColor="surfaceRaised"
             borderColor="borderDecorative"
-            borderRadius={6}
+            borderRadius={8}
             borderWidth={1}
             flexShrink={0}
             height={56}

@@ -310,7 +310,7 @@ const ClipCard = ({ clip, onOpen, onSplit, splitPending, selected, onToggleSelec
     // Selection is neutral (#1909): a foreground ring, never amber.
     <div
       data-clip-card=""
-      style={{ borderRadius: 8, ...(selected ? { boxShadow: "0 0 0 1px var(--foreground)" } : {}) }}
+      style={{ borderRadius: 12, ...(selected ? { boxShadow: "0 0 0 1px var(--foreground)" } : {}) }}
     >
       <PictureCard
         action={
