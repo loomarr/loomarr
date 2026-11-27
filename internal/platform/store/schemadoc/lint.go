@@ -228,7 +228,7 @@ var NonKeys = map[string]string{
 	"notification_intents.reference_id":              "a title, channel or proposal, by reference kind",
 	// Not a reference at all.
 	"library_answers.answered_by":         "who answered: you or search",
-	"inventory_item_origins.authority_id": "the importer's name: a scanned folder's or media server's fingerprint",
+	"inventory_item_origins.authority_id": "the importer's name, such as scan: and a root path's fingerprint",
 	"user_hidden_ideas.idea_id":           "an idea's stable name; ideas are rebuilt on each read, never stored",
 	// Outlives what it names on purpose, so deleting that must not touch it.
 	"filler_acquisition_artifacts.source_id": "part of the already-downloaded identity, kept after its source is deleted",
