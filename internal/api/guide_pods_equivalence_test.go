@@ -24,8 +24,8 @@ type deferredPods struct{ guideapi.PodPreviewer }
 
 // #2147: the Guide resolves every row's breaks in one batch over the REAL assembler and store. The
 // grid must not change: every block keeps its kind, start and stop, and every break lists the
-// clips the per-row path (one PreviewAtMany per channel, what the Guide did before) assembles for
-// it, in order, on channels whose filler selections differ.
+// clips the per-row path (one PreviewAtMany per channel, each channel assembled on its own)
+// assembles for it, in order, on channels whose filler selections differ.
 func TestGuide_BatchedPodsMatchThePerRowPath(t *testing.T) {
 	now := time.Now().Truncate(time.Minute)
 	grid := map[string][]timeline.Broadcast{}

@@ -931,8 +931,8 @@ func TestGuide_ResolvesEachBreakAtItsOwnStart(t *testing.T) {
 }
 
 // #2147: every row's breaks resolve in ONE batch for the whole grid, and each row still gets the
-// pods of its own breaks. A batch per row read the whole catalog and the play history once per
-// channel, and the Guide's timelines phase waited on those reads.
+// pods of its own breaks. A batch per row would read the whole catalog and the play history once
+// per channel, and the Guide's timelines phase would wait on those reads.
 func TestGuide_ResolvesEveryRowsBreaksInOneBatch(t *testing.T) {
 	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {

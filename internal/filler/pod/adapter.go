@@ -315,8 +315,8 @@ type ChannelBreaks struct {
 // PreviewChannels is PreviewAtMany for several channels at once: the whole Guide's hover cards
 // (#2147). The pods at index i are exactly what PreviewAtMany returns for chans[i], and a channel
 // with no breaks gets nil. The catalog, the policy and the household's airing history are read
-// ONCE for every channel. Reading them per channel cost a full catalog read for each row of the
-// Guide, and those reads queued on the store's small connection pool.
+// ONCE for every channel: read per channel, they would be a full catalog read for each row of the
+// Guide, queued on the store's small connection pool.
 //
 // One copy serves every break of every channel because assembly only reads it: each filter builds
 // a new slice and each sort runs on a copy, as PreviewAtMany's sharing across one channel's breaks
@@ -350,30 +350,46 @@ func (a *Adapter) PreviewChannels(ctx context.Context, chans []ChannelBreaks) ([
 	// ⚠ Resolved ONCE for the whole batch, for the same reason assemble resolves it once per pod:
 	// a concurrent settings write must not size some breaks by one policy and some by another.
 	pol := a.pol()
-	// Channels assemble concurrently: a break with no stored plan is assembled live, which is CPU,
-	// and one row's breaks do not depend on another's. Each goroutine writes only its own row.
+	row := func(i int) {
+		c := chans[i]
+		if ctx.Err() != nil {
+			return // the caller is gone: nobody receives these pods
+		}
+		// A break planned ahead is read, not assembled again: the guide shows what airs (#3838).
+		stored := a.storedPods(ctx, c.ChannelID, c.Breaks)
+		for j, b := range c.Breaks {
+			if p, ok := stored[b.Start.UnixMilli()]; ok && !b.Start.IsZero() && !b.yearRound {
+				out[i][j] = p
+				continue
+			}
+			out[i][j] = a.assemble(clips, history, c.ChannelID, b, c.Selection, pol)
+		}
+	}
+	var rows []int
+	for i, c := range chans {
+		if len(c.Breaks) > 0 {
+			rows = append(rows, i)
+		}
+	}
+	// One channel (playout's tune, a channel page, reconcile) assembles on the caller's goroutine,
+	// so a panic stays inside the caller's own recovery. Several channels (the Guide) assemble
+	// concurrently: a break with no stored plan is assembled live, which is CPU, and one row's
+	// breaks do not depend on another's. Each goroutine writes only its own row.
+	if len(rows) == 1 {
+		row(rows[0])
+		return out, ctx.Err()
+	}
 	sem := make(chan struct{}, max(2, runtime.NumCPU()))
 	var wg sync.WaitGroup
-	for i, c := range chans {
-		if len(c.Breaks) == 0 {
-			continue
-		}
+	for _, i := range rows {
 		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			// A break planned ahead is read, not assembled again: the guide shows what airs (#3838).
-			stored := a.storedPods(ctx, c.ChannelID, c.Breaks)
-			for j, b := range c.Breaks {
-				if p, ok := stored[b.Start.UnixMilli()]; ok && !b.Start.IsZero() && !b.yearRound {
-					out[i][j] = p
-					continue
-				}
-				out[i][j] = a.assemble(clips, history, c.ChannelID, b, c.Selection, pol)
-			}
+			row(i)
 		})
 	}
 	wg.Wait()
-	return out, nil
+	return out, ctx.Err()
 }
 
 func (a *Adapter) previewAt(ctx context.Context, channelID string, seed int64, sel Selection, breakStart time.Time) (Pod, error) {

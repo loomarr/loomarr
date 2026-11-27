@@ -282,8 +282,9 @@ func (g *hangUpGuide) BroadcastsBetween(ctx context.Context, channelID string, _
 }
 
 // A media server that hangs up mid-document cancels the request, and every channel still to come
-// would fail at its first store read with "context canceled": the install logged that as one broken
-// channel after another (#2147). The client is gone, so the handler stops at the first such failure.
+// would fail at its first store read with "context canceled", which would read in the log as one
+// broken channel after another (#2147). The client is gone, so the handler stops at the first such
+// failure.
 func TestPlayoutGuide_StopsWhenTheMediaServerHangsUp(t *testing.T) {
 	g := &hangUpGuide{started: make(chan struct{})}
 	harness := newPlayoutGuideHarness(t, g)

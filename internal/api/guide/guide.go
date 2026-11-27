@@ -306,9 +306,9 @@ func (s *Handlers) channelGuide(ctx context.Context, in *guideInput) (*guideOutp
 
 	// A break's composition, resolved per-airing. Only for filler, and only when the assembler is
 	// wired: an install without filler configured shows breaks with no hover detail rather than
-	// failing the request. ONE batch for the whole grid (#2147): a batch per row (#1420) still read
-	// the whole catalog and the play history once per channel, and those reads queued on the
-	// store's connection pool behind each other.
+	// failing the request. ONE batch for the whole grid (#2147): the catalog and the play history
+	// are whole-install reads, so a batch per row would repeat them once per channel, queued on the
+	// store's small connection pool.
 	pods := make([][]pod.Pod, len(channels))
 	if s.pods != nil {
 		slots := make([][]pod.BreakSlot, len(channels))
