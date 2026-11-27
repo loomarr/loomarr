@@ -2,7 +2,15 @@ import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLevel";
 import { formatClipDuration } from "@loomarr/core/format";
 import { guideFillerEntryLabel } from "@loomarr/core/guide";
-import { Badge, MediaTile, Stack, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
+import {
+  Badge,
+  MediaTile,
+  Stack,
+  StatusLabel,
+  type StatusTone,
+  Text,
+  VisuallyHidden,
+} from "@loomarr/design-system";
 import type { PodTimelineProps } from "./pod-timeline.type";
 
 // PodTimeline — a commercial break made legible (§3, §10): bumper → ads → bumper, each
@@ -133,7 +141,7 @@ const PodTimeline = ({
                 paddingHorizontal={4}
                 render="span"
               >
-                <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
+                <VisuallyHidden as="span">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</VisuallyHidden>
                 <Text aria-hidden as="span" numberOfLines={1} textRole="caption" tone="primary">
                   {segmentLabel(entry)}
                 </Text>

@@ -1,6 +1,6 @@
 import { clipMediaURL } from "@loomarr/core/clip-thumb";
 import { formatMmSs } from "@loomarr/core/format";
-import { MediaTile, Stack, Text } from "@loomarr/design-system";
+import { MediaTile, Stack, Text, VisuallyHidden } from "@loomarr/design-system";
 import { useRef, useState } from "react";
 import { VideoPlayer } from "@/components/loomarr/player/video-player";
 import { ServedImage } from "@/components/loomarr/served-image";
@@ -107,7 +107,7 @@ const SegmentPreview = ({
         // ⚠ The name is composed from a fixed verb plus the VISIBLE "#N" marker, never from the
         // adjacent Name <input>: `aria-labelledby` on an input takes its VALUE, so the button
         // would be renamed on every keystroke. Anchoring to something on screen is also what the
-        // compact-control rule asks for — an sr-only-only name drifts from what the operator sees.
+        // compact-control rule asks for — a hidden-only name drifts from what the operator sees.
         // The tile's own visible words ("Preview unavailable", the timecode badge) belong in the
         // name too, in reading order (WCAG 2.5.3). The badge stays aria-hidden so it is read once,
         // as part of the name; labelledby still resolves hidden elements.
@@ -126,9 +126,9 @@ const SegmentPreview = ({
         radius="medium"
         width={112}
       >
-        <span id={verbId} className="sr-only">
-          Preview segment
-        </span>
+        <VisuallyHidden as="span">
+          <span id={verbId}>Preview segment</span>
+        </VisuallyHidden>
         {artwork ? (
           <ServedImage image={artwork} alt="" sizes="112px" />
         ) : (

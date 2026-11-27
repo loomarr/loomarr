@@ -1,4 +1,4 @@
-import { Stack, Text, useReducedMotionPreference } from "@loomarr/design-system";
+import { Stack, Text, useReducedMotionPreference, VisuallyHidden } from "@loomarr/design-system";
 import type { WatchHealth, WatchLineProps } from "./watch-line.type";
 
 // WatchLine — the web mock's `watchLine` (#1659): a plain line under the Filler page's
@@ -22,7 +22,7 @@ const DOT: Record<WatchHealth, string> = {
 // operator to stop seeing it.
 //
 // ⚠ The reduced-motion preference gates the animation. Those readers get the colour and the
-// sr-only sentence, which carry the whole meaning without the movement.
+// hidden sentence, which carry the whole meaning without the movement.
 const SR: Record<WatchHealth, string> = {
   healthy: "Watching your sources",
   attention: "Sources need attention",
@@ -51,7 +51,7 @@ const WatchLine = ({ status, health, className }: WatchLineProps) => {
       {/* ⚠ The dot is `aria-hidden`, so its meaning has to be said in words or it is invisible to a
           screen reader — a colour with no text equivalent is exactly the failure axe cannot catch
           (it sees a decorated span, not a missing sentence). */}
-      <span className="sr-only">{SR[health]}</span>
+      <VisuallyHidden as="span">{SR[health]}</VisuallyHidden>
     </Stack>
   );
 };

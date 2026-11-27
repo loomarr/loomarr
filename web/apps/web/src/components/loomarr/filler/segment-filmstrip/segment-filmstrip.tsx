@@ -1,5 +1,14 @@
 import { formatClipDuration, formatMmSs } from "@loomarr/core/format";
-import { Card, Grid, type GridTrack, MediaTile, Stack, Text, Tooltip } from "@loomarr/design-system";
+import {
+  Card,
+  Grid,
+  type GridTrack,
+  MediaTile,
+  Stack,
+  Text,
+  Tooltip,
+  VisuallyHidden,
+} from "@loomarr/design-system";
 import { useId } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { languageName } from "@/lib/languages";
@@ -160,7 +169,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                   >
                     {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3);
                         the start time is the part the tile shows only to assistive tech. */}
-                    <span className="sr-only">{formatMmSs(item.startMs)} ·</span>{" "}
+                    <VisuallyHidden as="span">{formatMmSs(item.startMs)} ·</VisuallyHidden>{" "}
                     {item.artwork ? (
                       <ServedImage image={item.artwork} alt="" sizes="240px" />
                     ) : (

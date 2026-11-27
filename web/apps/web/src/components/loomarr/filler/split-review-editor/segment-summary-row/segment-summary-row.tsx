@@ -1,5 +1,15 @@
 import { formatClipDuration } from "@loomarr/core/format";
-import { Badge, Card, Icon, icons, PressableRow, Stack, StatusLabel, Text } from "@loomarr/design-system";
+import {
+  Badge,
+  Card,
+  Icon,
+  icons,
+  PressableRow,
+  Stack,
+  StatusLabel,
+  Text,
+  VisuallyHidden,
+} from "@loomarr/design-system";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { languageName } from "@/lib/languages";
 import { AUDIENCE_LABEL, type DraftSegment, isValid, spanMs } from "../split-review-draft";
@@ -37,7 +47,7 @@ const SegmentSummaryRow = ({
           onPress={(event) => onOpen(event.currentTarget as unknown as HTMLButtonElement)}
         >
           {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
-          <span className="sr-only">Open clip</span>{" "}
+          <VisuallyHidden as="span">Open clip</VisuallyHidden>{" "}
           <Stack
             backgroundColor="surfaceRaised"
             borderColor="borderDecorative"

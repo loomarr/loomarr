@@ -37,21 +37,6 @@
     "src/components/loomarr/feedback/field-help/field-help.tsx": {
       "tailwindClasses": 1
     },
-    "src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
-      "tailwindClasses": 1
-    },
-    "src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.tsx": {
-      "tailwindClasses": 1
-    },
-    "src/components/loomarr/filler/segment-preview/segment-preview.tsx": {
-      "tailwindClasses": 1
-    },
-    "src/components/loomarr/filler/split-review-editor/segment-summary-row/segment-summary-row.tsx": {
-      "tailwindClasses": 1
-    },
-    "src/components/loomarr/filler/watch-line/watch-line.tsx": {
-      "tailwindClasses": 1
-    },
     "src/components/loomarr/people/create-local-dialog/create-local-dialog.tsx": {
       "tailwindClasses": 3
     },
@@ -161,9 +146,6 @@
       "tailwindClasses": 3
     },
     "src/discovery-feedback/discovery-feedback.tsx": {
-      "tailwindClasses": 1
-    },
-    "src/filler/incoming/incoming.tsx": {
       "tailwindClasses": 1
     },
     "src/help/doc-view/doc-view.tsx": {
