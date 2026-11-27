@@ -155,12 +155,13 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
         value={value}
         values={OPTIONS.map((option) => option.value)}
       >
-        <Grid columns={{ base: 1, sm: 2 }} gap="3">
+        <Grid columns={{ base: 1, sm: 2 }} data-playout-choices="" gap="3">
           {OPTIONS.map((option) => (
             <RadioItem
               disabled={pinnedBy !== undefined}
               key={option.value}
-              label={option.title}
+              // A radio's content is presentational, so its name carries what the card says.
+              label={`${option.title}: ${[option.tagline, ...option.points].join(" ")}`}
               ringRadius={8}
               value={option.value}
             >
@@ -169,10 +170,10 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
                   <Stack align="center" direction="row" gap="inline">
                     <Stack
                       aria-hidden
-                      backgroundColor={checked ? "accentTune" : undefined}
                       borderColor={checked ? "accentTune" : "borderControl"}
                       borderRadius={8}
-                      borderWidth={2}
+                      // A thicker ring, not a fill: forced colours drop backgrounds and keep borders.
+                      borderWidth={checked ? 5 : 2}
                       flexShrink={0}
                       height={16}
                       width={16}

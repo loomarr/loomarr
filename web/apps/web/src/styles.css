@@ -343,6 +343,15 @@ body {
   }
 }
 
+/* The wizard's playout cards share their row's height: `RadioItem` puts its own boxes between
+   the grid cell and the card. */
+[data-playout-choices] [role="radio"] > div,
+[data-playout-choices] [role="radio"] > div > div:first-child {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
 /* The white plate behind an invitation QR code keeps its edge when colours are forced. */
 @media (forced-colors: active) {
   [data-qr-plate] {
