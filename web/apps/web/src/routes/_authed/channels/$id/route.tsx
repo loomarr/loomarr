@@ -8,7 +8,7 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { channelNumber } from "@loomarr/core/format";
 import { formatProgrammeTitle } from "@loomarr/core/guide";
-import { Action, Card, Stack, Surface, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, Text } from "@loomarr/design-system";
 import { ChannelIdent, NavTabs } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
@@ -20,6 +20,7 @@ import { ChannelIdentityField } from "@/channels/channel-identity-field";
 import { ignoreFailure, useChannelSave, withPending } from "@/channels/use-channel-save";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { useBelowSm } from "@/lib/use-phone-width";
 import { useRouteContent } from "@/lib/use-route-content";
 import { type AirState, ChannelDetailProvider } from "./-channel-detail-context";
 
@@ -127,6 +128,7 @@ const ChannelDetailLayout = () => {
   const { id } = Route.useParams();
   const navigate = Route.useNavigate();
   const { isAdmin } = useAuth();
+  const narrow = useBelowSm();
   const queryClient = useQueryClient();
   // ⚠ From `useLocation`, not `?section=`: which panel is active is the PATH.
   const { pathname } = useLocation();
@@ -251,9 +253,9 @@ const ChannelDetailLayout = () => {
         align="center"
         borderBottomWidth={1}
         borderColor="borderDecorative"
-        className="px-4 sm:px-6"
         direction="row"
         gap="control"
+        paddingHorizontal={{ base: 16, sm: 24 }}
         paddingVertical={16}
         render="header"
         wrap
@@ -288,8 +290,24 @@ const ChannelDetailLayout = () => {
         {/* On a phone this wrapper steps aside (`contents`): CH n joins the back link and icon on
             the first row, and the name, an input for an admin, takes a full-width row under them,
             so a long name fits instead of being cut inside its field (#1785). */}
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 max-sm:contents">
-          <div className="flex min-w-0 basis-full flex-col gap-0.5 max-sm:order-last sm:basis-auto">
+        <Stack
+          align="center"
+          columnGap="3"
+          direction="row"
+          flexBasis="0%"
+          flexGrow={1}
+          flexShrink={1}
+          minWidth={0}
+          rowGap="1"
+          style={narrow ? { display: "contents" } : undefined}
+          wrap
+        >
+          <Stack
+            flexBasis={narrow ? "100%" : "auto"}
+            gap="0.5"
+            minWidth={0}
+            style={narrow ? { order: 1 } : undefined}
+          >
             {/* Admins still rename and renumber here with Save/Cancel per field, until the
                 maintainer's click-to-edit mock lands; everyone else sees the mock's text. */}
             {isAdmin ? (
@@ -318,7 +336,7 @@ const ChannelDetailLayout = () => {
                 {airLine.text}
               </Text>
             </Stack>
-          </div>
+          </Stack>
           <Stack align="center" direction="row" gap="inline" marginLeft="auto">
             <Text as="span" shout textRole="data">
               Ch
@@ -344,18 +362,11 @@ const ChannelDetailLayout = () => {
               </Stack>
             )}
           </Stack>
-        </div>
+        </Stack>
         {/* Watch opens the full-bleed player (#2088); there is no Watch tab. The media-server
             hand-off opens its front door in a new tab: Emby and Jellyfin expose no per-channel Live
             TV link, so the viewer goes on from there. */}
-        <Surface
-          alignItems="center"
-          backgroundColor="transparent"
-          borderWidth={0}
-          flexDirection="row"
-          flexWrap="wrap"
-          gap={8}
-        >
+        <Stack align="center" direction="row" gap="2" wrap>
           {/* Action names its host a button unless told otherwise; these are links. */}
           <Action accessibilityRole="link" icon="play" render={<Link to="/watch/$id" params={{ id }} />}>
             Watch
@@ -369,7 +380,7 @@ const ChannelDetailLayout = () => {
               {`Open in ${mediaServerName}`}
             </Action>
           )}
-        </Surface>
+        </Stack>
       </Stack>
 
       {/* A HORIZONTAL tab bar under the header. Each tab is its OWN ROUTE (V-nav-paths). An admin
@@ -385,11 +396,11 @@ const ChannelDetailLayout = () => {
           // min-w-0 + overflow-x-auto: on a phone the four tabs scroll sideways inside this row
           // instead of widening the page past the viewport (#3404).
           <Stack
-            className="px-4 sm:px-6"
             data-testid="channel-tab-strip"
             flexShrink={1}
             minWidth={0}
             overflowX="auto"
+            paddingHorizontal={{ base: 16, sm: 24 }}
             paddingTop={8}
           >
             <NavTabs
@@ -408,12 +419,11 @@ const ChannelDetailLayout = () => {
           positioned; with no positioned ancestor it is laid out against <body> at its natural
           flow position and stretches the document's scroll height, giving a second scrollbar
           behind this one. Making the scroller the containing block keeps it inside (#3404, the
-          same bug as #2724 for Settings). Inline style, not a class: the legacy ledger. */}
+          same bug as #2724 for Settings). */}
       <div
-        className="flex-1 overflow-auto"
         data-testid="channel-section-scroller"
         ref={sectionScroller}
-        style={{ position: "relative" }}
+        style={{ flex: "1 1 0%", overflow: "auto", position: "relative" }}
       >
         <Stack gap="4" marginHorizontal="auto" maxWidth={896} padding={24} width="100%">
           <ChannelDetailProvider

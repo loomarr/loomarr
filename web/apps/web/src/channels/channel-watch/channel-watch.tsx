@@ -503,14 +503,14 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
 
   return (
     <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} render="section">
-      <div className="relative min-h-0 flex-1">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} position="relative">
         {playerEl}
         {/* The wash's centred channel line is the visible readout; this is the same line for a
             screen reader. */}
         {tuning && (
           <TunerOSD number={osdChannel.number} name={osdChannel.name} currentTitle={player.currentTitle} />
         )}
-      </div>
+      </Stack>
     </Stack>
   );
 };

@@ -77,7 +77,6 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
             <FieldHelp label={OPT_IN_LABEL}>{OPT_IN_HELP}</FieldHelp>
             {/* Reset removes the opt-in and its thresholds, exactly like unticking the box. */}
             <PolicyFieldSource
-              className="ml-1"
               overridden={enabled}
               onReset={() => onChange(resetField(policy, "autoCurate"))}
               label={OPT_IN_LABEL}

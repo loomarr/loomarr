@@ -3,7 +3,6 @@ import { useStore } from "@tanstack/react-form";
 import { useId, useLayoutEffect, useState } from "react";
 import { useAppForm } from "@/lib/app-form";
 import { useBelowSm } from "@/lib/use-phone-width";
-import { cn } from "@/lib/utils";
 import type { ChannelIdentityFieldProps } from "./channel-identity-field.type";
 
 // ChannelIdentityField — an inline-editable channel identity field (name / number) with
@@ -82,7 +81,12 @@ const ChannelIdentityField = ({
     <Stack className={className} gap="1">
       <Stack align="center" direction="row" gap="inline">
         {/* 448 px at most from `sm` up; below it the row is the name's alone (#1785). */}
-        <div className={cn("min-w-0", variant === "title" ? "flex-1 sm:max-w-md" : "w-20")}>
+        <Stack
+          minWidth={0}
+          {...(variant === "title"
+            ? { flexBasis: "0%", flexGrow: 1, flexShrink: 1, maxWidth: narrow ? undefined : 448 }
+            : { width: 80 })}
+        >
           <form.Field name="draft">
             {(field) => (
               <Field
@@ -117,7 +121,7 @@ const ChannelIdentityField = ({
               />
             )}
           </form.Field>
-        </div>
+        </Stack>
         {/* Save / Cancel appear ONLY when the field diverges from what's committed — the
             explicit per-field confirmation. */}
         {dirty && (

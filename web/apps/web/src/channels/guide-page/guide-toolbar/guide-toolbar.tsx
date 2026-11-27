@@ -1,5 +1,6 @@
 import { Action, Chip, CompactSelect, Stack, Text } from "@loomarr/design-system";
 import { useMemo } from "react";
+import { useBelowSm } from "@/lib/use-phone-width";
 import {
   dayLabel,
   FORWARD_DAYS,
@@ -43,6 +44,7 @@ const GuideToolbar = ({
   viewOptionsOpen,
   windowMinutes,
 }: GuideToolbarProps) => {
+  const narrow = useBelowSm();
   const dayChoices = useMemo(() => {
     const out: number[] = [];
     for (let d = -RETENTION_DAYS; d <= FORWARD_DAYS; d++) out.push(d);
@@ -51,7 +53,16 @@ const GuideToolbar = ({
 
   return (
     <>
-      <div className="border-border/60 flex flex-wrap items-center gap-3.5 border-b px-7 py-2.5">
+      <Stack
+        align="center"
+        borderBottomColor="$borderDecorative"
+        borderBottomWidth={1}
+        direction="row"
+        gap="4"
+        paddingHorizontal={28}
+        paddingVertical={10}
+        wrap
+      >
         <Stack align="center" direction="row" flexShrink={1} gap="1.75">
           <div>
             <CompactSelect
@@ -98,7 +109,7 @@ const GuideToolbar = ({
 
         {/* Span stays in the primary row: it changes the question the guide answers, and
             four compact choices are faster to scan than a select. */}
-        <Stack align="center" className="sm:ml-auto" direction="row" flexShrink={1} gap="1.75">
+        <Stack align="center" direction="row" flexShrink={1} gap="1.75" marginLeft={narrow ? 0 : "auto"}>
           <Text as="span" textRole="metadata">
             Span
           </Text>
@@ -130,12 +141,13 @@ const GuideToolbar = ({
         >
           {hasCustomView ? "View · custom" : "View"}
         </Action>
-      </div>
+      </Stack>
 
       {viewOptionsOpen && (
         <Stack
           align="center"
-          className="border-border/60 bg-card/40 border-b"
+          borderBottomColor="$borderDecorative"
+          borderBottomWidth={1}
           columnGap="6"
           direction="row"
           id="guide-view-options"
@@ -143,6 +155,7 @@ const GuideToolbar = ({
           paddingHorizontal={28}
           paddingVertical={10}
           rowGap="2"
+          style={{ backgroundColor: "color-mix(in srgb, var(--surfaceRaised) 40%, transparent)" }}
           wrap
         >
           {/* Pin the window to a specific part of the chosen day without stepping there

@@ -75,7 +75,11 @@ const renderArtwork = (airing: GuideAiringLayout) =>
   airing.source.thumbImage ? (
     <ServedImage image={airing.source.thumbImage} alt="" sizes="360px" fit="contain" />
   ) : airing.source.thumbUrl ? (
-    <img src={airing.source.thumbUrl} alt="" className="size-full object-contain" />
+    <img
+      src={airing.source.thumbUrl}
+      alt=""
+      style={{ height: "100%", objectFit: "contain", width: "100%" }}
+    />
   ) : undefined;
 
 const GuidePage = () => {
@@ -309,9 +313,9 @@ const GuidePage = () => {
   // and says it may be stale; only a Guide that never answered gives the page to the error.
   if (firstFailed) {
     return (
-      <div className="p-6">
+      <Stack padding={24}>
         <ErrorState error={firstError} onRetry={() => guide.refetch()} retrying={guide.isFetching} />
-      </div>
+      </Stack>
     );
   }
 
@@ -432,14 +436,21 @@ const GuidePage = () => {
         </Stack>
       ) : (
         // Desktop browsing uses the full available width with contextual previews.
-        <Stack className="relative" direction="row" flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0}>
+        <Stack direction="row" flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} position="relative">
           {/* The next window is still loading and the grid below is the PREVIOUS one. An
                 overlaid hairline, not a toolbar addition, so the chrome never shifts. */}
           {guide.isPlaceholderData && (
-            <div
-              role="status"
+            <Stack
               aria-label="Loading guide"
-              className="bg-signal pointer-events-none absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse"
+              height={2}
+              left={0}
+              pointerEvents="none"
+              position="absolute"
+              right={0}
+              role="status"
+              style={{ backgroundColor: "var(--color-signal)" }}
+              top={0}
+              zIndex={30}
             />
           )}
           {layout && nowNextView ? (
