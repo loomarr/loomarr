@@ -356,6 +356,7 @@ const stubReachable = () => {
           files: [{ path: "/media/movies/disc2/title_t01.mkv", size: 1, ready: false }],
           candidates: [],
           searched: true,
+          folder: "Movies/disc2",
         },
       ],
       orders: [],

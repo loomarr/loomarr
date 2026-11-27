@@ -40,13 +40,9 @@ func (l *Library) Ignored(ctx context.Context, limit, offset int) ([]IgnoredTitl
 	if err != nil {
 		return nil, 0, err
 	}
-	known, err := l.Store.LibraryRoots(ctx)
+	roots, err := l.rootPaths(ctx)
 	if err != nil {
 		return nil, 0, err
-	}
-	roots := make([]string, 0, len(known.Roots))
-	for _, r := range known.Roots {
-		roots = append(roots, r.Path)
 	}
 	out := make([]IgnoredTitle, 0, len(titles))
 	for _, t := range titles {
@@ -55,23 +51,49 @@ func (l *Library) Ignored(ctx context.Context, limit, offset int) ([]IgnoredTitl
 	return out, total, nil
 }
 
-// ignoredTitle names t by its present files, in path order, under its origin's media folder; a
-// title with none left there is named by the files it has.
+// rootPaths is every media folder, for telling folder labels apart.
+func (l *Library) rootPaths(ctx context.Context) ([]string, error) {
+	known, err := l.Store.LibraryRoots(ctx)
+	if err != nil {
+		return nil, err
+	}
+	roots := make([]string, 0, len(known.Roots))
+	for _, r := range known.Roots {
+		roots = append(roots, r.Path)
+	}
+	return roots, nil
+}
+
+// ignoredTitle names t by what is on disk; one with no present file keeps its title and no folder.
+func ignoredTitle(t librarystore.LibraryIgnoredTitle, files []librarystore.LibraryFile, roots []string) IgnoredTitle {
+	out := IgnoredTitle{ID: t.ID, Kind: t.Kind, Name: t.Name, IgnoredAt: t.IgnoredAt}
+	if name, folder, ok := onDisk(t.Kind, t.Origin, files, roots); ok {
+		out.Folder = folder
+		if name != "" {
+			out.Name = name
+		}
+	}
+	return out
+}
+
+// onDisk names a title by its present files, in path order, under its origin's media folder; a
+// title with none left there is named by the files it has. It says the movie's file name or the
+// show's folder name ("" for a show with no folder of its own), the folder that sits in, and
+// whether there is a file at all.
 //
 // A show's origin is a digest of its folder, and a show joined from several folders has files
 // outside it, so every file's ancestors are tried. The digest is of one folder, so every match is
-// the same folder. A show with no folder of its own matches none: it keeps its title, under the
-// folder of its first file.
-func ignoredTitle(t librarystore.LibraryIgnoredTitle, files []librarystore.LibraryFile, roots []string) IgnoredTitle {
-	out := IgnoredTitle{ID: t.ID, Kind: t.Kind, Name: t.Name, IgnoredAt: t.IgnoredAt}
+// the same folder. A show with no folder of its own matches none: it is under the folder of its
+// first file.
+func onDisk(kind string, origin librarystore.LibraryOrigin, files []librarystore.LibraryFile, roots []string) (string, string, bool) {
 	own := slices.DeleteFunc(slices.Clone(files), func(f librarystore.LibraryFile) bool {
-		return Authority(f.Root) != inventory.AuthorityID(t.Origin.Authority)
+		return Authority(f.Root) != inventory.AuthorityID(origin.Authority)
 	})
 	if len(own) == 0 {
 		own = files
 	}
 	if len(own) == 0 {
-		return out
+		return "", "", false
 	}
 	root := own[0].Root
 	label := rootLabel(root, roots)
@@ -79,20 +101,18 @@ func ignoredTitle(t librarystore.LibraryIgnoredTitle, files []librarystore.Libra
 		return strings.TrimPrefix(filepath.ToSlash(f.Path), strings.TrimSuffix(filepath.ToSlash(root), "/")+"/")
 	}
 	first := within(own[0])
-	out.Folder = path.Join(label, path.Dir(first))
-	if t.Kind != "series" {
-		out.Name = path.Base(first)
-		return out
+	folder := path.Join(label, path.Dir(first))
+	if kind != "series" {
+		return path.Base(first), folder, true
 	}
 	for _, f := range own {
 		for dir := path.Dir(within(f)); f.Root == root && dir != "." && dir != "/"; dir = path.Dir(dir) {
-			if seriesOrigin(root, dir).ExternalItemID == t.Origin.Key {
-				out.Name, out.Folder = path.Base(dir), path.Join(label, path.Dir(dir))
-				return out
+			if seriesOrigin(root, dir).ExternalItemID == origin.Key {
+				return path.Base(dir), path.Join(label, path.Dir(dir)), true
 			}
 		}
 	}
-	return out
+	return "", folder, true
 }
 
 // rootLabel is the name Settings → Library shows for a media folder (the web's folderName), or its

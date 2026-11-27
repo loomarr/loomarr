@@ -5969,6 +5969,24 @@ components:
       required:
         - suggestions
       type: object
+    IgnoreLibraryNeedsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/IgnoreLibraryNeedsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        ids:
+          description: The titles ignored; send them to restore them
+          items:
+            type: string
+          type: array
+      required:
+        - ids
+      type: object
     ImageDTO:
       additionalProperties: false
       properties:
@@ -7571,6 +7589,9 @@ components:
           items:
             $ref: "#/components/schemas/LibraryNeedFileDTO"
           type: array
+        folder:
+          description: Where it sits, from its media folder's name down; group cards by it
+          type: string
         item:
           $ref: "#/components/schemas/LibraryItemDTO"
         searched:
@@ -7581,6 +7602,7 @@ components:
         - searched
         - candidates
         - files
+        - folder
       type: object
     LibraryNeedFileDTO:
       additionalProperties: false
@@ -8242,6 +8264,27 @@ components:
         language:
           description: ISO 639 code; absent when the file doesn't say
           type: string
+      type: object
+    LibraryTitleIDsInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LibraryTitleIDsInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        ids:
+          description: The titles
+          items:
+            type: string
+          maxItems: 10000
+          minItems: 1
+          type: array
+          uniqueItems: true
+      required:
+        - ids
       type: object
     LibraryTitlesEvent:
       additionalProperties: false
@@ -19912,6 +19955,28 @@ paths:
       summary: Titles you ignored
       tags:
         - library
+  /v1/library/ignored/restore:
+    post:
+      description: "Undoes the ignore of each title: all of them or none."
+      operationId: restoreLibraryIgnored
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryTitleIDsInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Bring back several ignored titles
+      tags:
+        - library
   /v1/library/items:
     get:
       description: Movies and series Loomarr found in its media folders, by name. A title still getting ready has files whose details aren't read yet. A member's titles leave out the admin-only counts.
@@ -20302,6 +20367,32 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Titles that need you
+      tags:
+        - library
+  /v1/library/needs/ignore:
+    post:
+      description: "Ignores titles waiting in Needs you, such as the ones under one folder: all of them or none."
+      operationId: ignoreLibraryNeeds
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryTitleIDsInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IgnoreLibraryNeedsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Ignore several titles
       tags:
         - library
   /v1/library/path-map:
