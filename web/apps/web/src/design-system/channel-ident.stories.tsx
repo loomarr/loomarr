@@ -5,7 +5,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 // A channel's mark in the guide rail and the channel header. A logo when one exists, otherwise a
 // monogram in the hue of the channel number, so renaming a channel does not change how it looks.
 const meta = {
-  title: "Loomarr Components/Channel Ident",
+  title: "Channels/ChannelIdent",
   component: ChannelIdent,
   args: { name: "1980s Action Heroes", number: 3 },
 } satisfies Meta<typeof ChannelIdent>;
