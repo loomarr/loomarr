@@ -34,7 +34,7 @@ var policyFixtures = []struct {
 	{
 		id:      "ch-full",
 		desired: `[{"Kind":"program","LibraryItemID":"lib-film","Start":"2026-01-01T00:00:00Z"},{"Kind":"filler"}]`,
-		policy: `{"scope":{"series":["series:tvdb:81189"],"collections":["col-a","dead-1","col-b","col-a","dead-1"],` +
+		policy: `{"scope":{"series":["series:tvdb:90000701"],"collections":["col-a","dead-1","col-b","col-a","dead-1"],` +
 			`"seasons":{"from":1,"to":3},"dates":{"movieRelease":[{"from":1980,"to":1989}]},` +
 			`"genres":{"include":["Comedy"],"exclude":["Horror"]},"runtimeMax":3600},` +
 			`"audience":{"ceiling":"PG"},"separation":{"minGapHours":1.50},"ordering":"shuffle",` +
