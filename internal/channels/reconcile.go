@@ -655,7 +655,7 @@ func (e *Engine) attachFillerList(ctx context.Context, ch channelstore.Channel, 
 }
 
 // healEntry returns the per-entry enrichment schedule.ApplyLineup(LineupHeal) applies to each
-// lineup entry in place (the caller persists ch.Lineup). It does two one-time repairs:
+// lineup entry in place (the caller persists ch.Lineup). It does these repairs:
 //   - fill an empty OfficialRating by looking the title up against the library (§389): a
 //     fail-closed audience gate would otherwise drop a now-in-library title to dead air.
 //   - settle a MOVIE's TMDB CollectionID tri-state (§5 franchise ordering): >0 a real
@@ -668,6 +668,9 @@ func (e *Engine) attachFillerList(ctx context.Context, ch channelstore.Channel, 
 // lookup error never fails the reconcile — it just leaves the field as it was. A nil source
 // (ratings, franchises or collections not wired) skips that part.
 func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
+	// Set by the first failed collections lookup. The resolver fails only when it cannot read its
+	// index, which holds for every key, so the rest of the pass does not ask again.
+	boxSetsFailed := false
 	return func(en *schedule.LineupEntry) {
 		if e.ratings != nil && en.OfficialRating == "" {
 			if raw, ok, err := e.ratings.Rating(ctx, en.Key); err != nil {
@@ -681,11 +684,13 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 		// Re-stamp collection membership (§2.2) every pass, so scope.collections follows the
 		// household's collection edits, and the schedulers that read the stored lineup (preview,
 		// playout timeline) filter with no library I/O. The resolver answers from a cached
-		// index, so this costs no query per entry. A lookup that fails keeps the last stamp.
-		if e.boxSets != nil {
+		// index, so this costs no query per entry. A lookup that fails keeps the last stamp on
+		// this entry and every later one in the pass.
+		if e.boxSets != nil && !boxSetsFailed {
 			if ids, ok, err := e.boxSets.BoxSets(ctx, en.Key); err != nil {
+				boxSetsFailed = true
 				if e.log != nil {
-					e.log.Warn("heal boxsets (entry unresolved this pass)", "key", en.Key, "err", err)
+					e.log.Warn("heal boxsets (lineup keeps its last stamps this pass)", "key", en.Key, "err", err)
 				}
 			} else if ok {
 				en.BoxSetIDs = ids

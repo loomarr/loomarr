@@ -1217,8 +1217,8 @@ One importer's latest report of one item. Replaced each time that importer repor
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `authority_id` | The importer that reported it. `scan:` and a fingerprint of the scanned folder, or `library:emby:` or `library:jellyfin:` and a fingerprint of the server's address. | `TEXT` · key |
-| `external_item_id` | The importer's own id for the item, unique only within that importer. The media server's item id, or for a library scan a fingerprint of the file's path (`file:`) or the show's folder (`series:dir:`). | `TEXT` · key |
+| `authority_id` | The importer that reported it. `scan:` and a fingerprint of the scanned folder for a library scan, or `local-playout:v1` for a local file that playout recorded. | `TEXT` · key |
+| `external_item_id` | The importer's own id for the item, unique only within that importer. For a library scan a fingerprint of the file's path (`file:`) or the show's folder (`series:dir:`), and for playout a fingerprint of the file's path. | `TEXT` · key |
 | `item_id` | The item the report belongs to (inventory_items.id). | `TEXT` · → `inventory_items.id` |
 | `observation_json` | What the importer reported: names, overview, genres, tags, studios, people, year, season and episode numbers, premiere date, rating, score, runtime, artwork and related ids. A coverage map tells a field that is known to be empty apart from one that was not reported. | `TEXT` |
 | `observed_at` | When this report was taken, in Unix seconds. | `BIGINT` |

@@ -32,12 +32,12 @@ tables:
       housekeeping deletes it 180 days after it went missing, with its source reports.
     columns:
       authority_id: >
-        The importer that reported it. `scan:` and a fingerprint of the scanned folder, or
-        `library:emby:` or `library:jellyfin:` and a fingerprint of the server's address.
+        The importer that reported it. `scan:` and a fingerprint of the scanned folder for a
+        library scan, or `local-playout:v1` for a local file that playout recorded.
       external_item_id: >
-        The importer's own id for the item, unique only within that importer. The media server's
-        item id, or for a library scan a fingerprint of the file's path (`file:`) or the show's
-        folder (`series:dir:`).
+        The importer's own id for the item, unique only within that importer. For a library scan a
+        fingerprint of the file's path (`file:`) or the show's folder (`series:dir:`), and for
+        playout a fingerprint of the file's path.
       item_id: The item the report belongs to (inventory_items.id).
       observation_json: >
         What the importer reported: names, overview, genres, tags, studios, people, year, season and
