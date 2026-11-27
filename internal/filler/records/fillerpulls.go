@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // Persisted filler pulls (§10 V35) — the approval gate for filler acquisition.
@@ -20,6 +21,10 @@ import (
 
 const fillerPullSelect = `SELECT id, title, reason, proposed_by, status, note, plan_json,
 	created_at, decided_at, decided_by FROM filler_pulls`
+
+// pullDecider writes a pull's decided_by: the admin, or NULL while pending ("") and for an admin
+// deleted since. decided_by is a foreign key to users (SET NULL, #2793).
+const pullDecider = `(SELECT id FROM users WHERE id = ?)`
 
 type fillerPullPlanDocument struct {
 	Version  string                                  `json:"version"`
@@ -80,7 +85,7 @@ func (s *sqlStore) UpsertPull(ctx context.Context, p acquisition.Pull) error {
 	_, err = s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO filler_pulls (id, title, reason, proposed_by, status, note, plan_json,
 		   created_at, decided_at, decided_by)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, `+pullDecider+`)
 		 ON CONFLICT(id) DO UPDATE SET
 		   title=excluded.title, reason=excluded.reason, proposed_by=excluded.proposed_by,
 		   status=excluded.status, note=excluded.note, plan_json=excluded.plan_json,
@@ -107,7 +112,7 @@ func scanPull(sc scannable) (acquisition.Pull, error) {
 		createdAt, decidedAt int64
 	)
 	if err := sc.Scan(&p.ID, &p.Title, &p.Reason, &p.ProposedBy, &status, &p.Note, &plan,
-		&createdAt, &decidedAt, &p.DecidedBy); err != nil {
+		&createdAt, &decidedAt, (*storedb.OptionalID)(&p.DecidedBy)); err != nil {
 		return acquisition.Pull{}, err
 	}
 	p.Status = acquisition.PullStatus(status)
