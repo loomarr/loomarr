@@ -31,6 +31,9 @@ func maskWorkflowExpressions(run string) (string, int, error) {
 			continue
 		}
 		switch {
+		case literal && strings.HasPrefix(run[index:], "''"):
+			// The escape for a quote, which Actions substitutes into the script.
+			return "", line, fmt.Errorf("workflow expression contains an escaped quote, which the shell reader cannot follow")
 		case !literal && strings.HasPrefix(run[index:], "}}"):
 			inside = false
 			masked.WriteString("}}")

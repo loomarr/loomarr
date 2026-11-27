@@ -99,6 +99,7 @@ func TestWorkflowExpressionsAreOpaqueOnlyInRunText(t *testing.T) {
 		"unclosed":              "true\necho ${{ x",
 		"double quote":          "true\necho ${{ \"x\" }}",
 		"shell quote in string": "true\necho \"${{ '\"' }}\"",
+		"escaped single quote":  "true\necho '${{ 'a''b' }} ; ./pull.sh ; echo ${{ 'c''d' }}'",
 	} {
 		// The marshalled file is a block scalar, so run's second line is line 3.
 		if err := check(run); err == nil || !strings.Contains(err.Error(), "zz.yml:3: ") {
