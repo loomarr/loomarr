@@ -65,14 +65,17 @@ func testUpcomingAirings(t *testing.T, newStore NewStoreFunc) {
 		}
 		for i := range got {
 			g, w := got[i], want[i]
-			if g.ChannelID != w.ChannelID || !g.Start.Equal(w.Start) || !g.End.Equal(w.End) ||
+			if g.ChannelID != w.ChannelID || g.ChannelName != w.ChannelName || g.ChannelNumber != w.ChannelNumber || !g.Start.Equal(w.Start) || !g.End.Equal(w.End) ||
 				g.LibraryItemID != w.LibraryItemID || g.TitleKey != w.TitleKey || g.Forecast != w.Forecast {
 				return false
 			}
 		}
 		return true
 	}
-	on := func(ch Channel, x UpcomingAiring) UpcomingAiring { x.ChannelID = ch.ID; return x }
+	on := func(ch Channel, x UpcomingAiring) UpcomingAiring {
+		x.ChannelID, x.ChannelName, x.ChannelNumber = ch.ID, ch.Name, ch.Number
+		return x
+	}
 
 	// A replace writes the rows; the movie's finished row is not read, its row on air is.
 	finished := airing("m1", movieKey, -120, -10, false)

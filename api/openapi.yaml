@@ -6890,7 +6890,7 @@ components:
           type: string
         episode:
           $ref: "#/components/schemas/LibraryAiringEpisodeDTO"
-          description: A series' episode that airs; absent for any other title, and for an episode the caller doesn't read
+          description: A series' episode that airs; absent for any other title, for an episode the caller doesn't read, and for one with no present file
         forecast:
           description: Past the window on air, so it can still change
           type: boolean

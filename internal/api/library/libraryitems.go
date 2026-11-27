@@ -432,7 +432,7 @@ type libraryAiringDTO struct {
 	Start    time.Time                `json:"start"`
 	End      time.Time                `json:"end"`
 	Forecast bool                     `json:"forecast" doc:"Past the window on air, so it can still change"`
-	Episode  *libraryAiringEpisodeDTO `json:"episode,omitempty" doc:"A series' episode that airs; absent for any other title, and for an episode the caller doesn't read"`
+	Episode  *libraryAiringEpisodeDTO `json:"episode,omitempty" doc:"A series' episode that airs; absent for any other title, for an episode the caller doesn't read, and for one with no present file"`
 }
 
 type libraryAiringEpisodeDTO struct {

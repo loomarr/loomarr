@@ -381,6 +381,7 @@ const stubReachable = () => {
       match: { by: "app", app: "radarr", page: "http://radarr.invalid/movie/paper-kites" },
       detailsFrom: {},
       channels: [],
+      nextAirings: [],
     }),
     // Collections and a collection's editor: one of the household's, served under any id.
     getListCollectionsMockHandler({
