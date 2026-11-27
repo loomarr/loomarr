@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 const notificationDestinationSelect = `SELECT id, means, label, scope, owner_id, audience,
@@ -49,7 +50,7 @@ func (s *Store) SaveNotificationDestinationRecord(ctx context.Context, destinati
 			credential_keys_json = excluded.credential_keys_json,
 			credentials_encrypted = excluded.credentials_encrypted,
 			updated_at = excluded.updated_at`),
-		destination.ID, destination.Means, destination.Label, destination.Scope, destination.OwnerID,
+		destination.ID, destination.Means, destination.Label, destination.Scope, storedb.OptionalID(destination.OwnerID),
 		destination.Audience, string(topicsJSON), destination.Enabled, string(configurationJSON),
 		destination.SubscriptionFingerprint, string(credentialKeysJSON), destination.CredentialsEncrypted,
 		epoch(destination.CreatedAt), epoch(destination.UpdatedAt))
@@ -163,7 +164,7 @@ func scanNotificationDestinationRecord(sc scannable) (notifications.DestinationR
 	var credentialKeysJSON sql.NullString
 	var createdAt, updatedAt int64
 	if err := sc.Scan(
-		&destination.ID, &means, &destination.Label, &scope, &destination.OwnerID, &audience,
+		&destination.ID, &means, &destination.Label, &scope, (*storedb.OptionalID)(&destination.OwnerID), &audience,
 		&topicsJSON, &destination.Enabled, &configurationJSON, &destination.SubscriptionFingerprint,
 		&credentialKeysJSON, &destination.CredentialsEncrypted, &createdAt, &updatedAt,
 	); errors.Is(err, sql.ErrNoRows) {

@@ -79,7 +79,7 @@ One area of the [package map](../package-map.md#start-here).
   Persists the crash reports paired apps send (#1816).
 - **`platform/store/diagnosticsstore`** · 1 importer · → `platform/diagnostics`, `platform/store/storedb`
   Persists the diagnostic event log, the process runs behind it, and the running byte totals that bound them (the diagnostic_events, diagnostic_process_runs and diagnostic_retained_bytes tables).
-- **`platform/store/identitystore`** · 9 importers · → `people/access`, `people/contact`, `people/notifications`, `platform/store/storedb`
+- **`platform/store/identitystore`** · 10 importers · → `people/access`, `people/contact`, `people/notifications`, `platform/store/storedb`
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).
 - **`platform/store/inventorystore`** · 1 importer · → `library/inventory`, `platform/store/storedb`
   Media-inventory cluster (#2151): the items, origins, sources, measurements and analyses the scanner records under inventory_*.
