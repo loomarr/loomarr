@@ -221,29 +221,11 @@
     "src/queue/request-lists/request-lists.tsx": {
       "tailwindClasses": 6
     },
-    "src/routes/_authed/settings/index.tsx": {
-      "tailwindClasses": 13
-    },
     "src/routes/join.tsx": {
       "tailwindClasses": 1
     },
     "src/routes/reset-password.tsx": {
       "tailwindClasses": 1
-    },
-    "src/settings/notification-destinations-panel/provider-form/provider-form.tsx": {
-      "tailwindClasses": 1
-    },
-    "src/settings/notification-destinations-panel/web-push-form/web-push-form.tsx": {
-      "tailwindClasses": 1
-    },
-    "src/settings/paired-devices/paired-devices.tsx": {
-      "tailwindClasses": 1
-    },
-    "src/settings/settings-context-nav/settings-context-nav.tsx": {
-      "tailwindClasses": 3
-    },
-    "src/settings/settings-page/settings-page.tsx": {
-      "tailwindClasses": 8
     },
     "src/settings/tasks-page/tasks-page.tsx": {
       "tailwindClasses": 4

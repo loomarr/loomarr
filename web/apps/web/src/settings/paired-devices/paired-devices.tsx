@@ -95,8 +95,11 @@ const ApproveDevice = () => {
           the device itself cannot direct anyone here, so it names the short route instead. */}
       <Stack marginTop={4}>
         <Text as="p" textRole="compact" tone="secondary">
-          Your TV will point at <span className="font-mono">/pair</span> — that page does the same thing and
-          is easier to reach from a phone.
+          Your TV will point at{" "}
+          <Text as="span" textRole="mono" tone="secondary">
+            /pair
+          </Text>{" "}
+          — that page does the same thing and is easier to reach from a phone.
         </Text>
       </Stack>
       <Stack

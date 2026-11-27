@@ -2,14 +2,13 @@ import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { cn } from "@/lib/utils";
 import { everyEditSaved } from "../saved-edits";
 import { useSettingsEdits } from "../settings-edits";
 import {
@@ -198,9 +197,10 @@ const SettingsPage = ({
       )}
 
       <Stack
-        className={embedded ? undefined : "overflow-auto"}
         gap="8"
-        {...(embedded ? { marginTop: 24 } : { flexBasis: "0%", flexGrow: 1, flexShrink: 1, padding: 24 })}
+        {...(embedded
+          ? { marginTop: 24 }
+          : { flexBasis: "0%", flexGrow: 1, flexShrink: 1, overflow: "auto" as const, padding: 24 })}
       >
         {typeof children === "function" ? children({ liveValue, setEdit }) : children}
 
@@ -265,16 +265,8 @@ const SettingsPage = ({
               </Stack>
             );
           }
-          return (
-            <Stack
-              key={block.title}
-              className={cn(
-                block.surface === "card" && "border-border bg-card rounded-xl border p-5 shadow-sm sm:p-6",
-              )}
-              flexShrink={0}
-              gap="4"
-              render="section"
-            >
+          const content = (
+            <>
               <div>
                 <Text as="h2" strong textRole="headline">
                   {block.title}
@@ -295,7 +287,21 @@ const SettingsPage = ({
                 disabledReasons={block.disabledReasons}
               />
               {typeof block.footer === "function" ? block.footer({ liveValue, setEdit }) : block.footer}
-            </Stack>
+            </>
+          );
+          if (block.surface !== "card") {
+            return (
+              <Stack flexShrink={0} gap="4" key={block.title} render="section">
+                {content}
+              </Stack>
+            );
+          }
+          return (
+            <Card flexShrink={0} key={block.title} render="section">
+              <Stack gap="4" padding={{ base: 20, sm: 24 }}>
+                {content}
+              </Stack>
+            </Card>
           );
         })}
 
