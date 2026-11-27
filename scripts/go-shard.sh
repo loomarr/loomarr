@@ -46,6 +46,10 @@ WEIGHTS="${GO_SHARD_WEIGHTS:-$ROOT/scripts/go-race-weights.tsv}"
 CERTIFICATION="${GO_SHARD_CERTIFICATION:-$ROOT/scripts/go-certification-lanes.tsv}"
 RACE_POLICY="${GO_SHARD_RACE_POLICY:-$ROOT/scripts/go-race-policy.sh}"
 MAX_IMBALANCE_PERCENT=125
+# The serial lanes hold a handful of indivisible packages from 45s to over 400s, and no assignment of
+# them stays within 125% (#4538: the best of every five-lane split is 134%). Imbalance there costs
+# only idle runner time; the lane budget below still bounds each lane, so they get a wider band.
+MAX_CERTIFICATION_IMBALANCE_PERCENT=150
 ORDINARY_WORKERS=4
 
 # Every latency budget below derives from #1570's wall-clock target: a Go-only merge-queue run
@@ -396,12 +400,12 @@ if [ "${1:-}" = "--verify" ]; then
   certification_modeled="$(for ((i = 1; i <= CERTIFICATION_LANES; i++)); do
     printf '%s %s %s\n' "$i" "$(certification_load "$i")" "$LANE_TEST_SECONDS"
   done)"
-  if ! printf '%s\n' "$certification_modeled" | awk -v ratio="$MAX_IMBALANCE_PERCENT" '
+  if ! printf '%s\n' "$certification_modeled" | awk -v ratio="$MAX_CERTIFICATION_IMBALANCE_PERCENT" '
     NR == 1 { min = $2; high = $2 }
     { if ($2 < min) min = $2; if ($2 > high) high = $2; if ($2 > $3) over = 1 }
     END { exit !(min > 0 && !over && high * 100 <= min * ratio) }
   '; then
-    echo "go-shard: certification split exceeds its lane budget or ${MAX_IMBALANCE_PERCENT}% balance budget" >&2
+    echo "go-shard: certification split exceeds its lane budget or ${MAX_CERTIFICATION_IMBALANCE_PERCENT}% balance budget" >&2
     while read -r lane seconds budget; do
       printf '  certification lane %s/%s: %ss (budget %ss)\n' "$lane" "$CERTIFICATION_LANES" "$seconds" "$budget" >&2
     done <<< "$certification_modeled"
@@ -423,9 +427,10 @@ fi
 # --budgets: the derived budgets, one `name seconds` row each, so tests read the same numbers.
 if [ "${1:-}" = "--budgets" ]; then
   [ "$#" -eq 1 ] || usage
-  printf 'target_queue %s\nqueue_overhead %s\nlane_test %s\nordinary_aggregate %s\nmax_package %s\n' \
+  printf 'target_queue %s\nqueue_overhead %s\nlane_test %s\nordinary_aggregate %s\nmax_package %s\nimbalance_percent %s\ncertification_imbalance_percent %s\n' \
     "$TARGET_QUEUE_SECONDS" "$QUEUE_OVERHEAD_SECONDS" "$LANE_TEST_SECONDS" \
-    "$MAX_ORDINARY_AGGREGATE_SECONDS" "$MAX_PACKAGE_SECONDS"
+    "$MAX_ORDINARY_AGGREGATE_SECONDS" "$MAX_PACKAGE_SECONDS" "$MAX_IMBALANCE_PERCENT" \
+    "$MAX_CERTIFICATION_IMBALANCE_PERCENT"
   exit 0
 fi
 

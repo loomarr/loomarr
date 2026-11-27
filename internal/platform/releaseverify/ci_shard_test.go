@@ -497,12 +497,12 @@ func TestGoCertificationLanePackageSetIsReviewed(t *testing.T) {
 	want := []string{
 		"1 internal/platform/store",
 		"2 internal/demolibrary",
-		"2 internal/playout",
 		"3 internal/channels/schedule",
 		"4 internal/api",
-		"4 internal/integration",
+		"4 internal/app",
 		"5 internal/playout/watermark",
-		"5 internal/app",
+		"5 internal/integration",
+		"5 internal/playout",
 	}
 	if strings.Join(packages, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("certification lane packages = %v, want reviewed set %v", packages, want)
@@ -611,8 +611,8 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 	if slices.Max(certificationLoads) > budgets["lane_test"] {
 		t.Fatalf("modeled certification lane exceeds the %ds lane budget: loads=%v", budgets["lane_test"], certificationLoads)
 	}
-	if slices.Max(certificationLoads)*100 > slices.Min(certificationLoads)*125 {
-		t.Fatalf("modeled certification lanes differ by more than 25%%: loads=%v", certificationLoads)
+	if ratio := budgets["certification_imbalance_percent"]; slices.Max(certificationLoads)*100 > slices.Min(certificationLoads)*ratio {
+		t.Fatalf("modeled certification lanes differ by more than %d%%: loads=%v", ratio-100, certificationLoads)
 	}
 }
 
