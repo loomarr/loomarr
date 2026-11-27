@@ -256,6 +256,7 @@ func (s *Handlers) channelGuide(ctx context.Context, in *guideInput) (*guideOutp
 	// order is the channel order the store returned (number-sorted), and an append-as-you-
 	// finish would reorder the guide by whichever channel happened to compute fastest.
 	rows := make([]GuideChannelTimeline, len(channels))
+	broadcasts := make([][]timeline.Broadcast, len(channels))
 	artworkRefs := make([][]guideArtworkRef, len(channels))
 	sem := make(chan struct{}, guideConcurrency)
 	var wg sync.WaitGroup
@@ -296,61 +297,39 @@ func (s *Handlers) channelGuide(ctx context.Context, in *guideInput) (*guideOutp
 				s.log.Warn("guide: timeline failed for one channel", "channel", ch.ID, "err", err)
 				return
 			}
-			// A break's composition, resolved per-airing. Only for filler, and only when the
-			// assembler is wired: an install without filler configured shows breaks with no
-			// hover detail rather than failing the request. One batch per channel row (#1420):
-			// the per-break call re-read the channel, the whole catalog and the play history for
-			// every break in the window.
-			podAt := map[int]pod.Pod{}
-			if s.pods != nil {
-				var idx []int
-				var slots []pod.BreakSlot
-				for i, b := range bs {
-					if b.Kind == schedule.SlotFiller {
-						idx = append(idx, i)
-						slots = append(slots, pod.BreakSlot{Start: b.Start, Length: b.BreakLength()})
-					}
-				}
-				if len(slots) > 0 {
-					if pods, perr := s.pods.PreviewAtMany(ctx, ch.ID, slots); perr == nil {
-						for j, pod := range pods {
-							podAt[idx[j]] = pod
-						}
-					}
-				}
-			}
-			airings := make([]GuideAiring, 0, len(bs))
-			refs := make([]guideArtworkRef, 0, len(bs))
-			for i, b := range bs {
-				a := guideAiringOf(ch.ID, b)
-				ref := guideArtworkRef{}
-				if b.Kind == schedule.SlotProgram && s.timelineThumbs != nil {
-					ref.program = timelineThumbKey{
-						key: string(b.Key), season: b.Season, episode: b.Episode,
-					}
-				}
-				if b.Kind == schedule.SlotFiller {
-					if pod := podAt[i]; len(pod.Entries) > 0 {
-						// Every now/next line, dock and cell reads these names (#1980).
-						dto := viewerPoolDTO(pod)
-						a.Pod = &dto
-						for _, entry := range pod.Entries {
-							if entry.Hash != "" {
-								ref.fillerClipHashes = append(ref.fillerClipHashes, entry.Hash)
-							}
-						}
-					}
-				}
-				airings = append(airings, a)
-				refs = append(refs, ref)
-			}
 			// The only cross-goroutine write, and it is to this goroutine's OWN index — no two
 			// goroutines share an element, so this needs no mutex.
-			rows[i].Airings = airings
-			artworkRefs[i] = refs
+			broadcasts[i] = bs
 		}(i, ch)
 	}
 	wg.Wait()
+
+	// A break's composition, resolved per-airing. Only for filler, and only when the assembler is
+	// wired: an install without filler configured shows breaks with no hover detail rather than
+	// failing the request. ONE batch for the whole grid (#2147): the catalog and the play history
+	// are whole-install reads, so a batch per row would repeat them once per channel, queued on the
+	// store's small connection pool.
+	pods := make([][]pod.Pod, len(channels))
+	if s.pods != nil {
+		slots := make([][]pod.BreakSlot, len(channels))
+		breaks := false
+		for i, bs := range broadcasts {
+			for _, b := range bs {
+				if b.Kind == schedule.SlotFiller {
+					slots[i] = append(slots[i], pod.BreakSlot{Start: b.Start, Length: b.BreakLength()})
+					breaks = true
+				}
+			}
+		}
+		if breaks {
+			if resolved, perr := s.pods.PreviewAtChannels(ctx, channels, slots); perr == nil && len(resolved) == len(channels) {
+				pods = resolved
+			}
+		}
+	}
+	for i, bs := range broadcasts {
+		rows[i].Airings, artworkRefs[i] = s.guideRow(channels[i].ID, bs, pods[i])
+	}
 	endTimelines()
 
 	// TMDB has no multi-title endpoint. Resolve one deduplicated, bounded-concurrent work set for
@@ -456,6 +435,40 @@ func (s *Handlers) channelGuide(ctx context.Context, in *guideInput) (*guideOutp
 
 	out.Body.Channels = rows
 	return out, nil
+}
+
+// guideRow projects one channel's broadcasts onto the grid, with the artwork each block resolves
+// by. pods holds one pod per filler block, in timeline order, as PreviewAtChannels returns them;
+// nil means the row's breaks carry no composition.
+func (s *Handlers) guideRow(channelID string, bs []timeline.Broadcast, pods []pod.Pod) ([]GuideAiring, []guideArtworkRef) {
+	airings := make([]GuideAiring, 0, len(bs))
+	refs := make([]guideArtworkRef, 0, len(bs))
+	breaks := 0
+	for _, b := range bs {
+		a := guideAiringOf(channelID, b)
+		ref := guideArtworkRef{}
+		if b.Kind == schedule.SlotProgram && s.timelineThumbs != nil {
+			ref.program = timelineThumbKey{
+				key: string(b.Key), season: b.Season, episode: b.Episode,
+			}
+		}
+		if b.Kind == schedule.SlotFiller {
+			if breaks < len(pods) && len(pods[breaks].Entries) > 0 {
+				// Every now/next line, dock and cell reads these names (#1980).
+				dto := viewerPoolDTO(pods[breaks])
+				a.Pod = &dto
+				for _, entry := range pods[breaks].Entries {
+					if entry.Hash != "" {
+						ref.fillerClipHashes = append(ref.fillerClipHashes, entry.Hash)
+					}
+				}
+			}
+			breaks++
+		}
+		airings = append(airings, a)
+		refs = append(refs, ref)
+	}
+	return airings, refs
 }
 
 // guideAiringOf projects a timeline.Broadcast onto the wire shape.

@@ -2,6 +2,7 @@ package operator
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels"
@@ -66,12 +67,37 @@ func (a PodPreview) PreviewAtMany(ctx context.Context, channelID string, slots [
 	if err != nil {
 		return nil, err
 	}
+	return a.pods.PreviewAtMany(ctx, ch.ID, channels.SelectionForChannel(ch), breakSeeds(ch.ID, slots))
+}
+
+// PreviewAtChannels is PreviewAtMany for several channels in one call: the Guide's hover cards for
+// every row (#2147). slots[i] are the breaks of chans[i], and the pods at index i are pod for pod
+// what PreviewAtMany returns for that channel. The whole batch shares one catalog and exposure
+// read.
+//
+// It takes the channel rows the caller already read rather than reading each again: the Guide has
+// just listed every channel, and a row is the same whichever query returned it.
+func (a PodPreview) PreviewAtChannels(ctx context.Context, chans []channelstore.Channel, slots [][]pod.BreakSlot) ([][]pod.Pod, error) {
+	if len(chans) != len(slots) {
+		return nil, fmt.Errorf("preview pods: %d channels but %d slot lists", len(chans), len(slots))
+	}
+	reqs := make([]pod.ChannelBreaks, len(chans))
+	for i, ch := range chans {
+		reqs[i] = pod.ChannelBreaks{
+			ChannelID: ch.ID, Selection: channels.SelectionForChannel(ch), Breaks: breakSeeds(ch.ID, slots[i]),
+		}
+	}
+	return a.pods.PreviewChannels(ctx, reqs)
+}
+
+// breakSeeds is each break of a channel's timeline with the seed playout derives from its start.
+func breakSeeds(channelID string, slots []pod.BreakSlot) []pod.Break {
 	breaks := make([]pod.Break, len(slots))
 	for i, s := range slots {
 		ms := s.Start.UnixMilli()
-		breaks[i] = pod.Break{Seed: channels.PodSeedAt(ch.ID, ms), Start: time.UnixMilli(ms).UTC(), Length: s.Length}
+		breaks[i] = pod.Break{Seed: channels.PodSeedAt(channelID, ms), Start: time.UnixMilli(ms).UTC(), Length: s.Length}
 	}
-	return a.pods.PreviewAtMany(ctx, ch.ID, channels.SelectionForChannel(ch), breaks)
+	return breaks
 }
 
 // Coverage reports which ladder rung this channel's breaks would draw from (V29b-api).

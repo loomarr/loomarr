@@ -78,6 +78,14 @@ func (s *Handlers) guideHandler(w http.ResponseWriter, r *http.Request) {
 		})
 
 		bs, err := s.playoutGuide.BroadcastsBetween(r.Context(), ch.ID, from, to)
+		if err != nil && r.Context().Err() != nil {
+			// The media server hung up or gave up waiting: no document can reach it. Every
+			// remaining channel would fail the same way at its first store read, so stop rather
+			// than log each one as a broken channel.
+			s.log.Debug("playout: guide request ended before the document was built",
+				"channel", ch.ID, "err", r.Context().Err())
+			return
+		}
 		if err != nil {
 			// ONE channel failing must not empty the whole guide. A media server re-fetches
 			// the document wholesale, so returning an error here would blank every channel's
