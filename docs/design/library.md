@@ -545,9 +545,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   sizes, tracks, chapters), `match` and `detailsFrom`; a list entry, a collection's title and a
   set's title leave out the file count (`files`), `unplayable` and `extraCopies`; an episode
   leaves out `fromFile`. Each of those fields is optional in the schema and says "admins only".
-  "Getting ready" (`ready`) stays. The list's filters (kind, search, ready, genre, sort), its
-  total, its letter index and the genre counts follow the rule above: a member never learns a
-  hidden title's genre or initial.
+  "Getting ready" (`ready`) stays. The list's filters (kind, search, ready, genre, studio,
+  person, audio, subtitles, uhd, hdr, sort), its total, its letter index, the genre and filter
+  choices and the people follow the rule above: a member never learns a hidden title's genre,
+  studio, language, cast or initial. The track filters read file data on the server; a member
+  learns only that a title has such a track, never a file or a path.
   The other routes a member calls that read Library titles follow the same rule, decided from
   the caller's role at the route: `GET /v1/search` (its Library half, and a TMDB result's
   in-Library mark, whether a title search or a structured discovery), `GET /v1/discovery/ideas`
