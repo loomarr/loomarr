@@ -13,7 +13,7 @@ import (
 // index, not read from every track of the kind. The statement explained is the list's own.
 func TestTrackFiltersReadTheirIndexes(t *testing.T) {
 	s := newSQLiteStore(t).(*sqlStore)
-	query, args := s.ListCountQuery(librarystore.LibraryItemQuery{Kind: "movie", Audio: "EN", Subtitles: "fr"})
+	query, args := librarystore.ListCountQuery(s.libraryCluster, librarystore.LibraryItemQuery{Kind: "movie", Audio: "EN", Subtitles: "fr"})
 	rows, err := s.db.QueryContext(context.Background(), `EXPLAIN QUERY PLAN `+query, args...)
 	if err != nil {
 		t.Fatal(err)
