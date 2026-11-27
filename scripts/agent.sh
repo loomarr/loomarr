@@ -441,7 +441,8 @@ doctor() {
 	echo
 	"$SCRIPT_DIR/dev-env.sh" show
 	echo
-	# Optional, like Orca: its settings check needs bash, which the required toolchain does not.
+	# Optional, like Orca. The check needs bash, and doctor must still run with only the required
+	# toolchain on PATH (agent-harness-test runs it that way).
 	if command -v bash >/dev/null 2>&1; then "$SCRIPT_DIR/dev/orca-doctor.sh"; fi
 	worktree_count="$(git -C "$ROOT" worktree list --porcelain | grep -c '^worktree ')"
 	echo "Registered worktrees: $worktree_count"

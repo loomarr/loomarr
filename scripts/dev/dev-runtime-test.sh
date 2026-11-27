@@ -101,9 +101,13 @@ printf 'export const a = 1;\n' >"$fe/web/packages/design-system/web-theme.ts"
 git -C "$fe" add web/packages/design-system
 sync_fe >/dev/null
 [ "$(calls)" = 6 ] || fail "changed design tokens should sync again, got $(calls) pnpm calls"
+mkdir -p "$fe/web/packages/api" && printf 'export default {};\n' >"$fe/web/packages/api/orval.config.ts"
+git -C "$fe" add web/packages/api
+sync_fe >/dev/null
+[ "$(calls)" = 8 ] || fail "a changed API client generator should sync again, got $(calls) pnpm calls"
 rm -rf "$fe/web/node_modules" && mkdir "$fe/web/node_modules"
 sync_fe >/dev/null
-[ "$(calls)" = 8 ] || fail "a fresh install should sync again, got $(calls) pnpm calls"
+[ "$(calls)" = 10 ] || fail "a fresh install should sync again, got $(calls) pnpm calls"
 
 # ---------------------------------------------------------------- orca-doctor
 
@@ -168,7 +172,16 @@ wait_until 10 grep -q 'the build is failing' "$tmp/failing.log" || fail "a faili
 sleep 3
 kill -0 "$binary" 2>/dev/null || fail 'the watchdog restarted the binary while the build was failing'
 [ "$(grep -c 'the build is failing' "$tmp/failing.log")" = 1 ] || fail "one failure should be reported once: $(cat "$tmp/failing.log")"
+# The next failed build appends to the log, and is reported again.
+echo 'exit status 1' >>"$wd/tmp/build-errors.log"
+wait_until 10 sh -c "[ \"\$(grep -c 'the build is failing' '$tmp/failing.log')\" = 2 ]" || fail "a second failure was not reported: $(cat "$tmp/failing.log")"
+# A source saved after the failure that Air never builds is a wedge: nudge, then restart.
+sleep 1 && touch "$wd/internal/main.go"
+wait_until 15 grep -q 'nudging Air' "$tmp/failing.log" || fail "a wedge after a failed build was not nudged: $(cat "$tmp/failing.log")"
+wait_until 15 sh -c "! kill -0 $binary 2>/dev/null" || fail "a wedge after a failed build was not restarted: $(cat "$tmp/failing.log")"
 kill "$dog" 2>/dev/null || true
+binary="$(start_fake loomarr-dev)"
+touch "$wd/internal/main.go"
 
 # No failed build: a stale binary means Air stopped rebuilding. Nudge, then restart the binary.
 rm -f "$wd/tmp/build-errors.log"

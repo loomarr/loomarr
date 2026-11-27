@@ -62,11 +62,16 @@ loomarr_pids() {
 # on the first hit keeps it O(1)-ish on a big tree.
 newest_src_after_bin() {
   [ -f "$BIN" ] || { echo "nobin"; return; }
+  newest_src_after "$BIN"
+}
+
+# newest_src_after FILE: prints a nonempty string iff a watched Go/Rust input is newer than FILE.
+newest_src_after() {
   find "$REPO_ROOT/cmd" "$REPO_ROOT/internal" "$REPO_ROOT/rust" \
     "$REPO_ROOT/Cargo.toml" "$REPO_ROOT/Cargo.lock" "$REPO_ROOT/rust-toolchain.toml" \
     -type d \( -name testdata -o -name fixtures \) -prune -o \
     -type f \( -name '*.go' -o -name '*.rs' -o -name '*.toml' -o -name 'Cargo.lock' \) \
-    ! -name '*_test.go' -newer "$BIN" -print -quit 2>/dev/null
+    ! -name '*_test.go' -newer "$1" -print -quit 2>/dev/null
 }
 
 # newest_source_file: a single watched path to `touch` as the gentle nudge. Any watched file works —
@@ -107,8 +112,9 @@ while air_alive; do
 
   # A failing build leaves the binary stale as well, but Air is rebuilding: its build log is newer
   # than the binary exactly when the last build failed. Restarting would only rerun the same old
-  # binary, so say so once per failure and wait for the fix.
-  if [ -n "$(find "$BUILD_LOG" -newer "$BIN" 2>/dev/null)" ]; then
+  # binary, so say so once per failure and wait for the fix. A source saved after that failure
+  # that Air has not built yet is a wedge again, and falls through.
+  if [ -n "$(find "$BUILD_LOG" -newer "$BIN" 2>/dev/null)" ] && [ -z "$(newest_src_after "$BUILD_LOG")" ]; then
     failure="$(ls -ln "$BUILD_LOG" 2>/dev/null)"
     if [ "$failure" != "${reported_failure:-}" ]; then
       echo "dev-be-watchdog: the build is failing, so Air is serving the last binary that built. Air's output above has the error." >&2

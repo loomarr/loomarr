@@ -18,5 +18,5 @@ scripts:
   # holding its port.
   archive: |
     cd "$ORCA_WORKTREE_PATH" || exit 1
-    ./scripts/dev/worktree-procs.sh "$ORCA_WORKTREE_PATH" --kill
+    [ ! -x ./scripts/dev/worktree-procs.sh ] || ./scripts/dev/worktree-procs.sh "$ORCA_WORKTREE_PATH" --kill || true
     ./scripts/agent.sh stop
