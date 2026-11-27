@@ -29,7 +29,6 @@ import { CoverageMeter } from "@/components/loomarr/filler/coverage-meter";
 import { PodTimeline } from "@/components/loomarr/filler/pod-timeline";
 import { usePlaceLabel } from "@/components/loomarr/settings/installation-location";
 import { eraOf } from "@/lib/era-dates";
-import { cn } from "@/lib/utils";
 import { useChannelFillerDraft } from "../use-channel-filler-draft";
 import type { ChannelFillerProps } from "./channel-filler.type";
 import { FillerClipList } from "./filler-clip-list";
@@ -503,14 +502,14 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
             )}
           </Text>
         ) : (
-          <div className={cn("transition-opacity", isPreviewing && "opacity-60")}>
+          <Stack opacity={isPreviewing ? 0.6 : 1} style={{ transition: "opacity 150ms" }}>
             <PodTimeline entries={entries} matchLevel={preview?.matchLevel} onPreview={setPreviewingClip} />
             <Stack marginTop={8}>
               <Text as="p" textRole="compact" tone="secondary">
                 {`A sample break of ${pluralize(entries.length, "clip")}, put together the way this channel does it. Click a clip to play it.`}
               </Text>
             </Stack>
-          </div>
+          </Stack>
         )}
       </Card>
 
@@ -522,10 +521,11 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           borderColor="borderDecorative"
           borderRadius={12}
           borderWidth={1}
-          className="bg-background/95 sticky bottom-0 shadow-lg backdrop-blur"
+          backgroundColor="surfaceElevated"
           direction="row"
           gap="inline"
           padding={12}
+          style={{ bottom: 0, position: "sticky" }}
         >
           <Action disabled={isApplying} onPress={apply} tone="suggest">
             {isApplying ? "Applying…" : "Apply filler"}

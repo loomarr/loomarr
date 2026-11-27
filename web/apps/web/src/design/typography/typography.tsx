@@ -1,4 +1,4 @@
-import { Card, Grid, Stack, Surface, Text, typography } from "@loomarr/design-system";
+import { Card, Grid, roleLetterSpacing, Stack, Surface, Text, typography } from "@loomarr/design-system";
 import { webType } from "@loomarr/design-system/web-theme";
 
 const TYPE_ROLES = ["display", "heading", "body", "label", "mono"] as const;
@@ -162,4 +162,52 @@ const Typography = () => (
   </Stack>
 );
 
-export { Typography };
+// The display roles: type the app draws once each, kept at its own size rather than rounded onto the
+// five roles above (#2147). Each sample renders through `Text` at the role's real values, and its
+// caption reads size / line height / weight per density and the letter spacing from the tokens.
+const DISPLAY_ROLES = [
+  { role: "monogram", sample: "LM", use: "A channel's monogram on its generated art" },
+  { role: "numeral", sample: "42", use: "The channel number in the info header" },
+  { role: "pairCode", sample: "4F7-Q2K", use: "The code typed to pair a device" },
+  { role: "microBadge", sample: "00:30", use: "A timecode or duration over a thumbnail" },
+  { role: "footnote", sample: "12 of 40 channels · guide has the full week", use: "A line of fine print" },
+  { role: "stationName", sample: "Saturday Cartoons", use: "The tuner's channel name, fluid on the web" },
+  { role: "stationTag", sample: "CH 7", use: "The tuner's channel tag, fluid on the web" },
+] as const;
+
+const measure = (value: { lineHeight: number; size: number; weight: string }) =>
+  `${value.size}/${value.lineHeight}/${value.weight}`;
+
+const DisplayRoles = () => (
+  <Stack gap="control" maxWidth={672} padding="section">
+    <Text as="h1" textRole="title">
+      Display roles
+    </Text>
+    {DISPLAY_ROLES.map(({ role, sample, use }) => (
+      <Surface
+        key={role}
+        backgroundColor="transparent"
+        borderWidth={0}
+        gap="inline"
+        padding={0}
+        paddingVertical={12}
+      >
+        <Text as="p" textRole={role} tone={role === "stationTag" ? "signal" : undefined}>
+          {sample}
+        </Text>
+        <Text as="p" textRole="hint" tone="secondary">
+          {use}
+        </Text>
+        <Text as="p" textRole="mono" tone="muted">
+          {`${role}: ${(["pointer", "touch", "tv"] as const)
+            .map((d) => `${d} ${measure(typography[d][role])}`)
+            .join(
+              " · ",
+            )}${role in roleLetterSpacing ? ` · tracking ${roleLetterSpacing[role as keyof typeof roleLetterSpacing]}em` : ""}`}
+        </Text>
+      </Surface>
+    ))}
+  </Stack>
+);
+
+export { DisplayRoles, Typography };

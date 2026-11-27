@@ -1,5 +1,5 @@
 import type { IncomingPreparationDTO } from "@loomarr/api/models/incomingPreparationDTO";
-import { ProgressTrack, Stack, Text } from "@loomarr/design-system";
+import { Card, ProgressTrack, Stack, Text } from "@loomarr/design-system";
 
 const readyRangeLabel = (lowerSeconds: number, upperSeconds: number): string => {
   if (upperSeconds < 60) return "Less than a minute";
@@ -52,35 +52,30 @@ const IncomingPreparationSummary = ({ preparation }: { preparation: IncomingPrep
     preparation.percent != null && !["waiting", "retrying", "unavailable"].includes(preparation.state);
 
   return (
-    <section
-      aria-labelledby="incoming-preparation-heading"
-      className="bg-muted/30 space-y-2.5 rounded-lg p-4"
-    >
-      <Stack align="baseline" direction="row" gap="control" justify="between">
-        <Stack flexShrink={1} minWidth={0}>
-          <Text as="h3" id="incoming-preparation-heading" textRole="cardLabel">
-            {message.title}
-          </Text>
-          <Stack marginTop={2}>
-            <Text as="p" textRole="hint" tone="secondary">
-              {message.detail}
+    <Card aria-labelledby="incoming-preparation-heading" padding={16} render="section">
+      <Stack gap="2.5">
+        <Stack align="baseline" direction="row" gap="control" justify="between">
+          <Stack flexShrink={1} minWidth={0}>
+            <Text as="h3" id="incoming-preparation-heading" textRole="cardLabel">
+              {message.title}
             </Text>
+            <Stack marginTop={2}>
+              <Text as="p" textRole="hint" tone="secondary">
+                {message.detail}
+              </Text>
+            </Stack>
           </Stack>
+          {preparation.percent != null ? (
+            <Text as="span" flexShrink={0} fontVariant={["tabular-nums"]} textRole="hint" tone="secondary">
+              {preparation.percent}%
+            </Text>
+          ) : null}
         </Stack>
-        {preparation.percent != null ? (
-          <Text
-            as="span"
-            className="shrink-0"
-            fontVariant={["tabular-nums"]}
-            textRole="hint"
-            tone="secondary"
-          >
-            {preparation.percent}%
-          </Text>
+        {showBar ? (
+          <ProgressTrack percent={preparation.percent} label="Clip preparation" tone="tune" />
         ) : null}
       </Stack>
-      {showBar ? <ProgressTrack percent={preparation.percent} label="Clip preparation" tone="tune" /> : null}
-    </section>
+    </Card>
   );
 };
 

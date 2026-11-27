@@ -466,6 +466,10 @@ RETIRED=(
   'AutoConfirmable|retired (#4414): the legacy partition is gone; use AutoCuttable'
   'StructureSplitShadow|retired (#4414): the shadow comparison is gone; AutoCuttable is the only gate'
   'filler_split_shadow_decisions|retired (#4414): the shadow-comparison table was dropped; AutoCuttable is the only gate'
+  # #4451 U2: the guide's channel card and now/next line are @loomarr/ui compositions.
+  'NowNextStrip|#4451: the web now/next strip was deleted; the guide renders now/next through @loomarr/ui'
+  'channels/channel-card|#4451: the web ChannelCard was deleted; the guide renders channels through @loomarr/ui'
+  'channels/now-next-strip|#4451: the web NowNextStrip was deleted; the guide renders now/next through @loomarr/ui'
 
 )
 # ⚠ `internal/platform/store/migrations/` is exempt, and it is the one exemption that is forced rather than

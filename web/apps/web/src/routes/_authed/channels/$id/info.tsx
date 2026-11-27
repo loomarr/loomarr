@@ -35,7 +35,9 @@ const InfoScreen = () => {
       <Card borderRadius={8} padding={20} render="section">
         <Stack gap="control">
           <Stack align="center" direction="row" gap="control">
-            <span className="font-mono text-3xl leading-none tabular-nums">{channelNumber(ch.number)}</span>
+            <Text as="span" fontVariant={["tabular-nums"]} textRole="numeral">
+              {channelNumber(ch.number)}
+            </Text>
             <Stack align="center" direction="row" gap="inline">
               <OnAirIndicator state={air.dot} />
               {/* The status is the info panel's heading (also what the reachability check

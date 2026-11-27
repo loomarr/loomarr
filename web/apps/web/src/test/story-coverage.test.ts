@@ -77,7 +77,7 @@ describe("Story grouping", () => {
     async (_label, file) => {
       const title = (await storyModules[file]?.())?.default.title;
       expect(title, `${file}: no title in meta`).toBeDefined();
-      // "Channels/ChannelCard" — a group, then the component.
+      // "Channels/ChannelHero" — a group, then the component.
       expect(title, `${title}: needs a <Group>/<Name> title`).toMatch(/^[A-Za-z]+\/.+/);
       expect(title?.startsWith("Loomarr/"), `${title}: "Loomarr/" is the flat namespace §5.1a replaced`).toBe(
         false,

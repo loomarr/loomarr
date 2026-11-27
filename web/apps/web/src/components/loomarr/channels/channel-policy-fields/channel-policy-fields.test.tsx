@@ -374,6 +374,24 @@ describe("ChannelPolicyFields", () => {
     );
   });
 
+  // A typo is not a value: it would reach the wire as null (NaN serialises so) and clear the limit,
+  // or come back as a refusal far from the field. It stays in its box, saying what the box takes.
+  it.each([
+    ["Longest programme", "1h30", "Enter minutes as a number, like 90"],
+    ["Max from one series", "three", "Enter a whole number, like 3"],
+    ["From year", "eighty", "Enter a year, like 1985"],
+  ])("holds back %s typed as %s and says what it takes", async (label, typed, message) => {
+    const onChange = vi.fn();
+    render(<ChannelPolicyFields policy={EMPTY} onChange={onChange} />);
+
+    await userEvent.type(screen.getByLabelText(label), typed);
+    await userEvent.tab();
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.getByLabelText(label)).toHaveAttribute("aria-invalid", "true");
+  });
+
   it("commits a block cap as a number", async () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={EMPTY} onChange={onChange} />);

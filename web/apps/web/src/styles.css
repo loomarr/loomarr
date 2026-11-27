@@ -137,6 +137,14 @@
   }
 }
 
+/* The button a file input draws is its own box, so its weight is set on it: the input's text (the
+ * file name) keeps the weight the input sets, and the button reads one step heavier. */
+@layer base {
+  input[type="file"]::file-selector-button {
+    font-weight: 500;
+  }
+}
+
 body {
   margin: 0;
   background-color: var(--color-background);

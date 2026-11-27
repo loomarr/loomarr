@@ -1,7 +1,7 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import { SourceAutomaticDownloadsInputMode } from "@loomarr/api/models/sourceAutomaticDownloadsInputMode";
 import { formatRelative } from "@loomarr/core/format";
-import { Action, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
 import { useStore } from "@tanstack/react-form";
 import { type ComponentRef, useRef, useState } from "react";
@@ -247,17 +247,11 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
         {actions.updatingSourceID === source.id ? "Saving…" : "Save automatic downloads"}
       </Action>
       {saveError && (
-        <Stack
-          borderRadius={8}
-          className="bg-destructive/10"
-          paddingHorizontal={12}
-          paddingVertical={8}
-          role="alert"
-        >
+        <Card paddingHorizontal={12} paddingVertical={8} role="alert" tone="caution">
           <Text as="p" textRole="compact" tone="danger">
             {saveError}
           </Text>
-        </Stack>
+        </Card>
       )}
     </Stack>
   );
