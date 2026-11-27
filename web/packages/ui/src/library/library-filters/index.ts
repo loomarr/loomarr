@@ -1,3 +1,4 @@
+export type { FocusTarget } from "./library-filters";
 export { ActiveFilters, FilterPanel, filterCount } from "./library-filters";
 export type {
   LibraryShelfFacet,

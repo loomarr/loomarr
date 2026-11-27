@@ -14,7 +14,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LoomarrEventsProvider } from "@/events/events-provider";
 import { FakeEventSource } from "@/test/fake-event-source";
@@ -760,6 +760,90 @@ describe("LibraryPage", () => {
     expect(lastSearch()).toEqual({ person: "p1" });
     // Settled before asking: one request for the word, not one for each letter.
     expect(searched).toEqual(["ada"]);
+  });
+
+  it("asks for no people until two characters are typed", async () => {
+    const searched: string[] = [];
+    listsAsked({ items: [alpha], total: 1 });
+    server.use(
+      http.get("*/v1/library/people", ({ request }) => {
+        searched.push(new URL(request.url).searchParams.get("q") ?? "");
+        return HttpResponse.json({ people: [] });
+      }),
+    );
+    renderPage();
+    await screen.findByRole("link", { name: /^Alpha/ });
+    await openFilters();
+    const field = screen.getByRole("combobox", { name: "Person" });
+    // Past the settle time, so a request would have gone.
+    const settle = () => act(() => new Promise((done) => setTimeout(done, 400)));
+
+    await userEvent.type(field, " a ");
+    await settle();
+    expect(searched).toEqual([]);
+    await userEvent.type(field, "d");
+    await settle();
+    await waitFor(() => expect(searched).toEqual(["a d"]));
+  });
+
+  // The page with the URL's filters following what it navigates to, as the route would.
+  const Routed = ({ start }: { start: NonNullable<Parameters<typeof LibraryPage>[0]["filters"]> }) => {
+    const [filters, setFilters] = useState(start);
+    mocks.navigate.mockImplementation(({ search }) => setFilters(search));
+    return <LibraryPage filter="all" filters={filters} search="" />;
+  };
+  const renderRouted = (start: Parameters<typeof Routed>[0]["start"]) =>
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <Routed start={start} />
+      </QueryClientProvider>,
+    );
+
+  it("moves focus to a neighbouring chip, then More filters, as chips are removed", async () => {
+    listsAsked({ items: [alpha], total: 3 });
+    renderRouted({ audio: "eng", uhd: true, hdr: "any" });
+    const chip = (name: string) => screen.getByRole("button", { name: `Remove filter: ${name}` });
+    await screen.findByRole("button", { name: "Remove filter: Audio: English" });
+
+    await userEvent.click(chip("4K"));
+    expect(document.activeElement).toBe(chip("HDR"));
+    await userEvent.click(chip("HDR"));
+    expect(document.activeElement).toBe(chip("Audio: English"));
+    await userEvent.click(chip("Audio: English"));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "More filters" }));
+  });
+
+  it.each([
+    ["the line of what is on", [alpha], ""],
+    ["the empty panel", [], ""],
+  ])("moves focus to More filters on Clear filters in %s", async (_where, items) => {
+    listsAsked({ items, total: items.length });
+    renderRouted({ uhd: true });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Clear filters" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "More filters" }));
+  });
+
+  it("keeps the count's live region from the start, so a new count is announced", async () => {
+    let answer = () => {};
+    const held = new Promise<void>((done) => {
+      answer = done;
+    });
+    server.use(
+      getLibraryStatusMockHandler(libraryStatus()),
+      http.get("*/v1/library/items", async ({ request }) => {
+        if (!isCount(new URL(request.url))) await held;
+        return HttpResponse.json({ items: [alpha], total: 3 });
+      }),
+    );
+    renderRouted({ uhd: true });
+    // The page is up and the list is still on its way.
+    const region = await screen.findByRole("status", { name: "Filtered titles" });
+    expect(region).toBeEmptyDOMElement();
+
+    answer();
+    // The same element, filled.
+    await waitFor(() => expect(region).toHaveTextContent("3 titles"));
   });
 
   it("names a person arriving in the URL on a chip that removes them", async () => {

@@ -1,5 +1,7 @@
 import { Action, Combobox, CompactSelect, Text, Toggle, useWindowWidth } from "@loomarr/design-system";
 
+import { useRef } from "react";
+
 import { Line, Stack } from "../library-poster";
 import type { LibraryShelfFacet, LibraryShelfFiltering } from "./library-filters.type";
 
@@ -88,7 +90,8 @@ const FilterPanel = ({ filtering }: { filtering: LibraryShelfFiltering }) => {
         </Text>
         <Combobox
           density={density}
-          emptyText={personSearch.value.trim() ? "No one by that name." : undefined}
+          // One character asks nothing, so it finds no one to report.
+          emptyText={personSearch.value.trim().length > 1 ? "No one by that name." : undefined}
           errorText={personSearch.failed ? "Couldn't search people. Try again." : undefined}
           inputValue={personSearch.value}
           label="Person"
@@ -180,53 +183,82 @@ const activeFilters = (
   return on.filter((entry): entry is ActiveFilter => Boolean(entry));
 };
 
+/** A control focus can be sent to. */
+interface FocusTarget {
+  focus: () => void;
+}
+
 // What is on, each removable, with how many titles that leaves. With nothing to show, the empty
-// panel below carries Clear filters, so this line leaves it out.
+// panel below carries Clear filters, so this line leaves it out. A pressed chip goes away, so
+// focus moves first: to the next chip, else the one before, else `onLast` (More filters). The
+// line stays in the page with nothing on, out of the flow, because a live region that arrives
+// already filled is not announced.
 const ActiveFilters = ({
   filtering,
   genre,
   onGenreClear,
   clearable,
+  onLast,
 }: {
   filtering: LibraryShelfFiltering;
   genre: string | undefined;
   onGenreClear: () => void;
   clearable: boolean;
+  onLast: () => void;
 }) => {
   const wide = useWindowWidth() >= PHONE;
   const density = wide ? "pointer" : "touch";
+  const chips = useRef(new Map<string, FocusTarget>());
   const on = activeFilters(filtering, genre, onGenreClear);
-  if (on.length === 0) return null;
   const { total } = filtering;
+  const removeAt = (index: number) => {
+    const neighbour = on[index + 1] ?? on[index - 1];
+    const target = neighbour && chips.current.get(neighbour.key);
+    if (target) target.focus();
+    else onLast();
+    on[index]?.remove();
+  };
   return (
-    <Line gap="control">
-      {on.map(({ key, text, remove }) => (
+    <Line gap="control" position={on.length > 0 ? "relative" : "absolute"}>
+      {on.map(({ key, text }, index) => (
         <Action
           accessibilityLabel={`Remove filter: ${text}`}
           density={density}
           icon="close"
           iconPlacement="end"
           key={key}
-          onPress={remove}
+          onPress={() => removeAt(index)}
+          ref={(node) => {
+            if (node) chips.current.set(key, node as unknown as FocusTarget);
+            else chips.current.delete(key);
+          }}
           variant="outline"
         >
           {text}
         </Action>
       ))}
-      {clearable ? (
-        <Action density={density} onPress={filtering.onClear} variant="ghost">
+      {clearable && on.length > 0 ? (
+        <Action
+          density={density}
+          onPress={() => {
+            onLast();
+            filtering.onClear();
+          }}
+          variant="ghost"
+        >
           Clear filters
         </Action>
       ) : null}
-      {total === undefined ? null : (
-        <Stack role="status">
+      <Stack aria-label="Filtered titles" role="status">
+        {on.length > 0 && total !== undefined ? (
           <Text textRole="compact" tone="secondary">
             {total === 1 ? "1 title" : `${count(total)} titles`}
           </Text>
-        </Stack>
-      )}
+        ) : null}
+      </Stack>
     </Line>
   );
 };
 
+export type { FocusTarget };
 export { ActiveFilters, FilterPanel, filterCount };

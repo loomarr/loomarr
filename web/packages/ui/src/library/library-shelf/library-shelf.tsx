@@ -18,12 +18,13 @@ import {
   type ReactElement,
   type ReactNode,
   useCallback,
+  useRef,
   useState,
 } from "react";
 import { Pressable, View } from "react-native";
 
 import { StatePanel } from "../../state-panel";
-import { ActiveFilters, FilterPanel, filterCount } from "../library-filters";
+import { ActiveFilters, FilterPanel, type FocusTarget, filterCount } from "../library-filters";
 import { LibraryGrid } from "../library-grid";
 import { LibraryPoster, Line, PAGE_GUTTER, Stack, Twirl } from "../library-poster";
 import { detailsWaiting, folderName, heldTitle, scanHeadline } from "../library-words";
@@ -570,6 +571,7 @@ const Controls = ({
   onSearchChange,
   showSearch,
   filtering,
+  moreRef,
 }: Pick<
   LibraryShelfProps,
   | "filter"
@@ -583,7 +585,7 @@ const Controls = ({
   | "search"
   | "onSearchChange"
   | "filtering"
-> & { showSearch: boolean }) => {
+> & { showSearch: boolean; moreRef: (node: unknown) => void }) => {
   const wide = useWindowWidth() >= 768;
   const [open, setOpen] = useState(false);
   // On a phone the controls are tapped, so they take the design system's touch targets.
@@ -637,6 +639,7 @@ const Controls = ({
       density={density}
       icon="filter"
       onPress={() => setOpen(!open)}
+      ref={moreRef}
       variant="outline"
     >
       {on > 0 ? `More filters (${on})` : "More filters"}
@@ -735,6 +738,15 @@ const LibraryShelf = ({
   // Filters past the genre are on, so an empty list is theirs and the way back clears them all.
   const filtered = filtering && filterCount(filtering) > 0 ? filtering : undefined;
   const empty = !loading && titles.length === 0;
+  // Clearing takes away the control that was pressed; More filters stays, so focus goes there.
+  const more = useRef<FocusTarget | null>(null);
+  const focusMore = () => more.current?.focus();
+  const clearFilters = filtered
+    ? () => {
+        focusMore();
+        filtered.onClear();
+      }
+    : undefined;
   // The All tab with no titles. While an import is adding them, an admin's status line tells that
   // story, so the dead air panel waits until nothing is running.
   const emptyLibrary = !admin ? (
@@ -778,6 +790,9 @@ const LibraryShelf = ({
             filtering={filtering}
             genre={genre}
             genres={genres}
+            moreRef={(node) => {
+              more.current = node as FocusTarget | null;
+            }}
             onFilterChange={onFilterChange}
             onGenreChange={onGenreChange}
             onSearchChange={onSearchChange}
@@ -792,6 +807,7 @@ const LibraryShelf = ({
               filtering={filtering}
               genre={chosenGenre}
               onGenreClear={allGenres}
+              onLast={focusMore}
             />
           ) : null}
           {needs}
@@ -802,12 +818,12 @@ const LibraryShelf = ({
             <NoMatch
               onAllGenres={chosenGenre && !filtered ? allGenres : undefined}
               onClear={() => onSearchChange("")}
-              onClearFilters={filtered?.onClear}
+              onClearFilters={clearFilters}
               search={searched}
               total={chosenGenre ? undefined : counts?.[filter]}
             />
-          ) : titles.length === 0 && filtered ? (
-            <EmptyFilters onClear={filtered.onClear} />
+          ) : titles.length === 0 && clearFilters ? (
+            <EmptyFilters onClear={clearFilters} />
           ) : titles.length === 0 && chosenGenre ? (
             <EmptyGenre genre={chosenGenre} kind={filter} onAllGenres={allGenres} />
           ) : titles.length === 0 && (filter === "movie" || filter === "series") ? (

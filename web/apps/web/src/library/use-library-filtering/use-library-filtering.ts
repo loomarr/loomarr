@@ -16,6 +16,8 @@ type LibraryUrlFilters = Pick<
 
 const PERSON_SETTLE_MS = 250;
 const PEOPLE_LIMIT = 8;
+// One character matches most of the credits, so the search waits for a second.
+const PEOPLE_MIN_QUERY = 2;
 
 const useLibraryFiltering = ({
   enabled,
@@ -37,14 +39,15 @@ const useLibraryFiltering = ({
   const facets = libraryApi.useListLibraryFacets({ kind }, { query: { enabled } });
   const people = libraryApi.useSearchLibraryPeople(
     { q: settled, kind, limit: PEOPLE_LIMIT },
-    { query: { enabled: enabled && settled !== "", placeholderData: keepPreviousData } },
+    { query: { enabled: enabled && settled.length >= PEOPLE_MIN_QUERY, placeholderData: keepPreviousData } },
   );
   // A link carrying a person arrives with only the id.
   const person = libraryApi.useGetLibraryPerson(filters.person ?? "", {
     query: { enabled: enabled && Boolean(filters.person) },
   });
 
-  const found = query === "" ? [] : (unwrap(people.data)?.people ?? []);
+  const searching = query.length >= PEOPLE_MIN_QUERY;
+  const found = searching ? (unwrap(people.data)?.people ?? []) : [];
   return {
     facets: unwrap(facets.data),
     personName: filters.person ? unwrap(person.data)?.name : undefined,
@@ -56,8 +59,8 @@ const useLibraryFiltering = ({
         label: name,
         trailing: titles.toLocaleString("en-US"),
       })),
-      loading: query !== "" && (query !== settled || people.isFetching),
-      failed: query !== "" && query === settled && people.isError,
+      loading: searching && (query !== settled || people.isFetching),
+      failed: searching && query === settled && people.isError,
     },
   };
 };

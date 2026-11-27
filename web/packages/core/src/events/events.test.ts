@@ -57,6 +57,12 @@ describe("the frame-to-query map", () => {
     expect(EVENT_INVALIDATIONS.library_titles.prefixes).toContain("/v1/library/genres");
   });
 
+  // So do the other filters' counts and the people the titles credit, one person's page included.
+  it("reads the filter choices and people again when the Library's titles change", () => {
+    expect(EVENT_INVALIDATIONS.library_titles.prefixes).toContain("/v1/library/facets");
+    expect(EVENT_INVALIDATIONS.library_titles.prefixes).toContain("/v1/library/people");
+  });
+
   it("trusts nothing that moves with the clock, carries a signed URL, or has no frame", () => {
     for (const url of [
       "/v1/channels/now-next",
