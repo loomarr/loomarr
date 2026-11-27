@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { monogramOf } from "../src/guide/channel-ident";
+import { monogramOf } from "../guide";
 
 describe("monogramOf", () => {
   it("takes the initials of the first two significant words", () => {
