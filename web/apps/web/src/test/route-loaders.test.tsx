@@ -2,11 +2,13 @@ import type { JobView } from "@loomarr/api";
 import * as jobsApi from "@loomarr/api/endpoints/jobs";
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import {
+  getFillerWatchMockHandler,
   getJobsListMockHandler,
   getListInvitationsMockHandler,
   getListLibraryRootsMockHandler,
   getListUsersMockHandler,
   getMeMockHandler,
+  getSettingsListMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
@@ -16,6 +18,7 @@ import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RouteError } from "@/components/loomarr/feedback/route-error";
 import { routeTree } from "@/routeTree.gen";
+import { fillerSource, readiness } from "@/test/fixtures/filler";
 import { me, user } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
@@ -259,6 +262,181 @@ describe("People", () => {
 
     // The route has settled once the member's view of it renders, and its loader has run by then.
     expect(await screen.findByText("Admins only")).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load this page")).not.toBeInTheDocument();
+    expect(asked).toEqual([]);
+  });
+});
+
+describe("Filler", () => {
+  // An install with filler set up, which is what lets an admin's page past the "no filler folder
+  // configured" state.
+  const configured = { settings: [], features: { filler: true } };
+  const proposal = {
+    id: "sp-1",
+    clipHash: "comp-hash",
+    createdAt: "2026-07-25T20:00:00Z",
+    checkedLanguages: ["en"],
+    currentLanguages: ["en"],
+    languageExclusions: [],
+    segments: [{ index: 0, startMs: 0, endMs: 30000, name: "First ad", languageChecked: true }],
+  };
+
+  // The reads only an admin may make, recorded so a member's visit can be shown to send none.
+  const adminReads = () => {
+    const asked: string[] = [];
+    const handlers = [
+      ["settings", "*/v1/settings"],
+      ["incoming", "*/v1/filler/incoming"],
+      ["sources", "*/v1/filler/sources"],
+      ["split", "*/v1/filler/splits/:id"],
+      ["defects", "*/v1/filler/defects"],
+    ].map(([name = "", url = ""]) =>
+      http.get(url, () => {
+        asked.push(name);
+        return HttpResponse.json({ title: "Forbidden" }, { status: 403 });
+      }),
+    );
+    return { asked, handlers };
+  };
+
+  const pages = [
+    {
+      name: "Overview",
+      path: "/filler",
+      endpoint: "*/v1/filler/readiness",
+      body: readiness(),
+      opened: "Channel coverage",
+    },
+    {
+      name: "Incoming",
+      path: "/filler/incoming",
+      endpoint: "*/v1/filler/incoming",
+      body: {
+        preparing: { rows: [], total: 0 },
+        needsHelp: { rows: [], total: 0 },
+        recentlyReady: { rows: [], total: 0 },
+        readyWindowSeconds: 604800,
+      },
+      opened: "Nothing on the way",
+    },
+    {
+      name: "Taxonomy",
+      path: "/filler/taxonomy",
+      endpoint: "*/v1/taxonomy",
+      body: { taxa: [], totalClips: 0, taggedClips: 0, unclassifiedClips: 0, axisCoverage: [] },
+      opened: "Classification coverage",
+    },
+    {
+      name: "Sources",
+      path: "/filler/sources",
+      endpoint: "*/v1/filler/sources",
+      body: { sources: [fillerSource({ target: "/data/commercials" })], total: 1 },
+      opened: "/data/commercials",
+    },
+    {
+      name: "Split review",
+      path: "/filler/splits/sp-1",
+      endpoint: "*/v1/filler/splits/:id",
+      body: proposal,
+      opened: "Review clips",
+    },
+  ];
+
+  describe.each(pages)("$name", ({ path, endpoint, body, opened }) => {
+    it("opens on its data", async () => {
+      server.use(
+        getMeMockHandler(me()),
+        getSettingsListMockHandler(configured),
+        http.get(endpoint, () => HttpResponse.json(body)),
+        ...appHandlers(),
+      );
+      renderAt(path);
+
+      expect(await screen.findByText(opened)).toBeInTheDocument();
+      expect(screen.queryByText("Couldn't load this page")).not.toBeInTheDocument();
+    });
+
+    it("shows a failed first read as the route's error view, and recovers on Try again", async () => {
+      const read = failing(endpoint);
+      server.use(
+        getMeMockHandler(me()),
+        getSettingsListMockHandler(configured),
+        read.handler(() => HttpResponse.json(body)),
+        ...appHandlers(),
+      );
+      renderAt(path);
+
+      expect(await screen.findByText("Couldn't load this page")).toBeInTheDocument();
+      expect(screen.getByText("Server is restarting")).toBeInTheDocument();
+      expect(screen.queryByText(opened)).not.toBeInTheDocument();
+
+      read.state.failing = false;
+      await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+      expect(await screen.findByText(opened)).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByText("Couldn't load this page")).not.toBeInTheDocument());
+    });
+  });
+
+  // What says whether filler is set up: the settings list for an admin, the watch summary for a
+  // member. Every Filler page is drawn around it.
+  it.each([
+    { role: "admin" as const, path: "/filler/library", endpoint: "*/v1/settings" },
+    { role: "admin" as const, path: "/filler/settings/storage", endpoint: "*/v1/settings" },
+    { role: "member" as const, path: "/filler/library", endpoint: "*/v1/filler/watch" },
+  ])(
+    "shows $path as the route's error view when the $role's $endpoint read fails",
+    async ({ role, path, endpoint }) => {
+      const read = failing(endpoint);
+      server.use(
+        getMeMockHandler(me({ role })),
+        read.handler(() =>
+          HttpResponse.json(
+            endpoint === "*/v1/settings"
+              ? configured
+              : { clips: 3, health: "healthy", preparing: 0, needsYou: 0, sourcesOn: 1, sourcesTotal: 1 },
+          ),
+        ),
+        getSettingsListMockHandler(configured),
+        ...appHandlers(),
+      );
+      renderAt(path);
+
+      expect(await screen.findByText("Couldn't load this page")).toBeInTheDocument();
+      expect(screen.queryByText("No filler folder configured")).not.toBeInTheDocument();
+
+      read.state.failing = false;
+      await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+      await waitFor(() => expect(screen.queryByText("Couldn't load this page")).not.toBeInTheDocument());
+      expect(await screen.findByRole("navigation", { name: "Filler sections" })).toBeInTheDocument();
+    },
+  );
+
+  // Each waits for the member's own view before saying nothing was asked: the loader has run by then.
+  it.each([
+    { path: "/filler", view: "Channel coverage" },
+    { path: "/filler/taxonomy", view: "Classification coverage" },
+    { path: "/filler/incoming", view: "No clips yet" },
+    { path: "/filler/sources", view: "No clips yet" },
+    { path: "/filler/splits/sp-1", view: "Admins only" },
+  ])("asks a member at $path for no admin data", async ({ path, view }) => {
+    const { asked, handlers } = adminReads();
+    server.use(
+      getMeMockHandler(me({ role: "member" })),
+      getFillerWatchMockHandler({
+        clips: 3,
+        health: "healthy",
+        preparing: 0,
+        needsYou: 0,
+        sourcesOn: 1,
+        sourcesReady: 1,
+        sourcesTotal: 1,
+      }),
+      ...handlers,
+      ...appHandlers(),
+    );
+    renderAt(path);
+
+    expect(await screen.findByText(view)).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load this page")).not.toBeInTheDocument();
     expect(asked).toEqual([]);
   });

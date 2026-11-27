@@ -1,7 +1,7 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { createFileRoute, Outlet, redirect, useParams } from "@tanstack/react-router";
 import { meQueryOptions } from "@/auth/me-query";
-import { warmFillerPage } from "@/filler/filler-loader";
+import { openFillerPage } from "@/filler/filler-loader";
 import { FillerPage } from "@/filler/filler-page";
 
 const FillerSourcesLayout = () => {
@@ -21,12 +21,12 @@ const Route = createFileRoute("/_authed/filler/sources")({
       throw redirect({ to: "/filler/library" });
     }
   },
-  // Admin-only (beforeLoad has sent a member away). The sources the tab lists, beside the page's
-  // status line; a failed list is shown by the tab itself.
+  // Admin-only (beforeLoad has sent a member away). The sources the tab lists, so it opens on them
+  // and a failed read is the route's error view.
   loader: async ({ context: { queryClient } }) => {
     await Promise.all([
-      warmFillerPage(queryClient),
-      queryClient.prefetchQuery(fillerApi.getListFillerSourcesQueryOptions()),
+      openFillerPage(queryClient),
+      queryClient.ensureQueryData(fillerApi.getListFillerSourcesQueryOptions()),
     ]);
   },
   component: FillerSourcesLayout,

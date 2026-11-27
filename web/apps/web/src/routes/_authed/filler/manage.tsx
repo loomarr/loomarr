@@ -1,15 +1,16 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { createFileRoute } from "@tanstack/react-router";
-import { warmDefectReport, warmFillerPage } from "@/filler/filler-loader";
+import { openFillerPage, warmDefectReport } from "@/filler/filler-loader";
 import { FillerPage } from "@/filler/filler-page";
 
 const ManageScreen = () => <FillerPage tab="manage" />;
 
 const Route = createFileRoute("/_authed/filler/manage")({
-  // The summaries the Manage rows are made of: the tag counts and, for an admin, the quality count.
+  // The Manage rows are links that stand without their summaries, so the tag counts and, for an
+  // admin, the quality count are warmed.
   loader: async ({ context: { queryClient } }) => {
     await Promise.all([
-      warmFillerPage(queryClient),
+      openFillerPage(queryClient),
       queryClient.prefetchQuery(fillerApi.getListTaxonomyQueryOptions()),
       warmDefectReport(queryClient),
     ]);

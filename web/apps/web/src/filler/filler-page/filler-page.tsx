@@ -61,18 +61,9 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
   const poolQuery = fillerApi.useFillerPool({ query: { enabled: tab === "library" } });
   const pool = unwrap(poolQuery.data, (body) => body);
 
-  if (configurationPending && tab !== "settings") {
-    return (
-      <Stack height="100%" minHeight={0}>
-        <FillerHeader />
-        <Stack flex={1} minHeight={0} padding={24} role="status">
-          <Text as="p" textRole="compact" tone="secondary">
-            Loading filler…
-          </Text>
-        </Stack>
-      </Stack>
-    );
-  }
+  // The route's loader ensured whichever of the two reads says this, and its error view takes a
+  // first read that fails, so every page but Settings opens already knowing.
+  if (configurationPending && tab !== "settings") return null;
 
   if (!fillerConfigured && tab !== "settings") {
     return (

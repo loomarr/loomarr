@@ -24,13 +24,9 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
   );
 
   if (query.error) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  if (!data) {
-    return (
-      <Text as="p" textRole="compact" tone="secondary">
-        Loading the taxonomy…
-      </Text>
-    );
-  }
+  // The route's loader ensured the vocabulary, and its error view takes a first read that fails, so
+  // the tab always opens on it. A failed refresh after that is the line above.
+  if (!data) return null;
 
   return (
     <Stack gap="section">
