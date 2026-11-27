@@ -12,11 +12,11 @@ One area of the [package map](../package-map.md#start-here).
 - **library** · 10 imports — the titles a channel plays: `library/provision` keys and states, `library/inventory` breakanalysis, and `library/titlesearch` candidates for re-curation
 - **proposals** · 9 imports — binding an approved proposal into a channel, and re-curating a self-updating channel through the suggester
 - **filler** · 3 imports — asking the filler engine for the pod that fills a break
-- **playout** · 2 imports — handing reconciled programming to the backend that plays it: Loomarr's own `playout` engine or `playout/tunarr`
+- **playout** · 2 imports — handing reconciled programming to `playout/tunarr`, and the `playout/timeline` cycle arithmetic that says what a committed cycle puts on air
 
 ## Packages
 
-- **`channels`** · 5 importers · → `channels/schedule`, `filler/clips`, `filler/language`, `filler/pod`, `library/inventory`, `library/provision`, `platform/jobs`, `platform/rating`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `playout`, `playout/tunarr`
+- **`channels`** · 5 importers · → `channels/schedule`, `filler/clips`, `filler/language`, `filler/pod`, `library/inventory`, `library/provision`, `platform/jobs`, `platform/rating`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `playout/timeline`, `playout/tunarr`
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`channels/approval`** · 2 importers · → `channels/schedule`, `library/provision`, `platform/rating`, `platform/store`, `platform/store/activitystore`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/accept`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
@@ -32,5 +32,5 @@ One area of the [package map](../package-map.md#start-here).
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
 - **`channels/schedule`** · 35 importers · → `library/inventory`, `library/provision`, `platform/holidayvocab`, `platform/langcode`, `platform/rating`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
-- **`channels/viewing`** · 5 importers · → `platform/store`, `platform/store/channelstore`
+- **`channels/viewing`** · 5 importers · → `platform/store/channelstore`, `platform/store/viewingstore`
   Tracks who is watching which channel right now, from the players' own playlist polls (#1662).

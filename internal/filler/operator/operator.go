@@ -27,6 +27,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 )
 
 // ErrIngestUnavailable reports that this install cannot run the ingest tooling. It is NOT
@@ -77,7 +78,7 @@ type AcquisitionWriter interface {
 
 // OperationWriter persists the durable record of an interactive operation.
 type OperationWriter interface {
-	UpsertInteractiveOperation(context.Context, store.InteractiveOperation) error
+	UpsertInteractiveOperation(context.Context, operationstore.InteractiveOperation) error
 }
 
 // ReadinessStore is the set of projections the readiness report composes.
@@ -523,16 +524,16 @@ func (a *Operator) Split(ctx context.Context, clipID string) (string, error) {
 	}
 	jobID := a.c.NewID()
 	now := a.clock()
-	operation := store.InteractiveOperation{
-		ID: jobID, Kind: store.InteractiveOperationFillerSplit, Subject: clipID,
-		Status: store.InteractiveOperationQueued, StartedAt: now().UTC(), UpdatedAt: now().UTC(),
+	operation := operationstore.InteractiveOperation{
+		ID: jobID, Kind: operationstore.InteractiveOperationFillerSplit, Subject: clipID,
+		Status: operationstore.InteractiveOperationQueued, StartedAt: now().UTC(), UpdatedAt: now().UTC(),
 	}
 	if err := a.c.Operations.UpsertInteractiveOperation(ctx, operation); err != nil {
 		return "", fmt.Errorf("queue filler split: %w", err)
 	}
 	var proposal *filler.SplitProposal
 	err := a.c.Start(a.c.Timeout, func(operationCtx context.Context) error {
-		operation.Status = store.InteractiveOperationRunning
+		operation.Status = operationstore.InteractiveOperationRunning
 		operation.UpdatedAt = now().UTC()
 		a.persistInteractiveOperation(operationCtx, operation)
 		a.publishSplit(jobID, clipID, "running", "", 0, "")
@@ -562,19 +563,19 @@ func (a *Operator) Split(ctx context.Context, clipID string) (string, error) {
 	}, func(completionCtx context.Context, runErr error) {
 		operation.CompletedAt, operation.UpdatedAt = now().UTC(), now().UTC()
 		if runErr != nil {
-			operation.Status = store.InteractiveOperationError
+			operation.Status = operationstore.InteractiveOperationError
 			operation.Error = runErr.Error()
 			a.persistInteractiveOperation(completionCtx, operation)
 			a.publishSplit(jobID, clipID, "error", "", 0, runErr.Error())
 			return
 		}
-		operation.Status = store.InteractiveOperationSuccess
+		operation.Status = operationstore.InteractiveOperationSuccess
 		operation.ResultID = proposal.ID
 		a.persistInteractiveOperation(completionCtx, operation)
 		a.publishSplit(jobID, clipID, "success", proposal.ID, len(proposal.Segments), "")
 	})
 	if err != nil {
-		operation.Status = store.InteractiveOperationError
+		operation.Status = operationstore.InteractiveOperationError
 		operation.Error = err.Error()
 		operation.CompletedAt, operation.UpdatedAt = now().UTC(), now().UTC()
 		a.persistInteractiveOperation(ctx, operation)
@@ -583,7 +584,7 @@ func (a *Operator) Split(ctx context.Context, clipID string) (string, error) {
 	return jobID, nil
 }
 
-func (a *Operator) persistInteractiveOperation(ctx context.Context, operation store.InteractiveOperation) {
+func (a *Operator) persistInteractiveOperation(ctx context.Context, operation operationstore.InteractiveOperation) {
 	if err := a.c.Operations.UpsertInteractiveOperation(ctx, operation); err != nil && a.c.Log != nil {
 		a.c.Log.Error("could not persist interactive operation state",
 			"operation", operation.ID, "kind", operation.Kind, "status", operation.Status, "err", err)

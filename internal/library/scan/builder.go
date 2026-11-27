@@ -18,6 +18,7 @@ import (
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
@@ -84,7 +85,7 @@ func (b *builder) listed(ctx context.Context, id string, snapshot inventory.Snap
 	if listed := readOriginExtension(snapshot.Observation.Extension).Listed; listed != nil {
 		set = listed.Set
 	}
-	b.artwork(ctx, id, snapshot.Observation.Facts.Artwork)
+	b.artwork(ctx, id, ImportedArt, snapshot.Observation.Facts.Artwork)
 	// The set's own record names it and every movie in it; the Enricher fetches it once asked.
 	if set.String() != "" && b.im.Catalog != nil {
 		if err := b.im.Catalog.WantLibraryCatalog(ctx, []librarystore.LibraryCatalogKey{set}); err != nil {
@@ -117,21 +118,27 @@ func libraryOrigin(o inventory.OriginKey) librarystore.LibraryOrigin {
 	return librarystore.LibraryOrigin{Authority: string(o.Authority), Key: o.ExternalItemID}
 }
 
-// artwork hands the title's resolved poster, fanart and clear logo, or none of each, to the image
-// service. Precedence already put a local sidecar ahead of a provider's image (decision 19), so
-// the first of a kind is the one. One that cannot be imported leaves the title's image of that
-// kind as it was until it is written again.
-func (b *builder) artwork(ctx context.Context, id string, art []inventory.ArtworkRef) {
+// artwork hands the title's resolved image of each of kinds (ImportedArt for a movie or series,
+// EpisodeArt for an episode), or none, to the image service. Precedence already put a local
+// sidecar ahead of a provider's image (decision 19), so the first of a kind is the one. One that
+// cannot be imported leaves the title's image of that kind as it was until it is written again.
+// A provider's image is only recorded here, never fetched: the image service's fetch job pulls
+// the bytes in bounded batches, so a series written with hundreds of episodes is no burst.
+func (b *builder) artwork(ctx context.Context, id string, kinds []string, art []inventory.ArtworkRef) {
 	if b.im.Artwork == nil {
 		return
 	}
-	for _, kind := range ImportedArt {
+	for _, kind := range kinds {
 		ref := ""
 		for _, a := range art {
 			if a.Kind == kind && a.Season == 0 {
 				ref = a.Ref
 				break
 			}
+		}
+		if kind == mp.KindThumb {
+			// A cached record can name its still at original.
+			ref = tmdb.SmallStill(ref)
 		}
 		if err := b.im.Artwork.Art(ctx, id, kind, ref); err != nil {
 			b.im.log().Warn("library scan: artwork not imported", "item", id, "kind", kind, "err", err)
@@ -283,7 +290,7 @@ func (b *builder) identify(file File, other bool) identity {
 		b.seen[seriesOrigin(b.root, id.seriesDir)] = true
 	}
 	if !other {
-		id.digest = identityDigest(file, m, embedded, b.im.reader(), seriesSidecars)
+		id.digest = identityDigest(file, m, embedded, b.im.writer(), b.im.reader(), seriesSidecars)
 	}
 	return id
 }

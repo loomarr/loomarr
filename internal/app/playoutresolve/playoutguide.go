@@ -8,7 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // BroadcastsBetween resolves a channel's programme timeline for the XMLTV guide (§9.1, V6b).
@@ -106,7 +106,7 @@ const maxGuideSegments = 8
 // (The XMLTV document escaped this: it publishes a 24h window, which is one rotation step, so it
 // was right by construction. Loomarr's own grid queries up to 7 days, which is where it showed.)
 //
-// # Why here and not inside playout.BroadcastsBetween
+// # Why here and not inside timeline.BroadcastsBetween
 //
 // That walk is SHARED with the encoder and is deliberately a pure function of one slot list — it
 // is what guarantees the grid and the encoder cannot disagree about what is on at 21:00. Teaching
@@ -118,8 +118,8 @@ const maxGuideSegments = 8
 // whole answer.
 func (r *Resolver) segmentedBroadcasts(
 	ctx context.Context, channelID string, from, to time.Time,
-	project func(slots []schedule.Slot, epoch, segFrom, segTo time.Time) []playout.Broadcast,
-) ([]playout.Broadcast, error) {
+	project func(slots []schedule.Slot, epoch, segFrom, segTo time.Time) []timeline.Broadcast,
+) ([]timeline.Broadcast, error) {
 	if r.channels == nil {
 		return nil, errors.New("read channel playout anchor: channel reader is not configured")
 	}
@@ -157,7 +157,7 @@ func (r *Resolver) segmentedBroadcasts(
 	} else {
 		legs = r.fixedAnchorLegs(ctx, channelID, live, from, to)
 	}
-	out := make([]playout.Broadcast, 0, 32)
+	out := make([]timeline.Broadcast, 0, 32)
 	for _, leg := range legs {
 		segFrom, segTo := later(from, leg.from), earlier(to, leg.to)
 		if !segTo.After(segFrom) {
@@ -195,7 +195,7 @@ type guideLeg struct {
 // carryOverLegs lays out the timeline of a channel whose rolling window turns with carry-over
 // (#1675): the window on air runs until the programme crossing its boundary ends, and each later
 // window is forecast from where the one before it ends, through the same turn rule reconcile
-// commits (playout.CarryOverEnd). No programme is cut at a boundary and none is joined part-way.
+// commits (timeline.CarryOverEnd). No programme is cut at a boundary and none is joined part-way.
 //
 // Windows BEFORE the one on air are no longer in state (each turn moved the anchor), so each is
 // walked from its own opening, the closest estimate of where it began, and the last runs to where
@@ -226,8 +226,8 @@ func (r *Resolver) carryOverLegs(ctx context.Context, channelID string, live air
 	}
 
 	leg := guideLeg{slots: live.slots, epoch: live.epoch, from: live.epoch}
-	for {
-		leg.to = playout.CarryOverEnd(leg.slots, leg.epoch, schedule.NextWindowStart(leg.epoch, live.window, live.zone))
+	for planned := false; ; planned = true {
+		leg.to = timeline.CarryOverEnd(leg.slots, leg.epoch, schedule.NextWindowStart(leg.epoch, live.window, live.zone))
 		legs = append(legs, leg)
 		if !leg.to.Before(to) || len(legs) >= maxGuideSegments {
 			break
@@ -235,6 +235,12 @@ func (r *Resolver) carryOverLegs(ctx context.Context, channelID string, live air
 		slots, _, err := r.cycleAt(ctx, channelID, leg.to)
 		if err != nil {
 			break
+		}
+		// The window after the one on air is the one reconcile plans ahead of the turn, and
+		// playout airs it with those break lengths (airingCycle's TurnedWindow), so it is
+		// listed with them too. Windows after it are not planned yet and keep the forecast.
+		if !planned {
+			slots = r.engine.WithPlannedBreaks(ctx, channelID, leg.to, slots)
 		}
 		leg = guideLeg{slots: slots, epoch: leg.to, from: leg.to}
 	}
@@ -278,8 +284,8 @@ func earlier(a, b time.Time) time.Time {
 
 func (r *Resolver) BroadcastsBetween(
 	ctx context.Context, channelID string, from, to time.Time,
-) ([]playout.Broadcast, error) {
-	bs, err := r.segmentedBroadcasts(ctx, channelID, from, to, playout.BroadcastsBetween)
+) ([]timeline.Broadcast, error) {
+	bs, err := r.segmentedBroadcasts(ctx, channelID, from, to, timeline.BroadcastsBetween)
 	if err != nil {
 		return nil, err
 	}
@@ -292,8 +298,8 @@ func (r *Resolver) BroadcastsBetween(
 // grid cannot disagree with the encoder about what airs when.
 func (r *Resolver) BroadcastsWithPending(
 	ctx context.Context, channelID string, from, to time.Time,
-) ([]playout.Broadcast, error) {
-	bs, err := r.segmentedBroadcasts(ctx, channelID, from, to, playout.BroadcastsWithPending)
+) ([]timeline.Broadcast, error) {
+	bs, err := r.segmentedBroadcasts(ctx, channelID, from, to, timeline.BroadcastsWithPending)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +316,7 @@ func (r *Resolver) BroadcastsWithPending(
 //
 // BEST-EFFORT, like the metadata pass: a store hiccup leaves the blocks exactly as they were.
 // A hover card missing one line is far better than a guide that fails to load.
-func (r *Resolver) attachProvenance(ctx context.Context, bs []playout.Broadcast) {
+func (r *Resolver) attachProvenance(ctx context.Context, bs []timeline.Broadcast) {
 	if r.titles == nil || len(bs) == 0 {
 		return
 	}
@@ -344,7 +350,7 @@ func (r *Resolver) attachProvenance(ctx context.Context, bs []playout.Broadcast)
 //
 // BEST-EFFORT BY DESIGN. A failure leaves the broadcasts exactly as they were — titles and times
 // intact — because a guide with thin entries is far better than no guide.
-func (r *Resolver) attachMetadata(ctx context.Context, bs []playout.Broadcast) {
+func (r *Resolver) attachMetadata(ctx context.Context, bs []timeline.Broadcast) {
 	if r.itemFacts == nil || len(bs) == 0 {
 		return
 	}

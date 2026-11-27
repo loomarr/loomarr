@@ -9,6 +9,20 @@ import { Field, LoomarrProvider } from "../index";
 afterEach(cleanup);
 
 describe("Field", () => {
+  // What someone types is words, so a title search reads in the body face; mono is for numbers and
+  // clocks, and a file name is set by FileName, not typed.
+  it("sets typed text in the body face, not the data face", () => {
+    render(
+      <LoomarrProvider theme="dark">
+        <Field accessibilityLabel="Search the library" inputMode="search" value="Beacon Moor" />
+      </LoomarrProvider>,
+    );
+
+    const font = screen.getByRole("searchbox", { name: "Search the library" }).style.fontFamily;
+    expect(font).toMatch(/Geist/);
+    expect(font).not.toMatch(/Mono/);
+  });
+
   it("focuses the input when its label is clicked", async () => {
     render(
       <LoomarrProvider theme="dark">

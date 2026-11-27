@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"sync/atomic"
@@ -10,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/api/system"
+	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -31,10 +33,11 @@ func newSystemRestartHarness(t *testing.T, config systemRestartHarnessConfig) *a
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
-			Store:   defaults.Store,
-			Auth:    defaults.Auth,
-			Log:     defaults.Log,
-			Playout: api.PlayoutOptions{Observer: config.PlayoutObserver},
+			Store:    defaults.Store,
+			Auth:     defaults.Auth,
+			Log:      defaults.Log,
+			Activity: activity.New(defaults.Store, defaults.Log),
+			Playout:  api.PlayoutOptions{Observer: config.PlayoutObserver},
 			System: api.SystemOptions{
 				Restart:      config.Restart,
 				RestartDrift: config.RestartDrift,
@@ -108,6 +111,24 @@ func TestSystemRestart_TriggersTheLoop(t *testing.T) {
 	}
 	if n := fake.calls.Load(); n != 1 {
 		t.Errorf("restart calls = %d, want 1", n)
+	}
+}
+
+// Who restarted Loomarr, and when, is in the activity feed (#3359): the row outlives the restart,
+// so the household and the deploy tooling can read why the generation changed. The admin API
+// token has no user behind it and is named as itself.
+func TestSystemRestart_IsRecordedInTheActivityFeed(t *testing.T) {
+	h := newSystemRestartHarness(t, systemRestartHarnessConfig{Restart: &fakeRestart{}})
+	if resp := do(t, h.Server, http.MethodPost, "/v1/system/restart", adminToken, ""); resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("restart → %d, want 202", resp.StatusCode)
+	}
+	rows, err := h.Store.ListActivity(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Text != "Loomarr was restarted with the admin API token" || rows[0].Kind != "system" ||
+		rows[0].At == 0 {
+		t.Fatalf("activity = %+v, want one system row naming the admin API token, with its time", rows)
 	}
 }
 

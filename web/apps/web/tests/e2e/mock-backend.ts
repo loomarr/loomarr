@@ -297,9 +297,14 @@ interface MockOptions {
   // Serve one channel at /v1/channels/{id}, named long enough to need the whole width of a phone,
   // so its pages (Watch, Channel info, Programming, Filler, Danger zone) render their real layout.
   channelDetail?: boolean;
+  // Hold the event stream open so a test can send frames (sendFrame), as the server does after
+  // it stores a change. The suggestion journeys hold it too.
+  eventStream?: boolean;
 }
 
 interface MockBackend {
+  // Announce a stored change on the held event stream (eventStream or a suggestion journey).
+  sendFrame: (type: string, payload: unknown) => void;
   // What the run recorded — the smoke asserts against these rather than re-reading UI.
   readonly state: {
     authed: boolean;
@@ -420,6 +425,9 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
   // The frames the mock sends, waiting for the stream to collect them.
   const pendingFrames: string[] = [];
   const frameWaiters: Array<() => void> = [];
+  // Stream connections, numbered as they arrive. The newest is the app's live one: a page load
+  // opens a new stream, and the request the previous page opened is dead while its handler waits.
+  let newestStream = 0;
   const sendFrame = (type: string, payload: unknown) => {
     pendingFrames.push(`event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`);
     for (const wake of frameWaiters.splice(0)) wake();
@@ -1672,10 +1680,18 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
 
   // The suggestion journey's event stream, registered after the catch-all so it answers first. A
   // connection is held open and silent, as the server's is, until there is a frame to send; it then
-  // answers with the frame and ends, and the app reconnects as it does after any drop.
-  if (opts.proposalJourney) {
+  // answers with the frame and ends, and the app reconnects as it does after any drop. Only the
+  // newest connection collects frames: after a reload or `goto`, a frame handed to the previous
+  // page's connection would never reach the app. A newer connection wakes the older ones so they
+  // stop waiting, and they are left unanswered, as the dead requests they belong to are.
+  if (opts.proposalJourney || opts.eventStream) {
     await page.route("**/v1/events**", async (route) => {
-      while (pendingFrames.length === 0) await new Promise<void>((wake) => frameWaiters.push(wake));
+      const stream = ++newestStream;
+      for (const wake of frameWaiters.splice(0)) wake();
+      while (stream === newestStream && pendingFrames.length === 0) {
+        await new Promise<void>((wake) => frameWaiters.push(wake));
+      }
+      if (stream !== newestStream) return;
       await route.fulfill({
         status: 200,
         contentType: "text/event-stream",
@@ -1685,7 +1701,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     });
   }
 
-  return { state };
+  return { state, sendFrame };
 };
 
 export type { MockBackend, MockOptions };

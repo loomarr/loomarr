@@ -26,6 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/activity"
+	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -271,4 +272,9 @@ type OpsOptions struct {
 	ClientDiagnostics opsapi.ClientDiagnosticService
 	// ClientCrashes backs the crash-report write and its admin reads (#1816); nil ⇒ unmounted.
 	ClientCrashes opsapi.ClientCrashService
+	// Recorder records server-side Diagnostics events that API handlers raise themselves, such as
+	// the audit of each Code Mode run (#4486); nil ⇒ none are recorded.
+	Recorder interface {
+		Record(context.Context, diagnostics.Event)
+	}
 }

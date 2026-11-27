@@ -5,6 +5,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // ffmpeg argument construction for internal playout (§9.1).
@@ -58,7 +59,7 @@ func DefaultProfile() Profile {
 //
 // ⚠ `a.Source` is the discriminator: set for a resolved filler clip, empty for a library title.
 // An empty target means no gain.
-func FillerGain(a Airing, targetLUFS string) (gainDB float64, note string) {
+func FillerGain(a timeline.Airing, targetLUFS string) (gainDB float64, note string) {
 	if a.Source == "" || targetLUFS == "" {
 		return 0, ""
 	}

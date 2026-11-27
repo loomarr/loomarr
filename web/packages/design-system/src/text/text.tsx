@@ -36,7 +36,16 @@ type TextTone =
   | "warning";
 type TextProps = Omit<
   TamaguiTextProps,
-  "color" | "fontFamily" | "fontSize" | "fontWeight" | "letterSpacing" | "lineHeight" | "role"
+  | "color"
+  | "flex"
+  | "flexShrink"
+  | "fontFamily"
+  | "fontSize"
+  | "fontWeight"
+  | "letterSpacing"
+  | "lineHeight"
+  | "minWidth"
+  | "role"
 > & {
   /**
    * Renders as this host element instead of Tamagui's own Text (web only; ignored on native,
@@ -48,6 +57,22 @@ type TextProps = Omit<
    */
   as?: ElementType;
   density?: Density;
+  /**
+   * The flex-item props: how the text sizes inside the row or column around it. They are the only
+   * layout a Text takes; space around it is the parent Stack's gap or padding. They hold on every
+   * host, `as` and `halo` included.
+   *
+   * `flex` grows the text into the free space, as Tamagui's `flex` does: grow by n, shrink 1, from a
+   * zero basis (Tailwind's `flex-1` is `flex={1}`).
+   */
+  flex?: number;
+  /** Whether the text gives way when its row is short of room: 1 (`shrink`) or 0 (`shrink-0`). */
+  flexShrink?: number;
+  /**
+   * The narrowest the text may get, in px. `0` (`min-w-0`) lets a text in a row shrink below its
+   * longest word, so `numberOfLines` can truncate it.
+   */
+  minWidth?: number;
   /**
    * A readout over snow or a picture (#1627 B4): the canvas as a two-layer halo, tight under the
    * glyphs and wide around them, so the text holds on any ground. React Native takes one text
@@ -125,6 +150,22 @@ const hostTextStyle = ({
     }),
   };
 };
+
+type FlexItem = Pick<TextProps, "flex" | "flexShrink" | "minWidth">;
+
+/** The flex-item props a caller set, and only those, so an unset one never overrides a default. */
+const flexItem = ({ flex, flexShrink, minWidth }: FlexItem) => ({
+  ...(flex !== undefined && { flex }),
+  ...(flexShrink !== undefined && { flexShrink }),
+  ...(minWidth !== undefined && { minWidth }),
+});
+
+/** The flex-item props as an `as` host's inline style, with `flex` expanded as Tamagui's web Text does. */
+const hostFlexStyle = ({ flex, flexShrink, minWidth }: FlexItem): CSSProperties => ({
+  ...(flex !== undefined && { flexBasis: 0, flexGrow: flex, flexShrink: 1 }),
+  ...(flexShrink !== undefined && { flexShrink }),
+  ...(minWidth !== undefined && { minWidth }),
+});
 
 // "#0B0C0E" + 0.9 → "rgba(11,12,14,0.9)": the halo is the theme's canvas, part-transparent.
 const withAlpha = (hex: string, alpha: number) => {
@@ -219,6 +260,9 @@ const Text = ({
   halo,
   leading,
   shout,
+  flex,
+  flexShrink,
+  minWidth,
   strong,
   textRole,
   tone,
@@ -226,6 +270,7 @@ const Text = ({
   ...given
 }: TextProps) => {
   const props = webLiveRegion(given);
+  const item = flexItem({ flex, flexShrink, minWidth });
   const theme = useTheme();
   const role = typography[density][textRole];
   const value = strong ? { ...role, weight: "600" as const } : role;
@@ -288,6 +333,7 @@ const Text = ({
           textDecorationLine,
           wordBreak,
         }),
+        ...hostFlexStyle(item),
         color: themeVal(theme, colorToken),
         fontFamily: dataRoles.has(textRole) ? typography.family.data.web : typography.family.body.web,
         fontSize,
@@ -300,11 +346,12 @@ const Text = ({
     });
   }
 
-  if (!halo) return <TamaguiText {...props} {...face} />;
+  if (!halo) return <TamaguiText {...props} {...item} {...face} />;
 
   const canvas = theme.surfaceCanvas.val;
+  // The wrapper is the flex item here, so the flex-item props size it; the two copies fill it.
   return (
-    <View position="relative">
+    <View position="relative" {...item}>
       {/* The wide layer: the same glyphs, hidden, glowing canvas around the text. */}
       <TamaguiText
         {...face}

@@ -66,7 +66,8 @@ func KeyOf(language string, hearingImpaired, forced bool) string {
 
 // Pick is the track a choice key plays on this programme: the track with that key, else the first
 // unforced track in the key's language (a remembered "en-sdh" plays plain English where a
-// programme has no SDH track), else none.
+// programme has no SDH track), else none. An Auto-generated key ("<language>-auto") falls back
+// only to the programme's Auto-generated track, and a file track's key never falls back to one.
 func Pick(tracks []Track, key string) (Track, bool) {
 	if key == "" {
 		return Track{}, false
@@ -76,9 +77,17 @@ func Pick(tracks []Track, key string) (Track, bool) {
 			return t, true
 		}
 	}
+	if IsAutoKey(key) {
+		for _, t := range tracks {
+			if IsAutoKey(t.Key) {
+				return t, true
+			}
+		}
+		return Track{}, false
+	}
 	language, _, _ := strings.Cut(key, "-")
 	for _, t := range tracks {
-		if !t.Forced && KeyOf(t.Language, false, false) == language {
+		if !t.Forced && !IsAutoKey(t.Key) && KeyOf(t.Language, false, false) == language {
 			return t, true
 		}
 	}

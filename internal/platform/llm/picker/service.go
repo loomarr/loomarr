@@ -19,7 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/llm/selection"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 )
 
 var (
@@ -116,7 +116,7 @@ type Launcher func(timeout time.Duration, run func(context.Context) error, done 
 
 // OperationWriter persists the durable record of an interactive operation.
 type OperationWriter interface {
-	UpsertInteractiveOperation(context.Context, store.InteractiveOperation) error
+	UpsertInteractiveOperation(context.Context, operationstore.InteractiveOperation) error
 }
 
 // Settings writes the raw settings the registry does not declare.
@@ -465,15 +465,15 @@ func (s *Service) Pull(ctx context.Context, model string) (string, error) {
 	}
 	jobID := s.c.NewID()
 	now := time.Now
-	operation := store.InteractiveOperation{
-		ID: jobID, Kind: store.InteractiveOperationLLMPull, Subject: model,
-		Status: store.InteractiveOperationQueued, StartedAt: now().UTC(), UpdatedAt: now().UTC(),
+	operation := operationstore.InteractiveOperation{
+		ID: jobID, Kind: operationstore.InteractiveOperationLLMPull, Subject: model,
+		Status: operationstore.InteractiveOperationQueued, StartedAt: now().UTC(), UpdatedAt: now().UTC(),
 	}
 	if err := s.c.Operations.UpsertInteractiveOperation(ctx, operation); err != nil {
 		return "", fmt.Errorf("queue model pull: %w", err)
 	}
 	err := s.c.Start(s.c.PullTimeout, func(operationCtx context.Context) error {
-		operation.Status = store.InteractiveOperationRunning
+		operation.Status = operationstore.InteractiveOperationRunning
 		operation.UpdatedAt = now().UTC()
 		s.persistPullOperation(operationCtx, operation)
 		s.publishPull(jobID, model, "starting", 0, 0, 0, "")
@@ -484,7 +484,7 @@ func (s *Service) Pull(ctx context.Context, model string) (string, error) {
 			// Ollama's last line says "success" while the operation is still running here: the
 			// completion below stores the outcome and only then announces it, so a client that
 			// reads the operation on that frame sees what the frame says.
-			if pp.Status == string(store.InteractiveOperationSuccess) {
+			if pp.Status == string(operationstore.InteractiveOperationSuccess) {
 				return
 			}
 			s.publishPull(jobID, model, pp.Status, pp.Percent(), pp.Completed, pp.Total, "")
@@ -492,21 +492,21 @@ func (s *Service) Pull(ctx context.Context, model string) (string, error) {
 	}, func(completionCtx context.Context, runErr error) {
 		operation.CompletedAt, operation.UpdatedAt = now().UTC(), now().UTC()
 		if runErr != nil {
-			operation.Status = store.InteractiveOperationError
+			operation.Status = operationstore.InteractiveOperationError
 			operation.Error = runErr.Error()
 			s.persistPullOperation(completionCtx, operation)
 			s.c.Log.Warn("llm pull failed", "model", model, "err", runErr)
 			s.publishPull(jobID, model, "error", operation.Percent, operation.Completed, operation.Total, runErr.Error())
 			return
 		}
-		operation.Status = store.InteractiveOperationSuccess
+		operation.Status = operationstore.InteractiveOperationSuccess
 		operation.Percent = 100
 		s.persistPullOperation(completionCtx, operation)
 		s.c.Log.Info("llm pull complete", "model", model)
 		s.publishPull(jobID, model, "success", 100, operation.Completed, operation.Total, "")
 	})
 	if err != nil {
-		operation.Status = store.InteractiveOperationError
+		operation.Status = operationstore.InteractiveOperationError
 		operation.Error = err.Error()
 		operation.CompletedAt, operation.UpdatedAt = now().UTC(), now().UTC()
 		s.persistPullOperation(ctx, operation)
@@ -515,7 +515,7 @@ func (s *Service) Pull(ctx context.Context, model string) (string, error) {
 	return jobID, nil
 }
 
-func (s *Service) persistPullOperation(ctx context.Context, operation store.InteractiveOperation) {
+func (s *Service) persistPullOperation(ctx context.Context, operation operationstore.InteractiveOperation) {
 	if err := s.c.Operations.UpsertInteractiveOperation(ctx, operation); err != nil && s.c.Log != nil {
 		s.c.Log.Error("could not persist model pull state", "operation", operation.ID,
 			"status", operation.Status, "err", err)

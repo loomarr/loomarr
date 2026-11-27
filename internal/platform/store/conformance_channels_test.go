@@ -11,6 +11,9 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // Channels and the scheduling caches (§5, §9): the channel row and its lease, plus the
@@ -50,7 +53,7 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 	}
 	// A non-default (hevc) broadcast codec (§9.1 V50) — using the non-default value
 	// proves the column preserves what's written, not that it fell back to the DDL default.
-	ch.BroadcastCodec = BroadcastCodecHEVC
+	ch.BroadcastCodec = channelstore.BroadcastCodecHEVC
 	// An anchor between whole seconds: a re-deal starts the cycle at the programme on air (#4140).
 	ch.PlayoutAnchor = time.Unix(1_700_000_123, 268_000_000).UTC()
 	ch.DealtFrom = "a1b2.c3d4"
@@ -101,8 +104,8 @@ func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	}
 	// BroadcastCodec (§9.1 V50) round-trips the non-default hevc value verbatim — both the
 	// direct GetChannel path and (below) the claim RETURNING path scan the same column.
-	if got.BroadcastCodec != BroadcastCodecHEVC {
-		t.Errorf("broadcast_codec round-trip: got %q want %q", got.BroadcastCodec, BroadcastCodecHEVC)
+	if got.BroadcastCodec != channelstore.BroadcastCodecHEVC {
+		t.Errorf("broadcast_codec round-trip: got %q want %q", got.BroadcastCodec, channelstore.BroadcastCodecHEVC)
 	}
 	if !got.PlayoutAnchor.Equal(want.PlayoutAnchor) {
 		t.Errorf("playout anchor round-trip: got %v want %v", got.PlayoutAnchor, want.PlayoutAnchor)
@@ -159,7 +162,7 @@ func testChannelRevisionCAS(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("updated revision = %d, want 2", saved.Revision)
 	}
 	stale.Name = "loser"
-	if _, err := s.SaveChannel(ctx, stale); !errors.Is(err, ErrChannelStale) {
+	if _, err := s.SaveChannel(ctx, stale); !errors.Is(err, channelstore.ErrChannelStale) {
 		t.Fatalf("stale save = %v, want ErrChannelStale", err)
 	}
 	got, err := s.GetChannel(ctx, created.ID)
@@ -170,7 +173,7 @@ func testChannelRevisionCAS(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("stale save changed row: name=%q revision=%d", got.Name, got.Revision)
 	}
 
-	if err := s.DeleteChannel(ctx, got.ID, stale.Revision); !errors.Is(err, ErrChannelStale) {
+	if err := s.DeleteChannel(ctx, got.ID, stale.Revision); !errors.Is(err, channelstore.ErrChannelStale) {
 		t.Fatalf("stale delete = %v, want ErrChannelStale", err)
 	}
 	if err := s.DeleteChannel(ctx, got.ID, got.Revision); err != nil {
@@ -186,14 +189,14 @@ func testChannelTargetedRevisionWrites(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	created := mustSaveChannel(t, s, sampleChannel("ch-targeted", 52, time.Time{}))
 
-	codecRevision, err := s.SetChannelBroadcastCodec(ctx, created.ID, created.Revision, BroadcastCodecH264)
+	codecRevision, err := s.SetChannelBroadcastCodec(ctx, created.ID, created.Revision, channelstore.BroadcastCodecH264)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if codecRevision != 2 {
 		t.Fatalf("codec revision = %d, want 2", codecRevision)
 	}
-	if _, err := s.SetChannelBroadcastCodec(ctx, created.ID, created.Revision, BroadcastCodecHEVC); !errors.Is(err, ErrChannelStale) {
+	if _, err := s.SetChannelBroadcastCodec(ctx, created.ID, created.Revision, channelstore.BroadcastCodecHEVC); !errors.Is(err, channelstore.ErrChannelStale) {
 		t.Fatalf("stale codec write = %v, want ErrChannelStale", err)
 	}
 
@@ -204,17 +207,17 @@ func testChannelTargetedRevisionWrites(t *testing.T, newStore NewStoreFunc) {
 	if attachedRevision != 3 {
 		t.Fatalf("attach revision = %d, want 3", attachedRevision)
 	}
-	if _, err := s.AttachTunarrChannel(ctx, created.ID, "", "tunarr-other", created.Number, 54); !errors.Is(err, ErrChannelStale) {
+	if _, err := s.AttachTunarrChannel(ctx, created.ID, "", "tunarr-other", created.Number, 54); !errors.Is(err, channelstore.ErrChannelStale) {
 		t.Fatalf("stale Tunarr attach = %v, want ErrChannelStale", err)
 	}
 	got, err := s.GetChannel(ctx, created.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.TunarrID != "tunarr-52" || got.Number != 53 || got.BroadcastCodec != BroadcastCodecH264 || got.Revision != 3 {
+	if got.TunarrID != "tunarr-52" || got.Number != 53 || got.BroadcastCodec != channelstore.BroadcastCodecH264 || got.Revision != 3 {
 		t.Fatalf("targeted writes = tunarr %q number %d codec %q revision %d", got.TunarrID, got.Number, got.BroadcastCodec, got.Revision)
 	}
-	if _, err := s.SaveChannel(ctx, created); !errors.Is(err, ErrChannelStale) {
+	if _, err := s.SaveChannel(ctx, created); !errors.Is(err, channelstore.ErrChannelStale) {
 		t.Fatalf("pre-targeted snapshot save = %v, want ErrChannelStale", err)
 	}
 }
@@ -255,7 +258,7 @@ func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	for _, u := range []User{{ID: "u-member", Name: "Member One", Role: RoleMember}, {ID: "u-gone", Name: "Gone", Role: RoleMember}} {
+	for _, u := range []User{{ID: "u-member", Name: "Member One", Role: identitystore.RoleMember}, {ID: "u-gone", Name: "Gone", Role: identitystore.RoleMember}} {
 		if err := s.UpsertUser(ctx, u); err != nil {
 			t.Fatal(err)
 		}
@@ -419,7 +422,7 @@ func testChannelDeleteDropsImageRefs(t *testing.T, newStore NewStoreFunc) {
 	if err := s.PutImage(ctx, img); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PutImageRef(ctx, ImageRef{
+	if err := s.PutImageRef(ctx, clipstore.ImageRef{
 		ImageHash: img.Hash, OwnerKind: "channel", OwnerID: "ch-ico", Role: "icon",
 	}); err != nil {
 		t.Fatal(err)
@@ -506,7 +509,7 @@ func testClaimDueChannels(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("claimed channel revision = %d, want %d", got.Revision, dueBefore.Revision+1)
 	}
 	dueBefore.Name = "stale writer"
-	if _, err := s.SaveChannel(ctx, dueBefore); !errors.Is(err, ErrChannelStale) {
+	if _, err := s.SaveChannel(ctx, dueBefore); !errors.Is(err, channelstore.ErrChannelStale) {
 		t.Errorf("pre-claim snapshot save = %v, want ErrChannelStale", err)
 	}
 }

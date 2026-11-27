@@ -17,7 +17,8 @@ jobs:
     # Two runners for wall clock: this job sets PR time for Go changes. Shard 1 owns the compile-heavy
     # analysis, shard 2 the repository contracts, and every check runs in exactly one of them. The
     # follow-up checks are placed to even the shards. ci-lint, release-verify, agent-harness-test,
-    # shellcheck, and the generated-docs checks are not here: CI policy runs them on every PR.
+    # shellcheck, retired-verify, and the generated-docs checks are not here: CI policy runs them on
+    # every run. privacy-verify runs in CI's own privacy job on every run.
     strategy:
       fail-fast: false # one shard's failures must not hide the other's
       matrix:
@@ -52,7 +53,7 @@ jobs:
         run: make vet vet-tags lint # serial: each already uses every core, and -j4 was slower
       - name: Repository contracts
         if: matrix.shard == 2
-        run: make fmt privacy-verify tags-verify compose-verify go-race-verify eval-contract
+        run: make fmt tags-verify compose-verify go-race-verify eval-contract
         env:
           MAKEFLAGS: -j4 --output-sync=target # independent checks
       - name: The test lanes cover every package
@@ -61,9 +62,11 @@ jobs:
       - name: OpenAPI spec is committed and current
         if: matrix.shard == 1
         run: make openapi-verify
-      - name: Retired identifiers are gone from prose
-        if: matrix.shard == 2
-        run: make retired-verify
       - name: Observability artifacts are provisionable
         if: matrix.shard == 2
         run: make observability-verify
+      # The pull request's view, against the main its latest push was tested on. merge-gate.yml
+      # checks each queued candidate again against the main it joins.
+      - name: Every added migration is numbered above main's newest
+        if: matrix.shard == 2 && github.event_name == 'pull_request'
+        run: ./scripts/check-migration-order.sh pull_request "$GITHUB_EVENT_PATH"

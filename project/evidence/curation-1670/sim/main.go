@@ -1,5 +1,5 @@
 // Command sim replays channels hour by hour through the REAL pure scheduler
-// (schedule.ComputeDesiredAt) and the REAL playout walk (playout.BroadcastsBetween), with the
+// (schedule.ComputeDesiredAt) and the REAL playout walk (timeline.BroadcastsBetween), with the
 // viewing → recency feedback loop the live guide forecast cannot show, and compares the current
 // behaviour against prototype mechanisms (#1670). Nothing here is wired into the product.
 //
@@ -25,7 +25,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/library/provision"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 	"github.com/loomarr/loomarr/project/evidence/curation-1670/kit"
 )
 
@@ -213,7 +213,7 @@ func finish(s shape, v, mech string, pool int, poolMs int64, a []kit.Airing, cut
 }
 
 // current replays today's pipeline. Every hour (reconcile cadence, coarsened) reconcile turns the
-// rolling window with carry-over (#1675, playout.WindowTurn) and recomputes the lineup from the
+// rolling window with carry-over (#1675, timeline.WindowTurn) and recomputes the lineup from the
 // recorded airings as of that window's start (#1674). Playout walks the accepted cycle from its
 // anchor, and the next window airs from the end of the programme crossing the boundary, even
 // between reconciles (the resolver's carry-over walk). The window grid is the household's wall
@@ -248,7 +248,7 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 		return slots
 	}
 	reconcile := func(t time.Time) {
-		opened, epoch, _ := playout.WindowTurn(desired, anchor, window, grid, t)
+		opened, epoch, _ := timeline.WindowTurn(desired, anchor, window, grid, t)
 		if opened.IsZero() {
 			opened = schedule.WindowStart(t, window, grid)
 		}
@@ -258,12 +258,12 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 	// boundary ends, then each next window from where the one before ended. A window arranged
 	// before reconcile commits it sees the airings recorded so far, as the product does (each
 	// tune-in records as it airs). record attributes what aired to its window (-explain).
-	walk := func(from, to time.Time, watched, record bool) []playout.Broadcast {
+	walk := func(from, to time.Time, watched, record bool) []timeline.Broadcast {
 		slots, epoch, last, opened := desired, anchor, lastAired, desiredOpened
-		var out []playout.Broadcast
+		var out []timeline.Broadcast
 		for {
-			stop := playout.CarryOverEnd(slots, epoch, schedule.NextWindowStart(epoch, window, grid))
-			leg := playout.BroadcastsBetween(slots, epoch, maxTime(from, epoch), minTime(to, stop))
+			stop := timeline.CarryOverEnd(slots, epoch, schedule.NextWindowStart(epoch, window, grid))
+			leg := timeline.BroadcastsBetween(slots, epoch, maxTime(from, epoch), minTime(to, stop))
 			out = append(out, leg...)
 			if record {
 				ex.leg(opened, leg)
@@ -283,7 +283,7 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 	seen := map[string]bool{}
 	var airings []kit.Airing
 	cuts := 0
-	var forecast, prev []playout.Broadcast
+	var forecast, prev []timeline.Broadcast
 	samples, misses := 0, 0
 	for t := start; t.Before(end); t = t.Add(time.Hour) {
 		reconcile(t)
@@ -342,7 +342,7 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 // airLog mirrors the #1674 airings table: one row per airing of a unit, with when it was recorded.
 // remember adds what aired to the history: the watched airings, recorded when seen, and (#1677)
 // the scheduled ledger, every programme recorded as of its own start, watched or not.
-func remember(l airLog, bs []playout.Broadcast, watched bool, seen time.Time) airLog {
+func remember(l airLog, bs []timeline.Broadcast, watched bool, seen time.Time) airLog {
 	if watched {
 		l = l.with(bs, seen)
 	}
@@ -375,7 +375,7 @@ func (l airLog) asOf(before time.Time) map[string]time.Time {
 
 // with is a copy of the log plus a record of every programme in bs, observed from `seen` on:
 // RecordAiring stamps the programme start and never records earlier than the programme itself.
-func (l airLog) with(bs []playout.Broadcast, seen time.Time) airLog {
+func (l airLog) with(bs []timeline.Broadcast, seen time.Time) airLog {
 	m := make(airLog, len(l))
 	for u, rows := range l {
 		m[u] = rows[:len(rows):len(rows)]
@@ -402,7 +402,7 @@ func minTime(a, b time.Time) time.Time {
 	return b
 }
 
-func unitAt(bs []playout.Broadcast, at time.Time) string {
+func unitAt(bs []timeline.Broadcast, at time.Time) string {
 	for _, b := range bs {
 		if !at.Before(b.Start) && at.Before(b.Stop) {
 			return b.LibraryItemID

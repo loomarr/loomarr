@@ -2,7 +2,7 @@
 // separately-verified pieces finally compose.
 //
 //	store.Channel.Desired  → the accepted cycle reconciliation committed for broadcast
-//	playout.AiringAt       → which program that puts on right now, and at what offset
+//	timeline.AiringAt      → which program that puts on right now, and at what offset
 //	LibraryPlayingFile     → the library item's file, which ffmpeg reads directly
 //
 // It lives under internal/app rather than internal/playout on purpose. playout is the mechanism
@@ -35,6 +35,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // CyclePreviewer is the scheduling surface the resolver needs — satisfied by *channels.Engine.
@@ -54,6 +55,11 @@ type CyclePreviewer interface {
 	// cycle with each break at the length reconcile planned for it ahead of the turn (#3838 step
 	// 2). A read like the rest: reconcile is the only writer of the break plans.
 	TurnedWindow(ctx context.Context, channelID string, at, turnAnchor time.Time) ([]schedule.Slot, error)
+	// WithPlannedBreaks is TurnedWindow's second half over an arrangement already in hand: the
+	// slots walked from turnAnchor with each break at its planned length, as a new slice. The
+	// guide applies it to its cached forecast of the next window so it lists that window as it
+	// airs.
+	WithPlannedBreaks(ctx context.Context, channelID string, turnAnchor time.Time, slots []schedule.Slot) []schedule.Slot
 	// Calendar is the holiday calendar the arrangement reads, so the cycle cache keys on it.
 	Calendar() schedule.Calendar
 }
@@ -179,6 +185,9 @@ type Resolver struct {
 	// until SetSubtitles, which leaves every window empty.
 	librarySubtitles LibrarySubtitleReader
 	subtitleCues     SubtitleCues
+	// burns prepares the image subtitle tracks channels burn in (#2088 step 8; subtitleburn.go).
+	// Nil ⇒ nothing is burned in.
+	burns *SubtitleBurns
 	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil
 	// leaves the guide without descriptions, and any other id has none.
 	itemFacts librarystore.LibraryItemFactsReader
@@ -382,20 +391,20 @@ func (r *Resolver) MissingLadderInputs() []string {
 // it here would let the deck change at a programme EOF. Desired is also what makes the answer
 // survive a process restart; the deterministic channel epoch supplies the matching wall-clock
 // position.
-func (r *Resolver) AiringNow(ctx context.Context, channelID string) (playout.Airing, string, error) {
+func (r *Resolver) AiringNow(ctx context.Context, channelID string) (timeline.Airing, string, error) {
 	return r.AiringAt(ctx, channelID, r.now())
 }
 
 // AiringAt is AiringNow at a given instant. The channel packager asks for the item that airs at
 // its timeline's end, up to its run-ahead (~12 s) after now.
-func (r *Resolver) AiringAt(ctx context.Context, channelID string, now time.Time) (playout.Airing, string, error) {
+func (r *Resolver) AiringAt(ctx context.Context, channelID string, now time.Time) (timeline.Airing, string, error) {
 	slots, epoch, err := r.acceptedCycle(ctx, channelID, now)
 	if err != nil {
-		return playout.Airing{}, "", err
+		return timeline.Airing{}, "", err
 	}
 
-	airing := playout.AiringAt(slots, epoch, now)
-	airing.ScheduleBlockID = playout.ScheduledBlockID(channelID, airing.StartedAt, airing.Kind, airing.Identity)
+	airing := timeline.AiringAt(slots, epoch, now)
+	airing.ScheduleBlockID = timeline.ScheduledBlockID(channelID, airing.StartedAt, airing.Kind, airing.Identity)
 
 	// A BREAK GAP resolves to a real commercial (§10). The scheduler leaves flex, and a Tunarr
 	// channel has Tunarr play clips from a filler-list into it. Internal playout has no such
@@ -418,7 +427,7 @@ func (r *Resolver) AiringAt(ctx context.Context, channelID string, now time.Time
 		// not hold. Reporting it as "nothing airing" rather than an error means the channel shows
 		// the offline card instead of failing to tune — the same outcome the viewer would get
 		// from an error, minus the retry storm.
-		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+		return timeline.Airing{Kind: schedule.SlotFlex}, "", nil
 	}
 	// A movie in parts airs a part at a time: the encode ends where the part does, and the
 	// packager, asking again there, gets the next part from its start.
@@ -456,7 +465,7 @@ const servedWriteTimeout = 5 * time.Second
 // counted here", not "never played".
 //
 // Telemetry, never correctness: a failed write is logged and the airing carries on.
-func (r *Resolver) RecordAiringServed(ctx context.Context, channelID string, airing playout.Airing, resolvedAt time.Time) {
+func (r *Resolver) RecordAiringServed(ctx context.Context, channelID string, airing timeline.Airing, resolvedAt time.Time) {
 	// The serve that fired this runs under the channel packager's context, which ends the moment the
 	// last viewer leaves; the write has already been earned, so it runs detached and bounded.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), servedWriteTimeout)
@@ -501,13 +510,13 @@ func (r *Resolver) StillAiring(ctx context.Context, channelID string) (playout.S
 	if err != nil {
 		return playout.StillAiring{}, false, err
 	}
-	airing := playout.AiringAt(slots, epoch, now)
+	airing := timeline.AiringAt(slots, epoch, now)
 	if airing.Kind == schedule.SlotFiller || !airing.Playable() {
 		return playout.StillAiring{}, false, nil
 	}
 	itemID := airing.LibraryItemID
 	return playout.StillAiring{
-		Key:    playout.ScheduledBlockID(channelID, airing.StartedAt, airing.Kind, airing.Identity),
+		Key:    timeline.ScheduledBlockID(channelID, airing.StartedAt, airing.Kind, airing.Identity),
 		Offset: airing.Offset,
 		At:     airing.StartedAt,
 		Source: func(ctx context.Context) (playout.StillSource, bool, error) {
@@ -587,7 +596,7 @@ type airingCycle struct {
 // commit it. Until it does, the next window is arranged here with TurnedWindow, the computation
 // reconcile commits, breaks planned included, so the handoff lands when the programme ends rather than at the next
 // reconcile (up to its cooldown later), which would swap the slice in mid-programme. Reconcile
-// applies the same rule (playout.WindowTurn) and commits the same anchor, and from then on this
+// applies the same rule (timeline.WindowTurn) and commits the same anchor, and from then on this
 // reads Desired again.
 func (r *Resolver) airingCycle(ctx context.Context, ch channelstore.Channel, at time.Time) (airingCycle, error) {
 	epoch, err := effectivePlayoutAnchor(ch)
@@ -605,7 +614,7 @@ func (r *Resolver) airingCycle(ctx context.Context, ch channelstore.Channel, at 
 	if !c.carriesOver {
 		return c, nil
 	}
-	_, turnEpoch, turned := playout.WindowTurn(ch.Desired, epoch, c.window, c.zone, at)
+	_, turnEpoch, turned := timeline.WindowTurn(ch.Desired, epoch, c.window, c.zone, at)
 	if !turned {
 		return c, nil
 	}
@@ -628,8 +637,8 @@ func (r *Resolver) airingCycle(ctx context.Context, ch channelstore.Channel, at 
 // and the UI preview use (§10's one-assembler rule). So the commercial that plays is the one the
 // channel page promised, not a second opinion.
 func (r *Resolver) airingFiller(
-	ctx context.Context, channelID string, gap playout.Airing, now time.Time,
-) (playout.Airing, string, error) {
+	ctx context.Context, channelID string, gap timeline.Airing, now time.Time,
+) (timeline.Airing, string, error) {
 	if r.pods == nil || r.fillerDir == "" {
 		// Filler unconfigured: the break becomes a bounded break card rather than an error. Keep
 		// the gap itself so the handler knows this is scheduled airtime and where it ends.
@@ -685,7 +694,7 @@ func (r *Resolver) airingFiller(
 			if lufs, peak, ok := asset.PlaybackLoudness(full); ok {
 				measured, truePeak = &lufs, peak
 			}
-			return playout.Airing{
+			return timeline.Airing{
 				StartedAt:       now.Add(-into),
 				Identity:        e.Hash,
 				ScheduleBlockID: gap.ScheduleBlockID,

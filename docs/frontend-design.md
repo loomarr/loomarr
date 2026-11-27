@@ -164,6 +164,9 @@ Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex abov
   and 120ms opacity fades. Hover, focus and press change colour or border, never position or size:
   no scale, lift, nudge or bounce. `web/scripts/motion-rule.test.mjs` fails on a transform
   transition anywhere else; its allowlist names the tune, the sheets and the launch identity.
+  **One exception (maintainer, 2026-11-21):** a Library poster grows to 104% under the pointer
+  over 200ms, ease-out, so a household sees it opens. Pointer hover only: focus keeps the amber
+  ring, press changes nothing, and reduced motion drops the growth.
 - `prefers-reduced-motion` is honored globally (single CSS gate) and force-enabled in visual-test mode.
 - Signature moments (used sparingly): checklist items "lock in" (static→clear, 200ms) during onboarding; a channel card's `onair` dot fades in when its first reconcile completes.
 - Loading has four named jobs: compact inline activity, content skeleton, determinate progress, and

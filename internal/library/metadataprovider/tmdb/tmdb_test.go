@@ -448,8 +448,10 @@ func TestFetchEpisode_BridgesByItsOwnTVDBID(t *testing.T) {
 	if rec.Certification != nil {
 		t.Error("an episode takes its series' rating; TMDB's find answer carries none")
 	}
-	if want := []mp.ArtworkRef{{Kind: "thumb", Ref: "https://image.tmdb.org/t/p/original/episode-still-90001301.jpg"}}; !reflect.DeepEqual(rec.Artwork, want) {
-		t.Errorf("artwork = %+v, want the episode's own still", rec.Artwork)
+	// The still is requested at TMDB's 300-wide size (#4476), where posters, fanart and logos
+	// (above) are requested at original.
+	if want := []mp.ArtworkRef{{Kind: "thumb", Ref: "https://image.tmdb.org/t/p/w300/episode-still-90001301.jpg"}}; !reflect.DeepEqual(rec.Artwork, want) {
+		t.Errorf("artwork = %+v, want the episode's own still at w300", rec.Artwork)
 	}
 }
 

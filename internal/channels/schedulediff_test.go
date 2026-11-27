@@ -14,7 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -241,7 +241,7 @@ func TestScheduleDiff_IsDeterministicAndReadOnly(t *testing.T) {
 
 // Inside the carry-over tail — the window has turned but the programme crossing the boundary is
 // still on — the forecast must air what the encoder airs: the ACCEPTED cycle from its anchor
-// (playout.WindowTurn), and the next window only once that programme ends.
+// (timeline.WindowTurn), and the next window only once that programme ends.
 func TestScheduleDiff_ForecastHonoursTheCarryOverTail(t *testing.T) {
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
@@ -277,7 +277,7 @@ func TestScheduleDiff_ForecastHonoursTheCarryOverTail(t *testing.T) {
 
 	from := boundary.Add(20 * time.Minute)
 	clock = from
-	onAir := playout.AiringAt(accepted.Desired, accepted.PlayoutAnchor, from)
+	onAir := timeline.AiringAt(accepted.Desired, accepted.PlayoutAnchor, from)
 	got, err := e.ForecastSaved(ctx, "c1", from, from.Add(3*time.Hour))
 	if err != nil {
 		t.Fatal(err)

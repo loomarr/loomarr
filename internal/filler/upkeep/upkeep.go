@@ -54,6 +54,9 @@ type Store interface {
 	// AcquisitionArtifactForClip reads the download a fetched clip came from; its original is
 	// released only once intake has consumed it.
 	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (acquisition.Artifact, bool, error)
+	// AcquisitionHasArtifacts reports whether any artifact row records the acquisition; none means
+	// it predates the artifact manifest.
+	AcquisitionHasArtifacts(ctx context.Context, acquisitionID string) (bool, error)
 	// RetireReadyClip removes and reaps a fetched, unpinned Ready clip and marks its row's files
 	// deleted, so a full budget can evict it; false when it no longer qualifies.
 	RetireReadyClip(ctx context.Context, hash string, at time.Time) (bool, error)
@@ -364,7 +367,7 @@ func (j *Job) releaseOriginals(ctx context.Context, res *Result) error {
 		if len(referenced.Unreadable()) > 0 {
 			return nil
 		}
-		master, released := j.release(ctx, c, full, referenced)
+		master, released := j.release(ctx, c, row.AcquisitionID, full, referenced)
 		if !released {
 			continue
 		}
@@ -379,7 +382,7 @@ func (j *Job) releaseOriginals(ctx context.Context, res *Result) error {
 // and rewrites the clip's sidecar without its path. It holds the sidecar lock from the read to the
 // write, which the defect floor and a rewind share: neither puts back what this removed, and a
 // rewind either holds the clip first, which the re-read here sees, or finds the original gone.
-func (j *Job) release(ctx context.Context, c clipstore.Clip, full string, referenced *identity.AssetRefs) (string, bool) {
+func (j *Job) release(ctx context.Context, c clipstore.Clip, acquisitionID, full string, referenced *identity.AssetRefs) (string, bool) {
 	hash := c.Hash
 	unlock := asset.LockSidecar(full)
 	defer unlock()
@@ -390,7 +393,7 @@ func (j *Job) release(ctx context.Context, c clipstore.Clip, full string, refere
 	if now, found, err := j.store.GetClip(ctx, hash); err != nil || !found || now.Held || !now.RemovedAt.IsZero() {
 		return "", false
 	}
-	if err := j.sound(ctx, c, *tags.MediaAssets); err != nil {
+	if err := j.sound(ctx, c, acquisitionID, *tags.MediaAssets); err != nil {
 		j.warn("upkeep: a Ready clip keeps its original; the next pass looks again", "clip", hash, "reason", err)
 		return "", false
 	}
@@ -417,13 +420,23 @@ func (j *Job) release(ctx context.Context, c clipstore.Clip, full string, refere
 // acquisition (sync marks one in repair when a file stops matching it), and the file c airs is the
 // one its sidecar records, byte for byte. That is the playback copy, or for a clip with no separate
 // playback copy, the visible file, which holds the master's bytes.
-func (j *Job) sound(ctx context.Context, c clipstore.Clip, m asset.Manifest) error {
+//
+// An acquisition with no artifact rows at all predates the artifact manifest: its intake finished
+// long ago and nothing can mark it in repair, so the airing copy's check alone decides. One that
+// has rows but none for this clip is a lookup that missed, and the original stays.
+func (j *Job) sound(ctx context.Context, c clipstore.Clip, acquisitionID string, m asset.Manifest) error {
 	artifact, found, err := j.store.AcquisitionArtifactForClip(ctx, c.Path, c.Hash)
 	switch {
 	case err != nil:
 		return err
 	case !found:
-		return errors.New("its acquisition has no record")
+		recorded, err := j.store.AcquisitionHasArtifacts(ctx, acquisitionID)
+		if err != nil {
+			return err
+		}
+		if recorded {
+			return errors.New("its acquisition has no record of this clip")
+		}
 	case artifact.State != acquisition.ArtifactConsumed:
 		return fmt.Errorf("its acquisition is %s, not consumed", artifact.State)
 	}

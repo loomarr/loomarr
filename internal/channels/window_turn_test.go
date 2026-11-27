@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // Reconcile turns the rolling window with carry-over (#1675): the programme crossing the boundary
@@ -25,7 +25,7 @@ func TestReconcile_WindowTurnCarriesTheCrossingProgrammeOver(t *testing.T) {
 
 	first := reconcileDesired(t, e, st, "wt")
 	boundary := opened.Add(24 * time.Hour)
-	crossing := playout.BroadcastsBetween(first.Desired, first.PlayoutAnchor, boundary, boundary.Add(time.Second))[0]
+	crossing := timeline.BroadcastsBetween(first.Desired, first.PlayoutAnchor, boundary, boundary.Add(time.Second))[0]
 	if !crossing.Start.Before(boundary) || !crossing.Stop.After(boundary.Add(2*time.Minute)) {
 		t.Fatalf("fixture: want a film straddling the boundary, got %s %v–%v", crossing.LibraryItemID, crossing.Start, crossing.Stop)
 	}
@@ -36,7 +36,7 @@ func TestReconcile_WindowTurnCarriesTheCrossingProgrammeOver(t *testing.T) {
 	if !slices.Equal(programIDs(first.Desired), programIDs(during.Desired)) || !during.PlayoutAnchor.Equal(first.PlayoutAnchor) {
 		t.Fatalf("reconcile replaced the arrangement while %s was still airing across the boundary", crossing.LibraryItemID)
 	}
-	if got := playout.AiringAt(during.Desired, during.PlayoutAnchor, now); got.LibraryItemID != crossing.LibraryItemID {
+	if got := timeline.AiringAt(during.Desired, during.PlayoutAnchor, now); got.LibraryItemID != crossing.LibraryItemID {
 		t.Fatalf("on air at the boundary: %s, want the crossing film %s", got.LibraryItemID, crossing.LibraryItemID)
 	}
 
@@ -49,7 +49,7 @@ func TestReconcile_WindowTurnCarriesTheCrossingProgrammeOver(t *testing.T) {
 	if slices.Equal(programIDs(first.Desired), programIDs(turned.Desired)) {
 		t.Fatal("the window never turned: the next slice was not committed")
 	}
-	if got := playout.AiringAt(turned.Desired, turned.PlayoutAnchor, crossing.Stop); got.Offset != 0 || got.LibraryItemID != programIDs(turned.Desired)[0] {
+	if got := timeline.AiringAt(turned.Desired, turned.PlayoutAnchor, crossing.Stop); got.Offset != 0 || got.LibraryItemID != programIDs(turned.Desired)[0] {
 		t.Fatalf("at the handoff %s is %v in, want the new slice's first programme from its start", got.LibraryItemID, got.Offset)
 	}
 }

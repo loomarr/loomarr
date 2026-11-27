@@ -596,6 +596,13 @@ EOF
 	fi
 	if printf '%s\n' "$scope" | grep -qx 'policy=true'; then
 		make -C "$ROOT" ci-lint release-verify
+		# CI's policy job also shellchecks every script and runs the retired-identifier guard.
+		if printf '%s\n' "$changed" | grep -qE '^scripts/.*\.sh$'; then
+			make -C "$ROOT" shellcheck
+		fi
+		if printf '%s\n' "$changed" | grep -qx 'scripts/check-retired.sh'; then
+			make -C "$ROOT" retired-verify
+		fi
 	fi
 	if printf '%s\n' "$scope" | grep -qx 'go=true'; then
 		packages="$(printf '%s\n' "$changed" | "$SCRIPT_DIR/go-impact.sh")"

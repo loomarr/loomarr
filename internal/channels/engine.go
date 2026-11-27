@@ -21,7 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -859,12 +859,12 @@ func latest(a, b time.Time) time.Time {
 
 // scheduledPrograms is every programme the accepted cycle, walked from its anchor, started before
 // `until` (#1677). An empty cycle or no anchor aired nothing.
-func scheduledPrograms(slots []schedule.Slot, anchor, until time.Time) []playout.Broadcast {
+func scheduledPrograms(slots []schedule.Slot, anchor, until time.Time) []timeline.Broadcast {
 	if len(slots) == 0 || anchor.IsZero() || !anchor.Before(until) {
 		return nil
 	}
-	var out []playout.Broadcast
-	for _, b := range playout.BroadcastsBetween(slots, anchor, anchor, until) {
+	var out []timeline.Broadcast
+	for _, b := range timeline.BroadcastsBetween(slots, anchor, anchor, until) {
 		if b.Kind == schedule.SlotProgram && b.LibraryItemID != "" && b.Start.Before(until) {
 			out = append(out, b)
 		}
@@ -883,7 +883,7 @@ func (e *Engine) recordScheduled(ctx context.Context, ch channelstore.Channel, n
 	}
 	until := now.Add(time.Nanosecond) // a programme starting at now has started
 	if window, zone := e.RollingWindow(ch.Policy, now); window > 0 {
-		if end := playout.CarryOverEnd(ch.Desired, ch.PlayoutAnchor, schedule.NextWindowStart(ch.PlayoutAnchor, window, zone)); end.Before(until) {
+		if end := timeline.CarryOverEnd(ch.Desired, ch.PlayoutAnchor, schedule.NextWindowStart(ch.PlayoutAnchor, window, zone)); end.Before(until) {
 			until = end // past the hand-over the next window airs, not this cycle
 		}
 	}

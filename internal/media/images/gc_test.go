@@ -96,7 +96,7 @@ func TestGCPurgesExpiredBytesAndRequeuesTheRow(t *testing.T) {
 			"so the image would never come back")
 	}
 	// And it is genuinely back on the queue, not merely flagged.
-	queued, err := fs.ListAwaitingFetch(ctx, 10)
+	queued, err := fs.ListAwaitingFetch(ctx, fixedNow, 10)
 	if err != nil {
 		t.Fatal(err)
 	}

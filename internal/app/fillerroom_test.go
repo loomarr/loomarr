@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 type roomStore struct{ channels []channelstore.Channel }
@@ -36,12 +36,12 @@ func (p roomPods) PreviewAtMany(_ context.Context, channelID string, slots []pod
 }
 
 type roomTimeline struct {
-	byChannel map[string][]playout.Broadcast
+	byChannel map[string][]timeline.Broadcast
 	err       error
 	from, to  time.Time
 }
 
-func (tl *roomTimeline) BroadcastsWithPending(_ context.Context, channelID string, from, to time.Time) ([]playout.Broadcast, error) {
+func (tl *roomTimeline) BroadcastsWithPending(_ context.Context, channelID string, from, to time.Time) ([]timeline.Broadcast, error) {
 	tl.from, tl.to = from, to
 	return tl.byChannel[channelID], tl.err
 }
@@ -64,7 +64,7 @@ func podOf(hashes ...string) pod.Pod {
 // nothing.
 func TestClipsInBreaksAreThoseOfEveryLiveChannelsGuideWindow(t *testing.T) {
 	now := time.Date(2026, 11, 14, 20, 0, 0, 0, time.UTC)
-	timeline := &roomTimeline{byChannel: map[string][]playout.Broadcast{
+	timeline := &roomTimeline{byChannel: map[string][]timeline.Broadcast{
 		"ch-a": {
 			{Kind: schedule.SlotProgram, Start: now, Stop: now.Add(20 * time.Minute)},
 			{Kind: schedule.SlotFiller, Start: now.Add(20 * time.Minute), Stop: now.Add(22 * time.Minute)},
@@ -101,7 +101,7 @@ func TestClipsInBreaksAreThoseOfEveryLiveChannelsGuideWindow(t *testing.T) {
 func TestClipsInBreaksFailsWhenAChannelCannotBeRead(t *testing.T) {
 	now := time.Date(2026, 11, 14, 20, 0, 0, 0, time.UTC)
 	st := roomStore{channels: []channelstore.Channel{roomChannel("ch-a", schedule.StatusLive)}}
-	broadcasts := map[string][]playout.Broadcast{"ch-a": {{Kind: schedule.SlotFiller, Start: now, Stop: now.Add(time.Minute)}}}
+	broadcasts := map[string][]timeline.Broadcast{"ch-a": {{Kind: schedule.SlotFiller, Start: now, Stop: now.Add(time.Minute)}}}
 
 	_, err := clipsInBreaks(context.Background(), st, roomPods{slots: map[string][]pod.BreakSlot{}},
 		&roomTimeline{byChannel: broadcasts, err: errors.New("timeline down")}, now)

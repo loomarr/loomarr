@@ -1,5 +1,5 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
-import { LibrarySettings, StatePanel } from "@loomarr/ui";
+import { LibrarySettings } from "@loomarr/ui";
 import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { readyTitleOf } from "../ready-title";
@@ -25,8 +25,9 @@ const SettingsLibrary = () => {
   const health = current?.health;
 
   const error = folders.error ?? map.error ?? rescan.error ?? refresh.error ?? confirmRemoval.error;
-  if (error && !(body && health)) return <ErrorState error={error} onRetry={() => void folders.refresh()} />;
-  if (!body || !current || !health) return <StatePanel kind="loading" title="Loading your media folders" />;
+  // The route's loader ensured the folders and the status, and its error view takes a first read
+  // that fails, so the page always opens on them. A failed refresh or action shows above them.
+  if (!body || !current || !health) return null;
 
   return (
     <>

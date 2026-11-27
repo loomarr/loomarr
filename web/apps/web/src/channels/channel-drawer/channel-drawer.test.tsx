@@ -62,9 +62,11 @@ describe("ChannelDrawer", () => {
     const tuned = group("ALL CHANNELS").getByRole("button", { current: true });
     expect(tuned).toHaveTextContent("Westerns");
     expect(tuned).toHaveTextContent("TUNED");
-    // The tuned row is neutral (#1909 Q2), so amber is left for the focus ring alone.
-    expect(tuned).toHaveClass("bg-static-800");
-    expect(tuned.outerHTML).not.toMatch(/(text|border|bg)-signal/);
+    // Only the tuned row is current; the tuned look itself is the design system's `selected` row.
+    // (Westerns is listed under Recent as well as All channels.)
+    for (const current of screen.getAllByRole("button", { current: true })) {
+      expect(current).toHaveTextContent("Westerns");
+    }
   });
 
   it("finds by name, programme or number", async () => {
@@ -82,9 +84,50 @@ describe("ChannelDrawer", () => {
     renderDrawer({ onFavourite });
     const star = screen.getAllByRole("button", { name: "Favorite Cartoons" })[0] as HTMLElement;
     expect(star).toHaveAttribute("aria-pressed", "true");
-    expect(star.parentElement?.closest("button")).toBeNull();
+    expect(star.parentElement?.closest('button, [role="button"]')).toBeNull();
     await userEvent.click(star);
     expect(onFavourite).toHaveBeenCalledWith("b", false);
+  });
+
+  it("is a non-modal dialog named Channels, so the player's arrow keys leave its list alone", () => {
+    renderDrawer();
+    const dialog = screen.getByRole("dialog", { name: "Channels" });
+    expect(dialog.hasAttribute("aria-modal")).toBe(false);
+  });
+
+  it("moves focus into the find box, then tabs through each row followed by its star and out", async () => {
+    renderDrawer({ favourites: [], recent: [] });
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+    const order: string[] = [];
+    for (let i = 0; i < 9; i++) {
+      await userEvent.tab();
+      order.push(document.activeElement?.getAttribute("aria-label") ?? "");
+    }
+    expect(order).toEqual([
+      "03 Westerns, tuned, A western, 12m left",
+      "Favorite Westerns",
+      "07 Cartoons, A cartoon, 4m left",
+      "Favorite Cartoons",
+      "12 Nature, off air",
+      "Favorite Nature",
+      "21 Sitcoms",
+      "Favorite Sitcoms",
+      "",
+    ]);
+  });
+
+  it("tunes from a row with Enter or Space and closes on Escape pressed on it", async () => {
+    const onTune = vi.fn();
+    const onClose = vi.fn();
+    renderDrawer({ favourites: [], onClose, onTune, recent: [] });
+    const cartoons = screen.getByRole("button", { name: /^07 Cartoons/ });
+    cartoons.focus();
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard(" ");
+    expect(onTune).toHaveBeenNthCalledWith(1, "b");
+    expect(onTune).toHaveBeenNthCalledWith(2, "b");
+    await userEvent.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   // WCAG 2.5.3, label in name, as axe checks it: the row's visible text, its text nodes joined as

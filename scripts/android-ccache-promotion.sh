@@ -203,9 +203,13 @@ retention_plan() {
     printf 'android ccache promotion: unsafe retention input\n' >&2
     exit 2
   fi
+  # The kept generation has to be in the listing. A cache save that is refused only warns, so the
+  # caller cannot know its save happened: without this, a refused save retires every generation
+  # main has and keeps none.
   jq -r --arg ref "${ref}" --arg prefix "${prefix}" --arg keep "${keep_key}" '
     .actions_caches as $caches
     | if ($caches | type) != "array" then error("actions_caches must be an array") else $caches end
+    | if any(.[]; .ref == $ref and .key == $keep) then . else error("the kept generation is not in the cache: nothing is retired") end
     | [
         .[]
         | select(.ref == $ref)

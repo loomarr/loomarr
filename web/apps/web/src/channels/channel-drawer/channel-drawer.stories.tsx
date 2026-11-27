@@ -3,13 +3,11 @@ import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, waitFor } from "storybook/test";
 import { ChannelDrawer } from "./channel-drawer";
 
-// The drawer sits inside the player's frame, over its right edge. The frame here is a stand-in for
-// the picture, 640px tall, so the drawer's 95% canvas shows it faintly.
+// The drawer docks itself inside the player's frame, over its right edge. The frame here is a
+// stand-in for the picture, 640px tall, so the drawer's 95% canvas shows it faintly.
 const inPlayerFrame: Decorator = (Story) => (
   <div className="bg-static-700 relative h-[640px] w-full overflow-hidden">
-    <div className="absolute inset-y-0 right-0 z-40 flex max-w-full">
-      <Story />
-    </div>
+    <Story />
   </div>
 );
 
