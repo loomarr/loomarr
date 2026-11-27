@@ -1,7 +1,9 @@
 # Claude Code adapter
 
-Read `AGENTS.md` first. It is the complete, canonical Loomarr agent contract and wins if this adapter
-ever disagrees with it.
+@AGENTS.md
+
+The import above loads `AGENTS.md`, the complete, canonical Loomarr agent contract. It wins if this
+adapter ever disagrees with it.
 
 Claude Code conveniences are optional adapters:
 

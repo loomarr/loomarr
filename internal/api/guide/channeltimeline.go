@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // The Watch player's mini-guide timeline (§9.1 Watch, V47).
@@ -213,7 +214,7 @@ func (s *Handlers) channelTimeline(ctx context.Context, in *upcomingInput) (*tim
 // paths — #1980/#1988). It is best-effort: no assembler or a failed preview leaves the breaks
 // without a pod, and the strip still renders.
 func (s *Handlers) attachTimelinePods(
-	ctx context.Context, channelID string, bs []playout.Broadcast, airings []GuideAiring,
+	ctx context.Context, channelID string, bs []timeline.Broadcast, airings []GuideAiring,
 ) {
 	if s.pods == nil {
 		return

@@ -8,7 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -77,7 +77,7 @@ type clipExposureAdapter struct{ st store.Store }
 // Playout resolves a break's first clip no earlier than its run-ahead before the break and records
 // each clip as it resolves it, so every airing the break counts was already stored when its first
 // clip was assembled. The margin covers clock skew between Postgres replicas.
-const airingSettle = playout.OnAirLookahead + 3*time.Second
+const airingSettle = timeline.OnAirLookahead + 3*time.Second
 
 func (a clipExposureAdapter) FillerAirings(ctx context.Context) (pod.AiringHistory, error) {
 	airings, err := a.st.FillerAirings(ctx)

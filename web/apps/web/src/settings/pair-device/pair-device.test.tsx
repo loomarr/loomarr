@@ -4,7 +4,7 @@ import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
 import { PairDevice } from "./pair-device";
@@ -147,6 +147,59 @@ describe("PairDevice", () => {
 
   // Signed-out is an expected arrival, not an error: the person holding the remote often is not
   // signed in on the phone they are typing on.
+  // An app's OAuth sign-in: approving hands the browser to the server step that finishes it, and the
+  // page says an app (not a TV) is asking.
+  it("continues an app's sign-in after approval instead of confirming", async () => {
+    signedIn();
+    server.use(getDevicePairApproveMockHandler({ deviceName: "Claude (claude.ai)" }));
+    const assign = vi.fn();
+    vi.spyOn(window, "location", "get").mockReturnValue({ ...window.location, assign });
+    let asked = "";
+    server.use(
+      http.get("*/v1/oauth/request", ({ request }) => {
+        asked = new URL(request.url).searchParams.get("request") ?? "";
+        return HttpResponse.json({ app: "Claude", sendsTo: "claude.ai", loopback: false });
+      }),
+    );
+    const next = "/v1/oauth/continue?request=Zb3k_Q9-xY2mN4pL7vR1sT6uW8aC0dEf";
+    render(<PairDevice initialCode="BCDF-GHJK" next={next} />, { wrapper: makeWrapper() });
+
+    expect(await screen.findByText("Claude wants to sign in to Loomarr as you.")).toBeInTheDocument();
+    expect(screen.getByText(/It sends the sign-in to claude\.ai\./)).toBeInTheDocument();
+    expect(asked).toBe("Zb3k_Q9-xY2mN4pL7vR1sT6uW8aC0dEf");
+    await userEvent.click(screen.getByRole("button", { name: "Add device" }));
+
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith(next));
+    expect(screen.queryByText(/is ready/)).not.toBeInTheDocument();
+    vi.restoreAllMocks();
+  });
+
+  // Approving a sign-in the page could not describe would be consent to an unknown app.
+  it("will not approve an app's sign-in it cannot describe", async () => {
+    signedIn();
+    server.use(
+      http.get("*/v1/oauth/request", () =>
+        HttpResponse.json({ title: "Sign-in expired", status: 404 }, { status: 404 }),
+      ),
+    );
+    const next = "/v1/oauth/continue?request=Zb3k_Q9-xY2mN4pL7vR1sT6uW8aC0dEf";
+    render(<PairDevice initialCode="BCDF-GHJK" next={next} />, { wrapper: makeWrapper() });
+
+    expect(await screen.findByText(/This sign-in has expired or was already finished/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add device" })).toBeDisabled();
+  });
+
+  it("keeps an app's sign-in in the return link when signed out", async () => {
+    signedOut();
+    const next = "/v1/oauth/continue?request=Zb3k_Q9-xY2mN4pL7vR1sT6uW8aC0dEf";
+    render(<PairDevice initialCode="BCDF-GHJK" next={next} />, { wrapper: makeWrapper() });
+
+    const link = await screen.findByRole("link", { name: "Sign in" });
+    const href = new URL(link.getAttribute("href") ?? "", "http://x");
+    const back = new URL(href.searchParams.get("redirect") ?? "", "http://x");
+    expect(back.searchParams.get("next")).toBe(next);
+  });
+
   it("offers sign-in and keeps the code in the return link", async () => {
     signedOut();
     render(<PairDevice initialCode="BCDF-GHJK" />, { wrapper: makeWrapper() });

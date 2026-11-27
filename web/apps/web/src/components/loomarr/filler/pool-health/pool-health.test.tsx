@@ -164,7 +164,7 @@ describe("PoolHealth", () => {
               channelId: "ch-1",
               name: "Cartoons",
               number: 1,
-              level: "audience",
+              level: "widened",
               total: 12,
               durationMs: 300_000,
               categories: 2,

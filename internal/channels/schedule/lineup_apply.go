@@ -84,8 +84,8 @@ func ApplyLineup(current, incoming []LineupEntry, mode LineupMode, opts ApplyOpt
 // fields (Title/Year/Genres) always come from `incoming`; a season window or episode selector
 // comes from `incoming` when it sets one, else from the current entry.
 //
-// Either way an entry that stays in the lineup keeps its first AddedAt and, when the incoming
-// entry is unscored, its Fit; an entry new to the lineup without an AddedAt is stamped `now`.
+// Either way an entry that stays in the lineup keeps its first AddedAt, its growth batch and, when
+// the incoming entry is unscored, its Fit; an entry new to the lineup without an AddedAt is stamped `now`.
 // Retirement ranks on both, so a reorder, a manual add or a re-approval must not reset them.
 func applyReplace(current, incoming []LineupEntry, preserve bool, now time.Time) []LineupEntry {
 	byKey := make(map[provision.Key]LineupEntry, len(current))
@@ -107,6 +107,9 @@ func applyReplace(current, incoming []LineupEntry, preserve bool, now time.Time)
 			}
 			if out[i].Fit == 0 {
 				out[i].Fit = cur.Fit
+			}
+			if out[i].Grown == "" {
+				out[i].Grown = cur.Grown // a grown title stays grown across a reorder or re-approval
 			}
 		}
 		if out[i].AddedAt.IsZero() {

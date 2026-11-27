@@ -58,25 +58,33 @@ const RestartOverlay = ({ restarting, justCameBack, failed, className }: Restart
     >
       <Stack
         align="center"
-        className="border-border bg-card max-w-sm rounded-lg border p-4 shadow-lg"
+        backgroundColor="$surfaceRaised"
+        borderColor="$borderDecorative"
+        borderRadius={8}
+        borderWidth={1}
+        className="shadow-lg"
         direction="row"
         gap="control"
+        maxWidth={384}
+        padding={16}
       >
         {restarting ? (
           <ActivityIndicator decorative size="default" tone="primary" />
         ) : failed ? null : (
           <Icon decorative glyph={icons.selected} size="default" tone="success" />
         )}
-        <div className="min-w-0">
+        <Stack minWidth={0}>
           <Text as="p" textRole="cardLabel">
             {restarting ? "Restarting Loomarr" : failed ? "Loomarr hasn't come back" : "Loomarr is back"}
           </Text>
-          <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
-            {restarting
-              ? "This takes a few seconds. The app will pick up where it left off."
-              : (failed ?? "Everything is back to normal.")}
-          </Text>
-        </div>
+          <Stack marginTop={2}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {restarting
+                ? "This takes a few seconds. The app will pick up where it left off."
+                : (failed ?? "Everything is back to normal.")}
+            </Text>
+          </Stack>
+        </Stack>
       </Stack>
     </Stack>
   );

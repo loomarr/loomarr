@@ -1,8 +1,9 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
-import { LibrarySettings, StatePanel } from "@loomarr/ui";
+import { LibrarySettings } from "@loomarr/ui";
 import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { readyTitleOf } from "../ready-title";
+import { useFolderBrowser } from "../use-folder-browser";
 import { useLibraryFolders } from "../use-library-folders";
 
 // Settings → Library's media folders (#2151 decisions 6 and 29). The server discovers folders from
@@ -11,6 +12,7 @@ import { useLibraryFolders } from "../use-library-folders";
 
 const SettingsLibrary = () => {
   const folders = useLibraryFolders();
+  const folderBrowser = useFolderBrowser();
   const timeZone = useHouseholdTimeZone();
   const mutation = { mutation: { onSettled: folders.refresh } };
   const map = libraryApi.useSetLibraryPathMapping(mutation);
@@ -23,8 +25,9 @@ const SettingsLibrary = () => {
   const health = current?.health;
 
   const error = folders.error ?? map.error ?? rescan.error ?? refresh.error ?? confirmRemoval.error;
-  if (error && !(body && health)) return <ErrorState error={error} onRetry={() => void folders.refresh()} />;
-  if (!body || !current || !health) return <StatePanel kind="loading" title="Loading your media folders" />;
+  // The route's loader ensured the folders and the status, and its error view takes a first read
+  // that fails, so the page always opens on them. A failed refresh or action shows above them.
+  if (!body || !current || !health) return null;
 
   return (
     <>
@@ -35,6 +38,7 @@ const SettingsLibrary = () => {
         health={health}
         held={current.held}
         unreadable={current.unreadable}
+        skipped={current.skipped}
         hooks={current.hooks}
         details={current.details}
         scan={current.scan}
@@ -43,6 +47,7 @@ const SettingsLibrary = () => {
         onRefreshEverything={() => refresh.mutate()}
         onConfirmRemoval={(path) => confirmRemoval.mutate({ data: { path } })}
         onAddFolder={folders.onAddFolder}
+        folderBrowser={folderBrowser}
         onCheckAgain={folders.onCheckAgain}
         onMapFolder={(row) => map.mutate({ data: row })}
         onUseFolder={folders.onUseFolder}

@@ -7,13 +7,18 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
+import { setWindowWidth } from "@/test/window-width";
 import { DEFAULT_APPLICATION_FILTERS } from "../application-filters";
 import { ApplicationDiagnostics } from "./application-diagnostics";
 
 describe("ApplicationDiagnostics", () => {
+  // The detail pane sits beside the list only on a desktop-width window.
+  beforeEach(() => setWindowWidth(1440));
+  afterEach(() => setWindowWidth(0));
+
   // One error and one warning, a further page, and two dropped events: the log each test below opens.
   const renderLog = async () => {
     const dropState = { dropped: 2 };

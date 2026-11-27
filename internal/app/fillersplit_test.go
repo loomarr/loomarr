@@ -12,6 +12,7 @@ import (
 
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -25,6 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -212,7 +214,7 @@ func TestSplit_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if operation.Status != store.InteractiveOperationError || operation.Error == "" || operation.CompletedAt.IsZero() {
+	if operation.Status != operationstore.InteractiveOperationError || operation.Error == "" || operation.CompletedAt.IsZero() {
 		t.Fatalf("split operation = %+v, want durable cancellation outcome", operation)
 	}
 }
@@ -333,6 +335,36 @@ func TestSplit_NoDropFolderIsUnavailable(t *testing.T) {
 	}
 }
 
+// A reel upkeep let go (#4421) is refused before any job starts: its recording is gone, and the
+// caller gets a 409 saying so rather than a missing-file error frame from a detection pass.
+func TestSplit_ALetGoReelIsRefusedSynchronously(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	a, st := newSplitAdapter(t, events.NewBus(), true)
+	now := time.Now().UTC()
+	if err := st.UpsertAcquisitionRun(ctx, acquisition.AcquisitionRun{
+		ID: "run-1", Trigger: acquisition.TriggerSource, Status: acquisition.RunSuccess,
+		StartedAt: now, CompletedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: compHash, AcquisitionID: "run-1", Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusDone,
+		Disposition: pipelinestate.DispositionComplete, EnrolledAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetClipComposite(ctx, compHash, true, now); err != nil {
+		t.Fatal(err)
+	}
+	if retired, err := st.RetireSettledReel(ctx, compHash, now); err != nil || !retired {
+		t.Fatalf("RetireSettledReel = %v, %v; want the reel let go", retired, err)
+	}
+	if _, err := a.Split(ctx, compHash); !errors.Is(err, operator.ErrReelLetGo) {
+		t.Errorf("Split of a let-go reel = %v, want ErrReelLetGo", err)
+	}
+}
+
 // A missing clip is a SYNCHRONOUS not-found: the caller gets its 404 in the
 // response, not as an SSE error frame seconds later.
 func TestSplit_MissingClipFailsSynchronously(t *testing.T) {
@@ -414,7 +446,7 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if operation.Status != store.InteractiveOperationSuccess {
+	if operation.Status != operationstore.InteractiveOperationSuccess {
 		t.Fatalf("durable split operation = %+v, want success", operation)
 	}
 }
@@ -766,4 +798,8 @@ func TestSplit_FailedDetectionLeavesTheReelParked(t *testing.T) {
 
 func (f splitFakeTools) VisionKeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
 	return nil, nil
+}
+
+func (f splitFakeTools) FrameHintsIn(context.Context, string, int64, int64, int) (tools.FrameHint, error) {
+	return tools.FrameHint{}, nil
 }

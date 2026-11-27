@@ -9,6 +9,7 @@ import {
   MenuContent,
   MenuGroup,
   MenuTrigger,
+  Stack,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -97,7 +98,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
       .then(resetConfirm, ignoreFailure);
 
   return (
-    <div className="relative shrink-0">
+    <Stack align="start" flexShrink={0} position="relative">
       {/* Closing always disarms the confirm: reopening the menu on a channel you nearly deleted
           should not present the armed Delete button again. */}
       <Menu
@@ -105,14 +106,8 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
           if (!next) resetConfirm();
         }}
       >
-        <MenuTrigger>
-          <Action
-            icon="more"
-            layout="icon"
-            // The menu's trigger props land on a real button, which Base UI's trigger can drive.
-            render={<button onClick={swallow} type="button" />}
-            variant="ghost"
-          >
+        <MenuTrigger onClick={swallow}>
+          <Action icon="more" layout="icon" variant="ghost">
             {`Actions for ${channel.name}`}
           </Action>
         </MenuTrigger>
@@ -193,7 +188,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
           )}
         </MenuContent>
       </Menu>
-    </div>
+    </Stack>
   );
 };
 

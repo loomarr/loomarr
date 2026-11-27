@@ -23,6 +23,15 @@ type countingCycle struct {
 	window time.Duration
 }
 
+func (c *countingCycle) TurnedWindow(ctx context.Context, id string, at, _ time.Time) ([]schedule.Slot, error) {
+	_, slots, _, _, err := c.CyclePreview(ctx, id, at)
+	return slots, err
+}
+
+func (c *countingCycle) WithPlannedBreaks(_ context.Context, _ string, _ time.Time, slots []schedule.Slot) []schedule.Slot {
+	return slots
+}
+
 func (c *countingCycle) CyclePreview(context.Context, string, time.Time) (
 	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
 ) {

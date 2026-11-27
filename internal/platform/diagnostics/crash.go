@@ -167,7 +167,7 @@ type ClientCrashSummary struct {
 	ReceivedAt  string        `json:"receivedAt" format:"date-time" doc:"RFC 3339, the server's clock"`
 	OccurredAt  string        `json:"occurredAt" format:"date-time" doc:"RFC 3339, the device's clock"`
 	UserID      string        `json:"userId,omitempty" doc:"The signed-in person whose app sent it; absent for an API-token caller"`
-	DeviceID    string        `json:"deviceId,omitempty" doc:"The paired device's id from the device list; absent for a browser session"`
+	DeviceID    string        `json:"deviceId,omitempty" doc:"The paired device's id from the device list; absent for a browser session, or once the device is unpaired"`
 	DeviceName  string        `json:"deviceName,omitempty"`
 	Kind        CrashKind     `json:"kind" enum:"js-fatal,js-error,native"`
 	Platform    CrashPlatform `json:"platform" enum:"ios,android,tvos,android-tv"`

@@ -1,7 +1,17 @@
 import type { DiscoveredClip } from "@loomarr/api/models/discoveredClip";
 import type { DiscoveredClipStats } from "@loomarr/api/models/discoveredClipStats";
 import { formatClipDuration, formatDuration, pluralize } from "@loomarr/core/format";
-import { Action, ActivityIndicator, Field, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
+import {
+  Action,
+  ActivityIndicator,
+  Field,
+  Icon,
+  icons,
+  Stack,
+  Surface,
+  Text,
+  TextLink,
+} from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import type { SourceSearchProps } from "./source-search.type";
 
@@ -158,7 +168,7 @@ const SourceSearch = ({
               : pluralize(visibleResults.length, "match", "matches")}
           </Text>
 
-          <ul ref={listRef} className="flex flex-col gap-2">
+          <Stack gap="2" ref={listRef as never} render="ul">
             {visibleResults.map((clip) => {
               const acquisition = queueStatus?.[clip.id];
               const parts = metaParts(clip, stats?.[clip.id]);
@@ -166,7 +176,11 @@ const SourceSearch = ({
                 <Stack
                   align="center"
                   key={clip.id}
-                  className="border-border rounded-lg border px-3 py-2"
+                  borderColor="$borderDecorative"
+                  borderRadius={8}
+                  borderWidth={1}
+                  paddingHorizontal={12}
+                  paddingVertical={8}
                   data-clip-id={clip.id}
                   direction="row"
                   gap="control"
@@ -182,34 +196,44 @@ const SourceSearch = ({
                       // Empty alt: the title is the very next element, so describing the frame
                       // would make a screen reader announce the same item twice.
                       alt=""
-                      className="bg-static-800 h-10 w-16 shrink-0 rounded object-cover"
+                      style={{
+                        backgroundColor: "var(--color-static-800)",
+                        borderRadius: 4,
+                        flexShrink: 0,
+                        height: 40,
+                        objectFit: "cover",
+                        width: 64,
+                      }}
                       loading="lazy"
                     />
                   )}
 
-                  <div className="min-w-0 flex-1">
+                  <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
                     {/* The item's own page, so an operator can look before committing. Opens
                         away from Loomarr, so it says so for anyone not watching the status bar. */}
-                    <a
-                      href={clip.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block truncate text-sm hover:underline"
-                    >
-                      {clip.title || clip.id}
-                    </a>
+                    <Text as="div" numberOfLines={1} textRole="compact">
+                      <TextLink
+                        render={<a href={clip.url} rel="noreferrer" target="_blank" />}
+                        tone="inherit"
+                        underline="hover"
+                      >
+                        {clip.title || clip.id}
+                      </TextLink>
+                    </Text>
                     {/* ⚠ "checking…" only while a request is genuinely in flight. Once it has
                         answered, an unknown duration renders as nothing at all — a permanent
                         spinner would promise a value that is never coming, and "0:00" would
                         claim the clip is empty. */}
                     {(parts.length > 0 || loadingSet.has(clip.id)) && (
-                      <Text as="span" className="mt-0.5 block" textRole="mono">
-                        {[...parts, ...(loadingSet.has(clip.id) ? ["checking…"] : [])].join(" · ")}
-                      </Text>
+                      <Stack marginTop={2}>
+                        <Text as="span" textRole="mono">
+                          {[...parts, ...(loadingSet.has(clip.id) ? ["checking…"] : [])].join(" · ")}
+                        </Text>
+                      </Stack>
                     )}
-                  </div>
+                  </Stack>
 
-                  <Stack align="center" className="ml-auto" direction="row" flexShrink={0} gap="1">
+                  <Stack align="center" direction="row" flexShrink={0} gap="1" marginLeft="auto">
                     {onPreview && (
                       <Action
                         accessibilityLabel={`Preview: ${clip.title || clip.id}`}
@@ -221,14 +245,14 @@ const SourceSearch = ({
                       </Action>
                     )}
                     {acquisition === "queued" || acquisition === "running" ? (
-                      <Text as="span" className="shrink-0" textRole="compact" tone="signal">
+                      <Text as="span" flexShrink={0} textRole="compact" tone="signal">
                         <Stack align="center" direction="row" gap="1" render="span">
                           <ActivityIndicator decorative size="compact" tone="inherit" />
                           Downloading…
                         </Stack>
                       </Text>
                     ) : acquisition === "success" ? (
-                      <Text as="span" className="shrink-0" textRole="compact" tone="signal">
+                      <Text as="span" flexShrink={0} textRole="compact" tone="signal">
                         <Stack align="center" direction="row" gap="1" render="span">
                           <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
                           Added · being checked
@@ -259,7 +283,7 @@ const SourceSearch = ({
                 </Stack>
               );
             })}
-          </ul>
+          </Stack>
 
           {remaining > 0 && (
             <Action

@@ -1,10 +1,9 @@
 import { clipMediaURL } from "@loomarr/core/clip-thumb";
 import { formatMmSs } from "@loomarr/core/format";
-import { Stack, Text } from "@loomarr/design-system";
+import { MediaTile, Stack, Text, VisuallyHidden } from "@loomarr/design-system";
 import { useRef, useState } from "react";
 import { VideoPlayer } from "@/components/loomarr/player/video-player";
 import { ServedImage } from "@/components/loomarr/served-image";
-import { cn } from "@/lib/utils";
 import type { SegmentPreviewProps } from "./segment-preview.type";
 
 // SegmentPreview — one proposed cut, played from the parent recording (§10 V54/V70). It remains
@@ -51,12 +50,15 @@ const SegmentPreview = ({
   const player = failed ? (
     <Stack
       align="center"
-      className="bg-static-900 aspect-video rounded-md p-6"
+      aspectRatio={16 / 9}
+      backgroundColor="$surfaceRaised"
+      borderRadius={6}
       direction="row"
       justify="center"
+      padding={24}
       role="alert"
     >
-      <Text as="span" className="text-center" textRole="compact" tone="secondary">
+      <Text as="span" textAlign="center" textRole="compact" tone="secondary">
         This preview couldn’t be played. The original recording may be unavailable.
       </Text>
     </Stack>
@@ -71,7 +73,7 @@ const SegmentPreview = ({
 
   if (embedded) {
     return (
-      <div className={cn("w-full", className)} onErrorCapture={() => setFailedSource(sourceKey)}>
+      <div className={className} style={{ width: "100%" }} onErrorCapture={() => setFailedSource(sourceKey)}>
         {player}
       </div>
     );
@@ -83,7 +85,8 @@ const SegmentPreview = ({
     // tile and the player's own — this wrapper only listens.
     // biome-ignore lint/a11y/noStaticElementInteractions: keyboard-only listener, see above.
     <div
-      className={cn("contents", className)}
+      className={className}
+      style={{ display: "contents" }}
       onKeyDown={(e) => {
         // ⚠ On the WRAPPER, not the panel. The tile and the panel are siblings, so a handler on
         // the panel never sees a keypress made while the tile itself has focus — which is the
@@ -97,15 +100,14 @@ const SegmentPreview = ({
         if (panelRef.current?.contains(document.activeElement)) buttonRef.current?.focus();
       }}
     >
-      <button
+      <MediaTile
         ref={buttonRef}
-        type="button"
         // The mock's tooltip, verbatim (`loomarr-prototype-desktop-v2.dc.html:2209`).
         title="Preview this segment"
         // ⚠ The name is composed from a fixed verb plus the VISIBLE "#N" marker, never from the
         // adjacent Name <input>: `aria-labelledby` on an input takes its VALUE, so the button
         // would be renamed on every keystroke. Anchoring to something on screen is also what the
-        // compact-control rule asks for — an sr-only-only name drifts from what the operator sees.
+        // compact-control rule asks for — a hidden-only name drifts from what the operator sees.
         // The tile's own visible words ("Preview unavailable", the timecode badge) belong in the
         // name too, in reading order (WCAG 2.5.3). The badge stays aria-hidden so it is read once,
         // as part of the name; labelledby still resolves hidden elements.
@@ -114,61 +116,71 @@ const SegmentPreview = ({
           .join(" ")}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        onClick={() => {
+        // Open is a pressed state, so it is neutral (#1909); the amber outline is focus.
+        current={open}
+        height={64}
+        onPress={() => {
           if (!open) setFailedSource(undefined);
           onOpenChange(!open);
         }}
-        className={cn(
-          "border-border relative h-16 w-28 shrink-0 cursor-pointer overflow-hidden rounded-md border p-0",
-          "flex items-center justify-center",
-          // ⚠ A visible focus ring the mock does not have — the same gap the filmstrip's blocks
-          // already record fixing. Keyboard users would otherwise have no idea which tile they are on.
-          "focus-visible:outline-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1",
-          "bg-static-900",
-          // Open is a pressed state, so it is neutral (#1909); the amber outline above is focus.
-          open && "ring-foreground ring-1",
-        )}
+        radius="medium"
+        width={112}
       >
-        <span id={verbId} className="sr-only">
-          Preview segment
-        </span>
+        <VisuallyHidden as="span">
+          <span id={verbId}>Preview segment</span>
+        </VisuallyHidden>
         {artwork ? (
           <ServedImage image={artwork} alt="" sizes="112px" />
         ) : (
-          <span id={unavailableId} className="text-muted-foreground px-2 text-center text-[10px]">
-            Preview unavailable
-          </span>
+          <Stack paddingHorizontal={8} render="span">
+            <Text as="span" id={unavailableId} textAlign="center" textRole="guideCell" tone="secondary">
+              Preview unavailable
+            </Text>
+          </Stack>
         )}
         <Stack
           align="center"
           aria-hidden
-          className="bg-static-950/25 absolute inset-0 text-sm text-white"
+          bottom={0}
           direction="row"
           justify="center"
+          left={0}
+          position="absolute"
           render="span"
+          right={0}
+          style={{ backgroundColor: "color-mix(in srgb, var(--color-static-950) 25%, transparent)" }}
+          top={0}
         >
-          ▶
+          <Text as="span" style={{ color: "var(--color-static-0)" }} textRole="compact">
+            ▶
+          </Text>
         </Stack>
         {/* ⚠ `formatMmSs` ("00:30"), NOT `formatClipDuration` ("30s"). The row already renders the
             span as "30s", and a second "30s" inside the same region makes the editor's existing
             `getByText("30s")` match two elements and throw. It also reads better: the row's is a
             validation readout, this is a timecode badge on a thumbnail. */}
         {span > 0 && (
-          <span
-            id={spanId}
-            aria-hidden
-            className="bg-static-950/85 text-static-100 absolute right-1 bottom-1 rounded-[2px] px-1 font-mono text-[9px]"
+          <Stack
+            borderRadius={2}
+            bottom={4}
+            paddingHorizontal={4}
+            position="absolute"
+            render="span"
+            right={4}
+            style={{ backgroundColor: "color-mix(in srgb, var(--color-static-950) 85%, transparent)" }}
           >
-            {formatMmSs(span)}
-          </span>
+            <Text as="span" id={spanId} aria-hidden textRole="microBadge">
+              {formatMmSs(span)}
+            </Text>
+          </Stack>
         )}
-      </button>
+      </MediaTile>
 
       {open && (
         <div
           ref={panelRef}
           id={panelId}
-          className="mt-2 w-full max-w-md"
+          style={{ marginTop: 8, maxWidth: 448, width: "100%" }}
           onErrorCapture={() => setFailedSource(sourceKey)}
         >
           {/* No `title`: the row's Name field names this segment eight pixels away, and the player

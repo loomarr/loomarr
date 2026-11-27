@@ -35,7 +35,7 @@ const Thumb = ({ member }: { member: LibraryCollectionMember }) => (
 );
 
 const NameYear = ({ member }: { member: LibraryCollectionMember }) => (
-  <Stack flexBasis={0} flexGrow={1} minWidth={0}>
+  <Stack flexBasis={0} flexGrow={1} flexShrink={1} minWidth={0}>
     <Text textRole="body">{member.name}</Text>
     {member.year ? (
       <Text textRole="compact" tone="secondary">
@@ -176,7 +176,7 @@ const Footer = ({
       />
       <Line alignItems="flex-start" justifyContent="space-between" rowGap="control">
         {saved ? (
-          <Stack gap={4}>
+          <Stack flexShrink={1} gap={4}>
             <Line>
               <Action disabled={used || busy} onPress={() => setAsking(true)} tone="danger" variant="outline">
                 Delete collection

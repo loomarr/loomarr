@@ -16,9 +16,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { SchedulingRule } from "@loomarr/api/models/schedulingRule";
 import type { Vocabulary } from "@loomarr/api/models/vocabulary";
-import { Action, CompactSelect, Stack, Text, Tooltip } from "@loomarr/design-system";
+import { Action, Card, CompactSelect, Grid, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { useId, useState } from "react";
-import { cn } from "@/lib/utils";
 import type { ChannelRulesEditorProps } from "./channel-rules-editor.type";
 import { computeLabel } from "./label";
 import {
@@ -150,7 +149,16 @@ const RuleRow = ({
   } = useSortable({ id: draft.id });
   const rowId = useId();
 
-  const style = { transform: CSS.Transform.toString(transform), transition };
+  // A dragged row lifts above its neighbours, dimmed, with a shadow.
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    ...(isDragging && {
+      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)",
+      opacity: 0.7,
+      zIndex: 10,
+    }),
+  };
 
   const label = computeLabel(
     {
@@ -168,73 +176,70 @@ const RuleRow = ({
   ];
 
   return (
-    <li
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5",
-        isDragging && "z-10 opacity-70 shadow-md",
-      )}
-    >
-      <Stack align="center" direction="row" gap="inline">
-        <Action
-          {...attributes}
-          {...listeners}
-          compact
-          disabled={disabled}
-          icon="dragHandle"
-          layout="icon"
-          style={{ flexShrink: 0 }}
-          variant="ghost"
-        >
-          {`Reorder ${label}`}
-        </Action>
-        <Text as="span" className="min-w-0 flex-1 truncate" textRole="cardLabel" tone="primary">
-          {label}
-        </Text>
-        <Tooltip content="Remove this rule">
+    <li ref={setNodeRef} style={style}>
+      <Card borderRadius={6} gap={8} paddingHorizontal={12} paddingVertical={10}>
+        <Stack align="center" direction="row" gap="inline">
           <Action
+            {...attributes}
+            {...listeners}
+            compact
             disabled={disabled}
-            icon="close"
+            icon="dragHandle"
             layout="icon"
-            onPress={onRemove}
             style={{ flexShrink: 0 }}
             variant="ghost"
           >
-            {`Remove ${label}`}
+            {`Reorder ${label}`}
           </Action>
-        </Tooltip>
-      </Stack>
+          <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0} render="span">
+            <Text as="span" numberOfLines={1} textRole="cardLabel" tone="primary">
+              {label}
+            </Text>
+          </Stack>
+          <Tooltip content="Remove this rule">
+            <Action
+              disabled={disabled}
+              icon="close"
+              layout="icon"
+              onPress={onRemove}
+              style={{ flexShrink: 0 }}
+              variant="ghost"
+            >
+              {`Remove ${label}`}
+            </Action>
+          </Tooltip>
+        </Stack>
 
-      <div className="grid grid-cols-1 gap-2 pl-9 sm:grid-cols-3">
-        <CompactSelect
-          id={`${rowId}-when`}
-          label={`When for ${label}`}
-          onValueChange={(v) => onChange({ ...draft, whenToken: v })}
-          options={withPrompt("When…", whenOptions(vocab.when))}
-          value={draft.whenToken}
-        />
+        <Grid columns={{ base: 1, sm: 3 }} gap="2" paddingLeft={36}>
+          <CompactSelect
+            id={`${rowId}-when`}
+            label={`When for ${label}`}
+            onValueChange={(v) => onChange({ ...draft, whenToken: v })}
+            options={withPrompt("When…", whenOptions(vocab.when))}
+            value={draft.whenToken}
+          />
 
-        <CompactSelect
-          id={`${rowId}-what`}
-          label={`What for ${label}`}
-          onValueChange={(v) => {
-            const seriesKey = v.startsWith("series:") ? v.slice("series:".length) : undefined;
-            const whatDisplay = seriesKey ? lineupKeys.find((l) => l.key === seriesKey)?.title : undefined;
-            onChange({ ...draft, whatToken: v, whatDisplay });
-          }}
-          options={withPrompt("What…", whatOptions)}
-          value={draft.whatToken}
-        />
+          <CompactSelect
+            id={`${rowId}-what`}
+            label={`What for ${label}`}
+            onValueChange={(v) => {
+              const seriesKey = v.startsWith("series:") ? v.slice("series:".length) : undefined;
+              const whatDisplay = seriesKey ? lineupKeys.find((l) => l.key === seriesKey)?.title : undefined;
+              onChange({ ...draft, whatToken: v, whatDisplay });
+            }}
+            options={withPrompt("What…", whatOptions)}
+            value={draft.whatToken}
+          />
 
-        <CompactSelect
-          id={`${rowId}-how`}
-          label={`How for ${label}`}
-          onValueChange={(v) => onChange({ ...draft, howToken: v })}
-          options={withPrompt("How…", howOptions(vocab.how))}
-          value={draft.howToken}
-        />
-      </div>
+          <CompactSelect
+            id={`${rowId}-how`}
+            label={`How for ${label}`}
+            onValueChange={(v) => onChange({ ...draft, howToken: v })}
+            options={withPrompt("How…", howOptions(vocab.how))}
+            value={draft.howToken}
+          />
+        </Grid>
+      </Card>
     </li>
   );
 };
@@ -307,16 +312,24 @@ const ChannelRulesEditor = ({
       </div>
 
       {drafts.length === 0 ? (
-        <div className="border-border rounded-md border border-dashed px-3 py-6 text-center">
-          <Text as="p" textRole="compact" tone="secondary">
+        <Stack
+          borderColor="borderDecorative"
+          borderRadius={6}
+          borderStyle="dashed"
+          borderWidth={1}
+          gap="3"
+          paddingHorizontal={12}
+          paddingVertical={24}
+        >
+          <Text as="p" textAlign="center" textRole="compact" tone="secondary">
             No rules yet. This channel always follows its base policy above.
           </Text>
-          <Stack className="mt-3" direction="row" justify="center">
+          <Stack direction="row" justify="center">
             <Action icon="plus" onPress={addRule} variant="outline">
               Add rule
             </Action>
           </Stack>
-        </div>
+        </Stack>
       ) : (
         <>
           <DndContext sensors={sensors} onDragEnd={onDragEnd}>

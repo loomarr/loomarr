@@ -10,6 +10,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // mustUsers saves a member for each id, for a test whose rows name people: a channel's requester
@@ -17,7 +19,7 @@ import (
 func mustUsers(t *testing.T, s Store, ids ...string) {
 	t.Helper()
 	for _, id := range ids {
-		if err := s.UpsertUser(context.Background(), User{ID: id, Name: id, Role: RoleMember}); err != nil {
+		if err := s.UpsertUser(context.Background(), User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -26,15 +28,15 @@ func mustUsers(t *testing.T, s Store, ids ...string) {
 func testDiscoveryFeedbackMissingChannel(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	for _, action := range []FeedbackAction{FeedbackNever, FeedbackClear} {
+	for _, action := range []channeldatastore.FeedbackAction{channeldatastore.FeedbackNever, channeldatastore.FeedbackClear} {
 		feedback := DiscoveryFeedback{ID: "missing-" + string(action), ActorID: "admin",
-			Scope: FeedbackChannel, ScopeID: "missing-channel", Target: provision.Key("movie:tmdb:90000603"),
+			Scope: channeldatastore.FeedbackChannel, ScopeID: "missing-channel", Target: provision.Key("movie:tmdb:90000603"),
 			Action: action, CreatedAt: time.Unix(1_700_000_000, 0).UTC()}
 		if err := s.AppendDiscoveryFeedback(ctx, feedback); !errors.Is(err, ErrNotFound) {
 			t.Errorf("append %s for missing channel = %v, want ErrNotFound", action, err)
 		}
 	}
-	got, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: FeedbackChannel, ScopeID: "missing-channel"})
+	got, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: channeldatastore.FeedbackChannel, ScopeID: "missing-channel"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,12 +58,12 @@ func testDiscoveryFeedbackHardDelete(t *testing.T, newStore NewStoreFunc) {
 	}
 	target := provision.Key("movie:tmdb:90000603")
 	for _, feedback := range []DiscoveryFeedback{
-		{ID: "delete-channel", ActorID: "admin", Scope: FeedbackChannel, ScopeID: channel.ID,
-			Target: target, Action: FeedbackNever, CreatedAt: time.Unix(1_700_000_000, 0).UTC()},
-		{ID: "keep-household", ActorID: "admin", Scope: FeedbackHousehold,
-			Target: target, Action: FeedbackKeep, CreatedAt: time.Unix(1_700_000_001, 0).UTC()},
-		{ID: "keep-other-channel", ActorID: "admin", Scope: FeedbackChannel, ScopeID: otherChannel.ID,
-			Target: target, Action: FeedbackSurprise, CreatedAt: time.Unix(1_700_000_002, 0).UTC()},
+		{ID: "delete-channel", ActorID: "admin", Scope: channeldatastore.FeedbackChannel, ScopeID: channel.ID,
+			Target: target, Action: channeldatastore.FeedbackNever, CreatedAt: time.Unix(1_700_000_000, 0).UTC()},
+		{ID: "keep-household", ActorID: "admin", Scope: channeldatastore.FeedbackHousehold,
+			Target: target, Action: channeldatastore.FeedbackKeep, CreatedAt: time.Unix(1_700_000_001, 0).UTC()},
+		{ID: "keep-other-channel", ActorID: "admin", Scope: channeldatastore.FeedbackChannel, ScopeID: otherChannel.ID,
+			Target: target, Action: channeldatastore.FeedbackSurprise, CreatedAt: time.Unix(1_700_000_002, 0).UTC()},
 	} {
 		if err := s.AppendDiscoveryFeedback(ctx, feedback); err != nil {
 			t.Fatal(err)
@@ -70,21 +72,21 @@ func testDiscoveryFeedbackHardDelete(t *testing.T, newStore NewStoreFunc) {
 	if err := s.DeleteChannel(ctx, channel.ID, saved.Revision); err != nil {
 		t.Fatal(err)
 	}
-	channelFeedback, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: FeedbackChannel, ScopeID: channel.ID})
+	channelFeedback, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: channeldatastore.FeedbackChannel, ScopeID: channel.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(channelFeedback) != 0 {
 		t.Fatalf("hard-deleted channel feedback = %+v, want none", channelFeedback)
 	}
-	otherFeedback, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: FeedbackChannel, ScopeID: otherChannel.ID})
+	otherFeedback, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: channeldatastore.FeedbackChannel, ScopeID: otherChannel.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(otherFeedback) != 1 || otherFeedback[0].ID != "keep-other-channel" {
 		t.Fatalf("other channel feedback after delete = %+v, want unrelated identity preserved", otherFeedback)
 	}
-	householdFeedback, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: FeedbackHousehold})
+	householdFeedback, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: channeldatastore.FeedbackHousehold})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,8 +110,8 @@ func testDiscoveryFeedbackDeleteRace(t *testing.T, newStore NewStoreFunc) {
 	go func() {
 		<-start
 		appendResult <- s.AppendDiscoveryFeedback(ctx, DiscoveryFeedback{ID: "racing-append", ActorID: "admin",
-			Scope: FeedbackChannel, ScopeID: channel.ID, Target: provision.Key("movie:tmdb:90000603"),
-			Action: FeedbackLess, CreatedAt: time.Unix(1_700_000_000, 0).UTC()})
+			Scope: channeldatastore.FeedbackChannel, ScopeID: channel.ID, Target: provision.Key("movie:tmdb:90000603"),
+			Action: channeldatastore.FeedbackLess, CreatedAt: time.Unix(1_700_000_000, 0).UTC()})
 	}()
 	go func() {
 		<-start
@@ -122,7 +124,7 @@ func testDiscoveryFeedbackDeleteRace(t *testing.T, newStore NewStoreFunc) {
 	if err := <-appendResult; err != nil && !errors.Is(err, ErrNotFound) {
 		t.Fatalf("racing append = %v, want success-before-delete or ErrNotFound-after-delete", err)
 	}
-	got, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: FeedbackChannel, ScopeID: channel.ID})
+	got, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: channeldatastore.FeedbackChannel, ScopeID: channel.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,13 +146,13 @@ func testDiscoveryFeedbackDetachedChannel(t *testing.T, newStore NewStoreFunc) {
 	if _, err := s.SaveChannel(ctx, saved); err != nil {
 		t.Fatal(err)
 	}
-	feedback := DiscoveryFeedback{ID: "detached-event", ActorID: "admin", Scope: FeedbackChannel,
-		ScopeID: channel.ID, Target: provision.Key("movie:tmdb:90000603"), Action: FeedbackSurprise,
+	feedback := DiscoveryFeedback{ID: "detached-event", ActorID: "admin", Scope: channeldatastore.FeedbackChannel,
+		ScopeID: channel.ID, Target: provision.Key("movie:tmdb:90000603"), Action: channeldatastore.FeedbackSurprise,
 		CreatedAt: time.Unix(1_700_000_000, 0).UTC()}
 	if err := s.AppendDiscoveryFeedback(ctx, feedback); err != nil {
 		t.Fatalf("append detached-channel feedback: %v", err)
 	}
-	got, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: FeedbackChannel, ScopeID: channel.ID})
+	got, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: channeldatastore.FeedbackChannel, ScopeID: channel.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,16 +165,16 @@ func testDiscoveryFeedback(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	base := time.Unix(1_700_000_000, 0).UTC()
-	first := DiscoveryFeedback{ID: "f-1", ActorID: "admin", Scope: FeedbackHousehold,
-		Target: provision.Key("movie:tmdb:90000603"), Action: FeedbackKeep, Reason: "family favorite", CreatedAt: base}
+	first := DiscoveryFeedback{ID: "f-1", ActorID: "admin", Scope: channeldatastore.FeedbackHousehold,
+		Target: provision.Key("movie:tmdb:90000603"), Action: channeldatastore.FeedbackKeep, Reason: "family favorite", CreatedAt: base}
 	if err := s.AppendDiscoveryFeedback(ctx, first); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.AppendDiscoveryFeedback(ctx, DiscoveryFeedback{ID: "f-2", ActorID: "admin",
-		Scope: FeedbackHousehold, Target: first.Target, Action: FeedbackNever, CreatedAt: base.Add(time.Second)}); err != nil {
+		Scope: channeldatastore.FeedbackHousehold, Target: first.Target, Action: channeldatastore.FeedbackNever, CreatedAt: base.Add(time.Second)}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: FeedbackHousehold})
+	got, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: channeldatastore.FeedbackHousehold})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,8 +190,8 @@ func testDiscoveryFeedback(t *testing.T, newStore NewStoreFunc) {
 		go func(i int) {
 			defer wg.Done()
 			errCh <- s.AppendDiscoveryFeedback(ctx, DiscoveryFeedback{ID: fmt.Sprintf("parallel-%d", i),
-				ActorID: "admin", Scope: FeedbackChannel, ScopeID: "channel-1",
-				Target: provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_000_100+i)), Action: FeedbackLess,
+				ActorID: "admin", Scope: channeldatastore.FeedbackChannel, ScopeID: "channel-1",
+				Target: provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_000_100+i)), Action: channeldatastore.FeedbackLess,
 				CreatedAt: base.Add(2 * time.Second)})
 		}(i)
 	}
@@ -200,7 +202,7 @@ func testDiscoveryFeedback(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	parallel, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: FeedbackChannel, ScopeID: "channel-1"})
+	parallel, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: channeldatastore.FeedbackChannel, ScopeID: "channel-1"})
 	if err != nil || len(parallel) != 8 {
 		t.Fatalf("concurrent feedback = %d, %v; want 8 events", len(parallel), err)
 	}

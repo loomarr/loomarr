@@ -16,13 +16,13 @@ func testLibraryFiles(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)
 	at := time.UnixMilli(1_800_000_000_000).UTC()
-	if err := s.AddLibraryRoot(ctx, LibraryRootCheck{Path: "/media/a", Readable: true}, at); err != nil {
+	if err := s.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: "/media/a", Readable: true}, at); err != nil {
 		t.Fatal(err)
 	}
-	files := []LibraryFile{
+	files := []librarystore.LibraryFile{
 		{Path: "/media/a/one.mkv", Root: "/media/a", Size: 1 << 40, ModifiedNs: 1_700_000_000_123_456_789, Identity: "i1", SeenAt: at},
-		{Path: "/media/a/two.mkv", Root: "/media/a", Size: 2, ModifiedNs: 2, Kind: "episode", Header: LibraryHeaderRead, Held: true, SeenAt: at},
-		{Path: "/media/a/disc.iso", Root: "/media/a", Size: 3, ModifiedNs: 3, Header: LibraryHeaderFailed, Problem: "disc_image", SeenAt: at},
+		{Path: "/media/a/two.mkv", Root: "/media/a", Size: 2, ModifiedNs: 2, Kind: "episode", Header: librarystore.LibraryHeaderRead, Held: true, SeenAt: at},
+		{Path: "/media/a/disc.iso", Root: "/media/a", Size: 3, ModifiedNs: 3, Header: librarystore.LibraryHeaderFailed, Problem: "disc_image", SeenAt: at},
 		{Path: "/media/a/gone.mkv", Root: "/media/a", Size: 4, ModifiedNs: 4, SeenAt: at, MissingAt: at},
 		{Path: "/media/b/three.mkv", Root: "/media/b", Size: 5, ModifiedNs: 5, SeenAt: at},
 	}
@@ -35,7 +35,7 @@ func testLibraryFiles(t *testing.T, newStore NewStoreFunc) {
 	}
 	one := got[2]
 	if one.Path != "/media/a/one.mkv" || one.Size != 1<<40 || one.ModifiedNs != 1_700_000_000_123_456_789 ||
-		one.Header != LibraryHeaderPending || one.Identity != "i1" || !one.SeenAt.Equal(at) || !one.MissingAt.IsZero() {
+		one.Header != librarystore.LibraryHeaderPending || one.Identity != "i1" || !one.SeenAt.Equal(at) || !one.MissingAt.IsZero() {
 		t.Errorf("one = %+v", one)
 	}
 	if !got[3].Held || got[3].Kind != "episode" || got[0].Problem != "disc_image" || !got[1].MissingAt.Equal(at) {
@@ -44,15 +44,15 @@ func testLibraryFiles(t *testing.T, newStore NewStoreFunc) {
 
 	counts, err := s.LibraryFileCounts(ctx)
 	if err != nil || counts.Files != 4 || counts.HeadersPending != 2 || counts.Problems != 1 ||
-		len(counts.Held) != 1 || counts.Held[0] != (LibraryHeldCount{Root: "/media/a", Kind: "episode", Count: 1}) {
+		len(counts.Held) != 1 || counts.Held[0] != (librarystore.LibraryHeldCount{Root: "/media/a", Kind: "episode", Count: 1}) {
 		t.Errorf("counts = %+v, %v", counts, err)
 	}
 
-	one.Header, one.Identity = LibraryHeaderRead, "i2"
-	if err := s.SaveLibraryFiles(ctx, []LibraryFile{one}); err != nil {
+	one.Header, one.Identity = librarystore.LibraryHeaderRead, "i2"
+	if err := s.SaveLibraryFiles(ctx, []librarystore.LibraryFile{one}); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := s.LibraryFiles(ctx, "/media/a"); got[2].Header != LibraryHeaderRead || got[2].Identity != "i2" {
+	if got, _ := s.LibraryFiles(ctx, "/media/a"); got[2].Header != librarystore.LibraryHeaderRead || got[2].Identity != "i2" {
 		t.Errorf("rewritten = %+v", got[2])
 	}
 
@@ -79,11 +79,11 @@ func testLibraryFiles(t *testing.T, newStore NewStoreFunc) {
 
 	// A first walk writes more rows than one transaction holds; every one lands. A bad row anywhere
 	// writes none of them.
-	many := make([]LibraryFile, 2*librarystore.LibraryFilesChunk+1)
+	many := make([]librarystore.LibraryFile, 2*librarystore.LibraryFilesChunk+1)
 	for i := range many {
-		many[i] = LibraryFile{Path: fmt.Sprintf("/media/c/%04d.mkv", i), Root: "/media/c", Size: 1, ModifiedNs: 1, SeenAt: at}
+		many[i] = librarystore.LibraryFile{Path: fmt.Sprintf("/media/c/%04d.mkv", i), Root: "/media/c", Size: 1, ModifiedNs: 1, SeenAt: at}
 	}
-	bad := append(slices.Clone(many), LibraryFile{Path: "/media/c/no-seen.mkv", Root: "/media/c"})
+	bad := append(slices.Clone(many), librarystore.LibraryFile{Path: "/media/c/no-seen.mkv", Root: "/media/c"})
 	if err := s.SaveLibraryFiles(ctx, bad); err == nil {
 		t.Fatal("a row with no seen time was accepted")
 	}

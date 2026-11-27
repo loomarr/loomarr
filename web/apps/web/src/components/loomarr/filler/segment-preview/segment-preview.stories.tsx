@@ -1,3 +1,4 @@
+import { VisuallyHidden } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { pauseStoryVideo } from "@/test/story-video";
@@ -36,9 +37,9 @@ const Collapsed: Story = {
     (Story) => (
       <div>
         {/* The visible marker the tile borrows for its accessible name. */}
-        <span id="seg-num-0" className="sr-only">
-          #1
-        </span>
+        <VisuallyHidden as="span">
+          <span id="seg-num-0">#1</span>
+        </VisuallyHidden>
         <Story />
       </div>
     ),

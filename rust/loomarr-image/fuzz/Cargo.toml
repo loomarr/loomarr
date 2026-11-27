@@ -21,5 +21,12 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "subtitle_decoder"
+path = "fuzz_targets/subtitle_decoder.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
 members = ["."]

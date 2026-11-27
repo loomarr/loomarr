@@ -44,8 +44,16 @@ knip: ## unused files, exports and dependencies in web/ (config: web/knip.ts)
 fe-lint-fix: ## Biome autofix — format + safe lint fixes (web/)
 	cd $(WEB) && pnpm biome check --write
 
-# `make fe` is the developer aggregate: fe-checks, fe-packages, and fe-unit, codegen once between
-# them. CI runs the three on separate runners (ci-frontend.yml), so every check still has one home.
+# `make fe` is the developer aggregate: fe-checks, fe-typecheck, fe-packages, and fe-unit, codegen
+# once between them. CI runs them on separate runners (ci-frontend.yml), so every check still has one
+# home.
+#
+# fe-typecheck and fe-packages run Turbo's `typecheck` and `test` tasks with the same task hashes as
+# `make clients-tests`, so the Frontend job and the client lanes share results through the Remote
+# Cache. Never add `--only`: it drops the dependency hashes, so @loomarr/web's typecheck would hit
+# the cache after a change to a package it imports. Without TURBO_TOKEN, Turbo caches on disk only:
+# in web/.turbo, or, from a linked git worktree, in the main checkout's .turbo, which every worktree
+# on the machine shares.
 #
 # FE_SHARD is a CI-only passthrough (`make fe-unit FE_SHARD=1/2`), with the same empty-by-default
 # contract as GO_SHARD and the visual suite's separately validated shard input. A local `make fe`
@@ -66,17 +74,23 @@ FE_SHARD ?=
 FE_SHARD_ARG := $(if $(FE_SHARD),--shard=$(FE_SHARD),)
 
 .PHONY: fe
-fe: fe-checks fe-packages fe-unit ## biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery
+fe: fe-checks fe-typecheck fe-packages fe-unit ## biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery
 
 .PHONY: fe-checks
-fe-checks: fe-codegen ## everything in fe except the tests: biome, knip, typecheck, SPA, storybook
-	cd $(WEB) && pnpm lint && pnpm knip && pnpm --filter @loomarr/web... -r --parallel typecheck \
+fe-checks: fe-codegen ## everything in fe except the typecheck and tests: biome, knip, SPA, storybook
+	cd $(WEB) && pnpm lint && pnpm knip \
 	  && pnpm --filter @loomarr/web build && pnpm --filter @loomarr/web build-storybook
 	@touch internal/platform/web/dist/.gitkeep
 
+.PHONY: fe-typecheck
+fe-typecheck: fe-codegen ## typecheck the web app and the packages it uses (Turbo), after codegen
+	cd $(WEB) && pnpm exec turbo run typecheck --filter=@loomarr/web...
+
+# Turbo's `test` depends on each package's `typecheck`: run after fe-typecheck, those are cache hits,
+# and run alone, fe-packages typechecks the packages first.
 .PHONY: fe-packages
-fe-packages: fe-codegen ## unit tests of the packages the web app uses, after codegen
-	cd $(WEB) && pnpm --filter @loomarr/web... --filter '!@loomarr/web' -r --parallel test
+fe-packages: fe-codegen ## unit tests of the packages the web app uses (Turbo), after codegen
+	cd $(WEB) && pnpm exec turbo run test --filter=@loomarr/web... '--filter=!@loomarr/web'
 
 .PHONY: fe-unit
 fe-unit: fe-codegen ## web unit tests after codegen (FE_SHARD=n/m runs one shard)

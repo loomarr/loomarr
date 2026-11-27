@@ -1,0 +1,290 @@
+import { formatClipDuration } from "@loomarr/core/format";
+import {
+  Action,
+  Badge,
+  Card,
+  Details,
+  Field,
+  Grid,
+  Icon,
+  icons,
+  Stack,
+  Text,
+  Tooltip,
+} from "@loomarr/design-system";
+import { languageName } from "@/lib/languages";
+import { SegmentPreview } from "../../segment-preview";
+import {
+  AUDIENCE_LABEL,
+  type DraftSegment,
+  isValid,
+  languageNeedsRecheck,
+  nameDetail,
+  nameNowOwnedByOperator,
+  resolveMs,
+  spanMs,
+  unresolvedLanguageMessage,
+} from "../split-review-draft";
+
+interface SegmentInspectorProps {
+  segment: DraftSegment;
+  position: number;
+  last: boolean;
+  // The COMPOSITE's hash — what the preview plays a window of. A proposed cut has no bytes yet.
+  clipHash: string;
+  minClipDurationMs?: number;
+  onChange: (patch: Partial<DraftSegment>) => void;
+  onDrop: () => void;
+  onMergeWithNext: () => void;
+}
+
+const SegmentInspector = ({
+  segment,
+  position,
+  last,
+  clipHash,
+  minClipDurationMs,
+  onChange,
+  onDrop,
+  onMergeWithNext,
+}: SegmentInspectorProps) => {
+  const n = position + 1;
+  const span = spanMs(segment);
+  const valid = isValid(segment);
+  const languageMessage = unresolvedLanguageMessage(segment);
+  const namingMessage = nameDetail(segment);
+  const timingNeedsAttention =
+    !valid ||
+    segment.unsplittable ||
+    (span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs);
+  const hasDetails = Boolean(
+    namingMessage ||
+      (!segment.language && languageMessage) ||
+      segment.dupOf ||
+      segment.dedupUnchecked ||
+      segment.boundaryConfidence ||
+      segment.transcript,
+  );
+  return (
+    <Stack aria-label={`Clip ${n}: ${segment.name || "unnamed"}`} gap="4" render="section">
+      <SegmentPreview
+        clipHash={clipHash}
+        // Preview the draft the operator can actually keep. Untouched cuts retain detector
+        // millisecond precision; typed values use the same resolver as the confirm body.
+        startMs={resolveMs(segment.startText, segment.startMs)}
+        endMs={resolveMs(segment.endText, segment.endMs)}
+        position={position}
+        labelledBy={`seg-num-${position}`}
+        artwork={segment.artwork}
+        open
+        onOpenChange={() => {}}
+        autoPlay
+        embedded
+      />
+
+      <Stack align="start" direction="row" gap="control" justify="between" wrap>
+        <Stack flexBasis="0%" flexGrow={1} gap="2" minWidth={0}>
+          <p title={valid ? undefined : "Needs mm:ss times, end after start, at least 3 seconds"}>
+            <Text
+              as="span"
+              fontVariant={["tabular-nums"]}
+              textRole="mono"
+              tone={valid ? "secondary" : "danger"}
+            >
+              {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
+            </Text>
+          </p>
+          <Stack align="center" direction="row" gap="1.5" wrap>
+            {segment.era ? <Badge shape="square" tone="neutral">{`${segment.era}s`}</Badge> : null}
+            {segment.audience ? (
+              <Badge shape="square" tone="neutral">
+                {AUDIENCE_LABEL[segment.audience] ?? segment.audience}
+              </Badge>
+            ) : null}
+            {segment.category ? (
+              <Badge shape="square" tone="neutral">
+                {segment.category}
+              </Badge>
+            ) : null}
+            {segment.languageChecked && segment.language ? (
+              <Badge shape="square" tone="neutral">
+                {segment.language === "none" ? "No speech" : languageName(segment.language)}
+              </Badge>
+            ) : null}
+            {(() => {
+              const extra = (segment.tags ?? []).filter((tag) => tag !== segment.category).length;
+              return extra > 0 ? (
+                <Badge shape="square" tone="neutral">
+                  +{extra}
+                </Badge>
+              ) : null;
+            })()}
+          </Stack>
+        </Stack>
+        <Stack direction="row" gap="1" justify="end" wrap>
+          {!last && (
+            <Tooltip content="Join this clip and the next">
+              <Action onPress={onMergeWithNext} variant="ghost">
+                Join next
+              </Action>
+            </Tooltip>
+          )}
+          <Tooltip content="Do not keep this clip">
+            <Action icon="delete" onPress={onDrop} variant="ghost">
+              Remove
+            </Action>
+          </Tooltip>
+        </Stack>
+      </Stack>
+
+      {segment.holdReason ? (
+        <Card paddingHorizontal={8} paddingVertical={6} render="p" role="status" tone="caution">
+          <Text as="span" textRole="compact" tone="warning">
+            {`Take a closer look: ${segment.holdReason}.`}
+          </Text>
+        </Card>
+      ) : null}
+      {segment.unsplittable ? (
+        <Card paddingHorizontal={8} paddingVertical={6} tone="caution">
+          <Text as="p" textRole="compact" tone="danger">
+            Loomarr may have missed a cut here. Preview it, then adjust the timing, join it with the next
+            clip, or remove it.
+          </Text>
+        </Card>
+      ) : null}
+      {span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs ? (
+        <Card paddingHorizontal={8} paddingVertical={6} render="p" role="status" tone="caution">
+          <Text as="span" textRole="compact" tone="danger">
+            This clip is shorter than your {formatClipDuration(minClipDurationMs)} minimum. Make it longer,
+            join it with the next clip, or remove it.
+          </Text>
+        </Card>
+      ) : null}
+
+      {segment.suggestedEra ? (
+        <Stack align="center" direction="row" gap="inline" wrap>
+          <Text as="span" textRole="compact" tone="primary">
+            Loomarr thinks this may be from around {segment.suggestedEra}.
+          </Text>
+          <Action
+            onPress={() => onChange({ era: segment.suggestedEra, suggestedEra: undefined })}
+            variant="outline"
+          >
+            {`Use ${segment.suggestedEra}`}
+          </Action>
+          <Action onPress={() => onChange({ suggestedEra: undefined })} variant="ghost">
+            Not right
+          </Action>
+        </Stack>
+      ) : null}
+
+      <Card>
+        <Stack paddingHorizontal={12} paddingVertical={8}>
+          <Details
+            marker={false}
+            open={timingNeedsAttention}
+            summary={
+              <Stack align="center" direction="row" gap="2" render="span">
+                <Icon decorative glyph={icons.edit} size="compact" tone="inherit" /> Rename or adjust timing
+              </Stack>
+            }
+            textRole="cardLabel"
+            tone="primary"
+          >
+            <Grid columns={{ base: 1, sm: ["minmax(12rem,1fr)", "7rem", "7rem"] }} gap="3" marginTop={12}>
+              <Field
+                id={`seg-name-${position}`}
+                label="Name"
+                onChangeText={(name) => onChange({ name, ...nameNowOwnedByOperator })}
+                value={segment.name}
+              />
+              <Field
+                accessibilityLabel="Start (mm:ss)"
+                id={`seg-start-${position}`}
+                keyboardType="numbers-and-punctuation"
+                label="Starts"
+                onChangeText={(startText) =>
+                  onChange({
+                    startText,
+                    artwork: undefined,
+                    ...languageNeedsRecheck,
+                    ...nameNowOwnedByOperator,
+                  })
+                }
+                value={segment.startText}
+              />
+              <Field
+                accessibilityLabel="End (mm:ss)"
+                id={`seg-end-${position}`}
+                keyboardType="numbers-and-punctuation"
+                label="Ends"
+                onChangeText={(endText) =>
+                  onChange({
+                    endText,
+                    artwork: undefined,
+                    ...languageNeedsRecheck,
+                    ...nameNowOwnedByOperator,
+                  })
+                }
+                value={segment.endText}
+              />
+            </Grid>
+          </Details>
+        </Stack>
+      </Card>
+
+      {hasDetails ? (
+        <Stack paddingHorizontal={4}>
+          <Details summary="Details" tone="secondary">
+            <Stack gap="2" marginTop={8}>
+              {namingMessage ? (
+                <Text as="p" textRole="compact" tone="secondary">
+                  {namingMessage}
+                </Text>
+              ) : null}
+              {!segment.language && languageMessage ? (
+                <p title={segment.languageNote}>
+                  <Text as="span" textRole="compact" tone="secondary">
+                    {languageMessage}
+                  </Text>
+                </p>
+              ) : null}
+              {segment.dupOf ? (
+                <Text as="p" textRole="compact" tone="secondary">
+                  {`Looks like a clip already in your library: ${segment.dupOf}`}
+                </Text>
+              ) : null}
+              {segment.dedupUnchecked && !segment.dupOf ? (
+                <Text as="p" textRole="compact" tone="secondary">
+                  Couldn’t check this clip against your library, so it may already be there.
+                </Text>
+              ) : null}
+              {segment.boundaryConfidence ? (
+                <Text as="p" textRole="mono">
+                  {`Cut confidence ${segment.boundaryConfidence}%`}
+                  {segment.startEvidence ? ` · start: ${segment.startEvidence}` : ""}
+                  {segment.endEvidence ? ` · end: ${segment.endEvidence}` : ""}
+                </Text>
+              ) : null}
+              {segment.transcript ? (
+                <Stack
+                  backgroundColor="surfaceElevated"
+                  borderRadius={4}
+                  maxHeight={192}
+                  padding={12}
+                  style={{ overflow: "auto" }}
+                >
+                  <Text as="pre" style={{ margin: 0, whiteSpace: "pre-wrap" }} textRole="mono">
+                    {segment.transcript}
+                  </Text>
+                </Stack>
+              ) : null}
+            </Stack>
+          </Details>
+        </Stack>
+      ) : null}
+    </Stack>
+  );
+};
+
+export { SegmentInspector };

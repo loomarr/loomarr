@@ -1,8 +1,11 @@
 import type { PairingCredential, PairingSession } from "@loomarr/core/pairing";
 import type { RequestsController } from "@loomarr/core/requests";
+import type { PairedEvents } from "../paired-events";
 
 type PairedRequestsOptions = {
   credential: PairingCredential;
+  /** The device's stream to the server, from `usePairedClient`. */
+  events: PairedEvents;
   session: PairingSession;
 };
 

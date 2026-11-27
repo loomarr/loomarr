@@ -35,6 +35,7 @@ func TestWalkRoot(t *testing.T) {
 	touch(t, root, "India/India-featurette.mkv")
 	touch(t, root, "India/backdrops/Theme.mkv")
 	touch(t, root, "India/trickplay/India.mkv")
+	touch(t, root, "India/extrathumbs/India.mkv")
 	// A show named like an extras folder, at the top of the root, is a show.
 	touch(t, root, "Shorts/Season 01/Shorts S01E01.mkv")
 	touch(t, root, "@eaDir/India.mkv")
@@ -58,6 +59,13 @@ func TestWalkRoot(t *testing.T) {
 	if err := os.Symlink(filepath.Join(root, "Gone", "Tango.mkv"), filepath.Join(root, "Tango.mkv")); err != nil {
 		t.Fatal(err)
 	}
+	// A video file with no bytes: a copy that never finished.
+	if err := os.MkdirAll(filepath.Join(root, "Yankee"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Yankee", "Yankee.mkv"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	w, err := walkRoot(context.Background(), root, nil, nil)
 	if err != nil || !w.Complete {
@@ -69,7 +77,7 @@ func TestWalkRoot(t *testing.T) {
 	}
 	want := []string{
 		"India/India.mkv", "Kilo/VIDEO_TS", "Lima/Lima.iso", "Mike", "November/November.mkv",
-		"Shorts/Season 01/Shorts S01E01.mkv", "Tango.mkv",
+		"Shorts/Season 01/Shorts S01E01.mkv", "Tango.mkv", "Yankee/Yankee.mkv",
 	}
 	var rels []string
 	for rel := range got {
@@ -91,6 +99,10 @@ func TestWalkRoot(t *testing.T) {
 	// A link the walk can't follow is listed, not passed over: one out of the root, one gone.
 	if got["Mike"].Problem != ProblemLinkOutside || got["Tango.mkv"].Problem != ProblemBrokenLink {
 		t.Errorf("links not listed as problems: Mike %q, Tango %q", got["Mike"].Problem, got["Tango.mkv"].Problem)
+	}
+	// An empty video file is listed, not read: nothing in it plays.
+	if got["Yankee/Yankee.mkv"].Problem != ProblemEmptyFile {
+		t.Errorf("an empty file is not a problem: %q", got["Yankee/Yankee.mkv"].Problem)
 	}
 	if _, ok := got["India/India.mkv"].Sidecars[filepath.Join(root, "India", "India.nfo")]; !ok {
 		t.Errorf("sidecars = %v", got["India/India.mkv"].Sidecars)

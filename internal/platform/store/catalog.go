@@ -17,16 +17,8 @@ type (
 	Clip = clipstore.Clip
 	// ClipFilter narrows a ListClips query (clipstore.ClipFilter).
 	ClipFilter = clipstore.ClipFilter
-	// ClipSort is the catalog's closed sort vocabulary (clipstore.ClipSort).
-	ClipSort = clipstore.ClipSort
 	// ClipTx writes a clip's columns and tags inside a caller's transaction (clipstore.ClipTx).
 	ClipTx = clipstore.ClipTx
-	// ClipGeography is the broadcast provenance a clip's geography columns hold
-	// (clipstore.ClipGeography).
-	ClipGeography = clipstore.ClipGeography
-	// ClipPublication is what terminal readiness checks about a clip before publishing it
-	// (clipstore.ClipPublication).
-	ClipPublication = clipstore.ClipPublication
 	// ClipArtworkPending is a clip whose artwork the service has not produced yet
 	// (clipstore.ClipArtworkPending).
 	ClipArtworkPending = clipstore.ClipArtworkPending
@@ -39,43 +31,16 @@ type (
 	// ClipDefectLabel is the maintainer's label on a defect record (clipstore.ClipDefectLabel).
 	ClipDefectLabel = clipstore.ClipDefectLabel
 
-	// StoreTaxon is the persisted form of a taxonomy.Taxon (clipstore.StoreTaxon).
-	StoreTaxon = clipstore.StoreTaxon
 	// TaxonomyEdit is one semantic graph mutation (clipstore.TaxonomyEdit).
 	TaxonomyEdit = clipstore.TaxonomyEdit
 	// TaxonomyEditImpact is the durable-library half of a prospective graph edit
 	// (clipstore.TaxonomyEditImpact).
 	TaxonomyEditImpact = clipstore.TaxonomyEditImpact
-	// TaxonUsage is one taxon's clip accounting (clipstore.TaxonUsage).
-	TaxonUsage = clipstore.TaxonUsage
 	// TaxonomyUsage is the clip accounting of a graph edit (clipstore.TaxonomyUsage).
 	TaxonomyUsage = clipstore.TaxonomyUsage
 
-	// Image is one logical image's record (clipstore.Image).
-	Image = clipstore.Image
-	// ImageRef records what an image decorates (clipstore.ImageRef).
-	ImageRef = clipstore.ImageRef
-	// ImageDerivative is one regenerable rendition on disk (clipstore.ImageDerivative).
-	ImageDerivative = clipstore.ImageDerivative
 	// ImageStore is the image half of the Store contract (clipstore.ImageStore).
 	ImageStore = clipstore.ImageStore
-)
-
-const (
-	ClipSortName     = clipstore.ClipSortName
-	ClipSortDuration = clipstore.ClipSortDuration
-	ClipSortAdded    = clipstore.ClipSortAdded
-	ClipSortPlays    = clipstore.ClipSortPlays
-)
-
-// Sentinels the catalog returns, re-declared as the same values so errors.Is matches either name.
-var (
-	// ErrCorruptClipDefects is clipstore.ErrCorruptClipDefects.
-	ErrCorruptClipDefects = clipstore.ErrCorruptClipDefects
-	// ErrInferiorCopyMismatch is clipstore.ErrInferiorCopyMismatch.
-	ErrInferiorCopyMismatch = clipstore.ErrInferiorCopyMismatch
-	// ErrUnknownClipSort is clipstore.ErrUnknownClipSort.
-	ErrUnknownClipSort = clipstore.ErrUnknownClipSort
 )
 
 type catalogCluster = clipstore.Store

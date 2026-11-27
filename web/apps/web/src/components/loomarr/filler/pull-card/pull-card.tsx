@@ -1,10 +1,9 @@
 import { pluralize } from "@loomarr/core/format";
-import { Action, Badge, Card, Field, Stack, StatusLabel, Text } from "@loomarr/design-system";
+import { Action, Badge, Card, Details, Field, Stack, StatusLabel, Text } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import type { PullCardProps } from "./pull-card.type";
 
 // PullCard — a proposed filler acquisition awaiting a human (V66).
@@ -103,9 +102,11 @@ const PullCard = ({
 
       {/* Why this pull exists. "Approve this" without a reason is a button, not a decision. */}
       {pull.reason && (
-        <Text as="p" className="bg-muted/40 rounded-md p-3" textRole="compact" tone="secondary">
-          {pull.reason}
-        </Text>
+        <Stack backgroundColor="washElevated40" borderRadius={6} padding={12}>
+          <Text as="p" textRole="compact" tone="secondary">
+            {pull.reason}
+          </Text>
+        </Stack>
       )}
 
       <Stack gap="inline" render="ul">
@@ -115,20 +116,21 @@ const PullCard = ({
           return (
             <Stack
               align="center"
-              className={cn(isDropped && "opacity-50")}
               direction="row"
               gap="control"
               key={id}
+              opacity={isDropped ? 0.5 : 1}
               render="li"
               wrap
             >
               <Badge shape="square" tone="neutral">
                 {row.tag}
               </Badge>
-              <div className="min-w-0 flex-1">
+              <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
                 <Text
                   as="p"
-                  className={cn("truncate", isDropped && "line-through")}
+                  numberOfLines={1}
+                  style={isDropped ? { textDecorationLine: "line-through" } : undefined}
                   textRole="compact"
                   tone="primary"
                 >
@@ -139,12 +141,12 @@ const PullCard = ({
                     {row.why}
                   </Text>
                 )}
-              </div>
+              </Stack>
               {/* ⚠ An estimate, rendered as one. What a source yields depends on what is still
                   there, what deduplicates, and what the splitter makes of a compilation — a
                   number presented as exact becomes "Loomarr said 40 and downloaded 12". */}
               {row.estimateClips > 0 && (
-                <Text as="span" className="tabular-nums" textRole="mono">
+                <Text as="span" fontVariant={["tabular-nums"]} textRole="mono">
                   ~{row.estimateClips} clips
                 </Text>
               )}
@@ -162,43 +164,51 @@ const PullCard = ({
       </Stack>
 
       {(pull.rejected?.length ?? 0) > 0 && (
-        <details className="border-border rounded-md border px-3 py-2">
-          <Text as="summary" className="cursor-pointer" textRole="compact" tone="secondary">
-            {pluralize(pull.rejected?.length ?? 0, "other candidate")} considered and excluded
-          </Text>
-          <Stack className="mt-2" gap="1" render="ul">
-            {(pull.rejected ?? []).map((candidate) => (
-              <Stack direction="row" gap="inline" key={candidate.candidateId} render="li" wrap>
-                <Text as="span" textRole="compact" tone="primary">
-                  {candidate.name}
-                </Text>
-                <Text as="span" textRole="mono">
-                  {candidate.disposition.replaceAll("_", " ")}: {candidate.detail}
-                </Text>
+        <Card>
+          <Stack paddingHorizontal={12} paddingVertical={8}>
+            <Details
+              summary={`${pluralize(pull.rejected?.length ?? 0, "other candidate")} considered and excluded`}
+              tone="secondary"
+            >
+              <Stack gap="1" marginTop={8} render="ul">
+                {(pull.rejected ?? []).map((candidate) => (
+                  <Stack direction="row" gap="inline" key={candidate.candidateId} render="li" wrap>
+                    <Text as="span" textRole="compact" tone="primary">
+                      {candidate.name}
+                    </Text>
+                    <Text as="span" textRole="mono">
+                      {candidate.disposition.replaceAll("_", " ")}: {candidate.detail}
+                    </Text>
+                  </Stack>
+                ))}
               </Stack>
-            ))}
+            </Details>
           </Stack>
-        </details>
+        </Card>
       )}
 
       {skippedSources.length > 0 && (
-        <details className="border-border rounded-md border px-3 py-2">
-          <Text as="summary" className="cursor-pointer" textRole="compact" tone="secondary">
-            {pluralize(skippedSources.length, "registered source")} not searched
-          </Text>
-          <Stack className="mt-2" gap="1" render="ul">
-            {skippedSources.map((source) => (
-              <Stack direction="row" gap="inline" key={source.sourceId} render="li" wrap>
-                <Text as="span" textRole="compact" tone="primary">
-                  {source.label || source.sourceId}
-                </Text>
-                <Text as="span" textRole="mono">
-                  {source.disposition.replaceAll("_", " ")}: {source.detail}
-                </Text>
+        <Card>
+          <Stack paddingHorizontal={12} paddingVertical={8}>
+            <Details
+              summary={`${pluralize(skippedSources.length, "registered source")} not searched`}
+              tone="secondary"
+            >
+              <Stack gap="1" marginTop={8} render="ul">
+                {skippedSources.map((source) => (
+                  <Stack direction="row" gap="inline" key={source.sourceId} render="li" wrap>
+                    <Text as="span" textRole="compact" tone="primary">
+                      {source.label || source.sourceId}
+                    </Text>
+                    <Text as="span" textRole="mono">
+                      {source.disposition.replaceAll("_", " ")}: {source.detail}
+                    </Text>
+                  </Stack>
+                ))}
               </Stack>
-            ))}
+            </Details>
           </Stack>
-        </details>
+        </Card>
       )}
 
       <noteForm.Field name="note">

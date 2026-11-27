@@ -88,7 +88,7 @@ const Row = ({ label, value, mono = false }: { label: string; value: string; mon
         {label}
       </Text>
     </Stack>
-    <Stack flexBasis={240} flexGrow={1} minWidth={0}>
+    <Stack flexBasis={240} flexGrow={1} flexShrink={1} minWidth={0}>
       <Text textRole={mono ? "data" : "compact"}>{value}</Text>
     </Stack>
   </Line>

@@ -171,6 +171,65 @@ func TestVerifyCIContainerDownloadsRequiresTypedWorkflowJobContext(t *testing.T)
 	}
 }
 
+// Only the Android promotion may override GitHub's read-only cache for its trigger, and only with
+// exactly the mode its authority names.
+func TestVerifyCIContainerDownloadsPinsDeclaredCacheMode(t *testing.T) {
+	t.Parallel()
+	const promotion = "android-ccache-promotion.yml"
+	tests := map[string]struct {
+		workflow string
+		old      string
+		new      string
+		// reason is a fragment of the rejection; empty means "cache-mode".
+		reason string
+	}{
+		"promotion drops write":   {workflow: promotion, old: "    cache-mode: write\n", new: ""},
+		"promotion declares read": {workflow: promotion, old: "cache-mode: write", new: "cache-mode: read"},
+		"promotion write-only":    {workflow: promotion, old: "cache-mode: write", new: "cache-mode: write-only"},
+		"queue job declares write": {
+			workflow: "ci-android.yml", old: "    runs-on: ubuntu-latest\n", new: "    runs-on: ubuntu-latest\n    cache-mode: write\n",
+		},
+		"queue workflow declares write": {workflow: "ci-android.yml", old: "\njobs:\n", new: "\ncache-mode: write\njobs:\n"},
+		"promotion workflow declares write": {
+			workflow: promotion, old: "\njobs:\n", new: "\ncache-mode: write\njobs:\n",
+		},
+		"job without a context entry declares write": {
+			workflow: "ci.yml",
+			old:      "    name: Release candidate — exact main scope\n",
+			new:      "    name: Release candidate — exact main scope\n    cache-mode: write\n",
+		},
+		"queue job merges write in": {
+			workflow: "ci-android.yml", old: "    runs-on: ubuntu-latest\n", new: "    runs-on: ubuntu-latest\n    <<: {cache-mode: write}\n",
+			reason: "merge keys",
+		},
+		"queue workflow merges write in": {
+			workflow: "ci-android.yml", old: "\njobs:\n", new: "\n<<: {cache-mode: write}\njobs:\n", reason: "merge keys",
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			root := writeCIContainerDownloadsFixture(t)
+			original := readRepositoryWorkflow(t, test.workflow)
+			workflow := strings.Replace(original, test.old, test.new, 1)
+			if workflow == original {
+				t.Fatalf("%s does not contain %q", test.workflow, test.old)
+			}
+			writeFixtureFile(t, filepath.Join(root, ".github", "workflows", test.workflow), workflow)
+			err := VerifyCIContainerDownloads(root)
+			if err == nil {
+				t.Fatal("VerifyCIContainerDownloads accepted a cache mode its authority does not name")
+			}
+			reason := test.reason
+			if reason == "" {
+				reason = "cache-mode"
+			}
+			if !strings.Contains(err.Error(), reason) {
+				t.Fatalf("VerifyCIContainerDownloads rejected the mutation for another reason: %v", err)
+			}
+		})
+	}
+}
+
 func TestVerifyCIContainerDownloadsRejectsJobLevelReusableWorkflows(t *testing.T) {
 	t.Parallel()
 	root := writeCIContainerDownloadsFixture(t)

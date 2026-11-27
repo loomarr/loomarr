@@ -106,9 +106,8 @@ describe("LibraryStep", () => {
     );
     renderStep();
 
-    expect(await screen.findByText("You can carry on — titles appear as they're ready.")).toBeInTheDocument();
-    expect(await screen.findByText("Ready so far")).toBeInTheDocument();
-    expect(screen.getByText("Quiet Harbor")).toBeInTheDocument();
+    expect(await screen.findByText("You can carry on while it adds them.")).toBeInTheDocument();
+    expect(await screen.findByText("Quiet Harbor")).toBeInTheDocument();
     expect(screen.getByText("Step 2 of 3 · Reading each file · 10 of 40")).toBeInTheDocument();
 
     // The step opens its own event stream, and each library_scan frame moves the progress.

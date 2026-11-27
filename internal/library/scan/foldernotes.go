@@ -1,7 +1,9 @@
 package scan
 
 import (
+	"io/fs"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -10,6 +12,109 @@ import (
 // Folder notes: what a folder's videos say together that none says alone (they share a show's
 // name, number themselves by season and episode run together, are titled only, are a dump of
 // several shows), read once per folder by the walk and given to each file.
+
+// folderReading is what the walk makes of a folder's videos before it records them.
+type folderReading struct {
+	// shows is a folder on a shows' shelf.
+	shows bool
+	// extras are the videos that are another's extras, kept out of the Library.
+	extras map[string]bool
+	// videos are the folder's other videos, the ones it records.
+	videos []string
+	notes  folderNotes
+	// parts are the videos that are one movie's parts, by name, with each one's part.
+	parts map[string]int
+	// folderPart is the part a folder of one video, named by a part mark alone, is of a movie
+	// whose parts each have a folder; 0 for none.
+	folderPart int
+	// movies counts the folder's videos a movie in parts counting once.
+	movies int
+}
+
+// readFolder reads a folder's videos (videoNames, extras named so aside) together: which are
+// extras, which are a movie's parts, and what they say of each other (folderNotes).
+func (w *walker) readFolder(dir string, entries []fs.DirEntry, videoNames []string) folderReading {
+	folder := ""
+	if dir != w.root {
+		folder = filepath.Base(dir)
+	}
+	shows := dir != w.root && underShows(path.Join(w.shelf, w.rel(dir)))
+	extras := siblingExtras(folder, videoNames, shows || seasonDirOf(w.rel(dir)) != "")
+	for name := range extrasBeside(videoNames) {
+		extras[name] = true
+	}
+	for name := range shelfBonusExtras(w.rel(dir), videoNames) {
+		extras[name] = true
+	}
+	for name := range shelfSamples(path.Join(w.shelf, w.rel(dir)), videoNames) {
+		extras[name] = true
+	}
+	videoNames = slices.DeleteFunc(videoNames, func(name string) bool { return extras[name] })
+	if !shows && seasonDirOf(w.rel(dir)) == "" {
+		ripped := rippedExtras(folder, videoNames, func(name string) int64 {
+			i := slices.IndexFunc(entries, func(e fs.DirEntry) bool { return e.Name() == name })
+			if st, ok := w.stat(filepath.Join(dir, name), entries[i]); ok {
+				return st.Size
+			}
+			return 0
+		})
+		videoNames = slices.DeleteFunc(videoNames, func(name string) bool { return ripped[name] })
+		for name := range ripped {
+			extras[name] = true
+		}
+	}
+	notes, parts := notesOf(videoNames), partsOf(folder, videoNames)
+	if shows || showLabelled(folder) {
+		// A shows' folder's "Part 1", "Part 2" are a miniseries' episodes (numberingInFolder), as
+		// are a folder's labelled a show's on any shelf, "Movies/The Long Watch Miniseries/".
+		parts = nil
+	}
+	marked := 0
+	for _, name := range videoNames {
+		if episodeMark.MatchString(name) {
+			marked++
+		}
+	}
+	// In a shows' catch-all, one marked episode says a show's folder, as does one that names the
+	// folder's show: "Kids/Puffin Patrol/Puffin Patrol 1x02.mp4".
+	ownMarked := dir != w.root && slices.ContainsFunc(videoNames, func(name string) bool {
+		show := looseSeries(name)
+		return show != "" && sameWords(show, showFolderName(folder))
+	})
+	notes.Episodes = marked >= 2 || marked == 1 && (shows || ownMarked) || slices.ContainsFunc(entries, func(e fs.DirEntry) bool {
+		return e.IsDir() && dir != w.root && isSeasonFolder(path.Join(w.rel(dir), e.Name()))
+	})
+	notes.Leading = leadingEpisodes(folder, videoNames)
+	notes.Series = dir != w.root && namedSeries(folder, videoNames, onAudienceShelf(path.Join(w.shelf, w.rel(dir))))
+	notes.Titled = dir != w.root && titledEpisodes(path.Join(w.shelf, w.rel(dir)), videoNames)
+	notes.Dashed = dashedShows(path.Join(w.shelf, w.rel(dir)), videoNames)
+	notes.Root = w.shelf
+	notes.Years = looseYears(videoNames)
+	notes.Released = releasedShows(videoNames)
+	notes.MonthFirst = monthFirstDays(videoNames)
+	for _, e := range entries {
+		if e.IsDir() {
+			notes.Folders = append(notes.Folders, e.Name())
+		}
+	}
+	// A season folder's episodes name their show, not the season: it is never a dump.
+	notes.Dump = dir != w.root && seasonDirOf(w.rel(dir)) == "" && len(idsIn(filepath.Base(dir))) == 0 &&
+		dumpFolder(filepath.Base(dir), videoNames, showsFolderNames[folderKey(path.Base(path.Dir(w.rel(dir))))])
+	// A folder holding one video, named by a part mark alone, may be one part of a movie whose
+	// parts each have a folder: the movie's folder is the set.
+	folderPart := 0
+	if len(videoNames) == 1 {
+		folderPart = partFolderOf(dir)
+	}
+	// A movie in parts is one video: its folder's poster is the movie's.
+	movies := len(videoNames) - len(parts)
+	for _, n := range parts {
+		if n == 1 {
+			movies++
+		}
+	}
+	return folderReading{shows: shows, extras: extras, videos: videoNames, notes: notes, parts: parts, folderPart: folderPart, movies: movies}
+}
 
 // folderNotes are what a folder's videos say about each of them together.
 type folderNotes struct {
@@ -64,6 +169,52 @@ type folderNotes struct {
 	// name (normName): "Pembroke.Gate.2019.S01E01" gives "pembroke gate" 2019. A show two of them
 	// give two years is two shows, and has none.
 	Years map[string]int
+	// Released are the shows two or more of the folder's group-tagged videos number by one digit
+	// after a dash, before a year they share (releasedShow): "[Grp] Hoshi Rail - 3 (2020)" beside
+	// "… - 4 (2020)" are the 2020 show's episodes, as a film's sequels never share a year.
+	Released map[string]bool
+}
+
+// releasedShow is the show and year a group-tagged video numbers itself by one digit after a dash
+// before ("[Grp] Hoshi Rail - 3 (2020)" gives "hoshi rail 2020", and its number), "" for any other.
+func releasedShow(name string) (string, int) {
+	s := stem(name)
+	if !leadingTags.MatchString(s) {
+		return "", 0
+	}
+	m := animeDashed.FindStringSubmatch(leadingTags.ReplaceAllString(s, ""))
+	year := bracketYear.FindString(s)
+	if m == nil || len(m[2]) != 1 || year == "" || bracketYear.MatchString(m[1]) {
+		return "", 0
+	}
+	return normName(m[1]) + " " + year[1:5], atoi(m[2])
+}
+
+// released says a file's siblings number its show and year as a release's episodes do: its folder
+// notes it among the Released.
+func released(file File) bool {
+	show, _ := releasedShow(path.Base(file.Rel))
+	return show != "" && file.Notes.Released[show]
+}
+
+// releasedShows reads folderNotes.Released: the shows two or more videos number differently.
+func releasedShows(names []string) map[string]bool {
+	numbers := map[string]map[int]bool{}
+	for _, name := range names {
+		if show, n := releasedShow(name); show != "" {
+			if numbers[show] == nil {
+				numbers[show] = map[int]bool{}
+			}
+			numbers[show][n] = true
+		}
+	}
+	released := map[string]bool{}
+	for show, ns := range numbers {
+		if len(ns) >= 2 {
+			released[show] = true
+		}
+	}
+	return released
 }
 
 // looseYears reads folderNotes.Years from a folder's videos' names.
@@ -310,6 +461,9 @@ func notesOf(names []string) folderNotes {
 	for _, name := range names {
 		s, prefix := plainStem(name), ""
 		if m := spelledEpisode.FindStringSubmatch(s); m != nil {
+			prefix = m[1]
+		} else if m := chapterEpisode.FindStringSubmatch(s); m != nil && !yearAnywhere.MatchString(s) {
+			// A film's "Chapter 4 (2023)" gives its year; a show's chapters give none.
 			prefix = m[1]
 		} else if at := cjkEpisode.FindStringIndex(s); at != nil {
 			prefix = s[:at[0]]

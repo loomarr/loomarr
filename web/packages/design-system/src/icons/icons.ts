@@ -74,6 +74,7 @@ import SkipBack from "lucide-react-native/icons/skip-back";
 import SkipForward from "lucide-react-native/icons/skip-forward";
 import Sparkles from "lucide-react-native/icons/sparkles";
 import Square from "lucide-react-native/icons/square";
+import Star from "lucide-react-native/icons/star";
 import StepBack from "lucide-react-native/icons/step-back";
 import Trash from "lucide-react-native/icons/trash";
 import TriangleAlert from "lucide-react-native/icons/triangle-alert";
@@ -84,6 +85,7 @@ import Volume2 from "lucide-react-native/icons/volume-2";
 import VolumeX from "lucide-react-native/icons/volume-x";
 import X from "lucide-react-native/icons/x";
 
+import { filled } from "./filled-glyph";
 import { withSeconds } from "./seek-glyph";
 
 const icons = {
@@ -218,6 +220,9 @@ const icons = {
   skipForward: SkipForward,
   // Cutting one recording into its clips (filler's Split into clips).
   split: Scissors,
+  // A favourite not yet pinned, and the same star filled once it is.
+  star: Star,
+  starFilled: filled(Star),
   // The player's Start over (§9.4): back to the programme's start.
   startOver: StepBack,
   stop: Square,

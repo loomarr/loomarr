@@ -1,7 +1,8 @@
 # 0028. Source evidence and playable media are separate assets
 
 - **Date:** 2026-09-06
-- **Status:** accepted
+- **Status:** accepted; keeping every acquired master superseded by
+  [0048](0048-a-ready-clip-keeps-only-its-airing-copy.md)
 - **Supersedes:** a single mezzanine that replaced the acquired bytes
 
 ## Context

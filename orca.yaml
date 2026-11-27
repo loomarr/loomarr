@@ -13,7 +13,10 @@ scripts:
     cd "$ORCA_WORKTREE_PATH" || exit 1
     task="$(git branch --show-current)"
     ./scripts/agent.sh start "${task:-$ORCA_WORKSPACE_NAME}" && ./scripts/agent.sh bootstrap
-  # Release the registration so `make agent-status` stops listing a worktree Orca has removed.
+  # Stop what still runs in the worktree, then release the registration so `make agent-status`
+  # stops listing it. Orca moves the folder to its trash, where a dev server left running keeps
+  # holding its port.
   archive: |
     cd "$ORCA_WORKTREE_PATH" || exit 1
+    [ ! -x ./scripts/dev/worktree-procs.sh ] || ./scripts/dev/worktree-procs.sh "$ORCA_WORKTREE_PATH" --kill || true
     ./scripts/agent.sh stop
