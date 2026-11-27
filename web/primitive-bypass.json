@@ -1,9 +1,6 @@
 {
   "note": "Design-system primitive ledger (#2147 Wave 4), maintained by web/scripts/check-primitive-bypass.mjs. Counts may only fall: `pnpm primitives:update` shrinks them. Never raise one to pass the check.",
   "files": {
-    "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/settings/setting-field/setting-field.tsx": {
       "flexStack": 1
     },

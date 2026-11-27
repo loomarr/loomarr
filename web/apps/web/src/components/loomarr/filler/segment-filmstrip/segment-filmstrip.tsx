@@ -1,5 +1,14 @@
 import { formatClipDuration, formatMmSs } from "@loomarr/core/format";
-import { Card, Grid, type GridTrack, MediaTile, Stack, Text, Tooltip } from "@loomarr/design-system";
+import {
+  Card,
+  Grid,
+  type GridTrack,
+  MediaTile,
+  Stack,
+  Text,
+  Tooltip,
+  VisuallyHidden,
+} from "@loomarr/design-system";
 import { useId } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { languageName } from "@/lib/languages";
@@ -93,7 +102,11 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
               return (
                 <li
                   key={item.key}
-                  className="border-onair-300/70 bg-onair-tint-15 rounded-md border border-dashed"
+                  style={{
+                    backgroundColor: "var(--color-onair-tint-15)",
+                    border: "1px dashed color-mix(in srgb, var(--color-onair-300) 70%, transparent)",
+                    borderRadius: 8,
+                  }}
                   aria-label={label}
                   title={label}
                 />
@@ -156,7 +169,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                   >
                     {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3);
                         the start time is the part the tile shows only to assistive tech. */}
-                    <span className="sr-only">{formatMmSs(item.startMs)} ·</span>{" "}
+                    <VisuallyHidden as="span">{formatMmSs(item.startMs)} ·</VisuallyHidden>{" "}
                     {item.artwork ? (
                       <ServedImage image={item.artwork} alt="" sizes="240px" />
                     ) : (
@@ -174,14 +187,27 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                         </Text>
                       </Stack>
                     )}
-                    <span className="from-static-950 via-static-950/85 absolute inset-x-0 bottom-0 bg-gradient-to-t to-transparent px-2 pt-5 pb-1.5">
-                      <Text as="span" className="block" numberOfLines={1} textRole="label" tone="primary">
+                    <Stack
+                      bottom={0}
+                      left={0}
+                      paddingBottom={6}
+                      paddingHorizontal={8}
+                      paddingTop={20}
+                      position="absolute"
+                      render="span"
+                      right={0}
+                      style={{
+                        backgroundImage:
+                          "linear-gradient(to top, var(--color-static-950), color-mix(in srgb, var(--color-static-950) 85%, transparent), transparent)",
+                      }}
+                    >
+                      <Text as="span" numberOfLines={1} textRole="label" tone="primary">
                         {name}
                       </Text>
                       <Text as="span" fontVariant={["tabular-nums"]} textRole="microBadge">
                         {formatClipDuration(item.durationMs)}
                       </Text>
-                    </span>
+                    </Stack>
                   </MediaTile>
                 </Tooltip>
               </Stack>

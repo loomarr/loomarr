@@ -17,6 +17,7 @@ import {
   Stack,
   Text,
   TextLink,
+  VisuallyHidden,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -71,7 +72,7 @@ const StatusRows = ({
         onPress={(event) => onOpen(row, event.currentTarget as unknown as HTMLElement)}
       >
         {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
-        <span className="sr-only">View details for</span>{" "}
+        <VisuallyHidden as="span">View details for</VisuallyHidden>{" "}
         <Stack
           backgroundColor="surfaceElevated"
           borderRadius={4}

@@ -255,8 +255,9 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
         <Details
           summary={
             <>
-              <span>Where Loomarr looks</span>
-              <Text as="span" marginLeft={8} textRole="compact" tone="secondary">
+              {/* A Text takes no margin, so the gap is on the element before it. */}
+              <span style={{ marginRight: 8 }}>Where Loomarr looks</span>
+              <Text as="span" textRole="compact" tone="secondary">
                 ·{" "}
                 {enabled
                   ? `${enabledSourceCount} of ${structuredSources.length} sources on`
