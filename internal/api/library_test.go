@@ -3,12 +3,14 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -398,7 +400,19 @@ func TestLibraryScan_StatusHeldAndConfirm(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(movies, "Foxtrot \xe9.mkv"), []byte("x"), 0o644); err != nil {
+	// Where the filesystem can hold a name that is not UTF-8, the folder gets one. APFS refuses
+	// such a name, so there the same pass runs without it and lists nothing as unreadable.
+	wantUnreadable := []string{}
+	err := os.WriteFile(filepath.Join(t.TempDir(), "\xe9"), nil, 0o600)
+	switch {
+	case err == nil:
+		if err := os.WriteFile(filepath.Join(movies, "Foxtrot \xe9.mkv"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		wantUnreadable = []string{filepath.Join(movies, "Foxtrot �.mkv")}
+	case errors.Is(err, syscall.EILSEQ):
+		t.Log("the filesystem refuses a name that is not UTF-8; no unreadable name to list")
+	default:
 		t.Fatal(err)
 	}
 	if err := lib.Scanner.Importer.Run(ctx); err != nil {
@@ -409,8 +423,8 @@ func TestLibraryScan_StatusHeldAndConfirm(t *testing.T) {
 		t.Fatalf("held %+v", st.Held)
 	}
 	// A name that is not UTF-8 is listed for renaming, as near its name as text allows.
-	if want := []string{filepath.Join(movies, "Foxtrot �.mkv")}; !slices.Equal(st.Unreadable, want) {
-		t.Fatalf("unreadable = %q, want %q", st.Unreadable, want)
+	if !slices.Equal(st.Unreadable, wantUnreadable) {
+		t.Fatalf("unreadable = %q, want %q", st.Unreadable, wantUnreadable)
 	}
 	// The maintainer sees which titles they would let go.
 	if got := st.Held[0]; strings.Join(got.Titles, ",") != "Alpha,Bravo" || got.TitleCount != 2 {
