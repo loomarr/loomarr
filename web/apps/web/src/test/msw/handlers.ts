@@ -30,6 +30,7 @@ import {
   getListFillerPullsMockHandler,
   getListFillerSourcesMockHandler,
   getListInvitationsMockHandler,
+  getListLibraryGenresMockHandler,
   getListLibraryItemsMockHandler,
   getListLibraryNeedsMockHandler,
   getListProposalJobsMockHandler,
@@ -166,6 +167,8 @@ const appHandlers = (): RequestHandler[] => [
   getPreviewChannelPodsMockHandler({ entries: [], totalMs: 0, matchLevel: "exact" }),
   getListLibraryNeedsMockHandler({ needs: [], orders: [], problems: [] }),
   getListLibraryItemsMockHandler({ items: [], total: 0 }),
+  // The wall's genre filter reads its choices once per tab.
+  getListLibraryGenresMockHandler({ genres: [] }),
   getChannelPlayUrlMockHandler({
     url: "",
     relativeUrl: "",
