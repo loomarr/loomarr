@@ -70,7 +70,8 @@ const FilterPanel = ({ filtering }: { filtering: LibraryShelfFiltering }) => {
   const density = wide ? "pointer" : "touch";
   return (
     <Line
-      alignItems="flex-end"
+      // A phone's column stretches every row, so the switches start where the selects do.
+      alignItems={wide ? "flex-end" : "stretch"}
       aria-label="More filters"
       flexDirection={wide ? "row" : "column"}
       flexWrap="wrap"
@@ -93,6 +94,7 @@ const FilterPanel = ({ filtering }: { filtering: LibraryShelfFiltering }) => {
           // One character asks nothing, so it finds no one to report.
           emptyText={personSearch.value.trim().length > 1 ? "No one by that name." : undefined}
           errorText={personSearch.failed ? "Couldn't search people. Try again." : undefined}
+          face="body"
           inputValue={personSearch.value}
           label="Person"
           loading={personSearch.loading}
