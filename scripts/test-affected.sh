@@ -125,7 +125,7 @@ while IFS= read -r path; do
 	esac
 	case "$path" in
 		scripts/agent.sh | scripts/agent-harness-test.sh)
-			script_tests+=(scripts/agent-harness-test.sh)
+			[[ -f "$ROOT/scripts/agent-harness-test.sh" ]] && script_tests+=(scripts/agent-harness-test.sh)
 			;;
 		# A changed path can be absent from the working tree (deleted or renamed away),
 		# and running an absent test file fails.
