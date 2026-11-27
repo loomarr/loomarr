@@ -53,6 +53,7 @@ type LibraryRootService interface {
 	RestoreExtraCopy(ctx context.Context, id, undo string) error
 
 	Needs(ctx context.Context) ([]scan.Need, error)
+	Ignored(ctx context.Context, limit, offset int) ([]scan.IgnoredTitle, int, error)
 	Problems(ctx context.Context) ([]librarystore.LibraryItemSummary, error)
 	NeedCount(ctx context.Context) (int, error)
 	Link(ctx context.Context, itemID string, id librarystore.LibraryID) error

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -25,6 +26,12 @@ func (s *Handlers) registerLibraryNeeds(api huma.API) {
 		Description: "Titles Loomarr can't tell what they are, each with the best guesses a search found, best first.",
 		Tags:        []string{"library"},
 	}, httpcore.RoleAdmin), s.listLibraryNeeds)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "listLibraryIgnored", Method: http.MethodGet, Path: "/v1/library/ignored",
+		Summary:     "Titles you ignored",
+		Description: "Every ignored title, newest first. Take back its answer to bring it back.",
+		Tags:        []string{"library"},
+	}, httpcore.RoleAdmin), s.listLibraryIgnored)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "linkLibraryItem", Method: http.MethodPost, Path: "/v1/library/items/{id}/link",
 		Summary:     "Say which title this is",
@@ -197,6 +204,46 @@ func (s *Handlers) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibr
 			dto.Files = append(dto.Files, libraryNeedFileDTO{Path: f.Path, Size: f.Size, Ready: f.Header != librarystore.LibraryHeaderPending})
 		}
 		out.Body.Needs = append(out.Body.Needs, dto)
+	}
+	return out, nil
+}
+
+type listLibraryIgnoredInput struct {
+	Limit  int `query:"limit" minimum:"1" maximum:"200" default:"60"`
+	Offset int `query:"offset" minimum:"0"`
+}
+
+type libraryIgnoredDTO struct {
+	ID        string    `json:"id" doc:"The title; take back its answer to bring it back"`
+	Kind      string    `json:"kind" enum:"movie,series" doc:"movie is a file, series is a folder"`
+	Name      string    `json:"name" doc:"The movie's file name or the show's folder name"`
+	Folder    string    `json:"folder" doc:"Where it sits, from its media folder's name down"`
+	IgnoredAt time.Time `json:"ignoredAt"`
+}
+
+type listLibraryIgnoredOutput struct {
+	Body struct {
+		Items []libraryIgnoredDTO `json:"items" doc:"Newest first"`
+		Total int                 `json:"total" doc:"How many are ignored in all"`
+	}
+}
+
+func (s *Handlers) listLibraryIgnored(ctx context.Context, in *listLibraryIgnoredInput) (*listLibraryIgnoredOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	titles, total, err := svc.Ignored(ctx, in.Limit, in.Offset)
+	if err != nil {
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't list what you ignored", "Try again in a moment.", err)
+	}
+	out := &listLibraryIgnoredOutput{}
+	out.Body.Total = total
+	out.Body.Items = make([]libraryIgnoredDTO, 0, len(titles))
+	for _, t := range titles {
+		out.Body.Items = append(out.Body.Items, libraryIgnoredDTO{
+			ID: t.ID, Kind: t.Kind, Name: t.Name, Folder: t.Folder, IgnoredAt: t.IgnoredAt,
+		})
 	}
 	return out, nil
 }
