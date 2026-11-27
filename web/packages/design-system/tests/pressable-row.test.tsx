@@ -49,6 +49,84 @@ describe("PressableRow", () => {
     );
   });
 
+  it("draws no browser outline on the button, so only the amber border shows when it has focus", () => {
+    for (const bordered of [false, true]) {
+      const markup = markupOf(<PressableRow bordered={bordered}>A</PressableRow>);
+      const button = /<[a-z]+[^>]*role="button"[^>]*>/.exec(markup)?.[0] ?? "";
+      expect(button).toContain("outline-style:none");
+      expect(button).toMatch(/outline-width:0(px)?(;|")/);
+    }
+  });
+
+  describe("bordered", () => {
+    const mount = (ui: React.ReactNode) => {
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      act(() => {
+        root.render(<LoomarrProvider theme="dark">{ui}</LoomarrProvider>);
+      });
+      return {
+        container,
+        unmount: () => {
+          act(() => root.unmount());
+          container.remove();
+        },
+      };
+    };
+
+    it("is still one button named by its content, and presses", () => {
+      const onPress = vi.fn();
+      const { container, unmount } = mount(
+        <PressableRow accessibilityLabel="07 Westerns" bordered onPress={onPress}>
+          <Text textRole="body">Westerns</Text>
+        </PressableRow>,
+      );
+      const button = container.querySelector<HTMLElement>('[role="button"]');
+      expect(button?.getAttribute("aria-label")).toBe("07 Westerns");
+      act(() => button?.click());
+      expect(onPress).toHaveBeenCalledOnce();
+      unmount();
+    });
+
+    it("starts its text at the leading edge, as a button element would not", () => {
+      expect(markupOf(<PressableRow bordered>A</PressableRow>)).toContain("text-align:left");
+    });
+
+    it("draws differently from a flat row, and the current row differently from the rest", () => {
+      const flat = markupOf(<PressableRow>A</PressableRow>);
+      const resting = markupOf(<PressableRow bordered>A</PressableRow>);
+      expect(resting).not.toEqual(flat);
+      expect(
+        markupOf(
+          <PressableRow bordered selected>
+            A
+          </PressableRow>,
+        ),
+      ).not.toEqual(resting);
+    });
+
+    it("shows the focus border on the focused row only", () => {
+      const { container, unmount } = mount(
+        <>
+          <PressableRow bordered>Rest</PressableRow>
+          <PressableRow bordered selected>
+            Current
+          </PressableRow>
+        </>,
+      );
+      const [rest, current] = [...container.querySelectorAll<HTMLElement>('[role="button"]')];
+      const drawing = (row?: HTMLElement) => row?.innerHTML;
+      const before = { current: drawing(current), rest: drawing(rest) };
+      act(() => rest?.focus());
+      expect(drawing(rest)).not.toBe(before.rest);
+      expect(drawing(current)).toBe(before.current);
+      act(() => rest?.blur());
+      expect(drawing(rest)).toBe(before.rest);
+      unmount();
+    });
+  });
+
   it("keeps a list row's 12/10 inset by default, and lets dense chrome name its own", () => {
     const plain = markupOf(<PressableRow>A</PressableRow>);
     expect(markupOf(<PressableRow inset={{ x: 12, y: 10 }}>A</PressableRow>)).toEqual(plain);
