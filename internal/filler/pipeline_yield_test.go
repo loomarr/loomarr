@@ -17,9 +17,11 @@ type scriptedHeadroom struct {
 	asked       int
 	playing     bool
 	backgrounds []context.CancelFunc
+	overdue     []bool // what each MediaWorkContext was asked
 }
 
-func (h *scriptedHeadroom) BackgroundContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (h *scriptedHeadroom) MediaWorkContext(ctx context.Context, overdue bool) (context.Context, context.CancelFunc) {
+	h.overdue = append(h.overdue, overdue)
 	bctx, cancel := context.WithCancel(ctx)
 	h.backgrounds = append(h.backgrounds, cancel)
 	return bctx, cancel
@@ -112,6 +114,37 @@ func TestPipelineYield_OneTimeoutSpeaksForTheWholePass(t *testing.T) {
 	}
 	if len(sl.slept) != 4 { // 20s bound / 5s poll, once
 		t.Fatalf("slept %d polls across two clips, want 4 (one bounded wait)", len(sl.slept))
+	}
+}
+
+// A household that always watches must not starve filler (2026-11-18: 16 clips queued at
+// transcode for two weeks). A clip queued at its rung past the bound starts beside playback without
+// waiting, and runs under a context that still yields to a tune leaving no room. A fresh clip in the
+// same pass still waits.
+func TestPipelineYield_AClipWaitingADayStartsBesidePlayback(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "old")
+	seedEnrolled(st, "new")
+	row := st.rows["old"]
+	row.Stage, row.StageQueuedAt = pipelinestate.StageTranscode, time.Unix(1_800_000_000, 0).Add(-25*time.Hour)
+	st.rows["old"] = row
+	stages := yieldStages()
+	head, sl := &scriptedHeadroom{busyFor: 1 << 30}, &sleepLog{}
+	pipe := newPipe(st, asSlice(stages), filler.DefaultBudget()).WithPlaybackHeadroom(head, filler.PlaybackYield{
+		Poll: 5 * time.Second, MaxWait: 20 * time.Second, Overdue: 24 * time.Hour, Sleep: sl.sleep,
+	})
+
+	if _, err := pipe.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := stages[pipelinestate.StageTranscode].runs; got != 1 {
+		t.Fatalf("transcode ran %d times, want 1: the overdue clip only", got)
+	}
+	if len(head.overdue) != 1 || !head.overdue[0] {
+		t.Fatalf("media contexts asked %v, want one overdue", head.overdue)
+	}
+	if r := st.rows["new"]; r.Stage == pipelinestate.StageTranscode && r.Status != pipelinestate.StatusQueued {
+		t.Fatalf("fresh clip = %q/%q, want it still waiting", r.Stage, r.Status)
 	}
 }
 

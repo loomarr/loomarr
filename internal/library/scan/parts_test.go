@@ -147,7 +147,7 @@ func TestAMovieInPartsPlaysEveryPart(t *testing.T) {
 	}
 
 	lib := &Library{ItemStore: h.st, Inventory: h.inv}
-	detail, err := lib.Item(ctx, string(item.ID))
+	detail, err := lib.Item(ctx, string(item.ID), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,5 +259,49 @@ func TestPartFoldersAreAWholeSetOfOneVideoEach(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// An episode no catalog names yet is named as its file names it, its release's notes set aside,
+// less its show's name and its own mark when a title follows them; a name that is only those
+// keeps both.
+func TestAnEpisodeIsNamedByWhatFollowsItsShowAndMark(t *testing.T) {
+	for _, c := range []struct{ rel, want string }{
+		{"Kettle Bay/Season 01/Kettle Bay - S01E03 - The Long Tide [WEBDL-1080p].mkv", "The Long Tide"},
+		// Sonarr's standard name, the show's year after its name.
+		{"Hollin Reach (2005)/Season 08/Hollin Reach (2005) - S08E01 - The Pit [HDTV-720p].mkv", "The Pit"},
+		{"Hollin Reach/Season 08/Hollin.Reach.2005.S08E02.Low.Ground.1080p.WEB.h264-GRP.mkv", "Low Ground"},
+		{"Hollin Reach (2005)/Season 08/Hollin Reach (2005) - S08E03 [HDTV-720p].mkv", "Hollin Reach S08E03"},
+		{"Hollin Reach (2005)/Season 08/Hollin Reach (2005) - S08E04-E05 - Two Parts [WEBDL-1080p].mkv", "Two Parts"},
+		// The folder and the file write the show's name apart, or the name holds a dash of its own.
+		{"Gale Spit The Return/Season 07/Gale Spit - The Return (1987) - S07E10 - Inheritance [Bluray-1080p Remux].mkv", "Inheritance"},
+		{"Kettle Bay - The Series (1987)/Season 01/Kettle Bay - The Series (1987) - S01E24 - Pipe Dream [DVD].mkv", "Pipe Dream"},
+		{"Kettle Bay/Season 01/S01E06.mkv", "S01E06"},
+		// Every bracket of an older Sonarr name is the release's, the group after them too.
+		{"Kettle Bay (1992)/Season 05/Kettle Bay (1992) - S05E02 - The Tale of Station 101.3 [DVD][MP3 2.0][XviD]-GRP37.avi", "The Tale of Station 101.3"},
+		{"Kettle Bay (1992)/Season 05/Kettle Bay (1992) - S05E03 - Twenty Tides [SDTV][MP2 2.0][MPEG].mpg", "Twenty Tides"},
+		{"Kettle Bay/Specials/Kettle Bay - Holiday Special [1080p].mkv", "Holiday Special"},
+		{"Kettle Bay/Season 02/Kettle Bay - Lost Pilot (2019) {tvdb-123}.mkv", "Lost Pilot"},
+		{"Kettle Bay/Season 01/S01E04 - Undertow.mkv", "Undertow"},
+		{"Kettle Bay/Season 01/1x05 Low Water.mkv", "Low Water"},
+		{"Kettle Bay/Specials/The.Making.Of.Kettle.Bay.1080p.WEB.h264-GRP.mkv", "The Making Of Kettle Bay"},
+		{"Kettle Bay/Season 01/Kettle.Bay.S01E02.720p.HDTV.x264-GRP.mkv", "Kettle Bay S01E02"},
+		{"Golf Show {tmdb-90000701}/Season 01/Golf Show S01E02.mkv", "Golf Show S01E02"},
+		// The folder's year is one a file may leave out.
+		{"Kettle Bay (2005)/Specials/Kettle Bay - Holiday Special.mkv", "Holiday Special"},
+		// A dated episode's title follows its day, which is its premiere date; a year ending a
+		// title is the title's, and the day's year may read as the show's.
+		{"Tern Point (2003)/Season 2014/Tern Point (2003) - 2014-04-04 - April 4, 2014 [WEBDL-720p].mkv", "April 4, 2014"},
+		{"Tern Point (2003)/Season 2014/Tern Point - 2014-04-04 - Low Tide.mkv", "Low Tide"},
+		{"Tern Point (2003)/Season 2014/Tern.Point.2014.04.04.Low.Tide.720p.WEB.h264-GRP.mkv", "Low Tide"},
+		{"Tern Point (2003)/Season 2014/Tern Point (2003) - 2014-04-04 [WEBDL-720p].mkv", "2014-04-04"},
+		{"Kettle Bay (2005)/Season 01/Kettle Bay (2005) - S01E05 - Airport 2010 [WEBDL-720p].mkv", "Airport 2010"},
+		{"Kettle Bay (2005)/Season 01/Kettle Bay (2005) - S01E06 - Guests (2010) [WEBDL-720p].mkv", "Guests"},
+		// A longer show name that only starts with this one is not this one's.
+		{"Kettle Bayside/Season 01/Kettle Bayside S01E01.mkv", "Kettle Bayside S01E01"},
+	} {
+		if got := fallbackName(c.rel, mp.KindEpisode, 0, true); got != c.want {
+			t.Errorf("fallbackName(%q) = %q, want %q", c.rel, got, c.want)
+		}
 	}
 }

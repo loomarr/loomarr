@@ -45,6 +45,10 @@ func TestTracksOf_BucketsAndIndexesPerType(t *testing.T) {
 	if tracks.Audio[1].Language != "rus" || tracks.Audio[1].Title != "" {
 		t.Fatalf("audio[1] = %+v", tracks.Audio[1])
 	}
+	// The codec tells a burnable image track from a text one.
+	if tracks.Subtitles[0].Codec != "subrip" || tracks.Audio[0].Codec != "eac3" {
+		t.Fatalf("codecs %q / %q", tracks.Subtitles[0].Codec, tracks.Audio[0].Codec)
+	}
 }
 
 func TestSourceObservationAudioTracks_InOrder(t *testing.T) {

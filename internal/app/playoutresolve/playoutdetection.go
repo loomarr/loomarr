@@ -2,6 +2,7 @@ package playoutresolve
 
 import (
 	"context"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -127,6 +128,17 @@ func (r *Resolver) publishDetectedCapacity(cap playout.Capacity, reused bool) {
 			"reused_verified_evidence", reused, "skipped", skipped)
 	}
 	r.detectReady.Store(true)
+}
+
+// HardwareMissing reports a host whose detection settled on software although it measured a
+// working hardware encoder within the last week: a GPU that did not come up this boot. Filler
+// upkeep keeps originals while it holds (#3855), so a blip cannot release them all.
+func (r *Resolver) HardwareMissing() bool {
+	if !r.detectReady.Load() || !encode.IsSoftware(r.PublishedEncoder()) {
+		return false
+	}
+	_, _, root := r.capabilityInputs()
+	return playout.RecentHardwareEvidence(root, time.Now())
 }
 
 func (r *Resolver) PublishedEncoder() encode.Encoder {

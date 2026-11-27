@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // TestDisableUserIsAtomic proves the flag and the revocations commit together (#1861). A delete that
@@ -15,7 +17,7 @@ func TestDisableUserIsAtomic(t *testing.T) {
 	ctx := context.Background()
 	now := time.Unix(1_700_000_000, 0).UTC()
 
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleMember}); err != nil {
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: identitystore.RoleMember}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.CreateSession(ctx, Session{TokenHash: "s1", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {

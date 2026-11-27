@@ -5,28 +5,30 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
-func rootByPath(t *testing.T, all LibraryRoots, path string) (LibraryRoot, bool) {
+func rootByPath(t *testing.T, all librarystore.LibraryRoots, path string) (librarystore.LibraryRoot, bool) {
 	t.Helper()
 	for _, r := range all.Roots {
 		if r.Path == path {
 			return r, true
 		}
 	}
-	return LibraryRoot{}, false
+	return librarystore.LibraryRoot{}, false
 }
 
-func mappingFor(all LibraryRoots, authority, authorityPath string) (LibraryRootPath, bool) {
+func mappingFor(all librarystore.LibraryRoots, authority, authorityPath string) (librarystore.LibraryRootPath, bool) {
 	for _, p := range all.Paths {
 		if p.Authority == authority && p.AuthorityPath == authorityPath {
 			return p, true
 		}
 	}
-	return LibraryRootPath{}, false
+	return librarystore.LibraryRootPath{}, false
 }
 
-func mustLibraryRoots(t *testing.T, s Store) LibraryRoots {
+func mustLibraryRoots(t *testing.T, s Store) librarystore.LibraryRoots {
 	t.Helper()
 	all, err := s.LibraryRoots(context.Background())
 	if err != nil {
@@ -42,15 +44,15 @@ func testLibraryRootDiscovery(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	t0 := time.UnixMilli(1_800_000_000_000).UTC()
 
-	first := LibraryRootDiscovery{
-		Found: []LibraryRootPath{
+	first := librarystore.LibraryRootDiscovery{
+		Found: []librarystore.LibraryRootPath{
 			{Authority: "emby", AuthorityPath: "/data/tv", RootPath: "/media/tv"},
 			{Authority: "sonarr", AuthorityPath: "/tv", RootPath: "/media/tv"},
 			{Authority: "radarr", AuthorityPath: "/movies", RootPath: "/media/movies"},
 			{Authority: "emby", AuthorityPath: "/data/home-videos"},
 		},
 		Complete: []string{"emby", "sonarr", "radarr"},
-		Checks:   []LibraryRootCheck{{Path: "/media/tv", Readable: true}, {Path: "/media/movies", Readable: false}},
+		Checks:   []librarystore.LibraryRootCheck{{Path: "/media/tv", Readable: true}, {Path: "/media/movies", Readable: false}},
 	}
 	if err := s.RecordLibraryRootDiscovery(ctx, first, t0); err != nil {
 		t.Fatal(err)
@@ -80,8 +82,8 @@ func testLibraryRootDiscovery(t *testing.T, newStore NewStoreFunc) {
 
 	// Radarr fails this time; Emby and Sonarr stop reporting their TV folder.
 	t1 := t0.Add(time.Hour)
-	second := LibraryRootDiscovery{
-		Found:    []LibraryRootPath{{Authority: "emby", AuthorityPath: "/data/home-videos"}},
+	second := librarystore.LibraryRootDiscovery{
+		Found:    []librarystore.LibraryRootPath{{Authority: "emby", AuthorityPath: "/data/home-videos"}},
 		Complete: []string{"emby", "sonarr"},
 	}
 	if err := s.RecordLibraryRootDiscovery(ctx, second, t1); err != nil {
@@ -102,7 +104,7 @@ func testLibraryRootDiscovery(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// Radarr answers again without its folder: the unconfirmed root goes with it.
-	if err := s.RecordLibraryRootDiscovery(ctx, LibraryRootDiscovery{Complete: []string{"radarr"}}, t1.Add(time.Hour)); err != nil {
+	if err := s.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{Complete: []string{"radarr"}}, t1.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := rootByPath(t, mustLibraryRoots(t, s), "/media/movies"); ok {
@@ -118,28 +120,28 @@ func testLibraryRootCheck(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	t0 := time.UnixMilli(1_800_000_000_000).UTC()
-	found := LibraryRootDiscovery{
-		Found: []LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: "/media/movies"}}, Complete: []string{"radarr"},
+	found := librarystore.LibraryRootDiscovery{
+		Found: []librarystore.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: "/media/movies"}}, Complete: []string{"radarr"},
 	}
 	if err := s.RecordLibraryRootDiscovery(ctx, found, t0); err != nil {
 		t.Fatal(err)
 	}
 	for i, step := range []struct {
 		readable, empty bool
-		flipped         LibraryRootFlip
+		flipped         librarystore.LibraryRootFlip
 	}{
 		{readable: true}, // the first check sets a baseline
 		{readable: true}, // no change
-		{readable: false, flipped: LibraryRootFlip{Readable: true}}, // went offline
+		{readable: false, flipped: librarystore.LibraryRootFlip{Readable: true}}, // went offline
 		{readable: false}, // still offline
-		{readable: true, flipped: LibraryRootFlip{Readable: true}},               // back
-		{readable: true, empty: true, flipped: LibraryRootFlip{Empty: true}},     // the share came unmounted
-		{readable: true, empty: true},                                            // still empty
-		{readable: true, flipped: LibraryRootFlip{Empty: true}},                  // mounted again
-		{readable: false, empty: true, flipped: LibraryRootFlip{Readable: true}}, // never empty while unreadable
+		{readable: true, flipped: librarystore.LibraryRootFlip{Readable: true}},           // back
+		{readable: true, empty: true, flipped: librarystore.LibraryRootFlip{Empty: true}}, // the share came unmounted
+		{readable: true, empty: true},                                                         // still empty
+		{readable: true, flipped: librarystore.LibraryRootFlip{Empty: true}},                  // mounted again
+		{readable: false, empty: true, flipped: librarystore.LibraryRootFlip{Readable: true}}, // never empty while unreadable
 	} {
 		at := t0.Add(time.Duration(i+1) * time.Hour)
-		check := LibraryRootCheck{Path: "/media/movies", Readable: step.readable, Empty: step.empty}
+		check := librarystore.LibraryRootCheck{Path: "/media/movies", Readable: step.readable, Empty: step.empty}
 		flipped, err := s.CheckLibraryRoot(ctx, check, at)
 		if err != nil || flipped != step.flipped {
 			t.Fatalf("check %d (%+v) = %+v, %v; want %+v", i, check, flipped, err, step.flipped)
@@ -149,7 +151,7 @@ func testLibraryRootCheck(t *testing.T, newStore NewStoreFunc) {
 			t.Fatalf("check %d left %+v", i, root)
 		}
 	}
-	if _, err := s.CheckLibraryRoot(ctx, LibraryRootCheck{Path: "/nowhere", Readable: true}, t0); !errors.Is(err, ErrNotFound) {
+	if _, err := s.CheckLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: "/nowhere", Readable: true}, t0); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("check of an unknown root = %v, want ErrNotFound", err)
 	}
 }
@@ -159,7 +161,7 @@ func testLibraryRootByHand(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	t0 := time.UnixMilli(1_800_000_000_000).UTC()
 
-	if err := s.AddLibraryRoot(ctx, LibraryRootCheck{Path: "/mnt/extra", Readable: true}, t0); err != nil {
+	if err := s.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: "/mnt/extra", Readable: true}, t0); err != nil {
 		t.Fatal(err)
 	}
 	extra, ok := rootByPath(t, mustLibraryRoots(t, s), "/mnt/extra")
@@ -167,8 +169,8 @@ func testLibraryRootByHand(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("hand-typed root %+v", extra)
 	}
 
-	found := LibraryRootDiscovery{
-		Found:    []LibraryRootPath{{Authority: "sonarr", AuthorityPath: "/tv", RootPath: "/media/tv"}},
+	found := librarystore.LibraryRootDiscovery{
+		Found:    []librarystore.LibraryRootPath{{Authority: "sonarr", AuthorityPath: "/tv", RootPath: "/media/tv"}},
 		Complete: []string{"sonarr"},
 	}
 	if err := s.RecordLibraryRootDiscovery(ctx, found, t0); err != nil {

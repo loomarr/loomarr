@@ -2,6 +2,19 @@ name: CI / Shared clients — lint + test + browser/iOS/Android/TV bundles
 
 on:
   workflow_call:
+    # Turbo Remote Cache (web/turbo.json signs artifacts). Each is optional: a run without
+    # TURBO_TOKEN (fork PRs, or before the maintainer creates them) uses no remote cache, and a
+    # TURBO_API left empty means Turbo's default, Vercel. Secrets rather than variables so a
+    # self-hosted endpoint stays out of the public logs.
+    secrets:
+      TURBO_API:
+        required: false
+      TURBO_TEAM:
+        required: false
+      TURBO_TOKEN:
+        required: false
+      TURBO_REMOTE_CACHE_SIGNATURE_KEY:
+        required: false
 
 permissions:
   contents: read
@@ -16,8 +29,9 @@ jobs:
     runs-on: ubuntu-latest
     # One job took 4m38s and set the pace of every web PR. The static checks, each app's tests, and
     # each app's bundles run on their own runners: a change to a shared package reruns its tests
-    # and its dependents' (2m21s for both apps on one runner). The lanes key their caches apart
-    # because only one Metro or Turbo cache would survive a shared key.
+    # and its dependents' (2m21s for both apps on one runner). The lanes key their Metro caches
+    # apart because only one would survive a shared key. Turbo's task cache is remote and keyed by
+    # task hash, so the lanes share it.
     strategy:
       fail-fast: false # one lane's failures must not hide the others'
       matrix:
@@ -37,42 +51,66 @@ jobs:
           path: ~/.local/share/pnpm/store
           key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
-      - name: Restore Metro and Turbo work
+      - name: Restore Metro work
         id: clients-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ${{ runner.temp }}/metro-cache
-            web/.turbo
           key: clients-${{ matrix.lane }}-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: |
             clients-${{ matrix.lane }}-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}-
             clients-${{ matrix.lane }}-${{ runner.os }}-
       - run: make fe-install
+      # The three make steps below carry the Remote Cache settings; `make fe-install` runs
+      # dependency install scripts and never sees them. TURBO_CACHE configures only the merge queue
+      # and runs on main to write (remote:rw) and every other run, pull requests included, to read.
+      # That is a client setting, not an access control: a same-repo PR run holds the same token.
+      # With no TURBO_TOKEN, Turbo disables the Remote Cache and runs the tasks. With a token but
+      # no signature key, it uploads nothing and treats every download as a miss.
       - name: Verify the affected client graph
         if: matrix.lane == 'checks'
         env:
           TMPDIR: ${{ runner.temp }}
           TURBO_TELEMETRY_DISABLED: "1"
+          TURBO_API: ${{ secrets.TURBO_API }}
+          TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
+          TURBO_CACHE: ${{ (github.event_name == 'merge_group' || github.ref == 'refs/heads/main') && 'local:rw,remote:rw' || 'local:rw,remote:r' }}
         run: make clients-checks
       - name: Typecheck and test the client
         if: endsWith(matrix.lane, '-tests')
         env:
           TMPDIR: ${{ runner.temp }}
           TURBO_TELEMETRY_DISABLED: "1"
+          TURBO_API: ${{ secrets.TURBO_API }}
+          TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
+          TURBO_CACHE: ${{ (github.event_name == 'merge_group' || github.ref == 'refs/heads/main') && 'local:rw,remote:rw' || 'local:rw,remote:r' }}
         run: make clients-tests CLIENTS_APP=${{ matrix.lane == 'tv-tests' && 'tv' || 'mobile' }}
       - name: Bundle the client
         if: matrix.lane == 'mobile' || matrix.lane == 'tv'
         env:
+          # Expo's Metro config keeps its transform cache in `os.tmpdir()/metro-cache`, the folder
+          # this job restores and saves. Turbo's strict env mode drops TMPDIR from tasks, so the
+          # `bundle` task lists it in `passThroughEnv` (web/turbo.json).
           TMPDIR: ${{ runner.temp }}
           TURBO_TELEMETRY_DISABLED: "1"
+          TURBO_API: ${{ secrets.TURBO_API }}
+          TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
+          TURBO_CACHE: ${{ (github.event_name == 'merge_group' || github.ref == 'refs/heads/main') && 'local:rw,remote:rw' || 'local:rw,remote:r' }}
         run: make clients-bundles CLIENTS_APP=${{ matrix.lane }}
       # ⚠ Never from the merge queue (#1679): a queue batch's unique ref makes the save unreadable.
-      - name: Save Metro and Turbo work (not from the merge queue)
+      # The rule is about the Actions cache's ref scoping. Turbo's Remote Cache is keyed by team
+      # and task hash, so the merge queue writes there.
+      - name: Save Metro work (not from the merge queue)
         if: github.event_name != 'merge_group' && steps.clients-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ${{ runner.temp }}/metro-cache
-            web/.turbo
           key: ${{ steps.clients-cache.outputs.cache-primary-key }}

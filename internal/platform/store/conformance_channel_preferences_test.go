@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 func mustUpsertPreferenceUser(t *testing.T, s Store, id string) {
 	t.Helper()
 	now := time.Now().UTC()
-	if err := s.UpsertUser(context.Background(), User{ID: id, Name: id, Role: RoleMember,
+	if err := s.UpsertUser(context.Background(), User{ID: id, Name: id, Role: identitystore.RoleMember,
 		CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +107,7 @@ func testRecentChannels(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	mustUpsertPreferenceUser(t, s, "u-ada")
 	mustUpsertPreferenceUser(t, s, "u-bo")
-	total := RecentChannelsKept + 3
+	total := channeldatastore.RecentChannelsKept + 3
 	for i := range total {
 		mustSaveChannel(t, s, sampleChannel(fmt.Sprintf("recent-%02d", i), 100+i, time.Now().Add(time.Hour)))
 	}
@@ -134,8 +137,8 @@ func testRecentChannels(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ada.Recent) != RecentChannelsKept {
-		t.Fatalf("u-ada keeps %d recents, want the newest %d", len(ada.Recent), RecentChannelsKept)
+	if len(ada.Recent) != channeldatastore.RecentChannelsKept {
+		t.Fatalf("u-ada keeps %d recents, want the newest %d", len(ada.Recent), channeldatastore.RecentChannelsKept)
 	}
 	if ada.Recent[0].ChannelID != "recent-05" || !ada.Recent[0].TunedAt.Equal(retuned) {
 		t.Fatalf("newest recent = %+v, want recent-05 at %v", ada.Recent[0], retuned)

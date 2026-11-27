@@ -14,11 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/filler/routine"
 	"github.com/loomarr/loomarr/internal/filler/storeadapter"
-	"github.com/loomarr/loomarr/internal/filler/structure/cut"
-	"github.com/loomarr/loomarr/internal/filler/structure/window"
-	"github.com/loomarr/loomarr/internal/filler/structure/window/openrouter"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -27,7 +23,6 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
-	"github.com/loomarr/loomarr/internal/filler/screening"
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
 	"github.com/loomarr/loomarr/internal/filler/station"
@@ -89,6 +84,8 @@ func buildSyncer(st records.Store, set resolved, layout cliplibrary.Layout, log 
 	src := cliplibrary.DirSource{
 		Layout: layout,
 		Probe:  cliplibrary.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
+		// The 15-minute sync reads only the files that changed since the last one.
+		Probes: cliplibrary.NewProbeCache(),
 		// ⚠ **Artwork must be given `playout.ffmpeg_path`**: its nil default shells out to whatever
 		// `ffmpeg` PATH resolves to, so an operator who points that setting at a custom build
 		// would get frames from a DIFFERENT binary than playout uses, silently.
@@ -330,10 +327,6 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 	// skipped ("vision tagging is off", "no language backend is configured"), which is the same
 	// visible-but-idle contract the Tasks page rows use.
 	clipDir := layout.ClipDir()
-	screeningRuntime, screeningErr := buildQualificationSegmentScreeningRuntime(st, layout)
-	if screeningErr != nil {
-		log.Error("rendered-child screening qualification runtime was not activated", "err", screeningErr)
-	}
 	transcribeStage := filler.NewTranscribeStage(fillerTools, storeadapter.NewTranscribe(st), clipDir, fillerDrop,
 		func() bool { return settings.FillerTranscribeEnabled.Get(set) }, time.Now)
 	visionStage := filler.NewVisionStage(fillerTools, visionProvider, storeadapter.NewVision(st), clipDir,
@@ -363,11 +356,8 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 			func() int64 { return settings.FillerMinDuration.Get(set).Milliseconds() },
 			func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) }, time.Now),
 		transcodeStage,
-		// Rendered compilation children must not reach enrichment or the compatibility score gate
-		// until the five certified authorities are wired. The qualification runtime records the
-		// exact rights and playback answers plus explicit holds for the three uncertified safety
-		// axes. Terminal release remains nil, so no qualification aggregate can authorize airplay.
-		screening.NewSegmentScreeningStage(screeningRuntime, nil, clipDir),
+		// No screen rung (#4409): a cut piece meets the same bar as a single downloaded ad — the
+		// defect, language, transcript and vision rungs below — so a row at `screen` is skipped.
 		defectfloor.NewDefectsStage(storeadapter.NewDefects(st)),
 		filler.NewLanguageStage(langDetect, storeadapter.NewLanguage(st), clipDir, wantLanguages, time.Now),
 		transcribeStage,
@@ -390,49 +380,6 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 			MaxDuration:   func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) },
 		}
 		minClipDuration := func() time.Duration { return settings.FillerMinDuration.Get(set) }
-		// The two long-reel files apply live (#1659): each path edit builds the whole runtime
-		// afresh, and the split stage reads it once per split.
-		structureRuntime := routine.NewLiveStructureRuntime(
-			func() (string, string) {
-				return settings.FillerStructureWindowAuthorityPath.Get(set), settings.FillerStructureWindowDeploymentPath.Get(set)
-			},
-			func(authorityPath, deploymentPath string) filler.StructureRuntime {
-				materialization := &filler.StructureMaterializationPolicy{}
-				rt := filler.StructureRuntime{Materialization: materialization}
-				policyVersion := "production-shadow-no-certified-slices-v1"
-				windowAuthority, authorityErr := window.LoadAuthority(authorityPath)
-				if authorityErr != nil {
-					log.Error("long-reel materialization authority was not loaded; certified splitting remains disabled", "err", authorityErr)
-				}
-				windowDeployment, deploymentErr := openrouter.LoadDeployment(deploymentPath, windowAuthority)
-				if deploymentErr != nil {
-					log.Error("long-reel deployment was not loaded; structure inference and certified splitting remain disabled", "err", deploymentErr)
-				}
-				cutFamily := func() encode.Family { return cut.CutFamily(encodeHost()) }
-				windowRuntime, runtimeErr := buildCertifiedWindowStructureRuntime(st, set, layout, windowAuthority, windowDeployment, cutFamily)
-				if runtimeErr != nil {
-					log.Error("long-reel runtime was not activated; structure inference and certified splitting remain disabled", "err", runtimeErr)
-				} else if windowRuntime != nil {
-
-					rt.Decisioner = windowRuntime
-					materialization.WindowAuthority = windowAuthority
-					policyVersion = "production-window-authority-" + windowAuthority.SHA256[:12] + "-deployment-" + windowDeployment.SHA256[:12]
-					log.Info("certified long-reel runtime activated", "authority_sha256", windowAuthority.SHA256,
-						"deployment_sha256", windowDeployment.SHA256, "minimum_source_ms", windowAuthority.MinimumSourceDurationMS,
-						"maximum_source_ms", windowAuthority.MaximumSourceDurationMS)
-				}
-
-				structureShadow, shadowErr := filler.NewStructureSplitShadow(st, autoSplitPolicy, materialization, minClipDuration, policyVersion)
-				if shadowErr != nil {
-					log.Error("could not construct filler structure split shadow", "err", shadowErr)
-				}
-
-				rt.Shadow = structureShadow
-				return rt
-			})
-
-		// Build once at boot so a bad file is reported at startup.
-		structureRuntime.Current()
 		// ⚠ Appended rather than placed in order — `NewPipeline` indexes the slice by stage id
 		// and `StageOrder` is the ONE definition of the sequence, so the order here is
 		// irrelevant. Stating that is worth a line, because a slice that looks like a pipeline
@@ -449,6 +396,7 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 			// keeps "is Loomarr sending my frames to a model" answerable in one place.
 			WithSegmentVision(&filler.SegmentVision{
 				Tools:    fillerTools,
+				Loudness: fillerTools,
 				Provider: visionProvider,
 				Taxa:     storeadapter.NewVision(st),
 				ClipDir:  clipDir,
@@ -459,10 +407,6 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 					return settings.FillerPipelineMaxSplitVision.Get(set)
 				},
 			})
-		// The gate is attached even without a certified runtime. An empty policy then produces an
-		// attributable hold instead of allowing the diagnostic compatibility outcome to create
-		// children.
-		splitStage.WithStructureRuntime(structureRuntime.Current)
 		pipelineStages = append(pipelineStages, splitStage)
 	}
 	fillerPipeline := filler.NewPipeline(st, storeadapter.NewPipelineClips(st), pipelineStages,
@@ -478,6 +422,8 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 		},
 		emitter.FillerClipStage, time.Now, log).
 		WithRewind(storeadapter.NewRewind(st), clipDir).
+		// Each pass measures the air window of airable clips without one (#3384).
+		WithAirWindows(storeadapter.NewPipelineClips(st)).
 		// Idle passes move the airing library onto the current encode profile (#2121).
 		WithLibraryReencode(transcodeStage, storeadapter.NewAiringClips(st))
 	if headroom != nil {
@@ -555,7 +501,7 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 			// in its season.
 			Calendar: calendar(),
 		}
-	}, log)
+	}, log).WithBreaks(fillerBreakAdapter{st})
 	return podAdapter
 }
 

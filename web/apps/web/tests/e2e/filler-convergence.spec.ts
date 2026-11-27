@@ -121,6 +121,7 @@ test("a fetched arrival becomes playable automatically after its checks complete
           scheduled: 0,
           inProgress: 0,
           needsDecision: 0,
+          awaitingSplit: 0,
           recoverable: 0,
           ready: readyCommitted ? 1 : 0,
           rejected: 0,
@@ -236,7 +237,15 @@ test("a fetched arrival becomes playable automatically after its checks complete
         status: "live",
         strategy: "shuffle",
         lineup: [],
-        policy: { scope: { era: { from: 1990, to: 1999 } } },
+        policy: {
+          scope: {
+            dates: {
+              movieRelease: [{ from: 1990, to: 1999 }],
+              seriesPremiere: [{ from: 1990, to: 1999 }],
+              seriesAiring: [{ from: 1990, to: 1999 }],
+            },
+          },
+        },
         breakCount: readyCommitted ? 1 : 0,
         pendingCount: 0,
         programCount: 2,

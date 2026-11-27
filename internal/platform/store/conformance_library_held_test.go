@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A held removal names its titles: a show once however many of its episodes are held, a movie by
@@ -25,13 +27,13 @@ func testLibraryHeldTitles(t *testing.T, newStore NewStoreFunc) {
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	file := func(root, path, item, series string, held bool) LibraryFile {
-		return LibraryFile{Path: root + "/" + path, Root: root, Size: 1, ModifiedNs: 1, Kind: "movie",
-			Header: LibraryHeaderRead, Held: held, SeenAt: at, ItemID: item, SeriesID: series}
+	file := func(root, path, item, series string, held bool) librarystore.LibraryFile {
+		return librarystore.LibraryFile{Path: root + "/" + path, Root: root, Size: 1, ModifiedNs: 1, Kind: "movie",
+			Header: librarystore.LibraryHeaderRead, Held: held, SeenAt: at, ItemID: item, SeriesID: series}
 	}
 	gone := file("/media/a", "gone.mkv", "m6", "", true)
 	gone.MissingAt = at
-	if err := st.SaveLibraryFiles(ctx, []LibraryFile{
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
 		file("/media/a", "lane/1.mkv", "e1", "s1", true),
 		file("/media/a", "lane/2.mkv", "e2", "s1", true),
 		file("/media/a", "calder.mkv", "m1", "", true),

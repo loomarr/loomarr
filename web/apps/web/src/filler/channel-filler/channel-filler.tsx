@@ -19,6 +19,7 @@ import {
   Stack,
   Surface,
   Text,
+  TextLink,
 } from "@loomarr/design-system";
 import { useCommittedDraft } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
@@ -28,7 +29,6 @@ import { CoverageMeter } from "@/components/loomarr/filler/coverage-meter";
 import { PodTimeline } from "@/components/loomarr/filler/pod-timeline";
 import { usePlaceLabel } from "@/components/loomarr/settings/installation-location";
 import { eraOf } from "@/lib/era-dates";
-import { cn } from "@/lib/utils";
 import { useChannelFillerDraft } from "../use-channel-filler-draft";
 import type { ChannelFillerProps } from "./channel-filler.type";
 import { FillerClipList } from "./filler-clip-list";
@@ -271,9 +271,9 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
       )}
       <Text as="p" textRole="compact" tone="secondary">
         How often this channel pauses for filler. Manage the inherited value in{" "}
-        <Link to="/settings/defaults" className="text-signal underline-offset-2 hover:underline">
+        <TextLink render={<Link to="/settings/defaults" />} tone="primary" underline="hover">
           Channel defaults
-        </Link>
+        </TextLink>
         .
       </Text>
     </Stack>
@@ -402,9 +402,9 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           </Text>
           <Text as="p" textRole="compact" tone="secondary">
             Start broad. Add only the filters this channel really needs. Clips come from your{" "}
-            <Link to="/filler/library" className="text-signal underline-offset-2 hover:underline">
+            <TextLink render={<Link to="/filler/library" />} tone="primary" underline="hover">
               filler library
-            </Link>
+            </TextLink>
             .
           </Text>
         </div>
@@ -494,22 +494,22 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
               <>
                 No clips match these choices yet. Breaks use the bumper card for now. Adjust the choices
                 above, or{" "}
-                <Link to="/filler/library" className="text-signal underline-offset-2 hover:underline">
+                <TextLink render={<Link to="/filler/library" />} tone="primary" underline="hover">
                   browse your filler library
-                </Link>
+                </TextLink>
                 .
               </>
             )}
           </Text>
         ) : (
-          <div className={cn("transition-opacity", isPreviewing && "opacity-60")}>
+          <Stack opacity={isPreviewing ? 0.6 : 1} style={{ transition: "opacity 150ms" }}>
             <PodTimeline entries={entries} matchLevel={preview?.matchLevel} onPreview={setPreviewingClip} />
             <Stack marginTop={8}>
               <Text as="p" textRole="compact" tone="secondary">
                 {`A sample break of ${pluralize(entries.length, "clip")}, put together the way this channel does it. Click a clip to play it.`}
               </Text>
             </Stack>
-          </div>
+          </Stack>
         )}
       </Card>
 
@@ -521,10 +521,11 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           borderColor="borderDecorative"
           borderRadius={12}
           borderWidth={1}
-          className="bg-background/95 sticky bottom-0 shadow-lg backdrop-blur"
+          backgroundColor="surfaceElevated"
           direction="row"
           gap="inline"
           padding={12}
+          style={{ bottom: 0, position: "sticky" }}
         >
           <Action disabled={isApplying} onPress={apply} tone="suggest">
             {isApplying ? "Applying…" : "Apply filler"}

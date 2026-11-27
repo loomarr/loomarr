@@ -103,9 +103,10 @@ jobs:
           # Long enough to debug a PR over a weekend, short enough not to accumulate: these
           # are screenshots of a failing run, worthless once it is fixed.
           retention-days: 7
-      # ⚠ Never from the merge queue (#1679): a queue batch's unique ref makes the save unreadable.
-      - name: Save pnpm store (not from the merge queue)
-        if: github.event_name != 'merge_group' && steps.pnpm-cache.outputs.cache-hit != 'true'
+      # ⚠ main only (#1679), as in ci-frontend.yml: any other ref's save is a copy no other run
+      # reads, and the `CI / Go cache warm` workflow seeds the store on main.
+      - name: Save pnpm store (main only)
+        if: github.ref == 'refs/heads/main' && steps.pnpm-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.local/share/pnpm/store

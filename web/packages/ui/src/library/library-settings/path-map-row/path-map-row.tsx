@@ -37,7 +37,7 @@ const PathMapRow = ({
       <Stack paddingBottom="inline" width={72}>
         <Text textRole="label">{name}</Text>
       </Stack>
-      <Stack flexBasis={160} flexGrow={1} paddingBottom="inline">
+      <Stack flexBasis={160} flexGrow={1} flexShrink={1} paddingBottom="inline">
         <Text textRole="data" tone="secondary">
           {mapping.authorityPath}
         </Text>
@@ -45,7 +45,7 @@ const PathMapRow = ({
       <Text textRole="body" tone="muted">
         →
       </Text>
-      <Stack flexBasis={160} flexGrow={1}>
+      <Stack flexBasis={160} flexGrow={1} flexShrink={1}>
         <Field
           accessibilityLabel={`${name} ${mapping.authorityPath} maps to`}
           onBlur={commit}

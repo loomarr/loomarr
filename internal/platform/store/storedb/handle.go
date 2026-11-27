@@ -29,8 +29,8 @@ type Handle interface {
 	AdvisoryLocker
 	// Begin starts a transaction on the pool.
 	Begin(ctx context.Context) (Tx, error)
-	// BeginReadOnly starts a read-only transaction on the pool: one consistent snapshot to read
-	// several tables through.
+	// BeginReadOnly starts a read-only transaction on the pool, to read several tables through. On
+	// SQLite it is one snapshot; on Postgres, at read committed, each statement sees its own.
 	BeginReadOnly(ctx context.Context) (Tx, error)
 	// Rebind rewrites a query written with ? markers into the backend's placeholder style.
 	Rebind(query string) string

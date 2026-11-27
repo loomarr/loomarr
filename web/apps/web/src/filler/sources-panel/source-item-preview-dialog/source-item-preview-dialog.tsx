@@ -32,7 +32,13 @@ const SourceItemPreviewDialog = ({ item, providerLabel, onClose }: SourceItemPre
         </DialogHeader>
         {embedURL ? (
           <iframe
-            className="aspect-video w-full rounded-md border-0 bg-black"
+            style={{
+              aspectRatio: "16 / 9",
+              backgroundColor: "black",
+              border: 0,
+              borderRadius: 6,
+              width: "100%",
+            }}
             src={embedURL}
             title={item ? `Preview ${item.title}` : "Item preview"}
             allow="autoplay; encrypted-media; picture-in-picture"
@@ -42,11 +48,14 @@ const SourceItemPreviewDialog = ({ item, providerLabel, onClose }: SourceItemPre
         ) : (
           <Stack
             align="center"
-            className="bg-muted aspect-video rounded-md px-6 text-center"
+            aspectRatio={16 / 9}
+            backgroundColor="surfaceRaised"
+            borderRadius={6}
             direction="row"
             justify="center"
+            paddingHorizontal={24}
           >
-            <Text as="p" className="text-center" textRole="compact" tone="secondary">
+            <Text as="p" textAlign="center" textRole="compact" tone="secondary">
               This provider cannot show the item here. Open the original to preview it.
             </Text>
           </Stack>

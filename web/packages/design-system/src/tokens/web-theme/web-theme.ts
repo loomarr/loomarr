@@ -54,7 +54,7 @@ const semanticAliases = {
 
 // Tint steps — alpha washes, not fixed hexes: color-mix(in srgb, <accent> N%, transparent) over the
 // surface. One formula replaces six tint tokens (§2.1).
-const tintSteps = [8, 12, 15, 30, 40] as const;
+const tintSteps = [5, 8, 12, 15, 30, 40] as const;
 
 // The surface badges/tints composite over (for the contrast validation, §2.1).
 const tintSurface = staticScale["static-900"];

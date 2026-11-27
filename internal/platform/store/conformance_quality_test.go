@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store/qualitystore"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
 
@@ -36,7 +37,7 @@ func testDiscoveryQualityLedger(t *testing.T, newStore NewStoreFunc) {
 	}
 	conflict := snapshot
 	conflict.ResolvedModel = "different-model"
-	if err := s.PutQualityRunSnapshot(ctx, conflict); !errors.Is(err, ErrQualitySnapshotConflict) {
+	if err := s.PutQualityRunSnapshot(ctx, conflict); !errors.Is(err, qualitystore.ErrSnapshotConflict) {
 		t.Fatalf("snapshot conflict = %v, want ErrQualitySnapshotConflict", err)
 	}
 

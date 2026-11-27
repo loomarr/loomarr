@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // A channel owns the request it was made from. Housekeeping purges finished jobs older than
@@ -14,7 +16,7 @@ import (
 func testChannelOutlivesItsPurgedJob(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	if err := s.UpsertUser(ctx, User{ID: "u-member", Name: "Member One", Role: RoleMember}); err != nil {
+	if err := s.UpsertUser(ctx, User{ID: "u-member", Name: "Member One", Role: identitystore.RoleMember}); err != nil {
 		t.Fatal(err)
 	}
 	old := time.Now().Add(-31 * 24 * time.Hour)

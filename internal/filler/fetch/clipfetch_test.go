@@ -155,8 +155,8 @@ func TestPrepareReservesBeforeDownloadAndRevalidatesBeforeExecution(t *testing.T
 	// The host changed after queue admission. Revalidation must stop execution.
 	meter.measurement.FreeBytes = 7 * storagegovernor.GiB
 	result := plan.Run(t.Context())
-	if downloaded || result.Failed != 1 {
-		t.Fatalf("run = %+v downloaded=%v, want capacity refusal before execution", result, downloaded)
+	if downloaded || result.Failed != 0 || result.Deferred != 1 {
+		t.Fatalf("run = %+v downloaded=%v, want a deferral before execution and no failure", result, downloaded)
 	}
 	if snapshot := governor.Snapshot(t.Context(), "/filler"); snapshot.Snapshot.ReservedBytes != 0 {
 		t.Fatalf("reservation after run = %d, want released", snapshot.Snapshot.ReservedBytes)

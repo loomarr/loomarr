@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 const (
@@ -88,7 +89,7 @@ func seedBackupRestoreDrill(t *testing.T, s Store) {
 	ctx := context.Background()
 	now := backupDrillTimestamp()
 	user := User{
-		ID: backupDrillUserID, Name: "Backup Drill Admin", Role: RoleAdmin,
+		ID: backupDrillUserID, Name: "Backup Drill Admin", Role: identitystore.RoleAdmin,
 		Quota: 4, AutoApprove: true, PasswordHash: "bcrypt-backup-drill-hash",
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -143,7 +144,7 @@ func assertBackupRestoreDrill(t *testing.T, s Store) {
 	if err != nil {
 		t.Fatalf("restored account: %v", err)
 	}
-	if user.Role != RoleAdmin || user.PasswordHash != "bcrypt-backup-drill-hash" || !user.AutoApprove || user.Quota != 4 {
+	if user.Role != identitystore.RoleAdmin || user.PasswordHash != "bcrypt-backup-drill-hash" || !user.AutoApprove || user.Quota != 4 {
 		t.Fatalf("restored account lost authorization/credential state: %+v", user)
 	}
 	if _, err := s.GetSession(ctx, backupDrillSessionHash, now); err != nil {

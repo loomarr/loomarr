@@ -23,6 +23,10 @@ func testClientCrashReports(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	mustUpsertPreferenceUser(t, s, "u-kid")
+	if err := s.CreateDeviceToken(ctx, DeviceToken{TokenHash: "hash-1", UserID: "u-kid", DeviceName: "Phone",
+		CreatedAt: time.Unix(1_000, 0)}); err != nil {
+		t.Fatal(err)
+	}
 
 	full := clientCrashRecord("crash_b", 2_000)
 	full.UserID, full.DeviceID, full.DeviceName = "u-kid", "hash-1", "Phone"
@@ -78,6 +82,25 @@ func testClientCrashReports(t *testing.T, newStore NewStoreFunc) {
 	orphan.UserID = "u-ghost"
 	if err := s.InsertClientCrashReport(ctx, orphan); err == nil {
 		t.Fatal("a report for an unknown user was stored")
+	}
+
+	// The device is a foreign key to device_tokens (#2793). A device unpaired before its report
+	// arrives is stored as no device rather than refusing the report; unpairing one clears it from
+	// the reports it sent, which stay.
+	unpaired := clientCrashRecord("crash_unpaired", 5_000)
+	unpaired.DeviceID = "hash-unpaired"
+	if err := s.InsertClientCrashReport(ctx, unpaired); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ := s.GetClientCrashReport(ctx, "crash_unpaired"); got.DeviceID != "" {
+		t.Errorf("unpaired device stored as %q, want none", got.DeviceID)
+	}
+	if ok, err := s.DeleteDeviceToken(ctx, "hash-1", "u-kid"); err != nil || !ok {
+		t.Fatalf("unpair = %v, %v", ok, err)
+	}
+	if got, ok, _ := s.GetClientCrashReport(ctx, "crash_b"); !ok || got.DeviceID != "" || got.DeviceName != "Phone" {
+		t.Errorf("after unpairing, report = (%v, device %q, name %q); want kept, no device, name Phone",
+			ok, got.DeviceID, got.DeviceName)
 	}
 }
 

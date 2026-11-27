@@ -35,6 +35,20 @@ describe("InlineAction", () => {
     expect(button.hasAttribute("data-touch-target")).toBe(true);
   });
 
+  it("truncates to one line, with its tap area as its own padding and the full name as a title", () => {
+    render(inSentence({ title: "Use another place, the long way", truncate: true }));
+
+    const button = screen.getByRole("button", { name: "Use another place" });
+    expect(button.style.overflow).toBe("hidden");
+    expect(button.style.textOverflow).toBe("ellipsis");
+    expect(button.style.whiteSpace).toBe("nowrap");
+    expect(button.style.padding).toBe("2px 0px");
+    expect(button.style.margin).toBe("-2px 0px");
+    expect(button.getAttribute("title")).toBe("Use another place, the long way");
+    // The `::after` target would be clipped by the overflow, so there is none.
+    expect(button.hasAttribute("data-touch-target")).toBe(false);
+  });
+
   it("presses with the mouse and with Enter and Space", async () => {
     const onPress = vi.fn();
     const user = userEvent.setup();

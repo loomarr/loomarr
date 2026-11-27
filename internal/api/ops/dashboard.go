@@ -21,8 +21,8 @@ import (
 // only polled would lag a stream start by the poll interval.
 //
 // So the frame carries the WHOLE snapshot rather than a delta. Deltas would make a dropped
-// frame corrupting rather than merely stale — the bus drops for slow subscribers by design, so
-// any delta protocol over it would need a resync path, which is the polling endpoint again.
+// frame corrupting rather than merely stale — a client misses every frame sent while it
+// reconnects, so any delta protocol over it would need a resync path, which is the endpoint again.
 
 // PlayoutTelemetry is the live encoder picture the dashboard renders.
 type PlayoutTelemetry struct {

@@ -79,6 +79,36 @@ describe("CommitField", () => {
     expect(commits).toEqual(["4h"]);
   });
 
+  it("holds back a draft its check refuses, saying why until the next edit", async () => {
+    const commits: string[] = [];
+    await mount(
+      <CommitField
+        initial=""
+        label="Max from one series"
+        onCommit={(text) => commits.push(text)}
+        validate={(text) => (/^\d*$/.test(text) ? undefined : "Enter a whole number")}
+      />,
+    );
+    const input = doc.body.querySelector("input");
+    if (!input) throw new Error("no input");
+    const blur = () =>
+      act(async () => {
+        input.dispatchEvent(new win.FocusEvent("focusout", { bubbles: true }));
+        input.dispatchEvent(new win.FocusEvent("blur"));
+      });
+
+    await typeInto(input, "three");
+    await blur();
+    expect(commits).toEqual([]);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(doc.body.querySelector("input")?.getAttribute("aria-describedby")).toMatch(/error/);
+
+    await typeInto(input, "3");
+    expect(input.getAttribute("aria-invalid")).toBeNull();
+    await blur();
+    expect(commits).toEqual(["3"]);
+  });
+
   it("keeps the draft when the stored text changes, until the box is keyed afresh", async () => {
     const container = doc.createElement("div");
     doc.body.append(container);

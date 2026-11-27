@@ -135,3 +135,35 @@ func TestAcquisitionCleanerReportsRemovalFailureAndFreshRemainingPreview(t *test
 		t.Fatalf("cleanup = %+v, err=%v", result, err)
 	}
 }
+
+// Upkeep hands leftover staging to the quarantine rather than deleting it (#3855).
+func TestAcquisitionCleanerWithDisposalHandsEachLeftoverToIt(t *testing.T) {
+	now := time.Date(2026, time.September, 17, 12, 0, 0, 0, time.UTC)
+	watch := t.TempDir()
+	attempt := filepath.Join(watch, ".loomarr-acquisitions", "terminal", "000")
+	if err := os.MkdirAll(attempt, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	media := filepath.Join(attempt, "download.mp4")
+	if err := os.WriteFile(media, make([]byte, 64), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := now.Add(-48 * time.Hour)
+	for _, p := range []string{media, attempt} {
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	aside := filepath.Join(t.TempDir(), "aside")
+	cleaner := NewAcquisitionCleaner(watch, cleanupStore{
+		runs: map[string]acquisition.AcquisitionRun{"terminal": {Status: acquisition.RunSuccess}},
+	}, func() time.Time { return now }).WithDisposal(func(path string) error { return os.Rename(path, aside) })
+
+	result, err := cleaner.Clean(t.Context())
+	if err != nil || result.RemovedItems != 1 || result.RemovedBytes != 64 {
+		t.Fatalf("cleanup = %+v, err=%v", result, err)
+	}
+	if _, err := os.Stat(filepath.Join(aside, "download.mp4")); err != nil {
+		t.Fatalf("the leftover did not reach its disposal: %v", err)
+	}
+}

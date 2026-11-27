@@ -1,5 +1,6 @@
 import type { Assessment } from "@loomarr/api/models/assessment";
-import { Stack, Text } from "@loomarr/design-system";
+import { Grid, Stack, Text } from "@loomarr/design-system";
+import { Fragment } from "react";
 
 interface ProposalOutlookProps {
   assessment?: Assessment;
@@ -36,7 +37,7 @@ const ProposalOutlookDiagnostics = ({
   timeZone?: string;
 }) => (
   <Stack className="text-muted-foreground" gap="inline">
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+    <Grid columnGap="4" columns={["auto", "1fr"]} render="dl" rowGap="1">
       {(
         [
           ["Requested or kept", value.mix.core],
@@ -47,14 +48,14 @@ const ProposalOutlookDiagnostics = ({
       )
         .filter(([, count]) => count > 0)
         .map(([label, count]) => (
-          <div key={label} className="contents">
+          <Fragment key={label}>
             <dt>{label}</dt>
             <dd>{count}</dd>
-          </div>
+          </Fragment>
         ))}
       <dt>Seasons represented</dt>
       <dd>{value.seasons}</dd>
-    </dl>
+    </Grid>
     <p>
       This estimate reflects the current title list and schedule settings. Missing titles and breaks do not
       add playing time.
@@ -169,7 +170,7 @@ const ProposalOutlook = ({
           ? `Short lineup: ${programmingDuration} of programming.`
           : `${sentenceCase(programmingDuration)} of programming.`;
   return (
-    <section aria-label="Channel outlook" className="text-sm">
+    <Text as="section" aria-label="Channel outlook" textRole="compact" tone="secondary">
       <Text as="p" textRole="compact" tone={value.thin ? "warning" : "secondary"}>
         {summary}
       </Text>
@@ -181,7 +182,7 @@ const ProposalOutlook = ({
           </div>
         </details>
       )}
-    </section>
+    </Text>
   );
 };
 

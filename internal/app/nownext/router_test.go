@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // The shipped bug, as a test: a channel Loomarr streams internally must NOT be answered from
@@ -338,7 +338,7 @@ func TestNowNextRouter_UpcomingTranslatesLoomarrIDForTunarr(t *testing.T) {
 // A series card reads as the SHOW, not the episode name — the same choice XMLTV's <title> makes.
 func TestBroadcastToNowNext_UsesTheSeriesTitleForAnEpisode(t *testing.T) {
 	t.Parallel()
-	b := playout.Broadcast{
+	b := timeline.Broadcast{
 		Kind:        schedule.SlotProgram,
 		Title:       "Pip the Inventor",
 		SeriesTitle: "The Mudpuddles",
@@ -416,8 +416,8 @@ type stubBroadcasts struct {
 
 func (s stubBroadcasts) BroadcastsBetween(
 	_ context.Context, _ string, _, _ time.Time,
-) ([]playout.Broadcast, error) {
-	return []playout.Broadcast{{
+) ([]timeline.Broadcast, error) {
+	return []timeline.Broadcast{{
 		Kind:  schedule.SlotProgram,
 		Title: s.title,
 		Start: s.start,

@@ -179,6 +179,7 @@ func TestEveryFrameStreamsWithItsEventName(t *testing.T) {
 		{"title", opsapi.TitleEvent{Key: "movie:tmdb:90000001", State: "available", Name: "Ashgrove Anomaly"}},
 		{"channel", opsapi.ChannelEvent{ChannelID: "ch_1", Status: "live"}},
 		{"suggestion", opsapi.SuggestionEvent{JobID: "j1", Phase: "scoring", Round: 3}},
+		{"proposal", opsapi.ProposalEvent{}},
 		{"job", opsapi.JobEvent{Name: "library-scan"}},
 		{"activity", opsapi.ActivityEvent{}},
 		{"health", opsapi.HealthEvent{}},
@@ -190,6 +191,10 @@ func TestEveryFrameStreamsWithItsEventName(t *testing.T) {
 		{"playout", opsapi.PlayoutEvent{Active: 2}},
 		{"library_scan", opsapi.LibraryScanEvent{ScanProgress: libraryapi.ScanProgress{Step: "walking", StepNumber: 1, Done: 2, Total: 9}}},
 		{"library_titles", opsapi.LibraryTitlesEvent{}},
+		{"viewing", opsapi.ViewingEvent{}},
+		{"access", opsapi.AccessEvent{}},
+		{"diagnostic_events", opsapi.DiagnosticEventsEvent{}},
+		{"diagnostic_processes", opsapi.DiagnosticProcessesEvent{}},
 	} {
 		t.Run(tc.want, func(t *testing.T) {
 			srv, bus := newEventsServer(t)
@@ -197,9 +202,10 @@ func TestEveryFrameStreamsWithItsEventName(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/v1/events", nil)
-			// library_scan is an admin's frame; every other one reaches a member.
+			// An admin's frame goes to an admin's stream; every other one reaches a member.
 			token := memberToken
-			if tc.want == "library_scan" {
+			switch tc.want {
+			case "library_scan", "access", "diagnostic_events", "diagnostic_processes":
 				token = adminToken
 			}
 			req.Header.Set("Authorization", "Bearer "+token)
@@ -237,8 +243,9 @@ func TestEveryFrameStreamsWithItsEventName(t *testing.T) {
 }
 
 // A library_scan frame names the folder or file the scan is on, which, like the status it mirrors,
-// is the household's storage and admin-only: a member's stream leaves it out and carries on.
-func TestMemberStreamLeavesOutLibraryScan(t *testing.T) {
+// is the household's storage and admin-only: a member's stream leaves it out and carries on. So
+// does every frame for an admin's screen: People and Diagnostics.
+func TestMemberStreamLeavesOutAdminFrames(t *testing.T) {
 	srv, bus := newEventsServer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -252,13 +259,16 @@ func TestMemberStreamLeavesOutLibraryScan(t *testing.T) {
 
 	bus.ch <- events.Event{Type: "library_scan", Payload: opsapi.LibraryScanEvent{
 		ScanProgress: libraryapi.ScanProgress{Step: "walking", StepNumber: 1, Current: "TV / Night Ferry"}}}
+	bus.ch <- events.Event{Type: "access", Payload: opsapi.AccessEvent{}}
+	bus.ch <- events.Event{Type: "diagnostic_events", Payload: opsapi.DiagnosticEventsEvent{}}
+	bus.ch <- events.Event{Type: "diagnostic_processes", Payload: opsapi.DiagnosticProcessesEvent{}}
 	bus.ch <- events.Event{Type: "library_titles", Payload: opsapi.LibraryTitlesEvent{}}
 
 	sc := bufio.NewScanner(resp.Body)
 	for sc.Scan() {
 		line := sc.Text()
-		if strings.Contains(line, "Night Ferry") || line == "event: library_scan" {
-			t.Fatalf("a member's stream carried the scan: %q", line)
+		if strings.Contains(line, "Night Ferry") || strings.HasPrefix(line, "event: ") && line != "event: library_titles" {
+			t.Fatalf("a member's stream carried an admin's frame: %q", line)
 		}
 		if line == "event: library_titles" {
 			return

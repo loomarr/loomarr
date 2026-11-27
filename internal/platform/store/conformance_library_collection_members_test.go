@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A collection's members, by the provider ids a lineup knows them by: one with no provider id
@@ -14,19 +16,19 @@ func testLibraryCollectionMemberIDs(t *testing.T, newStore NewStoreFunc) {
 	st := newStore(t)
 	at := time.UnixMilli(1_800_000_000_000)
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{
-		{ID: "film", Kind: "movie", Name: "Film", IDs: []LibraryID{{Namespace: "tmdb", Value: "90000001"}, {Namespace: "imdb", Value: "tt90000001"}}},
-		{ID: "show", Kind: "series", Name: "Show", IDs: []LibraryID{{Namespace: "tvdb", Value: "90000002"}, {Namespace: "tmdb", Value: "90000003"}}},
+		{ID: "film", Kind: "movie", Name: "Film", IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000001"}, {Namespace: "imdb", Value: "tt90000001"}}},
+		{ID: "show", Kind: "series", Name: "Show", IDs: []librarystore.LibraryID{{Namespace: "tvdb", Value: "90000002"}, {Namespace: "tmdb", Value: "90000003"}}},
 		{ID: "home", Kind: "movie", Name: "Home video"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	night, err := st.CreateLibraryCollection(ctx, LibraryCollection{
+	night, err := st.CreateLibraryCollection(ctx, librarystore.LibraryCollection{
 		Name: "Nights", Members: []string{"show", "film"},
 	}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
-	home, err := st.CreateLibraryCollection(ctx, LibraryCollection{Name: "Home", Members: []string{"home"}}, at)
+	home, err := st.CreateLibraryCollection(ctx, librarystore.LibraryCollection{Name: "Home", Members: []string{"home"}}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,14 +37,14 @@ func testLibraryCollectionMemberIDs(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string][]LibraryCollectionMember{
+	want := map[string][]librarystore.LibraryCollectionMember{
 		night: {
-			{CollectionID: night, Kind: "series", IDs: []LibraryID{{Namespace: "tmdb", Value: "90000003"}, {Namespace: "tvdb", Value: "90000002"}}},
-			{CollectionID: night, Kind: "movie", IDs: []LibraryID{{Namespace: "imdb", Value: "tt90000001"}, {Namespace: "tmdb", Value: "90000001"}}},
+			{CollectionID: night, Kind: "series", IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000003"}, {Namespace: "tvdb", Value: "90000002"}}},
+			{CollectionID: night, Kind: "movie", IDs: []librarystore.LibraryID{{Namespace: "imdb", Value: "tt90000001"}, {Namespace: "tmdb", Value: "90000001"}}},
 		},
 		home: {{CollectionID: home, Kind: "movie"}},
 	}
-	byCollection := map[string][]LibraryCollectionMember{}
+	byCollection := map[string][]librarystore.LibraryCollectionMember{}
 	for _, m := range got {
 		byCollection[m.CollectionID] = append(byCollection[m.CollectionID], m)
 	}

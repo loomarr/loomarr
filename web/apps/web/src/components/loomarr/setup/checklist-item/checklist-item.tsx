@@ -1,5 +1,5 @@
 import { parseDocHref } from "@loomarr/core/anchor";
-import { ActivityIndicator, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { ActivityIndicator, Icon, icons, Stack, Text, TextLink } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -27,31 +27,33 @@ const ChecklistItem = ({ name, status, hint, docHref, className }: ChecklistItem
     direction="row"
     gap="control"
   >
-    <span className="mt-0.5" role="img" aria-label={ICON[status].label}>
+    <Stack aria-label={ICON[status].label} direction="row" marginTop={2} render="span" role="img">
       {ICON[status].node}
-    </span>
-    <div className="min-w-0 flex-1">
+    </Stack>
+    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
       <Text as="p" textRole="cardLabel">
         {name}
       </Text>
       {status === "fail" && hint && (
-        <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
-          {hint}
-        </Text>
+        <Stack marginTop={2}>
+          <Text as="p" textRole="compact" tone="secondary">
+            {hint}
+          </Text>
+        </Stack>
       )}
-    </div>
+    </Stack>
     {status === "fail" && docHref && (
       // Route into the Help center — the docHref ("troubleshooting#tunarr") is parsed
       // into { page, section }, not used as a raw href (which resolves relative to the
       // current path and 404s). This is what makes §13's "every red check deep-links to
       // its section" actually navigate.
-      <Link
-        to="/help"
-        search={parseDocHref(docHref)}
-        className="text-tune inline-flex shrink-0 items-center gap-0.5 text-xs hover:underline"
-      >
-        Fix <Icon decorative glyph={icons.goTo} size="compact" tone="inherit" />
-      </Link>
+      <Stack flexShrink={0} render="span">
+        <Text as="span" textRole="hint">
+          <TextLink icon="goTo" render={<Link search={parseDocHref(docHref)} to="/help" />}>
+            Fix
+          </TextLink>
+        </Text>
+      </Stack>
     )}
   </Stack>
 );

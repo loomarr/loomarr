@@ -1,8 +1,10 @@
 export { LibrarySettings } from "./library-settings";
 export type {
   LibraryAuthority,
+  LibraryBrowseListing,
   LibraryDetails,
   LibraryFolder,
+  LibraryFolderBrowser,
   LibraryHealth,
   LibraryHeldRemoval,
   LibraryHook,
@@ -10,6 +12,7 @@ export type {
   LibraryReadyTitle,
   LibraryScan,
   LibrarySettingsProps,
+  LibrarySkipped,
   LibraryWizardStepProps,
 } from "./library-settings.type";
 export { LibraryWizardStep } from "./library-wizard-step";

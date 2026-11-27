@@ -195,15 +195,24 @@ func (h *ArrHooks) Receive(ctx context.Context, app string, body []byte) error {
 	return err
 }
 
+// arrKeyNamespace is the namespace of the id an arr keys an item of a kind by, in its webhooks and
+// its API: Sonarr a series by its TVDB id, Radarr a movie by its TMDB id.
+func arrKeyNamespace(kind mp.Kind) mp.Namespace {
+	if kind == mp.KindSeries {
+		return mp.NamespaceTVDB
+	}
+	return mp.NamespaceTMDB
+}
+
 // arrItemOf is the item an event is about, nil when it names none.
 func arrItemOf(app string, ev arrhook.Event) *ArrItem {
 	switch {
 	case ev.SeriesTVDB > 0:
 		return &ArrItem{Authority: app, Ref: mp.Ref{Kind: mp.KindSeries,
-			ID: mp.ExternalID{Namespace: mp.NamespaceTVDB, Value: strconv.Itoa(ev.SeriesTVDB)}}}
+			ID: mp.ExternalID{Namespace: arrKeyNamespace(mp.KindSeries), Value: strconv.Itoa(ev.SeriesTVDB)}}}
 	case ev.MovieTMDB > 0:
 		return &ArrItem{Authority: app, Ref: mp.Ref{Kind: mp.KindMovie,
-			ID: mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(ev.MovieTMDB)}}}
+			ID: mp.ExternalID{Namespace: arrKeyNamespace(mp.KindMovie), Value: strconv.Itoa(ev.MovieTMDB)}}}
 	}
 	return nil
 }
