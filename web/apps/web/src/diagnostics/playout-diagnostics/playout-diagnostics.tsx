@@ -6,6 +6,7 @@ import {
   Action,
   Card,
   CompactSelect,
+  Details,
   Field,
   Grid,
   GridItem,
@@ -22,12 +23,12 @@ import {
 import { SearchField } from "@loomarr/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentProps, type UIEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { CopyValue } from "../copy-value";
 import type { DiagnosticsSearch } from "../diagnostics-page";
 import { DiagnosticsPager } from "../diagnostics-pager";
-import { DiagnosticsSplitPane } from "../diagnostics-split-pane";
+import { DiagnosticsSplitPane, useMinWidth, XL_WIDTH } from "../diagnostics-split-pane";
 
 const RANGE_MS = { "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000 } as const;
 const VIRTUAL_VIEWPORT = { width: 352, height: 640 };
@@ -190,18 +191,24 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
           </Text>
         </Stack>
       )}
-      <pre
-        ref={scrollRef}
-        onScroll={(event) => {
+      <Card
+        ref={scrollRef as ComponentProps<typeof Card>["ref"]}
+        render="pre"
+        backgroundColor="$surfaceCanvas"
+        margin={0}
+        maxHeight={448}
+        onScroll={(event: UIEvent<HTMLElement>) => {
           const output = event.currentTarget;
           if (follow && output.scrollHeight - output.scrollTop - output.clientHeight > 24) setFollow(false);
         }}
-        className={`border-border bg-background max-h-[28rem] overflow-auto rounded-md border p-3 ${wrap ? "break-words whitespace-pre-wrap" : "whitespace-pre"}`}
+        overflow="auto"
+        padding={12}
+        style={{ whiteSpace: wrap ? "pre-wrap" : "pre", overflowWrap: wrap ? "break-word" : "normal" }}
       >
         <Text as="span" textRole="mono" tone="primary">
           {visible || "No retained output matches this search."}
         </Text>
-      </pre>
+      </Card>
     </Stack>
   );
 };
@@ -342,6 +349,8 @@ const PlayoutDiagnostics = ({
 }) => {
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
+  // The list is capped at 55% of the window until the split pane has room beside it.
+  const wide = useMinWidth(XL_WIDTH);
   const cursor = cursorStack.at(-1);
   const processParams = (now = Date.now()): ListDiagnosticProcessesParams => ({
     from: now - RANGE_MS[filters.processRange],
@@ -427,10 +436,7 @@ const PlayoutDiagnostics = ({
             value={filters.processStatus}
           />
           <GridItem span={{ base: 1, sm: "full" }}>
-            <details>
-              <Text as="summary" cursor="pointer" textRole="compact" tone="secondary" className="py-1">
-                More filters
-              </Text>
+            <Details summary="More filters" tone="secondary">
               <Stack paddingTop={8}>
                 <Grid columns={{ base: 1, sm: 3 }} gap="3">
                   <Field
@@ -459,7 +465,7 @@ const PlayoutDiagnostics = ({
                   />
                 </Grid>
               </Stack>
-            </details>
+            </Details>
           </GridItem>
         </Grid>
       </Card>
@@ -494,13 +500,20 @@ const PlayoutDiagnostics = ({
           secondaryOnMobile
           minHeight={384}
           primary={
-            <div
-              ref={listRef}
-              className="border-border bg-card max-h-[55vh] overflow-x-hidden overflow-y-auto rounded-lg border xl:max-h-[40rem]"
-              style={{ height: `${Math.min(Math.max(virtualizer.getTotalSize(), 152), 640)}px` }}
+            <Card
+              ref={listRef as ComponentProps<typeof Card>["ref"]}
+              height={Math.min(Math.max(virtualizer.getTotalSize(), 152), 640)}
+              maxHeight={wide ? 640 : "55vh"}
+              overflowX="hidden"
+              overflowY="auto"
             >
               <ul
-                style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative", width: "100%" }}
+                style={{
+                  flexShrink: 0,
+                  height: `${virtualizer.getTotalSize()}px`,
+                  position: "relative",
+                  width: "100%",
+                }}
                 aria-label="Media processes"
               >
                 {virtualizer.getVirtualItems().map((virtualRow) => {
@@ -549,7 +562,7 @@ const PlayoutDiagnostics = ({
                   );
                 })}
               </ul>
-            </div>
+            </Card>
           }
           secondary={
             selected ? (

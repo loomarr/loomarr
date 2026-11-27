@@ -220,4 +220,4 @@ const DiagnosticsSplitPane = ({
   );
 };
 
-export { DiagnosticsSplitPane };
+export { DiagnosticsSplitPane, useMinWidth, XL_WIDTH };
