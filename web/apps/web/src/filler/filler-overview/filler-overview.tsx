@@ -191,20 +191,9 @@ const FillerOverview = () => {
   if (readinessQuery.error) {
     return <ErrorState error={readinessQuery.error} onRetry={() => readinessQuery.refetch()} />;
   }
-  if (!readiness) {
-    return (
-      <Card aria-live="polite" padding={24}>
-        <Text as="p" textRole="heading">
-          Checking filler health…
-        </Text>
-        <Stack marginTop={4}>
-          <Text as="p" textRole="compact" tone="secondary">
-            Finding out what's ready and what's on the way.
-          </Text>
-        </Stack>
-      </Card>
-    );
-  }
+  // The route's loader ensured the readiness, and its error view takes a first read that fails, so
+  // the Overview always opens on it. A failed refresh after that is the branch above.
+  if (!readiness) return null;
 
   const action = readinessAction(readiness);
   const shared = sharedPool(readiness.pool.channels);

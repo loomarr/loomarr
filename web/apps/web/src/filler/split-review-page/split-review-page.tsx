@@ -128,13 +128,9 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
     return <ErrorState error={proposal.error} onRetry={() => proposal.refetch()} />;
   }
   const p = persistedProposal;
-  if (!p) {
-    return (
-      <Text as="p" textRole="compact" tone="secondary">
-        Loading the proposal…
-      </Text>
-    );
-  }
+  // The route's loader ensured the proposal, and its error view takes a first read that fails, so
+  // the page always opens on it. A failed refresh after that is the branch above.
+  if (!p) return null;
   const parentName = unwrap(parent.data, (body) => body.clips[0]?.name) || "this compilation";
   const minClipDurationMs = durationSettingMs(
     unwrap(
