@@ -146,9 +146,13 @@ fi
 wd="$tmp/wd"
 mkdir -p "$wd/tmp" "$wd/internal" "$wd/scripts" "$tmp/names"
 cp "$REPO/scripts/dev-processes.sh" "$wd/scripts/"
-# Symlinks, not copies: macOS kills a copied system binary, and a process takes its name from the link.
-ln -s "$(command -v sleep)" "$tmp/names/air"
-ln -s "$(command -v sleep)" "$tmp/names/loomarr-dev"
+# A Go sleeper, hard-linked under each name, because a process takes its name from the path it was
+# started by. System binaries do not survive that on both systems: macOS kills a copied one, a
+# multicall coreutils (uutils) picks its applet by that name, and a script is named after its shell.
+printf 'package main\n\nimport "time"\n\nfunc main() { time.Sleep(300 * time.Second) }\n' >"$tmp/names/sleeper.go"
+(cd "$tmp/names" && GOFLAGS='' go build -o sleeper sleeper.go) || fail 'could not build the fake process'
+ln "$tmp/names/sleeper" "$tmp/names/air"
+ln "$tmp/names/sleeper" "$tmp/names/loomarr-dev"
 start_fake() { # NAME
 	(cd "$wd" && { "$tmp/names/$1" 300 >/dev/null 2>&1 & echo $! >"$tmp/pid"; })
 	track "$(cat "$tmp/pid")"
