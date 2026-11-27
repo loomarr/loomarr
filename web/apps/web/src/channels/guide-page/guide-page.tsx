@@ -415,7 +415,7 @@ const GuidePage = () => {
         //
         // ⚠ The LABEL matches the header's exactly, and the panel it opens is titled the same:
         // one action, one name, never a second wording such as "Describe your first channel".
-        // ⚠ No static behind it (#2789): TvStatic is for entry moments only (login, the wizard
+        // ⚠ No static behind it (#2789): snow is for entry moments only (login, the wizard
         // and the player's tune-in), so a resting page stays still.
         //
         // No scanline sweeps over the bars either: to register on a small element it has to be

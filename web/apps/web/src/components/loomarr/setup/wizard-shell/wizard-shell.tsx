@@ -10,7 +10,7 @@ import {
   Text,
 } from "@loomarr/design-system";
 import { usePhoneWidth } from "@/lib/use-phone-width";
-import { TvStatic } from "../../shell";
+import { IdleSnow } from "../../shell";
 import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
 
 // WizardShell — the operator first-run frame (§13, config-design §6). Two columns, like
@@ -69,10 +69,10 @@ const WizardShell = ({
       position="relative"
       render="main"
     >
-      {/* Behind everything: the static is a positioned layer, so content siblings need an
-        explicit stacking context above it (relative z-10) — otherwise a position:absolute
-        layer paints OVER position:static content regardless of DOM order. */}
-      <TvStatic className="z-0" />
+      {/* Behind everything: the snow is a positioned layer, so content siblings need a stacking
+        order above it (zIndex 10). A position:absolute layer paints OVER position:static content
+        regardless of DOM order. */}
+      <IdleSnow />
 
       {/* Left rail: brand + vertical step list. Fixed width on desktop; on narrow screens it
         stacks above the content (the whole wizard is desktop-first, but never broken). */}
