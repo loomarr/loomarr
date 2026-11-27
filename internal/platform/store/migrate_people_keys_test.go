@@ -8,7 +8,7 @@ import (
 )
 
 // peopleKeysMigration makes the last columns naming a member foreign keys to users (#2793).
-const peopleKeysMigration = 234
+const peopleKeysMigration = 252
 
 func TestPeopleKeysMigration(t *testing.T) {
 	// Foreign keys on, as production opens SQLite.
