@@ -215,8 +215,8 @@ describe("Users page", () => {
     renderAt("/people");
 
     await userEvent.click(await screen.findByRole("button", { name: "Invite person" }));
-    // Pasted, not typed: nothing here depends on keystrokes, and typing re-renders the dialog
-    // once per character.
+    // Pasted, not typed: nothing here depends on keystrokes, and typing sends one change, and a
+    // render, per character.
     await userEvent.click(screen.getByLabelText("Reserved username"));
     await userEvent.paste(" Dorothy ");
     await userEvent.click(screen.getByLabelText("Contact email (optional)"));
