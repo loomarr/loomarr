@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
   FieldHint,
+  Grid,
   Stack,
   StatusLabel,
   Text,
@@ -256,7 +257,7 @@ const InvitationDialog = ({
                 </form.AppField>
               )}
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <Grid columns={{ base: 1, sm: 2 }} gap="4">
                 <form.AppField name="contactEmail">
                   {(field) => (
                     <field.TextField
@@ -281,7 +282,7 @@ const InvitationDialog = ({
                     </Stack>
                   )}
                 </form.AppField>
-              </div>
+              </Grid>
 
               {onSendEmail && (
                 <form.Field name="sendEmail">
@@ -326,7 +327,7 @@ const InvitationDialog = ({
             </Stack>
           ) : grant ? (
             <Stack gap="5">
-              <div className="grid items-center gap-5 sm:grid-cols-[220px_minmax(0,1fr)]">
+              <Grid align="center" columns={{ base: 1, sm: ["220px", "minmax(0,1fr)"] }} gap="5">
                 <div className="mx-auto rounded-xl bg-white p-3 forced-colors:border forced-colors:border-current">
                   <QrCode
                     accessibilityLabel={`Scan to accept ${invitationName(invitation)}’s Loomarr invitation`}
@@ -348,7 +349,7 @@ const InvitationDialog = ({
                     Regenerating replaces every outstanding invitation link, including links already emailed.
                   </Text>
                 </Stack>
-              </div>
+              </Grid>
 
               {emailProblem && (
                 <Stack borderRadius={12} className="border-destructive/50 border" padding={12} role="alert">

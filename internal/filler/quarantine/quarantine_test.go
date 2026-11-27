@@ -50,6 +50,31 @@ func TestPutMovesFilesAsideAndEmptyDeletesThemADayLater(t *testing.T) {
 	}
 }
 
+// Leftover download staging in the default watch folder (inside the clip folder) waits its day
+// like any other delete; a watch folder elsewhere can be another disk, so its staging goes at once.
+func TestDisposeQuarantinesStagingUnderTheRootAndDeletesItElsewhere(t *testing.T) {
+	root := t.TempDir()
+	bin := New(root, func() time.Time { return time.Unix(1_900_000_000, 0).UTC() })
+	inside := filepath.Join(root, "_watch", ".loomarr-acquisitions", "run-1", "000")
+	write(t, filepath.Join(inside, "download.mp4"))
+	outside := filepath.Join(t.TempDir(), ".loomarr-acquisitions", "run-2", "000")
+	write(t, filepath.Join(outside, "download.mp4"))
+
+	if err := bin.Dispose(inside); err != nil {
+		t.Fatal(err)
+	}
+	held := filepath.Join(root, DirName, "1900000000", "_watch", ".loomarr-acquisitions", "run-1", "000", "download.mp4")
+	if exists(inside) || !exists(held) {
+		t.Fatalf("inside the root: staging present=%v, held present=%v; want it moved to quarantine", exists(inside), exists(held))
+	}
+	if err := bin.Dispose(outside); err != nil {
+		t.Fatal(err)
+	}
+	if exists(outside) {
+		t.Fatal("staging outside the root is still there, want it deleted")
+	}
+}
+
 func TestPutRefusesAFileOutsideTheRoot(t *testing.T) {
 	root := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "elsewhere.mp4")
@@ -72,5 +97,36 @@ func TestEmptyLeavesWhatItDidNotPutThere(t *testing.T) {
 	now := time.Unix(1_900_000_000, 0).UTC()
 	if n, err := New(root, func() time.Time { return now }).Empty(); err != nil || n != 0 || !exists(stranger) {
 		t.Fatalf("Empty = %d, %v, stranger=%v; want an unknown entry kept", n, err, exists(stranger))
+	}
+}
+
+// Held is the bytes the filler budget still counts for files let go, so a pass that frees room
+// can tell what a day of quarantine is already returning.
+func TestHeldCountsTheBytesWaitingInQuarantine(t *testing.T) {
+	root := t.TempDir()
+	now := time.Unix(1_900_000_000, 0).UTC()
+	bin := New(root, func() time.Time { return now })
+	if got, err := bin.Held(); err != nil || got != 0 {
+		t.Fatalf("Held with no quarantine folder = %d, %v; want 0", got, err)
+	}
+	first, second := filepath.Join(root, "ab", "one.mp4"), filepath.Join(root, "cd", "two.mp4")
+	write(t, first)
+	write(t, second)
+	if failed := bin.Put([]string{first}); len(failed) != 0 {
+		t.Fatal(failed)
+	}
+	now = now.Add(time.Hour)
+	if failed := bin.Put([]string{second}); len(failed) != 0 {
+		t.Fatal(failed)
+	}
+	if got, err := bin.Held(); err != nil || got != 2*int64(len("bytes")) {
+		t.Fatalf("Held = %d, %v; want both batches counted", got, err)
+	}
+	now = now.Add(Hold - time.Hour)
+	if _, err := bin.Empty(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := bin.Held(); err != nil || got != int64(len("bytes")) {
+		t.Fatalf("Held after the first batch emptied = %d, %v; want the second only", got, err)
 	}
 }

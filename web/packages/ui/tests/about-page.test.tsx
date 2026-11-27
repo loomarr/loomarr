@@ -77,6 +77,18 @@ describe("AboutPage", () => {
     without.cleanup();
   });
 
+  // The demo pack's credits live in each title's Info; About says where the sources are (#3409).
+  it("says where the demo's sources are listed only on the demo site", () => {
+    const demo = render({ demo: true });
+    const sources = demo.host.querySelector('[aria-label="Data sources"]')?.textContent;
+    expect(sources).toContain("The demo's films, cartoons and ads are openly licensed.");
+    expect(sources).toContain("Demo content page");
+    demo.cleanup();
+    const install = render();
+    expect(install.host.textContent).not.toContain("openly licensed");
+    install.cleanup();
+  });
+
   // The bug-report facts wait behind one disclosure, like a title's technical details.
   it("keeps the technical details closed until asked", () => {
     const { host, cleanup } = render();

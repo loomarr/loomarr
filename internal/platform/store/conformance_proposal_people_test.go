@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 )
 
@@ -72,11 +73,11 @@ func testProposalPeople(t *testing.T, newStore NewStoreFunc) {
 	// Feedback names its member the same way: the API token's is no one's.
 	for _, actor := range []string{"alice", ""} {
 		if err := s.AppendDiscoveryFeedback(ctx, DiscoveryFeedback{ID: "f-" + actor, ActorID: actor,
-			Scope: FeedbackHousehold, Target: "movie:tmdb:90000603", Action: FeedbackKeep, CreatedAt: now}); err != nil {
+			Scope: channeldatastore.FeedbackHousehold, Target: "movie:tmdb:90000603", Action: channeldatastore.FeedbackKeep, CreatedAt: now}); err != nil {
 			t.Fatalf("feedback from %q: %v", actor, err)
 		}
 	}
-	feedback, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: FeedbackHousehold})
+	feedback, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: channeldatastore.FeedbackHousehold})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -30,6 +30,8 @@ const DatabasePage = () => {
   const [passed, setPassed] = useState(false);
   // After migrate acknowledges, a dropped connection is expected rather than an error
   // screen. Poll until the fresh generation answers on PostgreSQL or carries a failure.
+  // ⚠ A poll by design (#3352): the server is restarting onto the new database, so there is no
+  // stream to carry a frame. Like the restart watch, it asks whether the server is back.
   const status = systemApi.useSystemDatabaseStatus({
     query: { refetchInterval: step === "reconnect" ? 1_000 : false },
   });
@@ -101,12 +103,12 @@ const DatabasePage = () => {
     view.error ?? migrate.error?.detail ?? backup.error?.detail ?? preflight.error?.detail ?? null;
 
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <PageHeader
         title="Database"
         description="Which database Loomarr stores everything in, and how to move to another one."
       />
-      <div className="min-h-0 flex-1 overflow-auto p-6">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} overflow="auto" padding={24}>
         <DatabaseMigration
           status={view}
           step={step}
@@ -122,7 +124,7 @@ const DatabasePage = () => {
           error={error}
           envPinned={envPinned}
         />
-      </div>
+      </Stack>
     </Stack>
   );
 };

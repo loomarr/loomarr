@@ -94,12 +94,27 @@ func (a iconAdapter) IconSuggestions(ctx context.Context, channelID string) ([]c
 	}
 
 	warm := a.fetch.FetchNow(ctx, adopted, iconFetchBudget)
+	now := time.Now()
+	backingOff := make(map[string]bool, len(adopted))
+	for _, rec := range adopted {
+		if rec.BackingOff(now) {
+			backingOff[rec.SourceURL] = true
+		}
+	}
 
 	out := make([]channelsapi.IconSuggestion, 0, len(candidates))
 	for _, c := range candidates {
 		rec, ok := warm[c.src]
+		if !ok && backingOff[c.src] {
+			// Its last download failed and the next attempt is not due, so none was made here.
+			// It appears once a download lands, which may not be the next open.
+			if a.log != nil {
+				a.log.Debug("icon suggestion: download backing off, skipping title", "channel", channelID, "url", c.src)
+			}
+			continue
+		}
 		if !ok {
-			continue // still cold — the every-minute job owns it; the next open will show it
+			continue // not fetched within the budget; the every-minute job owns it
 		}
 		out = append(out, channelsapi.IconSuggestion{
 			Title:     c.title,

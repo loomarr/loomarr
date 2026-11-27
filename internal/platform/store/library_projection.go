@@ -2,11 +2,11 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // LibraryProjector says how an inventory item is listed in the Library (#2151 decision 43): its
@@ -36,7 +36,7 @@ func (s *sqlStore) projecting() bool {
 // has is not passed in, and one the projector does not list keeps whatever row it had: presence
 // comes from library_files, and a title that comes back finds its row, its collections and its
 // answer.
-func (s *sqlStore) projectLibrary(ctx context.Context, tx *sql.Tx, at time.Time, items []inventory.Item) error {
+func (s *sqlStore) projectLibrary(ctx context.Context, tx storedb.Tx, at time.Time, items []inventory.Item) error {
 	p := s.libraryProjector.Load()
 	if p == nil || *p == nil {
 		return nil

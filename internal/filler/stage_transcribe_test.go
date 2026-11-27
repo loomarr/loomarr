@@ -266,3 +266,7 @@ func TestTranscribeStage_OffStatesAreInapplicableWithAReason(t *testing.T) {
 func (s *scriptedTools) VisionKeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
 	return nil, nil
 }
+
+func (s *scriptedTools) FrameHintsIn(context.Context, string, int64, int64, int) (tools.FrameHint, error) {
+	return tools.FrameHint{}, nil
+}

@@ -5,7 +5,6 @@
 // content-addressed evidence repositories that keep every call, stitch and decision.
 //
 // It sits above internal/filler and internal/filler/split, importing the latter for the
-// retained-source types the split stage already owns (split.SourceAsset, split.AssessmentSource)
-// and the split.CompleteTimelineDecisioner port the stage consumes, and the former for the media
-// helpers the preparer shares. internal/filler knows nothing of it.
+// retained-source types the split stage already owns (split.SourceAsset, split.AssessmentSource),
+// and the former for the media helpers the preparer shares. internal/filler knows nothing of it.
 package assessment

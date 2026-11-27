@@ -2,6 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useLoomarrEventListener } from "@/events/events-provider";
 
 type QueuedClipJob = { sourceID: string; clipID: string; jobID: string };
 type QueueStatus = Record<string, "queued" | "running" | "success" | "error">;
@@ -35,23 +36,22 @@ const rememberQueuedClipJobs = (jobs: QueuedClipJob[]): void => {
 
 // Queueing a remote clip from a source and following it to completion. Keeps only the browser's
 // item→job correlation (in session storage); status itself is always read from the durable
-// acquisition resource, so a dropped SSE frame costs latency rather than truth.
+// acquisition resource. The backend stores each change of a run before it publishes the run's
+// filler_ingest frame, so the frame is the cue to read that run again; a dropped frame costs
+// latency until the next reconnect, never truth.
 const useQueuedClipJobs = (sourceID: string) => {
   const queryClient = useQueryClient();
   const [queuedJobs, setQueuedJobs] = useState<QueuedClipJob[]>(readQueuedClipJobs);
   const [queueingId, setQueueingId] = useState<string>();
   const sourceJobs = queuedJobs.filter((job) => job.sourceID === sourceID);
   const acquisitionQueries = useQueries({
-    queries: sourceJobs.map((job) => {
-      const cached = queryClient.getQueryData<fillerApi.GetFillerAcquisitionQueryResult>(
-        fillerApi.getGetFillerAcquisitionQueryKey(job.jobID),
-      );
-      const run = unwrap(cached, (body) => body);
-      return {
-        ...fillerApi.getGetFillerAcquisitionQueryOptions(job.jobID),
-        refetchInterval: run && (run.status === "success" || run.status === "error") ? false : 1_500,
-      };
-    }),
+    queries: sourceJobs.map((job) => fillerApi.getGetFillerAcquisitionQueryOptions(job.jobID)),
+  });
+  useLoomarrEventListener({
+    onFillerIngest: (frame) =>
+      void queryClient.invalidateQueries({
+        queryKey: fillerApi.getGetFillerAcquisitionQueryKey(frame.jobId),
+      }),
   });
   const queueStatus = Object.fromEntries(
     sourceJobs

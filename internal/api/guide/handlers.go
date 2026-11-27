@@ -16,7 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // Store is the slice of the aggregate store these routes read.
@@ -30,10 +30,10 @@ type Store interface {
 // wall-clock times (§9.1 V6b).
 type PlayoutGuide interface {
 	// BroadcastsBetween returns the programmes airing on a channel across [from, to).
-	BroadcastsBetween(ctx context.Context, channelID string, from, to time.Time) ([]playout.Broadcast, error)
+	BroadcastsBetween(ctx context.Context, channelID string, from, to time.Time) ([]timeline.Broadcast, error)
 	// BroadcastsWithPending is the same walk plus pending acquisitions as nominal-width
 	// placeholders, for Loomarr's own time grid (V13b).
-	BroadcastsWithPending(ctx context.Context, channelID string, from, to time.Time) ([]playout.Broadcast, error)
+	BroadcastsWithPending(ctx context.Context, channelID string, from, to time.Time) ([]timeline.Broadcast, error)
 }
 
 // ImagePaths builds the same-origin path of an image rendition.

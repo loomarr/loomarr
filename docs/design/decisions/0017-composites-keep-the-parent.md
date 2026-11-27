@@ -1,7 +1,8 @@
 # 0017. Composites keep the parent; lineage is first-class
 
 - **Date:** 2026-08-07
-- **Status:** accepted
+- **Status:** accepted; amended by [0049](0049-a-settled-reel-lets-go-of-its-recording.md) (a reel
+  Loomarr fetched lets go of its recording once its pieces are settled)
 - **Supersedes:** deleting the compilation on split confirm
 
 ## Context

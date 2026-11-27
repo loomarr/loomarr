@@ -117,7 +117,7 @@ func TestPropose_DedupMarksSegmentsItCouldNotCheck(t *testing.T) {
 			},
 			wantFlags: []bool{false, false}, wantDup: []string{"", ""},
 		},
-		"a catalog clip that cannot be read leaves the others compared": {
+		"a catalog clip that cannot be read leaves every segment without a finding unchecked": {
 			setup: func(st *splitMemStore) (splitStoreFor, *fakeTools) {
 				existingClip(st, "known.mp4")
 				existingClip(st, "unreadable.mp4")
@@ -127,7 +127,20 @@ func TestPropose_DedupMarksSegmentsItCouldNotCheck(t *testing.T) {
 					// unreadable.mp4 has no entry: its fingerprint fails
 				}}
 			},
-			wantFlags: []bool{false, false}, wantDup: []string{"old/known.mp4", ""}, wantWarn: true,
+			// The copy found against the readable clip stands. The other segment was compared with
+			// only part of the catalog, so it is not "checked and new".
+			wantFlags: []bool{false, true}, wantDup: []string{"old/known.mp4", ""}, wantWarn: true,
+		},
+		"a catalog clip that cannot be read and no copy found marks every segment": {
+			setup: func(st *splitMemStore) (splitStoreFor, *fakeTools) {
+				existingClip(st, "known.mp4")
+				existingClip(st, "unreadable.mp4")
+				return st, &fakeTools{blacks: []tools.Interval{{StartMs: 29800, EndMs: 30200}}, spans: map[string]creative.Fingerprint{
+					key3("clean.mp4", 0, 30000): spot(91), key3("clean.mp4", 30000, 60_000): spot(92),
+					key3("clean.mp4", 0, 60_000): spot(93), key3("known.mp4", 0, 30_000): spot(94),
+				}}
+			},
+			wantFlags: []bool{true, true}, wantDup: []string{"", ""}, wantWarn: true,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -187,13 +200,14 @@ func uncheckedProposal(t *testing.T) (*splitMemStore, *fakeTools, *filler.Splitt
 	return st, fake, splitter, p
 }
 
-// gateReady makes the proposal's segments pass every other part of the gate, so only the duplicate
-// check decides.
+// gateReady makes the proposal's segments pass every other part of the unattended cut, so only the
+// duplicate check decides: corroborated edges, a clean sound and a look that saw one whole advert.
 func gateReady(p filler.SplitProposal) filler.SplitProposal {
 	segs := append([]split.Segment(nil), p.Segments...)
 	for i := range segs {
-		segs[i].Era, segs[i].Audience, segs[i].Category = 1993, "kids", "toys"
 		segs[i].BoundaryConfidence = 90
+		segs[i].Sound = &split.CutSound{MedianDb: -22, StartDb: -40, EndDb: -40, InsideDb: -6}
+		segs[i].LookedRole, segs[i].Whole = split.RoleCommercial, split.WholeOne
 	}
 	p.Segments = segs
 	return p
@@ -204,7 +218,7 @@ func TestRecheckDedup_ReleasesAHeldSegmentOnceTheCheckWorks(t *testing.T) {
 	st, fake, splitter, p := uncheckedProposal(t)
 	pol := policy(true, 85, 120*time.Second)
 
-	first := filler.AutoConfirmable(gateReady(*p), pol, 0)
+	first := filler.AutoCuttable(gateReady(*p), pol, 0)
 	if len(first.Confirm) != 1 || len(first.Hold) != 1 || first.Hold[0].HoldReason != string(filler.RejectDedupUnchecked) {
 		t.Fatalf("first pass = %+v, want one confirmed and the unchecked one held", first)
 	}
@@ -225,8 +239,53 @@ func TestRecheckDedup_ReleasesAHeldSegmentOnceTheCheckWorks(t *testing.T) {
 	if err != nil || stored.Segments[1].DedupUnchecked {
 		t.Fatalf("stored = %+v, %v; the check result was not persisted", stored.Segments, err)
 	}
-	second := filler.AutoConfirmable(gateReady(stored), pol, 0)
+	second := filler.AutoCuttable(gateReady(stored), pol, 0)
 	if len(second.Confirm) != 2 || len(second.Hold) != 0 {
+		t.Fatalf("second pass = %+v, want both confirmed", second)
+	}
+}
+
+// A catalog clip that cannot be fingerprinted holds the segments it could not be compared with, and
+// the re-check releases them once that clip reads. Until then a re-check changes nothing.
+func TestRecheckDedup_ReleasesSegmentsHeldByAnUnreadableCatalogClip(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/clean.mp4", 60_000)
+	for _, name := range []string{"known.mp4", "unreadable.mp4"} {
+		c := clipstore.Clip{}
+		c.Hash, c.Path, c.DurationMs = "hash-of-"+name, "old/"+name, 30_000
+		st.clips[c.Hash] = c
+	}
+	fake := &fakeTools{blacks: []tools.Interval{{StartMs: 29800, EndMs: 30200}}, spans: map[string]creative.Fingerprint{
+		key3("clean.mp4", 0, 30000): spot(11), key3("clean.mp4", 30000, 60_000): spot(12),
+		key3("clean.mp4", 0, 60_000): spot(13), key3("known.mp4", 0, 30_000): spot(14),
+		// unreadable.mp4 has no entry yet
+	}}
+	splitter := newSplitter(st, fake, nil, t.TempDir())
+	p, err := splitter.Propose(context.Background(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pol := policy(true, 85, 120*time.Second)
+	first := filler.AutoCuttable(gateReady(*p), pol, 0)
+	if len(first.Confirm) != 0 || len(first.Hold) != 2 || first.Hold[0].HoldReason != string(filler.RejectDedupUnchecked) {
+		t.Fatalf("first pass = %+v, want both segments held as unchecked", first)
+	}
+
+	remaining, err := splitter.RecheckDedup(context.Background(), p)
+	if err != nil || remaining != 2 {
+		t.Fatalf("recheck while the clip is unreadable = %d, %v; want both still unchecked", remaining, err)
+	}
+
+	fake.spans[key3("unreadable.mp4", 0, 30_000)] = spot(15)
+	remaining, err = splitter.RecheckDedup(context.Background(), p)
+	if err != nil || remaining != 0 {
+		t.Fatalf("recheck once the clip reads = %d, %v", remaining, err)
+	}
+	stored, err := st.GetSplitProposal(context.Background(), p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second := filler.AutoCuttable(gateReady(stored), pol, 0); len(second.Confirm) != 2 || len(second.Hold) != 0 {
 		t.Fatalf("second pass = %+v, want both confirmed", second)
 	}
 }

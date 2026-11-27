@@ -1,7 +1,7 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
-import { Action, Stack, StatusDot, type StatusTone, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, StatusDot, type StatusTone, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 
@@ -87,27 +87,32 @@ const FillerManage = () => {
   ];
 
   return (
-    <section aria-label="Filler tools" className="border-border bg-card overflow-hidden rounded-lg border">
+    <Card aria-label="Filler tools" borderRadius={8} overflow="hidden" render="section">
       <ul>
-        {rows.map((row) => (
+        {rows.map((row, index) => (
           <Stack
             align="center"
-            className="border-border border-b px-4 py-3 last:border-b-0"
+            borderBottomWidth={index === rows.length - 1 ? 0 : 1}
+            borderColor="$borderDecorative"
             direction="row"
             gap="control"
             key={row.title}
+            paddingHorizontal={16}
+            paddingVertical={12}
             render="li"
           >
             {/* Decorative: the summary beside it says the same thing in words. */}
             <StatusDot tone={row.tone} label="" size="compact" />
-            <div className="min-w-0 flex-1">
+            <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
               <Text as="p" textRole="cardLabel">
                 {row.title}
               </Text>
-              <Text as="p" className="mt-0.5" textRole="hint" tone="secondary">
-                {row.summary}
-              </Text>
-            </div>
+              <Stack marginTop={2}>
+                <Text as="p" textRole="hint" tone="secondary">
+                  {row.summary}
+                </Text>
+              </Stack>
+            </Stack>
             {row.open ? (
               <Action
                 accessibilityRole="link"
@@ -120,7 +125,7 @@ const FillerManage = () => {
           </Stack>
         ))}
       </ul>
-    </section>
+    </Card>
   );
 };
 

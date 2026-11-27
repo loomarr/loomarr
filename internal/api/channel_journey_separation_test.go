@@ -75,7 +75,8 @@ func TestReferenceChannelSparseRepeatIsExplained(t *testing.T) {
 	if ch.Policy.Separation != tc.Proposal.Policy.Separation || public.Policy.Separation != ch.Policy.Separation {
 		t.Fatal("relaxation overwrote the approved repeat policy")
 	}
-	want := []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "48h0m0s", To: "24h0m0s"}}
+	// The 44-minute cycle airs each episode once per loop, so that is the window it can hold.
+	want := []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "48h0m0s", To: "44m0s"}}
 	if !slices.Equal(ch.Policy.Applied, want) || !slices.Equal(public.Policy.Applied, want) {
 		t.Fatalf("sparse-pool explanation: stored=%v public=%v want=%v", ch.Policy.Applied, public.Policy.Applied, want)
 	}

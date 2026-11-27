@@ -1248,6 +1248,47 @@ var namingMatrix = []namingRow{
 		"TV/Corrow Fen/Season 1/S01E04.mkv": "episode Corrow Fen S1E4",
 		"Movies/S02E06 (2019).mkv":          "movie S02E06 2019",
 	}},
+	// Beside its episode titled otherwise, an episode's name titled by a kind only an extra is named
+	// by is the episode's extra; alone, or beside a copy titled as it is, it is the episode. A films'
+	// shelf's "Sample/" holds samples, as its "Samples/" does, but a film named as the folder.
+	{id: "W155", files: map[string]string{
+		"TV/Tollmere/Season 1/Tollmere S01E01 - Pilot.mkv":              "episode Tollmere S1E1",
+		"TV/Tollmere/Season 1/Tollmere S01E01 - Behind the Episode.mkv": "skip",
+		"TV/Tollmere/Season 1/Tollmere S01E02 - Making Waves.mkv":       "episode Tollmere S1E2",
+		"TV/Brindle Way/Brindle Way S02E03 - Behind Enemy Lines.mkv":    "episode Brindle Way S2E3",
+		"TV/Brindle Way/Brindle Way S02E03 - Behind Enemy Lines.avi":    "episode Brindle Way S2E3",
+		"Movies/SAMPLE/Brackmoor.2009.mkv":                              "skip",
+		"Movies/Brackmoor (2009)/Brackmoor (2009).mkv":                  "movie Brackmoor 2009",
+	}},
+	{id: "W155b", root: "Movies", files: map[string]string{
+		"Sample/Gallowfen.2012.1080p.mkv": "skip",
+		"Gallowfen (2012).mkv":            "movie Gallowfen 2012",
+	}},
+	// A release's single-digit number before a year: an episode on an anime's shelf, or beside its
+	// show's other numbers in that year; a sequel alone, or beside its saga's other years.
+	{id: "W156", files: map[string]string{
+		"Anime/[Grp] Kaze Tori - 7 (2019).mkv":        "episode Kaze Tori S?E?",
+		"Downloads/[Grp] Hoshi Rail - 3 (2020).mkv":   "episode Hoshi Rail S?E?",
+		"Downloads/[Grp] Hoshi Rail - 4 (2020).mkv":   "episode Hoshi Rail S?E?",
+		"Downloads/[Grp] Fen Bell - 5 (2021).mkv":     "movie Fen Bell - 5 2021",
+		"Downloads/[Grp] Dusk Lantern - 2 (2015).mkv": "movie Dusk Lantern - 2 2015",
+		"Downloads/[Grp] Dusk Lantern - 3 (2018).mkv": "movie Dusk Lantern - 3 2018",
+		"Movies/[Grp] Wick Harbour - 2 (2011).mkv":    "movie Wick Harbour - 2 2011",
+	}},
+	// A season's four digits in Season 10 and on; a day spelled with its month's name; a show's
+	// chapters, counted across it (placed by its catalog); a film's chapters give their years.
+	{id: "W157", files: map[string]string{
+		"TV/Calder Street/Season 10/1001 - The Return.mkv":   "episode Calder Street S10E1",
+		"TV/Calder Street/Season 10/1002 - The Rain.mkv":     "episode Calder Street S10E2",
+		"TV/Calder Street/Season 1/1984 - The Year.mkv":      "episode Calder Street S?E?",
+		"TV/Late Lamp/Late Lamp - March 14th 2023.mkv":       "episode Late Lamp 2023-03-14",
+		"TV/Late Lamp/Late Lamp - 15 March 2023.mkv":         "episode Late Lamp 2023-03-15",
+		"TV/Late Lamp/Late Lamp - Sept. 2, 2023.mkv":         "episode Late Lamp 2023-09-02",
+		"TV/Brass Fen/Brass Fen - Chapter 19 - The Gate.mkv": "episode Brass Fen S?E?",
+		"TV/Brass Fen/Brass Fen - Chapter 20 - The Wall.mkv": "episode Brass Fen S?E?",
+		"Movies/Gale Wick/Gale Wick - Chapter 3 (2019).mkv":  "movie Gale Wick - Chapter 3 2019",
+		"Movies/Gale Wick/Gale Wick - Chapter 4 (2023).mkv":  "movie Gale Wick - Chapter 4 2023",
+	}},
 	{id: "W150", files: map[string]string{
 		"Movies/Featurette (1999)/Featurette.mkv":                     "movie Featurette 1999",
 		"Movies/Deleted Scenes (2016)/Deleted Scenes.mkv":             "movie Deleted Scenes 2016",
@@ -1921,6 +1962,43 @@ func TestNamingMatrix(t *testing.T) {
 		}
 	})
 	t.Logf("naming matrix: %d of %d files right", right.Load(), files.Load())
+}
+
+// A film's disc as MakeMKV left it names no title its feature: the largest is the film, a title
+// well under its size is the disc's bonus, and one near its size is a second copy, as a disc's other
+// cut is. A season's disc keeps every title, its largest the play-all.
+func TestRippedTitlesAreReadBySize(t *testing.T) {
+	sizes := map[string]int{
+		"Movies/Cobble Reach (2003)/title_t00.mkv":   9000,
+		"Movies/Cobble Reach (2003)/title_t01.mkv":   600,
+		"Movies/Cobble Reach (2003)/title_t02.mkv":   8200,
+		"Movies/LANTERN_WHARF/LANTERN_WHARF_t00.mkv": 300,
+		"Movies/LANTERN_WHARF/LANTERN_WHARF_t01.mkv": 7000,
+		"Rips/KESTREL_COVE_S1_D1/title_t00.mkv":      9000,
+		"Rips/KESTREL_COVE_S1_D1/title_t01.mkv":      3000,
+		"Rips/KESTREL_COVE_S1_D1/title_t02.mkv":      3000,
+	}
+	want := map[string]string{
+		"Movies/Cobble Reach (2003)/title_t00.mkv":   "movie Cobble Reach 2003",
+		"Movies/Cobble Reach (2003)/title_t01.mkv":   "skip",
+		"Movies/Cobble Reach (2003)/title_t02.mkv":   "movie Cobble Reach 2003",
+		"Movies/LANTERN_WHARF/LANTERN_WHARF_t00.mkv": "skip",
+		"Movies/LANTERN_WHARF/LANTERN_WHARF_t01.mkv": "movie LANTERN WHARF -",
+		"Rips/KESTREL_COVE_S1_D1/title_t00.mkv":      "episode Kestrel Cove S?E?",
+		"Rips/KESTREL_COVE_S1_D1/title_t01.mkv":      "episode Kestrel Cove S?E?",
+		"Rips/KESTREL_COVE_S1_D1/title_t02.mkv":      "episode Kestrel Cove S?E?",
+	}
+	h := newHarnessIn(t, t.TempDir())
+	for rel, size := range sizes {
+		h.file(rel, size)
+	}
+	h.run()
+	got := outcomesIn(t, h, want, false)
+	for rel, w := range want {
+		if got[rel] != w {
+			t.Errorf("%s = %q, want %q", rel, got[rel], w)
+		}
+	}
 }
 
 // namingOutcomes lays a row's files out under a fresh root, runs a full pass, and says what each

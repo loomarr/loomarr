@@ -1,4 +1,4 @@
-import { Stack } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { TvStatic } from "../tv-static";
 import type { TunerLoaderProps } from "./tuner-loader.type";
@@ -44,7 +44,16 @@ const TunerLoader = ({
   backdrop,
   className,
 }: TunerLoaderProps) => (
-  <div className={cn("pointer-events-none absolute inset-0", className)} aria-hidden>
+  <Stack
+    aria-hidden
+    bottom={0}
+    className={className}
+    left={0}
+    pointerEvents="none"
+    position="absolute"
+    right={0}
+    top={0}
+  >
     {/* The wash over the picture beneath. Its resting style IS the drained frame of `held-drain`:
         the picture greyed, flattened and left at 12% under static-950. */}
     <div
@@ -78,9 +87,14 @@ const TunerLoader = ({
 
     <Stack
       align="center"
-      className="relative z-[1] size-full px-4 text-center"
+      className="text-center"
       gap="control"
+      height="100%"
       justify="center"
+      paddingHorizontal={16}
+      position="relative"
+      width="100%"
+      zIndex={1}
     >
       {/* Phosphor bars. Fixed-height rail so the jittering bar heights have room; items-end so they
           grow from a common baseline like a level meter. `h-*` is animated by signal-lock, so the
@@ -99,27 +113,26 @@ const TunerLoader = ({
       </div>
 
       {channel && (
-        <p
-          className="text-static-0 font-sans text-[clamp(18px,2.8vw,28px)] font-semibold tracking-[0.01em]"
-          style={{ textShadow: HALO }}
-        >
-          <span className="text-signal mr-[0.7em] align-[0.18em] font-mono text-[0.62em] font-medium tracking-[0.16em]">
+        <Text as="p" style={{ color: "var(--color-static-0)", textShadow: HALO }} textRole="stationName">
+          <Text
+            as="span"
+            style={{ marginRight: "0.7em", verticalAlign: "0.18em" }}
+            textRole="stationTag"
+            tone="signal"
+          >
             CH {channel.number}
-          </span>
+          </Text>
           <span>{channel.name}</span>
-        </p>
+        </Text>
       )}
 
       {/* The readout — mono, tracked-out amber with the blinking cursor as the one extra sign of life. */}
-      <p
-        className="text-signal font-mono text-[clamp(11px,1.3vw,13px)] font-medium tracking-[0.24em]"
-        style={{ textShadow: READOUT_HALO }}
-      >
+      <Text as="p" style={{ textShadow: READOUT_HALO }} textRole="metadata" tone="signal" tracking={0.24}>
         <span>{label}</span>
         <span className="motion-safe:animate-[onair-pulse_1s_steps(2,end)_infinite]">_</span>
-      </p>
+      </Text>
     </Stack>
-  </div>
+  </Stack>
 );
 
 export { TunerLoader };

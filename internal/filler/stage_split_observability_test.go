@@ -123,29 +123,26 @@ func TestGround_ReportsAProviderRefusal(t *testing.T) {
 	}
 }
 
-// ⚠ The regression: `Verdict` returned `Hold[0].HoldReason`, so a single tagged-but-doubtful
-// segment sorting first spoke for 36 untagged ones — and sent the operator to a threshold that
-// was never consulted.
-func TestVerdict_ReportsTheMajorityReasonNotTheFirst(t *testing.T) {
+// ⚠ The regression: the summary once read `Hold[0].HoldReason`, so a single doubtful-boundary
+// segment sorting first spoke for 36 dropped for another reason — and sent the operator to a
+// threshold that was never consulted.
+func TestHoldSummary_ReportsTheMajorityReasonNotTheFirst(t *testing.T) {
 	hold := []split.Segment{{HoldReason: string(RejectBoundaryUncertain)}}
 	for range 36 {
-		hold = append(hold, split.Segment{HoldReason: string(RejectUntagged)})
+		hold = append(hold, split.Segment{HoldReason: string(RejectNotOneSpot)})
 	}
 	part := SplitPartition{Hold: hold}
 
-	if got := part.Verdict(); got != RejectUntagged {
-		t.Errorf("Verdict = %q, want %q — 36 of 37 segments give that reason", got, RejectUntagged)
-	}
 	reason, shared, total := part.HoldSummary()
-	if reason != RejectUntagged || shared != 36 || total != 37 {
-		t.Errorf("HoldSummary = (%q, %d, %d), want (%q, 36, 37)", reason, shared, total, RejectUntagged)
+	if reason != RejectNotOneSpot || shared != 36 || total != 37 {
+		t.Errorf("HoldSummary = (%q, %d, %d), want (%q, 36, 37)", reason, shared, total, RejectNotOneSpot)
 	}
-	// The note must show the SHARE, so "fix the tagging" is visibly not the whole story.
+	// The note must show the SHARE, so the majority reason is visibly not the whole story.
 	note := holdNote(part)
 	if !strings.Contains(note, "36 of 37 cuts") {
 		t.Errorf("note = %q, want it to state the share", note)
 	}
-	if !strings.Contains(note, string(RejectUntagged)) {
+	if !strings.Contains(note, string(RejectNotOneSpot)) {
 		t.Errorf("note = %q, want the majority reason", note)
 	}
 }
@@ -155,9 +152,9 @@ func TestVerdict_ReportsTheMajorityReasonNotTheFirst(t *testing.T) {
 func TestHoldNote_OmitsTheShareWhenUnanimous(t *testing.T) {
 	var hold []split.Segment
 	for range 3 {
-		hold = append(hold, split.Segment{HoldReason: string(RejectUntagged)})
+		hold = append(hold, split.Segment{HoldReason: string(RejectNotOneSpot)})
 	}
-	if note := holdNote(SplitPartition{Hold: hold}); note != "3 cuts: "+string(RejectUntagged) {
+	if note := holdNote(SplitPartition{Hold: hold}); note != "3 cuts: "+string(RejectNotOneSpot) {
 		t.Errorf("note = %q", note)
 	}
 }

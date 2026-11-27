@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -260,5 +261,40 @@ func TestRecorderVerboseCaptureRejectsUnsafeBounds(t *testing.T) {
 		if _, err := recorder.StartVerboseCapture(tc.duration, tc.subsystem, ""); !errors.Is(err, ErrInvalidVerboseCapture) {
 			t.Fatalf("StartVerboseCapture(%v) error = %v", tc, err)
 		}
+	}
+}
+
+// A page showing the log reads it again when what it shows changed: events were stored, or
+// verbose capture started or stopped. A write that failed stored nothing, so it changes nothing.
+func TestRecorderAnnouncesWhatItStores(t *testing.T) {
+	var changes atomic.Int32
+	sink := &memorySink{}
+	recorder := New(sink, Options{BatchSize: 1, FlushInterval: time.Hour, OnChange: func() { changes.Add(1) }})
+
+	if err := recorder.RecordDurable(context.Background(), Event{Name: "checkpoint"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := recorder.StartVerboseCapture(5*time.Minute, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	recorder.StopVerboseCapture()
+	recorder.Record(context.Background(), Event{Name: "queued"})
+	if err := recorder.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := changes.Load(); got != 4 {
+		t.Fatalf("announcements = %d, want 4 (durable write, capture start, capture stop, batch)", got)
+	}
+
+	failing := &memorySink{err: errors.New("store unavailable")}
+	changes.Store(0)
+	recorder = New(failing, Options{BatchSize: 1, FlushInterval: time.Hour, OnChange: func() { changes.Add(1) }})
+	_ = recorder.RecordDurable(context.Background(), Event{Name: "checkpoint"})
+	recorder.Record(context.Background(), Event{Name: "queued"})
+	if err := recorder.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := changes.Load(); got != 0 {
+		t.Fatalf("announcements after failed writes = %d, want 0", got)
 	}
 }

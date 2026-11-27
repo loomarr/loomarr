@@ -5,49 +5,62 @@ description: Launch Loomarr locally (Air backend + Vite frontend) and drive it i
 
 # Running Loomarr
 
-Two processes. The backend serves the API on **:8080**; Vite serves the frontend on
-**:5173** with HMR.
+Two processes: the backend (Air) serves the API, and Vite serves the frontend with HMR. Each
+worktree has its own ports. The primary checkout uses **:8080** and **:5173**, and a secondary
+worktree gets its own pair. Read them first, in the same `Bash` call as anything that uses them:
 
-⚠ **Always look at :5173, never :8080.** The backend also serves an *embedded* SPA build
-that is almost always stale — a change that is live on 5173 is invisible on 8080, which
-reads as "my change didn't work" and costs an hour.
+```bash
+eval "$(./scripts/dev-env.sh export)"; BE=$LOOMARR_DEV_PORT; FE=$LOOMARR_FE_PORT; mkdir -p .artifacts
+```
+
+`make agent-env` prints the same values, plus this worktree's database and dev-login setting.
+
+⚠ **Always look at the frontend port, never the backend's.** The backend also serves an
+*embedded* SPA build that is almost always stale — a change that is live in Vite is invisible
+on the backend port, which reads as "my change didn't work" and costs an hour.
 
 ## 1. Backend
 
 ```bash
-LOOMARR_DEV_LOGIN=1 make dev-be > /tmp/loomarr-be.log 2>&1 &
-until curl -sf http://localhost:8080/v1/healthz >/dev/null 2>&1; do sleep 2; done
+LOOMARR_DEV_LOGIN=1 make dev-be > .artifacts/dev-be.log 2>&1 &
+until curl -sf "http://localhost:$BE/v1/healthz" >/dev/null 2>&1; do sleep 2; done
 ```
 
 `make dev-be` runs Air (via `go run`, so it is never in `go.mod`), which sources `.env` and
-rebuilds on any Go change. It talks to the **real** store at `./data/loomarr.db` and the
-maintainer's real Emby/Tunarr/Ollama over Tailscale.
+rebuilds on any Go change. In the primary checkout it talks to the **real** store at
+`./data/loomarr.db` and the maintainer's real Emby/Tunarr/Ollama over Tailscale. A secondary
+worktree has its own database and an automatic dev login.
 
-`LOOMARR_DEV_LOGIN=1` is what makes browser automation possible — see §3. Without it
-`POST /v1/auth/dev-login` **404s** (fail-closed by design, not a bug).
+`LOOMARR_DEV_LOGIN=1` is what makes browser automation possible in the primary checkout — see
+§3. Without it `POST /v1/auth/dev-login` **404s** (fail-closed by design, not a bug).
 
-**Confirm you are talking to the process you just built** — this repo has lost a session to
-an orphaned `go run` binary serving hours-old code:
+`make dev-be` stops a server a removed worktree left on this port, refuses to start beside one
+this worktree already runs, and builds before it serves anything. If the tree does not compile,
+nothing answers: read the log rather than waiting on the health check.
+
+**Confirm you are talking to the process you just built:**
 
 ```bash
-curl -s http://localhost:8080/v1/system/version | python3 -m json.tool | head -12
+curl -s "http://localhost:$BE/v1/system/version" | python3 -m json.tool | head -12
 ```
 
 `commit` should match `git rev-parse --short HEAD` and `startedAt` should be seconds old. If
-either disagrees, kill the stale process first:
+either disagrees, replace this worktree's server. Never `pkill` by command line: it matches
+every worktree's Air.
 
 ```bash
-pkill -f 'tmp/loomarr-dev'; pkill -f 'air@v1.67.4'
+DEV_BE_REPLACE=1 LOOMARR_DEV_LOGIN=1 make dev-be > .artifacts/dev-be.log 2>&1 &
 ```
 
 ## 2. Frontend
 
 ```bash
-cd web/apps/web && npx pnpm@11.13.1 dev > /tmp/loomarr-fe.log 2>&1 &
-until curl -sf http://localhost:5173 >/dev/null 2>&1; do sleep 2; done
+make dev-fe > .artifacts/dev-fe.log 2>&1 &
+until curl -sf "http://localhost:$FE" >/dev/null 2>&1; do sleep 2; done
 ```
 
-There is **no `make dev-fe`** — this is the command.
+`make dev-fe` installs dependencies and regenerates the API client and tokens when a pull or
+branch switch changed them, and stops a server a removed worktree left on this port.
 
 ## 3. Driving it in a browser
 
@@ -72,9 +85,10 @@ const ctx = await b.newContext({ viewport: { width: 1280, height: 1400 } });
 const p = await ctx.newPage();
 p.on('console', m => { if (m.type() === 'error') console.log('PAGE ERROR:', m.text()); });
 
-await ctx.request.post('http://localhost:8080/v1/auth/dev-login'); // session cookie
+const be = process.env.BE ?? '8080', fe = process.env.FE ?? '5173'; // pass BE=$BE FE=$FE
+await ctx.request.post(`http://localhost:${be}/v1/auth/dev-login`); // session cookie
 
-await p.goto('http://localhost:5173/channels/<id>', { waitUntil: 'networkidle' });
+await p.goto(`http://localhost:${fe}/channels/<id>`, { waitUntil: 'networkidle' });
 await p.getByRole('button', { name: 'Programming', exact: true }).click();
 await p.waitForTimeout(3000);
 await p.screenshot({ path: '/tmp/shot.png', fullPage: true });
@@ -102,8 +116,8 @@ by opening the image. A green run is not a look.
 ## Useful state
 
 ```bash
-set -a; . ./.env; set +a
-curl -s -H "Authorization: Bearer $API_TOKEN" http://localhost:8080/v1/channels | python3 -m json.tool | head
+set -a; . ./.env; set +a; eval "$(./scripts/dev-env.sh export)"
+curl -s -H "Authorization: Bearer $API_TOKEN" "http://localhost:$LOOMARR_DEV_PORT/v1/channels" | python3 -m json.tool | head
 ```
 
 `API_TOKEN` is the break-glass admin token for API calls (not for the SPA — see §3).

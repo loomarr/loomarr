@@ -1,0 +1,32 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "doctor": {
+      "inputs": [
+        "$TURBO_EXTENDS$",
+        "$TURBO_ROOT$/scripts/apple-testflight-config.cjs",
+        "$TURBO_ROOT$/scripts/with-*.cjs",
+        "!$TURBO_ROOT$/scripts/with-*.test.cjs"
+      ]
+    },
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/build-shield-sideload.sh",
+        "$TURBO_ROOT$/../docker/compose.yaml",
+        "$TURBO_ROOT$/scripts/apple-testflight-config.cjs",
+        "$TURBO_ROOT$/scripts/with-*.cjs",
+        "!$TURBO_ROOT$/scripts/with-*.test.cjs"
+      ]
+    },
+    "bundle": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/apple-testflight-config.cjs",
+        "$TURBO_ROOT$/scripts/with-*.cjs",
+        "!$TURBO_ROOT$/scripts/with-*.test.cjs"
+      ]
+    }
+  }
+}

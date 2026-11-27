@@ -257,12 +257,12 @@ func (s *Store) CreateSuggestionResult(ctx context.Context, job Job, p Proposal)
 
 	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO proposal_jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
-		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
-		 VALUES (?, ?, ?, ?, ?, `+MemberValue+`, '', '', ?, ?, ?, 1, ?, ?, NULL)`),
+		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json, channel_id)
+		 VALUES (?, ?, ?, ?, ?, `+MemberValue+`, '', '', ?, ?, ?, 1, ?, ?, NULL, ?)`),
 
 		job.ID, job.Kind, job.Status, jobIntent(job.IntentJSON), job.IntentHash, job.CreatedBy,
 		ProposalWorkflowVersion, job.ReachedLive, storedb.Epoch(job.Deadline),
-		storedb.Epoch(job.CreatedAt), storedb.Epoch(job.UpdatedAt)); err != nil {
+		storedb.Epoch(job.CreatedAt), storedb.Epoch(job.UpdatedAt), storedb.OptionalID(job.ChannelID)); err != nil {
 		return fmt.Errorf("record suggestion job %s: create job: %w", job.ID, err)
 	}
 	if _, err := tx.ExecContext(ctx, s.h.Rebind(

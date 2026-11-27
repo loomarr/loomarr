@@ -4,15 +4,21 @@ import type { QueryClient } from "@tanstack/react-query";
 import { viewerIsAdmin } from "@/auth/me-query";
 
 // What every Filler page shows around its tab: the status line (the watch summary) and, for an
-// admin, the settings list that says whether filler is configured. FillerPage reads exactly these
-// two, so the routes' loaders warm them through here and the page opens on its content rather than
-// "Loading filler…". Warmed, not awaited to success: a failed read leaves the page to answer as it
-// does once open (a member's missing watch line, an admin's "no filler folder configured").
-const warmFillerPage = async (queryClient: QueryClient): Promise<void> => {
+// admin, the settings list. FillerPage reads exactly these two. Which one it cannot render without
+// depends on who is asking, because it says whether filler is configured: an admin's answer is the
+// settings list, a member's is the watch summary (the settings list is admin-only). That one is
+// ensured, so a failed read is the route's error view; the watch summary is only a status line for
+// an admin, so it is warmed.
+const openFillerPage = async (queryClient: QueryClient): Promise<void> => {
   const isAdmin = await viewerIsAdmin(queryClient);
+  const watch = fillerApi.getFillerWatchQueryOptions();
+  if (!isAdmin) {
+    await queryClient.ensureQueryData(watch);
+    return;
+  }
   await Promise.all([
-    queryClient.prefetchQuery(fillerApi.getFillerWatchQueryOptions()),
-    isAdmin ? queryClient.prefetchQuery(settingsApi.getSettingsListQueryOptions()) : undefined,
+    queryClient.prefetchQuery(watch),
+    queryClient.ensureQueryData(settingsApi.getSettingsListQueryOptions()),
   ]);
 };
 
@@ -25,4 +31,4 @@ const warmDefectReport = async (queryClient: QueryClient): Promise<void> => {
   );
 };
 
-export { warmDefectReport, warmFillerPage };
+export { openFillerPage, warmDefectReport };

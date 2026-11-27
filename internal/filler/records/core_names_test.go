@@ -4,6 +4,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 )
 
 // The filler conformance suite moved here from internal/platform/store unedited (#1747); these test-only
@@ -14,7 +15,7 @@ type (
 	ClipFilter           = clipstore.ClipFilter
 	ClipSort             = clipstore.ClipSort
 	TaxonomyEdit         = clipstore.TaxonomyEdit
-	InteractiveOperation = store.InteractiveOperation
+	InteractiveOperation = operationstore.InteractiveOperation
 	Image                = clipstore.Image
 	ImageRef             = clipstore.ImageRef
 	InferiorCopy         = clipstore.InferiorCopy
@@ -26,11 +27,11 @@ const (
 	ClipSortName     = clipstore.ClipSortName
 	ClipSortPlays    = clipstore.ClipSortPlays
 
-	InteractiveOperationRunning     = store.InteractiveOperationRunning
-	InteractiveOperationSuccess     = store.InteractiveOperationSuccess
-	InteractiveOperationError       = store.InteractiveOperationError
-	InteractiveOperationLLMPull     = store.InteractiveOperationLLMPull
-	InteractiveOperationFillerSplit = store.InteractiveOperationFillerSplit
+	InteractiveOperationRunning     = operationstore.InteractiveOperationRunning
+	InteractiveOperationSuccess     = operationstore.InteractiveOperationSuccess
+	InteractiveOperationError       = operationstore.InteractiveOperationError
+	InteractiveOperationLLMPull     = operationstore.InteractiveOperationLLMPull
+	InteractiveOperationFillerSplit = operationstore.InteractiveOperationFillerSplit
 
 	DialectPostgres = store.DialectPostgres
 )

@@ -1,11 +1,14 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
 import type { SystemLLMPullOperationDTO } from "@loomarr/api/models/systemLLMPullOperationDTO";
 import { getSystemLlmPullMockHandler, getSystemLlmPullOperationMockHandler } from "@loomarr/api/msw";
+import type { LlmPullEvent } from "@loomarr/core/events";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { delay, HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { LoomarrEventsProvider } from "@/events/events-provider";
+import { FakeEventSource } from "@/test/fake-event-source";
 import { server } from "@/test/msw/server";
 import { useModelPull } from "./use-model-pull";
 
@@ -21,25 +24,48 @@ const operation = (over: Partial<SystemLLMPullOperationDTO>): SystemLLMPullOpera
   ...over,
 });
 
-// The operation the backend reports, changed by each test as the download moves on.
+// The operation the backend reports when it is read, and how many times it was read. The backend
+// stores a download's outcome before publishing its frame, so a test moves it on with `advance`
+// before sending that frame.
 const serve = (initial: SystemLLMPullOperationDTO) => {
   let current = initial;
+  const backend = {
+    reads: 0,
+    advance: (next: Partial<SystemLLMPullOperationDTO>) => {
+      current = { ...current, ...next };
+    },
+  };
   server.use(
     getSystemLlmPullMockHandler({ jobId: initial.jobId }),
-    getSystemLlmPullOperationMockHandler(() => current),
+    getSystemLlmPullOperationMockHandler(() => {
+      backend.reads++;
+      return current;
+    }),
   );
-  return { advance: (next: SystemLLMPullOperationDTO) => (current = next) };
+  return backend;
 };
+
+// One llm_pull frame for the download, as the backend sends it.
+const pullFrame = (over: Partial<LlmPullEvent>): LlmPullEvent => ({
+  jobId: "pull-1",
+  model: "qwen3:8b",
+  status: "pulling layer",
+  percent: 0,
+  completed: 0,
+  total: 1000,
+  ...over,
+});
 
 const renderPull = () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  const invalidate = vi.spyOn(client, "invalidateQueries");
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    <QueryClientProvider client={client}>
+      <LoomarrEventsProvider>{children}</LoomarrEventsProvider>
+    </QueryClientProvider>
   );
-  return { ...renderHook(() => useModelPull(), { wrapper }), invalidate };
+  return { ...renderHook(() => useModelPull(), { wrapper }), client };
 };
 
 describe("useModelPull", () => {
@@ -70,18 +96,62 @@ describe("useModelPull", () => {
     await waitFor(() => expect(result.current.pulling).toEqual({ tag: "qwen3:8b", percent: undefined }));
   });
 
-  it("clears progress and refreshes what is installed once the download succeeds", async () => {
-    const backend = serve(operation({ percent: 90 }));
-    const { result, invalidate } = renderPull();
+  it("follows the download's frames, then refreshes what is installed once it succeeds", async () => {
+    const backend = serve(operation({ percent: 10 }));
+    const { result, client } = renderPull();
+    client.setQueryData(systemApi.getSystemLlmStatusQueryKey(), "installed models");
 
     act(() => result.current.start("qwen3:8b"));
-    await waitFor(() => expect(result.current.pulling?.percent).toBe(90));
-    backend.advance(operation({ status: "success", percent: 100 }));
+    await waitFor(() => expect(result.current.pulling?.percent).toBe(10));
 
-    await waitFor(() => expect(result.current.pulling).toBeUndefined(), { timeout: 3_000 });
+    act(() => FakeEventSource.broadcast("llm_pull", pullFrame({ percent: 55, completed: 550 })));
+    await waitFor(() => expect(result.current.pulling).toEqual({ tag: "qwen3:8b", percent: 55 }));
+    expect(client.getQueryState(systemApi.getSystemLlmStatusQueryKey())?.isInvalidated).toBe(false);
+
+    backend.advance({ status: "success", percent: 100 });
+    act(() => FakeEventSource.broadcast("llm_pull", pullFrame({ status: "success", percent: 100 })));
+    await waitFor(() => expect(result.current.pulling).toBeUndefined());
     expect(result.current.error).toBeUndefined();
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: systemApi.getSystemLlmStatusQueryKey() });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: systemApi.getSystemLlmDiscoverQueryKey() });
+    expect(client.getQueryState(systemApi.getSystemLlmStatusQueryKey())?.isInvalidated).toBe(true);
+  });
+
+  it("reads the operation once and leaves the rest to its frames", async () => {
+    const backend = serve(operation({ percent: 10 }));
+    const { result } = renderPull();
+
+    act(() => result.current.start("qwen3:8b"));
+    await waitFor(() => expect(result.current.pulling?.percent).toBe(10));
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+
+    expect(backend.reads).toBe(1);
+  });
+
+  it("leaves the download alone when another download's frame arrives", async () => {
+    serve(operation({ percent: 10 }));
+    const { result } = renderPull();
+
+    act(() => result.current.start("qwen3:8b"));
+    await waitFor(() => expect(result.current.pulling?.percent).toBe(10));
+    act(() => FakeEventSource.broadcast("llm_pull", pullFrame({ jobId: "pull-2", status: "error" })));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(result.current.pulling).toEqual({ tag: "qwen3:8b", percent: 10 });
+    expect(result.current.error).toBeUndefined();
+  });
+
+  it("says why a download failed when its frame reports the error", async () => {
+    const backend = serve(operation({ percent: 30 }));
+    const { result } = renderPull();
+
+    act(() => result.current.start("qwen3:8b"));
+    await waitFor(() => expect(result.current.pulling?.percent).toBe(30));
+    backend.advance({ status: "error", percent: -1, error: "disk full" });
+    act(() =>
+      FakeEventSource.broadcast("llm_pull", pullFrame({ status: "error", percent: -1, error: "disk full" })),
+    );
+
+    await waitFor(() => expect(result.current.error).toEqual(new Error("disk full")));
+    expect(result.current.pulling).toBeUndefined();
   });
 
   it("says why a download failed and stops showing progress", async () => {

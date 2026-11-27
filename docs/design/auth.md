@@ -173,7 +173,9 @@ none. They must not be conflated.
 ## Roles and quotas
 
 - **`admin`**: approve, destructive channel actions, users, settings, jobs, filler.
-- **`member`**: browse, run suggestion jobs, submit Proposals.
+- **`member`**: browse, run suggestion jobs, submit Proposals. Browsing includes the Library
+  read-only: its titles, one title's page and the collections, without files, paths or anything
+  a fix needs ([`library.md`](library.md), "Who reads the Library").
 - **Quotas:** a per-user pending-acquisition cap (0 means `suggest.max_acquisitions`) and an optional
   `auto_approve` grant. Pending acquisitions are attributed through the requester's approved
   Proposals, deduplicated by title key, until the title is terminal. The cap binds only automatic

@@ -3,9 +3,13 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // Image service conformance (§22, V52). Part of the ONE suite both backends run — never forked per
@@ -20,7 +24,7 @@ import (
 // set a clip's hash and path to the same string, making a hash-keyed call and a path-keyed one
 // indistinguishable to every test that passed. The same trap is available here (hash, source URL,
 // owner id) and is closed by construction.
-func imageAt(seed string, at time.Time) Image {
+func imageAt(seed string, at time.Time) clipstore.Image {
 	// A 64-hex hash built from the seed, so it is unique per seed and can never coincide with a
 	// URL, an owner id, or a path.
 	hash := ""
@@ -32,7 +36,7 @@ func imageAt(seed string, at time.Time) Image {
 			}
 		}
 	}
-	return Image{
+	return clipstore.Image{
 		Hash:            hash,
 		Origin:          "remote",
 		SourceURL:       "https://image.example.test/" + seed + ".jpg",
@@ -172,7 +176,7 @@ func testImageRefsAndOwnerLookup(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	a, b := imageAt("gamma", at), imageAt("delta", at)
-	for _, img := range []Image{a, b} {
+	for _, img := range []clipstore.Image{a, b} {
 		if err := s.PutImage(ctx, img); err != nil {
 			t.Fatal(err)
 		}
@@ -180,15 +184,15 @@ func testImageRefsAndOwnerLookup(t *testing.T, newStore NewStoreFunc) {
 
 	// ⚠ owner id is deliberately unlike the hash: they are different namespaces and a test that
 	// let them coincide would not notice a query keyed on the wrong one.
-	if err := s.PutImageRef(ctx, ImageRef{ImageHash: a.Hash, OwnerKind: "channel", OwnerID: "ch_1", Role: "icon"}); err != nil {
+	if err := s.PutImageRef(ctx, clipstore.ImageRef{ImageHash: a.Hash, OwnerKind: "channel", OwnerID: "ch_1", Role: "icon"}); err != nil {
 		t.Fatal(err)
 	}
 	// Re-adding the same ref must be a no-op, not a duplicate-key error: reconcile paths are
 	// re-entrant by design and will re-assert a ref they already made.
-	if err := s.PutImageRef(ctx, ImageRef{ImageHash: a.Hash, OwnerKind: "channel", OwnerID: "ch_1", Role: "icon"}); err != nil {
+	if err := s.PutImageRef(ctx, clipstore.ImageRef{ImageHash: a.Hash, OwnerKind: "channel", OwnerID: "ch_1", Role: "icon"}); err != nil {
 		t.Fatalf("re-adding an identical ref errored: %v", err)
 	}
-	if err := s.PutImageRef(ctx, ImageRef{ImageHash: b.Hash, OwnerKind: "channel", OwnerID: "ch_2", Role: "icon"}); err != nil {
+	if err := s.PutImageRef(ctx, clipstore.ImageRef{ImageHash: b.Hash, OwnerKind: "channel", OwnerID: "ch_2", Role: "icon"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -212,7 +216,7 @@ func testImageRefsAndOwnerLookup(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// A title holds a poster and a logo; replacing its poster lets go of the poster alone.
-	for _, ref := range []ImageRef{
+	for _, ref := range []clipstore.ImageRef{
 		{ImageHash: a.Hash, OwnerKind: "library_item", OwnerID: "title_1", Role: "poster"},
 		{ImageHash: b.Hash, OwnerKind: "library_item", OwnerID: "title_1", Role: "logo"},
 	} {
@@ -236,12 +240,12 @@ func testImageOrphanDetection(t *testing.T, newStore NewStoreFunc) {
 
 	saveImageChannels(t, s, "ch_1")
 	kept, orphan := imageAt("epsilon", at), imageAt("zeta", at)
-	for _, img := range []Image{kept, orphan} {
+	for _, img := range []clipstore.Image{kept, orphan} {
 		if err := s.PutImage(ctx, img); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := s.PutImageRef(ctx, ImageRef{ImageHash: kept.Hash, OwnerKind: "channel", OwnerID: "ch_1", Role: "icon"}); err != nil {
+	if err := s.PutImageRef(ctx, clipstore.ImageRef{ImageHash: kept.Hash, OwnerKind: "channel", OwnerID: "ch_1", Role: "icon"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -264,7 +268,7 @@ func testImageDerivatives(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 
-	for _, d := range []ImageDerivative{
+	for _, d := range []clipstore.ImageDerivative{
 		{ImageHash: img.Hash, Recipe: "loomarr-rendition-v1", Format: "webp", Width: 342, Bytes: 9000, OutputHash: strings.Repeat("a", 64), Path: "drv/x/y/a_w342.webp", Animated: true, CreatedAt: at},
 		{ImageHash: img.Hash, Recipe: "loomarr-rendition-v1", Format: "webp", Width: 500, Bytes: 14000, OutputHash: strings.Repeat("b", 64), Path: "drv/x/y/a_w500.webp", Animated: true, CreatedAt: at},
 	} {
@@ -285,7 +289,7 @@ func testImageDerivatives(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// Re-encoding one rung replaces it rather than duplicating — the key is (hash, format, width).
-	if err := s.PutImageDerivative(ctx, ImageDerivative{
+	if err := s.PutImageDerivative(ctx, clipstore.ImageDerivative{
 		ImageHash: img.Hash, Recipe: "loomarr-rendition-v1", Format: "webp", Width: 500, Bytes: 15500,
 		OutputHash: strings.Repeat("c", 64), Animated: true,
 		Path: "drv/x/y/a_w500.webp", CreatedAt: at.Add(time.Hour),
@@ -298,7 +302,7 @@ func testImageDerivatives(t *testing.T, newStore NewStoreFunc) {
 	}
 	// A new encoder recipe at the same public width is a distinct cache identity. It must not
 	// overwrite the prior bytes before the application has deliberately switched recipes.
-	if err := s.PutImageDerivative(ctx, ImageDerivative{
+	if err := s.PutImageDerivative(ctx, clipstore.ImageDerivative{
 		ImageHash: img.Hash, Recipe: "loomarr-rendition-v2", Format: "webp", Width: 500,
 		Bytes: 15000, OutputHash: strings.Repeat("d", 64), Path: "drv/x/y/a_v2_w500.webp", CreatedAt: at,
 	}); err != nil {
@@ -326,7 +330,7 @@ func testImageDerivativeBatchAtomic(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 
-	err := s.PutImageDerivatives(ctx, []ImageDerivative{
+	err := s.PutImageDerivatives(ctx, []clipstore.ImageDerivative{
 		{ImageHash: img.Hash, Recipe: "loomarr-rendition-v2", Format: "avif", Width: 185, Path: "valid", CreatedAt: at},
 		{ImageHash: strings.Repeat("f", 64), Recipe: "loomarr-rendition-v2", Format: "avif", Width: 500, Path: "missing-parent", CreatedAt: at},
 	})
@@ -353,9 +357,14 @@ func testImagesMissingFormat(t *testing.T, newStore NewStoreFunc) {
 	at := time.Unix(1_700_000_000, 0)
 
 	webpOnly := imageAt("theta", at)
-	bothFormats := imageAt("iota", at)
-	untouched := imageAt("kappa", at) // no derivatives at all
-	for _, img := range []Image{webpOnly, bothFormats, untouched} {
+	bothFormats := imageAt("iota", at) // AVIF at every rung it is owed
+	untouched := imageAt("kappa", at)  // no derivatives at all
+	topUp := imageAt("lambda", at)     // AVIF at 500 only, owed 780 too
+	small := imageAt("mu", at)         // AVIF at 500 only, too narrow to be owed 780
+	small.Width = 600
+	animated := imageAt("nu", at) // WebP only, but never encoded as AVIF
+	animated.Animated = true
+	for _, img := range []clipstore.Image{webpOnly, bothFormats, untouched, topUp, small, animated} {
 		if err := s.PutImage(ctx, img); err != nil {
 			t.Fatal(err)
 		}
@@ -366,21 +375,39 @@ func testImagesMissingFormat(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	must(s.PutImageDerivative(ctx, ImageDerivative{ImageHash: webpOnly.Hash, Format: "webp", Width: 500, Path: "a", CreatedAt: at}))
-	must(s.PutImageDerivative(ctx, ImageDerivative{ImageHash: bothFormats.Hash, Format: "webp", Width: 500, Path: "b", CreatedAt: at}))
-	must(s.PutImageDerivative(ctx, ImageDerivative{ImageHash: bothFormats.Hash, Format: "avif", Width: 500, Path: "c", CreatedAt: at}))
+	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: webpOnly.Hash, Format: "webp", Width: 500, Path: "a", CreatedAt: at}))
+	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: bothFormats.Hash, Format: "webp", Width: 500, Path: "b", CreatedAt: at}))
+	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: animated.Hash, Format: "webp", Width: 500, Path: "g", Animated: true, CreatedAt: at}))
+	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: bothFormats.Hash, Format: "avif", Width: 500, Path: "c", CreatedAt: at}))
+	must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: bothFormats.Hash, Format: "avif", Width: 780, Path: "d", CreatedAt: at}))
+	for i, img := range []clipstore.Image{topUp, small} {
+		must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: img.Hash, Format: "webp", Width: 500, Path: fmt.Sprintf("e%d", i), CreatedAt: at}))
+		must(s.PutImageDerivative(ctx, clipstore.ImageDerivative{ImageHash: img.Hash, Format: "avif", Width: 500, Path: fmt.Sprintf("f%d", i), CreatedAt: at}))
+	}
 
-	got, err := s.ListImagesMissingFormat(ctx, "legacy-go-v1", "avif", 10)
+	rungs := []clipstore.ImageRung{
+		{Role: "poster", Width: 500, MinSourceWidth: 0},
+		{Role: "poster", Width: 780, MinSourceWidth: 663},
+		{Role: "thumb", Width: 1000, MinSourceWidth: 0}, // another role's rung owes a poster nothing
+	}
+	got, err := s.ListImagesMissingFormat(ctx, "legacy-go-v1", "avif", rungs, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Hash != webpOnly.Hash {
-		hashes := make([]string, len(got))
-		for i, g := range got {
-			hashes[i] = g.Hash
-		}
-		t.Fatalf("ListImagesMissingFormat(avif) = %v, want just the webp-only image %s "+
-			"(an image with NO derivatives must not be picked up)", hashes, webpOnly.Hash)
+	hashes := make([]string, len(got))
+	for i, g := range got {
+		hashes[i] = g.Hash
+	}
+	slices.Sort(hashes)
+	want := []string{webpOnly.Hash, topUp.Hash}
+	slices.Sort(want)
+	if !slices.Equal(hashes, want) {
+		t.Fatalf("ListImagesMissingFormat(avif) = %v, want the webp-only image and the one owed a 780 rung %v "+
+			"(an image with NO derivatives, a complete one, one too narrow for 780 and an animated one "+
+			"must not be picked up)", hashes, want)
+	}
+	if none, err := s.ListImagesMissingFormat(ctx, "legacy-go-v1", "avif", nil, 10); err != nil || len(none) != 0 {
+		t.Fatalf("ListImagesMissingFormat with no rungs = %v, %v, want none", none, err)
 	}
 }
 
@@ -401,13 +428,13 @@ func testImageFetchQueueAndExpirySweepAreDisjoint(t *testing.T, newStore NewStor
 	stale := imageAt("nu", now)
 	stale.OriginFetchedAt = now.Add(-200 * 24 * time.Hour) // well past six months
 
-	for _, img := range []Image{pending, fresh, stale} {
+	for _, img := range []clipstore.Image{pending, fresh, stale} {
 		if err := s.PutImage(ctx, img); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	queue, err := s.ListImagesAwaitingFetch(ctx, 10)
+	queue, err := s.ListImagesAwaitingFetch(ctx, now, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,7 +443,7 @@ func testImageFetchQueueAndExpirySweepAreDisjoint(t *testing.T, newStore NewStor
 	}
 
 	cutoff := now.Add(-180 * 24 * time.Hour)
-	expired, err := s.ListImagesExpiredBefore(ctx, cutoff, 10)
+	expired, err := s.ListImagesExpiredBefore(ctx, cutoff, clipstore.ExpiryCursor{}, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,10 +503,10 @@ func testImageDeleteCascades(t *testing.T, newStore NewStoreFunc) {
 	if err := s.PutImage(ctx, img); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PutImageRef(ctx, ImageRef{ImageHash: img.Hash, OwnerKind: "channel", OwnerID: "ch_9", Role: "icon"}); err != nil {
+	if err := s.PutImageRef(ctx, clipstore.ImageRef{ImageHash: img.Hash, OwnerKind: "channel", OwnerID: "ch_9", Role: "icon"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PutImageDerivative(ctx, ImageDerivative{
+	if err := s.PutImageDerivative(ctx, clipstore.ImageDerivative{
 		ImageHash: img.Hash, Format: "webp", Width: 500, Path: "p", CreatedAt: at,
 	}); err != nil {
 		t.Fatal(err)
@@ -540,7 +567,7 @@ func testImagesByOrigin(t *testing.T, newStore NewStoreFunc) {
 	uploaded := imageAt("tau", at)
 	uploaded.Origin, uploaded.OriginFetchedAt = "upload", at
 
-	for _, img := range []Image{fetched, pending, uploaded} {
+	for _, img := range []clipstore.Image{fetched, pending, uploaded} {
 		if err := s.PutImage(ctx, img); err != nil {
 			t.Fatal(err)
 		}
@@ -574,14 +601,15 @@ func testImagesByOrigin(t *testing.T, newStore NewStoreFunc) {
 // placeholder rows re-key onto ONE content hash. A second repoint carrying the same
 // (owner_kind, owner_id, role) must be a no-op rather than a primary-key violation.
 // Finding a remote image by the URL it came from — the lookup that stops a re-adopt from
-// re-downloading bytes already on disk (V52 phase 7).
+// downloading the image a second time (V52 phase 7).
 //
-// ⚠ **The `origin_fetched_at > 0` half is the point, not a tidy-up.** Adopt keys a pending row on a
-// hash of the source URL; the fetch re-keys it onto the content hash and deletes the placeholder,
-// and for the width of that operation BOTH rows carry the same source URL — deliberately, so no
-// ref ever points at a hash with no row. A lookup that returned the placeholder would hand back a
-// hash that is about to stop resolving, which is worse than returning nothing.
-func testImageFetchedBySourceURL(t *testing.T, newStore NewStoreFunc) {
+// ⚠ **A fetched row wins over a pending one.** Adopt keys a pending row on a hash of the source
+// URL; the fetch re-keys it onto the content hash and deletes the placeholder, and for the width
+// of that operation BOTH rows carry the same source URL — deliberately, so no ref ever points at a
+// hash with no row. The lookup hands back the row with bytes. With no fetched row, it hands back
+// the pending one: the adopted placeholder, or a row the expiry purge requeued under its content
+// hash, which a re-adopt must reuse rather than queue the URL a second time.
+func testImageBySourceURL(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)
 	at := time.Unix(1_700_000_000, 0)
@@ -591,46 +619,45 @@ func testImageFetchedBySourceURL(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 
-	got, err := s.GetFetchedImageBySourceURL(ctx, fetched.SourceURL)
+	got, err := s.GetImageBySourceURL(ctx, fetched.SourceURL)
 	if err != nil {
-		t.Fatalf("GetFetchedImageBySourceURL: %v", err)
+		t.Fatalf("GetImageBySourceURL: %v", err)
 	}
 	if got.Hash != fetched.Hash {
 		t.Errorf("hash = %q, want %q", got.Hash, fetched.Hash)
 	}
 
-	// A row adopted but never fetched must NOT be returned: it has no bytes to reuse, and its hash
-	// is the placeholder the re-key deletes.
+	// A row still waiting for its bytes, alone with its URL, is found.
 	pending := imageAt("pending", at)
 	pending.OriginFetchedAt = time.Time{}
 	if err := s.PutImage(ctx, pending); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.GetFetchedImageBySourceURL(ctx, pending.SourceURL); !errors.Is(err, ErrNotFound) {
-		t.Errorf("a never-fetched row was returned (err = %v), want ErrNotFound", err)
+	if got, err := s.GetImageBySourceURL(ctx, pending.SourceURL); err != nil || got.Hash != pending.Hash {
+		t.Errorf("a pending row's URL = %q, %v; want the pending row", got.Hash, err)
 	}
 
 	// Both rows sharing one source URL — the state that exists during a re-key. The fetched one
-	// wins; without the predicate this is a coin toss decided by row order.
+	// wins; without the order this is a coin toss decided by row order.
 	shadow := imageAt("shadow", at)
 	shadow.SourceURL = fetched.SourceURL
 	shadow.OriginFetchedAt = time.Time{}
 	if err := s.PutImage(ctx, shadow); err != nil {
 		t.Fatal(err)
 	}
-	got, err = s.GetFetchedImageBySourceURL(ctx, fetched.SourceURL)
+	got, err = s.GetImageBySourceURL(ctx, fetched.SourceURL)
 	if err != nil {
-		t.Fatalf("GetFetchedImageBySourceURL with a placeholder alongside: %v", err)
+		t.Fatalf("GetImageBySourceURL with a placeholder alongside: %v", err)
 	}
 	if got.Hash != fetched.Hash {
 		t.Errorf("hash = %q, want the FETCHED row %q — the placeholder shadowed it", got.Hash, fetched.Hash)
 	}
 
 	// An empty URL is every non-remote row's value, so it must never match one.
-	if _, err := s.GetFetchedImageBySourceURL(ctx, ""); !errors.Is(err, ErrNotFound) {
+	if _, err := s.GetImageBySourceURL(ctx, ""); !errors.Is(err, ErrNotFound) {
 		t.Errorf("empty source URL returned %v, want ErrNotFound", err)
 	}
-	if _, err := s.GetFetchedImageBySourceURL(ctx, "https://nothing.example.test/x.jpg"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.GetImageBySourceURL(ctx, "https://nothing.example.test/x.jpg"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown source URL returned %v, want ErrNotFound", err)
 	}
 }
@@ -644,7 +671,7 @@ func testImageRefsRepoint(t *testing.T, newStore NewStoreFunc) {
 	placeholderA := imageAt("upsilon", at)
 	placeholderB := imageAt("phi", at)
 	content := imageAt("chi", at)
-	for _, img := range []Image{placeholderA, placeholderB, content} {
+	for _, img := range []clipstore.Image{placeholderA, placeholderB, content} {
 		if err := s.PutImage(ctx, img); err != nil {
 			t.Fatal(err)
 		}
@@ -652,7 +679,7 @@ func testImageRefsRepoint(t *testing.T, newStore NewStoreFunc) {
 
 	// Both placeholders decorate the SAME owner in the same role — the collision case.
 	for _, h := range []string{placeholderA.Hash, placeholderB.Hash} {
-		if err := s.PutImageRef(ctx, ImageRef{
+		if err := s.PutImageRef(ctx, clipstore.ImageRef{
 			ImageHash: h, OwnerKind: "channel", OwnerID: "ch-repoint", Role: "poster",
 		}); err != nil {
 			t.Fatal(err)
@@ -704,7 +731,7 @@ func testImageDerivativeBudgetAndEvictionOrder(t *testing.T, newStore NewStoreFu
 	hot.LastUsedAt = at.Add(72 * time.Hour)
 	cold := imageAt("omega", at)
 	cold.LastUsedAt = at
-	for _, img := range []Image{hot, cold} {
+	for _, img := range []clipstore.Image{hot, cold} {
 		if err := s.PutImage(ctx, img); err != nil {
 			t.Fatal(err)
 		}
@@ -717,13 +744,13 @@ func testImageDerivativeBudgetAndEvictionOrder(t *testing.T, newStore NewStoreFu
 	}
 
 	// The cold image's derivative is the NEWER file — so created_at and last_used_at disagree.
-	if err := s.PutImageDerivative(ctx, ImageDerivative{
+	if err := s.PutImageDerivative(ctx, clipstore.ImageDerivative{
 		ImageHash: hot.Hash, Format: "webp", Width: 500, Bytes: 12000,
 		Path: "drv/h/o/hot_w500.webp", CreatedAt: at,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PutImageDerivative(ctx, ImageDerivative{
+	if err := s.PutImageDerivative(ctx, clipstore.ImageDerivative{
 		ImageHash: cold.Hash, Format: "webp", Width: 500, Bytes: 8000,
 		Path: "drv/c/o/cold_w500.webp", CreatedAt: at.Add(96 * time.Hour),
 	}); err != nil {

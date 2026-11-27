@@ -35,6 +35,9 @@ services:
       - demo-data:/data
       - demo-assets:/demo:ro
     cpus: ${DEMO_SITE_CPUS:-4}
+    # Longer than the app's worst-case teardown (docs/design/deployment.md), so a stop is never
+    # SIGKILLed mid-teardown.
+    stop_grace_period: 60s
     healthcheck:
       test: ["CMD", "/loomarr", "healthcheck"]
       interval: 5s

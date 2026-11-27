@@ -12,6 +12,9 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 )
 
@@ -34,7 +37,7 @@ func withJobMembers(newStore NewStoreFunc) NewStoreFunc {
 		t.Helper()
 		s := newStore(t)
 		for _, id := range jobMembers {
-			if err := s.UpsertUser(context.Background(), User{ID: id, Name: id, Role: RoleMember}); err != nil {
+			if err := s.UpsertUser(context.Background(), User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
 				t.Fatalf("save member %s: %v", id, err)
 			}
 		}
@@ -46,7 +49,7 @@ func sampleJob(id, hash string, deadline, createdAt time.Time) Job {
 	return Job{
 		ID: id, Kind: "suggest", Status: "queued",
 		IntentJSON: `{"description":"90s action"}`, IntentHash: hash,
-		CreatedBy: "user-1", WorkflowVersion: ProposalWorkflowVersion,
+		CreatedBy: "user-1", WorkflowVersion: proposalstore.ProposalWorkflowVersion,
 		Deadline: deadline, CreatedAt: createdAt, UpdatedAt: createdAt,
 	}
 }
@@ -272,7 +275,7 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	orphan := proposal
 	orphan.ID = "proposal-orphan"
 	orphan.JobID = queued.ID
-	if err := s.CommitSuggestionSuccess(ctx, queued.ID, queued.Attempts, orphan, now); !errors.Is(err, ErrJobNotRunning) {
+	if err := s.CommitSuggestionSuccess(ctx, queued.ID, queued.Attempts, orphan, now); !errors.Is(err, proposalstore.ErrJobNotRunning) {
 		t.Fatalf("commit from queued = %v, want ErrJobNotRunning", err)
 	}
 	if _, err := s.GetProposal(ctx, orphan.ID); !errors.Is(err, ErrNotFound) {
@@ -292,7 +295,7 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	foreign.ID = "proposal-foreign"
 	foreign.JobID = owned.ID
 	foreign.CreatedBy = "other-user"
-	if err := s.CommitSuggestionSuccess(ctx, owned.ID, owned.Attempts, foreign, now); !errors.Is(err, ErrJobOwnershipMismatch) {
+	if err := s.CommitSuggestionSuccess(ctx, owned.ID, owned.Attempts, foreign, now); !errors.Is(err, proposalstore.ErrJobOwnershipMismatch) {
 		t.Fatalf("commit with foreign proposal = %v, want ErrJobOwnershipMismatch", err)
 	}
 	if _, err := s.GetProposal(ctx, foreign.ID); !errors.Is(err, ErrNotFound) {
@@ -359,11 +362,11 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	staleProposal := proposal
 	staleProposal.ID = "proposal-stale"
 	staleProposal.JobID = stale.ID
-	if err := s.CommitSuggestionSuccess(ctx, stale.ID, stale.Attempts, staleProposal, now.Add(3*time.Minute)); !errors.Is(err, ErrJobNotRunning) {
+	if err := s.CommitSuggestionSuccess(ctx, stale.ID, stale.Attempts, staleProposal, now.Add(3*time.Minute)); !errors.Is(err, proposalstore.ErrJobNotRunning) {
 		t.Fatalf("stale success = %v, want ErrJobNotRunning", err)
 	}
 	if err := s.CommitSuggestionFailure(ctx, stale.ID, stale.Attempts,
-		"old failure", "generation_failed", "", now.Add(3*time.Minute)); !errors.Is(err, ErrJobNotRunning) {
+		"old failure", "generation_failed", "", now.Add(3*time.Minute)); !errors.Is(err, proposalstore.ErrJobNotRunning) {
 		t.Fatalf("stale failure = %v, want ErrJobNotRunning", err)
 	}
 	winner, err := s.GetJob(ctx, stale.ID)
@@ -408,7 +411,7 @@ func testSuggestionReviseCAS(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	if err := s.ReviseSubmittedProposal(ctx, job.ID, first.ID, 1, `{"description":"stale refine"}`,
-		"hash-refine-b", now, now); !errors.Is(err, ErrProposalNotRevisable) {
+		"hash-refine-b", now, now); !errors.Is(err, proposalstore.ErrProposalNotRevisable) {
 		t.Fatalf("stale concurrent revision = %v, want ErrProposalNotRevisable", err)
 	}
 	queued, err := s.GetJob(ctx, job.ID)
@@ -426,7 +429,7 @@ func testSuggestionReviseCAS(t *testing.T, newStore NewStoreFunc) {
 	if claimed[0].Attempts != 2 || claimed[0].Status != "running" {
 		t.Fatalf("refined execution token = %+v", claimed[0])
 	}
-	if err := s.ReviseSubmittedProposal(ctx, job.ID, first.ID, 2, `{}`, "active-overwrite", now, now); !errors.Is(err, ErrProposalNotRevisable) {
+	if err := s.ReviseSubmittedProposal(ctx, job.ID, first.ID, 2, `{}`, "active-overwrite", now, now); !errors.Is(err, proposalstore.ErrProposalNotRevisable) {
 		t.Fatalf("active revision = %v, want ErrProposalNotRevisable", err)
 	}
 
@@ -537,7 +540,7 @@ func testProposalRevisionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || len(queue) != 1 || queue[0].ID != second.ID {
 		t.Fatalf("approval queue after replacement = (%+v, %v)", queue, err)
 	}
-	if err := s.ReviseSubmittedProposal(ctx, job.ID, first.ID, 3, `{}`, "stale", now, now); !errors.Is(err, ErrProposalNotRevisable) {
+	if err := s.ReviseSubmittedProposal(ctx, job.ID, first.ID, 3, `{}`, "stale", now, now); !errors.Is(err, proposalstore.ErrProposalNotRevisable) {
 		t.Fatalf("stale proposal revision = %v, want ErrProposalNotRevisable", err)
 	}
 }
@@ -1022,7 +1025,7 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 	// The proposer is a person: their requests are recorded against users (#2793).
-	if err := s.UpsertUser(ctx, User{ID: "member", Name: "Member", Role: RoleMember, CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := s.UpsertUser(ctx, User{ID: "member", Name: "Member", Role: identitystore.RoleMember, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	mustOriginJobs(t, s, "job-approval", "job-denied", "job-invalid", "job-invalid-channel")
@@ -1305,7 +1308,7 @@ func testProposalApprovalStaleChannel(t *testing.T, newStore NewStoreFunc) {
 	planned.Name = "stale approval"
 	if _, err := s.CommitProposalApproval(ctx, ProposalApproval{
 		Proposal: p, Titles: []provision.Record{title}, Channel: planned,
-	}); !errors.Is(err, ErrChannelStale) {
+	}); !errors.Is(err, channelstore.ErrChannelStale) {
 		t.Fatalf("stale approval = %v, want ErrChannelStale", err)
 	}
 
@@ -1681,7 +1684,7 @@ func testCreateSuggestionResult(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Job.Status != "done" || snapshot.Job.Attempts != 1 || snapshot.Job.WorkflowVersion != ProposalWorkflowVersion {
+	if snapshot.Job.Status != "done" || snapshot.Job.Attempts != 1 || snapshot.Job.WorkflowVersion != proposalstore.ProposalWorkflowVersion {
 		t.Fatalf("job = %+v", snapshot.Job)
 	}
 	if len(snapshot.Attempts) != 1 || snapshot.Attempts[0].Attempt != 1 || snapshot.Attempts[0].Status != "succeeded" {

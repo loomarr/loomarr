@@ -49,8 +49,7 @@ func TestChannelFillerCoverage_RendersTheLadder(t *testing.T) {
 	fp.coverage = pod.CoverageReport{
 		Rungs: []pod.RungCoverage{
 			{Level: pod.MatchExact, Clips: 4},
-			{Level: pod.MatchWidened, Clips: 5},
-			{Level: pod.MatchAudience, Clips: 9},
+			{Level: pod.MatchWidened, Clips: 9},
 		},
 		Level: pod.MatchExact,
 		Total: 9,
@@ -66,7 +65,7 @@ func TestChannelFillerCoverage_RendersTheLadder(t *testing.T) {
 	}
 	// Order is load-bearing: the UI reads the rungs positionally, so a reversed slice
 	// renders "mostly loose matches" for a catalog that is mostly exact.
-	want := []string{"exact", "widened", "audience"}
+	want := []string{"exact", "widened"}
 	if len(body.Rungs) != len(want) {
 		t.Fatalf("got %d rungs, want %d", len(body.Rungs), len(want))
 	}
@@ -75,8 +74,8 @@ func TestChannelFillerCoverage_RendersTheLadder(t *testing.T) {
 			t.Errorf("rung %d = %q, want %q", i, body.Rungs[i].Level, w)
 		}
 	}
-	// Total is the widest rung, NOT a sum — the rungs nest, and 4+5+9 would report a
-	// catalog twice its real size.
+	// Total is the widest rung, NOT a sum: the rungs nest, and 4+9 would report 13 for a
+	// catalog of 9.
 	if body.Total != 9 {
 		t.Errorf("total = %d, want 9 (the widest rung, not the sum)", body.Total)
 	}

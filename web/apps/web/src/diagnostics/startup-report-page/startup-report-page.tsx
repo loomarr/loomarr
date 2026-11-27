@@ -1,9 +1,9 @@
-import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import type { HealthCheck } from "@loomarr/api/models/healthCheck";
 import { HealthCheckStatus } from "@loomarr/api/models/healthCheckStatus";
 import type { HealthReport } from "@loomarr/api/models/healthReport";
 import { HealthReportState } from "@loomarr/api/models/healthReportState";
 import {
+  Card,
   Stack,
   StatusWord,
   type StatusWordKind,
@@ -17,6 +17,7 @@ import {
 } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { useCurrentHealth } from "../use-current-health";
 
 const dateTime = (millis?: number) => {
   if (!millis) return "Not checked yet";
@@ -90,10 +91,7 @@ const HealthCheckRow = ({ check }: { check: HealthCheck }) => (
 
 const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
   return (
-    <section
-      className="border-border bg-card overflow-hidden rounded-lg border"
-      aria-label="Current health summary"
-    >
+    <Card aria-label="Current health summary" borderRadius={8} overflow="hidden" render="section">
       <Stack
         align="center"
         columnGap="4"
@@ -103,19 +101,19 @@ const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
         rowGap="2"
         wrap
       >
-        <div className="min-w-0 flex-1">
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
           <Text as="p" textRole="headline">
             <Verdict word={stateWord(report.state)} />
           </Text>
           <Text as="p" textRole="hint" tone="secondary">
             Continuously monitored
           </Text>
-        </div>
+        </Stack>
         <Text as="span" textRole="mono">
           {report.version}
         </Text>
       </Stack>
-      <div className="border-border border-t">
+      <Stack borderColor="$borderDecorative" borderTopWidth={1}>
         <Table caption="Current health checks" framed={false} minWidth={704}>
           <TableHeader>
             <TableRow>
@@ -130,21 +128,19 @@ const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
             ))}
           </TableBody>
         </Table>
-      </div>
-    </section>
+      </Stack>
+    </Card>
   );
 };
 
 const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
-  const health = diagnosticsApi.useGetCurrentHealth({
-    query: { retry: false, refetchInterval: 10_000 },
-  });
+  const health = useCurrentHealth();
 
   if (health.isError)
     return (
-      <div className="p-6">
+      <Stack padding={24}>
         <ErrorState error={health.error} onRetry={() => health.refetch()} />
-      </div>
+      </Stack>
     );
   const currentHealth = health.data?.status === 200 ? health.data.data : undefined;
 
@@ -164,7 +160,7 @@ const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
   );
   if (embedded) return content;
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <PageHeader title="Current Health" description="What is working now and what needs your attention." />
       {content}
     </Stack>

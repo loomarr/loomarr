@@ -29,7 +29,15 @@ const ChannelBreaks = ({ channelId, className }: ChannelBreaksProps) => {
   if (entries.length === 0) return null;
 
   return (
-    <Stack className={className} gap="1.5" render="section">
+    // The section's own divider, so a channel with no break pool leaves no stray line.
+    <Stack
+      borderTopColor="$borderDecorative"
+      borderTopWidth={1}
+      className={className}
+      gap="1.5"
+      paddingTop={12}
+      render="section"
+    >
       <Text as="h3" textRole="hint" tone="secondary">
         Between shows
       </Text>

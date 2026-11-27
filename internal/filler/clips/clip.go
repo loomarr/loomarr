@@ -143,11 +143,16 @@ type Clip struct {
 	Name            string // display name: a source or sidecar title, a grounded name, or the filename stem
 	// NameSource is where Name came from (#1988). Every writer of Name sets it; viewer surfaces
 	// show Name only when it is not a filename (NameSource.ShownToViewers).
-	NameSource      NameSource
-	Role            Role      // descriptive role; unclassified means unknown
-	Placement       Placement // break_body | bookend | not_playable; committed by terminal readiness
-	Era             int       // decade/year, e.g. 1994; 0 = untagged
-	Audience        Audience  // kids | family | general | late_night; "" = untagged
+	NameSource NameSource
+	Role       Role      // descriptive role; unclassified means unknown
+	Placement  Placement // break_body | bookend | not_playable; committed by terminal readiness
+	Era        int       // decade/year, e.g. 1994; 0 = untagged
+	Audience   Audience  // kids | family | general | late_night; "" = untagged
+	// AudienceGuess is true when one model's guess is all that stands behind Audience: no rule cue,
+	// no operator, no listing and no second independent signal agrees (#3838 decision 7). The
+	// store computes it on every read; a kids channel airs a kids or family clip only when it is
+	// false. The zero value is "backed", so a fixture needs no evidence.
+	AudienceGuess   bool
 	GeographicScope GeographicScope
 	Country         string // ISO 3166-1 alpha-2 when known
 	Network         string // grounded broadcast network context
@@ -168,6 +173,11 @@ type Clip struct {
 	// the full expansion would promote derived ancestors into assertions that survive graph edits.
 	AssertedTags []string
 	DurationMs   int64 // from ffprobe (the core probes now — §14 bundles it for playout)
+	// AirStartMs and AirEndMs are the clip's air window (#3384): the part of the file that airs,
+	// leaving out black that is also silent at either edge. AirEndMs zero means not measured, and
+	// the clip airs whole. Read them through AirLengthMs; the file itself is never trimmed.
+	AirStartMs int64
+	AirEndMs   int64
 	// Quality is the resolution label ("1080p", "480p"), derived from the probed video height
 	// at scan time; "" for an audio-only clip or one scanned before quality existed.
 	//
@@ -307,6 +317,22 @@ type Clip struct {
 
 // IsSegment reports whether a clip was split out of a composite (§10 V45) — it has a parent.
 func (c Clip) IsSegment() bool { return c.ParentHash != "" }
+
+// AirWindow is where the clip starts airing in its file and how long it airs (#3384). An
+// unmeasured window, or one that does not fit inside the file, airs the whole file: a bad window
+// must cost the trim, never the ad.
+func (c Clip) AirWindow() (startMs, lengthMs int64) {
+	if c.AirEndMs <= c.AirStartMs || c.AirStartMs < 0 || (c.DurationMs > 0 && c.AirEndMs > c.DurationMs) {
+		return 0, c.DurationMs
+	}
+	return c.AirStartMs, c.AirEndMs - c.AirStartMs
+}
+
+// AirLengthMs is how long the clip occupies a break: its air window's length.
+func (c Clip) AirLengthMs() int64 {
+	_, length := c.AirWindow()
+	return length
+}
 
 // ID returns the clip's identity.
 //

@@ -174,6 +174,13 @@ func (e MediaExecutor) Run(ctx context.Context, candidate enrichment.Candidate) 
 		states = append(states, enrichment.State{Axis: enrichment.AxisEra,
 			Status: enrichment.StatusComplete, Value: enrichment.Value{Year: observation.Era},
 			Evidence: evidence("frame.visible_text")})
+	} else if observation.EstimatedDecade > 0 && clip.Era == 0 {
+		// An estimate from picture and sound, ranked as inference: it dates a clip nothing else
+		// dates, and every literal source replaces it (#3838 decision 7).
+		states = append(states, enrichment.State{Axis: enrichment.AxisEra,
+			Status: enrichment.StatusComplete, Value: enrichment.Value{Year: observation.EstimatedDecade},
+			Evidence: enrichment.Evidence{Kind: enrichment.EvidenceInference,
+				Reference: "frame.era_estimate", Confidence: 80}})
 	}
 	taxa, err := e.store.ListTaxa(ctx)
 	if err != nil {

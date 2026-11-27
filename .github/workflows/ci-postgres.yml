@@ -36,9 +36,9 @@ jobs:
       # and race and non-race objects are distinct entries, so sharing a key would have each
       # job evict the other's work on every run.
       #
-      # Same rolling-key-plus-weekly-epoch pattern as the `go` job — see the long note there
-      # for why the key must be both unique per run (or it freezes) and epoch-bounded (or it
-      # snowballs). Modules ride along because setup-go no longer caches them.
+      # Restore only, like the `go` job (see its note): the `postgres` lane of the `CI / Go cache
+      # warm` workflow is this cache's one writer, once per ISO week and go.sum. Modules ride
+      # along because setup-go does not cache them.
       - name: Cache epoch (bounds rolling-cache growth)
         id: epoch
         run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
@@ -49,19 +49,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: gobuild-pg-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          key: gobuild-pg-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ hashFiles('go.sum') }}-warm
           restore-keys: |
-            gobuild-pg-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ hashFiles('go.sum') }}-
             gobuild-pg-${{ runner.os }}-${{ steps.epoch.outputs.week }}-
       # testcontainers uses the Docker daemon preinstalled on ubuntu-latest.
       - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}
-      # main only — see the `go` job's save step for why a PR-scoped save is pure eviction
-      # pressure on caches that are still being read.
-      - name: Save Go caches (main only)
-        if: always() && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ steps.gocache.outputs.cache-primary-key }}

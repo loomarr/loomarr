@@ -1,5 +1,6 @@
 // Package quarantine is where filler files Loomarr deletes on its own wait a day before their bytes
-// go (#3855, "The goal is a 9" in #3838). A wrong delete can be undone by moving the file back, and
+// go (#3855, "The goal is a 9" in #3838). A wrong delete can be undone by moving the file back (a
+// released original also needs its path written back into its clip's sidecar), and
 // the bytes still count toward the filler budget until they are gone, so a cull that frees space
 // frees it a day later, never twice.
 package quarantine
@@ -7,6 +8,7 @@ package quarantine
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -63,6 +65,46 @@ func (b Bin) Put(files []string) map[string]error {
 		}
 	}
 	return failed
+}
+
+// Dispose moves one file or folder into quarantine when it is under the clip folder, and deletes
+// it outright when it is not: a watch folder set outside the clip folder can be on another disk,
+// where a move would copy the bytes rather than set them aside.
+func (b Bin) Dispose(path string) error {
+	err := b.Put([]string{path})[path]
+	if errors.Is(err, ErrOutsideRoot) {
+		return os.RemoveAll(path)
+	}
+	return err
+}
+
+// Held is how many bytes wait in quarantine: space that is still counted against the filler
+// budget and frees itself within a day.
+func (b Bin) Held() (int64, error) {
+	var total int64
+	err := filepath.WalkDir(filepath.Join(b.root, DirName), func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if d.Type().IsRegular() {
+			info, err := d.Info()
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					return nil
+				}
+				return err
+			}
+			total += info.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("measure quarantine: %w", err)
+	}
+	return total, nil
 }
 
 // Empty deletes every batch that has waited at least Hold and reports how many it deleted. A batch is

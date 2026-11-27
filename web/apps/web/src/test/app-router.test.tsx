@@ -185,15 +185,26 @@ describe("app router auth", () => {
   });
 
   it("renders the protected screen when already authenticated", async () => {
-    stubAuth(true);
-    renderApp("/guide");
-    expect(await screen.findByRole("heading", { name: "Guide" })).toBeInTheDocument();
-    // The shell owns one version query for every route; this proves the generated response reaches
-    // the persistent frame, not only the isolated AppShell story.
-    expect(await screen.findByRole("link", { name: "Loomarr dev — About" })).toHaveAttribute(
-      "href",
-      "/settings/system/about",
-    );
+    // The rail is hidden below `md`, and a window with no matchMedia reads as the narrowest width.
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      addEventListener: vi.fn(),
+      matches: true,
+      media: query,
+      removeEventListener: vi.fn(),
+    }));
+    try {
+      stubAuth(true);
+      renderApp("/guide");
+      expect(await screen.findByRole("heading", { name: "Guide" })).toBeInTheDocument();
+      // The shell owns one version query for every route; this proves the generated response reaches
+      // the persistent frame, not only the isolated AppShell story.
+      expect(await screen.findByRole("link", { name: "Loomarr dev — About" })).toHaveAttribute(
+        "href",
+        "/settings/system/about",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("signs an admin in and lands on Home", async () => {

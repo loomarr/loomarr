@@ -132,10 +132,23 @@ Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex abov
   renders under 11px, content stays at 12px or above, and new code takes its size from the
   `--text-*` scale rather than an arbitrary `text-[Npx]`.
 
+- **Display roles (#2147):** the app draws a few sizes once each, 2px or more from every role above,
+  and they are named roles at the size they have, not snapped onto the scale: `monogram` (a channel's
+  letters on its art, 30/36, 600, tracked 0.08em), `numeral` (the info header's channel number, 30/30),
+  `pairCode` (the code typed to pair a device, 32/42.67, tracked 0.3em), `microBadge` (a thumbnail's
+  timecode, 9/13.5), `footnote` (fine print, 11/16.5, muted), and the tuner's `stationName` (28/42, 600,
+  tracked 0.01em) and `stationTag` (17.36/26.04, 500, tracked 0.16em), which are fluid on the web:
+  `clamp(18px, 2.8vw, 28px)` and 0.62 of it. A role's letter spacing is in em (`roleLetterSpacing`), and
+  `Text`'s `leading="none"` sets a line height of 1 for a glyph whose box is its own height. `Design/Typography`
+  shows each at its real values.
+
 ### 2.3 Space, radius, elevation
 
 - 4px grid (`space-1`=4 … `space-8`=32). Density: comfortable default; tables use compact row height (40px).
-- Half steps off the grid, recorded at their own size because the app already uses them for tight spacing inside controls and chips: `0.5`=2, `1.5`=6, `1.75`=7, `2.5`=10. The design-system `Stack` takes any step as its `gap`, keyed as Tailwind keys it (`gap-1.5` → `gap="1.5"`), so a hand-rolled layout moves onto it without rounding. `rowGap` and `columnGap` take the same steps per axis (`gap-x-4 gap-y-1.5` → `columnGap="4" rowGap="1.5"`). `direction`, `align`, `justify` and the gaps also take `{ base, sm, md, lg }` at the app's Tailwind breakpoints (`breakpoints`: 640, 768, 1024), so `flex-col sm:flex-row` is `direction={{ base: "column", sm: "row" }}`; and `render="form"` types a form's own attributes (`noValidate`, `onSubmit`). Defined once in `spaceSteps` (`@loomarr/design-system` tokens); the web theme emits only the grid as `--spacing-N`.
+- Half steps off the grid, recorded at their own size because the app already uses them for tight spacing inside controls and chips: `0.5`=2, `1.5`=6, `1.75`=7, `2.5`=10. The design-system `Stack` takes any step as its `gap`, keyed as Tailwind keys it (`gap-1.5` → `gap="1.5"`), so a hand-rolled layout moves onto it without rounding. `rowGap` and `columnGap` take the same steps per axis (`gap-x-4 gap-y-1.5` → `columnGap="4" rowGap="1.5"`). `direction`, `align`, `justify` and the gaps also take `{ base, sm, md, lg }` at the app's Tailwind breakpoints (`breakpoints`: 640, 768, 1024), so `flex-col sm:flex-row` is `direction={{ base: "column", sm: "row" }}`; `hidden` takes the same object and draws `display: none` (out of the accessibility tree too), so `hidden md:flex` is `hidden={{ base: true, md: false }}` and `flex md:hidden` is `hidden={{ base: false, md: true }}`; and `render="form"` types a form's own attributes (`noValidate`, `onSubmit`). Defined once in `spaceSteps` (`@loomarr/design-system` tokens); the web theme emits only the grid as `--spacing-N`.
+- `Grid` is equal columns where `Stack` is one line: `columns` takes a count or `{ base, sm, md, lg }` (`grid-cols-1 sm:grid-cols-2` → `columns={{ base: 1, sm: 2 }}`), `gap`, `rowGap` and `columnGap` take the same steps as `Stack`, and a `GridItem` with `span` (a count, `"full"`, or the same breakpoint object) covers several columns (`sm:col-span-2` → `span={{ base: 1, sm: "full" }}`). On the web it is a CSS grid of `minmax(0, 1fr)` tracks, so `render="ul"` or `"dl"` keeps its structure; native lays the same cells out as rows of flex items. Columns of unequal width are a list of tracks, which can also change with the breakpoints: `grid-cols-[auto_1fr]` is `columns={["auto", "1fr"]}`, `md:grid-cols-[17rem_1fr]` is `columns={{ base: 1, md: ["17rem", "1fr"] }}`. A track is `auto`, a share (`1fr`, `1.5fr`), a fixed size (`110px`, `7rem`) or `minmax(…)`, drawn as written, so a bare `1fr` grows to fit wide content as Tailwind's does and `minmax(0,1fr)` does not. A `GridItem` takes `from` (a 1-based column, responsive) to start mid-row: `col-[2/-1]` is `from={2} span="full"`, and `sm:col-[2/-1]` over a one-column base is `from={{ base: 1, sm: 2 }}`. Native sizes each cell from its track; `from` is web only. A grid that switches to flex by container width (`@md:flex`) is not a Grid.
+- `Text` with `as` draws the Tamagui text-style props `textAlign`, `textDecorationLine`, `fontVariant`, `numberOfLines` (1 truncates with an ellipsis, N clamps to N lines), `overflowWrap`, `wordBreak` and `cursor` as inline style on its element, so `text-center`, `underline`, `tabular-nums`, `truncate` and `break-words` need no `className`.
+- ⚠ Whether a `Stack` shrinks as a flex item follows the Stack around it. In a **column** it does not (`flexShrink` 0, as in React Native): a Stack that shrank there collapsed below its content in a height-capped column (the import skeleton, the people roster header, filler sources, the settings cards and coverage all hit it). In a **row** it does (1), so a text cell wraps or truncates beside its neighbours (a truncating cell still wants `minWidth={0}`). A Stack with no Stack above it shrinks (1), as a `<div>` does. An explicit `flexShrink` always wins, so a `flexBasis="0%" flexGrow={1}` child of a column that must give way (a scrolling region, a `min-h-0 flex-1` section) sets `flexShrink={1}`. "Around it" is the nearest Stack above in the tree through a React context, however many elements sit between: a `<div>`, `Card` or `Surface` does not reset it, so a Stack inside a flex container that is not a Stack, under a Stack of the other direction, sets `flexShrink` itself. A responsive `direction` counts as the one in force at the current width, so `{ base: "column", sm: "row" }` makes its children's default 0 below `sm` and 1 from it.
 - Radius: `sm` 4 (inputs, badges) · `md` 8 (cards, buttons) · `lg` 12 (dialogs, hero surfaces).
 - Elevation in dark UIs is **borders first, shadows second**: surface + `static-700` hairline; one soft shadow token reserved for overlays (dialogs, popovers, ⌘K).
 - **Non-text contrast (WCAG 1.4.11):** the `static-700` hairline is 1.3–1.4:1 — fine for *decorative* dividers and card outlines (the surface fill does the identifying), but **no control may be identified by that hairline alone.** Controls get a fill difference + the focus ring; where a border is genuinely the boundary (e.g. an unfocused outline input), use **`border-control` `#666970`** — computed ≥3:1 on the page, on cards, and on the `static-800` muted/hover surface (3.04:1, the tightest).
@@ -151,6 +164,9 @@ Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex abov
   and 120ms opacity fades. Hover, focus and press change colour or border, never position or size:
   no scale, lift, nudge or bounce. `web/scripts/motion-rule.test.mjs` fails on a transform
   transition anywhere else; its allowlist names the tune, the sheets and the launch identity.
+  **One exception (maintainer, 2026-11-21):** a Library poster grows to 104% under the pointer
+  over 200ms, ease-out, so a household sees it opens. Pointer hover only: focus keeps the amber
+  ring, press changes nothing, and reduced motion drops the growth.
 - `prefers-reduced-motion` is honored globally (single CSS gate) and force-enabled in visual-test mode.
 - Signature moments (used sparingly): checklist items "lock in" (static→clear, 200ms) during onboarding; a channel card's `onair` dot fades in when its first reconcile completes.
 - Loading has four named jobs: compact inline activity, content skeleton, determinate progress, and
@@ -180,7 +196,7 @@ that disappears with the legacy Web consumers.
 ## 3. Legacy component library — three layers
 
 **Layer 0 — tokens** (§2).
-**Layer 1 — primitives:** the design system, `@loomarr/design-system` (`Action`, `Field`, `CompactSelect`, `Combobox`, `Dialog`, `Disclosure`, `InlineAction`, `Stack`, `Table`, `Text`, `Surface`…) with `@loomarr/ui` above it, shared with native and TV. The app's old shadcn copy-ins (`components/ui`) are gone (#2147 Wave 4); a missing primitive is built in the design system with its stories first, never re-added to the app. Its web adapters keep **Base UI** (`@base-ui/react`) underneath the dialog, menu, toggle and tooltip for focus management and a11y; the app itself never imports it. ⚠ Base UI's Tooltip is **visual-only by design** (no `role="tooltip"`, no `aria-describedby`), so a tooltip whose content is information rather than a restatement of the trigger's label must declare its own description — see `FieldHelp` and design §14.
+**Layer 1 — primitives:** the design system, `@loomarr/design-system` (`Action`, `Field`, `CompactSelect`, `Combobox`, `Details`, `Dialog`, `Disclosure`, `InlineAction`, `Grid`, `MediaTile`, `Stack`, `Table`, `Text`, `TextLink`, `Surface`…) with `@loomarr/ui` above it, shared with native and TV. The app's old shadcn copy-ins (`components/ui`) are gone (#2147 Wave 4); a missing primitive is built in the design system with its stories first, never re-added to the app. Its web adapters keep **Base UI** (`@base-ui/react`) underneath the dialog, menu, toggle and tooltip for focus management and a11y; the app itself never imports it. ⚠ Base UI's Tooltip is **visual-only by design** (no `role="tooltip"`, no `aria-describedby`), so a tooltip whose content is information rather than a restatement of the trigger's label must declare its own description — see `FieldHelp` and design §14.
 **Layer 2 — Loomarr components:** the actual product library, in `apps/web/src/components/loomarr/`. **Pages compose Layer-2 components; Tailwind utility soup is confined to Layers 1–2.** Every Layer-2 component: typed props (named variants, not ad-hoc class strings) from the orval client where applicable, a co-located Storybook story (§5) enumerating all states, and renders RFC 7807 errors through the shared `ErrorState`/field-error patterns — never raw JSON.
 
 ### Moving legacy text classes onto `Text`
@@ -212,6 +228,17 @@ Colour is the role's default unless the classes name another: `text-muted-foregr
 `uppercase tracking-wide` is `shout`. Classes that are not typography (`mt-2`, `truncate`, widths)
 stay on `className` until their own sweep.
 
+`web/scripts/codemods/tailwind-to-ds.mjs` makes these moves for the cases that need no judgement:
+`node scripts/codemods/tailwind-to-ds.mjs [--write] '<glob>'` from `web/` (a dry run without `--write`),
+then `biome check --write` over the changed files. It rewrites a `flex` container (`div`, `section`,
+`li`…) as a `Stack` with `direction`, `align`, `justify`, `gap`, padding, margin, `minWidth`,
+`minHeight`, `width`, `height` and the flex-item props; moves padding and margin classes off an
+existing `Stack`; and turns a plain text element with an exact row of the table above into a `Text`.
+It leaves a class with a state variant, an arbitrary value, `grid`, a `cn(…)` className, or an element
+with a handler. A `Stack`'s own props beat Tailwind (the base rule is unlayered), so an element is
+converted only when every class for `display`, direction, alignment, gap, `min-*` and flex-basis/shrink
+maps to a prop.
+
 ### Signature components (the vocabulary of the app)
 
 | Component | Purpose | States to register |
@@ -220,8 +247,6 @@ stay on `className` until their own sweep.
 | `PageHeader` | A page's single semantic title, optional explanatory copy, and optional page-level actions/status. Owns the page-edge gutter, divider, and responsive action stacking. | title only · title + description · with actions |
 | `StateBadge` | Provisioning lifecycle chip (mono) | wanted · requested · downloading · available · unavailable · drift |
 | `OnAirIndicator` | The red dot with a pulse (pulse ≤ reduced-motion) | off · live · reconciling |
-| `ChannelCard` | Channel health at a glance: number (mono), name, now/next, managed badge | healthy · pending-slots · drift · error · creating |
-| `NowNextStrip` | "Now: X · Next: Y" line for a channel | playing · flex/pod gap · empty |
 | `IntentInput` | The hero — NL intent with `suggest` magenta focus ring + template chips | empty · focused · template-filled · submitting |
 | `GenerationProgress` | SSE-driven suggester steps | searching · reasoning · scoring · done · failed |
 | `ProposalReview` | Lineup + acquisitions with rationale, confidence, alternates; edit-via-search | draft · submitted · approved · denied · partially-edited |
@@ -390,7 +415,7 @@ These suites join **phase 13's gate** in the main doc's build plan.
 - Voice: warm broadcast metaphor without cosplay. "Let's get you on the air." Checklist items *lock in* (`lock` green) as each signal is acquired; the webhook handshake shows a live "listening…" state that flips on receipt.
 - **Failures never blame.** Every red check = plain-language cause + the exact fix + a deep link into the embedded docs (backend contract, main doc §13). No stack traces in the wizard, ever.
 - Resume-safe: the wizard reflects `GET /v1/setup/status` truth, so a browser refresh loses nothing.
-- The finale is the payoff: the guided first channel ends with its `ChannelCard` flipping to **ON AIR** — the product's promise, demonstrated in the first ten minutes.
+- The finale is the payoff: the guided first channel ends with its channel flipping to **ON AIR** — the product's promise, demonstrated in the first ten minutes.
 
 ### Config that makes sense
 - Settings opens on a searchable task home. Ordinary destinations are grouped by setup, access and
@@ -585,8 +610,7 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
      title, always typed, and its episode line. On desktop the row ends with `n min left`. In a break,
      the title of the programme that comes back and `Back in n min` in the break colour. When the row
      is tight the episode line gives way first, then the title; the text column is
-     `minmax(0, 1fr)`, so a long name never pushes out of the band. A phone held upright lets the
-     title take two lines.
+     `minmax(0, 1fr)`, so a long name never pushes out of the band.
   3. **Desktop and television: the film strip** is the band's foot, the full width of the band, under
      the channel block too. It is the timeline of the programme on air and what follows: each
      programme's still (its fanart, or a drawn stand-in), breaks spot by spot, a white playhead and,
@@ -596,10 +620,17 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
      opens that block's **preview card**, 12 px clear of the band: the fanart, with the title's logo on
      it when there is one (sized by area, over a flat ink wash), the name, `Starts`/`Until` and the
      time, the facts (episode, rating, genres) and two lines of synopsis.
-  4. **Phones: the progress line and Next.** One white line over the programme's own time slot on a
-     faint track, start and stop clocks at its ends (behind live, a red tick marks live). Then **Next**
-     in the same gutter, the start time in mono and the next programme's name. Behind live on a
-     landscape phone, `n min behind` ends this row. The phone's film strip is in More.
+  4. **Without a strip: the progress line and Next.** One white line over the programme's own time
+     slot on a faint track, start and stop clocks at its ends (behind live, a red tick marks live).
+     Then **Next** in the same gutter, the start time in mono and the next programme's name.
+- **A phone's band is one row** (#4132, maintainer, 2026-11-14, option B): the full band arriving on
+  every tune overwhelmed a phone's screen. Held either way, beside the 56 px block: the title (strong,
+  one line) over `Channel · n min left` (secondary). In a break the second line is `Back in n min` in
+  the break colour; with nothing scheduled the channel's name is the first line and "Nothing
+  scheduled" the second. No Live mark, clock, episode line, progress line or Next: being live is what a
+  channel is, so only **Go live**, at the row's right end, appears, and only when behind. The episode,
+  the slot's times and what follows are in Info, and the film strip in More. The station-ID card keeps
+  the fuller band.
 - **Titles are typed, never a logo, in the band** (maintainer, 2026-11-09, reversing the band half of
   #2773): a logo brings its own colours beside the channel block, its detail turns to fuss at band size,
   it breaks the baseline the row shares, and only some titles have one. Logos go where they have room
@@ -643,6 +674,19 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
 - **Upright phone.** Nothing covers the picture. The utilities and Leave are a toolbar under the
   Dynamic Island, in the black above the picture: the back arrow and rating on the left, the utilities
   on the right. The band and keys are in the black below the picture, always shown.
+- **Casting (iPhone).** While the picture plays on an AirPlay video receiver, the AirPlay key's glyph
+  takes the signal amber, as an active tool's does, and a **casting card** fills the picture area: the
+  centred 16:9 strip on an upright phone, the whole screen on its side with its content lifted clear of
+  the band. The card sits on the chrome's canvas surface, which covers the black video layer, and
+  reads at full strength (no scrim over it). In a centred column it holds the AirPlay glyph (28 px,
+  `textSecondary`), **Playing on** the receiver (**your TV** until the player can read its name),
+  *Your phone is the remote*, and a 44 px **Disconnect** button drawn like the unmute pill. Disconnect
+  opens the system's route list with the phone in it: like the AirPlay key it only draws its face, and
+  Apple's route picker lies clear over it and takes the tap, because iOS gives an app no call to leave
+  an AirPlay route; choosing "iPhone" there brings the picture back. The reason: the picture is on
+  the TV, so the phone's picture area says where it went and gives the way back. The band, the channel keys, Pause and More keep working,
+  so the phone stays the TV's remote, and the watermark's clearance is unchanged. Android and the web
+  never show it. (Maintainer, 2026-11-14, #4131.)
 - **Television.** Four keys only, **Last channel, Subtitles, Audio, More** (56 px), with no utilities
   row: Channel up and down, Play/Pause, Volume and Back are the remote's own buttons, and there is no
   fullscreen. With six keys the band was squeezed until the title read "F.". While flipping channels
@@ -728,9 +772,9 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
 
 | | Desktop (pointer) | Phone on its side | Phone upright | Television (remote) |
 | --- | --- | --- | --- | --- |
-| Band | Film strip as its foot; preview card on pointing | Progress line and Next | Progress line and Next; title may take two lines; below the picture, always shown | Film strip; preview card on focus |
+| Band | Film strip as its foot; preview card on pointing | One row: title over channel and minutes left | The same one row, below the picture, always shown | Film strip; preview card on focus |
 | Keys | Last, Channel down, Play, Channel up, Volume, More (56 px) | The same without Volume (48 px) | The same, centred below the band | Last, Subtitles, Audio, More (56 px) |
-| Utilities | Subtitles, Audio, Fullscreen, over the keys | Subtitles, Audio, AirPlay, Picture in picture (iPhone), over the keys | The same, a toolbar above the picture | None: the remote's buttons |
+| Utilities | Subtitles, Audio, Fullscreen, over the keys | Subtitles, Audio, AirPlay (amber while casting), Picture in picture (iPhone), over the keys | The same, a toolbar above the picture | None: the remote's buttons |
 | Leave | Back arrow, top left | Back arrow, top left | Back arrow, toolbar left | Back |
 | Opens as | Cluster menu | Right-hand sheet | Bottom sheet | Cluster menu |
 

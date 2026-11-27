@@ -28,4 +28,7 @@ func (spanTools) KeyframesIn(context.Context, string, int64, int64, int) ([][]by
 func (spanTools) VisionKeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
 	return nil, nil
 }
+func (spanTools) FrameHintsIn(context.Context, string, int64, int64, int) (tools.FrameHint, error) {
+	return tools.FrameHint{}, nil
+}
 func (spanTools) Cut(context.Context, string, int64, int64, string) error { return nil }

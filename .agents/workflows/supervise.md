@@ -10,11 +10,9 @@ or clearly separated implementation seams and return evidence to the supervisor.
 
 **Input:** one goal with acceptance criteria. Optional: named workstreams or a maximum worker count.
 
-Apply the [parent/child contract](../../AGENTS.md#parent-and-child-agents): non-trivial work needs
-a useful bounded child assignment. Choose it before broad exploration; delegate independent work
-that reduces elapsed time, isolates noisy context, or supplies a fresh review. Record a concrete
-solo-work exception when delegation would only duplicate work or when the required controls are
-unavailable. Keep sequential reasoning and edits to the same mutable seam with one writer.
+Apply the [delegation rule](../../AGENTS.md#delegation): delegate independent, bounded work that
+reduces elapsed time, isolates noisy context, or supplies a fresh review. Keep sequential reasoning
+and edits to the same mutable seam with one writer.
 
 ## Establish the owner
 
@@ -24,7 +22,8 @@ One registered task worktree is the delivery owner. From that worktree:
 2. Run `make agent-status`; reconcile active tasks, claims, dependencies, and worktrees.
 3. Confirm that the owner holds every scarce-output claim needed for integration.
 4. State the acceptance evidence and stop points before delegating.
-5. Record the child assignment and its independent seam, or the concrete solo-work exception.
+5. Record each child assignment and its independent seam, or the reason the work stays with one
+   agent.
 
 A product's native agent panel shows only its own agent tree. `make agent-status` is the
 cross-harness roster, but it does not expose another session's conversation or reasoning. Report
@@ -63,25 +62,45 @@ control when its brief is complete and does not choose its own next task. The su
 stop it or issue a new brief with a different role. This rotation keeps specialized context bounded
 without creating long-lived ownership silos.
 
-At each assignment boundary, apply the canonical
-[task-based model routing](../../AGENTS.md#task-based-model-routing) policy. Keep Luna-first mechanical
-evidence collection; do not infer Astra from a supervisor role, review label, or available pane.
-Select model and reasoning independently, record the expected benefit and required justification,
-and verify support and effective settings in the actual harness. Repair brief, evidence, or
-permission defects as workflow issues before considering a capability escalation.
+## Route each assignment
 
-Record model, reasoning, rationale, authority, output, native budget, cutoff, and report reserve in
-the brief. Escalation checkpoints the specific unresolved question or failed acceptance, preserves
-useful evidence, and starts a fresh bounded assignment; never silently upgrade an active worker or
-repeat the whole scan. Compare speed or cost only among runs that satisfy the same acceptance
-criteria. Budget ceilings are limits, not targets. Routing never changes ownership, safety controls,
-or acceptance gates.
+Choose the least expensive model clearly capable of meeting the assignment's acceptance criteria.
+Use Luna at Low reasoning by default for straightforward evidence collection: exact SHA/status and
+PR/issue collection, bounded inventories, artifact existence/hash/size checks, documented-command
+reproduction, and mechanical comparison against explicit acceptance criteria. Use Terra at Medium
+for ordinary implementation, multi-file behaviour analysis, and investigations requiring synthesis.
+Use Sol only for complex integration or high-risk or ambiguous contract reasoning, with a written
+reason. Use Astra for the hardest cross-system architectural decisions, difficult competing evidence,
+or a specific capability gap beyond Sol; record the expected benefit and risk justification. A
+supervisor role, review label, or available pane does not justify Astra. A clearly demanding task may
+start at the justified model without wasteful trial runs through every smaller model.
 
-Record the selection and rationale in the brief. Model choice never changes scope, authority, claims,
-tools, stop points, or acceptance. Do not switch a model or reasoning setting during an active
-checkpoint; change it only with the next bounded assignment after the worker has returned control.
-For an external session whose model cannot be controlled or verified, record `uncontrolled` instead
-of guessing.
+Luna, Terra, Sol, and Astra are Codex tiers.
+[Select a model for the task](../../docs/agents/harness.md#select-a-model-for-the-task) maps each
+tier to its Claude Code model and to the Orca flags and launcher that select it.
+
+Select reasoning independently of model capability: Low for mechanical checklists, Medium for
+ordinary implementation or analysis, and High for difficult ambiguity or demanding integration with
+a written quality need. Use xhigh or max only for exceptional bounded problems with an explicit
+expected benefit and budget justification. Use only levels supported by the selected model and
+actual harness; verify effective settings and record `uncontrolled` when they cannot be verified.
+
+A read-only assignment is not automatically a Terra assignment: first determine whether an
+explicit evidence checklist makes Luna sufficient. Higher-tier evidence collection needs a concrete
+synthesis, ambiguity, or risk justification. Repair inadequate briefs, missing evidence, and sandbox
+or permission failures as workflow problems, not automatic model or reasoning upgrades. Escalate
+only a specific unresolved quality or capability gap, rather than using higher effort to compensate
+for missing authority or inputs. Escalation checkpoints the specific unresolved question or failed
+acceptance, preserves useful evidence, and starts a fresh bounded assignment; it never silently
+switches an active worker or repeats the whole scan.
+
+Record the selected model, reasoning, rationale, authority, output, native budget, cutoff, and
+report reserve in the brief, and verify the launched settings. Change model or reasoning only with
+the next bounded assignment, after the worker has returned control. For an external session whose
+model cannot be controlled or verified, record `uncontrolled` instead of guessing. Compare speed or
+cost only among runs that satisfy the same acceptance criteria. Budget ceilings are limits, not
+targets. Routing never changes scope, authority, claims, tools, stop points, one-writer ownership,
+safety controls, or acceptance gates.
 
 ## Review a PR backlog concurrently
 
@@ -209,7 +228,7 @@ session total to an individual worker.
 
 Use the current harness's delegation facility. When it supports agent trees, spawn workers under the
 supervisor so it can inspect, steer, wait, and collect their results. In Orca, also nest each worker's
-worktree under the supervisor's and keep a background inbox waiter armed
+worktree under the supervisor's and let Orca wake the supervisor with each report
 ([Supervise Orca workers](../../docs/agents/harness.md#supervise-orca-workers)). For an independent external
 session, provide the brief through the available channel and treat its registry, branch, worktree,
 commits, and reports as observable evidence rather than assuming live steering.
@@ -286,8 +305,9 @@ Keep the main context on decisions and evidence. Do not copy raw exploration log
    restart accepted work.
 6. Escalate a blocked dependency, contract deviation, authorization change, or overlapping claim.
 7. Wait when no supervisor decision is needed; avoid polling agents merely to produce activity.
-   Waiting means a blocking wait on the harness's report channel. Do not end a turn on the
-   assumption that a nudge will arrive: a report that sits unread leaves lanes idle.
+   Waiting uses the harness's report channel, because a report that sits unread leaves lanes idle.
+   In Orca, end the turn and Orca wakes the supervisor with each report. In a harness without
+   wake-ups, hold a blocking wait on its report channel.
 
 Use the verified harness steering/interrupt control. Distinguish queued follow-up from current-turn
 steering, and require acknowledgement before treating a changed brief as active. Do not blindly send

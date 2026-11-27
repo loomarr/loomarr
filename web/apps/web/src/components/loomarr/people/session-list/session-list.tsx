@@ -87,14 +87,17 @@ const SessionList = ({
           ) : (
             <Stack
               align="center"
-              className="border-static-800 rounded-md border px-3 py-2"
+              borderRadius={8}
+              className="border-static-800 border"
               direction="row"
               gap="control"
               justify="between"
               key={s.id}
+              paddingHorizontal={12}
+              paddingVertical={8}
               render="li"
             >
-              <div className="min-w-0">
+              <Stack flexShrink={1} minWidth={0}>
                 <Stack align="center" direction="row" gap="inline" render="p">
                   <Text as="span" textRole="compact">
                     {`Signed in ${formatRelative(s.createdAt, now)}`}
@@ -106,7 +109,7 @@ const SessionList = ({
                   textRole="hint"
                   tone="secondary"
                 >{`Expires ${formatUntil(s.expiresAt, now)}`}</Text>
-              </div>
+              </Stack>
               <Action
                 disabled={revoking === s.id}
                 icon={revoking === s.id ? "loading" : undefined}

@@ -1,7 +1,20 @@
 {
   "$schema": "https://turborepo.com/schema.json",
+  "remoteCache": {
+    "signature": true
+  },
+  "globalDependencies": [
+    "tsconfig.base.json",
+    "vitest.universal.config.ts",
+    "react-native-svg-sound-module.web.js",
+    "packages/api/generated/**",
+    "packages/api/endpoint-*.ts",
+    "packages/api/model-*.ts",
+    "packages/api/zod-*.ts"
+  ],
   "tasks": {
     "doctor": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/packages/design-system/native-fonts.json"],
       "outputs": []
     },
     "typecheck": {
@@ -9,12 +22,13 @@
       "outputs": []
     },
     "test": {
-      "dependsOn": ["typecheck", "^test"],
+      "dependsOn": ["typecheck"],
       "env": ["JAVA_HOME"],
       "outputs": []
     },
     "bundle": {
       "dependsOn": ["typecheck", "^typecheck"],
+      "passThroughEnv": ["TMPDIR"],
       "outputs": ["dist/**"]
     },
     "client-proof": {

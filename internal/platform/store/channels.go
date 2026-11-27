@@ -5,26 +5,16 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
-// Channels live in internal/platform/store/channelstore. Their row type, codecs and sentinel errors are
+// Channels live in internal/platform/store/channelstore. Their row type and conflict error are
 // re-exported here by alias, for the store's own contract.
 type (
 	// Channel is the persisted form of a scheduler channel (channelstore.Channel).
 	Channel = channelstore.Channel
 )
 
-// The two legal channel broadcast codecs (channelstore).
-const (
-	BroadcastCodecH264 = channelstore.BroadcastCodecH264
-	BroadcastCodecHEVC = channelstore.BroadcastCodecHEVC
-)
-
 // ErrChannelConflict reports that a channel write lost a uniqueness race. It is
 // channelstore.ErrChannelConflict, the same value under a second name.
 var ErrChannelConflict = channelstore.ErrChannelConflict
-
-// ErrChannelStale reports that a channel mutation was planned from an older revision. It is
-// channelstore.ErrChannelStale, the same value under a second name.
-var ErrChannelStale = channelstore.ErrChannelStale
 
 // channelCluster names the embedded channel store; see identityCluster for why an alias.
 type channelCluster = channelstore.Store

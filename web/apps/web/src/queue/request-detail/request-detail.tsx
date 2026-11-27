@@ -40,13 +40,8 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const query = proposalJobsApi.useGetProposalJob(jobId, {
-    query: {
-      // A generating request streams its progress; the SSE frame refetches sooner, this is the floor.
-      refetchInterval: (q) =>
-        q.state.data?.status === 200 && q.state.data.data.milestone === "generating" ? 2_000 : false,
-    },
-  });
+  // A generating request follows its suggestion frames: the bus refetches /v1/proposal-jobs on each.
+  const query = proposalJobsApi.useGetProposalJob(jobId);
   const { titles } = useRequests();
   const retryTitle = titlesApi.useEnqueueTitle({
     mutation: {
@@ -96,7 +91,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
   const approvedAt = when(proposal?.approvedAt);
 
   return (
-    <Stack className="h-full">
+    <Stack height="100%">
       <PageHeader
         title={journey.intent.description}
         description={`Requested ${when(journey.createdAt)}`}
@@ -126,7 +121,16 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
           </>
         }
       />
-      <Stack className="max-w-reading mx-auto w-full overflow-auto p-6" flexBasis="0%" flexGrow={1} gap="6">
+      <Stack
+        className="max-w-reading overflow-auto"
+        flexBasis="0%"
+        flexGrow={1}
+        flexShrink={1}
+        gap="6"
+        marginHorizontal="auto"
+        padding={24}
+        width="100%"
+      >
         <Stack align="center" direction="row" gap="inline" wrap>
           <Badge shape="square" tone={status.tone}>
             {status.line}
@@ -251,7 +255,9 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
                   align="center"
                   // biome-ignore lint/suspicious/noArrayIndexKey: a title can repeat within a proposal
                   key={`${index}:${item.mediaType}:${item.tmdbId ?? item.name}`}
-                  className="border-border bg-card rounded-md border px-3 py-2.5"
+                  paddingHorizontal={12}
+                  paddingVertical={10}
+                  className="border-border bg-card rounded-md border"
                   direction="row"
                   gap="control"
                   render="li"

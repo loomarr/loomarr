@@ -55,7 +55,9 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
     await refresh();
   };
 
-  const { item, match } = body;
+  // match, files, detailsFrom and the counts are admin-only; this page reads as an admin's.
+  const { item } = body;
+  const match = body.match ?? { by: "none" as const };
   const page = match.page;
   return (
     <LibraryTitle
@@ -80,15 +82,15 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
         genres: body.genres,
         rating: body.rating,
         runtimeMillis: body.runtimeMillis,
-        files: body.files,
-        unplayable: item.unplayable,
+        files: body.files ?? [],
+        unplayable: item.unplayable ?? 0,
         seasons: body.seasons,
         match: { by: match.by, app: match.app ? APP_NAMES[match.app] : undefined },
         channels: body.channels,
         detailsFrom: {
-          description: sourceName(body.detailsFrom.description),
-          rating: sourceName(body.detailsFrom.rating),
-          episodeNames: sourceName(body.detailsFrom.episodeNames),
+          description: sourceName(body.detailsFrom?.description),
+          rating: sourceName(body.detailsFrom?.rating),
+          episodeNames: sourceName(body.detailsFrom?.episodeNames),
         },
       }}
     />

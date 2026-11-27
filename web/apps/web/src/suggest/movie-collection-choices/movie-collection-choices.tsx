@@ -55,9 +55,12 @@ const MovieCollectionChoices = ({
   if (actionableCollections.length === 0) {
     return loading ? (
       <div role="status">
-        <Text as="p" className="inline-flex items-center gap-2" textRole="compact" tone="secondary">
-          <LoadingStrip decorative width={32} /> Checking for movie collections…
-        </Text>
+        <Stack align="center" direction="row" gap="2" render="p">
+          <LoadingStrip decorative width={32} />
+          <Text as="span" textRole="compact" tone="secondary">
+            Checking for movie collections…
+          </Text>
+        </Stack>
       </div>
     ) : null;
   }
@@ -65,17 +68,22 @@ const MovieCollectionChoices = ({
   return (
     <Stack
       aria-label="Movie collections"
-      className="border-border rounded-md border p-3"
+      borderColor="borderDecorative"
+      borderRadius={8}
+      borderWidth={1}
       gap="inline"
+      padding={12}
       render="section"
     >
       <div>
         <Text as="h3" textRole="cardLabel">
           Complete a collection
         </Text>
-        <Text as="p" className="mt-0.5" textRole="hint" tone="secondary">
-          Keep the films together, or choose just the ones you want.
-        </Text>
+        <Stack marginTop={2}>
+          <Text as="p" textRole="hint" tone="secondary">
+            Keep the films together, or choose just the ones you want.
+          </Text>
+        </Stack>
       </div>
 
       {incomplete && (
@@ -94,8 +102,8 @@ const MovieCollectionChoices = ({
         return (
           <div key={collection.tmdbId} className="bg-static-900/50 rounded-md px-3 py-2.5">
             <Stack align="center" direction="row" gap="inline" justify="between" wrap>
-              <div className="min-w-0">
-                <Text as="p" className="truncate" textRole="cardLabel">
+              <Stack flexShrink={1} minWidth={0}>
+                <Text as="p" numberOfLines={1} textRole="cardLabel">
                   {collection.name}
                 </Text>
                 <Stack align="center" columnGap="2" direction="row" marginTop={4} rowGap="1" wrap>
@@ -109,7 +117,7 @@ const MovieCollectionChoices = ({
                     {libraryCount} in your library
                   </Text>
                 </Stack>
-              </div>
+              </Stack>
               {editable && (
                 <Action
                   accessibilityLabel={`Add all films from ${collection.name}`}
@@ -124,38 +132,40 @@ const MovieCollectionChoices = ({
             </Stack>
 
             <ChooseFilms collectionName={collection.name}>
-              <ul className="divide-border border-border divide-y border-t">
-                {members.map((member) => {
+              <Stack borderColor="borderDecorative" borderTopWidth={1} render="ul">
+                {members.map((member, index) => {
                   const key = provisionKey(member);
                   const selected = selectedKeys.has(key);
                   return (
                     <Stack
                       align="center"
-                      className="py-2.5"
+                      borderColor="borderDecorative"
+                      borderTopWidth={index === 0 ? 0 : 1}
                       direction="row"
                       gap="control"
                       key={key}
+                      paddingVertical={10}
                       render="li"
                     >
-                      <div className="min-w-0 flex-1">
-                        <Text as="p" className="truncate" textRole="compact">
+                      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+                        <Text as="p" numberOfLines={1} textRole="compact">
                           {member.name}
                         </Text>
-                        <Text as="p" className="mt-0.5" textRole="hint" tone="secondary">
-                          {[member.year, member.inLibrary ? "In your library" : "Not in your library"]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </Text>
-                      </div>
+                        <Stack marginTop={2}>
+                          <Text as="p" textRole="hint" tone="secondary">
+                            {[member.year, member.inLibrary ? "In your library" : "Not in your library"]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </Text>
+                        </Stack>
+                      </Stack>
                       {selected ? (
-                        <Text
-                          as="span"
-                          className="inline-flex items-center gap-1"
-                          textRole="hint"
-                          tone="secondary"
-                        >
-                          <Icon decorative glyph={icons.selected} size="compact" tone="inherit" /> Selected
-                        </Text>
+                        <Stack align="center" direction="row" gap="1" render="span">
+                          <Icon decorative glyph={icons.selected} size="compact" tone="secondary" />
+                          <Text as="span" textRole="hint" tone="secondary">
+                            Selected
+                          </Text>
+                        </Stack>
                       ) : (
                         editable && (
                           <Action
@@ -172,7 +182,7 @@ const MovieCollectionChoices = ({
                     </Stack>
                   );
                 })}
-              </ul>
+              </Stack>
             </ChooseFilms>
           </div>
         );

@@ -91,6 +91,7 @@ const stubSources = () => {
         scheduled: 0,
         inProgress: 0,
         needsDecision: 0,
+        awaitingSplit: 0,
         recoverable: 0,
         ready: 0,
         complete: 0,
@@ -320,6 +321,7 @@ describe("SourcesPanel", () => {
           scheduled: 0,
           inProgress: 0,
           needsDecision: 0,
+          awaitingSplit: 0,
           recoverable: 0,
           ready: 12,
           complete: 0,
@@ -334,8 +336,8 @@ describe("SourcesPanel", () => {
 
     const storage = await screen.findByRole("region", { name: "Storage" });
     expect(storage).toHaveTextContent("512.0 MB is left for new filler");
-    // #2737: a nearly full allowance is a warning with a way out, not plain body text.
-    expect(storage.className).toContain("border-caution");
+    // #2737: a nearly full allowance is a warning with a way out, not plain body text. The frame is
+    // the DS caution Card; its tint is the design system's own, so the way out is what is asserted.
     expect(within(storage).getByRole("link", { name: "Raise allowance" })).toHaveAttribute(
       "href",
       "/filler/settings/storage",
@@ -368,6 +370,7 @@ describe("SourcesPanel", () => {
           scheduled: 0,
           inProgress: 0,
           needsDecision: 0,
+          awaitingSplit: 0,
           recoverable: 0,
           ready: 12,
           complete: 0,

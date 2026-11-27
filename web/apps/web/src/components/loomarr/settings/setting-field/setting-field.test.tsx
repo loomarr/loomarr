@@ -66,11 +66,11 @@ describe("SettingField", () => {
   // unpositioned button, so without a positioned field it lands against the page, below the
   // viewport, and stretches the document so scroll chains out of main (#2724).
   it("anchors the info icon's visually hidden detail to the field", () => {
-    const { container } = render(
+    render(
       <SettingField entry={entry({ detail: "For example http://emby:8096." })} value="" onChange={vi.fn()} />,
     );
     const detail = screen.getByText("For example http://emby:8096.", { selector: ".sr-only" });
-    const field = container.querySelector(".group");
+    const field = detail.closest(".relative");
     expect(field).toHaveClass("relative");
     expect(field).toContainElement(detail);
   });
@@ -517,7 +517,9 @@ describe("SettingField", () => {
         onEnvOverride={onEnvOverride}
       />,
     );
-    await userEvent.click(screen.getByRole("button", { name: /hand library url back to LIBRARY_URL/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /^overriding LIBRARY_URL: hand library url back/i }),
+    );
     // false, not true: a toggle that always claimed would make the control one-way.
     expect(onEnvOverride).toHaveBeenCalledWith(false);
   });
@@ -660,6 +662,32 @@ describe("SettingField", () => {
         />,
       );
       expect(screen.getByText("Changed by you, 9 days ago")).toBeInTheDocument();
+    });
+
+    // The line is in the tree at rest (a screen reader reads it, Tab order is unchanged) and only
+    // drawn while the field is hovered or holds focus.
+    it("is drawn on hover or focus of the field and not at rest", () => {
+      render(
+        <SettingField
+          entry={entry({ updatedBy: "Sam", updatedAt: nineDaysAgo })}
+          value="http://x"
+          onChange={vi.fn()}
+        />,
+      );
+      const line = screen.getByText("Changed by Sam, 9 days ago");
+      const field = screen.getByRole("textbox");
+      const drawn = () => getComputedStyle(line.closest("p") as HTMLElement).opacity;
+      expect(drawn()).toBe("0");
+
+      fireEvent.mouseEnter(line.closest(".relative") as HTMLElement);
+      expect(drawn()).toBe("1");
+      fireEvent.mouseLeave(line.closest(".relative") as HTMLElement);
+      expect(drawn()).toBe("0");
+
+      fireEvent.focus(field);
+      expect(drawn()).toBe("1");
+      fireEvent.blur(field, { relatedTarget: null });
+      expect(drawn()).toBe("0");
     });
 
     it("leaves an unknown author unnamed", () => {

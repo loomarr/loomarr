@@ -66,15 +66,22 @@ func TestRepositoryAppleCachePublisherAndConsumersAreTrustBounded(t *testing.T) 
 	publisherPath := filepath.Join(root, ".github", "workflows", "apple-compilation-cache.yml")
 	publisher := readWorkflowFixture(t, publisherPath)
 	on := mappingValueMust(t, publisher, "on")
-	if _, ok := mappingValue(on, "workflow_dispatch"); !ok || len(on.Content) != 2 {
-		t.Fatal("Apple cache publisher must expose only workflow_dispatch")
+	_, dispatch := mappingValue(on, "workflow_dispatch")
+	_, schedule := mappingValue(on, "schedule")
+	if !dispatch || !schedule || len(on.Content) != 4 {
+		t.Fatal("Apple cache publisher must expose only workflow_dispatch and its schedule")
 	}
 	permissions := mappingValueMust(t, publisher, "permissions")
 	if yamlScalar(t, permissions, "actions") != "write" || yamlScalar(t, permissions, "contents") != "read" {
 		t.Fatal("Apple cache publisher permissions must be actions:write and contents:read")
 	}
-	publish := mappingValueMust(t, mappingValueMust(t, publisher, "jobs"), "publish")
-	if got := yamlScalar(t, publish, "if"); got != "github.ref == 'refs/heads/main'" {
+	jobs := mappingValueMust(t, publisher, "jobs")
+	if got := yamlScalar(t, mappingValueMust(t, jobs, "plan"), "if"); got != "github.ref == 'refs/heads/main'" {
+		t.Fatalf("Apple cache publisher plan main guard = %q", got)
+	}
+	publish := mappingValueMust(t, jobs, "publish")
+	// The schedule builds only when the fingerprint has no generation; a manual run always builds.
+	if got := yamlScalar(t, publish, "if"); got != "github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || needs.plan.outputs.generation == '')" {
 		t.Fatalf("Apple cache publisher main guard = %q", got)
 	}
 	publishSteps := mappingValueMust(t, publish, "steps").Content
