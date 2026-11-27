@@ -369,6 +369,8 @@ const SettingField = ({
     <Grid
       {...reveal.rowProps}
       align={inlineSwitch ? "center" : "stretch"}
+      // Rows stay packed at the top: a field beside a taller one is stretched to its height.
+      alignContent="flex-start"
       className={className}
       columnGap="4"
       columns={inlineSwitch ? ["minmax(0,1fr)", "auto"] : 1}

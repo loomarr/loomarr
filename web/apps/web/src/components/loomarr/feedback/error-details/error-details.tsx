@@ -19,7 +19,6 @@ const ErrorDetails = ({ message, showLabel, hideLabel }: ErrorDetailsProps) => {
   if (!message) return null;
   return (
     <Details
-      marker={false}
       summary={(open) => (open ? (hideLabel ?? "Hide error") : (showLabel ?? "Show error"))}
       textRole="hint"
       tone="danger"
