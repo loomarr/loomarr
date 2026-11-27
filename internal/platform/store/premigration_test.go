@@ -9,11 +9,11 @@ import (
 )
 
 // olderSchema makes a SQLite database at path whose schema stops one migration short of this
-// build's, as an install on the previous release has it.
+// build's, as an install on the previous release has it. It is a copy of the migration ladder's
+// file at that version, opened with the store's own settings.
 func olderSchema(t *testing.T, path string) int64 {
 	t.Helper()
-	ctx := context.Background()
-	db, err := sql.Open("sqlite", sqliteDSN(path))
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "versions.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,11 @@ func olderSchema(t *testing.T, path string) int64 {
 	}
 	sources := p.ListSources()
 	older := sources[len(sources)-2].Version
-	if _, err := p.UpTo(ctx, older); err != nil {
+	file, err := os.ReadFile(sqliteFileAt(t, older, storeConnections))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, file, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return older
@@ -47,6 +51,7 @@ func schemaVersion(t *testing.T, path string) int64 {
 // An upgrade keeps a checked copy of the database as it was before the migrations ran, beside it,
 // so going back is putting that file back and starting the previous release.
 func TestAnUpgradeKeepsTheDatabaseAsItWasBeforeMigrating(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "loomarr.db")
 	older := olderSchema(t, path)
@@ -74,6 +79,7 @@ func TestAnUpgradeKeepsTheDatabaseAsItWasBeforeMigrating(t *testing.T) {
 
 // A new install and a restart with nothing to migrate take no snapshot.
 func TestNothingToMigrateTakesNoSnapshot(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "loomarr.db")
 	for range 2 { // a fresh install, then a plain restart
@@ -91,6 +97,7 @@ func TestNothingToMigrateTakesNoSnapshot(t *testing.T) {
 // When the copy cannot be made, the migration does not run: the database stays at the version
 // the previous release can still open.
 func TestAnUpgradeThatCannotKeepACopyDoesNotMigrate(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "loomarr.db")
 	older := olderSchema(t, path)
@@ -109,6 +116,7 @@ func TestAnUpgradeThatCannotKeepACopyDoesNotMigrate(t *testing.T) {
 
 // Only the newest few snapshots are kept, and nothing else in the directory is touched.
 func TestOldSnapshotsArePrunedAndOtherFilesKept(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	snapDir := filepath.Join(dir, "backups", "pre-migration")
 	if err := os.MkdirAll(snapDir, 0o750); err != nil {

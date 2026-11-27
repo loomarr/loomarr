@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -16,7 +15,8 @@ import (
 // axis by axis, an empty axis becomes [era], an axis the era misses becomes [era], and the any-era
 // range is dropped.
 func TestFoldScopeEraMigration(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "fold-scope-era.db"))
+	t.Parallel()
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 245, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

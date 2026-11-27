@@ -11,6 +11,7 @@ import (
 // The committed database reference must be what the migrations and the descriptions produce, so a
 // migration that adds a column fails here until someone says, in plain words, what it holds (#2446).
 func TestSchemaReference_DescribesEveryTableAndColumnAndIsCommitted(t *testing.T) {
+	t.Parallel()
 	generated, err := SchemaReference(context.Background(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
