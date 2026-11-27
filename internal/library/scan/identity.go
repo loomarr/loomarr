@@ -2,6 +2,7 @@ package scan
 
 import (
 	"path"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -182,6 +183,45 @@ func atoi(s string) int {
 // Which show an episode is, is seriesFolderOf's; what is no title at all (extras, samples, a
 // NAS's folders) the walk decides before this (walk.go's skippedDir, extras.go's extraName); a movie's or
 // show's search words and year are searchQuery's (match.go).
+// namedKey is all embeddedRecord reads of a file its folder's videos say nothing of together.
+type namedKey struct {
+	rel  string
+	part int
+	sole bool
+}
+
+type namedRecord struct {
+	record    mp.Record
+	seriesDir string
+}
+
+// namedOnce is embeddedRecord, answered once per file name for as long as the name stands. A file
+// a pass knows only from its row, as a folder pass knows every other file of its root, comes with
+// no folder notes; one with notes is named afresh, as they may have changed.
+func (im *Importer) namedOnce(file File) (mp.Record, string) {
+	if !reflect.ValueOf(file.Notes).IsZero() {
+		// A full pass sees the file still there: what a folder pass named it by its row stands.
+		bare := namedKey{rel: file.Rel}
+		if got, ok := im.named[bare]; ok && im.namedNow != nil {
+			im.namedNow[bare] = got
+		}
+		return embeddedRecord(file)
+	}
+	key := namedKey{rel: file.Rel, part: file.Part, sole: file.Sole}
+	got, ok := im.named[key]
+	if !ok {
+		got.record, got.seriesDir = embeddedRecord(file)
+		if im.named == nil {
+			im.named = map[namedKey]namedRecord{}
+		}
+		im.named[key] = got
+	}
+	if im.namedNow != nil {
+		im.namedNow[key] = got
+	}
+	return got.record, got.seriesDir
+}
+
 func embeddedRecord(file File) (mp.Record, string) {
 	file = regrouped(file)
 	segments := strings.Split(file.Rel, "/")
@@ -522,6 +562,9 @@ var (
 	// "Reed Wood - Episode 1", "Ash Vale (2008) - Night 1". Its groups are the name and the number.
 	// An "E" stands apart from the name and touches its number: "Ironvale 2" is a sequel's.
 	spelledEpisode = regexp.MustCompile(`(?i)^(.*?[^ ._-])[ ._]+(?:-[ ._]+)?(?:(?:episode|ep\.?|night)[ ._]*|e)(\d{1,3})(?:[^0-9]|$)`)
+	// chapterEpisode matches a name, then "Chapter" and its number: "Brass Fen - Chapter 19 - The
+	// Gate". Its groups are the name and the number, as spelledEpisode's are.
+	chapterEpisode = regexp.MustCompile(`(?i)^(.*?[^ ._-])[ ._]+(?:-[ ._]+)?chapter[ ._]*(\d{1,3})(?:[^0-9]|$)`)
 	// seasonTwoDigits matches a two-digit number after a show's name, with or without a dash:
 	// "Kettle Bay - 03", "Kettle Bay 06".
 	seasonTwoDigits = regexp.MustCompile(`[ ._](?:-[ ._]*)?\d{2}(?:[ ._-]|$)`)
@@ -551,9 +594,10 @@ var (
 	paddedAbsolute = regexp.MustCompile(`[ ._]-[ ._]+(?:0\d{1,3}|[1-9]\d{2})(?:v\d+)?$`)
 	// dashedLast matches a dashed number at the end of a name: "Show - 7", "Show - 07v2".
 	dashedLast = regexp.MustCompile(`[ ._]-[ ._]+\d{1,4}(?:v\d+)?$`)
-	// releaseNotes matches a release's bracketed notes at the end of its name: "[1080p]", "(BD
-	// 1080p x265)", "[WEB][AAC]".
-	releaseNotes = regexp.MustCompile(`(?i)[\[(][^\])]*(?:\d{3,4}p|bd|web|hevc|x26[45]|aac|flac|bluray|dvd|hdtv)[^\])]*[\])][ ._]*$`)
+	// releaseNotes matches a release's bracketed notes at the end of its name, with the group a
+	// Sonarr name ends with after them: "[1080p]", "(BD 1080p x265)", "[WEB][AAC]",
+	// "[SDTV][MP3 2.0][XviD]-GRP".
+	releaseNotes = regexp.MustCompile(`(?i)[\[(][^\])]*(?:\d{3,4}p|bd|web|hevc|x26[45]|h\.?26[45]|xvid|divx|avc|aac|e?ac3|dts|mp[23]|mpeg|flac|opus|atmos|bluray|dvd|[hs]dtv|remux)[^\])]*[\])](?:-[A-Za-z0-9]+)?[ ._]*$`)
 	// animeBrackets matches a release that brackets its number after its group's tag and its show,
 	// the show bracketed or not: "[Kumo][Show][13][1080p]", "[Kumo] Show [06] [1080p]".
 	animeBrackets = regexp.MustCompile(`^\[[^\]]*\][ ._]*(?:\[([^\]]+)\]|([^\[\]]*\pL[^\[\]]*?))[ ._]*\[(\d{1,4})(?:v\d+)?\]`)

@@ -1,6 +1,6 @@
 import { channelIdentHue, monogramOf } from "@loomarr/core/guide";
 import { CHANNEL_IDENT_WASH_PERCENT, channelIdentHues, Text } from "@loomarr/design-system";
-import { View } from "react-native";
+import { Image, View } from "react-native";
 import type { ChannelIdentProps } from "./channel-ident.type";
 
 const withAlpha = (hex: string, alpha: number) => {
@@ -14,10 +14,33 @@ const BASE_SIZE = 30;
 // ChannelIdent is a channel's identity when it has no icon (N8): its initials in a tile washed in
 // the channel number's hue. The wash is the brand hue at 14%, flat (no hatch), and the letters take
 // that hue's on-tint text stop for the theme, so every hue clears AA in both themes (#3011).
-// Decorative: the channel's name is always said beside it.
-const ChannelIdent = ({ name, number, size = BASE_SIZE }: ChannelIdentProps) => {
+// A channel with an icon draws it in the same tile instead, labelled with the channel's name.
+// Otherwise decorative: the channel's name is always said beside it.
+const ChannelIdent = ({ name, number, logo, size = BASE_SIZE }: ChannelIdentProps) => {
   const { wash, tone } = channelIdentHues[channelIdentHue(number)];
   const scale = size / BASE_SIZE;
+  if (logo) {
+    return (
+      <View
+        style={{
+          borderColor: withAlpha(wash, 0.3),
+          borderRadius: Math.round(5 * scale),
+          borderWidth: 1,
+          height: size,
+          overflow: "hidden",
+          width: size,
+        }}
+      >
+        <Image
+          accessibilityLabel={`${name} logo`}
+          resizeMode="cover"
+          role="img"
+          source={{ uri: logo }}
+          style={{ height: "100%", width: "100%" }}
+        />
+      </View>
+    );
+  }
   return (
     <View
       aria-hidden

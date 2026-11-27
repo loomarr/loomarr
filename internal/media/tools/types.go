@@ -74,7 +74,11 @@ type Probed struct {
 	Height int `json:"height"`
 	// Cadence, sample/display aspect and field order are exact ffprobe observations. Empty means
 	// unavailable; transforms may not turn that absence into a claim about the source.
-	Cadence          string `json:"cadence,omitempty"`
+	Cadence string `json:"cadence,omitempty"`
+	// NominalCadence is ffprobe's r_frame_rate, the stream's declared rate. Cadence is the measured
+	// average, which uneven source timestamps move off it (29.97 fps reading 13485000/449947);
+	// re-encoded frame for frame, the output's average is the nominal rate. Empty when unknown.
+	NominalCadence   string `json:"nominalCadence,omitempty"`
 	SampleAspect     string `json:"sampleAspect,omitempty"`
 	DisplayAspect    string `json:"displayAspect,omitempty"`
 	FieldOrder       string `json:"fieldOrder,omitempty"`

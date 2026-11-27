@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -23,8 +24,36 @@ func (a Upkeep) RetireRejectedClip(ctx context.Context, hash string, rejectedBy,
 	return a.st.RetireRejectedClip(ctx, hash, rejectedBy, at)
 }
 
+func (a Upkeep) RetireReadyClip(ctx context.Context, hash string, at time.Time) (bool, error) {
+	return a.st.RetireReadyClip(ctx, hash, at)
+}
+
+func (a Upkeep) ListSettledReels(ctx context.Context) ([]string, error) {
+	return a.st.ListSettledReels(ctx)
+}
+
+func (a Upkeep) RetireSettledReel(ctx context.Context, hash string, at time.Time) (bool, error) {
+	return a.st.RetireSettledReel(ctx, hash, at)
+}
+
 func (a Upkeep) GetClip(ctx context.Context, hash string) (clipstore.Clip, bool, error) {
 	return NewSync(a.st).GetClip(ctx, hash)
+}
+
+func (a Upkeep) ListReadyClips(ctx context.Context) ([]clipstore.Clip, error) {
+	return a.st.ListClips(ctx, clipstore.ClipFilter{})
+}
+
+func (a Upkeep) GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error) {
+	return a.st.GetClipPipeline(ctx, hash)
+}
+
+func (a Upkeep) AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (acquisition.Artifact, bool, error) {
+	return a.st.AcquisitionArtifactForClip(ctx, mediaPath, clipHash)
+}
+
+func (a Upkeep) AcquisitionHasArtifacts(ctx context.Context, acquisitionID string) (bool, error) {
+	return a.st.AcquisitionHasArtifacts(ctx, acquisitionID)
 }
 
 func (a Upkeep) ListClipPaths(ctx context.Context) ([]string, error) {

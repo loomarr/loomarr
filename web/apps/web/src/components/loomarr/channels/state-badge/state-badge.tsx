@@ -1,5 +1,4 @@
 import { Badge, type BadgeTone } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
 import type { ProvisioningState, StateBadgeProps } from "./state-badge.type";
 
 // StateBadge — the provisioning-lifecycle chip (§3), composed from the Badge primitive.
@@ -43,9 +42,13 @@ const StateBadge = ({ state, className }: StateBadgeProps) => (
     tone={TONE[state]}
     // Loomarr gave up on this title (§4). The strike-through is the one visual the base chip
     // has no notion of, and it is genuinely domain-specific.
-    className={cn(state === "unavailable" && "line-through", className)}
+    className={className}
   >
-    {LABEL[state]}
+    {state === "unavailable" ? (
+      <span style={{ textDecoration: "line-through" }}>{LABEL[state]}</span>
+    ) : (
+      LABEL[state]
+    )}
   </Badge>
 );
 

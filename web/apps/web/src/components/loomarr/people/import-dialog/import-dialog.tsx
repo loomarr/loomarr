@@ -7,6 +7,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Grid,
   Icon,
   icons,
   Stack,
@@ -123,7 +124,14 @@ const ImportDialog = ({
           </DialogHeader>
 
           {!available ? (
-            <Stack align="start" className="overflow-auto" gap="4" paddingBottom={24} paddingHorizontal={24}>
+            <Stack
+              align="start"
+              flexShrink={1}
+              gap="4"
+              overflow="auto"
+              paddingBottom={24}
+              paddingHorizontal={24}
+            >
               <Card flexShrink={0} gap={4} padding={16}>
                 <Text as="p" textRole="cardLabel">
                   Connect a media server first
@@ -140,14 +148,15 @@ const ImportDialog = ({
           ) : (
             <>
               <Stack
-                className="overflow-auto"
                 flexBasis="0%"
                 flexGrow={1}
+                flexShrink={1}
                 gap="4"
                 minHeight={0}
+                overflow="auto"
                 paddingHorizontal={24}
               >
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
+                <Grid columns={{ base: 1, sm: ["minmax(0,1fr)", "12rem"] }} gap="3">
                   <SearchField
                     label="Search accounts"
                     onChangeText={setQuery}
@@ -161,14 +170,14 @@ const ImportDialog = ({
                     options={CANDIDATE_FILTERS}
                     value={filter}
                   />
-                </div>
+                </Grid>
 
                 {mutationError != null && <ErrorState error={mutationError} className="p-4" />}
 
                 {candidateError != null ? (
                   <ErrorState error={candidateError} onRetry={onRetry} className="p-4" />
                 ) : candidates === undefined ? (
-                  <Stack aria-label="Loading media-server accounts" flexShrink={0} gap="2" role="status">
+                  <Stack aria-label="Loading media-server accounts" gap="2" role="status">
                     {[0, 1, 2].map((item) => (
                       <Card className="animate-pulse" flexShrink={0} height={64} key={item} />
                     ))}
@@ -259,7 +268,7 @@ const ImportDialog = ({
                 )}
 
                 <Card flexShrink={0} padding={16}>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <Grid columns={{ base: 1, sm: 2 }} gap="3">
                     <Stack gap="1">
                       <Stack align="center" direction="row" gap="inline" render="p">
                         <Icon decorative glyph={icons.verified} size="compact" tone="success" />
@@ -291,7 +300,7 @@ const ImportDialog = ({
                         </Action>
                       </Stack>
                     </Stack>
-                  </div>
+                  </Grid>
                 </Card>
               </Stack>
 

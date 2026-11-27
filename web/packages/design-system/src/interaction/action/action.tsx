@@ -210,7 +210,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         decorative
         glyph={icons[icon]}
         size={tv ? "touch" : compactIcon ? "compact" : "default"}
-        tone={compactIcon && variant === "ghost" ? "muted" : iconTone}
+        tone={compactIcon && variant === "ghost" && !selected ? "muted" : iconTone}
       />
     ) : stacked && icon ? (
       <View alignItems="center" gap={3} paddingVertical={semanticSpace.inline}>

@@ -70,7 +70,7 @@ while IFS= read -r doc; do
     failures=$((failures + 1))
   done < <(grep -noE "\`($tops)/[^\` ]*\`" "$doc" || true)
 done < <(
-  git ls-files -- 'README.md' 'CONTRIBUTING.md' 'CLAUDE.md' 'AGENTS.md' 'CONTEXT.md' \
+  git ls-files -- 'README.md' 'CONTRIBUTING.md' 'CLAUDE.md' 'AGENTS.md' 'CONTEXT.md' 'PRODUCT.md' \
     'docs/**.md' '.agents/**.md' '.claude/**.md' |
     grep -v '^\.agents/skills/' || true
 )

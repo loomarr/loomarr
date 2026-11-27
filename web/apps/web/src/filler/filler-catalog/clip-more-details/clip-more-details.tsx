@@ -2,7 +2,7 @@ import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import type { ClipEnrichmentFactDTOAxis } from "@loomarr/api/models/clipEnrichmentFactDTOAxis";
 import type { ClipEnrichmentFactDTOEvidence } from "@loomarr/api/models/clipEnrichmentFactDTOEvidence";
 import { formatBytes } from "@loomarr/core/format";
-import { Stack, Text } from "@loomarr/design-system";
+import { Card, Details, Stack, Text } from "@loomarr/design-system";
 
 const ENRICHMENT_AXIS_LABEL: Record<ClipEnrichmentFactDTOAxis, string> = {
   role: "Type",
@@ -87,102 +87,101 @@ const ClipMoreDetails = ({ clip }: ClipMoreDetailsProps) => {
     : undefined;
 
   return (
-    <details className="border-border rounded-lg border p-4">
-      <Text as="summary" className="cursor-pointer" textRole="cardLabel">
-        More about this clip
-      </Text>
-      <dl className="mt-3 space-y-2">
-        {videoLine ? (
-          <div>
-            <Text as="dt" textRole="compact" tone="secondary">
-              Video
+    <Card padding={16}>
+      <Details summary="More about this clip" textRole="cardLabel">
+        <Stack gap="2" marginTop={12} render="dl">
+          {videoLine ? (
+            <div>
+              <Text as="dt" textRole="compact" tone="secondary">
+                Video
+              </Text>
+              <Text as="dd" textRole="compact">
+                {videoLine}
+              </Text>
+            </div>
+          ) : clip.quality ? (
+            <div>
+              <Text as="dt" textRole="compact" tone="secondary">
+                Resolution
+              </Text>
+              <Text as="dd" textRole="compact">
+                {clip.quality}
+              </Text>
+            </div>
+          ) : null}
+          {audioLine ? (
+            <div>
+              <Text as="dt" textRole="compact" tone="secondary">
+                Audio
+              </Text>
+              <Text as="dd" textRole="compact">
+                {audioLine}
+              </Text>
+            </div>
+          ) : null}
+          {fileLine ? (
+            <div>
+              <Text as="dt" textRole="compact" tone="secondary">
+                File
+              </Text>
+              <Text as="dd" textRole="compact">
+                {fileLine}
+              </Text>
+            </div>
+          ) : null}
+          {clip.language ? (
+            <div>
+              <Text as="dt" textRole="compact" tone="secondary">
+                Language
+              </Text>
+              <Text as="dd" textRole="compact">
+                {clip.language === "none" ? "No speech" : clip.language}
+              </Text>
+            </div>
+          ) : null}
+          {clip.license ? (
+            <div>
+              <Text as="dt" textRole="compact" tone="secondary">
+                Source license
+              </Text>
+              <Text as="dd" overflowWrap="break-word" textRole="compact">
+                {clip.license}
+              </Text>
+            </div>
+          ) : null}
+          {clip.enrichment?.facts?.length ? (
+            <div>
+              <Text as="dt" textRole="compact" tone="secondary">
+                How details were found
+              </Text>
+              <Text as="dd" textRole="compact">
+                <Stack gap="1" marginTop={4} render="ul">
+                  {clip.enrichment.facts.map((fact) => (
+                    <Stack direction="row" gap="4" justify="between" key={fact.axis} render="li">
+                      <span>{ENRICHMENT_AXIS_LABEL[fact.axis] ?? fact.axis}</span>
+                      <Text as="span" textAlign="right" textRole="compact" tone="secondary">
+                        {ENRICHMENT_EVIDENCE_LABEL[fact.evidence] ?? fact.evidence}
+                      </Text>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Text>
+            </div>
+          ) : null}
+          {!videoLine &&
+          !audioLine &&
+          !fileLine &&
+          !clip.quality &&
+          !clip.language &&
+          !clip.license &&
+          !clip.enrichment?.facts?.length ? (
+            <Text as="p" textRole="compact" tone="secondary">
+              No additional details recorded yet.
             </Text>
-            <Text as="dd" textRole="compact">
-              {videoLine}
-            </Text>
-          </div>
-        ) : clip.quality ? (
-          <div>
-            <Text as="dt" textRole="compact" tone="secondary">
-              Resolution
-            </Text>
-            <Text as="dd" textRole="compact">
-              {clip.quality}
-            </Text>
-          </div>
-        ) : null}
-        {audioLine ? (
-          <div>
-            <Text as="dt" textRole="compact" tone="secondary">
-              Audio
-            </Text>
-            <Text as="dd" textRole="compact">
-              {audioLine}
-            </Text>
-          </div>
-        ) : null}
-        {fileLine ? (
-          <div>
-            <Text as="dt" textRole="compact" tone="secondary">
-              File
-            </Text>
-            <Text as="dd" textRole="compact">
-              {fileLine}
-            </Text>
-          </div>
-        ) : null}
-        {clip.language ? (
-          <div>
-            <Text as="dt" textRole="compact" tone="secondary">
-              Language
-            </Text>
-            <Text as="dd" textRole="compact">
-              {clip.language === "none" ? "No speech" : clip.language}
-            </Text>
-          </div>
-        ) : null}
-        {clip.license ? (
-          <div>
-            <Text as="dt" textRole="compact" tone="secondary">
-              Source license
-            </Text>
-            <Text as="dd" className="break-words" textRole="compact">
-              {clip.license}
-            </Text>
-          </div>
-        ) : null}
-        {clip.enrichment?.facts?.length ? (
-          <div>
-            <Text as="dt" textRole="compact" tone="secondary">
-              How details were found
-            </Text>
-            <Text as="dd" textRole="compact">
-              <ul className="mt-1 space-y-1">
-                {clip.enrichment.facts.map((fact) => (
-                  <Stack direction="row" gap="4" justify="between" key={fact.axis} render="li">
-                    <span>{ENRICHMENT_AXIS_LABEL[fact.axis] ?? fact.axis}</span>
-                    <Text as="span" className="text-right" textRole="compact" tone="secondary">
-                      {ENRICHMENT_EVIDENCE_LABEL[fact.evidence] ?? fact.evidence}
-                    </Text>
-                  </Stack>
-                ))}
-              </ul>
-            </Text>
-          </div>
-        ) : null}
-        {!videoLine &&
-        !audioLine &&
-        !fileLine &&
-        !clip.quality &&
-        !clip.language &&
-        !clip.license &&
-        !clip.enrichment?.facts?.length ? (
-          <Text as="p" textRole="compact" tone="secondary">
-            No additional details recorded yet.
-          </Text>
-        ) : null}
-      </dl>
-    </details>
+          ) : null}
+        </Stack>
+      </Details>
+    </Card>
   );
 };
 

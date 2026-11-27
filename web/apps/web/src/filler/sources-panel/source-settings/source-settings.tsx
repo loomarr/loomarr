@@ -41,7 +41,7 @@ const SourceSettings = ({ source, actions }: SourceSettingsProps) => {
         {source.actions.includes("edit_location") && <SourceLocationForm source={source} actions={actions} />}
 
         {source.actions.includes("remove") && (
-          <div className="border-border border-t pt-3">
+          <Stack borderColor="borderDecorative" borderTopWidth={1} paddingTop={12}>
             {confirmingRemove ? (
               <ConfirmStep
                 confirmLabel="Remove source"
@@ -64,10 +64,12 @@ const SourceSettings = ({ source, actions }: SourceSettingsProps) => {
                 {actions.removingSourceID === source.id ? "Removing…" : "Remove source"}
               </Action>
             )}
-            <Text as="p" className="mt-1" textRole="hint" tone="secondary">
-              Clips already downloaded stay in your library.
-            </Text>
-          </div>
+            <Stack marginTop={4}>
+              <Text as="p" textRole="hint" tone="secondary">
+                Clips already downloaded stay in your library.
+              </Text>
+            </Stack>
+          </Stack>
         )}
       </Stack>
     </Disclosure>

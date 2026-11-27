@@ -158,22 +158,24 @@ const (
 	CandidateAlreadyCatalogued  CandidateDisposition = "already_catalogued"
 	CandidateAlreadyQueued      CandidateDisposition = "already_queued"
 	CandidatePreviouslyDeclined CandidateDisposition = "previously_declined"
-	CandidateDuplicateRemote    CandidateDisposition = "duplicate_remote"
-	CandidateSourceNotAllowed   CandidateDisposition = "source_not_allowed"
-	CandidateGeographyMismatch  CandidateDisposition = "geography_mismatch"
-	CandidateEraUnknown         CandidateDisposition = "era_unknown"
-	CandidateEraMismatch        CandidateDisposition = "era_mismatch"
-	CandidateDurationUnknown    CandidateDisposition = "duration_unknown"
-	CandidateDurationExceeded   CandidateDisposition = "duration_exceeded"
-	CandidateQualityUnknown     CandidateDisposition = "quality_unknown"
-	CandidateQualityBelowFloor  CandidateDisposition = "quality_below_floor"
-	CandidateRoleUnknown        CandidateDisposition = "role_unknown"
-	CandidateRoleMismatch       CandidateDisposition = "role_mismatch"
-	CandidateAudienceUnknown    CandidateDisposition = "audience_unknown"
-	CandidateAudienceMismatch   CandidateDisposition = "audience_mismatch"
-	CandidateTaxonomyUnknown    CandidateDisposition = "taxonomy_unknown"
-	CandidateTaxonomyMismatch   CandidateDisposition = "taxonomy_mismatch"
-	CandidateRankedBelowLimit   CandidateDisposition = "ranked_below_limit"
+	// CandidateResting is an item whose download failed; it is offered again when its retry is due.
+	CandidateResting           CandidateDisposition = "resting"
+	CandidateDuplicateRemote   CandidateDisposition = "duplicate_remote"
+	CandidateSourceNotAllowed  CandidateDisposition = "source_not_allowed"
+	CandidateGeographyMismatch CandidateDisposition = "geography_mismatch"
+	CandidateEraUnknown        CandidateDisposition = "era_unknown"
+	CandidateEraMismatch       CandidateDisposition = "era_mismatch"
+	CandidateDurationUnknown   CandidateDisposition = "duration_unknown"
+	CandidateDurationExceeded  CandidateDisposition = "duration_exceeded"
+	CandidateQualityUnknown    CandidateDisposition = "quality_unknown"
+	CandidateQualityBelowFloor CandidateDisposition = "quality_below_floor"
+	CandidateRoleUnknown       CandidateDisposition = "role_unknown"
+	CandidateRoleMismatch      CandidateDisposition = "role_mismatch"
+	CandidateAudienceUnknown   CandidateDisposition = "audience_unknown"
+	CandidateAudienceMismatch  CandidateDisposition = "audience_mismatch"
+	CandidateTaxonomyUnknown   CandidateDisposition = "taxonomy_unknown"
+	CandidateTaxonomyMismatch  CandidateDisposition = "taxonomy_mismatch"
+	CandidateRankedBelowLimit  CandidateDisposition = "ranked_below_limit"
 )
 
 type ExistingRemoteState string
@@ -182,6 +184,8 @@ const (
 	RemoteCatalogued ExistingRemoteState = "catalogued"
 	RemoteQueued     ExistingRemoteState = "queued"
 	RemoteDeclined   ExistingRemoteState = "declined"
+	// RemoteResting is an item whose download failed and is not due for another attempt yet.
+	RemoteResting ExistingRemoteState = "resting"
 )
 
 type Decision struct {

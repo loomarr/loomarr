@@ -41,14 +41,14 @@ const InvitationJoin = ({
     return error ? (
       <ErrorState error={error} />
     ) : (
-      <div className="space-y-2 text-center">
-        <Text as="h1" strong textRole="display">
+      <Stack gap="2">
+        <Text as="h1" strong textAlign="center" textRole="display">
           Invitation unavailable
         </Text>
-        <Text as="p" textRole="compact" tone="secondary">
+        <Text as="p" textAlign="center" textRole="compact" tone="secondary">
           This invitation is missing, expired, revoked, or already used. Ask an administrator for a new one.
         </Text>
-      </div>
+      </Stack>
     );
   }
 
@@ -68,35 +68,35 @@ const InvitationJoin = ({
       render="form"
       width="100%"
     >
-      <div className="space-y-2 text-center">
-        <Text as="h1" strong textRole="display">
+      <Stack gap="2">
+        <Text as="h1" strong textAlign="center" textRole="display">
           Join Loomarr
         </Text>
-        <Text as="p" textRole="compact" tone="secondary">
+        <Text as="p" textAlign="center" textRole="compact" tone="secondary">
           Review the account below before activating it.
         </Text>
-      </div>
+      </Stack>
 
-      <div className="border-border bg-muted/25 space-y-3 rounded-lg border p-4">
+      <Stack borderRadius={12} className="border-border bg-muted/25 border" gap="3" padding={16}>
         <Stack align="start" direction="row" gap="control">
-          <Stack className="mt-0.5" direction="row" render="span">
+          <Stack direction="row" marginTop={2} render="span">
             <Icon decorative glyph={icons.person} size="default" tone="primary" />
           </Stack>
-          <div className="min-w-0 flex-1">
+          <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
             <Text as="p" textRole="hint" tone="secondary">
               Invited identity
             </Text>
-            <Text as="p" className="break-words" textRole="cardLabel">
+            <Text as="p" overflowWrap="break-word" textRole="cardLabel">
               {identity}
             </Text>
-          </div>
+          </Stack>
           <StatusLabel tone={preview.role === "admin" ? "error" : "off"}>
             {preview.role === "admin" ? "Admin" : "Member"}
           </StatusLabel>
         </Stack>
         {preview.role === "admin" ? (
           <Stack className="text-onair-300" direction="row" gap="inline" render="p">
-            <Stack className="mt-0.5" direction="row" render="span">
+            <Stack direction="row" marginTop={2} render="span">
               <Icon decorative glyph={icons.verified} size="compact" tone="inherit" />
             </Stack>
             <Text as="span" textRole="compact" tone="danger">
@@ -105,14 +105,14 @@ const InvitationJoin = ({
           </Stack>
         ) : null}
         <Stack className="text-muted-foreground" direction="row" gap="inline" render="p">
-          <Stack className="mt-0.5" direction="row" render="span">
+          <Stack direction="row" marginTop={2} render="span">
             <Icon decorative glyph={icons.schedule} size="compact" tone="inherit" />
           </Stack>
           <Text as="span" textRole="compact" tone="secondary">
             This invitation expires {expires}.
           </Text>
         </Stack>
-      </div>
+      </Stack>
 
       <Text as="p" textRole="compact" tone="secondary">
         {library

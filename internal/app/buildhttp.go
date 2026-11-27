@@ -140,6 +140,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 			Demo:                 people.DemoAccount{Username: ov.DemoUsername, Password: ov.DemoPassword},
 			SSO:                  ssoSvc,
 			Provision:            provisionSvc,
+			AccessChanged:        deps.foundation.emitter.AccessChanged,
 		},
 		Setup: api.SetupOptions{
 			LiveTV:                   liveTVSvc,
@@ -176,7 +177,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 			// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
 			Service:       playoutSvc,
 			Observer:      playoutObserver,
-			Viewing:       startWatchHistory(deps.owner, st, guideSvc, log),
+			Viewing:       startWatchHistory(deps.owner, st, guideSvc, deps.foundation.emitter.ViewingChanged, log),
 			Capability:    playoutCapability,
 			Secret:        playoutSecret,
 			SecretCurrent: playoutSecretCurrent,
@@ -237,15 +238,18 @@ func buildHTTP(deps httpBuild) http.Handler {
 			DiagnosticCapture:   deps.foundation.diagnostics,
 			ClientDiagnostics:   deps.foundation.clientDiagnostics,
 			ClientCrashes:       clientCrashService(deps.foundation.clientCrashes),
+			Recorder:            deps.foundation.diagnostics,
 		},
 	})
 }
 
 // startWatchHistory makes the household-viewing tracker the API's playlist polls feed and starts
 // the recorder that writes it to the watch history (#3010) until the generation ends. Each row's programme is
-// the title the guide says is airing; a gap between programmes has none.
-func startWatchHistory(owner *generationLifecycle, st records.Store, guide guideapi.GuideReader, log *slog.Logger) *viewing.Tracker {
+// the title the guide says is airing; a gap between programmes has none. changed runs when a viewing
+// starts or ends; the recorder's reads are what notice an ended one.
+func startWatchHistory(owner *generationLifecycle, st records.Store, guide guideapi.GuideReader, changed func(), log *slog.Logger) *viewing.Tracker {
 	tracker := viewing.New()
+	tracker.OnChange = changed
 	var programmes viewing.Programmes
 	if guide != nil {
 		programmes = func(ctx context.Context, at time.Time) (map[string]string, error) {

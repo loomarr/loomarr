@@ -924,11 +924,12 @@ func TestApprove_RestampsAlternatesFromOriginalIntent(t *testing.T) {
 
 // A new channel seeds its FILLER era from its PROGRAM scope era (§10 default-from-theme),
 // so a "90s" channel gets 90s ads out of the box without the operator touching filler.
-func TestApprove_SeedsFillerEraFromScopeEra(t *testing.T) {
+func TestApprove_SeedsFillerEraFromScopeDates(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
 	// The proposal's policy scopes programs to the 1990s — the filler era should follow.
-	body := `{"intent":{"description":"90s action"},"policy":{"scope":{"era":{"from":1990,"to":1999}}},` +
+	body := `{"intent":{"description":"90s action"},"policy":{"scope":{"dates":{"movieRelease":[{"from":1990,"to":1999}],` +
+		`"seriesPremiere":[{"from":1990,"to":1999}],"seriesAiring":[{"from":1990,"to":1999}]}}},` +
 		`"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,` +
 		`"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
 	if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{
@@ -1663,15 +1664,16 @@ func seedProposalWithTMDB(t *testing.T, st store.Store, id string, tmdbID int, n
 }
 
 // Housekeeping used to purge a done job while its proposal was still submitted, so a database may
-// hold proposals whose job is gone. Approving one cannot create its channel; that is a refusal the
-// admin can act on (deny it, ask again), never a 500.
+// hold proposals whose job is gone (no job named since the job id became a key, #2793). Approving
+// one cannot create its channel; that is a refusal the admin can act on (deny it, ask again),
+// never a 500.
 func TestApprove_ProposalWhoseJobWasPurgedIs422(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
 	body := `{"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
 	// No job row: written straight to the store, as a purge left it.
 	if err := st.CreateProposal(context.Background(), proposalstore.Proposal{
-		ID: "p-old", JobID: "job-purged", Status: "submitted", Body: wireProposal(t, body),
+		ID: "p-old", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}

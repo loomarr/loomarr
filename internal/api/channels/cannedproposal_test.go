@@ -13,7 +13,7 @@ import (
 
 type fixedLibrary []ideas.Item
 
-func (l fixedLibrary) IdeaItems(context.Context) ([]ideas.Item, error) { return l, nil }
+func (l fixedLibrary) IdeaItems(context.Context, bool) ([]ideas.Item, error) { return l, nil }
 
 func libraryOf(genre string, n, from int) fixedLibrary {
 	out := make(fixedLibrary, 0, n)

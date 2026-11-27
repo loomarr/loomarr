@@ -48,12 +48,13 @@ both_legs="$arc\\n$geforce"
 
 run_case() {
   local name=$1 event=$2 jobs=$3 expected=$4 tag=${5:-v1.2.3} rehearsal=${6-success} bench=${7-$both_legs}
+  local conclusion=${RELEASE_TEST_CONCLUSION-success} want_output=${RELEASE_TEST_WANT_OUTPUT:-}
   local output status
   set +e
   output=$(cd "$root" && \
     PATH="$test_root/bin:$PATH" \
     RELEASE_TEST_SHA="$sha" \
-    RELEASE_TEST_RUN=$'42\tsuccess\t'"$event" \
+    RELEASE_TEST_RUN="42"$'\t'"$conclusion"$'\t'"$event" \
     RELEASE_TEST_JOBS="$jobs" \
     RELEASE_TEST_REHEARSAL="$rehearsal" \
     RELEASE_TEST_BENCH_JOBS="$bench" \
@@ -71,6 +72,10 @@ run_case() {
     printf 'validate-release-source-test: %s unexpectedly passed\n' "$name" >&2
     exit 1
   fi
+  if [[ -n "$want_output" && "$output" != *"$want_output"* ]]; then
+    printf 'validate-release-source-test: %s said:\n%s\nwant it to say: %s\n' "$name" "$output" "$want_output" >&2
+    exit 1
+  fi
 }
 
 run_case push-evidence push "$common_jobs" fail
@@ -83,6 +88,12 @@ run_case final-without-geforce workflow_dispatch "$common_jobs"$'\n'"$candidate_
 run_case final-legs-in-separate-runs workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" pass v1.2.3 success "$arc;$geforce"
 run_case rc-without-hardware-bench workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" pass v1.2.3-rc.1 '' ''
 run_case full-evidence workflow_dispatch "$common_jobs"$'\nManual CI — full scope\tsuccess' fail
+# A newer dispatch run still running has no conclusion yet: it is named as unfinished, not
+# misread as its event.
+RELEASE_TEST_CONCLUSION='' RELEASE_TEST_WANT_OUTPUT='(42) has not finished' \
+  run_case newest-run-unfinished workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" fail
+RELEASE_TEST_CONCLUSION=failure RELEASE_TEST_WANT_OUTPUT='(found: failure)' \
+  run_case newest-run-failed workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" fail
 run_case candidate-missing-contract workflow_dispatch \
   "$common_jobs"$'\nRelease candidate — exact main scope\tsuccess\nRust — repository contracts / Rust — repository contracts\tsuccess\nRust image — runtime certification / Rust image — runtime certification\tsuccess' fail
 run_case candidate-missing-contract-shard workflow_dispatch \

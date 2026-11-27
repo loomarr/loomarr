@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/people/access"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 func testPasswordRecoveryPreviewDoesNotConsume(t *testing.T, newStore NewStoreFunc) {
@@ -17,7 +18,7 @@ func testPasswordRecoveryPreviewDoesNotConsume(t *testing.T, newStore NewStoreFu
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
 	if err := s.UpsertUser(ctx, User{
-		ID: "recover-local", Name: "Ada", Role: RoleMember, PasswordHash: "$argon2id$existing",
+		ID: "recover-local", Name: "Ada", Role: identitystore.RoleMember, PasswordHash: "$argon2id$existing",
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -53,7 +54,7 @@ func testPasswordRecoveryRedemptionIsAtomic(t *testing.T, newStore NewStoreFunc)
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
 	user := User{
-		ID: "recover-atomic", Name: "Grace", Role: RoleAdmin, PasswordHash: "$argon2id$old",
+		ID: "recover-atomic", Name: "Grace", Role: identitystore.RoleAdmin, PasswordHash: "$argon2id$old",
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertUser(ctx, user); err != nil {
@@ -121,7 +122,7 @@ func testPasswordRecoveryNewRequestSupersedesOld(t *testing.T, newStore NewStore
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
 	if err := s.UpsertUser(ctx, User{
-		ID: "recover-replace", Name: "Katherine", Role: RoleMember, PasswordHash: "$argon2id$old",
+		ID: "recover-replace", Name: "Katherine", Role: identitystore.RoleMember, PasswordHash: "$argon2id$old",
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -170,7 +171,7 @@ func testPasswordRecoveryRetention(t *testing.T, newStore NewStoreFunc) {
 	seed := func(id string) {
 		t.Helper()
 		if err := s.UpsertUser(ctx, User{
-			ID: id, Name: id, Role: RoleMember, PasswordHash: "$argon2id$existing",
+			ID: id, Name: id, Role: identitystore.RoleMember, PasswordHash: "$argon2id$existing",
 			CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
 			t.Fatal(err)
@@ -234,7 +235,7 @@ func testPasswordRecoveryDisabledAfterIssueIsUnusable(t *testing.T, newStore New
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
 	user := User{
-		ID: "recover-disabled", Name: "Dorothy", Role: RoleMember, PasswordHash: "$argon2id$old",
+		ID: "recover-disabled", Name: "Dorothy", Role: identitystore.RoleMember, PasswordHash: "$argon2id$old",
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertUser(ctx, user); err != nil {
@@ -277,7 +278,7 @@ func testPasswordRecoveryConcurrentRedemption(t *testing.T, newStore NewStoreFun
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
 	user := User{
-		ID: "recover-concurrent", Name: "Margaret", Role: RoleMember, PasswordHash: "$argon2id$old",
+		ID: "recover-concurrent", Name: "Margaret", Role: identitystore.RoleMember, PasswordHash: "$argon2id$old",
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertUser(ctx, user); err != nil {

@@ -53,6 +53,7 @@ const healthyReadiness = () =>
       scheduled: 0,
       inProgress: 0,
       needsDecision: 0,
+      awaitingSplit: 0,
       recoverable: 0,
       ready: 0,
       complete: 0,

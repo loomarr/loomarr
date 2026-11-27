@@ -14,7 +14,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -139,7 +138,7 @@ func TestPlan_AutoCurate_IsAdditive_NeverDropsAvailable(t *testing.T) {
 	// The refresh re-picks only Copper Canyon and adds a NEW film (Night Warden 2) — Tin Sheriff
 	// + Clockwork Hunter are simply omitted (not excluded, still available).
 	putAvailable(t, st, 4, "Night Warden 2")
-	seedApprovedProposal(t, st, "p1", "job1", accept.AutoCuratedBy,
+	seedApprovedProposal(t, st, "p1", "job1", proposalstore.AutoCuratedBy,
 		[]proposals.ProposalItem{inLib(3, "Copper Canyon"), inLib(4, "Night Warden 2")}, nil)
 
 	b := approval.New(st, nil, nil, testkit.Logger())
@@ -182,7 +181,7 @@ func TestPlan_AutoCurate_AppliesRetirementsFromTheProposal(t *testing.T) {
 		[]schedule.LineupEntry{entry(1, "Keeper"), entry(2, "Retired")},
 		schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: &schedule.AutoCurate{}}})
 	putAvailable(t, st, 3, "Incoming")
-	seedApprovedProposalRetiring(t, st, "p1", "job1", accept.AutoCuratedBy,
+	seedApprovedProposalRetiring(t, st, "p1", "job1", proposalstore.AutoCuratedBy,
 		[]proposals.ProposalItem{inLib(3, "Incoming")}, nil, []provision.Key{movieKey(2)})
 
 	b := approval.New(st, nil, nil, testkit.Logger())
@@ -239,7 +238,7 @@ func TestPlan_AutoCurate_DropsUnavailable(t *testing.T) {
 	seedChannel(t, st, "c1", "job1",
 		[]schedule.LineupEntry{entry(1, "Keeper"), entry(2, "Gone")},
 		schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: &schedule.AutoCurate{}}})
-	seedApprovedProposal(t, st, "p1", "job1", accept.AutoCuratedBy,
+	seedApprovedProposal(t, st, "p1", "job1", proposalstore.AutoCuratedBy,
 		[]proposals.ProposalItem{inLib(1, "Keeper")}, nil) // neither re-picked "Gone"
 
 	b := approval.New(st, nil, nil, testkit.Logger())
@@ -300,7 +299,7 @@ func TestPlan_AutoCurate_PreservesOperatorOwnedPolicy(t *testing.T) {
 		[]schedule.LineupEntry{entry(1, "Film")},
 		schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Rules: rules}, OperatorPolicy: schedule.OperatorPolicy{AutoCurate: ac, Window: schedule.WindowFull}})
 	// The refreshed proposal's policy carries NONE of these operator-owned fields.
-	seedApprovedProposal(t, st, "p1", "job1", accept.AutoCuratedBy, []proposals.ProposalItem{inLib(1, "Film")}, nil)
+	seedApprovedProposal(t, st, "p1", "job1", proposalstore.AutoCuratedBy, []proposals.ProposalItem{inLib(1, "Film")}, nil)
 
 	b := approval.New(st, nil, nil, testkit.Logger())
 	ch, err := b.PlanApprovedChannel(context.Background(), mustProposal(t, st, "p1"))

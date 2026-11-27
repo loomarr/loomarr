@@ -105,37 +105,49 @@ const FillerClipList = ({
             return (
               <Stack
                 align="center"
-                className="border-border bg-card rounded-md border px-3 py-2"
+                backgroundColor="$surfaceRaised"
+                borderColor="$borderDecorative"
+                borderRadius={6}
+                borderWidth={1}
                 direction="row"
                 gap="control"
                 key={id}
+                paddingHorizontal={12}
+                paddingVertical={8}
                 render="li"
               >
-                <div className="min-w-0 flex-1">
+                <Stack
+                  align="baseline"
+                  direction="row"
+                  flexBasis="0%"
+                  flexGrow={1}
+                  flexShrink={1}
+                  minWidth={0}
+                >
                   {gone ? (
                     <>
-                      <Text as="span" className="truncate" textRole="cardLabel" tone="danger">
+                      <Text as="span" numberOfLines={1} textRole="cardLabel" tone="danger">
                         This clip is no longer in your catalog
                       </Text>
                       {/* The hash still shown, small and secondary: it is the only handle an
                           operator has if they want to work out WHICH clip this was. */}
-                      <Text as="span" className="ml-2 truncate" textRole="mono">
+                      <Text as="span" marginLeft={8} numberOfLines={1} textRole="mono">
                         {id.slice(0, 12)}…
                       </Text>
                     </>
                   ) : (
                     <>
-                      <Text as="span" className="truncate" textRole="cardLabel">
+                      <Text as="span" numberOfLines={1} textRole="cardLabel">
                         {clip?.name ?? id}
                       </Text>
                       {clip ? (
-                        <Text as="span" className="ml-2" textRole="mono">
+                        <Text as="span" marginLeft={8} textRole="mono">
                           {formatClipDuration(clip.durationMs)}
                         </Text>
                       ) : null}
                     </>
                   )}
-                </div>
+                </Stack>
                 <Tooltip content="Remove">
                   <Action
                     disabled={disabled}

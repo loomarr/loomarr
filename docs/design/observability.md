@@ -60,6 +60,15 @@ per-line timestamps. Writes never apply backpressure; dropped lines are counted 
 exit and output draining have separate lifetimes, so reaping a child never loses buffered media.
 Active runs are never aged out.
 
+**Live pages** (#3352). Diagnostics never polls. Once a batch of events is stored, or verbose
+capture starts or stops, the recorder announces it: an admin-only, empty `diagnostic_events` frame,
+at most once every 2 s with a trailing frame. Each stored run update sends `diagnostic_processes`,
+at most once a second while output is written and at once when a run ends. Each page reads again on
+its frame. Reads of the log and of the event stream are not themselves logged, so during verbose
+capture a page reading again stores nothing that would announce itself. A verbose capture that runs out, and a health check whose result goes stale, change on
+time alone, with nothing stored and no frame, so the page reads again at the report's `endsAt` or
+`nextRefreshAt`.
+
 **Retention.** `diagnostic_retained_bytes` keeps one running total per evidence table, adjusted in
 the same transaction as each row change, so the budget check reads two rows instead of scanning
 (#1398). `diagnostics.max_storage_mb` bounds logical payload, not the file: indexes and pages add to
@@ -78,6 +87,16 @@ derives `actor_id` and owns severity. Any invalid field rejects the whole batch.
 return `202` after enqueue. The limit is 120 observations a minute per actor with a burst of 30.
 Clients keep a 100-observation memory queue, send at most 20 every two seconds, drop routine events
 before errors, and never block playback or keep a second log.
+
+**Vocabulary versions.** Because one unknown event or field refuses the whole batch, and a paired
+app is often newer than its server, the vocabulary is versioned (#4134). Each accepted batch's
+`202` answer carries `vocabulary`, the version this server accepts (`diagnostics.ClientVocabulary`);
+a server that sends none is version 0. Version 0 is the fourteen events above; version 1 adds only
+the `vocabulary` answer. A client sends only what its server's version defines: until the first
+answer it sends version-0 observations only, and newer ones wait in the bounded queue, then are
+dropped if the server turns out too old to take them (`EVENT_SINCE` and `FIELD_SINCE` in
+`@loomarr/core/client-diagnostics`). Every event or field added later names the version that
+introduced it here, in the same change that raises `ClientVocabulary`.
 
 The batch's `platform` must belong to its `source`: `web` takes the browsers, `android_tv` takes
 `android_tv`, `shield_tv` and `unknown_android_tv`, and `apple_tv`, `ios` and `android` each take their
@@ -142,6 +161,10 @@ with bounded detail, remediation and a freshness deadline. Unconfigured optional
   bounded window; the `server.public_url` check runs only after the listener exists. The
   `system-health` job refreshes continuous checks (default every 30 s), and settings changes prompt a
   run. No request or playout path waits on a probe.
+- `system-health` runs on a job worker of its own (`Job.Watchdog`) and never waits behind another job.
+  An ordinary job may hold the shared worker for River's full minute, longer than the 65 s a continuous
+  check stays fresh. On 2026-11-18, maintenance waiting on a busy Emby did exactly that twice: readiness
+  went stale and the reverse proxy took Loomarr off the network.
 - The value survives a database failure. Only transitions into or out of an incident are checkpointed
   as events. Each generation freezes one **Startup report**; the last 20 are kept.
 

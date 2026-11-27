@@ -22,6 +22,11 @@ jobs:
     if: github.event.workflow_run.event == 'merge_group' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # GitHub gives a workflow_run job a read-only cache unless the job declares write access, and
+    # annotates the run with a cache-poisoning warning when it does. This job compiles nothing: it
+    # saves only a generation whose producer run, commit on main, manifest and tree digest the
+    # validation step has proved.
+    cache-mode: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Locate the exact merge-queue producer
@@ -53,12 +58,16 @@ jobs:
           "${{ steps.producer.outputs.run-id }}"
           android-tv-ccache-v2-Linux-ccache-4.14-
           >> "$GITHUB_OUTPUT"
+      # A refused save only warns and the step still succeeds, so the step below is what reports it.
       - name: Publish the verified generation in the default-branch cache scope
         if: steps.producer.outputs.found == 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ runner.temp }}/loomarr-android-ccache
           key: ${{ steps.cache.outputs.cache-key }}
+      # The plan comes first and fails when the saved generation is not in main's cache listing.
+      # Nothing is deleted before it: not the transfer, which is the only copy of this generation,
+      # and not an older generation, which would be the last one main has.
       - name: Retire the transfer and superseded main cache generations
         if: steps.producer.outputs.found == 'true'
         env:
@@ -68,11 +77,11 @@ jobs:
           KEEP_KEY: ${{ steps.cache.outputs.cache-key }}
         run: |
           set -euo pipefail
-          gh api -X DELETE "repos/$REPO/actions/artifacts/$ARTIFACT_ID"
           inventory="$RUNNER_TEMP/android-ccache-inventory.json"
           gh api "repos/$REPO/actions/caches?per_page=100&ref=refs/heads/main" > "$inventory"
           ids=$(./scripts/android-ccache-promotion.sh retention-plan \
             "$inventory" refs/heads/main android-tv-ccache-v2-Linux-ccache-4.14- "$KEEP_KEY")
+          gh api -X DELETE "repos/$REPO/actions/artifacts/$ARTIFACT_ID"
           while read -r id; do
             [[ -n "$id" ]] || continue
             gh api -X DELETE "repos/$REPO/actions/caches/$id"

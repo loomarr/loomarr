@@ -1,0 +1,588 @@
+package subtitles_test
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"slices"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/playout/subtitles"
+	"github.com/loomarr/loomarr/internal/testkit"
+)
+
+const s = time.Second
+
+type clock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func (c *clock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.t
+}
+
+func (c *clock) advance(d time.Duration) {
+	c.mu.Lock()
+	c.t = c.t.Add(d)
+	c.mu.Unlock()
+}
+
+var episode = subtitles.Media{Input: "/media/show/s01e01.mkv", Size: 1 << 30, ModifiedNs: 1_700_000_000, Duration: 22 * time.Minute}
+
+// speaking answers every span with one line at 5–7 s into it, in language.
+func speaking(language string) func(testkit.SpeechCall) (subtitles.Speech, error) {
+	return func(call testkit.SpeechCall) (subtitles.Speech, error) {
+		return subtitles.Speech{Language: language, Cues: []subtitles.Cue{
+			{Start: 5 * s, End: 7 * s, Text: fmt.Sprintf("line at %v", call.Start+5*s)},
+		}}, nil
+	}
+}
+
+func newGenerator(t *testing.T, eng subtitles.Engines, dir string) (*subtitles.Generator, *clock) {
+	t.Helper()
+	g := subtitles.NewGenerator(eng, dir, nil)
+	c := &clock{t: time.Date(2026, 11, 22, 20, 0, 0, 0, time.UTC)}
+	g.SetClock(c.now)
+	return g, c
+}
+
+// drain runs the worker until nothing is wanted.
+func drain(t *testing.T, g *subtitles.Generator) {
+	t.Helper()
+	for range 100 {
+		if !g.Step(context.Background()) {
+			return
+		}
+	}
+	t.Fatal("the queue never emptied")
+}
+
+func spans(calls []testkit.SpeechCall) [][2]time.Duration {
+	out := [][2]time.Duration{}
+	for _, c := range calls {
+		out = append(out, [2]time.Duration{c.Start, c.End})
+	}
+	return out
+}
+
+func TestGenerator_FirstRequestLeadsLocallyAtThePositionThenTranscribesGridBlocks(t *testing.T) {
+	local := &testkit.SpeechEngine{Respond: speaking("en")}
+	hosted := &testkit.SpeechEngine{Respond: speaking("en")}
+	g, _ := newGenerator(t, subtitles.Engines{
+		Local: local, Hosted: func() subtitles.Transcriber { return hosted }, Budget: &testkit.MediaBudget{},
+	}, "")
+
+	if _, language, state := g.Cues(episode, 95*s, 105*s); state != subtitles.Pending || language != "" {
+		t.Fatalf("first answer = %v %q, want pending with no language", state, language)
+	}
+	drain(t, g)
+
+	// The lead block is ~8 s at the position and local, even with a hosted service configured.
+	if got, want := spans(local.Calls()), [][2]time.Duration{{95 * s, 103 * s}}; !slices.Equal(got, want) {
+		t.Fatalf("local spans = %v, want %v", got, want)
+	}
+	// Then 30 s blocks on the file-start grid: the one holding the window, and two ahead.
+	want := [][2]time.Duration{{90 * s, 120 * s}, {120 * s, 150 * s}, {150 * s, 180 * s}}
+	if got := spans(hosted.Calls()); !slices.Equal(got, want) {
+		t.Fatalf("hosted spans = %v, want %v", got, want)
+	}
+	cues, language, state := g.Cues(episode, 95*s, 105*s)
+	if state != subtitles.Ready || language != "en" || len(cues) != 1 || cues[0].Start != 95*s || cues[0].Text != "line at 1m35s" {
+		t.Fatalf("answer = %v %q %+v", state, language, cues)
+	}
+}
+
+func TestGenerator_LeadCuesStandInWhileTheGridBlockIsMade(t *testing.T) {
+	local := &testkit.SpeechEngine{Respond: speaking("en")}
+	g, _ := newGenerator(t, subtitles.Engines{Local: local, Budget: &testkit.MediaBudget{}}, "")
+	g.Cues(episode, 95*s, 105*s)
+	if !g.Step(context.Background()) {
+		t.Fatal("no lead block ran")
+	}
+	cues, _, state := g.Cues(episode, 95*s, 105*s)
+	if state != subtitles.Pending || len(cues) != 1 || cues[0].Start != 100*s {
+		t.Fatalf("answer = %v %+v, want pending with the lead's cue at 1m40s", state, cues)
+	}
+}
+
+func TestGenerator_ConcurrentRequestsTranscribeEachBlockOnce(t *testing.T) {
+	local := &testkit.SpeechEngine{Respond: speaking("en"), Hold: make(chan struct{})}
+	g, _ := newGenerator(t, subtitles.Engines{Local: local, Budget: &testkit.MediaBudget{}}, "")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { g.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+
+	var viewers sync.WaitGroup
+	for range 2 {
+		viewers.Go(func() { g.Cues(episode, 0, 10*s) })
+	}
+	viewers.Wait()
+	for len(local.Calls()) == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	// A second viewer asks while the first block is in flight.
+	g.Cues(episode, 0, 10*s)
+	close(local.Hold)
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, _, state := g.Cues(episode, 0, 10*s); state == subtitles.Ready && len(local.Calls()) == 4 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("blocks never made; calls %v", spans(local.Calls()))
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	<-done
+	got := spans(local.Calls())
+	for i, span := range got {
+		if slices.Contains(got[i+1:], span) {
+			t.Fatalf("span %v transcribed twice: %v", span, got)
+		}
+	}
+}
+
+func TestGenerator_NoRequestForOneBlockLengthStopsTheQueue(t *testing.T) {
+	local := &testkit.SpeechEngine{Respond: speaking("en")}
+	g, c := newGenerator(t, subtitles.Engines{Local: local, Budget: &testkit.MediaBudget{}}, "")
+	g.Cues(episode, 0, 10*s)
+	g.Step(context.Background())
+	c.advance(subtitles.BlockLength + s)
+	if g.Step(context.Background()) {
+		t.Fatal("a block was transcribed with nobody asking")
+	}
+	if n := len(local.Calls()); n != 1 {
+		t.Fatalf("transcriptions = %d, want only the lead", n)
+	}
+}
+
+func TestGenerator_HostedRefusalOrAbsenceFallsBackToLocalForThatBlockOnly(t *testing.T) {
+	busy := errors.New("audio transcription: status 429 Too Many Requests")
+	hosted := &testkit.SpeechEngine{Respond: func(call testkit.SpeechCall) (subtitles.Speech, error) {
+		if call.Start == 30*s {
+			return subtitles.Speech{}, busy
+		}
+		return speaking("en")(call)
+	}}
+	local := &testkit.SpeechEngine{Respond: speaking("en")}
+	g, _ := newGenerator(t, subtitles.Engines{
+		Local: local, Hosted: func() subtitles.Transcriber { return hosted }, Budget: &testkit.MediaBudget{},
+	}, "")
+	g.Cues(episode, 0, 10*s)
+	drain(t, g)
+	if got, want := spans(hosted.Calls()), [][2]time.Duration{{0, 30 * s}, {30 * s, 60 * s}, {60 * s, 90 * s}}; !slices.Equal(got, want) {
+		t.Fatalf("hosted spans = %v, want each block asked once: %v", got, want)
+	}
+	// The lead, and the one block the hosted service refused.
+	if got, want := spans(local.Calls()), [][2]time.Duration{{0, 8 * s}, {30 * s, 60 * s}}; !slices.Equal(got, want) {
+		t.Fatalf("local spans = %v, want %v", got, want)
+	}
+	if _, _, state := g.Cues(episode, 30*s, 40*s); state != subtitles.Ready {
+		t.Fatalf("refused block state = %v, want ready from the local engine", state)
+	}
+
+	unconfigured := &testkit.SpeechEngine{Respond: speaking("en")}
+	g2, _ := newGenerator(t, subtitles.Engines{
+		Local: unconfigured, Hosted: func() subtitles.Transcriber { return nil }, Budget: &testkit.MediaBudget{},
+	}, "")
+	g2.Cues(episode, 0, 10*s)
+	drain(t, g2)
+	if got, want := spans(unconfigured.Calls()), [][2]time.Duration{{0, 8 * s}, {0, 30 * s}, {30 * s, 60 * s}, {60 * s, 90 * s}}; !slices.Equal(got, want) {
+		t.Fatalf("local spans with no hosted service = %v, want %v", got, want)
+	}
+}
+
+func TestGenerator_NoBudgetHeadroomRefusesLocalWorkAndStaysPending(t *testing.T) {
+	local := &testkit.SpeechEngine{Respond: speaking("en")}
+	budget := &testkit.MediaBudget{}
+	budget.SetTight(true)
+	g, _ := newGenerator(t, subtitles.Engines{Local: local, Budget: budget}, "")
+
+	g.Cues(episode, 0, 10*s)
+	if !g.Step(context.Background()) {
+		t.Fatal("the block was never offered to the budget")
+	}
+	// Refused, not queued: nothing more runs until the player asks again.
+	if g.Step(context.Background()) {
+		t.Fatal("refused work was retried without a request")
+	}
+	if _, _, state := g.Cues(episode, 0, 10*s); state != subtitles.Pending {
+		t.Fatalf("state = %v, want pending", state)
+	}
+	if len(local.Calls()) != 0 || budget.Admitted() != 0 {
+		t.Fatalf("local ran %d times past a tight budget", len(local.Calls()))
+	}
+
+	budget.SetTight(false)
+	g.Cues(episode, 0, 10*s)
+	drain(t, g)
+	if _, _, state := g.Cues(episode, 0, 10*s); state != subtitles.Ready || len(local.Calls()) == 0 {
+		t.Fatalf("state = %v after headroom returned, calls %d", state, len(local.Calls()))
+	}
+}
+
+func TestGenerator_NoBudgetHeadroomStillSendsGridBlocksToTheHostedService(t *testing.T) {
+	busy := errors.New("audio transcription: status 429 Too Many Requests")
+	hosted := &testkit.SpeechEngine{Respond: func(call testkit.SpeechCall) (subtitles.Speech, error) {
+		if call.Start == 30*s {
+			return subtitles.Speech{}, busy
+		}
+		return speaking("en")(call)
+	}}
+	local := &testkit.SpeechEngine{Respond: speaking("en")}
+	budget := &testkit.MediaBudget{}
+	budget.SetTight(true)
+	g, _ := newGenerator(t, subtitles.Engines{
+		Local: local, Hosted: func() subtitles.Transcriber { return hosted }, Budget: budget,
+	}, "")
+
+	for range 2 {
+		g.Cues(episode, 0, 10*s)
+		drain(t, g)
+	}
+	// The local lead is refused; every grid block still goes to the hosted service, once per
+	// request at most, and the one it refused waits for headroom instead of being asked in a loop.
+	want := [][2]time.Duration{{0, 30 * s}, {30 * s, 60 * s}, {60 * s, 90 * s}, {30 * s, 60 * s}}
+	if got := spans(hosted.Calls()); !slices.Equal(got, want) {
+		t.Fatalf("hosted spans = %v, want %v", got, want)
+	}
+	if len(local.Calls()) != 0 {
+		t.Fatalf("local ran %d times past a tight budget", len(local.Calls()))
+	}
+	if _, _, state := g.Cues(episode, 0, 10*s); state != subtitles.Ready {
+		t.Fatalf("state = %v, want ready from the hosted service", state)
+	}
+	if _, _, state := g.Cues(episode, 30*s, 40*s); state != subtitles.Pending {
+		t.Fatalf("refused block state = %v, want pending", state)
+	}
+}
+
+func TestGenerator_DropsCuesMostlyInsideSilenceAndKeepsQuietSpeech(t *testing.T) {
+	local := &testkit.SpeechEngine{Respond: func(testkit.SpeechCall) (subtitles.Speech, error) {
+		return subtitles.Speech{Language: "en", Cues: []subtitles.Cue{
+			{Start: 1 * s, End: 3 * s, Text: "Thank you."},                                        // all in silence
+			{Start: 8 * s, End: 10*s + 500*time.Millisecond, Text: "Mm."},                         // 80% in silence
+			{Start: 9 * s, End: 14 * s, Text: "we should go, quietly"},                            // 20% in silence
+			{Start: 20 * s, End: 22 * s, Text: "where the quiet dialogue is, not silence at all"}, // none
+		}}, nil
+	}}
+	g, _ := newGenerator(t, subtitles.Engines{
+		Local: local, Budget: &testkit.MediaBudget{},
+		Silence: testkit.SilenceSpans{Spans: []subtitles.Span{{Start: 0, End: 10 * s}}},
+	}, "")
+	g.Cues(episode, 0, 30*s)
+	drain(t, g)
+	cues, _, _ := g.Cues(episode, 0, 30*s)
+	var texts []string
+	for _, c := range cues {
+		texts = append(texts, c.Text)
+	}
+	if want := []string{"we should go, quietly", "where the quiet dialogue is, not silence at all"}; !slices.Equal(texts, want) {
+		t.Fatalf("kept %q, want %q", texts, want)
+	}
+}
+
+func TestGenerator_KeepsTheLanguageOfTheFirstBlockWithSpeech(t *testing.T) {
+	local := &testkit.SpeechEngine{Respond: func(call testkit.SpeechCall) (subtitles.Speech, error) {
+		switch {
+		case call.End == subtitles.LeadLength: // the lead: music, a confident guess and no line
+			return subtitles.Speech{Language: "ja"}, nil
+		case call.Start == 30*s:
+			return speaking("en")(call) // a later block that hears something else
+		default:
+			return speaking("de")(call)
+		}
+	}}
+	g, _ := newGenerator(t, subtitles.Engines{Local: local, Budget: &testkit.MediaBudget{}}, "")
+	g.Cues(episode, 0, 10*s)
+	drain(t, g)
+	calls := local.Calls()
+	if calls[0].Language != "" || calls[1].Language != "" {
+		t.Fatalf("languages asked before speech = %q, %q; want detection", calls[0].Language, calls[1].Language)
+	}
+	for _, c := range calls[2:] {
+		if c.Language != "de" {
+			t.Fatalf("block at %v asked in %q, want the kept de", c.Start, c.Language)
+		}
+	}
+	if _, language, _ := g.Cues(episode, 30*s, 40*s); language != "de" {
+		t.Fatalf("language = %q, want de", language)
+	}
+}
+
+func TestGenerator_ReadsCachedBlocksAfterARestartAndRedoesAReplacedFile(t *testing.T) {
+	dir := t.TempDir()
+	first := &testkit.SpeechEngine{Respond: speaking("fr")}
+	g, _ := newGenerator(t, subtitles.Engines{Local: first, Budget: &testkit.MediaBudget{}}, dir)
+	g.Cues(episode, 0, 10*s)
+	drain(t, g)
+
+	again := &testkit.SpeechEngine{Respond: speaking("fr")}
+	restarted, _ := newGenerator(t, subtitles.Engines{Local: again, Budget: &testkit.MediaBudget{}}, dir)
+	cues, language, state := restarted.Cues(episode, 0, 10*s)
+	if state != subtitles.Ready || language != "fr" || len(cues) != 1 || cues[0].Text != "line at 5s" {
+		t.Fatalf("after restart = %v %q %+v, want the cached block", state, language, cues)
+	}
+	drain(t, restarted)
+	if n := len(again.Calls()); n != 0 {
+		t.Fatalf("cached blocks transcribed again %d times", n)
+	}
+
+	for _, replaced := range []subtitles.Media{
+		{Input: episode.Input, Size: episode.Size + 1, ModifiedNs: episode.ModifiedNs, Duration: episode.Duration},
+		{Input: episode.Input, Size: episode.Size, ModifiedNs: episode.ModifiedNs + 1, Duration: episode.Duration},
+	} {
+		before := len(again.Calls())
+		if _, _, state := restarted.Cues(replaced, 0, 10*s); state != subtitles.Pending {
+			t.Fatalf("replaced file state = %v, want pending", state)
+		}
+		drain(t, restarted)
+		if len(again.Calls()) == before {
+			t.Fatal("a replaced file was not transcribed again")
+		}
+	}
+}
+
+func starts(cues []subtitles.Cue) []time.Duration {
+	out := []time.Duration{}
+	for _, c := range cues {
+		out = append(out, c.Start)
+	}
+	return out
+}
+
+func TestGenerator_NearbyRequestsKeepEachLeadOnceAndShowItsCuesOnce(t *testing.T) {
+	local := &testkit.SpeechEngine{Respond: speaking("en")}
+	g, _ := newGenerator(t, subtitles.Engines{Local: local, Budget: &testkit.MediaBudget{}}, "")
+	for _, at := range []time.Duration{60 * s, 80 * s, 95 * s} {
+		g.Cues(episode, at, at+10*s)
+		if !g.Step(context.Background()) {
+			t.Fatalf("no lead ran at %v", at)
+		}
+	}
+	// The lead at 1m00s is forgotten here, and the ones at 1m20s and 1m35s are kept.
+	g.Cues(episode, 100*s, 110*s)
+	cues, _, state := g.Cues(episode, 80*s, 90*s)
+	if got, want := starts(cues), []time.Duration{85 * s}; state != subtitles.Pending || !slices.Equal(got, want) {
+		t.Fatalf("answer = %v %v, want pending with the 1m20s lead's cue once: %v", state, got, want)
+	}
+}
+
+func TestGenerator_SeveralLeadsStandInForOnePendingBlock(t *testing.T) {
+	local := &testkit.SpeechEngine{Respond: speaking("en")}
+	g, _ := newGenerator(t, subtitles.Engines{Local: local, Budget: &testkit.MediaBudget{}}, "")
+	for _, at := range []time.Duration{60 * s, 80 * s} {
+		g.Cues(episode, at, at+10*s)
+		if !g.Step(context.Background()) {
+			t.Fatalf("no lead ran at %v", at)
+		}
+	}
+	cues, _, state := g.Cues(episode, 60*s, 90*s)
+	if got, want := starts(cues), []time.Duration{65 * s, 85 * s}; state != subtitles.Pending || !slices.Equal(got, want) {
+		t.Fatalf("answer = %v %v, want pending with each lead's cue once: %v", state, got, want)
+	}
+}
+
+func TestGenerator_ALeadAcrossAGridEdgeShowsEachCueUnderOneBlock(t *testing.T) {
+	local := &testkit.SpeechEngine{Respond: func(testkit.SpeechCall) (subtitles.Speech, error) {
+		return subtitles.Speech{Language: "en", Cues: []subtitles.Cue{
+			{Start: 2 * s, End: 4 * s, Text: "before the edge"},
+			{Start: 5 * s, End: 7 * s, Text: "on the edge"},
+		}}, nil
+	}}
+	g, _ := newGenerator(t, subtitles.Engines{Local: local, Budget: &testkit.MediaBudget{}}, "")
+	g.Cues(episode, 25*s, 35*s)
+	if !g.Step(context.Background()) {
+		t.Fatal("no lead ran")
+	}
+	// The lead spans 25–33 s, across the grid edge at 30 s; both grid blocks are pending.
+	cues, _, state := g.Cues(episode, 25*s, 35*s)
+	if got, want := starts(cues), []time.Duration{27 * s, 30 * s}; state != subtitles.Pending || !slices.Equal(got, want) {
+		t.Fatalf("answer = %v %v, want pending with each cue once: %v", state, got, want)
+	}
+}
+
+var firstBlocks = [][2]time.Duration{{0, 30 * s}, {30 * s, 60 * s}, {60 * s, 90 * s}}
+
+func TestGenerator_AHostedTimeoutFallsBackToLocalAndIsNotABudgetRefusal(t *testing.T) {
+	hung := &testkit.SpeechEngine{Respond: speaking("en"), Hold: make(chan struct{})}
+	defer close(hung.Hold)
+	local := &testkit.SpeechEngine{Respond: speaking("en")}
+	budget := &testkit.MediaBudget{}
+	g, _ := newGenerator(t, subtitles.Engines{
+		Local: local, Hosted: func() subtitles.Transcriber { return hung }, Budget: budget,
+	}, "")
+	g.SetHostedTimeout(20 * time.Millisecond)
+
+	g.Cues(episode, 0, 10*s)
+	drain(t, g)
+	// Each block waits out the hosted timeout once, then the local engine makes it with a fresh
+	// timeout of its own.
+	if got := spans(hung.Calls()); !slices.Equal(got, firstBlocks) {
+		t.Fatalf("hosted spans = %v, want each block asked once: %v", got, firstBlocks)
+	}
+	if got, want := spans(local.Calls()), append([][2]time.Duration{{0, 8 * s}}, firstBlocks...); !slices.Equal(got, want) {
+		t.Fatalf("local spans = %v, want the lead and every block: %v", got, want)
+	}
+	if n := budget.Admitted(); n != 4 {
+		t.Fatalf("budget admitted %d local transcriptions, want 4", n)
+	}
+	// No refusal is recorded: every block is ready with the local engine's cues.
+	cues, _, state := g.Cues(episode, 30*s, 40*s)
+	if got, want := starts(cues), []time.Duration{35 * s}; state != subtitles.Ready || !slices.Equal(got, want) {
+		t.Fatalf("answer = %v %v, want ready with the local cue %v", state, got, want)
+	}
+}
+
+func TestGenerator_NoBudgetHeadroomForTheLocalFallbackAfterAHostedTimeoutIsARefusal(t *testing.T) {
+	hung := &testkit.SpeechEngine{Respond: speaking("en"), Hold: make(chan struct{})}
+	defer close(hung.Hold)
+	local := &testkit.SpeechEngine{Respond: speaking("en")}
+	budget := &testkit.MediaBudget{}
+	budget.SetTight(true)
+	g, _ := newGenerator(t, subtitles.Engines{
+		Local: local, Hosted: func() subtitles.Transcriber { return hung }, Budget: budget,
+	}, "")
+	g.SetHostedTimeout(20 * time.Millisecond)
+
+	g.Cues(episode, 0, 10*s)
+	drain(t, g)
+	if got := spans(hung.Calls()); !slices.Equal(got, firstBlocks) {
+		t.Fatalf("hosted spans = %v, want each block asked once: %v", got, firstBlocks)
+	}
+	if len(local.Calls()) != 0 {
+		t.Fatalf("local ran %d times past a tight budget", len(local.Calls()))
+	}
+	// Refused, not failed: the blocks wait for the next request, and nothing runs before it.
+	if g.Step(context.Background()) {
+		t.Fatal("refused work was retried without a request")
+	}
+	if _, _, state := g.Cues(episode, 0, 10*s); state != subtitles.Pending {
+		t.Fatalf("state = %v, want pending", state)
+	}
+
+	budget.SetTight(false)
+	g.Cues(episode, 0, 10*s)
+	drain(t, g)
+	if _, _, state := g.Cues(episode, 0, 10*s); state != subtitles.Ready {
+		t.Fatalf("state = %v after headroom returned, want ready from the local engine", state)
+	}
+}
+
+func TestGenerator_TheBudgetTakingHeadroomBackMidBlockHoldsItForTheNextRequest(t *testing.T) {
+	local := &testkit.SpeechEngine{Respond: speaking("en"), Hold: make(chan struct{})}
+	budget := &testkit.MediaBudget{}
+	g, _ := newGenerator(t, subtitles.Engines{Local: local, Budget: budget}, "")
+	g.Cues(episode, 0, 10*s)
+
+	ran := make(chan bool)
+	go func() { ran <- g.Step(context.Background()) }()
+	for len(local.Calls()) == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	budget.Yield()
+	if !<-ran {
+		t.Fatal("no lead ran")
+	}
+	if g.Step(context.Background()) {
+		t.Fatal("yielded work was retried without a request")
+	}
+	if _, _, state := g.Cues(episode, 0, 10*s); state != subtitles.Pending {
+		t.Fatalf("state = %v, want pending", state)
+	}
+
+	// A yield is not a failure: with headroom back, the next request runs the lead again at once.
+	budget.SetTight(false)
+	close(local.Hold)
+	drain(t, g)
+	if _, _, state := g.Cues(episode, 0, 10*s); state != subtitles.Ready {
+		t.Fatalf("state = %v after headroom returned, want ready", state)
+	}
+	if got := spans(local.Calls()); len(got) < 2 || got[0] != got[1] || got[1] != [2]time.Duration{0, 8 * s} {
+		t.Fatalf("local spans = %v, want the yielded lead run again first", got)
+	}
+}
+
+func TestGenerator_TakesTheTrackLanguageFromWhateverTheEngineReports(t *testing.T) {
+	for _, tc := range []struct{ reported, want string }{
+		{"english", "en"}, // an OpenAI-compatible service's verbose_json
+		{"en", "en"},
+		{"en-US", "en"},
+		{"klingon", ""}, // a name langcode cannot place stays undetected
+		{"auto", ""},
+	} {
+		t.Run(tc.reported, func(t *testing.T) {
+			hosted := &testkit.SpeechEngine{Respond: speaking(tc.reported)}
+			silent := &testkit.SpeechEngine{} // the lead hears no speech
+			g, _ := newGenerator(t, subtitles.Engines{
+				Local: silent, Hosted: func() subtitles.Transcriber { return hosted }, Budget: &testkit.MediaBudget{},
+			}, "")
+			g.Cues(episode, 0, 10*s)
+			drain(t, g)
+			if _, language, _ := g.Cues(episode, 0, 10*s); language != tc.want {
+				t.Fatalf("language = %q, want %q", language, tc.want)
+			}
+			if calls := hosted.Calls(); calls[1].Language != tc.want {
+				t.Fatalf("the next block was asked in %q, want %q", calls[1].Language, tc.want)
+			}
+		})
+	}
+}
+
+func TestGenerator_AnEmptyWindowOrOnePastTheEndWantsNothing(t *testing.T) {
+	local := &testkit.SpeechEngine{Respond: speaking("en")}
+	g, _ := newGenerator(t, subtitles.Engines{Local: local, Budget: &testkit.MediaBudget{}}, "")
+	for _, window := range [][2]time.Duration{{10 * s, 10 * s}, {20 * s, 10 * s}, {episode.Duration, episode.Duration + time.Minute}} {
+		cues, _, state := g.Cues(episode, window[0], window[1])
+		if state != subtitles.Ready || len(cues) != 0 {
+			t.Fatalf("window %v = %v %+v, want ready and empty", window, state, cues)
+		}
+		if g.Step(context.Background()) {
+			t.Fatalf("window %v made a block", window)
+		}
+	}
+}
+
+func TestGenerator_ALaterRequestThatKnowsTheLengthClipsBlocksToTheFileEnd(t *testing.T) {
+	local := &testkit.SpeechEngine{Respond: speaking("en")}
+	g, _ := newGenerator(t, subtitles.Engines{Local: local, Budget: &testkit.MediaBudget{}}, "")
+	unknown, known := episode, episode
+	unknown.Duration, known.Duration = 0, 70*s
+	g.Cues(unknown, 40*s, 50*s)
+	g.Cues(known, 40*s, 50*s)
+	drain(t, g)
+	if got, want := spans(local.Calls()), [][2]time.Duration{{40 * s, 48 * s}, {30 * s, 60 * s}, {60 * s, 70 * s}}; !slices.Equal(got, want) {
+		t.Fatalf("local spans = %v, want blocks clipped to 1m10s and none past it: %v", got, want)
+	}
+}
+
+func TestGenerator_FailsWithNoEngine(t *testing.T) {
+	g, _ := newGenerator(t, subtitles.Engines{Budget: &testkit.MediaBudget{}}, "")
+	if _, _, state := g.Cues(episode, 0, 10*s); state != subtitles.Failed {
+		t.Fatalf("state = %v, want failed", state)
+	}
+}
+
+func TestPick_AutoKeysPickOnlyAutoGeneratedTracks(t *testing.T) {
+	english := subtitles.Track{Key: "en", Language: "en"}
+	auto := subtitles.Track{Key: subtitles.AutoKey(""), Language: ""}
+	tracks := []subtitles.Track{english, auto}
+	if got, ok := subtitles.Pick(tracks, subtitles.AutoKey("en")); !ok || got.Key != "und-auto" {
+		t.Fatalf("en-auto picked %+v, want the Auto-generated track", got)
+	}
+	if got, ok := subtitles.Pick([]subtitles.Track{english}, "en-auto"); ok {
+		t.Fatalf("en-auto picked the file's %+v", got)
+	}
+	autoEnglish := subtitles.Track{Key: subtitles.AutoKey("en"), Language: "en"}
+	if got, ok := subtitles.Pick([]subtitles.Track{autoEnglish}, "en-sdh"); ok {
+		t.Fatalf("en-sdh picked the Auto-generated %+v", got)
+	}
+}

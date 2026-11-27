@@ -206,7 +206,7 @@ func (s *Handlers) personNames(ctx context.Context) (personNames, error) {
 // name maps a stored created_by/decided_by to something a person can read. An unknown id
 // yields "" rather than the id itself: the raw id is exactly what this exists to keep off screen.
 func (n personNames) name(id string) string {
-	if id == accept.AutoApprovedBy {
+	if id == proposalstore.AutoApprovedBy {
 		return "Automatic"
 	}
 	return n.Name(id)
@@ -244,11 +244,11 @@ func (s *Handlers) listProposals(ctx context.Context, in *listProposalsInput) (*
 	var err error
 	if in.Mine {
 		// Scope from the SESSION, never from a parameter. The important property is that this
-		// cannot widen: `ListProposalsByCreator` is `WHERE created_by = ?`, so the worst case is
-		// too FEW rows, never another member's.
+		// cannot widen: `ListProposalsByCreator` matches `created_by` to one id, so the worst case
+		// is too FEW rows, never another member's.
 		//
 		// A break-glass API_TOKEN caller has no user record, so its id is "" — and submit
-		// stamps `created_by` with the same "" for a token-submitted proposal. So `mine=true`
+		// stamps `created_by` NULL for a token-submitted proposal, which "" matches. So `mine=true`
 		// on a token returns exactly the proposals that token submitted (usually none), which
 		// is the honest reading of "mine" for a caller that is not a person. What it can never
 		// do is fall through to everyone's, which is the failure mode worth designing against.

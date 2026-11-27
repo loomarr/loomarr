@@ -19,8 +19,8 @@ builds, runtime image certification, Apple mobile, Apple TV, Android TV, Expo An
 tuner matrix, or the macOS harness.
 The required `main` merge queue then builds at most eight cumulative candidates concurrently against
 the current base. A queued PR waits only for `merge-gate.yml`, which reports the required `CI` check after proving
-the merged tree compiles, so it merges in minutes. `merge-gate-cache.yml` refreshes its Go cache from
-main at most hourly and keeps one entry. Beside it, the `merge_group` run of `ci.yml` is the
+the merged tree compiles and every migration it adds is numbered above the base's newest, so it
+merges in minutes. `merge-gate-cache.yml` refreshes its Go cache from main at most hourly, rebuilds it from nothing once a day, and keeps one entry. Beside it, the `merge_group` run of `ci.yml` is the
 complete integration lane, reported as `CI assurance`: the same fail-closed classifier selects the
 complete affected gate set, and every selected result remains a dependency of that job. It finishes
 after the merge, so its evidence no longer blocks one. When it fails on a commit that reached main it
@@ -50,7 +50,21 @@ real consumers. They do not select unrelated Rust, Android, Apple, image, browse
 Postgres, or application-Go builds. The root Make interface and unknown paths still select
 everything.
 
-The Go repository-contract job keeps the stable `make privacy-verify` interface, but its captured
+The **Privacy** job runs `make privacy-verify`, the public repository's guard against real media
+titles and captured private fixture literals, on every run. It has no `needs` and no condition, and
+no classifier rule routes it: a story, fixture or test that the guard scans is checked whatever else
+the change selects, and a path the classifier has no rule for cannot skip it. It runs beside the CI
+policy job rather than inside it, so its scans do not lengthen a docs-only pull request. A change
+to only such files therefore does not select the Go contracts job: the guard is the only check
+there that those files need. The CI policy job runs `retired-verify` on every run too, since it
+searches `web/apps/web/src` and `internal` as well as prose. For a Go test file, the Go contracts
+job's `fmt` and `tags-verify` still read it; drift in either surfaces on the next change that
+selects Go contracts and in every release-candidate run. `TestCIRunsTheGuardOnEveryRun` in
+`internal/demolibrary` holds the four properties the guard rests on: the privacy job has no
+condition and no needs, it runs the target, the required `CI` check waits for it, and the target
+runs every scan.
+
+`make privacy-verify` keeps its stable interface, but its captured
 fixture guard is one in-process tracked-tree scan in `releaseverify`. The previous shell loop
 started hashing processes for every unique candidate and measured 54 seconds locally by itself;
 the same case-folded SHA-256 policy now measures about two seconds, reports only labels and digests,
@@ -258,8 +272,9 @@ schemas. It rejects
 job containers, services, unaudited reusable-workflow delegation, container-acquiring actions, unknown keys,
 metadata-only or malformed steps, multiple execution mechanisms, and unapproved environment,
 defaults, condition, error-tolerance, shell, working-directory, or `MAKEFLAGS` controls. The root
-tool-version environment and the cache-save condition are admitted only at their exact current
-values. Its only permitted shell steps are the exact cache-epoch command and the suite's `make test-pg`; this
+tool-version environment is admitted only at its exact current values. The suite only restores its Go
+cache, which the Go cache warm workflow writes, so a cache save or any conditional action step is
+rejected. Its only permitted shell steps are the exact cache-epoch command and the suite's `make test-pg`; this
 closes dry-run, variable, wrapper, and quoting indirection without parsing arbitrary shell. Every
 repository workflow is also parsed structurally. Any service or job container or `docker://` action
 is rejected. Workflow shell is not interpreted: route-shaped steps are classified from the raw
@@ -342,7 +357,23 @@ actions, commands, or family registrations and colliding absolute step identitie
 The cache-cleanup workflow is one such run authority: its complete deletion command, step name and
 environment, exact `Cache cleanup` workflow name, closed `pull_request` trigger with only the
 `closed` type, workflow permissions, job name and runner, and absence of alternate execution context
-are source-bound rather than inferred from its one-step topology.
+are source-bound rather than inferred from its one-step topology. It deletes the closed PR's
+merge-ref and merge-queue caches. It also deletes the caches of the PR's head branch, which a
+manual dispatch on that branch saves, but only for a same-repository PR whose head is not the
+default branch.
+
+Shared caches are written on `main` only, because a cache is readable only from its own ref and the
+default branch (#1679). The Go cache warm workflow runs on every push to `main` and seeds each key
+when it is missing:
+
+- the race-lane and Postgres Go build caches, once per ISO week and `go.sum`;
+- the Go contracts cache;
+- the pnpm store, per lockfile;
+- the production ffmpeg archive, per pin.
+
+The race lanes and Postgres conformance only restore. Frontend and Playwright save the pnpm store,
+and the Go lanes and the playout bench save the ffmpeg archive, only on a `main` dispatch that finds
+the key missing.
 
 Make execution is closed over the checked-in root `Makefile` and every `mk/*.mk`: each module must be
 included exactly once, and non-recipe syntax is limited to the current plain assignments, targets,
@@ -432,7 +463,8 @@ Changes to `api`, `core`, `fixtures`, `player`, `design-system`, or `ui` select 
 native platforms because those packages are transitive inputs to both. The shared player package
 also selects Web, Tuner, Image, and Android TV because its browser and native adapters share one
 transport contract. Browser-only client-proof and Turborepo contract changes select the shared
-JavaScript gate without spending a native runner.
+JavaScript gate without spending a native runner. A `web/turbo.json` change selects Web as well,
+because the Frontend job's typecheck and package tests run through Turbo.
 The committed OpenAPI document is a schema input rather than a native binary input. An OpenAPI-only
 change regenerates the client, then the shared-client gate typechecks, tests, and bundles the browser,
 iOS, Android, and TV JavaScript consumers. A mobile or TV app change, a shared native/runtime package,
@@ -443,6 +475,35 @@ Apple mobile, Apple TV, and Expo Android mobile are active. The mobile Android j
 `impact_expo_android_mobile`, builds `CLIENT_APP=mobile`, and retains its standalone debug APK for
 seven days. Expo Android TV remains a classifier decision until its independently required job and
 current-main evidence exist.
+
+The shared-client lanes and the Frontend job keep Turbo's task cache in the Turbo Remote Cache, not
+the Actions cache. Frontend entry 8 runs `make fe-typecheck fe-packages`: Turbo's `typecheck` for
+`@loomarr/web` and every package it uses, then `test` for those packages. They are the same tasks
+with the same hashes as in `make clients-tests`, so a package tested in one workflow is a cache hit in
+the other. Both run in one entry because `test` depends on each package's `typecheck`, and two
+entries that miss would both typecheck the packages. Never pass `--only` to share the work out: it
+drops the dependency hashes, so a package change no longer invalidates `@loomarr/web`'s typecheck.
+The only environment variable a shared task declares is `JAVA_HOME` (on `test`), which both
+workflows take unchanged from the `ubuntu-latest` image.
+
+A file outside a package that one of its tasks reads is an input of that task alone, declared with
+`$TURBO_ROOT$` in the package's own `turbo.json`. The native Storybook sources (`native-stories/`,
+`.rnstorybook/`) are inputs of the design-system `test` task, the one Turbo task that reads them: the apps
+bundle the workshop only under `STORYBOOK_ENABLED`, which no Turbo task sets. The Expo config
+plugins (`web/scripts/with-*.cjs`) and the TestFlight config are inputs of the mobile and TV
+`doctor`, `test` and `bundle` tasks. `globalDependencies` in `web/turbo.json` keeps only the shared
+configs and the generated API client, because a change to it changes every task hash and misses the
+whole cache.
+
+Artifacts are signed (`remoteCache.signature` in `web/turbo.json`). `TURBO_CACHE` sets `merge_group`
+runs and runs on `main` to write, and every other run, pull requests included, to read
+(`local:rw,remote:r`). The setting lives in the client, so it is not an access control: a same-repo
+pull request run holds the same token. The merge queue may write here, unlike the Actions cache
+(#1679), because Remote Cache entries are keyed by team and task hash rather than by ref.
+The four optional secrets are `TURBO_TOKEN`, `TURBO_TEAM`, `TURBO_REMOTE_CACHE_SIGNATURE_KEY` and
+`TURBO_API`. Leave `TURBO_API` empty for Vercel, or set it to a self-hosted server. A run without
+`TURBO_TOKEN` uses no remote cache and runs every task. Fork and Dependabot pull requests are such
+runs. A run with a token but no key uploads nothing and treats every download as a miss.
 
 `make client-android-debug` keeps workstation-safe defaults: one Gradle worker, one native job, one
 Metro worker, a 1280 MB Gradle heap, and a 4 GB memory scope. The CI mobile job raises them through
@@ -474,8 +535,19 @@ artifact. The promotion starts when that merge-group `CI` run completes successf
 because the run can finish after the merge (#2288). It publishes only a commit main already contains,
 and proves the source CI run, Android job, artifact name, commit/run/workflow manifest, and cache-tree digest,
 then saves that generation in the default-branch cache scope without running another product build.
-It deletes the transfer and all superseded Android generations. Android jobs do not run on pull
-requests, and queue jobs restore but never spend time saving an unreachable cache.
+It deletes the transfer and all superseded Android generations, but only once the saved generation
+appears in main's cache listing: a refused save only warns, so the retire step checks the listing
+first and fails without deleting anything when the generation is not there. Android jobs do not run
+on pull requests, and queue jobs restore but never spend time saving an unreachable cache.
+
+GitHub gives a `workflow_run` job a read-only cache (the runner log prints `Cache mode: read`)
+unless the job declares otherwise, so the promotion job declares `cache-mode: write`. GitHub
+annotates each promotion run with a cache-poisoning warning for that declaration. The job runs no
+build and saves only the generation its validation step has bound to a successful queue run of a
+commit on main. The execution-context authority pins the declaration: a workflow-level cache mode,
+any other job that declares one, or a promotion that declares a different one fails
+`release-verify`, and the policy parser rejects YAML merge keys that could splice one in unseen.
+When a save is still refused, the promotion run fails at the retire step.
 
 ## Per-run measurements
 
@@ -571,9 +643,13 @@ quarantine off, so it measures every test. That non-blocking step is the only so
 workflow policy lets set `continue-on-error` (`nonBlocking` in `internal/platform/releaseverify`).
 
 After that portability proof is green, `Apple compilation cache` is the only workflow authorized to
-publish compiler results. It is manual-only, refuses every ref except `refs/heads/main`, and builds
-the complete mobile and TV Release install-launch-liveness gates before saving. A restored seed is
-hash-validated before use; the candidate CAS and compressed archive are validated again, and a save
+publish compiler results. It refuses every ref except `refs/heads/main`, and builds the complete
+mobile and TV Release install-launch-liveness gates before saving. The fingerprint includes the pnpm
+lockfile and the runner's Xcode and SDKs, so a dependency update or a new runner image leaves the
+Apple jobs with no generation and they build cold. A daily scheduled run therefore fingerprints the
+toolchain in a short `xcode-27` job and looks the fingerprint up on main without downloading it. The
+build runs only when no generation matches. A manual run always builds, and restores the matching
+generation as its seed. A restored seed is hash-validated before use; the candidate CAS and compressed archive are validated again, and a save
 is refused if its size plus a 512 MiB reserve would exceed the repository's 10 GiB cache budget.
 Before installing dependencies or starting either native build, the writer also requires enough
 live headroom for the maximum permitted archive plus that reserve; this conservative preflight
@@ -815,14 +891,28 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
 - **`actions/cache` never overwrites an existing key.** A cache whose contents track something
   its key doesn't gets written once and frozen. Use a rolling key with `restore-keys`.
 - **The 10GB cap evicts LRU across all refs**, so closed PRs' caches push out live ones.
-  `cache-cleanup.yml` deletes both `refs/pull/N/merge` and matching merge-queue caches on close.
+  `cache-cleanup.yml` deletes `refs/pull/N/merge`, matching merge-queue caches and the same-repo
+  head branch's caches on close.
+- **A shared cache family keeps one entry on `main`: the newest.** A family gets a new key when its
+  inputs change (`go.sum`, the ISO week, the hour, the pnpm lockfile, the ffmpeg pin, a CodeQL
+  analysis), and neither `actions/cache` nor the CodeQL action removes the entry it supersedes.
+  `scripts/ci-cache-retention.sh` does, from `merge-gate-cache.yml` after each hourly save. It keeps
+  the newest entry in the listing, never "the key just saved": a failed cache save only warns, and
+  deleting everything but a key that was never written removes the last good entry. A new shared
+  family needs a line in that script's `family` function.
+- **A rolling cache needs an epoch.** One that restores its predecessor and saves the union only
+  grows. The Go warm caches carry the ISO week in their key; the merge-gate cache restores only an
+  entry of the same UTC day.
 - **Default-branch cache writes require a trusted trigger.** GitHub permits a default-branch writer
-  from `push` or `workflow_dispatch`, but `merge_group` and `workflow_run` cannot promote their
-  outputs into that scope. The Go cache-save conditions therefore remain useful only for a deliberate
-  manual run on `main`; ordinary PR and queue runs are restore-only. Android is the bounded exception
-  justified by the measured 25m54s cold queue build: the admitted queue run emits an immutable
-  compiler-cache transfer, and the queue-produced `push` validates and saves it without repeating any
-  compilation. A `workflow_run` writer or a `push` warmer that rebuilds the product remains forbidden.
+  from `push`, `schedule` or `workflow_dispatch`, but `merge_group` caches land in a disposable queue
+  scope and a `workflow_run` job is read-only by default. Shared caches are therefore written by the
+  `CI / Go cache warm` workflow on `main` pushes, plus the pnpm and ffmpeg saves on a manual run on
+  `main`, and the Apple compilation cache by its daily `schedule` run and a manual one; ordinary PR
+  and queue runs are restore-only. Android is the bounded exception justified by
+  the measured 25m54s cold queue build: the admitted queue run emits an immutable compiler-cache
+  transfer, and the `workflow_run` promotion, the only job that declares `cache-mode: write`,
+  validates and saves it without repeating any compilation. A writer that rebuilds the product,
+  from `workflow_run` or from a `push` warmer, remains forbidden.
 
 Apple compilation caching is a validated artifact protocol, not an unchecked DerivedData restore.
 The fingerprint binds the runner OS and architecture, exact Xcode and Swift identities, both
@@ -849,7 +939,7 @@ that fails when it drifts, and all three run in CI:
 | List | Guard | Runs via |
 | --- | --- | --- |
 | `TAGS` in the Makefile | `scripts/check-tags.sh` | `make tags-verify`, part of comprehensive verification |
-| Retired identifiers | `scripts/check-retired.sh` | `make retired-verify`, its own CI step |
+| Retired identifiers | `scripts/check-retired.sh` | `make retired-verify`, in the CI policy job on every run |
 | Release-image source-family probes | `releaseverify.VerifyCIImageInputs` | `make release-verify`, part of comprehensive verification |
 
 `tags-verify` compares the tags in `//go:build` lines against `TAGS` and fails **both ways**:
@@ -864,6 +954,25 @@ Don't — a warning printed by a job that exits 0 is one nobody reads.
 
 The CI path filter includes `scripts/`, so a PR editing only a guard still runs the job that
 executes it.
+
+## Screenshot baselines render on every frontend push
+
+`visual-baselines.yml` is outside the required PR gate. It runs on every `pull_request` push
+(opened, synchronize, reopened) from a branch of this repository that touches `web/`, and by manual
+dispatch. Its resolve job feeds the pull request's changed files to `scripts/ci-impact.sh` and renders
+only when the visual or e2e gate is selected, so it follows the same classifier as the Playwright
+job. The render (`visual-baselines-render.yml`, dispatched at the branch, read-only) regenerates the
+visual and e2e snapshots in the pinned Playwright image. The push job commits only PNGs under a
+`tests/visual/` or `tests/e2e/` snapshot directory. It has a workflow-level `paths:` filter, which a
+required check must never have; this workflow is not one.
+
+The bot's push starts `pull_request` runs whose actor is `github-actions[bot]`. The repository's
+fork-run approval policy is "first-time contributors", and the bot counts as one, so GitHub parks
+those runs at `action_required` and the parked CI keeps the pull request out of the merge queue. The
+workflow's release job approves exactly the parked runs on the commit it pushed, which needs only
+`actions: write`. Forks are untouched: their runs keep the approval rule, and the resolve job refuses
+a fork before any job holds a write token. A newer push cancels the older head's run, and the bot's
+own commit never starts a render. [Testing](testing.md#updating-visual-baselines) has the full flow.
 
 ## Scheduled Go dead code report
 

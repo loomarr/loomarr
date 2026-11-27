@@ -5,6 +5,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A library series' episodes: only those with a present file to play, in season and episode order,
@@ -13,10 +15,10 @@ func testLibraryEpisodes(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_800_000_000_000)
-	show := LibraryOrigin{Authority: "scan:test", Key: "series:dir:show"}
+	show := librarystore.LibraryOrigin{Authority: "scan:test", Key: "series:dir:show"}
 	ep := func(id string, season, episode int, path string) LibraryItem {
 		return LibraryItem{ID: id, Kind: "episode", Name: id, Series: show, Season: season, Episode: episode,
-			RuntimeMs: 1_200_000, Sources: []LibrarySource{{Path: path, Plays: true}}}
+			RuntimeMs: 1_200_000, Sources: []librarystore.LibrarySource{{Path: path, Plays: true}}}
 	}
 	second := ep("s01e02", 1, 2, "/t/show/s01e02.mkv")
 	second.Sources[0].DurationMs = 1_320_000
@@ -36,13 +38,13 @@ func testLibraryEpisodes(t *testing.T, newStore NewStoreFunc) {
 	if err := st.SaveLibraryItems(ctx, items, at); err != nil {
 		t.Fatal(err)
 	}
-	file := func(path string) LibraryFile {
-		return LibraryFile{Path: path, Root: "/t", Size: 9, ModifiedNs: 100, Identity: "digest", Kind: "episode",
-			Header: LibraryHeaderRead, SeenAt: at}
+	file := func(path string) librarystore.LibraryFile {
+		return librarystore.LibraryFile{Path: path, Root: "/t", Size: 9, ModifiedNs: 100, Identity: "digest", Kind: "episode",
+			Header: librarystore.LibraryHeaderRead, SeenAt: at}
 	}
 	missing := file("/t/show/s01e04.mkv")
 	missing.MissingAt = at
-	if err := st.SaveLibraryFiles(ctx, []LibraryFile{
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
 		file("/t/show/s01e01.mkv"), file("/t/show/s01e02.mkv"), file("/t/show/s02e01.mkv"), missing,
 	}); err != nil {
 		t.Fatal(err)

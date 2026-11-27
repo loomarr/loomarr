@@ -107,6 +107,9 @@ device is watching a Channel while its polls continue (`internal/channels/viewin
   [Favourites and recents](#favourites-and-recents), which is also what Watch opens.
 - The tracker is in memory: one replica is the supported topology, and a restart loses nothing
   a poll interval doesn't rebuild.
+- **Live.** Home reads it again on the empty `viewing` frame (#3352), sent as a viewing starts,
+  moves to another Channel, or ends. An end is seen when the tracker next prunes, on the next
+  poll or the recorder's next read, so it reaches Home within 15 s of the 30 s running out.
 
 ### Watch history
 
@@ -181,7 +184,9 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   switches the rendition and never restarts the encoder. Subtitles are soft and served beside the
   stream (`GET /v1/channels/{id}/subtitles`, [`playout.md`](playout.md)): the player asks for the
   cues of the remembered track key around its playhead, on the channel's wall clock, and draws them
-  over the picture (`C` cycles them).
+  over the picture (`C` cycles them). A server-generated track (`generated: true`, key
+  `<language>-auto`) is labelled **Auto-generated** on every client and listed after the file's own
+  tracks; while its cues are `pending` the player says "Generating subtitles…" and keeps asking.
 - **Leaving `/watch`** stops playback, unless the viewer is in the browser's picture-in-picture
   (`P`; hidden where unsupported). There is no in-app mini-player; the one-`<video>` rule stands.
   The route hides the app nav and has a back arrow in the top left corner.
@@ -320,8 +325,17 @@ routes Web already uses; no native-only route exists and no authority is added.
   request). Until then `/v1/auth/me` reports `member` and the controls do not appear. **Edit** is
   Web's edit-at-the-gate: the admin unticks titles and adds a note, and both ride the one
   `POST /v1/proposals/{id}/approve` body (`drop`, `note`). Adding a title needs search and stays on Web.
-- **Touch and orientation.** Portrait only, touch density, every target at least 44 pt. Live updates
-  poll (two seconds while a request is generating); `/v1/events` is only a Web invalidation trigger.
+- **Touch and orientation.** Portrait only, touch density, every target at least 44 pt.
+- **Live updates.** The device keeps one `/v1/events` stream while the app is in the foreground;
+  the player and Requests both follow it. Requests reads again on:
+  - a `proposal` frame: a proposal now waits for a decision, or was approved or denied, by anyone
+    or by an automatic grant;
+  - a `suggestion` frame for one of the person's own runs (another member's progress is ignored);
+  - a `title` frame (a title settles available or unavailable);
+  - a `channel` frame (an approved request's channel builds);
+  - the stream coming back, and the app returning to the foreground.
+
+  Nothing re-reads on a timer (#3352).
 - **Tab position (approved mock, #1840).** Requests is a fourth tab between Guide and Surf (Watching ·
   Guide · Requests · Surf) with Web's count badge: an admin's pending decisions plus anyone's failed
   requests. "Request a channel" is an icon button in the Requests app bar on both phones; Android has no

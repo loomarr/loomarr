@@ -1806,6 +1806,99 @@ func testClipPipelineRetireRejected(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// testClipPipelineRetireReady pins decision 13 of #3838 (#3855): a full budget may evict a clip
+// Loomarr fetched that is on air, taking it off the catalog and marking its row files-deleted in one
+// transaction, and may evict nothing else: a hand-added clip, a pinned one, a held one, a composite
+// and one already let go all stay.
+func testClipPipelineRetireReady(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_900_000_000, 0).UTC()
+	ready := func(name, acquisition string, mutate func(*clips.Clip)) Clip {
+		t.Helper()
+		c := clipAt("ready/"+name+".mp4", name, clips.Commercial, 30_000)
+		if mutate != nil {
+			mutate(&c)
+		}
+		if err := s.UpsertClip(ctx, Clip{Clip: c, UpdatedAt: now.Add(-time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+			ClipHash: c.Hash, AcquisitionID: acquisition, Stage: pipelinestate.StageFinish,
+			Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionReady,
+			EnrolledAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return Clip{Clip: c}
+	}
+	saveAcquisitionRun(t, s, "run-1")
+	fetched := ready("fetched", "run-1", nil)
+	byHand := ready("by-hand", "", nil)
+	pinned := ready("pinned", "run-1", nil)
+	held := ready("held", "run-1", func(c *clips.Clip) { c.Held = true })
+	composite := ready("composite", "run-1", func(c *clips.Clip) { c.IsComposite = true })
+	channel := sampleChannel("pins-a-ready-clip", 713, now)
+	channel.Policy.Filler = &schedule.FillerSelection{Pinned: []string{pinned.Hash}}
+	if _, err := s.SaveChannel(ctx, channel); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		clip Clip
+		want bool
+	}{{fetched, true}, {byHand, false}, {pinned, false}, {held, false}, {composite, false}, {fetched, false}} {
+		got, err := s.RetireReadyClip(ctx, tc.clip.Hash, now)
+		if err != nil || got != tc.want {
+			t.Fatalf("RetireReadyClip(%s) = %v, %v; want %v", tc.clip.Name, got, err, tc.want)
+		}
+	}
+	if got, err := s.RetireReadyClip(ctx, "no-such-clip", now); err != nil || got {
+		t.Fatalf("RetireReadyClip(unknown) = %v, %v; want false", got, err)
+	}
+
+	got, err := s.GetClip(ctx, fetched.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := s.LiveClipPaths(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, stillLive := live[fetched.Hash]; got.RemovedAt.IsZero() || stillLive {
+		t.Fatalf("evicted clip removed=%v live=%v, want removed and reaped", got.RemovedAt, stillLive)
+	}
+	for _, kept := range []Clip{byHand, pinned, held, composite} {
+		if _, ok := live[kept.Hash]; !ok {
+			t.Errorf("%s was reaped", kept.Name)
+		}
+	}
+	row, _, err := s.GetClipPipeline(ctx, fetched.Hash)
+	if err != nil || !row.FilesDeletedAt.Equal(now) || row.Disposition != pipelinestate.DispositionReady {
+		t.Fatalf("evicted row = %+v, %v; want files deleted at %v and the row otherwise as it was", row, err, now)
+	}
+	// A runner write carrying the row as it was read before the eviction cannot clear the mark.
+	stale := row
+	stale.FilesDeletedAt, stale.UpdatedAt = time.Time{}, now.Add(time.Minute)
+	if err := s.UpsertClipPipeline(ctx, stale); err != nil {
+		t.Fatal(err)
+	}
+	if row, _, _ = s.GetClipPipeline(ctx, fetched.Hash); !row.FilesDeletedAt.Equal(now) {
+		t.Fatalf("files_deleted_at after a stale runner write = %v, want %v", row.FilesDeletedAt, now)
+	}
+	// The on-air list no longer holds it.
+	onAir, err := s.ListClips(ctx, clipstore.ClipFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range onAir {
+		if c.Hash == fetched.Hash {
+			t.Fatal("the evicted clip is still in the on-air catalog")
+		}
+	}
+}
+
 // testClipFingerprintCache pins the cache's two correctness properties on both backends: only an
 // exact content+algorithm key hits, and catalog pruning removes sibling-table orphans.
 func testClipFingerprintCache(t *testing.T, newStore NewStoreFunc) {
@@ -3708,6 +3801,7 @@ func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	ctx := context.Background()
 	s := newStore(t)
+	saveMembers(t, s, "admin-2")
 	created := time.Now().UTC().Truncate(time.Second)
 
 	p := acquisition.Pull{
@@ -5508,58 +5602,6 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	}
 	if _, found, err := s.GetFillerReadyEvent(ctx, driftHash); err != nil || found {
 		t.Fatalf("drifted transaction recorded event, found=%t err=%v", found, err)
-	}
-}
-
-func testFillerSplitShadowDecisions(t *testing.T, newStore NewStoreFunc) {
-	t.Helper()
-	s := newStore(t)
-	ctx := context.Background()
-	decision := filler.StructureSplitShadowDecision{
-		SchemaVersion: filler.StructureSplitShadowSchemaVersion, ContractVersion: filler.StructureSplitShadowContractVersion,
-		ProposalID: "proposal-shadow-1", ClipHash: "clip-shadow-1",
-		SourceSHA256: strings.Repeat("a", 64), AssessmentSHA256: strings.Repeat("b", 64),
-		PolicyVersion: "production-shadow-no-certified-slices-v1",
-		Legacy: filler.StructureSplitShadowOutcome{
-			Confirm: []filler.StructureSplitShadowSpan{{StartMs: 0, EndMs: 30_000}, {StartMs: 30_000, EndMs: 60_000}},
-		},
-		Certified: filler.StructureSplitShadowOutcome{
-			Verdict: filler.RejectStructureUncertified,
-			Hold: []filler.StructureSplitShadowSpan{
-				{StartMs: 0, EndMs: 30_000, HoldReason: string(filler.RejectStructureUncertified)},
-				{StartMs: 30_000, EndMs: 60_000, HoldReason: string(filler.RejectStructureUncertified)},
-			},
-		},
-		ObservedAt: time.Unix(1_900_000_000, 123).UTC(),
-	}
-	decision.SHA256 = filler.StructureSplitShadowDecisionSHA256(decision)
-	decision.ID = "split-shadow-" + decision.SHA256
-	if err := filler.ValidateStructureSplitShadowDecision(decision); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.PutStructureSplitShadowDecision(ctx, decision); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.PutStructureSplitShadowDecision(ctx, decision); err != nil {
-		t.Fatalf("idempotent retry failed: %v", err)
-	}
-	got, found, err := s.GetStructureSplitShadowDecision(ctx, decision.ID)
-	if err != nil || !found || !reflect.DeepEqual(got, decision) {
-		t.Fatalf("get split shadow = %+v, %v, %v; want %+v", got, found, err, decision)
-	}
-	if _, found, err := s.GetStructureSplitShadowDecision(ctx, "missing-split-shadow"); err != nil || found {
-		t.Fatalf("missing split shadow found = %v, error = %v", found, err)
-	}
-	rows, err := s.ListStructureSplitShadowDecisions(ctx, decision.ClipHash, 10)
-	if err != nil || len(rows) != 1 || !reflect.DeepEqual(rows[0], decision) {
-		t.Fatalf("split shadow round trip = %+v, %v; want %+v", rows, err, decision)
-	}
-	other, err := s.ListStructureSplitShadowDecisions(ctx, "another-clip", 10)
-	if err != nil || len(other) != 0 {
-		t.Fatalf("split shadow clip filter = %+v, %v", other, err)
-	}
-	if _, err := s.ListStructureSplitShadowDecisions(ctx, "", 0); err == nil {
-		t.Fatal("invalid split shadow page limit was accepted")
 	}
 }
 

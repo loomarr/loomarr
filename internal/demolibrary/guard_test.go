@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // The repo is public: seeds, fixtures and the demo library must never carry a real media title,
@@ -121,14 +123,11 @@ var migrated = []string{
 	"web/apps/web/src/components/loomarr/dashboard/activity-feed/activity-feed.stories.tsx",
 	// The legacy stories and the TV emulator fixture server (slice 18).
 	"web/apps/web/src/components/loomarr/channels/channel-breaks/channel-breaks.stories.tsx",
-	"web/apps/web/src/components/loomarr/channels/channel-card/channel-card.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-collections-scope/channel-collections-scope.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.stories.tsx",
-	"web/apps/web/src/components/loomarr/channels/channel-ident/channel-ident.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-lineup-editor/channel-lineup-editor.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-series-scope/channel-series-scope.stories.tsx",
-	"web/apps/web/src/components/loomarr/channels/now-next-strip/now-next-strip.stories.tsx",
 	"web/apps/web/src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.stories.tsx",
 	"web/apps/web/src/design-system/identity.stories.tsx",
 	"web/apps/web/src/design-system/overlay.stories.tsx",
@@ -161,15 +160,12 @@ var migratedTests = []string{
 	"web/apps/web/src/suggest/use-proposal-review-edit/",
 	"web/apps/web/src/suggest/use-suggestion-run/",
 	// The web component tests, policy overrides and request detail (slice 10).
-	"web/apps/web/src/components/loomarr/channels/channel-card/",
 	"web/apps/web/src/components/loomarr/channels/channel-collections-scope/",
 	"web/apps/web/src/components/loomarr/channels/channel-cycle-preview/",
-	"web/apps/web/src/components/loomarr/channels/channel-ident/",
 	"web/apps/web/src/components/loomarr/channels/channel-lineup-editor/",
 	"web/apps/web/src/components/loomarr/channels/channel-policy-fields/",
 	"web/apps/web/src/components/loomarr/channels/channel-rules-editor/",
 	"web/apps/web/src/components/loomarr/channels/channel-series-scope/",
-	"web/apps/web/src/components/loomarr/channels/now-next-strip/",
 	"web/apps/web/src/components/loomarr/filler/clip-card/",
 	"web/apps/web/src/components/loomarr/filler/clip-row/",
 	"web/apps/web/src/components/loomarr/filler/pod-timeline/",
@@ -673,20 +669,78 @@ func TestSeedsCarryNoRealTitles(t *testing.T) {
 	}
 }
 
-// CI runs this guard in the path-filtered Go contracts job (privacy-verify), so the ci-impact
-// classifier must select that job for every file the guard scans, Go and web alike.
-func TestCIRunsTheGuardWheneverAScannedFileChanges(t *testing.T) {
-	root := repoRoot(t)
-	scanned := slices.Concat(seedFiles(t, root), fixtureFiles(t, root), migratedTestFiles(t, root), migratedGoFiles(t, root))
-	for _, rel := range scanned {
-		cmd := exec.Command("./scripts/ci-impact.sh", rel)
-		cmd.Dir = root
-		out, err := cmd.Output()
-		if err != nil {
-			t.Fatalf("ci-impact %s: %v", rel, err)
-		}
-		if !slices.Contains(strings.Fields(string(out)), "contracts=true") {
-			t.Errorf("ci-impact skips the Go contracts job for %s, so a real title there would merge unchecked; route it in scripts/ci-impact.sh", rel)
+// CI runs this guard (make privacy-verify) in its own privacy job, which runs on every run whatever
+// changed. No classifier rule routes it, so a file the guard scans is checked even when the
+// classifier has never heard of its path. Four properties make that true: the job has no condition
+// and no needs (a job whose need fails is skipped, and the aggregate accepts a skipped job), it
+// runs the target, the required aggregate check waits for it, and the target runs every scan.
+func TestCIRunsTheGuardOnEveryRun(t *testing.T) {
+	type step struct {
+		If              string `yaml:"if"`
+		ContinueOnError any    `yaml:"continue-on-error"`
+		Run             string `yaml:"run"`
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			If string `yaml:"if"`
+			// One job name or a list of them.
+			Needs           any    `yaml:"needs"`
+			ContinueOnError any    `yaml:"continue-on-error"`
+			Steps           []step `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	raw := mustRead(t, filepath.Join(repoRoot(t), ".github/workflows/ci.yml"))
+	if err := yaml.Unmarshal([]byte(raw), &workflow); err != nil {
+		t.Fatalf("ci.yml: %v", err)
+	}
+	privacy, ok := workflow.Jobs["privacy"]
+	if !ok {
+		t.Fatal("ci.yml has no privacy job, so nothing runs the real-titles guard on every run")
+	}
+	if privacy.If != "" {
+		t.Errorf("the privacy job runs only if %q: a skipped privacy job lets a real title merge unchecked", privacy.If)
+	}
+	if privacy.Needs != nil {
+		t.Errorf("the privacy job needs %v: a failed need skips it, and a skipped privacy job lets a real title merge unchecked", privacy.Needs)
+	}
+	if privacy.ContinueOnError != nil {
+		t.Errorf("the privacy job sets continue-on-error %v, so a failing guard would still pass", privacy.ContinueOnError)
+	}
+	// The guard step itself must also run unconditionally and block on failure.
+	runsGuard := slices.ContainsFunc(privacy.Steps, func(s step) bool {
+		fields := strings.Fields(s.Run)
+		return len(fields) > 0 && fields[0] == "make" && slices.Contains(fields, "privacy-verify") &&
+			s.If == "" && s.ContinueOnError == nil
+	})
+	if !runsGuard {
+		t.Error("the privacy job has no unconditional, blocking make privacy-verify step, so a real title would merge unchecked")
+	}
+	needs, _ := workflow.Jobs["ci-ok"].Needs.([]any)
+	if !slices.Contains(needs, any("privacy")) {
+		t.Error("the required CI check does not wait for the privacy job, so a failing guard would not block a merge")
+	}
+
+	// The workflow names only the make target. What the target runs is the guard: a dry run lists
+	// the commands without running them, so a target that has lost a scan fails here.
+	dryRun := exec.Command("make", "--no-print-directory", "-n", "privacy-verify")
+	dryRun.Dir = repoRoot(t)
+	// A parent make's flags would be inherited by this one.
+	dryRun.Env = append(os.Environ(), "MAKEFLAGS=", "MFLAGS=")
+	plan, err := dryRun.Output()
+	if err != nil {
+		t.Fatalf("make -n privacy-verify: %v", err)
+	}
+	for _, want := range []string{
+		"test ./internal/demolibrary",
+		"TestSeedsCarryNoRealTitles",
+		"TestFixturesCarryNoRealTitles",
+		"TestMigratedFixturesStayInvented",
+		"TestMigratedGoTestsStayInvented",
+		"TestDemoCatalogueIsInvented",
+		"./scripts/check-private-fixtures.sh",
+	} {
+		if !strings.Contains(string(plan), want) {
+			t.Errorf("make privacy-verify does not run %q, so the guard CI names scans less than it claims", want)
 		}
 	}
 }

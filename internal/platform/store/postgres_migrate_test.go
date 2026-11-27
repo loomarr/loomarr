@@ -22,6 +22,15 @@ func TestPostgresDiscoveryFeedbackOrphanCleanupMigration(t *testing.T) {
 	testDiscoveryFeedbackOrphanCleanupMigration(t, db, DialectPostgres, "migrations/postgres")
 }
 
+func TestPostgresFoldScopeEraMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testFoldScopeEraMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
 func TestPostgresProposalDeniedTopicMigration(t *testing.T) {
 	db, err := sql.Open("pgx", startPostgres(t))
 	if err != nil {
@@ -49,6 +58,15 @@ func TestPostgresForeignKeyPolicyMigration(t *testing.T) {
 	testForeignKeyPolicyMigration(t, db, DialectPostgres, "migrations/postgres")
 }
 
+func TestPostgresQualitySnapshotMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testQualitySnapshotMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
 func TestPostgresLibraryLinksMigration(t *testing.T) {
 	db, err := sql.Open("pgx", startPostgres(t))
 	if err != nil {
@@ -74,6 +92,33 @@ func TestPostgresChannelJobsMigration(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	testChannelJobsMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
+func TestPostgresPeopleKeysMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testPeopleKeysMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
+func TestPostgresProposalPeopleMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testProposalPeopleMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
+func TestPostgresLibraryCatalogJSONMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testLibraryCatalogJSONMigration(t, db, DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresIndexNamesFollowConvention(t *testing.T) {
@@ -130,6 +175,16 @@ func TestPostgresRetireFillerRuntimeRightsMigration(t *testing.T) {
 	}
 	defer func() { _ = s.Close() }()
 	testRetireFillerRuntimeRightsMigration(t, s, "migrations/postgres")
+}
+
+func TestPostgresImageFetchBackoffMigration(t *testing.T) {
+	ctx := context.Background()
+	s, err := openPostgres(ctx, startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	testImageFetchBackoffMigration(t, s, "migrations/postgres")
 }
 
 func TestPostgresClipNameSourceMigration(t *testing.T) {

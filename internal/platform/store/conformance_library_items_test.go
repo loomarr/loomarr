@@ -9,6 +9,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Library → Items lists what has present files, counts a series' episodes toward it, searches by
@@ -29,45 +31,45 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 	}
 	// m1's poster is the image its ref names; a fanart ref is not a poster.
 	poster, fanart := imageAt("m1-poster", at), imageAt("m2-fanart", at)
-	for _, img := range []Image{poster, fanart} {
+	for _, img := range []clipstore.Image{poster, fanart} {
 		if err := st.PutImage(ctx, img); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, ref := range []ImageRef{
-		{ImageHash: poster.Hash, OwnerKind: LibraryItemImageOwner, OwnerID: "m1", Role: "poster"},
-		{ImageHash: fanart.Hash, OwnerKind: LibraryItemImageOwner, OwnerID: "m2", Role: "backdrop"},
+	for _, ref := range []clipstore.ImageRef{
+		{ImageHash: poster.Hash, OwnerKind: librarystore.LibraryItemImageOwner, OwnerID: "m1", Role: "poster"},
+		{ImageHash: fanart.Hash, OwnerKind: librarystore.LibraryItemImageOwner, OwnerID: "m2", Role: "backdrop"},
 	} {
 		if err := st.PutImageRef(ctx, ref); err != nil {
 			t.Fatal(err)
 		}
 	}
-	file := func(path, item, series, header string) LibraryFile {
-		return LibraryFile{Path: path, Root: "/media", Size: 1, ModifiedNs: 1, Kind: "movie", Header: header,
+	file := func(path, item, series, header string) librarystore.LibraryFile {
+		return librarystore.LibraryFile{Path: path, Root: "/media", Size: 1, ModifiedNs: 1, Kind: "movie", Header: header,
 			SeenAt: at, ItemID: item, SeriesID: series}
 	}
-	missing := file("/media/gone.mkv", "gone", "", LibraryHeaderRead)
+	missing := file("/media/gone.mkv", "gone", "", librarystore.LibraryHeaderRead)
 	missing.MissingAt = at
-	problem := file("/media/bad.iso", "m2", "", LibraryHeaderFailed)
+	problem := file("/media/bad.iso", "m2", "", librarystore.LibraryHeaderFailed)
 	problem.Problem = "disc_image"
-	if err := st.SaveLibraryFiles(ctx, []LibraryFile{
-		file("/media/100.mkv", "m1", "", LibraryHeaderRead),
-		file("/media/another.mkv", "m2", "", LibraryHeaderPending),
-		file("/media/show/e1.mkv", "e1", "s1", LibraryHeaderRead),
-		file("/media/show/e2.mkv", "e2", "s1", LibraryHeaderPending),
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
+		file("/media/100.mkv", "m1", "", librarystore.LibraryHeaderRead),
+		file("/media/another.mkv", "m2", "", librarystore.LibraryHeaderPending),
+		file("/media/show/e1.mkv", "e1", "s1", librarystore.LibraryHeaderRead),
+		file("/media/show/e2.mkv", "e2", "s1", librarystore.LibraryHeaderPending),
 		missing, problem,
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	page, err := st.ListLibraryItems(ctx, LibraryItemQuery{})
+	page, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if page.Total != 3 || len(page.Items) != 3 {
 		t.Fatalf("page = %+v, want three present items", page)
 	}
-	want := []LibraryItemSummary{
+	want := []librarystore.LibraryItemSummary{
 		{LibraryItem: LibraryItem{ID: "m1", Kind: "movie", Name: "The 100% Film", SortName: "100% film", Year: 1999}, Poster: poster.Hash, Files: 1},
 		// m2's fanart is its backdrop, never its poster.
 		{LibraryItem: LibraryItem{ID: "m2", Kind: "movie", Name: "Another Film", SortName: "another film", Year: 2004}, Backdrop: fanart.Hash, Files: 1, Pending: 1},
@@ -79,18 +81,18 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 		}
 	}
 
-	series, err := st.ListLibraryItems(ctx, LibraryItemQuery{Kind: "series"})
+	series, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Kind: "series"})
 	if err != nil || series.Total != 1 || series.Items[0].ID != "s1" {
 		t.Fatalf("series = %+v, %v", series, err)
 	}
-	literal, err := st.ListLibraryItems(ctx, LibraryItemQuery{Search: "100%"})
+	literal, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Search: "100%"})
 	if err != nil || literal.Total != 1 || literal.Items[0].ID != "m1" {
 		t.Fatalf("search 100%% = %+v, %v", literal, err)
 	}
-	if wild, err := st.ListLibraryItems(ctx, LibraryItemQuery{Search: "_"}); err != nil || wild.Total != 0 {
+	if wild, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Search: "_"}); err != nil || wild.Total != 0 {
 		t.Fatalf("search _ = %+v, %v; want the underscore taken literally", wild, err)
 	}
-	second, err := st.ListLibraryItems(ctx, LibraryItemQuery{Limit: 1, Offset: 1})
+	second, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Limit: 1, Offset: 1})
 	if err != nil || second.Total != 3 || len(second.Items) != 1 || second.Items[0].ID != "m2" {
 		t.Fatalf("second page = %+v, %v", second, err)
 	}
@@ -123,9 +125,9 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// A file Loomarr moved away goes missing at once, unheld; a missing one keeps when it went.
-	held := file("/media/show/e2.mkv", "e2", "s1", LibraryHeaderPending)
+	held := file("/media/show/e2.mkv", "e2", "s1", librarystore.LibraryHeaderPending)
 	held.Held = true
-	if err := st.SaveLibraryFiles(ctx, []LibraryFile{held}); err != nil {
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{held}); err != nil {
 		t.Fatal(err)
 	}
 	later := at.Add(time.Hour)
@@ -165,9 +167,9 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 	at := time.UnixMilli(1_790_000_000_000).UTC()
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{
 		{ID: "broken", Kind: "movie", Name: "Broken Film"},
-		{ID: "twice", Kind: "movie", Name: "Twice Film", Sources: []LibrarySource{
+		{ID: "twice", Kind: "movie", Name: "Twice Film", Sources: []librarystore.LibrarySource{
 			{Path: "/media/twice/a.mkv", SizeBytes: 5, Plays: true}, {Path: "/media/twice/b.mkv", SizeBytes: 30}}},
-		{ID: "cuts", Kind: "movie", Name: "Cuts Film", Sources: []LibrarySource{
+		{ID: "cuts", Kind: "movie", Name: "Cuts Film", Sources: []librarystore.LibrarySource{
 			{Path: "/media/cuts/a.mkv", SizeBytes: 5, Plays: true},
 			{Path: "/media/cuts/b.mkv", SizeBytes: 7, Edition: "Extended", Plays: true}}},
 		{ID: "fine", Kind: "movie", Name: "Fine Film"},
@@ -180,24 +182,24 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	file := func(path, item, series, header string) LibraryFile {
-		return LibraryFile{Path: path, Root: "/media", Size: 1, ModifiedNs: 1, Kind: "movie", Header: header,
+	file := func(path, item, series, header string) librarystore.LibraryFile {
+		return librarystore.LibraryFile{Path: path, Root: "/media", Size: 1, ModifiedNs: 1, Kind: "movie", Header: header,
 			SeenAt: at, ItemID: item, SeriesID: series}
 	}
-	disc := file("/media/fine/disc.iso", "fine", "", LibraryHeaderFailed)
+	disc := file("/media/fine/disc.iso", "fine", "", librarystore.LibraryHeaderFailed)
 	disc.Problem = "disc_image"
-	if err := st.SaveLibraryFiles(ctx, []LibraryFile{
-		file("/media/broken.mkv", "broken", "", LibraryHeaderFailed),
-		file("/media/twice/a.mkv", "twice", "", LibraryHeaderRead),
-		file("/media/twice/b.mkv", "twice", "", LibraryHeaderRead),
-		file("/media/cuts/a.mkv", "cuts", "", LibraryHeaderRead),
-		file("/media/cuts/b.mkv", "cuts", "", LibraryHeaderRead),
-		file("/media/fine/fine.mkv", "fine", "", LibraryHeaderRead),
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
+		file("/media/broken.mkv", "broken", "", librarystore.LibraryHeaderFailed),
+		file("/media/twice/a.mkv", "twice", "", librarystore.LibraryHeaderRead),
+		file("/media/twice/b.mkv", "twice", "", librarystore.LibraryHeaderRead),
+		file("/media/cuts/a.mkv", "cuts", "", librarystore.LibraryHeaderRead),
+		file("/media/cuts/b.mkv", "cuts", "", librarystore.LibraryHeaderRead),
+		file("/media/fine/fine.mkv", "fine", "", librarystore.LibraryHeaderRead),
 		disc,
-		file("/media/show/e1.mkv", "e1", "show", LibraryHeaderRead),
-		file("/media/show/e2.mkv", "e2", "show", LibraryHeaderFailed),
-		file("/media/shows/e1.mkv", "f1", "shows", LibraryHeaderRead),
-		file("/media/shows/e2.mkv", "f2", "shows", LibraryHeaderRead),
+		file("/media/show/e1.mkv", "e1", "show", librarystore.LibraryHeaderRead),
+		file("/media/show/e2.mkv", "e2", "show", librarystore.LibraryHeaderFailed),
+		file("/media/shows/e1.mkv", "f1", "shows", librarystore.LibraryHeaderRead),
+		file("/media/shows/e2.mkv", "f2", "shows", librarystore.LibraryHeaderRead),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +207,7 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 	if one, err := st.LibraryItem(ctx, "show"); err != nil || one.Unplayable != 1 || one.Files != 2 || one.Pending != 0 {
 		t.Fatalf("show = %+v, %v; want one of two episodes unplayable", one, err)
 	}
-	page, err := st.ListLibraryItems(ctx, LibraryItemQuery{Problems: true})
+	page, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Problems: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,10 +223,10 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 		page.Items[2].Unplayable != 0 || page.Items[2].Files != 2 || page.Items[2].ExtraCopies != 1 || page.Items[2].ExtraBytes != 30 {
 		t.Errorf("problem counts = %+v, want Twice Film's 30-byte copy extra", page.Items)
 	}
-	if all, err := st.ListLibraryItems(ctx, LibraryItemQuery{}); err != nil || all.Total != 6 {
+	if all, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{}); err != nil || all.Total != 6 {
 		t.Errorf("every title = %d, %v; want six", all.Total, err)
 	}
-	if paged, err := st.ListLibraryItems(ctx, LibraryItemQuery{Problems: true, Limit: 1}); err != nil ||
+	if paged, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Problems: true, Limit: 1}); err != nil ||
 		paged.Total != 3 || len(paged.Items) != 1 {
 		t.Errorf("a page of problems = %d of %d, %v; want one of three", len(paged.Items), paged.Total, err)
 	}
@@ -245,17 +247,17 @@ func testLibraryItemsReadyAndChannels(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	file := func(path, item, header string) LibraryFile {
-		return LibraryFile{Path: path, Root: "/media", Size: 1, ModifiedNs: 1, Kind: "movie", Header: header, SeenAt: at, ItemID: item}
+	file := func(path, item, header string) librarystore.LibraryFile {
+		return librarystore.LibraryFile{Path: path, Root: "/media", Size: 1, ModifiedNs: 1, Kind: "movie", Header: header, SeenAt: at, ItemID: item}
 	}
-	if err := st.SaveLibraryFiles(ctx, []LibraryFile{
-		file("/media/r1.mkv", "r1", LibraryHeaderRead),
-		file("/media/r2.mkv", "r2", LibraryHeaderRead),
-		file("/media/p1.mkv", "p1", LibraryHeaderPending),
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
+		file("/media/r1.mkv", "r1", librarystore.LibraryHeaderRead),
+		file("/media/r2.mkv", "r2", librarystore.LibraryHeaderRead),
+		file("/media/p1.mkv", "p1", librarystore.LibraryHeaderPending),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	ready, err := st.ListLibraryItems(ctx, LibraryItemQuery{Ready: true, Recent: true, Limit: 5})
+	ready, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Ready: true, Recent: true, Limit: 5})
 	if err != nil || ready.Total != 2 || len(ready.Items) != 2 || ready.Items[0].ID != "r2" || ready.Items[1].ID != "r1" {
 		t.Fatalf("ready, recent first = %+v, %v; want r2 then r1", ready, err)
 	}

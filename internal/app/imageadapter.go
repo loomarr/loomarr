@@ -45,22 +45,26 @@ func imageService(s *images.Service) imagesapi.ImageService {
 // at runtime would orphan every file already written, while the public base URL genuinely must
 // hot-apply (an operator who sets `server.public_url` in the wizard needs absolute icon URLs on
 // the next request, because Tunarr fetches them machine-to-machine).
+//
+// It also returns the certified worker itself, which decodes image subtitle tracks for burn-in.
 func newImageService(
 	st store.Store,
 	set resolved,
 	explicitWorker, release string,
 	recorder *metrics.Recorder,
-) (*images.Service, error) {
+) (*images.Service, *rustgen.Generator, error) {
 	worker, err := resolveImageWorker(explicitWorker)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	// decode-subtitles is required: burn-in asks this worker for every image track it prepares.
 	renderer, err := rustgen.Open(worker, rustgen.Contract{
 		Protocol: 1, Release: release, Recipe: "loomarr-rendition-v2",
 		RequiredFormats: []string{"avif", "jpeg", "webp"}, Animation: true,
+		RequiredOperations: []string{"decode-subtitles"},
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	return images.New(images.Config{
 		Dir:            settings.ImagesDir.Get(set),
@@ -71,7 +75,7 @@ func newImageService(
 			InFlight:  recorder.ImageWorkerInFlight,
 			Worker:    recorder.ImageWorkerObserved,
 		},
-	}, storeadapter.New(st), renderer, nil), nil
+	}, storeadapter.New(st), renderer, nil), renderer, nil
 }
 
 func resolveImageWorker(explicit string) (string, error) {

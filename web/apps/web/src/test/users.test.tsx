@@ -24,7 +24,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { me, user } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
@@ -167,6 +167,20 @@ const renderAt = (path: string) => {
   );
 };
 
+// The route components are code-split, so the first render of a path imports, transforms and
+// evaluates its chunks on demand. That is the slowest part of a cold page test and it stretches
+// with CPU load, so it happens here rather than inside the first test's 5 s budget (#4587).
+beforeAll(async () => {
+  const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
+  await Promise.all(
+    router
+      .matchRoutes("/people")
+      .map((match) =>
+        router.loadRouteChunk(router.routesById[match.routeId as keyof typeof router.routesById]),
+      ),
+  );
+});
+
 // These are PAGE-level assertions on purpose. Four times in this phase a component was
 // built, unit-tested, and never actually mounted by any route — the component tests all
 // passed while the feature was absent. Component tests pin behavior; these pin the wiring.
@@ -201,8 +215,12 @@ describe("Users page", () => {
     renderAt("/people");
 
     await userEvent.click(await screen.findByRole("button", { name: "Invite person" }));
-    await userEvent.type(screen.getByLabelText("Reserved username"), " Dorothy ");
-    await userEvent.type(screen.getByLabelText("Contact email (optional)"), "dorothy@example.com");
+    // Pasted, not typed: nothing here depends on keystrokes, and typing sends one change, and a
+    // render, per character.
+    await userEvent.click(screen.getByLabelText("Reserved username"));
+    await userEvent.paste(" Dorothy ");
+    await userEvent.click(screen.getByLabelText("Contact email (optional)"));
+    await userEvent.paste("dorothy@example.com");
     await userEvent.click(screen.getByRole("button", { name: "Create invitation" }));
 
     expect(await screen.findByRole("img", { name: /Scan to accept Dorothy/ })).toBeInTheDocument();

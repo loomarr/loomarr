@@ -49,6 +49,8 @@ func dispatch(args []string) error {
 	switch args[0] {
 	case "healthcheck":
 		return runHealthcheck()
+	case "pair":
+		return runPair(args[1:], os.Stdout, os.Stderr)
 	default:
 		return fmt.Errorf("%w: %q", errUnknownSubcommand, args[0])
 	}

@@ -16,24 +16,15 @@ type (
 	Proposal = proposalstore.Proposal
 )
 
-// ProposalWorkflowVersion is the current proposal workflow version (proposalstore).
-const ProposalWorkflowVersion = proposalstore.ProposalWorkflowVersion
-
-// The proposal and job sentinel errors are the proposalstore values under second names, so
+// The proposal sentinel errors are the proposalstore values under second names, so
 // errors.Is matches an error created in either package.
 var (
 	// ErrProposalNotSubmitted reports a terminal decision that lost the submitted -> decided swap.
 	ErrProposalNotSubmitted = proposalstore.ErrProposalNotSubmitted
 	// ErrProposalSuperseded reports an approval candidate a newer approval already superseded.
 	ErrProposalSuperseded = proposalstore.ErrProposalSuperseded
-	// ErrProposalNotRevisable reports a revision of anything but the newest submitted proposal.
-	ErrProposalNotRevisable = proposalstore.ErrProposalNotRevisable
 	// ErrProposalRevisionActive keeps the approval gate closed while a replacement generates.
 	ErrProposalRevisionActive = proposalstore.ErrProposalRevisionActive
-	// ErrJobNotRunning reports a generation completion that lost the running -> done swap.
-	ErrJobNotRunning = proposalstore.ErrJobNotRunning
-	// ErrJobOwnershipMismatch reports a result whose requester differs from its job's.
-	ErrJobOwnershipMismatch = proposalstore.ErrJobOwnershipMismatch
 )
 
 // proposalCluster names the embedded proposal store; see identityCluster for why an alias.

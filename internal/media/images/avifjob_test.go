@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os"
 	"runtime"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -70,6 +72,66 @@ func TestAVIFJobUsesRustWorkerForWholeLadder(t *testing.T) {
 	second, err := job.Run(context.Background())
 	if err != nil || second.Considered != 0 {
 		t.Errorf("idempotent second pass = %+v, %v", second, err)
+	}
+}
+
+// A still whose AVIF was encoded at [300] under an earlier ladder, and whose set is now [300 780]
+// (#4476), advertises no AVIF: a partial set would serve the 300 rung stretched where WebP has
+// 780, and a listed 780 would 404 with no fallback. The AVIF job tops it up with 780 alone, and
+// the complete set is then advertised.
+func TestAVIFJobTopsUpAnEarlierLadderAndOnlyACompleteSetIsAdvertised(t *testing.T) {
+	ctx := context.Background()
+	svc, fs := newTestService(t)
+	rec := seedWithWebP(t, svc, RoleThumb, 700, 394)
+	if got, want := RoleThumb.AVIFWidthsFor(rec.Width), []int{300, 780}; !slices.Equal(got, want) {
+		t.Fatalf("thumb AVIF set of 700 = %v, want %v", got, want)
+	}
+	if err := fs.PutDerivative(ctx, Derivative{
+		ImageHash: rec.Hash, Recipe: renditionRecipe, Format: FormatAVIF, Width: 300, Path: "earlier.avif",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	avifSet := func() string {
+		t.Helper()
+		listed, err := svc.GetMany(ctx, []string{rec.Hash})
+		if err != nil {
+			t.Fatal(err)
+		}
+		l := listed[rec.Hash]
+		return svc.AVIFSrcSet(rec.Hash, l.Role, l.Width, l.AVIFWidths)
+	}
+	if set := avifSet(); set != "" {
+		t.Fatalf("AVIF srcset of a partial set = %q, want none until 780 is encoded", set)
+	}
+
+	recorder := &recordingRenderer{next: svc.renderer}
+	svc.renderer = recorder
+	result, err := NewAVIFJob(svc, fs, nil).Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Renditions != 1 || len(recorder.requests) != 1 || len(recorder.requests[0].Targets) != 1 ||
+		recorder.requests[0].Targets[0].Width != 780 {
+		t.Fatalf("Run = %+v, requests = %+v, want one top-up of the 780 rung", result, recorder.requests)
+	}
+	if set := avifSet(); !strings.Contains(set, " 300w") || !strings.Contains(set, " 780w") {
+		t.Errorf("AVIF srcset after the top-up = %q, want 300 and 780", set)
+	}
+}
+
+// A 680-wide poster owed AVIF at 154 to 780 advertises AVIF only once all five exist: with 780
+// missing, the browser would take the 500 AVIF stretched on a 2x screen over the WebP 780.
+func TestAVIFSrcSetNeedsTheCompleteSet(t *testing.T) {
+	svc, _ := newTestService(t)
+	hash := strings.Repeat("c", 64)
+	if set := svc.AVIFSrcSet(hash, RolePoster, 680, []int{154, 185, 342, 500}); set != "" {
+		t.Errorf("partial AVIF srcset = %q, want none", set)
+	}
+	set := svc.AVIFSrcSet(hash, RolePoster, 680, []int{154, 185, 342, 500, 780})
+	for _, w := range []string{" 154w", " 185w", " 342w", " 500w", " 780w"} {
+		if !strings.Contains(set, w) {
+			t.Errorf("complete AVIF srcset = %q, missing%s", set, w)
+		}
 	}
 }
 

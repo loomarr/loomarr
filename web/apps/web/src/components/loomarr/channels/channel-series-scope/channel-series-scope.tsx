@@ -70,9 +70,14 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
             <Stack
               key={key}
               align="center"
-              className="border-border bg-muted/40 rounded-md border px-2 py-1"
+              backgroundColor="$surfaceRaised"
+              borderColor="borderDecorative"
+              borderRadius={6}
+              borderWidth={1}
               direction="row"
               gap="1.5"
+              paddingHorizontal={8}
+              paddingVertical={4}
               render="li"
             >
               <Text as="span" textRole="mono">

@@ -102,6 +102,38 @@ func TestRecordAiringServedStampsAProgramme(t *testing.T) {
 	}
 }
 
+// One watched airing writes one ledger row (#4140). A programme split at a natural break airs as
+// segments with a mid-roll between them; a viewer who tunes in after the break is watching the
+// same airing, so it is stamped with the programme's start, not the start plus the break. On the
+// install every late tune-in recorded a second row 2 minutes after the first: the break's length.
+func TestRecordAiringServedStampsASplitProgrammeOnce(t *testing.T) {
+	t.Parallel()
+	const key, item = provision.Key("series:tvdb:90000601"), "item-1"
+	slots := []schedule.Slot{
+		{Kind: schedule.SlotProgram, Key: key, LibraryItemID: item, DurationMs: 600_000, Segment: 1},
+		{Kind: schedule.SlotFiller, MidRoll: true, DurationMs: 120_000},
+		{Kind: schedule.SlotProgram, Key: key, LibraryItemID: item, DurationMs: 600_000, Segment: 2, SourceOffsetMs: 600_000},
+		{Kind: schedule.SlotFiller, MidRoll: true, DurationMs: 120_000},
+		{Kind: schedule.SlotProgram, Key: key, LibraryItemID: item, DurationMs: 300_000, Segment: 3, SourceOffsetMs: 1_200_000},
+		{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000002", LibraryItemID: "item-2", DurationMs: 60_000},
+	}
+	start := testPlayoutAnchor()
+	for _, into := range []time.Duration{30 * time.Second, 13 * time.Minute, 25 * time.Minute} {
+		history := &recordedAirings{}
+		at := start.Add(into)
+		r := stillResolver(t, slots, at, history)
+		airing, _, err := r.AiringAt(context.Background(), "ch1", at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.RecordAiringServed(context.Background(), "ch1", airing, at)
+		if history.n != 1 || !history.lastAiredAt.Equal(start) {
+			t.Errorf("a tune-in %v in recorded %d rows aired %v, want one at the programme's start %v",
+				into, history.n, history.lastAiredAt, start)
+		}
+	}
+}
+
 // ctxAwareAirings is a recorder that refuses a write under a done context, as a database does.
 type ctxAwareAirings struct {
 	recorded int

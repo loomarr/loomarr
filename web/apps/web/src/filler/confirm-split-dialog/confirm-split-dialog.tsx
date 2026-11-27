@@ -21,27 +21,27 @@ const ConfirmSplitDialog = ({ clip, onConfirm, onClose }: ConfirmSplitDialogProp
 
   return (
     <Card>
-      <Stack aria-label={`Split ${clip.name} into clips`} className="p-4" gap="4" render="section">
+      <Stack aria-label={`Split ${clip.name} into clips`} gap="4" padding={16} render="section">
         <Stack align="start" direction="row" gap="control">
-          <Stack className="mt-0.5" direction="row" render="span">
+          <Stack direction="row" marginTop={2} render="span">
             <Icon decorative glyph={icons.alert} size="default" tone="primary" />
           </Stack>
-          <div className="min-w-0 flex-1">
+          <Stack flex={1} gap="1.5" minWidth={0}>
             <Text as="h2" textRole="headline" strong>
               Split “{clip.name}” into clips?
             </Text>
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+            <Text as="p" textRole="compact" tone="secondary">
               Loomarr will decode the whole {formatMmSs(clip.durationMs ?? 0)} recording looking for the
               adverts inside it. That takes <strong>several minutes</strong> and uses the same hardware as
               playback, so a live channel may stutter while it runs.
             </Text>
             {/* The reassurance is as load-bearing as the warning: an operator who thinks this
                 might destroy their compilation will not run it at all, and 45 reels stay parked. */}
-            <Text as="p" className="mt-2" textRole="compact" tone="secondary">
+            <Text as="p" textRole="compact" tone="secondary">
               Nothing enters the catalog yet — you review the proposed cuts afterwards, and this recording is
               left exactly as it is.
             </Text>
-          </div>
+          </Stack>
         </Stack>
 
         <Stack direction="row" gap="inline" justify="end">

@@ -44,6 +44,36 @@ describe("Notice", () => {
     expect(outline()).not.toContain("stateWarning");
   });
 
+  it("outlines success and danger in their own state colours", () => {
+    const outline = (tone: "danger" | "success") => {
+      const markup = renderToStaticMarkup(
+        <LoomarrProvider>
+          <Notice body="Body" tone={tone} />
+        </LoomarrProvider>,
+      );
+      const tag = /<[a-z]+[^>]*role="status"[^>]*>/.exec(markup)?.[0] ?? "";
+      return declarationsOf(markup, tag);
+    };
+
+    expect(outline("success")).toContain("stateSuccess");
+    expect(outline("danger")).toContain("stateDanger");
+  });
+
+  it("leads with the body when there is no title", () => {
+    renderNotice(<Notice body="Secrets are redacted." tone="success" />);
+
+    expect(screen.getByRole("status").textContent).toBe("Secrets are redacted.");
+  });
+
+  it("is an assertive alert only when asked", () => {
+    renderNotice(<Notice body="The report failed." role="alert" tone="danger" />);
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("The report failed.");
+    expect(alert.getAttribute("aria-live")).toBe("assertive");
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   it("runs its action from a press and from the keyboard", async () => {
     const onPress = vi.fn();
     const user = userEvent.setup();

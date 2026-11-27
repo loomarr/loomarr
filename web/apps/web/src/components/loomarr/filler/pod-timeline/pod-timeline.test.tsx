@@ -48,7 +48,6 @@ describe("PodTimeline", () => {
   // answerable from the screen rather than from the logs.
   it.each([
     ["widened", "Era widened"],
-    ["audience", "Any era"],
     ["bumper_card", "Bumper only"],
   ] as const)("names the %s fallback level", (level, label) => {
     render(<PodTimeline matchLevel={level} entries={[entry("Filler", "interstitial", 15000)]} />);
@@ -78,7 +77,7 @@ describe("PodTimeline", () => {
         onPreview={onPreview}
       />,
     );
-    await userEvent.click(screen.getByRole("button", { name: "Preview Fizzbolt" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Preview Fizzbolt, .*Commercial, 30s$/ }));
     expect(onPreview).toHaveBeenCalledWith(ad);
     expect(screen.queryByRole("button", { name: /Preview We'll be right back/i })).not.toBeInTheDocument();
   });

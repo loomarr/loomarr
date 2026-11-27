@@ -158,3 +158,36 @@ func TestWatchingInvariantsProperty(t *testing.T) {
 		}
 	}
 }
+
+// OnChange marks every moment the answer to "who is watching" changes, and only those: a viewing
+// starting, a device moving to another channel, and a viewing ending. Steady polls, a lone warmer
+// fetch and its expiry change nothing.
+func TestOnChangeRunsWhenAViewingStartsOrEnds(t *testing.T) {
+	tr := New()
+	var changes []time.Duration
+	at := time.Duration(0)
+	tr.OnChange = func() {
+		// Outside the lock: the listener may read the tracker.
+		_ = tr.Watching(t0.Add(at))
+		changes = append(changes, at)
+	}
+	step := func(d time.Duration, f func()) {
+		at = d
+		f()
+	}
+
+	step(0, func() { poll(tr, boTV, "ch-news", 0) })                          // a warmer fetch
+	step(0, func() { poll(tr, adaTV, "ch-news", 0) })                         // one poll: not yet
+	step(4*time.Second, func() { poll(tr, adaTV, "ch-news", 4*time.Second) }) // starts
+	step(8*time.Second, func() { poll(tr, adaTV, "ch-news", 8*time.Second) }) // steady
+	step(30*time.Second, func() { poll(tr, adaTV, "ch-news", 30*time.Second) })
+	step(40*time.Second, func() { tr.Watching(t0.Add(40 * time.Second)) }) // warmer fetch expires, Ada stays
+	step(41*time.Second, func() { poll(tr, adaTV, "ch-kids", 41*time.Second) })
+	step(42*time.Second, func() { poll(tr, adaTV, "ch-kids", 42*time.Second) }) // moves channel
+	step(90*time.Second, func() { tr.Watching(t0.Add(90 * time.Second)) })      // ends
+
+	want := []time.Duration{4 * time.Second, 42 * time.Second, 90 * time.Second}
+	if fmt.Sprint(changes) != fmt.Sprint(want) {
+		t.Fatalf("changes at %v, want %v", changes, want)
+	}
+}

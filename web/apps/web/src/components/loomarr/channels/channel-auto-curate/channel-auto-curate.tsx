@@ -1,4 +1,4 @@
-import { Stack, Text, Toggle } from "@loomarr/design-system";
+import { Grid, Stack, Text, Toggle } from "@loomarr/design-system";
 import { CommitField } from "@loomarr/ui";
 import { isThresholdOverridden, resetField, resetThreshold } from "@/lib/policy-overrides";
 import { FieldHelp } from "../../feedback";
@@ -77,7 +77,6 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
             <FieldHelp label={OPT_IN_LABEL}>{OPT_IN_HELP}</FieldHelp>
             {/* Reset removes the opt-in and its thresholds, exactly like unticking the box. */}
             <PolicyFieldSource
-              className="ml-1"
               overridden={enabled}
               onReset={() => onChange(resetField(policy, "autoCurate"))}
               label={OPT_IN_LABEL}
@@ -106,7 +105,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
         // Each threshold gets the same label row as every other Programming field: label left,
         // source badge and Reset right, in the mock's two-column grid at full width (#1877 mock).
         // Unindented, so the badge row fits beside or under the label on a phone.
-        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
+        <Grid columnGap="4" columns={{ base: 1, sm: 2 }} rowGap="3">
           <Stack gap="1">
             <Stack align="center" direction="row" gap="inline" justify="between" wrap>
               <Text as="label" htmlFor="policy-auto-curate-score" textRole="hint" tone="secondary">
@@ -159,7 +158,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
               }}
             />
           </Stack>
-        </div>
+        </Grid>
       )}
     </Stack>
   );

@@ -23,7 +23,7 @@ type Store struct{ h storedb.Handle }
 // New returns the crash-report store for h.
 func New(h storedb.Handle) *Store { return &Store{h: h} }
 
-const clientCrashSummaryColumns = `id, received_at_ms, occurred_at_ms, COALESCE(user_id, ''), device_id,
+const clientCrashSummaryColumns = `id, received_at_ms, occurred_at_ms, COALESCE(user_id, ''), COALESCE(device_id, ''),
 	device_name, kind, platform, app_version, app_build, os_version, device_model, message`
 
 func (s *Store) InsertClientCrashReport(ctx context.Context, r diagnostics.ClientCrashRecord) error {
@@ -41,7 +41,7 @@ func (s *Store) InsertClientCrashReport(ctx context.Context, r diagnostics.Clien
 	if _, err := s.h.ExecContext(ctx, s.h.Rebind(`INSERT INTO client_crash_reports (id, received_at_ms,
 		occurred_at_ms, user_id, device_id, device_name, kind, platform, app_version, app_build,
 		os_version, device_model, message, stack, breadcrumbs_json, native_payload)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		VALUES (?, ?, ?, ?, (SELECT token_hash FROM device_tokens WHERE token_hash = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 
 		r.ID, r.ReceivedAt, r.OccurredAt, userID, r.DeviceID, r.DeviceName, r.Kind, r.Platform,
 		r.AppVersion, r.AppBuild, r.OSVersion, r.DeviceModel, r.Message, r.Stack, breadcrumbs,

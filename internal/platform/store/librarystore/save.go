@@ -173,12 +173,12 @@ func (s *Store) saveLibraryFilesAndArt(ctx context.Context, tx storedb.Tx, it Li
 			if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_streams (item_id, path, stream_index, kind,
 				codec, profile, title, is_default, forced, language, language_name, channels, channel_layout,
 				sample_rate, audio_format, width, height, frame_rate, pixel_format, color_transfer, resolution, hdr,
-				commentary, hearing_impaired, descriptive, external_ref)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+				commentary, hearing_impaired, descriptive, external_ref, bitrate, bit_depth)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 				it.ID, src.Path, st.Index, st.Kind, st.Codec, st.Profile, st.Title, st.Default, st.Forced,
 				st.Language, st.LanguageName, st.Channels, st.ChannelLayout, st.SampleRate, st.AudioFormat,
 				st.Width, st.Height, st.FrameRate, st.PixelFormat, st.ColorTransfer, st.Resolution, st.HDR,
-				st.Commentary, st.HearingImpaired, st.Descriptive, st.ExternalRef); err != nil {
+				st.Commentary, st.HearingImpaired, st.Descriptive, st.ExternalRef, st.BitRate, st.BitDepth); err != nil {
 				return fmt.Errorf("save library stream: %w", err)
 			}
 		}
