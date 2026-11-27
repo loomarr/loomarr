@@ -40,10 +40,16 @@ for run in "$@"; do
     awk -F '\t' '$2 ~ /^(success|failure|cancelled)$/ && $3 ~ /race-policy tests \(/ { print $1 }')"
   for job in $jobs; do
     jobs_seen=$((jobs_seen + 1))
+    # A log line is "<job>\t<step>\t<timestamp> ok  \t<module><package>\t<seconds>s". awk rather
+    # than grep -P, which BSD grep (macOS) does not have.
     "$gh_bin" run view "$run" --job "$job" --log |
-      grep -oP "\\sok  \\t\\Q${module}\\E\\S+\\t[0-9.]+s$" |
-      awk -F '\t' -v module="$module" '{ sub(module, "", $2); sub(/s$/, "", $3); print $2 "\t" $3 }' \
-        >> "$samples" || true
+      awk -F '\t' -v module="$module" '
+        NF >= 3 && $(NF - 2) ~ /[[:space:]]ok  $/ && index($(NF - 1), module) == 1 &&
+          $(NF - 1) !~ /[[:space:]]/ && $NF ~ /^[0-9.]+s$/ {
+          seconds = $NF
+          sub(/s$/, "", seconds)
+          print substr($(NF - 1), length(module) + 1) "\t" seconds
+        }' >> "$samples" || true
   done
 done
 

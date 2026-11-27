@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"path/filepath"
 	"testing"
 )
 
@@ -12,7 +11,8 @@ import (
 const libraryCatalogJSONMigration = 254
 
 func TestLibraryCatalogJSONMigration(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "catalog-json.db")+"?_pragma=foreign_keys(on)")
+	t.Parallel()
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, libraryCatalogJSONMigration-1, foreignKeyConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 )
 
@@ -11,8 +10,9 @@ import (
 const crashDeviceMigration = 251
 
 func TestCrashDeviceMigration(t *testing.T) {
+	t.Parallel()
 	// Foreign keys on, as production opens SQLite.
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "crash-device.db")+"?_pragma=foreign_keys(on)")
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, crashDeviceMigration-1, foreignKeyConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
