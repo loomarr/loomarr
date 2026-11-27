@@ -86,8 +86,9 @@ const searchLibraryTitles: LibraryNeedSearch = async (query, kind) => {
   }));
 };
 
-// Asks for the list only while `enabled`: the wall says the count from the status, so only Needs
-// you's own screen reads the cards.
+// Asks for the list only while `enabled`. Needs you's own screen draws its cards from it, and an
+// admin's wall reads it to mark the unidentified titles while any are waiting; the count itself
+// comes from the status.
 const useLibraryNeeds = (enabled = true) => {
   const queryClient = useQueryClient();
   const list = libraryApi.useListLibraryNeeds({ query: { enabled } });
