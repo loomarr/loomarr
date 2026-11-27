@@ -32,6 +32,39 @@ var shellQuotingLines = map[string]string{
 	"expanding heredoc":                  "cat <<EOF\ndon't $(tr -d '\"' < f)\nEOF",
 	"tab-stripped heredoc":               "cat <<-EOF\n\tit's\n\tEOF",
 	"heredoc inside quoted substitution": "v=\"$(cat <<EOF\nit's )\nEOF\n)\"",
+	"double quotes in expansion":         `v="${x:-"a b"}"`,
+	"escaped quote in expansion":         `v="${x//\"/}"`,
+	"quoted brace in expansion":          `v=${x#'}'}`,
+	"substitution in expansion":          `v="${x:-$(tr -d '"' < f)}"`,
+	"ansi-c after parameter":             `v=${x}$'it\'s'`,
+	"workflow expression in string":      `v="a-${{ hashFiles('web/**', '}}') }}-b"`,
+}
+
+func TestShellReaderNeverSilentlyHidesACommand(t *testing.T) {
+	t.Parallel()
+	tests := map[string]string{
+		"escaped dollar before quote":      `echo \$'a\' ; ./pull.sh # '`,
+		"PID parameter before quote":       `echo $$'a\' ; ./pull.sh # '`,
+		"quote in quoted expansion":        "v=\"${x//'\"'/}\"\n./pull.sh\n# it's",
+		"escaped backslash before newline": "echo a\\\\\n./pull.sh",
+		"case after time":                  "v=\"$(time case x in x) echo '\"' ;; esac)\"\n./pull.sh\n# it's",
+	}
+	for name, command := range tests {
+		t.Run(name, func(t *testing.T) {
+			audit := &repositoryScriptAudit{
+				sources: map[string]string{"pull.sh": "docker pull alpine\n"},
+				state:   map[string]uint8{},
+				result:  map[string]bool{},
+			}
+			if !audit.commandAcquires(command) {
+				t.Fatalf("missed the command after %q", command)
+			}
+		})
+	}
+	// A comment's trailing backslash continues nothing.
+	if !containerCommandInvokesEngine("true # note \\\nbash -c 'docker pull x'") {
+		t.Error("a comment swallowed the line after it")
+	}
 }
 
 func TestShellReaderSeesCommandAfterQuoting(t *testing.T) {
@@ -70,6 +103,11 @@ func TestShellReaderReportsTheLineItCannotFollow(t *testing.T) {
 		"trailing escape":             "true\ntrue \\",
 		"unbalanced arithmetic":       "true\nv=$((1)",
 		"unterminated case in $(...)": "true\nv=$(case x in x) true )",
+		"open parameter expansion":    "true\nv=${x",
+		"PID parameter before quote":  "true\necho $$'a'",
+		"quote in quoted expansion":   "true\nv=\"${x#'a'}\"",
+		"continued heredoc delimiter": "true\ncat <<EOF\na \\\nEOF\nEOF",
+		"continuation splits a token": "true\necho a\\\n#b",
 	}
 	for name, command := range tests {
 		t.Run(name, func(t *testing.T) {

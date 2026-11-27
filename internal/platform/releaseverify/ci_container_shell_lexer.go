@@ -19,7 +19,8 @@ const (
 type shellRune struct {
 	value rune
 	class shellClass
-	// nested marks the interior of a $(...), which stays inside one segment.
+	// nested marks the interior of a $(...) or $((...)), which stays inside one
+	// segment.
 	nested bool
 }
 
@@ -42,6 +43,7 @@ const (
 	shellProcessParen
 	shellArithmetic
 	shellBacktick
+	shellParameter // ${...}
 )
 
 // shellFrame is one quoting context. A substitution opens a fresh one whatever
@@ -57,6 +59,8 @@ type shellFrame struct {
 	word   strings.Builder
 	// command is true where the next word names a command.
 	command bool
+	// inString marks a ${...} that sits inside double quotes or a heredoc body.
+	inString bool
 }
 
 type shellHeredoc struct {
@@ -147,10 +151,17 @@ func (s *shellScanner) close(width int) {
 	s.scan.substitutions = append(s.scan.substitutions, string(s.source[frame.start:end]))
 }
 
-// expansion opens the substitution or backtick that starts here, if any. These
-// are live both unquoted and inside double quotes.
+// expansion opens the substitution, parameter expansion or backtick that starts
+// here, if any. These are live both unquoted and inside double quotes.
 func (s *shellScanner) expansion() bool {
 	switch {
+	case s.peek(0) == '$' && s.peek(1) == '{' && s.peek(2) == '{':
+		s.workflowExpression()
+	case s.peek(0) == '$' && s.peek(1) == '{':
+		parent := s.top()
+		inString := parent.quote == '"' || (parent.kind == shellParameter && parent.inString)
+		s.open(shellParameter, 2)
+		s.top().inString = inString
 	case s.peek(0) == '$' && s.peek(1) == '(' && s.peek(2) == '(':
 		s.open(shellArithmetic, 3)
 	case s.peek(0) == '$' && s.peek(1) == '(':
@@ -166,6 +177,32 @@ func (s *shellScanner) expansion() bool {
 		return false
 	}
 	return true
+}
+
+// workflowExpression consumes a GitHub "${{ ... }}", which Actions replaces
+// before any shell reads it, so its quotes never change the shell's quote state.
+func (s *shellScanner) workflowExpression() {
+	opened, class := s.line, shellPlain
+	if s.top().quote == '"' || s.top().inString {
+		class = shellQuoted
+	}
+	s.emit(3, class)
+	quoted := false
+	for s.position < len(s.source) {
+		switch {
+		case s.peek(0) == '\'':
+			quoted = !quoted
+			if class == shellPlain {
+				s.emit(1, shellSyntax)
+				continue
+			}
+		case !quoted && s.peek(0) == '}' && s.peek(1) == '}':
+			s.emit(2, class)
+			return
+		}
+		s.emit(1, class)
+	}
+	s.fail(opened, "unterminated workflow expression")
 }
 
 func (s *shellScanner) step() {
@@ -204,12 +241,67 @@ func (s *shellScanner) step() {
 		}
 		return
 	}
+	if frame.kind == shellParameter {
+		s.stepParameter(frame, character)
+		return
+	}
 	s.stepUnquoted(frame, character)
+}
+
+// stepParameter reads the inside of ${...}, which has its own quoting and no
+// comments, commands or heredocs.
+func (s *shellScanner) stepParameter(frame *shellFrame, character rune) {
+	switch {
+	case character == '\\':
+		s.escape()
+	case character == '\'' && frame.inString:
+		// Whether this quotes depends on the expansion operator.
+		s.fail(s.line, "single quote in ${...} inside a string")
+		s.emit(1, shellQuoted)
+	case character == '\'' || character == '"':
+		s.openQuote(frame, character)
+	case s.expansion():
+	case character == '}':
+		s.close(1)
+	case frame.inString:
+		s.emit(1, shellQuoted)
+	default:
+		s.emit(1, shellPlain)
+	}
+}
+
+// openQuote starts a quoted run. "$'" is ANSI-C quoting only for a lone "$":
+// an escaped one is a literal, and "$$" is the PID in shell but "$" in Make, so
+// a quote after it is ambiguous.
+func (s *shellScanner) openQuote(frame *shellFrame, character rune) {
+	frame.quote, frame.quoted = character, s.line
+	if character == '\'' {
+		dollars := 0
+		for index := len(s.scan.runes) - 1; index >= 0; index-- {
+			if previous := s.scan.runes[index]; previous.value != '$' || previous.class != shellPlain {
+				break
+			}
+			dollars++
+		}
+		switch {
+		case dollars == 1:
+			frame.quote = '$'
+		case dollars > 1:
+			s.fail(s.line, `ambiguous quote after "$$"`)
+		}
+	}
+	s.emit(1, shellSyntax)
 }
 
 func (s *shellScanner) escape() {
 	if s.position+1 >= len(s.source) {
 		s.fail(s.line, "escape at end of input")
+	}
+	// A continuation splices its two lines. Where that could join characters into
+	// one token, the reader does not guess.
+	if s.peek(1) == '\n' && s.position > 0 && !strings.ContainsRune(" \t\n;&|", s.source[s.position-1]) &&
+		s.peek(2) != 0 && strings.ContainsRune("#({'<", s.peek(2)) {
+		s.fail(s.line, "line continuation inside a token")
 	}
 	s.emit(1, shellSyntax)
 	s.emit(1, shellQuoted)
@@ -225,12 +317,8 @@ func (s *shellScanner) stepUnquoted(frame *shellFrame, character rune) {
 		s.escape()
 		return
 	case character == '\'' || character == '"':
-		frame.quote, frame.quoted = character, s.line
-		if character == '\'' && s.position > 0 && s.source[s.position-1] == '$' {
-			frame.quote = '$'
-		}
 		frame.word.WriteRune(character)
-		s.emit(1, shellSyntax)
+		s.openQuote(frame, character)
 		return
 	case character == '#' && !arithmetic && (s.position == 0 || strings.ContainsRune(" \t\r\n;&|()`", s.source[s.position-1])):
 		for s.position < len(s.source) && s.peek(0) != '\n' && (frame.kind != shellBacktick || s.peek(0) != '`') {
@@ -307,7 +395,7 @@ func (s *shellScanner) endWord(frame *shellFrame) {
 		frame.cases++
 	case "esac":
 		frame.cases--
-	case "if", "then", "else", "elif", "do", "while", "until", "!", "{":
+	case "if", "then", "else", "elif", "do", "while", "until", "!", "{", "time", "-p", "coproc":
 		return
 	}
 	frame.command = false
@@ -363,7 +451,7 @@ func (s *shellScanner) heredocBodies() {
 	pending := s.pending
 	s.pending = nil
 	for _, heredoc := range pending {
-		closed := false
+		closed, continued := false, false
 		for !closed && s.position < len(s.source) {
 			end := s.position
 			for end < len(s.source) && s.source[end] != '\n' {
@@ -374,6 +462,12 @@ func (s *shellScanner) heredocBodies() {
 				line = strings.TrimLeft(line, "\t")
 			}
 			closed = line == heredoc.delimiter
+			// An expanding body splices continued lines, so a delimiter after one
+			// may not end the body.
+			if closed && continued {
+				s.fail(heredoc.line, "heredoc delimiter after a line continuation")
+			}
+			continued = heredoc.expands && (len(line)-len(strings.TrimRight(line, `\`)))%2 == 1
 			s.heredocLine(end, heredoc.expands && !closed)
 		}
 		if !closed {
