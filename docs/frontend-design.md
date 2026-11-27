@@ -247,8 +247,6 @@ maps to a prop.
 | `PageHeader` | A page's single semantic title, optional explanatory copy, and optional page-level actions/status. Owns the page-edge gutter, divider, and responsive action stacking. | title only · title + description · with actions |
 | `StateBadge` | Provisioning lifecycle chip (mono) | wanted · requested · downloading · available · unavailable · drift |
 | `OnAirIndicator` | The red dot with a pulse (pulse ≤ reduced-motion) | off · live · reconciling |
-| `ChannelCard` | Channel health at a glance: number (mono), name, now/next, managed badge | healthy · pending-slots · drift · error · creating |
-| `NowNextStrip` | "Now: X · Next: Y" line for a channel | playing · flex/pod gap · empty |
 | `IntentInput` | The hero — NL intent with `suggest` magenta focus ring + template chips | empty · focused · template-filled · submitting |
 | `GenerationProgress` | SSE-driven suggester steps | searching · reasoning · scoring · done · failed |
 | `ProposalReview` | Lineup + acquisitions with rationale, confidence, alternates; edit-via-search | draft · submitted · approved · denied · partially-edited |
@@ -417,7 +415,7 @@ These suites join **phase 13's gate** in the main doc's build plan.
 - Voice: warm broadcast metaphor without cosplay. "Let's get you on the air." Checklist items *lock in* (`lock` green) as each signal is acquired; the webhook handshake shows a live "listening…" state that flips on receipt.
 - **Failures never blame.** Every red check = plain-language cause + the exact fix + a deep link into the embedded docs (backend contract, main doc §13). No stack traces in the wizard, ever.
 - Resume-safe: the wizard reflects `GET /v1/setup/status` truth, so a browser refresh loses nothing.
-- The finale is the payoff: the guided first channel ends with its `ChannelCard` flipping to **ON AIR** — the product's promise, demonstrated in the first ten minutes.
+- The finale is the payoff: the guided first channel ends with its channel flipping to **ON AIR** — the product's promise, demonstrated in the first ten minutes.
 
 ### Config that makes sense
 - Settings opens on a searchable task home. Ordinary destinations are grouped by setup, access and

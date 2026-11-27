@@ -1,6 +1,5 @@
 export * from "./channel-auto-curate";
 export * from "./channel-breaks";
-export * from "./channel-card";
 export * from "./channel-collections-scope";
 export * from "./channel-cycle-preview";
 export * from "./channel-danger-zone";
@@ -14,7 +13,6 @@ export * from "./channel-rules-editor";
 export * from "./channel-seasonal";
 export * from "./channel-series-scope";
 export * from "./channel-upcoming";
-export * from "./now-next-strip";
 export * from "./on-air-indicator";
 export * from "./policy-field-source";
 export * from "./state-badge";
