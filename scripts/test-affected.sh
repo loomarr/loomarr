@@ -127,15 +127,17 @@ while IFS= read -r path; do
 		scripts/agent.sh | scripts/agent-harness-test.sh)
 			script_tests+=(scripts/agent-harness-test.sh)
 			;;
+		# A changed path can be absent from the working tree (deleted or renamed away),
+		# and running an absent test file fails.
 		scripts/*-test.sh)
-			script_tests+=("$path")
+			[[ -f "$ROOT/$path" ]] && script_tests+=("$path")
 			;;
 		scripts/*.sh)
 			candidate="${path%.sh}-test.sh"
 			[[ -f "$ROOT/$candidate" ]] && script_tests+=("$candidate")
 			;;
 		web/scripts/*.test.mjs | web/scripts/*.test.cjs)
-			script_tests+=("$path")
+			[[ -f "$ROOT/$path" ]] && script_tests+=("$path")
 			;;
 		web/scripts/*.mjs | web/scripts/*.cjs)
 			candidate="${path%.*}.test.${path##*.}"
