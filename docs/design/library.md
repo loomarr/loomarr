@@ -807,10 +807,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   running process makes for itself: a request never carries a path, and nothing about removals is
   stored. A restart voids pending undos, and the 30-day trash folder is then the way back. A token
   that is forged, for another title or from before a restart is refused (400), and one whose file
-  is not in the trash is refused (410). A restore never overwrites: when something is at the
-  file's old place, or the folder can't be changed, it answers 409 and the file stays in the trash.
-  The undo is offered only right after removing; afterwards the way back is the trash folder, for
-  the 30 days it keeps the file, and the card says so.
+  is not in the trash is refused (410). A restore never overwrites: the move itself refuses a
+  taken place (a hard link and a remove, else the OS's no-replace rename, else nothing moves), so
+  a file written there at the same moment is safe. It also never leaves the media folder: a folder
+  on the way that is a symlink to somewhere outside is refused. When something is at the file's
+  old place, or the file can't be moved this safely, it answers 409 and the file stays in the
+  trash. The card's undo follows in U3: offered only right after removing, with the card saying
+  that afterwards the way back is the trash folder, for the 30 days it keeps the file.
 - **Titles that need a look** (step 10f, decision 24). A title with a file whose header failed
   (`unplayable`) or a movie with an extra copy is a problem: `ListLibraryItems{Problems: true}`
   finds them per title through the file indexes, an extra copy being a `library_sources` row no

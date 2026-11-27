@@ -70,7 +70,7 @@ GO_TEST_LANE ?=
 # BOTH directions (a tag in the tree but not here, and one here that no build constraint uses)
 # and runs as part of `check`, so the list can neither miss coverage nor overstate it.
 CUSTOM_TAGS   := ffmpeg eval integration
-PLATFORM_TAGS := linux windows amd64
+PLATFORM_TAGS := linux darwin windows amd64
 TOOLCHAIN_TAGS := race
 DEPENDENCY_TAGS := noasm
 TAGS          := $(CUSTOM_TAGS) $(PLATFORM_TAGS) $(TOOLCHAIN_TAGS) $(DEPENDENCY_TAGS)

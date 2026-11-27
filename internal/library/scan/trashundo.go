@@ -99,16 +99,22 @@ func (l *Library) RestoreExtraCopy(_ context.Context, id, token string) error {
 	} else if err != nil {
 		return fmt.Errorf("%w: %w", ErrRestore, err)
 	}
-	// A rename replaces what is at its destination, so the place must be seen to be empty.
-	if _, err := os.Lstat(dst); err == nil {
+	// A folder on the way may be a symlink by now: it is resolved before anything is made, again
+	// once made, and the move goes by the resolved folder.
+	dir, err := resolveUnder(t.Root, filepath.Dir(dst))
+	if err == nil {
+		err = os.MkdirAll(dir, 0o755)
+	}
+	if err == nil {
+		dir, err = resolveUnder(t.Root, dir)
+	}
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrRestore, err)
+	}
+	switch err := moveNoReplace(src, filepath.Join(dir, filepath.Base(dst)), os.Link, os.Remove); {
+	case errors.Is(err, fs.ErrExist):
 		return ErrPathTaken
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("%w: %w", ErrRestore, err)
-	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return fmt.Errorf("%w: %w", ErrRestore, err)
-	}
-	if err := os.Rename(src, dst); err != nil {
+	case err != nil:
 		return fmt.Errorf("%w: %w", ErrRestore, err)
 	}
 	l.pass([]librarystore.LibraryFilePath{{Root: t.Root, Path: dst}})
