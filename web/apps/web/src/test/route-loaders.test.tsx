@@ -377,6 +377,19 @@ describe("Filler", () => {
     });
   });
 
+  it("draws Incoming with what is on the way as soon as the page is there", async () => {
+    server.use(
+      getMeMockHandler(me()),
+      getSettingsListMockHandler(configured),
+      http.get("*/v1/filler/incoming", () => HttpResponse.json(pages[1]?.body)),
+      ...appHandlers(),
+    );
+    renderAt("/filler/incoming");
+
+    await screen.findByRole("navigation", { name: "Filler sections" });
+    expect(screen.getByText("Nothing on the way")).toBeInTheDocument();
+  });
+
   // What says whether filler is set up: the settings list for an admin, the watch summary for a
   // member. Every Filler page is drawn around it.
   it.each([
