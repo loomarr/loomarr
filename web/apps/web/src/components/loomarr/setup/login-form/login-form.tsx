@@ -65,22 +65,26 @@ const LoginForm = ({
         {(field) => <field.TextField autoComplete="username" id="login-username" label="Username" />}
       </form.AppField>
 
-      <form.AppField name="password">
-        {(field) => (
-          <field.TextField
-            autoComplete="current-password"
-            id="login-password"
-            label="Password"
-            type="password"
-          />
-        )}
-      </form.AppField>
+      <Stack gap="inline">
+        <form.AppField name="password">
+          {(field) => (
+            <field.TextField
+              autoComplete="current-password"
+              id="login-password"
+              label="Password"
+              type="password"
+            />
+          )}
+        </form.AppField>
 
-      <Text as="div" className="-mt-3 self-end" textRole="compact">
-        <TextLink href="/forgot-password" tone="primary" underline="hover">
-          Forgot password?
-        </TextLink>
-      </Text>
+        <Stack align="end">
+          <Text as="div" textRole="compact">
+            <TextLink href="/forgot-password" tone="primary" underline="hover">
+              Forgot password?
+            </TextLink>
+          </Text>
+        </Stack>
+      </Stack>
 
       <Action disabled={isPending} submit>
         {isPending ? "Signing in…" : "Sign in"}
@@ -91,7 +95,7 @@ const LoginForm = ({
           always works alongside SSO rather than instead of it, and an install whose provider
           is down must not look like one nobody can enter. */}
       {onSso && (
-        <Stack className="border-border border-t pt-4" gap="inline">
+        <Stack borderTopColor="$borderDecorative" borderTopWidth={1} gap="inline" paddingTop={16}>
           {ssoError ? (
             <div role="alert">
               <Text as="p" textRole="compact" tone="danger">
@@ -111,7 +115,7 @@ const LoginForm = ({
           skips authentication should read as the unusual thing it is, both for the
           maintainer using it and for anyone who finds it somewhere it shouldn't be. */}
       {onDevLogin && (
-        <Stack align="center" className="border-border border-t pt-4" gap="1">
+        <Stack align="center" borderTopColor="$borderDecorative" borderTopWidth={1} gap="1" paddingTop={16}>
           <Action disabled={isPending} onPress={onDevLogin} variant="outline">
             Skip sign-in (dev)
           </Action>
