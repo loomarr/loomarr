@@ -212,6 +212,15 @@ first and yields before optional enrichment starts.
   the station as provenance: a source's declaration outranks it, and research citing a local
   advertiser may overturn it. A `local` clip airs only where the channel's place is within the local
   radius of the station (#2062).
+- **Networks** (#4432, decision 0050). A clip records a network only when it presents one, because
+  a network limits where a clip airs: only on channels whose lineup is mostly that network's. A
+  station ID, bumper, interstitial or promo, by kind or by wording (promo, ID, bumper, ident,
+  sign-on), naming exactly one US network in its own form (`CBS`, `Fox Kids`, `The WB`, or a
+  network/call-sign prefix like `WB/WPIX`) presents it, as does a piece titled with a network's kids
+  block (`PBS Kids`). Title wording that calls it an ad or a trailer means it doesn't, and neither
+  do a lower-case word, a call sign holding the letters, or a title naming two networks. An ad taped
+  off an affiliate (`CBS/WJW 8`) records its station, never the network. An ad that aired on Five
+  is located in GB by that and records no network, since it is not Five's own.
 - **Passes, cheapest first:** a free local pass over preserved titles, descriptions, filenames,
   provenance and trusted mappings; then an automatic text pass when a text provider is configured
   (at most eight clips per JSON call, validated per item, brands only when literally present, never

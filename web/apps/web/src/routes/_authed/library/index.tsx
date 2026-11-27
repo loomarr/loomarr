@@ -7,8 +7,9 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { libraryItemsQueryOptions } from "@/library/library-items-query";
 import { LibraryPage } from "@/library/library-page";
 
-// The Library is admin-only (#2151 decision 22); the server enforces it on every /v1/library
-// route. Its filter and search are query params so a filtered view survives Back and a reload;
+// The Library's screens are admin-only (#2151 decision 22). The API is ahead of them: a member
+// reads the titles and collections read-only (#4476), and the server refuses a member every
+// other /v1/library route. Its filter and search are query params so a filtered view survives Back and a reload;
 // each is narrowed here so a hand-typed link can't push garbage into the list query.
 
 interface LibrarySearch {
@@ -36,7 +37,8 @@ const Route = createFileRoute("/_authed/library/")({
   loaderDeps: ({ search: { kind, q } }) => ({ kind, q }),
   // What the Library paints: the status line, the Needs you strip, and the first page of titles.
   // The page's search box starts from the URL's `q`, trimmed, so that is the entry warmed here.
-  // Admin-only like the page: a member's request would 403, and the page answers them itself.
+  // Admin-only like the page: a member's status and Needs you requests would 403, and the page
+  // answers them itself.
   loader: async ({ context: { queryClient }, deps: { kind, q } }) => {
     if (!(await viewerIsAdmin(queryClient))) return;
     await Promise.all([

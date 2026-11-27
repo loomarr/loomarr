@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/viewingstore"
 )
 
 type watchHistoryPage struct {
@@ -30,7 +31,7 @@ func seedWatchHistory(t *testing.T, st store.Store) time.Time {
 			t.Fatal(err)
 		}
 	}
-	for i, v := range []store.Viewing{
+	for i, v := range []viewingstore.Viewing{
 		{UserID: "u-sam", Device: "Living room TV", ChannelID: "ch-1", ChannelName: "Cartoons", Programme: "Bluey"},
 		{UserID: "u-alex", Device: "Firefox on macOS", ChannelID: "ch-2", ChannelName: "Movies", Programme: "Up"},
 		{UserID: "u-sam", Device: "Living room TV", ChannelID: "ch-2", ChannelName: "Movies", Programme: "Paddington"},
@@ -80,7 +81,7 @@ func TestWatchHistoryIsAdminOnly(t *testing.T) {
 			}
 		}
 	}
-	rows, err := h.Store.ListViewings(context.Background(), store.ViewingQuery{Limit: 10})
+	rows, err := h.Store.ListViewings(context.Background(), viewingstore.ViewingQuery{Limit: 10})
 	if err != nil || len(rows) != 3 {
 		t.Errorf("after refused clears %d rows, %v; want all 3 kept", len(rows), err)
 	}

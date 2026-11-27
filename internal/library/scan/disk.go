@@ -37,6 +37,23 @@ func (d OSDisk) Look(ctx context.Context, path string) Folder {
 	}
 }
 
+// File stats path within readableTimeout; a share that does not answer has no file.
+func (d OSDisk) File(ctx context.Context, path string) bool {
+	ctx, cancel := context.WithTimeout(ctx, readableTimeout)
+	defer cancel()
+	done := make(chan bool, 1)
+	go func() {
+		info, err := os.Stat(path)
+		done <- err == nil && info.Mode().IsRegular()
+	}()
+	select {
+	case ok := <-done:
+		return ok
+	case <-ctx.Done():
+		return false
+	}
+}
+
 func look(path string) Folder {
 	f, err := os.Open(path) //nolint:gosec // the path is a folder the maintainer or an authority named
 	if err != nil {

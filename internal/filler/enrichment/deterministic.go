@@ -17,7 +17,10 @@ const (
 	// recorded off WEWS is local to Cleveland instead of national.
 	// 6: political and news are kinds (#2037). Wording that names one replaces a source's generic
 	// role, so a campaign ad or a weather report filed as a commercial is relabelled on the re-run.
-	DeterministicProducerVersion = "6"
+	// 7: a network is recorded only on a piece that presents it, its ID, bumper or promo (#4432,
+	// decision 0050), since it now limits where the piece airs. "Aired on Five" keeps its GB
+	// location and drops the network. The bump re-runs every clip.
+	DeterministicProducerVersion = "7"
 	ControlledTaxonomyVersion    = "seed-v2"
 )
 
@@ -60,6 +63,62 @@ var explicitYear = regexp.MustCompile(`\b(19[3-9][0-9]|20[0-3][0-9])\b`)
 // britishAdvert is the standalone British word for a commercial ("Puma Advert", "TV adverts").
 var britishAdvert = regexp.MustCompile(`(?i)\badverts?\b`)
 var fiveNetwork = regexp.MustCompile(`(?i)\b(?:broadcast|shown|aired)\b[^.\n]{0,80}\b(?:on\s+(?:channel\s+)?five|on\s+channel\s+5)\b`)
+
+// networkName is a US broadcast network as archive titles write it (#4432). Case-sensitive on
+// purpose: "abc", "fox" and "nbc" in lower case are words or typing, and a bare "WB" or "CW" is
+// Warner's logo or a call sign's tail, so only the networks' own forms count. A call sign holding
+// the letters ("WCBS") is not a match: the word boundary sits inside it.
+// A bare "WB" is also Warner Bros., so The WB counts only by its name or in the network/call-sign
+// form archive titles use ("WB/WPIX 11", as "CBS/WJW 8"). Only "kids" in a kids block's name
+// ignores case; a lower-case network word ("fox and hound") is not the network.
+var networkName = regexp.MustCompile(`\b(?:(?:(?:Fox|FOX|PBS) (?i:kids)|(?i:kids)'? WB|Fox Network|The WB|The CW|CBS|NBC|ABC|PBS|UPN|FOX)\b|WB/)`)
+
+// networkNames maps each form networkName matches, upper-cased, to the network's name.
+var networkNames = map[string]string{
+	"CBS": "CBS", "NBC": "NBC", "ABC": "ABC", "PBS": "PBS", "UPN": "UPN",
+	"FOX": "FOX", "FOX KIDS": "FOX", "FOX NETWORK": "FOX", "PBS KIDS": "PBS",
+	"THE WB": "The WB", "KIDS' WB": "The WB", "KIDS WB": "The WB", "WB/": "The WB", "THE CW": "The CW",
+}
+
+// kidsBlocks are a network's own children's brands: a piece titled with one is the network's
+// branding even without a cue, unless the title says it is the block's ads.
+var kidsBlocks = map[string]bool{"FOX KIDS": true, "PBS KIDS": true, "KIDS' WB": true, "KIDS WB": true}
+
+// adWording says a piece is an ad, a movie's "promo commercial" or trailer included, however it
+// names a network: an ad is the advertiser's, not the network's.
+var adWording = regexp.MustCompile(`(?i)\b(?:commercials?|adverts?|advertisements?|ads?|infomercials?|trailers?)\b`)
+
+// networkCue is wording that says a piece carries a network's identity rather than only being
+// taped off it: its promo, ident or bumper.
+var networkCue = regexp.MustCompile(`(?i)\b(?:promos?|bumpers?|idents?|station\s+id(?:entification)?|network\s+id|sign[- ]?(?:on|off))\b|\bID\b`)
+
+// presentedNetwork is the network a piece presents on screen, or "" (#4432, decision 0050). A
+// station ID, bumper, interstitial or promo, by kind or by its wording, or a piece titled with a
+// network's kids block, that names exactly one network presents it. Anything else naming a
+// network, an ad taped off an affiliate above all, only records where it was taped, which says
+// nothing about where it may air; so does anything its title calls an ad or a trailer.
+func presentedNetwork(kind, itemText string) string {
+	if kind == "trailer" || adWording.MatchString(itemText) {
+		return ""
+	}
+	found, kidsBlock := "", false
+	for _, match := range networkName.FindAllString(itemText, -1) {
+		key := strings.ToUpper(match)
+		name := networkNames[key]
+		if found != "" && name != found {
+			return "" // two networks: a compilation or a comparison, not one network's piece
+		}
+		found, kidsBlock = name, kidsBlock || kidsBlocks[key]
+	}
+	if found == "" {
+		return ""
+	}
+	if kidsBlock || kind == "station_id" || kind == "bumper" || kind == "interstitial" || kind == "promo" ||
+		networkCue.MatchString(itemText) {
+		return found
+	}
+	return ""
+}
 
 // stationMaterial is a station's own programming: its news, weather, idents and sign-offs. A clip
 // that is that is local to the station. Everything else credited to a station (a network promo, a
@@ -196,16 +255,33 @@ func AnalyzeDeterministic(signals Signals) []State {
 	}
 	sourceReference := "registered_source:" + strings.TrimSpace(signals.SourceID)
 	station := signals.Station
+	// A clip records a network only when it presents one (decision 0050): a branded network
+	// piece airs only on that network's channels, so a network merely taped off would hide an
+	// ordinary ad from every other channel.
+	network := presentedNetwork(kind, itemText)
 	switch {
 	case station != nil && (kind == "station_id" || stationMaterial.MatchString(itemText) ||
 		stationSubject.MatchString(signals.Title) || stationSubject.MatchString(strings.ReplaceAll(signals.OriginalName, "_", " "))):
 		appendState(AxisGeography, Value{Geography: Geography{Scope: "local", Country: station.Station.Country,
-			Station: station.Station.ID, AirDate: station.AirDate}}, Evidence{
+			Network: network, Station: station.Station.ID, AirDate: station.AirDate}}, Evidence{
 			Kind: EvidenceTrustedMap, Reference: "trusted.station_directory:" + station.Station.ID + ":" + station.CallSign, Confidence: 90,
 			Producer: DeterministicProducer, ProducerVersion: DeterministicProducerVersion, ObservedAt: at,
 		})
+	case network != "":
+		// A US network's own piece (its promo, ID or bumper) aired nationally on that network,
+		// wherever the copy was taped.
+		var stationID, airDate string
+		if station != nil {
+			stationID, airDate = station.Station.ID, station.AirDate
+		}
+		appendState(AxisGeography, Value{Geography: Geography{Scope: "national", Country: "US", Network: network,
+			Station: stationID, AirDate: airDate}}, Evidence{
+			Kind: EvidenceTrustedMap, Reference: "trusted.network_name:" + network, Confidence: 90,
+			Producer: DeterministicProducer, ProducerVersion: DeterministicProducerVersion, ObservedAt: at,
+		})
 	case fiveNetwork.MatchString(itemText):
-		appendState(AxisGeography, Value{Geography: Geography{Scope: "national", Country: "GB", Network: "Five"}}, Evidence{
+		// "Aired on Five" says where an ad ran, not that it is Five's own: GB, with no network.
+		appendState(AxisGeography, Value{Geography: Geography{Scope: "national", Country: "GB"}}, Evidence{
 			Kind: EvidenceTrustedMap, Reference: "trusted.network_mapping:five-gb", Confidence: 100,
 			Producer: DeterministicProducer, ProducerVersion: DeterministicProducerVersion, ObservedAt: at,
 		})

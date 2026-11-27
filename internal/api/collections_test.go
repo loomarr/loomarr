@@ -17,7 +17,7 @@ type fakeCollections struct {
 	err   error
 }
 
-func (f fakeCollections) Collections(context.Context) ([]libraryapi.LibraryCollection, error) {
+func (f fakeCollections) Collections(context.Context, bool) ([]libraryapi.LibraryCollection, error) {
 	return f.colls, f.err
 }
 

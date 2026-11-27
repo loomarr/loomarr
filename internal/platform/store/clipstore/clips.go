@@ -116,9 +116,9 @@ type ClipFilter struct {
 	// Hashes restricts to a specific set of clip identities (§10 V51d) — the batch read behind
 	// "resolve these N pinned ids to their names".
 	//
-	// ⚠ It exists because paging made the alternative impossible: the channel pin/exclude editor
-	// used to load the WHOLE catalog and build an id→clip map in the client, which a 100-row
-	// default page silently truncates. Ask for what you hold.
+	// ⚠ It exists because paging rules out the alternative: an id→clip map built in the client
+	// from the WHOLE catalog (the channel pin/exclude editor's ids) is silently truncated by a
+	// 100-row default page. Ask for what you hold.
 	//
 	// ⚠ The CALLER bounds the list. One bind parameter per hash, and Postgres caps a statement at
 	// 65535 — the same ceiling attachTags carries a warning about.

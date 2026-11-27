@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // Reconcile records what the accepted cycle put on air, watched or not (#1677), so a window that
@@ -38,7 +38,7 @@ func TestReconcile_RecordsTheScheduledAiringsNobodyWatched(t *testing.T) {
 
 	// Every programme the first window aired before it handed over is in the scheduled ledger as of
 	// the new window's opening, and nothing is in the watched history.
-	aired := playout.BroadcastsBetween(first.Desired, first.PlayoutAnchor, first.PlayoutAnchor, newOpened)
+	aired := timeline.BroadcastsBetween(first.Desired, first.PlayoutAnchor, first.PlayoutAnchor, newOpened)
 	ledger, err := st.LastScheduledByChannel(context.Background(), "sl", newOpened)
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestReconcile_RecordsTheScheduledAiringsNobodyWatched(t *testing.T) {
 	}
 
 	// The new window does not open on anything the window before it aired.
-	for _, b := range playout.BroadcastsBetween(last.Desired, last.PlayoutAnchor, newOpened, newOpened.Add(24*time.Hour)) {
+	for _, b := range timeline.BroadcastsBetween(last.Desired, last.PlayoutAnchor, newOpened, newOpened.Add(24*time.Hour)) {
 		if at, ok := ledger[b.LibraryItemID]; ok && b.Kind == schedule.SlotProgram && b.Start.Sub(at) < 24*time.Hour {
 			t.Errorf("%s re-airs at %v, %v after its scheduled airing", b.LibraryItemID, b.Start, b.Start.Sub(at))
 		}

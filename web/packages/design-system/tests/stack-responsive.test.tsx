@@ -137,6 +137,52 @@ describe("Stack with responsive values", () => {
     expect([shown("sidebar"), shown("menu")]).toEqual([false, true]);
   });
 
+  it("changes padding with the window, as `px-4 sm:px-6 py-2 lg:py-4` does", () => {
+    resizeTo(breakpoints.sm - 1);
+    render(
+      <LoomarrProvider theme="dark">
+        <Stack
+          aria-label="page"
+          paddingHorizontal={{ base: 16, sm: 24 }}
+          paddingVertical={{ base: 8, lg: 16 }}
+          role="group"
+        />
+      </LoomarrProvider>,
+    );
+    // Tamagui writes an axis as the logical `padding-block` and `padding-inline`.
+    const padding = () => {
+      const style = getComputedStyle(screen.getByRole("group", { name: "page" }));
+      return { block: style.paddingBlock, inline: style.paddingInline };
+    };
+    expect(padding()).toEqual({ block: "8px", inline: "16px" });
+
+    resizeTo(breakpoints.sm);
+    expect(padding()).toEqual({ block: "8px", inline: "24px" });
+
+    // `md` names neither axis, so the `sm` padding holds.
+    resizeTo(breakpoints.md);
+    expect(padding()).toEqual({ block: "8px", inline: "24px" });
+
+    resizeTo(breakpoints.lg);
+    expect(padding()).toEqual({ block: "16px", inline: "24px" });
+  });
+
+  it("lets the later of two padding props win, responsive or not, as a View does", () => {
+    resizeTo(breakpoints.sm);
+    render(
+      <LoomarrProvider theme="dark">
+        <Stack aria-label="side-last" padding={{ base: 16 }} paddingTop={{ base: 4, sm: 8 }} role="group" />
+        <Stack aria-label="all-last" paddingTop={8} padding={{ base: 12, sm: 16 }} role="group" />
+      </LoomarrProvider>,
+    );
+    const top = (name: string) => [
+      getComputedStyle(screen.getByRole("group", { name })).paddingTop,
+      getComputedStyle(screen.getByRole("group", { name })).paddingLeft,
+    ];
+    expect(top("side-last")).toEqual(["8px", "16px"]);
+    expect(top("all-last")).toEqual(["16px", "16px"]);
+  });
+
   it("keeps a plain value the same at every width", () => {
     resizeTo(breakpoints.sm - 1);
     render(

@@ -15,16 +15,21 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// fakeDisk answers from a fixed set of folders: readable ones, and of those the empty ones.
+// fakeDisk answers from a fixed set of folders, readable ones and of those the empty ones, and a
+// fixed set of files.
 type fakeDisk struct {
 	readable map[string]bool
 	empty    map[string]bool
+	files    map[string]bool
 	mounts   []string
 }
 
 func (d fakeDisk) Look(_ context.Context, path string) Folder {
 	return Folder{Readable: d.readable[path], Empty: d.empty[path]}
 }
+
+func (d fakeDisk) File(_ context.Context, path string) bool { return d.files[path] }
+
 func (d fakeDisk) Mounts() []string { return d.mounts }
 
 func folders(list ...string) func(context.Context) ([]string, error) {

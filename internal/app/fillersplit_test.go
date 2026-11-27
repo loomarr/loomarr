@@ -25,6 +25,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -212,7 +213,7 @@ func TestSplit_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if operation.Status != store.InteractiveOperationError || operation.Error == "" || operation.CompletedAt.IsZero() {
+	if operation.Status != operationstore.InteractiveOperationError || operation.Error == "" || operation.CompletedAt.IsZero() {
 		t.Fatalf("split operation = %+v, want durable cancellation outcome", operation)
 	}
 }
@@ -438,7 +439,7 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if operation.Status != store.InteractiveOperationSuccess || operation.ResultID != propID {
+	if operation.Status != operationstore.InteractiveOperationSuccess || operation.ResultID != propID {
 		t.Fatalf("durable split operation = %+v, want successful proposal mapping", operation)
 	}
 }
@@ -790,4 +791,8 @@ func TestSplit_FailedDetectionLeavesTheReelParked(t *testing.T) {
 
 func (f splitFakeTools) VisionKeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
 	return nil, nil
+}
+
+func (f splitFakeTools) FrameHintsIn(context.Context, string, int64, int64, int) (tools.FrameHint, error) {
+	return tools.FrameHint{}, nil
 }

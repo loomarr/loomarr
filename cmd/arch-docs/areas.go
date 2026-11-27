@@ -89,8 +89,8 @@ var areas = []area{
 			"proposals": "binding an approved proposal into a channel, and re-curating a self-updating " +
 				"channel through the suggester",
 			"filler": "asking the filler engine for the pod that fills a break",
-			"playout": "handing reconciled programming to the backend that plays it: Loomarr's own " +
-				"`playout` engine or `playout/tunarr`",
+			"playout": "handing reconciled programming to `playout/tunarr`, and the `playout/timeline` " +
+				"cycle arithmetic that says what a committed cycle puts on air",
 		},
 	},
 	{
@@ -123,11 +123,12 @@ var areas = []area{
 			"one continuous stream and burns in the channel's logo; Tunarr is the other backend that can " +
 			"play a channel. The Live TV wiring and the backend transition publish channels to the media " +
 			"server, LAN discovery lets TV apps find Loomarr, and the bench measures the pipeline on " +
-			"real hardware.",
+			"real hardware. The timeline is the pure arithmetic over a channel's schedule that the " +
+			"stream, the guide and reconcile all read.",
 		Packages: []string{
 			"playout", "playout/packager", "playout/bench", "playout/watermark", "playout/channelbug", "playout/tunarr",
 			"playout/tunarr/tunarrtest", "playout/livetvpublish", "playout/backendtransition",
-			"playout/landiscovery", "playout/subtitles",
+			"playout/landiscovery", "playout/subtitles", "playout/timeline",
 		},
 		MayImport: map[string]string{
 			"platform": "the diagnostics process manager that runs every encoder, the store behind a " +
@@ -193,7 +194,7 @@ var areas = []area{
 			"shared vocabularies such as holidays, language codes, the audience rating ladder and " +
 			"whole-word text matching.",
 		Packages: []string{
-			"platform/store", "platform/store/storedb", "platform/store/clipstore", "platform/store/crashstore", "platform/store/diagnosticsstore", "platform/store/jobstore", "platform/store/activitystore", "platform/store/channeldatastore", "platform/store/channelstore", "platform/store/proposalstore", "platform/store/librarystore", "platform/store/qualitystore", "platform/store/schemadoc",
+			"platform/store", "platform/store/storedb", "platform/store/clipstore", "platform/store/crashstore", "platform/store/diagnosticsstore", "platform/store/jobstore", "platform/store/activitystore", "platform/store/channeldatastore", "platform/store/channelstore", "platform/store/proposalstore", "platform/store/librarystore", "platform/store/inventorystore", "platform/store/viewingstore", "platform/store/operationstore", "platform/store/qualitystore", "platform/store/schemadoc",
 			"platform/store/identitystore", "platform/settings", "platform/config", "platform/jobs", "platform/housekeeping",
 			"platform/backup", "platform/databasemigration",
 			"platform/activity", "platform/diagnostics", "platform/currenthealth", "platform/metrics", "platform/httpx",
@@ -223,7 +224,7 @@ var areas = []area{
 			"request ids, roles and the route-role marker. " +
 			"`app/playoutresolve` is the composition root's playout wiring: it reads the stores and " +
 			"settings that `playout` must not know about.",
-		Packages:       []string{"api", "api/catalog", "api/channels", "api/filler", "api/guide", "api/httpcore", "api/images", "api/library", "api/ops", "api/people", "api/playout", "api/proposals", "api/setup", "api/system", "app", "app/connectiontest", "app/nownext", "app/playoutresolve"},
+		Packages:       []string{"api", "api/agents", "api/catalog", "api/channels", "api/filler", "api/guide", "api/httpcore", "api/images", "api/library", "api/ops", "api/people", "api/playout", "api/proposals", "api/setup", "api/system", "app", "app/connectiontest", "app/nownext", "app/playoutresolve"},
 		ImportsAnyArea: true,
 	},
 	{

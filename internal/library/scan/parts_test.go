@@ -147,7 +147,7 @@ func TestAMovieInPartsPlaysEveryPart(t *testing.T) {
 	}
 
 	lib := &Library{ItemStore: h.st, Inventory: h.inv}
-	detail, err := lib.Item(ctx, string(item.ID))
+	detail, err := lib.Item(ctx, string(item.ID), false)
 	if err != nil {
 		t.Fatal(err)
 	}

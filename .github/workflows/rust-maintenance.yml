@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       fuzz_seconds:
-        description: Seconds to fuzz the bounded protocol and decoder boundary
+        description: Seconds to fuzz each target, at most 1800
         required: true
         default: "60"
 
@@ -36,7 +36,9 @@ jobs:
   fuzz:
     name: Bounded protocol and decoder fuzz
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # Two targets at the 1800 s maximum are 60 minutes of fuzzing, plus toolchain, cargo-fuzz and
+    # target builds.
+    timeout-minutes: 80
     env:
       FUZZ_SECONDS: ${{ inputs.fuzz_seconds }}
     steps:
@@ -49,12 +51,22 @@ jobs:
         working-directory: rust/loomarr-image
         run: |
           seconds="${FUZZ_SECONDS:-60}"
-          cargo +nightly-2026-08-14 fuzz run protocol_decoder -- -max_total_time="$seconds" -max_len=1048576
+          case "$seconds" in
+            '' | *[!0-9]*) echo "::error::fuzz_seconds must be a whole number of seconds"; exit 1 ;;
+          esac
+          # libFuzzer reads -max_total_time=0 as no limit, so 0 is refused with the upper bound.
+          if [ "$seconds" -lt 1 ] || [ "$seconds" -gt 1800 ]; then
+            echo "::error::fuzz_seconds is 1 to 1800 so both targets fit the job timeout"
+            exit 1
+          fi
+          for target in protocol_decoder subtitle_decoder; do
+            cargo +nightly-2026-08-14 fuzz run "$target" -- -max_total_time="$seconds" -max_len=1048576
+          done
       - name: Keep crash and timeout artifacts
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: rust-image-fuzz-artifacts
-          path: rust/loomarr-image/fuzz/artifacts/protocol_decoder
+          path: rust/loomarr-image/fuzz/artifacts
           if-no-files-found: ignore
           retention-days: 30

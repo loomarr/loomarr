@@ -120,6 +120,43 @@ func timestamp(s string) (time.Duration, error) {
 	return total, nil
 }
 
+// FormatWebVTT writes cues as a WebVTT document ParseWebVTT reads back. A non-empty language is
+// written as a "Language:" line in the header block, which WebVTT readers skip.
+func FormatWebVTT(cues []Cue, language string) []byte {
+	var b strings.Builder
+	b.WriteString("WEBVTT\n")
+	if language != "" {
+		b.WriteString("Language: " + language + "\n")
+	}
+	for _, c := range cues {
+		fmt.Fprintf(&b, "\n%s --> %s\n", vttTime(c.Start), vttTime(c.End))
+		for _, line := range strings.Split(c.Text, "\n") {
+			if line = strings.TrimSpace(line); line != "" {
+				b.WriteString(html.EscapeString(line) + "\n")
+			}
+		}
+	}
+	return []byte(b.String())
+}
+
+// headerLanguage is the "Language:" line of a WebVTT document's header block, or "".
+func headerLanguage(doc []byte) string {
+	header, _, _ := bytes.Cut(bytes.ReplaceAll(doc, []byte("\r\n"), []byte("\n")), []byte("\n\n"))
+	for _, line := range strings.Split(string(header), "\n") {
+		if value, ok := strings.CutPrefix(line, "Language:"); ok {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+// vttTime renders d as "hh:mm:ss.ttt".
+func vttTime(d time.Duration) string {
+	d = max(d, 0).Round(time.Millisecond)
+	return fmt.Sprintf("%02d:%02d:%02d.%03d",
+		d/time.Hour, d%time.Hour/time.Minute, d%time.Minute/time.Second, d%time.Second/time.Millisecond)
+}
+
 // cueText is a cue's payload as plain text: tags removed, entities decoded, blank lines dropped.
 func cueText(lines []string) string {
 	kept := make([]string, 0, len(lines))

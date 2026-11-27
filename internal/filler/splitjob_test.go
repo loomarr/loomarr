@@ -3151,3 +3151,7 @@ func TestConfirm_ValidatesTheEdit(t *testing.T) {
 func (f *fakeTools) VisionKeyframesIn(ctx context.Context, path string, start, end int64, n int) ([][]byte, error) {
 	return f.KeyframesIn(ctx, path, start, end, n)
 }
+
+func (f *fakeTools) FrameHintsIn(context.Context, string, int64, int64, int) (tools.FrameHint, error) {
+	return tools.FrameHint{}, nil
+}

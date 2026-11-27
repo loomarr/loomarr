@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/upkeep"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // guideWindow is how far ahead a break's clips are protected from eviction: the window the guide
@@ -36,7 +36,7 @@ type fillerRoomPods interface {
 
 // fillerRoomTimeline is the guide's timeline walk (playoutresolve.Resolver).
 type fillerRoomTimeline interface {
-	BroadcastsWithPending(ctx context.Context, channelID string, from, to time.Time) ([]playout.Broadcast, error)
+	BroadcastsWithPending(ctx context.Context, channelID string, from, to time.Time) ([]timeline.Broadcast, error)
 }
 
 // fillerRoom wires what a full budget evicts by (#3855, decision 13 of #3838): the governor's

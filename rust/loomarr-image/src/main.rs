@@ -1,9 +1,19 @@
 #![forbid(unsafe_code)]
 
-use loomarr_image::{capabilities, run_generate, run_generate_with_avif_threads};
+use loomarr_image::{
+    capabilities, run_decode_subtitles, run_generate, run_generate_with_avif_threads,
+};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args == ["decode-subtitles", "--protocol", "1"] {
+        if let Err(err) = run_decode_subtitles(std::io::stdin(), std::io::stdout()) {
+            eprintln!("{}: {}", err.code, err.message);
+            std::process::exit(1);
+        }
+        println!();
+        return;
+    }
     if args == ["generate", "--protocol", "1"] {
         if let Err(err) = run_generate(std::io::stdin(), std::io::stdout()) {
             eprintln!("{}: {}", err.code, err.message);
@@ -31,7 +41,9 @@ fn main() {
         return;
     }
     if args != ["capabilities", "--protocol", "1", "--self-test"] {
-        eprintln!("usage: loomarr-image <capabilities|generate> --protocol 1 [--self-test]");
+        eprintln!(
+            "usage: loomarr-image <capabilities|generate|decode-subtitles> --protocol 1 [--self-test]"
+        );
         std::process::exit(2);
     }
 

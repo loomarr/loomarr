@@ -82,13 +82,14 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 // writeVersion changes when what a write produces from the same inputs changes, so every file is
 // written once more with the new shape; its header is kept, so none is opened again. What each
 // version changed is in docs/design/library.md, "Write versions".
-const writeVersion = 90
+const writeVersion = 92
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
-// nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
-// learns more reaches every file. seriesSidecars are an episode's series folder's tvshow.nfo and
-// folder art (#3226); omitted when empty, so a movie's digest is unchanged by them.
-func identityDigest(file File, m managed, embedded mp.Record, reader int, seriesSidecars map[string]Stat) string {
+// nothing else, rewrites the file's inventory item. version is the writeVersion and reader the
+// header.Version, so a writer or a reader that learns more reaches every file. seriesSidecars are
+// an episode's series folder's tvshow.nfo and folder art (#3226); omitted when empty, so a movie's
+// digest is unchanged by them.
+func identityDigest(file File, m managed, embedded mp.Record, version, reader int, seriesSidecars map[string]Stat) string {
 	payload, _ := json.Marshal(struct {
 		Version        int
 		Header         int
@@ -101,7 +102,7 @@ func identityDigest(file File, m managed, embedded mp.Record, reader int, series
 		Notes folderNotes `json:",omitzero"`
 		// Part changes when another part of its movie comes or goes.
 		Part int `json:",omitzero"`
-	}{writeVersion, reader, m.records, m.series, embedded, file.Sidecars, seriesSidecars, file.Notes, file.Part})
+	}{version, reader, m.records, m.series, embedded, file.Sidecars, seriesSidecars, file.Notes, file.Part})
 	digest := sha256.Sum256(payload)
 	return hex.EncodeToString(digest[:16])
 }
@@ -604,13 +605,27 @@ func episodeName(rel, name string) string {
 // it, when there is one and not only the release's notes. A year last in it, not bracketed, is the
 // title's: "Airport 2010", "March 8 1983". An episode's release year comes before its mark.
 func titleIn(rest string) (string, bool) {
-	rest = trimReleaseNotes(strings.Trim(rest, " ._-"))
+	rest = strings.Trim(rest, " ._-")
+	// A duplicate's mark is no part of the title, so the copy is named, and joins, as its original.
+	if duplicateAlone.MatchString(rest) {
+		return "", false
+	}
+	rest = trimReleaseNotes(duplicateAfter.ReplaceAllString(rest, ""))
 	if onlyReleaseNotes(rest) {
 		return "", false
 	}
 	title, _, whole := searchQuery(rest, 0)
 	return cmp.Or(whole, title), title != ""
 }
+
+// duplicateAfter is the mark a file manager adds to a duplicated episode after its title: Windows'
+// " - Copy", " - Copy (2)". macOS's bare " copy" is not, after a title, since a title may end in the
+// word ("Carbon Copy"); nor is a browser's " (1)", which a part's title ends in too ("Equinox (1)").
+var duplicateAfter = regexp.MustCompile(`(?i)\s+-\s*copy(?:\s*\(\d+\))?$`)
+
+// duplicateAlone is a duplicate's mark that is all that follows an episode's mark: "copy", "copy 2",
+// "Copy (2)".
+var duplicateAlone = regexp.MustCompile(`(?i)^copy(?:\s*\(?\d+\)?)?$`)
 
 // bracketedYear is a year written as a show's folder writes it: "(2005)", "[2005]".
 var bracketedYear = regexp.MustCompile(`^[(\[](?:19|20)\d{2}[)\]]$`)

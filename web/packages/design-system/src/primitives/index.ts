@@ -1,6 +1,7 @@
 export type { BadgeShape, BadgeTone } from "./badge";
 export { Badge } from "./badge";
 export type {
+  ArtworkRatio,
   ArtworkState,
   ChannelIdentColorHue,
   ProgressTone,

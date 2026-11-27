@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/viewingstore"
 )
 
 // The watch history (#3010): the Recorder writes the tracker's viewings to the store, one row per
@@ -27,7 +27,7 @@ const SyncInterval = 15 * time.Second
 
 // HistoryStore is what the Recorder writes through.
 type HistoryStore interface {
-	InsertViewing(ctx context.Context, v store.Viewing) error
+	InsertViewing(ctx context.Context, v viewingstore.Viewing) error
 	ExtendViewing(ctx context.Context, id, programme string, endedAt time.Time) (bool, error)
 	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 }
@@ -128,7 +128,7 @@ func (r *Recorder) Sync(ctx context.Context, at time.Time) error {
 		if names == nil {
 			names = r.channelNames(ctx)
 		}
-		v := store.Viewing{ID: strings.ToLower(rand.Text()), UserID: w.UserID, Device: w.DeviceLabel,
+		v := viewingstore.Viewing{ID: strings.ToLower(rand.Text()), UserID: w.UserID, Device: w.DeviceLabel,
 			ChannelID: w.ChannelID, ChannelName: names[w.ChannelID], Programme: title,
 			StartedAt: started, EndedAt: w.LastSeen}
 		if err := r.store.InsertViewing(ctx, v); err != nil {

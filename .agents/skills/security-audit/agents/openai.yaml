@@ -1,0 +1,3 @@
+interface:
+  display_name: "Security audit"
+  short_description: "Find exploitable vulnerabilities across a real trust boundary"
