@@ -9,14 +9,10 @@ import { TamaguiText } from "../text-base";
 // titles sort first.
 const LETTERS = ["#", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
 
-// A letter is 24 px wide, the minimum target (WCAG 2.5.8), and as tall where 27 of them fit the
-// window. A shorter window gets shorter letters rather than a rail that scrolls, down to the
-// height the letter itself needs.
+// Every letter is a 24 by 24 px target, the minimum (WCAG 2.5.8). A window too short for all 27
+// scrolls the rail rather than shrinking them.
 const SIZE = 24;
-const MIN_HEIGHT = 16;
 const EDGES = 16;
-const heightFor = (windowHeight: number) =>
-  Math.max(MIN_HEIGHT, Math.min(SIZE, Math.floor((windowHeight - EDGES) / LETTERS.length)));
 
 type LetterRailProps = {
   /** Names the rail to a screen reader. */
@@ -35,14 +31,12 @@ const Letter = ({
   disabled,
   current,
   busy,
-  height,
   onSelect,
 }: {
   letter: string;
   disabled: boolean;
   current: boolean;
   busy: boolean;
-  height: number;
   onSelect: (letter: string) => void;
 }) => {
   const focus = useFocusLook();
@@ -70,7 +64,7 @@ const Letter = ({
         borderRadius="control"
         borderStyle={busy ? "dashed" : "solid"}
         borderWidth={busy && !focus.focused ? 1 : 2}
-        height={height}
+        height={SIZE}
         justifyContent="center"
         opacity={disabled ? 0.38 : 1}
         width={SIZE}
@@ -89,15 +83,14 @@ const Letter = ({
  * to is disabled and out of the tab order. Pointer and keyboard: it is a desktop control.
  */
 const LetterRail = ({ label = "Jump to a letter", available, current, busy, onSelect }: LetterRailProps) => {
-  const height = heightFor(useWindowDimensions().height);
+  const maxHeight = useWindowDimensions().height - EDGES;
   return (
-    <NativeView aria-label={label} role="navigation">
+    <NativeView aria-label={label} role="navigation" style={{ maxHeight, overflow: "scroll" }}>
       {LETTERS.map((letter) => (
         <Letter
           busy={letter === busy}
           current={letter === current}
           disabled={!available.includes(letter)}
-          height={height}
           key={letter}
           letter={letter}
           onSelect={onSelect}

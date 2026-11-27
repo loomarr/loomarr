@@ -15,8 +15,11 @@ type Button = {
   textContent: string | null;
   firstElementChild: object | null;
 };
-const computed = (globalThis as unknown as { getComputedStyle(node: object): { height: string } })
-  .getComputedStyle;
+const computed = (
+  globalThis as unknown as {
+    getComputedStyle(node: object): Record<"width" | "height" | "maxHeight" | "overflowY", string>;
+  }
+).getComputedStyle;
 type Host = Parameters<typeof createRoot>[0] & {
   querySelector(s: string): Button | null;
   querySelectorAll(s: string): ArrayLike<Button>;
@@ -59,20 +62,22 @@ describe("LetterRail", () => {
     unmount();
   });
 
-  // 27 letters at 24 px are 648 px, more than a short window holds under the browser's chrome.
-  it("draws shorter letters in a short window, so the whole rail fits", () => {
-    const letterHeight = () => {
-      const { host, unmount } = mount(<LetterRail available={[]} onSelect={() => {}} />);
-      const box = host.querySelector("button")?.firstElementChild;
-      if (!box) throw new Error("no letter");
-      const height = Number.parseFloat(computed(box).height);
-      unmount();
-      return height;
-    };
-    expect(letterHeight()).toBe(24);
+  // WCAG 2.5.8. 27 letters at 24 px are 648 px, more than a short window holds.
+  it("keeps every letter 24 by 24 px in a short window, and scrolls the rail instead", () => {
     screen.height = 560;
     try {
-      expect(letterHeight() * 27).toBeLessThanOrEqual(560);
+      const { host, unmount } = mount(<LetterRail available={[]} onSelect={() => {}} />);
+      const sizes = Array.from(host.querySelectorAll("button"), (button) => {
+        const box = button.firstElementChild;
+        if (!box) throw new Error("no letter");
+        return `${computed(box).width} ${computed(box).height}`;
+      });
+      expect(new Set(sizes)).toEqual(new Set(["24px 24px"]));
+      const rail = host.querySelector('[role="navigation"]');
+      if (!rail) throw new Error("no rail");
+      expect(Number.parseFloat(computed(rail).maxHeight)).toBeLessThanOrEqual(560);
+      expect(computed(rail).overflowY).toBe("scroll");
+      unmount();
     } finally {
       screen.height = 900;
     }

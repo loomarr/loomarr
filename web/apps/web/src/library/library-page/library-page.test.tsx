@@ -452,6 +452,7 @@ describe("LibraryPage", () => {
           total,
           letters: [
             { letter: "B", offset: 10 },
+            { letter: "H", offset: 150 },
             { letter: "T", offset: 400 },
           ],
         });
@@ -494,14 +495,16 @@ describe("LibraryPage", () => {
     const wall = longWall({ fail: 1 });
     renderPage();
 
-    // B is on the first page; only the page below it is asked for, and that one fails.
-    await letter("B");
+    // H's title, the 151st, is on the first page of 200; fewer than a page sit under it, so the
+    // next page is asked for, and that one fails.
+    await letter("H");
     scrollTo.mockClear();
-    await userEvent.click(await letter("T"));
+    await userEvent.click(await letter("H"));
     await screen.findByRole("button", { name: /try again/i });
-    await userEvent.click(await letter("B"));
+    // The wall is scrolled, though the page below never came. jsdom lays nothing out, so the
+    // virtualizer clamps the position to 0; which row it asks for is the shelf's test.
     await waitFor(() => expect(scrollTo).toHaveBeenCalled());
-    expect(wall.asked).toEqual(["0:60", "200:200"]);
+    expect(wall.asked).toEqual(["0:60", "200:60"]);
     document.body.style.overflowY = "";
   });
 
