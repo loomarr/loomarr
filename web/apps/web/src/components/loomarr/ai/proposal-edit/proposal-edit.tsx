@@ -475,7 +475,9 @@ const ProposalEdit = (props: ProposalEditProps) => {
             <Details
               summary={
                 <>
-                  More suggestions
+                  <Text as="span" textRole="cardLabel">
+                    More suggestions
+                  </Text>
                   <Text as="span" marginLeft={8} textRole="compact" tone="secondary">
                     {suggestions.length} {suggestions.length === 1 ? "option" : "options"}
                   </Text>
