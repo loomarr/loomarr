@@ -34,15 +34,6 @@ const notifyBuffer = 64 << 10
 // shareRetry is how long a share's watch waits after it failed before trying again.
 const shareRetry = time.Minute
 
-// cifsFilesystem reports whether path is on an SMB mount.
-func cifsFilesystem(path string) bool {
-	var fs unix.Statfs_t
-	if err := unix.Statfs(path, &fs); err != nil {
-		return false
-	}
-	return int64(fs.Type) == unix.CIFS_SUPER_MAGIC || int64(fs.Type) == unix.SMB2_SUPER_MAGIC
-}
-
 // shareChange is the folders under root one notification names; all of root when the server
 // reported a change without naming it.
 type shareChange struct {

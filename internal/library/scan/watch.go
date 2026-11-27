@@ -11,15 +11,15 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"golang.org/x/sys/unix"
 )
 
 // watchResync is how often the watched roots are compared with the in-use ones.
 const watchResync = time.Minute
 
 // Watcher hands the scanner the folders a change names (Scanner.PassFolders), for each in-use root:
-// through inotify on a local filesystem, and through the server's change notifications on an SMB
-// share, which report changes any client makes. inotify sees only this machine's own changes, so
+// through the kernel's file events (inotify on Linux, kqueue on macOS) on a local filesystem, and
+// through the server's change notifications on an SMB share (Linux only), which report changes any
+// client makes. Kernel file events see only this machine's own changes, so
 // another network or userspace filesystem (NFS, FUSE) is left to the hourly walk and the arrs'
 // webhooks. A kernel queue overflow asks for a full pass instead.
 type Watcher struct {
@@ -226,27 +226,6 @@ func rootOf(path string, roots []string) string {
 		}
 	}
 	return ""
-}
-
-// Network and userspace filesystems, on which inotify misses changes made elsewhere.
-var remoteFilesystems = map[int64]bool{
-	unix.CIFS_SUPER_MAGIC: true,
-	unix.SMB2_SUPER_MAGIC: true,
-	unix.SMB_SUPER_MAGIC:  true,
-	unix.NFS_SUPER_MAGIC:  true,
-	unix.FUSE_SUPER_MAGIC: true,
-	unix.V9FS_MAGIC:       true,
-	unix.AFS_SUPER_MAGIC:  true,
-	unix.CEPH_SUPER_MAGIC: true,
-}
-
-// localFilesystem reports whether inotify sees every change under path.
-func localFilesystem(path string) bool {
-	var fs unix.Statfs_t
-	if err := unix.Statfs(path, &fs); err != nil {
-		return false
-	}
-	return !remoteFilesystems[int64(fs.Type)]
 }
 
 func orDuration(d, def time.Duration) time.Duration {
