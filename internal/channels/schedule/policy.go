@@ -154,6 +154,19 @@ type PlayoutPolicy struct {
 	// per-viewer — one encoder serves everyone (§9.1), so this re-picks the track for the
 	// whole channel, exactly as changing the instance default would.
 	AudioLanguage string `json:"audioLanguage,omitempty"`
+	// BurnSubtitles is the ISO 639-2 language whose IMAGE subtitle track (Blu-ray PGS) this
+	// channel burns into its programmes (#2088 step 8), when a programme carries one. Empty = never.
+	// Image subtitles cannot travel beside the stream as text, so burning them in is the only way
+	// to show them; text tracks stay each viewer's own choice (the subtitles sidecar).
+	BurnSubtitles string `json:"burnSubtitles,omitempty" doc:"ISO 639-2 language whose image subtitle track (Blu-ray PGS) is burned into this channel's programmes where a programme carries one and the host's GPU can draw it; omitted burns none in. Text subtitles stay each viewer's choice."`
+}
+
+// BurnSubtitlesLanguage is the language a channel burns image subtitles in, or "" for none.
+func BurnSubtitlesLanguage(policy ChannelPolicy) string {
+	if p := policy.Playout; p != nil {
+		return strings.ToLower(strings.TrimSpace(p.BurnSubtitles))
+	}
+	return ""
 }
 
 // Playout backend values are shared by settings, channel policy, and transition
@@ -471,8 +484,7 @@ func sameRanges(a, b []Range) bool {
 // ScopePolicy is the "what is allowed on this channel" filter (§2). Ids are
 // resolved provisioning keys, never names.
 //
-// Dates is the only date scope. The retired `era` field is still read as an alias on
-// decode (see UnmarshalJSON in datescope.go) and is never written.
+// Dates is the only date scope; a scope has no era field (#2147).
 type ScopePolicy struct {
 	Series      []provision.Key `json:"series,omitempty" maxItems:"1000"`     // restrict to these series (resolved ids); no larger than a lineup (1000)
 	Collections []string        `json:"collections,omitempty" maxItems:"100"` // media-server collections; a library has dozens
@@ -480,11 +492,6 @@ type ScopePolicy struct {
 	Dates       *DateScope      `json:"dates,omitempty"`                      // separate movie, premiere, and episode-airing windows
 	Genres      GenreFilter     `json:"genres,omitempty"`                     // include/exclude by genre name
 	RuntimeMax  int             `json:"runtimeMax,omitempty"`                 // seconds; 0 = unbounded ("nothing over an hour")
-
-	// eraAndDates records that the decoded JSON carried both `era` and `dates`. A stored
-	// policy decodes to their intersection; a request with both is ambiguous and the API
-	// rejects it (ChannelPolicy.DateAliasConflict). Decode-only state, never serialised.
-	eraAndDates bool
 }
 
 // DateScope keeps date meanings separate: title metadata supplies movie release and

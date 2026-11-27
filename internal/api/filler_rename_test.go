@@ -19,7 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // renameFixture is a drop-folder holding one filename-named clip, catalogued as the scan would
@@ -214,7 +214,7 @@ func (p *storePods) pod(ctx context.Context) (pod.Pod, error) {
 // A member watching a break sees the name an admin gave a filename-named clip (#1990), through
 // the same viewer projection that withholds the filename (#1988).
 func TestGuide_MemberSeesACuratedRenameDuringABreak(t *testing.T) {
-	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
 		"ch1": {gridBlock(schedule.SlotFiller, "", 0, 4)},
 	}}
 	pods := &storePods{hashes: []string{"h-widgetmax"}}

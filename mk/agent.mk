@@ -71,6 +71,7 @@ release-verify: ## verify release, CI acquisition, Android, and publication poli
 	@./scripts/check-release-image-absence.sh --self-test
 	@./scripts/android-version-code.sh --self-test
 	@./scripts/android-ccache-promotion-test.sh
+	@./scripts/ci-cache-retention-test.sh
 	@./scripts/apple-compilation-cache-test.sh
 	@./scripts/test-android-release-emulator-contract-test.sh
 	@./scripts/shield-cert/test.sh

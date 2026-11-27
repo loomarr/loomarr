@@ -8,20 +8,23 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/bin"
 
-# The fake answers GET with $WORK/instances.json, and logs each method, path and body.
+# The fake answers GET with $WORK/instances.json, and logs each method, path and body. It reads
+# stdin only for `-K -`, as curl does: a call without it (the demo's version check) gets no input,
+# and an agent shell's stdin is an open pipe that never ends.
 cat >"$WORK/bin/curl" <<'FAKE'
 #!/usr/bin/env bash
-method=GET url='' data=''
+method=GET url='' data='' config=''
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 	-X) method="$2"; shift ;;
 	--data) data="${2#@}"; shift ;;
-	-K|-H|--max-time|--retry) shift ;;
+	-K) config="$2"; shift ;;
+	-H|--max-time|--retry) shift ;;
 	http*) url="$1" ;;
 	esac
 	shift
 done
-cat >"$FAKE_DIR/auth.last"
+if [ "$config" = - ]; then cat >"$FAKE_DIR/auth.last"; fi
 printf '%s %s\n' "$method" "${url#https://api.example.test/v2}" >>"$FAKE_DIR/requests"
 if [ -n "$data" ]; then cp "$data" "$FAKE_DIR/body.json"; fi
 if [ -e "$FAKE_DIR/api-down" ]; then

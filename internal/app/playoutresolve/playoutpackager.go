@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // PackagerSource is the channel packager's view of the schedule and the host (#1512). It
@@ -27,7 +28,7 @@ type PackagerSource struct {
 
 // WatermarkFor is an item's bug resolver: a library programme's only, never a break's commercial, a
 // filler clip (Source), a bumper or an ID.
-func (s PackagerSource) WatermarkFor(channelID string, airing playout.Airing) playout.WatermarkFor {
+func (s PackagerSource) WatermarkFor(channelID string, airing timeline.Airing) playout.WatermarkFor {
 	if s.Watermark == nil || airing.Kind != schedule.SlotProgram || airing.Source != "" {
 		return nil
 	}
@@ -48,6 +49,7 @@ func (s PackagerSource) ItemAt(ctx context.Context, channelID string, at time.Ti
 	}
 	item.Input, item.Seek = streamURL, airing.Seek()
 	item.Watermark = s.WatermarkFor(channelID, airing)
+	item.Subtitles = s.Res.BurnSubtitlesFor(ctx, channelID, airing, at, streamURL)
 	item.RecordAiringServed = func(ctx context.Context) { s.Res.RecordAiringServed(ctx, channelID, airing, at) }
 	if airing.Source != "" {
 		// A filler clip that keeps failing to encode is fed back to the catalog; the identity of a

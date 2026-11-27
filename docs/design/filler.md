@@ -595,7 +595,9 @@ The hourly `filler-upkeep` job (#3855) has fixed numbers and no setting (decisio
   release. A clip added by hand keeps its original, and so does a clip the library re-encode still
   has to move onto the current profile, until it has. So does a clip whose airing copy is missing
   or not the bytes its sidecar records, and one whose acquisition intake has not consumed (sync
-  marks it in repair when a file stops matching); each pass looks again. Nothing is released until
+  marks it in repair when a file stops matching); each pass looks again. An acquisition with no
+  artifact rows at all predates the artifact manifest and can never be marked consumed or in repair,
+  so its clip's airing copy alone decides; one with rows but none for this clip keeps its original. Nothing is released until
   encoder detection has settled, since before then every host reads as software, nor while it
   settled on software on a host that measured a hardware encoder within the week. An original
   another clip still names stays until the last of them is released, and while any clip's sidecar

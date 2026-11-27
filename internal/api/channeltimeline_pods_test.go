@@ -20,7 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // failingClipListStore is the real store with ListClips broken, so a test can prove a still lookup
@@ -87,7 +87,7 @@ func getTimelineWire(t *testing.T, srv *httptest.Server, channelID string) timel
 }
 
 func timelineBreakGuide(now time.Time) *fakeXMLTVGuide {
-	return &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
+	return &fakeXMLTVGuide{byChannel: map[string][]timeline.Broadcast{
 		"ch1": {
 			{
 				Kind: schedule.SlotProgram, Key: "movie:tmdb:90000089", Title: "Bellwether Junction",

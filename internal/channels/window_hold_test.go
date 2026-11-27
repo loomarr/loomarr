@@ -8,7 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // The accepted window does not move when library facts change (#4140 step 1). On the install a
@@ -127,8 +127,8 @@ func TestReconcile_AnEditReDealsAfterTheProgrammeOnAir(t *testing.T) {
 	}
 	after := reconcileDesired(t, e, st, "ed")
 
-	for at := now; at.Before(now.Add(playout.OnAirLookahead)); at = at.Add(time.Second) {
-		if got, want := playout.AiringAt(after.Desired, after.PlayoutAnchor, at), playout.AiringAt(before.Desired, before.PlayoutAnchor, at); got != want {
+	for at := now; at.Before(now.Add(timeline.OnAirLookahead)); at = at.Add(time.Second) {
+		if got, want := timeline.AiringAt(after.Desired, after.PlayoutAnchor, at), timeline.AiringAt(before.Desired, before.PlayoutAnchor, at); got != want {
 			t.Fatalf("at +%v the edit changed what is on air: %+v, was %+v", at.Sub(now), got, want)
 		}
 	}
@@ -238,7 +238,7 @@ func (s started) String() string { return s.id + "@" + s.start.Format("15:04:05.
 // programmes is every programme the cycle, walked from its anchor, starts before `until`.
 func programmes(slots []schedule.Slot, anchor, until time.Time) []started {
 	var out []started
-	for _, b := range playout.BroadcastsBetween(slots, anchor, anchor, until) {
+	for _, b := range timeline.BroadcastsBetween(slots, anchor, anchor, until) {
 		if b.Kind == schedule.SlotProgram && b.LibraryItemID != "" && b.Start.Before(until) {
 			out = append(out, started{b.LibraryItemID, b.Start})
 		}

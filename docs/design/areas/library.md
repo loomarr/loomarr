@@ -15,7 +15,7 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`library/arrhook`** · 2 importers · → `platform/httpx`
   Speaks Sonarr's and Radarr's webhooks (#2151 decisions 9 and 10): it reads the events they send, naming the folders each one touched, and registers Loomarr as one of their connections so they send them.
-- **`library/inventory`** · 9 importers
+- **`library/inventory`** · 10 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`library/mediaserver`** · 15 importers · → `platform/httpx`, `platform/metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.

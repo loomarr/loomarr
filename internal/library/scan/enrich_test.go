@@ -793,6 +793,48 @@ func TestAnEpisodesCopiesAreOneTitle(t *testing.T) {
 	}
 }
 
+// A file manager's duplicate of an episode is a copy of it, named as it is: Windows' "- Copy",
+// "- Copy (2)", macOS's "copy" after the mark. A title that ends in the word ("Carbon Copy") is
+// that episode's own, and a part's number ("Equinox (1)") is its title's.
+func TestAnEpisodesDuplicatesAreItsCopies(t *testing.T) {
+	for _, c := range []struct {
+		original string
+		copies   []string
+	}{
+		{"Brackwater - S01E01.mkv", []string{"Brackwater - S01E01 - Copy.mkv", "Brackwater - S01E01 (1).mkv", "Brackwater - S01E01 copy.mkv", "Brackwater - S01E01 copy 2.mkv"}},
+		{"Brackwater - S01E02 - Low Tide.mkv", []string{"Brackwater - S01E02 - Low Tide - Copy.mkv", "Brackwater - S01E02 - Low Tide - Copy (2).mkv"}},
+		{"Brackwater - S01E03 - Ebb Line (1).mkv", []string{"Brackwater - S01E03 - Ebb Line (1) - Copy.mkv"}},
+	} {
+		t.Run(c.original, func(t *testing.T) {
+			h := newHarness(t)
+			dir := "Brackwater/Season 1/"
+			for _, rel := range append([]string{c.original}, c.copies...) {
+				h.file(dir+rel, 10)
+			}
+			h.run()
+			original := h.item(fileOrigin(h.root, dir+c.original))
+			want, _ := ProjectLibraryItem(original)
+			for _, rel := range c.copies {
+				if got := h.item(fileOrigin(h.root, dir+rel)); got.ID != original.ID {
+					it, _ := ProjectLibraryItem(got)
+					t.Errorf("%s is the title %q; want a copy of %q", rel, it.Name, want.Name)
+				}
+			}
+		})
+	}
+	h := newHarness(t)
+	for rel, want := range map[string]string{
+		"Brackwater/Season 1/Brackwater - S01E05 - Carbon Copy.mkv":  "Carbon Copy",
+		"Brackwater/Season 1/Brackwater - S01E06 - Ebb Line (2).mkv": "Ebb Line 2",
+	} {
+		h.file(rel, 10)
+		h.run()
+		if it, _ := ProjectLibraryItem(h.item(fileOrigin(h.root, rel))); it.Name != want {
+			t.Errorf("%s is named %q; want %q", rel, it.Name, want)
+		}
+	}
+}
+
 // Two shows' episodes whose NFOs carry one Sonarr id are two titles, found in one pass or two: the
 // id is a Sonarr's own row number, which a second Sonarr, or a reinstall's old NFOs, gives another
 // show's episode too. Only a catalog's id joins files to one title.
@@ -1203,7 +1245,7 @@ func TestEnricherNumbersAShowByTheOrderTheHouseholdPicked(t *testing.T) {
 				t.Fatalf("shows = %+v, %v", shows, err)
 			}
 			lib := &Library{ItemStore: h.st, Inventory: h.inv}
-			detail, err := lib.Item(ctx, shows.Items[0].ID)
+			detail, err := lib.Item(ctx, shows.Items[0].ID, false)
 			if err != nil || len(detail.Seasons) != 1 || len(detail.Seasons[0].Episodes) != 3 {
 				t.Fatalf("detail = %+v, %v", detail.Seasons, err)
 			}

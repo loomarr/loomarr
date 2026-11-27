@@ -43,7 +43,9 @@ type LibraryRootService interface {
 	ConfirmRemovals(ctx context.Context, root string) error
 
 	Items(ctx context.Context, q librarystore.LibraryItemQuery) (librarystore.LibraryItemPage, error)
-	Item(ctx context.Context, id string) (scan.ItemDetail, error)
+	// Item, Collections, Collection and Sets take member: true reads only what a household
+	// member reads (librarystore.MemberLibraryItem); Items takes it in the query.
+	Item(ctx context.Context, id string, member bool) (scan.ItemDetail, error)
 	UpdateDetails(ctx context.Context, id string) error
 	CheckFiles(ctx context.Context, id string) error
 	RemoveExtraCopy(ctx context.Context, id, path string) error
@@ -59,12 +61,12 @@ type LibraryRootService interface {
 	OrderNeeds(ctx context.Context) ([]scan.OrderNeed, error)
 	ChooseOrder(ctx context.Context, seriesID string, choice librarystore.LibraryOrderChoice, orderID string) error
 	// Collections (#2151 step 12, decision 28).
-	Collections(ctx context.Context) ([]scan.Collection, error)
-	Collection(ctx context.Context, id string) (scan.Collection, error)
+	Collections(ctx context.Context, member bool) ([]scan.Collection, error)
+	Collection(ctx context.Context, id string, member bool) (scan.Collection, error)
 	CreateCollection(ctx context.Context, name, description string, items []string) (string, error)
 	UpdateCollection(ctx context.Context, id, name, description string, items []string) error
 	DeleteCollection(ctx context.Context, id string) error
-	Sets(ctx context.Context) ([]scan.Set, error)
+	Sets(ctx context.Context, member bool) ([]scan.Set, error)
 	CopySet(ctx context.Context, id string) (string, error)
 }
 

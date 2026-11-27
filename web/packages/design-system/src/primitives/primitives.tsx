@@ -161,9 +161,17 @@ const channelIdentColors = (mode: "dark" | "light") => {
 };
 
 type ArtworkState = "error" | "loading" | "missing" | "ready";
-type ArtworkFrameProps = Omit<ComponentProps<typeof Surface>, "children"> & {
+/**
+ * The frame's shape: `16:9` for a still, a channel or a programme (the default); `2:3` for a film or
+ * series poster.
+ */
+type ArtworkRatio = "16:9" | "2:3";
+const artworkRatios: Record<ArtworkRatio, number> = { "16:9": 16 / 9, "2:3": 2 / 3 };
+
+type ArtworkFrameProps = Omit<ComponentProps<typeof Surface>, "aspectRatio" | "children"> & {
   children?: ReactNode;
   density?: Density;
+  ratio?: ArtworkRatio;
   state: ArtworkState;
 };
 
@@ -173,19 +181,26 @@ const artworkCopy: Record<Exclude<ArtworkState, "ready">, string> = {
   missing: "No artwork",
 };
 
-const ArtworkFrame = ({ children, density = "pointer", state, ...props }: ArtworkFrameProps) => (
+const ArtworkFrame = ({
+  children,
+  density = "pointer",
+  ratio = "16:9",
+  state,
+  ...props
+}: ArtworkFrameProps) => (
   <Surface
     {...props}
     alignItems="center"
-    aspectRatio={16 / 9}
+    aspectRatio={artworkRatios[ratio]}
     backgroundColor="artworkPlaceholder"
     justifyContent="center"
     overflow="hidden"
+    padding={state === "ready" && children ? undefined : "inline"}
   >
     {state === "ready" && children ? (
       children
     ) : (
-      <Text density={density} textRole="metadata">
+      <Text density={density} textAlign="center" textRole="metadata">
         {artworkCopy[state === "ready" ? "missing" : state]}
       </Text>
     )}
@@ -296,7 +311,7 @@ const ProgressTrack = ({
   );
 };
 
-export type { ArtworkState, ChannelIdentColorHue, ProgressTone, ScreenProps };
+export type { ArtworkRatio, ArtworkState, ChannelIdentColorHue, ProgressTone, ScreenProps };
 export {
   ArtworkFrame,
   CHANNEL_IDENT_WASH_PERCENT,

@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -46,7 +47,7 @@ func TestModelPull_HasExplicitTimeoutAndDurableTerminalOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if operation.Status != store.InteractiveOperationError || !strings.Contains(operation.Error, context.DeadlineExceeded.Error()) {
+	if operation.Status != operationstore.InteractiveOperationError || !strings.Contains(operation.Error, context.DeadlineExceeded.Error()) {
 		t.Fatalf("timed out pull = %+v, want durable deadline error", operation)
 	}
 }

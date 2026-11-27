@@ -46,6 +46,8 @@ export {
 } from "./src/dialog";
 export type { DockedPanelProps } from "./src/docked-panel";
 export { DockedPanel } from "./src/docked-panel";
+export type { FileNameProps } from "./src/file-name";
+export { FileName } from "./src/file-name";
 export { useFocusLook } from "./src/focus-look";
 export type { GridColumnSpec, GridItemProps, GridProps, GridSpan, GridTrack } from "./src/grid";
 export { Grid, GridItem } from "./src/grid";
@@ -119,6 +121,7 @@ export { PressableRow } from "./src/pressable-row";
 export type { PreviewAnchorProps, PreviewGroupProps } from "./src/preview";
 export { PreviewAnchor, PreviewGroup } from "./src/preview";
 export type {
+  ArtworkRatio,
   ArtworkState,
   BadgeShape,
   BadgeTone,
@@ -160,6 +163,7 @@ export type {
   SelectOption,
   TabOption,
   TabsProps,
+  UnderlineTabOption,
 } from "./src/selection";
 export { Hint, MenuList, RadioGroup, RadioItem, SelectControl, Tabs } from "./src/selection";
 export type { BottomSheetProps } from "./src/sheet";

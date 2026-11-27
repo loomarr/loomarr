@@ -14,7 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -306,7 +306,7 @@ func (e *Engine) planReconcile(
 	turned := false
 	if playsInternally {
 		window, zone := e.RollingWindow(ch.Policy, e.now())
-		chDomain.WindowOpened, turnAnchor, turned = playout.WindowTurn(ch.Desired, ch.PlayoutAnchor, window, zone, e.now())
+		chDomain.WindowOpened, turnAnchor, turned = timeline.WindowTurn(ch.Desired, ch.PlayoutAnchor, window, zone, e.now())
 		e.recordScheduled(ctx, ch, e.now()) // #1677: what the accepted cycle aired, watched or not
 		accepted = ch.Desired
 	}
@@ -522,11 +522,11 @@ func (e *Engine) commitReconcile(ctx context.Context, plan *reconcilePlan, run *
 	// wall-clock offset. Stopping on ANY change restarted every viewer at every re-size
 	// (2026-10-24). A turned window aired its new slice before this commit, from the preview this
 	// reconcile computes again, so it keeps the stop-on-change rule. Postgres lifecycle
-	// invalidations apply the same rule on peer replicas (playout.OnAirChanged).
+	// invalidations apply the same rule on peer replicas (timeline.OnAirChanged).
 	onAirChanged := desiredChangedLocally
 	if !acceptedAnchor.IsZero() && !turned {
-		onAirChanged = playout.OnAirChanged(acceptedSlots, acceptedAnchor, ch.Desired, ch.PlayoutAnchor,
-			e.now(), e.now().Add(playout.OnAirLookahead))
+		onAirChanged = timeline.OnAirChanged(acceptedSlots, acceptedAnchor, ch.Desired, ch.PlayoutAnchor,
+			e.now(), e.now().Add(timeline.OnAirLookahead))
 	}
 	if playsInternally && onAirChanged && e.scheduleInvalidator != nil {
 		e.scheduleInvalidator.StopChannel(ch.ID)

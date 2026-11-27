@@ -420,7 +420,7 @@ func (p *Provider) episode(ctx context.Context, loc locale, tvdb int) (mp.Record
 	if e.ShowID > 0 {
 		rec.Parent = []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(e.ShowID)}}
 	}
-	if ref := tmdbclient.ImageURL(e.StillPath); ref != "" {
+	if ref := tmdbclient.StillURL(e.StillPath); ref != "" {
 		rec.Artwork = []mp.ArtworkRef{{Kind: mp.KindThumb, Ref: ref}}
 	}
 	if loc.fallsBack() && strings.TrimSpace(e.Overview) == "" {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // AudioTranscriptionClient is the provider seam HostedTranscriber needs. It deliberately speaks
@@ -38,34 +39,43 @@ type HostedTranscriber struct {
 const hostedTranscriptionChunkMs int64 = 45_000
 
 func (h *HostedTranscriber) Transcribe(ctx context.Context, file string, startMs, endMs int64) ([]TranscriptSegment, error) {
+	language := ""
+	if h.Language != nil {
+		language = h.Language()
+	}
+	speech, err := h.TranscribeLanguage(ctx, file, startMs, endMs, language)
+	return speech.Segments, err
+}
+
+// TranscribeLanguage transcribes [startMs,endMs) of file in language, or lets the provider detect
+// it when language is empty, and reports the language of the first chunk that names one. Segment
+// offsets are relative to startMs. A provider refusal (an HTTP 429 included) is returned as the
+// error, once: nothing here retries.
+func (h *HostedTranscriber) TranscribeLanguage(ctx context.Context, file string, startMs, endMs int64, language string) (AudioTranscription, error) {
 	if endMs <= startMs {
-		return nil, fmt.Errorf("hosted transcription span [%d,%d) is empty", startMs, endMs)
+		return AudioTranscription{}, fmt.Errorf("hosted transcription span [%d,%d) is empty", startMs, endMs)
 	}
 	if h.Client == nil || h.Client() == nil {
-		return nil, fmt.Errorf("hosted transcription provider is not configured")
+		return AudioTranscription{}, fmt.Errorf("hosted transcription provider is not configured")
 	}
 	model := ""
 	if h.Model != nil {
 		model = h.Model()
 	}
 	if model == "" {
-		return nil, fmt.Errorf("hosted transcription model is not configured")
-	}
-	language := ""
-	if h.Language != nil {
-		language = h.Language()
+		return AudioTranscription{}, fmt.Errorf("hosted transcription model is not configured")
 	}
 	dir := ""
 	if h.Extract == nil {
 		var err error
 		dir, err = os.MkdirTemp(h.TmpDir, "loomarr-hosted-stt-")
 		if err != nil {
-			return nil, err
+			return AudioTranscription{}, err
 		}
 		defer func() { _ = os.RemoveAll(dir) }()
 	}
 
-	var out []TranscriptSegment
+	var out AudioTranscription
 	for chunkStart := startMs; chunkStart < endMs; chunkStart += hostedTranscriptionChunkMs {
 		chunkEnd := min(chunkStart+hostedTranscriptionChunkMs, endMs)
 		var audio []byte
@@ -73,26 +83,29 @@ func (h *HostedTranscriber) Transcribe(ctx context.Context, file string, startMs
 			var err error
 			audio, err = h.Extract(ctx, file, chunkStart, chunkEnd)
 			if err != nil {
-				return nil, err
+				return AudioTranscription{}, err
 			}
 		} else {
 			wav := filepath.Join(dir, "span.wav")
 			if err := ExtractSpanWAV(ctx, h.FFmpegPath, file, chunkStart, chunkEnd, wav); err != nil {
-				return nil, err
+				return AudioTranscription{}, err
 			}
 			var err error
 			audio, err = os.ReadFile(wav)
 			if err != nil {
-				return nil, fmt.Errorf("read hosted transcription audio: %w", err)
+				return AudioTranscription{}, fmt.Errorf("read hosted transcription audio: %w", err)
 			}
 		}
 		client := h.Client()
 		if client == nil {
-			return nil, fmt.Errorf("hosted transcription provider became unavailable")
+			return AudioTranscription{}, fmt.Errorf("hosted transcription provider became unavailable")
 		}
 		transcription, err := client.TranscribeAudio(ctx, model, "wav", language, audio)
 		if err != nil {
-			return nil, err
+			return AudioTranscription{}, err
+		}
+		if out.Language == "" {
+			out.Language = strings.ToLower(strings.TrimSpace(transcription.Language))
 		}
 		offset := chunkStart - startMs
 		chunkDuration := chunkEnd - chunkStart
@@ -100,7 +113,7 @@ func (h *HostedTranscriber) Transcribe(ctx context.Context, file string, startMs
 			seg.StartMs = max(0, min(seg.StartMs, chunkDuration)) + offset
 			seg.EndMs = max(0, min(seg.EndMs, chunkDuration)) + offset
 			if seg.EndMs > seg.StartMs {
-				out = append(out, seg)
+				out.Segments = append(out.Segments, seg)
 			}
 		}
 	}

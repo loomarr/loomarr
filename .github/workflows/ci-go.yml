@@ -77,29 +77,18 @@ jobs:
       # run in `go-contracts`, so restoring their caches here would spend time and storage on
       # inputs this job never reads.
       #
-      # ⚠ THE KEY MUST BE UNIQUE PER RUN, and this is not a style choice. `actions/cache`
-      # NEVER overwrites an existing key — it skips the save when the key already hit. This
-      # path holds `~/.cache/go-build`, whose contents track `.go` SOURCE, but the key used
-      # to be `hashFiles('go.sum')`: so the entry was written once and then frozen while the
-      # source moved under it. Measured — one 473MB entry created 2026-07-31T01:06 was still
-      # being restored days and many source changes later, so `go test -race` recompiled
-      # nearly everything on every run (~224s of the job). `github.run_id` guarantees a miss
-      # on the exact key so the save always happens, while `restore-keys` still restores the
-      # newest prior cache to compile against.
+      # ⚠ RESTORE ONLY. The `CI / Go cache warm` workflow is this cache's one writer: on the first main push
+      # of each ISO week (and after a go.sum change) it compiles every lane's test binaries and
+      # saves `…-<go.sum hash>-warm`. This job never saves. ci.yml never runs on a main push, so
+      # a save here only ever fired on a manual dispatch on main, and it wrote a second ~2.5 GB
+      # copy of every lane beside the warm one. Pull-request runs could not read their own saves
+      # once the PR closed, and merge-queue runs cannot read theirs at all (#1679).
       #
-      # ⚠ AND A ROLLING KEY MUST BE BOUNDED — the other half of the same trade, and the
-      # failure mode the fix above created. A stable key never re-SAVES; a rolling key never
-      # PRUNES. Neither actions/cache mode evicts anything, so this entry grew purely by
-      # accretion: every run restored the previous one, added to it, and saved the union.
-      # Measured 2026-08-09 it had reached **1.36 GB**, costing 85s to restore (74s of that
-      # spent EXTRACTING, not downloading) plus 83–122s to save — ~168s of a ~10 min job
-      # spent moving a tarball before a single test ran.
-      #
-      # The ISO week in the key is the bound. It rotates on its own, so there is no number
-      # for anyone to remember to bump — this repo has been bitten repeatedly by
-      # hand-maintained lists that drift — and it costs exactly one cold build per week. It
-      # is in the restore-keys prefixes too, deliberately: a prefix that outlived the epoch
-      # would restore the very accumulation the epoch exists to drop.
+      # The ISO week in the key bounds growth: Go's build cache only accretes, and a weekly
+      # epoch drops the accumulation for one cold build per week. It is in the restore prefix
+      # too, so a cache from an earlier epoch is never restored. Within the week the warm copy
+      # still serves the race-instrumented standard library and every dependency; only packages
+      # changed since it was built recompile.
       - name: Cache epoch (bounds rolling-cache growth)
         id: epoch
         run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
@@ -115,9 +104,8 @@ jobs:
           # lane restoring a cache built for another lane's packages and recompiling its own.
           # It also makes the save well-defined: without it all lanes race to write one key
           # and every loser simply skips, so most objects are never cached at all.
-          key: go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ matrix.lane }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          key: go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ matrix.lane }}-${{ hashFiles('go.sum') }}-warm
           restore-keys: |
-            go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ matrix.lane }}-${{ hashFiles('go.sum') }}-
             go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ matrix.lane }}-
       # On a cache miss (new epoch, or go.sum changed) this lane's module cache is empty, so the
       # FIRST `go list ./...` this lane runs downloads the whole module graph live. Every other
@@ -157,27 +145,12 @@ jobs:
       - run: make test GO_TEST_LANE=${{ matrix.lane }}
         # The lane runner pins ordinary packages to -p=4 and every reviewed serial `certification`
         # lanes to -p=1. It rejects caller-controlled GOFLAGS and retains race coverage.
-      # ⚠ SAVE ONLY ON main, which is why this is cache/save rather than the round-trip
-      # `actions/cache`. A PR's cache is scoped to `refs/pull/N/merge` and can never be
-      # restored again once that PR closes — cache reads are scoped to the branch and its
-      # base — so every PR save wrote ~1.4GB that only ever became eviction pressure on the
-      # caches that ARE read. That is the same 10GB-quota burn `cache-cleanup.yml` exists to
-      # mop up after; not creating the garbage beats deleting it. PRs restore from main's
-      # entry and skip the measured 83–122s save outright.
-      #
-      # `always()` so a RED gate still refreshes the build objects it already produced — the
-      # next run should not recompile from cold merely because an assertion failed.
-      - name: Save Go caches (main only)
-        if: always() && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ steps.gocache.outputs.cache-primary-key }}
-      # ⚠ Never from the merge queue (#1679): a queue batch's unique ref makes the save unreadable.
-      - name: Save production FFmpeg archive (not from the merge queue)
-        if: github.event_name != 'merge_group' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+      # ⚠ main only (#1679). A cache is readable from its own ref and the default branch, so a
+      # pull-request, branch or merge-queue save is a per-ref copy that no other run reads.
+      # The `CI / Go cache warm` workflow seeds this archive on main; this save only covers a dispatch on
+      # main that finds it missing.
+      - name: Save production FFmpeg archive (main only)
+        if: github.ref == 'refs/heads/main' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/loomarr-ffmpeg

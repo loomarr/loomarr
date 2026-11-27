@@ -38,7 +38,7 @@ func TestCollectionsKeepTheHouseholdsOrder(t *testing.T) {
 	}
 	titles := func() []string {
 		t.Helper()
-		c, err := lib.Collection(ctx, id)
+		c, err := lib.Collection(ctx, id, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -67,7 +67,7 @@ func TestCollectionsKeepTheHouseholdsOrder(t *testing.T) {
 	if got := titles(); !slices.Equal(got, []string{"Charlie", "Alpha"}) {
 		t.Fatalf("titles after Bravo left = %v, want Charlie, Alpha", got)
 	}
-	list, err := lib.Collections(ctx)
+	list, err := lib.Collections(ctx, false)
 	if err != nil || len(list) != 1 || len(list[0].Titles) != 2 {
 		t.Fatalf("collections = %+v, %v", list, err)
 	}
@@ -96,7 +96,7 @@ func TestCollectionsRefuseAnUnknownTitle(t *testing.T) {
 	if _, err := lib.CreateCollection(ctx, "Strays", "", []string{alpha, "90000662"}); !errors.Is(err, librarystore.ErrUnknownLibraryItem) {
 		t.Fatalf("create = %v, want ErrUnknownLibraryItem", err)
 	}
-	if list, err := lib.Collections(ctx); err != nil || len(list) != 0 {
+	if list, err := lib.Collections(ctx, false); err != nil || len(list) != 0 {
 		t.Fatalf("collections after a refused create = %+v, %v", list, err)
 	}
 }

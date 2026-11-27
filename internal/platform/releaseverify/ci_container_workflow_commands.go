@@ -2,11 +2,12 @@ package releaseverify
 
 const cacheCleanupWorkflowCommand = "set -uo pipefail\n" +
 	"# `|| true` on the list: a PR with no caches is the normal case for docs-only\n" +
-	"# work, and it must not fail the job.\n" +
+	"# work, and it must not fail the job. HEAD_REF is read through `env`, never spliced\n" +
+	"# into the filter, because a branch name may contain quotes.\n" +
 	"ids=$(gh api \"repos/$REPO/actions/caches\" --paginate \\\n" +
-	"        -q \".actions_caches[] | select(.ref==\\\"$REF\\\" or (.ref | startswith(\\\"$QUEUE_REF_PREFIX\\\"))) | .id\" 2>/dev/null || true)\n" +
+	"        -q \".actions_caches[] | select(.ref==\\\"$REF\\\" or (.ref | startswith(\\\"$QUEUE_REF_PREFIX\\\")) or (env.HEAD_REF != \\\"\\\" and .ref == env.HEAD_REF)) | .id\" 2>/dev/null || true)\n" +
 	"if [ -z \"$ids\" ]; then\n" +
-	"  echo \"no caches for $REF or $QUEUE_REF_PREFIX*\"\n" +
+	"  echo \"no caches for $REF, $QUEUE_REF_PREFIX* or ${HEAD_REF:-no head branch}\"\n" +
 	"  exit 0\n" +
 	"fi\n" +
 	"for id in $ids; do\n" +
@@ -81,11 +82,11 @@ done < <(./scripts/apple-compilation-cache.sh retention-plan \
 `
 
 const androidCCachePromotionRetentionCommand = `set -euo pipefail
-gh api -X DELETE "repos/$REPO/actions/artifacts/$ARTIFACT_ID"
 inventory="$RUNNER_TEMP/android-ccache-inventory.json"
 gh api "repos/$REPO/actions/caches?per_page=100&ref=refs/heads/main" > "$inventory"
 ids=$(./scripts/android-ccache-promotion.sh retention-plan \
   "$inventory" refs/heads/main android-tv-ccache-v2-Linux-ccache-4.14- "$KEEP_KEY")
+gh api -X DELETE "repos/$REPO/actions/artifacts/$ARTIFACT_ID"
 while read -r id; do
   [[ -n "$id" ]] || continue
   gh api -X DELETE "repos/$REPO/actions/caches/$id"

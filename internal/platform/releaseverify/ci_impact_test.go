@@ -68,6 +68,18 @@ func TestCIDiffBase(t *testing.T) {
 	}
 }
 
+func TestMigrationOrderCheck(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Clean(filepath.Join("..", "..", ".."))
+	cmd := exec.Command("bash", filepath.Join("scripts", "check-migration-order-test.sh"))
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("migration order check contract: %v\n%s", err, output)
+	}
+}
+
 func TestCIRunMetrics(t *testing.T) {
 	t.Parallel()
 

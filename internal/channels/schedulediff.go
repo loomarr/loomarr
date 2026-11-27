@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -208,14 +208,14 @@ func (e *Engine) forecast(ctx context.Context, ch channelstore.Channel, from, to
 	}
 
 	// The first epoch is the one the channel airs from at `from`. With carry-over that is
-	// playout.WindowTurn over the ACCEPTED cycle — the rule reconcile and the encoder apply: the
+	// timeline.WindowTurn over the ACCEPTED cycle — the rule reconcile and the encoder apply: the
 	// accepted window stays on air until the programme crossing its boundary ends. A draft does
 	// not change history, so both sides take the same accepted cycle and anchor here.
 	window, zone := e.RollingWindow(ch.Policy, from)
 	epoch := ch.PlayoutAnchor
 	switch {
 	case window > 0 && carries && !epoch.IsZero():
-		_, epoch, _ = playout.WindowTurn(ch.Desired, ch.PlayoutAnchor, window, zone, from)
+		_, epoch, _ = timeline.WindowTurn(ch.Desired, ch.PlayoutAnchor, window, zone, from)
 	case window > 0 && epoch.IsZero():
 		// Never live, so never anchored: forecast from the opening of the window on air, which
 		// is where reconcile's first anchor would land (later than the guide, which shows nothing).
@@ -239,7 +239,7 @@ func (e *Engine) forecast(ctx context.Context, ch channelstore.Channel, from, to
 		if window > 0 {
 			turn := schedule.NextWindowStart(cursor, window, zone)
 			if carries {
-				turn = playout.CarryOverEnd(r.Slots, epoch, schedule.NextWindowStart(epoch, window, zone))
+				turn = timeline.CarryOverEnd(r.Slots, epoch, schedule.NextWindowStart(epoch, window, zone))
 				if !turn.After(cursor) {
 					// This arrangement's crossing programme already ended (a rule re-arranged the
 					// window): the window turns here.
@@ -264,7 +264,7 @@ func (e *Engine) forecast(ctx context.Context, ch channelstore.Channel, from, to
 		if end.Before(to) {
 			clipTo = end
 		}
-		for _, b := range playout.BroadcastsBetween(r.Slots, epoch, cursor, end) {
+		for _, b := range timeline.BroadcastsBetween(r.Slots, epoch, cursor, end) {
 			b, ok := b.ClipTo(clipFrom, clipTo)
 			if !ok || (b.Kind != schedule.SlotProgram && b.Kind != schedule.SlotFiller) {
 				continue

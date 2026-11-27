@@ -11,6 +11,8 @@ import (
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/people/contact"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // Operational tables: the settings KV, session lifecycle, the /metrics count queries,
@@ -33,10 +35,10 @@ func testUserContactAddresses(t *testing.T, newStore NewStoreFunc) {
 	if err := s.PutPendingContactAddress(ctx, pending); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("contact for missing user = %v, want ErrNotFound", err)
 	}
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleAdmin, CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertUser(ctx, User{ID: "u2", Name: "Grace", Role: RoleMember, CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := s.UpsertUser(ctx, User{ID: "u2", Name: "Grace", Role: identitystore.RoleMember, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.PutPendingContactAddress(ctx, pending); err != nil {
@@ -85,7 +87,7 @@ func testUserContactAddresses(t *testing.T, newStore NewStoreFunc) {
 	if err := s.PutPendingContactAddress(ctx, contact.Address{
 		OwnerKind: contact.OwnerUser, OwnerID: "u2", Email: replacementEmail, Normalized: replacementKey,
 		Status: contact.StatusPending, Provenance: contact.ProvenanceAdmin, CreatedAt: now,
-	}); !errors.Is(err, ErrContactAddressConflict) {
+	}); !errors.Is(err, identitystore.ErrContactAddressConflict) {
 		t.Fatalf("duplicate normalized address = %v, want ErrContactAddressConflict", err)
 	}
 
@@ -128,7 +130,7 @@ func testUserCredentialCapabilities(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	now := time.Unix(1_700_000_000, 0).UTC()
 	want := User{
-		ID: "linked", Name: "Linked", Role: RoleMember, MediaServerLinked: true,
+		ID: "linked", Name: "Linked", Role: identitystore.RoleMember, MediaServerLinked: true,
 		PasswordHash: "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$dGFn", CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertUser(ctx, want); err != nil {
@@ -325,7 +327,7 @@ func testLastSeen(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	t0 := time.Unix(1_800_000_000, 0).UTC()
 	for _, id := range []string{"u-seen", "u-never"} {
-		if err := s.UpsertUser(ctx, User{ID: id, Name: id, Role: RoleMember}); err != nil {
+		if err := s.UpsertUser(ctx, User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -369,15 +371,55 @@ func testLastSeen(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// testDeviceCodeMode: a device's Code Mode switch (#4486) starts off, is set only by the device's
+// owner (the WHERE clause is the authorisation), and is read back by both device reads.
+func testDeviceCodeMode(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_700_000_000, 0).UTC()
+	for _, u := range []User{{ID: "u-admin", Name: "Ada", Role: identitystore.RoleAdmin}, {ID: "u-other", Name: "Grace", Role: identitystore.RoleMember}} {
+		if err := s.UpsertUser(ctx, u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.CreateDeviceToken(ctx, DeviceToken{TokenHash: "d-agent", UserID: "u-admin", DeviceName: "Agent", CreatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if d, err := s.GetDeviceToken(ctx, "d-agent"); err != nil || d.CodeMode {
+		t.Fatalf("new device = %+v (err %v), want Code Mode off", d, err)
+	}
+	if ok, err := s.SetDeviceCodeMode(ctx, "d-agent", "u-other", true); err != nil || ok {
+		t.Fatalf("another user turning it on = %v, %v, want false", ok, err)
+	}
+	if ok, err := s.SetDeviceCodeMode(ctx, "d-agent", "u-admin", true); err != nil || !ok {
+		t.Fatalf("the owner turning it on = %v, %v, want true", ok, err)
+	}
+	if d, err := s.GetDeviceToken(ctx, "d-agent"); err != nil || !d.CodeMode {
+		t.Fatalf("after turning it on, GetDeviceToken = %+v (err %v)", d, err)
+	}
+	if list, err := s.ListDeviceTokensForUser(ctx, "u-admin"); err != nil || len(list) != 1 || !list[0].CodeMode {
+		t.Fatalf("after turning it on, ListDeviceTokensForUser = %+v (err %v)", list, err)
+	}
+	if ok, err := s.SetDeviceCodeMode(ctx, "d-agent", "u-admin", false); err != nil || !ok {
+		t.Fatalf("turning it off = %v, %v", ok, err)
+	}
+	if d, _ := s.GetDeviceToken(ctx, "d-agent"); d.CodeMode {
+		t.Fatal("Code Mode still on after turning it off")
+	}
+	if ok, err := s.SetDeviceCodeMode(ctx, "d-missing", "u-admin", true); err != nil || ok {
+		t.Fatalf("an unknown device = %v, %v, want false", ok, err)
+	}
+}
+
 func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_700_000_000, 0).UTC()
 
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleAdmin}); err != nil {
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertUser(ctx, User{ID: "u2", Name: "Grace", Role: RoleMember}); err != nil {
+	if err := s.UpsertUser(ctx, User{ID: "u2", Name: "Grace", Role: identitystore.RoleMember}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -510,7 +552,7 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("disabled u1 was issued %d devices (err %v), want 0", len(devices), err)
 	}
 	// Re-enabled, the same user approves again: the guard is the flag, not a tombstone.
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleAdmin}); err != nil {
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin}); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := s.ApproveDevicePairing(ctx, "CCCC-CCCC", "u1", now); err != nil || !ok {
@@ -519,7 +561,7 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 
 	// Sessions follow the same rule: a login that raced a disable must not leave a session behind
 	// that comes back when the user is re-enabled. Disabled and unknown users are issued nothing.
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleAdmin, Disabled: true}); err != nil {
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin, Disabled: true}); err != nil {
 		t.Fatal(err)
 	}
 	for _, user := range []string{"u1", "u-ghost"} {
@@ -531,7 +573,7 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 			t.Errorf("a refused session for %s exists: GetSession err = %v", user, err)
 		}
 	}
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleAdmin}); err != nil {
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.CreateSession(ctx, Session{TokenHash: "s-back", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
@@ -637,7 +679,7 @@ func testCounts(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// Sessions: two live, one expired — only the live ones count as of now.
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleAdmin}); err != nil {
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin}); err != nil {
 		t.Fatal(err)
 	}
 	for _, sess := range []Session{
@@ -671,12 +713,12 @@ func testActivityFeed(t *testing.T, newStore func(t *testing.T) Store) {
 		level string
 		age   time.Duration
 	}{
-		{"oldest — CH 12 reconciled", ActivityInfo, 90 * time.Minute},
-		{"middle — Seerr timed out, retrying", ActivityWarn, 60 * time.Minute},
-		{"newest — Gadget Goats Go! landed", ActivityInfo, 30 * time.Minute},
+		{"oldest — CH 12 reconciled", activitystore.ActivityInfo, 90 * time.Minute},
+		{"middle — Seerr timed out, retrying", activitystore.ActivityWarn, 60 * time.Minute},
+		{"newest — Gadget Goats Go! landed", activitystore.ActivityInfo, 30 * time.Minute},
 	} {
 		if err := st.RecordActivity(ctx, Activity{
-			At: base.Add(-tc.age).Unix(), Kind: ActivityKindTitle, Level: tc.level,
+			At: base.Add(-tc.age).Unix(), Kind: activitystore.ActivityKindTitle, Level: tc.level,
 			Text: tc.text, SubjectID: fmt.Sprintf("subj-%d", i),
 		}); err != nil {
 			t.Fatalf("record activity %d: %v", i, err)
@@ -694,7 +736,7 @@ func testActivityFeed(t *testing.T, newStore func(t *testing.T) Store) {
 	if !strings.HasPrefix(got[0].Text, "newest") || !strings.HasPrefix(got[2].Text, "oldest") {
 		t.Errorf("wrong order: %q ... %q", got[0].Text, got[2].Text)
 	}
-	if got[1].Level != ActivityWarn {
+	if got[1].Level != activitystore.ActivityWarn {
 		t.Errorf("level = %q, want warn — it drives the UI dot", got[1].Level)
 	}
 	if got[0].ID == "" {
@@ -708,11 +750,11 @@ func testActivityFeed(t *testing.T, newStore func(t *testing.T) Store) {
 
 	// An unrecognised level is normalised on the way in — the UI has no colour for it, so
 	// storing it would render an invisible dot.
-	if err := st.RecordActivity(ctx, Activity{Text: "odd", Kind: ActivityKindSystem, Level: "banana"}); err != nil {
+	if err := st.RecordActivity(ctx, Activity{Text: "odd", Kind: activitystore.ActivityKindSystem, Level: "banana"}); err != nil {
 		t.Fatalf("record odd level: %v", err)
 	}
 	after, _ := st.ListActivity(ctx, 1)
-	if len(after) != 1 || after[0].Level != ActivityInfo {
+	if len(after) != 1 || after[0].Level != activitystore.ActivityInfo {
 		t.Errorf("level %q was stored as-is; want normalisation to info", after[0].Level)
 	}
 

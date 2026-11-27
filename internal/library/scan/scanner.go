@@ -323,7 +323,8 @@ func (s *Scanner) Run(ctx context.Context) {
 type Library struct {
 	*Roots
 	Scanner *Scanner
-	// ItemStore and Inventory read what the scanner wrote, for Library → Items.
+	// ItemStore reads what the scanner wrote, for Library → Items; Inventory finds which title holds
+	// an origin, for Needs you.
 	ItemStore librarystore.LibraryItemStore
 	Inventory inventory.Service
 	// NeedStore keeps Needs you; Search finds titles to answer it with (nil: no catalog).
@@ -340,6 +341,8 @@ type Library struct {
 	// Enricher fetches a title's catalog record on request (Update details); nil has no catalog.
 	Enricher *Enricher
 	Now      func() time.Time
+	// removing runs one Remove extra copy at a time.
+	removing sync.Mutex
 }
 
 // Progress is how the scanner's last passes ended; the zero Progress when no scanner runs.

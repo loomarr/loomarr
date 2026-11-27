@@ -281,3 +281,23 @@ func TestClosedSetCeilingsAreTheirSizes(t *testing.T) {
 		t.Errorf("WhenPredicate.Days maxItems = %d, want 7", got)
 	}
 }
+
+// A channel burns image subtitles only in the language it names; there is no install-wide default.
+func TestBurnSubtitlesLanguage(t *testing.T) {
+	var p ChannelPolicy
+	if got := BurnSubtitlesLanguage(p); got != "" {
+		t.Errorf("no playout policy: %q", got)
+	}
+	p.Playout = &PlayoutPolicy{AudioLanguage: "jpn"}
+	if got := BurnSubtitlesLanguage(p); got != "" {
+		t.Errorf("audio language alone burns in %q", got)
+	}
+	p.Playout.BurnSubtitles = " ENG "
+	if got := BurnSubtitlesLanguage(p); got != "eng" {
+		t.Errorf("got %q, want eng", got)
+	}
+	raw, _ := json.Marshal(p.Playout)
+	if string(raw) != `{"audioLanguage":"jpn","burnSubtitles":" ENG "}` {
+		t.Errorf("policy_json: %s", raw)
+	}
+}

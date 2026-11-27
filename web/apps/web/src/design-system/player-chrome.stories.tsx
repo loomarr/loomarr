@@ -813,7 +813,7 @@ const PortraitInfo: Story = {
   render: (args) => <PhoneFrame {...args} />,
 };
 
-// Title art, drawn as shapes (no real titles in a public repo): a wide wordmark and a 16:9 fanart.
+// Title art, drawn as shapes (no real titles in a public repo): a wide wordmark.
 const svgArt = (width: number, height: number, body: string) => ({
   height,
   src: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${body}</svg>`)}`,
@@ -825,11 +825,6 @@ const wordmark = svgArt(
   100,
   '<rect width="600" height="100" rx="12" fill="#F4F6FA"/><rect x="24" y="30" width="552" height="40" rx="8" fill="#0B0C0E"/>',
 );
-const fanart = svgArt(
-  1280,
-  720,
-  '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(20 60% 50%)"/><stop offset="1" stop-color="hsl(280 45% 18%)"/></linearGradient></defs><rect width="1280" height="720" fill="url(#g)"/>',
-);
 
 // A title with a logo: the band still types it. A logo is set on the strip's preview card (§9.2).
 const LogoWide: Story = { args: { band: { ...liveData.band, logo: wordmark } } };
@@ -837,11 +832,6 @@ const LogoWide: Story = { args: { band: { ...liveData.band, logo: wordmark } } }
 // The station-ID card: a settled tune, the controls hidden — the band alone, with the station's era
 // and place.
 const StationId: Story = { args: { ident: true, visible: false } };
-
-// On the programme's fanart, heavily dimmed and contained at 16:9 (letterboxed), never stretched.
-const StationIdBackdrop: Story = {
-  args: { band: { ...liveData.band, backdrop: fanart, logo: wordmark }, ident: true, visible: false },
-};
 
 // The channel block in the channel's decade colour (#2767); without one it is amber (Playing).
 const Decade1970: Story = { args: { band: { ...liveData.band, decade: 1970 } } };
@@ -928,7 +918,6 @@ export {
   PortraitSurfing,
   PortraitUnmute,
   StationId,
-  StationIdBackdrop,
   StationIdDecade,
   StreamStopped,
   SubtitlesIdle,

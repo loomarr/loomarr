@@ -21,7 +21,10 @@ type workflowJobContextAuthority struct {
 	timeoutMinutes  int
 	environmentName string
 	environmentURL  string
-	strategy        *workflowStrategyAuthority
+	// cacheMode is the job's declared Actions cache access, which verifyWorkflowTopology checks.
+	// Empty means the job declares none and takes GitHub's default for its trigger.
+	cacheMode string
+	strategy  *workflowStrategyAuthority
 }
 
 type workflowStrategyAuthority struct {
@@ -41,14 +44,15 @@ type workflowMatrixEntryAuthority struct {
 
 func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobContextAuthority {
 	return map[workflowJobContextKey]workflowJobContextAuthority{
-		{workflow: "android-ccache-promotion.yml", job: "promote"}: {name: "Promote verified Android compiler cache", runsOn: "ubuntu-latest", timeoutMinutes: 15},
+		{workflow: "android-ccache-promotion.yml", job: "promote"}: {name: "Promote verified Android compiler cache", runsOn: "ubuntu-latest", timeoutMinutes: 15, cacheMode: "write"},
 		{workflow: "android-beta.yml", job: "release"}:             {name: "Verify, sign, and optionally publish Android TV beta", runsOn: "ubuntu-latest", environmentName: "android-beta"},
 		{workflow: "apple-testflight.yml", job: "plan"}:            {name: "Decide which Apple apps this run releases", runsOn: "ubuntu-latest"},
 		{workflow: "apple-testflight.yml", job: "release"}: {
 			name: "Archive, verify, and optionally upload the ${{ matrix.app }} beta", runsOn: "xcode-27", needs: "plan", timeoutMinutes: 90, environmentName: "ios-testflight",
 			strategy: &workflowStrategyAuthority{appsFrom: appleTestFlightAppsMatrix},
 		},
-		{workflow: "apple-compilation-cache.yml", job: "publish"}: {name: "Publish validated Apple compilation cache", runsOn: "xcode-27", timeoutMinutes: 75},
+		{workflow: "apple-compilation-cache.yml", job: "plan"}:    {name: "Find the current fingerprint's generation", runsOn: "xcode-27", timeoutMinutes: 10},
+		{workflow: "apple-compilation-cache.yml", job: "publish"}: {name: "Publish validated Apple compilation cache", runsOn: "xcode-27", needs: "plan", timeoutMinutes: 75},
 		{workflow: "cache-cleanup.yml", job: "cleanup"}:           {name: "Drop the closed PR's caches", runsOn: "ubuntu-latest"},
 		{workflow: "ci-agent.yml", job: "run"}:                    {name: "Agent harness (macOS)", runsOn: "macos-latest"},
 		{workflow: "ci-android.yml", job: "run"}:                  {name: "Android TV — React Native Play bundle", runsOn: "ubuntu-latest"},
@@ -62,10 +66,12 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 
 		{workflow: "ci-clients.yml", job: "run"}:             {name: "Shared clients — ${{ matrix.lane }}", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{lanes: []string{"checks", "mobile-tests", "tv-tests", "mobile", "tv"}}},
 		{workflow: "ci-docs.yml", job: "run"}:                {name: "Docs — links + structure + prose", runsOn: "ubuntu-latest"},
-		{workflow: "ci-frontend.yml", job: "run"}:            {name: "Frontend — ${{ matrix.shard == 7 && 'biome + typecheck + build' || matrix.shard == 8 && 'package tests' || format('web unit ({0}/6)', matrix.shard) }}", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2, 3, 4, 5, 6, 7, 8}}},
+		{workflow: "ci-frontend.yml", job: "run"}:            {name: "Frontend — ${{ matrix.shard == 7 && 'biome + build' || matrix.shard == 8 && 'typecheck + package tests' || format('web unit ({0}/6)', matrix.shard) }}", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2, 3, 4, 5, 6, 7, 8}}},
 		{workflow: "ci-go-contracts.yml", job: "run"}:        {name: "Go — repository contracts (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2}}},
 		{workflow: "ci-go-cache-warm.yml", job: "run"}:       {name: "Warm Go build cache (${{ matrix.lane }})", runsOn: "ubuntu-latest", timeoutMinutes: 30, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/3", "certification-2/3", "certification-3/3", "postgres"}}},
 		{workflow: "ci-go-cache-warm.yml", job: "contracts"}: {name: "Warm Go contracts cache", runsOn: "ubuntu-latest", timeoutMinutes: 30},
+		{workflow: "ci-go-cache-warm.yml", job: "pnpm"}:      {name: "Warm pnpm store", runsOn: "ubuntu-latest", timeoutMinutes: 30},
+		{workflow: "ci-go-cache-warm.yml", job: "ffmpeg"}:    {name: "Warm production FFmpeg archive", runsOn: "ubuntu-latest", timeoutMinutes: 30},
 		{workflow: "ci-go.yml", job: "run"}:                  {name: "Go — race-policy tests (${{ matrix.lane }})", runsOn: "ubuntu-latest", timeoutMinutes: 15, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/3", "certification-2/3", "certification-3/3"}}},
 		{workflow: "ci-image-certification.yml", job: "run"}: {name: "Rust image — runtime certification", runsOn: "ubuntu-latest"},
 		{workflow: "ci-image.yml", job: "run"}: {
@@ -85,9 +91,10 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "codeql.yml", job: "analyze-rust"}:                  {name: "CodeQL — Rust", runsOn: "ubuntu-latest", needs: "changes"},
 		{workflow: "ci.yml", job: "ci-policy"}:                         {name: "CI policy — workflow, harness, and docs contracts", runsOn: "ubuntu-latest", needs: "changes"},
 		{workflow: "ci.yml", job: "changes"}:                           {name: "What changed", runsOn: "ubuntu-latest"},
+		{workflow: "ci.yml", job: "privacy"}:                           {name: "Privacy — real titles and private fixtures", runsOn: "ubuntu-latest"},
 		{workflow: "ci.yml", job: "ci-ok"}: {
 			name: "${{ github.event_name == 'merge_group' && 'CI assurance' || 'CI' }}", runsOn: "ubuntu-latest",
-			needsList: []string{"changes", "release-candidate-scope", "full-manual-scope", "ci-policy", "agent-harness-macos", "rust-contracts", "go-contracts", "image-certification", "go", "store-postgres", "frontend", "clients", "apple-mobile", "apple-tv", "apple-cache-validation", "expo-android-mobile", "playwright", "tuner", "image", "docs", "android", "playout-bench"},
+			needsList: []string{"changes", "release-candidate-scope", "full-manual-scope", "ci-policy", "privacy", "agent-harness-macos", "rust-contracts", "go-contracts", "image-certification", "go", "store-postgres", "frontend", "clients", "apple-mobile", "apple-tv", "apple-cache-validation", "expo-android-mobile", "playwright", "tuner", "image", "docs", "android", "playout-bench"},
 		},
 		{workflow: "image-benchmark.yml", job: "benchmark"}: {
 			name: "AVIF ladders (${{ matrix.platform }})", runsOn: "${{ matrix.runner }}", timeoutMinutes: 30,
@@ -117,7 +124,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "go-maintenance.yml", job: "library-scale"}:   {name: "Library scan at household size", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
 		{workflow: "ffmpeg-pin-refresh.yml", job: "refresh"}:     {name: "Refresh the FFmpeg pin", runsOn: "ubuntu-24.04", timeoutMinutes: 120},
 		{workflow: "rust-maintenance.yml", job: "supply-chain"}:  {name: "Advisories, licences, and sources", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
-		{workflow: "rust-maintenance.yml", job: "fuzz"}:          {name: "Bounded protocol and decoder fuzz", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
+		{workflow: "rust-maintenance.yml", job: "fuzz"}:          {name: "Bounded protocol and decoder fuzz", runsOn: "ubuntu-24.04", timeoutMinutes: 80},
 		{workflow: "visual-baselines.yml", job: "resolve"}:       {name: "Resolve the pull request's branch", runsOn: "ubuntu-latest", timeoutMinutes: 5},
 		{workflow: "visual-baselines.yml", job: "render"}:        {name: "Render on the pull request's branch", runsOn: "ubuntu-latest", needs: "resolve", timeoutMinutes: 70},
 		{workflow: "visual-baselines.yml", job: "commit"}:        {name: "Commit the changed baselines", runsOn: "ubuntu-latest", needsList: []string{"resolve", "render"}, timeoutMinutes: 10},

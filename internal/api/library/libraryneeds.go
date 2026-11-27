@@ -164,22 +164,22 @@ func (s *Handlers) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibr
 		summaries = append(summaries, o.LibraryItemSummary)
 	}
 	summaries = append(summaries, problems...)
-	posters := s.libraryPosters(ctx, summaries)
+	posters, admin := s.libraryPosters(ctx, summaries), readsAdminFacts(ctx)
 	out := &listLibraryNeedsOutput{}
 	out.Body.Orders = make([]libraryOrderNeedDTO, 0, len(orders))
 	for _, o := range orders {
-		out.Body.Orders = append(out.Body.Orders, libraryOrderNeedOf(o, posters))
+		out.Body.Orders = append(out.Body.Orders, libraryOrderNeedOf(o, posters, admin))
 	}
 	out.Body.Problems = make([]libraryProblemDTO, 0, len(problems))
 	for _, p := range problems {
 		out.Body.Problems = append(out.Body.Problems, libraryProblemDTO{
-			Item: libraryItemOf(p, posters), ExtraBytes: p.ExtraBytes,
+			Item: libraryItemOf(p, posters, admin), ExtraBytes: p.ExtraBytes,
 		})
 	}
 	out.Body.Needs = make([]libraryNeedDTO, 0, len(needs))
 	for _, n := range needs {
 		dto := libraryNeedDTO{
-			Item: libraryItemOf(n.LibraryItemSummary, posters), Searched: n.Searched != "",
+			Item: libraryItemOf(n.LibraryItemSummary, posters, admin), Searched: n.Searched != "",
 			Candidates: make([]libraryCandidateDTO, 0, len(n.Candidates)),
 			Files:      make([]libraryNeedFileDTO, 0, len(n.Present)),
 		}
@@ -238,9 +238,9 @@ func (s *Handlers) unanswerLibraryItem(ctx context.Context, in *libraryItemIDInp
 }
 
 // libraryOrderNeedOf is an order need as Needs you shows it: the disk's seasons by number.
-func libraryOrderNeedOf(o scan.OrderNeed, posters map[string]*httpcore.ImageDTO) libraryOrderNeedDTO {
+func libraryOrderNeedOf(o scan.OrderNeed, posters map[string]*httpcore.ImageDTO, admin bool) libraryOrderNeedDTO {
 	dto := libraryOrderNeedDTO{
-		Item:    libraryItemOf(o.LibraryItemSummary, posters),
+		Item:    libraryItemOf(o.LibraryItemSummary, posters, admin),
 		Disk:    make([]librarySeasonSizeDTO, 0, len(o.Last)),
 		Files:   make([]libraryOrderFileDTO, 0, len(o.Waiting)),
 		Choices: make([]libraryOrderChoiceDTO, 0, len(o.Choices)),

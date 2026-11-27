@@ -253,6 +253,9 @@ RETIRED=(
   'filler.autofile.enabled|retired: no confidence-to-publication switch'
   'filler.autofile.min_confidence|retired: classification confidence is diagnostic'
   'filler.autofile.normalize_loudness|retired: files are never levelled on disk; playout corrects at air time (#2032)'
+  'DateAliasConflict|retired (#2147): the scope era alias is folded into dates by migration 00246; a request with era is refused'
+  'ErrEraAndDates|retired (#2147): the scope era alias is folded into dates by migration 00246; a request with era is refused'
+  'AmbiguousDatesError|retired (#2147): the scope era alias is folded into dates by migration 00246; a request with era is refused'
   'filler.conditioning.normalize_loudness|retired: files are never levelled on disk; playout corrects at air time (#2032)'
   'FILLER_AUTOFILE_ENABLED|retired: no confidence-to-publication switch'
   'FILLER_AUTOFILE_MIN_CONFIDENCE|retired: classification confidence is diagnostic'
@@ -495,7 +498,7 @@ ALLOW_LINE='retired-ok|[Rr]etired|[Ss]uperseded|no longer exist|was deleted|was 
 # product belongs here. docs-site/ is deliberately absent — it renders docs/ and holds no prose
 # of its own (design §13).
 SEARCH=(docs internal docker scripts android web/apps/web/src .github README.md SECURITY.md
-        CODE_OF_CONDUCT.md CLAUDE.md AGENTS.md CONTRIBUTING.md CONTEXT.md CHANGELOG.md
+        CODE_OF_CONDUCT.md CLAUDE.md AGENTS.md CONTRIBUTING.md CONTEXT.md PRODUCT.md CHANGELOG.md
         THIRD_PARTY_NOTICES.md Dockerfile Makefile go.mod .env.example)
 fail=0
 for row in "${RETIRED[@]}"; do
