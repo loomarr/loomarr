@@ -55,11 +55,12 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled.
 | `rest` | Full screen at rest: the picture and the channel's own watermark. |
 | `third` | A tune or a wake: the lower third, what is next, and the quiet row. |
 | `column` | Beat one: the channel column. Moving through it tunes at once. |
-| `cross`, `playing` | Beat two: the film strip for the tuned channel. In a window and on an upright phone both arms are always up, and the state is `playing`. |
+| `cross`, `playing` | Beat two: the film strip for the tuned channel. In a window both arms are always up, and the state is `playing`. On an upright phone `playing` shows the list with the strip folded away. |
 | `peek` | Desktop in a window: pointing at a channel shows its day in the strip before a click tunes. |
 | `later` | A later programme pointed at or focused: its facts as type (a sheet on an upright phone). |
 | `find`, `typing` | The find control, or typing letters, filters the column; typing digits replaces the numeral and counts down to the tune. |
-| `focus`, `paused` | Keyboard focus drawn on the tuned row, and the paused state with its key. |
+| `focus`, `paused` | Keyboard focus drawn on the tuned row, and paused, which marks the picture itself. |
+| `strip` | Upright phone: the tuned channel tapped, its film strip open under the lower third. |
 | `tune`, `cold` | Changing channel (a short burst of static, the seven bars along the crossing) and tuning in (static for the real wait, the bars in grey). |
 | `break`, `behind`, `nothing` | In a break, behind live with Go live, and nothing scheduled. |
 | `subtitles`, `more` | What a key opens: a menu from the quiet row, a sheet on a phone. |
@@ -88,21 +89,35 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled.
    series is one block that says how many episodes. A later programme shows its start time. A break
    is a thin tick. A click on a row tunes; a click on a later programme shows its facts.
    - **Television:** the header is one line beside a small picture, so eight channels fit.
-   - **Phone:** the Guide is a list, not a grid. Each channel is a row with what is on now and its
-     next two programmes.
-6. **Getting to the Guide.** One control, always with its word, "Guide": in the column's header on
-   desktop, at the end of the group tabs over the picture, and pinned at the end of the tabs on a
-   phone. The Guide nav item opens the same view. On a television OK on the picture opens the Guide,
-   as it does today, and Up or Down opens the column; one hint line says so.
+   - **Phone:** the Guide is a time view too: one channel's day per row, with its number and name on
+     the line above the row.
+6. **Channels and Guide are always named.** Over the picture, the quiet row leads with two controls
+   that carry their words, **Channels** and **Guide**, on every wake: on desktop full screen, a
+   television and a phone on its side. Channels opens the column; it is not a pair of up and down
+   keys. A desktop window and an upright phone keep the column in view instead, with the Guide
+   control in the column's header or pinned at the end of the tabs. The Guide nav item opens the
+   same view.
+   - **A television's focus map.** Up and Down change channel and bring up the column. Left and Right
+     wake the quiet row and move along it: Channels, Guide, Subtitles, Audio, More. OK activates the
+     focused control. With the column up, Right opens the film strip and Back returns to the
+     picture. One hint line says the first two.
 7. **30 channels and more, in one order.** Every list of channels is in number order, scrolled so
    the tuned channel sits on the crossing. It never wraps on screen, though flipping past the last
-   channel still reaches the first. On an upright phone the lower third is the tuned row, so the
-   list under it carries on from the next channel. Group tabs (Favourites, All, Recent, By decade)
-   head the column, the Guide and the wall. Digits tune direct. A find control opens the query,
-   typing letters does the same, and results list straight under it.
-8. **Decade colour belongs to the channel you are watching.** Its numeral, the large one, takes the
-   decade's colour; every other channel number is plain. Breaks are neutral grey. So amber means
-   focus and typed digits, red means live, and neither is borrowed for anything else.
+   channel still reaches the first. On an upright phone the whole list sits under the lower third,
+   scrolled to the tuned channel, which is marked "watching"; tapping it opens its film strip. Group
+   tabs (Favourites, All, Recent, By decade) head the column, the Guide and the wall, and the wall
+   follows the same order after the last watched. Digits tune direct. A find control opens the
+   query, typing letters does the same, and results list straight under it.
+8. **Decades get colours of their own** (maintainer, 2026-11-27). The channel you are watching takes
+   its decade's colour on its numeral, the large one; every other channel number is plain. The
+   decade colours are six soft tints that reuse none of the system's accents, so a decade is never
+   read as live, a link, a warning or focus: 1950s `#E6CFA8`, 1960s `#F0A8B8`, 1970s `#C9E08A`,
+   1980s `#B9A6F2`, 1990s `#9DB4F5`, 2000s `#8FD3C8`. They are new tokens: the build adds them to
+   `docs/frontend-design.md` §2.1 and the token source under the `tokens` claim, and the contrast
+   check must pass them on the dark and light grounds. Breaks are neutral grey. Amber means focus
+   and typed digits, red means live, and cyan stays the break's "Back in n min".
+   - **Pointing is not focus.** A pointer over a programme draws a plain ring; the amber ring is for
+     keyboard and remote focus alone.
 9. **The tune is static and seven bars, and it is never a nuisance** (maintainer, 2026-11-27). The
    station-ident card goes: the lower third on a settled tune does its job.
    - **Changing channel** (the next channel is already streaming): the picture dips into a burst of
@@ -146,4 +161,12 @@ iPhone, the watermark's corner rule, and every word in the covers and menus.
 ## Not drawn yet
 
 A desktop window narrower than about 900 px, the Guide on a phone on its side, the Guide's other days
-and its loading and empty states, the wall on a television, an iPad, and an Android phone.
+and its loading and empty states, the decades' legend under By decade, a visible close on the touch
+cross and sheets, the wall on a television, an iPad, and an Android phone.
+
+## Reviews
+
+Two independent critiques have scored the mock: 23 of 40, then 24 of 40 after the first rework. Both
+praise the lower third, the crossing and the tune. The low scores sit where still frames cannot
+answer (control, error prevention, recovery, help), so the next check is a clickable prototype of the
+core loop, not a third round of stills.

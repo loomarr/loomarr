@@ -8,7 +8,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0B0C0E;--surface:#131519;--surface2:#1B1E24;--line:#2A2E37;--muted:#8B93A3;--text:#E7EAF0;--white:#fff;
---amber:#FFB020;--red:#E5484D;--cyan:#4CC9E8;--ink:11,12,14}
+--amber:#FFB020;--red:#E5484D;--cyan:#4CC9E8;--ink:11,12,14;
+/* The decades' own colours: soft tints that reuse none of the system's accents, so a channel's
+   decade is never mistaken for live, a link, a warning or focus. New tokens; see the README. */
+--decade-50s:#E6CFA8;--decade-60s:#F0A8B8;--decade-70s:#C9E08A;--decade-80s:#B9A6F2;--decade-90s:#9DB4F5;--decade-00s:#8FD3C8;
+--decade:var(--decade-90s)}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{background:var(--bg);color:var(--text);font-family:Geist,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 ::selection{background:var(--amber);color:#0B0C0E}
@@ -54,7 +58,15 @@ svg.ic{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;strok
 .t-touch .tab.on::after{bottom:8px}
 .t-touch .menu .o{min-height:44px}
 .t-touch .cover .btn{height:44px}
-.t-touch .golive{padding:11px 12px}
+.t-touch .golive{min-height:44px;padding:0 12px}
+/* pointing is a plain ring; amber is kept for focus */
+.blk.hover .still{outline:2px solid var(--text);outline-offset:3px}
+.keys .lab{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border-radius:8px;font-size:14px;color:var(--text)}
+.keys .lab.on{background:var(--surface2);font-weight:500}
+.keys .lab.focus{outline:2px solid var(--amber);outline-offset:2px}
+.t-touch .keys .lab{height:44px}
+.keys .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+.pausemark{position:absolute;display:grid;place-items:center;width:72px;height:72px;border-radius:50%;background:rgba(var(--ink),.72);color:var(--white);transform:translate(-50%,-50%)}
 .ring{position:absolute;border-radius:8px;outline:2px solid var(--amber)}
 .query{position:absolute;color:var(--white);font-weight:500}
 .query small{font-weight:400;color:var(--muted);margin-left:14px}
@@ -135,7 +147,7 @@ svg.ic{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;strok
 .tile .prog{left:0;right:0;bottom:0;height:2px;background:rgba(231,234,240,.16)}
 .tile .prog i{display:block;height:2px;background:var(--white)}
 .tile.here{outline:2px solid var(--text);outline-offset:3px}
-.tile.here .n{color:var(--cyan)}
+.tile.here .n{color:var(--decade)}
 .sec{position:absolute;font-size:20px;font-weight:600}
 .trow{position:absolute;display:grid;grid-template-columns:96px 40px 1fr;column-gap:16px;align-items:baseline;height:46px;padding-top:13px;border-top:1px solid var(--surface2);font-size:14px}
 .trow .mono{color:var(--muted);font-size:13px}
@@ -176,7 +188,8 @@ const ICON = {
   inbox:'<path d="M4 13l3-8h10l3 8v6H4zM4 13h5l1 2h4l1-2h5"/>', bell:'<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/>',
   help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 1-1 1.7M12 17h.01"/>',
   tv:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 3l4 4 4-4"/>',
-  search:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.6-4.6"/>'
+  search:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.6-4.6"/>',
+  list:'<path d="M4 7h16M4 12h16M4 17h16"/>'
 };
 const ic = (name, s = 22) => `<svg class="ic" viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true">${ICON[name]}</svg>`;
 
@@ -285,19 +298,21 @@ const art = t => NOART ? 'var(--surface2)' : t === 'The Diner Years' ? 'url(pict
 // It carries its word where there is room; on a phone it is the glyph alone, with the name for screen readers.
 const swap = (on, word = false) => `<span style="display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 ${word ? 10 : 6}px;margin:-7px 0 0 4px;border-radius:6px;color:var(--text);${on ? 'background:var(--surface2);font-weight:500' : 'opacity:.86'}">${ic('guide', 18)}${word ? 'Guide' : ''}</span>`;
 // Each channel's decade colour; a channel with none is plain.
-const DEC = {2:'#4CC9E8',3:'#F5D90A',5:'#E85A5F',7:'#4CC9E8',9:'#F5D90A',12:'#4CC9E8',20:'#E85A5F',22:'#F5D90A',23:'#E85A5F',24:'#4CC9E8'};
+const DEC = {7:'var(--decade-90s)',12:'var(--decade-90s)',9:'var(--decade-80s)',5:'var(--decade-70s)'};
 // The guide with its content showing: what is on now carries its artwork, the tuned channel's row is the
 // film strip at full height, runs of one series read as one block, and breaks are quiet ticks.
 const guide = (g, o = {}) => {
   const nx = g.x + g.now * g.k, total = (g.rows.length - 1) * (g.bh + g.rg) + g.th;
-  let h = '', top = g.y + 30;
+  // `above` names each channel on a line over its row, for a screen too narrow for a name column.
+  let h = '', top = g.y + 30 + (g.above ? 22 : 0);
   for (let m = 0; m < g.span; m += 30) {
     if (m * g.k >= g.now * g.k + 30 || m * g.k + 64 <= g.now * g.k - 30) h += `<span class="abs mono" style="left:${g.x + m * g.k}px;top:${g.y}px;font-size:12px;color:var(--muted)">${clock(m)}</span>`;
     if (m) h += `<i class="abs" style="left:${g.x + m * g.k - 1}px;top:${g.y + 24}px;width:1px;height:${total + 8}px;background:rgba(231,234,240,.06)"></i>`;
   }
   g.rows.forEach(n => {
     const tuned = n === 7, H = tuned ? g.th : g.bh, fn = tuned ? Math.round(g.fn * 1.7) : g.fn;
-    h += `<span class="abs mono" style="left:${g.cx}px;top:${top + Math.round((H - fn * 1.2) / 2)}px;width:${g.numW}px;text-align:right;font-size:${fn}px;line-height:1.2;font-weight:${tuned ? 500 : 400};color:${tuned ? DEC[n] : 'var(--muted)'}">${n}</span>`;
+    if (g.above) h += `<span class="abs" style="left:${g.x}px;top:${top - 21}px;z-index:1;padding-right:8px;background:${g.bg ?? 'var(--bg)'};font-size:13px;white-space:nowrap;color:${tuned ? 'var(--white)' : 'var(--muted)'};font-weight:${tuned ? 600 : 400}"><span class="mono" style="color:${tuned ? DEC[n] : 'var(--muted)'};margin-right:8px">${n}</span>${CH[n].name}</span>`;
+    else h += `<span class="abs mono" style="left:${g.cx}px;top:${top + Math.round((H - fn * 1.2) / 2)}px;width:${g.numW}px;text-align:right;font-size:${fn}px;line-height:1.2;font-weight:${tuned ? 500 : 400};color:${tuned ? DEC[n] : 'var(--muted)'}">${n}</span>`;
     if (g.nameW) h += `<span class="abs" style="left:${g.cx + g.numW + g.gap}px;top:${top + Math.round((H - g.fname * 1.3) / 2)}px;width:${g.nameW}px;font-size:${g.fname}px;font-weight:${tuned ? 600 : 500};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${tuned ? 'var(--white)' : 'var(--text)'}">${CH[n].name}</span>`;
     const runs = [];
     SCHED[n].forEach(b => { const last = runs[runs.length - 1]; if (!tuned && last && last.t === b[2]) { last.cuts.push([last.e, b[0]]); last.e = b[1]; last.n++; } else runs.push({s: b[0], e: b[1], t: b[2], n: 1, cuts: []}); });
@@ -310,7 +325,7 @@ const guide = (g, o = {}) => {
       const eps = r.n > 1 && w > 190 ? `<span style="font-weight:400;color:var(--text);margin-left:8px">${r.n} episodes</span>` : '';
       // Episode boundaries inside a run sit on the block's foot, clear of its title.
       const cuts = r.cuts.map(c => `<i style="position:absolute;left:${Math.round(((c[0] + c[1]) / 2 - s) * g.k) - 1}px;bottom:0;width:2px;height:7px;background:rgba(231,234,240,.6)"></i>`).join('');
-      const ring = focus ? 'outline:2px solid var(--amber);outline-offset:2px;' : '';
+      const ring = focus ? `outline:2px solid var(--${o.hover ? 'text' : 'amber'});outline-offset:2px;` : '';
       if (on || tuned) {
         const aired = on ? `<i style="position:absolute;left:0;top:0;bottom:0;width:${nx - x}px;background:rgba(var(--ink),.62)"></i>` : '';
         const tl = on && x + w - nx > 76 ? nx - x + 12 : 10;
@@ -331,15 +346,15 @@ const guide = (g, o = {}) => {
 // One layout table per device. Everything a device changes is here, once.
 const DEV = {
   desktop:{W:1440,H:900,pad:64,safeT:0,numW:72,gap:24,cross:628,num:64,title:34,meta:15,rowN:20,rowName:16,rowNow:13,rowW:440,pitch:64,above:3,below:2,up:104,down:132,
-    stripX:584,stripH:96,stripK:1,cap:[12,14],tabs:326,tabF:14,keys:['pause','cc','audio','vol','full','more'],keyS:22,keyGap:26,pointer:1},
+    stripX:584,stripH:96,stripK:1,cap:[12,14],tabs:326,tabF:14,keys:['pause','cc','audio','vol','full','more'],keyS:22,keyGap:26,pointer:1,lead:1},
   tv:{W:960,H:540,pad:48,safeT:27,numW:60,gap:20,cross:340,num:52,title:30,meta:15,rowN:18,rowName:16,rowNow:13,rowW:330,pitch:56,above:3,below:1,up:92,down:118,
-    stripX:470,stripH:78,stripK:.72,cap:[12,14],tabs:84,tabF:14,keys:['cc','audio','more'],keyS:24,keyGap:30,remote:1,short:1,scrim:52},
+    stripX:470,stripH:78,stripK:.72,cap:[12,14],tabs:84,tabF:14,keys:['cc','audio','more'],keyS:24,keyGap:30,remote:1,short:1,scrim:52,lead:1},
   landscape:{W:844,H:390,pad:59,safeT:0,numW:46,gap:14,cross:232,num:40,title:22,meta:13,rowN:15,rowName:14,rowNow:12,rowW:270,pitch:46,above:2,below:1,up:70,down:90,
-    stripX:410,stripH:56,stripK:.6,cap:[12,13],tabs:72,tabF:13,keys:['pause','cc','audio','more'],keyS:22,keyGap:26,touch:1,short:1,scrim:58}
+    stripX:410,stripH:56,stripK:.6,cap:[12,13],tabs:72,tabF:13,keys:['pause','cc','audio','more'],keyS:22,keyGap:26,touch:1,short:1,scrim:58,lead:1}
 };
 
 const third = (d, o = {}) => {
-  const n = o.n ?? 7, colour = o.typing ? 'var(--amber)' : (o.plain ? 'var(--white)' : 'var(--cyan)');
+  const n = o.n ?? 7, colour = o.typing ? 'var(--amber)' : (o.plain ? 'var(--white)' : (DEC[n] ?? 'var(--white)'));
   // The rating reads with the programme's facts. Where the line is short the episode gives way to it.
   const meta = o.meta ?? (o.short ?? d.short
     ? `<span class="dot"></span><em>Coast 90s</em> · TV-PG · <em>35 min left</em>`
@@ -377,7 +392,7 @@ const strip = (d, o = {}) => {
     if (focus) focusX = x;
     // With no artwork a block is its words: the time and title sit inside it, so no box is ever empty.
     const words = (m1, m2) => `<div class="t mono" style="font-size:${d.cap[0]}px;margin-top:${m1}px">${b.t}</div><div class="ti" style="font-size:${d.cap[1]}px;margin-top:${m2}px">${b.ti}</div>`;
-    h += `<div class="blk${focus ? ' focus' : ''}" style="width:${w}px">${NOART
+    h += `<div class="blk${focus ? (o.hover ? ' hover' : ' focus') : ''}" style="width:${w}px">${NOART
         ? `<div class="still" style="height:${H}px;background:var(--${b.now ? 'surface2' : 'surface'});padding:0 10px 0 ${b.now ? Math.round(w * .37) + 12 : 10}px;display:flex;flex-direction:column;justify-content:center;overflow:hidden">${words(0, 2)}</div>`
         : `<div class="still s${b.s}" style="height:${H}px"></div>`}
       ${b.now ? `<div class="head" style="left:${Math.round(w * .37)}px;top:-8px;height:${H + 16}px"></div>` : ''}
@@ -394,26 +409,32 @@ const strip = (d, o = {}) => {
     <p style="font-size:${d.meta - 1}px">A harbor detective takes one last case the week before he retires.</p></div>`;
   return out;
 };
-const keys = (d, o = {}) => `<div class="keys" style="right:${d.pad}px;${o.top != null ? `top:${o.top}px` : `bottom:${d.remote ? 27 + 8 : d.touch ? 30 : 44}px`};gap:${d.keyGap - 14}px">${
+// Over the picture the quiet row leads with two named controls, Channels and Guide: the only way to
+// change the picture is never hidden. A window and an upright phone keep both always in view instead.
+const lead = (d, o) => d.lead ? `<span class="lab${o.col ? ' on' : ''}${o.focus === 'channels' ? ' focus' : ''}">${ic('list', 18)}Channels</span><span class="lab">${ic('guide', 18)}Guide</span><i class="sep"></i>` : '';
+const keys = (d, o = {}) => `<div class="keys" style="right:${d.pad}px;${o.top != null ? `top:${o.top}px` : `bottom:${d.remote ? 27 + 8 : d.touch ? 30 : 44}px`};gap:${d.keyGap - 14}px">${lead(d, o)}${
   d.keys.map(k => `<span class="k${o.open === k ? ' open' : ''}${o.focus === k ? ' focus' : ''}" style="width:${d.touch ? 44 : d.keyS + 14}px;height:${d.touch ? 44 : d.keyS + 14}px">${ic(o.muted && k === 'vol' ? 'mute' : (o.paused && k === 'pause' ? 'play' : k), d.keyS)}</span>`).join('')}</div>`;
 // Home is named, so the arrow is never a bare glyph. The rating sits in the lower third, not beside it.
 const topLeft = d => d.remote ? '' : `<div class="top" style="left:${d.pad - 10}px;top:${d.touch ? 14 : 32}px;gap:2px;font-size:14px"><span style="display:grid;place-items:center;width:44px;height:44px">${ic('back', 22)}</span>Home</div>`;
 // A television shows which button does what, once, in one line.
-const tvHint = (d, guide) => d.remote ? `<div class="help mono" style="left:${guide ? d.stripX : d.pad + d.numW + d.gap}px;bottom:${27 + 14}px;gap:22px;font-size:12px">${guide ? '<span><b>Left Right</b>later today</span><span><b>Back</b>picture</span>' : '<span><b>Up Down</b>channels</span><span><b>OK</b>guide</span>'}</div>` : '';
-const help = d => d.pointer ? `<div class="help mono" style="left:${d.stripX}px;bottom:52px;gap:28px;font-size:12px"><span><b>Up Down</b>channels</span><span><b>Left Right</b>later today</span><span><b>Enter</b>picture</span></div>` : '';
+const tvHint = (d, guide) => d.remote ? `<div class="help mono" style="left:${guide ? d.stripX : d.pad + d.numW + d.gap}px;bottom:${27 + 14}px;gap:22px;font-size:12px">${guide ? '<span><b>Right</b>later today</span><span><b>Back</b>picture</span>' : '<span><b>Up Down</b>change channel</span><span><b>Left Right</b>controls</span>'}</div>` : '';
+// With Channels and Guide named in the quiet row, desktop needs no hint line; a television keeps its one.
+const help = () => '';
 const subs = (d, cls, style) => `<div class="menu ${cls}" style="${style}"><div class="h">Subtitles</div><div class="o">Off</div>
   <div class="o sel${d.remote ? ' focus' : ''}">English ${ic('check', 18)}</div><div class="o"><span>English, with sounds<small>For the deaf and hard of hearing</small></span></div><div class="o">Spanish</div></div>`;
 // More holds only what has no key of its own. The channel list and Info left it: the column and the
 // synopsis under the strip do those jobs.
 const more = (d, cls, style) => `<div class="menu ${cls}" style="${style}"><div class="h">More</div>
-  <div class="o">Last channel<span style="color:var(--muted);font-size:13px">12 Game Night</span></div>
+  <div class="o${d.remote ? ' focus' : ''}">Last channel<span style="color:var(--muted);font-size:13px">12 Game Night</span></div>
   <div class="o">Picture<span style="color:var(--muted);font-size:13px">Auto · 1080p</span></div><div class="o">Playback details</div>${d.pointer ? '<div class="o">Picture in picture</div>' : ''}
-  <div class="o">Manage this channel<span style="color:var(--muted);font-size:13px">Admins</span></div></div>`;
+  <div class="o">Manage this channel</div></div>`;
 // Static: fine, grey and dim, never a white flash. o is its strength over a darkened picture.
 const snow = (o, box = 'inset:0') => `<div class="abs" style="${box};background:url(static.webp) 0 0/256px;opacity:${o};mix-blend-mode:screen"></div>`;
 // A cold start: the picture is drained and under static for as long as the real wait.
 const drained = (box = 'inset:0') => `<div class="abs" style="${box};background:rgba(var(--ink),.8)"></div>` + snow(.5, box);
-const cover = () => `<div class="cover"><span style="color:var(--muted)">${ic('tv', 28)}</span><h2>Coast 90s is off air</h2><p>This channel is paused, so there’s nothing to watch.</p><span class="btn">Leave</span></div>`;
+const cover = () => `<div class="cover"><span style="color:var(--muted)">${ic('tv', 28)}</span><h2>Coast 90s is off air</h2><p>This channel is paused, so there’s nothing to watch.</p><div style="display:flex;gap:10px"><span class="btn" style="background:var(--white);color:#0B0C0E;border-color:var(--white)">Other channels</span><span class="btn">Home</span></div></div>`;
+// Paused marks the picture itself, not only a word in the lower third.
+const pauseMark = (x = '50%', y = '46%') => `<div class="pausemark" style="left:${x};top:${y}">${ic('pause', 30)}</div>`;
 
 // Desktop, television and a phone on its side share one composition.
 const wide = (d, state) => {
@@ -421,7 +442,8 @@ const wide = (d, state) => {
   const sw = d.scrim ?? 37;
   const P = `<div class="pic" style="inset:0"></div>`, B = `<div class="scrimB"></div>`, L = `<div class="abs" style="inset:0;background:linear-gradient(90deg,rgba(var(--ink),.96) 0,rgba(var(--ink),.92) ${sw}%,rgba(var(--ink),0) ${sw + 18}%)"></div>`, Bl = `<div class="scrimB low"></div>`, T = topLeft(d);
   // On a phone the quiet row steps away while the guide is open: the strip needs the width.
-  const K = d.touch && ['column', 'cross', 'later', 'bright'].includes(state) ? '' : keys(d);
+  const open = ['column', 'cross', 'later', 'find', 'bright'].includes(state);
+  const K = d.touch && open ? '' : keys(d, {col: open});
   const unmute = d.pointer ? `<div class="pill" style="left:50%;top:36px">${ic('mute', 18)}Click to unmute</div>` : '';
   if (state === 'guide') {
     // Television: the picture docks top right, and focus starts on the tuned channel's on-air block.
@@ -437,7 +459,7 @@ const wide = (d, state) => {
   switch (state) {
     case 'rest': return P;
     case 'third': return P + Bl + T + third(d, {next: 1}) + tvHint(d) + K;
-    case 'paused': return P + Bl + T + third(d, {meta: `<em>Coast 90s</em> · Paused · <em>35 min left</em>`, next: 1}) + keys(d, {paused: 1});
+    case 'paused': return P + `<div class="dip" style="background:rgba(var(--ink),.3)"></div>` + pauseMark() + Bl + T + third(d, {meta: `<em>Coast 90s</em> · <em>Paused</em> · 35 min left`, next: 1}) + keys(d, {paused: 1});
     case 'unmute': return P + Bl + T + third(d, {next: 1}) + keys(d, {muted: 1}) + unmute;
     case 'column': return P + B + L + T + column(d) + ring + third(d) + tvHint(d, 1) + K;
     case 'cross': return P + B + L + T + column(d) + ring + third(d) + strip(d) + help(d) + tvHint(d, 1) + K;
@@ -452,7 +474,7 @@ const wide = (d, state) => {
       ? `<div class="scrimAll" style="opacity:.4"></div>` + subs(d, 'sheetR', `width:300px;padding-right:${47}px`)
       : subs(d, '', `right:${d.pad}px;bottom:${d.remote ? 86 : 100}px;width:280px`));
     case 'off-air': return P + cover();
-    case 'cold': return P + drained() + Bl + `<div class="bars wait" style="left:${d.pad}px;top:${d.cross - 18}px;width:${Math.round(d.W * .46)}px"></div>` + third(d, {title: 'Coast 90s', meta: 'Tuning in…'});
+    case 'cold': return P + drained() + Bl + `<div class="bars wait" style="left:${d.pad}px;top:${d.cross - 18}px;width:${Math.round(d.W * .46)}px"></div>` + third(d, {title: 'Coast 90s', meta: `Tuning in… <em>Starting the channel</em>`});
     case 'more': return P + Bl + T + third(d, {next: 1}) + keys(d, {open: 'more'}) + (d.touch
       ? `<div class="scrimAll" style="opacity:.4"></div>` + more(d, 'sheetR', 'width:300px;padding-right:47px')
       : more(d, '', `right:${d.pad}px;bottom:${d.remote ? 86 : 100}px;width:280px`));
@@ -492,7 +514,8 @@ const desk = state => {
   col += `<div class="abs" style="left:0;bottom:0;width:${d.pad + d.rowW + 24}px;height:56px;background:linear-gradient(0deg,var(--bg),rgba(var(--ink),0))"></div>`;
   const PEEK = [{w:340,s:1,t:'Now · until 11:23',ti:'The Marigold Protocol',now:1},{spots:2},{w:300,s:4,t:'11:23 AM',ti:'Beacon of the Hollow Moon'},{spots:3},{w:260,s:5,t:'12:55 PM',ti:'Two Sides of the Ridge'}];
   const label = t => `<div class="abs" style="left:${pic.x}px;top:560px;font-size:13px;color:var(--muted)">${t}</div>`;
-  const arm = (o = {}) => label(`Today on ${CH[hov ?? T].name}`) + strip(d, {top: 592, left: pic.x, right: d.pad, noInfo: 1, data: hov ? PEEK : STRIPS[T] ?? STRIP, ...o});
+  // Pointing at another channel says so in plain words, and the playing title stays where it is.
+  const arm = (o = {}) => label(hov ? `<span style="color:var(--text)">Looking at <b style="font-weight:600">${hov} ${CH[hov].name}</b></span> · click to tune` : `Today on ${CH[T].name}`) + strip(d, {top: 592, left: pic.x, right: d.pad, noInfo: 1, data: hov ? PEEK : STRIPS[T] ?? STRIP, ...o});
   const info = (h, f, p) => `<div class="info" style="left:${pic.x}px;top:748px;width:600px">${h ? `<h2 style="font-size:17px">${h}</h2>` : ''}<div class="f mono" style="font-size:12px${h ? '' : ';margin-top:0'}">${f}</div><p style="font-size:14px">${p}</p></div>`;
   const onAir = info('', 'S02E04 · 1994 · TV-PG · Comedy', 'Two friends open a diner and learn the hard way who their regulars are.');
   const K = o => keys(d, {top: 548, ...o});
@@ -501,7 +524,7 @@ const desk = state => {
     // The guide: the picture steps into the corner and keeps playing; every channel's day runs on one clock.
     const later = state === 'guide-later', plain = state === 'guide-plain';
     const g = plain ? {x:312,y:286,k:6,span:180,now:20,rows:[2,3,5,7,9,12,14,19,20,21,22,23,24],pitch:44,bh:36,cx:48,numW:56,gap:20,nameW:170,fn:15,fname:14,fb:13}
-      : {x:312,y:286,k:6,span:180,now:20,rows:[2,3,5,7,9,12,14,19,20,21,22],bh:40,th:84,rg:6,cx:48,numW:56,gap:20,nameW:170,fn:15,fname:14,fb:13};
+      : {x:312,y:286,k:6,span:180,now:20,rows:[1,2,3,4,5,6,7,9,12,14,19,20],bh:36,th:80,rg:5,cx:48,numW:56,gap:20,nameW:170,fn:15,fname:14,fb:13};
     const head = third({...d, cross: 88}, later
       ? {w: 560, title: 'Last Case on Harbor Street', meta: `<em>Coast 90s</em> · 10:58 AM to 12:34 PM · 1994 · TV-PG · Drama`}
       : {w: 560});
@@ -510,15 +533,15 @@ const desk = state => {
     const gtabs = tabs({left: tx, top: 232, gap: 22}) + `
       <div class="abs" style="left:520px;top:236px;display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text)"><span style="opacity:.5;display:grid">${ic('back', 18)}</span>Today<span style="display:grid;transform:scaleX(-1)">${ic('back', 18)}</span></div>`;
     const end = `<div class="abs" style="left:0;right:0;bottom:0;height:40px;background:linear-gradient(0deg,var(--bg),rgba(var(--ink),0))"></div>`;
-    return home + head + syn + dock + gtabs + (plain ? grid(g) : guide(g, later ? {focus: [7, 1]} : {})) + end + keys({...d, pad: 472}, {top: 228});
+    return home + head + syn + dock + gtabs + (plain ? grid(g) : guide(g, later ? {focus: [7, 1], hover: 1} : {})) + end + keys({...d, pad: 472}, {top: 228});
   }
   switch (state) {
     case 'playing': return base({}, onAir + K());
     case 'peek': return base({}, info('The Marigold Protocol', 'On now until 11:23 AM · 1987 · PG · Thriller', 'A florist finds a list of names in a delivery she was never meant to open.') + K());
-    case 'later': return home + tabs_ + col + picture + third(d) + arm({focus: 2}) + info('Last Case on Harbor Street', '10:58 AM to 12:34 PM · 1994 · TV-PG · Drama', 'A harbor detective takes one last case the week before he retires.') + K();
+    case 'later': return home + tabs_ + col + picture + third(d) + arm({focus: 2, hover: 1}) + info('Last Case on Harbor Street', '10:58 AM to 12:34 PM · 1994 · TV-PG · Drama', 'A harbor detective takes one last case the week before he retires.') + K();
     case 'find': return base({}, onAir + K());
     case 'focus': return base({}, onAir + K());
-    case 'paused': return base({meta: `<em>Coast 90s</em> · Paused · <em>35 min left</em>`}, onAir + K({paused: 1}));
+    case 'paused': return base({meta: `<em>Coast 90s</em> · <em>Paused</em> · 35 min left`}, onAir + K({paused: 1}) + frame(`<div class="dip" style="background:rgba(var(--ink),.3)"></div>` + pauseMark('50%', '50%')));
     case 'typing': return base({n: 12, typing: 1, title: 'Game Night', meta: `Buzzer Round · <em>tuning in 2 s</em>`}, info('', 'S06E13 · 1996 · TV-G · Game show', 'Champions Week, day three: the last four meet on the buzzers.') + K());
     case 'tune': return home + tabs_ + col + picture + `<div class="bars" style="left:${d.pad}px;top:590px;width:${d.rowW}px"></div>` + third(d, {n: 12, title: 'Game Night', meta: `<span class="dot"></span><em>Game Night</em> · <em>24 min left</em>`}) + arm() + K();
     case 'break': return base({meta: `<em>Coast 90s</em> · <span class="back">Back in 2 min</span>`}, onAir + K());
@@ -528,7 +551,7 @@ const desk = state => {
     case 'unmute': return base({}, onAir + K({muted: 1}) + `<div class="pill" style="left:${pic.x + pic.w / 2}px;top:${pic.y + 16}px">${ic('mute', 18)}Click to unmute</div>`);
     case 'off-air': return home + tabs_ + col + picture + third(d, {title: 'Coast 90s', meta: 'Off air'}) + K();
     case 'more': return base({}, onAir + K({open: 'more'}) + more(d, '', `right:${d.pad}px;bottom:${d.H - 548 + 8}px;width:280px`));
-    case 'cold': return home + tabs_ + col + picture + `<div class="bars wait" style="left:${d.pad}px;top:590px;width:${d.rowW}px"></div>` + third(d, {title: 'Coast 90s', meta: 'Tuning in…'}) + K();
+    case 'cold': return home + tabs_ + col + picture + `<div class="bars wait" style="left:${d.pad}px;top:590px;width:${d.rowW}px"></div>` + third(d, {title: 'Coast 90s', meta: `Tuning in… <em>Starting the channel</em>`}) + K();
   }
   return base({}, onAir + K());
 };
@@ -543,41 +566,40 @@ const portrait = state => {
   const thumb = paused => `<div class="top" style="right:8px;top:344px"><span style="display:grid;place-items:center;width:44px;height:44px">${ic(paused ? 'play' : 'pause', 22)}</span><span style="display:grid;place-items:center;width:44px;height:44px">${ic('more', 22)}</span></div>`;
   const T = state === 'tune' ? 12 : 7;
   const pic = `<div class="pic" style="left:0;top:104px;width:390px;height:219px"></div>${state === 'tune' ? '<div class="dip" style="inset:104px 0 521px 0"></div>' + snow(.22, 'inset:104px 0 521px 0') : ''}${state === 'cold' ? drained('inset:104px 0 521px 0') : ''}`;
-  // The lower third is the tuned channel's row, so the list under it carries on in number order from the next one.
-  // Earlier channels are a scroll up, behind the picture.
-  const list = after(T, 4).map((n, i) => `<div class="row" style="left:16px;top:${610 + i * 56}px;width:358px;grid-template-columns:36px 1fr auto;column-gap:14px">
-    <span class="n mono" style="font-size:15px">${n}</span>
-    <div style="min-width:0"><div class="name" style="font-size:15px">${CH[n].name}</div><div class="now" style="font-size:13px;margin-top:2px">${CH[n].now}</div></div>
-    <span class="left mono" style="font-size:12px">${leftOf(n)}</span></div>`).join('');
+  // The whole list in number order, scrolled so the tuned channel is in view and marked. Its film
+  // strip is folded away until the tuned channel is tapped.
+  const rowsAt = (ns, top0) => ns.map((n, i) => { const on = n === T; return `<div class="row" style="left:16px;top:${top0 + i * 56}px;width:358px;grid-template-columns:36px 1fr auto;column-gap:14px">
+    <span class="n mono" style="font-size:15px${on ? `;color:${DEC[n] ?? 'var(--white)'}` : ''}">${n}</span>
+    <div style="min-width:0"><div class="name" style="font-size:15px${on ? ';color:var(--white);font-weight:600' : ''}">${CH[n].name}</div><div class="now" style="font-size:13px;margin-top:2px">${CH[n].now}</div></div>
+    <span class="left mono" style="font-size:12px${on ? ';color:var(--text)' : ''}">${on ? 'watching' : leftOf(n)}</span></div>`; }).join('');
+  const list = rowsAt([...before(T, 2).reverse(), T, ...after(T, 4)], 472);
+  const listOpen = rowsAt(after(T, 4), 612);
   // The tabs scroll sideways under a fade; the Guide control is pinned at their end, with its word.
   const tabRow = (top, on) => tabs({left: 4, top, gap: 20, touch: 1, width: 290}) + `<div class="abs" style="left:262px;top:${top}px;width:32px;height:44px;background:linear-gradient(90deg,rgba(0,0,0,0),#000)"></div>` + guideCtl(`right:10px;top:${top}px`, on);
-  const tabsP = tabRow(552, false);
+  const tabsP = tabRow(410, false), tabsOpen = tabRow(552, false);
   const fade = `<div class="abs" style="left:0;right:0;bottom:0;height:70px;background:linear-gradient(0deg,var(--bg),rgba(var(--ink),0))"></div><div class="homeind"></div>`;
   const t = o => third(d, {w: 200, short: 1, ...o}) + thumb(o.paused);
-  const body = o => bar + pic + t(o) + strip(d, {top: 430, left: 16, data: STRIPS[T] ?? STRIP}) + tabsP + list + fade;
+  const body = o => bar + pic + t(o) + tabsP + list + fade;
+  // The tuned channel tapped: its film strip opens under the lower third, and the list carries on below it.
+  const opened = o => bar + pic + t(o) + strip(d, {top: 430, left: 16, data: STRIPS[T] ?? STRIP}) + tabsOpen + listOpen + fade;
   if (state === 'guide') {
-    // The Guide on a phone is a list, not a grid: each channel with what is on now and its next two programmes.
-    const rows = after(7, 4).map((n, i) => { const top = 480 + i * 86, s = SCHED[n] ?? [], next = s.filter(b => b[0] > 20).slice(0, 2);
-      return `<div class="abs" style="left:16px;top:${top}px;width:358px;display:grid;grid-template-columns:36px 1fr auto;column-gap:14px;align-items:baseline">
-        <span class="mono" style="font-size:15px;color:var(--muted);text-align:right">${n}</span>
-        <div style="min-width:0"><div style="font-size:13px;color:var(--muted)">${CH[n].name}</div>
-          <div style="font-size:15px;font-weight:500;color:var(--white);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${CH[n].short}</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${next.map(b => `<span class="mono" style="font-size:12px">${clock(b[0]).replace(/ .M/, '')}</span> ${b[2]}`).join(' · ') || 'Later today'}</div></div>
-        <span class="mono" style="font-size:12px;color:var(--muted)">${leftOf(n)}</span></div>`; }).join('');
-    return bar + pic + t({}) + tabRow(420, true) + rows + fade;
+    // The Guide on a phone is a time view: one channel's day per row, its number and name on a line above.
+    const g = {x:16,y:462,k:3.9,span:90,now:20,rows:[5,6,7,9,12],bh:34,th:54,rg:28,cx:16,numW:0,gap:0,nameW:0,fn:15,fb:13,above:1,bg:'#000'};
+    return bar + pic + t({}) + tabRow(410, true) + guide(g) + `<div class="abs" style="right:0;top:500px;width:20px;height:320px;background:linear-gradient(90deg,rgba(0,0,0,0),#000)"></div>` + fade;
   }
   switch (state) {
     case 'playing': return body({});
     case 'break': return body({meta: `<em>Coast 90s</em> · <span class="back">Back in 2 min</span>`});
     case 'behind': return body({meta: `<em>Coast 90s</em> · 2 min behind<span class="golive"><span class="dot" style="top:0"></span>Go live</span>`});
     case 'nothing': return bar + pic + t({title: 'Coast 90s', meta: 'Nothing scheduled'}) + tabsP + list + fade;
-    case 'tune': return bar + pic + `<div class="bars" style="left:16px;top:334px;width:210px"></div>` + t({n: 12, title: 'Game Night', meta: `<span class="dot"></span><em>Game Night</em> · <em>24 min left</em>`}) + strip(d, {top: 430, left: 16, data: STRIPS[12]}) + tabsP + list + fade;
-    case 'later': return body({}) + `<div class="scrimAll" style="top:323px;opacity:.6"></div><div class="menu sheetB abs"><div style="padding:6px 12px 0"><h2 style="font-size:20px;font-weight:600;color:var(--white)">Last Case on Harbor Street</h2>
+    case 'tune': return bar + pic + `<div class="bars" style="left:16px;top:334px;width:210px"></div>` + t({n: 12, title: 'Game Night', meta: `<span class="dot"></span><em>Game Night</em> · <em>24 min left</em>`}) + tabsP + list + fade;
+    case 'strip': return opened({});
+    case 'later': return opened({}) + `<div class="scrimAll" style="top:323px;opacity:.6"></div><div class="menu sheetB abs"><div style="padding:6px 12px 0"><h2 style="font-size:20px;font-weight:600;color:var(--white)">Last Case on Harbor Street</h2>
       <div class="mono" style="font-size:12px;color:var(--muted);margin-top:6px">10:58 AM to 12:34 PM · 1994 · TV-PG · Drama</div><p style="font-size:14px;line-height:1.5;margin-top:10px">A harbor detective takes one last case the week before he retires.</p></div></div><div class="homeind"></div>`;
     case 'subtitles': return body({}) + `<div class="scrimAll" style="top:323px;opacity:.6"></div>` + subs({}, 'sheetB abs', '') + `<div class="homeind"></div>`;
     case 'more': return body({}) + `<div class="scrimAll" style="top:323px;opacity:.6"></div>` + more({}, 'sheetB abs', '') + `<div class="homeind"></div>`;
-    case 'paused': return body({meta: `<em>Coast 90s</em> · Paused`, paused: 1});
-    case 'cold': return bar + pic + `<div class="bars wait" style="left:16px;top:334px;width:210px"></div>` + t({title: 'Coast 90s', meta: 'Tuning in…'}) + tabsP + list + fade;
+    case 'paused': return body({meta: `<em>Coast 90s</em> · <em>Paused</em>`, paused: 1}) + `<div class="abs" style="left:0;top:104px;width:390px;height:219px"><div class="dip" style="background:rgba(var(--ink),.3)"></div>${pauseMark('50%', '50%')}</div>`;
+    case 'cold': return bar + pic + `<div class="bars wait" style="left:16px;top:334px;width:210px"></div>` + t({title: 'Coast 90s', meta: `Tuning in… <em>Starting the channel</em>`}) + tabsP + list + fade;
     case 'off-air': return bar + `<div class="abs" style="inset:104px 0 0 0">${cover()}</div><div class="homeind"></div>`;
   }
   return body({});
@@ -587,7 +609,8 @@ const portrait = state => {
 const tile = (n, w, h, here) => `<div class="tile${NOART ? '' : ` s${CH[n].s}`}${here ? ' here' : ''}" style="height:${h}px${NOART ? ';background:var(--surface)' : ''}"><span class="n mono">${n}</span><span class="left mono">${leftOf(n)}</span>
   <div class="cap"><div class="name">${CH[n].name}</div><div class="ti">${CH[n].short}</div></div><div class="prog"><i style="width:${CH[n].p}%"></i></div></div>`;
 const wall = dev => {
-  const order = [7, 2, 3, 5, 9, 12, 14, 19, 20, 21, 22, 23];
+  // The last watched leads; the rest follow in number order, the same order as every other list.
+  const order = [7, ...ORDER.filter(n => n !== 7)].slice(0, 12);
   if (dev === 'portrait') return `<div class="island"></div>${tabs({left: 4, top: 62, gap: 20, touch: 1})}
     <div class="wall" style="left:16px;top:122px;width:358px;grid-template-columns:1fr 1fr;gap:12px">${order.slice(0, 10).map((n, i) => tile(n, 173, 112, i === 0)).join('')}</div>
     <div class="tabbar"><div class="on">${ic('home')}Home</div><div>${ic('guide')}Guide</div><div>${ic('inbox')}Requests</div><div>${ic('more')}More</div></div><div class="homeind"></div>`;
@@ -620,7 +643,8 @@ const STATES = {
     ['off-air','Off air','The covers and their words are unchanged.']
   ],
   portrait: [
-    ['playing','Playing','Nothing covers the picture. The column fills what was black.'],
+    ['playing','Playing','Nothing covers the picture. The whole channel list sits under it, scrolled to yours and marked.'],
+    ['strip','Your channel tapped','Its film strip opens under the lower third; the list carries on below.'],
     ['later','Looking ahead','Tapping a later programme opens its facts as a sheet.'],
     ['tune','Changing channel','The list moves to the new channel at once.'],
     ['cold','Tuning in',''],['paused','Paused','Pause and More sit by the lower third, under the thumb.'],
@@ -659,8 +683,8 @@ if (dev) {
     <p class="lede">Channels run down, the evening runs across, and they meet at what is on. Loomarr opens on the picture. Every state is drawn on a desktop, a television, and a phone both ways. Select a tile to open it at full size.</p>
     ${sect('desk','Desktop, in a window','1440 × 900, pointer and keyboard. There is room beside the picture, so the cross sits beside it.',STATES.desk, cell('desk','guide','The guide','Every channel’s day on one clock. The picture steps into the corner and keeps playing.') + cell('desk','guide-later','The guide, pointing at a programme','Its facts take the place of what is on. A click on a row tunes.') + cell('desk','more','More','Only what has no key of its own. The channel list and Info left it.') + cell('desk','cold','Tuning in','Static for as long as the real wait. The lower third names the channel and the bars wait in grey.') + cell('desk','playing','No artwork','A library with no art: flat tones in place of stills, nothing empty.','&art=0') + cell('desk','guide','The guide, no artwork','The same hierarchy from tone alone.','&art=0') + cell('desktop','wall','The wall','Home, where the back arrow leads: every channel with its artwork.'))}
     ${sect('desktop','Desktop, full screen','The picture fills the screen and the same cross sits over it.',STATES.wide, cell('desktop','unmute','First play, muted','The web’s first play is muted and says how to fix it.') + cell('desktop','bright','Over a bright frame','The same crossing over a washed-out picture, to prove the scrims.') + cell('desktop','more','More','') + cell('desktop','paused','Paused','') + cell('desktop','guide','The guide','Full screen, the Guide is the same page as in a window.'))}
-    ${sect('tv','Television','960 × 540, remote. Up and Down tune, OK opens the column, Left and Right move along the evening.',STATES.wide.filter(s => s[0] !== 'find'), cell('tv','guide','The guide','OK on the picture opens it. Focus starts on what the tuned channel is showing.') + cell('tv','more','More','') + cell('tv','paused','Paused','') + cell('tv','bright','Over a bright frame',''))}
-    ${sect('portrait','Phone, upright','390 × 844',STATES.portrait, cell('portrait','guide','The guide','The picture stays on top; the grid takes the column’s place.') + cell('portrait','cold','First open','') + cell('portrait','playing','No artwork','','&art=0') +cell('portrait','wall','The wall',''))}
+    ${sect('tv','Television','960 × 540, remote. Up and Down change channel and open the column. Left and Right move along the quiet row: Channels, Guide, Subtitles, Audio, More. With the column up, Right opens the film strip and Back returns to the picture.',STATES.wide.filter(s => s[0] !== 'find'), cell('tv','guide','The guide','The Guide control opens it. Focus starts on what the tuned channel is showing.') + cell('tv','more','More','') + cell('tv','paused','Paused','') + cell('tv','bright','Over a bright frame',''))}
+    ${sect('portrait','Phone, upright','390 × 844',STATES.portrait, cell('portrait','guide','The guide','A time view: one channel’s day per row, its number and name on the line above.') +cell('portrait','playing','No artwork','','&art=0') +cell('portrait','wall','The wall',''))}
     ${sect('landscape','Phone, on its side','844 × 390, touch. A tap wakes the lower third; a vertical swipe flips.',STATES.wide.filter(s => !['find','typing'].includes(s[0])), cell('landscape','paused','Paused','') + cell('landscape','more','More','') + cell('landscape','bright','Over a bright frame',''))}
   </main>`;
 }
