@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // SaveMembers saves a member for each id, named after it. Who asked for a job or proposal, who
@@ -16,7 +17,7 @@ func SaveMembers(t testing.TB, st interface {
 ) {
 	t.Helper()
 	for _, id := range ids {
-		if err := st.UpsertUser(context.Background(), store.User{ID: id, Name: id, Role: store.RoleMember}); err != nil {
+		if err := st.UpsertUser(context.Background(), store.User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
 			t.Fatalf("save member %s: %v", id, err)
 		}
 	}

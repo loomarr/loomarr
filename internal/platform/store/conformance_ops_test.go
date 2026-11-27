@@ -150,7 +150,7 @@ func testUserCredentialCapabilities(t *testing.T, newStore NewStoreFunc) {
 func saveMembers(t *testing.T, s Store, ids ...string) {
 	t.Helper()
 	for _, id := range ids {
-		if err := s.UpsertUser(context.Background(), User{ID: id, Name: id, Role: RoleMember}); err != nil {
+		if err := s.UpsertUser(context.Background(), User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
 			t.Fatalf("save member %s: %v", id, err)
 		}
 	}
