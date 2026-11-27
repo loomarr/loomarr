@@ -230,6 +230,18 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
+  it("draws Review as the same button, not an underlined link, at every width", () => {
+    for (const width of [1440, 390]) {
+      screen.width = width;
+      const { button, cleanup } = render({ admin: admin({ needsYou: 2 }) });
+      const review = button("Review") as El & { style: { textDecorationLine: string } };
+      expect(review.getAttribute("role") ?? "button").toBe("button");
+      expect(review.style.textDecorationLine).toBe("");
+      cleanup();
+    }
+    screen.width = 1440;
+  });
+
   it("gives a phone's search, order, genre and Review touch targets", () => {
     screen.width = 390;
     const { host, button, cleanup } = render({ admin: admin({ needsYou: 2 }), genres: [] });

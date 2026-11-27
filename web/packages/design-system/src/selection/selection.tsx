@@ -200,7 +200,9 @@ const UnderlineTabs = <Value extends string>({
         borderBottomWidth={1}
         flexDirection="row"
         flexGrow={1}
-        gap={semanticSpace.section - 2 * tabAir(density)}
+        // Touch type is larger on the narrowest screens, so its labels sit closer: a phone then
+        // shows a page's four sections without scrolling.
+        gap={(density === "touch" ? semanticSpace.control : semanticSpace.section) - 2 * tabAir(density)}
         role="tablist"
       >
         {options.map((option) => (

@@ -9,7 +9,6 @@ import {
   Surface,
   Tabs,
   Text,
-  TextLink,
   useReducedMotionPreference,
   useWindowWidth,
 } from "@loomarr/design-system";
@@ -57,14 +56,12 @@ const NeedsYouLine = ({ needsYou, onOpenNeeds }: { needsYou: number; onOpenNeeds
     <Line flexWrap="nowrap">
       <StatusDot label="Needs you" tone="warn" />
       <Text textRole="label">{needsYou === 1 ? "1 needs you" : `${count(needsYou)} need you`}</Text>
-      {/* On a phone a line of text is too small to tap, so Review takes a touch target. */}
-      {!onOpenNeeds ? null : wide ? (
-        <TextLink onPress={onOpenNeeds}>Review</TextLink>
-      ) : (
-        <Action density="touch" onPress={onOpenNeeds} variant="ghost">
+      {/* One look at every width; on a phone it takes a touch target. */}
+      {onOpenNeeds ? (
+        <Action density={wide ? "pointer" : "touch"} onPress={onOpenNeeds} variant="ghost">
           Review
         </Action>
-      )}
+      ) : null}
     </Line>
   );
 };
