@@ -79,17 +79,22 @@ func TestLibraryStreamLabelsAChannelLayout(t *testing.T) {
 // than after Z, where an accented first letter's bytes put it.
 func TestATitleSortsByItsLettersNotTheirAccents(t *testing.T) {
 	ext, _ := json.Marshal(originExtension{Listed: &listedExtension{}})
-	sortName := func(title string) string {
+	project := func(name, sortTitle string) string {
 		item, ok := ProjectLibraryItem(inventory.Item{ID: "m1", Kind: kindMovie, Origins: []inventory.ItemOrigin{{
 			Key: inventory.OriginKey{Authority: inventory.AuthorityID(authorityPrefix + "a"), ExternalItemID: "file:1"},
 			Observation: inventory.Observation[inventory.ItemFacts]{Extension: ext,
-				Facts: inventory.ItemFacts{Name: title, SortTitle: title}},
+				Facts: inventory.ItemFacts{Name: name, SortTitle: sortTitle}},
 		}}})
 		if !ok {
-			t.Fatalf("%s is not listed", title)
+			t.Fatalf("%s is not listed", name)
 		}
 		return item.SortName
 	}
+	// With no sort title the name is the key, folded the same way.
+	if got := project("Ébène Quay", ""); got != "ebene quay" {
+		t.Errorf("sort name with no sort title = %q, want %q", got, "ebene quay")
+	}
+	sortName := func(title string) string { return project(title, title) }
 	if got := sortName("À Nous la Liberté"); got != "a nous la liberte" {
 		t.Errorf("sort name = %q, want %q", got, "a nous la liberte")
 	}

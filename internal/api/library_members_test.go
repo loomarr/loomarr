@@ -27,7 +27,8 @@ import (
 
 // libraryMemberReads are the Library operations a member may call. Every other operation under
 // /v1/library or /v1/collections is admin-only, except the public hook receiver.
-var libraryMemberReads = []string{"getCollection", "getLibraryItem", "listCollections", "listLibraryCollections", "listLibraryItems"}
+var libraryMemberReads = []string{"getCollection", "getLibraryItem", "listCollections", "listLibraryCollections", "listLibraryGenres",
+	"listLibraryItems"}
 
 // libraryPublic is the Library's one public operation: an *arr's webhook, which answers only its
 // app's shared secret.
@@ -106,7 +107,8 @@ func TestLibraryListFiltersRevealNoAdminFact(t *testing.T) {
 		if op.ID != "listLibraryItems" {
 			continue
 		}
-		if want := []string{"kind", "limit", "offset", "ready", "search", "sort"}; !slices.Equal(op.Query, want) {
+		// genre is a fact a member reads on a title's page; the list's genre filter keeps the member rule.
+		if want := []string{"genre", "kind", "limit", "offset", "ready", "search", "sort"}; !slices.Equal(op.Query, want) {
 			t.Errorf("listLibraryItems filters = %v, want %v: decide whether a member may filter on it", op.Query, want)
 		}
 		return
@@ -524,7 +526,7 @@ func newLibrarySessionHarness(t *testing.T) *apiHarness {
 }
 
 // §19: a signed-in member, and a device they paired, read the Library and are refused its fixes;
-// once an admin disables them, neither the session nor the device reads any of the four
+// once an admin disables them, neither the session nor the device reads any of the
 // member-readable routes.
 func TestDisabledMemberLosesTheLibraryOnSessionAndDevice(t *testing.T) {
 	h := newLibrarySessionHarness(t)
@@ -537,7 +539,8 @@ func TestDisabledMemberLosesTheLibraryOnSessionAndDevice(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("make collection = %d (%v)", code, made)
 	}
-	routes := []string{"/v1/library/items", "/v1/library/items/90000001", "/v1/collections", "/v1/collections/" + made["id"].(string)}
+	routes := []string{"/v1/library/items", "/v1/library/items/90000001", "/v1/library/genres", "/v1/collections",
+		"/v1/collections/" + made["id"].(string)}
 
 	for _, route := range routes {
 		assertMemberSafe(t, route, okBody(t, authed(t, http.MethodGet, srv.URL+route, member, "")))

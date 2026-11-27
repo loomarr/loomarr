@@ -38,6 +38,13 @@ func (s *Handlers) registerLibraryItems(api huma.API) {
 		Tags: []string{"library"},
 	}, httpcore.RoleMember), s.listLibraryItems)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "listLibraryGenres", Method: http.MethodGet, Path: "/v1/library/genres",
+		Summary: "The library's genres",
+		Description: "The genres of the titles the list shows, each with how many titles carry it, by name. " +
+			"A member's counts leave out the titles a member doesn't read.",
+		Tags: []string{"library"},
+	}, httpcore.RoleMember), s.listLibraryGenres)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "getLibraryItem", Method: http.MethodGet, Path: "/v1/library/items/{id}",
 		Summary: "One title",
 		Description: "A movie with its files, or a series with its episodes by season. 404 when no file of it is present. " +
@@ -197,18 +204,59 @@ func (s *Handlers) libraryPosters(ctx context.Context, items []librarystore.Libr
 
 type listLibraryItemsInput struct {
 	Kind   string `query:"kind" enum:"movie,series" doc:"Only movies or only series; both when absent"`
-	Search string `query:"search" maxLength:"200" doc:"Part of the name, any case"`
+	Search string `query:"search" maxLength:"200" doc:"Part of the name, any case; or words that are each in the name, the year (four digits) or a genre. Titles whose name holds it come first"`
+	Genre  string `query:"genre" maxLength:"100" doc:"Only titles with this genre, any case; an unknown genre lists none"`
 	Ready  bool   `query:"ready" doc:"Only titles with every file's details read"`
 	Sort   string `query:"sort" enum:"name,recent" default:"name" doc:"By name, or the titles written last first"`
 	Limit  int    `query:"limit" minimum:"1" maximum:"200" default:"60"`
 	Offset int    `query:"offset" minimum:"0"`
 }
 
+// libraryLetterDTO is one stop on the wall's letter rail.
+type libraryLetterDTO struct {
+	Letter string `json:"letter" doc:"A to Z, or # for a title that starts with a digit or any other character"`
+	Offset int    `json:"offset" doc:"The offset of the first title it starts, in the list's order: ask for offset=<n>"`
+}
+
 type listLibraryItemsOutput struct {
 	Body struct {
 		Items []libraryItemDTO `json:"items"`
 		Total int              `json:"total" doc:"Titles matching, across every page"`
+		// Letters reads the same filters as total, so each offset lands on its title.
+		Letters []libraryLetterDTO `json:"letters,omitempty" doc:"Under sort=name, each initial present in the filtered list with the offset of its first occurrence. Letters are in list order, not necessarily A to Z: under a search, name matches come first, and a letter maps to its first occurrence. Absent under sort=recent"`
 	}
+}
+
+type listLibraryGenresInput struct {
+	Kind string `query:"kind" enum:"movie,series" doc:"Only movies' or only series' genres; both when absent"`
+}
+
+type libraryGenreDTO struct {
+	Name   string `json:"name"`
+	Titles int    `json:"titles" doc:"Titles that carry it"`
+}
+
+type listLibraryGenresOutput struct {
+	Body struct {
+		Genres []libraryGenreDTO `json:"genres" doc:"By name; names that differ only in case are one genre"`
+	}
+}
+
+func (s *Handlers) listLibraryGenres(ctx context.Context, in *listLibraryGenresInput) (*listLibraryGenresOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	genres, err := svc.Genres(ctx, in.Kind, !readsAdminFacts(ctx))
+	if err != nil {
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't list the library's genres", "Try again in a moment.", err)
+	}
+	out := &listLibraryGenresOutput{}
+	out.Body.Genres = make([]libraryGenreDTO, 0, len(genres))
+	for _, g := range genres {
+		out.Body.Genres = append(out.Body.Genres, libraryGenreDTO{Name: g.Name, Titles: g.Titles})
+	}
+	return out, nil
 }
 
 func (s *Handlers) listLibraryItems(ctx context.Context, in *listLibraryItemsInput) (*listLibraryItemsOutput, error) {
@@ -218,14 +266,17 @@ func (s *Handlers) listLibraryItems(ctx context.Context, in *listLibraryItemsInp
 	}
 	admin := readsAdminFacts(ctx)
 	page, err := svc.Items(ctx, librarystore.LibraryItemQuery{
-		Kind: in.Kind, Search: in.Search, Ready: in.Ready, Recent: in.Sort == "recent",
-		Member: !admin, Limit: min(in.Limit, libraryItemsPageMax), Offset: in.Offset,
+		Kind: in.Kind, Search: in.Search, Genre: in.Genre, Ready: in.Ready, Recent: in.Sort == "recent",
+		Letters: in.Sort != "recent", Member: !admin, Limit: min(in.Limit, libraryItemsPageMax), Offset: in.Offset,
 	})
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't list the library", "Try again in a moment.", err)
 	}
 	out := &listLibraryItemsOutput{}
 	out.Body.Total = page.Total
+	for _, l := range page.Letters {
+		out.Body.Letters = append(out.Body.Letters, libraryLetterDTO{Letter: l.Letter, Offset: l.Offset})
+	}
 	out.Body.Items = make([]libraryItemDTO, 0, len(page.Items))
 	posters := s.libraryPosters(ctx, page.Items)
 	for _, it := range page.Items {

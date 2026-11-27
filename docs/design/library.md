@@ -455,8 +455,24 @@ step 5). Nothing reads the scanner's origins until the cutover.
   the item it was written as (`item_id`) and an episode's series (`series_id`). A title is listed
   while it has a present, importable file, and is "getting ready" while any of those files'
   headers is unread. A file row from before these columns has no item, so the next pass writes it
-  again. `GET /v1/library/items` pages and searches the list;
-  `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's
+  again. `GET /v1/library/items` pages and searches the list. It filters by `kind`, `ready` and
+  `genre` (one genre name, any case; an unknown genre is an empty list), and `total` counts what
+  the filters leave. `search` finds a title whose name holds the whole term, or one where every
+  word of the term is in its name, is its year (four digits, exactly) or names one of its
+  genres, or whose genre is the whole term: "quillfen 1979" finds a title named with "quillfen"
+  from 1979, and "comedy" finds every comedy beside a title with "comedy" in its name. The titles
+  whose name holds the whole term come first, then the rest, each in the chosen sort. The name
+  sort is `sort_name`: the source's sort title (an arr's or an NFO's, which may drop a leading
+  article), or the name where there is none, either one folded to lower case without accents;
+  Loomarr strips no article itself. Under `sort=name` the list also carries `letters`, its letter
+  index: for each initial of `sort_name` present under the same filters, A to Z with one `#` for a
+  digit or any other character, the offset of the first such title in the list's order, so a
+  letter rail asks for `offset=<n>`. The letters are in list order: under a search, where name
+  matches come first, that need not be A to Z, and a letter's offset is its first occurrence.
+  `GET /v1/library/genres` lists the genres of the listed titles, one row per
+  genre name in any case, with how many titles carry it, by name; `kind` narrows it like the
+  list. It is its own route, read once for the genre menu, because it does not change with the
+  list's search, page or other filters. `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's
   files, or a series' episodes by season. Both are member-readable (see **Who reads the
   Library** below). Every caller's title also carries `playing`, one line about the copy that
   plays and nothing that names a file: its picture (width, height, high dynamic range), the
@@ -465,7 +481,8 @@ step 5). Nothing reads the scanner's origins until the cutover.
   Library read-only: the wall and a title's page, and the Collections tab. On the web, Library is
   in a member's navigation and fourth in their phone bar (Home · Watch · Guide · Library), with no
   Needs you count; an admin's phone bar keeps Requests there. The member-readable
-  routes are `GET /v1/library/items`, `GET /v1/library/items/{id}`, `GET /v1/collections`,
+  routes are `GET /v1/library/items`, `GET /v1/library/items/{id}`, `GET /v1/library/genres`,
+  `GET /v1/collections`,
   `GET /v1/collections/{id}`, and `GET /v1/library/collections` (names and sizes, for the channel
   scope picker). Everything else under `/v1/library` and `/v1/collections` is admin-only: the
   folders, path map, discovery and browse, status, scan, refresh and confirm-removal, Needs you
@@ -502,8 +519,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   sizes, tracks, chapters), `match` and `detailsFrom`; a list entry, a collection's title and a
   set's title leave out the file count (`files`), `unplayable` and `extraCopies`; an episode
   leaves out `fromFile`. Each of those fields is optional in the schema and says "admins only".
-  "Getting ready" (`ready`) stays. The list's filters (kind, search, ready, sort) and its total
-  follow the rule above.
+  "Getting ready" (`ready`) stays. The list's filters (kind, search, ready, genre, sort), its
+  total, its letter index and the genre counts follow the rule above: a member never learns a
+  hidden title's genre or initial.
   The other routes a member calls that read Library titles follow the same rule, decided from
   the caller's role at the route: `GET /v1/search` (its Library half, and a TMDB result's
   in-Library mark, whether a title search or a structured discovery), `GET /v1/discovery/ideas`

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
@@ -24,7 +23,7 @@ func SaveItemIn(ctx context.Context, s *Store, tx storedb.Tx, it LibraryItem, at
 	}
 	sortName := it.SortName
 	if sortName == "" {
-		sortName = strings.ToLower(it.Name)
+		sortName = SortKey(it.Name)
 	}
 	if it.Kind == "episode" {
 		if err := s.withSeries(ctx, tx, &it); err != nil {
