@@ -27,7 +27,7 @@ func TestIgnoredTitleNamesWhatIsOnDisk(t *testing.T) {
 		roots        []string
 		name, folder string
 	}{
-		"movie": {movie, []librarystore.LibraryFile{at("/srv/tv", "Unsorted/clip.mkv")}, one, "clip.mkv", "TV/Unsorted"},
+		"movie":            {movie, []librarystore.LibraryFile{at("/srv/tv", "Unsorted/clip.mkv")}, one, "clip.mkv", "TV/Unsorted"},
 		"movie at the top": {movie, []librarystore.LibraryFile{at("/srv/tv", "clip.mkv")}, one, "clip.mkv", "TV"},
 		"show": {show, []librarystore.LibraryFile{at("/srv/tv", "Unsorted/Night Ferry/Season 1/e1.mkv")}, one,
 			"Night Ferry", "TV/Unsorted"},
