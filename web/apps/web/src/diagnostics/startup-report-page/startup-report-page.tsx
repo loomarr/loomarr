@@ -46,9 +46,8 @@ const Verdict = ({ word }: { word: StatusWordKind | undefined }) =>
   word ? (
     <StatusWord kind={word} />
   ) : (
-    <Text as="span" textRole="compact" tone="secondary">
-      Checking
-    </Text>
+    // A plain span, so the word takes the size of the heading or cell it sits in.
+    <span style={{ color: "var(--contentSecondary)" }}>Checking</span>
   );
 
 const CheckIdentity = ({ check }: { check: HealthCheck }) => (
