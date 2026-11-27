@@ -22,7 +22,7 @@ Stored per channel (JSON on the channel row), produced by the suggester, edited 
 {
   "scope": {                       // WHAT is allowed on this channel
     "series":      ["tmdb:456"],   // resolved ids only — never names
-    "collections": [],             // media-server collection (BoxSet) ids — §2.2
+    "collections": [],             // household collection ids — §2.2
     "seasons":     {"min": 1, "max": 10},   // per-series season window
     "era":         {"from": 1990, "to": 1999}, // by first-air/release year, including episodes
     "genres":      {"include": ["Animation"], "exclude": ["Documentary"]},
@@ -123,24 +123,24 @@ every clock boundary.
 
 ### 2.2 `scope.collections` — media-server collections, and why it is stamped
 
-`scope.collections` restricts a channel to titles the operator has curated into a **media-server
-collection** (Emby/Jellyfin call these **BoxSets**; Kometa and similar tools write them). It is a
+`scope.collections` restricts a channel to titles in a **household collection**
+(`library_collections`, made in Loomarr or brought over from the media server at cutover). It is a
 hand-curated set — "my Halloween shelf" — which is precisely what makes it worth having: it is the
 one scope field whose membership is an explicit human judgment rather than derived metadata.
 
 ⚠ **This is NOT `LineupEntry.CollectionID`, which is the TMDB franchise id (§5 ordering).** Two
 different namespaces share the English word "collection": a TMDB collection is an integer
-identifying a *franchise* (the Alien films), a BoxSet id is an opaque server-local string
+identifying a *franchise* (the Alien films), a household collection id is an opaque string
 identifying a *shelf someone made*. They are never interchangeable, and a filter that compared one
 to the other would type-check and silently match nothing. The Go field is therefore named
-`BoxSetIDs`, in the media server's own vocabulary, so the two cannot be confused at the point of
-use. The wire/DTO name stays `collections` (it is what an operator calls it).
+`BoxSetIDs`, after the media server's word for such a shelf, so the two cannot be confused at the
+point of use. The wire/DTO name stays `collections` (it is what an operator calls it).
 
 **Membership is STAMPED on the entry and healed at reconcile**, exactly like `OfficialRating`
 (§4) and `CollectionID` (§5), for the reason those two are: `filterEntries` is a pure function
 over `[]LineupEntry` with **no per-reconcile library I/O**, and that property is load-bearing for
-scheduling latency rather than incidental. Resolving BoxSet membership inside the filter would put
-a media-server round trip on the scheduling path, per entry, per pass — the N+1 shape that
+scheduling latency rather than incidental. Resolving membership inside the filter would put
+a lookup on the scheduling path, per entry, per pass — the N+1 shape that
 dominated the guide-latency work (1910ms → 103ms; the first fix was removing exactly this).
 
 ⚠ **The `CollectionID` tri-state does not transfer, and the difference is a real trap.** `-1`
@@ -162,7 +162,7 @@ reconcile after the index refreshes**, not instantly. That is the deliberate tra
 the scheduler I/O-free.
 
 **Fail-OPEN, unlike audience.** An unresolved entry (`BoxSetsResolved == false`) is **not**
-filtered out — a media server that is down or slow must not silently empty a channel's lineup.
+filtered out — collections that can't be read must not silently empty a channel's lineup.
 This is the opposite of the §4 audience ceiling, and the asymmetry is the same one §4 states: a
 missing rating risks showing adult content to a kids channel, so it fails closed; a missing
 collection membership risks showing an in-library title the operator did not shelve, which is a

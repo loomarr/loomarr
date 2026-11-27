@@ -110,7 +110,7 @@ type Engine struct {
 	// franchises heals a movie entry's TMDB collection id (§5 franchise ordering) so a
 	// franchise's films stay together, in release order. Optional (nil ⇒ no grouping).
 	franchises FranchiseResolver
-	// boxSets stamps a title's media-server collection membership (§2.2) so scope.collections
+	// boxSets stamps a title's household collection membership (§2.2) so scope.collections
 	// enforces with no library I/O. Optional (nil ⇒ membership never resolves and the filter
 	// admits everything, rather than emptying a lineup).
 	boxSets BoxSetResolver
@@ -291,7 +291,7 @@ type BoxSetResolver interface {
 	BoxSets(ctx context.Context, key provision.Key) (boxSetIDs []string, ok bool, err error)
 }
 
-// WithBoxSets wires the resolver that stamps a title's media-server collection membership
+// WithBoxSets wires the resolver that stamps a title's household collection membership
 // at reconcile (§2.2). Optional (nil ⇒ membership never resolves, and scope.collections
 // consequently admits everything rather than emptying a lineup — see boxSetOK's fail-open
 // rule). Returns the engine for chaining.

@@ -260,9 +260,10 @@ func (e *Engine) planReconcile(
 	// Heal each entry's metadata in place through the one lineup primitive (§9 LineupHeal):
 	// fill an empty OfficialRating (§389 — a fail-closed audience gate would otherwise drop a
 	// now-in-library title to dead air) and settle each movie's TMDB CollectionID (§5 franchise
-	// ordering). Bounded, one-time lookups; the healed values are stamped onto ch.Lineup and
-	// persisted by the SaveChannel below, so a future reconcile skips them. Membership + order
-	// are untouched — heal only enriches.
+	// ordering), and re-stamp each title's household collections. Rating and franchise are looked
+	// up once; collections every pass, from a cached index. The healed values are stamped onto
+	// ch.Lineup and persisted by the SaveChannel below. Membership + order are untouched — heal
+	// only enriches.
 	ch.Lineup = schedule.ApplyLineup(ch.Lineup, nil, schedule.LineupHeal,
 		schedule.ApplyOpts{Enrich: e.healEntry(ctx)})
 
@@ -662,10 +663,10 @@ func (e *Engine) attachFillerList(ctx context.Context, ch channelstore.Channel, 
 //   - stamp the household collections each title is in, for scope.collections (§2.2),
 //     re-stamped every pass so a collection edit reaches the channel.
 //
-// Bounded + best-effort by design (§9 resilience): only empty/unresolved fields are looked up
-// (a stamped channel makes ZERO calls), a not-yet-present result leaves the field to retry next
-// pass, and a lookup error never fails the reconcile — it just leaves the field unhealed.
-// A nil source (ratings/franchises not wired) skips that half.
+// Bounded + best-effort by design (§9 resilience): ratings and franchise ids are looked up only
+// while empty or unresolved, a not-yet-present result leaves the field to retry next pass, and a
+// lookup error never fails the reconcile — it just leaves the field as it was. A nil source
+// (ratings, franchises or collections not wired) skips that part.
 func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 	return func(en *schedule.LineupEntry) {
 		if e.ratings != nil && en.OfficialRating == "" {

@@ -290,18 +290,18 @@ func genreTerms(g string) []string {
 	return append([]string{g}, tvCompoundGenres[g]...)
 }
 
-// boxSetOK reports whether an entry satisfies a media-server collection scope
+// boxSetOK reports whether an entry satisfies a household collection scope
 // (programming-design §2.2). An empty scope admits everything (the additive default,
 // as with every other scope field).
 //
 // ⚠ It FAILS OPEN on an unresolved entry, and that is the whole subtlety. Membership is
 // stamped by the reconcile heal; until it has answered, BoxSetsResolved is false and the
-// entry is admitted rather than dropped. Reversing this would mean a media server that is
-// down — or simply a channel reconciled once before the heal ran — empties its own lineup
+// entry is admitted rather than dropped. Reversing this would mean an unreadable collections
+// table — or simply a channel reconciled once before the heal ran — empties its own lineup
 // to dead air, which is exactly the §4-shaped failure a taste filter must not cause.
 // Once resolved, a non-member is excluded normally.
 //
-// Ids are compared exactly, never folded: a BoxSet id is an opaque server-local token, not
+// Ids are compared exactly, never folded: a collection id is an opaque token, not
 // a name, so case-insensitivity would only ever create false matches.
 func boxSetOK(e LineupEntry, want []string) bool {
 	if len(want) == 0 {
