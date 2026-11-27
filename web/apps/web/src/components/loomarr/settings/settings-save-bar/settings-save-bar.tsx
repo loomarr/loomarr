@@ -28,7 +28,8 @@ const SettingsSaveBar = ({
       paddingHorizontal={24}
       paddingVertical={12}
       render="section"
-      style={{ bottom: 0, position: "sticky" }}
+      // A caller's `className` positions the bar itself, and an inline position would beat it.
+      style={className === undefined ? { bottom: 0, position: "sticky" } : undefined}
     >
       <Text as="p" flex={1} textRole="compact">
         {dirtyCount} unsaved {dirtyCount === 1 ? "change" : "changes"}
