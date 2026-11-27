@@ -504,6 +504,8 @@ const PlayoutDiagnostics = ({
               ref={listRef as ComponentProps<typeof Card>["ref"]}
               height={Math.min(Math.max(virtualizer.getTotalSize(), 152), 640)}
               maxHeight={wide ? 640 : "55vh"}
+              // A Card holds its height; the list has to give way to a short pane and scroll.
+              flexShrink={1}
               overflowX="hidden"
               overflowY="auto"
             >

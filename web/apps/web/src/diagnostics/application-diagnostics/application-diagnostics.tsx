@@ -77,6 +77,8 @@ const ApplicationDiagnostics = ({
   const listRef = useRef<HTMLElement>(null);
   // The list is capped at 55% of the window until the split pane has room beside it.
   const wide = useMinWidth(breakpoints.lg);
+  // A row lays its time out as a right-hand column from `sm` up.
+  const columns = useMinWidth(breakpoints.sm);
   const cursor = cursorStack.at(-1);
   const query = useQuery({
     // Keyed by the log's URL, so its `diagnostic_events` frame reads it again (#3352); the window
@@ -347,6 +349,8 @@ const ApplicationDiagnostics = ({
               aria-label="Logs"
               height={Math.min(Math.max(virtualizer.getTotalSize(), 228), 640)}
               maxHeight={wide ? 640 : "55vh"}
+              // A Card holds its height; the list has to give way to a short pane and scroll.
+              flexShrink={1}
               overflowX="hidden"
               overflowY="auto"
             >
@@ -397,13 +401,16 @@ const ApplicationDiagnostics = ({
                               {event.processRunId ? " · Process output available" : ""}
                             </Text>
                           </Stack>
-                          <Stack align={{ base: "start", sm: "end" }}>
-                            <time dateTime={new Date(event.occurredAt).toISOString()}>
-                              <Text as="span" textRole="mono" tone="secondary">
-                                {formatTime(event.occurredAt)}
-                              </Text>
-                            </time>
-                          </Stack>
+                          <time dateTime={new Date(event.occurredAt).toISOString()}>
+                            <Text
+                              as="div"
+                              textAlign={columns ? "right" : "left"}
+                              textRole="mono"
+                              tone="secondary"
+                            >
+                              {formatTime(event.occurredAt)}
+                            </Text>
+                          </time>
                         </Grid>
                       </PressableRow>
                       {open && (
