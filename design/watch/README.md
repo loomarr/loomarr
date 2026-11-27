@@ -107,7 +107,8 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled.
    scrolled to the tuned channel, which is marked "watching"; tapping it opens its film strip. Group
    tabs (Favourites, All, Recent, By decade) head the column, the Guide and the wall, and the wall
    follows the same order after the last watched. Digits tune direct. A find control opens the
-   query, typing letters does the same, and results list straight under it.
+   query, `/` does the same, and results list straight under it. Typing letters does not open find:
+   building the prototype showed that letters are already shortcuts (G, L, C, A, M, F).
 8. **Decades get colours of their own** (maintainer, 2026-11-27). The channel you are watching takes
    its decade's colour on its numeral, the large one; every other channel number is plain. The
    decade colours are six soft tints that reuse none of the system's accents, so a decade is never
@@ -163,6 +164,24 @@ iPhone, the watermark's corner rule, and every word in the covers and menus.
 A desktop window narrower than about 900 px, the Guide on a phone on its side, the Guide's other days
 and its loading and empty states, the decades' legend under By decade, a visible close on the touch
 cross and sheets, the wall on a television, an iPad, and an Android phone.
+
+## Prototype
+
+`prototype.html` is the core loop made clickable: open on the picture, change channel, look later in
+the day, open the Guide, find a channel by name, pause, go Home and come back. It is one
+self-contained file, throwaway, and not product code.
+
+- **Desktop** takes a pointer and a keyboard; `F` swaps the window for full screen.
+- **Television** takes arrow keys, Enter for OK and Backspace for Back, and ignores the pointer.
+- **Phone** is an upright phone; a click is a tap.
+- **Tasks** opens a checklist of six things to try. Each ticks itself when done, by any route, and
+  records how many seconds it took: an instrument for five minutes with someone who has never seen
+  the design.
+
+`?device=tv|phone|full`, `&tasks=1` and `&cold=0` (skip the tuning-in wait) set it up from the URL.
+It adds what stills could not show: a close on every menu, a next step on the covers, a tooltip
+naming each icon key, one first-run hint per device that goes after the first channel change, and a
+shortcuts sheet under More. Its artwork is the mock's stand-ins, and the picture is a still.
 
 ## Reviews
 
