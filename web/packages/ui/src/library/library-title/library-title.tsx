@@ -1,7 +1,6 @@
 import { formatBytes } from "@loomarr/core/format";
 import {
   Action,
-  Disclosure,
   Icon,
   icons,
   Menu,
@@ -12,9 +11,10 @@ import {
   Surface,
   Text,
 } from "@loomarr/design-system";
-import { type ReactNode, useState } from "react";
-import { Line, PAGE_GUTTER, Stack, Twirl } from "../library-poster";
+import { type ComponentProps, type ReactNode, type Ref, useRef, useState } from "react";
+import { Line, PAGE_GUTTER, Stack } from "../library-poster";
 import { PickTitle } from "../pick-title";
+import { SeasonEpisodes } from "../season-episodes";
 import { TechnicalDetails } from "../technical-details";
 import { CastAndCrew, Hero, OnChannels, playingLine, useTitleLayout } from "../title-parts";
 import type {
@@ -22,7 +22,6 @@ import type {
   LibraryTitleFile,
   LibraryTitleFix,
   LibraryTitleProps,
-  LibraryTitleSeason,
 } from "./library-title.type";
 
 // The title and what an admin can do about it.
@@ -31,72 +30,6 @@ type TitleFixes = LibraryTitleFix & Pick<LibraryTitleProps, "title">;
 // A TITLE'S PAGE (#4476), a TV-app page: a backdrop with the title over it, the facts, the story,
 // when the channels show it, the people, then the seasons and the files. Presentational: the app
 // owns the request, draws the artwork and words the times.
-
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-const Heading = ({ children }: { children: string }) => (
-  <Text as="h2" textRole="headline">
-    {children}
-  </Text>
-);
-
-// "3" or, for a file holding two, "3–4".
-// An episode with no number (a special its show's catalog doesn't number) shows none.
-const episodeNumber = (number: number, end?: number) => {
-  if (number <= 0) {
-    return "";
-  }
-  return end && end > number ? `${number}–${end}` : `${number}`;
-};
-
-const Season = ({ season }: { season: LibraryTitleSeason }) => {
-  const [open, setOpen] = useState(false);
-  const label = season.number === 0 ? "Specials" : `Season ${season.number}`;
-  return (
-    <Disclosure
-      description={plural(season.episodes.length, "episode", "episodes")}
-      expanded={open}
-      label={label}
-      onExpandedChange={setOpen}
-    >
-      <Stack gap="inline">
-        {season.episodes.map((episode) => (
-          <Line
-            alignItems="baseline"
-            borderBottomColor="borderDecorative"
-            borderBottomWidth={1}
-            flexWrap="nowrap"
-            gap="control"
-            key={episode.id}
-            paddingVertical="inline"
-          >
-            <Stack width={32}>
-              <Text textRole="compact" tone="muted">
-                {episodeNumber(episode.number, episode.end)}
-              </Text>
-            </Stack>
-            <Stack flexBasis={0} flexGrow={1} flexShrink={1} minWidth={0}>
-              <Text textRole="body">{episode.name || `Episode ${episode.number}`}</Text>
-              {episode.fromFile ? (
-                <Text textRole="hint" tone="muted">
-                  Name from the file
-                </Text>
-              ) : null}
-            </Stack>
-            {episode.ready ? null : (
-              <Line alignSelf="center" flexWrap="nowrap">
-                <Twirl />
-                <Text textRole="compact" tone="secondary">
-                  Getting ready
-                </Text>
-              </Line>
-            )}
-          </Line>
-        ))}
-      </Stack>
-    </Disclosure>
-  );
-};
 
 // "Wrong title?" (decision 26) follows what decides: the app's own page, a note when the file
 // itself says, else a search, and Forget my answer when the household answered.
@@ -175,6 +108,11 @@ const WrongTitle = ({
 
 type Busy = "update" | "check";
 
+// The instance the Action draws, which takes focus.
+type ActionRef = Extract<ComponentProps<typeof Action>["ref"], { current: unknown }>["current"] & {
+  focus: () => void;
+};
+
 // The Fix menu's actions and what they said back. A press waits for its answer: while one is out
 // another is dropped, a check that went through says so, and one that failed says to try again.
 const useTitleFixes = (fix: LibraryTitleFix | undefined) => {
@@ -225,13 +163,19 @@ const menuIcon = (glyph: (typeof icons)[keyof typeof icons]) => (
 
 // Update details · Check files again · Wrong title?, in one menu. Its trigger sits on a solid
 // surface, so it reads over any backdrop.
-const FixMenu = ({ fixes }: { fixes: ReturnType<typeof useTitleFixes> }) => {
+const FixMenu = ({
+  fixes,
+  triggerRef,
+}: {
+  fixes: ReturnType<typeof useTitleFixes>;
+  triggerRef: Ref<ActionRef>;
+}) => {
   const { density } = useTitleLayout();
   return (
     <Surface backgroundColor="surfaceElevated" borderRadius="control" borderWidth={0}>
       <Menu>
         <MenuTrigger>
-          <Action density={density} icon="settingsAdjust" variant="outline">
+          <Action density={density} icon="settingsAdjust" ref={triggerRef} variant="outline">
             Fix
           </Action>
         </MenuTrigger>
@@ -358,6 +302,12 @@ const Unplayable = ({
 const LibraryTitle = ({ title, onBack, fix }: LibraryTitleProps) => {
   const { wide, density } = useTitleLayout();
   const fixes = useTitleFixes(fix);
+  // Closing "Wrong title?" removes the button that was pressed; focus goes back to what opened it.
+  const fixTrigger = useRef<ActionRef>(null);
+  const closeWrong = () => {
+    fixes.closeWrong();
+    fixTrigger.current?.focus();
+  };
   const technical = !fix && title.playing ? playingLine(title.playing) : "";
   const solid = (action: ReactNode) => (
     <Surface backgroundColor="surfaceElevated" borderRadius="control" borderWidth={0}>
@@ -381,7 +331,7 @@ const LibraryTitle = ({ title, onBack, fix }: LibraryTitleProps) => {
                   Library
                 </Action>,
               )}
-              {fix ? <FixMenu fixes={fixes} /> : null}
+              {fix ? <FixMenu fixes={fixes} triggerRef={fixTrigger} /> : null}
             </>
           }
           title={title}
@@ -401,7 +351,7 @@ const LibraryTitle = ({ title, onBack, fix }: LibraryTitleProps) => {
           <Stack gap="inline">
             <WrongTitle title={title} {...fix} />
             <Line>
-              <Action density={density} icon="close" onPress={fixes.closeWrong} variant="ghost">
+              <Action density={density} icon="close" onPress={closeWrong} variant="ghost">
                 Close
               </Action>
             </Line>
@@ -445,17 +395,7 @@ const LibraryTitle = ({ title, onBack, fix }: LibraryTitleProps) => {
       ) : null}
 
       {title.seasons.length > 0 ? (
-        <Stack aria-label="Seasons" gap="control" role="region">
-          <Heading>Seasons</Heading>
-          <Stack gap="inline">
-            {/* The specials after the numbered seasons. */}
-            {[...title.seasons]
-              .sort((a, b) => (a.number || Number.MAX_SAFE_INTEGER) - (b.number || Number.MAX_SAFE_INTEGER))
-              .map((season) => (
-                <Season key={season.number} season={season} />
-              ))}
-          </Stack>
-        </Stack>
+        <SeasonEpisodes onEpisodeFiles={fix?.onEpisodeFiles} seasons={title.seasons} />
       ) : null}
 
       {/* A member's title carries no files or match to tell. */}

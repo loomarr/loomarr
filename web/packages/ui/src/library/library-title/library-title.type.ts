@@ -19,6 +19,39 @@ interface LibraryTitleFile {
   extra: boolean;
   /** Which part of a movie split over several files it is, from 1; absent for a whole file. */
   part?: number;
+  /** The format its header names, such as matroska,webm. */
+  container?: string;
+  /** Its overall bit rate in bit/s. */
+  bitrate?: number;
+  /** Every track, as the header lists them; empty while unread. */
+  streams?: readonly LibraryTitleStream[];
+  chapters?: readonly { name?: string; startMillis: number }[];
+}
+
+/** One track of a file. */
+interface LibraryTitleStream {
+  index: number;
+  kind: "video" | "audio" | "subtitle";
+  codec?: string;
+  profile?: string;
+  bitDepth?: number;
+  bitrate?: number;
+  /** As the file states it, such as 24000/1001. */
+  frameRate?: string;
+  /** A video track's high dynamic range; absent for standard range. */
+  dynamicRange?: string;
+  audioFormat?: string;
+  channels?: number;
+  channelLayout?: string;
+  language?: string;
+  languageName?: string;
+  title?: string;
+  default: boolean;
+  forced: boolean;
+  commentary: boolean;
+  descriptive: boolean;
+  hearingImpaired: boolean;
+  external: boolean;
 }
 
 /** Where a title's details came from, each as a name to show ("TMDB", "Sonarr"). */
@@ -38,6 +71,11 @@ interface LibraryTitleEpisode {
   ready: boolean;
   /** Named and numbered by its file until the show's episode order is said (#2151 decision 53). */
   fromFile?: boolean;
+  /** Its own story, shown in one or two lines. */
+  overview?: string;
+  lengthMillis?: number;
+  /** Its still, drawn by the app; absent when it has none. */
+  still?: ReactNode;
 }
 
 interface LibraryTitleSeason {
@@ -141,6 +179,8 @@ interface LibraryTitleFix {
   onUpdateDetails: () => Promise<void>;
   /** Check files again: settles once the files are queued to be read; rejects when they couldn't be. */
   onCheckFiles: () => Promise<void>;
+  /** An episode's own files, for its opened row; rejects when they couldn't be read. */
+  onEpisodeFiles?: (episodeId: string) => Promise<readonly LibraryTitleFile[]>;
   /** Opens the title's page in the app that decides; absent when it has none. */
   onOpenApp?: () => void;
   /** Wrong title? when the household's answer, or nothing, decides: searches for the title. */
@@ -167,4 +207,5 @@ export type {
   LibraryTitlePlaying,
   LibraryTitleProps,
   LibraryTitleSeason,
+  LibraryTitleStream,
 };

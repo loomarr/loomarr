@@ -50,41 +50,62 @@ const playingLine = ({ picture, audioChannels, subtitleLanguages }: LibraryTitle
 // The backdrop with the title over its foot. The fade to the page keeps the title readable over any
 // picture; with no backdrop the placeholder surface stands in. `actions` sit over its top, each on
 // its own solid surface.
+// The separator's column, which sits left of its fact.
+const DOT = 20;
+
+// Facts with a dot BETWEEN them, however the line wraps: each fact carries its dot on its left,
+// and the row is pulled one dot-width outward and clipped, so the dot that would start a line is
+// out of sight and no line ends with one.
+const Facts = ({ facts }: { facts: readonly (ReactNode | false)[] }) => (
+  <Stack overflow="hidden">
+    <Line columnGap={0} marginLeft={-DOT}>
+      {facts.filter(Boolean).map((fact, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: a fixed list of facts that never reorders
+        <Line flexShrink={1} flexWrap="nowrap" gap={0} key={i} minWidth={0}>
+          <Stack aria-hidden alignItems="center" width={DOT}>
+            <Text textRole="compact" tone="muted">
+              ·
+            </Text>
+          </Stack>
+          <Stack flexShrink={1} minWidth={0}>
+            {fact}
+          </Stack>
+        </Line>
+      ))}
+    </Line>
+  </Stack>
+);
+
 const Hero = ({ title, actions }: { title: LibraryTitleDetail; actions: ReactNode }) => {
   const { wide } = useTitleLayout();
   return (
-    <Stack>
-      <Surface
-        backgroundColor="artworkPlaceholder"
-        borderWidth={0}
-        height={wide ? 360 : 220}
-        overflow="hidden"
-        position="relative"
-      >
+    // The title's words are inside the picture and its fade, so a longer title grows the hero.
+    <Surface
+      backgroundColor="artworkPlaceholder"
+      borderWidth={0}
+      gap="section"
+      justifyContent="space-between"
+      minHeight={wide ? 420 : 300}
+      overflow="hidden"
+      position="relative"
+    >
+      <Stack bottom={0} left={0} position="absolute" right={0} top={0}>
         {title.backdrop}
-        <Stack
-          aria-hidden
-          bottom={0}
-          height="60%"
-          left={0}
-          pointerEvents="none"
-          position="absolute"
-          right={0}
-          style={{ backgroundImage: "linear-gradient(transparent, var(--surfaceCanvas))" }}
-        />
-        <Stack
-          flexDirection="row"
-          justifyContent="space-between"
-          left={0}
-          padding="control"
-          position="absolute"
-          right={0}
-          top={0}
-        >
-          {actions}
-        </Stack>
-      </Surface>
-      <Stack gap="inline" marginTop={-48} paddingHorizontal="control" position="relative">
+      </Stack>
+      <Stack
+        aria-hidden
+        bottom={0}
+        height="80%"
+        left={0}
+        pointerEvents="none"
+        position="absolute"
+        right={0}
+        style={{ backgroundImage: "linear-gradient(transparent, var(--surfaceCanvas) 80%)" }}
+      />
+      <Stack flexDirection="row" justifyContent="space-between" padding="control" position="relative">
+        {actions}
+      </Stack>
+      <Stack gap="inline" padding="control" position="relative">
         {title.logo ? (
           <>
             {/* The logo stands for the name on screen; the heading still says it. */}
@@ -101,37 +122,34 @@ const Hero = ({ title, actions }: { title: LibraryTitleDetail; actions: ReactNod
             {title.name}
           </Text>
         )}
-        <Line gap="control">
-          {heroFacts(title).length > 0 ? (
-            <Text textRole="body" tone="secondary">
-              {heroFacts(title).join(" · ")}
-            </Text>
-          ) : null}
-          {/* A bordered chip in the body face: mono is for file names only. */}
-          {title.rating ? (
-            <Surface backgroundColor="transparent" paddingHorizontal="inline">
-              <Text textRole="compact">{title.rating}</Text>
-            </Surface>
-          ) : null}
-          {/* A dot sets each fact apart from the one before it. */}
-          {title.genres.length > 0 ? (
-            <Text textRole="compact" tone="muted">
-              {`${heroFacts(title).length > 0 || title.rating ? "· " : ""}${title.genres.join(", ")}`}
-            </Text>
-          ) : null}
-          {title.score ? (
-            <Text textRole="body">
-              {`${heroFacts(title).length > 0 || title.rating || title.genres.length > 0 ? "· " : ""}Score ${title.score.toFixed(1)}/10`}
-            </Text>
-          ) : null}
-        </Line>
+        <Facts
+          facts={[
+            ...heroFacts(title).map((fact) => (
+              <Text key={fact} textRole="body" tone="secondary">
+                {fact}
+              </Text>
+            )),
+            // A bordered chip in the body face: mono is for file names only.
+            Boolean(title.rating) && (
+              <Surface backgroundColor="transparent" paddingHorizontal="inline">
+                <Text textRole="compact">{title.rating}</Text>
+              </Surface>
+            ),
+            title.genres.length > 0 && (
+              <Text textRole="compact" tone="muted">
+                {title.genres.join(", ")}
+              </Text>
+            ),
+            Boolean(title.score) && <Text textRole="body">{`Score ${title.score?.toFixed(1)}/10`}</Text>,
+          ]}
+        />
         {title.tagline ? (
           <Text style={{ fontStyle: "italic" }} textRole="body">
             {title.tagline}
           </Text>
         ) : null}
       </Stack>
-    </Stack>
+    </Surface>
   );
 };
 
