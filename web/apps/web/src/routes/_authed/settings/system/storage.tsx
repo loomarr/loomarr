@@ -1,4 +1,5 @@
 import { SettingKey } from "@loomarr/api/models/settingKey";
+import { Card, Stack, Text } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -21,13 +22,17 @@ const StorageSettings = () => (
       },
     ]}
     footer={
-      <aside className="border-caution/40 bg-caution/5 rounded-lg border p-4 text-sm">
-        <h2 className="font-medium">Back up the image volume separately</h2>
-        <p className="text-muted-foreground mt-1">
-          Downloaded artwork can be rebuilt, but uploaded channel images cannot. Loomarr's database backup
-          does not copy this directory.
-        </p>
-      </aside>
+      <Card borderRadius={8} padding={16} render="aside" tone="caution">
+        <Stack gap="1">
+          <Text as="h2" textRole="cardLabel">
+            Back up the image volume separately
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
+            Downloaded artwork can be rebuilt, but uploaded channel images cannot. Loomarr's database backup
+            does not copy this directory.
+          </Text>
+        </Stack>
+      </Card>
     }
   />
 );

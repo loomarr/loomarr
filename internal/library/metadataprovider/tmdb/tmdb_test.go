@@ -48,6 +48,15 @@ func newFakeTMDB(t *testing.T) *fakeTMDB {
 		serve(w, "provider_collection_90000611.json")
 	})
 	mux.HandleFunc("/find/90001201", func(w http.ResponseWriter, _ *http.Request) { serve(w, "provider_find_tvdb_episode_90001201.json") })
+	mux.HandleFunc("/find/90000711", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"movie_results":[],"tv_results":[{"id":90000701}],"tv_episode_results":[]}`))
+	})
+	mux.HandleFunc("/find/tt9000701", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"movie_results":[],"tv_results":[{"id":90000701}],"tv_episode_results":[]}`))
+	})
+	mux.HandleFunc("/find/tt9000601", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"movie_results":[{"id":90000601}],"tv_results":[],"tv_episode_results":[]}`))
+	})
 	mux.HandleFunc("/find/90009998", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"movie_results":[],"person_results":[],"tv_results":[],"tv_episode_results":[],"tv_season_results":[]}`))
 	})
@@ -245,6 +254,40 @@ func TestFetchCollection(t *testing.T) {
 	}
 }
 
+// A title an NFO knows only by its TVDB or IMDb id is found through /find, by that id, and is
+// TMDB's record by its own; one TMDB does not know is not found.
+func TestFetch_FindsATitleByAnotherCatalogsID(t *testing.T) {
+	f := newFakeTMDB(t)
+	ctx := context.Background()
+	for _, c := range []struct {
+		ref    mp.Ref
+		source string
+		want   mp.ExternalID
+	}{
+		{ref(mp.KindSeries, mp.NamespaceTVDB, "90000711"), "tvdb_id", mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
+		{ref(mp.KindSeries, mp.NamespaceIMDB, "tt9000701"), "imdb_id", mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
+		{ref(mp.KindMovie, mp.NamespaceIMDB, "tt9000601"), "imdb_id", mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: "90000601"}},
+	} {
+		before := f.count()
+		rec, err := f.provider(nil).Fetch(ctx, c.ref)
+		if err != nil {
+			t.Fatalf("%s by %s: %v", c.ref.Kind, c.ref.ID.Namespace, err)
+		}
+		if len(rec.IDs) == 0 || rec.IDs[0] != c.want || rec.Kind != c.ref.Kind {
+			t.Errorf("%s by %s = %s %+v, want TMDB's %+v first", c.ref.Kind, c.ref.ID.Namespace, rec.Kind, rec.IDs, c.want)
+		}
+		f.mu.Lock()
+		find := f.requests[before]
+		f.mu.Unlock()
+		if find.URL.Path != "/find/"+c.ref.ID.Value || find.URL.Query().Get("external_source") != c.source {
+			t.Errorf("asked %s?%s, want /find/%s by %s", find.URL.Path, find.URL.RawQuery, c.ref.ID.Value, c.source)
+		}
+	}
+	if _, err := f.provider(nil).Fetch(ctx, ref(mp.KindSeries, mp.NamespaceTVDB, "90009998")); !errors.Is(err, mp.ErrNotFound) {
+		t.Fatalf("a TVDB id TMDB does not know = %v, want ErrNotFound", err)
+	}
+}
+
 func TestFetchSeries(t *testing.T) {
 	rec, err := newFakeTMDB(t).provider(nil).Fetch(context.Background(), seriesRef)
 	if err != nil {
@@ -405,8 +448,10 @@ func TestFetchEpisode_BridgesByItsOwnTVDBID(t *testing.T) {
 	if rec.Certification != nil {
 		t.Error("an episode takes its series' rating; TMDB's find answer carries none")
 	}
-	if want := []mp.ArtworkRef{{Kind: "thumb", Ref: "https://image.tmdb.org/t/p/original/episode-still-90001301.jpg"}}; !reflect.DeepEqual(rec.Artwork, want) {
-		t.Errorf("artwork = %+v, want the episode's own still", rec.Artwork)
+	// The still is requested at TMDB's 300-wide size (#4476), where posters, fanart and logos
+	// (above) are requested at original.
+	if want := []mp.ArtworkRef{{Kind: "thumb", Ref: "https://image.tmdb.org/t/p/w300/episode-still-90001301.jpg"}}; !reflect.DeepEqual(rec.Artwork, want) {
+		t.Errorf("artwork = %+v, want the episode's own still at w300", rec.Artwork)
 	}
 }
 
@@ -562,8 +607,8 @@ func TestFetch_RefusesWhatItCannotAnswer(t *testing.T) {
 			t.Fatalf("err = %v, want ErrUnsupported", err)
 		}
 	})
-	t.Run("a series by a TVDB id is outside the capabilities", func(t *testing.T) {
-		_, err := f.provider(nil).Fetch(ctx, ref(mp.KindSeries, mp.NamespaceTVDB, "90000711"))
+	t.Run("a collection by an IMDb id is outside the capabilities", func(t *testing.T) {
+		_, err := f.provider(nil).Fetch(ctx, ref(mp.KindCollection, mp.NamespaceIMDB, "tt9000611"))
 		if !errors.Is(err, mp.ErrUnsupported) {
 			t.Fatalf("err = %v, want ErrUnsupported", err)
 		}

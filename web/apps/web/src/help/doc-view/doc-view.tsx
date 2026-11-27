@@ -1,5 +1,6 @@
 import { anchorOf, parseDocHref } from "@loomarr/core/anchor";
 import {
+  Card,
   Stack,
   Table,
   TableBody,
@@ -7,11 +8,12 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
+  Text,
+  TextLink,
 } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { cn } from "@/lib/utils";
 import type { DocViewProps } from "./doc-view.type";
 
 // An internal doc link is a relative one: not an absolute URL, and not a bare same-page
@@ -66,50 +68,60 @@ const remarkDropHtmlComments = () => dropComments;
 // prose plugin: the design system already defines type scale and color, and a generic
 // typography reset would fight it.
 const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
-  <article className={cn("flex flex-col gap-4", className)}>
+  <Stack className={className} gap="4" render="article">
     <Markdown
       remarkPlugins={[remarkGfm, remarkDropHtmlComments]}
       components={{
         h1: ({ children }) => (
-          <h2 id={headingId(children)} className="text-xl font-semibold">
+          <Text as="h2" id={headingId(children)} textRole="title">
             {children}
-          </h2>
+          </Text>
         ),
         h2: ({ children }) => (
-          <h3 id={headingId(children)} className="mt-4 scroll-mt-20 text-lg font-semibold">
+          <Text as="h3" className="mt-4 scroll-mt-20" id={headingId(children)} strong textRole="headline">
             {children}
-          </h3>
+          </Text>
         ),
         h3: ({ children }) => (
-          <h4 id={headingId(children)} className="mt-3 scroll-mt-20 font-semibold">
+          <Text as="h4" className="mt-3 scroll-mt-20" id={headingId(children)} textRole="heading">
             {children}
-          </h4>
+          </Text>
         ),
-        p: ({ children }) => <p className="text-sm leading-relaxed">{children}</p>,
+        p: ({ children }) => (
+          <Text as="p" textRole="compact">
+            {children}
+          </Text>
+        ),
         ul: ({ children }) => (
-          <Stack className="ml-5 list-disc text-sm" gap="1.5" render="ul">
+          <Stack className="ml-5 list-disc" gap="1.5" render="ul">
             {children}
           </Stack>
         ),
         ol: ({ children }) => (
-          <Stack className="ml-5 list-decimal text-sm" gap="1.5" render="ol">
+          <Stack className="ml-5 list-decimal" gap="1.5" render="ol">
             {children}
           </Stack>
         ),
-        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+        li: ({ children }) => (
+          <Text as="li" textRole="compact">
+            {children}
+          </Text>
+        ),
         code: ({ children }) => (
           <code className="bg-static-800 rounded-sm px-1 py-0.5 font-mono text-[0.85em]">{children}</code>
         ),
         pre: ({ children }) => (
-          <pre className="border-border bg-static-900 overflow-x-auto rounded-md border p-3 font-mono text-xs">
-            {children}
-          </pre>
+          <Card overflowX="auto" padding={12}>
+            <Text as="pre" textRole="mono" tone="primary">
+              {children}
+            </Text>
+          </Card>
         ),
-        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        strong: ({ children }) => <strong style={{ fontWeight: 600 }}>{children}</strong>,
         blockquote: ({ children }) => (
-          <blockquote className="border-static-700 text-muted-foreground border-l-2 pl-3 text-sm">
+          <Stack borderColor="borderDecorative" borderLeftWidth={2} paddingLeft={12} render="blockquote">
             {children}
-          </blockquote>
+          </Stack>
         ),
         // Three link kinds: an INTERNAL cross-page link ("concepts",
         // "member-guide#section") is routed into the Help center (§13 — a raw href would
@@ -118,24 +130,18 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
         // through to the browser.
         a: ({ children, href }) =>
           onNavigate && isInternal(href) ? (
-            <button
-              type="button"
-              className="text-suggest-300 cursor-pointer underline underline-offset-2"
-              onClick={() => {
+            <TextLink
+              onPress={() => {
                 const { page, section } = parseDocHref(href);
                 if (page) onNavigate(page, section);
               }}
             >
               {children}
-            </button>
+            </TextLink>
           ) : (
-            <a
-              href={href}
-              className="text-suggest-300 underline underline-offset-2"
-              {...(href?.startsWith("http") ? { target: "_blank", rel: "noreferrer" } : {})}
-            >
+            <TextLink external={href?.startsWith("http")} href={href}>
               {children}
-            </a>
+            </TextLink>
           ),
         // Diagrams and screenshots load only through <img>, where an SVG can't run script (the
         // route also serves diagrams sandboxed). Any other image would be a fetch out of the
@@ -143,9 +149,11 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
         img: ({ src, alt }) => {
           const embedded = embeddedSrc(src);
           return embedded ? (
-            <img src={embedded} alt={alt ?? ""} className="my-2 h-auto max-w-full" loading="lazy" />
+            <img src={embedded} alt={alt ?? ""} loading="lazy" style={{ height: "auto", maxWidth: "100%" }} />
           ) : (
-            <span className="text-muted-foreground">{alt}</span>
+            <Text textRole="compact" tone="muted">
+              {alt}
+            </Text>
           );
         },
         // A page's table is the design system's, as the mock draws it. A Markdown table has no
@@ -160,7 +168,7 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
     >
       {markdown}
     </Markdown>
-  </article>
+  </Stack>
 );
 
 export { DocView };

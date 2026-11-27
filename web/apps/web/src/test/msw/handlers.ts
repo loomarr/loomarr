@@ -17,6 +17,7 @@ import {
   getGetCurrentHealthMockHandler,
   getGetDiagnosticVerboseCaptureMockHandler,
   getGuideHighlightsMockHandler,
+  getHouseholdMockHandler,
   getHouseholdViewingMockHandler,
   getJobsListMockHandler,
   getLibraryStatusMockHandler,
@@ -197,6 +198,7 @@ const appHandlers = (): RequestHandler[] => [
   getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0 }),
   // Home's Watching now and Tonight, read once the guide has a channel: nobody watching, nothing
   // highlighted.
+  getHouseholdMockHandler({ timeZone: "" }),
   getHouseholdViewingMockHandler({ channels: [], scope: "household", viewers: [], watching: 0 }),
   getGuideHighlightsMockHandler({ fromMs: 0, highlights: [], toMs: 0 }),
   // A member's Home reads their channel ideas even before anything is on the air: none yet.
@@ -288,6 +290,7 @@ const appHandlers = (): RequestHandler[] => [
       inProgress: 0,
       scheduled: 0,
       needsDecision: 0,
+      awaitingSplit: 0,
       recoverable: 0,
       ready: 0,
       complete: 0,
@@ -322,6 +325,9 @@ const appHandlers = (): RequestHandler[] => [
       headers: { "Content-Type": "image/png", "X-Loomarr-Watermark-Drawable": "false" },
     }),
   ),
+  // Settings → Access and devices reads an admin's Code Mode devices (#4486). The route is hidden
+  // from the OpenAPI document, so there is no generated handler. None are on.
+  http.get("*/v1/agents/code-mode", () => HttpResponse.json({ devices: [] })),
 ];
 
 export { appHandlers };

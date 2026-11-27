@@ -194,7 +194,7 @@ func (s *Handlers) bootstrap(ctx context.Context, in *bootstrapInput) (*bootstra
 
 type importUsersInput struct {
 	Body struct {
-		IDs []string `json:"ids" doc:"Media-server user ids to allowlist. New users copy their media-server admin/member role."`
+		IDs []string `json:"ids" maxItems:"500" doc:"Media-server user ids to allowlist, at most 500 (a household media server has a few dozen accounts). New users copy their media-server admin/member role."`
 	}
 }
 

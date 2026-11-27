@@ -16,6 +16,9 @@ interface NativeEventStreamOptions {
   clearTimer?: (timer: ReturnType<typeof setTimeout>) => void;
   createRequest?: () => NativeEventRequest;
   headers?: Readonly<Record<string, string>>;
+  // A request keeps its whole response text while it lives; past this many characters the
+  // connection is replaced at once, so a long session does not hold every frame it ever heard.
+  maxResponseBytes?: number;
   onUnauthorized?: () => Promise<void> | void;
   reconnectMs?: number;
   setTimer?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
@@ -52,6 +55,7 @@ const createNativeEventStream = (
     clearTimer = clearTimeout,
     createRequest = () => new XMLHttpRequest(),
     headers = {},
+    maxResponseBytes = 1_000_000,
     onUnauthorized,
     reconnectMs = 5_000,
     setTimer = setTimeout,
@@ -77,12 +81,18 @@ const createNativeEventStream = (
     request?.abort();
     request = undefined;
   };
-  const scheduleReconnect = () => {
+  const scheduleReconnect = (delayMs = reconnectMs) => {
     if (closed || reconnectTimer !== undefined) return;
     reconnectTimer = setTimer(() => {
       reconnectTimer = undefined;
       connect();
-    }, reconnectMs);
+    }, delayMs);
+  };
+  // Drop a healthy connection that has carried its budget and open the next one now.
+  const replace = (spent: NativeEventRequest) => {
+    request = undefined;
+    spent.abort();
+    scheduleReconnect(0);
   };
   const readFrames = (responseText: string) => {
     if (responseText.length < processedLength) {
@@ -99,6 +109,9 @@ const createNativeEventStream = (
     if (closed) return;
     buffer = "";
     processedLength = 0;
+    // "open" once per connection the server accepts, as an EventSource does, so a caller hears
+    // the stream come back after a drop.
+    let announced = false;
     const next = createRequest();
     request = next;
     next.open("GET", url, true);
@@ -108,8 +121,13 @@ const createNativeEventStream = (
     next.onreadystatechange = () => {
       if (closed || request !== next || (next.readyState !== 3 && next.readyState !== 4)) return;
       if (next.status >= 200 && next.status < 300) {
+        if (!announced) {
+          announced = true;
+          dispatch("open", "");
+        }
         readFrames(next.responseText);
         if (next.readyState === 4) scheduleReconnect();
+        else if (processedLength >= maxResponseBytes) replace(next);
         return;
       }
       if (next.readyState !== 4) return;
@@ -124,7 +142,7 @@ const createNativeEventStream = (
       }
       scheduleReconnect();
     };
-    next.onerror = scheduleReconnect;
+    next.onerror = () => scheduleReconnect();
     next.send();
   };
 

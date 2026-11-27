@@ -1,4 +1,4 @@
-import { Action, Stack, Tooltip } from "@loomarr/design-system";
+import { Action, Stack, Text, Tooltip } from "@loomarr/design-system";
 
 const DiagnosticsPager = ({
   label,
@@ -20,9 +20,11 @@ const DiagnosticsPager = ({
   <Stack
     align="center"
     aria-label={label}
-    className="border-border bg-card rounded-lg border px-2 py-1.5"
+    className="border-border bg-card rounded-lg border"
     direction="row"
     justify="between"
+    paddingHorizontal={8}
+    paddingVertical={6}
     render="nav"
   >
     <Tooltip content="Go toward the newest matching results">
@@ -30,9 +32,13 @@ const DiagnosticsPager = ({
         Newer
       </Action>
     </Tooltip>
-    <Stack align="center" className="text-xs" render="span">
-      <strong className="text-foreground font-medium">Page {page}</strong>
-      <span className="text-muted-foreground">Up to 50 {itemLabel}</span>
+    <Stack align="center" render="span">
+      <Text as="strong" textRole="label" tone="primary">
+        Page {page}
+      </Text>
+      <Text as="span" textRole="hint" tone="secondary">
+        Up to 50 {itemLabel}
+      </Text>
     </Stack>
     <Tooltip content="Go further back in time">
       <Action disabled={!canGoOlder} icon="pageOlder" iconPlacement="end" onPress={onOlder} variant="ghost">

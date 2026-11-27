@@ -27,8 +27,8 @@ interface ApprovalQueueItemProps {
   // Picks the model grounded that this proposal's OWN audience ceiling cannot air (§4, #259).
   //
   // ⚠ Rendered OUTSIDE the "Show picks" disclosure, unlike the picks themselves. The picks are
-  // detail you open when you want them; a refusal changes what approving MEANS — before this,
-  // an admin approved seven titles and got five, with nothing on the card saying so.
+  // detail you open when you want them; a refusal changes what approving MEANS — hidden, an
+  // admin approves seven titles and gets five, with nothing on the card saying so.
   refused?: RefusedPick[];
   // The rating the proposal's audience ceiling allows (e.g. "TV-Y7"), named in the refusal notice so
   // a reviewer sees which limit left the titles out. Omitted when the proposal carries none.

@@ -1,9 +1,8 @@
 import type { CoverageCriterionDTOCriterion } from "@loomarr/api/models/coverageCriterionDTOCriterion";
 import type { CoverageDTOLevel } from "@loomarr/api/models/coverageDTOLevel";
-import { Stack, StatusDot, type StatusTone, Text } from "@loomarr/design-system";
+import { Card, Stack, StatusDot, type StatusTone, Text, TextLink } from "@loomarr/design-system";
 import { StatePanel } from "@loomarr/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { cn } from "@/lib/utils";
 import type { CoverageMeterProps } from "./coverage-meter.type";
 
 // CoverageMeter — which rung of the §10 fallback ladder this channel's breaks draw from (V29b).
@@ -30,11 +29,6 @@ const LEVEL_COPY: Record<CoverageDTOLevel, { tone: StatusTone; label: string; hi
     label: "Widened the era",
     hint: "Nothing matches this channel's era, so breaks draw from a decade either side of it.",
   },
-  audience: {
-    tone: "warn",
-    label: "Audience only",
-    hint: "No era match at all — breaks draw from any commercial this channel's audience can take.",
-  },
   bumper_card: {
     tone: "error",
     label: "No commercials",
@@ -57,7 +51,6 @@ const UNKNOWN_LEVEL = {
 const RUNG_LABEL: Record<CoverageDTOLevel, string> = {
   exact: "Exact era + audience",
   widened: "A decade either side",
-  audience: "Any era, right audience",
   bumper_card: "Built-in card",
 };
 
@@ -125,15 +118,19 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
   }
 
   return (
-    <Stack className={cn("border-border rounded-lg border p-4", className)} gap="control" render="section">
+    <Card className={className} gap={12} padding={16} render="section">
       <Stack align="start" direction="row" gap="inline">
         <span style={{ display: "flex", flexShrink: 0, marginTop: 6 }}>
           <StatusDot tone={level.tone} label="" />
         </span>
-        <div className="min-w-0">
-          <p className="text-sm font-medium">{level.label}</p>
-          <p className="text-muted-foreground mt-0.5 text-xs">{level.hint}</p>
-        </div>
+        <Stack gap="0.5" minWidth={0}>
+          <Text as="p" textRole="cardLabel" tone="primary">
+            {level.label}
+          </Text>
+          <Text as="p" textRole="hint" tone="secondary">
+            {level.hint}
+          </Text>
+        </Stack>
       </Stack>
 
       {rungs.length > 0 && (
@@ -143,20 +140,36 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
             const share = widest > 0 ? Math.round((rung.clips / widest) * 100) : 0;
             return (
               <Stack align="center" direction="row" gap="inline" key={rung.level} render="li">
-                <span className="w-44 shrink-0 truncate text-xs">{RUNG_LABEL[rung.level] ?? rung.level}</span>
-                <span className="bg-static-800 h-1.5 min-w-0 flex-1 overflow-hidden rounded-full">
-                  <span
-                    className={cn(
-                      "block h-full rounded-full",
-                      rung.level === coverage.level ? "bg-lock" : "bg-static-500",
-                    )}
-                    style={{ width: `${share}%` }}
+                <Stack flexShrink={0} render="span" width={176}>
+                  <Text as="span" numberOfLines={1} textRole="hint" tone="primary">
+                    {RUNG_LABEL[rung.level] ?? rung.level}
+                  </Text>
+                </Stack>
+                <Stack
+                  backgroundColor="$surfaceElevated"
+                  borderRadius={999}
+                  flexBasis="0%"
+                  flexGrow={1}
+                  flexShrink={1}
+                  height={6}
+                  minWidth={0}
+                  overflow="hidden"
+                  render="span"
+                >
+                  <Stack
+                    backgroundColor={rung.level === coverage.level ? "$stateSuccess" : "$actionDisabled"}
+                    borderRadius={999}
+                    height="100%"
+                    render="span"
+                    width={`${share}%`}
                   />
-                </span>
+                </Stack>
                 {/* tabular-nums so the counts do not jitter as the catalog changes. */}
-                <Text as="span" className="w-10 shrink-0 text-right tabular-nums" textRole="mono">
-                  {rung.clips}
-                </Text>
+                <Stack flexShrink={0} render="span" width={40}>
+                  <Text as="span" fontVariant={["tabular-nums"]} textAlign="right" textRole="mono">
+                    {rung.clips}
+                  </Text>
+                </Stack>
               </Stack>
             );
           })}
@@ -171,7 +184,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           rather than reporting whichever predicate happened to run first. A cumulative funnel
           could not answer the question this list exists to answer. */}
       {isThin && emptyCriteria.length > 0 && (
-        <Stack className="border-border/60 border-t pt-3" gap="1.5">
+        <Stack borderColor="borderDecorative" borderTopWidth={1} gap="1.5" paddingTop={12}>
           <Text as="span" textRole="mono">
             {emptyCriteria.length === 1
               ? "One setting is ruling out every commercial:"
@@ -179,29 +192,28 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           </Text>
           <Stack gap="1" render="ul">
             {criteria.map((c) => (
-              <Stack
-                align="center"
-                className="text-xs"
-                direction="row"
-                gap="inline"
-                key={c.criterion}
-                render="li"
-              >
-                <span className="w-44 min-w-0 truncate">{CRITERION_LABEL[c.criterion] ?? c.criterion}</span>
-                <Text
-                  as="span"
-                  className="shrink-0 tabular-nums"
-                  // ⚠ `danger` is this palette's "a human is needed" red; a zero here IS the
-                  // thing to act on. The non-zero rows keep the role's quiet colour so the eye
-                  // lands on the one row that matters rather than scanning six equal-weight
-                  // numbers. A tone and `strong`, not `text-*`/`font-*` classes: the colour and
-                  // weight are inline style, which a class cannot override (#1956).
-                  strong={c.clips === 0}
-                  textRole="mono"
-                  {...(c.clips === 0 ? { tone: "danger" as const } : {})}
-                >
-                  {c.clips === 0 ? "nothing matches" : `${c.clips} ${c.clips === 1 ? "clip" : "clips"}`}
-                </Text>
+              <Stack align="center" direction="row" gap="inline" key={c.criterion} render="li">
+                <Stack minWidth={0} render="span" width={176}>
+                  <Text as="span" numberOfLines={1} textRole="hint" tone="primary">
+                    {CRITERION_LABEL[c.criterion] ?? c.criterion}
+                  </Text>
+                </Stack>
+                <Stack flexShrink={0} render="span">
+                  <Text
+                    as="span"
+                    fontVariant={["tabular-nums"]}
+                    // ⚠ `danger` is this palette's "a human is needed" red; a zero here IS the
+                    // thing to act on. The non-zero rows keep the role's quiet colour so the eye
+                    // lands on the one row that matters rather than scanning six equal-weight
+                    // numbers. A tone and `strong`, not `text-*`/`font-*` classes: the colour and
+                    // weight are inline style, which a class cannot override (#1956).
+                    strong={c.clips === 0}
+                    textRole="mono"
+                    {...(c.clips === 0 ? { tone: "danger" as const } : {})}
+                  >
+                    {c.clips === 0 ? "nothing matches" : `${c.clips} ${c.clips === 1 ? "clip" : "clips"}`}
+                  </Text>
+                </Stack>
               </Stack>
             ))}
           </Stack>
@@ -225,18 +237,21 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
             "Find clips" while the destination said something else, which is how an operator
             learns to distrust a link. */}
         {isThin && (
-          <Link
-            to="/filler"
-            className="text-signal text-xs underline-offset-2 hover:underline"
-            data-testid="find-clips"
-            // One line of 12 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
-            data-touch-target
-          >
-            Propose a pull →
-          </Link>
+          <Stack direction="row">
+            {/* TextLink carries the 24 px tap area for a line of 12 px text (styles.css, #1785). */}
+            <Text as="span" textRole="hint">
+              <TextLink
+                render={<Link to="/filler" data-testid="find-clips" />}
+                tone="primary"
+                underline="hover"
+              >
+                Propose a pull →
+              </TextLink>
+            </Text>
+          </Stack>
         )}
       </Stack>
-    </Stack>
+    </Card>
   );
 };
 

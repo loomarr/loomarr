@@ -1,4 +1,4 @@
-import { Stack, Table, TableBody, TableCell, TableRow } from "@loomarr/design-system";
+import { Stack, Table, TableBody, TableCell, TableRow, Text, typography } from "@loomarr/design-system";
 import { webTokenSet } from "@loomarr/design-system/web-theme";
 
 // Tokens — the complete web token set, as data (§2.5, §5.1a).
@@ -31,7 +31,9 @@ const isColor = (v: TokenLeaf) => typeof v === "string" && v.startsWith("#");
 
 const GroupTable = ({ name, group }: { name: string; group: TokenGroup }) => (
   <Stack gap="inline" render="section">
-    <h2 className="font-mono text-base font-semibold">{name}</h2>
+    <Text as="h2" style={{ fontFamily: typography.family.data.web }} textRole="cardTitle" tone="primary">
+      {name}
+    </Text>
     <Table caption={`${name} tokens`} minWidth={384}>
       <TableBody>
         {asRows(group).map(([key, value]) => (
@@ -62,12 +64,16 @@ const Tokens = () => {
   return (
     <Stack className="p-6" gap="screen">
       <Stack gap="1" render="header">
-        <h1 className="text-xl font-semibold">Tokens</h1>
-        <p className="text-muted-foreground max-w-2xl text-sm">
+        <Text as="h1" textRole="title">
+          Tokens
+        </Text>
+        <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
           {`All ${total} generated tokens, read from the same data `}
-          <code className="font-mono text-xs">theme.css</code>
+          <Text as="code" textRole="mono" tone="secondary">
+            theme.css
+          </Text>
           {" is built from. If it is not on this page, it does not exist at build time."}
-        </p>
+        </Text>
       </Stack>
       {groups.map(([name, group]) => (
         <GroupTable key={name} name={name} group={group} />

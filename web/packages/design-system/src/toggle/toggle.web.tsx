@@ -5,7 +5,7 @@ import { type CSSProperties, useId, useState } from "react";
 
 import { Icon } from "../icon";
 import { icons } from "../icons";
-import { Text } from "../primitives";
+import { Text } from "../text";
 import { semanticRadius, semanticSpace, semanticTargets } from "../tokens";
 import type { ToggleProps } from "./toggle.type";
 

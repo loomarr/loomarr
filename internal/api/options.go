@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"log/slog"
+	"net/netip"
 	"time"
 
 	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
@@ -25,6 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/activity"
+	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -63,7 +65,9 @@ type Options struct {
 	// instance with no store behind it. The channel, guide and library routes draw their art from it.
 	Images       imagesapi.ImageService
 	CookieSecure string // COOKIE_SECURE: auto|true|false (§11)
-	TrustProxy   bool   // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
+	// TrustedProxies is `security.trusted_proxies`: forwarding headers are honored only from a
+	// socket peer inside one of these ranges (§11). Empty trusts none.
+	TrustedProxies []netip.Prefix
 
 	People    PeopleOptions
 	Setup     SetupOptions
@@ -103,6 +107,8 @@ type PeopleOptions struct {
 	SSO people.SSOService
 	// Provision backs /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent.
 	Provision people.Provisioner
+	// AccessChanged runs after a people route stores a change, so People updates live (#3352).
+	AccessChanged func()
 }
 
 // SetupOptions wires first-run setup, the media-server and arr connections, notification routing
@@ -266,4 +272,9 @@ type OpsOptions struct {
 	ClientDiagnostics opsapi.ClientDiagnosticService
 	// ClientCrashes backs the crash-report write and its admin reads (#1816); nil ⇒ unmounted.
 	ClientCrashes opsapi.ClientCrashService
+	// Recorder records server-side Diagnostics events that API handlers raise themselves, such as
+	// the audit of each Code Mode run (#4486); nil ⇒ none are recorded.
+	Recorder interface {
+		Record(context.Context, diagnostics.Event)
+	}
 }

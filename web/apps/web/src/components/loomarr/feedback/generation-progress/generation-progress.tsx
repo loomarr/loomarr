@@ -1,8 +1,7 @@
 import type { ProposalJourneyProgressDTO } from "@loomarr/api/models/proposalJourneyProgressDTO";
 import { pickCount, progressLine } from "@loomarr/core/requests";
-import { ActivityIndicator, Badge, Stack } from "@loomarr/design-system";
+import { ActivityIndicator, Badge, Stack, Text } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
 import type { GenerationProgressProps } from "./generation-progress.type";
 
 const LABELS: Partial<Record<GenerationProgressProps["phase"], string>> = {
@@ -28,14 +27,31 @@ const useSecondsSince = (startedAt: string | undefined): number | undefined => {
 
 // A streamed title reads like a row of the lineup it is about to become: name, year, and the
 // same state wording the review uses.
-const PickRow = ({ pick }: { pick: ProposalJourneyProgressDTO["picks"][number] }) => (
-  <li className="border-border flex flex-wrap items-center gap-x-2 gap-y-1 border-b py-2 last:border-b-0">
-    <span className="text-sm font-medium">{pick.name}</span>
-    {pick.year ? <span className="text-muted-foreground text-xs">{pick.year}</span> : null}
+const PickRow = ({ last, pick }: { last: boolean; pick: ProposalJourneyProgressDTO["picks"][number] }) => (
+  <Stack
+    align="center"
+    borderBottomWidth={last ? 0 : 1}
+    borderColor="$borderDecorative"
+    columnGap="2"
+    direction="row"
+    flexShrink={0}
+    paddingVertical={8}
+    render="li"
+    rowGap="1"
+    wrap
+  >
+    <Text as="span" textRole="cardLabel">
+      {pick.name}
+    </Text>
+    {pick.year ? (
+      <Text as="span" textRole="hint" tone="secondary">
+        {pick.year}
+      </Text>
+    ) : null}
     <Badge shape="square" tone={pick.inLibrary ? "lock" : "tune"}>
       {pick.inLibrary ? "In your library" : "Will be added"}
     </Badge>
-  </li>
+  </Stack>
 );
 
 // A generation is a loop, not a trustworthy checklist. Show the user's current outcome in
@@ -53,36 +69,52 @@ const GenerationProgress = ({ phase, elapsedSeconds, progress, className }: Gene
   const line = progress ? progressLine(progress) : (LABELS[phase] ?? LABELS.reasoning);
   const count = progress ? pickCount(progress) : undefined;
   return (
-    <div className={cn("border-border bg-muted/35 flex items-start gap-3 rounded-lg border p-4", className)}>
+    <Stack
+      align="start"
+      backgroundColor="washElevated35"
+      borderColor="$borderDecorative"
+      borderRadius={8}
+      borderWidth={1}
+      className={className}
+      direction="row"
+      gap="control"
+      padding={16}
+    >
       {!complete && (
-        <Stack className="mt-0.5" direction="row" render="span">
+        <Stack direction="row" marginTop={2} render="span">
           <ActivityIndicator decorative size="compact" tone="suggest" />
         </Stack>
       )}
-      <div className="min-w-0 flex-1">
-        <p role="status" aria-live="polite" className="text-sm font-medium">
-          {line}
-        </p>
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+        <div role="status" aria-live="polite">
+          <Text as="p" textRole="cardLabel">
+            {line}
+          </Text>
+        </div>
         {progress && progress.picks.length > 0 && (
           <>
-            <Stack aria-label="Titles chosen so far" className="mt-2" render="ul">
-              {progress.picks.map((pick) => (
-                <PickRow key={pick.key} pick={pick} />
+            <Stack aria-label="Titles chosen so far" marginTop={8} render="ul">
+              {progress.picks.map((pick, index) => (
+                <PickRow key={pick.key} last={index === progress.picks.length - 1} pick={pick} />
               ))}
             </Stack>
-            <p className="text-muted-foreground mt-1 text-xs">
-              {count}
-              {seconds !== undefined ? ` · ${seconds} s` : ""}
-            </p>
+            <Stack marginTop={4}>
+              <Text as="p" textRole="hint" tone="secondary">
+                {count}
+                {seconds !== undefined ? ` · ${seconds} s` : ""}
+              </Text>
+            </Stack>
           </>
         )}
         {!complete && seconds !== undefined && seconds >= 10 && !(progress && progress.picks.length > 0) && (
-          <p className="text-muted-foreground mt-1 text-sm">
-            This can take a little while. You can leave this page open.
-          </p>
+          <Stack marginTop={4}>
+            <Text as="p" textRole="compact" tone="secondary">
+              This can take a little while. You can leave this page open.
+            </Text>
+          </Stack>
         )}
-      </div>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 

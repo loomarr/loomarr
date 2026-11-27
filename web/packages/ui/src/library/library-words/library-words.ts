@@ -1,10 +1,12 @@
-import { formatEpgTime } from "@loomarr/core/format";
+import { formatGuideTime } from "@loomarr/core/guide";
 import type { StatusDot } from "@loomarr/design-system";
 import type { ComponentProps } from "react";
 import type {
   LibraryDetails,
+  LibraryFolderSummary,
   LibraryHeldRemoval,
   LibraryScan,
+  LibrarySkipped,
 } from "../library-settings/library-settings.type";
 
 // The Library's shared plain words (design/library, PLAIN-WORDS.md): a folder is named for what it
@@ -32,6 +34,85 @@ const heldTitle = (held: LibraryHeldRemoval) => {
   const one = held.movies + held.episodes + held.other === 1;
   return `${joinNames(parts)} ${one ? "seems" : "seem"} to be gone from your ${folderName(held.path)} folder`;
 };
+
+// "That's Amber Hollow, Brightwater, Calder Point and 2,403 more." — what letting them go removes.
+// Empty when no title is named (only extras are gone).
+const heldNames = (held: LibraryHeldRemoval) => {
+  if (held.titles.length === 0) return "";
+  const rest = held.titleCount - held.titles.length;
+  const names = rest > 0 ? [...held.titles, `${rest.toLocaleString("en-US")} more`] : held.titles;
+  return `That's ${joinNames(names)}.`;
+};
+
+// "2 files have names Loomarr can't read".
+const unreadableTitle = (paths: readonly string[]) =>
+  `${count(paths.length, "file has a name", "files have names")} Loomarr can't read`;
+
+// "Rename Ferrow �t� (1999).mkv and Kettle�.mkv using ordinary letters, then check again." Each
+// file by its own name: the folder it sits in is plain.
+const unreadableNames = (paths: readonly string[]) => {
+  const names = paths.slice(0, 3).map((p) => p.split("/").pop() ?? p);
+  const rest = paths.length - names.length;
+  return `Rename ${joinNames(rest > 0 ? [...names, `${rest.toLocaleString("en-US")} more`] : names)} using ordinary letters, then check again.`;
+};
+
+// What the scan skips, said a callout per kind: each names the first three files by their own
+// names, the rest as "N more", and says what fixes them. A file Loomarr refused, for whatever
+// reason, is Loomarr's to fix, so those two reasons are said as one.
+const SKIPPED_KINDS = [
+  {
+    reasons: ["broken_link"],
+    title: (n: number) =>
+      count(n, "shortcut points to a file that's gone", "shortcuts point to files that are gone"),
+    body: (names: string, n: number) =>
+      n === 1
+        ? `${names}. Point it at the file again or delete it, then check again.`
+        : `${names}. Point them at the files again or delete them, then check again.`,
+  },
+  {
+    reasons: ["link_outside"],
+    title: (n: number) =>
+      count(n, "shortcut leads outside your media folders", "shortcuts lead outside your media folders"),
+    body: (names: string, n: number) =>
+      `Loomarr only reads inside your media folders. Move ${names} into one, or add ${n === 1 ? "its folder" : "their folders"}.`,
+  },
+  {
+    reasons: ["disc_image"],
+    title: (n: number) => count(n, "disc image Loomarr can't play", "disc images Loomarr can't play"),
+    body: (names: string, n: number) =>
+      `Loomarr plays video files, not whole discs. Rip ${names} to ${n === 1 ? "a video file" : "video files"}, then check again.`,
+  },
+  {
+    reasons: ["empty_file"],
+    title: (n: number) => count(n, "video file is empty", "video files are empty"),
+    body: (names: string, n: number) =>
+      `${names} ${n === 1 ? "has" : "have"} nothing in ${n === 1 ? "it" : "them"} — a copy that never finished. Copy ${n === 1 ? "it" : "them"} again or delete ${n === 1 ? "it" : "them"}, then check again.`,
+  },
+  {
+    reasons: ["identity_conflict", "invalid_facts"],
+    title: (n: number) => count(n, "file Loomarr couldn't add", "files Loomarr couldn't add"),
+    body: (names: string, n: number) =>
+      `Loomarr couldn't make sense of ${names}. Check again; if ${n === 1 ? "it's" : "they're"} still here, it's a problem in Loomarr, not your ${n === 1 ? "file" : "files"}.`,
+  },
+] as const satisfies readonly {
+  reasons: readonly LibrarySkipped["reason"][];
+  title: (n: number) => string;
+  body: (names: string, n: number) => string;
+}[];
+
+const skippedCallouts = (skipped: readonly LibrarySkipped[]) =>
+  SKIPPED_KINDS.flatMap((kind) => {
+    const mine = skipped.filter((s) => (kind.reasons as readonly string[]).includes(s.reason));
+    const total = mine.reduce((sum, s) => sum + s.total, 0);
+    if (total === 0) return [];
+    const names = mine
+      .flatMap((s) => s.paths)
+      .slice(0, 3)
+      .map((p) => p.split("/").pop() ?? p);
+    const rest = total - names.length;
+    const listed = joinNames(rest > 0 ? [...names, `${rest.toLocaleString("en-US")} more`] : names);
+    return [{ key: kind.reasons[0], title: kind.title(total), body: kind.body(listed, total) }];
+  });
 
 // The three steps of adding media, as the maintainer reads them.
 const STEP_NAMES: Record<Exclude<LibraryScan["step"], "idle">, string> = {
@@ -130,14 +211,39 @@ const scanHeadline = (scan: LibraryScan, notAllThere = false) => {
 //   line:   "12 titles are waiting on details — trying again at 3:40 PM" (the Library's line)
 //   title:  "12 titles are waiting on details" (Settings → Library's row)
 //   reason: "Can't reach TMDB — trying again at 3:40 PM", or "Trying again at 3:40 PM"
-const detailsWaiting = (details: LibraryDetails | undefined, scan: LibraryScan) => {
+// The time is told on the household's clock (the Guide's), the device's while that is unknown.
+const detailsWaiting = (details: LibraryDetails | undefined, scan: LibraryScan, timeZone?: string) => {
   if (!details?.retryAt || details.waiting === 0 || scan.step === "lookingUp") return undefined;
   const title = `${count(details.waiting, "title", "titles")} ${details.waiting === 1 ? "is" : "are"} waiting on details`;
-  const retry = `trying again at ${formatEpgTime(details.retryAt)}`;
-  const reason = details.unreachable
-    ? `Can't reach TMDB — ${retry}`
-    : `Trying again at ${formatEpgTime(details.retryAt)}`;
+  const at = formatGuideTime(Date.parse(details.retryAt), timeZone);
+  const retry = `trying again at ${at}`;
+  const reason = details.unreachable ? `Can't reach TMDB — ${retry}` : `Trying again at ${at}`;
   return { title, line: `${title} — ${retry}`, reason };
 };
 
-export { detailsWaiting, folderName, heldTitle, joinNames, scanHeadline };
+// What the folder browser says a folder holds, one look inside it (#2151):
+//   "12 folders · 340 videos", "3 folders", "1 video", "Empty", "Slow to answer",
+//   "Loomarr can't open this", and "…" while it is being counted.
+const folderSummary = (summary: LibraryFolderSummary | undefined) => {
+  if (!summary) return "…";
+  if (summary.state === "slow") return "Slow to answer";
+  if (summary.state === "unreadable") return "Loomarr can't open this";
+  const parts = [
+    summary.folders ? count(summary.folders, "folder", "folders") : "",
+    summary.videos ? count(summary.videos, "video", "videos") : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "Empty";
+};
+
+export {
+  detailsWaiting,
+  folderName,
+  folderSummary,
+  heldNames,
+  heldTitle,
+  joinNames,
+  scanHeadline,
+  skippedCallouts,
+  unreadableNames,
+  unreadableTitle,
+};

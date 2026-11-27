@@ -4,7 +4,7 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { changePasswordSchema } from "@loomarr/core/schemas";
-import { Action, Card, FieldHint, Stack, StatusLabel } from "@loomarr/design-system";
+import { Action, Card, FieldHint, Stack, StatusLabel, Text } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
@@ -86,47 +86,67 @@ const AccountScreen = () => {
   const [confirmingSession, setConfirmingSession] = useState<string>();
 
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <PageHeader
         title="Your account"
         description="Your sign-in, your password, and the devices holding a session."
       />
 
-      <div className="max-w-form mx-auto flex w-full flex-1 flex-col gap-4 overflow-auto p-6">
+      <Stack
+        flexBasis="0%"
+        flexGrow={1}
+        flexShrink={1}
+        gap="4"
+        maxWidth={672}
+        overflow="auto"
+        marginHorizontal="auto"
+        padding={24}
+        width="100%"
+      >
         <Card alignItems="center" flexDirection="row" gap={12} padding={20}>
           <Stack
             align="center"
-            className="bg-muted size-10 rounded-full font-medium"
+            backgroundColor="surfaceElevated"
+            borderRadius={20}
             direction="row"
+            height={40}
             justify="center"
+            width={40}
           >
-            {(user?.name ?? "?").slice(0, 2).toUpperCase()}
+            <Text as="span" textRole="cardLabel">
+              {(user?.name ?? "?").slice(0, 2).toUpperCase()}
+            </Text>
           </Stack>
-          <div className="min-w-0">
-            <p className="font-medium">{user?.name}</p>
-            <Stack align="center" className="mt-0.5" direction="row" gap="1.5" wrap>
+          <Stack flexShrink={1} gap="0.5" minWidth={0}>
+            <Text as="p" textRole="cardLabel">
+              {user?.name}
+            </Text>
+            <Stack align="center" direction="row" gap="1.5" wrap>
               <StatusLabel tone="off">{isLocal ? "Local account" : "Media-server account"}</StatusLabel>
               <StatusLabel tone={user?.role === "admin" ? "notice" : "off"}>
                 {user?.role === "admin" ? "Admin" : "Member"}
               </StatusLabel>
             </Stack>
-          </div>
+          </Stack>
         </Card>
 
         <Card gap={12} padding={20}>
-          <h2 className="font-medium">Password</h2>
+          <Text as="h2" textRole="cardLabel">
+            Password
+          </Text>
           {isLocal ? (
-            <form
-              className="flex flex-col gap-3"
+            <Stack
+              gap="3"
               noValidate
               onSubmit={(e) => {
                 e.preventDefault();
                 void form.handleSubmit();
               }}
+              render="form"
             >
-              <p className="text-muted-foreground text-sm">
+              <Text as="p" textRole="compact" tone="secondary">
                 This is a local Loomarr account, so Loomarr stores the password and you can change it here.
-              </p>
+              </Text>
               <Stack gap="inline">
                 {PASSWORD_FIELDS.map(({ name, label, autoComplete }) => (
                   <form.AppField key={name} name={name}>
@@ -144,18 +164,18 @@ const AccountScreen = () => {
                   Change password
                 </Action>
                 {/* The honest consequence, stated before the click rather than after. */}
-                <span className="text-static-400 text-xs">
+                <Text as="span" textRole="hint" tone="secondary">
                   changing it signs you out everywhere, including here
-                </span>
+                </Text>
               </Stack>
-            </form>
+            </Stack>
           ) : (
-            <p className="text-muted-foreground text-sm">
+            <Text as="p" textRole="compact" tone="secondary">
               Your media server owns this password. Loomarr stores only a non-reversible verifier after a
               successful sign-in
               {user?.offlineLogin ? ", so this account can sign in during a media-server outage" : ""}. Change
               the password on your media server; your next successful sign-in refreshes the verifier.
-            </p>
+            </Text>
           )}
         </Card>
 
@@ -165,16 +185,42 @@ const AccountScreen = () => {
             labelled yet keeps today's "Signed in …" title. */}
         {/* shrink-0: in the scrolling column, an overflow-hidden card would shrink and clip its rows (#1785). */}
         <Card flexShrink={0} overflow="hidden">
-          <h2 className="border-border border-b px-4 py-3.5 text-sm font-semibold">Where you're signed in</h2>
-          {sessions.isLoading && <p className="text-muted-foreground px-4 py-3 text-sm">Loading sessions…</p>}
+          <Stack
+            borderBottomWidth={1}
+            borderColor="borderDecorative"
+            paddingHorizontal={16}
+            paddingVertical={14}
+          >
+            <Text as="h2" strong textRole="cardLabel">
+              Where you're signed in
+            </Text>
+          </Stack>
+          {sessions.isLoading && (
+            <Stack paddingHorizontal={16} paddingVertical={12}>
+              <Text as="p" textRole="compact" tone="secondary">
+                Loading sessions…
+              </Text>
+            </Stack>
+          )}
           {!sessions.isLoading && sessionRows.length === 0 && (
-            <p className="text-muted-foreground px-4 py-3 text-sm">No other sessions.</p>
+            <Stack paddingHorizontal={16} paddingVertical={12}>
+              <Text as="p" textRole="compact" tone="secondary">
+                No other sessions.
+              </Text>
+            </Stack>
           )}
           <ul>
-            {sessionRows.map((s) => (
-              <li
+            {sessionRows.map((s, index) => (
+              <Stack
+                align="center"
+                borderBottomWidth={index === sessionRows.length - 1 ? 0 : 1}
+                borderColor="borderDecorative"
+                direction="row"
+                gap="control"
                 key={s.id}
-                className="border-border flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
+                paddingHorizontal={16}
+                paddingVertical={12}
+                render="li"
               >
                 {/* The confirm takes the row's place, as Delete channel's replaces its choices. */}
                 {confirmingSession === s.id ? (
@@ -190,16 +236,16 @@ const AccountScreen = () => {
                   />
                 ) : (
                   <>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">
+                    <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0}>
+                      <Text as="p" textRole="cardLabel">
                         {s.clientLabel ?? `Signed in ${formatRelative(s.createdAt)}`}
-                      </p>
+                      </Text>
                       {s.lastSeenAt !== undefined && (
-                        <p className="text-muted-foreground mt-0.5 font-mono text-xs">
+                        <Text as="p" textRole="mono">
                           {formatRelative(s.lastSeenAt)}
-                        </p>
+                        </Text>
                       )}
-                    </div>
+                    </Stack>
                     {s.current && <StatusLabel tone="notice">This device</StatusLabel>}
                     {/* No Sign out on your own session: the shell's Sign out is for that. */}
                     {!s.current && (
@@ -214,11 +260,11 @@ const AccountScreen = () => {
                     )}
                   </>
                 )}
-              </li>
+              </Stack>
             ))}
           </ul>
         </Card>
-      </div>
+      </Stack>
     </Stack>
   );
 };

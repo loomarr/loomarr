@@ -5,7 +5,7 @@ import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { requestAcquisitions, requestFixLabel, requestStatus } from "@loomarr/core/requests";
-import { Action, Badge, Card, Stack, Surface } from "@loomarr/design-system";
+import { Action, Badge, Card, Stack, Surface, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
@@ -18,15 +18,17 @@ import { useRequests } from "@/queue/use-requests";
 
 // One request, end to end (#1405) — the Proposal Job journey (GET /v1/proposal-jobs/{jobId}):
 // what was asked, what was proposed, who decided and when, how each title is coming along, the
-// channel it became, and the actions that make sense from here. Clicking a request on the Requests
-// page used to do nothing; this is what it opens.
+// channel it became, and the actions that make sense from here. It is what clicking a request on
+// the Requests page opens.
 //
 // Members can open only their own request and admins any (the endpoint enforces it), so a 403/404
 // is shown as the API's own problem message rather than an empty page.
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <Stack gap="inline" render="section">
-    <h2 className="text-lg font-semibold">{title}</h2>
+    <Text as="h2" strong textRole="headline">
+      {title}
+    </Text>
     {children}
   </Stack>
 );
@@ -38,18 +40,13 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const query = proposalJobsApi.useGetProposalJob(jobId, {
-    query: {
-      // A generating request streams its progress; the SSE frame refetches sooner, this is the floor.
-      refetchInterval: (q) =>
-        q.state.data?.status === 200 && q.state.data.data.milestone === "generating" ? 2_000 : false,
-    },
-  });
+  // A generating request follows its suggestion frames: the bus refetches /v1/proposal-jobs on each.
+  const query = proposalJobsApi.useGetProposalJob(jobId);
   const { titles } = useRequests();
   const retryTitle = titlesApi.useEnqueueTitle({
     mutation: {
       // A re-enqueue moves the title back to `wanted`, and the reconciler may advance it before we
-      // refetch, so every state's list is stale — the same invalidation the old In flight tab used.
+      // refetch, so every state's list is stale and all of them are invalidated.
       onSuccess: () =>
         Promise.all(
           Object.values(TitleDTOState).map((state) =>
@@ -94,7 +91,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
   const approvedAt = when(proposal?.approvedAt);
 
   return (
-    <Stack className="h-full">
+    <Stack height="100%">
       <PageHeader
         title={journey.intent.description}
         description={`Requested ${when(journey.createdAt)}`}
@@ -124,7 +121,16 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
           </>
         }
       />
-      <div className="max-w-reading mx-auto flex w-full flex-1 flex-col gap-6 overflow-auto p-6">
+      <Stack
+        className="max-w-reading overflow-auto"
+        flexBasis="0%"
+        flexGrow={1}
+        flexShrink={1}
+        gap="6"
+        marginHorizontal="auto"
+        padding={24}
+        width="100%"
+      >
         <Stack align="center" direction="row" gap="inline" wrap>
           <Badge shape="square" tone={status.tone}>
             {status.line}
@@ -140,15 +146,21 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
 
         {journey.failure && (
           <Card gap={4} padding={16}>
-            <p className="font-medium">{journey.failure.message}</p>
-            <p className="text-muted-foreground text-sm">{journey.failure.guidance}</p>
+            <Text as="p" textRole="cardLabel">
+              {journey.failure.message}
+            </Text>
+            <Text as="p" textRole="compact" tone="secondary">
+              {journey.failure.guidance}
+            </Text>
           </Card>
         )}
 
         {proposal && (
           <Section title="Decision">
             {proposal.status === "submitted" && (
-              <p className="text-muted-foreground text-sm">Waiting for an admin to approve this request.</p>
+              <Text as="p" textRole="compact" tone="secondary">
+                Waiting for an admin to approve this request.
+              </Text>
             )}
             {/* Deciding is admin-only (§11); a member only sees the wait. Approving creates the
                 channel, so it ends on that channel, as it does from the approval queue. */}
@@ -172,34 +184,49 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
             )}
             {(approve.error ?? deny.error) != null && <ErrorState error={approve.error ?? deny.error} />}
             {proposal.status === "approved" && (
-              <p className="text-sm">
+              <Text as="p" textRole="compact">
                 {proposal.approvedByName ? `Approved by ${proposal.approvedByName}` : "Approved"}
                 {approvedAt ? ` ${approvedAt}` : ""}
                 {proposal.modSummary ? `, with changes: ${proposal.modSummary}` : ""}
-              </p>
+              </Text>
             )}
             {proposal.status === "denied" && (
-              <p className="text-onair-300 text-sm">
+              <Text as="p" textRole="compact" tone="danger">
                 Not approved{proposal.denyReason ? `: ${proposal.denyReason}` : ". No reason was given."}
-              </p>
+              </Text>
             )}
-            {proposal.note && <p className="text-sm">{proposal.note}</p>}
+            {proposal.note && (
+              <Text as="p" textRole="compact">
+                {proposal.note}
+              </Text>
+            )}
           </Section>
         )}
 
         {proposal && (
           <Section title="Proposed lineup">
             {lineup.length === 0 ? (
-              <p className="text-muted-foreground text-sm">Nothing from your library was proposed.</p>
+              <Text as="p" textRole="compact" tone="secondary">
+                Nothing from your library was proposed.
+              </Text>
             ) : (
-              <Stack className="text-sm" gap="1" render="ul">
+              <Stack gap="1" render="ul">
                 {lineup.map((item, index) => (
                   // A title can repeat within a proposal, so the id alone is not a unique key.
-                  // biome-ignore lint/suspicious/noArrayIndexKey: the lineup is a fixed, ordered snapshot
-                  <li key={`${index}:${item.mediaType}:${item.tmdbId ?? item.name}`}>
+                  <Text
+                    as="li"
+                    // biome-ignore lint/suspicious/noArrayIndexKey: the lineup is a fixed, ordered snapshot
+                    key={`${index}:${item.mediaType}:${item.tmdbId ?? item.name}`}
+                    textRole="compact"
+                  >
                     {item.name}
-                    {item.year ? <span className="text-muted-foreground"> ({item.year})</span> : null}
-                  </li>
+                    {item.year ? (
+                      <Text as="span" textRole="compact" tone="secondary">
+                        {" "}
+                        ({item.year})
+                      </Text>
+                    ) : null}
+                  </Text>
                 ))}
               </Stack>
             )}
@@ -210,13 +237,13 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
             approved request must never show a silently missing "Titles being added". */}
         {proposal?.status === "approved" && acquisitions.length === 0 && (
           <Section title="Titles being added">
-            <p className="text-muted-foreground text-sm">
+            <Text as="p" textRole="compact" tone="secondary">
               {journey.milestone === "live"
                 ? "All titles are on the channel."
                 : requested > 0
                   ? "All titles have arrived."
                   : "Titles appear once the channel starts building."}
-            </p>
+            </Text>
           </Section>
         )}
 
@@ -228,23 +255,34 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
                   align="center"
                   // biome-ignore lint/suspicious/noArrayIndexKey: a title can repeat within a proposal
                   key={`${index}:${item.mediaType}:${item.tmdbId ?? item.name}`}
-                  className="border-border bg-card rounded-md border px-3 py-2.5"
+                  paddingHorizontal={12}
+                  paddingVertical={10}
+                  className="border-border bg-card rounded-md border"
                   direction="row"
                   gap="control"
                   render="li"
                 >
-                  <span className="min-w-0 flex-1 truncate text-sm">
+                  <Text as="span" className="min-w-0 flex-1 truncate" textRole="compact">
                     {item.name}
-                    {item.year ? <span className="text-muted-foreground"> ({item.year})</span> : null}
+                    {item.year ? (
+                      <Text as="span" textRole="compact" tone="secondary">
+                        {" "}
+                        ({item.year})
+                      </Text>
+                    ) : null}
                     {/* WHY it was given up (e.g. "deadline exceeded"); otherwise the row only says it failed. */}
                     {title?.state === "unavailable" && title.lastError ? (
-                      <span className="text-muted-foreground block truncate text-xs">{title.lastError}</span>
+                      <Text as="span" className="block truncate" textRole="hint" tone="secondary">
+                        {title.lastError}
+                      </Text>
                     ) : null}
-                  </span>
+                  </Text>
                   {title ? (
                     <StateBadge state={title.state} />
                   ) : (
-                    <span className="text-muted-foreground text-xs">Not requested yet</span>
+                    <Text as="span" textRole="hint" tone="secondary">
+                      Not requested yet
+                    </Text>
                   )}
                   {/* Re-enqueue puts a given-up title back in the queue (§4). Admin-only, as is
                       POST /v1/titles — a member would only be offered a button that 403s. */}
@@ -274,7 +312,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
             {retryTitle.error != null && <ErrorState error={retryTitle.error} />}
           </Section>
         )}
-      </div>
+      </Stack>
     </Stack>
   );
 };

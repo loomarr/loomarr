@@ -1,8 +1,7 @@
 import { loginSchema } from "@loomarr/core/schemas";
-import { Action, Stack } from "@loomarr/design-system";
+import { Action, Stack, Text, TextLink } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import type { LoginFormProps } from "./login-form.type";
 
 // LoginForm — the sign-in surface (§11). Local or imported media-server credentials
@@ -49,13 +48,16 @@ const LoginForm = ({
   });
 
   return (
-    <form
+    <Stack
+      className={className}
+      gap="5"
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
         form.handleSubmit();
       }}
-      className={cn("flex w-full flex-col gap-5", className)}
+      render="form"
+      width="100%"
     >
       {error != null && <ErrorState error={error} />}
 
@@ -74,12 +76,11 @@ const LoginForm = ({
         )}
       </form.AppField>
 
-      <a
-        className="text-signal -mt-3 self-end text-sm underline-offset-4 hover:underline"
-        href="/forgot-password"
-      >
-        Forgot password?
-      </a>
+      <Text as="div" className="-mt-3 self-end" textRole="compact">
+        <TextLink href="/forgot-password" tone="primary" underline="hover">
+          Forgot password?
+        </TextLink>
+      </Text>
 
       <Action disabled={isPending} submit>
         {isPending ? "Signing in…" : "Sign in"}
@@ -92,9 +93,11 @@ const LoginForm = ({
       {onSso && (
         <Stack className="border-border border-t pt-4" gap="inline">
           {ssoError ? (
-            <p className="text-danger text-sm" role="alert">
-              {ssoErrorCopy(ssoError)}
-            </p>
+            <div role="alert">
+              <Text as="p" textRole="compact" tone="danger">
+                {ssoErrorCopy(ssoError)}
+              </Text>
+            </div>
           ) : null}
           <Action disabled={isPending} onPress={onSso} variant="outline">
             Sign in with your provider
@@ -112,12 +115,12 @@ const LoginForm = ({
           <Action disabled={isPending} onPress={onDevLogin} variant="outline">
             Skip sign-in (dev)
           </Action>
-          <p className="text-muted-foreground text-xs">
+          <Text as="p" textRole="hint" tone="secondary">
             <code>LOOMARR_DEV_LOGIN</code> is on. It signs you in as an admin with no password.
-          </p>
+          </Text>
         </Stack>
       )}
-    </form>
+    </Stack>
   );
 };
 

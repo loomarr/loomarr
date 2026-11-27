@@ -120,10 +120,14 @@ const useChannelSubtitles = (
     return () => pending.abort();
   }, [channelId, need, source, track]);
 
-  const current = enabled && held !== undefined && held.channelId === channelId;
+  // The tracks are the channel's, so a pause keeps them: a television's keys come up with
+  // Play/Pause, and a menu of Off alone could never turn subtitles on. Lines need playback.
+  const forChannel = held !== undefined && held.channelId === channelId ? held : undefined;
+  const current = enabled ? forChannel : undefined;
   return {
-    lines: current && held.track === track && track !== SUBTITLES_OFF ? cueLines(held.cues, playheadMs) : [],
-    tracks: current ? held.tracks : undefined,
+    lines:
+      current && current.track === track && track !== SUBTITLES_OFF ? cueLines(current.cues, playheadMs) : [],
+    tracks: forChannel?.tracks,
   };
 };
 

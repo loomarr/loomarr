@@ -6,11 +6,13 @@ import { ExcludedItemDTOReason } from "@loomarr/api/models/excludedItemDTOReason
 import { ScheduleFactDTOReason } from "@loomarr/api/models/scheduleFactDTOReason";
 import type { ScheduleTraceDTO } from "@loomarr/api/models/scheduleTraceDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, DateField, Disclosure, Icon, icons, Stack } from "@loomarr/design-system";
+import { guideWallClock, guideWallTime } from "@loomarr/core/guide";
+import { Action, Badge, DateField, Disclosure, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { EmptyState, ErrorState } from "../../feedback";
 import type { ChannelCyclePreviewProps } from "./channel-cycle-preview.type";
+import { nextMonthDayAt, nextWeekdayAt } from "./time-presets";
 
 // One import provides both the type and const: orval derives the union from the frozen object,
 // so the switchable values and the type that constrains them cannot drift.
@@ -24,55 +26,36 @@ const PREVIEW_DEBOUNCE_MS = 300;
 
 interface TimePreset {
   label: string;
-  at: () => string;
+  at: (timeZone?: string) => string;
 }
-
-const nextWeekdayAt = (weekday: number, hour: number): Date => {
-  const d = new Date();
-  d.setHours(hour, 0, 0, 0);
-  const delta = (weekday - d.getDay() + 7) % 7;
-  d.setDate(d.getDate() + (delta === 0 && d.getHours() >= hour ? 7 : delta));
-  return d;
-};
-
-const nextMonthDayAt = (month: number, day: number, hour: number): Date => {
-  const now = new Date();
-  let year = now.getFullYear();
-  let d = new Date(year, month, day, hour, 0, 0, 0);
-  if (d.getTime() < now.getTime()) {
-    year += 1;
-    d = new Date(year, month, day, hour, 0, 0, 0);
-  }
-  return d;
-};
 
 const TIME_PRESETS: TimePreset[] = [
   { label: "Now", at: () => "" },
-  { label: "Sat 9am", at: () => nextWeekdayAt(6, 9).toISOString() },
-  { label: "Weekday primetime", at: () => nextWeekdayAt(2, 20).toISOString() },
-  { label: "Christmas morning", at: () => nextMonthDayAt(11, 25, 9).toISOString() },
-  { label: "Halloween night", at: () => nextMonthDayAt(9, 31, 20).toISOString() },
+  { label: "Sat 9am", at: (tz) => nextWeekdayAt(6, 9, new Date(), tz).toISOString() },
+  { label: "Weekday primetime", at: (tz) => nextWeekdayAt(2, 20, new Date(), tz).toISOString() },
+  { label: "Christmas morning", at: (tz) => nextMonthDayAt(11, 25, 9, new Date(), tz).toISOString() },
+  { label: "Halloween night", at: (tz) => nextMonthDayAt(9, 31, 20, new Date(), tz).toISOString() },
 ];
 
-// toDatetimeLocalValue / fromDatetimeLocalValue — convert between an RFC3339 `at` string
-// and the value a <input type="datetime-local"> wants/produces (no timezone suffix,
-// local wall-clock, minute precision). The preview evaluates against the CONTAINER
-// wall-clock server-side, so what the picker shows is "local browser time" as a proxy —
-// close enough for "what airs Saturday 9am", and the resolved `at` echoed back in the
-// response is the authority on what was actually evaluated.
-const toDatetimeLocalValue = (at: string): string => {
-  if (!at) return "";
-  const d = new Date(at);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+// toDatetimeLocalValue / fromDatetimeLocalValue — convert between an RFC3339 `at` string and
+// the value a datetime-local field wants and produces (no zone suffix, minute precision). The
+// field reads in the household's wall clock, the clock the server evaluates the preview on, so
+// "Saturday 9am" means 9am at home even from a phone in another zone. An undefined zone (not yet
+// read) is the device's own.
+const pad = (n: number) => String(n).padStart(2, "0");
+
+const toDatetimeLocalValue = (at: string, timeZone?: string): string => {
+  const ms = at ? Date.parse(at) : Number.NaN;
+  if (Number.isNaN(ms)) return "";
+  const w = guideWallClock(ms, timeZone);
+  return `${w.year}-${pad(w.month)}-${pad(w.day)}T${pad(w.hour)}:${pad(w.minute)}`;
 };
 
-const fromDatetimeLocalValue = (v: string): string => {
-  if (!v) return "";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toISOString();
+const fromDatetimeLocalValue = (v: string, timeZone?: string): string => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(v);
+  if (!m) return "";
+  const [year, month, day, hour, minute] = m.slice(1).map(Number) as [number, number, number, number, number];
+  return new Date(guideWallTime(year, month, day, hour, minute, timeZone)).toISOString();
 };
 
 // humanWindow — windowMs (0 = whole run) as a short horizon phrase.
@@ -99,14 +82,16 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
       <Stack
         align="center"
         aria-label="Commercial break"
-        className="text-muted-foreground py-1.5 text-xs"
         direction="row"
         gap="inline"
+        paddingVertical={6}
         render="li"
       >
-        <div className="bg-border h-px flex-1" />
-        <span>Commercial break</span>
-        <div className="bg-border h-px flex-1" />
+        <Stack backgroundColor="borderDecorative" flexBasis="0%" flexGrow={1} height={1} />
+        <Text as="span" textRole="hint" tone="secondary">
+          Commercial break
+        </Text>
+        <Stack backgroundColor="borderDecorative" flexBasis="0%" flexGrow={1} height={1} />
       </Stack>
     );
   }
@@ -117,38 +102,75 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
   // "Grandad"), not a movie whose lineup name equals its own title ("Shrek" + "Shrek").
   const showPrefix = showTitle && showTitle !== episodeTitle ? showTitle : "";
   return (
-    <li
-      className={cn(
-        "border-border flex items-center gap-3 rounded-md border px-3 py-2",
-        pending ? "border-dashed bg-transparent" : "bg-card",
-      )}
+    <Stack
+      align="center"
+      backgroundColor={pending ? "transparent" : "$surfaceRaised"}
+      borderColor="borderDecorative"
+      borderRadius={6}
+      borderStyle={pending ? "dashed" : "solid"}
+      borderWidth={1}
+      direction="row"
+      gap="control"
+      paddingHorizontal={12}
+      paddingVertical={8}
+      render="li"
     >
-      <span className="text-muted-foreground w-6 shrink-0 text-right font-mono text-xs">{index + 1}</span>
+      <Text as="span" style={{ flexShrink: 0, width: 24 }} textAlign="right" textRole="mono">
+        {index + 1}
+      </Text>
       {pending ? (
         <Icon decorative glyph={icons.time} size="compact" tone="muted" />
       ) : (
         <Icon decorative glyph={icons.channels} size="compact" tone="muted" />
       )}
-      <span
-        className={cn(
-          "flex min-w-0 flex-1 items-baseline gap-1.5 text-sm",
-          pending && "text-muted-foreground italic",
-        )}
+      <Stack
+        align="baseline"
+        direction="row"
+        flexBasis="0%"
+        flexGrow={1}
+        flexShrink={1}
+        gap="1.5"
+        minWidth={0}
+        render="span"
       >
-        {showPrefix ? <span className="shrink-0 font-medium">{showPrefix}</span> : null}
-        {se ? <span className="text-muted-foreground shrink-0 font-mono text-xs">{se}</span> : null}
+        {showPrefix ? (
+          <Text as="span" style={{ flexShrink: 0 }} textRole="cardLabel" tone="primary">
+            {showPrefix}
+          </Text>
+        ) : null}
+        {se ? (
+          <Text as="span" style={{ flexShrink: 0 }} textRole="mono">
+            {se}
+          </Text>
+        ) : null}
         {/* The em dash separates the show/SxxExx from the episode title, only when there's a
             show prefix to separate from — a movie (title == its own name) just shows its title. */}
-        {showPrefix ? <span className="text-muted-foreground shrink-0">—</span> : null}
-        <span className="truncate">{episodeTitle}</span>
-        {pending ? <span className="shrink-0"> (coming soon)</span> : null}
-      </span>
+        {showPrefix ? (
+          <Text as="span" style={{ flexShrink: 0 }} textRole="compact" tone="secondary">
+            —
+          </Text>
+        ) : null}
+        <Text
+          as="span"
+          numberOfLines={1}
+          style={pending ? { fontStyle: "italic" } : undefined}
+          textRole="compact"
+          tone={pending ? "secondary" : "primary"}
+        >
+          {episodeTitle}
+        </Text>
+        {pending ? (
+          <Text as="span" style={{ flexShrink: 0, fontStyle: "italic" }} textRole="compact" tone="secondary">
+            (coming soon)
+          </Text>
+        ) : null}
+      </Stack>
       {slot.part && slot.part > 0 ? (
         <Badge shape="square" tone="neutral">
           Part {slot.part}
         </Badge>
       ) : null}
-    </li>
+    </Stack>
   );
 };
 
@@ -171,11 +193,11 @@ const REASON_LABEL: Record<ExcludedItemDTOReason, string> = {
 const isSafetyReason = (reason: ExcludedItemDTOReason): boolean =>
   reason === ExcludedItemDTOReason.over_ceiling || reason === ExcludedItemDTOReason.unrated;
 
-// ExcludedPanel — "why isn't X on my channel", finally answerable (#263).
+// ExcludedPanel — "why isn't X on my channel", answered (#263).
 //
-// ⚠ This report was computed by every single reconcile and thrown away by every caller. The
-// scheduler always knew which titles it refused and why; nothing ever showed anyone. Diagnosing
-// one over-ceiling episode previously meant querying the media server by hand.
+// ⚠ Every reconcile computes this report: the scheduler knows which titles it refused and why.
+// This panel is the only place anyone sees it; without it, diagnosing one over-ceiling episode
+// means querying the media server by hand.
 //
 // Collapsed by default: on a healthy channel it is a footnote, and a channel with a tight era
 // filter can legitimately refuse dozens of titles — an expanded list would bury the schedule
@@ -202,7 +224,9 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
             and the panel must not run off the page. tabIndex + aria-label keep the region
             keyboard-reachable (WCAG 2.1.1) — the rows are non-focusable text. */}
       <Stack
-        className="scroll-thin divide-border max-h-64 divide-y overflow-y-auto"
+        className="scroll-thin divide-border divide-y"
+        maxHeight={256}
+        overflowY="auto"
         render="ul"
         tabIndex={0}
         aria-label="Titles not airing"
@@ -214,19 +238,17 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
             // (it holds the SxxEyy), and the index closes the remaining gap.
             // biome-ignore lint/suspicious/noArrayIndexKey: disambiguator, not the sole key
             key={`${item.key}-${item.title}-${i}`}
-            className="px-3 py-2"
+            paddingHorizontal={12}
+            paddingVertical={8}
             gap="0.5"
             render="li"
           >
-            <span className="truncate text-sm">{item.title || item.key}</span>
-            <span
-              className={cn(
-                "text-xs",
-                isSafetyReason(item.reason) ? "text-caution" : "text-muted-foreground",
-              )}
-            >
+            <Text as="span" numberOfLines={1} textRole="compact" tone="primary">
+              {item.title || item.key}
+            </Text>
+            <Text as="span" textRole="hint" tone={isSafetyReason(item.reason) ? "warning" : "secondary"}>
               {REASON_LABEL[item.reason]}
-            </span>
+            </Text>
           </Stack>
         ))}
       </Stack>
@@ -274,12 +296,21 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
       onExpandedChange={setExpanded}
     >
       {omitted > 0 ? (
-        <p className="border-border text-muted-foreground border-b px-3 py-2 text-xs">
-          {omitted} additional {omitted === 1 ? "decision" : "decisions"} omitted by the trace bound.
-        </p>
+        <Stack
+          borderBottomWidth={1}
+          borderColor="borderDecorative"
+          paddingHorizontal={12}
+          paddingVertical={8}
+        >
+          <Text as="p" textRole="hint" tone="secondary">
+            {omitted} additional {omitted === 1 ? "decision" : "decisions"} omitted by the trace bound.
+          </Text>
+        </Stack>
       ) : null}
       <Stack
-        className="scroll-thin divide-border max-h-72 divide-y overflow-y-auto"
+        className="scroll-thin divide-border divide-y"
+        maxHeight={288}
+        overflowY="auto"
         render="ul"
         tabIndex={0}
         aria-label="Scheduler decisions"
@@ -289,15 +320,18 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
             // Repeated airings legitimately share key/title/reason; position + index keep rows distinct.
             // biome-ignore lint/suspicious/noArrayIndexKey: index disambiguates repeated trace facts
             key={`${fact.stage}-${fact.key ?? "gap"}-${fact.reason}-${fact.cyclePosition ?? "x"}-${i}`}
-            className="px-3 py-2"
+            paddingHorizontal={12}
+            paddingVertical={8}
             gap="0.5"
             render="li"
           >
-            <span className="truncate text-sm">{fact.title || fact.key || "Commercial gap"}</span>
-            <span className="text-muted-foreground text-xs">
+            <Text as="span" numberOfLines={1} textRole="compact" tone="primary">
+              {fact.title || fact.key || "Commercial gap"}
+            </Text>
+            <Text as="span" textRole="hint" tone="secondary">
               {TRACE_REASON_LABEL[fact.reason]}
               {fact.cyclePosition !== undefined ? ` · cycle slot ${fact.cyclePosition + 1}` : ""}
-            </span>
+            </Text>
           </Stack>
         ))}
       </Stack>
@@ -312,6 +346,7 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
 // active-rule attribution is the most prominent thing on the panel, not a footnote.
 const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: ChannelCyclePreviewProps) => {
   const [at, setAt] = useState("");
+  const timeZone = useHouseholdTimeZone();
 
   // ⚠ **The draft REPLACES the saved preview while editing, rather than sitting beside it.**
   // Two panes would make the reader diff them; one pane that always answers "what would air
@@ -352,7 +387,9 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
     <Stack className={className} gap="control" render="section">
       <div>
         <Stack align="center" direction="row" gap="inline">
-          <h3 className="text-base font-semibold">Preview what airs</h3>
+          <Text as="h3" textRole="heading">
+            Preview what airs
+          </Text>
           {/* ⚠ Says WHICH schedule is on screen. Without it, a draft preview and a saved one
               are indistinguishable — and an author who has just edited a rule would have no
               way to tell whether they are looking at their change or at what is live. */}
@@ -362,11 +399,11 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
             </Badge>
           ) : null}
         </Stack>
-        <p className="text-muted-foreground text-sm">
+        <Text as="p" textRole="compact" tone="secondary">
           {draftPolicy
             ? "What would air if you applied these changes. Time-travel to any moment to check a rule before saving."
             : "Time-travel the schedule. See exactly which rule wins and what plays at any moment, past or future."}
-        </p>
+        </Text>
       </div>
 
       <Stack align="end" direction="row" gap="control" wrap>
@@ -374,13 +411,13 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
           id="cycle-preview-at"
           kind="datetime"
           label="At"
-          onValueChange={(value) => setAt(fromDatetimeLocalValue(value))}
-          value={toDatetimeLocalValue(at)}
+          onValueChange={(value) => setAt(fromDatetimeLocalValue(value, timeZone))}
+          value={toDatetimeLocalValue(at, timeZone)}
           width={224}
         />
-        <Stack className="pb-0.5" direction="row" gap="1.5" wrap>
+        <Stack direction="row" gap="1.5" paddingBottom={2} wrap>
           {TIME_PRESETS.map((preset) => (
-            <Action key={preset.label} onPress={() => setAt(preset.at())} variant="outline">
+            <Action key={preset.label} onPress={() => setAt(preset.at(timeZone))} variant="outline">
               {preset.label}
             </Action>
           ))}
@@ -388,7 +425,9 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
       </Stack>
 
       {(draftPolicy ? draft.isPending : saved.isLoading) ? (
-        <p className="text-muted-foreground text-sm">Loading preview…</p>
+        <Text as="p" textRole="compact" tone="secondary">
+          Loading preview…
+        </Text>
       ) : active.error || !body ? (
         // ⚠ Retry differs by source: the saved preview is a QUERY (refetch), the draft is a
         // MUTATION (re-POST the current draft). Calling refetch on the mutation would be a
@@ -409,23 +448,37 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
         <Stack gap="control">
           <Stack
             align="center"
-            className="border-border bg-card rounded-md border px-3 py-2.5"
+            backgroundColor="$surfaceRaised"
+            borderColor="borderDecorative"
+            borderRadius={6}
+            borderWidth={1}
             direction="row"
             gap="inline"
+            paddingHorizontal={12}
+            paddingVertical={10}
             wrap
           >
             <Icon decorative glyph={icons.filler} size="compact" tone="muted" />
             {body.activeRule.matched ? (
-              <p className="text-sm">
-                Active rule: <span className="font-medium">{body.activeRule.label}</span>{" "}
-                <span className="text-muted-foreground">(priority {body.activeRule.priority})</span>
-              </p>
+              <Text as="p" textRole="compact" tone="primary">
+                Active rule:{" "}
+                <Text as="span" textRole="cardLabel" tone="primary">
+                  {body.activeRule.label}
+                </Text>{" "}
+                <Text as="span" textRole="compact" tone="secondary">
+                  (priority {body.activeRule.priority})
+                </Text>
+              </Text>
             ) : (
-              <p className="text-muted-foreground text-sm">No rule active: base policy</p>
+              <Text as="p" textRole="compact" tone="secondary">
+                No rule active: base policy
+              </Text>
             )}
-            <span className="text-muted-foreground ml-auto font-mono text-xs">
-              {humanWindow(body.windowMs)}
-            </span>
+            <Stack marginLeft="auto" render="span">
+              <Text as="span" textRole="mono">
+                {humanWindow(body.windowMs)}
+              </Text>
+            </Stack>
           </Stack>
 
           {!body.slots || body.slots.length === 0 ? (
@@ -443,8 +496,10 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
             // orphan the <li> children and trip the `listitem` rule); aria-label names the
             // list without changing that role.
             <Stack
-              className="scroll-thin max-h-96 overflow-y-auto"
+              className="scroll-thin"
               gap="1.5"
+              maxHeight={384}
+              overflowY="auto"
               render="ul"
               tabIndex={0}
               aria-label="Scheduled slots"

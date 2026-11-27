@@ -1,18 +1,11 @@
 import { formatGuideTime } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
-import {
-  createPairingCredentialStore,
-  createPairingTransport,
-  PairingSession,
-  validatePairingCredential,
-} from "@loomarr/core/pairing";
-import type { RequestsController } from "@loomarr/core/requests";
+import { createPairingTransport, PairingSession, validatePairingCredential } from "@loomarr/core/pairing";
 import { BottomSheet, PHONE_GUTTER } from "@loomarr/design-system";
-import { type HapticFeedback, useHaptic } from "@loomarr/design-system/haptics";
+import { useHaptic } from "@loomarr/design-system/haptics";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import { useAppForeground, usePairingBreadcrumbs, useShellCrashReporting } from "@loomarr/native-app";
 import {
-  createLastChannelStore,
   type PairedClient,
   phoneClientOptions,
   retryPairedClient,
@@ -20,9 +13,16 @@ import {
   usePairedAccount,
   usePairedClient,
   usePairedRequests,
+  usePairedSubtitles,
 } from "@loomarr/paired-client";
-import { NativePlayerView, PairedNativeImage, useShellTune } from "@loomarr/player/native";
-import type { ApprovalBrowser } from "@loomarr/ui";
+import {
+  isPictureInPictureSupported,
+  NativeAirPlayPicker,
+  NativePlayerView,
+  type NativePlayerViewHandle,
+  PairedNativeImage,
+  useShellTune,
+} from "@loomarr/player/native";
 import {
   ClientShell,
   DeviceSheet,
@@ -31,68 +31,34 @@ import {
   PlayerAudio,
   PlayerBottomSheet,
   PlayerChrome,
+  PlayerCover,
   PlayerInfo,
   PlayerMore,
+  PlayerOptions,
   PlayerSheet,
   playerChromeFromGuide,
+  playerCoverOf,
   RequestsJourney,
   ScreenHeader,
   StatePanel,
+  surfCardsFromGuide,
   useClientDestination,
+  useSurfCards,
   watchingScheduleTimeMs,
 } from "@loomarr/ui";
 import Constants from "expo-constants";
 import * as ScreenOrientation from "expo-screen-orientation";
-import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
-import * as WebBrowser from "expo-web-browser";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
+import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { BackHandler, Platform, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
+import {
+  approvalBrowser,
+  credentialStore,
+  deviceStorage,
+  lastChannel,
+  withDecisionHaptic,
+} from "../src/device-services";
 import { nativeApp } from "../src/native-app";
-
-const credentialStore = createPairingCredentialStore({
-  deleteItem: SecureStore.deleteItemAsync,
-  getItem: SecureStore.getItemAsync,
-  setItem: SecureStore.setItemAsync,
-});
-
-// The channel last watched (#23): the Guide starts on it and Watching tunes it first.
-const lastChannel = createLastChannelStore({
-  getItem: SecureStore.getItemAsync,
-  setItem: SecureStore.setItemAsync,
-});
-
-// The phone approves itself on the server's `/pair` page, in a browser sheet over the app (an
-// SFSafariViewController, or a Custom Tab on Android); the pairing shell dismisses it once paired.
-// ⚠ Android has no dismissBrowser: Expo returns undefined there, not a promise, and the `.catch` on
-// it threw as every Android phone finished pairing. The viewer leaves the Custom Tab themselves.
-const approvalBrowser: ApprovalBrowser = {
-  close: () => void Promise.resolve(WebBrowser.dismissBrowser()).catch(() => undefined),
-  name: Platform.OS === "ios" ? "Safari" : "your browser",
-  open: (url) => {
-    void WebBrowser.openBrowserAsync(url, {
-      presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-    });
-  },
-};
-// A request decided (approved or denied) taps success; a refused one stays silent.
-const withDecisionHaptic = (controller: RequestsController, haptic: HapticFeedback): RequestsController => {
-  const tapWhenDone =
-    <Args extends unknown[], Result extends { kind: string }>(decide: (...args: Args) => Promise<Result>) =>
-    async (...args: Args) => {
-      const result = await decide(...args);
-      if (result.kind === "done") haptic.success();
-      return result;
-    };
-  return {
-    ...controller,
-    approve: tapWhenDone(controller.approve),
-    approveFillerPull: tapWhenDone(controller.approveFillerPull),
-    approveFillerPulls: tapWhenDone(controller.approveFillerPulls),
-    approveMany: tapWhenDone(controller.approveMany),
-    deny: tapWhenDone(controller.deny),
-  };
-};
 
 // The selected programme docks as the iPhone's sheet (#1659 mock 5d) or Android's strip (5f).
 const guideDock = Platform.OS === "ios" ? BottomSheet : "strip";
@@ -109,8 +75,8 @@ lockUpright();
 // while playing and with nothing open (§9.1), as the television's does.
 const CHROME_IDLE_MS = 5_000;
 
-/** What a Watching key opens as a sheet: Audio (a utility), More, or Info (from More). */
-type WatchingSheet = "audio" | "info" | "more";
+/** What a Watching key opens as a sheet: Subtitles or Audio (utilities), More, or Info (from More). */
+type WatchingSheet = "audio" | "info" | "more" | "subtitles";
 
 // Watching turns with the phone while it is mounted, and puts the app upright again as it goes.
 const useTurnWithPhone = () => {
@@ -133,7 +99,16 @@ const WatchingScreen = ({
   onLeave: () => void;
   onOpenChannels: () => void;
 }) => {
-  const { catalogState, channelAudio, controller, guideSnapshot, refresh, snapshot, transport } = client;
+  const {
+    catalogState,
+    channelAudio,
+    channelSubtitles,
+    controller,
+    guideSnapshot,
+    refresh,
+    snapshot,
+    transport,
+  } = client;
   const haptic = useHaptic();
   const [nowMs, setNowMs] = useState(Date.now);
   useEffect(() => {
@@ -143,7 +118,19 @@ const WatchingScreen = ({
   const [sheet, setSheet] = useState<WatchingSheet | undefined>(undefined);
   const closeSheet = () => setSheet(undefined);
   const toggleSheet = (name: WatchingSheet) => () => setSheet((open) => (open === name ? undefined : name));
+  // Android's Back closes an open sheet first. It is subscribed while one is open, after the shell's
+  // own Back, and React Native asks the newest listener first; without it, Back from Watching leaves
+  // the app with the sheet still open.
+  useEffect(() => {
+    if (!sheet) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      setSheet(undefined);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [sheet]);
   const audioOptions = useChannelAudio(channelAudio, snapshot.channel?.id, sheet === "audio");
+  const subtitles = usePairedSubtitles(channelSubtitles, deviceStorage, snapshot);
   useTurnWithPhone();
   const { height, width } = useWindowDimensions();
   const onSide = width > height;
@@ -153,11 +140,38 @@ const WatchingScreen = ({
   const [touches, setTouches] = useState(0);
   const touched = () => setTouches((n) => n + 1);
   const chrome = playerChromeFromGuide({ layout: guideSnapshot.layout, nowMs, snapshot });
+  // Flipping (§9.2): each Channel key tunes at once, and the cards ride along in the band's place.
+  const surfCards = useMemo(
+    () => surfCardsFromGuide(snapshot.catalog, guideSnapshot.layout, nowMs),
+    [snapshot.catalog, guideSnapshot.layout, nowMs],
+  );
+  const surf = useSurfCards(
+    surfCards,
+    snapshot.channel?.id,
+    snapshot.tuneReason === "step" ? snapshot.channel?.id : undefined,
+  );
   const formatTime = (ms: number) => formatGuideTime(ms, guideSnapshot.layout?.timezone);
   const live = snapshot.livePlayback ?? LIVE;
   const playing = snapshot.status === "playing";
+  // A tune under way is a picture on its way, so the key offers Pause, as J draws it and the web does.
+  const keyPlaying = playing || snapshot.status === "tuning";
   const previous = snapshot.catalog.find(({ id }) => id === snapshot.previousChannelId);
-  const failure = catalogState.error ?? (snapshot.status === "failed" ? snapshot.error : undefined);
+  // The channels not loading, or the stream stopping: the cover every client draws in the picture's place.
+  const cover =
+    catalogState.error !== undefined || snapshot.status === "failed"
+      ? playerCoverOf(snapshot, catalogState.error)
+      : undefined;
+  // An iPhone's utilities add AirPlay and picture in picture (§9.7); an Android phone has neither key.
+  const picture = useRef<NativePlayerViewHandle>(null);
+  const iPhone = Platform.OS === "ios";
+  const [pictureInPicture] = useState(() => iPhone && isPictureInPictureSupported());
+  // The picture playing on an AirPlay receiver (§9.7): the chrome's casting card and lit AirPlay key.
+  // Only an iPhone's player ever reports it.
+  const casting = useSyncExternalStore(
+    transport.subscribeExternalPlayback,
+    transport.externalPlaybackActive,
+    transport.externalPlaybackActive,
+  );
   const step = (direction: -1 | 1) => () => {
     haptic.selection();
     void controller.step(direction);
@@ -191,6 +205,17 @@ const WatchingScreen = ({
   const sheetFor = (name: WatchingSheet) => {
     if (!chrome || !snapshot.channel) return undefined;
     const { info, segments, startOverMs, window } = chrome;
+    // Subtitles: a choice leaves the sheet open, so the line changes on the picture above it.
+    if (name === "subtitles")
+      return sheetOf(
+        "Subtitles",
+        <PlayerOptions
+          density="touch"
+          label="Subtitles"
+          onSelect={subtitles.choose}
+          options={subtitles.options}
+        />,
+      );
     // Audio: the channel's language, read-only (an admin sets it on the channel's page).
     if (name === "audio")
       return sheetOf("Audio", <PlayerAudio density="touch" options={audioOptions ?? []} />);
@@ -250,12 +275,14 @@ const WatchingScreen = ({
     <View style={{ backgroundColor: "black", flex: 1 }}>
       {/* The picture, letterboxed and centred: a strip mid-screen upright, the whole screen on its side. */}
       <NativePlayerView
+        pictureInPicture={pictureInPicture}
+        ref={picture}
         style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
         transport={transport}
       />
       {/* On its side: no status bar over the picture, and a tap on the picture shows or hides the chrome. */}
       <StatusBar hidden={onSide} style="light" />
-      {onSide && !failure ? (
+      {onSide && !cover ? (
         <Pressable
           accessibilityLabel={visible ? "Hide controls" : "Show controls"}
           accessibilityRole="button"
@@ -266,24 +293,27 @@ const WatchingScreen = ({
           style={StyleSheet.absoluteFill}
         />
       ) : null}
-      {failure ? (
-        <View style={{ flex: 1, justifyContent: "center" }}>
-          <StatePanel
-            action={{
-              label: "Try again",
-              onPress: () => retryPairedClient({ catalogState, controller, refresh }),
-            }}
-            density="touch"
-            description={failure}
-            kind="error"
-            title="Can't play this channel"
-          />
-        </View>
+      {cover ? (
+        // The cover takes the picture's place, with a white Retry and the way out (§9.5): on its side
+        // the chrome, and Leave with it, is gone.
+        <PlayerCover
+          {...(snapshot.channel
+            ? { channelLabel: `CH ${snapshot.channel.number} · ${snapshot.channel.name}` }
+            : {})}
+          density="touch"
+          kind={cover.kind}
+          {...(cover.message ? { message: cover.message } : {})}
+          onLeave={onLeave}
+          onRetry={() => retryPairedClient({ catalogState, controller, refresh })}
+          retryLabel={catalogState.error ? "Try again" : "Retry channel"}
+          title={cover.title}
+        />
       ) : chrome ? (
         // Any touch in the chrome (a key, a sheet's row) restarts the wait before it leaves.
         <View onTouchStart={touched} pointerEvents="box-none" style={StyleSheet.absoluteFill}>
           <PlayerChrome
             band={chrome.band}
+            captions={subtitles.captions}
             density="touch"
             formatTime={formatTime}
             keys={{
@@ -301,27 +331,64 @@ const WatchingScreen = ({
               onChannelDown: snapshot.catalog.length > 1 ? step(-1) : undefined,
               onChannelUp: snapshot.catalog.length > 1 ? step(1) : undefined,
               onMore: toggleSheet("more"),
-              onTogglePlay: playing ? controller.pause : () => void controller.play(),
-              playing,
+              onTogglePlay: keyPlaying ? controller.pause : () => void controller.play(),
+              playing: keyPlaying,
               pointer: false,
             }}
             layout={onSide ? "overlay" : "portrait"}
             live={live}
             onGoLive={() => void controller.goLive()}
             onLeave={onLeave}
+            {...(surf && snapshot.channel
+              ? {
+                  // While flipping the band is down, so the readout names the channel (§9.2).
+                  readout: {
+                    digits: String(snapshot.channel.number),
+                    name: snapshot.channel.name,
+                    quiet: true,
+                  },
+                  surf,
+                }
+              : {})}
+            {...(casting ? { casting: { routePicker: <NativeAirPlayPicker /> } } : {})}
             sheet={sheet ? sheetFor(sheet) : undefined}
             utilities={{
+              ...(iPhone ? { airPlayPicker: <NativeAirPlayPicker /> } : {}),
+              // The key also brings a floating picture back into the app.
+              ...(pictureInPicture
+                ? {
+                    onPictureInPicture: () =>
+                      transport.inPictureInPicture()
+                        ? picture.current?.stopPictureInPicture()
+                        : void picture.current?.startPictureInPicture(),
+                  }
+                : {}),
               audioOpen: sheet === "audio",
               density: "touch",
               onAudio: toggleSheet("audio"),
+              onSubtitles: toggleSheet("subtitles"),
               pointer: false,
+              subtitlesOn: subtitles.on,
+              subtitlesOpen: sheet === "subtitles",
             }}
             visible={visible}
           />
         </View>
       ) : catalogState.loading ? (
-        <View style={{ flex: 1, justifyContent: "center" }}>
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: PHONE_GUTTER }}>
           <StatePanel density="touch" kind="loading" title="Loading channels" />
+        </View>
+      ) : snapshot.catalog.length === 0 ? (
+        // Nothing on air to tune (#3836): the Guide's own empty state, with the way back Leave would
+        // have been, since Leave lives in the chrome and Watching has no tab bar.
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: PHONE_GUTTER }}>
+          <StatePanel
+            action={{ label: "Back to the Guide", onPress: onLeave }}
+            density="touch"
+            description="No playable channels are available yet."
+            kind="empty"
+            title="No channels on air"
+          />
         </View>
       ) : null}
     </View>
@@ -349,14 +416,17 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
     lastChannel,
     session,
   });
-  const { controller, guide, myChannelsSnapshot, snapshot } = client;
-  // Opening Watching with nothing tuned yet resumes the channel the device last watched.
+  const { controller, guide, guideSnapshot, myChannelsSnapshot, snapshot } = client;
+  // Opening Watching with nothing tuned yet resumes the channel the device last watched, or, on a
+  // device that has watched nothing, the lineup's first channel (#3836): Watching has nothing to show
+  // without a channel, and its Leave is in the chrome a channel brings.
   const { restoredChannelId } = snapshot;
+  const openingChannelId = restoredChannelId ?? (snapshot.channel ? undefined : snapshot.catalog[0]?.id);
   useEffect(() => {
-    if (active === "watching" && restoredChannelId) void controller.tuneChannel(restoredChannelId);
-  }, [active, controller, restoredChannelId]);
+    if (active === "watching" && openingChannelId) void controller.tuneChannel(openingChannelId);
+  }, [active, controller, openingChannelId]);
   // Requests loads with the app so an admin's tab badge counts before they open it.
-  const requests = usePairedRequests({ credential, session });
+  const requests = usePairedRequests({ credential, events: client.events, session });
   const haptic = useHaptic();
   const requestsController = useMemo(
     () => withDecisionHaptic(requests.controller, haptic),
@@ -403,6 +473,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
             footer={navigation}
             headerAction={deviceAction}
             onOpenChannel={watchChannel}
+            timeZone={guideSnapshot.layout?.timezone}
           />
         )
       ) : active === "guide" ? (

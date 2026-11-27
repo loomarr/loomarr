@@ -3,8 +3,9 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as jobsApi from "@loomarr/api/endpoints/jobs";
 import * as notificationsApi from "@loomarr/api/endpoints/notifications";
 import * as systemApi from "@loomarr/api/endpoints/system";
-import { Icon, icons, Stack } from "@loomarr/design-system";
+import { Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { SearchField, SettingsOverview, type SettingsOverviewCard } from "@loomarr/ui";
+import type { EnsureQueryDataOptions, QueryKey } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   type CSSProperties,
@@ -108,9 +109,9 @@ const SettingsHome = () => {
   const advanced = cardDestinations("advanced", isAdmin)[0];
 
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <PageHeader title="Settings" description="Search reaches any setting directly." />
-      <div className="min-h-0 flex-1 overflow-auto">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} overflow="auto">
         <SettingsOverview
           advanced={
             advanced
@@ -136,19 +137,36 @@ const SettingsHome = () => {
               />
 
               {hasQuery && (
-                <div id="settings-finder-results" className="mt-3" aria-live="polite">
+                <Stack aria-live="polite" id="settings-finder-results" marginTop={12}>
                   {results.length === 0 ? (
-                    <div className="border-border rounded-lg border border-dashed px-4 py-5">
-                      <p className="text-sm font-medium">No settings found</p>
-                      <p className="text-muted-foreground mt-1 text-sm">
+                    <Stack
+                      borderColor="borderDecorative"
+                      borderRadius={12}
+                      borderStyle="dashed"
+                      borderWidth={1}
+                      gap="1"
+                      paddingHorizontal={16}
+                      paddingVertical={20}
+                    >
+                      <Text as="p" textRole="cardLabel">
+                        No settings found
+                      </Text>
+                      <Text as="p" textRole="compact" tone="secondary">
                         Try a shorter phrase, a service name, or an exact key.
-                      </p>
-                    </div>
+                      </Text>
+                    </Stack>
                   ) : (
-                    <div className="border-border bg-card overflow-hidden rounded-lg border">
-                      <p className="border-border text-muted-foreground border-b px-4 py-2 text-xs">
-                        {results.length} {results.length === 1 ? "match" : "matches"}
-                      </p>
+                    <Card overflow="hidden">
+                      <Stack
+                        borderBottomWidth={1}
+                        borderColor="borderDecorative"
+                        paddingHorizontal={16}
+                        paddingVertical={8}
+                      >
+                        <Text as="p" textRole="hint" tone="secondary">
+                          {results.length} {results.length === 1 ? "match" : "matches"}
+                        </Text>
+                      </Stack>
                       <nav aria-label="Settings search results" className="divide-border divide-y">
                         {results.slice(0, 10).map((result, index) => (
                           <DestinationAnchor
@@ -160,27 +178,34 @@ const SettingsHome = () => {
                             onKeyDown={(event) => moveResultFocus(event, index)}
                             className="group hover:bg-muted/40 focus-visible:ring-ring flex items-center gap-3 px-4 py-3 focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
                           >
-                            <span className="min-w-0 flex-1">
-                              <span className="block text-sm font-medium">
+                            <Stack
+                              flexBasis="0%"
+                              flexGrow={1}
+                              flexShrink={1}
+                              gap="0.5"
+                              minWidth={0}
+                              render="span"
+                            >
+                              <Text as="span" textRole="cardLabel">
                                 {result.setting?.label || result.destination.label}
-                              </span>
-                              <span className="text-muted-foreground mt-0.5 block truncate text-xs">
+                              </Text>
+                              <Text as="span" numberOfLines={1} textRole="hint" tone="secondary">
                                 {result.groupLabel} · {result.destination.label}
                                 {result.setting ? ` · ${result.setting.key}` : ""}
-                              </span>
-                            </span>
+                              </Text>
+                            </Stack>
                             <Icon decorative glyph={icons.goForward} size="compact" tone="muted" />
                           </DestinationAnchor>
                         ))}
                       </nav>
-                    </div>
+                    </Card>
                   )}
-                </div>
+                </Stack>
               )}
             </section>
           }
         />
-      </div>
+      </Stack>
     </Stack>
   );
 };
@@ -188,18 +213,24 @@ const SettingsHome = () => {
 const Route = createFileRoute("/_authed/settings/")({
   component: SettingsHome,
   // The reads behind each card's status word (see `useSettingsStatus`). A card whose check fails
-  // settles without a problem, so these are warmed rather than awaited into an error view: a
-  // prefetch never rejects. The admin-only reads are skipped for a member, as the page skips them.
+  // settles without a problem, so a failed read is swallowed rather than awaited into an error view.
+  // The admin-only reads are skipped for a member, as the page skips them.
+  //
+  // ⚠ Await a read only when it has NO data. A cached-but-stale read is shown at once and refreshed
+  // behind the page (`revalidateIfStale`). Awaiting a `prefetchQuery` instead re-fetched whichever
+  // read had gone stale on every return visit and held the navigation for that round trip: warm
+  // Settings landed at ~100 ms (the e2e API delay) whenever one had, against a 70 ms budget.
   loader: async ({ context: { queryClient } }) => {
     const isAdmin = await viewerIsAdmin(queryClient);
+    const warm = <TQueryFnData, TError, TData, TQueryKey extends QueryKey>(
+      options: EnsureQueryDataOptions<TQueryFnData, TError, TData, TQueryKey>,
+    ) => queryClient.ensureQueryData({ ...options, revalidateIfStale: true }).catch(() => undefined);
     await Promise.all([
-      queryClient.prefetchQuery(
-        notificationsApi.getNotificationProvidersListQueryOptions({ query: { retry: false } }),
-      ),
-      isAdmin ? queryClient.prefetchQuery(diagnosticsApi.getGetCurrentHealthQueryOptions()) : undefined,
-      isAdmin ? queryClient.prefetchQuery(jobsApi.getJobsListQueryOptions()) : undefined,
-      isAdmin ? queryClient.prefetchQuery(systemApi.getSystemBackupsListQueryOptions()) : undefined,
-      isAdmin ? queryClient.prefetchQuery(fillerApi.getFillerReadinessQueryOptions()) : undefined,
+      warm(notificationsApi.getNotificationProvidersListQueryOptions({ query: { retry: false } })),
+      isAdmin ? warm(diagnosticsApi.getGetCurrentHealthQueryOptions()) : undefined,
+      isAdmin ? warm(jobsApi.getJobsListQueryOptions()) : undefined,
+      isAdmin ? warm(systemApi.getSystemBackupsListQueryOptions()) : undefined,
+      isAdmin ? warm(fillerApi.getFillerReadinessQueryOptions()) : undefined,
     ]);
   },
 });

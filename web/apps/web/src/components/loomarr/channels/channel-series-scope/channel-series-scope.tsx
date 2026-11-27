@@ -9,11 +9,10 @@ import type { ChannelSeriesScopeProps } from "./channel-series-scope.type";
 
 // ChannelSeriesScope — `policy.scope.series`, the "only these shows" narrowing (§2).
 //
-// ORPHANED until now, and the audit was right that a text box would be "a door in name only":
-// the field is `[]provision.Key` — RESOLVED ids, never names (schedule/policy.go:177) — so a
-// typed title could not become a valid entry. It needs a search-backed picker, which is why it
-// was filed as design work. In practice the design already exists: the lineup editor solved
-// the same problem, so this reuses its `keyOf` derivation and the shared SearchCommand.
+// A text box would be "a door in name only": the field is `[]provision.Key` — RESOLVED ids,
+// never names (schedule/policy.go:177) — so a typed title cannot become a valid entry. It needs
+// a search-backed picker, and the lineup editor solves the same problem, so this reuses its
+// `keyOf` derivation and the shared SearchCommand.
 
 // keyOf, narrowed to the SERIES branch of the lineup editor's derivation. scope.series
 // restricts to series, so a movie candidate can never produce a valid entry here.
@@ -71,12 +70,19 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
             <Stack
               key={key}
               align="center"
-              className="border-border bg-muted/40 rounded-md border px-2 py-1 text-sm"
+              backgroundColor="$surfaceRaised"
+              borderColor="borderDecorative"
+              borderRadius={6}
+              borderWidth={1}
               direction="row"
               gap="1.5"
+              paddingHorizontal={8}
+              paddingVertical={4}
               render="li"
             >
-              <span className="text-muted-foreground font-mono text-xs">{labelOfKey(key)}</span>
+              <Text as="span" textRole="mono">
+                {labelOfKey(key)}
+              </Text>
               <Action
                 compact
                 icon="close"

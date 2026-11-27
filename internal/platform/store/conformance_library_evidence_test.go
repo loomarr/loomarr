@@ -6,6 +6,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A Library item's evidence (#3006): the asked keywords its tags hold and the asked people its
@@ -15,15 +17,15 @@ func testLibraryEvidence(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_800_000_000_000)
-	person := func(name, role, id string) LibraryCredit {
-		return LibraryCredit{Name: name, Role: role, ID: LibraryID{Namespace: "tmdb", Value: id}}
+	person := func(name, role, id string) librarystore.LibraryCredit {
+		return librarystore.LibraryCredit{Name: name, Role: role, ID: librarystore.LibraryID{Namespace: "tmdb", Value: id}}
 	}
 	items := []LibraryItem{
 		{ID: "elf", Kind: "movie", Name: "Elf", Tags: []string{"christmas", "north pole", "Snow"},
-			Credits: []LibraryCredit{person("Ada Example", "actor", "90005001"), person("Ada Example", "director", "90005001"),
+			Credits: []librarystore.LibraryCredit{person("Ada Example", "actor", "90005001"), person("Ada Example", "director", "90005001"),
 				person("Bo Other", "actor", "90005002")}},
 		{ID: "heist", Kind: "movie", Name: "Heist", Tags: []string{"heist"},
-			Credits: []LibraryCredit{person("Bo Other", "actor", "90005002")}},
+			Credits: []librarystore.LibraryCredit{person("Bo Other", "actor", "90005002")}},
 		{ID: "bare", Kind: "movie", Name: "Bare"},
 	}
 	if err := st.SaveLibraryItems(ctx, items, at); err != nil {

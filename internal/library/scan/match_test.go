@@ -13,6 +13,49 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
+// An episode's file name gives its show a year only in brackets just before the episode's mark: a
+// year that is the title, or the air date's, is not the show's.
+func TestTheShowsYearInAnEpisodesName(t *testing.T) {
+	for name, want := range map[string]int{
+		"Harbour Lights (1963) - S01E01 - Pilot.mkv":  1963,
+		"Harbour.Lights.[1963].1x01.mkv":              1963,
+		"Harbour Lights (2004) S02E03-E04.mkv":        2004,
+		"Harbour Lights S01E01.mkv":                   0,
+		"1923 (2022) - S01E01.mkv":                    2022,
+		"1923 S01E01.mkv":                             0,
+		"Harbour Lights 2004 S01E01.mkv":              0,
+		"Harbour Lights - 2004-03-05 - Night.mkv":     0,
+		"Harbour Lights (1963) - Behind the Lamp.mkv": 0,
+	} {
+		if got := showYearIn(name); got != want {
+			t.Errorf("%s: %d, want %d", name, got, want)
+		}
+	}
+}
+
+// A name says the same title however its letters are written: accents or none, composed or
+// decomposed (a Mac writes "é" as "e" and a mark), and an acronym with its dots or stars or none.
+func TestSameNameReadsLettersHoweverTheyAreWritten(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"Ameline", "Améline"},
+		{"Grisée", "Grisée"},
+		{"Kettlemon Tide", "Kettlémon Tide"},
+		{"KLTV", "K.L.T.V."},
+		{"BRAM", "B*R*A*M"},
+		{"Strasse", "Straße"},
+		{"Harbor's Twelve", "Harbors Twelve"},
+	} {
+		if !sameName(pair[0], pair[1]) {
+			t.Errorf("%q and %q read as different titles", pair[0], pair[1])
+		}
+	}
+	for _, pair := range [][2]string{{"Comet", "Comets"}, {"A Lantern", "Lantern"}, {"Tide 2", "Tide"}} {
+		if sameName(pair[0], pair[1]) {
+			t.Errorf("%q and %q read as the same title", pair[0], pair[1])
+		}
+	}
+}
+
 func TestSearchQueryReadsTheTitleAndYearFromAName(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -24,6 +67,10 @@ func TestSearchQueryReadsTheTitleAndYearFromAName(t *testing.T) {
 		{"Mystery Film (2002)", 0, "Mystery Film", 2002},
 		{"Mystery Film (2002) [1080p]", 0, "Mystery Film", 2002},
 		{"Harbor Lights 2049 (2017)", 0, "Harbor Lights 2049", 2017},
+		// A year written twice is one; a title's own year, bracketed once after it, stays.
+		{"Copper Moon (1999) (1999)", 0, "Copper Moon", 1999},
+		{"Copper Moon (1999) (1999) [Bluray-1080p]", 0, "Copper Moon", 1999},
+		{"Class of 1999 (1999)", 0, "Class of 1999", 1999},
 		{"1999 A Quiet Winter 1968", 0, "1999 A Quiet Winter", 1968},
 		{"1947", 0, "1947", 0},
 		{"Kite-Kid.Over.The.Kite-Line.2018.2160p.WEB-DL", 0, "Kite-Kid Over The Kite-Line", 2018},
@@ -34,6 +81,32 @@ func TestSearchQueryReadsTheTitleAndYearFromAName(t *testing.T) {
 		// A number no release could carry yet is the title's, never its year.
 		{"Harbor Lights 2049", 0, "Harbor Lights 2049", 0},
 		{"Harbor.Lights.2049.1080p.WEB-DL", 0, "Harbor Lights 2049", 0},
+		// A release word before the year is part of the title: release words follow the year.
+		{"Charlotte's Web (2006)", 0, "Charlotte's Web", 2006},
+		{"Charlotte's.Web.2006.1080p.WEB-DL", 0, "Charlotte's Web", 2006},
+		{"The Extended Family 1999 EXTENDED 1080p", 0, "The Extended Family", 1999},
+		// In a name written in one case a release's word a title may carry is the title's before a
+		// mark; one only a release carries is the release's.
+		{"THE WEB 1080p", 0, "THE WEB", 0},
+		{"the web 1080p", 0, "the web", 0},
+		{"the.cam.720p", 0, "the cam", 0},
+		{"lantern.multi.vostfr", 0, "lantern", 0},
+		{"LANTERN AMZN 1080p", 0, "LANTERN", 0},
+		{"LANTERN GERMAN DL 1080p", 0, "LANTERN", 0},
+		{"lantern.2019.web.1080p", 0, "lantern", 2019},
+		// So is one a title writes as its own in a name in mixed case, with no year: a release
+		// writes its words in capitals, or runs them on.
+		{"Bramble Web 1080p", 0, "Bramble Web", 0},
+		{"Bramble.Web", 0, "Bramble Web", 0},
+		{"Spindle Web Internal Affairs", 0, "Spindle Web Internal Affairs", 0},
+		{"The Internal Limited", 0, "The Internal Limited", 0},
+		{"Mister Proper Limited", 0, "Mister Proper Limited", 0},
+		{"The German 1080p", 0, "The German", 0},
+		{"The.Cam", 0, "The Cam", 0},
+		{"Hollin Drive Web-DL 2017", 0, "Hollin Drive", 2017},
+		{"Bramble WEB 1080p", 0, "Bramble", 0},
+		{"Bramble.CAM", 0, "Bramble", 0},
+		{"Lantern.Cove.German.DL.1080p", 0, "Lantern Cove", 0},
 	} {
 		title, year, _ := searchQuery(tc.name, tc.known)
 		if title != tc.title || year != tc.year {
@@ -223,24 +296,36 @@ func TestMatcherNameMatchesATitleEndingInAYearLikeNumber(t *testing.T) {
 // are a guess, and wait for the maintainer (58). The maintainer's answer replaces the search's.
 func TestMatcherSettlesAMovieOnlyWhenOneResultAgrees(t *testing.T) {
 	ctx := context.Background()
+	const dated, undated = "Mystery Film (2002)/Mystery Film (2002).mkv", "Mystery Film/Mystery Film.mkv"
 	for _, tc := range []struct {
 		name    string
+		file    string
 		hits    []SearchHit
 		settled string
 	}{
-		{"one agrees", []SearchHit{
+		{"one agrees", dated, []SearchHit{
 			{Kind: "movie", ID: tmdbID("90000311"), Name: "Mystery Film", Year: 2002},
 			{Kind: "movie", ID: tmdbID("90000312"), Name: "Mystery Film", Year: 1971},
 		}, "90000311"},
-		{"two agree", []SearchHit{
+		{"two agree", dated, []SearchHit{
 			{Kind: "movie", ID: tmdbID("90000311"), Name: "Mystery Film", Year: 2002},
 			{Kind: "movie", ID: tmdbID("90000313"), Name: "Mystery Film", Year: 2003},
+		}, ""},
+		// A file with no year is checked by its name and length, as a series without one is by its
+		// name and episodes; punctuation in the name doesn't count.
+		{"no year: one agrees", undated, []SearchHit{
+			{Kind: "movie", ID: tmdbID("90000311"), Name: "Mystery: Film", Year: 2002},
+			{Kind: "movie", ID: tmdbID("90000312"), Name: "Mystery Film Returns", Year: 2009},
+		}, "90000311"},
+		{"no year: two agree", undated, []SearchHit{
+			{Kind: "movie", ID: tmdbID("90000311"), Name: "Mystery Film", Year: 2002},
+			{Kind: "movie", ID: tmdbID("90000313"), Name: "Mystery Film", Year: 1971},
 		}, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t)
 			h.im.Answers = h.st
-			h.file("Mystery Film (2002)/Mystery Film (2002).mkv", 10)
+			h.file(tc.file, 10)
 			h.run()
 			lib := &Library{NeedStore: h.st, ItemStore: h.st, Inventory: h.inv, Keys: fakeCatalogKeys}
 			// Every candidate runs 22 minutes, as long as the harness's file.
@@ -254,7 +339,7 @@ func TestMatcherSettlesAMovieOnlyWhenOneResultAgrees(t *testing.T) {
 				t.Fatal(err)
 			}
 			h.run()
-			origin := fileOrigin(h.root, "Mystery Film (2002)/Mystery Film (2002).mkv")
+			origin := fileOrigin(h.root, tc.file)
 			item := h.item(origin)
 			needs, _ := lib.Needs(ctx)
 			if tc.settled == "" {
@@ -377,8 +462,38 @@ func TestMatcherWaitsForTheCatalogKey(t *testing.T) {
 	if err := m.Tick(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if needs, _ := h.st.LibraryNeeds(ctx); needs[0].Searched != "Mystery Film|2002" {
-		t.Fatalf("searched = %q", needs[0].Searched)
+	if needs, _ := h.st.LibraryNeeds(ctx); needs[0].Searched == "" {
+		t.Fatal("not searched once the key is set")
+	}
+}
+
+// A title searched under rules that settled less is searched again when they change: a movie with
+// no year, left to the maintainer before, is settled by its name and length.
+func TestMatcherSearchesAgainWhenItsRulesChange(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Answers = h.st
+	h.file("Mystery Film/Mystery Film.mkv", 10)
+	h.run()
+	needs, _ := h.st.LibraryNeeds(ctx)
+	// What the rules before searched it as, and the one candidate they kept.
+	candidate := librarystore.LibraryCandidate{Kind: "movie", ID: libraryID(tmdbID("90000311")), Name: "Mystery Film",
+		Year: 2002, NameMatch: true, LengthMatch: true}
+	if err := h.st.SaveLibraryCandidates(ctx, needs[0].ID, "Mystery Film|0|length",
+		[]librarystore.LibraryCandidate{candidate}); err != nil {
+		t.Fatal(err)
+	}
+	lib := &Library{NeedStore: h.st, ItemStore: h.st, Inventory: h.inv, Keys: fakeCatalogKeys}
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000311": {Kind: mp.KindMovie, Descriptive: &mp.Descriptive{Runtime: 22 * time.Minute}},
+	}}
+	search := &fakeSearch{hits: []SearchHit{{Kind: "movie", ID: tmdbID("90000311"), Name: "Mystery Film", Year: 2002}}}
+	m := &Matcher{Store: h.st, Search: search.search, Provider: catalog, Inventory: h.inv, Match: lib.MatchBySearch}
+	if err := m.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if needs, _ := lib.Needs(ctx); len(needs) != 0 {
+		t.Fatalf("needs %d; want it searched again and settled", len(needs))
 	}
 }
 
@@ -445,30 +560,34 @@ func TestMatcherSettlesASeriesOnlyWhenOneResultHoldsItsEpisodes(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		folder  string
+		show    string // how each episode's file names the show
 		layouts map[string][]mp.SeasonSize
 		settled string
 	}{
-		{"one holds every episode", "Harbour Lights (1999)",
+		{"one holds every episode", "Harbour Lights (1999)", "Harbour Lights",
 			map[string][]mp.SeasonSize{"90000411": big, "90000412": small}, "90000411"},
-		{"no year in the folder", "Harbour Lights",
+		{"no year in the folder", "Harbour Lights", "Harbour Lights",
 			map[string][]mp.SeasonSize{"90000411": big, "90000412": small}, "90000411"},
-		{"laid out differently", "Harbour Lights (1999)",
+		{"laid out differently", "Harbour Lights (1999)", "Harbour Lights",
 			map[string][]mp.SeasonSize{"90000411": oneLongSeason, "90000412": small}, ""},
-		{"two hold them", "Harbour Lights",
+		{"two hold them", "Harbour Lights", "Harbour Lights",
 			map[string][]mp.SeasonSize{"90000411": big, "90000412": big}, ""},
+		// Sonarr names each episode by the show and its year when the folder has none.
+		{"two hold them, and the episodes name the year", "Harbour Lights", "Harbour Lights (2004) -",
+			map[string][]mp.SeasonSize{"90000411": big, "90000412": big}, "90000412"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t)
 			h.im.Answers = h.st
-			h.file(tc.folder+"/Season 01/Harbour Lights S01E01.mkv", 10)
-			h.file(tc.folder+"/Season 01/Harbour Lights S01E07.mkv", 10)
-			h.file(tc.folder+"/Season 02/Harbour Lights S02E03-E04.mkv", 10)
-			h.file(tc.folder+"/Specials/Harbour Lights S00E05.mkv", 10)
+			h.file(tc.folder+"/Season 01/"+tc.show+" S01E01.mkv", 10)
+			h.file(tc.folder+"/Season 01/"+tc.show+" S01E07.mkv", 10)
+			h.file(tc.folder+"/Season 02/"+tc.show+" S02E03-E04.mkv", 10)
+			h.file(tc.folder+"/Specials/"+tc.show+" S00E05.mkv", 10)
 			h.run()
 			lib := &Library{NeedStore: h.st, ItemStore: h.st, Inventory: h.inv, Keys: fakeCatalogKeys}
 			hits := []SearchHit{
 				{Kind: "series", ID: tmdbID("90000411"), Name: "Harbour Lights", Year: 1999},
-				{Kind: "series", ID: tmdbID("90000412"), Name: "Harbour Lights", Year: 2000},
+				{Kind: "series", ID: tmdbID("90000412"), Name: "Harbour Lights", Year: 2004},
 			}
 			catalog := &fakeCatalog{records: map[string]mp.Record{}}
 			for id, layout := range tc.layouts {

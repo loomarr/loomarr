@@ -4,9 +4,9 @@ import {
   browserEventStreamFactory,
   EVENT_INVALIDATIONS,
   EVENT_TYPES,
-  invalidateAfterReconnect,
   invalidateByPrefix,
   invalidateForFrame,
+  invalidateMissedFrames,
   invalidateSettings,
   isFrameFed,
   openEventStream,
@@ -103,6 +103,22 @@ describe("settings invalidation", () => {
     expect(qc.getQueryState(["/v1/channels"])?.isInvalidated).toBe(false);
   });
 
+  // The Guide's timezone is a setting, and the household read carries the same zone for every time
+  // outside the Guide, so a saved setting must refetch it on a frame AND on the writer's own save.
+  it.each([
+    ["the settings frame", (qc: QueryClient) => invalidateForFrame(qc, "settings", {})],
+    ["the writer's own save", (qc: QueryClient) => invalidateSettings(qc)],
+  ])("refetches the household's zone on %s", async (_name, invalidate) => {
+    const qc = new QueryClient();
+    await qc.prefetchQuery({ queryKey: ["/v1/household"], queryFn: () => "h" });
+    await qc.prefetchQuery({ queryKey: ["/v1/channels"], queryFn: () => "c" });
+
+    await invalidate(qc);
+
+    expect(qc.getQueryState(["/v1/household"])?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(["/v1/channels"])?.isInvalidated).toBe(false);
+  });
+
   it("gives the save paths the same mapping through invalidateSettings", async () => {
     const qc = new QueryClient();
     await qc.prefetchQuery({ queryKey: ["/v1/system/llm"], queryFn: () => "x" });
@@ -136,22 +152,24 @@ describe("openEventStream", () => {
   });
 });
 
-describe("a stream that comes back", () => {
-  it("tells of a reconnect on every open after the first", () => {
+describe("a stream that opens", () => {
+  // A route's loader reads before the layout opens the stream, so a change between that read and
+  // the first open is a frame nobody heard: the first open re-reads too, not only a reconnect.
+  it("tells of every open, the first included", () => {
     const listeners = new Map<string, (event: EventStreamMessage) => void>();
-    const onReconnect = vi.fn();
+    const onOpen = vi.fn();
     const stop = openFrameStream(
       () => {},
       "http://loomarr.test/v1/events",
       () => ({ addEventListener: (type, listener) => listeners.set(type, listener), close: () => {} }),
-      onReconnect,
+      onOpen,
     );
 
+    expect(onOpen).not.toHaveBeenCalled();
     listeners.get("open")?.({ data: "" });
-    expect(onReconnect).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledOnce();
     listeners.get("open")?.({ data: "" });
-    listeners.get("open")?.({ data: "" });
-    expect(onReconnect).toHaveBeenCalledTimes(2);
+    expect(onOpen).toHaveBeenCalledTimes(2);
     stop();
   });
 
@@ -166,11 +184,22 @@ describe("a stream that comes back", () => {
     for (const key of fed) await qc.prefetchQuery({ queryKey: key, queryFn: () => "x" });
     await qc.prefetchQuery({ queryKey: ["/v1/auth/me"], queryFn: () => "me" });
 
-    await invalidateAfterReconnect(qc);
+    await invalidateMissedFrames(qc);
 
     // The library status is fed only by an idle scan frame; a reconnect refetches it regardless.
     for (const key of fed) expect(qc.getQueryState(key)?.isInvalidated, String(key[0])).toBe(true);
     expect(qc.getQueryState(["/v1/auth/me"])?.isInvalidated).toBe(false);
+  });
+
+  // An upgrade restarts the server, so its stream drops; coming back is the one cue that the
+  // version may have changed.
+  it("reads the server's version again, which only a restart changes", async () => {
+    const qc = new QueryClient();
+    await qc.prefetchQuery({ queryKey: ["/v1/system/version"], queryFn: () => "1.0.0" });
+
+    await invalidateMissedFrames(qc);
+
+    expect(qc.getQueryState(["/v1/system/version"])?.isInvalidated).toBe(true);
   });
 });
 
@@ -222,6 +251,34 @@ describe("the browser stream", () => {
     expect(FakeSource.made).toHaveLength(2);
     FakeSource.made[1]?.emit("channel", { data: "{}" });
     expect(onChannel).toHaveBeenCalledOnce();
+    stream.close();
+  });
+
+  it("waits longer after each refusal in a row, and starts over once a source opens", () => {
+    const stream = browserEventStreamFactory("/v1/events");
+    const refuseLatest = () => {
+      const latest = FakeSource.made.at(-1);
+      if (latest) latest.readyState = FakeSource.CLOSED;
+      latest?.emit("error");
+    };
+    // How long until the next source after a refusal, to the second.
+    const nextWait = () => {
+      const before = FakeSource.made.length;
+      refuseLatest();
+      let waited = 0;
+      while (FakeSource.made.length === before && waited < 120) {
+        vi.advanceTimersByTime(1000);
+        waited += 1;
+      }
+      return waited;
+    };
+
+    expect([nextWait(), nextWait(), nextWait(), nextWait()]).toEqual([3, 6, 12, 24]);
+    for (let refusal = 0; refusal < 4; refusal += 1) nextWait();
+    expect(nextWait()).toBe(60);
+
+    FakeSource.made.at(-1)?.emit("open");
+    expect(nextWait()).toBe(3);
     stream.close();
   });
 

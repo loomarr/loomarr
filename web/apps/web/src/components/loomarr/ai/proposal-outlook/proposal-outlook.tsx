@@ -1,10 +1,14 @@
 import type { Assessment } from "@loomarr/api/models/assessment";
-import { Stack } from "@loomarr/design-system";
+import { Grid, Stack, Text } from "@loomarr/design-system";
+import { Fragment } from "react";
 
 interface ProposalOutlookProps {
   assessment?: Assessment;
   pending?: boolean;
   showDetails?: boolean;
+  // The household's timezone, so "Checked" reads as the Guide tells times; undefined is the
+  // device's own.
+  timeZone?: string;
 }
 
 const duration = (milliseconds: number, lowerBound = false) => {
@@ -25,9 +29,15 @@ const describedDuration = (milliseconds: number, lowerBound = false) =>
 
 const sentenceCase = (value: string) => `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 
-const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessment }) => (
+const ProposalOutlookDiagnostics = ({
+  assessment: value,
+  timeZone,
+}: {
+  assessment: Assessment;
+  timeZone?: string;
+}) => (
   <Stack className="text-muted-foreground" gap="inline">
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+    <Grid columnGap="4" columns={["auto", "1fr"]} render="dl" rowGap="1">
       {(
         [
           ["Requested or kept", value.mix.core],
@@ -38,14 +48,14 @@ const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessm
       )
         .filter(([, count]) => count > 0)
         .map(([label, count]) => (
-          <div key={label} className="contents">
+          <Fragment key={label}>
             <dt>{label}</dt>
             <dd>{count}</dd>
-          </div>
+          </Fragment>
         ))}
       <dt>Seasons represented</dt>
       <dd>{value.seasons}</dd>
-    </dl>
+    </Grid>
     <p>
       This estimate reflects the current title list and schedule settings. Missing titles and breaks do not
       add playing time.
@@ -62,6 +72,7 @@ const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessm
       {new Date(value.observedAt).toLocaleString(undefined, {
         dateStyle: "medium",
         timeStyle: "short",
+        timeZone,
       })}
       . Changes to your library or schedule can update this result.
     </p>
@@ -71,12 +82,16 @@ const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessm
 const ProposalOutlookDetails = ({
   assessment: value,
   showDiagnostics = true,
+  timeZone,
 }: {
   assessment: Assessment;
   showDiagnostics?: boolean;
+  timeZone?: string;
 }) => (
   <Stack aria-label="What can play now" className="text-muted-foreground" gap="inline" render="section">
-    <h3 className="text-foreground font-medium">What can play now</h3>
+    <Text as="h3" textRole="cardLabel">
+      What can play now
+    </Text>
     <p>
       {value.programs > 0
         ? `${value.programs} playable ${value.programs === 1 ? "episode or movie" : "episodes or movies"} from ${value.scheduledTitles} ${value.scheduledTitles === 1 ? "title" : "titles"}.`
@@ -109,7 +124,7 @@ const ProposalOutlookDetails = ({
       <details className="mt-1">
         <summary className="w-fit cursor-pointer">How this estimate works</summary>
         <div className="mt-3">
-          <ProposalOutlookDiagnostics assessment={value} />
+          <ProposalOutlookDiagnostics assessment={value} timeZone={timeZone} />
         </div>
       </details>
     )}
@@ -120,18 +135,23 @@ const ProposalOutlook = ({
   assessment: value,
   pending = false,
   showDetails = true,
+  timeZone,
 }: ProposalOutlookProps) => {
   if (pending)
     return (
-      <p role="status" className="text-muted-foreground text-sm">
-        Checking this lineup against your library…
-      </p>
+      <div role="status">
+        <Text as="p" textRole="compact" tone="secondary">
+          Checking this lineup against your library…
+        </Text>
+      </div>
     );
   if (!value)
     return (
-      <p role="status" className="text-muted-foreground text-sm">
-        A schedule preview isn't available yet. You can still review the titles.
-      </p>
+      <div role="status">
+        <Text as="p" textRole="compact" tone="secondary">
+          A schedule preview isn't available yet. You can still review the titles.
+        </Text>
+      </div>
     );
   const lowerBound = value.windowLimited || value.unknownTitles > 0;
   const repeatDuration =
@@ -150,17 +170,19 @@ const ProposalOutlook = ({
           ? `Short lineup: ${programmingDuration} of programming.`
           : `${sentenceCase(programmingDuration)} of programming.`;
   return (
-    <section aria-label="Channel outlook" className="text-sm">
-      <p className={value.thin ? "text-caution" : "text-muted-foreground"}>{summary}</p>
+    <Text as="section" aria-label="Channel outlook" textRole="compact" tone="secondary">
+      <Text as="p" textRole="compact" tone={value.thin ? "warning" : "secondary"}>
+        {summary}
+      </Text>
       {showDetails && (
         <details className="mt-2">
           <summary className="text-muted-foreground cursor-pointer">Schedule details</summary>
           <div className="mt-2">
-            <ProposalOutlookDetails assessment={value} />
+            <ProposalOutlookDetails assessment={value} timeZone={timeZone} />
           </div>
         </details>
       )}
-    </section>
+    </Text>
   );
 };
 

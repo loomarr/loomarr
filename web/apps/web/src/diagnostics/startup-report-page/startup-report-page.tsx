@@ -1,9 +1,9 @@
-import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import type { HealthCheck } from "@loomarr/api/models/healthCheck";
 import { HealthCheckStatus } from "@loomarr/api/models/healthCheckStatus";
 import type { HealthReport } from "@loomarr/api/models/healthReport";
 import { HealthReportState } from "@loomarr/api/models/healthReportState";
 import {
+  Card,
   Stack,
   StatusWord,
   type StatusWordKind,
@@ -13,9 +13,11 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
+  Text,
 } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { useCurrentHealth } from "../use-current-health";
 
 const dateTime = (millis?: number) => {
   if (!millis) return "Not checked yet";
@@ -44,10 +46,12 @@ const Verdict = ({ word }: { word: StatusWordKind | undefined }) =>
 
 const CheckIdentity = ({ check }: { check: HealthCheck }) => (
   <>
-    <span className="font-medium">{check.label}</span>
-    <span className="text-muted-foreground text-xs">
+    <Text as="span" textRole="cardLabel">
+      {check.label}
+    </Text>
+    <Text as="span" textRole="hint" tone="secondary">
       {check.required ? "Required" : "Optional"} · {check.mode === "continuous" ? "Monitored" : "Startup"}
-    </span>
+    </Text>
   </>
 );
 
@@ -62,11 +66,11 @@ const HealthCheckRow = ({ check }: { check: HealthCheck }) => (
       <Verdict word={checkWord(check.status)} />
     </TableCell>
     <TableCell verticalAlign="top">
-      <span className="text-muted-foreground text-xs">
-        <time dateTime={check.observedAt ? new Date(check.observedAt).toISOString() : undefined}>
+      <time dateTime={check.observedAt ? new Date(check.observedAt).toISOString() : undefined}>
+        <Text as="span" textRole="hint" tone="secondary">
           {dateTime(check.observedAt)}
-        </time>
-      </span>
+        </Text>
+      </time>
     </TableCell>
     <TableCell verticalAlign="top">
       <span className="text-muted-foreground">
@@ -87,20 +91,29 @@ const HealthCheckRow = ({ check }: { check: HealthCheck }) => (
 
 const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
   return (
-    <section
-      className="border-border bg-card overflow-hidden rounded-lg border"
-      aria-label="Current health summary"
-    >
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4">
-        <div className="min-w-0 flex-1">
-          <p className="text-lg font-medium">
+    <Card aria-label="Current health summary" borderRadius={8} overflow="hidden" render="section">
+      <Stack
+        align="center"
+        columnGap="4"
+        direction="row"
+        paddingHorizontal={16}
+        paddingVertical={16}
+        rowGap="2"
+        wrap
+      >
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+          <Text as="p" textRole="headline">
             <Verdict word={stateWord(report.state)} />
-          </p>
-          <p className="text-muted-foreground text-xs">Continuously monitored</p>
-        </div>
-        <span className="text-muted-foreground font-mono text-xs">{report.version}</span>
-      </div>
-      <div className="border-border border-t">
+          </Text>
+          <Text as="p" textRole="hint" tone="secondary">
+            Continuously monitored
+          </Text>
+        </Stack>
+        <Text as="span" textRole="mono">
+          {report.version}
+        </Text>
+      </Stack>
+      <Stack borderColor="$borderDecorative" borderTopWidth={1}>
         <Table caption="Current health checks" framed={false} minWidth={704}>
           <TableHeader>
             <TableRow>
@@ -115,21 +128,19 @@ const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
             ))}
           </TableBody>
         </Table>
-      </div>
-    </section>
+      </Stack>
+    </Card>
   );
 };
 
 const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
-  const health = diagnosticsApi.useGetCurrentHealth({
-    query: { retry: false, refetchInterval: 10_000 },
-  });
+  const health = useCurrentHealth();
 
   if (health.isError)
     return (
-      <div className="p-6">
+      <Stack padding={24}>
         <ErrorState error={health.error} onRetry={() => health.refetch()} />
-      </div>
+      </Stack>
     );
   const currentHealth = health.data?.status === 200 ? health.data.data : undefined;
 
@@ -141,13 +152,15 @@ const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
       {currentHealth ? (
         <CurrentHealthCard report={currentHealth} />
       ) : (
-        <p className="text-muted-foreground text-sm">Checking app health…</p>
+        <Text as="p" textRole="compact" tone="secondary">
+          Checking app health…
+        </Text>
       )}
     </div>
   );
   if (embedded) return content;
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <PageHeader title="Current Health" description="What is working now and what needs your attention." />
       {content}
     </Stack>

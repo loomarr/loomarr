@@ -1,3 +1,6 @@
+// First: the Intl APIs Hermes lacks, before any screen formats a language name.
+import "./src/intl-polyfills";
+
 export type { AppStateSource } from "./src/app-foreground";
 export { useAppForeground } from "./src/app-foreground";
 export type { LaunchGateOptions, LaunchStageProps } from "./src/launch-stage";

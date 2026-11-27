@@ -49,25 +49,44 @@ func NewRunner(e *Engine, st claimer, every, lease time.Duration, batch int, now
 	return &Runner{engine: e, store: st, batch: batch, lease: lease, log: log, now: now}
 }
 
-// Sweep runs one pass: claim due channels and reconcile each. Returns the number of channels
-// reconciled. Called by the scheduler's channel-maintenance job (§18.1). Errors are logged, never
-// fatal — one channel or selected backend failing never wedges the process (§6).
-func (r *Runner) Sweep(ctx context.Context) int {
+// SweepReport is what one sweep pass did and where its time went (#4428): the claim (which may
+// wait on the store's write lock) and the reconciles are timed apart, so a slow maintenance run
+// says which half was slow.
+type SweepReport struct {
+	Claimed, Reconciled int
+	Claim               time.Duration // the ClaimDueChannels call
+	Reconcile           time.Duration // every claimed channel's reconcile, together
+	Slowest             time.Duration // the slowest single channel's reconcile
+	SlowestChannel      string
+}
+
+// Sweep runs one pass: claim due channels and reconcile each. Called by the scheduler's
+// channel-maintenance job (§18.1). Errors are logged, never fatal — one channel or selected
+// backend failing never wedges the process (§6).
+func (r *Runner) Sweep(ctx context.Context) SweepReport {
+	start := time.Now()
 	claimed, err := r.store.ClaimDueChannels(ctx, r.now(), r.lease, r.batch)
+	report := SweepReport{Claimed: len(claimed), Claim: time.Since(start)}
 	if err != nil {
 		r.log.Error("channel sweep: claim due", "err", err)
-		return 0
+		return report
 	}
-	n := 0
 	for _, ch := range claimed {
-		if err := r.engine.Reconcile(ctx, ch.ID); err != nil {
+		began := time.Now()
+		err := r.engine.Reconcile(ctx, ch.ID)
+		took := time.Since(began)
+		report.Reconcile += took
+		if took > report.Slowest {
+			report.Slowest, report.SlowestChannel = took, ch.ID
+		}
+		if err != nil {
 			r.log.Error("channel sweep reconcile", "channel", ch.ID, "err", err)
 			continue
 		}
-		n++
+		report.Reconciled++
 	}
-	if n > 0 {
-		r.log.Debug("channel sweep", "reconciled", n)
+	if report.Reconciled > 0 {
+		r.log.Debug("channel sweep", "reconciled", report.Reconciled)
 	}
-	return n
+	return report
 }

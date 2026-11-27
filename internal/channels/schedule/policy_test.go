@@ -3,6 +3,7 @@ package schedule
 import (
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -254,5 +255,49 @@ func TestSeedFillerSelectionDerivesOnlyGroundedChannelFacts(t *testing.T) {
 				t.Fatal("seed aliases proposal-owned era instead of handing off an independent value")
 			}
 		})
+	}
+}
+
+// The wire ceilings on closed sets are their sizes: a subset of the filler roles holds at most every
+// role, and a rule's weekdays at most the week. A role added to fillerRoles without its ceiling
+// would make a valid "every role" selection a 422.
+func TestClosedSetCeilingsAreTheirSizes(t *testing.T) {
+	ceiling := func(value any, field string) int {
+		t.Helper()
+		f, ok := reflect.TypeOf(value).FieldByName(field)
+		if !ok {
+			t.Fatalf("%T has no field %s", value, field)
+		}
+		n, err := strconv.Atoi(f.Tag.Get("maxItems"))
+		if err != nil {
+			t.Fatalf("%T.%s maxItems: %v", value, field, err)
+		}
+		return n
+	}
+	if got, want := ceiling(FillerSelection{}, "Roles"), len(fillerRoles); got != want {
+		t.Errorf("FillerSelection.Roles maxItems = %d, want len(fillerRoles) = %d", got, want)
+	}
+	if got := ceiling(WhenPredicate{}, "Days"); got != 7 {
+		t.Errorf("WhenPredicate.Days maxItems = %d, want 7", got)
+	}
+}
+
+// A channel burns image subtitles only in the language it names; there is no install-wide default.
+func TestBurnSubtitlesLanguage(t *testing.T) {
+	var p ChannelPolicy
+	if got := BurnSubtitlesLanguage(p); got != "" {
+		t.Errorf("no playout policy: %q", got)
+	}
+	p.Playout = &PlayoutPolicy{AudioLanguage: "jpn"}
+	if got := BurnSubtitlesLanguage(p); got != "" {
+		t.Errorf("audio language alone burns in %q", got)
+	}
+	p.Playout.BurnSubtitles = " ENG "
+	if got := BurnSubtitlesLanguage(p); got != "eng" {
+		t.Errorf("got %q, want eng", got)
+	}
+	raw, _ := json.Marshal(p.Playout)
+	if string(raw) != `{"audioLanguage":"jpn","burnSubtitles":" ENG "}` {
+		t.Errorf("policy_json: %s", raw)
 	}
 }

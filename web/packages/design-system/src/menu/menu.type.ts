@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from "react";
+import type { MouseEvent, ReactElement, ReactNode } from "react";
 
 import type { PortalContainer } from "../dialog/dialog.type";
 
@@ -13,6 +13,11 @@ interface MenuProps {
 interface MenuTriggerProps {
   /** The one element that opens the menu. It carries its own accessible name and look. */
   children: ReactElement;
+  /**
+   * Runs on a click of the trigger, ahead of the menu's own. A trigger inside a link calls
+   * `preventDefault` and `stopPropagation` here so opening the menu does not also follow the link.
+   */
+  onClick?: (event: MouseEvent<HTMLElement>) => void;
 }
 
 interface MenuContentProps {

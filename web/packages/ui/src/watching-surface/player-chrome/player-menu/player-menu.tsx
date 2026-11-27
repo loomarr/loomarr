@@ -1,4 +1,12 @@
-import { type Density, Icon, icons, playerChrome, Text, useFocusLook } from "@loomarr/design-system";
+import {
+  type Density,
+  Icon,
+  icons,
+  NonModalDialog,
+  playerChrome,
+  Text,
+  useFocusLook,
+} from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import { Pressable, View, type ViewStyle } from "react-native";
 
@@ -21,6 +29,9 @@ interface PlayerMenuProps {
 }
 
 const MENU_WIDTH = { pointer: 280, touch: 320, tv: 360 } as const;
+
+/** How much of the picture's right an open menu covers, so a subtitle can stay clear of it. */
+const menuWidth = (density: Density) => MENU_WIDTH[density];
 
 /**
  * One row of what the keys open, in a menu or a sheet alike (variant J): 44 high on a pointer, the
@@ -71,9 +82,8 @@ const PlayerMenu = ({ children, density, heading = true, onBack, title }: Player
   // A non-modal dialog, not an ARIA menu: its rows are the radios, switch and buttons they are,
   // reached by Tab and the remote's arrows, with none of a menu's own arrow-key contract. As a dialog
   // it is a layer like the sheets: while it is open the arrows are not the player's to change channel.
-  <View
-    aria-label={title}
-    role="dialog"
+  <NonModalDialog
+    label={title}
     style={{
       backgroundColor: playerChrome.band,
       borderColor: playerChrome.hairline,
@@ -96,8 +106,8 @@ const PlayerMenu = ({ children, density, heading = true, onBack, title }: Player
       </View>
     ) : null}
     {children}
-  </View>
+  </NonModalDialog>
 );
 
 export type { PlayerMenuProps };
-export { PlayerMenu, playerRow, rowRole };
+export { menuWidth, PlayerMenu, playerRow, rowRole };

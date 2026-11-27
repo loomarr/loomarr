@@ -1,5 +1,5 @@
 import { View } from "@tamagui/core";
-import { Text } from "../primitives";
+import { Text } from "../text";
 import { isPlainText as isPlain } from "./plain-text";
 import type {
   TableCellProps,

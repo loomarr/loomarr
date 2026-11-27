@@ -2,32 +2,49 @@ import type { ViewportInsets } from "@loomarr/design-system";
 import { useState } from "react";
 import { type LayoutChangeEvent, View } from "react-native";
 
+import { CastingCard } from "../casting-card";
 import { ChannelBand } from "../channel-band";
+import { ChannelCards } from "../channel-cards";
 import { PlayerCaption } from "../player-caption";
 import type { PlayerChromeProps } from "../player-chrome.type";
 import { PlayerKeys } from "../player-keys";
+import { PlayerReadout } from "../player-readout";
 import { PlayerLeave, PlayerUtilities } from "../player-utilities";
 import { UnmutePill } from "../unmute-pill";
 
 // The upright phone's chrome (§9.7, variant J): nothing covers the picture, which the player centres as
 // a strip mid-screen. A toolbar sits under the Dynamic Island, in the black above the picture: Leave
 // and the rating on the left, the utilities on the right. The band and keys sit in the black below it,
-// grounded above the home indicator. The controls stay up (there is no picture to uncover).
+// grounded above the home indicator. The controls stay up (there is no picture to uncover). While
+// channels are flipped the channel cards take the band's place and the readout the toolbar's.
 
 const PortraitChrome = ({
   band,
   captions,
+  casting,
   formatTime,
   insets,
   keys,
   live,
   onGoLive,
   onLeave,
+  readout,
+  surf,
   unmute,
   utilities,
 }: Pick<
   PlayerChromeProps,
-  "band" | "formatTime" | "keys" | "live" | "onGoLive" | "onLeave" | "unmute" | "utilities"
+  | "band"
+  | "casting"
+  | "formatTime"
+  | "keys"
+  | "live"
+  | "onGoLive"
+  | "onLeave"
+  | "readout"
+  | "surf"
+  | "unmute"
+  | "utilities"
 > & {
   captions: readonly string[];
   /** The phone's safe areas. */
@@ -42,22 +59,35 @@ const PortraitChrome = ({
       pointerEvents="box-none"
       style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0, zIndex: 30 }}
     >
-      <View
-        pointerEvents="box-none"
-        style={{
-          alignItems: "center",
-          flexDirection: "row",
-          justifyContent: "space-between",
-          left: 12 + insets.left,
-          position: "absolute",
-          right: 12 + insets.right,
-          top: insets.top + 4,
-        }}
-        testID="player-toolbar"
-      >
-        {onLeave ? <PlayerLeave onLeave={onLeave} pointer={false} rating={band.rating} /> : <View />}
-        <PlayerUtilities {...utilities} />
-      </View>
+      {casting && frame.height > 0 ? (
+        // The picture is on the receiver: the card is exactly the centred 16:9 strip, under the toolbar and keys.
+        <CastingCard
+          {...casting}
+          height={(frame.width * 9) / 16}
+          top={(frame.height - (frame.width * 9) / 16) / 2}
+        />
+      ) : null}
+      {surf ? null : (
+        <View
+          pointerEvents="box-none"
+          style={{
+            alignItems: "center",
+            flexDirection: "row",
+            justifyContent: "space-between",
+            left: 12 + insets.left,
+            position: "absolute",
+            right: 12 + insets.right,
+            top: insets.top + 4,
+          }}
+          testID="player-toolbar"
+        >
+          {onLeave ? <PlayerLeave onLeave={onLeave} pointer={false} rating={band.rating} /> : <View />}
+          <PlayerUtilities {...utilities} />
+        </View>
+      )}
+      {readout ? (
+        <PlayerReadout density="touch" right={12 + insets.right} top={insets.top + 4} {...readout} />
+      ) : null}
       {unmute && frame.height > 0 ? (
         <View
           pointerEvents="box-none"
@@ -85,14 +115,11 @@ const PortraitChrome = ({
           right: 8 + insets.right,
         }}
       >
-        <ChannelBand
-          band={band}
-          density="touch"
-          formatTime={formatTime}
-          live={live}
-          onGoLive={onGoLive}
-          portrait
-        />
+        {surf ? (
+          <ChannelCards density="touch" surf={surf} />
+        ) : (
+          <ChannelBand band={band} density="touch" formatTime={formatTime} live={live} onGoLive={onGoLive} />
+        )}
         <View style={{ alignItems: "center" }}>
           <PlayerKeys {...keys} />
         </View>

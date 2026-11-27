@@ -22,7 +22,6 @@ import { getListTitlesUrl } from "@loomarr/api/endpoints/titles";
 import type { ApproveOutputBody } from "@loomarr/api/models/approveOutputBody";
 import type { BulkApproveFillerPullOutputBody } from "@loomarr/api/models/bulkApproveFillerPullOutputBody";
 import type { BulkApproveOutputBody } from "@loomarr/api/models/bulkApproveOutputBody";
-import type { ErrorModel } from "@loomarr/api/models/errorModel";
 import type { ListChannelIdeasOutputBody } from "@loomarr/api/models/listChannelIdeasOutputBody";
 import type { ListFillerPullsOutputBody } from "@loomarr/api/models/listFillerPullsOutputBody";
 import type { ListOutputBody } from "@loomarr/api/models/listOutputBody";
@@ -32,7 +31,7 @@ import type { ProposalJourneyListOutputBody } from "@loomarr/api/models/proposal
 import type { RequestChannelIdeaOutputBody } from "@loomarr/api/models/requestChannelIdeaOutputBody";
 import type { SubmitOutputBody } from "@loomarr/api/models/submitOutputBody";
 import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
-import { ApiError, toProblem } from "@loomarr/api/mutator";
+import { readResponse, toProblem } from "@loomarr/api/mutator";
 
 import { requestNeedsYou, requestStatus } from "./request-status/request-status";
 import type { RequestTab } from "./request-status/request-status.type";
@@ -47,8 +46,6 @@ import type {
   SubmitBriefResult,
 } from "./requests.type";
 
-/** A generating request is re-read this often, as Web's list does. */
-const GENERATING_POLL_MS = 2_000;
 // GET /v1/titles is a single-state filter, so every acquisition state is fetched and merged.
 const TITLE_STATES = Object.values(TitleDTOState);
 
@@ -78,15 +75,7 @@ const createRequestsPort = (request: typeof globalThis.fetch): RequestsPort => {
       method,
       signal,
     });
-    const text = await response.text();
-    const parsed = text ? (JSON.parse(text) as unknown) : undefined;
-    if (!response.ok)
-      throw new ApiError(
-        response.status,
-        (parsed as ErrorModel | undefined) ?? { status: response.status },
-        response.headers.get("X-Request-Id") ?? undefined,
-      );
-    return parsed as Body;
+    return (await readResponse(response)) as Body;
   };
   return {
     approve: async (proposalId, edit) => {
@@ -174,7 +163,6 @@ const createRequestsController = ({ port }: { port: RequestsPort }): RequestsCon
   let disposed = false;
   let request: AbortController | undefined;
   let ideasRequest: AbortController | undefined;
-  let timer: ReturnType<typeof setTimeout> | undefined;
   let snapshot: RequestsSnapshot = {
     approvals: [],
     deciding: [],
@@ -197,7 +185,6 @@ const createRequestsController = ({ port }: { port: RequestsPort }): RequestsCon
 
   const refresh = async () => {
     if (disposed) return;
-    clearTimeout(timer);
     request?.abort();
     const current = new AbortController();
     request = current;
@@ -226,8 +213,6 @@ const createRequestsController = ({ port }: { port: RequestsPort }): RequestsCon
         status: "ready",
         titles,
       });
-      if (entries.some(({ journey }) => journey.milestone === "generating"))
-        timer = setTimeout(() => void refresh(), GENERATING_POLL_MS);
     } catch (error) {
       if (request === current && !current.signal.aborted)
         publish({
@@ -329,7 +314,6 @@ const createRequestsController = ({ port }: { port: RequestsPort }): RequestsCon
     dispose: () => {
       if (disposed) return;
       disposed = true;
-      clearTimeout(timer);
       request?.abort();
       ideasRequest?.abort();
       listeners.clear();
@@ -399,10 +383,4 @@ const requestsNeedsYouCount = (snapshot: RequestsSnapshot): number =>
 const requestsInTab = (snapshot: RequestsSnapshot, tab: RequestTab): readonly RequestEntry[] =>
   snapshot.entries.filter((entry) => entry.status.tab === tab);
 
-export {
-  createRequestsController,
-  createRequestsPort,
-  GENERATING_POLL_MS,
-  requestsInTab,
-  requestsNeedsYouCount,
-};
+export { createRequestsController, createRequestsPort, requestsInTab, requestsNeedsYouCount };

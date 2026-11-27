@@ -318,7 +318,33 @@ describe("play URL source warm", () => {
 
     expect(warmed?.uri).toBe("http://living-room:8080/v1/playout/hls/science/master.m3u8?sig=one&plan=full");
     expect(warmed?.expiresAt).toBe(Date.parse("2999-01-01T00:00:00Z"));
-    expect(warmed?.serverTimeMs).toBe(1_000_000);
+  });
+
+  // The server holds the warm's master answer until the channel lists a segment, as it does a cold
+  // tune's (#1037). The mint-time clock reading must count that wait, or a tune that reuses the warm
+  // starts its live clock that far behind the server's, and the chrome names the wrong programme.
+  it("counts the server's start wait in the clock the warmed source carries", async () => {
+    vi.useFakeTimers();
+    try {
+      const request = vi
+        .fn()
+        .mockResolvedValueOnce(mint())
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) =>
+              setTimeout(() => resolve(new Response(manifest, { status: 200 })), 8_000),
+            ),
+        )
+        .mockImplementation(() => Promise.resolve(new Response("bytes", { status: 200 })));
+
+      const warming = port(request).warm?.(channel, new AbortController().signal);
+      await vi.advanceTimersByTimeAsync(8_000);
+      const warmed = await warming;
+
+      expect(warmed?.serverTimeMs).toBe(1_000_000 + 8_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the source but does not certify a warm whose assets were unavailable", async () => {

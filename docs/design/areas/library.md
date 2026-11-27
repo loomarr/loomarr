@@ -15,7 +15,7 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`library/arrhook`** · 2 importers · → `platform/httpx`
   Speaks Sonarr's and Radarr's webhooks (#2151 decisions 9 and 10): it reads the events they send, naming the folders each one touched, and registers Loomarr as one of their connections so they send them.
-- **`library/inventory`** · 9 importers
+- **`library/inventory`** · 10 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`library/mediaserver`** · 15 importers · → `platform/httpx`, `platform/metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
@@ -33,7 +33,7 @@ One area of the [package map](../package-map.md#start-here).
   Conformance suite every metadata provider runs.
 - **`library/metadataprovider/tmdb`** · 1 importer · → `library/metadataprovider`, `library/tmdb`, `platform/httpx`, `platform/rating`
   TMDB as a metadata provider (#2151 decisions 7, 13, 15, 18, 20, 21).
-- **`library/provision`** · 37 importers
+- **`library/provision`** · 38 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`library/provisionbackstop`** · 2 importers · → `library/mediaserver`, `library/provision`, `library/requester`, `platform/activity`, `platform/jobs`, `platform/settings`, `platform/store`, `platform/store/activitystore`
   Provisioning backstop (design §4, §7, §18).

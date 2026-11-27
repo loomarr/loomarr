@@ -83,9 +83,9 @@ const OllamaLineup = ({ status, onModelChange }: { status: SystemLLMStatus; onMo
           onPull={pull.start}
         />
       ) : (
-        <p className="text-muted-foreground text-sm">
+        <Text as="p" textRole="compact" tone="secondary">
           No tool-capable models installed yet. Download one below to get started.
-        </p>
+        </Text>
       )}
       <ModelDiscover
         results={discoverBody?.models ?? undefined}
@@ -101,22 +101,26 @@ const OllamaLineup = ({ status, onModelChange }: { status: SystemLLMStatus; onMo
 const TmdbNotice = ({ configured }: { configured: boolean }) => (
   <Stack
     align="center"
-    className="border-border bg-muted/40 rounded-md border p-3"
+    backgroundColor="washElevated40"
+    borderColor="borderDecorative"
+    borderRadius={8}
+    borderWidth={1}
     direction="row"
     gap="control"
     justify="between"
+    padding={12}
     render="section"
     wrap
   >
     <div>
-      <p className="text-sm font-medium">
+      <Text as="p" textRole="cardLabel">
         {configured ? "TMDB key configured" : "TMDB grounding is still needed"}
-      </p>
-      <p className="text-muted-foreground text-sm">
+      </Text>
+      <Text as="p" textRole="compact" tone="secondary">
         {configured
           ? "Loomarr can use TMDB to ground channel suggestions in real titles."
           : "Your AI connection is separate. Connect TMDB before building a channel from a description."}
-      </p>
+      </Text>
     </div>
     {!configured && (
       <Action
@@ -157,17 +161,20 @@ const VisionPicker = ({
   return (
     <Stack
       aria-labelledby="role-vision"
-      className="border-border rounded-md border p-3"
+      borderColor="$borderDecorative"
+      borderRadius={6}
+      borderWidth={1}
       gap="inline"
+      padding={12}
       render="section"
     >
       <div>
-        <h3 id="role-vision" className="text-sm font-medium">
+        <Text as="h3" id="role-vision" textRole="cardLabel">
           Vision
-        </h3>
-        <p className="text-muted-foreground text-sm">
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
           Reads sampled filler frames. It inherits the lineup model unless you choose a vision-capable model.
-        </p>
+        </Text>
       </div>
       {/* One choice of several, so a radio group: the current model reads as checked rather than
           as a disabled button, and arrow keys move between models. */}
@@ -312,7 +319,12 @@ const AiModelSettings = ({
   };
 
   if (llm.error) return <ErrorState error={llm.error} onRetry={() => llm.refetch()} />;
-  if (!status) return <p className="text-muted-foreground text-sm">Checking your AI provider…</p>;
+  if (!status)
+    return (
+      <Text as="p" textRole="compact" tone="secondary">
+        Checking your AI provider…
+      </Text>
+    );
 
   const hosted = provider === "openai";
   const candidates = status.hosted ?? [];
@@ -324,9 +336,9 @@ const AiModelSettings = ({
   const lineup = hosted ? (
     <HostedLineup status={status} provider={activeProvider} onModelChange={modelChanged} />
   ) : !status.reachable ? (
-    <p className="text-onair-300 text-sm">
+    <Text as="p" textRole="compact" tone="danger">
       Couldn't reach the Ollama host. Fix the URL above, then re-run the connection test.
-    </p>
+    </Text>
   ) : (
     <OllamaLineup status={status} onModelChange={modelChanged} />
   );
@@ -337,17 +349,19 @@ const AiModelSettings = ({
     <Stack gap="4">
       <Stack
         aria-labelledby="role-lineup"
-        className="border-border border-t pt-4"
+        borderColor="$borderDecorative"
+        borderTopWidth={1}
         gap="control"
+        paddingTop={16}
         render="section"
       >
         <div>
-          <h3 id="role-lineup" className="text-base font-semibold">
+          <Text as="h3" id="role-lineup" textRole="heading">
             Choose a lineup model
-          </h3>
-          <p className="text-muted-foreground text-sm">
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             Loomarr uses this model to plan channel suggestions. It must support tool calling.
-          </p>
+          </Text>
         </div>
         {lineup}
       </Stack>

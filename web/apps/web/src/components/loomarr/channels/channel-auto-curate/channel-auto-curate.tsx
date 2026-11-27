@@ -1,4 +1,4 @@
-import { Stack, Text, Toggle } from "@loomarr/design-system";
+import { Grid, Stack, Text, Toggle } from "@loomarr/design-system";
 import { CommitField } from "@loomarr/ui";
 import { isThresholdOverridden, resetField, resetThreshold } from "@/lib/policy-overrides";
 import { FieldHelp } from "../../feedback";
@@ -7,11 +7,11 @@ import type { ChannelAutoCurateProps } from "./channel-auto-curate.type";
 
 // ChannelAutoCurate — the per-channel auto-curate opt-in (programming-design.md §8.2).
 //
-// ORPHANED until now, and for a structural reason worth keeping written down: **the opt-in IS
-// the object's presence.** `policy.autoCurate` is a `*AutoCurate` — nil means off, and a
+// Its own component for a structural reason worth keeping written down: **the opt-in IS the
+// object's presence.** `policy.autoCurate` is a `*AutoCurate` — nil means off, and a
 // zero-value (non-nil) object means "opted in, inherit both global thresholds". So there is no
 // boolean field to bind a checkbox to; the checkbox has to CONSTRUCT `{}` or DELETE the object.
-// A generic policy field editor could never reach it, which is exactly why nothing did.
+// A generic policy field editor cannot reach it.
 //
 // The opt-out is safe because PATCH /v1/channels/{id} replaces the policy wholesale
 // (schedule.MergeFromOperator: `out := incoming`, only `Applied` is force-preserved). Sending a
@@ -89,13 +89,13 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
               now, not a static description of the setting. (An earlier version always read "Off,
               new titles wait for your approval", which flatly contradicted a ticked box; the
               unit tests passed and the story screenshot caught it.) */}
-          <p id="policy-auto-curate-hint" className="text-muted-foreground text-sm">
+          <Text as="p" id="policy-auto-curate-hint" textRole="compact" tone="secondary">
             {!intentBacked
               ? "Only for channels built from an intent. This one was made by hand, so there is no intent to re-check."
               : enabled
                 ? "New titles that fit are added on their own, within the limits below."
                 : "Off, new titles wait for your approval."}
-          </p>
+          </Text>
         </Stack>
       </Stack>
 
@@ -106,7 +106,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
         // Each threshold gets the same label row as every other Programming field: label left,
         // source badge and Reset right, in the mock's two-column grid at full width (#1877 mock).
         // Unindented, so the badge row fits beside or under the label on a phone.
-        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
+        <Grid columnGap="4" columns={{ base: 1, sm: 2 }} rowGap="3">
           <Stack gap="1">
             <Stack align="center" direction="row" gap="inline" justify="between" wrap>
               <Text as="label" htmlFor="policy-auto-curate-score" textRole="hint" tone="secondary">
@@ -159,7 +159,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
               }}
             />
           </Stack>
-        </div>
+        </Grid>
       )}
     </Stack>
   );

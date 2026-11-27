@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // Entry is one programme on a channel card or in the "what's on later" strip. The times are the
@@ -100,7 +100,7 @@ type TunarrGuide interface {
 
 // BroadcastReader is the resolver slice the router needs — satisfied by *playoutresolve.Resolver.
 type BroadcastReader interface {
-	BroadcastsBetween(ctx context.Context, channelID string, from, to time.Time) ([]playout.Broadcast, error)
+	BroadcastsBetween(ctx context.Context, channelID string, from, to time.Time) ([]timeline.Broadcast, error)
 }
 
 // ChannelLister is the one store read the router makes.
@@ -287,7 +287,7 @@ const upcomingWindow = 12 * time.Hour
 // SeriesTitle is folded into Title for a series so the card reads "The Simpsons" rather than an
 // episode name with no context — the same choice the XMLTV writer makes for `<title>`, and the
 // one the FE's card layout is built around.
-func broadcastToNowNext(b playout.Broadcast) Entry {
+func broadcastToNowNext(b timeline.Broadcast) Entry {
 	title := b.Title
 	if b.SeriesTitle != "" {
 		title = b.SeriesTitle

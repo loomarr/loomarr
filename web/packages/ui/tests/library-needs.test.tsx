@@ -430,6 +430,57 @@ describe("LibraryNeedsCards", () => {
     cleanup();
   });
 
+  it("keeps TMDB's name for two orders of one kind, and a plain one for a kind that stands alone", () => {
+    type Choice = LibraryOrderNeed["choices"][number];
+    const [catalog, dvd, absolute] = tidewater.choices as [Choice, Choice, Choice];
+    const twoDvd: LibraryOrderNeed = {
+      ...tidewater,
+      choices: [
+        catalog,
+        { ...dvd, name: "DVD Order (US)" },
+        { ...dvd, name: "DVD Order (UK)", orderId: "90000799c" },
+        { ...absolute, kind: "story", name: "Arc order" },
+      ],
+    };
+    const { host, cleanup } = mount(cards({ needs: [], orders: [twoDvd] }));
+    const text = host.textContent ?? "";
+    expect(text).toContain("DVD Order (US)");
+    expect(text).toContain("DVD Order (UK)");
+    expect(text).toContain("Story order");
+    expect(text).not.toContain("Arc order");
+    cleanup();
+  });
+
+  it("says when a season on disk is one TMDB doesn't list", () => {
+    const extra: LibraryOrderNeed = { ...kestrel, disk: [{ season: 3, episodes: 4 }] };
+    const { host, cleanup } = mount(cards({ needs: [], orders: [extra] }));
+    expect(host.textContent).toContain(
+      "Season 3 on your disk isn't one TMDB lists. It still plays, named as it is in its file.",
+    );
+    cleanup();
+  });
+
+  it("words the other reasons a guess can give", () => {
+    const nameAndYear = guess({ lengthMatches: false, yearMatches: true });
+    const close = guess({ lengthMatches: false, nameMatches: false });
+    const first = mount(cards({ needs: [need("90000811", { best: nameAndYear })] }));
+    expect(first.host.textContent).toContain("The name and year match.");
+    first.cleanup();
+    const second = mount(cards({ needs: [need("90000812", { best: close })] }));
+    expect(second.host.textContent).toContain("It looks close, but we can't be sure.");
+    second.cleanup();
+  });
+
+  it("gives a title with both problems two entries", () => {
+    const { host, cleanup } = mount(
+      cards({ needs: [], problems: [problem("90000823", { extraBytes: 4_300_000_000, unplayable: 2 })] }),
+    );
+    expect(host.textContent).toContain("Needs you (2)");
+    expect(host.textContent).toContain("Quiet Orchard can't be played");
+    expect(host.textContent).toContain("Quiet Orchard has an extra copy");
+    cleanup();
+  });
+
   it("picks one of the other guesses", () => {
     const onLink = vi.fn(() => Promise.resolve());
     const other = guess({

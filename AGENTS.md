@@ -28,97 +28,34 @@ make agent-worktree TOPIC=<short-name> CLAIMS=<comma-separated-shared-outputs>
 `agent-status` is the cross-harness roster. A product's own agent-list command is supplementary; it
 cannot see agents running in other products. Before starting, resolve any overlapping task or claim.
 
-Supervised workers receive bounded, rotating task roles and return control when the brief is done;
-they do not self-assign follow-up work. Record model and reasoning choices when the harness exposes
-them. Change those choices only at assignment boundaries, and never let them expand the worker's
-authority, scope, claims, tools, or acceptance criteria.
+### Delegation
 
-For multi-PR delivery, run independent reviews and disjoint repairs concurrently, including early
-review of later stack members against fixed parent commits. Preserve dependency order for merges,
-one writer per overlapping seam, and final integrated-tree evidence. Follow the
-[concurrent backlog procedure](.agents/workflows/supervise.md#review-a-pr-backlog-concurrently).
+One agent owns each deliverable and does its coupled work itself: a sequential reasoning chain,
+edits to one seam, or work whose contract is still moving. Delegate an assignment when it is
+independent and bounded, and a child saves elapsed time, keeps noisy context out of the owner's
+window, or supplies a fresh view: evidence collection, competing designs, a disjoint implementation
+seam, or review. Fix the shared contract first, then fan out, sending independent assignments
+together so they run concurrently. Codex and Claude follow the same rule.
 
-### Parent and child agents
+Non-trivial implementation receives a fresh-context child review of the fixed final diff before
+delivery; unresolved findings return to the owner for repair and a fresh bounded review.
 
-For non-trivial work, the delivery owner acts as the parent and must delegate at least one useful,
-independent, bounded assignment to a child agent: evidence collection, design exploration,
-disjoint implementation, or fresh-context review. Identify that assignment before broad exploration;
-continue independent parent work while the child runs. Codex and Claude follow the same rule.
+Children report to the owner and delegate further only when their brief permits it. A read-only
+child is a native subagent of the owner. An editing child needs its own worktree and an explicit
+file seam, interface seam, claim set, and merge order; without all of them it stays read-only. In
+Orca, the primary harness, an editing child or a child that must be a different agent is a worker
+started through the installed `orchestration` skill, in a worktree nested under the owner's. The
+owner verifies evidence, integrates changes, runs final gates, and owns delivery and cleanup.
+Delegation grants no additional authority: claims, one-writer ownership, and gates still apply.
 
-Keep a trivial change or an inseparable reasoning/edit chain with one agent when delegation would
-only duplicate context and cost. If no useful independent assignment exists, or child-agent tools,
-readiness, or budget controls are unavailable, state the concrete reason for proceeding solo.
-Do not launch a token-spending placeholder merely to satisfy a count. Non-trivial implementation
-should receive child review of the fixed final diff before delivery; unresolved findings return to
-the owner for repair and a fresh bounded review checkpoint.
+Give each child a bounded brief: scope, acceptance, and return format. Choose its model by the
+[routing policy](.agents/workflows/supervise.md#route-each-assignment) instead of inheriting the
+parent's. Every editing child, several concurrent workers, a PR backlog, and any request to
+supervise or coordinate agents are supervision: follow
+[the supervisor workflow](.agents/workflows/supervise.md), which owns the worker brief, token
+budgets, launch checks, and the supervision loop.
 
-Use native parent/child relationships when available; in Orca, follow the installed orchestration
-skill to create a tracked child worker instead of an unrelated terminal session. Each brief carries
-scope, authority, acceptance, model/effort, budget, cutoff, report reserve, and a return boundary.
-Select the child's model for its assignment rather than inheriting an expensive parent by default.
-Children report to the parent and do not delegate further unless their brief explicitly permits it.
-The parent verifies evidence, integrates changes, runs final gates, and owns delivery and cleanup.
-The existing claims, one-writer, readiness, and budget requirements still apply; delegation grants
-no additional authority. See [the supervisor workflow](.agents/workflows/supervise.md).
-
-### Task-based model routing
-
-Choose the least expensive model clearly capable of meeting the assignment's acceptance criteria.
-Use Luna at Low reasoning by default for straightforward evidence collection: exact SHA/status and
-PR/issue collection, bounded inventories, artifact existence/hash/size checks, documented-command
-reproduction, and mechanical comparison against explicit acceptance criteria. Use Terra at Medium
-for ordinary implementation, multi-file behaviour analysis, and investigations requiring synthesis.
-Use Sol only for complex integration or high-risk or ambiguous contract reasoning, with a written
-reason. Use Astra for the hardest cross-system architectural decisions, difficult competing evidence,
-or a specific capability gap beyond Sol; record the expected benefit and risk justification. A
-supervisor role, review label, or available pane does not justify Astra. A clearly demanding task may
-start at the justified model without wasteful trial runs through every smaller model.
-
-Select reasoning independently of model capability: Low for mechanical checklists, Medium for
-ordinary implementation or analysis, and High for difficult ambiguity or demanding integration with
-a written quality need. Use xhigh or max only for exceptional bounded problems with an explicit
-expected benefit and budget justification. Use only levels supported by the selected model and
-actual harness; verify effective settings and record `uncontrolled` when they cannot be verified.
-
-A read-only assignment is not automatically a Terra assignment: first determine whether an
-explicit evidence checklist makes Luna sufficient. Every brief records the selected model/reasoning,
-rationale, authority, output, native budget, cutoff, and report reserve; verify the launched settings.
-Higher-tier evidence collection needs a concrete synthesis, ambiguity, or risk justification.
-Repair inadequate briefs, missing evidence, and sandbox or permission failures as workflow problems,
-not automatic model or reasoning upgrades. Escalate only a specific unresolved quality or capability
-gap, rather than using higher effort to compensate for missing authority or inputs.
-Escalation checkpoints the specific unresolved question or failed acceptance, preserves useful
-evidence, and starts a fresh bounded assignment; never silently switches an active worker or repeats
-the whole scan. Budget ceilings are limits, not targets, and higher capability never broadens
-authority; preserve one-writer ownership, visible panes, gates, and safety controls.
-
-For genuinely independent bounded work, use visible worker panes freely when the maintainer asks
-for supervised coordination. After accepting a worker report, immediately reassign that pane to a
-ready independent task or close it; retain it only through report capture and acknowledgement.
-Show and audit the pane and cross-harness rosters after launch, accepted report, reassignment, and
-closure. The steady state is the supervisor plus active workers, never accumulated idle panes. The
-supervisor workflow preserves the interactive-session and tmux details.
-
-Every supervised implementation or review assignment is one token-bounded checkpoint. Declare a
-limit from 100,000 through 200,000 tokens before the checkpoint starts; use 150,000 by default. Use
-the harness's native goal budget when it has one. Otherwise, when worker-scoped usage is observable,
-record the meter source and starting value and stop early enough to preserve the limit. Reserve at
-least 15% for the final report plus headroom for delayed usage updates and in-flight work. Polling a
-counter is not proof of a hard cap. If enforcement or worker attribution cannot be established,
-permit read-only planning, research, or review only;
-do not begin or resume edits. Follow-up scope and another review pass require a fresh checkpoint and
-budget rather than an increase to the active limit.
-
-Before editing handoff, verify the exact worker session's effective permissions, model, reasoning,
-native goal identity, budget, status, and usage. A queued instruction does not change a sandbox or
-prove acknowledgement. Keep initialization and authorization waits out of active implementation
-loops. Verify cessation and the final meter before accepting a report; preserve incomplete work
-without falsely marking the goal complete. Follow the supervisor workflow's launch and stop checks.
-
-Apply the task-based model and reasoning policy above. Hitting a budget stops the checkpoint; it never authorizes weaker
-gates, reduced grounding, narrower acceptance, or skipped safety checks. Preserve the worktree and
-claims and report usage, remaining work, the stop reason, frozen tree identity, and gates run or not
-run as defined in [the supervisor workflow](.agents/workflows/supervise.md).
+### Claims
 
 Use claims for scarce outputs whose conflicts are expensive:
 
@@ -130,6 +67,8 @@ Use claims for scarce outputs whose conflicts are expensive:
 
 Add a domain-specific claim when two changes would edit the same interface or DTO. A worktree isolates
 files; the claim identifies the real seam where concurrent work would collide.
+
+### Verification and cleanup
 
 During implementation, run the smallest focused test that covers the edit. When the exact test is not
 known, `make test-affected BASE=<base>` runs direct Go packages, related Vitest tests, and directly
@@ -321,9 +260,5 @@ Agent-specific directories such as `.claude/` contain adapters or symlinks only.
 must be usable without a proprietary slash command, home-directory plan, or product-specific worktree
 feature.
 
-One worktree owns implementation and delivery. Use subagents for independent research, competing
-designs, and fresh-context review; they report to the owner unless a separate editing worktree has a
-clear file seam, interface seam, claim set, and merge order. For dependent branches, record
-`DEPENDS_ON` and stack with `BASE=<dependency-branch>`. See `docs/agents/harness.md` and the curated
-catalog in `docs/agents/skills.md`. When asked to supervise or coordinate multiple agents, follow
-`.agents/workflows/supervise.md`.
+For dependent branches, record `DEPENDS_ON` and stack with `BASE=<dependency-branch>`. See
+`docs/agents/harness.md` and the curated catalog in `docs/agents/skills.md`.

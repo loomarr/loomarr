@@ -1,4 +1,4 @@
-import { Combobox, Icon, icons, Stack } from "@loomarr/design-system";
+import { Badge, Combobox, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useEffect, useId, useMemo, useState } from "react";
 import { languageName } from "@/lib/languages";
 import type { LanguagePickerProps } from "./language-picker.type";
@@ -27,15 +27,19 @@ const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel 
   };
 
   return (
-    <div className="max-w-2xl">
-      <Stack align="center" className="mb-1.5" direction="row" gap="inline">
-        <label htmlFor={`${listID}-input`} className="text-sm font-medium">
+    <Stack maxWidth={672}>
+      <Stack align="center" direction="row" gap="inline" marginBottom={6}>
+        <Text as="label" htmlFor={`${listID}-input`} textRole="cardLabel" tone="primary">
           Commercial language
-        </label>
+        </Text>
         {locked && lockedLabel && (
-          <span className="bg-static-800 text-2xs text-static-400 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono">
-            <Icon decorative glyph={icons.locked} size="compact" tone="inherit" /> {lockedLabel}
-          </span>
+          <Badge
+            icon={<Icon decorative glyph={icons.locked} size="compact" tone="inherit" />}
+            shape="square"
+            tone="neutral"
+          >
+            {lockedLabel}
+          </Badge>
         )}
       </Stack>
       <Combobox
@@ -51,10 +55,12 @@ const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel 
         placeholder="Search languages"
         value={value}
       />
-      <p className="text-muted-foreground mt-2 text-sm">
-        Loomarr skips commercials confidently spoken in another language. Wordless clips stay.
-      </p>
-    </div>
+      <Stack marginTop={8}>
+        <Text as="p" textRole="compact" tone="secondary">
+          Loomarr skips commercials confidently spoken in another language. Wordless clips stay.
+        </Text>
+      </Stack>
+    </Stack>
   );
 };
 

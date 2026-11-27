@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/media/images"
@@ -33,6 +34,10 @@ type fakeImageService struct {
 	lastIngest images.IngestRequest
 	lastBytes  []byte
 	ingests    int
+	// adopts counts Adopt calls: each is a write in the real service.
+	adopts int
+	// gets counts point reads (Get), manyReads batched ones (GetMany).
+	gets, manyReads int
 
 	// ingestErr, when set, makes Ingest fail — for the "storage broke" branch.
 	ingestErr error
@@ -40,7 +45,7 @@ type fakeImageService struct {
 	// records is the hash → image map Get serves from, seeded by Ingest.
 	records map[string]images.Image
 
-	// formats is which rendition formats "already exist" — see HasFormat.
+	// formats is which rendition formats "already exist" — see EncodedWidths.
 	formats map[images.Format]bool
 }
 
@@ -82,19 +87,47 @@ func (f *fakeImageService) Ingest(_ context.Context, r io.Reader, req images.Ing
 }
 
 // Adopt hands back the record keyed by the source URL, as one the fetch job has fetched; an
-// unknown URL is pending, with no bytes.
+// unknown URL is recorded pending, with no bytes. Each call counts in adopts.
 func (f *fakeImageService) Adopt(_ context.Context, srcURL string, _ images.IngestRequest) (images.Image, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.adopts++
+	if img, ok := f.records[srcURL]; ok {
+		return img, nil
+	}
+	img := images.Image{SourceURL: srcURL, Origin: images.OriginRemote}
+	f.records[srcURL] = img
+	return img, nil
+}
+
+// Lookup reads what Adopt recorded of the source URL.
+func (f *fakeImageService) Lookup(_ context.Context, srcURL string) (images.Image, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if img, ok := f.records[srcURL]; ok {
 		return img, nil
 	}
-	return images.Image{SourceURL: srcURL, Origin: images.OriginRemote}, nil
+	return images.Image{}, images.ErrNotFound
+}
+
+// GetMany is one read of many records, as the real service makes it; reads counts them.
+func (f *fakeImageService) GetMany(_ context.Context, hashes []string) (map[string]images.Listed, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.manyReads++
+	out := map[string]images.Listed{}
+	for _, h := range hashes {
+		if img, ok := f.records[h]; ok {
+			out[h] = images.Listed{Image: img, AVIFWidths: f.encodedLocked(img, images.FormatAVIF)}
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeImageService) Get(_ context.Context, hash string) (images.Image, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.gets++
 	img, ok := f.records[hash]
 	if !ok {
 		return images.Image{}, images.ErrNotFound
@@ -106,16 +139,24 @@ func (f *fakeImageService) Rendition(_ context.Context, hash string, _ images.Fo
 	return images.Rendition{Hash: hash}, nil
 }
 
-// HasFormat defaults to FALSE for every format, which is the state a freshly-ingested image is
+// EncodedWidths defaults to none for every format, which is the state a freshly-ingested image is
 // actually in: AVIF is job-produced, so it does not exist at upload time.
 //
-// ⚠ Defaulting to true would make the fake disagree with reality in the exact direction that hid
+// ⚠ Defaulting to some would make the fake disagree with reality in the exact direction that hid
 // the bug this method exists to prevent — advertising an AVIF that 404s, which `<picture>` turns
-// into a broken image rather than a fallback. `formats` lets a test opt one in explicitly.
-func (f *fakeImageService) HasFormat(_ context.Context, _ string, format images.Format) (bool, error) {
+// into a broken image rather than a fallback. `formats` lets a test opt one in explicitly, and an
+// opted-in format holds the image's whole AVIF ladder.
+func (f *fakeImageService) EncodedWidths(_ context.Context, hash string, format images.Format) ([]int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.formats[format], nil
+	return f.encodedLocked(f.records[hash], format), nil
+}
+
+func (f *fakeImageService) encodedLocked(img images.Image, format images.Format) []int {
+	if !f.formats[format] {
+		return nil
+	}
+	return img.Role.AVIFWidthsFor(img.Width)
 }
 
 // URLFor mirrors the real service's shape (`/v1/images/{hash}/w{width}.{ext}`) with no base URL,
@@ -129,8 +170,20 @@ func (f *fakeImageService) PathFor(hash string, width int, format images.Format)
 }
 
 func (f *fakeImageService) SrcSet(hash string, role images.Role, format images.Format, sourceWidth int) string {
+	return f.srcSetOf(hash, format, role.WidthsFor(sourceWidth))
+}
+
+func (f *fakeImageService) AVIFSrcSet(hash string, role images.Role, sourceWidth int, encoded []int) string {
+	widths := role.AVIFWidthsFor(sourceWidth)
+	if slices.ContainsFunc(widths, func(w int) bool { return !slices.Contains(encoded, w) }) {
+		return ""
+	}
+	return f.srcSetOf(hash, images.FormatAVIF, widths)
+}
+
+func (f *fakeImageService) srcSetOf(hash string, format images.Format, widths []int) string {
 	out := ""
-	for i, w := range role.WidthsFor(sourceWidth) {
+	for i, w := range widths {
 		if i > 0 {
 			out += ", "
 		}

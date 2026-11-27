@@ -264,6 +264,212 @@ describe("Guide", () => {
     expect(screen.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
   });
 
+  // A failed refetch (the SSE bus invalidating every window) used to swap the whole page for an
+  // error. The Guide on screen stays, and a Notice says it may be stale until a refresh lands.
+  it("keeps the Guide on screen and says so when a refresh fails", async () => {
+    const user = userEvent.setup();
+    stubGuide();
+    const view = renderAt(GRID);
+    expect(await view.findByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+
+    server.use(http.get("*/v1/guide", () => new HttpResponse(null, { status: 503 })));
+    const isGuide = (query: { queryKey: readonly unknown[] }) =>
+      String(query.queryKey[0]).includes("/v1/guide");
+    await clients.at(-1)?.refetchQueries({ predicate: isGuide });
+
+    expect(await view.findByText("Couldn't refresh the Guide")).toBeInTheDocument();
+    expect(view.getByText("Showing what Loomarr had a moment ago.")).toBeInTheDocument();
+    expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+
+    server.resetHandlers();
+    stubGuide();
+    await user.click(view.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument());
+    expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+  });
+
+  // The notice's button is where the keyboard's focus sits when it is pressed. A retry that took
+  // the notice away while it ran dropped focus to the page, and a retry that failed again brought
+  // the notice back with nothing focused.
+  it("keeps focus on the notice's Try again while it retries, and when the retry fails", async () => {
+    const user = userEvent.setup();
+    stubGuide();
+    const view = renderAt(GRID);
+    expect(await view.findByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+
+    const isGuide = (query: { queryKey: readonly unknown[] }) =>
+      String(query.queryKey[0]).includes("/v1/guide");
+    server.use(http.get("*/v1/guide", () => new HttpResponse(null, { status: 503 })));
+    await clients.at(-1)?.refetchQueries({ predicate: isGuide });
+    const button = await view.findByRole("button", { name: "Try again" });
+    button.focus();
+
+    // The retry is held on its way to failing again.
+    let answer = () => {};
+    const held = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    server.use(
+      http.get("*/v1/guide", async () => {
+        await held;
+        return new HttpResponse(null, { status: 503 });
+      }),
+    );
+    await user.click(button);
+
+    const retrying = await view.findByRole("button", { name: "Trying again…" });
+    expect(retrying).toBe(button);
+    expect(button).toHaveFocus();
+    expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+    // A second press while it runs is the same retry.
+    await user.click(button);
+
+    answer();
+    await waitFor(() => expect(button).toHaveAccessibleName("Try again"));
+    expect(view.getAllByRole("button", { name: "Try again" })).toEqual([button]);
+    expect(button).toHaveFocus();
+  });
+
+  // A retry that works takes the notice (or the error page) away, and the focus on its button goes
+  // with it, to the page. Focus goes instead to the Guide's home: the grid's one Tab stop, or the
+  // page's main region when no grid is drawn.
+  describe("after a retry works", () => {
+    const failGuide = () => server.use(http.get("*/v1/guide", () => new HttpResponse(null, { status: 503 })));
+    const isGuide = (query: { queryKey: readonly unknown[] }) =>
+      String(query.queryKey[0]).includes("/v1/guide");
+    const gridStop = () => {
+      const stop = document.activeElement;
+      expect(stop, "focus is on the page, not a control").not.toBe(document.body);
+      expect(stop).toHaveAttribute("tabindex", "0");
+      return stop;
+    };
+
+    it("puts focus on the grid's Tab stop when a notice's retry works", async () => {
+      const user = userEvent.setup();
+      stubGuide();
+      const view = renderAt(GRID);
+      expect(await view.findByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      failGuide();
+      await clients.at(-1)?.refetchQueries({ predicate: isGuide });
+      await user.click(await view.findByRole("button", { name: "Try again" }));
+      await view.findByRole("button", { name: "Try again" });
+
+      server.resetHandlers();
+      stubGuide();
+      await user.click(view.getByRole("button", { name: "Try again" }));
+
+      await waitFor(() => expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument());
+      await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+      expect(gridStop()).toHaveAccessibleName(/^Space Western, /);
+    });
+
+    it("puts focus on the grid's Tab stop when the error page's retry works", async () => {
+      const user = userEvent.setup();
+      stubGuide();
+      failGuide();
+      const view = renderAt(GRID);
+      const button = await view.findByRole("button", { name: "Try again" });
+      button.focus();
+
+      // Held on its way to failing again: the button stays, and says so.
+      let answer = () => {};
+      const held = new Promise<void>((resolve) => {
+        answer = resolve;
+      });
+      server.use(
+        http.get("*/v1/guide", async () => {
+          await held;
+          return new HttpResponse(null, { status: 503 });
+        }),
+      );
+      await user.click(button);
+      expect(await view.findByRole("button", { name: "Trying again…" })).toBe(button);
+      expect(button).toHaveFocus();
+      answer();
+      await waitFor(() => expect(button).toHaveAccessibleName("Try again"));
+      expect(button).toHaveFocus();
+
+      server.resetHandlers();
+      stubGuide();
+      await user.click(button);
+
+      expect(await view.findByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+      expect(gridStop()).toHaveAccessibleName(/^Space Western, /);
+    });
+
+    it("puts focus on the page's main region when no grid is drawn (Now & next)", async () => {
+      const user = userEvent.setup();
+      stubGuide();
+      server.use(http.get("*/v1/guide", () => new HttpResponse(null, { status: 503 })));
+      const view = renderAt("/guide");
+      const button = await view.findByRole("button", { name: "Try again" });
+      button.focus();
+
+      server.resetHandlers();
+      stubGuide();
+      server.use(
+        onNow([{ channelId: "ch-live", name: "Saturday Cartoons", number: 42, title: "Space Western" }]),
+      );
+      await user.click(button);
+
+      expect(await view.findByText("Space Western")).toBeInTheDocument();
+      await waitFor(() => expect(document.activeElement).toBe(document.getElementById("main-content")));
+    });
+
+    it("leaves focus alone when the viewer has already moved it elsewhere", async () => {
+      const user = userEvent.setup();
+      stubGuide();
+      const view = renderAt(GRID);
+      expect(await view.findByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      failGuide();
+      await clients.at(-1)?.refetchQueries({ predicate: isGuide });
+      const retry = await view.findByRole("button", { name: "Try again" });
+
+      server.resetHandlers();
+      stubGuide();
+      let answer = () => {};
+      const held = new Promise<void>((resolve) => {
+        answer = resolve;
+      });
+      server.use(
+        http.get("*/v1/guide", async () => {
+          await held;
+          return undefined;
+        }),
+      );
+      await user.click(retry);
+      const now = view.getByRole("button", { name: "NOW" });
+      now.focus();
+      answer();
+
+      await waitFor(() => expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument());
+      expect(now).toHaveFocus();
+    });
+
+    // The native Guide had a press armed that outlived a failed retry; the page keeps no such memory,
+    // so a recovery nobody pressed for, after a retry that failed, still leaves the viewer's focus.
+    it("leaves focus alone when a background refresh recovers after a retry that failed", async () => {
+      const user = userEvent.setup();
+      stubGuide();
+      const view = renderAt(GRID);
+      expect(await view.findByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      failGuide();
+      await clients.at(-1)?.refetchQueries({ predicate: isGuide });
+      await user.click(await view.findByRole("button", { name: "Try again" }));
+      await view.findByRole("button", { name: "Try again" });
+
+      const now = view.getByRole("button", { name: "NOW" });
+      now.focus();
+      server.resetHandlers();
+      stubGuide();
+      await clients.at(-1)?.refetchQueries({ predicate: isGuide });
+
+      await waitFor(() => expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument());
+      expect(now).toHaveFocus();
+    });
+  });
+
   // #3411: the tab read a bare "Loomarr" here while every other page named itself.
   it("names its browser tab", async () => {
     stubGuide();
@@ -396,6 +602,173 @@ describe("Guide", () => {
       expect(view.queryByRole("status", { name: /loading guide/i })).not.toBeInTheDocument();
     });
 
+    // TanStack v5 shows placeholder data only while a query is pending, so a NEW window that fails
+    // has no data at all. The page used to give itself to the error then, taking the controls (and
+    // the way back to a window that works) with it.
+    describe("that fails to load", () => {
+      // The first windows answer (the opened one and its prefetched neighbours); `fail()` then makes
+      // the server error for everything not already cached.
+      const stubFailingServer = async () => {
+        stubGuide();
+        let failing = false;
+        const asked: number[] = [];
+        server.use(
+          http.get("*/v1/guide", ({ request }) => {
+            asked.push(Number(new URL(request.url).searchParams.get("from")));
+            if (failing) return new HttpResponse(null, { status: 503 });
+            return undefined;
+          }),
+        );
+        const view = renderAt(GRID);
+        expect(
+          await view.findByRole("button", { name: /actions for saturday cartoons/i }),
+        ).toBeInTheDocument();
+        // The neighbours (one hour either side, tomorrow) are warmed once the opened window settles.
+        await vi.waitFor(() => expect(asked.length).toBeGreaterThanOrEqual(4));
+        await vi.waitFor(() => expect(clients.at(-1)?.isFetching()).toBe(0));
+        failing = true;
+        return view;
+      };
+
+      it.each([
+        [
+          "a span change",
+          async (view: Awaited<ReturnType<typeof stubFailingServer>>) =>
+            userEvent.click(view.getByRole("button", { name: "Show 12 hours" })),
+        ],
+        [
+          "stepping two hours past the prefetched one",
+          async (view: Awaited<ReturnType<typeof stubFailingServer>>) => {
+            await userEvent.click(view.getByRole("button", { name: "Forward an hour" }));
+            await userEvent.click(view.getByRole("button", { name: "Forward an hour" }));
+          },
+        ],
+        [
+          "stepping two hours back past the prefetched one",
+          async (view: Awaited<ReturnType<typeof stubFailingServer>>) => {
+            await userEvent.click(view.getByRole("button", { name: "Back an hour" }));
+            await userEvent.click(view.getByRole("button", { name: "Back an hour" }));
+          },
+        ],
+        [
+          "a day two past the prefetched one",
+          async (view: Awaited<ReturnType<typeof stubFailingServer>>) =>
+            userEvent.selectOptions(view.getByRole("combobox", { name: "Day" }), "3"),
+        ],
+      ])("keeps the last Guide and its controls under a notice on %s", async (_name, change) => {
+        const view = await stubFailingServer();
+
+        await change(view);
+
+        expect(await view.findByText("Couldn't refresh the Guide")).toBeInTheDocument();
+        expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+        expect(view.getByRole("button", { name: "NOW" })).toBeInTheDocument();
+        expect(view.getByRole("button", { name: "Forward an hour" })).toBeInTheDocument();
+        expect(view.getByRole("combobox", { name: "Day" })).toBeInTheDocument();
+        // One Try again (the notice's), not the page-wide error's as well.
+        expect(view.getAllByRole("button", { name: "Try again" })).toHaveLength(1);
+      });
+
+      // The controls stay on what the viewer chose (Try again reads it), over the earlier grid. The
+      // notice names both, so a Day, a Span or a start the controls show is never read as the grid's.
+      it("names the window that failed and the one still shown, for a span change", async () => {
+        const user = userEvent.setup();
+        const view = await stubFailingServer();
+        await user.click(view.getByRole("button", { name: "Show 12 hours" }));
+
+        const notice = (await view.findByRole("status")).textContent ?? "";
+        const named = /Guide(Today .+) didn't load\. Showing (.+), the last one that did\./.exec(notice);
+        expect(named, notice).not.toBeNull();
+        expect(named?.[1]).not.toBe(named?.[2]);
+      });
+
+      it("names the day that failed, for a day change", async () => {
+        const view = await stubFailingServer();
+        await userEvent.selectOptions(view.getByRole("combobox", { name: "Day" }), "3");
+
+        const notice = (await view.findByRole("status")).textContent ?? "";
+        const named = /Guide(.+) didn't load\. Showing (.+), the last one that did\./.exec(notice);
+        expect(named, notice).not.toBeNull();
+        expect(named?.[1]).not.toMatch(/^Today/);
+        expect(named?.[1]).not.toBe(named?.[2]);
+      });
+
+      it("keeps the controls working after a failure, so the viewer can pick another window", async () => {
+        const user = userEvent.setup();
+        const view = await stubFailingServer();
+        await user.click(view.getByRole("button", { name: "Show 12 hours" }));
+        expect(await view.findByText("Couldn't refresh the Guide")).toBeInTheDocument();
+
+        server.resetHandlers();
+        stubGuide();
+        await user.click(view.getByRole("button", { name: "Show 4 hours" }));
+
+        await waitFor(() => expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument());
+        expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      });
+
+      it("loads the window the viewer asked for when Try again is pressed and the server has recovered", async () => {
+        const user = userEvent.setup();
+        const view = await stubFailingServer();
+        await user.click(view.getByRole("button", { name: "Show 12 hours" }));
+        expect(await view.findByText("Couldn't refresh the Guide")).toBeInTheDocument();
+
+        server.resetHandlers();
+        stubGuide();
+        await user.click(view.getByRole("button", { name: "Try again" }));
+
+        await waitFor(() => expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument());
+        expect(view.getByRole("button", { name: "Show 12 hours" })).toHaveAttribute("aria-pressed", "true");
+        expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      });
+
+      // A window with no answer has no data, so its retry starts from a clean query: the notice has to
+      // be kept by the page, or it unmounts under the focus on its button.
+      it("keeps focus on Try again while a failed window retries, and when it fails again", async () => {
+        const user = userEvent.setup();
+        const view = await stubFailingServer();
+        await user.click(view.getByRole("button", { name: "Show 12 hours" }));
+        const button = await view.findByRole("button", { name: "Try again" });
+        button.focus();
+
+        let answer = () => {};
+        const held = new Promise<void>((resolve) => {
+          answer = resolve;
+        });
+        server.use(
+          http.get("*/v1/guide", async () => {
+            await held;
+            return new HttpResponse(null, { status: 503 });
+          }),
+        );
+        await user.click(button);
+
+        expect(await view.findByRole("button", { name: "Trying again…" })).toBe(button);
+        expect(button).toHaveFocus();
+        expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+
+        answer();
+        await waitFor(() => expect(button).toHaveAccessibleName("Try again"));
+        expect(button).toHaveFocus();
+      });
+
+      it("gives the page to the error only when the Guide has never answered", async () => {
+        const user = userEvent.setup();
+        stubGuide();
+        server.use(http.get("*/v1/guide", () => new HttpResponse(null, { status: 503 })));
+        const view = renderAt(GRID);
+
+        expect(await view.findByRole("button", { name: "Try again" })).toBeInTheDocument();
+        expect(view.queryByRole("button", { name: "NOW" })).not.toBeInTheDocument();
+        expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument();
+
+        server.resetHandlers();
+        stubGuide();
+        await user.click(view.getByRole("button", { name: "Try again" }));
+        expect(await view.findByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      });
+    });
+
     it("prefetches the adjacent windows once the current one has loaded", async () => {
       stubGuide();
       const { froms, release } = stubSlowNextWindow();
@@ -460,6 +833,27 @@ describe("Guide", () => {
 
     expect(await view.findByRole("button", { name: "View options, custom" })).toBeInTheDocument();
     expect(froms).toContain(new Date(tomorrowMidnight).setHours(21));
+  });
+
+  // The axis reads in the household's zone, so the hour a link opens on is that zone's, whatever
+  // zone the device is in. Kiritimati (UTC+14) is no test machine's zone.
+  it("opens a link's ?at= on the household's hour, not the device's", async () => {
+    stubGuide();
+    const zone = "Pacific/Kiritimati";
+    const today = new Date();
+    // 07:30 UTC tomorrow is 21:30 in Kiritimati, so the grid opens at its 21:00: 07:00 UTC.
+    const at = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1, 7, 30);
+    const froms: number[] = [];
+    server.use(
+      http.get("*/v1/guide", ({ request }) => {
+        froms.push(Number(new URL(request.url).searchParams.get("from")));
+        return HttpResponse.json({ ...GUIDE, timezone: zone });
+      }),
+    );
+    const view = renderAt(`${GRID}&at=${at}&channel=ch-live`);
+
+    expect(await view.findByRole("button", { name: "View options, custom" })).toBeInTheDocument();
+    await waitFor(() => expect(froms).toContain(at - 30 * 60_000));
   });
 
   it("opens the channel's page from its name, not the player (#2745)", async () => {

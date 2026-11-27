@@ -1,10 +1,12 @@
 package librarystore
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
@@ -72,14 +74,16 @@ type LibraryFileStore interface {
 	// in stream order (#2088 decision 5): Index, Codec, Title, Language, Forced, HearingImpaired and
 	// ExternalRef. ok is false on the same terms as LibraryAudioTracks.
 	LibrarySubtitleTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) (tracks []LibraryStream, ok bool, err error)
-	// LibraryPlayingFile is the file a library item plays: its source marked plays, while the
-	// scanner sees it present, the default edition's when a movie plays one in each edition
-	// (decision 54). ok is false for an id that is not a library item, or one with no present file.
-	LibraryPlayingFile(ctx context.Context, itemID string) (path string, ok bool, err error)
-	// LibraryPlayingVideo is the first video stream of the file a library item plays, as the
+	// LibraryPlayingParts is the files a library item plays, in the order they play: its source
+	// marked plays, while the scanner sees it present, or each part of a movie in parts, in part
+	// order. A movie that plays one in each edition (decision 54) airs the default edition's, else
+	// the edition whose file's path sorts first. None for an id that is not a library item, or one
+	// with no present file.
+	LibraryPlayingParts(ctx context.Context, itemID string) ([]LibraryPlayingPart, error)
+	// LibraryPlayingVideo is the first video stream of the first file a library item plays, as the
 	// scanner last read its header: Index, Codec, Width, Height, FrameRate, PixelFormat and
-	// ColorTransfer. ok is false when LibraryPlayingFile has no answer, or the file's header has
-	// not been read with a video stream.
+	// ColorTransfer. ok is false when LibraryPlayingParts has none, or the file's header has not
+	// been read with a video stream.
 	LibraryPlayingVideo(ctx context.Context, itemID string) (video LibraryStream, ok bool, err error)
 	// LibraryFiles reads every file row of one root, missing ones included, in path order.
 	LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error)
@@ -95,31 +99,78 @@ type LibraryFileStore interface {
 	SetLibraryRootScanned(ctx context.Context, root string, at time.Time) error
 	// LibraryFileCounts counts present files across roots.
 	LibraryFileCounts(ctx context.Context) (LibraryFileCounts, error)
+	// LibraryHeldTitles names up to limit of the titles whose held files a root no longer found, a
+	// show once for all its episodes, by name, and counts them all: what the maintainer is asked
+	// to let go.
+	LibraryHeldTitles(ctx context.Context, root string, limit int) ([]string, int, error)
+	// LibrarySkippedFiles lists the present files the scan skips, by why: each reason's count and
+	// its first perProblem paths.
+	LibrarySkippedFiles(ctx context.Context, perProblem int) ([]LibrarySkipped, error)
 }
 
-func (s *Store) LibraryPlayingFile(ctx context.Context, itemID string) (string, bool, error) {
-	var path string
-	err := s.h.QueryRowContext(ctx, s.ph(`SELECT s.path FROM library_sources s
+// LibraryPlayingPart is one file of what a library item plays, with its header's length (0 until
+// it is read).
+type LibraryPlayingPart struct {
+	Path       string
+	DurationMs int64
+}
+
+func (s *Store) LibraryPlayingParts(ctx context.Context, itemID string) ([]LibraryPlayingPart, error) {
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT s.path, s.duration_ms, s.edition, s.part FROM library_sources s
 		JOIN library_files f ON f.path = s.path
 		WHERE s.item_id = ? AND s.plays AND f.missing_at_ms = 0 AND f.problem = ''
-		ORDER BY s.edition <> '', s.path LIMIT 1`), itemID).Scan(&path)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		return "", false, nil
-	case err != nil:
-		return "", false, fmt.Errorf("library playing file: %w", err)
+		ORDER BY s.edition <> '', s.path`), itemID)
+	if err != nil {
+		return nil, fmt.Errorf("library playing parts: %w", err)
 	}
-	return path, true, nil
+	type row struct {
+		LibraryPlayingPart
+		edition string
+		part    int
+	}
+	var got []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.Path, &r.DurationMs, &r.edition, &r.part); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("library playing parts: %w", err)
+		}
+		got = append(got, r)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("library playing parts: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("library playing parts: %w", err)
+	}
+	if len(got) == 0 {
+		return nil, nil
+	}
+	// The edition that airs, then its parts in order; an edition that is not in parts has one file.
+	edition := got[0].edition
+	got = slices.DeleteFunc(got, func(r row) bool { return r.edition != edition })
+	slices.SortStableFunc(got, func(a, b row) int { return cmp.Compare(a.part, b.part) })
+	if got[0].part == 0 {
+		got = got[:1]
+	}
+	out := make([]LibraryPlayingPart, len(got))
+	for i, r := range got {
+		out[i] = r.LibraryPlayingPart
+	}
+	return out, nil
 }
 
 func (s *Store) LibraryPlayingVideo(ctx context.Context, itemID string) (LibraryStream, bool, error) {
+	parts, err := s.LibraryPlayingParts(ctx, itemID)
+	if err != nil || len(parts) == 0 {
+		return LibraryStream{}, false, err
+	}
 	v := LibraryStream{Kind: "video"}
-	err := s.h.QueryRowContext(ctx, s.ph(`SELECT st.stream_index, st.codec, st.width, st.height, st.frame_rate,
-		st.pixel_format, st.color_transfer FROM library_sources s
-		JOIN library_files f ON f.path = s.path
-		JOIN library_streams st ON st.item_id = s.item_id AND st.path = s.path AND st.kind = 'video' AND st.external_ref = ''
-		WHERE s.item_id = ? AND s.plays AND f.missing_at_ms = 0 AND f.problem = '' AND f.header = ?
-		ORDER BY s.edition <> '', s.path, st.stream_index LIMIT 1`), itemID, LibraryHeaderRead).Scan(
+	err = s.h.QueryRowContext(ctx, s.ph(`SELECT st.stream_index, st.codec, st.width, st.height, st.frame_rate,
+		st.pixel_format, st.color_transfer FROM library_streams st
+		JOIN library_files f ON f.path = st.path
+		WHERE st.item_id = ? AND st.path = ? AND st.kind = 'video' AND st.external_ref = '' AND f.header = ?
+		ORDER BY st.stream_index LIMIT 1`), itemID, parts[0].Path, LibraryHeaderRead).Scan(
 		&v.Index, &v.Codec, &v.Width, &v.Height, &v.FrameRate, &v.PixelFormat, &v.ColorTransfer)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -333,6 +384,70 @@ func (s *Store) SetLibraryRootScanned(ctx context.Context, root string, at time.
 		return storedb.ErrNotFound
 	}
 	return nil
+}
+
+func (s *Store) LibraryHeldTitles(ctx context.Context, root string, limit int) ([]string, int, error) {
+	// An episode's title is its show; any other file's is its own item.
+	rows, err := s.h.QueryContext(ctx, s.ph(`WITH held AS (
+		SELECT DISTINCT i.id, i.name, i.sort_name FROM library_files f JOIN library_items i
+			ON i.id = CASE WHEN COALESCE(f.inventory_series_id, '') <> '' THEN f.inventory_series_id ELSE f.inventory_item_id END
+		WHERE f.root = ? AND f.held AND f.missing_at_ms = 0)
+		SELECT name, (SELECT COUNT(*) FROM held) FROM held ORDER BY sort_name, id LIMIT ?`), root, limit)
+	if err != nil {
+		return nil, 0, fmt.Errorf("library held titles: %w", err)
+	}
+	names, total := []string{}, 0
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name, &total); err != nil {
+			_ = rows.Close()
+			return nil, 0, fmt.Errorf("library held titles: %w", err)
+		}
+		names = append(names, name)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, 0, fmt.Errorf("library held titles: %w", err)
+	}
+	return names, total, nil
+}
+
+// LibrarySkipped is one reason the scan skips files, how many it skips for it, and the first few
+// of them by path.
+type LibrarySkipped struct {
+	Problem string
+	Total   int
+	Paths   []string
+}
+
+// LibrarySkippedFiles lists the present files the scan skips, grouped by why: each reason's count
+// and its first perProblem paths, in path order; reasons in name order.
+func (s *Store) LibrarySkippedFiles(ctx context.Context, perProblem int) ([]LibrarySkipped, error) {
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT problem, path, total FROM (
+		SELECT problem, path, COUNT(*) OVER (PARTITION BY problem) AS total,
+			ROW_NUMBER() OVER (PARTITION BY problem ORDER BY path) AS n
+		FROM library_files WHERE missing_at_ms = 0 AND problem <> '') skipped
+		WHERE n <= ? ORDER BY problem, path`), perProblem)
+	if err != nil {
+		return nil, fmt.Errorf("library skipped files: %w", err)
+	}
+	out := []LibrarySkipped{}
+	for rows.Next() {
+		var problem, path string
+		var total int
+		if err := rows.Scan(&problem, &path, &total); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("library skipped files: %w", err)
+		}
+		if len(out) == 0 || out[len(out)-1].Problem != problem {
+			out = append(out, LibrarySkipped{Problem: problem, Total: total, Paths: []string{}})
+		}
+		last := &out[len(out)-1]
+		last.Paths = append(last.Paths, path)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, fmt.Errorf("library skipped files: %w", err)
+	}
+	return out, nil
 }
 
 func (s *Store) LibraryFileCounts(ctx context.Context) (LibraryFileCounts, error) {

@@ -105,6 +105,14 @@ func TestLibraryNeedsYou(t *testing.T) {
 		best.Poster == nil || other.Poster != nil {
 		t.Fatalf("candidates = %+v, want the fetched poster only", got.Needs[0].Candidates)
 	}
+	// Only the poster never seen is adopted, once: the list's next load only reads.
+	if imgs.adopts != 1 {
+		t.Fatalf("adopts after one load = %d, want 1 (the pending poster)", imgs.adopts)
+	}
+	decode(t, h.Do(http.MethodGet, "/v1/library/needs", adminToken, ""), &got)
+	if imgs.adopts != 1 || got.Needs[0].Candidates[0].Poster == nil {
+		t.Fatalf("adopts after a second load = %d, want still 1, and the poster still shown", imgs.adopts)
+	}
 	if len(got.Problems) != 1 || got.Problems[0].Item.ID != "90000003" || got.Problems[0].Item.Unplayable != 1 ||
 		got.Problems[0].Item.ExtraCopies != 0 || got.Problems[0].ExtraBytes != 0 {
 		t.Fatalf("problems = %+v, want Arr Film with one file that can't be played", got.Problems)

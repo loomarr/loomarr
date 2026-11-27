@@ -34,13 +34,21 @@ type ImageService interface {
 	// Adopt records a remote https image for the fetch job and returns at once; the image has its
 	// bytes only once the job fetched them.
 	Adopt(ctx context.Context, srcURL string, req images.IngestRequest) (images.Image, error)
+	// Lookup reads the image Adopt made of a URL, without writing; ErrNotFound when there is none.
+	Lookup(ctx context.Context, srcURL string) (images.Image, error)
 	PathFor(hash string, width int, f images.Format) string
 	URLFor(hash string, width int, f images.Format) string
 	SrcSet(hash string, role images.Role, f images.Format, sourceWidth int) string
-	// HasFormat reports whether a rendition in this format exists RIGHT NOW. Required because
+	// AVIFSrcSet is the AVIF srcset when encoded (the widths EncodedWidths read) holds every AVIF
+	// rung of the image, and "" otherwise, so a partial set serves WebP.
+	AVIFSrcSet(hash string, role images.Role, sourceWidth int, encoded []int) string
+	// EncodedWidths is the widths a rendition in this format exists at RIGHT NOW. Required because
 	// advertising a job-produced AVIF that does not exist yet is a broken image, not a missed
 	// optimisation — see the method's own comment in internal/media/images.
-	HasFormat(ctx context.Context, hash string, f images.Format) (bool, error)
+	EncodedWidths(ctx context.Context, hash string, f images.Format) ([]int, error)
+	// GetMany reads many images with their AVIF state in one store read; a list renders through
+	// it rather than Get and EncodedWidths per image.
+	GetMany(ctx context.Context, hashes []string) (map[string]images.Listed, error)
 }
 
 // registerImages mounts the image operations.
@@ -229,11 +237,21 @@ func (s *Handlers) imageToDTO(ctx context.Context, rec images.Image) httpcore.Im
 	// it selects by type and does not fall back on a 404, so a job-produced AVIF that has not been
 	// generated yet breaks the image outright rather than degrading to WebP. A lookup failure is
 	// treated as "no AVIF" for the same reason: the safe direction is to under-advertise.
+	var avif []int
+	if !rec.Animated {
+		if widths, err := s.images.EncodedWidths(ctx, rec.Hash, images.FormatAVIF); err == nil {
+			avif = widths
+		}
+	}
+	return s.listedToDTO(images.Listed{Image: rec, AVIFWidths: avif})
+}
+
+// listedToDTO is imageToDTO for an image whose AVIF state is already read (Service.GetMany).
+func (s *Handlers) listedToDTO(l images.Listed) httpcore.ImageDTO {
+	rec := l.Image
 	avif := ""
 	if !rec.Animated {
-		if ok, err := s.images.HasFormat(ctx, rec.Hash, images.FormatAVIF); err == nil && ok {
-			avif = s.images.SrcSet(rec.Hash, rec.Role, images.FormatAVIF, rec.Width)
-		}
+		avif = s.images.AVIFSrcSet(rec.Hash, rec.Role, rec.Width, l.AVIFWidths)
 	}
 	webp := s.images.SrcSet(rec.Hash, rec.Role, images.FormatWebP, rec.Width)
 	if rec.Animated {
@@ -270,20 +288,47 @@ func (s *Handlers) LibraryImage(ctx context.Context, hash string) *httpcore.Imag
 	return &dto
 }
 
+// LibraryImages renders many of the titles' images by hash in one store read (Service.GetMany): a
+// grid of a thousand posters is a handful of statements, not two per poster. A hash with no image,
+// or whose bytes have not arrived, is absent.
+func (s *Handlers) LibraryImages(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO {
+	out := map[string]*httpcore.ImageDTO{}
+	if s.images == nil || len(hashes) == 0 {
+		return out
+	}
+	listed, err := s.images.GetMany(ctx, hashes)
+	if err != nil {
+		return out
+	}
+	for hash, l := range listed {
+		if !l.HasBytes() {
+			continue
+		}
+		dto := s.listedToDTO(l)
+		out[hash] = &dto
+	}
+	return out
+}
+
 // libraryCandidateImageOwner owns the posters of a title's candidates, so the image service keeps
 // them while the title is listed.
 const libraryCandidateImageOwner = "library_candidate"
 
 // CandidatePoster adopts a candidate's poster, so the image service fetches it, and renders it once
-// its bytes are here. Until then, or when it cannot be adopted, the card shows the name.
+// its bytes are here. Until then, or when it cannot be adopted, the card shows the name. A poster
+// adopted before is only read: Needs you lists every candidate's on each load, and a write each
+// would cost a large, messy library thousands per visit.
 func (s *Handlers) CandidatePoster(ctx context.Context, itemID, url string) *httpcore.ImageDTO {
 	if s.images == nil || url == "" {
 		return nil
 	}
-	rec, err := s.images.Adopt(ctx, url, images.IngestRequest{
-		Role: images.RolePoster, Visibility: images.VisibilityMember,
-		OwnerKind: libraryCandidateImageOwner, OwnerID: itemID,
-	})
+	rec, err := s.images.Lookup(ctx, url)
+	if errors.Is(err, images.ErrNotFound) {
+		rec, err = s.images.Adopt(ctx, url, images.IngestRequest{
+			Role: images.RolePoster, Visibility: images.VisibilityMember,
+			OwnerKind: libraryCandidateImageOwner, OwnerID: itemID,
+		})
+	}
 	if err != nil || !rec.HasBytes() {
 		return nil
 	}
@@ -297,10 +342,10 @@ func (s *Handlers) CandidatePoster(ctx context.Context, itemID, url string) *htt
 // row.** A per-row lookup is an N+1 — the shape a profile here has already caught once — and it
 // gets worse as the surface gets bigger: a channel list is tens of rows, but the filler catalog is
 // a GRID of clips, each with a still and a hover loop, so the naive version is two queries per
-// tile. Distinct hashes are fetched once each even when many rows share one.
+// tile. Every hash is read in one store read (Service.GetMany), two statements per 500 distinct
+// hashes, whatever the count of rows sharing them.
 //
-// ⚠ A failed lookup is recorded as a nil ENTRY rather than skipped, so a shared broken hash costs
-// one lookup instead of one per referencing row. And a miss is never an error: §22's Durability
+// ⚠ A hash with no image is recorded as a nil ENTRY rather than skipped. And a miss is never an error: §22's Durability
 // section makes "the row is here, the file is not" an accepted state, so a surface must still
 // render with its own fallback artwork.
 func (s *Handlers) ImageDTOsByHash(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO {
@@ -309,18 +354,17 @@ func (s *Handlers) ImageDTOsByHash(ctx context.Context, hashes []string) map[str
 	}
 	byHash := make(map[string]*httpcore.ImageDTO, len(hashes))
 	for _, hash := range hashes {
-		if hash == "" {
-			continue
+		if hash != "" {
+			byHash[hash] = nil
 		}
-		if _, seen := byHash[hash]; seen {
-			continue
-		}
-		byHash[hash] = nil
-		rec, err := s.images.Get(ctx, hash)
-		if err != nil {
-			continue
-		}
-		dto := s.imageToDTO(ctx, rec)
+	}
+	// One store read for every hash (Service.GetMany); a failed read leaves every entry nil.
+	listed, err := s.images.GetMany(ctx, hashes)
+	if err != nil {
+		return byHash
+	}
+	for hash, l := range listed {
+		dto := s.listedToDTO(l)
 		byHash[hash] = &dto
 	}
 	return byHash

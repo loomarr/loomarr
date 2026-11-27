@@ -48,7 +48,7 @@ type Service struct {
 	originals Originals
 	events    EventRecorder
 	log       *slog.Logger
-	lifetime  context.Context
+	goOwned   func(func(context.Context)) bool
 
 	mu     sync.Mutex
 	gates  map[encode.Encoder]*watermarkGate
@@ -60,6 +60,13 @@ type Service struct {
 	kernelOnce sync.Once
 	kernel     string // the VAAPI family's blend kernel beside the bugs, written on first use
 }
+
+// OverlayWorks reports whether an encoder's GPU overlay passed its self-check; the first ask
+// starts the check, and until it passes nothing is drawn. Burned-in subtitles share the gate.
+func (c *Service) OverlayWorks(enc encode.Encoder) bool { return c.gate(enc).works.Load() }
+
+// BlendKernel is the VAAPI blend kernel's path (blendKernel), shared by burned-in subtitles.
+func (c *Service) BlendKernel() string { return c.blendKernel() }
 
 // blendKernel is the path of the VAAPI blend kernel, or "" when it could not be written: the VAAPI
 // graph then airs the programme bug-free and says why.
@@ -110,8 +117,10 @@ type Config struct {
 	// Events is optional; nil records no Diagnostics events.
 	Events EventRecorder
 	Log    *slog.Logger
-	// Lifetime bounds the background self-check; it is the application's lifetime.
-	Lifetime context.Context
+	// Go starts the background self-check as work its owner joins at shutdown, on a context the
+	// owner cancels then; it reports false, and starts nothing, once the owner is closing. Nil runs
+	// the check unowned on a background context.
+	Go func(run func(context.Context)) bool
 }
 
 // New builds the service before the channel packager that asks it for bugs. A custom-upload reader
@@ -124,7 +133,10 @@ func New(cfg Config) *Service {
 		dir:      cfg.Dir,
 		install:  cfg.Install,
 		calendar: cfg.Calendar,
-		channels: cfg.Channels, log: cfg.Log, lifetime: cfg.Lifetime,
+		channels: cfg.Channels, log: cfg.Log, goOwned: cfg.Go,
+	}
+	if c.goOwned == nil {
+		c.goOwned = func(run func(context.Context)) bool { go run(context.Background()); return true }
 	}
 	if cfg.Events != nil {
 		c.events = cfg.Events
@@ -162,7 +174,7 @@ func (c *Service) holidayCalendar() schedule.Calendar {
 const renderVersion = "1"
 
 // For is the channel packager's resolver: the channel's rendered bug for this output, or nil. at is
-// the airing's start (playout.Airing.StartedAt), which picks the holiday version: stable across a
+// the airing's start (timeline.Airing.StartedAt), which picks the holiday version: stable across a
 // retried open and a mid-programme tune-in, so the version changes only at a programme boundary.
 func (c *Service) For(ctx context.Context, channelID string, enc encode.Encoder, width, height int, at time.Time) *playout.Watermark {
 	gate := c.gate(enc)
@@ -474,19 +486,26 @@ func (c *Service) gate(enc encode.Encoder) *watermarkGate {
 		return g
 	}
 	g := &watermarkGate{}
+	// A closing owner starts nothing; the gate is not kept, so it never stands for a verdict.
+	if !c.goOwned(func(ctx context.Context) { c.check(ctx, enc, g) }) {
+		return g
+	}
 	if c.gates == nil {
 		c.gates = map[encode.Encoder]*watermarkGate{}
 	}
 	c.gates[enc] = g
-	go c.check(enc, g)
 	return g
 }
 
-func (c *Service) check(enc encode.Encoder, g *watermarkGate) {
+func (c *Service) check(ctx context.Context, enc encode.Encoder, g *watermarkGate) {
 	host := encode.HostFor(enc, c.tonemap(), c.gpu())
 	dir := filepath.Join(c.dir, "check-"+string(enc))
-	r := playout.WatermarkCheck(c.lifetime, c.ffmpeg(), host, dir)
+	r := playout.WatermarkCheck(ctx, c.ffmpeg(), host, dir)
 	_ = os.RemoveAll(dir)
+	if ctx.Err() != nil {
+		// Shutdown cut the check short: there is no verdict to keep, log or record.
+		return
+	}
 	g.colour.Store(r.Colour)
 	g.works.Store(r.Works)
 	level, name, msg := diagnostics.LevelInfo, "watermark.overlay_verified", "Channel watermark GPU overlay verified on "+string(enc)
@@ -508,7 +527,7 @@ func (c *Service) check(enc encode.Encoder, g *watermarkGate) {
 	// A Diagnostics event, not a startup check: the check runs when an encoder first airs a
 	// programme, and the append-only startup report must complete on a host that never does.
 	if c.events != nil {
-		c.events.Record(c.lifetime, diagnostics.Event{Level: level, Source: diagnostics.SourceServer, Subsystem: "playout",
+		c.events.Record(ctx, diagnostics.Event{Level: level, Source: diagnostics.SourceServer, Subsystem: "playout",
 			Name: name, Message: msg, Attributes: map[string]any{"encoder": string(enc), "detail": r.Detail}})
 	}
 }

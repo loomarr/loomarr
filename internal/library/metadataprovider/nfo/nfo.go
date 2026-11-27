@@ -313,7 +313,7 @@ func recordFrom(kind mp.Kind, doc document) mp.Record {
 			SortTitle:     clean(doc.SortTitle),
 			Overview:      clean(doc.Plot),
 			PremiereDate:  firstDate(doc.Premiered, doc.Aired),
-			Year:          positive(doc.Year),
+			Year:          yearOf(doc.Year),
 			Genres:        cleanAll(doc.Genres),
 			Studios:       cleanAll(doc.Studios),
 			Status:        clean(doc.Status),
@@ -441,7 +441,8 @@ func outOfTen(value, max string) (float64, bool) {
 			return 0, false
 		}
 	}
-	if m <= 0 || v <= 0 || v > m {
+	// NaN and infinity parse as floats, and are no score.
+	if math.IsNaN(v) || math.IsInf(v, 0) || math.IsNaN(m) || math.IsInf(m, 0) || m <= 0 || v <= 0 || v > m {
 		return 0, false
 	}
 	return v * 10 / m, true
@@ -606,7 +607,22 @@ func leadingMinutes(s string) int {
 	if rest := strings.TrimSpace(s[len(digits):]); rest != "" && !strings.EqualFold(rest, "min") && !strings.EqualFold(rest, "mins") && !strings.EqualFold(rest, "minutes") {
 		return 0
 	}
-	return positive(digits)
+	if minutes := positive(digits); minutes <= maxRuntimeMinutes {
+		return minutes
+	}
+	return 0
+}
+
+// maxRuntimeMinutes is the longest runtime read: 100 hours. Anything longer is a broken document,
+// and would overflow a duration well before it reached a real one.
+const maxRuntimeMinutes = 100 * 60
+
+// yearOf reads a year; one no film or show could have (before 1870, after 2200) is a gap.
+func yearOf(s string) int {
+	if y := positive(s); y >= 1870 && y <= 2200 {
+		return y
+	}
+	return 0
 }
 
 // charsetReader decodes the legacy single-byte encodings old scrapers wrote. UTF-8 needs none.

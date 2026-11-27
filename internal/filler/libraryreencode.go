@@ -36,6 +36,12 @@ type libraryReencode struct {
 	retryAt  map[string]time.Time
 }
 
+// NeedsReencode reports whether the library re-encode still has to move c onto the current
+// profile from its original. Upkeep keeps that original until it has (#3855).
+func (p *Pipeline) NeedsReencode(c clipstore.Clip) bool {
+	return p.reencode != nil && p.reencode.stage.NeedsReencode(c)
+}
+
 // next is the first airing clip due a re-encode, or false when none is.
 func (r *libraryReencode) next(ctx context.Context, now time.Time) (clipstore.Clip, bool, error) {
 	clips, err := r.airing.ListClips(ctx, ClipQuery{})
@@ -75,7 +81,8 @@ func (p *Pipeline) reencodeIdle(ctx context.Context, s *spend) bool {
 	}
 	runCtx := ctx
 	if p.headroom != nil {
-		bctx, cancel := p.headroom.BackgroundContext(ctx)
+		// Never overdue: the clip already airs on its old bytes, so this waits for real room.
+		bctx, cancel := p.headroom.MediaWorkContext(ctx, false)
 		defer cancel()
 		runCtx = bctx
 	}

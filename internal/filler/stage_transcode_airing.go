@@ -49,8 +49,9 @@ func (s *TranscodeStage) WithAiringReplacement(store AiringReplacementStore, che
 
 // NeedsReencode reports whether c is an airing clip the library re-encode replaces: a top-level
 // clip on air whose playback was encoded from a retained source master, under a profile other
-// than the current one. A clip whose playback file is its own download has no original to encode
-// from again, and a split child is cut from its parent, so neither is replaced. Nor is anything
+// than the current one. A clip whose playback file is its own download, or whose original was
+// released once it was Ready (#3855), has no original to encode from again, and a split child is
+// cut from its parent, so none of them is replaced. Nor is anything
 // replaced on a host without a hardware encoder: the re-encode is what moves the library onto the
 // GPU, and on the CPU it would spend the machine for no saving.
 func (s *TranscodeStage) NeedsReencode(c clipstore.Clip) bool {
@@ -63,7 +64,8 @@ func (s *TranscodeStage) NeedsReencode(c clipstore.Clip) bool {
 		return false
 	}
 	tags, ok := asset.ReadSidecarTags(filepath.Join(s.clipDir, filepath.FromSlash(c.Path)))
-	return ok && tags.MediaAssets != nil && tags.MediaAssets.Playback != nil && tags.Mezzanine != profile.ID()
+	return ok && tags.MediaAssets != nil && tags.MediaAssets.Playback != nil && tags.Mezzanine != profile.ID() &&
+		!tags.MediaAssets.SourceMaster.Released()
 }
 
 // ReplaceAiring re-encodes an airing clip that NeedsReencode and switches it to the new bytes,

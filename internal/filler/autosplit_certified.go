@@ -168,6 +168,9 @@ func structureMaterializationSegmentVerdict(segment split.Segment, minClipDurati
 	if segment.DupOf != "" {
 		return RejectDuplicate
 	}
+	if segment.DedupUnchecked {
+		return RejectDedupUnchecked
+	}
 	span := time.Duration(segment.EndMs-segment.StartMs) * time.Millisecond
 	if span > maxDuration {
 		return RejectTooLong

@@ -5,6 +5,8 @@ import (
 	"slices"
 	"sort"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
 // This file builds the fallback ladder (§10): the ordered sequence of candidate
@@ -21,11 +23,13 @@ type pool struct {
 
 // candidatePools builds the ladder rungs for a window (§10 fallback ladder):
 //
-//  1. exact    — break-body Placement, inside the Era RANGE, matching Audience
-//  2. widened  — break-body Placement, a decade either side of that range, matching Audience
-//  3. audience — break-body Placement, any era, matching Audience
+//  1. exact    — break-body Placement, inside the Era RANGE, inside the Audience ceiling
+//  2. widened  — break-body Placement, a decade either side of that range, inside the ceiling
 //
-// ⚠ **All three rungs are always built (V51f).** A channel that wants strictness sets a narrow
+// Nothing further away airs (#3838 decision 21): era-correct repeats, least recently aired first,
+// are the rotation's job within these two rungs, so there is no any-era rung.
+//
+// ⚠ **Both rungs are always built (V51f).** A channel that wants strictness sets a narrow
 // era range, which is a control an operator can actually see and change; there is no separate
 // strict flag to special-case in `coverage.go`, `fit.go` or the coverage meter.
 //
@@ -41,6 +45,8 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 		// deliberately not catalog-wide. Bumpers are the ladder's floor and the station's own
 		// bookends; excluding them on resolution could leave a break with nothing to open or
 		// close on, trading a cosmetic complaint for a structural one.
+		// A clip the household has seen this evening stays a candidate, behind every unseen one
+		// (ladderBand): it fills only what the unseen ads leave.
 		if c.EffectivePlacement() == PlacementBreakBody && durationEligible(c, policy) && qualityEligible(c, policy) {
 			body = append(body, c)
 		}
@@ -51,13 +57,9 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 
 	audienceMatch := filterAudience(body, w.Audience)
 
-	// ⚠ The era rungs draw from the STRICT audience pool and only the bottom rung widens to
-	// ungrounded clips — that ordering is the whole point. An unclassified clip with a perfect
-	// era must not outrank a clip Loomarr actually knows is right for this channel.
 	return []pool{
 		{MatchExact, filterEraWindows(audienceMatch, w.eraWindows())},
 		{MatchWidened, filterEraWindows(audienceMatch, widenEraWindows(w.eraWindows()))},
-		{MatchAudience, filterAudienceWithUngrounded(body, w.Audience)},
 	}
 }
 
@@ -72,18 +74,18 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 //     and a looser rung only TOPS UP what the tighter rungs cannot fill.
 //   - COOLDOWN BEFORE RUNG: a clip resting inside its cooldown ranks behind every rested
 //     clip on any rung. Cooldown relaxes only when the whole ladder is resting, which is the
-//     "never leave a break empty" promise the setting makes, and nothing looser.
+//     "never leave a break empty" promise the setting makes, and nothing looser. A clip the
+//     household has seen this evening ranks behind both (airedThisEvening, ladderBand).
 //   - Fills up to w.PodMax clips within w.GapMs, which the caller has already reduced by the
-//     intro/return bumpers it places. A clip that does not fit whole is skipped for a shorter
-//     one; an ad is never cut to fit.
+//     intro/return bumpers it places. The break is a ceiling: when the next clip in rotation
+//     order does not fit, the break ends, and a clip longer than the whole gap is skipped. An ad
+//     is never cut to fit.
 //
-// ⚠ #1684: this took ONLY the tightest pool with an un-used clip. `used` is per break, so that
-// pool was never exhausted and the ladder never widened: a channel whose exact rung held one
-// grounded clip aired that clip alone in every break while readiness reported the 16 clips on
-// its bottom rung. With the LLM off most clips have no grounded audience and live on that
-// bottom rung, so a real catalog hit this on most channels. Every rung is already inside the
-// channel's audience ceiling (`candidatePools`), so drawing from all three admits nothing the
-// channel could not already air.
+// ⚠ #1684: every rung with an un-used clip feeds the break, not only the tightest. `used` is per
+// break, so a tight pool is never exhausted by one break, and drawing from the tightest alone
+// would air a one-clip exact rung alone in every break while readiness reported the clips on the
+// widened rung. Both rungs are already inside the channel's audience ceiling (`candidatePools`),
+// so drawing from both admits nothing the channel could not already air.
 //   - CATEGORY VARIETY: never two clips of the same Category consecutively (§10 —
 //     "so it doesn't play three car ads back to back"). Implemented as the two-pass
 //     place(false)/place(true): the second pass tops the pod up and accepts a repeat
@@ -146,16 +148,17 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	loosest := -1
 	lastCat := ""
 	segment := false // a break holds one station segment (#2065)
+	full := false    // the next clip in rotation order does not fit: the break is full
 	// Two passes per BAND (one rung, rested or resting — see ladderBand): first honor category
 	// variety strictly; the fallback pass allows a repeat only if the pod would otherwise be short
 	// of clips. Variety wins WITHIN a band; we don't descend the ladder just to avoid a repeat
 	// (§10 — the ladder is the duration fallback, variety is a placement rule).
 	//
-	// ⚠ V45a: `c.Category` is now the DERIVED primary product leaf, so "no two back-to-back with the
+	// ⚠ V45a: `c.Category` is the DERIVED primary product leaf, so "no two back-to-back with the
 	// same Category" reads as "don't stack two clips of the same product family" — two beer ads are a
 	// repeat, a beer and a car ad are not. That is the right granularity and the rule is unchanged; a
 	// clip with no product tag ("" Category) is exempt from the repeat check, as an untagged one was.
-	place := func(band []rungClip, allowRepeat bool) {
+	place := func(band []rungClip, allowRepeat, relaxedHalf bool) {
 		for _, c := range band {
 			if len(out) >= podMax {
 				return
@@ -169,11 +172,19 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 			if !allowRepeat && c.Category != "" && c.Category == lastCat {
 				continue // would repeat a category back-to-back
 			}
-			if totalMs+c.DurationMs > budget {
-				continue // does not fit; caller's fallback card is the bounded never-dead-air answer
+			if c.DurationMs > budget {
+				continue // longer than the whole break: it can never lead one, so it never blocks the line
 			}
-			if !share.admits(c.Clip, w) {
-				continue // the break already holds its half of in-season clips
+			if !relaxedHalf && !share.admits(c.Clip, w) {
+				continue // the break already holds its half of in-season clips: not next in line
+			}
+			if totalMs+c.DurationMs > budget {
+				// The break is a ceiling the next clip in rotation order fills. When that clip does not
+				// fit the rest, the break ends: skipping to a shorter clip would hand the leftover to
+				// whichever ads are short, so length would decide what airs. The clip leads the next
+				// break instead.
+				full = true
+				return
 			}
 			share.add(c.Clip, w)
 			out = append(out, c.Clip)
@@ -186,21 +197,32 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 		}
 	}
 	// cands is sorted by ladderLess, so each band is one contiguous run.
-	for start := 0; start < len(cands) && len(out) < podMax; {
+	for start := 0; start < len(cands) && len(out) < podMax && !full; {
 		end := start + 1
 		for end < len(cands) && ladderBand(cands[end], w, policy) == ladderBand(cands[start], w, policy) {
 			end++
 		}
-		place(cands[start:end], false)
-		if len(out) < podMax {
-			place(cands[start:end], true) // top up, accepting a category repeat rather than a shorter pod
+		place(cands[start:end], false, false)
+		if len(out) < podMax && !full {
+			place(cands[start:end], true, false) // top up, accepting a category repeat rather than a shorter pod
 		}
 		start = end
+	}
+	// The half yields only to a break the other clips cannot fill (decision 34): in-season clips
+	// past it take the places left, in rotation order, rather than leaving the break short.
+	if len(out) < podMax && !full {
+		place(cands, true, true)
 	}
 	if len(out) == 0 {
 		return "", nil
 	}
 	return pools[loosest].level, placeLead(out, lead, rng)
+}
+
+// resting reports whether a clip aired inside its cooldown.
+func resting(c Clip, w Window, policy Policy) bool {
+	tier, _ := rotationRank(c, w, policy)
+	return tier == rotationRecent
 }
 
 // placeLead moves the guaranteed in-season commercial from the front of out to a seeded position
@@ -233,13 +255,20 @@ type rungClip struct {
 }
 
 // ladderBand is the placement band a candidate belongs to: its rung, with every clip resting
-// inside its cooldown moved below all rested ones. Bands are what ladderLess orders.
+// inside its cooldown moved below all rested ones, and every clip the household has seen this
+// evening below both (#3838 decision 1, amended 2026-11-18). A break airs no repeat while an unseen
+// ad fits; once the unseen ones run out, the ads seen longest ago fill what is left, so a set below
+// its recipe keeps its breaks full instead of shrinking them to the station ID. Bands are what
+// ladderLess orders.
 func ladderBand(c rungClip, w Window, policy Policy) int {
-	resting := 0
+	seen, resting := 0, 0
+	if airedThisEvening(c.Clip, w) {
+		seen = 1
+	}
 	if tier, _ := rotationRank(c.Clip, w, policy); tier == rotationRecent {
 		resting = 1
 	}
-	return resting<<8 | c.rung // resting dominates; the rung (0-2) orders within it
+	return seen<<9 | resting<<8 | c.rung // seen tonight dominates, then resting; the rung (0-2) orders within
 }
 
 // ladderLess orders ladder candidates: by band (rested before resting, then tightest rung
@@ -410,101 +439,75 @@ func filterEraWindows(clips []Clip, windows []EraRange) []Clip {
 }
 
 // NormalizeEraWindows sorts and merges overlapping or adjacent windows while
-// retaining disjoint gaps. An explicit any window canonicalizes to just any.
+// retaining disjoint gaps. An explicit any window canonicalizes to just any. The merge is
+// schedule.NormalizeRanges, the one that normalizes a channel's stored date windows, so a
+// zero To (open-ended) absorbs every later window here exactly as it does there.
 func NormalizeEraWindows(in []EraRange) []EraRange {
 	if len(in) == 0 {
 		return nil
 	}
-	for _, r := range in {
+	ranges := make([]schedule.Range, len(in))
+	for i, r := range in {
 		if r.Any() {
 			return []EraRange{{}}
 		}
+		ranges[i] = schedule.Range{From: r.From, To: r.To}
 	}
-	out := append([]EraRange(nil), in...)
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].From == out[j].From {
-			return out[i].To < out[j].To
-		}
-		return out[i].From < out[j].From
-	})
-	n := 0
-	for _, r := range out {
-		if n == 0 || r.From > out[n-1].To+1 {
-			out[n] = r
-			n++
-			continue
-		}
-		if r.To > out[n-1].To {
-			out[n-1].To = r.To
-		}
-	}
-	return out[:n:n]
-}
-
-func filterAudience(clips []Clip, aud Audience) []Clip {
-	if aud == "" {
-		return clips
-	}
-	out := make([]Clip, 0, len(clips))
-	for _, c := range clips {
-		// A kids channel admits ONLY clips grounded kids or family (#1449, maintainer decision
-		// 2026-09-25): a general-audience ad is not good enough there. Every other channel keeps
-		// "a general-audience clip fits any channel", otherwise an exact audience match.
-		if aud == Kids {
-			if c.Audience == Kids || c.Audience == Family {
-				out = append(out, c)
-			}
-			continue
-		}
-		if c.Audience == aud || c.Audience == General {
-			out = append(out, c)
-		}
+	merged := schedule.NormalizeRanges(ranges)
+	out := make([]EraRange, len(merged))
+	for i, r := range merged {
+		out[i] = EraRange{From: r.From, To: r.To}
 	}
 	return out
 }
 
-// admitsUngroundedAudience reports whether a channel targeting `aud` may draw clips whose
-// audience Loomarr could not work out.
-//
-// ⚠ **An ALLOWLIST, deliberately, and this is the one rule here that is about safety.** A
-// denylist (`aud != Kids`) would hand every audience added later the permissive default —
-// exactly the wrong direction. Only `general` and `late_night` admit an unclassified clip.
-// `family` is excluded alongside `kids`: family channels are watched by children, and the
-// asymmetry the §10 audience ceiling encodes is that "we could not tell who this is for" must
-// never resolve to "so show it to children".
-//
-// An empty `aud` (the channel expressed no audience) never reaches here — `filterAudience`
-// returns everything, untagged clips included, before this is consulted.
-func admitsUngroundedAudience(aud Audience) bool {
-	return aud == General || aud == LateNight
+// audienceCeiling is what a channel of one audience may air (#3838 decision 8): the channel's own
+// audience is a ceiling, never a match. A kids channel airs kids and family only (#1449); family
+// and general channels air kids, family and general; a late-night channel airs everything. A
+// clip with no grounded audience is in no ceiling.
+func audienceCeiling(channel Audience) []Audience {
+	switch channel {
+	case Kids:
+		return []Audience{Kids, Family}
+	case Family, General:
+		return []Audience{Kids, Family, General}
+	case LateNight:
+		return []Audience{Kids, Family, General, LateNight}
+	default:
+		return nil
+	}
 }
 
-// filterAudienceWithUngrounded is the BOTTOM rung's pool: everything `filterAudience` admits,
-// plus — on a channel allowed to take them — the clips whose audience could not be grounded.
-//
-// ⚠ **This rung is why picking an Audience stopped emptying the whole ladder (§10 V51f).**
-// optional classification was absent for most of this project's life, so a real catalog is full of
-// clips carrying `""`, which equals no audience and matches `General` either. The moment an
-// operator chose an audience, every rung went empty and the channel fell to its bumper card —
-// while the meter said "nothing in the catalog fits", which reads as a catalog problem rather
-// than a tagging one. Admitting them at the BOTTOM means a grounded match always wins when one
-// exists, and the untagged clips are a floor rather than a competitor.
-func filterAudienceWithUngrounded(clips []Clip, aud Audience) []Clip {
-	if aud == "" || !admitsUngroundedAudience(aud) {
-		return filterAudience(clips, aud)
-	}
+// filterAudience keeps the clips inside the channel's audience ceiling. A channel that expressed
+// no audience airs every clip whose audience is grounded.
+func filterAudience(clips []Clip, aud Audience) []Clip {
 	out := make([]Clip, 0, len(clips))
-	for _, c := range clips {
-		if c.Audience == aud || c.Audience == General || c.Audience == "" {
-			out = append(out, c)
+	if aud == "" {
+		for _, c := range clips {
+			if c.Audience != "" {
+				out = append(out, c)
+			}
 		}
+		return out
+	}
+	allowed := audienceCeiling(aud)
+	for _, c := range clips {
+		if !slices.Contains(allowed, c.Audience) {
+			continue
+		}
+		// Strict for kids only (#3838 decision 7): a lone model guess does not put a clip in front
+		// of children. Every other ceiling takes the guess.
+		if aud == Kids && c.AudienceGuess {
+			continue
+		}
+		out = append(out, c)
 	}
 	return out
 }
 
 // filterRoles keeps only playable clips matching the selected descriptive roles (§10 per-channel
-// "roles to include"). Empty selection accepts every playable Placement, including an enrolled
-// clip whose role remains unknown. Applied catalog-wide BEFORE pickBumper/candidatePools, so a
+// "roles to include"). Empty selection accepts every playable Placement whose role, era and
+// audience are known (FactsComplete). Applied catalog-wide BEFORE pickBumper/candidatePools, so a
 // "bumpers only" selection empties the commercial pool and a "no bumpers" one leaves
 // pickBumper nothing — the role choice shapes the whole pod, not just the middle.
 //
@@ -525,11 +528,13 @@ func filterRoles(clips []Clip, roles []string, local map[string]bool) []Clip {
 	}
 	out := make([]Clip, 0, len(clips))
 	for _, c := range clips {
-		if c.EffectivePlacement() == PlacementNotPlayable {
+		// A clip missing a fact fits no channel (#3838 decision 6), and this is the one catalog-wide
+		// filter assembly, coverage and fit all share, so the gate holds for each of them.
+		if c.EffectivePlacement() == PlacementNotPlayable || !FactsComplete(c) {
 			continue
 		}
 		switch {
-		case len(roles) == 0 && c.Role == Unclassified, allow[c.Role] && c.Role != Unclassified:
+		case allow[c.Role]:
 			out = append(out, c)
 		case c.Role == News && c.GeographicScope == GeographicLocal && local[c.Station] && allow[StationID]:
 			out = append(out, c)

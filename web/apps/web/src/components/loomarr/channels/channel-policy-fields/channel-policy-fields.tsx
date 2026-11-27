@@ -1,5 +1,5 @@
 import { tidyGoDuration } from "@loomarr/core/format";
-import { Action, CompactSelect, Stack, Text } from "@loomarr/design-system";
+import { Action, CompactSelect, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
 import { CommitField, normalizeYearRanges, YearRangeListField } from "@loomarr/ui";
 import { useState } from "react";
 import { eraDates, eraOf } from "@/lib/era-dates";
@@ -10,7 +10,6 @@ import {
   type PolicyField as PolicyFieldName,
   resetField,
 } from "@/lib/policy-overrides";
-import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { PolicyFieldSource } from "../policy-field-source";
 import type { ChannelPolicyFieldsProps } from "./channel-policy-fields.type";
@@ -37,7 +36,7 @@ const DateAxisEditor = ({
   ranges: { from: number; to: number }[];
   onChange: (next: { from: number; to: number }[]) => void;
 }) => (
-  <Stack className="border-border rounded-md border p-3" gap="inline">
+  <Stack borderColor="borderDecorative" borderRadius={6} borderWidth={1} gap="inline" padding={12}>
     <Stack align="center" direction="row" gap="control" justify="between">
       <Text textRole="label">{label}</Text>
     </Stack>
@@ -71,18 +70,20 @@ const PolicyField = ({
 }) => {
   const labelId = `${id}-label`;
   return (
-    <div className={cn("flex flex-col gap-1.5", wide && "sm:col-span-2")}>
-      <Stack align="center" direction="row" gap="inline" justify="between" wrap>
-        <Stack align="center" direction="row" gap="1.5">
-          <Text as="label" htmlFor={htmlFor} id={labelId} textRole="label">
-            {label}
-          </Text>
-          <FieldHelp label={label}>{help}</FieldHelp>
+    <GridItem span={wide ? { base: 1, sm: "full" } : 1}>
+      <Stack gap="1.5">
+        <Stack align="center" direction="row" gap="inline" justify="between" wrap>
+          <Stack align="center" direction="row" gap="1.5">
+            <Text as="label" htmlFor={htmlFor} id={labelId} textRole="label">
+              {label}
+            </Text>
+            <FieldHelp label={label}>{help}</FieldHelp>
+          </Stack>
+          <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
         </Stack>
-        <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
+        {children}
       </Stack>
-      {children}
-    </div>
+    </GridItem>
   );
 };
 
@@ -226,7 +227,7 @@ const ChannelPolicyFields = ({
   return (
     // A responsive 2-column field grid (was a 1-wide stack): the Selects and single inputs sit
     // side by side, while the dates editor spans the full width. gap-x for columns, gap-y for rows.
-    <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
+    <Grid className={className} columnGap="4" columns={{ base: 1, sm: 2 }} rowGap="5">
       {/* Ordering — empty string means "inherit the channel's Strategy"; the select names that
           choice "inherit". */}
       {showOrdering && (
@@ -278,9 +279,9 @@ const ChannelPolicyFields = ({
         </PolicyField>
       )}
 
-      {/* Unrated titles — the safety PAIR to the ceiling, and orphaned until now: the gate has
-          always been enforced (and reported in the exclusion report) while nothing could choose
-          it, so an operator could see "3 skipped: unrated" and had no way to say "allow them".
+      {/* Unrated titles — the safety PAIR to the ceiling: the gate is always enforced (and
+          reported in the exclusion report), so an operator who sees "3 skipped: unrated" needs
+          this to say "allow them".
           Sits beside the ceiling because its default is DERIVED from it. */}
       {showScope && (
         <PolicyField
@@ -403,9 +404,9 @@ const ChannelPolicyFields = ({
             onChange(resetField(policy, "dates"));
           }}
         >
-          <p className="text-muted-foreground text-xs">
+          <Text as="p" textRole="hint" tone="secondary">
             Movie release and series premiere filter titles; episode airing filters individual episodes.
-          </p>
+          </Text>
           {(
             [
               ["Movie release", "movieRelease"],
@@ -422,7 +423,7 @@ const ChannelPolicyFields = ({
                 const hasDates = Object.values(nextDates).some(
                   (ranges) => Array.isArray(ranges) && ranges.length > 0,
                 );
-                const { era: _era, dates: _dates, ...scope } = policy.scope ?? {};
+                const { dates: _dates, ...scope } = policy.scope ?? {};
                 // Editing an axis keeps this editor open even if the windows happen to line up
                 // again, so the field does not swap under the operator mid-edit.
                 setAxesRequested(true);
@@ -447,8 +448,8 @@ const ChannelPolicyFields = ({
         </PolicyField>
       )}
 
-      {/* Longest programme — orphaned until now: the backend has filtered on runtimeMax
-          since the scope policy existed, and nothing could set it. Useful for a channel
+      {/* Longest programme — the backend filters on runtimeMax, and this is the field that
+          sets it. Useful for a channel
           that should stay to half-hour episodes and never pull in a three-hour film. */}
       {showScope && (
         <PolicyField
@@ -484,8 +485,8 @@ const ChannelPolicyFields = ({
 
       {/* Repeat spacing — commit-on-blur duration strings, one field per window so each shows
           its own source and Reset. Series gap + block cap are the OTHER half of separation
-          (§3). They were orphaned: the relaxation ladder narrates them in Diagnostics ("series
-          gap was 2h") while nothing could set them. */}
+          (§3). The relaxation ladder narrates them in Diagnostics ("series gap was 2h"), and
+          these fields are what set them. */}
       {showOrdering &&
         DURATION_FIELDS.map(({ field, id, label, help }) => (
           <PolicyField key={field} id={id} htmlFor={id} label={label} help={help} {...source(field)}>
@@ -532,7 +533,7 @@ const ChannelPolicyFields = ({
           />
         </PolicyField>
       )}
-    </div>
+    </Grid>
   );
 };
 

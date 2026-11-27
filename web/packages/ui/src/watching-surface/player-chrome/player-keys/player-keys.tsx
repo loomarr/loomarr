@@ -32,6 +32,8 @@ interface KeyProps {
   pressed?: boolean | undefined;
   /** Legends, for a pointer or a remote's focus; a phone has neither. */
   legends: boolean;
+  /** A television: as what the key opened closes, the remote's focus comes back to the key. */
+  reclaimsFocus?: boolean;
   width: number;
 }
 
@@ -44,10 +46,20 @@ const Key = ({
   ok = false,
   onPress,
   pressed,
+  reclaimsFocus = false,
   width,
 }: KeyProps) => {
   const [hovered, setHovered] = useState(false);
   const { focused, ...focusHandlers } = useFocusLook();
+  // A menu whose rows held focus unmounts as it closes, and Android then hands focus to the first key
+  // in the row; the key that opened it claims it instead, so Back lands where OK was pressed. Derived
+  // from `pressed` turning off (state adjusted in render, not an effect), so it needs no caller.
+  const [wasPressed, setWasPressed] = useState(pressed);
+  const [reclaim, setReclaim] = useState(false);
+  if (pressed !== wasPressed) {
+    setWasPressed(pressed);
+    setReclaim(Boolean(wasPressed) && !pressed);
+  }
   return (
     <View style={{ alignItems: "center", gap: 8 }}>
       <Pressable
@@ -56,6 +68,7 @@ const Key = ({
         // aria-expanded, not accessibilityState: React Native for Web 0.21 drops the latter. A key that
         // opens nothing (pressed undefined) says nothing about it.
         aria-expanded={pressed}
+        hasTVPreferredFocus={reclaimsFocus && reclaim}
         {...focusHandlers}
         onHoverIn={() => setHovered(true)}
         onHoverOut={() => setHovered(false)}
@@ -166,6 +179,7 @@ const PlayerKeys = ({
       legends={legends}
       onPress={onMore}
       pressed={moreOpen}
+      reclaimsFocus={tv}
       width={size}
     >
       <Glyph density={density} name="more" />
@@ -184,6 +198,7 @@ const PlayerKeys = ({
             legends
             onPress={audio.onSubtitles}
             pressed={audio.subtitlesOpen}
+            reclaimsFocus
             width={size}
           >
             <Glyph density={density} name="captions" />
@@ -197,6 +212,7 @@ const PlayerKeys = ({
             legends
             onPress={audio.onAudio}
             pressed={audio.audioOpen}
+            reclaimsFocus
             width={size}
           >
             <Glyph density={density} name="audio" />

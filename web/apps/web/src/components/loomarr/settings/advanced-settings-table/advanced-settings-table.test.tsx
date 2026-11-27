@@ -115,7 +115,8 @@ describe("AdvancedSettingsTable", () => {
     render(<Harness />);
     const chips = screen.getAllByText("ADV");
     expect(chips).toHaveLength(1);
-    expect(chips[0]?.title).toMatch(/advanced/i);
+    // The title sits on the badge that wraps the Text, so it reads on hover over the whole chip.
+    expect(chips[0]?.closest("[title]")?.getAttribute("title")).toMatch(/advanced/i);
   });
 
   it("counts what the search narrowed to", async () => {

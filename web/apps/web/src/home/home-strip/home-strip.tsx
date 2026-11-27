@@ -1,4 +1,4 @@
-import { Action, Stack } from "@loomarr/design-system";
+import { Action, Grid, Stack, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { HomeStripProps } from "./home-strip.type";
 
@@ -14,20 +14,31 @@ const HomeStrip = ({ state, isAdmin, onRetry }: HomeStripProps) => {
   if (state === "loading") {
     return (
       <section aria-busy="true">
-        <p className="text-static-400 m-0 text-sm">Loading your channels…</p>
-        <div aria-hidden className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Text as="p" textRole="compact" tone="secondary">
+          Loading your channels…
+        </Text>
+        <Grid aria-hidden columns={{ base: 1, sm: 2, lg: 3 }} gap="3" marginTop={16}>
           {[0, 1, 2].map((i) => (
-            <div key={i} className="bg-static-800 aspect-video w-full animate-pulse rounded-md" />
+            <Stack
+              aspectRatio={16 / 9}
+              backgroundColor="$surfaceElevated"
+              borderRadius={6}
+              className="animate-pulse"
+              key={i}
+              width="100%"
+            />
           ))}
-        </div>
+        </Grid>
       </section>
     );
   }
 
   if (state === "error") {
     return (
-      <Stack align="start" className="max-w-[460px] py-10" gap="4" render="section">
-        <h2 className="m-0 text-lg font-semibold">Couldn’t load your channels.</h2>
+      <Stack align="start" gap="4" maxWidth={460} paddingVertical={40} render="section">
+        <Text as="h2" strong textRole="headline">
+          Couldn’t load your channels.
+        </Text>
         <Action onPress={onRetry}>Try again</Action>
       </Stack>
     );
@@ -35,9 +46,13 @@ const HomeStrip = ({ state, isAdmin, onRetry }: HomeStripProps) => {
 
   if (state === "empty") {
     return (
-      <Stack align="start" className="max-w-[460px] py-10" gap="4" render="section">
-        <h2 className="m-0 text-lg font-semibold">Your first channel starts here</h2>
-        <p className="text-static-400 m-0">{isAdmin ? "Create" : "Request"} a channel to start watching.</p>
+      <Stack align="start" gap="4" maxWidth={460} paddingVertical={40} render="section">
+        <Text as="h2" strong textRole="headline">
+          Your first channel starts here
+        </Text>
+        <Text as="p" textRole="body" tone="secondary">
+          {isAdmin ? "Create" : "Request"} a channel to start watching.
+        </Text>
         <Action accessibilityRole="link" render={<Link to="/requests/new" />}>
           {isAdmin ? "Add your first channel" : "Request a channel"}
         </Action>

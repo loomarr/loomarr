@@ -81,6 +81,28 @@ describe("ProposalReview", () => {
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 
+  it("turns a request down with the admin's reason, trimmed, or with none when left blank", async () => {
+    const onDeny = vi.fn();
+    const { unmount } = renderReview(
+      <ProposalReview proposal={proposal} status="submitted" onApprove={vi.fn()} onDeny={onDeny} />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Not approved" }));
+    await userEvent.type(
+      screen.getByLabelText("Why not? Optional: the requester sees this."),
+      "  Too many new titles ",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Not approved" }));
+    await waitFor(() => expect(onDeny).toHaveBeenCalledWith("Too many new titles"));
+    unmount();
+
+    renderReview(
+      <ProposalReview proposal={proposal} status="submitted" onApprove={vi.fn()} onDeny={onDeny} />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Not approved" }));
+    await userEvent.click(screen.getByRole("button", { name: "Not approved" }));
+    await waitFor(() => expect(onDeny).toHaveBeenLastCalledWith(undefined));
+  });
+
   it("opens a compact brief editor without hiding the lineup", async () => {
     const onRevise = vi.fn();
     renderReview(<ProposalReview proposal={proposal} selfService onRevise={onRevise} />);
@@ -182,10 +204,9 @@ describe("ProposalReview", () => {
 
     expect(screen.getByRole("button", { name: "Finding more suggestions…" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Edit brief" })).toBeDisabled();
-    expect(screen.getByText("Finding more suggestions… Your selected titles won’t change.")).toHaveAttribute(
-      "role",
-      "status",
-    );
+    expect(
+      screen.getByText("Finding more suggestions… Your selected titles won’t change.").parentElement,
+    ).toHaveAttribute("role", "status");
 
     expect(onRevise).toHaveBeenCalledWith({
       description: "90s action movies",

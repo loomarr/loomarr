@@ -17,7 +17,7 @@ import (
 
 // AssetVersion stamps the generated tree. Bump it when a generator changes what it draws, so an
 // existing demo directory is regenerated instead of mixing old and new files.
-const AssetVersion = 5
+const AssetVersion = 6
 
 // Test Card palette (web/packages/design-system/src/tokens/brand-contract.json). Duplicated
 // rather than read at runtime because the backend binary does not ship the web tree; the guard
@@ -405,16 +405,25 @@ func (g generator) filler(ctx context.Context, f Filler, bg, out string) error {
 	// drawbox evaluates its position once, not per frame.
 	sweep := fmt.Sprintf("color=c=0x%s:s=1920x1080:r=24:d=%d[bg];color=c=0x%s:s=480x96:r=24:d=%d[blk];"+
 		"[bg][blk]overlay=x='mod(t*1440,W+480)-480':y=H-96", bg, f.Duration, ground, f.Duration)
+	// The card is softened a little and given a light moving grain, because the defect floor's
+	// blocks check (blockdetect) reads a hard edge on a flat colour as compression blocks: with no
+	// texture inside the coding blocks the card measured 16–68 against a bar of 8, and every clip
+	// was refused (#3845). Grain alone left most cards borderline (4–5.4); with a 0.5 px blur they
+	// read 2–3, blur stays under the HD bar (about 5.6–6.0 against 6), and the grain's temporal
+	// outliers stay at clean video's level. More grain or a lower crf fails the dropouts check or
+	// multiplies the file size.
 	vf := strings.Join([]string{
 		sweep,
 		drawtext(name, 140, ground, "(w-tw)/2", "(h-th)/2"),
 		drawtext(tag, 48, ground, "(w-tw)/2", "h*0.8"),
+		"gblur=sigma=0.5",
+		"noise=alls=14:allf=t",
 	}, ",")
 	// A soft major chord, not silence: the filler quality gate rejects a clip whose audio is
 	// silent (silent_content), so a silent card never reaches a break.
 	chord := fmt.Sprintf("aevalsrc=0.12*sin(2*PI*261.63*t)+0.12*sin(2*PI*329.63*t)+0.12*sin(2*PI*392.00*t):s=48000:c=stereo:d=%d", f.Duration)
 	return g.run(ctx, "-f", "lavfi", "-i", vf, "-f", "lavfi", "-i", chord,
-		"-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-tune", "stillimage", "-pix_fmt", "yuv420p", "-g", "48",
+		"-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p", "-g", "48",
 		"-c:a", "aac", "-b:a", "96k", "-shortest", "-movflags", "+faststart", out)
 }
 

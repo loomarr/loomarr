@@ -5,6 +5,7 @@ import (
 	"errors"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,17 +44,80 @@ type Scanner struct {
 
 	mu      sync.Mutex
 	folders map[string]map[string]folderWait // root → changed folders
+	// held are the folders Rewrite was given while a header stage read (root → folders), passed
+	// over once it ends. Guarded by mu.
+	held map[string]map[string]bool
 	// passing is whether a round of folder passes is running. Guarded by mu.
 	passing bool
 	changed chan struct{}
 }
 
-// FoldersSettled reports whether no folder waits for a pass and none is being passed over: every
-// pass asked for so far has written what it found.
+// FoldersSettled reports whether no folder waits for a pass, held or not, and none is being passed
+// over: every pass asked for so far has written what it found.
 func (s *Scanner) FoldersSettled() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.folders) == 0 && !s.passing
+	return len(s.folders) == 0 && len(s.held) == 0 && !s.passing
+}
+
+// Rewrite asks for a pass over dirs, under root, to write their titles again with details the
+// Enricher fetched. A folder whose files a header stage has still to read is held until they are
+// read and saved (ReleaseFolder), or the stage ends: a file still to be read takes the details
+// when its read writes it, and a pass now would make its read stale, to be done again. An
+// import's first lookups land while its files are read, so passing over each title's folders as
+// it was looked up turned the reading to a crawl. A folder the stage is done with, or holds
+// nothing of, is passed over now.
+func (s *Scanner) Rewrite(root string, dirs ...string) {
+	if len(dirs) == 0 {
+		return
+	}
+	var now []string
+	s.mu.Lock()
+	reading := s.Importer.Reading()
+	for _, dir := range dirs {
+		if !reading || !s.Importer.FolderUnread(dir) {
+			now = append(now, dir)
+			continue
+		}
+		if s.held == nil {
+			s.held = map[string]map[string]bool{}
+		}
+		if s.held[root] == nil {
+			s.held[root] = map[string]bool{}
+		}
+		s.held[root][dir] = true
+	}
+	s.mu.Unlock()
+	s.PassFolders(root, now...)
+}
+
+// ReleaseFolder asks for the pass Rewrite held for dir, under root, once the header stage has read
+// and saved its files. The Importer calls it as each folder's reads are done (FolderRead).
+func (s *Scanner) ReleaseFolder(root, dir string) {
+	s.mu.Lock()
+	held := s.held[root][dir]
+	if held {
+		delete(s.held[root], dir)
+		if len(s.held[root]) == 0 {
+			delete(s.held, root)
+		}
+	}
+	s.mu.Unlock()
+	if held {
+		s.PassFolders(root, dir)
+	}
+}
+
+// ReleaseHeld asks for the passes Rewrite held while a header stage read. The Importer calls it as
+// each stage ends (AfterReading).
+func (s *Scanner) ReleaseHeld() {
+	s.mu.Lock()
+	held := s.held
+	s.held = nil
+	s.mu.Unlock()
+	for root, set := range held {
+		s.PassFolders(root, slices.Sorted(maps.Keys(set))...)
+	}
 }
 
 // folderWait is when a folder's waiting changes began, and its latest.
@@ -126,6 +190,11 @@ func (s *Scanner) ArrChanged(ctx context.Context, authority string, folders []st
 // passFolders passes over each changed folder once it is due, until ctx ends.
 func (s *Scanner) passFolders(ctx context.Context) {
 	var wake <-chan time.Time
+	// A pass's header reads go on in the background, as a full pass's do: the stage waits while
+	// the household watches, and the next folders' titles are not held behind it. A pass that
+	// finds the stage reading hands its files over and is done at once.
+	var reads sync.WaitGroup
+	defer reads.Wait()
 	for {
 		select {
 		case <-ctx.Done():
@@ -135,9 +204,18 @@ func (s *Scanner) passFolders(ctx context.Context) {
 		}
 		due, next := s.dueFolders(time.Now())
 		for _, root := range slices.Sorted(maps.Keys(due)) {
-			if err := s.Importer.RunFolders(ctx, root, due[root]); err != nil && ctx.Err() == nil {
-				s.Importer.log().Warn("library scan: a folder pass failed", "root", root, "err", err)
+			read, err := s.Importer.WalkFolders(ctx, root, due[root])
+			if err != nil {
+				if ctx.Err() == nil {
+					s.Importer.log().Warn("library scan: a folder pass failed", "root", root, "err", err)
+				}
+				continue
 			}
+			reads.Go(func() {
+				if err := read(); err != nil && ctx.Err() == nil {
+					s.Importer.log().Warn("library scan: a folder pass's header reads failed", "root", root, "err", err)
+				}
+			})
 		}
 		if len(due) > 0 {
 			s.mu.Lock()
@@ -194,17 +272,26 @@ func (s *Scanner) dueFolders(now time.Time) (map[string][]string, time.Duration)
 // in full however little it finds.
 func (s *Scanner) Trigger() {
 	s.Importer.Tracker.Ask()
+	s.PassSoon()
+}
+
+// PassSoon asks for a pass soon on nobody's behalf: like the hourly pass, it shows its progress only
+// when it finds something to read or look up. The watch asks so when it lost track of what changed.
+// It never blocks.
+func (s *Scanner) PassSoon() {
 	select {
 	case s.trigger <- struct{}{}:
 	default:
 	}
 }
 
-// Run passes until ctx ends. A failed pass is logged and the next one runs on schedule.
+// Run passes until ctx ends. A failed pass is logged and the next one runs on schedule. Each pass's
+// header reads run behind it, so the next pass, asked for or due, walks while they do.
 func (s *Scanner) Run(ctx context.Context) {
-	var folders sync.WaitGroup
+	var folders, reads sync.WaitGroup
 	folders.Go(func() { s.passFolders(ctx) })
 	defer folders.Wait()
+	defer reads.Wait()
 	t := time.NewTicker(s.Interval)
 	defer t.Stop()
 	// The first pass of a library with no files yet is its first import, as good as asked for.
@@ -212,8 +299,16 @@ func (s *Scanner) Run(ctx context.Context) {
 		s.Importer.Tracker.Ask()
 	}
 	for {
-		if err := s.Importer.Run(ctx); err != nil && ctx.Err() == nil {
-			s.Importer.log().Warn("library scan: pass failed", "err", err)
+		if read, err := s.Importer.Walk(ctx); err != nil {
+			if ctx.Err() == nil {
+				s.Importer.log().Warn("library scan: pass failed", "err", err)
+			}
+		} else {
+			reads.Go(func() {
+				if err := read(); err != nil && ctx.Err() == nil {
+					s.Importer.log().Warn("library scan: header reads failed", "err", err)
+				}
+			})
 		}
 		select {
 		case <-ctx.Done():
@@ -228,7 +323,8 @@ func (s *Scanner) Run(ctx context.Context) {
 type Library struct {
 	*Roots
 	Scanner *Scanner
-	// ItemStore and Inventory read what the scanner wrote, for Library → Items.
+	// ItemStore reads what the scanner wrote, for Library → Items; Inventory finds which title holds
+	// an origin, for Needs you.
 	ItemStore librarystore.LibraryItemStore
 	Inventory inventory.Service
 	// NeedStore keeps Needs you; Search finds titles to answer it with (nil: no catalog).
@@ -245,6 +341,8 @@ type Library struct {
 	// Enricher fetches a title's catalog record on request (Update details); nil has no catalog.
 	Enricher *Enricher
 	Now      func() time.Time
+	// removing runs one Remove extra copy at a time.
+	removing sync.Mutex
 }
 
 // Progress is how the scanner's last passes ended; the zero Progress when no scanner runs.
@@ -311,6 +409,30 @@ func (l *Library) Counts(ctx context.Context) (librarystore.LibraryFileCounts, e
 	return l.Scanner.Importer.Store.LibraryFileCounts(ctx)
 }
 
+// skippedListed is how many of the files skipped for one reason the maintainer is shown by path.
+const skippedListed = 20
+
+// Skipped lists the files the scan skips, by why (ProblemBrokenLink, ProblemLinkOutside,
+// ProblemDiscImage, ...): each reason's count and its first few paths, for the maintainer to fix.
+func (l *Library) Skipped(ctx context.Context) ([]librarystore.LibrarySkipped, error) {
+	if l.Scanner == nil {
+		return []librarystore.LibrarySkipped{}, nil
+	}
+	return l.Scanner.Importer.Store.LibrarySkippedFiles(ctx, skippedListed)
+}
+
+// heldNamed is how many of a held removal's titles the maintainer is shown by name.
+const heldNamed = 3
+
+// HeldTitles names a few of the titles a root's held removal would take, by name, and counts them
+// all: the maintainer sees what "They're gone, remove them" lets go before saying it.
+func (l *Library) HeldTitles(ctx context.Context, root string) ([]string, int, error) {
+	if l.Scanner == nil {
+		return []string{}, 0, nil
+	}
+	return l.Scanner.Importer.Store.LibraryHeldTitles(ctx, root, heldNamed)
+}
+
 // ErrScannerOff is a request the scanner cannot serve because it is not running.
 var ErrScannerOff = errors.New("scan: the scanner is off")
 
@@ -323,13 +445,26 @@ func (l *Library) Rescan() error {
 	return nil
 }
 
-// SetInUse confirms or releases a root. Confirming one ("Use this folder") asks for a pass, so
-// its media starts arriving now rather than at the next hourly pass.
+// SetInUse confirms or releases a root, and asks for a pass either way, so the change shows now
+// rather than at the next hourly pass: a root confirmed ("Use this folder") starts its media
+// arriving, and one released ("Stop using") has its files forgotten, which a pass does first.
 func (l *Library) SetInUse(ctx context.Context, path string, inUse bool) error {
 	if err := l.Roots.SetInUse(ctx, path, inUse); err != nil {
 		return err
 	}
-	if inUse && l.Enabled() {
+	if !inUse && l.Scanner != nil {
+		// A pass forgets a released root first thing, but the next pass waits for the running
+		// one's reading, which on a first import is most of it: the folder is forgotten here, now,
+		// in the background, waiting at most for a walk under way. The header stage then reads
+		// none of its files that are left.
+		im := l.Scanner.Importer
+		go func(ctx context.Context) {
+			if err := im.ForgetReleased(ctx); err != nil {
+				im.log().Warn("library scan: a released folder's files were not forgotten", "err", err)
+			}
+		}(context.WithoutCancel(ctx))
+	}
+	if l.Enabled() {
 		l.Scanner.Trigger()
 	}
 	return nil
@@ -341,6 +476,31 @@ func (l *Library) Add(ctx context.Context, path string) error {
 		return err
 	}
 	if l.Enabled() {
+		l.Scanner.Trigger()
+	}
+	return nil
+}
+
+// Replace adds a folder in place of the folders in use inside it (Roots.Replace), and asks for a
+// pass, which reads their files as the outer folder's.
+func (l *Library) Replace(ctx context.Context, path string) error {
+	if err := l.Roots.Replace(ctx, path); err != nil {
+		return err
+	}
+	if l.Enabled() {
+		l.Scanner.Trigger()
+	}
+	return nil
+}
+
+// SetMapping points an authority's folder at a local folder by hand and, when it points somewhere,
+// asks for a pass: the files the mapping reaches arrive now, not at the next hourly pass, and no
+// restart is needed to make a corrected mapping take (#3359). Clearing one asks for nothing.
+func (l *Library) SetMapping(ctx context.Context, authority, authorityPath, local string) error {
+	if err := l.Roots.SetMapping(ctx, authority, authorityPath, local); err != nil {
+		return err
+	}
+	if strings.TrimSpace(local) != "" && l.Enabled() {
 		l.Scanner.Trigger()
 	}
 	return nil

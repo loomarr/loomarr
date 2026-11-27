@@ -29,10 +29,16 @@ var (
 // boundaryGaps normalises detector output inside one seeked span and maps it back onto the file's
 // absolute timeline. Closing an EOF silence at the span end is essential for chunking: the next
 // span starts inside the same silence and boundaryCuts then unions the two touching intervals.
+//
+// The detectors run with short minimums (boundaryDetectMinSec) so that a broadcast gap of a few
+// frames, or the tail of a fade, is seen at all; corroborated keeps a short gap only where the
+// other detector agrees, so a pause in speech or one dark frame never becomes a cut.
 func boundaryGaps(stderr string, startMs, endMs int64) ([]Interval, []Interval) {
 	spanMs := endMs - startMs
-	black := normaliseIntervals(parseBlackdetect(stderr), spanMs)
-	silence := normaliseIntervals(parseSilencedetect(stderr), spanMs)
+	rawBlack := normaliseIntervals(parseBlackdetect(stderr), spanMs)
+	rawSilence := normaliseIntervals(parseSilencedetect(stderr), spanMs)
+	black := corroborated(rawBlack, rawSilence, minLoneBlackMs, spanMs)
+	silence := corroborated(rawSilence, rawBlack, minLoneSilenceMs, spanMs)
 	for _, gaps := range [][]Interval{black, silence} {
 		for i := range gaps {
 			gaps[i].StartMs += startMs
@@ -40,6 +46,36 @@ func boundaryGaps(stderr string, startMs, endMs int64) ([]Interval, []Interval) 
 		}
 	}
 	return black, silence
+}
+
+const (
+	// boundaryDetectMinSec is the shortest run either detector reports: one frame at 30 fps. A gap
+	// between broadcast spots is often four frames, and a fade's black and silent tail is about as
+	// short; at the old minimums (0.1 s black, 0.3 s silence) both went unseen (#4409, split corpus).
+	boundaryDetectMinSec = "0.03"
+	// minLoneBlackMs and minLoneSilenceMs are how long a run one detector alone saw must last to be
+	// a gap: the minimums the detectors used before. Shorter runs are gaps only where both agree.
+	minLoneBlackMs   = 100
+	minLoneSilenceMs = 300
+)
+
+// corroborated keeps the runs that are long enough on their own, overlap a run of the other
+// detector, or touch the span's edge (a chunk boundary can cut one short, so its length is unknown).
+func corroborated(runs, other []Interval, loneMs, spanMs int64) []Interval {
+	var out []Interval
+	for _, r := range runs {
+		keep := r.EndMs-r.StartMs >= loneMs || r.StartMs <= 0 || r.EndMs >= spanMs
+		for _, o := range other {
+			if keep {
+				break
+			}
+			keep = o.StartMs < r.EndMs && r.StartMs < o.EndMs
+		}
+		if keep {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // parseBlackdetect extracts the black intervals ffmpeg reports on stderr. An
@@ -156,12 +192,23 @@ type whisperJSON struct {
 		} `json:"offsets"`
 		Text string `json:"text"`
 	} `json:"transcription"`
+	// Result.Language is the language whisper transcribed in: the one it detected under `-l auto`,
+	// else the one it was given.
+	Result struct {
+		Language string `json:"language"`
+	} `json:"result"`
 }
 
 func parseWhisperJSON(out []byte) ([]TranscriptSegment, error) {
+	speech, err := parseWhisperSpeech(out)
+	return speech.Segments, err
+}
+
+// parseWhisperSpeech reads whisper's utterances and the language it transcribed them in.
+func parseWhisperSpeech(out []byte) (AudioTranscription, error) {
 	var w whisperJSON
 	if err := json.Unmarshal(out, &w); err != nil {
-		return nil, fmt.Errorf("whisper output not JSON: %w", err)
+		return AudioTranscription{}, fmt.Errorf("whisper output not JSON: %w", err)
 	}
 	var segs []TranscriptSegment
 	for _, t := range w.Transcription {
@@ -171,5 +218,5 @@ func parseWhisperJSON(out []byte) ([]TranscriptSegment, error) {
 		}
 		segs = append(segs, TranscriptSegment{StartMs: t.Offsets.From, EndMs: t.Offsets.To, Text: text})
 	}
-	return segs, nil
+	return AudioTranscription{Language: strings.ToLower(strings.TrimSpace(w.Result.Language)), Segments: segs}, nil
 }

@@ -6,8 +6,11 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, formatDuration, formatRelative, formatUntil } from "@loomarr/core/format";
 import {
   Action,
+  Badge,
+  Card,
   Icon,
   icons,
+  PressableRow,
   Stack,
   StatusDot,
   type StatusTone,
@@ -18,6 +21,7 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
+  Text,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
@@ -27,7 +31,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { RunButton } from "@/components/loomarr/feedback/run-button";
 import { useRunFeedback } from "@/components/loomarr/feedback/use-run-feedback";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { cn } from "@/lib/utils";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { describeCron } from "./cron-presets";
 import { JobEditModal } from "./job-edit-modal/job-edit-modal";
@@ -91,18 +94,20 @@ const ExecutionHistory = ({ name }: { name: string }) => {
   const history = unwrap(query.data) as JobHistoryView | undefined;
 
   if (query.isLoading) {
-    return <p className="text-muted-foreground mt-4 text-xs">Loading execution history…</p>;
+    return (
+      <Stack marginTop={16}>
+        <Text as="p" textRole="hint" tone="secondary">
+          Loading execution history…
+        </Text>
+      </Stack>
+    );
   }
   if (query.error) {
     return (
-      <Stack
-        align="center"
-        className="text-destructive mt-4 text-xs"
-        direction="row"
-        gap="inline"
-        role="alert"
-      >
-        <span>Couldn’t load execution history.</span>
+      <Stack align="center" direction="row" gap="inline" marginTop={16} role="alert">
+        <Text as="span" textRole="hint" tone="danger">
+          Couldn’t load execution history.
+        </Text>
         <Action onPress={() => query.refetch()} variant="ghost">
           Retry
         </Action>
@@ -112,50 +117,84 @@ const ExecutionHistory = ({ name }: { name: string }) => {
   if (!history) return null;
 
   return (
-    <section className="border-border mt-4 border-t pt-3" aria-label="Execution history">
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <h3 className="text-xs font-medium">Past 24 hours</h3>
+    <Stack
+      aria-label="Execution history"
+      borderColor="borderDecorative"
+      borderTopWidth={1}
+      marginTop={16}
+      paddingTop={12}
+      render="section"
+    >
+      <Stack align="baseline" columnGap="4" direction="row" rowGap="1" wrap>
+        <Text as="h3" textRole="label" tone="primary">
+          Past 24 hours
+        </Text>
         {history.runCount === 0 ? (
-          <p className="text-muted-foreground text-xs">No completed runs.</p>
+          <Text as="p" textRole="hint" tone="secondary">
+            No completed runs.
+          </Text>
         ) : (
-          <dl className="flex flex-wrap gap-x-4 text-xs">
+          <Stack direction="row" gap="4" render="dl" wrap>
             <Stack direction="row" gap="1">
-              <dt className="text-muted-foreground">Runs</dt>
-              <dd className="font-mono">{history.truncated ? `${history.runCount}+` : history.runCount}</dd>
+              <Text as="dt" textRole="hint" tone="secondary">
+                Runs
+              </Text>
+              <Text as="dd" textRole="mono" tone="primary">
+                {history.truncated ? `${history.runCount}+` : history.runCount}
+              </Text>
             </Stack>
             <Stack direction="row" gap="1">
-              <dt className="text-muted-foreground">Failed</dt>
-              <dd className={cn("font-mono", history.failureCount > 0 && "text-destructive")}>
+              <Text as="dt" textRole="hint" tone="secondary">
+                Failed
+              </Text>
+              <Text as="dd" textRole="mono" tone={history.failureCount > 0 ? "danger" : "primary"}>
                 {history.failureCount}
-              </dd>
+              </Text>
             </Stack>
             <Stack direction="row" gap="1">
-              <dt className="text-muted-foreground">Average</dt>
-              <dd className="font-mono">{executionDuration(history.averageDurationMs)}</dd>
+              <Text as="dt" textRole="hint" tone="secondary">
+                Average
+              </Text>
+              <Text as="dd" textRole="mono" tone="primary">
+                {executionDuration(history.averageDurationMs)}
+              </Text>
             </Stack>
-          </dl>
+          </Stack>
         )}
-      </div>
+      </Stack>
 
       {history.recent.length > 0 && (
-        <ul className="divide-border border-border bg-background mt-2 divide-y rounded-md border">
-          {history.recent.map((run) => {
-            const failed = run.result === "error";
-            return (
-              <li key={`${run.startedAt}-${run.trigger}`} className="px-3 py-2">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                  <StatusDot tone={failed ? "error" : "ok"} label={failed ? "Failed" : "Succeeded"} />
-                  <span className="font-medium">{run.trigger === "manual" ? "Manual" : "Scheduled"}</span>
-                  <span className="text-muted-foreground">{formatRelative(run.startedAt)}</span>
-                  <span className="text-muted-foreground font-mono">{executionDuration(run.durationMs)}</span>
-                </div>
-                {failed && run.error && <ErrorDetails message={run.error} className="mt-1" />}
-              </li>
-            );
-          })}
-        </ul>
+        <Card marginTop={8}>
+          <Stack divided render="ul">
+            {history.recent.map((run) => {
+              const failed = run.result === "error";
+              return (
+                <Stack
+                  key={`${run.startedAt}-${run.trigger}`}
+                  paddingHorizontal={12}
+                  paddingVertical={8}
+                  render="li"
+                >
+                  <Stack align="center" columnGap="3" direction="row" rowGap="1" wrap>
+                    <StatusDot tone={failed ? "error" : "ok"} label={failed ? "Failed" : "Succeeded"} />
+                    <Text as="span" textRole="label" tone="primary">
+                      {run.trigger === "manual" ? "Manual" : "Scheduled"}
+                    </Text>
+                    <Text as="span" textRole="hint" tone="secondary">
+                      {formatRelative(run.startedAt)}
+                    </Text>
+                    <Text as="span" textRole="mono">
+                      {executionDuration(run.durationMs)}
+                    </Text>
+                  </Stack>
+                  {failed && run.error && <ErrorDetails message={run.error} className="mt-1" />}
+                </Stack>
+              );
+            })}
+          </Stack>
+        </Card>
       )}
-    </section>
+    </Stack>
   );
 };
 
@@ -212,32 +251,33 @@ const TasksPage = () => {
 
   if (jobs.error) {
     return (
-      <div className="p-6">
+      <Stack padding={24}>
         <ErrorState error={jobs.error} onRetry={() => jobs.refetch()} />
-      </div>
+      </Stack>
     );
   }
+  // The route's loader ensured the job list, and its error view takes a first read that fails, so
+  // the page always opens on its rows. A failed refresh after that is the branch above.
+  if (jobs.data === undefined) return null;
 
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%">
       <PageHeader
         title="Tasks"
         description="Background work grouped by outcome. Expand a group to inspect or control its tasks."
       />
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-auto p-6">
+      <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} flexShrink={1} gap="2" padding={24}>
         {GROUPS.map((group) => {
           const groupedJobs = list.filter((job) => job.group === group.id);
           if (groupedJobs.length === 0) return null;
           const groupOpen = openGroups.has(group.id);
           return (
-            <section key={group.id} className="border-border bg-card overflow-hidden rounded-lg border">
-              <button
-                type="button"
-                className="hover:bg-muted/40 flex w-full items-center gap-3 px-4 py-3 text-left"
-                aria-expanded={groupOpen}
+            <Card key={group.id} overflow="hidden" render="section">
+              <PressableRow
                 aria-controls={`task-group-${group.id}`}
-                onClick={() => toggleGroup(group.id)}
+                aria-expanded={groupOpen}
+                onPress={() => toggleGroup(group.id)}
               >
                 <Icon
                   decorative
@@ -245,19 +285,20 @@ const TasksPage = () => {
                   size="compact"
                   tone="muted"
                 />
-                <span className="font-medium">{group.label}</span>
-                <span
-                  className="text-muted-foreground ml-auto text-xs"
-                  style={{ display: "flex", alignItems: "center", gap: 8 }}
-                >
+                <Text as="span" textRole="cardLabel">
+                  {group.label}
+                </Text>
+                <Stack align="center" direction="row" flexGrow={1} flexShrink={1} gap="inline" justify="end">
                   {/* A collapsed group still says it holds an overdue task, with the row's amber dot. */}
                   {overdueTaskCount(groupedJobs) > 0 && <StatusDot tone="warn" label="Overdue" />}
-                  {groupSummary(groupedJobs)}
-                </span>
-              </button>
+                  <Text as="span" textRole="hint" tone="secondary">
+                    {groupSummary(groupedJobs)}
+                  </Text>
+                </Stack>
+              </PressableRow>
 
               {groupOpen && (
-                <div id={`task-group-${group.id}`} className="border-border border-t">
+                <Stack borderColor="borderDecorative" borderTopWidth={1} id={`task-group-${group.id}`}>
                   <Table caption={`${group.label} tasks`} framed={false}>
                     <TableHeader>
                       <TableRow>
@@ -278,41 +319,40 @@ const TasksPage = () => {
                           <Fragment key={job.name}>
                             <TableRow dimmed={Boolean(job.paused)}>
                               <TableCell rowHeader>
-                                <button
-                                  type="button"
-                                  className="flex items-center gap-2 text-left"
-                                  aria-expanded={jobOpen}
+                                <PressableRow
                                   aria-controls={`task-${job.name}`}
-                                  onClick={() => toggleJob(job.name)}
+                                  aria-expanded={jobOpen}
+                                  onPress={() => toggleJob(job.name)}
                                 >
                                   <span style={{ display: "flex", flexShrink: 0 }} title={dot.label}>
                                     <StatusDot tone={dot.tone} label={job.paused ? "" : dot.label} />
                                   </span>
-                                  <span className="font-medium">{job.title}</span>
+                                  <Text as="span" textRole="cardLabel">
+                                    {job.title}
+                                  </Text>
                                   {job.paused && (
-                                    <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium">
+                                    <Badge shape="square" tone="neutral">
                                       Paused
-                                    </span>
+                                    </Badge>
                                   )}
-                                </button>
+                                </PressableRow>
                               </TableCell>
                               <TableCell>
-                                <span
-                                  className="text-muted-foreground"
-                                  title={job.disabledReason ? undefined : job.schedule}
-                                >
-                                  {job.disabledReason
-                                    ? "Not scheduled"
-                                    : describeCron(job.schedule, presetsFor(job))}
+                                <span title={job.disabledReason ? undefined : job.schedule}>
+                                  <Text as="span" textRole="body" tone="secondary">
+                                    {job.disabledReason
+                                      ? "Not scheduled"
+                                      : describeCron(job.schedule, presetsFor(job))}
+                                  </Text>
                                 </span>
                               </TableCell>
                               <TableCell>
-                                <span className="text-muted-foreground">
+                                <Text as="span" textRole="body" tone="secondary">
                                   {isZero(job.lastRun) ? "—" : formatRelative(job.lastRun ?? zero)}
-                                </span>
+                                </Text>
                               </TableCell>
                               <TableCell>
-                                <span className="text-muted-foreground">
+                                <Text as="span" textRole="body" tone="secondary">
                                   {job.disabledReason ? (
                                     "—"
                                   ) : job.paused ? (
@@ -330,7 +370,7 @@ const TasksPage = () => {
                                   ) : (
                                     formatUntil(job.nextRun ?? zero)
                                   )}
-                                </span>
+                                </Text>
                               </TableCell>
                               <TableCell align="end">
                                 <Action
@@ -346,18 +386,22 @@ const TasksPage = () => {
                             {jobOpen && (
                               <TableRow id={`task-${job.name}`} tone="raised">
                                 <TableCell colSpan={5} verticalAlign="top">
-                                  <p className="text-muted-foreground max-w-prose text-sm">
+                                  <Text as="p" className="max-w-prose" textRole="compact" tone="secondary">
                                     {job.description}
-                                  </p>
+                                  </Text>
                                   {job.lastResult === "error" && (
                                     <ErrorDetails message={job.lastError} className="mt-2" />
                                   )}
                                   {job.disabledReason && (
-                                    <p className="text-muted-foreground mt-2 text-sm">{job.disabledReason}</p>
+                                    <Stack marginTop={8}>
+                                      <Text as="p" textRole="compact" tone="secondary">
+                                        {job.disabledReason}
+                                      </Text>
+                                    </Stack>
                                   )}
                                   <ExecutionHistory name={job.name} />
                                   {!job.disabledReason && (
-                                    <Stack align="center" className="mt-3" direction="row" gap="1">
+                                    <Stack align="center" direction="row" gap="1" marginTop={12}>
                                       <Action
                                         accessibilityLabel={
                                           job.paused ? `Resume ${job.title}` : `Pause ${job.title}`
@@ -385,18 +429,20 @@ const TasksPage = () => {
                       })}
                     </TableBody>
                   </Table>
-                </div>
+                </Stack>
               )}
-            </section>
+            </Card>
           );
         })}
 
-        {list.length === 0 && !jobs.isLoading && (
-          <div className="border-border bg-card text-muted-foreground rounded-lg border px-4 py-6 text-center">
-            No scheduled tasks.
-          </div>
+        {list.length === 0 && (
+          <Card paddingHorizontal={16} paddingVertical={24}>
+            <Text as="p" textAlign="center" textRole="body" tone="secondary">
+              No scheduled tasks.
+            </Text>
+          </Card>
         )}
-      </div>
+      </Stack>
 
       {editing && (
         <JobEditModal

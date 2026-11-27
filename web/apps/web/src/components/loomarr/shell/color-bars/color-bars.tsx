@@ -1,3 +1,4 @@
+import { Stack } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ColorBarsProps, ColorBarsSize } from "./color-bars.type";
 
@@ -15,6 +16,8 @@ const SEGMENTS = [
   "bg-static-400",
 ] as const;
 
+// A caller's `className` (the guide's dead-air card sets `h-16 w-50`) replaces these through
+// `cn`, so the size stays a class; a size prop would beat the caller's class.
 const HEIGHT: Record<ColorBarsSize, string> = {
   sm: "h-1.5", // ~6px — the sidebar lockup
   lg: "h-3.5", // 14px — the login/wizard hero (matches the prototype)
@@ -31,7 +34,13 @@ const WIDTH: Record<ColorBarsSize, string> = {
 const BREATHE_STAGGER_S = 0.28;
 
 const ColorBars = ({ size = "lg", breathe = false, className }: ColorBarsProps) => (
-  <div className={cn("flex overflow-hidden rounded-[2px]", HEIGHT[size], WIDTH[size], className)} aria-hidden>
+  <Stack
+    aria-hidden
+    borderRadius={2}
+    className={cn(HEIGHT[size], WIDTH[size], className)}
+    direction="row"
+    overflow="hidden"
+  >
     {SEGMENTS.map((bg, i) => (
       <span
         key={bg}
@@ -42,7 +51,7 @@ const ColorBars = ({ size = "lg", breathe = false, className }: ColorBarsProps) 
         style={breathe ? { animationDelay: `${i * BREATHE_STAGGER_S}s` } : undefined}
       />
     ))}
-  </div>
+  </Stack>
 );
 
 export { ColorBars };

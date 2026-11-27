@@ -2,15 +2,14 @@ import type { ChannelHealth } from "@loomarr/api/models/channelHealth";
 import type { PlayoutCapability } from "@loomarr/api/models/playoutCapability";
 import type { PlayoutGPU } from "@loomarr/api/models/playoutGPU";
 import { pluralize } from "@loomarr/core/format";
-import { Action, Badge, type BadgeTone, Card, Stack, Tooltip } from "@loomarr/design-system";
+import { Action, Badge, type BadgeTone, Card, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { ListGroup, PanelRow } from "@loomarr/ui";
-import { cn } from "@/lib/utils";
 import type { PlayoutPanelProps } from "./playout-panel.type";
 
 // PlayoutPanel — the dashboard's single live-playout picture (§12, §9.1 V47, GET /v1/playout/status).
 //
-// It MERGES what used to be two overlapping panels (TranscodingPanel + PlayoutHealthPanel), which
-// repeated channel id, speed and hardware per row. One panel now: a GPU/LLM-contention header — the
+// ONE panel for transcoding and playout health, so channel id, speed and hardware are not repeated
+// across two overlapping lists: a GPU/LLM-contention header — the
 // biggest silent cause of stutter, an LLM sat resident on the GPU the encoders need (§8.2) — and one
 // row per channel carrying everything non-duplicated: identity, throughput, cold-start, verdict.
 
@@ -56,26 +55,40 @@ const EncoderRow = ({ capability, gpu }: { capability: PlayoutCapability; gpu: P
   return (
     <Stack
       align="center"
-      className="border-border bg-static-900/40 border-b px-4 py-2.5"
+      borderBottomWidth={1}
+      borderColor="$borderDecorative"
+      className="bg-static-900/40"
       direction="row"
       gap="control"
       justify="between"
+      paddingHorizontal={16}
+      paddingVertical={10}
     >
-      <div className="min-w-0">
-        <p className="text-2xs text-muted-foreground">Encoder</p>
-        <p className="text-muted-foreground mt-0.5 text-sm">{summary}</p>
+      <Stack minWidth={0}>
+        <Text as="p" textRole="hint" tone="secondary">
+          Encoder
+        </Text>
+        <Stack marginTop={2}>
+          <Text as="p" textRole="compact" tone="secondary">
+            {summary}
+          </Text>
+        </Stack>
         {!!gpu.vramGiB && (
-          <p className="text-muted-foreground mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
-            <span>{gpu.name ?? "GPU"}</span>
-            <span>{formatVram(gpu.vramGiB)} total</span>
+          <Stack align="baseline" columnGap="2" direction="row" marginTop={2} render="p" rowGap="0.5" wrap>
+            <Text as="span" textRole="hint" tone="secondary">
+              {gpu.name ?? "GPU"}
+            </Text>
+            <Text as="span" textRole="hint" tone="secondary">
+              {formatVram(gpu.vramGiB)} total
+            </Text>
             {gpu.llmModel && (
-              <span className="text-muted-foreground text-xs">
+              <Text as="span" textRole="hint" tone="secondary">
                 · {gpu.llmModel} holding {formatVram(gpu.llmVramGiB ?? 0)}
-              </span>
+              </Text>
             )}
-          </p>
+          </Stack>
         )}
-      </div>
+      </Stack>
       {/* The whole reason the GPU header exists: a resident LLM sharing VRAM with the encoders is a
           real, silent cause of stutter, and nothing else on the dashboard says so. */}
       {gpu.contended && (
@@ -93,20 +106,27 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
     <PanelRow
       meta={
         <>
-          <div className="text-right">
-            <p className="text-static-200 font-mono text-xs">{formatColdStart(channel.coldStartMs)}</p>
-            <p className="text-2xs text-muted-foreground mt-0.5 font-mono">
-              {formatBuffer(channel.bufferedMs)}
-            </p>
-          </div>
-          <span
-            className={cn(
-              "w-14 text-right font-mono text-xs tabular-nums",
-              slow ? "text-caution" : "text-muted-foreground",
-            )}
-          >
-            {formatSpeed(channel.speed)}
-          </span>
+          <Stack>
+            <Text as="p" textAlign="right" textRole="mono" tone="primary">
+              {formatColdStart(channel.coldStartMs)}
+            </Text>
+            <Stack marginTop={2}>
+              <Text as="p" textAlign="right" textRole="mono">
+                {formatBuffer(channel.bufferedMs)}
+              </Text>
+            </Stack>
+          </Stack>
+          <Stack render="span" width={56}>
+            <Text
+              as="span"
+              className="tabular-nums"
+              textAlign="right"
+              textRole="mono"
+              tone={slow ? "warning" : "secondary"}
+            >
+              {formatSpeed(channel.speed)}
+            </Text>
+          </Stack>
           {/* A direct-play channel is REMUXED, not encoded — so "Hardware/Software" (an encoder
               distinction) is meaningless for it; it reads "Copy". Only a transcode has an encoder. */}
           {channel.mode === "direct-play" ? (
@@ -125,20 +145,30 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
       }
     >
       <Stack align="center" direction="row" gap="1.5">
-        <p className="truncate text-sm font-medium">{channelLabel(channel)}</p>
+        <Text as="p" numberOfLines={1} textRole="cardLabel">
+          {channelLabel(channel)}
+        </Text>
         {/* The raw id lives behind an (i) affordance — noise on the row, useful for a support
               request. The design-system Tooltip gives a prompt, styled
               reveal on hover/focus, same idiom as FieldHelp; the aria-label keeps it screen-reader
               reachable. (A native `title` also "worked" but its ~1.5s browser delay read as broken.) */}
-        <Tooltip content={<span className="font-mono text-xs">{channel.channelId}</span>}>
+        <Tooltip
+          content={
+            <Text as="span" textRole="mono" tone="primary">
+              {channel.channelId}
+            </Text>
+          }
+        >
           <Action compact icon="info" layout="icon" variant="ghost">
             {`Channel id ${channel.channelId}`}
           </Action>
         </Tooltip>
       </Stack>
-      <p className="text-muted-foreground mt-0.5 truncate text-xs">
-        {`${channel.target} · ${channel.mode}${channel.mode === "transcode" ? ` · ${channel.encoder}` : ""} · ${pluralize(channel.viewers, "viewer")}`}
-      </p>
+      <Stack marginTop={2}>
+        <Text as="p" numberOfLines={1} textRole="hint" tone="secondary">
+          {`${channel.target} · ${channel.mode}${channel.mode === "transcode" ? ` · ${channel.encoder}` : ""} · ${pluralize(channel.viewers, "viewer")}`}
+        </Text>
+      </Stack>
     </PanelRow>
   );
 };
@@ -150,12 +180,17 @@ const PlayoutPanel = ({ status, loading, title = "Playout" }: PlayoutPanelProps)
     <Card flexShrink={0} overflow="hidden">
       <Stack
         align="center"
-        className="border-border border-b px-4 py-3"
+        borderBottomWidth={1}
+        borderColor="$borderDecorative"
         direction="row"
         gap="control"
         justify="between"
+        paddingHorizontal={16}
+        paddingVertical={12}
       >
-        <h2 className="text-base font-semibold">{title}</h2>
+        <Text as="h2" textRole="heading">
+          {title}
+        </Text>
         {!loading && status != null && (
           <Badge shape="square" tone="neutral">
             {status.running ? "Loomarr" : "Tunarr"}
@@ -163,20 +198,32 @@ const PlayoutPanel = ({ status, loading, title = "Playout" }: PlayoutPanelProps)
         )}
       </Stack>
 
-      {loading && <p className="text-muted-foreground px-4 py-6 text-sm">Reading playout status…</p>}
+      {loading && (
+        <Stack paddingHorizontal={16} paddingVertical={24}>
+          <Text as="p" textRole="compact" tone="secondary">
+            Reading playout status…
+          </Text>
+        </Stack>
+      )}
 
       {/* On a Tunarr-backed install there is no internal playout to show, which is not the same as
           every channel being unhealthy. */}
       {!loading && status != null && !status.running && (
-        <p className="text-muted-foreground px-4 py-6 text-sm">
-          Loomarr isn't streaming these channels. Tunarr is.
-        </p>
+        <Stack paddingHorizontal={16} paddingVertical={24}>
+          <Text as="p" textRole="compact" tone="secondary">
+            Loomarr isn't streaming these channels. Tunarr is.
+          </Text>
+        </Stack>
       )}
 
       {!loading && status?.running && <EncoderRow capability={status.capability} gpu={status.gpu} />}
 
       {!loading && status?.running && channels.length === 0 && (
-        <p className="text-muted-foreground px-4 py-6 text-sm">No channels are streaming right now.</p>
+        <Stack paddingHorizontal={16} paddingVertical={24}>
+          <Text as="p" textRole="compact" tone="secondary">
+            No channels are streaming right now.
+          </Text>
+        </Stack>
       )}
 
       {status?.running && channels.length > 0 && (

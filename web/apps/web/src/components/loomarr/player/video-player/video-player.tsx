@@ -137,7 +137,7 @@ const VideoPlayer = ({
   // The channel keys are the page's, not the frame's: while a live, tunable player is up, ↑/↓,
   // PgUp/PgDn and ChannelUp/Down change channel wherever focus is, on a chrome button, on <body>
   // after a click outside, or on the frame itself. Bound to the document for the player's lifetime, so
-  // focus leaving the frame no longer loses them. This is the ONLY place they are handled; the frame's
+  // focus leaving the frame does not lose them. This is the ONLY place they are handled; the frame's
   // handler lets them pass, so one press is one step. `channelStepFor` keeps them away from controls
   // that use the arrows themselves.
   const channelStepRef = useRef(onChannelStep);

@@ -1,5 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
 
+import type { Density } from "../tokens";
+
 /**
  * A DOM element or shadow root, typed by shape so these shared props do not pull the DOM library
  * into the native packages that import the design system.
@@ -11,6 +13,13 @@ interface PortalContainer {
 interface DialogProps {
   children: ReactNode;
   defaultOpen?: boolean;
+  /**
+   * `false` makes the dialog one that must be answered: Escape, Back, a press outside and the corner
+   * close do nothing, and the corner close is not drawn. It is for a dialog that cannot close while
+   * a call it started is in flight. Its answer is in its own actions, which close it by changing
+   * `open`, so it needs a controlled `open`. Defaults to `true`.
+   */
+  dismissible?: boolean;
   /** Called with the next state: a trigger or close action, Escape, an outside press, Back. */
   onOpenChange?: (open: boolean) => void;
   open?: boolean;
@@ -32,6 +41,12 @@ interface DialogContentProps {
    */
   accessibilityLabel?: string;
   children: ReactNode;
+  /**
+   * Native only: the density the dialog is read at. A television's panel is wider (880) and roomier
+   * (32 padding), and its title and description take the television's type; a phone's is the touch
+   * type. The web adapter is the pointer's and ignores it. Defaults to `touch`.
+   */
+  density?: Density;
   /**
    * Web only: where focus goes when the dialog closes, for a dialog opened from a row that may no
    * longer be there (the detail panels' "Open details" buttons). Defaults to the trigger.
@@ -65,6 +80,11 @@ interface DialogSectionProps {
 }
 
 interface DialogFooterProps extends DialogSectionProps {
+  /**
+   * Its children stack, each the panel's full width, as an iOS alert's buttons do: what a phone
+   * wants, since wrapping a row would size every button to the widest label.
+   */
+  stacked?: boolean;
   /** Its children spread from start to end, wrapping when they do not fit: one aside, one group. */
   spread?: boolean;
 }

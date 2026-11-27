@@ -11,14 +11,14 @@ import type { ChannelCollectionsScopeProps } from "./channel-collections-scope.t
 // ChannelCollectionsScope — `policy.scope.collections`, the "only what I shelved" narrowing
 // (programming-design §2.2). The collections are the operator's own media-server BoxSets.
 //
-// ⚠ **This began as a checkbox list, and the real stack disproved the premise.** The design
-// note said "a small closed set the operator curates by hand", so showing all of them looked
-// obviously right. The maintainer's Emby returns **125** — Kometa and similar tools generate a
-// franchise collection per movie series in bulk — which rendered as a wall of near-identical
-// rows taller than every other control on the Programming page combined. Bounding it in a
-// scroll box only contained the mess; 125 checkboxes is still 125 checkboxes to scan.
+// ⚠ **Not a checkbox list: a real library is not a small set.** The design note calls it "a
+// small closed set the operator curates by hand", but the maintainer's Emby returns **125** —
+// Kometa and similar tools generate a franchise collection per movie series in bulk — and a
+// checkbox per collection is a wall of near-identical rows taller than every other control on
+// the Programming page combined. A scroll box only contains the mess; 125 checkboxes is still
+// 125 checkboxes to scan.
 //
-// So it is now the SAME type-ahead + chips shape as ChannelSeriesScope next to it: nothing
+// So it is the SAME type-ahead + chips shape as ChannelSeriesScope next to it: nothing
 // listed until you type, picks become removable chips, and the field is two rows regardless of
 // whether the library holds 5 collections or 500. One pattern to learn per page.
 //
@@ -104,23 +104,30 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
       {q.isError ? (
         // A failure must NOT read as "you have none" — that would send the operator off to
         // create a collection they may already have.
-        <p className="text-muted-foreground text-sm">
+        <Text as="p" textRole="compact" tone="secondary">
           Couldn't load your collections. Check the media server connection in Settings.
-        </p>
+        </Text>
       ) : (
-        <fieldset className="flex flex-col gap-2" aria-label="Only these collections">
+        <Stack aria-label="Only these collections" gap="inline" render="fieldset">
           {selected.length > 0 && (
             <Stack direction="row" gap="inline" render="ul" wrap>
               {selected.map((id) => (
                 <Stack
                   key={id}
                   align="center"
-                  className="border-border bg-muted/40 rounded-md border px-2 py-1 text-sm"
+                  backgroundColor="$surfaceRaised"
+                  borderColor="borderDecorative"
+                  borderRadius={6}
+                  borderWidth={1}
                   direction="row"
                   gap="1.5"
+                  paddingHorizontal={8}
+                  paddingVertical={4}
                   render="li"
                 >
-                  <span>{labelOf(id)}</span>
+                  <Text as="span" textRole="compact" tone="primary">
+                    {labelOf(id)}
+                  </Text>
                   <Action
                     compact
                     icon="close"
@@ -147,7 +154,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
                 // ⚠ Escape closes the picker. SearchCommand does not bind it by default (the
                 // ⌘K palette binds it window-level and would close twice), and the Cancel
                 // button below is a POINTER affordance — a keyboard user presses Escape first
-                // and, before this, nothing happened.
+                // and, without this, nothing happens.
                 onEscape={() => {
                   setQuery("");
                   setAdding(false);
@@ -179,9 +186,9 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
             </Stack>
           ) : collections.length === 0 && !q.isPending ? (
             // A real answer, not a failure: a library is connected but nothing is shelved.
-            <p className="text-muted-foreground text-sm">
+            <Text as="p" textRole="compact" tone="secondary">
               You have no collections yet. Make one in your media server and it will show up here.
-            </p>
+            </Text>
           ) : (
             <Action
               icon="plus"
@@ -192,7 +199,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
               Add a collection…
             </Action>
           )}
-        </fieldset>
+        </Stack>
       )}
     </Stack>
   );

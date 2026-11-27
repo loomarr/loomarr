@@ -36,7 +36,10 @@ decision, and can't play until you approve it.
 
 A file holding many adverts back to back is a **recording**, not a clip. Loomarr finds the cuts
 inside it and files the segments it's sure of. Cuts it isn't sure of wait in Incoming, with the
-whole recording to look at. The original file is kept, but only its segments ever play.
+whole recording to look at. Only its segments ever play. A recording Loomarr downloaded is deleted
+once every segment cut from it is on air or turned down, so it stops taking space; the segments
+keep their link to it. Any recording whose leftover cuts wait unreviewed longer than the review
+window (30 days unless you change it) is deleted too, once it has given you some segments.
 
 ## 4. Check a channel's breaks
 

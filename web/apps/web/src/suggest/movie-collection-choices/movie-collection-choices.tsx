@@ -1,6 +1,6 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { provisionKey } from "@loomarr/core/provision";
-import { Action, Disclosure, Icon, icons, LoadingStrip, Stack } from "@loomarr/design-system";
+import { Action, Disclosure, Icon, icons, LoadingStrip, Stack, Text } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import type { MovieCollectionChoicesProps } from "./movie-collection-choices.type";
 
@@ -54,30 +54,44 @@ const MovieCollectionChoices = ({
   );
   if (actionableCollections.length === 0) {
     return loading ? (
-      <p role="status" className="text-muted-foreground inline-flex items-center gap-2 text-sm">
-        <LoadingStrip decorative width={32} /> Checking for movie collections…
-      </p>
+      <div role="status">
+        <Stack align="center" direction="row" gap="2" render="p">
+          <LoadingStrip decorative width={32} />
+          <Text as="span" textRole="compact" tone="secondary">
+            Checking for movie collections…
+          </Text>
+        </Stack>
+      </div>
     ) : null;
   }
 
   return (
     <Stack
       aria-label="Movie collections"
-      className="border-border rounded-md border p-3"
+      borderColor="borderDecorative"
+      borderRadius={8}
+      borderWidth={1}
       gap="inline"
+      padding={12}
       render="section"
     >
       <div>
-        <h3 className="text-sm font-medium">Complete a collection</h3>
-        <p className="text-muted-foreground mt-0.5 text-xs">
-          Keep the films together, or choose just the ones you want.
-        </p>
+        <Text as="h3" textRole="cardLabel">
+          Complete a collection
+        </Text>
+        <Stack marginTop={2}>
+          <Text as="p" textRole="hint" tone="secondary">
+            Keep the films together, or choose just the ones you want.
+          </Text>
+        </Stack>
       </div>
 
       {incomplete && (
-        <p role="status" className="text-muted-foreground text-xs">
-          Some collection details aren’t available right now.
-        </p>
+        <div role="status">
+          <Text as="p" textRole="hint" tone="secondary">
+            Some collection details aren’t available right now.
+          </Text>
+        </div>
       )}
 
       {actionableCollections.map((collection) => {
@@ -88,16 +102,22 @@ const MovieCollectionChoices = ({
         return (
           <div key={collection.tmdbId} className="bg-static-900/50 rounded-md px-3 py-2.5">
             <Stack align="center" direction="row" gap="inline" justify="between" wrap>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{collection.name}</p>
-                <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                  <span>
+              <Stack flexShrink={1} minWidth={0}>
+                <Text as="p" numberOfLines={1} textRole="cardLabel">
+                  {collection.name}
+                </Text>
+                <Stack align="center" columnGap="2" direction="row" marginTop={4} rowGap="1" wrap>
+                  <Text as="span" textRole="hint" tone="secondary">
                     {selectedCount} of {members.length} selected
-                  </span>
-                  <span aria-hidden>·</span>
-                  <span>{libraryCount} in your library</span>
-                </div>
-              </div>
+                  </Text>
+                  <Text aria-hidden as="span" textRole="hint" tone="secondary">
+                    ·
+                  </Text>
+                  <Text as="span" textRole="hint" tone="secondary">
+                    {libraryCount} in your library
+                  </Text>
+                </Stack>
+              </Stack>
               {editable && (
                 <Action
                   accessibilityLabel={`Add all films from ${collection.name}`}
@@ -112,31 +132,40 @@ const MovieCollectionChoices = ({
             </Stack>
 
             <ChooseFilms collectionName={collection.name}>
-              <ul className="divide-border border-border divide-y border-t">
-                {members.map((member) => {
+              <Stack borderColor="borderDecorative" borderTopWidth={1} render="ul">
+                {members.map((member, index) => {
                   const key = provisionKey(member);
                   const selected = selectedKeys.has(key);
                   return (
                     <Stack
                       align="center"
-                      className="py-2.5"
+                      borderColor="borderDecorative"
+                      borderTopWidth={index === 0 ? 0 : 1}
                       direction="row"
                       gap="control"
                       key={key}
+                      paddingVertical={10}
                       render="li"
                     >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm">{member.name}</p>
-                        <p className="text-muted-foreground mt-0.5 text-xs">
-                          {[member.year, member.inLibrary ? "In your library" : "Not in your library"]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </p>
-                      </div>
+                      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+                        <Text as="p" numberOfLines={1} textRole="compact">
+                          {member.name}
+                        </Text>
+                        <Stack marginTop={2}>
+                          <Text as="p" textRole="hint" tone="secondary">
+                            {[member.year, member.inLibrary ? "In your library" : "Not in your library"]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </Text>
+                        </Stack>
+                      </Stack>
                       {selected ? (
-                        <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
-                          <Icon decorative glyph={icons.selected} size="compact" tone="inherit" /> Selected
-                        </span>
+                        <Stack align="center" direction="row" gap="1" render="span">
+                          <Icon decorative glyph={icons.selected} size="compact" tone="secondary" />
+                          <Text as="span" textRole="hint" tone="secondary">
+                            Selected
+                          </Text>
+                        </Stack>
                       ) : (
                         editable && (
                           <Action
@@ -153,7 +182,7 @@ const MovieCollectionChoices = ({
                     </Stack>
                   );
                 })}
-              </ul>
+              </Stack>
             </ChooseFilms>
           </div>
         );

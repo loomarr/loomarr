@@ -1,5 +1,8 @@
 components:
   schemas:
+    AccessEvent:
+      additionalProperties: false
+      type: object
     AcquisitionArtifactOutcomeDTO:
       additionalProperties: false
       properties:
@@ -245,6 +248,9 @@ components:
           maxLength: 4096
           minLength: 1
           type: string
+        replace:
+          description: Use it in place of the folders in use inside it
+          type: boolean
       required:
         - path
       type: object
@@ -328,6 +334,7 @@ components:
           description: Titles to add; current Library presence determines Lineup or acquisition placement
           items:
             $ref: "#/components/schemas/ProposalItem"
+          maxItems: 1000
           type: array
         audience:
           $ref: "#/components/schemas/Rating"
@@ -336,6 +343,7 @@ components:
           description: Provisioning keys to remove from the proposal before approving
           items:
             type: string
+          maxItems: 1000
           type: array
         note:
           description: A message to the requester, stored with the approval
@@ -354,10 +362,12 @@ components:
         dropCandidateIds:
           items:
             type: string
+          maxItems: 1000
           type: array
         dropSourceIds:
           items:
             type: string
+          maxItems: 1000
           type: array
         note:
           description: Optional annotation for the approval record; does not change what is downloaded
@@ -636,6 +646,77 @@ components:
         - name
         - role
       type: object
+    BrowseFolderDTO:
+      additionalProperties: false
+      properties:
+        holds:
+          description: The folders in use inside it
+          items:
+            type: string
+          type: array
+        inUse:
+          description: Loomarr reads it
+          type: boolean
+        name:
+          description: "What its row says: its own name, or its whole path at the top"
+          type: string
+        named:
+          description: An app names it
+          type: boolean
+        path:
+          description: The folder on this machine
+          type: string
+        summary:
+          $ref: "#/components/schemas/FolderSummary"
+          description: Absent until counted; a library_folder frame brings it
+        within:
+          description: The folder in use that holds it
+          type: string
+      required:
+        - path
+        - name
+        - named
+        - inUse
+        - holds
+      type: object
+    BrowseLibraryFoldersOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/BrowseLibraryFoldersOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        folders:
+          items:
+            $ref: "#/components/schemas/BrowseFolderDTO"
+          type: array
+        holds:
+          description: The folders in use inside the folder listed
+          items:
+            type: string
+          type: array
+        inUse:
+          description: Loomarr reads the folder listed
+          type: boolean
+        parent:
+          description: The folder above; empty when that is the top
+          type: string
+        path:
+          description: The folder listed; empty for the top
+          type: string
+        within:
+          description: The folder in use that holds the folder listed
+          type: string
+      required:
+        - path
+        - parent
+        - inUse
+        - holds
+        - folders
+      type: object
     BudgetSnapshot:
       additionalProperties: false
       properties:
@@ -773,9 +854,10 @@ components:
           readOnly: true
           type: string
         ids:
-          description: Proposal ids to approve, each through the single approval gate
+          description: Proposal ids to approve, each through the single approval gate (at most 100, the same ceiling as bulk pull approval)
           items:
             type: string
+          maxItems: 100
           minItems: 1
           type: array
       required:
@@ -841,9 +923,10 @@ components:
           readOnly: true
           type: string
         hashes:
-          description: Clip identities (content hashes, §10 V45a)
+          description: "Clip identities (content hashes, §10 V45a), at most 500: the catalog page size"
           items:
             type: string
+          maxItems: 500
           minItems: 1
           type: array
         restore:
@@ -896,15 +979,17 @@ components:
           format: int64
           type: integer
         hashes:
-          description: Clip identities (content hashes, §10 V45a)
+          description: "Clip identities (content hashes, §10 V45a), at most 500: the catalog page size, since a selection is the rows on screen"
           items:
             type: string
+          maxItems: 500
           minItems: 1
           type: array
         tags:
-          description: Taxonomy tags to set on every selected clip. Grounded on write; category derived. Omit to leave alone (§10 V45a).
+          description: Taxonomy tags to set on every selected clip, at most 64. Grounded on write; category derived. Omit to leave alone (§10 V45a).
           items:
             type: string
+          maxItems: 64
           type: array
       required:
         - hashes
@@ -1265,7 +1350,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         name:
@@ -1278,6 +1362,8 @@ components:
         reason:
           description: Why the clip is not a candidate; absent when it is one
           enum:
+            - facts
+            - era
             - role
             - duration
             - quality
@@ -1480,6 +1566,7 @@ components:
         applied:
           items:
             $ref: "#/components/schemas/AppliedRelaxation"
+          maxItems: 8
           type: array
         audience:
           $ref: "#/components/schemas/AudiencePolicy"
@@ -1502,11 +1589,14 @@ components:
           type: string
         filler:
           $ref: "#/components/schemas/FillerSelection"
+        growth:
+          $ref: "#/components/schemas/GrowthPolicy"
         midRoll:
           type: boolean
         operatorSet:
           items:
             type: string
+          maxItems: 5
           type: array
         ordering:
           type: string
@@ -1515,6 +1605,7 @@ components:
         rules:
           items:
             $ref: "#/components/schemas/SchedulingRule"
+          maxItems: 32
           type: array
         scope:
           $ref: "#/components/schemas/ScopePolicy"
@@ -1522,6 +1613,11 @@ components:
           $ref: "#/components/schemas/SeasonalPolicy"
         separation:
           $ref: "#/components/schemas/SeparationPolicy"
+        unairable:
+          items:
+            $ref: "#/components/schemas/UnairableTitle"
+          maxItems: 512
+          type: array
         watermark:
           $ref: "#/components/schemas/WatermarkPolicy"
         window:
@@ -1981,8 +2077,14 @@ components:
         accepted:
           format: int64
           type: integer
+        vocabulary:
+          description: The client-event vocabulary version this server accepts. A client sends only the events and fields that version defines; a server that omits this is version 0.
+          format: int64
+          minimum: 1
+          type: integer
       required:
         - accepted
+        - vocabulary
       type: object
     ClientObservation:
       additionalProperties: false
@@ -2505,6 +2607,7 @@ components:
         segments:
           items:
             $ref: "#/components/schemas/SplitSegment"
+          maxItems: 500
           minItems: 1
           type: array
       required:
@@ -2661,7 +2764,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         rungs:
@@ -2712,7 +2814,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
       required:
@@ -2852,6 +2953,7 @@ components:
         retiredAliases:
           items:
             type: string
+          maxItems: 50
           type: array
         slug:
           description: Stable machine id — immutable after creation
@@ -2859,11 +2961,33 @@ components:
         synonyms:
           items:
             type: string
+          maxItems: 100
           type: array
       required:
         - slug
         - label
         - axis
+      type: object
+    CutSound:
+      additionalProperties: false
+      properties:
+        endDb:
+          format: double
+          type: number
+        insideDb:
+          format: double
+          type: number
+        medianDb:
+          format: double
+          type: number
+        startDb:
+          format: double
+          type: number
+      required:
+        - medianDb
+        - startDb
+        - endDb
+        - insideDb
       type: object
     CycleSlotDTO:
       additionalProperties: false
@@ -3093,14 +3217,17 @@ components:
         movieRelease:
           items:
             $ref: "#/components/schemas/Range"
+          maxItems: 16
           type: array
         seriesAiring:
           items:
             $ref: "#/components/schemas/Range"
+          maxItems: 16
           type: array
         seriesPremiere:
           items:
             $ref: "#/components/schemas/Range"
+          maxItems: 16
           type: array
       type: object
     DayRule:
@@ -3367,6 +3494,12 @@ components:
         - expiresAt
         - interval
       type: object
+    DiagnosticEventsEvent:
+      additionalProperties: false
+      type: object
+    DiagnosticProcessesEvent:
+      additionalProperties: false
+      type: object
     DiscoverFillerOutputBody:
       additionalProperties: false
       properties:
@@ -3622,6 +3755,7 @@ components:
           items:
             format: int64
             type: integer
+          maxItems: 200
           type: array
         tmdbId:
           format: int64
@@ -3641,6 +3775,7 @@ components:
         holidays:
           items:
             type: string
+          maxItems: 32
           type: array
         mode:
           type: string
@@ -4675,16 +4810,19 @@ components:
         categories:
           items:
             type: string
+          maxItems: 128
           type: array
         era:
           $ref: "#/components/schemas/Range"
         eraWindows:
           items:
             $ref: "#/components/schemas/Range"
+          maxItems: 8
           type: array
         excluded:
           items:
             type: string
+          maxItems: 1000
           type: array
         geography:
           $ref: "#/components/schemas/FillerGeography"
@@ -4693,11 +4831,14 @@ components:
         pinned:
           items:
             type: string
+          maxItems: 1000
           type: array
         roles:
           items:
             type: string
+          maxItems: 8
           type: array
+          uniqueItems: true
       type: object
     FillerSourceCheckSummaryDTO:
       additionalProperties: false
@@ -5129,16 +5270,45 @@ components:
         - preparing
         - needsYou
       type: object
+    FolderSummary:
+      additionalProperties: false
+      properties:
+        folders:
+          description: The folders in it the scan would walk
+          format: int64
+          type: integer
+        path:
+          description: The folder on this machine
+          type: string
+        state:
+          description: "slow: it didn't answer in time; unreadable: Loomarr couldn't open it"
+          enum:
+            - counted
+            - slow
+            - unreadable
+          type: string
+        videos:
+          description: The videos directly in it
+          format: int64
+          type: integer
+      required:
+        - path
+        - folders
+        - videos
+        - state
+      type: object
     GenreFilter:
       additionalProperties: false
       properties:
         exclude:
           items:
             type: string
+          maxItems: 50
           type: array
         include:
           items:
             type: string
+          maxItems: 50
           type: array
       type: object
     Geography:
@@ -5174,6 +5344,17 @@ components:
         - section
         - title
         - markdown
+      type: object
+    GrowthPolicy:
+      additionalProperties: false
+      properties:
+        declined:
+          items:
+            type: string
+          maxItems: 1000
+          type: array
+        keep:
+          type: boolean
       type: object
     GuideAiring:
       additionalProperties: false
@@ -5673,6 +5854,22 @@ components:
         - modelsLive
         - models
       type: object
+    HouseholdOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/HouseholdOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        timeZone:
+          description: IANA timezone the household tells times in; empty when unset
+          type: string
+      required:
+        - timeZone
+      type: object
     HouseholdViewingOutputBody:
       additionalProperties: false
       properties:
@@ -5877,9 +6074,10 @@ components:
           readOnly: true
           type: string
         ids:
-          description: Media-server user ids to allowlist. New users copy their media-server admin/member role.
+          description: Media-server user ids to allowlist, at most 500 (a household media server has a few dozen accounts). New users copy their media-server admin/member role.
           items:
             type: string
+          maxItems: 500
           type: array
       required:
         - ids
@@ -6113,9 +6311,10 @@ components:
           readOnly: true
           type: string
         urls:
-          description: YouTube playlist/video or Archive.org collection/item URLs
+          description: YouTube playlist/video or Archive.org collection/item URLs, at most 50 per request (each is a playlist or collection, not a video)
           items:
             type: string
+          maxItems: 50
           minItems: 1
           type: array
       required:
@@ -6150,12 +6349,14 @@ components:
         adjacent:
           items:
             $ref: "#/components/schemas/AdjacentContext"
+          maxItems: 50
           type: array
         channelName:
           type: string
         currentLineup:
           items:
             $ref: "#/components/schemas/LineupContext"
+          maxItems: 1000
           type: array
         description:
           minLength: 3
@@ -6170,10 +6371,12 @@ components:
         mustExclude:
           items:
             type: string
+          maxItems: 100
           type: array
         mustInclude:
           items:
             type: string
+          maxItems: 100
           type: array
         refineText:
           type: string
@@ -6731,6 +6934,18 @@ components:
         - name
         - number
       type: object
+    LibraryChapterDTO:
+      additionalProperties: false
+      properties:
+        name:
+          description: Absent when the file names none
+          type: string
+        startMillis:
+          format: int64
+          type: integer
+      required:
+        - startMillis
+      type: object
     LibraryCollection:
       additionalProperties: false
       properties:
@@ -6744,6 +6959,25 @@ components:
       required:
         - id
         - name
+      type: object
+    LibraryCreditDTO:
+      additionalProperties: false
+      properties:
+        character:
+          description: An actor's part
+          type: string
+        name:
+          type: string
+        role:
+          enum:
+            - actor
+            - director
+            - writer
+            - creator
+          type: string
+      required:
+        - name
+        - role
       type: object
     LibraryDetailsDTO:
       additionalProperties: false
@@ -6782,8 +7016,40 @@ components:
             - nfo
             - tmdb
           type: string
+        premiere:
+          description: Where its premiere date came from
+          enum:
+            - sonarr
+            - radarr
+            - nfo
+            - tmdb
+          type: string
         rating:
           description: Where its rating came from
+          enum:
+            - sonarr
+            - radarr
+            - nfo
+            - tmdb
+          type: string
+        runtime:
+          description: Where its runtime came from
+          enum:
+            - sonarr
+            - radarr
+            - nfo
+            - tmdb
+          type: string
+        score:
+          description: Where its score came from
+          enum:
+            - sonarr
+            - radarr
+            - nfo
+            - tmdb
+          type: string
+        year:
+          description: Where its year came from
           enum:
             - sonarr
             - radarr
@@ -6799,23 +7065,59 @@ components:
           format: int64
           type: integer
         fromFile:
-          description: Its name and number are its file's, until the show's episode order is said
+          description: Its name and number are its file's, until the show's episode order is said. Admins only
           type: boolean
         id:
           type: string
+        lengthMillis:
+          description: "How long it plays: measured from its files once each is read, else its catalog's runtime; absent when neither is known"
+          format: int64
+          type: integer
         name:
           type: string
         number:
           format: int64
           type: integer
+        overview:
+          description: Its own story
+          type: string
         ready:
           type: boolean
+        still:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Its still; absent when it has none, or while one is still being fetched
       required:
         - id
         - name
         - number
         - ready
-        - fromFile
+      type: object
+    LibraryFolderEvent:
+      additionalProperties: false
+      properties:
+        folders:
+          description: The folders in it the scan would walk
+          format: int64
+          type: integer
+        path:
+          description: The folder on this machine
+          type: string
+        state:
+          description: "slow: it didn't answer in time; unreadable: Loomarr couldn't open it"
+          enum:
+            - counted
+            - slow
+            - unreadable
+          type: string
+        videos:
+          description: The videos directly in it
+          format: int64
+          type: integer
+      required:
+        - path
+        - folders
+        - videos
+        - state
       type: object
     LibraryFolderNameDTO:
       additionalProperties: false
@@ -6853,11 +7155,22 @@ components:
         path:
           description: The folder whose scan is waiting
           type: string
+        titleCount:
+          description: How many titles those files are in all
+          format: int64
+          type: integer
+        titles:
+          description: "A few of the titles whose files it no longer found, by name: a show once for all its episodes"
+          items:
+            type: string
+          type: array
       required:
         - path
         - movies
         - episodes
         - other
+        - titles
+        - titleCount
       type: object
     LibraryHookDTO:
       additionalProperties: false
@@ -6894,11 +7207,11 @@ components:
       additionalProperties: false
       properties:
         extraCopies:
-          description: A movie's files beyond the one that plays
+          description: A movie's files that never play, beyond the copy of each edition (or each part) that does. Admins only
           format: int64
           type: integer
         files:
-          description: Present files; a series counts its episodes' files
+          description: Present files; a series counts its episodes' files. Admins only
           format: int64
           type: integer
         id:
@@ -6917,7 +7230,7 @@ components:
           description: False while some of its files' details aren't read yet
           type: boolean
         unplayable:
-          description: "Files that can't be played: their details couldn't be read"
+          description: "Files that can't be played: their details couldn't be read. Admins only"
           format: int64
           type: integer
         year:
@@ -6928,10 +7241,7 @@ components:
         - id
         - kind
         - name
-        - files
         - ready
-        - unplayable
-        - extraCopies
       type: object
     LibraryItemDetailDTO:
       additionalProperties: false
@@ -6951,10 +7261,21 @@ components:
           items:
             $ref: "#/components/schemas/LibraryChannelDTO"
           type: array
+        countries:
+          description: A movie's or a series' countries; empty for an episode, whose countries are its show's
+          items:
+            type: string
+          type: array
+        credits:
+          description: A movie's or a series' cast in billing order, then its key crew; empty for an episode, whose credits are its show's
+          items:
+            $ref: "#/components/schemas/LibraryCreditDTO"
+          type: array
         detailsFrom:
           $ref: "#/components/schemas/LibraryDetailsFromDTO"
+          description: Where its details came from. Admins only
         files:
-          description: A movie's files; empty for a series
+          description: A movie's files, or an episode's; empty for a series. Admins only
           items:
             $ref: "#/components/schemas/LibraryItemFileDTO"
           type: array
@@ -6969,7 +7290,18 @@ components:
           description: Its clear logo; absent when it has none, or while one is still being fetched
         match:
           $ref: "#/components/schemas/LibraryMatchDTO"
+          description: What decides which title it is. Admins only
+        originalTitle:
+          description: Its title in its own language, as the source gives it
+          type: string
         overview:
+          type: string
+        playing:
+          $ref: "#/components/schemas/LibraryPlayingDTO"
+          description: The copy that plays, in one line; absent for a series, and while none of its files plays
+        premiereDate:
+          description: The day it first aired or was released
+          format: date
           type: string
         rating:
           description: The certification, such as TV-14
@@ -6977,18 +7309,33 @@ components:
         runtimeMillis:
           format: int64
           type: integer
+        score:
+          description: The community score, 0 to 10
+          format: double
+          type: number
         seasons:
-          description: A series' episodes by season; empty for a movie
+          description: A series' episodes by season; empty for a movie or an episode
           items:
             $ref: "#/components/schemas/LibrarySeasonDTO"
           type: array
+        still:
+          $ref: "#/components/schemas/ImageDTO"
+          description: An episode's still; absent for a movie or a series, when it has none, or while one is still being fetched
+        studios:
+          description: A movie's or a series' studios; empty for an episode, whose studios are its show's
+          items:
+            type: string
+          type: array
+        tagline:
+          description: Its one-line pitch
+          type: string
       required:
         - item
         - genres
-        - files
+        - studios
+        - countries
+        - credits
         - seasons
-        - match
-        - detailsFrom
         - channels
       type: object
     LibraryItemFileDTO:
@@ -6998,11 +7345,30 @@ components:
           description: "The channels of the sound that plays: its default audio stream, else its first"
           format: int64
           type: integer
+        bitrate:
+          description: Its overall bit rate in bit/s
+          format: int64
+          type: integer
+        chapters:
+          description: Its chapters in order; empty for none or while unread
+          items:
+            $ref: "#/components/schemas/LibraryChapterDTO"
+          type: array
+        container:
+          description: The format its header names, such as matroska,webm
+          type: string
+        edition:
+          description: The labelled version of the title it is, such as Extended; absent for the default
+          type: string
         extra:
           description: A copy that never plays, because another of the title's files does
           type: boolean
         lengthMillis:
           description: How long it plays, measured from the file
+          format: int64
+          type: integer
+        part:
+          description: Which part of a movie split over several files it is, from 1; absent for a whole file. Every part plays, in order
           format: int64
           type: integer
         path:
@@ -7018,6 +7384,11 @@ components:
           description: Bytes
           format: int64
           type: integer
+        streams:
+          description: Every track in order, the file's own then the files beside it; empty while unread
+          items:
+            $ref: "#/components/schemas/LibraryStreamDTO"
+          type: array
         subtitles:
           description: Its subtitle streams in order; empty for none or while unread
           items:
@@ -7029,6 +7400,8 @@ components:
         - ready
         - subtitles
         - extra
+        - streams
+        - chapters
       type: object
     LibraryMatchDTO:
       additionalProperties: false
@@ -7226,6 +7599,24 @@ components:
         - width
         - height
         - hdr
+      type: object
+    LibraryPlayingDTO:
+      additionalProperties: false
+      properties:
+        audioChannels:
+          description: "The channels of the sound that plays: its default audio stream, else its first"
+          format: int64
+          type: integer
+        picture:
+          $ref: "#/components/schemas/LibraryPictureDTO"
+          description: Its first video stream; absent while its details are unread
+        subtitleLanguages:
+          description: "Its subtitles' languages, each once, in order: its own then the files beside it; empty for none, unknown or unread"
+          items:
+            type: string
+          type: array
+      required:
+        - subtitleLanguages
       type: object
     LibraryProblemDTO:
       additionalProperties: false
@@ -7461,6 +7852,33 @@ components:
         - season
         - episodes
       type: object
+    LibrarySkippedDTO:
+      additionalProperties: false
+      properties:
+        paths:
+          description: The first of them, by path
+          items:
+            type: string
+          type: array
+        reason:
+          description: "Why: broken_link, a shortcut whose file is gone; link_outside, a shortcut to a file outside the media folders; disc_image, a whole disc's image; empty_file, a video file with no bytes; identity_conflict, a file that claims another's identity; invalid_facts, a file whose details were refused"
+          enum:
+            - broken_link
+            - link_outside
+            - disc_image
+            - empty_file
+            - identity_conflict
+            - invalid_facts
+          type: string
+        total:
+          description: How many files are skipped for this reason
+          format: int64
+          type: integer
+      required:
+        - reason
+        - total
+        - paths
+      type: object
     LibrarySourceDTO:
       additionalProperties: false
       properties:
@@ -7545,10 +7963,20 @@ components:
           type: integer
         scan:
           $ref: "#/components/schemas/LibraryScanDTO"
+        skipped:
+          description: The files Loomarr skips, by why, each reason with its count and its first few paths
+          items:
+            $ref: "#/components/schemas/LibrarySkippedDTO"
+          type: array
         toConfirm:
           description: Readable folders found but not yet in use
           format: int64
           type: integer
+        unreadable:
+          description: "Files the scan can't keep because their names aren't UTF-8, by path, each as near its name as text allows: to rename"
+          items:
+            type: string
+          type: array
       required:
         - health
         - inUse
@@ -7559,10 +7987,99 @@ components:
         - files
         - headersPending
         - problems
+        - skipped
         - needsYou
         - held
+        - unreadable
         - hooks
         - details
+      type: object
+    LibraryStreamDTO:
+      additionalProperties: false
+      properties:
+        audioFormat:
+          description: An audio track's format by name, such as Dolby TrueHD
+          type: string
+        bitDepth:
+          description: Bits per sample; absent for lossy audio
+          format: int64
+          type: integer
+        bitrate:
+          description: The track's own bit rate in bit/s
+          format: int64
+          type: integer
+        channelLayout:
+          description: An audio track's layout, such as 5.1(side)
+          type: string
+        channels:
+          description: An audio track's channel count
+          format: int64
+          type: integer
+        codec:
+          type: string
+        commentary:
+          type: boolean
+        default:
+          type: boolean
+        descriptive:
+          description: Audio that describes the picture
+          type: boolean
+        dynamicRange:
+          description: A video track's high dynamic range; absent for standard range
+          enum:
+            - Dolby Vision
+            - HDR10
+            - HLG
+            - HDR
+          type: string
+        external:
+          description: A file beside the media file holds it
+          type: boolean
+        forced:
+          type: boolean
+        frameRate:
+          description: As the file states it, such as 24000/1001
+          type: string
+        hearingImpaired:
+          description: Subtitles for the deaf and hard of hearing
+          type: boolean
+        height:
+          description: A video track's height in pixels
+          format: int64
+          type: integer
+        index:
+          description: Its place among the file's tracks, from 0; a track in a file beside it follows the file's own
+          format: int64
+          type: integer
+        kind:
+          enum:
+            - video
+            - audio
+            - subtitle
+          type: string
+        language:
+          description: ISO 639-1 where one exists, else as the file says it
+          type: string
+        languageName:
+          description: The language's English name
+          type: string
+        profile:
+          type: string
+        title:
+          type: string
+        width:
+          description: A video track's width in pixels
+          format: int64
+          type: integer
+      required:
+        - index
+        - kind
+        - default
+        - forced
+        - hearingImpaired
+        - commentary
+        - descriptive
+        - external
       type: object
     LibrarySubtitleDTO:
       additionalProperties: false
@@ -7599,6 +8116,7 @@ components:
         genres:
           items:
             type: string
+          maxItems: 16
           type: array
         key:
           description: Provisioning key, e.g. movie:tmdb:603
@@ -8354,6 +8872,7 @@ components:
         events:
           items:
             type: string
+          maxItems: 32
           minItems: 1
           type: array
         label:
@@ -8385,6 +8904,7 @@ components:
         events:
           items:
             type: string
+          maxItems: 32
           minItems: 1
           type: array
         label:
@@ -8650,6 +9170,7 @@ components:
           readOnly: true
           type: string
         audience:
+          description: Omit to leave unchanged; send an empty string to clear.
           enum:
             - kids
             - family
@@ -8662,6 +9183,7 @@ components:
           maxLength: 120
           type: string
         era:
+          description: The clip's era (a year). Omit to leave unchanged; send 0 to clear.
           format: int64
           type: integer
         geography:
@@ -8685,9 +9207,10 @@ components:
             - ""
           type: string
         tags:
-          description: The operator's taxonomy tags (leaf slugs). Grounded on write; category is derived. Omit to leave unchanged, send [] to clear (§10 V45a).
+          description: The operator's taxonomy tags (leaf slugs, at most 64). Grounded on write; category is derived. Omit to leave unchanged, send [] to clear (§10 V45a).
           items:
             type: string
+          maxItems: 64
           type: array
       required:
         - hash
@@ -8718,6 +9241,10 @@ components:
     PipelineOverviewDTO:
       additionalProperties: false
       properties:
+        awaitingSplit:
+          description: Reels held until splitting is certified; nobody needs to act
+          format: int64
+          type: integer
         complete:
           format: int64
           type: integer
@@ -8751,6 +9278,7 @@ components:
         - inProgress
         - scheduled
         - needsDecision
+        - awaitingSplit
         - ready
         - complete
         - rejected
@@ -8849,6 +9377,9 @@ components:
         audioLanguage:
           type: string
         backend:
+          type: string
+        burnSubtitles:
+          description: ISO 639-2 language whose image subtitle track (Blu-ray PGS) is burned into this channel's programmes where a programme carries one and the host's GPU can draw it; omitted burns none in. Text subtitles stay each viewer's choice.
           type: string
       type: object
     PlayoutStatus:
@@ -9005,7 +9536,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         totalMs:
@@ -9039,7 +9569,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         name:
@@ -9192,7 +9721,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         totalMs:
@@ -9234,6 +9762,7 @@ components:
         lineup:
           items:
             $ref: "#/components/schemas/LineupEntryDTO"
+          maxItems: 1000
           type: array
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
@@ -9293,6 +9822,7 @@ components:
         lineup:
           items:
             $ref: "#/components/schemas/LineupEntryDTO"
+          maxItems: 1000
           type: array
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
@@ -9544,6 +10074,8 @@ components:
         fromIdea:
           description: The library channel idea this request came from, if any
           type: string
+        growth:
+          type: string
         intent:
           $ref: "#/components/schemas/Intent"
         lineup:
@@ -9635,6 +10167,9 @@ components:
         - status
         - proposal
       type: object
+    ProposalEvent:
+      additionalProperties: false
+      type: object
     ProposalItem:
       additionalProperties: false
       properties:
@@ -9644,6 +10179,7 @@ components:
         cast:
           items:
             type: string
+          maxItems: 50
           type: array
         confidence:
           format: double
@@ -9651,6 +10187,7 @@ components:
         creators:
           items:
             type: string
+          maxItems: 50
           type: array
         editorialRole:
           enum:
@@ -9663,12 +10200,14 @@ components:
         genres:
           items:
             type: string
+          maxItems: 16
           type: array
         inLibrary:
           type: boolean
         keywords:
           items:
             type: string
+          maxItems: 100
           type: array
         libraryItemId:
           type: string
@@ -9679,12 +10218,14 @@ components:
         networks:
           items:
             type: string
+          maxItems: 16
           type: array
         officialRating:
           type: string
         originCountries:
           items:
             type: string
+          maxItems: 16
           type: array
         originalLanguage:
           type: string
@@ -9705,6 +10246,7 @@ components:
           items:
             format: int64
             type: integer
+          maxItems: 200
           type: array
         sizeBytes:
           description: Owned title's library file size in bytes; absent when unavailable, never 0
@@ -10838,14 +11380,10 @@ components:
         collections:
           items:
             type: string
+          maxItems: 100
           type: array
         dates:
           $ref: "#/components/schemas/DateScope"
-        era:
-          $ref: "#/components/schemas/Range"
-          deprecated: true
-          description: "Shortcut for dates: the same year range on movieRelease, seriesPremiere and seriesAiring. Accepted on requests only and stored as dates; never returned. Sending both era and dates is rejected with 422."
-          writeOnly: true
         genres:
           $ref: "#/components/schemas/GenreFilter"
         runtimeMax:
@@ -10856,6 +11394,7 @@ components:
         series:
           items:
             type: string
+          maxItems: 1000
           type: array
       type: object
     Scores:
@@ -11012,6 +11551,7 @@ components:
         holidays:
           items:
             type: string
+          maxItems: 32
           type: array
         mode:
           type: string
@@ -11572,6 +12112,8 @@ components:
         - asr.model
         - suggest.max_acquisitions
         - job.recurate.schedule
+        - job.growth.schedule
+        - job.growth_review.schedule
         - recurate.min_score_pct
         - recurate.max_titles
         - channel.reconcile_every
@@ -11638,7 +12180,7 @@ components:
         - filler.language_model
         - session.ttl
         - cookie.secure
-        - security.trust_proxy
+        - security.trusted_proxies
         - auth.sso.enabled
         - auth.sso.issuer
         - auth.sso.client_id
@@ -11733,6 +12275,8 @@ components:
         - ASRModel
         - SuggestMaxAcquisitions
         - JobRecurateSchedule
+        - JobGrowthSchedule
+        - JobGrowthReviewSchedule
         - RecurateMinScorePct
         - RecurateMaxTitles
         - ChannelReconcileEvery
@@ -11799,7 +12343,7 @@ components:
         - FillerLanguageModel
         - SessionTTL
         - CookieSecure
-        - SecurityTrustProxy
+        - SecurityTrustedProxies
         - AuthSSOEnabled
         - AuthSSOIssuer
         - AuthSSOClientID
@@ -12270,6 +12814,8 @@ components:
           type: integer
         category:
           type: string
+        dedupUnchecked:
+          type: boolean
         dupOf:
           type: string
         endEvidence:
@@ -12295,12 +12841,16 @@ components:
           type: string
         looked:
           type: boolean
+        lookedRole:
+          type: string
         name:
           type: string
         nameEvidence:
           type: string
         nameOrigin:
           type: string
+        sound:
+          $ref: "#/components/schemas/CutSound"
         startEvidence:
           type: string
         startMs:
@@ -12312,11 +12862,14 @@ components:
         tags:
           items:
             type: string
+          maxItems: 64
           type: array
         transcript:
           type: string
         unsplittable:
           type: boolean
+        whole:
+          type: string
       required:
         - index
         - startMs
@@ -12333,6 +12886,8 @@ components:
           type: integer
         category:
           type: string
+        dedupUnchecked:
+          type: boolean
         dupOf:
           type: string
         endEvidence:
@@ -12358,12 +12913,16 @@ components:
           type: string
         looked:
           type: boolean
+        lookedRole:
+          type: string
         name:
           type: string
         nameEvidence:
           type: string
         nameOrigin:
           type: string
+        sound:
+          $ref: "#/components/schemas/CutSound"
         startEvidence:
           type: string
         startMs:
@@ -12375,11 +12934,14 @@ components:
         tags:
           items:
             type: string
+          maxItems: 64
           type: array
         transcript:
           type: string
         unsplittable:
           type: boolean
+        whole:
+          type: string
       required:
         - index
         - startMs
@@ -12512,6 +13074,7 @@ components:
           description: Every title the person picked, from the library or a direct search; re-checked against the library server-side
           items:
             $ref: "#/components/schemas/ProposalItem"
+          maxItems: 1000
           type: array
         name:
           description: The channel's name, as the person typed it or the chosen starter template filled it
@@ -13080,6 +13643,7 @@ components:
         retiredAliases:
           items:
             type: string
+          maxItems: 50
           type: array
         slug:
           description: The new slug for create, or existing slug for update/delete
@@ -13087,6 +13651,7 @@ components:
         synonyms:
           items:
             type: string
+          maxItems: 100
           type: array
       required:
         - operation
@@ -13345,6 +13910,9 @@ components:
     TrackDTO:
       additionalProperties: false
       properties:
+        burnable:
+          description: "Subtitles only: an image track (Blu-ray PGS) a channel can burn into its programmes; text tracks are each viewer's choice instead."
+          type: boolean
         index:
           description: Position among tracks of its own type — the N in -map 0:a:N / 0:s:N.
           format: int64
@@ -13378,6 +13946,27 @@ components:
       required:
         - sourceId
         - librariesEnabled
+      type: object
+    UnairableTitle:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        reason:
+          enum:
+            - not_in_library
+            - no_episodes_in_seasons
+            - over_ceiling
+            - unrated
+            - out_of_scope
+            - no_episodes_selected
+          type: string
+        title:
+          type: string
+      required:
+        - key
+        - title
+        - reason
       type: object
     UpcomingOutputBody:
       additionalProperties: false
@@ -13413,6 +14002,7 @@ components:
           description: Whole-list replace of the channel's lineup (ordered). Omit to leave unchanged. Each entry's key is validated; a not-yet-available key renders as a pending slot until the title lands.
           items:
             $ref: "#/components/schemas/LineupEntryDTO"
+          maxItems: 1000
           type: array
         logo:
           description: Channel icon URL (from TMDB, an upload path, or set directly). Empty string clears it.
@@ -13471,10 +14061,12 @@ components:
         retiredAliases:
           items:
             type: string
+          maxItems: 50
           type: array
         synonyms:
           items:
             type: string
+          maxItems: 100
           type: array
       required:
         - label
@@ -13645,6 +14237,9 @@ components:
         - channelId
         - since
         - you
+      type: object
+    ViewingEvent:
+      additionalProperties: false
       type: object
     Vocabulary:
       additionalProperties: false
@@ -13932,17 +14527,28 @@ components:
           format: date-time
           type: string
         days:
+          description: "Weekdays the rule applies on, each once: 0 is Sunday, 6 is Saturday"
           items:
             format: int64
+            maximum: 6
+            minimum: 0
             type: integer
+          maxItems: 7
           type: array
+          uniqueItems: true
         holiday:
           type: string
         hourFrom:
+          description: First hour of the window, 0 to 23; with hourTo 0, the window runs to midnight
           format: int64
+          maximum: 23
+          minimum: 0
           type: integer
         hourTo:
+          description: Hour the window ends before, 0 to 24 (24 is the end of the day); it wraps past midnight when below hourFrom. Equal non-zero ends hold no hour and are refused
           format: int64
+          maximum: 24
+          minimum: 0
           type: integer
         weekday:
           type: boolean
@@ -15271,7 +15877,7 @@ paths:
         - channels
   /v1/collections:
     get:
-      description: The household's collections, by name, each with its titles in order.
+      description: The household's collections, by name, each with its titles in order. A member's titles leave out the admin-only counts.
       operationId: listCollections
       responses:
         "200":
@@ -15363,6 +15969,7 @@ paths:
       tags:
         - library
     get:
+      description: A member's titles leave out the admin-only counts.
       operationId: getCollection
       parameters:
         - in: path
@@ -16363,6 +16970,24 @@ paths:
                   oneOf:
                     - properties:
                         data:
+                          $ref: "#/components/schemas/AccessEvent"
+                        event:
+                          const: access
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event access
+                      type: object
+                    - properties:
+                        data:
                           $ref: "#/components/schemas/ActivityEvent"
                         event:
                           const: activity
@@ -16414,6 +17039,42 @@ paths:
                         - data
                         - event
                       title: Event database
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/DiagnosticEventsEvent"
+                        event:
+                          const: diagnostic_events
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event diagnostic_events
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/DiagnosticProcessesEvent"
+                        event:
+                          const: diagnostic_processes
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event diagnostic_processes
                       type: object
                     - properties:
                         data:
@@ -16507,6 +17168,24 @@ paths:
                       type: object
                     - properties:
                         data:
+                          $ref: "#/components/schemas/LibraryFolderEvent"
+                        event:
+                          const: library_folder
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event library_folder
+                      type: object
+                    - properties:
+                        data:
                           $ref: "#/components/schemas/LibraryRootsEvent"
                         event:
                           const: library_roots
@@ -16597,6 +17276,24 @@ paths:
                       type: object
                     - properties:
                         data:
+                          $ref: "#/components/schemas/ProposalEvent"
+                        event:
+                          const: proposal
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event proposal
+                      type: object
+                    - properties:
+                        data:
                           $ref: "#/components/schemas/SettingsEvent"
                         event:
                           const: settings
@@ -16648,6 +17345,24 @@ paths:
                         - data
                         - event
                       title: Event title
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/ViewingEvent"
+                        event:
+                          const: viewing
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event viewing
                       type: object
                 title: Server Sent Events
                 type: array
@@ -16836,14 +17551,15 @@ paths:
           schema:
             description: Load the segments split out of this composite (§10 V45). Takes precedence over topLevel, which it contradicts by construction.
             type: string
-        - description: Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash. Unknown hashes are simply absent.
+        - description: "Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash, at most 500: the page size, so every hash asked for can come back. Unknown hashes are simply absent."
           explode: true
           in: query
           name: hashes
           schema:
-            description: Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash. Unknown hashes are simply absent.
+            description: "Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash, at most 500: the page size, so every hash asked for can come back. Unknown hashes are simply absent."
             items:
               type: string
+            maxItems: 500
             type: array
       responses:
         "200":
@@ -18098,6 +18814,26 @@ paths:
       summary: The holiday definitions and this year's dates
       tags:
         - channels
+  /v1/household:
+    get:
+      description: Any signed-in person. The IANA timezone the Guide tells times in, or empty when none is set (times then read in the viewer's own zone).
+      operationId: household
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: The household's timezone
+      tags:
+        - channels
   /v1/household/viewing:
     get:
       description: "Any signed-in person. Counts of devices watching each channel for everyone; the named viewings (person, device, channel, since) only for an admin (`scope: household`). A member gets their own viewings only (`scope: self`). Both get their own continue-watching channel. Counts only in-app playback; watching through the media server's Live TV isn't attributed to a person."
@@ -18672,6 +19408,35 @@ paths:
       summary: Run a job now
       tags:
         - jobs
+  /v1/library/browse:
+    get:
+      description: With no path, the folders the apps name, then this machine's mounts. With a path under one of them, the folders in it, without what the scan never reads. Each folder's summary is counted afterwards and streamed as `library_folder` frames on /v1/events; one counted in the last few minutes comes with the list. 403 for a path outside every mount; 422 when it is not absolute or can't be opened.
+      operationId: browseLibraryFolders
+      parameters:
+        - description: The folder to list; empty lists the top
+          explode: false
+          in: query
+          name: path
+          schema:
+            description: The folder to list; empty lists the top
+            maxLength: 4096
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowseLibraryFoldersOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the folders in a folder, to pick one
+      tags:
+        - library
   /v1/library/collections:
     get:
       operationId: listLibraryCollections
@@ -18755,7 +19520,7 @@ paths:
         - library
   /v1/library/items:
     get:
-      description: Movies and series Loomarr found in its media folders, by name. A title still getting ready has files whose details aren't read yet.
+      description: Movies and series Loomarr found in its media folders, by name. A title still getting ready has files whose details aren't read yet. A member's titles leave out the admin-only counts.
       operationId: listLibraryItems
       parameters:
         - description: Only movies or only series; both when absent
@@ -18828,7 +19593,7 @@ paths:
         - library
   /v1/library/items/{id}:
     get:
-      description: A movie with its files, or a series with its episodes by season. 404 when no file of it is present.
+      description: A movie with its files, or a series with its episodes by season. 404 when no file of it is present. A member's title leaves out its files, its match and where its details came from.
       operationId: getLibraryItem
       parameters:
         - in: path
@@ -19119,7 +19884,7 @@ paths:
       tags:
         - library
     post:
-      description: Adds a folder by its path on this machine and starts using it. 422 when the path is not absolute or Loomarr cannot open it.
+      description: Adds a folder by its path on this machine and starts using it. 422 when the path is not absolute or Loomarr cannot open it. 409 when it is inside a folder in use, or holds folders in use and replace is not set; with replace, it is used in their place.
       operationId: addLibraryRoot
       requestBody:
         content:
@@ -20395,13 +21160,14 @@ paths:
               - tmdb
               - all
             type: string
-        - description: Max results (default 20)
+        - description: Max results (default 20, at most 50)
           explode: false
           in: query
           name: limit
           schema:
-            description: Max results (default 20)
+            description: Max results (default 20, at most 50)
             format: int64
+            maximum: 50
             minimum: 1
             type: integer
         - description: Optional title-result narrowing, or the media type for structured discovery
@@ -20414,23 +21180,25 @@ paths:
               - movie
               - series
             type: string
-        - description: Structured genre terms; repeat the parameter for multiple values
+        - description: Structured genre terms; repeat the parameter for multiple values (at most 8)
           explode: true
           in: query
           name: genres
           schema:
-            description: Structured genre terms; repeat the parameter for multiple values
+            description: Structured genre terms; repeat the parameter for multiple values (at most 8)
             items:
               type: string
+            maxItems: 8
             type: array
-        - description: Structured thematic keyword terms; repeat the parameter for multiple values
+        - description: Structured thematic keyword terms; repeat the parameter for multiple values (at most 8). Each is one TMDB lookup.
           explode: true
           in: query
           name: keywords
           schema:
-            description: Structured thematic keyword terms; repeat the parameter for multiple values
+            description: Structured thematic keyword terms; repeat the parameter for multiple values (at most 8). Each is one TMDB lookup.
             items:
               type: string
+            maxItems: 8
             type: array
         - description: Earliest release or first-air year
           explode: false

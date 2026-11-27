@@ -27,7 +27,12 @@ describe("measureSource", () => {
       }
     `;
     // flex gap-2 (2) + px-2 py-1 font-bold opacity-50 (4) + text-sm underline no-underline (3).
-    assert.deepEqual(measureSource(source, appFile("feature/row.tsx")), { tailwindClasses: 9 });
+    // Of those, text-sm is a raw type size and font-bold a raw type weight.
+    assert.deepEqual(measureSource(source, appFile("feature/row.tsx")), {
+      tailwindClasses: 9,
+      rawTypeSize: 1,
+      rawTypeWeight: 1,
+    });
   });
 
   it("counts cva bases and variant values but not defaults or compound selectors", () => {
@@ -95,6 +100,34 @@ describe("measureSource", () => {
     assert.deepEqual(measureSource(source, appFile("feature/row.tsx")), { rawButton: 2 });
   });
 
+  it("counts raw type sizes and type weights separately, and each also as a Tailwind class", () => {
+    const source = `
+      export const Row = ({ on }: { on: boolean }) => (
+        <div className="flex text-sm md:text-lg">
+          <span className={cn("text-[13px] text-[0.8rem] text-muted-foreground", on && "font-semibold")} />
+          <b className="font-mono font-bold tracking-wide leading-tight uppercase" />
+          <i className="text-2xs dark:text-xl !text-base" />
+        </div>
+      );
+    `;
+    // Sizes: text-sm, md:text-lg, text-[13px], text-[0.8rem], text-2xs, dark:text-xl, !text-base.
+    // Weights: font-semibold, font-bold, tracking-wide, leading-tight. font-mono and
+    // text-muted-foreground are neither.
+    assert.deepEqual(measureSource(source, appFile("feature/row.tsx")), {
+      tailwindClasses: 15,
+      rawTypeSize: 7,
+      rawTypeWeight: 4,
+    });
+  });
+
+  it("does not count a type role's size or weight that is not in a class name", () => {
+    const source = `
+      const size = "text-sm";
+      export const Row = () => <Text textRole="cardLabel" tone="secondary" title="font-bold" />;
+    `;
+    assert.deepEqual(measureSource(source, appFile("feature/row.tsx")), {});
+  });
+
   it("counts legacy component imports in CSS", () => {
     const css = `@import "tailwindcss";\n@import "@/components/ui/button/button.css";\n`;
     assert.deepEqual(measureSource(css, appFile("styles.css")), { legacyUi: 1 });
@@ -121,6 +154,17 @@ describe("compareToLedger", () => {
       { "src/a.tsx": { tailwindClasses: 10, cva: 1, lucideReact: 2, rawButton: 2 } },
     );
     assert.deepEqual(violations, ["src/a.tsx: lucideReact rose from 2 to 3"]);
+  });
+
+  it("fails a rise in the raw type size and weight measures", () => {
+    const { violations } = compareToLedger(
+      { "src/a.tsx": { tailwindClasses: 10, cva: 1, rawTypeSize: 3, rawTypeWeight: 2 } },
+      { "src/a.tsx": { tailwindClasses: 10, cva: 1, rawTypeSize: 2, rawTypeWeight: 1 } },
+    );
+    assert.deepEqual(violations, [
+      "src/a.tsx: rawTypeSize rose from 2 to 3",
+      "src/a.tsx: rawTypeWeight rose from 1 to 2",
+    ]);
   });
 
   it("passes a fall and reports that the ledger can shrink", () => {

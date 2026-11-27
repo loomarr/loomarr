@@ -23,8 +23,11 @@ import (
 
 // IdeaLibrary lists the media library's movies and series for idea building. The composition root
 // adapts the library client and caches the listing, because Home reads ideas on every visit.
+// member lists only the titles a household member reads (librarystore.MemberTitles): no title
+// waiting in Needs you and none ignored. A route passes the caller's role; the demo's stand-in
+// for the suggester reads every title.
 type IdeaLibrary interface {
-	IdeaItems(ctx context.Context) ([]ideas.Item, error)
+	IdeaItems(ctx context.Context, member bool) ([]ideas.Item, error)
 }
 
 // ideaHolidayHorizon is how far ahead a holiday becomes an idea: long enough to request and build
@@ -161,7 +164,7 @@ func (s *Handlers) buildChannelIdeas(ctx context.Context, userID string) ([]idea
 	if s.ideaLibrary == nil {
 		return nil, nil, httpcore.NotImplemented("Channel ideas aren't available", "Connect your media library in Settings to get channel ideas.")
 	}
-	items, err := s.ideaLibrary.IdeaItems(ctx)
+	items, err := s.ideaLibrary.IdeaItems(ctx, httpcore.RoleFrom(ctx) != httpcore.RoleAdmin)
 	if err != nil {
 		return nil, nil, httpcore.ProblemWithCause(http.StatusBadGateway, "Couldn't load channel ideas",
 			"The media library didn't answer. Check the connection in Settings and try again.", err)
@@ -265,7 +268,7 @@ func (s *Handlers) requestChannelIdea(ctx context.Context, in *channelIdeaInput)
 type submitManualChannelBody struct {
 	Name        string                   `json:"name" maxLength:"200" doc:"The channel's name, as the person typed it or the chosen starter template filled it"`
 	Description string                   `json:"description,omitempty" maxLength:"2000" doc:"A one-line reason, shown on the review card where the LLM's rationale would otherwise go"`
-	Lineup      []proposals.ProposalItem `json:"lineup" doc:"Every title the person picked, from the library or a direct search; re-checked against the library server-side"`
+	Lineup      []proposals.ProposalItem `json:"lineup" maxItems:"1000" doc:"Every title the person picked, from the library or a direct search; re-checked against the library server-side"`
 }
 
 type submitManualChannelInput struct {

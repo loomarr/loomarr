@@ -125,7 +125,7 @@ func (s *sqlStore) PurgeDiscardedProposals(ctx context.Context, before time.Time
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return 0, nil
+		return 0, fmt.Errorf("purge discarded proposals: count: %w", err)
 	}
 	return int(n), nil
 }

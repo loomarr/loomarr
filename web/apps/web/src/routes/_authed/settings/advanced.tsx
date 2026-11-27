@@ -18,15 +18,15 @@ import { useSettingsEntries } from "@/settings/use-settings-entries";
 // matches `job.workers`. The table therefore keeps raw keys, edits them through the shared save
 // buffer, and links each Group back to its workflow home.
 //
-// This also replaced the old "Advanced" page, which had quietly become a dumping ground for
-// whatever did not fit elsewhere. Advanced keys are still marked (the ADV chip) but they are no
-// longer a *category* — they are an attribute of a key that lives on some other page.
+// It is not an "Advanced" page: such a page becomes a dumping ground for whatever does not fit
+// elsewhere. Advanced keys are marked (the ADV chip) but they are not a *category* — they are an
+// attribute of a key that lives on some other page.
 const AdvancedSettings = () => {
   const queryClient = useQueryClient();
   const entries = useSettingsEntries();
   // The SAME cross-tab buffer every other Settings page stages into (V9). An edit made here and
   // saved from the bar is indistinguishable from one made on its home page — which is what lets
-  // this table be the editor of last resort for keys whose page folded away.
+  // this table be the editor of last resort for keys with no other page.
   const { edits, setEdit } = useSettingsEdits();
   // Local rather than a search param, for now. A shareable link to "every playout key" is a
   // real want, but `?q=` here would be the only searchable Settings surface with one — worth
@@ -53,12 +53,12 @@ const AdvancedSettings = () => {
   });
 
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <PageHeader
         title="Advanced settings"
         description="Every setting key Loomarr knows about. Search by key, group, or value, or follow its owner to the usual place to change it."
       />
-      <div className="min-h-0 flex-1 overflow-auto p-6">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} overflow="auto" padding={24}>
         <AdvancedSettingsTable
           entries={entries}
           query={query}
@@ -77,7 +77,7 @@ const AdvancedSettings = () => {
             clear.mutate({ key: entry.key });
           }}
         />
-      </div>
+      </Stack>
     </Stack>
   );
 };

@@ -1,15 +1,18 @@
 import {
   Action,
+  Card,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Grid,
   Icon,
   icons,
   Stack,
   StatusLabel,
+  Text,
   Toggle,
 } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
@@ -121,22 +124,39 @@ const ImportDialog = ({
           </DialogHeader>
 
           {!available ? (
-            <Stack align="start" className="overflow-auto px-6 pb-6" gap="4">
-              <div className="border-border bg-static-900 rounded-lg border p-4">
-                <p className="font-medium">Connect a media server first</p>
-                <p className="text-muted-foreground mt-1 text-sm">
+            <Stack
+              align="start"
+              flexShrink={1}
+              gap="4"
+              overflow="auto"
+              paddingBottom={24}
+              paddingHorizontal={24}
+            >
+              <Card flexShrink={0} gap={4} padding={16}>
+                <Text as="p" textRole="cardLabel">
+                  Connect a media server first
+                </Text>
+                <Text as="p" textRole="compact" tone="secondary">
                   Add Emby or Jellyfin under Connections. Once Loomarr can reach it, its accounts will be
                   available here for explicit import.
-                </p>
-              </div>
+                </Text>
+              </Card>
               <Action accessibilityRole="link" render={<a href="/settings/connections" />} variant="outline">
                 Open Connections settings
               </Action>
             </Stack>
           ) : (
             <>
-              <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-6">
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
+              <Stack
+                flexBasis="0%"
+                flexGrow={1}
+                flexShrink={1}
+                gap="4"
+                minHeight={0}
+                overflow="auto"
+                paddingHorizontal={24}
+              >
+                <Grid columns={{ base: 1, sm: ["minmax(0,1fr)", "12rem"] }} gap="3">
                   <SearchField
                     label="Search accounts"
                     onChangeText={setQuery}
@@ -150,44 +170,48 @@ const ImportDialog = ({
                     options={CANDIDATE_FILTERS}
                     value={filter}
                   />
-                </div>
+                </Grid>
 
                 {mutationError != null && <ErrorState error={mutationError} className="p-4" />}
 
                 {candidateError != null ? (
                   <ErrorState error={candidateError} onRetry={onRetry} className="p-4" />
                 ) : candidates === undefined ? (
-                  <div className="grid gap-2" role="status" aria-label="Loading media-server accounts">
+                  <Stack aria-label="Loading media-server accounts" gap="2" role="status">
                     {[0, 1, 2].map((item) => (
-                      <div
-                        key={item}
-                        className="border-border bg-card h-16 animate-pulse rounded-lg border"
-                      />
+                      <Card className="animate-pulse" flexShrink={0} height={64} key={item} />
                     ))}
-                  </div>
+                  </Stack>
                 ) : candidates.length === 0 ? (
                   <EmptyState
                     title="No accounts reported"
                     description="Emby/Jellyfin did not return any accounts to import."
                   />
                 ) : visible.length === 0 ? (
-                  <div className="border-border bg-card rounded-lg border p-6 text-center">
-                    <p className="font-medium">No matching accounts</p>
-                    <p className="text-muted-foreground text-sm">Try another name or account filter.</p>
-                  </div>
+                  <Card alignItems="center" flexShrink={0} padding={24}>
+                    <Text as="p" textRole="cardLabel">
+                      No matching accounts
+                    </Text>
+                    <Text as="p" textRole="compact" tone="secondary">
+                      Try another name or account filter.
+                    </Text>
+                  </Card>
                 ) : (
-                  <div className="border-border bg-card overflow-hidden rounded-lg border">
+                  <Card flexShrink={0} overflow="hidden">
                     <Stack
                       align="center"
-                      className="border-static-800 border-b px-4 py-2"
+                      borderBottomWidth={1}
+                      borderColor="borderDecorative"
                       direction="row"
                       gap="inline"
                       justify="between"
+                      paddingHorizontal={16}
+                      paddingVertical={8}
                       wrap
                     >
-                      <p aria-live="polite" className="text-muted-foreground text-sm">
+                      <Text aria-live="polite" as="p" textRole="compact" tone="secondary">
                         {selectedIds.length} selected · {visibleImportable.length} importable shown
-                      </p>
+                      </Text>
                       <Action
                         disabled={visibleImportable.length === 0 || importing}
                         onPress={toggleVisible}
@@ -197,12 +221,19 @@ const ImportDialog = ({
                       </Action>
                     </Stack>
                     <ul>
-                      {visible.map((candidate) => {
+                      {visible.map((candidate, index) => {
                         const id = `${searchId}-${candidate.id}`;
                         return (
-                          <li
+                          <Stack
+                            align="start"
+                            borderBottomWidth={index === visible.length - 1 ? 0 : 1}
+                            borderColor="borderDecorative"
+                            direction="row"
+                            gap="control"
                             key={candidate.id}
-                            className="border-static-800 flex items-start gap-3 border-b px-4 py-1 last:border-b-0"
+                            paddingHorizontal={16}
+                            paddingVertical={4}
+                            render="li"
                           >
                             <Toggle
                               id={id}
@@ -212,58 +243,66 @@ const ImportDialog = ({
                               disabled={candidate.imported || importing}
                               onCheckedChange={() => toggle(candidate.id)}
                             />
-                            <label
-                              htmlFor={id}
-                              className="min-w-0 flex-1 cursor-pointer py-2 text-sm leading-none"
-                            >
+                            <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer py-2">
                               <Stack align="center" direction="row" gap="inline" render="span" wrap>
-                                <span className="font-medium">{candidate.name}</span>
+                                <Text as="span" textRole="cardLabel">
+                                  {candidate.name}
+                                </Text>
                                 {candidate.imported && <StatusLabel tone="ok">Already imported</StatusLabel>}
                                 {candidate.disabled && (
                                   <StatusLabel tone="error">Disabled on server</StatusLabel>
                                 )}
                                 {candidate.isAdmin && <StatusLabel tone="notice">Server admin</StatusLabel>}
                               </Stack>
-                              <span className="text-static-400 mt-1 block text-xs">
-                                Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}
-                              </span>
+                              <Stack marginTop={4} render="span">
+                                <Text as="span" textRole="hint" tone="secondary">
+                                  Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}
+                                </Text>
+                              </Stack>
                             </label>
-                          </li>
+                          </Stack>
                         );
                       })}
                     </ul>
-                  </div>
+                  </Card>
                 )}
 
-                <div className="border-border bg-static-900 grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-2">
-                  <div>
-                    <Stack align="center" className="font-medium" direction="row" gap="inline" render="p">
-                      <Icon decorative glyph={icons.verified} size="compact" tone="success" />
-                      Passwords stay private
+                <Card flexShrink={0} padding={16}>
+                  <Grid columns={{ base: 1, sm: 2 }} gap="3">
+                    <Stack gap="1">
+                      <Stack align="center" direction="row" gap="inline" render="p">
+                        <Icon decorative glyph={icons.verified} size="compact" tone="success" />
+                        <Text as="span" textRole="cardLabel">
+                          Passwords stay private
+                        </Text>
+                      </Stack>
+                      <Text as="p" textRole="compact" tone="secondary">
+                        Emby/Jellyfin validates the password. After a successful sign-in, Loomarr stores only
+                        a non-reversible Argon2id verifier for outage access and refreshes it after later
+                        provider sign-ins.
+                      </Text>
                     </Stack>
-                    <p className="text-muted-foreground mt-1">
-                      Emby/Jellyfin validates the password. After a successful sign-in, Loomarr stores only a
-                      non-reversible Argon2id verifier for outage access and refreshes it after later provider
-                      sign-ins.
-                    </p>
-                  </div>
-                  <div>
-                    <p className="font-medium">Sync existing accounts</p>
-                    <p className="text-muted-foreground mt-1">
-                      Refresh imported names and disabled state. Sync never provisions an unselected account.
-                    </p>
-                    <Stack className="mt-3" direction="row">
-                      <Action
-                        disabled={syncing || importing}
-                        onPress={() => void syncExisting()}
-                        variant="outline"
-                      >
-                        {syncing ? "Syncing…" : "Sync existing"}
-                      </Action>
+                    <Stack gap="1">
+                      <Text as="p" textRole="cardLabel">
+                        Sync existing accounts
+                      </Text>
+                      <Text as="p" textRole="compact" tone="secondary">
+                        Refresh imported names and disabled state. Sync never provisions an unselected
+                        account.
+                      </Text>
+                      <Stack direction="row" marginTop={8}>
+                        <Action
+                          disabled={syncing || importing}
+                          onPress={() => void syncExisting()}
+                          variant="outline"
+                        >
+                          {syncing ? "Syncing…" : "Sync existing"}
+                        </Action>
+                      </Stack>
                     </Stack>
-                  </div>
-                </div>
-              </div>
+                  </Grid>
+                </Card>
+              </Stack>
 
               <DialogFooter>
                 <Action

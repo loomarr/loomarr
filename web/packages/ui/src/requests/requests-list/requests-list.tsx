@@ -80,6 +80,7 @@ const RequestsBody = ({
   review,
   snapshot,
   tab,
+  timeZone,
 }: RequestsListProps) => {
   const ask = { label: "Request a channel", onPress: onRequestChannel };
 
@@ -191,6 +192,7 @@ const RequestsBody = ({
                     hint={requestFailureHint(entry.status.detail, entry.journey.failure?.guidance)}
                     key={entry.journey.jobId}
                     onOpen={() => onOpen(entry.journey.jobId)}
+                    timeZone={timeZone}
                   />
                 );
               })}
@@ -215,6 +217,7 @@ const RequestsBody = ({
               key={entry.journey.jobId}
               nowMs={nowMs}
               onOpen={() => onOpenChannel(channelId)}
+              timeZone={timeZone}
             />
           ) : (
             <RequestCard
@@ -222,6 +225,7 @@ const RequestsBody = ({
               key={entry.journey.jobId}
               nowMs={nowMs}
               onOpen={() => onOpen(entry.journey.jobId)}
+              timeZone={timeZone}
             />
           );
         })

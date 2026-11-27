@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
-import { Action, Stack } from "@loomarr/design-system";
+import { Action, Card, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -10,7 +10,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ClipCard } from "@/components/loomarr/filler/clip-card";
 import { ClipRow } from "@/components/loomarr/filler/clip-row";
 import { usePhoneWidth } from "@/lib/use-phone-width";
-import { cn } from "@/lib/utils";
 import { ConfirmSplitDialog } from "../confirm-split-dialog";
 import { CATALOG_PAGE_SIZE, catalogListParams, type FillerSearch } from "../filler-search";
 import { CatalogBulkBar } from "./catalog-bulk-bar";
@@ -96,14 +95,13 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
     setInspecting(hash);
   };
   // The clip whose split is awaiting confirmation, by hash (§10 V54 A8). Nothing fires until the
-  // operator confirms — see the dialog for why the old first-click behaviour was a hazard.
+  // operator confirms — see the dialog for why splitting on the first click is a hazard.
   const [splitting, setSplitting] = useState<string>();
   const clipSplit = useClipSplit();
   const { job: splitJob } = clipSplit;
 
-  // One page of the catalog (§10 V51d). ⚠ This was an unbounded read of every clip in the
-  // install; the endpoint now caps at 500 and defaults to 100, so an un-paged catalog would
-  // silently show the first hundred clips and call it the catalog.
+  // One page of the catalog (§10 V51d). ⚠ The endpoint caps at 500 and defaults to 100, so an
+  // un-paged catalog would silently show the first hundred clips and call it the catalog.
   const clips = fillerApi.useListFiller(
     catalogListParams({
       q,
@@ -123,11 +121,10 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
     { query: { enabled: Boolean(parentHash) } },
   );
 
-  // ⚠ The Discover query state that used to live here is GONE with its tab (V35). Searching a
-  // source is moving onto the Sources tab, where it belongs — a search is something you do to a
-  // source, not a destination of its own — and `GET /v1/filler/discover` is still the route
-  // behind it. Deleting the state rather than leaving it wired to nothing: an unused query that
-  // still fires is how a page keeps paying for a feature nobody can reach.
+  // ⚠ No Discover query state here (V35). Searching a source belongs to the Sources tab — a
+  // search is something you do to a source, not a destination of its own — with
+  // `GET /v1/filler/discover` as the route behind it. An unused query that still fires is how a
+  // page keeps paying for a feature nobody can reach.
 
   const selection = useCatalogSelection(resultScope);
   // Paging (§10 V51d).
@@ -201,15 +198,23 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       {parentHash ? (
         <Stack
           align="center"
-          className="border-border bg-card rounded-lg border p-3"
+          backgroundColor="surfaceRaised"
+          borderColor="borderDecorative"
+          borderRadius="cardCompact"
+          borderWidth={1}
           direction="row"
           gap="control"
+          padding={12}
           wrap
         >
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">{parentName || "Compilation segments"}</p>
-            <p className="text-muted-foreground text-xs">Airable clips filed from this compilation.</p>
-          </div>
+          <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+            <Text as="p" textRole="cardLabel">
+              {parentName || "Compilation segments"}
+            </Text>
+            <Text as="p" textRole="hint" tone="secondary">
+              Airable clips filed from this compilation.
+            </Text>
+          </Stack>
           <Action onPress={() => setFilters({ parent: undefined })} variant="outline">
             Back to top-level catalog
           </Action>
@@ -217,27 +222,27 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       ) : null}
 
       {taxon || unclassified || withoutAxis ? (
-        <Stack
-          align="center"
-          className="border-signal/30 bg-signal/5 rounded-lg border p-3"
-          direction="row"
-          gap="control"
-          wrap
-        >
-          <p className="min-w-0 flex-1 text-sm">
-            {unclassified
-              ? "Showing clips with no directly assigned taxonomy tags"
-              : withoutAxis
-                ? `Showing clips without a directly assigned ${withoutAxis} tag`
-                : `Showing clips matching “${taxon}”, including descendants`}
-          </p>
-          <Action
-            onPress={() => setFilters({ taxon: undefined, unclassified: undefined, withoutAxis: undefined })}
-            variant="ghost"
-          >
-            Clear taxonomy filter
-          </Action>
-        </Stack>
+        <Card padding={12} tone="signal">
+          <Stack align="center" direction="row" gap="control" wrap>
+            <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+              <Text as="p" textRole="compact">
+                {unclassified
+                  ? "Showing clips with no directly assigned taxonomy tags"
+                  : withoutAxis
+                    ? `Showing clips without a directly assigned ${withoutAxis} tag`
+                    : `Showing clips matching “${taxon}”, including descendants`}
+              </Text>
+            </Stack>
+            <Action
+              onPress={() =>
+                setFilters({ taxon: undefined, unclassified: undefined, withoutAxis: undefined })
+              }
+              variant="ghost"
+            >
+              Clear taxonomy filter
+            </Action>
+          </Stack>
+        </Card>
       ) : null}
 
       {selection.selected.size > 0 && (
@@ -248,14 +253,13 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
           status line the way ingest does. Success NAVIGATES to the review route; only
           running/error render here. */}
       {splitJob && (
-        <p
-          role="status"
-          className={splitJob.status === "error" ? "text-onair-300 text-sm" : "text-muted-foreground text-sm"}
-        >
-          {splitJob.status === "error"
-            ? (splitJob.error ?? "Split detection failed.")
-            : `Detecting cuts in ${splitJob.clipName}… this can take a few minutes for a long compilation.`}
-        </p>
+        <div role="status">
+          <Text as="p" textRole="compact" tone={splitJob.status === "error" ? "danger" : "secondary"}>
+            {splitJob.status === "error"
+              ? (splitJob.error ?? "Split detection failed.")
+              : `Detecting cuts in ${splitJob.clipName}… this can take a few minutes for a long compilation.`}
+          </Text>
+        </div>
       )}
 
       {/* ⚠ The "Synced: N added…" and "Tagged N of M…" result banners were here and went with
@@ -276,7 +280,9 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       />
 
       {rows === undefined ? (
-        <p className="text-muted-foreground text-sm">Loading clips…</p>
+        <Text as="p" textRole="compact" tone="secondary">
+          Loading clips…
+        </Text>
       ) : rows.length === 0 ? (
         <EmptyState
           title={filtered ? "No clips match" : "No clips yet"}
@@ -315,11 +321,11 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
           {/* The count line sits ABOVE the grid ("did my filter work?"), the pager BELOW
               ("what's next?") — never both in one place. */}
           <Stack align="center" direction="row" gap="control">
-            <p className="text-muted-foreground text-sm">
+            <Text as="p" textRole="compact" tone="secondary">
               {pageCount > 1
                 ? `Showing ${firstOnPage.toLocaleString()}–${lastOnPage.toLocaleString()} of ${total.toLocaleString()}`
                 : pluralize(total, "clip")}
-            </p>
+            </Text>
             {/* Select all (V35b, the mock's `catSelAll`). ⚠ It selects the FILTERED rows —
                 what is on screen — not the whole catalog. Selecting rows the operator
                 cannot see, then offering "Remove from catalog", is how a bulk action
@@ -340,21 +346,21 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
             )}
           </Stack>
           {view === "list" ? (
-            <div className="border-border overflow-hidden rounded-lg border">
+            <Card overflow="hidden">
               {rows.map((clip) => (clip.isComposite ? renderComposite(clip) : renderCatalogRow(clip)))}
-            </div>
+            </Card>
           ) : (
-            <div className={cn("grid", phone ? "grid-cols-2 gap-2.5" : "grid-cols-2 gap-3 lg:grid-cols-3")}>
+            <Grid columns={phone ? 2 : { base: 2, lg: 3 }} gap={phone ? "2.5" : "3"}>
               {rows.map((clip) =>
                 clip.isComposite ? (
-                  <div key={clip.hash} className="col-span-full">
+                  <GridItem key={clip.hash} span="full">
                     {renderComposite(clip)}
-                  </div>
+                  </GridItem>
                 ) : (
                   renderCatalogCard(clip)
                 ),
               )}
-            </div>
+            </Grid>
           )}
 
           {/* The pager sits BELOW the grid ("what's next?"); the count line above it answers
@@ -368,10 +374,10 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
             <Stack
               align="center"
               aria-label="Catalog pages"
-              className="pt-1"
               direction="row"
               gap="control"
               justify="between"
+              paddingTop={4}
               render="nav"
             >
               <Action disabled={page <= 1} onPress={() => goToPage(page - 1)} variant="outline">
@@ -379,9 +385,9 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
               </Action>
               {/* ⚠ `aria-live="polite"`: paging replaces the grid in place, and without an
                   announcement a screen-reader user gets a silently different list. */}
-              <p aria-live="polite" className="text-muted-foreground text-sm">
+              <Text as="p" aria-live="polite" textRole="compact" tone="secondary">
                 Page {page.toLocaleString()} of {pageCount.toLocaleString()}
-              </p>
+              </Text>
               <Action disabled={page >= pageCount} onPress={() => goToPage(page + 1)} variant="outline">
                 Next
               </Action>

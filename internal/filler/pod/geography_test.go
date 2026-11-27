@@ -40,7 +40,7 @@ func TestAssemble_GeographyIsNeverRelaxedOrBypassedByPin(t *testing.T) {
 		geoCommercial("canadian", pod.GeographicNational, "CA", ""),
 		geoCommercial("unknown", pod.GeographicUnknown, "", ""),
 	}
-	w := pod.Window{Seed: 7, Era: pod.Year(2015), Audience: pod.Kids, GapMs: 120_000, PodMax: 5,
+	w := pod.Window{Seed: 7, Era: pod.Year(1992), Audience: pod.Kids, GapMs: 120_000, PodMax: 5,
 		Pinned: []string{"canadian", "lakeside-local", "unknown"}}
 	brk := pod.Assemble(catalog, w, harborPolicy(), nil)
 

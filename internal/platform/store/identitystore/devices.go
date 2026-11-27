@@ -3,6 +3,8 @@ package identitystore
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
@@ -37,6 +39,9 @@ type DeviceToken struct {
 	DeviceName string
 	CreatedAt  time.Time
 	LastSeenAt time.Time
+	// CodeMode lets the device run JavaScript against the API through the MCP execute tool
+	// (#4486). Its owner turns it on; it matters only while the owner is an admin.
+	CodeMode bool
 }
 
 // --- device pairings ---
@@ -105,11 +110,53 @@ func (s *Store) ApproveDevicePairing(ctx context.Context, userCode, userID strin
 	return n > 0, err
 }
 
-// DeleteDevicePairing consumes a pairing once its token has been issued.
-func (s *Store) DeleteDevicePairing(ctx context.Context, codeHash string) error {
-	_, err := s.h.ExecContext(ctx, s.h.Rebind(
-		`DELETE FROM device_pairings WHERE device_code = ?`), codeHash)
-	return err
+// RedeemDevicePairing consumes an approved, unexpired pairing and issues the device token for the
+// user who approved it, in one transaction. It returns the consumed pairing. It returns ErrNotFound
+// when no such pairing exists: the code is wrong, expired, still pending, or another redeem already
+// consumed it.
+//
+// ⚠ The DELETE ... RETURNING is the claim. Two overlapping redeems of one code both read an approved
+// pairing, but only one DELETE removes the row, so only one mints a token; a read-then-write in Go
+// would let both through. The token insert shares the transaction, so a failure there (the approver
+// was disabled in between) puts the pairing back rather than burning a code that issued nothing.
+func (s *Store) RedeemDevicePairing(ctx context.Context, codeHash, tokenHash string, at time.Time) (DevicePairing, error) {
+	tx, err := s.h.Begin(ctx)
+	if err != nil {
+		return DevicePairing{}, fmt.Errorf("redeem device pairing: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var p DevicePairing
+	var user sql.NullString
+	var created, expires, approved int64
+	err = tx.QueryRowContext(ctx, s.h.Rebind(
+		`DELETE FROM device_pairings WHERE device_code = ? AND approved_at > 0 AND expires_at > ?
+		 RETURNING device_code, user_code, user_id, device_name, created_at, expires_at, approved_at`),
+		codeHash, epoch(at)).Scan(&p.DeviceCodeHash, &p.UserCode, &user, &p.DeviceName, &created, &expires, &approved)
+	if errors.Is(err, sql.ErrNoRows) {
+		return DevicePairing{}, ErrNotFound
+	}
+	if err != nil {
+		return DevicePairing{}, fmt.Errorf("redeem device pairing: claim: %w", err)
+	}
+	p.UserID = user.String
+	p.CreatedAt, p.ExpiresAt, p.ApprovedAt = fromEpoch(created), fromEpoch(expires), fromEpoch(approved)
+	res, err := tx.ExecContext(ctx, s.h.Rebind(
+		`INSERT INTO device_tokens (token_hash, user_id, device_name, created_at, last_seen_at)
+		 SELECT CAST(? AS TEXT), CAST(? AS TEXT), CAST(? AS TEXT), CAST(? AS BIGINT), CAST(? AS BIGINT)
+		 WHERE EXISTS (`+s.enabledUserSQL()+`)`),
+		tokenHash, p.UserID, p.DeviceName, epoch(at), epoch(at), p.UserID, false)
+	if err != nil {
+		return DevicePairing{}, fmt.Errorf("redeem device pairing: issue token: %w", err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return DevicePairing{}, fmt.Errorf("redeem device pairing: issue token: %w", err)
+	} else if n == 0 {
+		return DevicePairing{}, ErrNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return DevicePairing{}, fmt.Errorf("redeem device pairing: commit: %w", err)
+	}
+	return p, nil
 }
 
 // PurgeExpiredDevicePairings sweeps codes nobody completed (nightly housekeeping).
@@ -162,11 +209,11 @@ func (s *Store) CreateDeviceToken(ctx context.Context, t DeviceToken) error {
 // device token lives until it is revoked.
 func (s *Store) GetDeviceToken(ctx context.Context, tokenHash string) (DeviceToken, error) {
 	row := s.h.QueryRowContext(ctx, s.h.Rebind(
-		`SELECT token_hash, user_id, device_name, created_at, last_seen_at
+		`SELECT token_hash, user_id, device_name, created_at, last_seen_at, code_mode
 		 FROM device_tokens WHERE token_hash = ?`), tokenHash)
 	var t DeviceToken
 	var created, seen int64
-	err := row.Scan(&t.TokenHash, &t.UserID, &t.DeviceName, &created, &seen)
+	err := row.Scan(&t.TokenHash, &t.UserID, &t.DeviceName, &created, &seen, &t.CodeMode)
 	if err == sql.ErrNoRows {
 		return DeviceToken{}, ErrNotFound
 	}
@@ -193,7 +240,7 @@ func (s *Store) TouchDeviceToken(ctx context.Context, tokenHash string, at time.
 // ListDeviceTokensForUser returns a user's paired devices, newest first — the revocation UI's read.
 func (s *Store) ListDeviceTokensForUser(ctx context.Context, userID string) ([]DeviceToken, error) {
 	rows, err := s.h.QueryContext(ctx, s.h.Rebind(
-		`SELECT token_hash, user_id, device_name, created_at, last_seen_at
+		`SELECT token_hash, user_id, device_name, created_at, last_seen_at, code_mode
 		 FROM device_tokens WHERE user_id = ? ORDER BY created_at DESC`), userID)
 	if err != nil {
 		return nil, err
@@ -203,7 +250,7 @@ func (s *Store) ListDeviceTokensForUser(ctx context.Context, userID string) ([]D
 	for rows.Next() {
 		var t DeviceToken
 		var created, seen int64
-		if err := rows.Scan(&t.TokenHash, &t.UserID, &t.DeviceName, &created, &seen); err != nil {
+		if err := rows.Scan(&t.TokenHash, &t.UserID, &t.DeviceName, &created, &seen, &t.CodeMode); err != nil {
 			return nil, err
 		}
 		t.CreatedAt = fromEpoch(created)
@@ -218,6 +265,18 @@ func (s *Store) ListDeviceTokensForUser(ctx context.Context, userID string) ([]D
 func (s *Store) DeleteDeviceToken(ctx context.Context, tokenHash, userID string) (bool, error) {
 	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM device_tokens WHERE token_hash = ? AND user_id = ?`), tokenHash, userID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// SetDeviceCodeMode turns Code Mode on or off for one device. Scoped by user like DeleteDeviceToken,
+// so the WHERE clause is the authorisation: false means no such device of this user's.
+func (s *Store) SetDeviceCodeMode(ctx context.Context, tokenHash, userID string, on bool) (bool, error) {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(
+		`UPDATE device_tokens SET code_mode = ? WHERE token_hash = ? AND user_id = ?`), on, tokenHash, userID)
 	if err != nil {
 		return false, err
 	}

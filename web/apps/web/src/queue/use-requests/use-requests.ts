@@ -12,8 +12,8 @@ import { useAuth } from "@/auth/use-auth";
 import { usePendingApprovals } from "@/queue/pending-approvals";
 
 // GET /v1/titles is a single-state FILTER (it 400s without `state`, §7), so the acquisition
-// states a request's status line needs are fetched one query per state and merged — the same
-// fan-out the old Queue made. React Query dedupes by key, so every caller shares one cache entry.
+// states a request's status line needs are fetched one query per state and merged. React Query
+// dedupes by key, so every caller shares one cache entry.
 const STATES = Object.values(TitleDTOState);
 
 interface RequestEntry {
@@ -31,20 +31,11 @@ const awaitsThisAdmin = (journey: ProposalJourneyDTO, isAdmin: boolean): boolean
 //
 // The requests are the VIEWER's own (`mine`): Proposal Jobs, not Proposal artifacts, because a
 // request that is still generating or that failed has no Proposal yet. Approvals are a separate
-// admin-only list — deciding is admin-only (§11); reading is global (§342).
+// admin-only list — deciding is admin-only (§11); reading is global (§342). A generating request
+// moves on its suggestion frames, which refetch /v1/proposal-jobs (core events).
 const useRequests = () => {
   const { isAdmin } = useAuth();
-  const jobs = proposalJobsApi.useListProposalJobs(
-    { mine: true },
-    {
-      query: {
-        refetchInterval: (state) => {
-          const journeys = unwrap(state.state.data, (body) => body.journeys) ?? [];
-          return journeys.some((journey) => journey.milestone === "generating") ? 2_000 : false;
-        },
-      },
-    },
-  );
+  const jobs = proposalJobsApi.useListProposalJobs({ mine: true });
   const titleQueries = useQueries({
     queries: STATES.map((state) => titlesApi.getListTitlesQueryOptions({ state })),
   });

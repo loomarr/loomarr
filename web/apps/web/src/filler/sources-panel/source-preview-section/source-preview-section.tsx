@@ -2,6 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Text } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { useFillerProviders } from "../../use-filler-providers";
 import { SourceContentPreview } from "../source-content-preview";
@@ -42,9 +43,9 @@ const SourcePreviewSection = ({ source }: SourcePreviewSectionProps) => {
 
   return (
     <section aria-labelledby="source-preview-heading" className="border-border border-t pt-5">
-      <h3 id="source-preview-heading" className="font-medium">
+      <Text as="h3" id="source-preview-heading" textRole="heading">
         From this source
-      </h3>
+      </Text>
       <div className="mt-2">
         <SourceContentPreview
           provider={remote}

@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/viewingstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -36,7 +37,7 @@ func historyStore(t *testing.T) store.Store {
 // as offsets from t0.
 func history(t *testing.T, st store.Store) string {
 	t.Helper()
-	rows, err := st.ListViewings(context.Background(), store.ViewingQuery{Limit: 50})
+	rows, err := st.ListViewings(context.Background(), viewingstore.ViewingQuery{Limit: 50})
 	if err != nil {
 		t.Fatal(err)
 	}

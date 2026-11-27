@@ -52,6 +52,7 @@ type persistedProgram struct {
 type contentResolver struct {
 	mu       sync.Mutex
 	byExtID  map[string]string // external item id → program uuid
+	byUUID   map[string]string // program uuid → external item id
 	loaded   bool
 	cacheKey string // normalized Tunarr base URL that owns byExtID
 	refresh  func(ctx context.Context) (map[string]string, error)
@@ -79,12 +80,31 @@ func (r *contentResolver) resolve(ctx context.Context, cacheKey, extID string) (
 	return uuid, ok, nil
 }
 
+// externalID is the external item id a Tunarr program uuid stands for: the reverse of resolve,
+// read from the same index. It never refreshes on a miss: a uuid read back from a lineup came
+// from this index when it was pushed, so one it does not name was not pushed by it.
+func (r *contentResolver) externalID(ctx context.Context, cacheKey, uuid string) (string, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.loaded || r.cacheKey != cacheKey {
+		if err := r.reloadLocked(ctx, cacheKey); err != nil {
+			return "", false, err
+		}
+	}
+	extID, ok := r.byUUID[uuid]
+	return extID, ok, nil
+}
+
 func (r *contentResolver) reloadLocked(ctx context.Context, cacheKey string) error {
 	m, err := r.refresh(ctx)
 	if err != nil {
 		return err
 	}
 	r.byExtID = m
+	r.byUUID = make(map[string]string, len(m))
+	for extID, uuid := range m {
+		r.byUUID[uuid] = extID
+	}
 	r.loaded = true
 	r.cacheKey = cacheKey
 	return nil

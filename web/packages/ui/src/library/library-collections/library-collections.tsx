@@ -100,7 +100,7 @@ const Grid = ({ children }: { children: ReactNode[] }) => {
         <Line alignItems="stretch" flexWrap="nowrap" gap="control" key={r}>
           {row}
           {slots.slice(row.length).map((slot) => (
-            <Stack aria-hidden flexBasis={0} flexGrow={1} key={slot} />
+            <Stack aria-hidden flexBasis={0} flexGrow={1} flexShrink={1} key={slot} />
           ))}
         </Line>
       ))}

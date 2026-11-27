@@ -2,7 +2,13 @@ import type { PlayerSnapshot } from "@loomarr/player";
 import type { ReactNode } from "react";
 
 import type { ProgrammeIdentityData } from "../identity";
-import type { PlaybarSegment, PlaybarWindow, PlayerBandData, PlayerOption } from "./player-chrome";
+import type {
+  PlaybarSegment,
+  PlaybarWindow,
+  PlayerBandData,
+  PlayerOption,
+  PlayerSurfChannel,
+} from "./player-chrome";
 
 interface ChannelNumberEntry {
   channelName?: string;
@@ -35,10 +41,18 @@ interface WatchingChromeData {
 }
 
 /**
- * What Watching has open over the chrome (§9.5): the Audio or More menu, or Info (the on-air card
- * pinned).
+ * What Watching has open over the chrome (§9.5): the Subtitles, Audio or More menu, or Info (the
+ * on-air card pinned).
  */
-type WatchingLayer = "audio" | "info" | "more";
+type WatchingLayer = "audio" | "info" | "more" | "subtitles";
+
+/** Subtitles on Watching: the menu's rows and the lines on screen (see usePairedSubtitles). */
+interface WatchingSubtitles {
+  captions: readonly string[];
+  choose: (key: string) => void;
+  on: boolean;
+  options: readonly PlayerOption[];
+}
 
 interface WatchingSurfaceProps {
   /**
@@ -85,6 +99,13 @@ interface WatchingSurfaceProps {
   playheadMs: number;
   player: ReactNode;
   snapshot: PlayerSnapshot;
+  /** Subtitles: the Subtitles key, its menu, and the line; omitted, the key is not drawn. */
+  subtitles?: WatchingSubtitles;
+  /**
+   * The channel cards a flip shows in the band's place (§9.2), one per channel in the catalog, from
+   * `surfCardsFromGuide`. Omitted, flipping keeps the band.
+   */
+  surfCards?: readonly PlayerSurfChannel[];
 }
 
 export type {
@@ -93,5 +114,6 @@ export type {
   WatchingLayer,
   WatchingProgrammeData,
   WatchingScheduleData,
+  WatchingSubtitles,
   WatchingSurfaceProps,
 };

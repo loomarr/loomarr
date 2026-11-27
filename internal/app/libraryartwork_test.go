@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/media/images/storeadapter"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/imagetestkit"
@@ -142,6 +143,47 @@ func TestLibraryPosters(t *testing.T) {
 	}
 	if err := setPoster("relative/poster.png"); err == nil {
 		t.Fatal("a relative path was accepted")
+	}
+}
+
+// An episode's still lands on the thumb ladder (#4476): from the file beside it, or adopted from
+// its provider's URL, the new one replacing the one it had. An adopted still waits in the bulk
+// class, behind a poster adopted after it.
+func TestLibraryEpisodeStill(t *testing.T) {
+	ctx, st, svc := artworkFixture(t)
+	art := libraryArtworkOf(svc, st)
+	still := func() clipstore.Image {
+		t.Helper()
+		owned, err := st.ImagesForOwner(ctx, librarystore.LibraryItemImageOwner, "90000001")
+		if err != nil || len(owned) != 1 {
+			t.Fatalf("owned = %d images, %v; want the one still", len(owned), err)
+		}
+		return owned[0]
+	}
+	path := filepath.Join(t.TempDir(), "Alpha S01E01-thumb.png")
+	writePoster(t, path, 70)
+	if err := art.Art(ctx, "90000001", metadataprovider.KindThumb, path); err != nil {
+		t.Fatal(err)
+	}
+	if rec := still(); rec.Role != string(images.RoleThumb) || rec.Origin != string(images.OriginExtracted) {
+		t.Fatalf("imported = %+v; want an extracted thumb", rec)
+	}
+	const remote = "https://image.example.org/t/p/w300/alpha-e1.jpg"
+	if err := art.Art(ctx, "90000001", metadataprovider.KindThumb, remote); err != nil {
+		t.Fatal(err)
+	}
+	if rec := still(); rec.SourceURL != remote || rec.Role != string(images.RoleThumb) || rec.FetchPriority != int(images.FetchBulk) {
+		t.Fatalf("adopted = %+v; want a thumb in the bulk class", rec)
+	}
+	if libraryItem(t, st).Backdrop != "" {
+		t.Fatal("the still took the backdrop role, want thumb")
+	}
+	if err := art.Art(ctx, "90000001", metadataprovider.KindPoster, "https://image.example.org/t/p/original/alpha.jpg"); err != nil {
+		t.Fatal(err)
+	}
+	queue, err := st.ListImagesAwaitingFetch(ctx, time.Now().Add(time.Hour), 10)
+	if err != nil || len(queue) != 2 || queue[0].Role != string(images.RolePoster) || queue[1].SourceURL != remote {
+		t.Fatalf("queue = %+v, %v; want the later poster ahead of the still", queue, err)
 	}
 }
 

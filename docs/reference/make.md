@@ -64,7 +64,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make rust-check` | ✅ | format, lint, build, and test the required Rust image worker <br>*runs:* `rust-test-worker` |
 | `make rust-test-worker` |  | build the debug Rust image worker required by Go unit tests |
 | `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
-| `make rust-fuzz` |  | fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz) |
+| `make rust-fuzz` |  | fuzz the bounded Rust image protocol and subtitle decoders; optional FUZZ_SECONDS per target (needs nightly + cargo-fuzz) |
 | `make fmt` | ✅ | gofmt -l (fails if any file needs formatting) |
 | `make shellcheck` | ✅ | shellcheck every repository shell script |
 | `make privacy-verify` | ✅ | captured private fixture literals and real media titles must not re-enter the tracked tree <br>*runs:* `demo-titles-verify` |
@@ -173,7 +173,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make migration-rehearsal` |  | boot IMAGE on a copy of the backup in BACKUP, with no network; run it where the backup lives (RECORD=1 records the pass a final tag needs) |
 | `make hardware-gate` |  | has COMMIT passed the playout bench on Intel and NVIDIA? |
 | `make demo-library` |  | serve the demo library's Emby-compatible stand-in (generates its clips and art on first run) |
-| `make demo-titles-verify` |  | no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI: privacy-verify, whenever ci-impact sees a scanned path) |
+| `make demo-titles-verify` |  | no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI: privacy-verify, in its own job on every run) |
 | `make demo-seed` |  | point this worktree's backend at the running demo library and create the demo channels (idempotent) |
 | `make docs-capture` |  | regenerate the docs screenshots from the demo seed (needs dev-be, dev-fe, demo-library, demo-seed) |
 
@@ -199,6 +199,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make openapi-verify` | ✅ | regenerated spec must match committed (CI red on drift) <br>*runs:* `openapi` |
 | `make ci-lint` | ✅ | actionlint over .github/workflows — catches what YAML parsing cannot |
 | `make retired-verify` | ✅ | retired identifiers must not appear as live instructions (CI red on drift) |
+| `make migration-order-verify` |  | every migration this branch adds is numbered above BASE's newest (default origin/main) |
+| `make migration-order-test` |  | the migration order check's contract, on throwaway repositories |
 
 ## Config docs (settings registry)
 
@@ -255,9 +257,10 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make fe-lint` |  | Biome lint + format check, import and boundary gates (web/; needs codegen first) |
 | `make knip` |  | unused files, exports and dependencies in web/ (config: web/knip.ts) |
 | `make fe-lint-fix` |  | Biome autofix — format + safe lint fixes (web/) |
-| `make fe` |  | biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery <br>*runs:* `fe-checks` `fe-packages` `fe-unit` |
-| `make fe-checks` | ✅ | everything in fe except the tests: biome, knip, typecheck, SPA, storybook <br>*runs:* `fe-codegen` |
-| `make fe-packages` | ✅ | unit tests of the packages the web app uses, after codegen <br>*runs:* `fe-codegen` |
+| `make fe` |  | biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery <br>*runs:* `fe-checks` `fe-typecheck` `fe-packages` `fe-unit` |
+| `make fe-checks` | ✅ | everything in fe except the typecheck and tests: biome, knip, SPA, storybook <br>*runs:* `fe-codegen` |
+| `make fe-typecheck` | ✅ | typecheck the web app and the packages it uses (Turbo), after codegen <br>*runs:* `fe-codegen` |
+| `make fe-packages` | ✅ | unit tests of the packages the web app uses (Turbo), after codegen <br>*runs:* `fe-codegen` |
 | `make fe-unit` | ✅ | web unit tests after codegen (FE_SHARD=n/m runs one shard) <br>*runs:* `fe-codegen` |
 | `make clients` |  | lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold <br>*runs:* `clients-checks` `clients-tests` `clients-bundles` |
 | `make clients-checks` | ✅ | everything in clients except the mobile and TV tests and bundles <br>*runs:* `brand-assets-verify` `knip` |
@@ -278,7 +281,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make tuner-e2e-host` | ✅ | 100-Channel tuner controller matrix in host-installed browsers (§9.1); TUNER_PROJECT / TUNER_REPEAT_EACH narrow a manual rerun <br>*runs:* `fe-build` |
 | `make tuner-e2e-quarantine` | ✅ | only the tuner tests the flake quarantine holds out (after tuner-quarantine) <br>*runs:* `tuner-e2e-host` |
 | `make route-timing-e2e-host` | ✅ | route timing budgets (warm and cold, main nav) in host-installed Chromium (#3399) <br>*runs:* `fe-build` |
-| `make e2e-update` |  | regenerate the committed e2e page snapshots (sanctioned update path) <br>*runs:* `fe-build` `ensure-playwright-image` |
+| `make e2e-update` | ✅ | regenerate the committed e2e page snapshots (sanctioned update path) <br>*runs:* `fe-build` `ensure-playwright-image` |
 
 ## Maintainer smoke (NOT CI)
 
@@ -299,7 +302,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients-bundles` · `clients-checks` · `clients-tests` · `compose-verify` · `config-docs-verify` · `db-docs-verify` · `dev-docs-verify` · `diagrams-verify` · `e2e` · `eval-contract` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-packages` · `fe-tokens-verify` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `lint` · `observability-verify` · `openapi-verify` · `playout-bench` · `privacy-verify` · `release-verify` · `retired-verify` · `route-timing-e2e-host` · `rust-check` · `scan-scale` · `shellcheck` · `tags-verify` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet-tags` · `vet` · `vuln`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients-bundles` · `clients-checks` · `clients-tests` · `compose-verify` · `config-docs-verify` · `db-docs-verify` · `dev-docs-verify` · `diagrams-verify` · `e2e-update` · `e2e` · `eval-contract` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-packages` · `fe-tokens-verify` · `fe-typecheck` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `lint` · `observability-verify` · `openapi-verify` · `playout-bench` · `privacy-verify` · `release-verify` · `retired-verify` · `route-timing-e2e-host` · `rust-check` · `scan-scale` · `shellcheck` · `tags-verify` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet-tags` · `vet` · `vuln`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

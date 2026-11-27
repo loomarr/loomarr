@@ -8,7 +8,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
 import { PairedDevices } from "./paired-devices";
@@ -39,6 +39,14 @@ const bedroom = {
   createdAt: "2026-08-16T10:00:00Z",
   lastSeenAt: new Date().toISOString(),
 };
+
+const signedInAs = (role: "admin" | "member") =>
+  server.use(
+    http.get("*/v1/auth/me", () => HttpResponse.json({ id: `u-${role}`, name: role, role, disabled: false })),
+  );
+
+// The page reads the role (an admin also gets Code Mode switches); a member unless a test says.
+beforeEach(() => signedInAs("member"));
 
 describe("PairedDevices", () => {
   it("lists the devices signed in as this user", async () => {
@@ -172,5 +180,44 @@ describe("PairedDevices", () => {
     await userEvent.click(screen.getByRole("button", { name: "Approve device" }));
     expect(await screen.findByText(/is approved/)).toBeInTheDocument();
     expect(field).toHaveValue("");
+  });
+});
+
+// Code Mode (#4486) is an admin's per-device switch; a member never sees it, nor asks the server.
+describe("PairedDevices: Code Mode", () => {
+  it("shows an admin each device's switch as the server has it, and turns one on", async () => {
+    signedInAs("admin");
+    const sent: { id: string; on: unknown }[] = [];
+    server.use(
+      getDeviceListMockHandler({ devices: [shield, bedroom] }),
+      http.get("*/v1/agents/code-mode", () => HttpResponse.json({ devices: ["hash-bedroom"] })),
+      http.put("*/v1/agents/code-mode/:id", async ({ params, request }) => {
+        sent.push({ id: String(params.id), on: ((await request.json()) as { on: unknown }).on });
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    render(<PairedDevices />, { wrapper: makeWrapper() });
+
+    const switches = await screen.findAllByRole("switch", { name: "Code Mode" });
+    expect(switches.map((s) => s.getAttribute("aria-checked"))).toEqual(["false", "true"]);
+    await userEvent.click(switches[0] as HTMLElement);
+    await waitFor(() => expect(sent).toEqual([{ id: "hash-living-room", on: true }]));
+  });
+
+  it("never shows a member the switch or asks for it", async () => {
+    signedInAs("member");
+    let asked = 0;
+    server.use(
+      getDeviceListMockHandler({ devices: [shield] }),
+      http.get("*/v1/agents/code-mode", () => {
+        asked += 1;
+        return HttpResponse.json({ devices: [] });
+      }),
+    );
+    render(<PairedDevices />, { wrapper: makeWrapper() });
+
+    expect(await screen.findByText("Living Room Shield")).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Code Mode" })).not.toBeInTheDocument();
+    expect(asked).toBe(0);
   });
 });

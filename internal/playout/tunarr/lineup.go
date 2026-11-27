@@ -131,7 +131,20 @@ func (t *Tunarr) GetLineup(ctx context.Context, tunarrID string) ([]schedule.Slo
 	}
 	slots := make([]schedule.Slot, 0, len(resp.Lineup))
 	for _, it := range resp.Lineup {
-		slots = append(slots, itemToSlot(it))
+		slot := itemToSlot(it)
+		if slot.Kind == schedule.SlotProgram {
+			// Posted as Tunarr's program uuid (contentItem); read back as the media-server id the
+			// slot was pushed with, so the diff compares like with like. One the index does not
+			// name stays a uuid: it differs from every slot, and the reconcile pushes over it.
+			extID, ok, err := t.resolver.externalID(ctx, t.configFor(ctx).BaseURL, it.ID)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				slot.LibraryItemID = extID
+			}
+		}
+		slots = append(slots, slot)
 	}
 	return slots, nil
 }
@@ -164,12 +177,13 @@ func (t *Tunarr) slotToItem(ctx context.Context, s schedule.Slot) (tunarrLineupI
 	return flexItem(dur), true, nil
 }
 
+// PushedFlexMs is the length a flex slot of ms is pushed with, and so reads back with: Tunarr's
+// floor (minFlexMs) or more. The reconcile's diff compares breaks by it.
+func PushedFlexMs(ms int64) int64 { return max(ms, minFlexMs) }
+
 // flexItem builds a flex lineup entry with a duration Tunarr will accept (≥ minFlexMs).
 func flexItem(dur float64) tunarrLineupItem {
-	if dur < minFlexMs {
-		dur = minFlexMs
-	}
-	return tunarrLineupItem{Type: "flex", Duration: dur}
+	return tunarrLineupItem{Type: "flex", Duration: max(dur, minFlexMs)}
 }
 
 // contentItem resolves a media-server item id to a Tunarr content entry, or degrades to flex
@@ -189,7 +203,8 @@ func (t *Tunarr) contentItem(ctx context.Context, itemID string, dur float64) (t
 
 // itemToSlot maps a Tunarr lineup item back to a domain slot for the diff. Tunarr
 // doesn't round-trip our provisioning Key (it has no field for it), so read-back
-// slots carry Kind + LibraryItemID + duration only; the diff compares on those.
+// slots carry Kind + id + duration only. A content item's id is Tunarr's program
+// uuid here; GetLineup turns it back into the media-server id.
 func itemToSlot(it tunarrLineupItem) schedule.Slot {
 	dur := int64(it.Duration)
 	switch it.Type {

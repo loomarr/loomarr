@@ -292,9 +292,6 @@ var (
 	checkColour = bt709Target("green", color.NRGBA{0x3D, 0xD6, 0x8C, 255})
 )
 
-// writeCheckBug writes the test bug, a white square at the check alpha (straight).
-func writeCheckBug(dir string) (*Watermark, error) { return writeCheckBugOf(dir, checkWhite) }
-
 // writeCheckBugOf writes a test bug of the target's colour.
 func writeCheckBugOf(dir string, target checkTarget) (*Watermark, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {

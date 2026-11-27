@@ -4,6 +4,8 @@ export { playbarFromTimeline, playerChromeFromGuide } from "./playbar-data";
 export type { PlayerAudioProps } from "./player-audio";
 export { PlayerAudio } from "./player-audio";
 export { PlayerBottomSheet } from "./player-bottom-sheet";
+export type { PlayerCaptionProps } from "./player-caption";
+export { PlayerCaption } from "./player-caption";
 export { PlayerChrome } from "./player-chrome";
 export type {
   ClipChromeProps,
@@ -20,6 +22,8 @@ export type {
   PlayerLiveState,
   PlayerSchedule,
   PlayerSheetProps,
+  PlayerSurf,
+  PlayerSurfChannel,
   PlayerUtilitiesProps,
 } from "./player-chrome.type";
 export type { PlayerCoverProps } from "./player-cover";

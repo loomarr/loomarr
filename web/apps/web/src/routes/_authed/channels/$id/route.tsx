@@ -8,7 +8,7 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { channelNumber } from "@loomarr/core/format";
 import { formatProgrammeTitle } from "@loomarr/core/guide";
-import { Action, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, Surface, Text } from "@loomarr/design-system";
 import { ChannelIdent, NavTabs } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
@@ -21,7 +21,6 @@ import { ignoreFailure, useChannelSave, withPending } from "@/channels/use-chann
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useRouteContent } from "@/lib/use-route-content";
-import { cn } from "@/lib/utils";
 import { type AirState, ChannelDetailProvider } from "./-channel-detail-context";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,
@@ -79,7 +78,7 @@ const airStateOf = (ch: ChannelDTO, scheduled?: boolean): AirState => {
   // (`tunarrId`); internal-playout channels — the DEFAULT backend, which never gets a
   // `tunarrId` — signal it with `inAppPlayable`, the server-resolved surfability truth
   // (§9.1 V57: effective backend plays internally AND the lifecycle is reconcilable). Keying
-  // "On air" on `tunarrId` alone told every working internal-playout channel it was "Not on
+  // "On air" on `tunarrId` alone would tell every working internal-playout channel it was "Not on
   // air yet — connect Tunarr", contradicting reality at the first-channel "aha" moment.
   const pushed = Boolean(ch.tunarrId);
   const broadcasting = pushed || ch.inAppPlayable;
@@ -101,8 +100,8 @@ const airStateOf = (ch: ChannelDTO, scheduled?: boolean): AirState => {
     };
   }
   if (ch.status === "live" && broadcasting && scheduled === false) {
-    // Live, but the guide has nothing for it now or next (#2728): On air here sat beside an empty
-    // guide row and "Programme information isn't available".
+    // Live, but the guide has nothing for it now or next (#2728): On air here would sit beside an
+    // empty guide row and "Programme information isn't available".
     return {
       dot: "off",
       label: "No schedule yet",
@@ -129,7 +128,7 @@ const ChannelDetailLayout = () => {
   const navigate = Route.useNavigate();
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
-  // ⚠ From `useLocation`, not `?section=`: which panel is active is now the PATH.
+  // ⚠ From `useLocation`, not `?section=`: which panel is active is the PATH.
   const { pathname } = useLocation();
   // Every section renders in the one scroller below, so a new tab would open at the last tab's
   // offset (#2744). Each section starts at its own top.
@@ -210,9 +209,9 @@ const ChannelDetailLayout = () => {
 
   if (channel.error) {
     return (
-      <div className="p-6">
+      <Stack padding={24}>
         <ErrorState error={channel.error} onRetry={() => channel.refetch()} />
-      </div>
+      </Stack>
     );
   }
   const ch = unwrap(channel.data);
@@ -244,29 +243,45 @@ const ChannelDetailLayout = () => {
   const saveLogo = (logo: string) => channelSave.save({ logo });
 
   return (
-    <Stack className="h-full">
+    <Stack height="100%">
       {/* The web mock's header (#1659): back, the channel's icon (its monogram ident when it has
           none, N8), the name over an air line, and CH n at the right. The back link gets a 24 px
           target; the mock's 16 px glyph alone is under the minimum. */}
       <Stack
         align="center"
-        className="border-border border-b px-4 py-4 sm:px-6"
+        borderBottomWidth={1}
+        borderColor="borderDecorative"
+        className="px-4 sm:px-6"
         direction="row"
         gap="control"
+        paddingVertical={16}
         render="header"
         wrap
       >
-        <Link
-          to="/guide"
-          aria-label="Back to channels"
-          className="text-muted-foreground hover:text-foreground -ml-1 flex size-6 cursor-pointer items-center justify-center rounded"
+        {/* A 24 px ghost icon link; its 16 px glyph alone is under the minimum target. */}
+        <Action
+          accessibilityRole="link"
+          compact
+          icon="goBack"
+          layout="icon"
+          render={<Link to="/guide" />}
+          style={{ marginLeft: -4 }}
+          variant="ghost"
         >
-          <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
-        </Link>
+          Back to channels
+        </Action>
         {ch.logo ? (
-          <div className="border-border bg-static-800 relative size-12 shrink-0 overflow-hidden rounded-lg border">
-            <img src={ch.logo} alt="" className="size-full object-cover" />
-          </div>
+          <Card
+            borderRadius={8}
+            flexShrink={0}
+            height={48}
+            level="elevated"
+            overflow="hidden"
+            position="relative"
+            width={48}
+          >
+            <img src={ch.logo} alt="" style={{ height: "100%", objectFit: "cover", width: "100%" }} />
+          </Card>
         ) : (
           <ChannelIdent name={ch.name} number={ch.number} size={48} />
         )}
@@ -286,28 +301,25 @@ const ChannelDetailLayout = () => {
                 onSave={saveName}
               />
             ) : (
-              <h1 className="text-xl leading-tight font-semibold">{ch.name}</h1>
+              <Text as="h1" textRole="title">
+                {ch.name}
+              </Text>
             )}
-            <Stack
-              align="center"
-              className="text-muted-foreground text-sm"
-              direction="row"
-              gap="1.5"
-              render="span"
-            >
-              <span
+            <Stack align="center" direction="row" gap="1.5" render="span">
+              <Stack
                 aria-hidden
-                className={cn("size-[7px] rounded-full", airLine.onAir ? "bg-onair" : "bg-static-500")}
+                backgroundColor={airLine.onAir ? "$guideOnAir" : "$actionDisabled"}
+                borderRadius={999}
+                height={7}
+                render="span"
+                width={7}
               />
-              {airLine.text}
+              <Text as="span" textRole="compact" tone="secondary">
+                {airLine.text}
+              </Text>
             </Stack>
           </div>
-          <Stack
-            align="center"
-            className="text-muted-foreground ml-auto text-sm"
-            direction="row"
-            gap="inline"
-          >
+          <Stack align="center" direction="row" gap="inline" marginLeft="auto">
             <Text as="span" shout textRole="data">
               Ch
             </Text>
@@ -325,11 +337,15 @@ const ChannelDetailLayout = () => {
                 onSave={saveNumber}
               />
             ) : (
-              <span className="text-foreground px-1.5 py-0.5 font-mono">{channelNumber(ch.number)}</span>
+              <Stack paddingHorizontal={6} paddingVertical={2} render="span">
+                <Text as="span" textRole="data" tone="primary">
+                  {channelNumber(ch.number)}
+                </Text>
+              </Stack>
             )}
           </Stack>
         </div>
-        {/* Watch opens the full-bleed player (#2088); it replaced the Watch tab. The media-server
+        {/* Watch opens the full-bleed player (#2088); there is no Watch tab. The media-server
             hand-off opens its front door in a new tab: Emby and Jellyfin expose no per-channel Live
             TV link, so the viewer goes on from there. */}
         <Surface
@@ -364,18 +380,25 @@ const ChannelDetailLayout = () => {
         // One reachable section ⇒ no bar (a lone tab is chrome, not navigation).
         if (visible.length < 2) return null;
         // ⚠ No fallback tab. An admin's bar lights only the section the path names; lighting Channel
-        // info for any other path (the old `?? "info"`) said they were on a page they weren't (#1987).
+        // info for any other path (a `?? "info"` fallback) says they are on a page they aren't (#1987).
         return (
           // min-w-0 + overflow-x-auto: on a phone the four tabs scroll sideways inside this row
           // instead of widening the page past the viewport (#3404).
-          <div className="min-w-0 overflow-x-auto px-4 pt-2 sm:px-6" data-testid="channel-tab-strip">
+          <Stack
+            className="px-4 sm:px-6"
+            data-testid="channel-tab-strip"
+            flexShrink={1}
+            minWidth={0}
+            overflowX="auto"
+            paddingTop={8}
+          >
             <NavTabs
               label="Channel sections"
               linkComponent={Link}
               tabs={visible.map((s) => ({ id: s.id, label: s.label, to: s.to.replace("$id", id) }))}
               activeId={visible.find((s) => pathname.endsWith(`/${s.id}`))?.id}
             />
-          </div>
+          </Stack>
         );
       })()}
 
@@ -392,7 +415,7 @@ const ChannelDetailLayout = () => {
         ref={sectionScroller}
         style={{ position: "relative" }}
       >
-        <Stack className="max-w-detail mx-auto w-full p-6" gap="4">
+        <Stack gap="4" marginHorizontal="auto" maxWidth={896} padding={24} width="100%">
           <ChannelDetailProvider
             value={{
               id,

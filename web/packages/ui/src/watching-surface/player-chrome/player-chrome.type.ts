@@ -97,6 +97,27 @@ interface PlayerBandData {
   station?: string;
 }
 
+/** One channel on the row of cards that stands in for the band while flipping (§9.2). */
+interface PlayerSurfChannel {
+  id: string;
+  number: string;
+  name: string;
+  /** The channel's era decade: it colours the card's number block, as it does the band's. */
+  decade?: number;
+  /** What is on now; omitted when nothing is. */
+  nowPlaying?: string;
+  /** The programme's picture; without one the card's picture is a flat stand-in. */
+  artUri?: string;
+}
+
+/** Flipping channels (§9.2): the cards around the channel just tuned, which is lit. */
+interface PlayerSurf {
+  /** Every channel a flip steps through, in number order. */
+  channels: readonly PlayerSurfChannel[];
+  /** The channel the last flip tuned: its card is lit and reads "Watching now". */
+  tunedId: string;
+}
+
 /** The Info sheet's programme (§9, mock "info"): the block at the playhead and what follows it. */
 interface PlayerInfoData {
   /** The band's programme line. */
@@ -157,7 +178,13 @@ interface PlayerChromeProps {
    * Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark, with
    * the channel they reach and, on a remote, the auto-tune countdown.
    */
-  readout?: { countdown?: string; digits: string; missed?: boolean; name?: string };
+  readout?: { countdown?: string; digits: string; missed?: boolean; name?: string; quiet?: boolean };
+  /**
+   * Flipping channels (§9.2, variant J): the row of channel cards takes the band's place and the
+   * utilities step away, with the controls up. Every flip tunes at once (§9.4); the app sets this
+   * from a flip until a beat after the last one, and omits it otherwise.
+   */
+  surf?: PlayerSurf;
   /**
    * The open menu (§9.5, variant J): on desktop and television, what a key opens sits in the control
    * cluster, right over the keys, with the picture whole. Omitted when none is open.
@@ -174,6 +201,24 @@ interface PlayerChromeProps {
    * when the channel has none, so nothing moves.
    */
   watermark?: PlayerWatermark;
+  /**
+   * The picture is playing on an AirPlay receiver (iPhone, §9.7): the casting card fills the picture
+   * area and the AirPlay key lights. The band and keys stay, so the phone is the TV's remote. Omitted
+   * otherwise, and always on Android and the web.
+   */
+  casting?: PlayerCasting;
+}
+
+/** The picture's casting state: where it went, and the way back. */
+interface PlayerCasting {
+  /** The receiver's name; the card says "your TV" until the player can read it. */
+  castingTo?: string;
+  /**
+   * The system's route picker, laid clear over the Disconnect button's face, as the AirPlay key's is:
+   * iOS opens it only from its own button. It lists the routes, and choosing "iPhone" brings the
+   * picture back.
+   */
+  routePicker: ReactNode;
 }
 
 /**
@@ -220,8 +265,13 @@ interface PlayerUtilitiesProps {
   /** Fullscreen; omitted where the platform has none (a phone's app is already full screen). */
   fullscreen?: boolean;
   onFullscreen?: () => void;
-  /** AirPlay (iPhone): the system's route picker. */
-  onAirPlay?: () => void;
+  /**
+   * AirPlay (iPhone): the system's route picker. iOS opens the picker only from its own button, so
+   * the app passes that button and the key lays it, clear, over its face.
+   */
+  airPlayPicker?: ReactNode;
+  /** The picture is casting: the AirPlay key's glyph takes the signal amber, as an active tool's does. The chrome sets it from `casting`. */
+  airPlayCasting?: boolean;
   /** Picture in picture, where the player is a phone app that has a key for it. */
   onPictureInPicture?: () => void;
 }
@@ -297,5 +347,7 @@ export type {
   PlayerLiveState,
   PlayerSchedule,
   PlayerSheetProps,
+  PlayerSurf,
+  PlayerSurfChannel,
   PlayerUtilitiesProps,
 };

@@ -127,6 +127,9 @@ type Governor struct {
 	usage        map[usageKey]*usage
 	now          func() time.Time
 	refreshes    sync.WaitGroup
+	// refused is the largest reservation each domain was turned away for library_limit since a
+	// reservation that size last succeeded (see LibraryShortfall).
+	refused map[Domain]int64
 }
 
 var errManagedInvalid = errors.New("managed storage measurement is invalid")
@@ -148,7 +151,45 @@ func New(meter Meter, policy func(Domain) Policy) *Governor {
 			return Policy{AutomaticBudget: domain == DomainFiller}
 		}
 	}
-	return &Governor{meter: meter, policy: policy, reservations: make(map[uint64]reservation), usage: make(map[usageKey]*usage), now: time.Now}
+	return &Governor{meter: meter, policy: policy, reservations: make(map[uint64]reservation), usage: make(map[usageKey]*usage),
+		now: time.Now, refused: make(map[Domain]int64)}
+}
+
+// LibraryShortfall is how many bytes the domain's library allowance is short of the largest
+// reservation it turned away for library_limit, or 0 when it turned none away or the allowance has
+// since made room. Whoever frees space to unblock the work reads it: it is the room the refused work
+// asked for, not a guess at what the library should hold.
+//
+// A reservation that size succeeding clears it, so work that stopped asking (a source switched off,
+// say) does not keep freeing space.
+func (g *Governor) LibraryShortfall(ctx context.Context, path string, domain Domain) int64 {
+	domain = normalizeDomain(domain)
+	g.mu.Lock()
+	asked := g.refused[domain]
+	g.mu.Unlock()
+	if asked <= 0 {
+		return 0
+	}
+	snapshot := g.DomainSnapshot(ctx, path, domain).Snapshot
+	if !snapshot.SoftLimitEnabled {
+		return 0
+	}
+	// Not floored: a library over its allowance (lowering it deletes nothing by itself) must shed the overage
+	// as well as make the room asked for.
+	free := snapshot.SoftBudgetBytes - snapshot.ManagedBytes - snapshot.ReservedBytes
+	return max(asked-free, 0)
+}
+
+// noteLibraryRefusal remembers the largest reservation refused for library_limit. g.mu is held.
+func (g *Governor) noteLibraryRefusal(domain Domain, bytes int64) {
+	g.refused[domain] = max(g.refused[domain], bytes)
+}
+
+// noteGranted forgets a refusal that a reservation at least as large has since outlived. g.mu is held.
+func (g *Governor) noteGranted(domain Domain, bytes int64) {
+	if asked, ok := g.refused[domain]; ok && bytes >= asked {
+		delete(g.refused, domain)
+	}
 }
 
 // Snapshot reports current automatic filler capacity without reserving it.
@@ -188,14 +229,21 @@ func (g *Governor) Reserve(ctx context.Context, request Request) (*Lease, Decisi
 	defer g.mu.Unlock()
 	decision := g.snapshotLocked(ctx, request.Path, request.Domain, request.Mode, 0)
 	if !decision.Allowed {
+		if decision.Snapshot.Reason == ReasonLibraryLimit {
+			g.noteLibraryRefusal(request.Domain, request.EstimatedBytes)
+		}
 		return nil, decision
 	}
 	reason := limitingReason(decision.Snapshot, request.EstimatedBytes, request.Mode)
 	if reason != "" {
 		decision.Allowed = false
 		decision.Snapshot.Reason = reason
+		if reason == ReasonLibraryLimit {
+			g.noteLibraryRefusal(request.Domain, request.EstimatedBytes)
+		}
 		return nil, decision
 	}
+	g.noteGranted(request.Domain, request.EstimatedBytes)
 
 	g.nextLeaseID++
 	id := g.nextLeaseID

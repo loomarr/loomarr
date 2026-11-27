@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // The Library's rows follow inventory writes: a snapshot writes its item's row, an origin marked
@@ -26,7 +27,7 @@ func testLibraryProjection(t *testing.T, newStore NewStoreFunc) {
 			name += " (gone)"
 		}
 		return LibraryItem{ID: string(item.ID), Kind: "movie", Name: name,
-			Origin: LibraryOrigin{Authority: string(o.Key.Authority), Key: o.Key.ExternalItemID}}, true
+			Origin: librarystore.LibraryOrigin{Authority: string(o.Key.Authority), Key: o.Key.ExternalItemID}}, true
 	})
 	name := func(id inventory.ItemID) string {
 		t.Helper()
@@ -43,8 +44,8 @@ func testLibraryProjection(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	// A title is read with a present file.
-	if err := st.SaveLibraryFiles(ctx, []LibraryFile{{Path: "/media/p/p.mkv", Root: "/media", Size: 1, ModifiedNs: 1,
-		Identity: "digest", Kind: "movie", Header: LibraryHeaderRead, SeenAt: at, ItemID: string(id)}}); err != nil {
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{{Path: "/media/p/p.mkv", Root: "/media", Size: 1, ModifiedNs: 1,
+		Identity: "digest", Kind: "movie", Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: string(id)}}); err != nil {
 		t.Fatal(err)
 	}
 	if got := name(id); got != "Pilot" {
@@ -82,27 +83,27 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 		t.Skip("reads rows directly")
 	}
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	showOrigin := LibraryOrigin{Authority: "scan:a", Key: "series:dir:1"}
+	showOrigin := librarystore.LibraryOrigin{Authority: "scan:a", Key: "series:dir:1"}
 	// The stub lists a series with a rating, genres and ids, and an episode under that series;
 	// an episode named "Rated" has a rating of its own.
 	st.ProjectLibraryWith(func(item inventory.Item) (LibraryItem, bool) {
 		o := item.Origins[0]
 		it := LibraryItem{ID: string(item.ID), Kind: string(item.Kind), Name: o.Observation.Facts.Name,
-			Origin: LibraryOrigin{Authority: string(o.Key.Authority), Key: o.Key.ExternalItemID}}
+			Origin: librarystore.LibraryOrigin{Authority: string(o.Key.Authority), Key: o.Key.ExternalItemID}}
 		switch item.Kind {
 		case "series":
 			it.Rating, it.From.Rating = "TV-PG", "tmdb"
 			it.Genres, it.Studios = []string{"Drama", "Comedy", "Drama"}, []string{"Network"}
 			it.Countries = []string{"Canada", "Ireland"}
 			it.Tagline, it.Trailer = "Keep the lamps lit.", "https://www.youtube.com/watch?v=show9000"
-			it.Credits = []LibraryCredit{
-				{Name: "Station Lead", Role: "actor", Character: "Keeper", ID: LibraryID{Namespace: "tmdb", Value: "90003202"},
+			it.Credits = []librarystore.LibraryCredit{
+				{Name: "Station Lead", Role: "actor", Character: "Keeper", ID: librarystore.LibraryID{Namespace: "tmdb", Value: "90003202"},
 					Photo: "https://img.invalid/lead.jpg"},
-				{Name: "Station Lead", Role: "creator", ID: LibraryID{Namespace: "tmdb", Value: "90003202"}},
+				{Name: "Station Lead", Role: "creator", ID: librarystore.LibraryID{Namespace: "tmdb", Value: "90003202"}},
 				{Name: "Pen Name", Role: "writer"},
 				{Name: "", Role: "actor"},
 			}
-			it.IDs = []LibraryID{{Namespace: "tmdb", Value: "90000701"}, {Namespace: "tvdb", Value: "90000702"}}
+			it.IDs = []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000701"}, {Namespace: "tvdb", Value: "90000702"}}
 		case "episode":
 			it.Season, it.Episode, it.Series = 1, 2, showOrigin
 			if it.Name == "Rated" {
@@ -136,14 +137,14 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("before its series, episode = %q, %q; want unlinked", sid, rating)
 	}
 	show := snap(showOrigin.Key, "series", "Show")
-	if sid, rating, from := row(early); sid != string(show) || rating != "TV-PG" || from != RatingFromShow {
+	if sid, rating, from := row(early); sid != string(show) || rating != "TV-PG" || from != librarystore.RatingFromShow {
 		t.Fatalf("after its series, episode = %q, %q, %q; want linked with the show's rating", sid, rating, from)
 	}
 	if sid, rating, from := row(rated); sid != string(show) || rating != "TV-14" || from != "nfo" {
 		t.Fatalf("a rated episode = %q, %q, %q; want its own rating kept", sid, rating, from)
 	}
 	late := snap("file:3", "episode", "Late")
-	if sid, rating, from := row(late); sid != string(show) || rating != "TV-PG" || from != RatingFromShow {
+	if sid, rating, from := row(late); sid != string(show) || rating != "TV-PG" || from != librarystore.RatingFromShow {
 		t.Fatalf("an episode after its series = %q, %q, %q; want linked with the show's rating", sid, rating, from)
 	}
 
@@ -211,24 +212,24 @@ func testLibraryFilesAndTracks(t *testing.T, newStore NewStoreFunc) {
 		t.Skip("reads rows directly")
 	}
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	video := LibraryStream{Index: 0, Kind: "video", Codec: "hevc", Width: 3840, Height: 1600,
+	video := librarystore.LibraryStream{Index: 0, Kind: "video", Codec: "hevc", Width: 3840, Height: 1600,
 		ColorTransfer: "smpte2084", Resolution: "4K", HDR: "HDR10"}
-	audio := LibraryStream{Index: 1, Kind: "audio", Codec: "eac3", Channels: 6, Language: "en",
+	audio := librarystore.LibraryStream{Index: 1, Kind: "audio", Codec: "eac3", Channels: 6, Language: "en",
 		LanguageName: "English", AudioFormat: "Dolby Digital Plus", Default: true}
 	commentary := audio
 	commentary.Index, commentary.Commentary, commentary.Default = 2, true, false
-	external := LibraryStream{Index: 3, Kind: "subtitle", Codec: "subrip", Language: "en", Forced: true,
+	external := librarystore.LibraryStream{Index: 3, Kind: "subtitle", Codec: "subrip", Language: "en", Forced: true,
 		HearingImpaired: true, ExternalRef: "/m/a.en.forced.sdh.srt"}
 	item := LibraryItem{ID: "m1", Kind: "movie", Name: "Film",
-		Sources: []LibrarySource{
+		Sources: []librarystore.LibrarySource{
 			{Path: "/m/a.mkv", Container: "matroska", SizeBytes: 9, DurationMs: 1000, Plays: true,
-				Streams:  []LibraryStream{video, audio, commentary, external},
-				Chapters: []LibraryChapter{{StartMs: 0, EndMs: 500, Title: "One"}, {StartMs: 500, EndMs: -1}},
-				Markers:  []LibraryMarker{{StartMs: 100, EndMs: 200, Kind: "commercial"}}},
-			{Path: "/m/b.mkv", SizeBytes: 5, Streams: []LibraryStream{audio},
-				Trickplay: []LibraryTrickplay{{Ref: "/m/b.bif", Format: "bif"}}},
+				Streams:  []librarystore.LibraryStream{video, audio, commentary, external},
+				Chapters: []librarystore.LibraryChapter{{StartMs: 0, EndMs: 500, Title: "One"}, {StartMs: 500, EndMs: -1}},
+				Markers:  []librarystore.LibraryMarker{{StartMs: 100, EndMs: 200, Kind: "commercial"}}},
+			{Path: "/m/b.mkv", SizeBytes: 5, Streams: []librarystore.LibraryStream{audio},
+				Trickplay: []librarystore.LibraryTrickplay{{Ref: "/m/b.bif", Format: "bif"}}},
 		},
-		Art: []LibraryArt{{Kind: "poster", Ref: "/m/poster.jpg"}, {Kind: "fanart", Ref: "/m/fanart.jpg"},
+		Art: []librarystore.LibraryArt{{Kind: "poster", Ref: "/m/poster.jpg"}, {Kind: "fanart", Ref: "/m/fanart.jpg"},
 			{Kind: "season-poster", Season: 0, Ref: "/m/s0.jpg"}, {Kind: "season-poster", Season: 1, Ref: "/m/s1.jpg"}},
 	}
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{item}, at); err != nil {

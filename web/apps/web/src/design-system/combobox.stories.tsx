@@ -160,10 +160,19 @@ const Invalid: Story = { args: { invalid: true } };
 const Disabled: Story = { args: { disabled: true } };
 const Light: Story = { globals: { theme: "light" } };
 // The list is open on arrival, so the baseline shows its surface, highlight, check and trailing text.
+// The field stands alone: while a list is open Base UI hides the rest of the page from assistive tech,
+// and axe reads any other focusable field left under that as a violation.
 const Open: Story = {
+  render: () => (
+    <Screen gap="section">
+      <Surface gap="control" padding="section">
+        <Text textRole="title">Search with descriptions</Text>
+        <Search />
+      </Surface>
+    </Screen>
+  ),
   play: async ({ canvas, userEvent }) => {
-    const [, search] = await canvas.findAllByRole("combobox");
-    if (search) await userEvent.click(search);
+    await userEvent.click(await canvas.findByRole("combobox"));
   },
 };
 

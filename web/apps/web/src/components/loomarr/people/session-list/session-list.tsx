@@ -1,5 +1,5 @@
 import { formatRelative, formatUntil, pluralize } from "@loomarr/core/format";
-import { Action, Stack, StatusLabel } from "@loomarr/design-system";
+import { Action, Stack, StatusLabel, Text } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useState } from "react";
 import type { SessionListProps } from "./session-list.type";
@@ -8,8 +8,8 @@ import type { SessionListProps } from "./session-list.type";
 const ALL = "all-sessions";
 
 // SessionList — who is signed in as this user, and the ability to end it (§11: sessions
-// are revocable rows, and disabling a user kills them immediately). Surfaced because
-// revocation was previously something the system did with nothing able to observe it.
+// are revocable rows, and disabling a user kills them immediately). Surfaced so revocation
+// is something an operator can observe, not only something the system does.
 //
 // The caller's own session is labelled rather than hidden: an admin reviewing their
 // account should see every live session, and the label is what stops them from signing
@@ -27,22 +27,26 @@ const SessionList = ({
   // Signing a session out can't be taken back, so the first press only asks (one row at a time).
   const [confirming, setConfirming] = useState<string>();
   if (loading) {
-    return <p className="text-muted-foreground text-sm">Loading sessions…</p>;
+    return (
+      <Text as="p" textRole="compact" tone="secondary">
+        Loading sessions…
+      </Text>
+    );
   }
   if (sessions.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         {`${userName} has no active sessions. They are not signed in anywhere.`}
-      </p>
+      </Text>
     );
   }
 
   return (
     <Stack className={className} gap="control">
       <Stack align="center" direction="row" gap="control" justify="between">
-        <p className="text-muted-foreground text-sm">
+        <Text as="p" textRole="compact" tone="secondary">
           {`${pluralize(sessions.length, "active session")} for ${userName}`}
-        </p>
+        </Text>
         {onRevokeAll && confirming !== ALL && (
           <Action onPress={() => setConfirming(ALL)} tone="danger" variant="outline">
             Sign out everywhere
@@ -83,20 +87,29 @@ const SessionList = ({
           ) : (
             <Stack
               align="center"
-              className="border-static-800 rounded-md border px-3 py-2"
+              borderRadius={8}
+              className="border-static-800 border"
               direction="row"
               gap="control"
               justify="between"
               key={s.id}
+              paddingHorizontal={12}
+              paddingVertical={8}
               render="li"
             >
-              <div className="min-w-0">
-                <Stack align="center" className="text-sm" direction="row" gap="inline" render="p">
-                  {`Signed in ${formatRelative(s.createdAt, now)}`}
+              <Stack flexShrink={1} minWidth={0}>
+                <Stack align="center" direction="row" gap="inline" render="p">
+                  <Text as="span" textRole="compact">
+                    {`Signed in ${formatRelative(s.createdAt, now)}`}
+                  </Text>
                   {s.current && <StatusLabel tone="notice">This device</StatusLabel>}
                 </Stack>
-                <p className="text-static-400 text-xs">{`Expires ${formatUntil(s.expiresAt, now)}`}</p>
-              </div>
+                <Text
+                  as="p"
+                  textRole="hint"
+                  tone="secondary"
+                >{`Expires ${formatUntil(s.expiresAt, now)}`}</Text>
+              </Stack>
               <Action
                 disabled={revoking === s.id}
                 icon={revoking === s.id ? "loading" : undefined}

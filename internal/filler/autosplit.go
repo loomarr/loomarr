@@ -50,6 +50,10 @@ const (
 	// RejectDuplicate is defense in depth for callers that invoke the gate without the split
 	// stage's deterministic curation. The automated path discards the match before this point.
 	RejectDuplicate AutoSplitReject = "a segment already exists in the catalog"
+	// RejectDedupUnchecked holds back a segment whose comparison with the catalog could not be
+	// made. Filler is a cache: a stalled auto-split recovers on the next pass once the dedup tooling
+	// is back, whereas a duplicate that has aired cannot be un-aired. A person can still confirm it.
+	RejectDedupUnchecked AutoSplitReject = "a segment could not be checked for duplicates"
 	// RejectUngrounded is the grounding rule, reused rather than re-derived.
 	RejectUngrounded AutoSplitReject = "a segment's era is a guess rather than something Loomarr read"
 	RejectUntagged   AutoSplitReject = "a segment could not be classified"
@@ -117,6 +121,9 @@ func segmentVerdict(s split.Segment, pol *AutoSplitPolicy, minClipDuration, maxD
 func segmentContentVerdict(s split.Segment, pol *AutoSplitPolicy, minClipDuration, maxDur time.Duration) AutoSplitReject {
 	if s.DupOf != "" {
 		return RejectDuplicate
+	}
+	if s.DedupUnchecked {
+		return RejectDedupUnchecked
 	}
 	span := time.Duration(s.EndMs-s.StartMs) * time.Millisecond
 	if span > maxDur {

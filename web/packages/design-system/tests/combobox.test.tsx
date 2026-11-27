@@ -456,4 +456,27 @@ describe("Combobox floating list keys (web)", () => {
     await userEvent.keyboard("{Escape}");
     expect(onEscape).toHaveBeenCalledTimes(1);
   });
+
+  // Base UI hides the rest of the page from assistive tech while a typeable list is open (a screen
+  // reader stays in the list; Tab closes it). That is why the Open story shows one field alone: axe
+  // reads a second focusable field under that aria-hidden as a violation. It must come back on close.
+  it("hides the rest of the page only while its list is open", async () => {
+    renderBox(
+      <>
+        <Harness label="Language" />
+        <Harness label="Location" />
+      </>,
+    );
+    const other = screen.getByRole("combobox", { name: "Language" });
+    const hidden = () => other.closest("[aria-hidden='true']") !== null;
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Location" }));
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    expect(hidden()).toBe(true);
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(hidden()).toBe(false);
+  });
 });

@@ -5,17 +5,14 @@ the same Make targets and the same registry under Git's common directory.
 
 ## One owner, bounded child agents
 
-One task worktree owns each deliverable from first edit through merge. For non-trivial work, that
-owner must delegate a useful independent assignment under the
-[parent/child contract](../../AGENTS.md#parent-and-child-agents). Use independent reading,
-competing designs, or a fresh-context review; delegated agents return
-findings to the owner by default. They do not open a second implementation branch for the same
-deliverable.
+One task worktree owns each deliverable from first edit through merge, and its agent does the
+coupled work itself. Under the [delegation rule](../../AGENTS.md#delegation), the owner delegates
+an assignment when it is independent and bounded: independent reading, competing designs, or a
+fresh-context review. Delegated agents return findings to the owner by default. They do not open a
+second implementation branch for the same deliverable.
 
-Choose the child assignment before broad exploration and continue independent work while it runs.
-Record a concrete solo-work exception for a trivial or inseparable task, or unavailable child
-tooling/readiness/budget controls. The parent still owns final integration and delivery. Children
-use the cheapest suitable model for their own brief and do not recursively delegate by default.
+The owner still owns final integration and delivery. Children use the cheapest suitable model for
+their own brief and do not recursively delegate by default.
 
 Use another editing agent only when the work has a real merge seam:
 
@@ -60,11 +57,12 @@ worker report. A worker waits for the supervisor to stop it or issue another bri
 its own backlog. This keeps ownership with the delivery agent while still providing fresh context.
 
 When the harness supports model and reasoning controls, select them by task shape and record the
-choice in the worker brief. `AGENTS.md` owns the task-based model routing policy; the supervisor
-workflow applies it at each assignment boundary. Record external sessions as `uncontrolled` when
-their actual selection cannot be verified rather than assuming an equivalent model.
+choice in the worker brief. Record external sessions as `uncontrolled` when their actual selection
+cannot be verified rather than assuming an equivalent model.
 
-Follow [the canonical routing policy](../../AGENTS.md#task-based-model-routing): Luna-first mechanical
+The supervisor workflow owns
+[the routing policy](../../.agents/workflows/supervise.md#route-each-assignment) and applies it at
+each assignment boundary: Luna-first mechanical
 evidence, Terra for ordinary implementation or synthesis, and justified Sol or Astra for increasingly
 demanding reasoning. Model and reasoning are independent choices, not a mandatory escalation ladder.
 Verify actual supported settings. Repair brief, evidence, and permission problems as workflow issues;
@@ -201,7 +199,7 @@ it preserves the CLI's permission configuration and accepts additional CLI argum
 | `architecture`: hardest cross-system decisions | GPT-6 Astra / high | Opus / high |
 
 These are starting selections, not capability equivalences. The
-[canonical routing policy](../../AGENTS.md#task-based-model-routing) requires a written reason
+[canonical routing policy](../../.agents/workflows/supervise.md#route-each-assignment) requires a written reason
 for the higher tiers. Codex IDs must appear in that machine's model catalog. Claude aliases resolve
 through its account/provider configuration; record the resolved model and actual effort, not just
 the alias. Haiku has no equivalent effort control. An unavailable selection is a preflight failure,
@@ -233,13 +231,15 @@ or a Codex meter. Do not mistake quiet output for a verified budget.
   `--worktree current`. To nest an existing worktree, use
   `orca worktree set --worktree path:<worker> --parent-worktree path:<coordinator> --issue <n>`,
   which changes Orca's metadata only.
-- **Keep a waiter armed.** The "You have N orchestration messages" prompt is a best-effort nudge,
-  and it does not survive an Orca or session restart. While any Dispatch is active, keep one
-  background
-  `orca orchestration check --run <run> --wait --types "worker_done,escalation,question"`
-  running, and re-arm it after each wake. Listing the types leaves heartbeats out, so the waiter
-  wakes only for a decision. When it times out, compare `worker-list` with each worker's transcript
-  activity to catch a report that never arrived.
+- **Let Orca wake the coordinator.** Start every independent worker, then end the turn; Orca
+  delivers each `worker_done`, escalation and question to the coordinator's chat. Leave
+  `orca orchestration check` to Orca: a scripted or background `check` takes the coordinator's
+  mail, so the wake never arrives. The installed guide, `orca skills get orchestration`, is the
+  authority for these mechanics and matches the running Orca version. Arm `make dev-watch` as the
+  safety net: its lane watcher reads worker terminals and transcripts and reports a lane that
+  finished a turn or waits on a question. After an Orca or session restart, read
+  `orca orchestration inbox --terminal run:<run> --limit 50` and compare `worker-list` with each
+  worker's transcript activity to catch a report that never arrived.
 - **Meter a Claude worker from its own transcript.** Use the worker's session file under
   `~/.claude/projects/<worktree path with / and . replaced by ->/`. Other sessions share that
   folder, such as automatic security reviews started by a push, so never sum the folder. One API
@@ -382,6 +382,14 @@ debugged with its failing focused command before one final rerun. CI owns expens
 matrices.
 Never run `make smoke*` from an agent session; those commands drive the maintainer's live stack.
 
+Screenshot baselines render on their own. Every push to a pull request that touches `web/` starts the
+**Visual baselines** workflow, which commits the visual and e2e PNGs that changed as
+`github-actions[bot]` and approves the checks GitHub holds on that commit. Don't dispatch it after a
+push, don't copy PNGs out of failure artifacts, and don't approve held runs by hand. Wait for its run
+on the head before you arm auto-merge, then read the bot's PNGs in the diff. A red render pushes
+nothing; its `playwright-render-failures` artifact holds the images. See
+[Updating visual baselines](../contributing/testing.md#updating-visual-baselines).
+
 ## Finish and clean up
 
 After the PR is merged and its required evidence is complete, release its claims and audit the
@@ -421,7 +429,7 @@ The audit requires an authenticated GitHub CLI because squash-merge evidence is 
 local branch ancestry. If GitHub or `origin/main` cannot be verified, the command exits without
 removing anything.
 
-Creating another worktree fails when the secondary-worktree count has reached 16. That is a backlog
+Creating another worktree fails when the secondary-worktree count has reached 24. That is a backlog
 tripwire, not a concurrency target: run the audit and resolve its findings first. A maintainer may
 set `ALLOW_WORKTREE_BACKLOG=1` for an intentional exception.
 

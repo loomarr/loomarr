@@ -4,7 +4,7 @@ import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action, Icon, icons, LoadingStrip, Stack } from "@loomarr/design-system";
+import { Action, Icon, icons, LoadingStrip, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
@@ -89,28 +89,26 @@ const WizardAiBlock = () => {
       {/* Auto-detect header — only meaningful on the local (Ollama) branch. */}
       {liveProvider !== "openai" &&
         (llm.isLoading ? (
-          <Stack
-            align="center"
-            className="text-muted-foreground text-sm"
-            direction="row"
-            gap="inline"
-            render="p"
-          >
+          <Stack align="center" direction="row" gap="inline" render="p">
             <LoadingStrip decorative width={32} />
-            Looking for a local AI model…
+            <Text as="span" textRole="compact" tone="secondary">
+              Looking for a local AI model…
+            </Text>
           </Stack>
         ) : status?.reachable ? (
-          <Stack align="center" className="text-lock text-sm" direction="row" gap="inline" render="p">
-            <Icon decorative glyph={icons.passed} size="compact" tone="inherit" />
-            {status.model
-              ? `Ollama detected: using ${status.model}.`
-              : "Ollama detected. Pick a model below to turn on suggestions."}
+          <Stack align="center" direction="row" gap="inline" render="p">
+            <Icon decorative glyph={icons.passed} size="compact" tone="success" />
+            <Text as="span" textRole="compact" tone="success">
+              {status.model
+                ? `Ollama detected: using ${status.model}.`
+                : "Ollama detected. Pick a model below to turn on suggestions."}
+            </Text>
           </Stack>
         ) : (
-          <p className="text-muted-foreground text-sm">
+          <Text as="p" textRole="compact" tone="secondary">
             No local Ollama found. Start Ollama on this machine, or switch the provider above to an
             OpenAI-compatible service. You can skip this and add it later. Suggestions stay off until you do.
-          </p>
+          </Text>
         ))}
 
       {/* The real picker: local installed/download list, OR the hosted model picker — chosen

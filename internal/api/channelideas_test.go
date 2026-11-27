@@ -34,7 +34,7 @@ type fakeIdeaLibrary struct {
 	calls int
 }
 
-func (f *fakeIdeaLibrary) IdeaItems(context.Context) ([]ideas.Item, error) {
+func (f *fakeIdeaLibrary) IdeaItems(context.Context, bool) ([]ideas.Item, error) {
 	f.calls++
 	return f.items, nil
 }

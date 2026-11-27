@@ -1,3 +1,4 @@
+import { Text } from "@loomarr/design-system";
 import { overrideCount } from "@/lib/policy-overrides";
 import { cn } from "@/lib/utils";
 import type { ChannelDefaultsSummaryProps } from "./channel-defaults-summary.type";
@@ -8,9 +9,9 @@ import type { ChannelDefaultsSummaryProps } from "./channel-defaults-summary.typ
 const ChannelDefaultsSummary = ({ policy, className }: ChannelDefaultsSummaryProps) => {
   if (overrideCount(policy).overridden > 0) return null;
   return (
-    <p className={cn("text-muted-foreground text-sm", className)}>
+    <Text as="p" className={cn(className)} textRole="compact" tone="secondary">
       This channel uses Loomarr's defaults. Anything you change here applies to this channel only.
-    </p>
+    </Text>
   );
 };
 

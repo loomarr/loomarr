@@ -129,6 +129,9 @@ func backtrackArrange(programs []Slot, rp ResolvedPolicy) ([]Slot, bool) {
 	used := make([]bool, n)
 	out := make([]Slot, 0, n)
 	budget := backtrackBudget
+	if rp.searchBudget > 0 {
+		budget = min(budget, rp.searchBudget)
+	}
 
 	var rec func() bool
 	rec = func() bool {
@@ -220,7 +223,7 @@ func candLess(a, b cand) bool {
 // at 34%: it fully sorted every remaining candidate at every position. Instrumenting the
 // search showed why that is waste — on every SOLVABLE deck the first candidate wins at every
 // position (tried == positions, zero backtracks), so it sorted n candidates n times to consume
-// exactly one of them each time. The first `next()` is now an O(n) scan for the minimum; the
+// exactly one of them each time. The first `next()` is an O(n) scan for the minimum; the
 // sort happens only if the caller comes back, which the measurements say it does not on the
 // path that matters.
 //
@@ -256,6 +259,10 @@ func newCandidateOrder(out, programs []Slot, used []bool, rp ResolvedPolicy) *ca
 	if len(out) > 0 {
 		prevKey = seriesKeyOf(out[len(out)-1])
 	}
+	total := 0
+	for _, n := range counts {
+		total += n
+	}
 
 	cands := make([]cand, 0, len(programs))
 	for i, s := range programs {
@@ -265,7 +272,7 @@ func newCandidateOrder(out, programs []Slot, used []bool, rp ResolvedPolicy) *ca
 		key := seriesKeyOf(s)
 		tier := 2
 		if separationOK(out, s, rp) {
-			if key != prevKey {
+			if key != prevKey || crowded(counts[key], total, rp) {
 				tier = 0
 			} else {
 				tier = 1
@@ -274,6 +281,17 @@ func newCandidateOrder(out, programs []Slot, used []bool, rp ResolvedPolicy) *ca
 		cands = append(cands, cand{idx: i, tier: tier, rem: counts[key], posOrder: i})
 	}
 	return &candidateOrder{cands: cands}
+}
+
+// crowded reports whether a series with `rem` of the `total` remaining slots must continue its
+// run for the rest to fit: on a loop, runs of at most blockMax split by the others' slots hold at
+// most blockMax per other slot, so a series at that limit would otherwise end in one long run.
+// Alternating is the better choice everywhere else; here it spends the slots that split the
+// series' runs (twenty episodes among five others aired five alternations, then fifteen in a
+// row). At the limit rather than past it, so the last run leaves room for the first across the
+// loop seam.
+func crowded(rem, total int, rp ResolvedPolicy) bool {
+	return rp.Sep.BlockMax > 0 && rem >= rp.Sep.BlockMax*(total-rem)
 }
 
 // next returns the next-best candidate index, or ok=false when exhausted.

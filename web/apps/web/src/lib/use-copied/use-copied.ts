@@ -15,10 +15,9 @@ const ACK_MS = 2000;
 // that raced the first, clearing the acknowledgement early.
 const useCopied = <K = true>() => {
   const [copied, setCopied] = useState<K>();
-  // ⚠ React 19's types require an explicit initial value — `useRef<number>()` no longer
-  // infers one. `undefined` is what it always held before the first copy, and the cleanup
-  // below already treats undefined as "no timer pending", so this is the same behaviour
-  // stated out loud rather than a change.
+  // ⚠ React 19's types require an explicit initial value — `useRef<number>()` does not
+  // infer one. `undefined` is what it holds before the first copy, and the cleanup below
+  // treats undefined as "no timer pending".
   const timer = useRef<number | undefined>(undefined);
 
   const mounted = useRef(true);

@@ -2,11 +2,12 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { devicePairApproveSchema } from "@loomarr/core/schemas";
-import { Action, Field, Stack } from "@loomarr/design-system";
+import { Action, Field, Stack, Text } from "@loomarr/design-system";
 import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
+import { useOAuthRequest } from "@/settings/oauth-request";
 
 // The pairing screen a TV sends someone to (§11, Shield P1) — the address the device puts on
 // screen, so it must be SHORT and memorable: `<your-server>/pair`.
@@ -19,21 +20,37 @@ import { useAuth } from "@/auth/use-auth";
 type PairDeviceProps = {
   // The code from `?code=`, when the visitor arrived from a link or a scan.
   initialCode?: string;
+  // Set when an app's sign-in (OAuth, #4485) sent the visitor here: the server path that finishes
+  // it, already validated by the route. Approving then continues there instead of confirming.
+  next?: string;
 };
 
 // Signed-out is an EXPECTED arrival state here, not an error: the person holding the remote is
 // often not yet signed in on the phone they are typing on. So the page says what to do and hands
-// them a link back to this exact URL — code included — rather than a bare "unauthorized".
-const SignInFirst = ({ code }: { code: string }) => {
-  const here = `/pair${code ? `?code=${encodeURIComponent(code)}` : ""}`;
+// them a link back to this exact URL — code (and an app sign-in's way back) included — rather than
+// a bare "unauthorized".
+const SignInFirst = ({ code, next }: { code: string; next?: string }) => {
+  const params = new URLSearchParams();
+  if (code) params.set("code", code);
+  if (next) params.set("next", next);
+  const query = params.toString();
+  const here = `/pair${query ? `?${query}` : ""}`;
   return (
-    <div className="max-w-focused mx-auto px-6 py-16 text-center">
-      <h1 className="text-2xl font-semibold">Add a device</h1>
-      <p className="text-md text-muted-foreground mt-3 leading-relaxed">
-        Sign in first, then we'll bring you straight back here to finish adding your device.
-      </p>
-      {code ? <p className="mt-6 font-mono text-2xl tracking-[0.3em]">{code}</p> : null}
-      <Stack className="mt-8" direction="row" justify="center">
+    <Stack marginHorizontal="auto" maxWidth={512} paddingHorizontal={24} paddingVertical={64} width="100%">
+      <Text as="h1" strong textAlign="center" textRole="display">
+        Add a device
+      </Text>
+      <Stack marginTop={12}>
+        <Text as="p" textAlign="center" textRole="reading" tone="secondary">
+          Sign in first, then we'll bring you straight back here to finish adding your device.
+        </Text>
+      </Stack>
+      {code ? (
+        <Stack align="center" marginTop={24}>
+          <p className="font-mono text-2xl tracking-[0.3em]">{code}</p>
+        </Stack>
+      ) : null}
+      <Stack direction="row" justify="center" marginTop={32}>
         <Action
           accessibilityRole="link"
           density="touch"
@@ -42,7 +59,46 @@ const SignInFirst = ({ code }: { code: string }) => {
           Sign in
         </Action>
       </Stack>
-    </div>
+    </Stack>
+  );
+};
+
+// An app's sign-in, said plainly BEFORE the click: which app claims to be asking, and the host its
+// grant is sent to, which is the part a link from a stranger cannot fake. The server cleans the
+// name; the host is the check.
+const AppAsking = ({ asking }: { asking: ReturnType<typeof useOAuthRequest> }) => {
+  if (asking.isError) {
+    const expired = asking.error instanceof ApiError && asking.error.status === 404;
+    return (
+      <Text as="p" textRole="reading" tone="danger">
+        {expired
+          ? "This sign-in has expired or was already finished. Start it again from the app."
+          : "Couldn't check which app is asking. Reload the page to try again."}
+      </Text>
+    );
+  }
+  if (!asking.data)
+    return (
+      <Text as="p" textRole="reading" tone="secondary">
+        Checking which app is asking…
+      </Text>
+    );
+  const { app, sendsTo, loopback } = asking.data;
+  return (
+    <>
+      <Text as="p" strong textRole="reading">
+        {app} wants to sign in to Loomarr as you.
+      </Text>
+      <Stack marginTop={8}>
+        <Text as="p" textRole="reading" tone="secondary">
+          {loopback
+            ? `It sends the sign-in to an app on the computer you're using (${sendsTo}).`
+            : `It sends the sign-in to ${sendsTo}.`}{" "}
+          Add it only if you just asked it to connect: it can do everything you can in Loomarr until you
+          remove it.
+        </Text>
+      </Stack>
+    </>
   );
 };
 
@@ -59,13 +115,15 @@ const classifyApproveFailure = (error: unknown): ApproveFailure => {
   return "unreachable";
 };
 
-const PairDevice = ({ initialCode }: PairDeviceProps) => {
+const PairDevice = ({ initialCode, next }: PairDeviceProps) => {
   // Prefilled but NEVER auto-submitted. `?code=` is RFC 8628's verification_uri_complete — what a
   // QR encodes — and approving on load would mean any link a person opens could pair a device
   // silently. The click is the consent, so the link only saves typing.
   const [approved, setApproved] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { user, isLoading } = useAuth();
+  // Read only once signed in: the route needs a session, and signed-out visitors see SignInFirst.
+  const asking = useOAuthRequest(user ? next : undefined);
 
   const approve = authApi.useDevicePairApprove({
     mutation: {
@@ -80,6 +138,11 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
       { data: { userCode } },
       {
         onSuccess: (res) => {
+          // An app's sign-in finishes on the server, which sends this browser back to the app.
+          if (next) {
+            window.location.assign(next);
+            return;
+          }
           const body = unwrap(res);
           setApproved(body?.deviceName ?? "Device");
           form.setFieldValue("userCode", "");
@@ -101,22 +164,32 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
   const retry = () => attempt(form.state.values.userCode);
 
   if (isLoading) return null;
-  if (!user) return <SignInFirst code={initialCode ?? ""} />;
+  if (!user) return <SignInFirst code={initialCode ?? ""} next={next} />;
 
   return (
-    <div className="max-w-focused mx-auto px-6 py-16">
-      <h1 className="text-2xl font-semibold">Add a device</h1>
-      <p className="text-md text-muted-foreground mt-3 leading-relaxed">
-        Your TV, streaming box or phone is showing a short code. Enter it here and it signs in as you.
-      </p>
+    <Stack marginHorizontal="auto" maxWidth={512} paddingHorizontal={24} paddingVertical={64} width="100%">
+      <Text as="h1" strong textRole="display">
+        Add a device
+      </Text>
+      <Stack marginTop={12}>
+        {next ? (
+          <AppAsking asking={asking} />
+        ) : (
+          <Text as="p" textRole="reading" tone="secondary">
+            Your TV, streaming box or phone is showing a short code. Enter it here and it signs in as you.
+          </Text>
+        )}
+      </Stack>
 
-      <form
-        className="mt-8 space-y-4"
+      <Stack
+        gap="4"
+        marginTop={32}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
           void form.handleSubmit();
         }}
+        render="form"
       >
         <form.Field name="userCode">
           {(field) => (
@@ -149,7 +222,8 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
           {(userCode) => (
             <Action
               density="touch"
-              disabled={!userCode.trim() || approve.isPending}
+              // An app's sign-in cannot be approved until the page has said which app it is.
+              disabled={!userCode.trim() || approve.isPending || (next !== undefined && !asking.data)}
               style={{ width: "100%" }}
               submit
             >
@@ -157,54 +231,65 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
             </Action>
           )}
         </form.Subscribe>
-      </form>
+      </Stack>
 
       {approve.isError
         ? (() => {
             const failure = classifyApproveFailure(approve.error);
             if (failure === "invalid-code")
               return (
-                <p className="text-destructive text-md mt-4 text-center">
-                  That code is wrong or has expired. Codes last ten minutes — check the screen and try again.
-                </p>
+                <Stack marginTop={16}>
+                  <Text as="p" textAlign="center" textRole="reading" tone="danger">
+                    That code is wrong or has expired. Codes last ten minutes — check the screen and try
+                    again.
+                  </Text>
+                </Stack>
               );
             if (failure === "rate-limited")
               return (
-                <p className="text-caution text-md mt-4 text-center">
-                  Too many pairing codes tried. Wait a moment and try again.
-                </p>
+                <Stack marginTop={16}>
+                  <Text as="p" textAlign="center" textRole="reading" tone="warning">
+                    Too many pairing codes tried. Wait a moment and try again.
+                  </Text>
+                </Stack>
               );
             return (
-              <div className="mt-4 text-center">
-                <p className="text-caution text-md">
+              <Stack marginTop={16}>
+                <Text as="p" textAlign="center" textRole="reading" tone="warning">
                   Couldn't reach Loomarr. Check your connection and try again.
-                </p>
-                <Stack className="mt-3" direction="row" justify="center">
+                </Text>
+                <Stack direction="row" justify="center" marginTop={12}>
                   <Action onPress={retry} variant="outline">
                     Try again
                   </Action>
                 </Stack>
-              </div>
+              </Stack>
             );
           })()
         : null}
 
       {approved ? (
-        <div className="border-border mt-8 rounded-lg border p-5 text-center">
-          <p className="text-md font-medium">{approved} is ready</p>
-          <p className="text-muted-foreground mt-1 leading-relaxed">
-            It should start playing in a few seconds. You can remove it any time from Settings → Access and
-            devices.
-          </p>
-        </div>
+        <Stack borderColor="$borderDecorative" borderRadius={8} borderWidth={1} marginTop={32} padding={20}>
+          <Text as="p" textAlign="center" textRole="heading">
+            {approved} is ready
+          </Text>
+          <Stack marginTop={4}>
+            <Text as="p" textAlign="center" textRole="body" tone="secondary">
+              It should start playing in a few seconds. You can remove it any time from Settings → Access and
+              devices.
+            </Text>
+          </Stack>
+        </Stack>
       ) : null}
 
       {/* A paired device acts as the person who approved it, with their real role (ADR 0043), so an
           admin's TV is an admin. */}
-      <p className="text-muted-foreground mt-10 text-center text-sm leading-relaxed">
-        The device acts with your access and role. Removing it later signs out only that device.
-      </p>
-    </div>
+      <Stack marginTop={40}>
+        <Text as="p" textAlign="center" textRole="compact" tone="secondary">
+          The device acts with your access and role. Removing it later signs out only that device.
+        </Text>
+      </Stack>
+    </Stack>
   );
 };
 

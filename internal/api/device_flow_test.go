@@ -27,6 +27,14 @@ import (
 // an optional approval limiter enabled.
 func newDeviceHarness(t *testing.T, limiter *auth.RateLimiter) *apiHarness {
 	t.Helper()
+	return newDeviceHarnessAt(t, limiter, nil)
+}
+
+// newDeviceHarnessAt is newDeviceHarness with a public address, which an app's OAuth sign-in is
+// issued under (internal/api/agents/oauth.go). publicURL is read per request, so a test can point
+// it at the harness's own address once the server has one.
+func newDeviceHarnessAt(t *testing.T, limiter *auth.RateLimiter, publicURL func() string) *apiHarness {
+	t.Helper()
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
 	ms.Accounts = map[string]testkit.Account{
@@ -54,10 +62,11 @@ func newDeviceHarness(t *testing.T, limiter *auth.RateLimiter) *apiHarness {
 			},
 			Channels: api.ChannelsOptions{Binder: chBinder},
 			People: api.PeopleOptions{
-				Login:         auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
-				Sessions:      mgr,
-				Devices:       devices,
-				DeviceLimiter: limiter,
+				Login:           auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+				Sessions:        mgr,
+				Devices:         devices,
+				DeviceLimiter:   limiter,
+				AccessPublicURL: publicURL,
 			},
 		})
 	})
@@ -407,6 +416,20 @@ func TestDeviceApproveIsRateLimited(t *testing.T) {
 	}
 	if seen[http.StatusTooManyRequests] == 0 {
 		t.Fatalf("no attempt was throttled; statuses = %v", seen)
+	}
+}
+
+// The guard is per address as well as per account: a second account on the same address gets no
+// fresh allowance of guesses.
+func TestDeviceApproveIsRateLimitedPerAddressAcrossAccounts(t *testing.T) {
+	t.Parallel()
+	srv := newDeviceHarness(t, auth.NewRateLimiter(0.01, 2)).Server
+	kid, boss := login(t, srv, "kid", "pw"), login(t, srv, "boss", "pw")
+	for range 2 {
+		postJSON(t, srv, "/v1/auth/device/approve", map[string]string{"userCode": "BCDF-GHJK"}, kid)
+	}
+	if code, _ := postJSON(t, srv, "/v1/auth/device/approve", map[string]string{"userCode": "BCDF-GHJK"}, boss); code != http.StatusTooManyRequests {
+		t.Fatalf("a second account on the spent address = %d, want 429", code)
 	}
 }
 

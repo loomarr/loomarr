@@ -76,6 +76,9 @@ type playoutDeps struct {
 	startup       *diagnostics.Startup
 	// watermarks draws the channel's bug on programme items (#1512).
 	watermarks *channelWatermarks
+	// subtitleDecoder decodes the image subtitle tracks a channel burns in (#2088 step 8); nil
+	// decodes nothing.
+	subtitleDecoder playout.SubtitleStillDecoder
 }
 
 func buildPlayout(deps playoutDeps) (playoutBuild, error) {
@@ -172,8 +175,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	})
 	playoutRes = playoutresolve.New(playoutresolve.Config{
 		Engine: channelEngine, Now: time.Now,
-		Metrics:       deps.metrics,
-		DetectContext: rootCtx,
+		Metrics:  deps.metrics,
+		GoDetect: owner.goOnDemand,
 		// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
 		// state and must not be able to change it.
 		Titles: st,
@@ -244,6 +247,21 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	subtitleReader := subtitles.NewExtractor(ffmpegBin, filepath.Join(stateDir, "subtitles"), log)
 	playoutRes.SetSubtitles(st, subtitleReader)
 	owner.goRun(subtitleReader.Run)
+	// Image subtitles a channel burns in (#2088 step 8), gated by the bug's GPU overlay self-check
+	// and blended by its kernel. The image worker decodes the track (docs/design/images.md); without
+	// a decoder nothing is looked up and programmes air without their image tracks. The preparer is
+	// generation-owned, so Shutdown joins a preparation in flight.
+	if burnDir, err := filepath.Abs(filepath.Join(stateDir, "subtitle-burn")); err == nil && deps.watermarks != nil {
+		decoder := deps.subtitleDecoder
+		burns := playoutresolve.NewSubtitleBurns(playoutresolve.SubtitleBurnsConfig{
+			Dir: burnDir, Prepare: playout.FFmpegBurnInWith(ffmpegBin, deps.processDiagnostics, decoder),
+			Decodes: playout.SubtitleDecoderAvailable(decoder),
+			Works:   deps.watermarks.OverlayWorks, Kernel: deps.watermarks.BlendKernel,
+			Go: owner.goOnDemand, Log: log,
+		})
+		playoutRes.SetSubtitleBurns(burns)
+		owner.goRun(burns.Run)
+	}
 	playoutResolverSvc = playoutRes
 
 	// Broadcast-codec backfill (§9.1 V50), run on EVERY boot. The migration defaults every

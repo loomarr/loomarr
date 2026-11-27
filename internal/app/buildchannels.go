@@ -67,6 +67,7 @@ func buildChannels(
 	log *slog.Logger, processDiagnostics *diagnostics.ProcessManager,
 	storageGovernor *storagegovernor.Governor,
 	metricRecorder *metrics.Recorder, watermarks *channelWatermarks, calendar func() schedule.Calendar,
+	subtitleDecoder playout.SubtitleStillDecoder,
 ) (channelBuild, error) {
 	// Scheduler + Tunarr (§9): the channel reconcile engine + periodic
 	// sweep, plus the Live TV wiring connector (guide-refresh poker). Wired when a
@@ -293,6 +294,7 @@ func buildChannels(
 			capacityProbe:      ov.CapacityProbe,
 			startup:            ov.Startup,
 			watermarks:         watermarks,
+			subtitleDecoder:    subtitleDecoder,
 		})
 		if err != nil {
 			return channelBuild{}, err
@@ -310,7 +312,7 @@ func buildChannels(
 		// ClaimDueChannels lease), driven by River. The Runner's lease/batch are constructed
 		// here; it has no standalone loop.
 		chSweep := channels.NewRunner(channelEngine, st, chEvery, 2*chEvery, 50, time.Now, log)
-		jobReg.Add(channelMaintenanceJob(chSweep, func(ctx context.Context) error {
+		jobReg.Add(channelMaintenanceJob(chSweep, log, func(ctx context.Context) error {
 			return backendController.ApplyCurrent(ctx, resolveDesiredBackend)
 		}, func(ctx context.Context) error {
 			// Same gate as the auto-wire after a save: no Tunarr configured, nothing to wire.

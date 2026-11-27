@@ -7,12 +7,11 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
 import { ideaReason } from "@loomarr/core/requests";
-import { Action, Badge, ChoiceCard, Field, Stack } from "@loomarr/design-system";
+import { Action, Badge, ChoiceCard, Field, Stack, Text } from "@loomarr/design-system";
 import { AiReconnectBanner } from "@loomarr/ui";
 import { useStore } from "@tanstack/react-form";
 import { useState } from "react";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../components/loomarr/shell";
 import { useAiReconnect } from "../use-ai-reconnect";
 import type { ManualChannelBuilderProps } from "./manual-channel-builder.type";
@@ -41,8 +40,8 @@ const lineupBadge = (item: ProposalItem) =>
 
 // ManualChannelBuilder — the manual/AI-off channel creation path (#1817, decision G2; approved
 // mock #1872). Library facets (from the existing GET /v1/discovery/ideas, #1665/#1720) and direct
-// library/TMDB search feed ONE lineup. It offers no starter templates: they were the AI path's four
-// example chips again, and filled only a name and a description that build nothing without AI
+// library/TMDB search feed ONE lineup. It offers no starter templates: they would be the AI path's four
+// example chips again, filling only a name and a description that build nothing without AI
 // (#2746, #3411). "Continue to review" is this component's only
 // write: POST /v1/discovery/manual-channel re-grounds the picks and returns a job id, which the
 // caller hands to the EXISTING ChannelSuggestPanel/ProposalReview — the same submit → review →
@@ -139,14 +138,14 @@ const ManualChannelBuilder = ({
         : `${lineup.length} ${lineup.length === 1 ? "title" : "titles"} · Loomarr will add ${missing} missing ${missing === 1 ? "title" : "titles"}`;
 
   return (
-    <div className={cn("flex flex-col gap-5", className)}>
+    <Stack className={className} gap="5">
       {/* The page's one heading names this ("Add a channel", or "Edit before you request" from an
           idea); this sentence is its description, so the builder nests no heading of its own. */}
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         {fromIdea
           ? `Starting from the "${initialIdea.name}" idea. Everything below is already library-grounded — edit the lineup before requesting.`
           : "No AI service is connected yet, so Loomarr can't generate suggestions. Build from your library below, or search for titles directly — you'll choose every title before anything is created."}
-      </p>
+      </Text>
 
       {aiReconnected && !keepManual && (
         <AiReconnectBanner
@@ -172,14 +171,16 @@ const ManualChannelBuilder = ({
       </form.Field>
 
       {!fromIdea && (
-        <div>
-          <p className="text-sm font-medium">Build from your library</p>
-          <p className="text-muted-foreground mt-1 text-xs">
+        <Stack gap="1">
+          <Text as="p" textRole="cardLabel">
+            Build from your library
+          </Text>
+          <Text as="p" textRole="hint" tone="secondary">
             Grounded in your library's genres, decades and the seasonal calendar — no AI involved.
-          </p>
-          <Stack className="mt-2" direction="row" gap="inline" wrap>
+          </Text>
+          <Stack direction="row" gap="inline" marginTop={4} wrap>
             {facets.map((idea: ChannelIdeaDTO) => (
-              <div key={idea.id} className="min-w-[150px]">
+              <Stack flexShrink={0} key={idea.id} minWidth={150}>
                 <ChoiceCard
                   accent="info"
                   description={ideaReason(idea, false, Date.now())}
@@ -187,11 +188,11 @@ const ManualChannelBuilder = ({
                   selected={activeFacetId === idea.id}
                   title={idea.name}
                 />
-              </div>
+              </Stack>
             ))}
           </Stack>
           {activeFacet && (
-            <ul className="border-border mt-2 rounded-md border">
+            <Stack borderColor="borderDecorative" borderRadius={8} borderWidth={1} marginTop={4} render="ul">
               {activeFacet.titles
                 .filter((item) => {
                   const key = provisionKey(item);
@@ -200,15 +201,23 @@ const ManualChannelBuilder = ({
                 .map((item, index) => (
                   <Stack
                     align="center"
-                    className="border-border border-b px-3 py-2 last:border-b-0"
+                    borderColor="borderDecorative"
+                    borderTopWidth={index === 0 ? 0 : 1}
                     direction="row"
                     gap="inline"
                     key={provisionKey(item) || `${activeFacet.id}-${index}`}
+                    paddingHorizontal={12}
+                    paddingVertical={8}
                     render="li"
                   >
-                    <span className="min-w-0 flex-1 text-sm">
-                      {item.name} <span className="text-muted-foreground">{item.year}</span>
-                    </span>
+                    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0} render="span">
+                      <Text as="span" textRole="compact">
+                        {item.name}{" "}
+                        <Text as="span" textRole="compact" tone="secondary">
+                          {item.year}
+                        </Text>
+                      </Text>
+                    </Stack>
                     {lineupBadge(item)}
                     <Action
                       accessibilityLabel={`Add ${item.name}`}
@@ -221,19 +230,23 @@ const ManualChannelBuilder = ({
                   </Stack>
                 ))}
               {activeFacet.titles.length === 0 && (
-                <li className="text-muted-foreground px-3 py-2 text-sm">
-                  Every title here is already in your lineup.
-                </li>
+                <Stack paddingHorizontal={12} paddingVertical={8} render="li">
+                  <Text as="span" textRole="compact" tone="secondary">
+                    Every title here is already in your lineup.
+                  </Text>
+                </Stack>
               )}
-            </ul>
+            </Stack>
           )}
-        </div>
+        </Stack>
       )}
 
-      <div>
-        <p className="text-sm font-medium">Search your library or request new titles</p>
+      <Stack gap="2">
+        <Text as="p" textRole="cardLabel">
+          Search your library or request new titles
+        </Text>
         {adding ? (
-          <Stack className="mt-2" gap="inline">
+          <Stack gap="inline">
             <SearchCommand
               query={query}
               onQueryChange={setQuery}
@@ -268,43 +281,55 @@ const ManualChannelBuilder = ({
             />
           </Stack>
         ) : (
-          <div className="mt-2">
+          <Stack>
             <Action onPress={() => setAdding(true)} variant="outline">
               Search titles
             </Action>
-          </div>
+          </Stack>
         )}
-      </div>
+      </Stack>
 
-      <div>
+      <Stack gap="2">
         <Stack align="center" direction="row" justify="between">
-          <p className="text-sm font-medium">Your lineup</p>
+          <Text as="p" textRole="cardLabel">
+            Your lineup
+          </Text>
           {lineup.length > 0 && (
             <Action onPress={() => setLineup([])} variant="ghost">
               Clear
             </Action>
           )}
         </Stack>
-        <ul className="border-border mt-2 rounded-md border">
+        <Stack borderColor="borderDecorative" borderRadius={8} borderWidth={1} render="ul">
           {lineup.length === 0 ? (
-            <li className="text-muted-foreground px-3 py-5 text-center text-sm">
-              No titles yet. Pick a facet above or search for one.
-            </li>
+            <Stack paddingHorizontal={12} paddingVertical={20} render="li">
+              <Text as="span" textAlign="center" textRole="compact" tone="secondary">
+                No titles yet. Pick a facet above or search for one.
+              </Text>
+            </Stack>
           ) : (
             lineup.map((item, index) => {
               const key = provisionKey(item) || `unkeyed-${index}`;
               return (
                 <Stack
                   align="center"
-                  className="border-border border-b px-3 py-2 last:border-b-0"
+                  borderColor="borderDecorative"
+                  borderTopWidth={index === 0 ? 0 : 1}
                   direction="row"
                   gap="inline"
                   key={key}
+                  paddingHorizontal={12}
+                  paddingVertical={8}
                   render="li"
                 >
-                  <span className="min-w-0 flex-1 text-sm">
-                    {item.name} <span className="text-muted-foreground">{item.year}</span>
-                  </span>
+                  <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0} render="span">
+                    <Text as="span" textRole="compact">
+                      {item.name}{" "}
+                      <Text as="span" textRole="compact" tone="secondary">
+                        {item.year}
+                      </Text>
+                    </Text>
+                  </Stack>
                   {lineupBadge(item)}
                   <Action
                     icon="close"
@@ -318,24 +343,28 @@ const ManualChannelBuilder = ({
               );
             })
           )}
-        </ul>
-      </div>
+        </Stack>
+      </Stack>
 
       {submit.error != null && (
-        <p className="text-onair-300 text-sm">
+        <Text as="p" textRole="compact" tone="danger">
           {toProblem(submit.error).title ?? "That didn't go through. Try again."}
-        </p>
+        </Text>
       )}
 
       <Stack
         align="center"
-        className="border-border border-t pt-4"
+        borderColor="borderDecorative"
+        borderTopWidth={1}
         direction="row"
         gap="inline"
         justify="between"
+        paddingTop={16}
         wrap
       >
-        <span className="text-muted-foreground text-sm">{summary}</span>
+        <Text as="span" textRole="compact" tone="secondary">
+          {summary}
+        </Text>
         <Stack direction="row" gap="inline">
           <Action onPress={onCancel} variant="ghost">
             Cancel
@@ -345,7 +374,7 @@ const ManualChannelBuilder = ({
           </Action>
         </Stack>
       </Stack>
-    </div>
+    </Stack>
   );
 };
 

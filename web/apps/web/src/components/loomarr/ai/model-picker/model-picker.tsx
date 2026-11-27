@@ -1,7 +1,6 @@
 import type { LLMModelView } from "@loomarr/api/models/lLMModelView";
 import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
-import { Action, Badge, type BadgeTone, Stack } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
+import { Action, Badge, type BadgeTone, Card, Stack, Text } from "@loomarr/design-system";
 import type { ModelPickerProps } from "./model-picker.type";
 
 // The §8.1 model picker. Picking a local model is a real onboarding hurdle — a household
@@ -30,10 +29,10 @@ const ModelPicker = ({
 }: ModelPickerProps) => (
   <Stack className={className} gap="control">
     {(gpuName || vramGiB) && (
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         Ranked for {gpuName ?? "this machine"}
         {vramGiB ? ` · ${formatGiB(vramGiB)} VRAM` : ""}.
-      </p>
+      </Text>
     )}
 
     <Stack gap="inline" render="ul">
@@ -47,16 +46,16 @@ const ModelPicker = ({
         const unusable = !model.runtimeOk || model.fit === "wont_fit";
 
         return (
-          <Stack
-            align="start"
-            className={cn(
-              "border-border bg-card rounded-md border px-3 py-2.5",
-              // The model in use is neutral, an elevated row like the drawer's tuned one (#1909 Q2).
-              isActive && "bg-static-800",
-            )}
-            direction="row"
-            gap="control"
+          // The model in use is neutral, an elevated row like the drawer's tuned one (#1909 Q2).
+          <Card
+            alignItems="flex-start"
+            borderRadius={6}
+            flexDirection="row"
+            gap={12}
             key={model.tag}
+            level={isActive ? "elevated" : "raised"}
+            paddingHorizontal={12}
+            paddingVertical={10}
             render="li"
           >
             {/* A model that can't run reads as "here but unavailable" at a glance (§8.1) —
@@ -65,10 +64,14 @@ const ModelPicker = ({
                 whole-row `opacity`: opacity composites every descendant (incl. the muted tag)
                 below the WCAG AA contrast floor, which the a11y gate rejects (frontend-design
                 §7 — express state with color/semantics, never opacity over text). */}
-            <div className="min-w-0 flex-1">
-              <Stack align="center" className="text-sm font-medium" direction="row" gap="inline" render="p">
-                {model.label}
-                <span className="text-static-400 font-mono text-xs">{model.tag}</span>
+            <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+              <Stack align="center" direction="row" gap="inline" render="p">
+                <Text as="span" textRole="cardLabel">
+                  {model.label}
+                </Text>
+                <Text as="span" textRole="mono" tone="secondary">
+                  {model.tag}
+                </Text>
                 {model.recommended && (
                   <Badge shape="square" tone="signal">
                     recommended
@@ -80,20 +83,30 @@ const ModelPicker = ({
                   </Badge>
                 )}
               </Stack>
-              <p className="text-muted-foreground mt-0.5 text-sm">{model.why}</p>
-              <Stack align="center" className="mt-1 text-xs" direction="row" gap="inline" render="p">
+              <Stack marginTop={2}>
+                <Text as="p" textRole="compact" tone="secondary">
+                  {model.why}
+                </Text>
+              </Stack>
+              <Stack align="center" direction="row" gap="inline" marginTop={4} render="p">
                 <Badge shape="square" tone={fit.tone}>
                   {fit.text}
                 </Badge>
-                <span className="text-static-400">~{formatGiB(model.approxVramGiB)}</span>
-                {!model.runtimeOk && <span className="text-onair-300">needs a newer Ollama</span>}
+                <Text as="span" textRole="hint" tone="secondary">
+                  ~{formatGiB(model.approxVramGiB)}
+                </Text>
+                {!model.runtimeOk && (
+                  <Text as="span" textRole="hint" tone="danger">
+                    needs a newer Ollama
+                  </Text>
+                )}
                 {isPulling && (
-                  <span className="text-tune">
+                  <Text as="span" textRole="hint" tone="info">
                     downloading{progress !== undefined ? ` ${formatPercentPoints(progress)}` : "…"}
-                  </span>
+                  </Text>
                 )}
               </Stack>
-            </div>
+            </Stack>
 
             {model.pulled ? (
               <Action
@@ -116,7 +129,7 @@ const ModelPicker = ({
                 {isPulling ? "Downloading…" : "Download"}
               </Action>
             )}
-          </Stack>
+          </Card>
         );
       })}
     </Stack>

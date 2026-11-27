@@ -48,7 +48,7 @@ func (w *Watcher) Run(ctx context.Context) {
 		}
 		if err != nil && ctx.Err() == nil {
 			w.log().Warn("library scan: watching stopped; the next walk catches up", "err", err)
-			w.Scanner.Trigger()
+			w.Scanner.PassSoon()
 			t := time.NewTimer(resync)
 			select {
 			case <-ctx.Done():
@@ -129,7 +129,7 @@ func (w *Watcher) watch(ctx context.Context, watched watchedRoots) error {
 			}
 			if errors.Is(err, fsnotify.ErrEventOverflow) {
 				w.log().Warn("library scan: too many changes at once; walking every folder")
-				w.Scanner.Trigger()
+				w.Scanner.PassSoon()
 				continue
 			}
 			return err
@@ -201,8 +201,9 @@ func (w *Watcher) addTree(fsw *fsnotify.Watcher, root, dir string) {
 				return
 			}
 		}
+		titled := holdsTitle(relTo(root, d), entries)
 		for _, e := range entries {
-			if !e.IsDir() || skippedDir(e.Name(), d != root) || discDirs[strings.ToLower(e.Name())] {
+			if !e.IsDir() || skippedDir(relTo(root, d), e.Name(), titled) || discDirs[strings.ToLower(e.Name())] {
 				continue
 			}
 			add(filepath.Join(d, e.Name()))

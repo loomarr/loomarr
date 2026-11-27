@@ -1,7 +1,16 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { LocationDTO } from "@loomarr/api/models/locationDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Combobox, type ComboboxOption, Icon, icons, Stack } from "@loomarr/design-system";
+import {
+  Action,
+  Badge,
+  Combobox,
+  type ComboboxOption,
+  Icon,
+  icons,
+  Stack,
+  Text,
+} from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useId, useState } from "react";
 import type { LocationPickerProps } from "./location-picker.type";
@@ -144,19 +153,23 @@ const LocationPicker = ({
   const visibleError = locationError ?? error;
 
   return (
-    <div className="max-w-2xl">
-      <Stack align="center" className="mb-1.5" direction="row" gap="inline">
-        <label htmlFor={`${listID}-input`} className="text-sm font-medium">
+    <Stack maxWidth={672}>
+      <Stack align="center" direction="row" gap="inline" marginBottom={6}>
+        <Text as="label" htmlFor={`${listID}-input`} textRole="cardLabel" tone="primary">
           Location
-        </label>
+        </Text>
         {locked && lockedLabel && (
-          <span className="bg-static-800 text-2xs text-static-400 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono">
-            <Icon decorative glyph={icons.locked} size="compact" tone="inherit" /> {lockedLabel}
-          </span>
+          <Badge
+            icon={<Icon decorative glyph={icons.locked} size="compact" tone="inherit" />}
+            shape="square"
+            tone="neutral"
+          >
+            {lockedLabel}
+          </Badge>
         )}
       </Stack>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <div className="min-w-0 flex-1">
+      <Stack direction={{ base: "column", sm: "row" }} gap="2">
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
           <Combobox
             autoHighlight
             disabled={locked}
@@ -185,7 +198,7 @@ const LocationPicker = ({
             stale={!choicesReady}
             value={chosen}
           />
-        </div>
+        </Stack>
         {allowDetection && (
           <Action
             disabled={locked || detecting}
@@ -196,27 +209,37 @@ const LocationPicker = ({
             {detecting ? "Finding…" : "Use my location"}
           </Action>
         )}
-      </div>
+      </Stack>
       {evidence?.approximate && (
-        <p className="text-muted-foreground mt-2 text-sm">
-          Approximate location from your network. You can choose a more specific place above.
-          {evidence.attribution && (
-            <>
-              {" "}
-              <a className="underline" href={evidence.attribution} target="_blank" rel="noreferrer">
-                IP Geolocation by DB-IP
-              </a>
-            </>
-          )}
-        </p>
+        <Stack marginTop={8}>
+          <Text as="p" textRole="compact" tone="secondary">
+            Approximate location from your network. You can choose a more specific place above.
+            {evidence.attribution && (
+              <>
+                {" "}
+                <a className="underline" href={evidence.attribution} target="_blank" rel="noreferrer">
+                  IP Geolocation by DB-IP
+                </a>
+              </>
+            )}
+          </Text>
+        </Stack>
       )}
       {visibleError && (
-        <p className="text-destructive mt-2 text-sm" role="alert">
-          {visibleError}
-        </p>
+        <Stack marginTop={8} role="alert">
+          <Text as="p" textRole="compact" tone="danger">
+            {visibleError}
+          </Text>
+        </Stack>
       )}
-      {!value.country && !visibleError && <p className="text-muted-foreground mt-2 text-sm">{emptyHint}</p>}
-    </div>
+      {!value.country && !visibleError && (
+        <Stack marginTop={8}>
+          <Text as="p" textRole="compact" tone="secondary">
+            {emptyHint}
+          </Text>
+        </Stack>
+      )}
+    </Stack>
   );
 };
 

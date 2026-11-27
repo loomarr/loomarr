@@ -1,5 +1,15 @@
-import { Action, Screen, Stack, type StackAlign, type StackGap, Surface, Text } from "@loomarr/design-system";
+import {
+  Action,
+  Field,
+  Screen,
+  Stack,
+  type StackAlign,
+  type StackGap,
+  Surface,
+  Text,
+} from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useState } from "react";
 
 // Stack — layout only. It draws nothing: the boxes below are Surfaces so the arrangement can be
 // seen. Gap comes from the spacing tokens (inline 8, control 12, section 24, screen 32).
@@ -84,6 +94,115 @@ const Workshop = () => (
   </Screen>
 );
 
+// `render="form"`: the Stack is the <form>, so its arrangement and its attributes live on one element.
+// `noValidate` leaves validation to the app's own messages; Enter in the field submits.
+const FormWorkshop = () => {
+  const [name, setName] = useState("");
+  const [sent, setSent] = useState<string | null>(null);
+  return (
+    <Screen gap="section">
+      <Surface padding="section">
+        <Stack
+          aria-label="Name a channel"
+          gap="control"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            setSent(name);
+          }}
+          render="form"
+        >
+          <Text textRole="title">Name a channel</Text>
+          <Field label="Channel name" onChangeText={setName} placeholder="Saturday Cartoons" value={name} />
+          <Stack direction="row" gap="inline" justify="end">
+            <Action submit>Save</Action>
+          </Stack>
+          {sent === null ? null : <Text textRole="body">{`Saved: ${sent}`}</Text>}
+        </Stack>
+      </Surface>
+    </Screen>
+  );
+};
+
+// A wrapped row whose lines sit closer than its columns (`columnGap` 16, `rowGap` 6): chips that
+// break onto a second line stay a family, not a column of strangers.
+const AxisGapsWorkshop = () => (
+  <Screen gap="section">
+    <Surface gap="control" padding="section">
+      <Text textRole="title">Column gap 4, row gap 1.5</Text>
+      <Stack columnGap="4" direction="row" rowGap="1.5" wrap>
+        {wrapping.map((name) => (
+          <Tile key={name}>{name}</Tile>
+        ))}
+      </Stack>
+    </Surface>
+    <Surface gap="control" padding="section">
+      <Text textRole="title">One axis named, the other from gap</Text>
+      <Stack direction="row" gap="inline" rowGap="none" wrap>
+        {wrapping.map((name) => (
+          <Tile key={name}>{name}</Tile>
+        ))}
+      </Stack>
+    </Surface>
+  </Screen>
+);
+
+// Responsive values: a column of title over actions below 640 wide, a row with the actions pushed to
+// the far end from there up (`{ base, sm }`, as Tailwind's `flex-col sm:flex-row`). Resize the
+// window across 640 to watch it flip; at the width the visual suite renders, it is the row.
+const ResponsiveWorkshop = () => (
+  <Screen gap="section">
+    <Surface padding="section">
+      <Stack
+        align={{ base: "stretch", sm: "center" }}
+        direction={{ base: "column", sm: "row" }}
+        gap={{ base: "control", sm: "section" }}
+        justify={{ base: "start", sm: "between" }}
+      >
+        <Stack gap="inline">
+          <Text textRole="title">Saturday Cartoons</Text>
+          <Text textRole="body" tone="secondary">
+            Stacks under its actions on a phone and sits beside them from a tablet up.
+          </Text>
+        </Stack>
+        <Stack direction="row" gap="inline">
+          <Action onPress={() => undefined} variant="outline">
+            Cancel
+          </Action>
+          <Action onPress={() => undefined}>Save</Action>
+        </Stack>
+      </Stack>
+    </Surface>
+  </Screen>
+);
+
+// `divided`: a hairline between rows, the decorative border, as the `divide-y` it replaces drew it.
+// A list renders as a <ul> with DOM <li> children; a Stack child takes the same line.
+const DividedWorkshop = () => (
+  <Screen gap="section">
+    <Surface gap="control" padding="section">
+      <Text textRole="title">Divided list</Text>
+      <Surface backgroundColor="transparent" borderRadius={12}>
+        <Stack divided render="ul">
+          {wrapping.slice(0, 4).map((name) => (
+            <Stack key={name} paddingHorizontal={12} paddingVertical={8} render="li">
+              <Text textRole="label">{name}</Text>
+            </Stack>
+          ))}
+        </Stack>
+      </Surface>
+      <Text textRole="title">Divided row</Text>
+      <Stack align="center" direction="row" divided>
+        {wrapping.slice(0, 3).map((name) => (
+          <Stack key={name} paddingHorizontal={12} paddingVertical={8}>
+            <Text textRole="label">{name}</Text>
+          </Stack>
+        ))}
+      </Stack>
+    </Surface>
+  </Screen>
+);
+
 const meta = {
   title: "Loomarr Components/Stack",
   component: Workshop,
@@ -93,6 +212,10 @@ type Story = StoryObj<typeof meta>;
 
 const Default: Story = {};
 const Light: Story = { globals: { theme: "light" } };
+const AsForm: Story = { render: () => <FormWorkshop /> };
+const AxisGaps: Story = { render: () => <AxisGapsWorkshop /> };
+const Responsive: Story = { render: () => <ResponsiveWorkshop /> };
+const Divided: Story = { render: () => <DividedWorkshop /> };
 
 export default meta;
-export { Default, Light };
+export { AsForm, AxisGaps, Default, Divided, Light, Responsive };
