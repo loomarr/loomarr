@@ -165,13 +165,15 @@ const SegmentPreview = ({
             `getByText("30s")` match two elements and throw. It also reads better: the row's is a
             validation readout, this is a timecode badge on a thumbnail. */}
         {span > 0 && (
-          <span
+          <Text
+            as="span"
             id={spanId}
             aria-hidden
-            className="bg-static-950/85 text-static-100 absolute right-1 bottom-1 rounded-[2px] px-1 font-mono text-[9px]"
+            className="bg-static-950/85 absolute right-1 bottom-1 rounded-[2px] px-1"
+            textRole="microBadge"
           >
             {formatMmSs(span)}
-          </span>
+          </Text>
         )}
       </MediaTile>
 

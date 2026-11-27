@@ -1,7 +1,14 @@
-import { Action, DockedPanel, PressableRow, Stack, Text, Tooltip } from "@loomarr/design-system";
+import { Action, DockedPanel, PressableRow, Stack, Text, Tooltip, typography } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ChannelDrawerProps, DrawerBlock, DrawerChannel } from "./channel-drawer.type";
+
+// The search box's type: the compact role's size at a line height of 1.25/0.875 of it, which sets
+// the box's height (a text input is as tall as its line).
+const SEARCH_TYPE = {
+  fontSize: typography.pointer.compact.size,
+  lineHeight: "calc(1.25 / 0.875)",
+} as const;
 
 // How many recent channels the drawer lists above All channels (the console mock).
 const RECENT_ROWS = 3;
@@ -87,7 +94,8 @@ const ChannelDrawer = ({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Find a channel or show…"
           aria-label="Find a channel or show"
-          className="border-border-control bg-static-950 text-foreground placeholder:text-muted-foreground focus:border-signal w-full rounded-lg border px-3 py-2 text-sm outline-none"
+          className="border-border-control bg-static-950 text-foreground placeholder:text-muted-foreground focus:border-signal w-full rounded-lg border px-3 py-2 outline-none"
+          style={SEARCH_TYPE}
         />
       </div>
       <div className="flex-1 overflow-y-auto p-2.5">
@@ -117,11 +125,11 @@ const ChannelDrawer = ({
           </section>
         ))}
       </div>
-      <p className="border-static-800 text-muted-foreground border-t px-[18px] py-3 font-mono text-[11px]">
+      <Text as="p" className="border-static-800 border-t px-[18px] py-3" textRole="footnote">
         {q
           ? `${listed.length} of ${channels.length} channels · guide has the full week`
           : `${channels.length} channels · type a number to tune direct`}
-      </p>
+      </Text>
     </DockedPanel>
   );
 };
