@@ -428,7 +428,9 @@ doctor() {
 		case "$make_major" in ''|*[!0-9]*|0|1|2|3) echo '  ERROR: GNU Make 4.x is required; macOS users should install Homebrew make and put its gnubin directory on PATH'; fail=1 ;; esac
 	fi
 	if command -v rustc >/dev/null 2>&1; then
-		case "$(rustc --version)" in rustc\ 1.93.*) ;; *) echo "  ERROR: Rust 1.93.x is required (see rust-toolchain.toml)"; fail=1 ;; esac
+		# Unquoted assignment: releaseverify's shell reader cannot follow a quoted `"` inside "$(...)".
+		rust_pin=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$SCRIPT_DIR/../rust-toolchain.toml")
+		case "$(rustc --version)" in "rustc $rust_pin "*) ;; *) echo "  ERROR: Rust $rust_pin is required (see rust-toolchain.toml)"; fail=1 ;; esac
 	fi
 	if [ "$docker_available" = 1 ] && ! docker info >/dev/null 2>&1; then
 		case "$(uname -s)" in
