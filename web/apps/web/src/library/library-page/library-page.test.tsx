@@ -8,7 +8,7 @@ import {
   getMeMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -413,6 +413,165 @@ describe("LibraryPage", () => {
     await userEvent.click(rail);
 
     await waitFor(() => expect(asked).toEqual(["0:60", "200:200", "400:60"]));
+  });
+
+  // A wall of `total` titles whose letter T starts at 400, served in the pages asked for. The
+  // first page is long enough that the grid asks for no second one by itself. `fail` is how many
+  // requests past the first page answer 500, and `hold` keeps those requests waiting.
+  const longWall = ({
+    total = 1000,
+    fail = 0,
+    hold,
+  }: {
+    total?: number;
+    fail?: number;
+    hold?: Promise<void>;
+  } = {}) => {
+    const wall = { asked: [] as string[], failures: fail };
+    server.use(
+      getLibraryStatusMockHandler(libraryStatus()),
+      http.get("*/v1/library/items", async ({ request }) => {
+        const url = new URL(request.url);
+        if (isCount(url)) return HttpResponse.json({ items: [], total });
+        const offset = Number(url.searchParams.get("offset") ?? 0);
+        const limit = Number(url.searchParams.get("limit"));
+        wall.asked.push(`${offset}:${limit}`);
+        if (offset > 0) await hold;
+        if (offset > 0 && wall.failures > 0) {
+          wall.failures--;
+          return HttpResponse.json({ title: "Boom", status: 500 }, { status: 500 });
+        }
+        const length = Math.min(offset === 0 ? Math.max(200, limit) : limit, total - offset);
+        const items = Array.from({ length }, (_, i) => ({
+          ...alpha,
+          id: String(90300000 + offset + i),
+          name: `T${offset + i}`,
+        }));
+        return HttpResponse.json({
+          items,
+          total,
+          letters: [
+            { letter: "B", offset: 10 },
+            { letter: "T", offset: 400 },
+          ],
+        });
+      }),
+    );
+    return wall;
+  };
+  const letter = (name: string) =>
+    screen.findByRole("button", { name: `Jump to titles starting with ${name}` });
+
+  it("stops at the end of the list when the letter is near it", async () => {
+    const wall = longWall({ total: 430 });
+    renderPage();
+
+    await userEvent.click(await letter("T"));
+    await waitFor(() => expect(wall.asked).toEqual(["0:60", "200:200", "400:60"]));
+    await waitFor(async () => expect(await letter("T")).not.toHaveAttribute("aria-busy"));
+    expect(wall.asked).toHaveLength(3);
+  });
+
+  it("shows a failed page, and asks once more on the next press", async () => {
+    const wall = longWall({ fail: 1 });
+    renderPage();
+
+    await userEvent.click(await letter("T"));
+    expect(await screen.findByRole("button", { name: /try again/i })).toBeInTheDocument();
+    expect(await letter("T")).not.toHaveAttribute("aria-busy");
+    expect(wall.asked).toEqual(["0:60", "200:200"]);
+
+    await userEvent.click(await letter("T"));
+    await waitFor(() => expect(wall.asked).toEqual(["0:60", "200:200", "200:200", "400:60"]));
+  });
+
+  it("scrolls to a loaded title even when the page below it fails", async () => {
+    const scrollTo = vi.fn();
+    Object.assign(window, { scrollTo });
+    Object.assign(Element.prototype, { scrollTo });
+    // The grid scrolls whatever holds it, and jsdom has no such thing until one says it scrolls.
+    document.body.style.overflowY = "auto";
+    const wall = longWall({ fail: 1 });
+    renderPage();
+
+    // B is on the first page; only the page below it is asked for, and that one fails.
+    await letter("B");
+    scrollTo.mockClear();
+    await userEvent.click(await letter("T"));
+    await screen.findByRole("button", { name: /try again/i });
+    await userEvent.click(await letter("B"));
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+    expect(wall.asked).toEqual(["0:60", "200:200"]);
+    document.body.style.overflowY = "";
+  });
+
+  it("shows the pressed letter busy, and takes the latest press made during a fetch", async () => {
+    let release = () => {};
+    const wall = longWall({ hold: new Promise<void>((resolve) => (release = resolve)) });
+    renderPage();
+
+    await userEvent.click(await letter("T"));
+    expect(await letter("T")).toHaveAttribute("aria-busy", "true");
+    await userEvent.click(await letter("B"));
+    expect(await letter("T")).not.toHaveAttribute("aria-busy");
+    release();
+    await waitFor(() => expect(wall.asked).toEqual(["0:60", "200:200"]));
+  });
+
+  it("drops a loading jump when the reader scrolls", async () => {
+    let release = () => {};
+    const wall = longWall({ hold: new Promise<void>((resolve) => (release = resolve)) });
+    renderPage();
+
+    await userEvent.click(await letter("T"));
+    expect(await letter("T")).toHaveAttribute("aria-busy", "true");
+    fireEvent.wheel(window);
+    expect(await letter("T")).not.toHaveAttribute("aria-busy");
+    release();
+    await waitFor(async () => expect(await letter("T")).toBeInTheDocument());
+    expect(wall.asked).toEqual(["0:60", "200:200"]);
+  });
+
+  it("forgets a jump when the tab changes, and does not revive it on the way back", async () => {
+    let release = () => {};
+    const wall = longWall({ hold: new Promise<void>((resolve) => (release = resolve)) });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const page = (filter: "all" | "movie") => (
+      <QueryClientProvider client={client}>
+        <LibraryPage filter={filter} search="" />
+      </QueryClientProvider>
+    );
+    const view = render(page("all"));
+
+    await userEvent.click(await letter("T"));
+    view.rerender(page("movie"));
+    await letter("T");
+    view.rerender(page("all"));
+    expect(await letter("T")).not.toHaveAttribute("aria-busy");
+    release();
+    await waitFor(async () => expect(await letter("T")).toBeInTheDocument());
+    expect(wall.asked.filter((a) => a.startsWith("400:"))).toEqual([]);
+  });
+
+  it("keeps as many titles when the list is read again after a deep jump", async () => {
+    const wall = longWall();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const page = (
+      <QueryClientProvider client={client}>
+        <LibraryPage filter="all" search="" />
+      </QueryClientProvider>
+    );
+    const first = render(page);
+    await userEvent.click(await letter("T"));
+    await waitFor(() => expect(wall.asked).toHaveLength(3));
+    await waitFor(async () => expect(await letter("T")).not.toHaveAttribute("aria-busy"));
+    // The page is left and come back to, so the jump's reach is gone, and the list is read again.
+    first.unmount();
+    wall.asked.length = 0;
+    render(page);
+    await act(() => client.invalidateQueries());
+
+    await waitFor(() => expect(wall.asked.slice(-3)).toEqual(["0:200", "200:200", "400:60"]));
   });
 
   it("draws no rail by Recently added, even if letters come back", async () => {

@@ -348,7 +348,11 @@ const Grid = ({
   letters,
   onJump,
   jump,
-}: Pick<LibraryShelfProps, "titles" | "onOpenTitle" | "onEndReached" | "letters" | "onJump" | "jump">) => {
+  jumpingTo,
+}: Pick<
+  LibraryShelfProps,
+  "titles" | "onOpenTitle" | "onEndReached" | "letters" | "onJump" | "jump" | "jumpingTo"
+>) => {
   const width = useWindowWidth();
   const columns = columnsFor(width);
   const [topRow, setTopRow] = useState(0);
@@ -378,14 +382,14 @@ const Grid = ({
   );
   // The grid keeps its place in the tree with and without the rail, so it is never remounted.
   return (
-    <Line alignItems="flex-start" flexWrap="nowrap" gap="control" role="none">
-      <Stack flexBasis={0} flexGrow={1} flexShrink={1} minWidth={0}>
-        {grid}
-      </Stack>
+    // The rail is first in the document, so Tab reaches it before the endless grid; the reversed
+    // row draws it on the right.
+    <Line alignItems="flex-start" flexDirection="row-reverse" flexWrap="nowrap" gap="control" role="none">
       {rail ? (
         <View style={{ alignSelf: "flex-start", position: "sticky", top: 8 } as object}>
           <LetterRail
             available={rail.map((entry) => entry.letter)}
+            busy={jumpingTo}
             current={letterAt(rail, topRow * columns, columns, jump)}
             onSelect={(letter) => {
               const entry = rail.find((candidate) => candidate.letter === letter);
@@ -394,6 +398,9 @@ const Grid = ({
           />
         </View>
       ) : null}
+      <Stack flexBasis={0} flexGrow={1} flexShrink={1} minWidth={0}>
+        {grid}
+      </Stack>
     </Line>
   );
 };
@@ -509,7 +516,7 @@ const Controls = ({
       onValueChange={onSortChange}
       options={SORTS}
       value={sort}
-      width={wide ? 168 : 140}
+      width={wide ? 168 : 124}
     />
   );
   const listed = listedGenre(genres, genre);
@@ -520,7 +527,7 @@ const Controls = ({
       onValueChange={(next) => onGenreChange(next === ALL_GENRES ? undefined : next)}
       options={genreOptions(genres ?? [], chosen)}
       value={chosen ?? ALL_GENRES}
-      width={wide ? 168 : 140}
+      width={wide ? 168 : 124}
     />
   );
   if (wide) {
@@ -571,6 +578,7 @@ const LibraryShelf = ({
   letters,
   onJump,
   jump,
+  jumpingTo,
   search,
   onSearchChange,
   titles,
@@ -660,6 +668,7 @@ const LibraryShelf = ({
           ) : (
             <Grid
               jump={jump}
+              jumpingTo={jumpingTo}
               letters={letters}
               onEndReached={onEndReached}
               onJump={onJump}

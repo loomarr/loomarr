@@ -13,7 +13,10 @@ type Button = {
   getAttribute(name: string): string | null;
   hasAttribute(name: string): boolean;
   textContent: string | null;
+  firstElementChild: object | null;
 };
+const computed = (globalThis as unknown as { getComputedStyle(node: object): { height: string } })
+  .getComputedStyle;
 type Host = Parameters<typeof createRoot>[0] & {
   querySelector(s: string): Button | null;
   querySelectorAll(s: string): ArrayLike<Button>;
@@ -39,7 +42,42 @@ const mount = (node: React.ReactNode) => {
   };
 };
 
+const screen = vi.hoisted(() => ({ height: 900 }));
+vi.mock("react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native")>();
+  return {
+    ...actual,
+    useWindowDimensions: () => ({ ...actual.useWindowDimensions(), height: screen.height }),
+  };
+});
+
 describe("LetterRail", () => {
+  it("marks the letter that is loading as busy", () => {
+    const { host, unmount } = mount(<LetterRail available={["B", "M"]} busy="M" onSelect={() => {}} />);
+    const busy = Array.from(host.querySelectorAll('[aria-busy="true"]')).map((b) => b.textContent);
+    expect(busy).toEqual(["M"]);
+    unmount();
+  });
+
+  // 27 letters at 24 px are 648 px, more than a short window holds under the browser's chrome.
+  it("draws shorter letters in a short window, so the whole rail fits", () => {
+    const letterHeight = () => {
+      const { host, unmount } = mount(<LetterRail available={[]} onSelect={() => {}} />);
+      const box = host.querySelector("button")?.firstElementChild;
+      if (!box) throw new Error("no letter");
+      const height = Number.parseFloat(computed(box).height);
+      unmount();
+      return height;
+    };
+    expect(letterHeight()).toBe(24);
+    screen.height = 560;
+    try {
+      expect(letterHeight() * 27).toBeLessThanOrEqual(560);
+    } finally {
+      screen.height = 900;
+    }
+  });
+
   it("draws # then A to Z, disables the letters with nothing, and jumps to the one pressed", () => {
     const onSelect = vi.fn();
     const { host, unmount } = mount(

@@ -33,8 +33,18 @@ const libraryItemsQueryOptions = ({ kind, search, sort, genre, reach }: LibraryI
   return infiniteQueryOptions({
     queryKey: [...libraryApi.getListLibraryItemsQueryKey(params), "pages"],
     initialPageParam: 0,
-    queryFn: async ({ pageParam, signal }) => {
-      const wanted = (reach?.() ?? 0) - pageParam;
+    queryFn: async ({ client, queryKey, pageParam, signal }) => {
+      // A refetch asks for each page again by count, so a page asks for as many titles as the
+      // cache holds from its offset: otherwise the large pages a jump loaded come back small and
+      // the list shrinks under the reader.
+      const cached = client.getQueryData<{ pages: { items: unknown[] }[] }>(queryKey)?.pages ?? [];
+      let start = 0;
+      let held = 0;
+      for (const page of cached) {
+        if (start === pageParam) held = page.items.length;
+        start += page.items.length;
+      }
+      const wanted = Math.max(held, (reach?.() ?? 0) - pageParam);
       const limit = Math.min(LIBRARY_PAGE_MAX, Math.max(LIBRARY_PAGE_SIZE, wanted));
       const res = await libraryApi.listLibraryItems({ ...params, limit, offset: pageParam }, { signal });
       const body = unwrap(res);

@@ -1,6 +1,6 @@
 import { View } from "@tamagui/core";
 import { useState } from "react";
-import { View as NativeView, Pressable } from "react-native";
+import { View as NativeView, Pressable, useWindowDimensions } from "react-native";
 
 import { useFocusLook } from "../focus-look";
 import { TamaguiText } from "../text-base";
@@ -9,8 +9,14 @@ import { TamaguiText } from "../text-base";
 // titles sort first.
 const LETTERS = ["#", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
 
-// The 24 px minimum target (WCAG 2.5.8): 27 of them fit a desktop window.
+// A letter is 24 px wide, the minimum target (WCAG 2.5.8), and as tall where 27 of them fit the
+// window. A shorter window gets shorter letters rather than a rail that scrolls, down to the
+// height the letter itself needs.
 const SIZE = 24;
+const MIN_HEIGHT = 16;
+const EDGES = 16;
+const heightFor = (windowHeight: number) =>
+  Math.max(MIN_HEIGHT, Math.min(SIZE, Math.floor((windowHeight - EDGES) / LETTERS.length)));
 
 type LetterRailProps = {
   /** Names the rail to a screen reader. */
@@ -19,6 +25,8 @@ type LetterRailProps = {
   available: readonly string[];
   /** The letter the reader is at, drawn raised. */
   current?: string;
+  /** The letter still loading what it jumps to, drawn with a dashed edge. */
+  busy?: string;
   onSelect: (letter: string) => void;
 };
 
@@ -26,11 +34,15 @@ const Letter = ({
   letter,
   disabled,
   current,
+  busy,
+  height,
   onSelect,
 }: {
   letter: string;
   disabled: boolean;
   current: boolean;
+  busy: boolean;
+  height: number;
   onSelect: (letter: string) => void;
 }) => {
   const focus = useFocusLook();
@@ -41,7 +53,8 @@ const Letter = ({
         letter === "#" ? "Jump to numbers and symbols, #" : `Jump to titles starting with ${letter}`
       }
       accessibilityRole="button"
-      accessibilityState={{ disabled }}
+      accessibilityState={{ disabled, busy }}
+      aria-busy={busy || undefined}
       aria-current={current ? "true" : undefined}
       disabled={disabled}
       onBlur={focus.onBlur}
@@ -53,10 +66,11 @@ const Letter = ({
       <View
         alignItems="center"
         backgroundColor={current || (hovered && !disabled) ? "surfaceRaised" : "transparent"}
-        borderColor={focus.focused ? "actionFocus" : "transparent"}
+        borderColor={focus.focused ? "actionFocus" : busy ? "contentSecondary" : "transparent"}
         borderRadius="control"
-        borderWidth={2}
-        height={SIZE}
+        borderStyle={busy ? "dashed" : "solid"}
+        borderWidth={busy && !focus.focused ? 1 : 2}
+        height={height}
         justifyContent="center"
         opacity={disabled ? 0.38 : 1}
         width={SIZE}
@@ -74,19 +88,24 @@ const Letter = ({
  * to its first entry. Every letter is drawn, so the rail keeps its shape; one with nothing to jump
  * to is disabled and out of the tab order. Pointer and keyboard: it is a desktop control.
  */
-const LetterRail = ({ label = "Jump to a letter", available, current, onSelect }: LetterRailProps) => (
-  <NativeView aria-label={label} role="navigation">
-    {LETTERS.map((letter) => (
-      <Letter
-        current={letter === current}
-        disabled={!available.includes(letter)}
-        key={letter}
-        letter={letter}
-        onSelect={onSelect}
-      />
-    ))}
-  </NativeView>
-);
+const LetterRail = ({ label = "Jump to a letter", available, current, busy, onSelect }: LetterRailProps) => {
+  const height = heightFor(useWindowDimensions().height);
+  return (
+    <NativeView aria-label={label} role="navigation">
+      {LETTERS.map((letter) => (
+        <Letter
+          busy={letter === busy}
+          current={letter === current}
+          disabled={!available.includes(letter)}
+          height={height}
+          key={letter}
+          letter={letter}
+          onSelect={onSelect}
+        />
+      ))}
+    </NativeView>
+  );
+};
 
 export type { LetterRailProps };
 export { LetterRail };

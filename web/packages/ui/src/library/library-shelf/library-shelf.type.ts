@@ -96,6 +96,8 @@ interface LibraryShelfProps {
   onJump?: (letter: LibraryShelfLetter) => void;
   /** The jump to make, once its titles are loaded: scrolls the title at `index` to the top. */
   jump?: { index: number; letter: string; request: number };
+  /** The letter whose titles are still loading: the rail shows it busy. */
+  jumpingTo?: string;
   search: string;
   onSearchChange: (search: string) => void;
   titles: readonly LibraryShelfTitle[];

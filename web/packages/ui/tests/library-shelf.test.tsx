@@ -17,6 +17,16 @@ import {
 
 // The window the wall is drawn in, in points: the mock's desktop unless a test says a phone.
 const screen = vi.hoisted(() => ({ width: 1440 }));
+// The grid's virtualizer, with its scrolling recorded.
+const scrolled = vi.hoisted(() => vi.fn());
+vi.mock("@tanstack/react-virtual", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-virtual")>();
+  return {
+    ...actual,
+    useVirtualizer: (options: Parameters<typeof actual.useVirtualizer>[0]) =>
+      Object.assign(actual.useVirtualizer(options), { scrollToIndex: scrolled }),
+  };
+});
 // jsdom has no ResizeObserver; this one records what the grid watches.
 const watched = vi.hoisted(() => {
   const nodes: { textContent: string | null }[] = [];
@@ -520,6 +530,38 @@ describe("LibraryShelf", () => {
     const recent = render({ sort: "recent", onJump: vi.fn() });
     expect(recent.find("Jump to titles starting with P")).toBeUndefined();
     recent.cleanup();
+  });
+
+  // The grid is endless: a rail after it in the document is out of a keyboard's reach.
+  it("puts the rail before the grid in the document, so Tab reaches it first", () => {
+    const { host, cleanup } = render({ letters: LETTERS, onJump: vi.fn() });
+    const order = Array.from(host.querySelectorAll('[role="navigation"], [role="list"]')).map((n) =>
+      n.getAttribute("role"),
+    );
+    expect(order).toEqual(["navigation", "list"]);
+    cleanup();
+  });
+
+  it("scrolls the grid to the row holding the jumped title", () => {
+    scrolled.mockClear();
+    // The grid scrolls whatever holds it, and jsdom has no such thing until one says it scrolls.
+    const body = (globalThis as unknown as { document: { body: { style: { overflowY: string } } } }).document
+      .body;
+    body.style.overflowY = "auto";
+    const titles = Array.from(
+      { length: 120 },
+      (_, i) => ({ ...TITLES[0], id: `t${i}` }) as LibraryShelfTitle,
+    );
+    const { cleanup } = render({
+      titles,
+      letters: LETTERS,
+      onJump: vi.fn(),
+      jump: { index: 62, letter: "P", request: 1 },
+    });
+    // Six across, so the 63rd title is in the eleventh row.
+    expect(scrolled).toHaveBeenCalledWith(10, { align: "start" });
+    cleanup();
+    body.style.overflowY = "";
   });
 
   // The grid's own parent holds only the grid, beside the rail. A change in what sits above it

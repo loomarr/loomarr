@@ -79,25 +79,57 @@ interface Jump {
   index: number;
   letter: string;
   request: number;
+  /** When the list's last failure had happened as the letter was pressed. */
+  failedAt: number;
 }
+
+// The keys that scroll a page.
+const SCROLL_KEYS = ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "];
 
 // The rail's jump. The wall is one list from its first title, so a jump loads pages until the
 // title and a page below it are in, then the grid scrolls to it; scrolling back up needs nothing.
 const useLetterJump = (list: string) => {
   const [asked, setAsked] = useState<Jump>();
+  // Dropped as the list changes, so coming back to a list does not jump again.
+  if (asked && asked.list !== list) setAsked(undefined);
   const jump = asked?.list === list ? asked : undefined;
+  const requests = useRef(0);
   // Read by the query as it asks for each page, so it is a ref: how far this list was jumped.
   const reached = useRef({ list, to: 0 });
   const reach = useCallback(() => (reached.current.list === list ? reached.current.to : 0), [list]);
   const onJump = useCallback(
-    ({ letter, offset }: LibraryShelfLetter) => {
+    ({ letter, offset }: LibraryShelfLetter, failedAt: number) => {
       const to = Math.max(reach(), offset + LIBRARY_PAGE_SIZE);
       reached.current = { list, to };
-      setAsked((last) => ({ list, index: offset, letter, request: (last?.request ?? 0) + 1 }));
+      requests.current += 1;
+      setAsked({ list, index: offset, letter, request: requests.current, failedAt });
     },
     [list, reach],
   );
-  return { jump, onJump, reach };
+  const cancel = useCallback(() => {
+    reached.current = { list, to: 0 };
+    setAsked(undefined);
+  }, [list]);
+  return { jump, onJump, cancel, reach };
+};
+
+// While a jump is loading, a reader who scrolls has moved on: the jump is dropped rather than
+// pulling them to the letter later.
+const useCancelOnScroll = (pending: boolean, cancel: () => void) => {
+  useEffect(() => {
+    if (!pending) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (SCROLL_KEYS.includes(event.key)) cancel();
+    };
+    window.addEventListener("wheel", cancel, { passive: true });
+    window.addEventListener("touchmove", cancel, { passive: true });
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("wheel", cancel);
+      window.removeEventListener("touchmove", cancel);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [pending, cancel]);
 };
 
 interface LibraryPageProps {
@@ -153,7 +185,7 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
     });
   }, [settled, kind, recent, genre, navigate, titlesView]);
 
-  const { jump, onJump, reach } = useLetterJump(JSON.stringify([kind, settled, recent, genre]));
+  const { jump, onJump, cancel, reach } = useLetterJump(JSON.stringify([kind, settled, recent, genre]));
   const items = useInfiniteQuery({
     ...libraryItemsQueryOptions({ kind, search: settled || undefined, sort: recent, genre, reach }),
     enabled: titlesView,
@@ -178,14 +210,18 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
     if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  // A jump loads on until its title and a page below it are in, or the list ends. A failed page
-  // stops it, so it is not asked for again and again.
-  const jumpLoading =
+  // A jump loads on until its title and a page below it are in, or the list ends. A page that
+  // fails after the press stops it, so it is not asked for again and again; the next press asks
+  // once more. The failure shows above the wall with the other page errors.
+  const jumpShort =
     jump !== undefined && titles.length < jump.index + LIBRARY_PAGE_SIZE && Boolean(hasNextPage);
-  const pageFailed = items.isFetchNextPageError;
+  const jumpLoading = jumpShort && items.errorUpdatedAt === jump?.failedAt;
   useEffect(() => {
-    if (jumpLoading && !pageFailed) loadMore();
-  }, [jumpLoading, pageFailed, loadMore]);
+    if (jumpLoading) loadMore();
+  }, [jumpLoading, loadMore]);
+  useCancelOnScroll(jumpLoading, cancel);
+  // The title is scrolled to once everything asked for is in, or when no more is coming.
+  const arrived = jump && !jumpLoading && jump.index < titles.length ? jump : undefined;
   // The server works the letters out again with each page, so the newest page's are current.
   const letters = items.data?.pages.at(-1)?.letters;
 
@@ -252,7 +288,8 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
         filter={view === "collections" ? "collections" : filter}
         genre={genre}
         genres={unwrap(genreList.data)?.genres}
-        jump={jumpLoading ? undefined : jump}
+        jump={arrived}
+        jumpingTo={jumpLoading ? jump?.letter : undefined}
         letters={recent ? undefined : letters}
         loading={items.isPending}
         needs={
@@ -276,7 +313,7 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
             : showWall({ kind: next === "all" ? undefined : next, sort: recent, genre })
         }
         onGenreChange={(next) => showWall({ kind, sort: recent, genre: next })}
-        onJump={onJump}
+        onJump={(letter) => onJump(letter, items.errorUpdatedAt)}
         onOpenTitle={openTitle}
         onSearchChange={setTyped}
         onSortChange={(next) => showWall({ kind, sort: next === "recent" ? next : undefined, genre })}
