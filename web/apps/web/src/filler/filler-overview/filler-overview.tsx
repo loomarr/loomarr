@@ -4,7 +4,16 @@ import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLevel";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
-import { Action, Card, Stack, StatusLabel, type StatusTone, Text, TextLink } from "@loomarr/design-system";
+import {
+  Action,
+  Card,
+  Grid,
+  Stack,
+  StatusLabel,
+  type StatusTone,
+  Text,
+  TextLink,
+} from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -283,7 +292,7 @@ const FillerOverview = () => {
           </Action>
         </Stack>
         {readiness?.pool.channels.length ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+          <Grid columnGap="3" columns={{ base: 1, md: 2, lg: 3 }} rowGap="3">
             {shared ? (
               // Every channel draws the same pool, so one card says it once instead of repeating
               // identical numbers per channel (#2733).
@@ -320,7 +329,7 @@ const FillerOverview = () => {
                 />
               ))
             )}
-          </div>
+          </Grid>
         ) : (
           <Card padding={16}>
             <Text as="p" textRole="compact" tone="secondary">

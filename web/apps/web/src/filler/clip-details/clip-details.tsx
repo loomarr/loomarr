@@ -1,7 +1,7 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { countryLabel, formatClipDuration, topicLabel } from "@loomarr/core/format";
 import { Action, Card, Grid, Stack, Text, TextLink } from "@loomarr/design-system";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { AUDIENCE_LABEL, playsLine, ROLE_LABEL } from "@/components/loomarr/filler/clip-card";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
 
@@ -81,7 +81,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
         )}
       </Card>
       {enrichmentMessage ? (
-        <Stack borderRadius={12} className="bg-muted/40" paddingHorizontal={16} paddingVertical={12}>
+        <Card paddingHorizontal={16} paddingVertical={12}>
           <Text as="p" textRole="cardLabel">
             {enrichmentMessage.title}
           </Text>
@@ -90,7 +90,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
               {enrichmentMessage.detail}
             </Text>
           </Stack>
-        </Stack>
+        </Card>
       ) : null}
       <Grid columnGap="4" columns={["auto", "minmax(0,1fr)"]} render="dl" rowGap="2">
         <Text as="dt" textRole="compact" tone="secondary">
@@ -100,31 +100,33 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
           {formatClipDuration(clip.durationMs)}
         </Text>
         {facts.map(([label, value]) => (
-          <div key={label} className="contents">
+          <Fragment key={label}>
             <Text as="dt" textRole="compact" tone="secondary">
               {label}
             </Text>
             <Text as="dd" overflowWrap="break-word" textRole="compact">
               {value}
             </Text>
-          </div>
+          </Fragment>
         ))}
         {suggestion?.explanation || suggestion?.sources.length ? (
           <>
             <Text as="dt" textRole="compact" tone="secondary">
               Context
             </Text>
-            <Text as="dd" className="min-w-0 space-y-1" overflowWrap="break-word" textRole="compact">
-              {suggestion.explanation ? <p>{suggestion.explanation}</p> : null}
-              {suggestion.sources.length ? (
-                <Stack columnGap="3" direction="row" rowGap="1" wrap>
-                  {suggestion.sources.map((source) => (
-                    <TextLink external href={source.url} key={source.url}>
-                      {source.title}
-                    </TextLink>
-                  ))}
-                </Stack>
-              ) : null}
+            <Text as="dd" minWidth={0} overflowWrap="break-word" textRole="compact">
+              <Stack gap="1">
+                {suggestion.explanation ? <p>{suggestion.explanation}</p> : null}
+                {suggestion.sources.length ? (
+                  <Stack columnGap="3" direction="row" rowGap="1" wrap>
+                    {suggestion.sources.map((source) => (
+                      <TextLink external href={source.url} key={source.url}>
+                        {source.title}
+                      </TextLink>
+                    ))}
+                  </Stack>
+                ) : null}
+              </Stack>
             </Text>
           </>
         ) : null}

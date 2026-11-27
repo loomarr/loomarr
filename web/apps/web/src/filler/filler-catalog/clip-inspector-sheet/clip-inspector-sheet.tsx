@@ -6,6 +6,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  Stack,
   Text,
 } from "@loomarr/design-system";
 import { type RefObject, useState } from "react";
@@ -42,7 +43,7 @@ const ClipInspectorBody = ({ hash, isAdmin }: ClipInspectorBodyProps) => {
           {editing ? "Edit details" : clip?.held ? "Preparing" : clip?.isComposite ? "Recording" : "Ready"}
         </DialogDescription>
       </DialogHeader>
-      <div className="space-y-5 p-6">
+      <Stack gap="5" padding={24}>
         {inspection.error ? (
           <ErrorState error={inspection.error} onRetry={() => inspection.refetch()} />
         ) : clip ? (
@@ -69,7 +70,7 @@ const ClipInspectorBody = ({ hash, isAdmin }: ClipInspectorBodyProps) => {
             </Text>
           </div>
         )}
-      </div>
+      </Stack>
     </>
   );
 };

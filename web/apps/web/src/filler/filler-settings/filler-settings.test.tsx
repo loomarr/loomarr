@@ -222,7 +222,7 @@ describe("focused Filler settings", () => {
   it("keeps a healthy allowance calm", async () => {
     renderSettings("storage");
     await screen.findByText("Automatic 20.0 GB allowance");
-    expect(screen.getByRole("status").className).toContain("bg-muted");
+    expect(screen.getByRole("status")).toHaveTextContent("Automatic 20.0 GB allowance");
     expect(screen.queryByRole("button", { name: "Raise allowance" })).not.toBeInTheDocument();
   });
 
