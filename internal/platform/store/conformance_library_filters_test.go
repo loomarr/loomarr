@@ -110,10 +110,9 @@ func testLibraryFilters(t *testing.T, newStore NewStoreFunc) {
 	lists(q{Studio: "larkfield", Person: "name:Bram Fen", Kind: "movie", Search: "alpha"}, "a")
 	lists(q{Studio: "oxbow", Subtitles: "de"})
 
-	choices := func(in []librarystore.LibraryFacet) []librarystore.LibraryFacet { return in }
 	same := func(what string, got, want []librarystore.LibraryFacet) {
 		t.Helper()
-		if !slices.Equal(choices(got), want) {
+		if !slices.Equal(got, want) {
 			t.Errorf("%s = %+v, want %+v", what, got, want)
 		}
 	}
@@ -126,9 +125,10 @@ func testLibraryFilters(t *testing.T, newStore NewStoreFunc) {
 	if len(got.Studios) != 2 || got.Studios[0].Titles != 2 || got.Studios[1] != (f{Value: "Oxbow", Name: "Oxbow", Titles: 2}) {
 		t.Errorf("member studios = %+v", got.Studios)
 	}
-	same("member audio", got.Audio, []f{{"en", "English", 2}, {"fr", "French", 2}})
-	same("member subtitles", got.Subtitles, []f{{"de", "German", 1}})
-	same("member hdr", got.HDR, []f{{"Dolby Vision", "Dolby Vision", 1}, {"HDR10", "HDR10", 1}})
+	choice := func(value, name string, titles int) f { return f{Value: value, Name: name, Titles: titles} }
+	same("member audio", got.Audio, []f{choice("en", "English", 2), choice("fr", "French", 2)})
+	same("member subtitles", got.Subtitles, []f{choice("de", "German", 1)})
+	same("member hdr", got.HDR, []f{choice("Dolby Vision", "Dolby Vision", 1), choice("HDR10", "HDR10", 1)})
 	if got.UHD != 2 || got.HDRAny != 2 {
 		t.Errorf("member 4K, HDR = %d, %d; want 2, 2", got.UHD, got.HDRAny)
 	}
