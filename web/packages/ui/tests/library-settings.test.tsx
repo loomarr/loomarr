@@ -169,15 +169,39 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
-  it("says a folder added by hand has to be added again", () => {
+  // The server drops a folder no app names once it is released: at once when added by hand, at the
+  // next discovery when an app found it.
+  it.each([
+    ["added by hand", true],
+    ["an app found and no longer names", false],
+  ])("says a folder %s has to be added again", (_, addedByHand) => {
     const { button, cleanup } = render({
       health: "ok",
-      folders: [{ ...TV_IN_USE, addedByHand: true, foundIn: [] }],
+      folders: [{ ...TV_IN_USE, addedByHand, foundIn: [] }],
     });
     act(() => button("Stop using").click());
     expect((globalThis as unknown as { document: { body: Host } }).document.body.textContent).toContain(
       "To bring them back, add the folder again.",
     );
+    cleanup();
+  });
+
+  it("closes the stop-using confirm on Escape without stopping", async () => {
+    const { props, button, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
+    const page = (globalThis as unknown as { document: { body: Host; activeElement: El | null } }).document;
+    act(() => button("Stop using").click());
+    await act(async () => {
+      await vi.waitFor(() => expect(page.activeElement?.textContent).toBe("Cancel"));
+    });
+    const Key = (globalThis as unknown as { KeyboardEvent: new (type: string, init: object) => unknown })
+      .KeyboardEvent;
+    act(() => {
+      page.activeElement?.dispatchEvent(new Key("keydown", { bubbles: true, key: "Escape" }));
+    });
+    await act(async () => {
+      await vi.waitFor(() => expect(page.body.querySelector('[role="dialog"]')).toBeNull());
+    });
+    expect(props.onUseFolder).not.toHaveBeenCalled();
     cleanup();
   });
 
