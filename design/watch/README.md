@@ -94,7 +94,10 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled.
 8. **Decade colour is the channel's numeral**, everywhere a channel is listed. A channel with no
    decade is plain, so amber stays for focus alone. The tuned channel's numeral is the large one.
 9. **The tune stays and the station-ident card goes.** The lower third on a settled tune does the
-   ident's job. The seven bars run along the crossing, since there is no band edge.
+   ident's job. The seven bars run along the crossing, since there is no band edge. The static is
+   kept where it is today: a cold start drains the held picture into snow before the bars, and a
+   warm flip between channels already streaming has none. The `cold` tile draws only the hold that
+   follows the static.
 10. **More holds only what has no key of its own**: Picture, Playback details, and Picture in picture
     on desktop. Channels and Info left it: the column and the synopsis under the strip do those jobs.
 11. **Administration leaves the watching path.** "Request a channel" and the Guide's per-row Actions
