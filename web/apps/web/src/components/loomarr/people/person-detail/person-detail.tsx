@@ -174,7 +174,7 @@ const PersonDetail = ({
         )}
 
         {user.contactReplacement && (
-          <Stack borderRadius={8} className="border-suggest-700/50 border" gap="inline" padding={12}>
+          <Card gap={8} padding={12} tone="suggest">
             <Stack align="center" direction="row" gap="inline" wrap>
               <Text as="span" textRole="compact" wordBreak="break-all">
                 {user.contactReplacement.email}
@@ -192,7 +192,7 @@ const PersonDetail = ({
             >
               Cancel replacement
             </Action>
-          </Stack>
+          </Card>
         )}
 
         {contactOpen ? (
@@ -425,14 +425,7 @@ const PersonDetail = ({
           ))}
       </Stack>
 
-      <Stack
-        aria-labelledby="person-danger"
-        borderRadius={12}
-        className="border-onair-700 border"
-        gap="control"
-        padding={16}
-        render="section"
-      >
+      <Card aria-labelledby="person-danger" gap={12} padding={16} render="section" tone="caution">
         <div>
           <Text as="h3" id="person-danger" textRole="heading" tone="danger">
             Danger zone
@@ -457,7 +450,7 @@ const PersonDetail = ({
             You cannot disable your own account.
           </Text>
         )}
-      </Stack>
+      </Card>
     </Stack>
   );
 };

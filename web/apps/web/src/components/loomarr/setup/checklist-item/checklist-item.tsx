@@ -1,8 +1,7 @@
 import { parseDocHref } from "@loomarr/core/anchor";
-import { ActivityIndicator, Icon, icons, Stack, Text, TextLink } from "@loomarr/design-system";
+import { ActivityIndicator, Card, Icon, icons, Stack, Text, TextLink } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
 import type { ChecklistItemProps, CheckStatus } from "./checklist-item.type";
 
 // ChecklistItem — the wizard / Settings-troubleshooting check row (§3, §6). A pass
@@ -16,16 +15,15 @@ const ICON: Record<CheckStatus, { node: ReactNode; label: string }> = {
 };
 
 const ChecklistItem = ({ name, status, hint, docHref, className }: ChecklistItemProps) => (
-  <Stack
-    align="start"
-    className={cn(
-      "border-border bg-card rounded-md border px-3 py-2.5 transition-colors",
-      status === "pass" && "border-lock-tint-30",
-      status === "fail" && "border-onair-tint-30",
-      className,
-    )}
-    direction="row"
-    gap="control"
+  <Card
+    alignItems="flex-start"
+    borderColor={status === "pass" ? "stateSuccess" : undefined}
+    className={className}
+    flexDirection="row"
+    gap={12}
+    paddingHorizontal={12}
+    paddingVertical={10}
+    tone={status === "fail" ? "caution" : undefined}
   >
     <Stack aria-label={ICON[status].label} direction="row" marginTop={2} render="span" role="img">
       {ICON[status].node}
@@ -55,7 +53,7 @@ const ChecklistItem = ({ name, status, hint, docHref, className }: ChecklistItem
         </Text>
       </Stack>
     )}
-  </Stack>
+  </Card>
 );
 
 export { ChecklistItem };

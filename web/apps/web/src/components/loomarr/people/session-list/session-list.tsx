@@ -87,8 +87,9 @@ const SessionList = ({
           ) : (
             <Stack
               align="center"
+              borderColor="borderDecorative"
               borderRadius={8}
-              className="border-static-800 border"
+              borderWidth={1}
               direction="row"
               gap="control"
               justify="between"

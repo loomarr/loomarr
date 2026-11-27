@@ -305,6 +305,51 @@ body {
     opacity: 0.5;
   }
 }
+/* Home's new-posters grid: five across on a desktop, three from `sm`, two on a phone, and one
+   where the section itself is narrower than 284px. */
+[data-home-new] {
+  container-type: inline-size;
+}
+
+[data-home-posters] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  [data-home-posters] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  [data-home-posters] {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 284px) {
+  [data-home-posters] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Hidden below `sm`. */
+@media (max-width: 639.98px) {
+  [data-from-sm] {
+    display: none !important;
+  }
+}
+
+/* The white plate behind an invitation QR code keeps its edge when colours are forced. */
+@media (forced-colors: active) {
+  [data-qr-plate] {
+    border: 1px solid currentcolor;
+  }
+}
+
 [data-pulse="loading"] {
   animation: loading-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }

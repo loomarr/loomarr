@@ -72,7 +72,7 @@ const HomePage = () => {
         {/* 16px padding at phone, 24px from `sm` up (the geometry table's "16px padding"). Below
             `md` the bottom bar replaced the 56px rail the table assumed, so 390px leaves 358px. */}
         <Stack
-          className="p-4 sm:p-6"
+          padding={{ base: "4", sm: "6" }}
           gap={{ base: "6", sm: "8" }}
           marginHorizontal="auto"
           maxWidth={1120}

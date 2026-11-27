@@ -65,7 +65,7 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
     // `@container`: the poster grid's one-column step is measured against this section's own
     // width, not the viewport — what sits beside Home's content (the md+ rail, nothing above the
     // phone's bottom bar) is the shell's business, not this grid's.
-    <Stack aria-labelledby="home-new" className="@container" gap="control" render="section">
+    <Stack aria-labelledby="home-new" data-home-new="" gap="control" render="section">
       <SectionHeader id="home-new" title="New this week" meta={meta} />
       {/* A separate row, never a grid column beside the posters (#1822 evidence geometry table):
           sharing a track with five poster columns is what left phone poster slivers in the first
@@ -121,8 +121,8 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
       ))}
       {titles.length > 0 && (
         // Two columns at phone width; one below 284px of content width — the geometry table's rule,
-        // as a container query so it holds whatever chrome shares the viewport.
-        <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-5 @max-[284px]:grid-cols-1">
+        // as a container query so it holds whatever chrome shares the viewport. In styles.css.
+        <div data-home-posters="">
           {titles.slice(0, POSTERS).map((t) => (
             <Stack flexShrink={1} gap="1.5" key={t.key} minWidth={0}>
               <Stack

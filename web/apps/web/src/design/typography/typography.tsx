@@ -128,9 +128,11 @@ const Typography = () => (
             >
               Channels play what's ready
             </Text>
-            <Text className="hidden sm:block" flexShrink={0} textRole="hint" tone="muted">
-              {SIZE_USE[name]}
-            </Text>
+            <Stack data-from-sm="" flexShrink={0}>
+              <Text textRole="hint" tone="muted">
+                {SIZE_USE[name]}
+              </Text>
+            </Stack>
           </Stack>
         ))}
       </Stack>

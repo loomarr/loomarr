@@ -328,13 +328,22 @@ const InvitationDialog = ({
           ) : grant ? (
             <Stack gap="5">
               <Grid align="center" columns={{ base: 1, sm: ["220px", "minmax(0,1fr)"] }} gap="5">
-                <div className="mx-auto rounded-xl bg-white p-3 forced-colors:border forced-colors:border-current">
+                {/* A white plate in both themes, so a scanner reads the code; its forced-colors
+                    border is the `data-qr-plate` rule in styles.css. */}
+                <Stack
+                  alignSelf="center"
+                  borderRadius={12}
+                  data-qr-plate=""
+                  marginHorizontal="auto"
+                  padding={12}
+                  style={{ backgroundColor: "white" }}
+                >
                   <QrCode
                     accessibilityLabel={`Scan to accept ${invitationName(invitation)}’s Loomarr invitation`}
                     size={196}
                     value={grant.url}
                   />
-                </div>
+                </Stack>
                 <Stack gap="3">
                   <Stack direction="row" gap="inline" wrap>
                     <StatusLabel tone={invitation.role === "admin" ? "notice" : "off"}>
@@ -352,11 +361,11 @@ const InvitationDialog = ({
               </Grid>
 
               {emailProblem && (
-                <Stack borderRadius={12} className="border-destructive/50 border" padding={12} role="alert">
+                <Card padding={12} role="alert" tone="caution">
                   <Text as="p" textRole="compact">
                     The invitation is ready, but email could not be queued. Share this QR code or copied link.
                   </Text>
-                </Stack>
+                </Card>
               )}
               {problem != null && <ErrorState error={problem} className="p-4" />}
 

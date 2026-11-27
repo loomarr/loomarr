@@ -3,13 +3,23 @@ import * as setupApi from "@loomarr/api/endpoints/setup";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action, Badge, Grid, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import {
+  Action,
+  Badge,
+  Card,
+  Grid,
+  Icon,
+  icons,
+  RadioGroup,
+  RadioItem,
+  Stack,
+  Text,
+} from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
-import { cn } from "@/lib/utils";
 import { everyEditSaved } from "@/settings/saved-edits";
 import { type SettingsDraft, useSettingsDraft } from "@/settings/settings-draft";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -133,60 +143,60 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
 
   return (
     <Stack gap="4">
-      {/* ⚠ REAL RADIOS, inside a real <fieldset>. These are mutually exclusive answers to one
-          question, so assistive tech should announce the question (the legend), the group,
-          and which option is chosen — none of which a list of <button>s conveys. An earlier
-          cut used role="radio" on buttons, which biome's useSemanticElements caught: it also
-          had no radiogroup parent, so the options would have been announced with no question
-          attached to them. Arrow-key navigation comes free with native inputs. */}
-      <fieldset className="border-0 p-0" disabled={pinnedBy !== undefined}>
-        <legend className="sr-only">How should Loomarr play your channels?</legend>
+      {/* Mutually exclusive answers to one question, so assistive tech announces the question,
+          the group and which option is chosen, with arrow keys walking the choices. The whole
+          card is the radio, so the entire target is clickable. */}
+      <RadioGroup
+        borderWidth={0}
+        backgroundColor="transparent"
+        label="How should Loomarr play your channels?"
+        onValueChange={(next) => choose(next as PlayoutBackend)}
+        opacity={pinnedBy ? 0.6 : 1}
+        value={value}
+        values={OPTIONS.map((option) => option.value)}
+      >
         <Grid columns={{ base: 1, sm: 2 }} gap="3">
-          {OPTIONS.map((option) => {
-            const selected = option.value === value;
-            return (
-              // The whole card is the label, so the entire target is clickable rather than
-              // just a small control the operator has to aim at.
-              <label
-                key={option.value}
-                className={cn(
-                  "flex cursor-pointer flex-col gap-2 rounded-lg border p-4 transition-colors",
-                  selected ? "border-tune bg-tune/5" : "border-input hover:bg-accent",
-                  pinnedBy && "cursor-not-allowed opacity-60",
-                )}
-              >
-                <Stack align="center" direction="row" gap="inline" render="span">
-                  {/* ⚠ Visible, not `sr-only`. Hiding it made the control unreachable for
-                      anything driving the real input (Playwright's .check() timed out on it),
-                      and a hidden radio also gives a sighted keyboard user no focus ring to
-                      follow. The card stays fully clickable because it is the <label>. */}
-                  <input
-                    type="radio"
-                    name="playout-backend"
-                    value={option.value}
-                    checked={selected}
-                    onChange={() => choose(option.value)}
-                    className="accent-tune size-4 shrink-0"
-                  />
-                  <Text as="span" textRole="cardLabel">
-                    {option.title}
-                  </Text>
-                </Stack>
-                <Text as="span" textRole="compact" tone="secondary">
-                  {option.tagline}
-                </Text>
-                <Stack gap="1" render="ul">
-                  {option.points.map((point) => (
-                    <Text as="li" key={point} textRole="compact" tone="secondary">
-                      {point}
+          {OPTIONS.map((option) => (
+            <RadioItem
+              disabled={pinnedBy !== undefined}
+              key={option.value}
+              label={option.title}
+              ringRadius={8}
+              value={option.value}
+            >
+              {({ checked }) => (
+                <Card gap={8} padding={16} tone={checked ? "tune" : undefined}>
+                  <Stack align="center" direction="row" gap="inline">
+                    <Stack
+                      aria-hidden
+                      backgroundColor={checked ? "accentTune" : undefined}
+                      borderColor={checked ? "accentTune" : "borderControl"}
+                      borderRadius={8}
+                      borderWidth={2}
+                      flexShrink={0}
+                      height={16}
+                      width={16}
+                    />
+                    <Text as="span" textRole="cardLabel">
+                      {option.title}
                     </Text>
-                  ))}
-                </Stack>
-              </label>
-            );
-          })}
+                  </Stack>
+                  <Text as="span" textRole="compact" tone="secondary">
+                    {option.tagline}
+                  </Text>
+                  <Stack gap="1" render="ul">
+                    {option.points.map((point) => (
+                      <Text as="li" key={point} textRole="compact" tone="secondary">
+                        {point}
+                      </Text>
+                    ))}
+                  </Stack>
+                </Card>
+              )}
+            </RadioItem>
+          ))}
         </Grid>
-      </fieldset>
+      </RadioGroup>
 
       {pinnedBy && (
         <Stack align="center" direction="row" gap="inline" render="p">
