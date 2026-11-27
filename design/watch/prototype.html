@@ -171,11 +171,16 @@ body.tasks #wrap{right:278px}
 #stage.full #keys,#stage.tv #keys{position:absolute;right:var(--pad);bottom:40px;pointer-events:auto}
 #stage.tv #keys{bottom:32px}#stage.tv{--sh:68px}
 #stage.full #colhead .gctl{display:none}
-.idle #col,.idle #low,.idle .over,.idle #keys{opacity:0;transition:opacity .2s}
+.idle #col,.idle #low,.idle .over,.idle #keys,.idle .hint{opacity:0;transition:opacity .2s}
 #stage.idle{cursor:none}
-#stage.tv .hint{left:calc(var(--pad) + 80px);bottom:36px}
-#stage.full .hint{left:calc(var(--pad) + 96px);bottom:48px}
-.window .hint{left:48px;bottom:8px}
+/* the first-run hint sits clear of the lists and the controls, at the top of the picture */
+#stage.tv .hint,#stage.full .hint{left:50%;top:28px;transform:translateX(-50%)}
+#stage.full .hint{top:68px}
+.window .hint{left:48px;bottom:6px}
+.colopen .hint,.stripopen .hint{display:none}
+#wall .tiles .tile.cur{outline:3px solid var(--amber);outline-offset:3px}
+.phone .third{min-height:88px}.phone .third h1{-webkit-line-clamp:1}
+.phone .ptabs .tabs{overflow-x:auto;scrollbar-width:none}
 /* ----- phone, upright ----- */
 #stage.phone{display:flex;flex-direction:column}
 .phone .island{position:absolute;left:50%;top:11px;width:124px;height:36px;margin-left:-62px;border-radius:20px;background:#000;z-index:40}
@@ -230,7 +235,9 @@ body.tasks #wrap{right:278px}
 #stage.tv #guide{--gl:214px;padding-top:27px}#stage.full #guide,#stage.window #guide{--gl:264px}
 .phone #guide{position:static;display:none;padding:0 16px;flex:1;min-height:0;--gl:0px;background:#000}
 .phone.vguide #guide{display:flex}.phone.vguide #plist,.phone.vguide .pstrip{display:none}
-.phone #guide .ghead,.phone #guide .gbar .tabs{display:none}
+.phone #guide .ghead,.phone #guide .gbar{display:none}
+.gdetail{flex:none;padding:12px 0 44px;border-top:1px solid var(--line)}
+.gdetail h2{font-size:16px;font-weight:600;color:#fff}.gdetail .f{font-size:12px;color:var(--muted);margin-top:4px}.gdetail p{font-size:13px;line-height:1.45;margin-top:6px}
 .phone #guide .grow{grid-template-columns:1fr;margin-bottom:12px}
 .phone #guide .glab{grid-template-columns:auto 1fr;column-gap:8px;padding:0 8px 4px 0;font-size:13px;position:relative;z-index:3;background:#000;width:max-content;max-width:100%}
 .phone #guide .glab .n,.phone #guide .grow.tuned .glab .n{font-size:13px}
@@ -317,8 +324,17 @@ const FACTS = {
 const facts = t => FACTS[t] ?? ['TV-PG · From the household library', 'A title from the household library.'];
 const art = t => t === 'The Diner Years' ? 'url(picture.webp)' : `linear-gradient(120deg,${ART[t] ?? '#2A2E37,#131519'})`;
 const ORDER = Object.keys(CH).map(Number).sort((a, b) => a - b);
-const before = (n, k) => ORDER.slice(0, ORDER.indexOf(n)).reverse().slice(0, k);
-const after = (n, k) => ORDER.slice(ORDER.indexOf(n) + 1).slice(0, k);
+const FAV = [7, 9, 12, 24, 55], DECS = ['50', '60', '70', '80', '90', '00'];
+// The list the group tabs choose. The tuned channel is always in it, so you never lose your place.
+const LIST = () => {
+  let l = S.tab === 'Favourites' ? ORDER.filter(n => FAV.includes(n)) : S.tab === 'Recent' ? [...new Set(S.recent)]
+    : S.tab === 'By decade' ? [...ORDER].sort((a, b) => DECS.indexOf(CH[a][1]) - DECS.indexOf(CH[b][1]) || a - b) : ORDER;
+  if (!l.includes(S.T)) l = S.tab === 'Recent' ? [S.T, ...l] : [...l, S.T].sort((a, b) => a - b);
+  return l;
+};
+const before = (n, k) => { const l = LIST(); return l.slice(0, l.indexOf(n)).reverse().slice(0, k); };
+const after = (n, k) => { const l = LIST(); return l.slice(l.indexOf(n) + 1).slice(0, k); };
+const SPAN = () => S.mode === 'phone' ? 90 : S.mode === 'tv' ? 120 : 180;
 const dec = n => `var(--d${CH[n][1]})`;
 const clock = (m, ap = true) => { m = Math.round(m); const h = 10 + Math.floor(m / 60), mm = String(((m % 60) + 60) % 60).padStart(2, '0'); return `${h > 12 ? h - 12 : h}:${mm}${ap ? (h >= 12 ? ' PM' : ' AM') : ''}`; };
 
@@ -326,7 +342,7 @@ const clock = (m, ap = true) => { m = Math.round(m); const h = 10 + Math.floor(m
 const t0 = Date.now();
 const now = () => 20 + (Date.now() - t0) / 60000;
 const S = { mode: 'window', view: 'watch', T: 7, last: null, col: false, strip: false, sb: null, kf: null, hov: null, hb: null, paused: false, behind: 0, pausedAt: 0,
-  muted: true, menu: null, mi: 0, find: null, fi: 0, digits: '', idle: false, cold: true, cc: 'English', gcur: null, toast: '', hinted: {}, tab: 'All 34' };
+  muted: true, menu: null, mi: 0, find: null, fi: 0, digits: '', idle: false, cold: true, cc: 'English', gcur: null, toast: '', hinted: {}, tab: 'All', recent: [7], wc: 0, still: null };
 const DONE = {}; let started = Date.now();
 const done = k => { if (!DONE[k]) { DONE[k] = ((Date.now() - started) / 1000).toFixed(0); renderTasks(); } };
 const overlay = () => S.mode === 'full' || S.mode === 'tv';
@@ -347,7 +363,8 @@ const thirdHTML = () => {
     // On a phone the line is short, so the rating waits in the programme's facts.
     const where = S.mode === 'phone' ? `<em>${CH[S.T][0]}</em>` : `<em>${CH[S.T][0]}</em> · TV-PG`;
     if (S.paused) meta = `${where} · <em>Paused</em>`;
-    else if (S.behind > 0) meta = `${where} · ${S.behind} s behind<button class="golive" data-act="live"><span class="dot" style="top:0"></span>Go live</button>`;
+    // Go live leads the line, so it is never the part that is cut off.
+    else if (S.behind > 0) meta = `<button class="golive" data-act="live" style="margin:0 10px 0 0"><span class="dot" style="top:0"></span>Go live</button>${S.behind} s behind`;
     else if (!c.on) meta = `<em>${CH[S.T][0]}</em> · <span class="back">Back in ${Math.max(1, Math.ceil(c.b[0] - t))} min</span>`;
     else meta = `<span class="dot"></span>${where} · <em>${Math.max(1, Math.ceil(c.b[1] - t))} min left</em>`;
     const nx = SCHED[S.T][c.i + (c.on ? 1 : 0)] && SCHED[S.T][c.i + 1];
@@ -364,7 +381,7 @@ const rowHTML = (n, cls = '') => `<button class="row ${cls}" data-n="${n}" role=
 const results = () => { const q = (S.find ?? '').trim().toLowerCase(); return q ? ORDER.filter(n => CH[n][0].toLowerCase().includes(q) || cur(n).b[2].toLowerCase().includes(q)) : []; };
 const tabsHTML = () => S.find != null
   ? `<div class="find">${ic('search', 18)}<input id="q" value="${S.find.replace(/"/g, '&quot;')}" placeholder="Find a channel or a programme…" aria-label="Find a channel or a programme"><small>${S.find ? results().length + ' found' : ''}</small><button data-act="findclose" aria-label="Close find">${ic('x', 18)}</button></div>`
-  : `<nav class="tabs" aria-label="Channel groups"><button data-act="find" aria-label="Find a channel">${ic('search', 18)}</button>${['Favourites', 'All 34', 'Recent', 'By decade'].map(t => `<button class="${t === S.tab ? 'on' : ''}" data-tab="${t}">${t}</button>`).join('')}</nav>`;
+  : `<nav class="tabs" aria-label="Channel groups"><button data-act="find" aria-label="Find a channel">${ic('search', 18)}</button>${['Favourites', 'All', 'Recent', 'By decade'].map(t => `<button class="${t === S.tab ? 'on' : ''}" data-tab="${t}">${t === 'All' ? `All ${ORDER.length}` : t}</button>`).join('')}</nav>`;
 const stripHTML = n => {
   const c = cur(n), s = SCHED[n].slice(c.i, c.i + 5), t = now(); let h = '', prev = null;
   s.forEach((b, i) => {
@@ -383,11 +400,14 @@ const infoHTML = () => {
   if (S.hov) return `<h2>${c.b[2]}</h2><div class="f mono">On now until ${clock(c.b[1])} · ${facts(c.b[2])[0]}</div><p>${facts(c.b[2])[1]}</p>`;
   return `<div class="f mono" style="margin-top:0">${facts(c.b[2])[0]}</div><p>${facts(c.b[2])[1]}</p>`;
 };
-const KEYS = { window: ['pause', 'cc', 'audio', 'vol', 'full', 'more'], full: ['channels', 'guide', 'pause', 'cc', 'audio', 'vol', 'full', 'more'], tv: ['channels', 'guide', 'cc', 'audio', 'more'], phone: [] };
+// One rule for "later today" on every layout: Today opens the day of the channel you are watching.
+// A window keeps it open always; a phone opens it by tapping your channel.
+const KEYS = { window: ['pause', 'cc', 'audio', 'vol', 'full', 'more'], full: ['channels', 'today', 'guide', 'pause', 'cc', 'audio', 'vol', 'full', 'more'], tv: ['channels', 'today', 'guide', 'pause', 'cc', 'audio', 'more'], phone: [] };
 const TIP = { pause: 'Pause (Space)', cc: 'Subtitles (C)', audio: 'Audio (A)', vol: 'Mute (M)', full: 'Full screen (F)', more: 'More' };
 const keysHTML = () => KEYS[S.mode].map((k, i) => {
   const f = S.kf === i ? ' cur' : '';
   if (k === 'channels') return `<button class="lab${S.col ? ' on' : ''}${f}" data-act="channels">${ic('list', 18)}Channels</button>`;
+  if (k === 'today') return `<button class="lab${S.strip ? ' on' : ''}${f}" data-act="today">Today</button>`;
   if (k === 'guide') return `<button class="lab${f}" data-act="guide">${ic('guide', 18)}Guide</button><i class="sep"></i>`;
   const icon = k === 'pause' && S.paused ? 'play' : k === 'vol' && S.muted ? 'mute' : k;
   const tip = k === 'pause' && S.paused ? 'Play (Space)' : k === 'vol' && S.muted ? 'Unmute (M)' : k === 'full' && S.mode === 'full' ? 'Leave full screen (F)' : TIP[k];
@@ -403,9 +423,10 @@ const MENUS = {
     {l: 'Last channel', v: S.last ? `${S.last} ${CH[S.last][0]}` : 'None yet', go: () => { S.menu = null; if (S.last) tune(S.last); }},
     {l: 'Picture', v: 'Auto · 1080p', go: () => { S.menu = null; toast('Picture: Auto, playing 1080p'); }},
     {l: 'Playback details', go: () => { S.menu = 'details'; }},
-    {l: 'Keyboard shortcuts', go: () => { S.menu = 'keys'; }},
+    ...(S.mode === 'phone' ? [] : [{l: S.mode === 'tv' ? 'Remote buttons' : 'Keyboard shortcuts', go: () => { S.menu = S.mode === 'tv' ? 'remote' : 'keys'; }}]),
     {l: 'Manage this channel', go: () => { S.menu = null; toast('Channel management opens here (not in this prototype)'); }}]],
   details: () => ['Playback details', [], `<dl><dt>Resolution</dt><dd class="mono">1920×1080 · 29.97 fps</dd><dt>Video</dt><dd class="mono">H.264 High 4.1</dd><dt>Audio</dt><dd class="mono">AAC stereo</dd><dt>Buffer ahead</dt><dd class="mono">6.2 s</dd><dt>Behind live</dt><dd class="mono">${S.behind} s</dd></dl>`],
+  remote: () => ['Remote buttons', [], `<dl><dt>Up, Down</dt><dd>Change channel</dd><dt>Left, Right</dt><dd>Move along the controls</dd><dt>OK</dt><dd>Choose</dd><dt>Back</dt><dd>Close, then Home</dd></dl>`],
   keys: () => ['Keyboard shortcuts', [], `<dl><dt>Up, Down</dt><dd>Change channel</dd><dt>Left, Right</dt><dd>Later today</dd><dt>0 to 9</dt><dd>Tune by number</dd><dt>/</dt><dd>Find by name</dd><dt>G</dt><dd>Guide</dd><dt>Space</dt><dd>Pause</dd><dt>L</dt><dd>Last channel</dd><dt>C, A, M</dt><dd>Subtitles, audio, mute</dd><dt>F</dt><dd>Full screen</dd><dt>Esc</dt><dd>Close, then back</dd></dl>`]
 };
 const menuHTML = () => { if (!S.menu) return ''; const [h, opts, body = ''] = MENUS[S.menu]();
@@ -418,7 +439,7 @@ const hintHTML = () => S.hinted[S.mode] || S.cold || S.view !== 'watch' ? '' : `
 // ----- views -----
 const guideHTML = () => {
   const phone = S.mode === 'phone', span = phone ? 90 : S.mode === 'tv' ? 120 : 180, t = now(), c = cur(S.T), g = S.gcur, gb = g ? SCHED[g[0]][g[1]] : null;
-  const rows = ORDER.map(n => {
+  const rows = LIST().map(n => {
     const tuned = n === S.T; let h = '', prev = null;
     SCHED[n].forEach((b, j) => {
       const s = Math.max(0, b[0]), e = Math.min(span, b[1]);
@@ -441,33 +462,39 @@ const guideHTML = () => {
   return `<div class="ghead"><div class="gleft"><div style="display:flex;justify-content:space-between;align-items:center"><button class="home" data-act="home">${ic('back', 20)}Home</button><button class="gctl on" data-act="guide">${ic('guide', 18)}Guide<span class="sr"> (showing; press to return to the picture)</span></button></div>
       <div id="gthird" class="third">${head}</div><p class="gsyn">${syn}</p></div>
     <div class="gdock" id="gdock"></div></div>
-    <div class="gbar">${tabsHTML()}<div class="day"><button aria-label="Earlier" style="opacity:.5">${ic('back', 18)}</button>Today<button aria-label="Later" style="transform:scaleX(-1)">${ic('back', 18)}</button></div><span style="flex:1"></span>${phone ? '' : S.mode === 'tv' ? `<span class="mono" style="font-size:12px;color:var(--muted)"><b style="color:var(--text);font-weight:500;margin-right:8px">OK</b>watch this channel<b style="color:var(--text);font-weight:500;margin:0 8px 0 22px">Back</b>picture</span>` : `<button class="btn" data-act="guide">Back to the picture</button>`}</div>
+    <div class="gbar">${tabsHTML()}<span style="flex:1"></span>${phone ? '' : S.mode === 'tv' ? `<span class="mono" style="font-size:12px;color:var(--muted)"><b style="color:var(--text);font-weight:500;margin-right:8px">OK</b>watch this channel<b style="color:var(--text);font-weight:500;margin:0 8px 0 22px">Back</b>picture</span>` : `<button class="btn" data-act="guide">Back to the picture</button>`}</div>
     <div class="ruler">${ruler}<span class="nowtag mono" style="left:${t / span * 100}%">${clock(t, false)}</span></div>
-    <div class="grows" id="grows"><div style="position:relative">${rows}<i class="nowline" style="left:calc(var(--gl) + (100% - var(--gl)) * ${t / span})"></i></div></div>`;
+    <div class="grows" id="grows"><div style="position:relative">${rows}<i class="nowline" style="left:calc(var(--gl) + (100% - var(--gl)) * ${t / span})"></i></div></div>
+    ${phone && gb && gb !== c.b ? `<div class="gdetail"><h2>${gb[2]}</h2><div class="f mono">${g[0]} ${CH[g[0]][0]} · ${clock(gb[0])} to ${clock(gb[1])} · ${facts(gb[2])[0]}</div><p>${facts(gb[2])[1]}</p></div>` : ''}`;
 };
 const wallHTML = () => `<div style="display:flex;justify-content:space-between;align-items:center"><h2>Home</h2><span class="mono" style="font-size:12px;color:var(--muted)">${ORDER.length} of 34 channels · ${clock(now())}</span></div>
-  <nav class="tabs" style="margin-top:14px">${['Favourites', 'All 34', 'Recent', 'By decade'].map(t => `<button class="${t === 'All 34' ? 'on' : ''}">${t}</button>`).join('')}</nav>
-  <div class="tiles">${[S.T, ...ORDER.filter(n => n !== S.T)].map(n => `<button class="tile${n === S.T ? ' here' : ''}" data-n="${n}" style="background-image:${art(cur(n).b[2])}" aria-label="Watch channel ${n}, ${CH[n][0]}"><span class="n mono"${n === S.T ? ` style="color:${dec(n)}"` : ''}>${n}</span><span class="lf mono">${n === S.T ? 'you were here' : leftOf(n)}</span><div class="cap"><div class="nm">${CH[n][0]}</div><div class="ti">${cur(n).b[2]}</div></div></button>`).join('')}</div>`;
+  <div class="tiles">${[S.T, ...ORDER.filter(n => n !== S.T)].map((n, i) => `<button class="tile${n === S.T ? ' here' : ''}${S.mode === 'tv' && i === S.wc ? ' cur' : ''}" data-n="${n}" style="background-image:${art(cur(n).b[2])}" aria-label="Watch channel ${n}, ${CH[n][0]}"><span class="n mono"${n === S.T ? ` style="color:${dec(n)}"` : ''}>${n}</span><span class="lf mono">${n === S.T ? 'you were here' : leftOf(n)}</span><div class="cap"><div class="nm">${CH[n][0]}</div><div class="ti">${cur(n).b[2]}</div></div></button>`).join('')}</div>`;
 
 // ----- render -----
 const render = () => {
   const ph = S.mode === 'phone';
   stage.className = `${S.mode} v${S.view}${S.col || S.find != null ? ' colopen' : ''}${S.strip ? ' stripopen' : ''}${S.idle ? ' idle' : ''}`;
   const hov = S.hov, sn = hov ?? S.T;
-  const label = hov ? `Looking at <b>${hov} ${CH[hov][0]}</b> · click to tune` : `Today on ${CH[S.T][0]}`;
+  // Looking is not playing: the label names both channels in plain words.
+  const label = hov ? `Looking at <b>${hov} ${CH[hov][0]}</b> · still playing ${S.T} ${CH[S.T][0]} · click to tune` : `Today on ${CH[S.T][0]}`;
+  // A re-render keeps the lists where the viewer scrolled them.
+  const keep = ['#grows', '#plist', '#wall'].map(s => [s, stage.querySelector(s)?.scrollTop ?? 0]);
+  const noMatch = `<p style="padding:14px 0;color:var(--muted);font-size:14px">No channel or programme matches “${(S.find ?? '').replace(/</g, '&lt;')}”. <button data-act="findclose" style="color:var(--text);text-decoration:underline">Show all channels</button></p>`;
   const picwrap = `<div id="picwrap"><div id="pic" class="${S.cold ? 'cold' : ''}${S.paused ? ' paused' : ''}">${picHTML()}</div></div>`;
   if (ph) {
-    const list = S.find ? results() : ORDER;
+    const list = S.find ? results() : LIST(), sb = S.sb != null ? SCHED[S.T][cur(S.T).i + S.sb] : null;
     stage.innerHTML = `<div class="island"></div><div id="ptop"><button data-act="home">${ic('back', 22)}Home</button><div><button data-act="cc" aria-label="Subtitles">${ic('cc', 22)}</button><button data-act="audio" aria-label="Audio">${ic('audio', 22)}</button><button data-act="air" aria-label="AirPlay">${ic('air', 22)}</button></div></div>
       ${picwrap}<div id="third" class="third">${thirdHTML()}</div>
-      ${S.strip ? `<div class="pstrip"><div class="strip">${stripHTML(S.T)}</div></div>` : ''}
-      <div class="ptabs">${tabsHTML()}<button class="gctl${S.view === 'guide' ? ' on' : ''}" data-act="guide">${ic('guide', 18)}Guide</button></div>
-      <div id="plist" role="listbox" aria-label="Channels">${list.map(n => rowHTML(n, n === S.T ? 'tuned' : '')).join('') || '<p style="padding:16px 0;color:var(--muted);font-size:14px">No channel or programme matches.</p>'}</div>
+      ${S.strip ? `<div class="pstrip"><div class="strip">${stripHTML(S.T)}</div>${sb && S.sb > 0 ? `<div class="info" style="padding:10px 16px 0 0"><h2>${sb[2]}</h2><div class="f mono">${clock(sb[0])} to ${clock(sb[1])} · ${facts(sb[2])[0]}</div><p>${facts(sb[2])[1]}</p></div>` : ''}</div>` : ''}
+      <div class="ptabs">${tabsHTML()}<button class="gctl on" data-act="guide">${S.view === 'guide' ? `${ic('list', 18)}Channels` : `${ic('guide', 18)}Guide`}</button></div>
+      <div id="plist" role="listbox" aria-label="Channels">${list.map(n => rowHTML(n, n === S.T ? 'tuned' : '')).join('') || noMatch}</div>
       <div id="guide">${S.view === 'guide' ? guideHTML() : ''}</div><div id="wall">${S.view === 'wall' ? wallHTML() : ''}</div>${menuHTML() ? `<div style="position:absolute;inset:323px 0 0 0;background:rgba(var(--ink),.6);z-index:19" data-act="menuclose"></div>` : ''}${menuHTML()}${hintHTML()}${S.toast ? `<div class="toast" role="status">${S.toast}</div>` : ''}<div class="homeind"></div>`;
-    if (S.view === 'watch' && !S.find) stage.querySelector('.row.tuned')?.scrollIntoView({block: 'center'});
+    keep.forEach(([s, y]) => { const el = stage.querySelector(s); if (el) el.scrollTop = y; });
+    // Only a tune moves the list: it brings the tuned channel into view.
+    if (S.recentre) { stage.querySelector('.row.tuned')?.scrollIntoView({block: 'center'}); S.recentre = false; }
   } else {
     const res = results(), k = S.mode === 'window' ? 8 : 3, kb = S.mode === 'window' ? 3 : S.mode === 'tv' ? 1 : 2;
-    const above = S.find != null ? res.map((n, i) => rowHTML(n, i === S.fi ? 'cur' : '')).join('') || (S.find ? '<p style="padding:10px 0 10px 76px;color:var(--muted);font-size:14px">No channel or programme matches.</p>' : '') : before(S.T, k).reverse().map(n => rowHTML(n, n === hov ? 'hov' : '')).join('');
+    const above = S.find != null ? res.map((n, i) => rowHTML(n, i === S.fi ? 'cur' : '')).join('') || (S.find ? `<div style="padding-left:76px">${noMatch}</div>` : '') : before(S.T, k).reverse().map(n => rowHTML(n, n === hov ? 'hov' : '')).join('');
     const below = S.find != null ? '' : after(S.T, kb).map(n => rowHTML(n, n === hov ? 'hov' : '')).join('');
     stage.innerHTML = `${picwrap}<div class="over b"></div><div class="over l"></div>
       <div id="col" style="display:${S.mode === 'window' ? 'contents' : 'flex'}">
@@ -478,7 +505,12 @@ const render = () => {
       <div id="guide">${S.view === 'guide' ? guideHTML() : ''}</div><div id="wall">${S.view === 'wall' ? wallHTML() : ''}</div>${menuHTML()}${hintHTML()}${S.toast ? `<div class="toast" role="status">${S.toast}</div>` : ''}`;
     if (S.mode !== 'window') { const low = stage.querySelector('#low'), keys = stage.querySelector('#keys'); stage.appendChild(keys); low.querySelector('.lowhead').remove(); }
     if (S.view === 'guide') { const dock = stage.querySelector('#gdock'); dock.appendChild(stage.querySelector('#pic')); stage.querySelector('#pic').style.cssText = 'width:100%;height:100%;position:relative;border-radius:6px'; }
+    keep.forEach(([s, y]) => { const el = stage.querySelector(s); if (el) el.scrollTop = y; });
   }
+  // Focus never leaves the screen: whatever carries the ring is scrolled into view.
+  stage.querySelector('.strip .blk.cur')?.scrollIntoView({block: 'nearest', inline: 'center'});
+  stage.querySelector('#guide .gb.cur')?.scrollIntoView({block: 'nearest', inline: 'nearest'});
+  stage.querySelector('#wall .tile.cur')?.scrollIntoView({block: 'nearest'});
   const q = stage.querySelector('#q'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
   fit();
 };
@@ -493,10 +525,13 @@ let toastT; const toast = m => { S.toast = m; clearTimeout(toastT); toastT = set
 // ----- behaviour -----
 let tuneT, colT, idleT, digitT, hovT;
 const wake = () => { S.idle = false; clearTimeout(idleT); if (overlay()) idleT = setTimeout(() => { if (!S.col && !S.menu && !S.paused && S.find == null && S.view === 'watch' && S.kf == null) { S.idle = true; S.strip = false; S.sb = null; render(); } }, 4000); };
-const closeColSoon = () => { clearTimeout(colT); if (overlay()) colT = setTimeout(() => { if (!S.strip && S.find == null && !S.menu) { S.col = false; render(); wake(); } }, 4500); };
+// The column closes by itself only after the viewer has left it alone: longer on a television, where reading takes longer.
+const closeColSoon = () => { clearTimeout(colT); if (overlay()) colT = setTimeout(() => { if (!S.strip && S.find == null && !S.menu) { S.col = false; render(); wake(); } }, S.mode === 'tv' ? 9000 : 6000); };
 const tune = (n, o = {}) => {
   if (n === S.T && !o.force) { if (S.view !== 'watch') { S.view = 'watch'; render(); } return; }
-  S.last = S.T; S.T = n; S.paused = false; S.behind = 0; S.hov = null; S.hb = null; S.sb = null; S.cold = false; S.hinted[S.mode] = true;
+  clearTimeout(hovT);
+  S.last = S.T; S.T = n; S.paused = false; S.behind = 0; S.hov = null; S.hb = null; S.sb = null; S.cold = false; S.hinted[S.mode] = true; S.recentre = true;
+  S.recent = [n, ...S.recent.filter(x => x !== n)].slice(0, 8);
   if (!o.stay) S.view = S.view === 'guide' ? 'guide' : 'watch';
   render();
   // Static for about 150 ms inside the flip; fast flips hold one wash and resolve once.
@@ -506,7 +541,7 @@ const tune = (n, o = {}) => {
   say(`Channel ${n}, ${CH[n][0]}. ${cur(n).b[2]}.`);
   done('flip'); wake();
 };
-const flip = d => { const i = ORDER.indexOf(S.T); if (overlay()) { S.col = true; closeColSoon(); } tune(ORDER[(i + d + ORDER.length) % ORDER.length]); };
+const flip = d => { const l = S.tab === 'Recent' ? ORDER : LIST(), i = l.indexOf(S.T); if (overlay()) { S.col = true; closeColSoon(); } tune(l[(i + d + l.length) % l.length]); };
 const pause = () => { if (S.cold) return; S.paused = !S.paused; if (S.paused) { S.pausedAt = Date.now(); done('pause'); } else S.behind = Math.max(1, Math.round((Date.now() - S.pausedAt) / 1000)); S.idle = false; render(); wake(); say(S.paused ? 'Paused' : `Playing, ${S.behind} seconds behind live`); };
 const openGuide = () => { S.view = S.view === 'guide' ? 'watch' : 'guide'; S.menu = null; S.col = false; S.strip = false; S.gcur = S.view === 'guide' ? [S.T, cur(S.T).i] : null; if (S.view === 'guide') done('guide'); S.hinted[S.mode] = true; render(); stage.querySelector('.grow.tuned')?.scrollIntoView({block: 'center'}); };
 const openFind = () => { S.find = ''; S.fi = 0; S.col = true; S.strip = false; clearTimeout(colT); render(); };
@@ -515,6 +550,7 @@ const commitDigits = () => { clearTimeout(digitT); const n = ORDER.find(x => Str
 const act = a => {
   wake();
   if (a === 'channels') { S.col = !S.col; S.strip = false; S.sb = null; S.hinted[S.mode] = true; render(); if (S.col) closeColSoon(); return; }
+  if (a === 'today') { S.strip = !S.strip; S.sb = S.strip ? 0 : null; clearTimeout(colT); if (S.strip) done('later'); S.hinted[S.mode] = true; render(); return; }
   if (a === 'guide') return openGuide();
   if (a === 'home') { if (S.view === 'wall') return; S.view = 'wall'; S.menu = null; done('home0'); render(); return; }
   if (a === 'pause') return pause();
@@ -538,11 +574,11 @@ stage.addEventListener('click', e => {
   const el = e.target.closest('[data-act],[data-n],[data-b],[data-g],[data-mi],[data-tab]');
   if (!el) { if (e.target.closest('#pic') && S.view === 'watch') { if (S.mode === 'full' && S.col) { S.col = false; S.strip = false; render(); } else pause(); } return; }
   if (el.dataset.act) return act(el.dataset.act);
-  if (el.dataset.tab) { S.tab = el.dataset.tab; render(); return; }
+  if (el.dataset.tab) { S.tab = el.dataset.tab; S.recentre = true; clearTimeout(colT); render(); return; }
   if (el.dataset.mi != null) { const o = MENUS[S.menu]()[1][+el.dataset.mi]; o.go(); render(); return; }
   if (el.dataset.g) { const [n, j] = el.dataset.g.split(',').map(Number), b = SCHED[n][j], on = b[0] <= now() && b[1] > now(); S.gcur = [n, j]; if (on) tune(n); else { done('later'); render(); } return; }
   if (el.dataset.b != null) { S.sb = +el.dataset.b; if (S.sb > 0) done('later'); S.strip = true; render(); return; }
-  if (el.dataset.n) { const n = +el.dataset.n; if (S.view === 'wall') { S.view = 'watch'; if (DONE.home0) done('home'); tune(n, {force: true}); return; }
+  if (el.dataset.n) { const n = +el.dataset.n; S.still = [e.clientX, e.clientY]; if (S.view === 'wall') { S.view = 'watch'; if (DONE.home0) done('home'); tune(n, {force: true}); return; }
     if (S.find != null) { if (S.find) done('find'); S.find = null; }
     if (S.mode === 'phone' && n === S.T && S.view === 'watch') { S.strip = !S.strip; S.hinted.phone = true; if (S.strip) done('later'); render(); return; }
     tune(n); if (overlay()) closeColSoon(); }
@@ -551,12 +587,16 @@ stage.addEventListener('dblclick', e => { if (e.target.closest('#pic') && (S.mod
 stage.addEventListener('input', e => { if (e.target.id === 'q') { S.find = e.target.value; S.fi = 0; render(); } });
 stage.addEventListener('pointermove', e => {
   if (S.mode === 'tv') return; if (S.idle) { S.idle = false; render(); } wake();
+  // The column stays open while the pointer is moving inside it.
+  if (S.col && overlay() && e.target.closest('#col')) closeColSoon();
   if (S.mode !== 'window' || S.view !== 'watch') return;
+  // After a click the list re-centres under a pointer that has not moved. It must move before it looks at anything.
+  if (S.still) { if (Math.hypot(e.clientX - S.still[0], e.clientY - S.still[1]) < 14) return; S.still = null; }
   const r = e.target.closest('.row[data-n]'), b = e.target.closest('.blk[data-b]');
   const hn = r && +r.dataset.n !== S.T && S.find == null ? +r.dataset.n : (b ? S.hov : null), hb = b ? +b.dataset.b : null;
-  if (hn !== S.hov || hb !== S.hb) { clearTimeout(hovT); hovT = setTimeout(() => { S.hov = hn; S.hb = hb; if (hb > 0 || hn) done('later');
+  if (hn !== S.hov || hb !== S.hb) { clearTimeout(hovT); hovT = setTimeout(() => { S.hov = hn === S.T ? null : hn; S.hb = hb; if (hb > 0 || S.hov) done('later');
     const low = stage.querySelector('#low'); if (!low) return;
-    low.querySelector('.slabel').innerHTML = S.hov ? `Looking at <b>${S.hov} ${CH[S.hov][0]}</b> · click to tune` : `Today on ${CH[S.T][0]}`;
+    low.querySelector('.slabel').innerHTML = S.hov ? `Looking at <b>${S.hov} ${CH[S.hov][0]}</b> · still playing ${S.T} ${CH[S.T][0]} · click to tune` : `Today on ${CH[S.T][0]}`;
     if (!b) low.querySelector('.strip').innerHTML = stripHTML(S.hov ?? S.T); low.querySelector('.info').innerHTML = infoHTML();
     stage.querySelectorAll('.row').forEach(x => x.classList.toggle('hov', +x.dataset.n === S.hov)); }, hn || hb != null ? 140 : 60); }
 });
@@ -569,14 +609,18 @@ document.addEventListener('keydown', e => {
   if (S.menu) { const opts = MENUS[S.menu]()[1];
     if (back) { S.menu = null; render(); } else if (k === 'ArrowDown') { S.mi = Math.min(opts.length - 1, S.mi + 1); render(); } else if (k === 'ArrowUp') { S.mi = Math.max(0, S.mi - 1); render(); }
     else if (k === 'Enter' && opts[S.mi]) { opts[S.mi].go(); render(); } e.preventDefault(); return; }
-  if (S.view === 'wall') { if (back) { S.view = 'watch'; if (DONE.home0) done('home'); render(); } return; }
+  if (S.view === 'wall') { const tiles = [S.T, ...ORDER.filter(n => n !== S.T)], cols = tv ? 3 : 4;
+    if (back) { S.view = 'watch'; if (DONE.home0) done('home'); render(); }
+    else if (k === 'Enter') { S.view = 'watch'; if (DONE.home0) done('home'); tune(tiles[S.wc], {force: true}); }
+    else if (k.startsWith('Arrow')) { const d = {ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols}[k]; S.wc = Math.max(0, Math.min(tiles.length - 1, S.wc + d)); render(); e.preventDefault(); }
+    return; }
   if (inFind) { const res = results();
     if (back) closeFind(); else if (k === 'ArrowDown') { S.fi = Math.min(res.length - 1, S.fi + 1); render(); e.preventDefault(); } else if (k === 'ArrowUp') { S.fi = Math.max(0, S.fi - 1); render(); e.preventDefault(); }
     else if (k === 'Enter' && res[S.fi]) { done('find'); S.find = null; tune(res[S.fi], {force: true}); closeColSoon(); } return; }
   if (S.view === 'guide') { const g = S.gcur ?? [S.T, cur(S.T).i];
     if (back || k === 'g') openGuide();
-    else if (k === 'ArrowDown' || k === 'ArrowUp') { const i = ORDER.indexOf(g[0]) + (k === 'ArrowDown' ? 1 : -1); if (ORDER[i]) { const n = ORDER[i], mid = (Math.max(SCHED[g[0]][g[1]][0], now()) + SCHED[g[0]][g[1]][1]) / 2; let j = SCHED[n].findIndex(b => b[0] <= mid && b[1] > mid); if (j < 0) j = cur(n).i; S.gcur = [n, j]; render(); stage.querySelector('.gb.cur')?.scrollIntoView({block: 'nearest'}); } }
-    else if (k === 'ArrowRight' || k === 'ArrowLeft') { const j = g[1] + (k === 'ArrowRight' ? 1 : -1); if (SCHED[g[0]][j] && SCHED[g[0]][j][1] > now() && SCHED[g[0]][j][0] < 180) { S.gcur = [g[0], j]; if (j > cur(g[0]).i) done('later'); render(); } }
+    else if (k === 'ArrowDown' || k === 'ArrowUp') { const L = LIST(), i = L.indexOf(g[0]) + (k === 'ArrowDown' ? 1 : -1); if (L[i]) { const n = L[i], mid = (Math.max(SCHED[g[0]][g[1]][0], now()) + SCHED[g[0]][g[1]][1]) / 2; let j = SCHED[n].findIndex(b => b[0] <= mid && b[1] > mid); if (j < 0) j = cur(n).i; S.gcur = [n, j]; render(); stage.querySelector('.gb.cur')?.scrollIntoView({block: 'nearest'}); } }
+    else if (k === 'ArrowRight' || k === 'ArrowLeft') { const j = g[1] + (k === 'ArrowRight' ? 1 : -1); if (SCHED[g[0]][j] && SCHED[g[0]][j][1] > now() && SCHED[g[0]][j][0] < SPAN()) { S.gcur = [g[0], j]; if (j > cur(g[0]).i) done('later'); render(); } }
     else if (k === 'Enter') { const b = SCHED[g[0]][g[1]]; if (b[0] <= now()) tune(g[0], {force: g[0] !== S.T}); else toast(`${b[2]} starts at ${clock(b[0])}`); }
     else return; e.preventDefault(); return; }
   if (/^[0-9]$/.test(k)) { S.digits = (S.digits + k).slice(0, 2); S.idle = false; render(); clearTimeout(digitT); digitT = setTimeout(commitDigits, 1600); return; }
@@ -585,10 +629,10 @@ document.addEventListener('keydown', e => {
   if (k === 'ArrowRight' || k === 'ArrowLeft') { const d = k === 'ArrowRight' ? 1 : -1; e.preventDefault();
     if (tv && !S.col && !S.strip) { const n = KEYS.tv.length; S.kf = S.kf == null ? 0 : Math.max(0, Math.min(n - 1, S.kf + d)); render(); return; }
     if (!S.strip) { if (d < 0) return; S.strip = true; S.sb = 0; clearTimeout(colT); if (overlay()) S.col = true; }
-    else { const nb = (S.sb ?? 0) + d; if (nb < 0) { S.strip = S.mode === 'window'; S.sb = null; if (overlay()) closeColSoon(); } else S.sb = Math.min(4, nb); }
+    else { const nb = (S.sb ?? 0) + d; if (nb < 0) { S.strip = S.mode === 'window'; S.sb = null; if (overlay()) closeColSoon(); } else S.sb = Math.min(4, SCHED[S.T].length - cur(S.T).i - 1, nb); }
     if (S.sb > 0) done('later'); render(); return; }
   if (k === 'Enter') { if (tv && S.kf != null) { const a = KEYS.tv[S.kf]; S.kf = null; act(a); } else if (overlay() && (S.col || S.strip)) { S.col = false; S.strip = false; S.sb = null; render(); } return; }
-  if (back) { if (S.strip && overlay()) { S.strip = false; S.sb = null; closeColSoon(); render(); } else if (S.sb != null) { S.sb = null; render(); } else if (S.kf != null) { S.kf = null; render(); } else if (S.col && overlay()) { S.col = false; render(); } else if (S.mode === 'full') act('full'); e.preventDefault(); return; }
+  if (back) { if (S.strip && overlay()) { S.strip = false; S.sb = null; closeColSoon(); render(); } else if (S.sb != null) { S.sb = null; render(); } else if (S.kf != null) { S.kf = null; render(); } else if (S.col && overlay()) { S.col = false; render(); } else if (S.mode === 'full') act('full'); else if (tv) { S.wc = 0; act('home'); } e.preventDefault(); return; }
   if (tv) return;
   if (k === ' ' || k === 'k') { pause(); e.preventDefault(); } else if (k === 'g') openGuide(); else if (k === '/') { openFind(); e.preventDefault(); } else if (k === 'f') act('full');
   else if (k === 'm') act('vol'); else if (k === 'c') act('cc'); else if (k === 'a') act('audio'); else if (k === 'l') { if (S.last) tune(S.last); } else if (k === '?') { S.menu = 'keys'; render(); }

@@ -183,6 +183,30 @@ It adds what stills could not show: a close on every menu, a next step on the co
 naming each icon key, one first-run hint per device that goes after the first channel change, and a
 shortcuts sheet under More. Its artwork is the mock's stand-ins, and the picture is a still.
 
+### What using it changed
+
+A review by use (six tasks, cold, on each layout) passed 22 of 24 attempts and found these. The
+prototype carries the fixes; the mock's stills do not yet.
+
+- **One rule for "later today".** A **Today** control sits with Channels and Guide in the quiet row
+  on full screen and a television, and opens the day of the channel you are watching. A window
+  keeps the strip open always; a phone opens it by tapping your channel. Right still opens it too.
+- **A television's remote reaches everything.** Its quiet row is Channels, Today, Guide, Pause,
+  Subtitles, Audio, More. Back on the bare picture goes Home, where arrows move between tiles and
+  OK watches one. This replaces the focus map in item 6.
+- **The column closes only when left alone**: six seconds after the last key, nine on a television,
+  and never while the pointer is moving inside it.
+- **Focus never leaves the screen.** Whatever carries the ring is scrolled into view, focus stops at
+  the last programme drawn, and a re-render keeps every list where it was scrolled.
+- **Looking is not playing.** Pointing at another channel says "Looking at 9 Movie Matinee · still
+  playing 7 Coast 90s". After a click the list re-centres, and the pointer must move before it
+  looks at anything, so a second click cannot tune a channel that slid under it.
+- **A phone answers every tap.** A later programme shows its facts under the strip or the Guide, the
+  Guide's control reads "Channels" while the Guide is up, and Go live leads its line.
+- **The first-run hint** sits at the top of the picture, clear of the lists, and fades with the
+  controls. More holds Keyboard shortcuts, or Remote buttons on a television.
+- **The group tabs filter**, and "no match" offers "Show all channels".
+
 ## Reviews
 
 Two independent critiques have scored the mock: 23 of 40, then 24 of 40 after the first rework. Both
