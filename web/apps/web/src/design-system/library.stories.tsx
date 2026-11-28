@@ -220,7 +220,8 @@ const filtering: NonNullable<LibraryShelfProps["filtering"]> = {
 };
 
 const openFilters: Story["play"] = async ({ canvas, userEvent }) => {
-  await userEvent.click(canvas.getByRole("button", { name: /^More filters/ }));
+  // More filters from a tablet up; a phone's one Filters control, which opens the sheet.
+  await userEvent.click(canvas.getByRole("button", { name: /^(More filters|Filters)/ }));
 };
 
 // The disclosure open, with nothing chosen yet.
@@ -242,8 +243,9 @@ const severalFilters = {
 
 const SeveralFilters: Story = { args: { genres: GENRES, genre: "Drama", filtering: severalFilters } };
 
-// The phone: the disclosure stacked, with what is on under it.
+// The phone: the sheet open over the one line of search and Filters, with what is on under it.
 const FiltersPhone: Story = {
+  globals: { viewport: { value: "mobile2" } },
   tags: ["route"],
   args: { genres: GENRES, filtering: severalFilters },
   play: openFilters,

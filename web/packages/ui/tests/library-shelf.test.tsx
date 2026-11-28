@@ -62,7 +62,12 @@ type Host = Parameters<typeof createRoot>[0] & {
   textContent: string | null;
 };
 const win = globalThis as unknown as {
-  document: { body: { append(n: unknown): void }; createElement(t: string): Host };
+  document: {
+    activeElement: unknown;
+    body: { append(n: unknown): void };
+    createElement(t: string): Host;
+    querySelector(s: string): (El & { querySelectorAll(s: string): ArrayLike<El> }) | null;
+  };
   Event: new (type: string, init: { bubbles: boolean }) => unknown;
   HTMLSelectElement: { prototype: object };
 };
@@ -257,13 +262,21 @@ describe("LibraryShelf", () => {
     screen.width = 1440;
   });
 
-  it("gives a phone's search, order, genre and Review touch targets", () => {
+  it("gives a phone's search, order, genre, All tab and Review touch targets", async () => {
     screen.width = 390;
     const { host, button, cleanup } = render({ admin: admin({ needsYou: 2 }), genres: [] });
-    const minHeight = (selector: string) =>
-      (host.querySelector(selector) as unknown as { style: { minHeight: string } }).style.minHeight;
-    expect(minHeight("input")).toBe("48px");
-    expect(minHeight("select")).toBe("48px");
+    const style = (node: unknown) => (node as { style: { minHeight: string } }).style;
+    expect(style(host.querySelector("input")).minHeight).toBe("48px");
+    await act(async () => button("Filters").click());
+    expect(style(doc.querySelector('[role="dialog"] select')).minHeight).toBe("48px");
+    const all = doc.querySelector('[role="dialog"] [role="tab"]');
+    expect(all?.textContent?.trim()).toBe("All");
+    // The width is on the box inside the tab's padding, set by a stylesheet class.
+    const box = (all as unknown as { firstElementChild: { firstElementChild: unknown } }).firstElementChild
+      .firstElementChild;
+    const computed = (globalThis as unknown as { getComputedStyle(n: unknown): { minWidth: string } })
+      .getComputedStyle;
+    expect(computed(box).minWidth).toBe("48px");
     expect(button("Review").getAttribute("href")).toBeNull();
     screen.width = 1440;
     cleanup();
@@ -392,15 +405,69 @@ describe("LibraryShelf", () => {
     counting.cleanup();
   });
 
-  it("on a phone, says the tab's count beside the order rather than in the tabs", () => {
+  it("on a phone, says in the sheet how many titles the filters leave, and counts none on Collections", async () => {
     screen.width = 390;
     try {
-      const { host, button, find, cleanup } = render({ filter: "movie" });
-      expect(button("Movies").textContent?.trim()).toBe("Movies");
-      expect(host.textContent).toContain("2,180 titles");
-      expect(host.textContent).not.toContain("3,412");
-      // Settings is the gear alone, named for what it opens.
-      expect(find("Library settings")?.textContent?.trim()).toBe("");
+      const filtering = {
+        filters: { uhd: true },
+        onChange: vi.fn(),
+        onClear: vi.fn(),
+        personSearch: { value: "", onChange: vi.fn(), options: [], loading: false, failed: false },
+        total: 37,
+      };
+      const { button, cleanup } = render({ filter: "all", genres: [], filtering });
+      await act(async () => button("Filters (1)").click());
+      const sheet = doc.querySelector('[role="dialog"]');
+      expect(sheet?.querySelector('[role="status"]')?.textContent).toBe("37 titles");
+      expect(sheet?.textContent).toContain("Filters");
+      cleanup();
+
+      const collections = render({ filter: "collections", genres: [], filtering });
+      expect(collections.button("Filters").textContent?.trim()).toBe("Filters");
+      collections.cleanup();
+    } finally {
+      screen.width = 1440;
+    }
+  });
+
+  it("on a phone, folds the tabs and filters into a sheet that applies and gives focus back", async () => {
+    screen.width = 390;
+    try {
+      const { host, props, button, find, cleanup } = render({ filter: "movie", genres: [] });
+      // One line on the page: the search, and Filters with how many are on.
+      expect(host.querySelector('[role="tab"]')).toBeNull();
+      expect(host.querySelector("select")).toBeNull();
+      expect(host.querySelector("input")).not.toBeNull();
+      const opener = button("Filters (1)") as El & { focus(): void; style: { minHeight: string } };
+      expect(opener.style.minHeight).toBe("48px");
+      // Settings is the gear alone, named for what it opens, and a finger's size each way.
+      const settings = find("Library settings") as El & { style: { minHeight: string; width: string } };
+      expect(settings.textContent?.trim()).toBe("");
+      expect([settings.style.minHeight, settings.style.width]).toEqual(["48px", "48px"]);
+
+      await act(async () => {
+        opener.focus();
+        opener.click();
+      });
+      const sheet = () => doc.querySelector('[role="dialog"]');
+      const inSheet = (selector: string) => Array.from(sheet()?.querySelectorAll(selector) ?? []);
+      // The sheet is outside the page, with the count of the tab and no counts in the tabs.
+      expect(sheet()?.textContent).toContain("2,180 titles");
+      expect(sheet()?.textContent).not.toContain("3,412");
+      const shows = inSheet('[role="tab"]').find((n) => n.textContent?.trim() === "Shows");
+      act(() => shows?.click());
+      expect(props.onFilterChange).toHaveBeenCalledWith("series");
+      const [order] = inSheet("select");
+      choose(order as El, "recent");
+      expect(props.onSortChange).toHaveBeenCalledWith("recent");
+
+      await act(async () => {
+        inSheet("button, [role='button']")
+          .find((n) => n.textContent?.trim() === "Done")
+          ?.click();
+      });
+      await vi.waitFor(() => expect(sheet()).toBeNull());
+      await vi.waitFor(() => expect(doc.activeElement).toBe(opener));
       cleanup();
     } finally {
       screen.width = 1440;
