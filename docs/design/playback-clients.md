@@ -163,6 +163,10 @@ is the cross-device player design ([`frontend-design.md`
 [`design/watch-player/`](../../design/watch-player/README.md)). Live Channels only: there is no
 on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause) already keeps.
 
+**Decided next (2026-11-27), not yet built:** [The Cross](../../design/watch/README.md) replaces this
+chrome on every client. Tuning, pause, the one-player rule and the keys' meanings below do not
+change; where things sit and what the Guide is do.
+
 - **Seek inside `DVRHorizon`.** ⟲10 / ⟳10 and `←`/`→` move ten seconds; ⟳10 does nothing at the
   live edge. The playbar's past is seekable by click or drag; its future is preview only. `L` (and
   the live indicator) goes live; **Start over** seeks to the current programme's start, offered
