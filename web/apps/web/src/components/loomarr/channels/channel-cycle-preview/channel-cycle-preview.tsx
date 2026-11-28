@@ -346,7 +346,7 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
 // ComputeDesiredAt the reconciler runs. Its whole point is making first-match-by-
 // priority legible — "at Saturday 9am, the Weekend TNG marathon rule is active" — so the
 // active-rule attribution is the most prominent thing on the panel, not a footnote.
-const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: ChannelCyclePreviewProps) => {
+const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy }: ChannelCyclePreviewProps) => {
   const [at, setAt] = useState("");
   const timeZone = useHouseholdTimeZone();
 
@@ -386,7 +386,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
   const showByKey = new Map((lineupKeys ?? []).map((e) => [e.key, e.title]));
 
   return (
-    <Stack className={className} gap="control" render="section">
+    <Stack gap="control" render="section">
       <div>
         <Stack align="center" direction="row" gap="inline">
           <Text as="h3" textRole="heading">

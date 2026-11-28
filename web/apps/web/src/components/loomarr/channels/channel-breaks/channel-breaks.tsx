@@ -19,7 +19,7 @@ import type { ChannelBreaksProps } from "./channel-breaks.type";
 // ⚠ `retry: false` because an install without filler configured answers 501, and this renders
 // nothing in that case rather than an error — a channel with no commercials is an ordinary state,
 // not a fault. Same treatment the coverage meter gives the same condition.
-const ChannelBreaks = ({ channelId, className }: ChannelBreaksProps) => {
+const ChannelBreaks = ({ channelId }: ChannelBreaksProps) => {
   const pods = channelsApi.usePreviewChannelPods(channelId, { query: { retry: false } });
   const pod = unwrap(pods.data);
   const entries = pod?.entries ?? [];
@@ -30,14 +30,7 @@ const ChannelBreaks = ({ channelId, className }: ChannelBreaksProps) => {
 
   return (
     // The section's own divider, so a channel with no break pool leaves no stray line.
-    <Stack
-      borderTopColor="$borderDecorative"
-      borderTopWidth={1}
-      className={className}
-      gap="1.5"
-      paddingTop={12}
-      render="section"
-    >
+    <Stack borderTopColor="$borderDecorative" borderTopWidth={1} gap="1.5" paddingTop={12} render="section">
       <Text as="h3" textRole="hint" tone="secondary">
         Between shows
       </Text>

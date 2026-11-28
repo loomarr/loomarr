@@ -7,7 +7,6 @@ type ProvisioningState = TitleDTOState | "drift";
 
 interface StateBadgeProps {
   state: ProvisioningState;
-  className?: string;
 }
 
 export type { ProvisioningState, StateBadgeProps };

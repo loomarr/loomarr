@@ -8,7 +8,6 @@ interface ChannelLineupEditorProps {
   // query refetches (the same invalidate the rest of the channel page already does on a
   // `channel` SSE frame or a successful edit).
   lineup: LineupEntryDTO[];
-  className?: string;
 }
 
 export type { ChannelLineupEditorProps };

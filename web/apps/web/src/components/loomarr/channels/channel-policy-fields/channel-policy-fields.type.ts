@@ -18,7 +18,6 @@ interface ChannelPolicyFieldsProps {
   // One full pass through this channel's titles, from the backend's cycle preview. Drives the
   // plain-language consequence under Play order; absent while loading, the line drops its numbers.
   cycle?: PlayOrderCycle;
-  className?: string;
 }
 
 export type { ChannelPolicyFieldsProps };

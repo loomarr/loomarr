@@ -45,7 +45,6 @@ const ChannelIconField = ({
   logoImage,
   onSetLogo,
   isAdmin = false,
-  className,
 }: ChannelIconFieldProps) => {
   const urlInputId = useId();
   const pickerId = useId();
@@ -129,7 +128,7 @@ const ChannelIconField = ({
   };
 
   return (
-    <Stack className={className} gap="control">
+    <Stack gap="control">
       <Stack align="center" direction="row" gap="control">
         {/* The web mock's 48px tile: a muted placeholder when there's no icon yet, never a
             broken-image glyph. */}

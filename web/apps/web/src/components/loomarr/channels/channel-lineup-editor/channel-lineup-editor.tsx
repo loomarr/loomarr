@@ -263,7 +263,7 @@ const SortableLineupRow = ({
 // reported as "why do I still see the same old movies".
 type LineupSort = "order" | "newest" | "year";
 
-const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEditorProps) => {
+const ChannelLineupEditor = ({ channelId, lineup }: ChannelLineupEditorProps) => {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<LineupSort>("order");
@@ -321,7 +321,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
   };
 
   return (
-    <Card backgroundColor="transparent" borderRadius={8} className={className} padding={16} render="section">
+    <Card backgroundColor="transparent" borderRadius={8} padding={16} render="section">
       <Stack gap="control">
         <div>
           <Text as="h2" strong textRole="headline">
