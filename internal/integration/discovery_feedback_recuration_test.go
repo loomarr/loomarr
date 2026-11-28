@@ -162,8 +162,11 @@ func (r *toolOrderRecorder) all() [][]provision.Key {
 func awaitRecuratedProposalAfter(t *testing.T, h *harness, channelID string, previous int) (proposals.Proposal, int) {
 	t.Helper()
 	ctx := context.Background()
-	deadline := time.Now().Add(workerWait)
-	for time.Now().Before(deadline) {
+	var (
+		newest proposals.Proposal
+		count  int
+	)
+	testkit.Eventually(t, workerWait, "the recurate for "+channelID+" to complete", func() bool {
 		var found []proposalstore.Proposal
 		for _, status := range []string{"submitted", "approved"} {
 			proposals, err := h.store.ListProposalsByStatus(ctx, status)
@@ -179,12 +182,12 @@ func awaitRecuratedProposalAfter(t *testing.T, h *harness, channelID string, pre
 		}
 		if len(found) > previous {
 			slices.SortFunc(found, func(a, b proposalstore.Proposal) int { return a.CreatedAt.Compare(b.CreatedAt) })
-			return found[len(found)-1].Body, len(found)
+			newest, count = found[len(found)-1].Body, len(found)
+			return true
 		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatalf("recurate for %s did not complete", channelID)
-	return proposals.Proposal{}, 0
+		return false
+	})
+	return newest, count
 }
 
 func assertProposalKeys(t *testing.T, prop proposals.Proposal, want []provision.Key) {

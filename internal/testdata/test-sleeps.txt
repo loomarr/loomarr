@@ -16,10 +16,6 @@ internal/app/restart_test.go 1
 internal/app/settings_replica_test.go 1
 internal/filler/fetch/downloaders_test.go 3
 internal/integration/database_lifecycle_postgres_test.go 6
-internal/integration/discovery_feedback_recuration_test.go 1
-internal/integration/harness_test.go 1
-internal/integration/pipeline_test.go 1
-internal/integration/scan_availability_test.go 1
 internal/library/scan/importer_test.go 9
 internal/library/scan/readrecords_test.go 1
 internal/library/scan/roots_test.go 1

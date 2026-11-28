@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // TestScanAvailability_NoWebhook is the retirement safety proof (design §4, build plan): a
@@ -47,19 +48,16 @@ func TestScanAvailability_NoWebhook(t *testing.T) {
 	}
 }
 
-// awaitAvailable polls the store until the title is terminal or a short deadline passes — the
-// scan job runs asynchronously off the heartbeat after Trigger.
-func awaitAvailable(t *testing.T, h *harness, key provision.Key) provision.Record {
+// awaitAvailable waits until the title is terminal — the scan job runs asynchronously off the
+// heartbeat after Trigger.
+func awaitAvailable(t *testing.T, h *harness, key provision.Key) (rec provision.Record) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		rec, err := h.store.GetTitle(context.Background(), key)
-		if err != nil {
+	testkit.Eventually(t, 3*time.Second, "the title to reach a terminal state", func() bool {
+		var err error
+		if rec, err = h.store.GetTitle(context.Background(), key); err != nil {
 			t.Fatalf("GetTitle: %v", err)
 		}
-		if rec.State.Terminal() || time.Now().After(deadline) {
-			return rec
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+		return rec.State.Terminal()
+	})
+	return rec
 }
