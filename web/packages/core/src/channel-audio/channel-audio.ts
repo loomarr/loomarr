@@ -1,5 +1,5 @@
 import { getChannelTracksUrl, getGetChannelUrl } from "@loomarr/api/endpoints/channels";
-import { readBody } from "@loomarr/api/mutator";
+import { importSchemas, readBody } from "@loomarr/api/mutator";
 import type { z } from "zod";
 
 import { audioChoices } from "./audio-options";
@@ -26,7 +26,7 @@ const createChannelAudioSource = (request: typeof globalThis.fetch): ChannelAudi
     // As on the web, tracks that can't be read still leave the channel's language to show; only the
     // channel itself is required, since without it nothing can be marked as the one in use.
     load: async (channelId, signal) => {
-      const { ChannelAudioBody, TracksBody } = await import("../response-bodies");
+      const { ChannelAudioBody, TracksBody } = await importSchemas(() => import("../response-bodies"));
       const [tracks, channel] = await Promise.all([
         read(getChannelTracksUrl(channelId), TracksBody, signal).catch((error: unknown) => {
           if (signal.aborted) throw error;

@@ -4,7 +4,7 @@ import {
   getDevicePairStartUrl,
   getDeviceRevokeCurrentUrl,
 } from "@loomarr/api/endpoints/auth";
-import { ApiError, ContractError, readBody } from "@loomarr/api/mutator";
+import { ApiError, ContractError, importSchemas, readBody } from "@loomarr/api/mutator";
 import type { z } from "zod";
 
 import type {
@@ -79,6 +79,8 @@ const pairingFailureMessage = (error: unknown, serverUrl: string): string => {
   const host = new URL(serverUrl).host;
   if (error instanceof PairingHttpError)
     return `${host} answered, but couldn’t start pairing (error ${error.status}). Check that it’s your Loomarr server, then try again.`;
+  // No answer was read at all (a schema chunk that didn't load): its own words say what to do.
+  if (error instanceof ApiError && error.status === 0) return error.message;
   // A failure or success page that is not JSON, or JSON of another shape: not a Loomarr server.
   if (error instanceof SyntaxError || error instanceof ApiError || error instanceof ContractError)
     return `${host} isn’t answering as a Loomarr server. Check the address.`;
@@ -138,7 +140,7 @@ const createPairingTransport = (serverUrl: string, fetcher: PairingFetch = fetch
       method: "POST",
       signal,
     });
-    const { PairStartBody } = await import("../response-bodies");
+    const { PairStartBody } = await importSchemas(() => import("../response-bodies"));
     return {
       body: await readAnswer(response, PairStartBody),
       serverDate: response.headers.get("Date") ?? undefined,
@@ -153,7 +155,7 @@ const createPairingTransport = (serverUrl: string, fetcher: PairingFetch = fetch
     });
     if (response.status === 428) return { status: "pending" };
     if (response.status === 404) return { status: "expired" };
-    const { PairPollBody } = await import("../response-bodies");
+    const { PairPollBody } = await importSchemas(() => import("../response-bodies"));
     return { body: await readAnswer(response, PairPollBody), status: "paired" };
   },
 });

@@ -1,6 +1,28 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { ApiError, ContractError, customFetch, observeApiFailures, readBody, toProblem } from "./mutator";
+import {
+  ApiError,
+  ContractError,
+  customFetch,
+  importSchemas,
+  observeApiFailures,
+  readBody,
+  toProblem,
+} from "./mutator";
+
+describe("importSchemas", () => {
+  it("hands back the module that loads", async () => {
+    await expect(importSchemas(async () => ({ a: 1 }))).resolves.toEqual({ a: 1 });
+  });
+
+  it("raises a typed ApiError carrying the cause when the chunk is gone", async () => {
+    const cause = new TypeError("Failed to fetch dynamically imported module");
+    const failure = await importSchemas(() => Promise.reject(cause)).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect(failure).toMatchObject({ cause, status: 0 });
+  });
+});
 
 describe("readBody", () => {
   const schema = z.object({ name: z.string() });

@@ -1,6 +1,6 @@
 import { getChannelPlayUrlUrl, getListChannelsUrl } from "@loomarr/api/endpoints/channels";
 import type { PlayURLOutputBody } from "@loomarr/api/models/playURLOutputBody";
-import { readBody } from "@loomarr/api/mutator";
+import { importSchemas, readBody } from "@loomarr/api/mutator";
 import type { PlayerChannel, PlayerSourcePort } from "../player-source";
 import {
   GENERIC_START_FAILURE,
@@ -72,7 +72,7 @@ const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptio
     );
     if (!response.ok) throw new Error(`Couldn't mint a play URL (${response.status}).`);
 
-    const { PlayUrlBody } = await import("../response-bodies");
+    const { PlayUrlBody } = await importSchemas(() => import("../response-bodies"));
     const body = await readBody(response, PlayUrlBody);
     const expiry = Date.parse(body.expiresAt);
     const headerServerTime = Date.parse(response.headers.get("Date") ?? "");
@@ -141,7 +141,7 @@ const createChannelCatalogPort = (request: typeof globalThis.fetch): ChannelCata
   list: async (signal) => {
     const response = await request(getListChannelsUrl(), { method: "GET", signal });
     if (!response.ok) throw new Error(`Couldn't load channels (${response.status}).`);
-    const { CatalogBody } = await import("../response-bodies");
+    const { CatalogBody } = await importSchemas(() => import("../response-bodies"));
     return (await readBody(response, CatalogBody)).channels;
   },
 });

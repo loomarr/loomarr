@@ -1,5 +1,5 @@
 import { getChannelGuideUrl } from "@loomarr/api/endpoints/channels";
-import { readBody } from "@loomarr/api/mutator";
+import { importSchemas, readBody } from "@loomarr/api/mutator";
 
 import { defaultGuideWindow, guideSelectionForChannel, layoutGuide, moveGuideSelection } from "../guide";
 import type { GuideLayout, GuideWindow } from "../guide.type";
@@ -14,7 +14,7 @@ const createGuideSourcePort = (request: typeof globalThis.fetch): GuideSourcePor
   load: async (window, signal) => {
     const response = await request(getChannelGuideUrl(window), { method: "GET", signal });
     if (!response.ok) throw new Error(`Couldn't load the Guide (${response.status}).`);
-    const { GuideBody } = await import("../../response-bodies");
+    const { GuideBody } = await importSchemas(() => import("../../response-bodies"));
     return readBody(response, GuideBody);
   },
 });

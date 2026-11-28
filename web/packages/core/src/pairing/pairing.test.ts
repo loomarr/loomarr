@@ -1,3 +1,4 @@
+import { ApiError } from "@loomarr/api/mutator";
 import { describe, expect, it, vi } from "vitest";
 import {
   createAuthenticatedFetch,
@@ -53,6 +54,11 @@ describe("pairing contract", () => {
       "the server refuses to start pairing",
       new PairingHttpError(500, "Pairing request failed (500)"),
       "loomarr.local:8080 answered, but couldn’t start pairing (error 500). Check that it’s your Loomarr server, then try again.",
+    ],
+    [
+      "part of the app didn't load",
+      new ApiError(0, { title: "Couldn't load part of Loomarr. Reload and try again." }),
+      "Couldn't load part of Loomarr. Reload and try again.",
     ],
   ])("says in plain words when %s", async (_case, error, message) => {
     const session = new PairingSession({
