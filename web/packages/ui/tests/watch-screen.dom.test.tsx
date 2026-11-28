@@ -597,6 +597,17 @@ describe("WatchScreen's back control and what it says aloud", () => {
     expect(requests).not.toHaveBeenCalled();
   });
 
+  it("takes the keyboard's focus off the back control when the pointer presses another control", () => {
+    keyboardFocus();
+    renderUi(<Harness back={{ label: "Back", onPress: () => undefined }} />);
+    const back = screen.getByRole("button", { name: "Back" });
+    act(() => back.focus());
+    expect(document.activeElement).toBe(back);
+    click(mute());
+    expect(document.activeElement).not.toBe(back);
+    requests.mockClear();
+  });
+
   it("gives the back control's place to the open list", () => {
     renderUi(<Harness back={{ label: "Guide", onPress: () => undefined }} />);
     fireEvent.click(channelsControl());

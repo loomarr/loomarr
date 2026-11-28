@@ -112,15 +112,17 @@ const WatchScreen = <C extends LineupChannel>({
     if (keyed()) move();
   };
 
-  // The one pointer rule for the foot of the screen, the lower third and the quiet row: a press
-  // there takes focus off whichever of their controls holds it, so no keyboard ring outlives a
-  // click. The open list, the menu and the cover are not part of it.
+  // The one pointer rule for the screen's chrome, the lower third, the quiet row and the back
+  // control: a press there takes focus off whichever of their controls holds it, so no keyboard
+  // ring outlives a click. The open list, the menu and the cover are not part of it.
   type Part = { contains?: (node: unknown) => boolean } | null;
   const footThird = useRef<Part>(null);
   const footRow = useRef<Part>(null);
+  const backPart = useRef<Part>(null);
   const pressFoot = () => {
     const active = (globalThis as { document?: { activeElement?: unknown } }).document?.activeElement;
-    if (active && [footThird.current, footRow.current].some((part) => part?.contains?.(active))) {
+    const parts = [footThird.current, footRow.current, backPart.current];
+    if (active && parts.some((part) => part?.contains?.(active))) {
       (active as { blur?: () => void }).blur?.();
     }
   };
@@ -243,18 +245,27 @@ const WatchScreen = <C extends LineupChannel>({
         {/* The arrow is always named beside it. While the list is open its column stands here. */}
         {back && !view.listOpen ? (
           <Layer left={EDGE} opacity={shown} testID="watch-back" top={BACK_TOP} {...holdOn("back")}>
-            <RingedPressable
-              accessibilityLabel={back.label}
-              onKeyboardFocus={(focused) => send({ control: focused ? "back" : undefined, type: "focus" })}
-              onPress={back.onPress}
-              pointerTakesNoFocus
-              size={36}
+            <Surface
+              backgroundColor="transparent"
+              borderWidth={0}
+              ref={(node: unknown) => {
+                backPart.current = node as Part;
+              }}
+              {...web({ onMouseDown: pressFoot })}
             >
-              <Icon decorative glyph={icons.back} size="control" tone="content" />
-              <Text numberOfLines={1} textRole="label" tone="primary">
-                {back.label}
-              </Text>
-            </RingedPressable>
+              <RingedPressable
+                accessibilityLabel={back.label}
+                onKeyboardFocus={(focused) => send({ control: focused ? "back" : undefined, type: "focus" })}
+                onPress={back.onPress}
+                pointerTakesNoFocus
+                size={36}
+              >
+                <Icon decorative glyph={icons.back} size="control" tone="content" />
+                <Text numberOfLines={1} textRole="label" tone="primary">
+                  {back.label}
+                </Text>
+              </RingedPressable>
+            </Surface>
           </Layer>
         ) : null}
 

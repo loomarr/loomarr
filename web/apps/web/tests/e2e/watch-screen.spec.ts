@@ -84,8 +84,9 @@ test.describe("focus and the pointer", () => {
     await page.keyboard.press("Tab");
     await page.getByRole("button", { name: /^Subtitles/ }).click();
     await expect(amberRings(page)).toHaveCount(0);
-    await page.keyboard.press("Escape");
-    await page.mouse.move(5, 5);
+    // The pointer closes the menu it opened, and leaves.
+    await page.getByRole("button", { name: /^Subtitles/ }).click();
+    await page.mouse.move(640, 300);
     await expect(quietRow(page)).toHaveCSS("opacity", "0", RESTS);
   });
 
