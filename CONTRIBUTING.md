@@ -34,14 +34,14 @@ They used to be restated here and in three other files, and the copies drifted a
 
 ## Before you open a PR
 
-Use focused tests while editing, then run `make verify BASE=origin/main` once the change is stable.
-It selects affected local evidence through the same fail-closed impact policy as CI and reports
-locally completed gates separately from specialized or protected gates. Run a specialized gate
-directly when the change needs evidence beyond that local fast path:
+Run the focused tests for each package and surface the change touches. Pull-request CI runs the
+complete affected evidence through a fail-closed impact policy and is the gate. `make verify
+BASE=origin/main` reproduces that selection locally; use it to reproduce a CI failure or when CI is
+unavailable. Run a specialized gate directly when the change needs that evidence:
 
 | Change | Run |
 | --- | --- |
-| Go code | focused `go test -race` while editing; `make verify BASE=origin/main` before push |
+| Go code | focused `go test -run TestName ./internal/<pkg>/` for each touched package |
 | API surface | `make openapi-verify` |
 | Settings | `make config-docs-verify` |
 | Makefile / workflows | `make dev-docs-verify` and `make ci-lint` |

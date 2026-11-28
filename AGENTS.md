@@ -73,12 +73,13 @@ files; the claim identifies the real seam where concurrent work would collide.
 During implementation, run the smallest focused test that covers the edit. When the exact test is not
 known, `make test-affected BASE=<base>` runs direct Go packages, related Vitest tests, and directly
 owned script/native/Rust unit suites as development feedback. It deliberately skips reverse dependants,
-lint, publication prerequisites, and protected integration gates. Before pushing, run
-`make verify BASE=<base>` once, after the diff is stable; the classifier selects affected local evidence
-through the same fail-closed impact policy as CI, including lint and tests over the affected Go package
-closure. Do not run `make verify` after each edit or commit, or as a status check. If it fails, iterate
-with the failing focused command, then rerun `make verify` once after the repair. The PR fast lane and
-merge queue provide the protected final evidence. Reserve
+lint, publication prerequisites, and protected integration gates. Before pushing, run the focused
+tests for each package and frontend surface the diff touches, once the diff is stable. CI is the gate:
+pull-request CI runs the complete affected evidence (lint, the reverse-dependant Go closure under
+`-race`, Postgres), and the merge queue the protected gates. `make verify BASE=<base>` reproduces that
+selection locally at a workstation's cost, so run it only to reproduce a CI failure, when CI is
+unavailable, or when the diff changes the gate or classifier machinery, and keep it to one run per
+machine at a time. Reserve
 `make verify SCOPE=all` and `make agent-baseline` for an explicitly requested complete audit, changes to the
 gate/classifier machinery, or diagnosis of a classifier boundary—not merely because a task started.
 Renew a long-running claim with `make agent-renew`; clean abandoned expired entries with
@@ -119,7 +120,7 @@ different delivery path.
 ## Commands
 
 `make test-affected` is the fallback edit-loop interface when the exact test is unknown. `make verify`
-is the final local verification interface; its default is affected evidence and `SCOPE=all` is the
+reproduces CI's affected gates locally; its default is affected evidence and `SCOPE=all` is the
 explicit complete-repository audit. Use the comprehensive scope only when the task requests it, changes
 the gate machinery/classifier, or needs to diagnose a boundary. One exact focused test:
 
@@ -136,7 +137,7 @@ Useful local interfaces:
 make doctor                 # toolchain, worktrees, ports, caches, artifacts
 make bootstrap              # pnpm install + codegen + local directories
 make test-affected BASE=<base> # direct/related unit feedback while editing
-make verify BASE=<base>     # final affected local evidence before push
+make verify BASE=<base>     # reproduce CI's affected gates locally (CI failure, gate changes)
 make agent-env              # this worktree's runtime addresses
 make dev-be                 # isolated backend with Air
 make dev-fe                 # isolated Vite frontend pointed at that backend
