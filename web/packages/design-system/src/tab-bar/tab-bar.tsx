@@ -20,6 +20,11 @@ type TabBarItem<Value extends string> = {
    * draws nothing.
    */
   badge?: boolean | number;
+  /**
+   * What a numbered badge counts, said after the number in the tab's name ("Library, 4 need you").
+   * `one` is the words for a count of exactly 1. Defaults to "needs attention" / "need attention".
+   */
+  badgeWords?: { one: string; other: string };
   icon: IconName;
   /**
    * "tab" (default): a `role="tab"` destination, lit when `selected` matches it. "disclosure":
@@ -56,6 +61,8 @@ const idioms = {
   },
 } as const;
 
+const attentionWords = { one: "needs attention", other: "need attention" };
+
 /**
  * A phone's bottom navigation, edge to edge: pass it as a Screen's `footer`. It carries the bottom
  * safe area itself. Each item is a whole-column target at least 49 pt tall.
@@ -78,12 +85,14 @@ const TabBar = <Value extends string>({
   const renderItem = (item: TabBarItem<Value>) => {
     const disclosure = item.kind === "disclosure";
     const current = !disclosure && item.value === selected;
+    const count = typeof item.badge === "number" && item.badge > 0 ? item.badge : 0;
+    // The name repeats the number as drawn, so what a sighted person reads is in what is spoken.
+    const shown = count > 99 ? "99+" : String(count);
+    const words = item.badgeWords ?? attentionWords;
     return (
       <Pressable
         accessibilityLabel={
-          typeof item.badge === "number" && item.badge > 0
-            ? `${item.label}, ${item.badge} need attention`
-            : item.label
+          count ? `${item.label}, ${shown} ${count === 1 ? words.one : words.other}` : item.label
         }
         // iOS has no tab trait: a UITabBar item is a button, which VoiceOver calls a tab inside the
         // bar's tab-bar trait. Android and the web have a real tab role.
@@ -115,24 +124,7 @@ const TabBar = <Value extends string>({
             size={style.glyph}
             tone={current ? "content" : "secondary"}
           />
-          {typeof item.badge === "number" && item.badge > 0 ? (
-            <View
-              alignItems="center"
-              backgroundColor="stateLive"
-              borderRadius="round"
-              height={16}
-              justifyContent="center"
-              left={38}
-              minWidth={16}
-              paddingHorizontal={4}
-              position="absolute"
-              top={-2}
-            >
-              <TamaguiText color="contentInverse" fontFamily="body" fontSize={10} fontWeight="700">
-                {item.badge > 99 ? "99+" : item.badge}
-              </TamaguiText>
-            </View>
-          ) : item.badge === true ? (
+          {item.badge === true ? (
             <View
               aria-hidden
               // The brand's suggest magenta (`--color-suggest`): the same one the web rail's
@@ -156,6 +148,34 @@ const TabBar = <Value extends string>({
         >
           {item.label}
         </TamaguiText>
+        {/*
+          The number follows the label in the tree, with a space between, so the tab's text reads
+          "Library 4" and its name can contain it. Without the space it reads "4Library", one word
+          that no name starting with the label contains. Both are out of flow: the space draws
+          nothing, and the number sits over the glyph's pill, 8 right of the column's centre.
+        */}
+        {count ? (
+          <>
+            <TamaguiText position="absolute"> </TamaguiText>
+            <View
+              alignItems="center"
+              backgroundColor="stateLive"
+              borderRadius="round"
+              height={16}
+              justifyContent="center"
+              left="50%"
+              marginLeft={8}
+              minWidth={16}
+              paddingHorizontal={4}
+              position="absolute"
+              top={style.top}
+            >
+              <TamaguiText color="contentInverse" fontFamily="body" fontSize={10} fontWeight="700">
+                {shown}
+              </TamaguiText>
+            </View>
+          </>
+        ) : null}
       </Pressable>
     );
   };
