@@ -327,8 +327,44 @@ describe("rule 5: pause, behind live and Go live", () => {
 });
 
 describe("the player's own word on pause and live", () => {
-  const behind = (behindMs: number, paused = false) =>
-    ({ behindMs, live: behindMs === 0 && !paused, paused, type: "playback" }) as const;
+  const behind = (behindMs: number, paused = false, channelId = "ch-1") =>
+    ({ behindMs, channelId, live: behindMs === 0 && !paused, paused, type: "playback" }) as const;
+
+  it("counts a pause at live once: 30 s paused is 30 s behind, after the key and the player's next word", () => {
+    const s = screen();
+    s.key(" ", 0);
+    for (let second = 1; second <= 30; second += 1) s.send(behind(second * 1000, true), second * 1000);
+    s.key(" ", 30_000);
+    expect(s.view().behindSeconds).toBe(30);
+    s.send(behind(30_000), 30_100);
+    expect(s.view().behindSeconds).toBe(30);
+  });
+
+  it("counts a pause that began 10 s behind on top of it: 40 s", () => {
+    const s = screen();
+    s.send(behind(10_000), 0);
+    s.key(" ", 0);
+    for (let second = 1; second <= 30; second += 1)
+      s.send(behind(10_000 + second * 1000, true), second * 1000);
+    s.key(" ", 30_000);
+    expect(s.view().behindSeconds).toBe(40);
+  });
+
+  it("counts a pause from outside the screen once, and with no word from the player while paused", () => {
+    const s = screen();
+    s.send(behind(0, true), 0);
+    s.key(" ", 30_000);
+    expect(s.view().behindSeconds).toBe(30);
+  });
+
+  it("drops a report from a channel the screen has left", () => {
+    const s = screen();
+    s.key("ArrowDown", 0);
+    s.send(behind(30_000, false, "ch-1"), 100);
+    expect(s.view().behindSeconds).toBe(0);
+    s.key("End", 200);
+    expect(s.requests.filter((request) => request.type === "goLive")).toEqual([]);
+  });
 
   it("takes a seek it did not ask for as behind live, so End goes live", () => {
     const s = screen();
@@ -345,11 +381,14 @@ describe("the player's own word on pause and live", () => {
     expect(s.requests).toEqual([{ type: "goLive" }]);
   });
 
-  it("goes live while the player is off the live edge by less than a second", () => {
+  it("offers Go live exactly when the lower third says behind, so End agrees with what is shown", () => {
     const s = screen();
-    s.send({ behindMs: 0, live: false, paused: false, type: "playback" }, 1000);
+    s.send({ behindMs: 400, channelId: "ch-1", live: false, paused: false, type: "playback" }, 1000);
+    expect(s.view()).toMatchObject({ behindSeconds: 0, offLive: false });
     s.key("End");
-    expect(s.requests).toEqual([{ type: "goLive" }]);
+    expect(s.requests).toEqual([]);
+    s.send(behind(1_000), 2000);
+    expect(s.view()).toMatchObject({ behindSeconds: 1, offLive: true });
   });
 
   it("takes a pause from outside the screen, so Space resumes it", () => {
@@ -381,7 +420,7 @@ describe("the player's own word on pause and live", () => {
     expect(s.view()).toMatchObject({ awake: true, behindSeconds: 36 });
   });
 
-  it("lets a paused picture's behind count up without keeping the screen awake", () => {
+  it("counts a pause on one clock while the player's word comes each second, keeping nothing awake", () => {
     const s = screen();
     s.key(" ", 0);
     for (let second = 1; second <= 3; second += 1) s.send(behind(second * 1000, true), second * 1000);

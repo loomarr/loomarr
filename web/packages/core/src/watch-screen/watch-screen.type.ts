@@ -88,8 +88,6 @@ interface WatchScreenState {
   pausedAt: number | undefined;
   /** How far behind live the picture plays, from earlier pauses or the player's word. */
   behindMs: number;
-  /** The player plays at the live edge, by its own word; a new tune and Go live start there. */
-  atLive: boolean;
   /** The first-run hint is gone for this session. */
   hintSeen: boolean;
   handOff: WatchHandOff | undefined;
@@ -153,7 +151,15 @@ type WatchScreenEvent =
    * The model takes it as the truth; its own pause, resume and go-live stay requests. Like the
    * clock, it wakes nothing: only the viewer's own action, sent as the input it is, wakes the screen.
    */
-  | { type: "playback"; behindMs: number; paused: boolean; live: boolean; at: number };
+  | {
+      type: "playback";
+      /** The channel the report is about: one the screen has left is dropped. */
+      channelId: string;
+      behindMs: number;
+      paused: boolean;
+      live: boolean;
+      at: number;
+    };
 
 /** What the screen asks the caller to do. It does none of it itself. */
 type WatchRequest =
@@ -185,6 +191,8 @@ interface WatchScreenView<C extends LineupChannel> {
   paused: boolean;
   /** Whole seconds behind live while playing; 0 at live and while paused. */
   behindSeconds: number;
+  /** Paused or behind live, as the lower third says: Go live is offered and End answers. */
+  offLive: boolean;
   /** Where `L` goes; `playable` false means it does nothing. */
   lastChannel: LineupLastChannel<C> | undefined;
   /** When the view next changes by itself: send a `tick` then. Null while it waits for an event. */

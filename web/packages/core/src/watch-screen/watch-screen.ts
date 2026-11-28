@@ -42,7 +42,6 @@ const createWatchScreenState = ({
   watchedId,
 }: WatchScreenStateArgs): WatchScreenState => ({
   activeAt: at,
-  atLive: true,
   behindMs: 0,
   clicked: undefined,
   digits: undefined,
@@ -62,6 +61,12 @@ const createWatchScreenState = ({
 });
 
 /** Only the bare picture rests: anything open, focused, pointed at, paused or typed holds it. */
+/**
+ * Paused, or a whole second or more behind live: what the lower third says as behind, and the one
+ * test Go live and End answer to, so the two never disagree.
+ */
+const offLive = (state: WatchScreenState) => state.paused || Math.floor(state.behindMs / 1000) > 0;
+
 const held = (state: WatchScreenState) =>
   state.list.open ||
   state.menu !== undefined ||
@@ -166,7 +171,6 @@ const reduceStep = <C extends LineupChannel>(
   // A change of channel: the one left is remembered, and pause, digits and the hint are over.
   const changed = (s: WatchScreenState, channelId: string): WatchScreenState => ({
     ...s,
-    atLive: true,
     behindMs: 0,
     digits: undefined,
     hintSeen: true,
@@ -202,9 +206,7 @@ const reduceStep = <C extends LineupChannel>(
         : ask({ ...s, paused: true, pausedAt: at }, { type: "pause" });
 
   const goLive = (s: WatchScreenState): WatchScreenStep =>
-    s.paused || s.behindMs > 0 || !s.atLive
-      ? ask({ ...s, atLive: true, behindMs: 0, paused: false, pausedAt: undefined }, { type: "goLive" })
-      : stay(s);
+    offLive(s) ? ask({ ...s, behindMs: 0, paused: false, pausedAt: undefined }, { type: "goLive" }) : stay(s);
 
   const fullScreen = (s: WatchScreenState) => ask(s, { on: s.layout !== "full", type: "fullScreen" });
 
@@ -442,14 +444,19 @@ const reduceStep = <C extends LineupChannel>(
     // The player's own word on pause and live, whoever moved them: the truth the lower third and
     // Go live tell, taken silently. It is not input, so it wakes nothing; the viewer's own action
     // reaches the screen as the input it is.
-    case "playback":
+    // A report from a channel the screen has left is not about the picture on screen. While the
+    // picture stays paused the screen's own pause clock counts the pause, once, from where the
+    // pause began: the player's growing lag is not added to it.
+    case "playback": {
+      if (event.channelId !== state.watchedId) return stay(state);
+      const stillPaused = event.paused && state.paused;
       return stay({
         ...state,
-        atLive: event.live,
-        behindMs: event.live ? 0 : event.behindMs,
+        behindMs: stillPaused ? state.behindMs : event.live ? 0 : event.behindMs,
         paused: event.paused,
         pausedAt: event.paused ? (state.paused ? state.pausedAt : at) : undefined,
       });
+    }
     case "key":
       return key(woken, event.key);
   }
@@ -471,6 +478,7 @@ const watchScreenView = <C extends LineupChannel>(
   return {
     awake,
     behindSeconds: state.paused ? 0 : Math.floor(state.behindMs / 1000),
+    offLive: offLive(state),
     digits: typed === undefined ? undefined : { target: lineup.channelByNumber(typed), typed },
     hint: awake && !state.hintSeen && !state.list.open && state.menu === undefined,
     lastChannel: lineup.lastChannel,

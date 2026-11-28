@@ -296,9 +296,12 @@ const ChannelWatch = ({ back, channel, channels, isAdmin, onGuide, player, tune 
   // lower third and Go live tell, not input, so it wakes nothing.
   const lagMs = Math.round(player.liveTransport.state.lagSeconds) * 1000;
   const atLive = player.liveTransport.state.mode === "live";
+  // Each report names the channel it is about, so a late one from the channel just left is dropped.
+  const reportedId = player.channel?.id;
   useEffect(() => {
-    send({ behindMs: lagMs, live: atLive, paused: player.paused, type: "playback" });
-  }, [atLive, lagMs, player.paused, send]);
+    if (!reportedId) return;
+    send({ behindMs: lagMs, channelId: reportedId, live: atLive, paused: player.paused, type: "playback" });
+  }, [atLive, lagMs, player.paused, reportedId, send]);
 
   // The browser's own full screen, however it was entered or left (F, the control, a double click,
   // the browser's Esc or its own controls), names the full-screen control.
@@ -350,12 +353,14 @@ const ChannelWatch = ({ back, channel, channels, isAdmin, onGuide, player, tune 
       if ((key === "ArrowLeft" || key === "ArrowRight") && !state.list.open && !state.menu && !state.focus) {
         // The bare picture's own: ten seconds through the live window; forward from live does nothing.
         const transport = player.liveTransport;
-        if (key === "ArrowRight" && transport.state.mode === "live") return;
         event.preventDefault();
-        void transport.seek(
-          transport.state.viewerTimeMs + (key === "ArrowLeft" ? -SEEK_STEP_MS : SEEK_STEP_MS),
-        );
-        // The viewer acted: the key reaches the screen as the input it is, and wakes it.
+        if (key === "ArrowLeft" || transport.state.mode !== "live") {
+          void transport.seek(
+            transport.state.viewerTimeMs + (key === "ArrowLeft" ? -SEEK_STEP_MS : SEEK_STEP_MS),
+          );
+        }
+        // The viewer acted, whether or not the picture could move: the key reaches the screen as
+        // the input it is, and wakes it.
         send({ key, type: "key" });
         return;
       }
@@ -476,17 +481,17 @@ const ChannelWatch = ({ back, channel, channels, isAdmin, onGuide, player, tune 
             audio,
             density,
             detailRows,
-            goLive:
-              live.mode === "live"
-                ? undefined
-                : {
-                    detail: formatGuideTime(serverNowMs ?? Date.now()),
-                    onPress: () => {
-                      // A press away from the menu only closes it, so the menu closes first.
-                      slot.close();
-                      send({ control: "goLive", type: "press" });
-                    },
+            // Offered exactly when the lower third says behind or paused.
+            goLive: !model.view.offLive
+              ? undefined
+              : {
+                  detail: formatGuideTime(serverNowMs ?? Date.now()),
+                  onPress: () => {
+                    // A press away from the menu only closes it, so the menu closes first.
+                    slot.close();
+                    send({ control: "goLive", type: "press" });
                   },
+                },
             favourite: {
               on: starred,
               onPress: () => {
