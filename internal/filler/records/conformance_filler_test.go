@@ -176,6 +176,25 @@ func src1(t *testing.T, s Store) FillerSource {
 	return f
 }
 
+// setClipGeography writes a clip's projected geography the way the enrichment pass does, inside a
+// transaction on the core's handle.
+func setClipGeography(t *testing.T, s Store, hash string, g clipstore.ClipGeography, evidence string, at time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	h := store.HandleOf(s)
+	tx, err := h.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := h.Clips(tx).SetGeography(ctx, hash, g, evidence, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
@@ -222,9 +241,7 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	if len(local) != 1 || local[0].Hash != "c1" {
 		t.Errorf("US local geography = %+v, want just c1", ids2(local))
 	}
-	if err := s.UpdateClipGeography(ctx, "c1", "national", "CA", "Loon Network", "", "", "operator", time.Now()); err != nil {
-		t.Fatal(err)
-	}
+	setClipGeography(t, s, "c1", clipstore.ClipGeography{Scope: "national", Country: "CA", Network: "Loon Network"}, "operator", time.Now())
 	updated, _ := s.GetClip(ctx, "c1")
 	if updated.GeographicScope != pod.GeographicNational || updated.Country != "CA" || updated.GeoEvidence != "operator" {
 		t.Errorf("updated geography = %+v", updated.Clip)
@@ -3036,7 +3053,8 @@ func testClipNameSource(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// An operator rename (#1990) writes the name and 'curated' together; a missing clip is ErrNotFound.
-	if err := s.RenameClip(ctx, "named.mp4", "Fizzbolt Midnight Special", clips.NameFromCurated, now); err != nil {
+	rename := "Fizzbolt Midnight Special"
+	if err := s.ApplyOperatorClipEdit(ctx, OperatorClipEdit{Hash: "named.mp4", Name: &rename, At: now}); err != nil {
 		t.Fatal(err)
 	}
 	renamed, err := s.GetClip(ctx, "named.mp4")
@@ -3046,7 +3064,8 @@ func testClipNameSource(t *testing.T, newStore NewStoreFunc) {
 	if renamed.Name != "Fizzbolt Midnight Special" || renamed.NameSource != clips.NameFromCurated {
 		t.Fatalf("after rename = %q (%q), want the curated name", renamed.Name, renamed.NameSource)
 	}
-	if err := s.RenameClip(ctx, "missing.mp4", "Nobody", clips.NameFromCurated, now); !errors.Is(err, ErrNotFound) {
+	nobody := "Nobody"
+	if err := s.ApplyOperatorClipEdit(ctx, OperatorClipEdit{Hash: "missing.mp4", Name: &nobody, At: now}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("rename of a missing clip = %v, want ErrNotFound", err)
 	}
 }
@@ -5071,9 +5090,7 @@ func testFillerEraObservation(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("latest beside cited research = %+v, err %v", got, err)
 	}
 	// Nor may the newer guess hide the cited country from catch-up promotion.
-	if err := s.UpdateClipGeography(ctx, guess.Hash, string(pod.GeographicUnknown), "", "", "", "", "", at.Add(6*time.Second)); err != nil {
-		t.Fatal(err)
-	}
+	setClipGeography(t, s, guess.Hash, clipstore.ClipGeography{Scope: string(pod.GeographicUnknown)}, "", at.Add(6*time.Second))
 	if promoted, err := s.PromoteStoredFillerResearchCountries(ctx, 3); err != nil || promoted != 1 {
 		t.Fatalf("promotion beside a newer observation = %d, %v, want 1", promoted, err)
 	}
@@ -5140,9 +5157,7 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 	}
 	// Simulate a pre-projection database: the cited report and accepted state exist, but the clip
 	// projection is absent. The bounded catch-up must repair it without another retrieval.
-	if err := s.UpdateClipGeography(ctx, clip.Hash, string(pod.GeographicUnknown), "", "", "", "", "", at.Add(2*time.Second)); err != nil {
-		t.Fatal(err)
-	}
+	setClipGeography(t, s, clip.Hash, clipstore.ClipGeography{Scope: string(pod.GeographicUnknown)}, "", at.Add(2*time.Second))
 	promoted, err := s.PromoteStoredFillerResearchCountries(ctx, 3)
 	if err != nil || promoted != 1 {
 		t.Fatalf("PromoteStoredFillerResearchCountries() = %d, %v", promoted, err)
@@ -5153,9 +5168,7 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 	}
 	// A newer report that abstains supersedes an older confident suggestion for catch-up. Do not
 	// resurrect stale context just because it is the newest report that happens to qualify.
-	if err := s.UpdateClipGeography(ctx, clip.Hash, string(pod.GeographicUnknown), "", "", "", "", "", at.Add(3*time.Second)); err != nil {
-		t.Fatal(err)
-	}
+	setClipGeography(t, s, clip.Hash, clipstore.ClipGeography{Scope: string(pod.GeographicUnknown)}, "", at.Add(3*time.Second))
 	abstained := report
 	abstained.ProducerVersion = "prompt:newer"
 	abstained.CompletedAt = at.Add(4 * time.Second)
