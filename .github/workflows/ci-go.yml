@@ -25,6 +25,9 @@ jobs:
     # repeating Rust, lint, vet, harness, cross-compilation, and release checks in every lane spent
     # runner time and inflated each lane's cache without adding assurance.
     #
+    # A package too slow for any one lane has jobs of its own (scripts/go-split-lanes.tsv): its
+    # -race run in slices by top-level test name, and its plain run apart from them.
+    #
     # TWO measured-weight ordinary lanes plus five serial `certification` lanes, which hold the media
     # certification packages and CPU-heavy packages that need a runner to themselves (scripts/
     # go-certification-lanes.tsv; store, schedule and demolibrary moved there when their shared
@@ -49,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false # one lane's failures must not hide the others'
       matrix:
-        lane: ["1/2", "2/2", "certification-1/5", "certification-2/5", "certification-3/5", "certification-4/5", "certification-5/5"]
+        lane: ["1/2", "2/2", "certification-1/5", "certification-2/5", "certification-3/5", "certification-4/5", "certification-5/5", "scan-race-1/2", "scan-race-2/2", "scan-plain"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
