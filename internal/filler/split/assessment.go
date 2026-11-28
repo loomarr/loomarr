@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	SchemaVersion  = 1
+	SchemaVersion   = 1
 	ContractVersion = "filler-source-structure-v1"
 )
 
