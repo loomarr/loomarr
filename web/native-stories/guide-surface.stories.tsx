@@ -1,7 +1,7 @@
 import { type GuideSelection, layoutGuide } from "@loomarr/core";
 import { Surface, Text } from "@loomarr/design-system";
 import { guideChannels, guideFrom, guideNow, guideTo } from "@loomarr/fixtures";
-import { GuideSurface } from "@loomarr/ui";
+import { GuideSurface } from "@loomarr/ui/guide";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { useState } from "react";
 

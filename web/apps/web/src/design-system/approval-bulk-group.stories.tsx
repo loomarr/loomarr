@@ -1,5 +1,5 @@
 import { Screen, Text } from "@loomarr/design-system";
-import { ApprovalBulkGroup, type ApprovalBulkGroupProps, type ApprovalBulkRow } from "@loomarr/ui";
+import { ApprovalBulkGroup, type ApprovalBulkGroupProps, type ApprovalBulkRow } from "@loomarr/ui/requests";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 

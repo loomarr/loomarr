@@ -4,7 +4,7 @@ import { act, cleanup, renderUi } from "@loomarr/test-support";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { RequestChannel } from "../index";
+import { RequestChannel } from "../requests";
 
 const doc = document;
 

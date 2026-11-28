@@ -5,7 +5,7 @@ import { BottomSheet, LoomarrProvider } from "@loomarr/design-system";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { GuideCompact, type GuideCompactProps } from "../index";
+import { GuideCompact, type GuideCompactProps } from "../guide";
 
 const NOW = Date.UTC(2026, 8, 28, 20, 26);
 const HALF_HOUR = 1_800_000;

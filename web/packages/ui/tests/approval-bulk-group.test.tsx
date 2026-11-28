@@ -2,7 +2,7 @@ import { LoomarrProvider } from "@loomarr/design-system";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { ApprovalBulkGroup } from "../index";
+import { ApprovalBulkGroup } from "../requests";
 
 // #2777: the group's bulk Approve is the one filled (amber) button; each request's own Approve is
 // an outline, so two filled buttons never compete on one screen.

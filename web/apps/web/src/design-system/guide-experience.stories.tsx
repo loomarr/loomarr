@@ -1,5 +1,5 @@
 import { Screen } from "@loomarr/design-system";
-import { GuideExperience, type GuideUnavailableState } from "@loomarr/ui";
+import { GuideExperience, type GuideUnavailableState } from "@loomarr/ui/guide";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const GuideStateWorkshop = ({
