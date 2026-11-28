@@ -29,5 +29,28 @@ const decadeFillColor = (decade: number | undefined): string | undefined => {
   return key ? semanticColors.decade[key] : undefined;
 };
 
-export type { DecadeFill };
-export { decadeFill, decadeFillColor };
+// The Cross's decade tints (frontend-design §2.1), for the watched channel's numeral and the By
+// decade headings. The server sends any decade from 1900 to 2090, or none; only six have a tint, and
+// everything else is neutral.
+
+type TintDecade = Exclude<keyof typeof semanticColors.decadeTint, "neutral">;
+type DecadeTint = `decadeTint${TintDecade | "Neutral"}`;
+
+const tintDecadeOf = (decade: number | undefined): TintDecade | undefined => {
+  const key = String(decade);
+  return key !== "neutral" && Object.hasOwn(semanticColors.decadeTint, key) ? (key as TintDecade) : undefined;
+};
+
+/** The theme colour for a channel's decade (1980 for the 1980s), which follows the theme. */
+const decadeTint = (decade: number | undefined): DecadeTint =>
+  `decadeTint${tintDecadeOf(decade) ?? "Neutral"}`;
+
+/**
+ * The tint as a colour value for always-dark watching chrome, which takes the dark set in both
+ * themes. Anything that follows the theme uses `decadeTint`.
+ */
+const decadeTintColor = (decade: number | undefined): string =>
+  semanticColors.decadeTint[tintDecadeOf(decade) ?? "neutral"];
+
+export type { DecadeFill, DecadeTint };
+export { decadeFill, decadeFillColor, decadeTint, decadeTintColor };

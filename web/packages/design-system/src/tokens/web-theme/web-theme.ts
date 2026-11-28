@@ -126,6 +126,10 @@ const webThemeCss = (): string => {
       lines.push(
         `  --color-${name}-tint-${step}: color-mix(in srgb, var(--color-${name}) ${step}%, transparent);`,
       );
+  // The dark set, like every colour in this sheet; a part that follows the theme takes the
+  // `decadeTint*` theme keys instead (§2.1).
+  lines.push("", "  /* decade tints (§2.1) */");
+  for (const [k, v] of Object.entries(dark.decadeTint)) lines.push(`  --color-decade-${k}: ${v};`);
   lines.push("", "  /* typography */");
   lines.push(`  --font-sans: ${webType.fonts.sans};`);
   lines.push(`  --font-mono: ${webType.fonts.mono};`);

@@ -99,6 +99,18 @@ const semanticThemes = {
       "1990": brandChroma[3],
       ink: brandContract.ground,
     },
+    // The Cross's decade tints (frontend-design §2.1): one per decade, none of them an accent, on the
+    // watched channel's numeral and the By decade headings only. `neutral` is a channel with no
+    // tinted decade, and a break. Always-dark watching chrome takes this dark set in both themes.
+    decadeTint: {
+      "1950": "#E6CFA8",
+      "1960": "#F0A8B8",
+      "1970": "#C9E08A",
+      "1980": "#B9A6F2",
+      "1990": "#9DB4F5",
+      "2000": "#8FD3C8",
+      neutral: "#8B93A3",
+    },
   },
   light: {
     surface: {
@@ -185,6 +197,17 @@ const semanticThemes = {
       "1980": brandChroma[5],
       "1990": brandChroma[3],
       ink: brandContract.ground,
+    },
+    // Each dark tint's hue, darkened to clear 4.5:1 as small text on the light canvas, raised and
+    // elevated surfaces. The 1950s stays low in saturation so it is not read as amber (#795000).
+    decadeTint: {
+      "1950": "#7A6644",
+      "1960": "#AB4764",
+      "1970": "#606F32",
+      "1980": "#7851CA",
+      "1990": "#4561C7",
+      "2000": "#4A706B",
+      neutral: "#515866",
     },
   },
 } as const;

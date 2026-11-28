@@ -68,6 +68,13 @@ const themeColors = (mode: keyof typeof semanticThemes) => ({
   decade1980: semanticThemes[mode].decade["1980"],
   decade1990: semanticThemes[mode].decade["1990"],
   decadeInk: semanticThemes[mode].decade.ink,
+  decadeTint1950: semanticThemes[mode].decadeTint["1950"],
+  decadeTint1960: semanticThemes[mode].decadeTint["1960"],
+  decadeTint1970: semanticThemes[mode].decadeTint["1970"],
+  decadeTint1980: semanticThemes[mode].decadeTint["1980"],
+  decadeTint1990: semanticThemes[mode].decadeTint["1990"],
+  decadeTint2000: semanticThemes[mode].decadeTint["2000"],
+  decadeTintNeutral: semanticThemes[mode].decadeTint.neutral,
   // Alpha washes of a surface or brand hue, the same in both themes.
   ...washes,
 });

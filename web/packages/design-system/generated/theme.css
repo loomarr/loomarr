@@ -59,6 +59,15 @@
   --color-caution-tint-30: color-mix(in srgb, var(--color-caution) 30%, transparent);
   --color-caution-tint-40: color-mix(in srgb, var(--color-caution) 40%, transparent);
 
+  /* decade tints (§2.1) */
+  --color-decade-1950: #E6CFA8;
+  --color-decade-1960: #F0A8B8;
+  --color-decade-1970: #C9E08A;
+  --color-decade-1980: #B9A6F2;
+  --color-decade-1990: #9DB4F5;
+  --color-decade-2000: #8FD3C8;
+  --color-decade-neutral: #8B93A3;
+
   /* typography */
   --font-sans: 'Geist Variable', Geist, ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
