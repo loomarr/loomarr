@@ -68,6 +68,18 @@ describe("RingTarget", () => {
     expect(document.activeElement).toBe(elsewhere);
   });
 
+  it("says whether what it opens is open, and takes the whole width when asked", () => {
+    draw({ expanded: true, fill: true });
+    expect(block().getAttribute("aria-expanded")).toBe("true");
+    expect(getComputedStyle(block()).width).toBe("100%");
+    expect(getComputedStyle(block()).outlineStyle).toBe("none");
+  });
+
+  it("hands the pressable itself to what is put around it", () => {
+    draw({ wrap: (control) => <section aria-label="Around">{control}</section> });
+    expect(screen.getByRole("region", { name: "Around" }).firstElementChild).toBe(block());
+  });
+
   it("says what it is and whether it is selected", () => {
     draw({ role: "tab", selected: true, tabIndex: -1 });
     const tab = screen.getByRole("tab", { name: "Block" });
