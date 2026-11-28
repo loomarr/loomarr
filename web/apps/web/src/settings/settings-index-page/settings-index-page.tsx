@@ -1,5 +1,6 @@
 import { Card, Icon, icons, PressableRow, Stack, Text } from "@loomarr/design-system";
-import { SearchField, SettingsOverview, type SettingsOverviewCard } from "@loomarr/ui";
+import { SearchField } from "@loomarr/design-system/fields";
+import { SettingsOverview, type SettingsOverviewCard } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import {
   type CSSProperties,

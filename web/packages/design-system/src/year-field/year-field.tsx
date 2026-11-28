@@ -1,5 +1,5 @@
-import { Field, Surface } from "@loomarr/design-system";
-
+import { Field } from "../interaction";
+import { Surface } from "../primitives";
 import type { YearFieldProps } from "./year-field.type";
 
 // YearField — a four-digit year in a design-system Field, narrow enough that a From/To pair and its

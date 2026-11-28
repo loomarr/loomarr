@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
+import { YearField } from "@loomarr/design-system/fields";
 import { act, cleanup, renderUi } from "@loomarr/test-support";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CommitField, YearField } from "../index";
+import { CommitField } from "../index";
 
 const mount = async (node: ReactNode) => {
   await act(async () => {

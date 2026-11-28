@@ -1,6 +1,7 @@
-import { ProgressTrack, StatusDot, Surface, Text } from "@loomarr/design-system";
 import { Children } from "react";
 
+import { ProgressTrack, StatusDot, Surface } from "../primitives";
+import { Text } from "../text";
 import type { ListGroupProps, ListRowProps } from "./list-row.type";
 
 // ListGroup + ListRow — the bordered list of state rows (#1659 web mock: On the way, Your

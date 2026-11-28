@@ -10,7 +10,8 @@ import {
   Text,
   Toggle,
 } from "@loomarr/design-system";
-import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
+import { SearchField } from "@loomarr/design-system/fields";
+import { CardAction, CardStatus, ListGroup, RowCard } from "@loomarr/design-system/rows";
 import { type ReactNode, useState } from "react";
 import type { FillerSourcesProps } from "./filler-sources.type";
 

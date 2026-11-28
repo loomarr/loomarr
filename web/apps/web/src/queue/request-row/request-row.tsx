@@ -1,5 +1,5 @@
 import { Icon, icons, type StatusTone } from "@loomarr/design-system";
-import { CardStatus, RowCard } from "@loomarr/ui";
+import { CardStatus, RowCard } from "@loomarr/design-system/rows";
 import type { RequestEntry } from "@/queue/use-requests";
 import type { RequestRowProps } from "./request-row.type";
 

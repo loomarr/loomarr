@@ -1,5 +1,4 @@
-import { Surface } from "@loomarr/design-system";
-
+import { Surface } from "../primitives";
 import type { PanelRowProps } from "./panel-row.type";
 
 // PanelRow — the dashboard panels' row (Playout, Services, Activity), placed in a ListGroup that

@@ -4,7 +4,8 @@ import type { GuideHighlightDTO } from "@loomarr/api/models/guideHighlightDTO";
 import { GuideHighlightDTOReason } from "@loomarr/api/models/guideHighlightDTOReason";
 import { formatGuideTime, formatProgrammeTitle } from "@loomarr/core/guide";
 import { Action, SectionHeader } from "@loomarr/design-system";
-import { HighlightRow, ListGroup } from "@loomarr/ui";
+import { ListGroup } from "@loomarr/design-system/rows";
+import { HighlightRow } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import type { TonightProps } from "./tonight.type";
 

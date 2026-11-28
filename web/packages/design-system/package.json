@@ -8,9 +8,11 @@
   "exports": {
     ".": "./index.ts",
     "./atomic-css": "./atomic-css.ts",
+    "./fields": "./fields.ts",
     "./haptics": "./haptics.ts",
     "./native-fonts.json": "./native-fonts.json",
     "./qr-code-web": "./qr-code-web.ts",
+    "./rows": "./rows.ts",
     "./theme.css": "./generated/theme.css",
     "./web-theme": "./web-theme.ts"
   },

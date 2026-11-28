@@ -20,7 +20,7 @@ import {
   Text,
   Tooltip,
 } from "@loomarr/design-system";
-import { SearchField } from "@loomarr/ui";
+import { SearchField } from "@loomarr/design-system/fields";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type ComponentProps, type UIEvent, useEffect, useMemo, useRef, useState } from "react";

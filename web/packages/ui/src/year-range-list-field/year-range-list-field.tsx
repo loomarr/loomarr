@@ -1,8 +1,8 @@
 import { Action, Surface, Text } from "@loomarr/design-system";
+import { YearField } from "@loomarr/design-system/fields";
 import { useEffect, useId, useState } from "react";
 
 import { useCommittedDraft } from "../use-committed-draft";
-import { YearField } from "../year-field";
 import type { YearRange, YearRangeListFieldProps } from "./year-range-list-field.type";
 
 const YEAR_MIN = 1900;
