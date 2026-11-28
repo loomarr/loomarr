@@ -69,13 +69,3 @@ type DiscoveryFeedbackStore interface {
 	ListDiscoveryFeedback(context.Context, FeedbackFilter) ([]DiscoveryFeedback, error)
 	PurgeSupersededDiscoveryFeedback(context.Context) (int, error)
 }
-
-// channelDataCluster names the embedded channel-data store; see identityCluster for why an alias.
-type channelDataCluster = channeldatastore.Store
-
-// bindChannelData installs the channel-data cluster on s; bindClusters calls it on every
-// construction.
-func bindChannelData(s *sqlStore) *sqlStore {
-	s.channelDataCluster = channeldatastore.New(s.kernel())
-	return s
-}

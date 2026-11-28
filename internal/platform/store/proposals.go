@@ -26,12 +26,3 @@ var (
 	// ErrProposalRevisionActive keeps the approval gate closed while a replacement generates.
 	ErrProposalRevisionActive = proposalstore.ErrProposalRevisionActive
 )
-
-// proposalCluster names the embedded proposal store; see identityCluster for why an alias.
-type proposalCluster = proposalstore.Store
-
-// bindProposals installs the proposal cluster on s; bindClusters calls it on every construction.
-func bindProposals(s *sqlStore) *sqlStore {
-	s.proposalCluster = proposalstore.New(s.kernel(), s.channelCluster)
-	return s
-}

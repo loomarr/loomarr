@@ -8,15 +8,6 @@ import "github.com/loomarr/loomarr/internal/platform/store/librarystore"
 // this package read unchanged. Callers outside the store name librarystore directly;
 // internal/storearchitecture_test.go enforces that.
 
-// libraryCluster names the embedded library store; see identityCluster for why an alias.
-type libraryCluster = librarystore.Store
-
-// bindLibrary installs the library cluster on s; bindClusters calls it on every construction.
-func bindLibrary(s *sqlStore) *sqlStore {
-	s.libraryCluster = librarystore.New(s.kernel())
-	return s
-}
-
 // The library's readers and writers, and the item they write.
 type (
 	LibraryArtReader         = librarystore.LibraryArtReader

@@ -49,36 +49,33 @@ type sqlStore struct {
 	approvalLocks sync.Map
 	// The identity cluster (users, sessions, devices, invitations, contact addresses, password
 	// recovery, notifications) and the catalog cluster (clips, taxonomy, holidays, images,
-	// broadcast stations), embedded so their methods are this store's. Each is embedded through a
-	// named alias (see identity.go, catalog.go) because the field name of an embedded type is its
-	// type name, and both are called Store. bindIdentity and bindCatalog install them on every
-	// construction.
+	// broadcast stations), embedded so their methods are this store's. Every cluster is embedded
+	// through a named alias and installed by bindClusters (see clusters.go).
 	*identityCluster
 	*catalogCluster
-	// The crash-report cluster (crashstore), embedded the same way; see clientcrashes.go.
+	// The crash-report cluster (crashstore).
 	*crashCluster
-	// The diagnostics cluster (diagnosticsstore), embedded the same way; see diagnostics.go.
+	// The diagnostics cluster (diagnosticsstore).
 	*diagnosticsCluster
-	// The scheduler-state cluster (jobstore), embedded the same way; see scheduled_jobs.go.
+	// The scheduler-state cluster (jobstore).
 	*jobsCluster
-	// The activity-feed cluster (activitystore), embedded the same way; see activity.go.
+	// The activity-feed cluster (activitystore).
 	*activityCluster
-	// The channel-data cluster (channeldatastore), embedded the same way; see channeldata.go.
+	// The channel-data cluster (channeldatastore).
 	*channelDataCluster
-	// The channel cluster (channelstore), embedded the same way; see channels.go.
+	// The channel cluster (channelstore).
 	*channelCluster
-	// The proposal cluster (proposalstore), embedded the same way; see proposals.go.
+	// The proposal cluster (proposalstore).
 	*proposalCluster
-	// The library cluster (librarystore), embedded the same way; see library.go.
+	// The library cluster (librarystore).
 	*libraryCluster
-	// The quality-ledger cluster (qualitystore), embedded the same way; see quality.go.
+	// The quality-ledger cluster (qualitystore).
 	*qualityCluster
-	// The media-inventory cluster (inventorystore), embedded the same way; see inventory.go.
+	// The media-inventory cluster (inventorystore).
 	*inventoryCluster
-	// The watch-history cluster (viewingstore), embedded the same way; see viewings.go.
+	// The watch-history cluster (viewingstore).
 	*viewingCluster
-	// The interactive-operation cluster (operationstore), embedded the same way; see
-	// interactiveoperations.go.
+	// The interactive-operation cluster (operationstore).
 	*operationCluster
 	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
 	// caller can find the data directory without also holding the DSN.
@@ -86,12 +83,6 @@ type sqlStore struct {
 	ph              placeholder // rebinds ? -> the dialect's placeholder
 	claimSQL        string      // dialect-specific ClaimDueTitles statement (already rebound)
 	channelClaimSQL string      // dialect-specific ClaimDueChannels statement (already rebound)
-}
-
-// bindClusters installs every embedded cluster on s. Every constructor of a sqlStore calls it, so a
-// store never exists with a nil cluster.
-func bindClusters(s *sqlStore) *sqlStore {
-	return bindOperations(bindViewings(bindInventory(bindQuality(bindLibrary(bindProposals(bindChannels(bindChannelData(bindActivity(bindJobs(bindDiagnostics(bindCrashes(bindCatalog(bindIdentity(s))))))))))))))
 }
 
 // placeholder rewrites a query written with `?` markers into the dialect's

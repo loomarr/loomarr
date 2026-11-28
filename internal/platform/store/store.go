@@ -27,6 +27,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
+	"github.com/loomarr/loomarr/internal/platform/store/viewingstore"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
 
@@ -713,7 +714,7 @@ type Store interface {
 	ChannelPreferenceStore
 	HiddenIdeaStore
 	UpcomingAiringStore
-	ViewingStore
+	viewingstore.Role
 	DiscoveryQualityStore
 	InventoryStore
 	LibraryRootStore

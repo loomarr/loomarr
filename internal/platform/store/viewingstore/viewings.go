@@ -14,6 +14,19 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
+// Role is the watch history as the aggregate store exposes it. It has no retention: rows stay until
+// an admin clears them.
+type Role interface {
+	InsertViewing(ctx context.Context, v Viewing) error
+	// ExtendViewing moves a viewing's end to endedAt (never earlier than it is) and, when programme
+	// is not "", records the programme. It reports false when the row is gone (an admin cleared it).
+	ExtendViewing(ctx context.Context, id, programme string, endedAt time.Time) (bool, error)
+	ListViewings(ctx context.Context, q ViewingQuery) ([]Viewing, error)
+	// DeleteViewings clears one person's history, or everyone's when userID is "", and reports how
+	// many rows it removed.
+	DeleteViewings(ctx context.Context, userID string) (int, error)
+}
+
 // Store is the watch-history cluster on the storedb kernel.
 type Store struct{ h storedb.Handle }
 
