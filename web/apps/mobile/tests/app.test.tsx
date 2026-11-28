@@ -2,11 +2,8 @@
 
 import { createPairedServer } from "@loomarr/fixtures";
 import { NativeAppRoot } from "@loomarr/native-app";
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // What the phone holds, and what its native modules would answer: the app's own code runs as is,
 // against a paired server that answers from the test card (`createPairedServer`).
@@ -132,12 +129,10 @@ type Document = {
     querySelector(selector: string): Node | null;
     querySelectorAll(selector: string): ArrayLike<Node>;
   };
-  createElement(tag: string): Parameters<typeof createRoot>[0];
 };
 const page = (globalThis as unknown as { document: Document }).document;
 
 let server: ReturnType<typeof createPairedServer>;
-let root: Root;
 
 // On the phone a programme reads "<channel number> <channel>, <programme>, <time>".
 const label = (part: string) => page.body.querySelector(`[aria-label*="${part}"]`);
@@ -160,7 +155,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await act(async () => root.unmount());
+  await act(async () => cleanup());
   Reflect.deleteProperty(globalThis.document, "visibilityState");
   vi.unstubAllGlobals();
   device.store.clear();
@@ -182,16 +177,13 @@ const { nativeApp } = await import("../src/native-app");
 
 // The route's own layout (app/_layout.tsx) draws the root around the screen; the router is not under test.
 const launch = async () => {
-  const host = page.createElement("div");
-  page.body.append(host);
-  root = createRoot(host);
-  await act(async () =>
-    root.render(
+  await act(async () => {
+    renderUi(
       <NativeAppRoot app={nativeApp}>
         <Index />
       </NativeAppRoot>,
-    ),
-  );
+    );
+  });
 };
 
 describe("the phone app", () => {

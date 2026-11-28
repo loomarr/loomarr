@@ -3,12 +3,16 @@
 import type { PairingCredential, PairingSession } from "@loomarr/core/pairing";
 import type { LastChannelStore } from "@loomarr/paired-client";
 import type { PlayerChannel, PlayerTransport, PlayerTransportEvent } from "@loomarr/player";
-import { act, createElement } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import { createElement } from "react";
 import { AppState } from "react-native";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+// A root a test renders into more than once, unmounted by `cleanup`.
+const testRoot = () => {
+  const { rerender, unmount } = renderUi(null);
+  return { render: rerender, unmount };
+};
 
 const channels: PlayerChannel[] = [
   { id: "ten", inAppPlayable: true, name: "Ten", number: 10 },
@@ -225,10 +229,7 @@ const mountClient = async (
     });
     return null;
   };
-  const container = (
-    globalThis as unknown as { document: { createElement: (tag: string) => never } }
-  ).document.createElement("div");
-  const root = createRoot(container);
+  const root = testRoot();
   await act(async () => root.render(createElement(Probe)));
   const settle = (event: PlayerTransportEvent["type"]) =>
     act(async () => {
@@ -256,6 +257,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   appListeners.clear();

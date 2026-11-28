@@ -1,16 +1,14 @@
 // @vitest-environment jsdom
 
 import type { AudioChoice, ChannelAudioSource } from "@loomarr/core/channel-audio";
-import { act, createElement } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("expo-crypto", () => ({ randomUUID: vi.fn() }));
 vi.mock("expo-video", () => ({ createVideoPlayer: vi.fn(), VideoView: vi.fn() }));
 
 const { useChannelAudio } = await import("@loomarr/paired-client");
-
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const english: AudioChoice[] = [{ label: "English", selected: true, value: "eng" }];
 
@@ -32,15 +30,13 @@ const Probe = (props: { channelId?: string; open: boolean; source: ChannelAudioS
   return null;
 };
 
-const roots: ReturnType<typeof createRoot>[] = [];
 const mount = () => {
-  const root = createRoot(document.createElement("div"));
-  roots.push(root);
-  return (props: Parameters<typeof Probe>[0]) => act(() => root.render(createElement(Probe, props)));
+  const { rerender } = renderUi(null);
+  return (props: Parameters<typeof Probe>[0]) => rerender(createElement(Probe, props));
 };
 
 afterEach(() => {
-  for (const root of roots.splice(0)) act(() => root.unmount());
+  cleanup();
   seen = undefined;
 });
 

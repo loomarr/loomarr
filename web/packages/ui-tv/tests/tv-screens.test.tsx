@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import type { ClientDestination } from "@loomarr/ui";
-import { act, useEffect } from "react";
-import { createRoot } from "react-dom/client";
-import { describe, expect, it } from "vitest";
+import { useEffect } from "react";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { TvScreens } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+afterEach(cleanup);
 
 describe("TvScreens", () => {
   const mount = async () => {
@@ -26,18 +26,13 @@ describe("TvScreens", () => {
       }, []);
       return <span>overlay</span>;
     };
-    const container = (
-      globalThis as unknown as {
-        document: { createElement: (tag: string) => never };
-      }
-    ).document.createElement("div") as unknown as { textContent: string };
-    const root = createRoot(container as never);
+    const { container, rerender, unmount } = renderUi(null);
     const show = (active: ClientDestination) =>
-      act(async () =>
-        root.render(<TvScreens active={active} overlay={<Overlay />} watching={<Watching />} />),
-      );
+      act(async () => rerender(<TvScreens active={active} overlay={<Overlay />} watching={<Watching />} />));
     await show("watching");
-    return { log, show, text: () => container.textContent, unmount: () => act(async () => root.unmount()) };
+    // This package compiles without the DOM lib, so name the one node property read here.
+    const text = () => (container as unknown as { textContent: string }).textContent;
+    return { log, show, text, unmount: () => act(async () => unmount()) };
   };
 
   it("draws only Watching on Watching", async () => {

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
@@ -104,7 +105,15 @@ const installErrorUtils = () => {
   };
 };
 
+// A root a test renders into more than once. The design system is mocked above, so the provider
+// `renderUi` wraps it in is a passthrough here.
+const testRoot = () => {
+  const { container, rerender, unmount } = renderUi(null);
+  return { container, root: { render: rerender, unmount } };
+};
+
 afterEach(() => {
+  cleanup();
   native.files.clear();
   native.previous.mockClear();
   native.isTV = false;
@@ -212,9 +221,7 @@ describe("useCrashReportUpload", () => {
     installErrorUtils();
     const send = vi.fn(async () => new Response(null, { status: 202 }));
     globalThis.fetch = send as unknown as typeof fetch;
-    const { act, createElement } = await import("react");
-    const { createRoot } = await import("react-dom/client");
-    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const { createElement } = await import("react");
 
     const app = createNativeApp();
     native.handler?.(new Error("boom"), true);
@@ -227,7 +234,7 @@ describe("useCrashReportUpload", () => {
       );
       return null;
     };
-    const root = createRoot(document.createElement("div"));
+    const { root } = testRoot();
     await act(async () => root.render(createElement(NativeAppRoot, { app, children: createElement(Probe) })));
     await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
 
@@ -245,9 +252,7 @@ describe("shell reporting hooks", () => {
   const credential = { deviceName: "Test", serverUrl: "https://loomarr.test", token: "t" } as never;
 
   const mountUnderRoot = async (probe: () => void) => {
-    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    const { act, createElement } = await import("react");
-    const { createRoot } = await import("react-dom/client");
+    const { createElement } = await import("react");
     const stopUpload = vi.fn();
     const crashReports = { recordBreadcrumb: vi.fn(), startUpload: vi.fn(() => stopUpload) };
     const app = { crashReports, diagnostics: nativeDiagnosticsIdentity({ isTV: false, os: "ios" }, "1") };
@@ -255,7 +260,7 @@ describe("shell reporting hooks", () => {
       probe();
       return null;
     };
-    const root = createRoot(document.createElement("div"));
+    const { root } = testRoot();
     const render = () =>
       act(async () => root.render(createElement(NativeAppRoot, { app, children: createElement(Probe) })));
     await render();
@@ -323,15 +328,13 @@ describe("useAppForeground", () => {
   };
 
   const mount = async (appState: ReturnType<typeof fakeAppState>) => {
-    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    const { act, createElement } = await import("react");
-    const { createRoot } = await import("react-dom/client");
+    const { createElement } = await import("react");
     const seen: boolean[] = [];
     const Probe = () => {
       seen.push(useAppForeground(appState));
       return null;
     };
-    const root = createRoot(document.createElement("div"));
+    const { root } = testRoot();
     await act(async () => root.render(createElement(Probe)));
     return { act, seen, unmount: () => act(async () => root.unmount()) };
   };
@@ -363,9 +366,7 @@ describe("useAppForeground", () => {
 describe("LaunchStage", () => {
   const mount = async (minimumMs = 1_200) => {
     vi.useFakeTimers();
-    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    const { act, createElement, useEffect } = await import("react");
-    const { createRoot } = await import("react-dom/client");
+    const { createElement, useEffect } = await import("react");
     const log: string[] = [];
     const App = () => {
       useEffect(() => {
@@ -375,8 +376,7 @@ describe("LaunchStage", () => {
       return createElement("span", null, "app");
     };
     const hideNativeSplash = vi.fn();
-    const container = document.createElement("div");
-    const root = createRoot(container);
+    const { container, root } = testRoot();
     const render = () =>
       act(async () =>
         root.render(

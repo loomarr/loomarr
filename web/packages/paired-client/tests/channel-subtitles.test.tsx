@@ -2,8 +2,8 @@
 
 import type { ChannelSubtitlesSource } from "@loomarr/core/channel-subtitles";
 import type { PlayerSnapshot } from "@loomarr/player";
-import { act, createElement } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("expo-crypto", () => ({ randomUUID: vi.fn() }));
@@ -11,8 +11,6 @@ vi.mock("expo-video", () => ({ createVideoPlayer: vi.fn(), VideoView: vi.fn() })
 
 const { usePairedSubtitles } = await import("@loomarr/paired-client");
 type PairedSubtitles = ReturnType<typeof usePairedSubtitles>;
-
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const channel = { id: "ch-1", inAppPlayable: true, name: "Science Fiction", number: 7 };
 const playingAt = (viewerTimeMs: number): PlayerSnapshot => ({
@@ -54,15 +52,13 @@ const Probe = (props: {
   return null;
 };
 
-const roots: ReturnType<typeof createRoot>[] = [];
 const mount = () => {
-  const root = createRoot(document.createElement("div"));
-  roots.push(root);
-  return (props: Parameters<typeof Probe>[0]) => act(async () => root.render(createElement(Probe, props)));
+  const { rerender } = renderUi(null);
+  return (props: Parameters<typeof Probe>[0]) => act(async () => rerender(createElement(Probe, props)));
 };
 
 afterEach(() => {
-  for (const root of roots.splice(0)) act(() => root.unmount());
+  cleanup();
   seen = undefined;
 });
 

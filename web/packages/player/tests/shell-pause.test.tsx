@@ -7,15 +7,20 @@ import {
   type PlayerTransport,
   type PlayerTransportEvent,
 } from "@loomarr/player";
-import { act, createElement } from "react";
-import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import { createElement } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("expo-video", () => ({ createVideoPlayer: vi.fn(), VideoView: vi.fn() }));
 
 const { createShellPause, useShellPause, useShellTune } = await import("@loomarr/player/native");
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+// A root a test renders into more than once, unmounted by `cleanup`.
+const testRoot = () => {
+  const { rerender, unmount } = renderUi(null);
+  return { render: rerender, unmount };
+};
+afterEach(cleanup);
 
 const channels: PlayerChannel[] = [
   { id: "a", inAppPlayable: true, name: "A", number: 1 },
@@ -68,10 +73,7 @@ const mountShell = async (initial: PlayerController) => {
     forget = useShellPause(controller, watching);
     return null;
   };
-  const container = (
-    globalThis as unknown as { document: { createElement: (tag: string) => never } }
-  ).document.createElement("div");
-  const root = createRoot(container);
+  const root = testRoot();
   const render = (controller: PlayerController, watching: boolean) =>
     act(async () => root.render(createElement(Probe, { controller, watching })));
   await render(initial, true);
@@ -140,10 +142,7 @@ describe("shell pause", () => {
         tune = useShellTune(controller, watching);
         return null;
       };
-      const container = (
-        globalThis as unknown as { document: { createElement: (tag: string) => never } }
-      ).document.createElement("div");
-      const root = createRoot(container);
+      const root = testRoot();
       const render = (next: PlayerController, nextWatching: boolean) =>
         act(async () => root.render(createElement(Probe, { controller: next, watching: nextWatching })));
       await render(controller, watching);
