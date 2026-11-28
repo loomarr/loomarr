@@ -17,11 +17,11 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-func newIconsServer(t *testing.T) (*httptest.Server, records.Store, *testkit.IconService[channelsapi.IconSuggestion]) {
+func newIconsServer(t *testing.T) (*httptest.Server, records.Combined, *testkit.IconService[channelsapi.IconSuggestion]) {
 	return newIconsServerWithConfig(t, nil)
 }
 
-func newIconsServerWithConfig(t *testing.T, cfg map[string]string) (*httptest.Server, records.Store, *testkit.IconService[channelsapi.IconSuggestion]) {
+func newIconsServerWithConfig(t *testing.T, cfg map[string]string) (*httptest.Server, records.Combined, *testkit.IconService[channelsapi.IconSuggestion]) {
 	t.Helper()
 	handler, st, fi := newIconsHandlerWithConfig(t, cfg)
 	srv := httptest.NewServer(handler)
@@ -29,7 +29,7 @@ func newIconsServerWithConfig(t *testing.T, cfg map[string]string) (*httptest.Se
 	return srv, st, fi
 }
 
-func newIconsHandlerWithConfig(t *testing.T, cfg map[string]string) (http.Handler, records.Store, *testkit.IconService[channelsapi.IconSuggestion]) {
+func newIconsHandlerWithConfig(t *testing.T, cfg map[string]string) (http.Handler, records.Combined, *testkit.IconService[channelsapi.IconSuggestion]) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/icons.db")
 	t.Cleanup(func() { _ = st.Close() })

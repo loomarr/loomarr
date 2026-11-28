@@ -24,7 +24,7 @@ import (
 )
 
 type conditioningRekeyCrashStore struct {
-	st         records.Store
+	st         records.Combined
 	afterRekey bool
 	target     clipstore.Clip
 }
@@ -82,10 +82,10 @@ func journeyConditioningMeasurement(lufs float64) tools.ConditioningMeasurement 
 }
 
 func TestFillerConditioningJourney_RestartDistinguishesPreAndPostRekeyPublication(t *testing.T) {
-	runFillerConditioningRestartJourney(t, func(t *testing.T) records.Store { return testkit.MigratedSQLiteStore(t) })
+	runFillerConditioningRestartJourney(t, func(t *testing.T) records.Combined { return testkit.MigratedSQLiteStore(t) })
 }
 
-func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T) records.Store) {
+func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T) records.Combined) {
 	for _, tc := range []struct {
 		name       string
 		afterRekey bool

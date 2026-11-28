@@ -10,7 +10,7 @@ import (
 )
 
 func testFillerPullCommit(t *testing.T, newStore NewStoreFunc) {
-	fixture := func(t *testing.T) (Store, acquisition.Pull, acquisition.AcquisitionRun) {
+	fixture := func(t *testing.T) (Combined, acquisition.Pull, acquisition.AcquisitionRun) {
 		t.Helper()
 		s := newStore(t)
 		saveMembers(t, s, "admin-winner", "admin-one", "admin-two", "other-admin")

@@ -28,7 +28,7 @@ func homeFrame(t *testing.T, width int) []byte {
 // saveHomeVideo writes the fixture's title with its file at revision.
 func saveHomeVideo(t *testing.T, p *titleFrames, revision string) {
 	t.Helper()
-	if err := p.store.(records.Store).SaveLibraryItems(context.Background(), []librarystore.LibraryItem{{ID: "90000001", Kind: "movie", Name: "Alpha",
+	if err := p.store.(records.Combined).SaveLibraryItems(context.Background(), []librarystore.LibraryItem{{ID: "90000001", Kind: "movie", Name: "Alpha",
 		Origin: homeVideoOrigin, Sources: []librarystore.LibrarySource{
 			{Path: "/media/a.mkv", DurationMs: 200_000, Plays: true, Revision: revision}}}}, p.now()); err != nil {
 		t.Fatal(err)
@@ -60,7 +60,7 @@ func TestHomeVideoPosterRacingWrites(t *testing.T) {
 		}()
 	}
 	done.Wait()
-	owned, err := p.store.(records.Store).ImagesForOwner(ctx, librarystore.LibraryItemImageOwner, "90000001")
+	owned, err := p.store.(records.Combined).ImagesForOwner(ctx, librarystore.LibraryItemImageOwner, "90000001")
 	if err != nil || len(owned) != 1 {
 		t.Fatalf("owned = %d images, %v; want one poster", len(owned), err)
 	}
@@ -111,7 +111,7 @@ func TestHomeVideoPosterSurvivesARewrite(t *testing.T) {
 	rewrite := func(revision string) {
 		t.Helper()
 		saveHomeVideo(t, p, revision)
-		art := libraryArtworkOf(p.images, p.store.(records.Store))
+		art := libraryArtworkOf(p.images, p.store.(records.Combined))
 		if err := art.Art(ctx, "90000001", metadataprovider.KindPoster, ""); err != nil {
 			t.Fatal(err)
 		}

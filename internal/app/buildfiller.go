@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout/resolve"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
@@ -46,6 +47,16 @@ import (
 // widens and the compiler still catches use-before-assignment. §14.1 records the distinction.
 //
 // Coupling, not size, predicts extraction cost — extract along the seam, not the line count.
+
+// libraryRootReader and channelLister are the core reads the filler builders need beside the filler
+// store.
+type libraryRootReader interface {
+	LibraryRoots(ctx context.Context) (librarystore.LibraryRoots, error)
+}
+
+type channelLister interface {
+	ListChannels(context.Context) ([]channelstore.Channel, error)
+}
 
 // offerCuratedSources offers this build's curated sources the install has not been offered, switched
 // off (#2035). Enabling one is the operator's consent to fetch from it. A failure costs only the
@@ -78,7 +89,7 @@ func offerCuratedSources(ctx context.Context, st records.Store, log *slog.Logger
 // ⚠ The library scanner stays wired when no media server is configured, and that is a SUPPORTED
 // install rather than a degraded one: its adapter maps the explicit unconfigured result to an
 // empty optional source, so folder rows still drain and a saved connection enables the next scan.
-func buildSyncer(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger,
+func buildSyncer(st records.Store, roots libraryRootReader, set resolved, layout cliplibrary.Layout, log *slog.Logger,
 	fillerProg tunarr.Adapter, lib *mediaserver.Client, governor *storagegovernor.Governor) *filler.Syncer {
 	src := cliplibrary.DirSource{
 		Layout: layout,
@@ -114,7 +125,7 @@ func buildSyncer(st records.Store, set resolved, layout cliplibrary.Layout, log 
 		WithInferiorCopies(st)
 
 	libScanner := cliplibrary.NewLibraryScanner(func(msg string, args ...any) { log.Warn(msg, args...) })
-	cutover := &fillerLibraryCutover{st: st, roots: st, lib: lib, log: log, now: time.Now, warned: map[string]bool{}}
+	cutover := &fillerLibraryCutover{st: st, roots: roots, lib: lib, log: log, now: time.Now, warned: map[string]bool{}}
 	return syncer.WithScanSources(fillerScanSourceAdapter{st: st, cutover: cutover}, libScanner)
 }
 
@@ -217,9 +228,7 @@ func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *tools.FFmp
 // intakeLanguages is the language gate's wanted set, read live (#2030 decision 13): the union of
 // the channels' commercial languages (language.IntakeSet). A detached channel no longer airs,
 // so it no longer counts; a paused one resumes with its language, so it does.
-func intakeLanguages(st interface {
-	ListChannels(context.Context) ([]channelstore.Channel, error)
-}, set resolved) func(context.Context) (string, error) {
+func intakeLanguages(st channelLister, set resolved) func(context.Context) (string, error) {
 	return func(ctx context.Context) (string, error) {
 		channels, err := st.ListChannels(ctx)
 		if err != nil {
@@ -252,7 +261,7 @@ func intakeLanguages(st interface {
 // one that is present says why it skipped in the operator's own terms. That is what makes the
 // ladder explain an install rather than merely show gaps in it. Do not make registration
 // conditional to "clean up" the nil cases.
-func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger, emitter *eventEmitter,
+func buildPipeline(st records.Store, channels channelLister, set resolved, layout cliplibrary.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, wake *operator.ChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom,
@@ -271,7 +280,7 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 	// entirely different collaborators — one a local binary and a model file, the other an
 	// HTTP client with a key. The wanted languages and the reject rule still hot-apply; changing
 	// the PROVIDER needs a restart, which is the same bargain `llm.provider` makes.
-	wantLanguages := intakeLanguages(st, set)
+	wantLanguages := intakeLanguages(channels, set)
 	var langDetect language.Detector
 	if settings.ASRProvider.Get(set) == "hosted" {
 		// Language and transcripts share one speech-recognition service. A dedicated ASR endpoint

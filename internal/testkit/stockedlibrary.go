@@ -10,7 +10,7 @@ import (
 
 // stockedLibrary is a store whose library holds every item a saved channel plans to air.
 type stockedLibrary struct {
-	records.Store
+	records.Combined
 	t testing.TB
 }
 
@@ -19,9 +19,9 @@ type stockedLibrary struct {
 // (#2793), so the real store refuses a schedule naming an unknown item; a test whose availability is
 // a fake hands out ids no library has, and this keeps such a test about the channel rather than the
 // library. An item the test already stored is left as it is.
-func StockedLibrary(t testing.TB, st records.Store) records.Store {
+func StockedLibrary(t testing.TB, st records.Combined) records.Combined {
 	t.Helper()
-	return stockedLibrary{Store: st, t: t}
+	return stockedLibrary{Combined: st, t: t}
 }
 
 func (s stockedLibrary) SaveChannel(ctx context.Context, ch channelstore.Channel) (channelstore.Channel, error) {
@@ -45,8 +45,8 @@ func (s stockedLibrary) SaveChannel(ctx context.Context, ch channelstore.Channel
 			}
 		}
 		if len(missing) > 0 {
-			SaveLibraryItems(s.t, s.Store, missing...)
+			SaveLibraryItems(s.t, s.Combined, missing...)
 		}
 	}
-	return s.Store.SaveChannel(ctx, ch)
+	return s.Combined.SaveChannel(ctx, ch)
 }

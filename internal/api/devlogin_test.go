@@ -22,7 +22,7 @@ type devAccessHarnessConfig struct {
 	DevLogin bool
 	Pprof    bool
 	Demo     peopleapi.DemoAccount
-	Seed     func(records.Store)
+	Seed     func(records.Combined)
 }
 
 // newDevAccessHarness owns the auth stack for opt-in development route gates.
@@ -57,12 +57,12 @@ func newDevAccessHarness(t *testing.T, config devAccessHarnessConfig) *apiHarnes
 	})
 }
 
-func newDevLoginHarness(t *testing.T, devLogin bool, seed func(records.Store)) *apiHarness {
+func newDevLoginHarness(t *testing.T, devLogin bool, seed func(records.Combined)) *apiHarness {
 	t.Helper()
 	return newDevAccessHarness(t, devAccessHarnessConfig{DevLogin: devLogin, Seed: seed})
 }
 
-func seedAdmin(t *testing.T, st records.Store, id, name string, role identitystore.Role) {
+func seedAdmin(t *testing.T, st records.Combined, id, name string, role identitystore.Role) {
 	t.Helper()
 	u := identitystore.User{ID: id, Name: name, Role: role, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	if err := st.UpsertUser(context.Background(), u); err != nil {
@@ -75,7 +75,7 @@ func seedAdmin(t *testing.T, st records.Store, id, name string, role identitysto
 // whole security property of the feature; if it ever regresses, a production binary
 // grows a credential-free admin door.
 func TestDevLoginAbsentByDefault(t *testing.T) {
-	srv := newDevLoginHarness(t, false, func(st records.Store) {
+	srv := newDevLoginHarness(t, false, func(st records.Combined) {
 		seedAdmin(t, st, "u-boss", "boss", identitystore.RoleAdmin)
 	}).Server
 
@@ -98,7 +98,7 @@ func TestDevLoginAbsentByDefault(t *testing.T) {
 // would pass vacuously — a typo'd path or a server that registered no routes at all
 // would satisfy it just as well.
 func TestDevLoginIssuesAdminSessionWhenEnabled(t *testing.T) {
-	srv := newDevLoginHarness(t, true, func(st records.Store) {
+	srv := newDevLoginHarness(t, true, func(st records.Combined) {
 		seedAdmin(t, st, "u-boss", "boss", identitystore.RoleAdmin)
 	}).Server
 
@@ -150,7 +150,7 @@ func TestDevLoginIssuesAdminSessionWhenEnabled(t *testing.T) {
 // install with no admin row must be refused, or the bypass would quietly become a
 // provisioning path around the wizard.
 func TestDevLoginRefusesWhenNoAdminExists(t *testing.T) {
-	srv := newDevLoginHarness(t, true, func(st records.Store) {
+	srv := newDevLoginHarness(t, true, func(st records.Combined) {
 		// A member exists, but no admin.
 		seedAdmin(t, st, "u-kid", "kid", identitystore.RoleMember)
 	}).Server
@@ -172,7 +172,7 @@ func TestDevLoginRefusesWhenNoAdminExists(t *testing.T) {
 // A disabled admin is not a usable identity — Login rejects one, and dev login must
 // not become the way around that.
 func TestDevLoginSkipsDisabledAdmin(t *testing.T) {
-	srv := newDevLoginHarness(t, true, func(st records.Store) {
+	srv := newDevLoginHarness(t, true, func(st records.Combined) {
 		u := identitystore.User{ID: "u-off", Name: "off", Role: identitystore.RoleAdmin, Disabled: true, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 		if err := st.UpsertUser(context.Background(), u); err != nil {
 			t.Fatal(err)
@@ -198,7 +198,7 @@ func TestSetupStateReportsDevLoginFlag(t *testing.T) {
 		on   bool
 	}{{"off", false}, {"on", true}} {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := newDevLoginHarness(t, tc.on, func(st records.Store) {
+			srv := newDevLoginHarness(t, tc.on, func(st records.Combined) {
 				seedAdmin(t, st, "u-boss", "boss", identitystore.RoleAdmin)
 			}).Server
 			res, err := http.Get(srv.URL + "/v1/setup/state")
@@ -236,7 +236,7 @@ func TestSetupStateReportsDemoMode(t *testing.T) {
 		{"on", peopleapi.DemoAccount{Username: "guest", Password: "loomarr-guest"}, `{"enabled":true,"username":"guest","password":"loomarr-guest"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := newDevAccessHarness(t, devAccessHarnessConfig{Demo: tc.account, Seed: func(st records.Store) {
+			srv := newDevAccessHarness(t, devAccessHarnessConfig{Demo: tc.account, Seed: func(st records.Combined) {
 				seedAdmin(t, st, "u-boss", "boss", identitystore.RoleAdmin)
 			}}).Server
 			res, err := http.Get(srv.URL + "/v1/setup/state")

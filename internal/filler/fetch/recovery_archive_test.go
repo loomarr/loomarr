@@ -182,7 +182,7 @@ fi
 	}
 }
 
-func seedArchiveRecoveryRun(t *testing.T, db records.Store, source fetch.Source) {
+func seedArchiveRecoveryRun(t *testing.T, db records.Combined, source fetch.Source) {
 	t.Helper()
 	testkit.SaveFillerSources(t, db, source.ID)
 	if err := db.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{

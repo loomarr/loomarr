@@ -25,7 +25,7 @@ import (
 
 // failingClipListStore is the real store with ListClips broken, so a test can prove a still lookup
 // failure degrades the strip instead of failing it.
-type failingClipListStore struct{ records.Store }
+type failingClipListStore struct{ records.Combined }
 
 func (failingClipListStore) ListClips(context.Context, clipstore.ClipFilter) ([]clipstore.Clip, error) {
 	return nil, errors.New("clip catalogue unavailable")
@@ -54,7 +54,7 @@ func startTimelinePodsHarness(
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		use := defaults.Store
 		if breakClips {
-			use = failingClipListStore{Store: defaults.Store}
+			use = failingClipListStore{Combined: defaults.Store}
 		}
 		return api.Router(defaults.Log, api.Options{
 			Store:   use,
@@ -102,7 +102,7 @@ func timelineBreakGuide(now time.Time) *fakeXMLTVGuide {
 }
 
 // seedPodClips stores two spots: "clip-still" has a still and a hover loop, "clip-bare" has neither.
-func seedPodClips(t *testing.T, st records.Store) {
+func seedPodClips(t *testing.T, st records.Combined) {
 	t.Helper()
 	for _, c := range []clips.Clip{
 		{

@@ -307,7 +307,7 @@ func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAns
 }
 
 // geographyFixture registers one archive source and one break-body clip fetched from it.
-func geographyFixture(t *testing.T, st records.Store, at time.Time, country, title string) (clipstore.Clip, fstest.MapFS) {
+func geographyFixture(t *testing.T, st records.Combined, at time.Time, country, title string) (clipstore.Clip, fstest.MapFS) {
 	t.Helper()
 	source := records.NewFillerSource("archive:geo", "archive", "archive.org/details/commercials", "Archive source", at)
 	source.Geography = pod.Geography{Country: country}
@@ -327,7 +327,7 @@ func geographyFixture(t *testing.T, st records.Store, at time.Time, country, tit
 	return clip, files
 }
 
-func runDeterministic(t *testing.T, st records.Store, files fstest.MapFS, at time.Time) {
+func runDeterministic(t *testing.T, st records.Combined, files fstest.MapFS, at time.Time) {
 	t.Helper()
 	runner := enrichment.NewRunner(storeadapter.NewEnrichment(st),
 		NewEnrichmentSignals(st, files, nil).Load,

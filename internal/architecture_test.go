@@ -300,7 +300,7 @@ func requireClusterOnKernelNotAggregate(t *testing.T, pkgs map[string]*build.Pac
 func aggregateStoreImports(pkg *build.Package) []string {
 	var found []string
 	for _, imported := range pkg.Imports {
-		if aggregateStorePackages[imported] {
+		if _, aggregate := aggregateStoreTypes[imported]; aggregate {
 			found = append(found, imported)
 		}
 	}
