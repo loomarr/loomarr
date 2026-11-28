@@ -970,7 +970,7 @@ func TestGoRaceWeightsRefreshTakesMedianOfRaceLaneJobs(t *testing.T) {
 	if strings.Join(rows, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("weights =\n%s\nwant\n%s", strings.Join(rows, "\n"), strings.Join(want, "\n"))
 	}
-	if !strings.Contains(output, "merge-group runs 11 22 33") {
+	if !strings.Contains(output, "hosted runs 11 22 33") {
 		t.Fatalf("header does not name its source runs:\n%s", output)
 	}
 

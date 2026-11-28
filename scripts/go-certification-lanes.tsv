@@ -7,8 +7,7 @@
 # names each lane as certification-<lane>/<count>. A package too slow for one lane is not here but
 # in scripts/go-split-lanes.tsv (internal/platform/store is).
 #
-# Four lanes: schedule (both its phases) and the api+app pair each come close to the 469s lane
-# budget, so no three-way split fits them.
+# Four lanes: together these packages model more than three lanes' 469s budgets hold.
 #
 # internal/demolibrary encodes filler and scans the tree in parallel tests. Sharing an ordinary
 # -p=4 lane it measured 743s; at -p=1 it measures 320s to 410s (#2716, #4538).

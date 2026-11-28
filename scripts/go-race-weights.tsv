@@ -1,5 +1,5 @@
 # Measured `go test` seconds per package in the Go race-policy lanes: the median over the
-# finished packages of the lane jobs in merge-group runs 46149045648 46144393280 46142907518 46142212153 46140576610 46140506228, rounded up. Regenerate with
+# finished packages of the lane jobs in hosted runs 46149045648 46144393280 46142907518 46142212153 46140576610 46140506228, rounded up. Regenerate with
 # `make go-race-weights RUNS="..."` (scripts/go-race-weights-refresh.sh); never edit by hand.
 # Packages below five seconds use the one-second floor in go-shard.sh.
 internal/library/scan@race-1/2	444

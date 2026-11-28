@@ -716,7 +716,7 @@ Go tests, frontend and Playwright split across runners for wall-clock only. Repo
 contracts run once: the workflow, release, harness, shell and generated-docs checks in CI policy on
 every PR, and the rest in `go-contracts`, whose two shards share them without overlap. Rust
 contracts once in `rust-contracts`, in parallel with
-two ordinary Go test lanes, two serial lanes for packages that must not share a runner, and the independent release-worker
+two ordinary Go test lanes, serial lanes for packages that must not share a runner, jobs of their own for packages too slow for one lane, and the independent release-worker
 certification. Their union is the same
 assurance as `make verify SCOPE=all` plus the existing CI-only certification. The `ci-ok` aggregate
 requires every job, so moving a contract out of the test lanes cannot make it optional.
@@ -831,8 +831,8 @@ There are four serial lanes, `certification-1/4` to `certification-4/4` (#4538).
 number in `scripts/go-certification-lanes.tsv` is the count, and the workflow matrix, cache keys and
 release-verifier pins name each lane. A package the race policy runs in both phases
 (`RACE_AND_PLAIN`, such as `internal/channels/schedule`) costs a serial lane twice, as it does an
-ordinary one. Schedule and the api+app pair each come close to the 469s lane budget, so no
-three-way split fits them. `make go-shard-verify` prints each lane's modeled seconds.
+ordinary one. Together the serial packages model more than three lanes' 469s budgets hold.
+`make go-shard-verify` prints each lane's modeled seconds.
 
 A package too slow for any one lane has jobs of its own, listed in
 `scripts/go-split-lanes.tsv`. `internal/library/scan` runs under `-race` in two jobs,
