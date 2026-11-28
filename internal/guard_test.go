@@ -217,14 +217,15 @@ func moduleTestFiles(root string) ([]string, error) {
 				return filepath.SkipDir
 			}
 			switch d.Name() {
-			case "node_modules", "testdata", "web":
+			case "node_modules", "testdata":
 				return filepath.SkipDir
 			}
 			rel, rerr := filepath.Rel(root, path)
 			if rerr != nil {
 				return rerr
 			}
-			if rootBuildOutput[filepath.ToSlash(rel)] {
+			// Only the root web/ is the frontend; internal/platform/web is a Go package.
+			if rel == "web" || rootBuildOutput[filepath.ToSlash(rel)] {
 				return filepath.SkipDir
 			}
 			if _, serr := os.Stat(filepath.Join(path, "go.mod")); serr == nil {

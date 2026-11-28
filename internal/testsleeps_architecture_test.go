@@ -53,11 +53,31 @@ func countSleeps(t *testing.T, filename string, src any) int {
 	if name == "" {
 		return 0
 	}
+	isTime := func(e ast.Expr, member string) bool {
+		sel, ok := e.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != member {
+			return false
+		}
+		pkg, ok := sel.X.(*ast.Ident)
+		return ok && pkg.Name == name
+	}
 	count := 0
+	// A select case receiving from time.After is a bound on another event, not a sleep.
+	cases := map[ast.Stmt]bool{}
 	ast.Inspect(file, func(n ast.Node) bool {
-		if sel, ok := n.(*ast.SelectorExpr); ok && sel.Sel.Name == "Sleep" {
-			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == name {
+		switch n := n.(type) {
+		case *ast.SelectorExpr:
+			if isTime(n, "Sleep") {
 				count++
+			}
+		case *ast.CommClause:
+			cases[n.Comm] = true
+		case *ast.ExprStmt:
+			// A bare <-time.After(d) is a sleep spelled another way.
+			if recv, ok := n.X.(*ast.UnaryExpr); ok && recv.Op == token.ARROW && !cases[n] {
+				if call, ok := recv.X.(*ast.CallExpr); ok && isTime(call.Fun, "After") {
+					count++
+				}
 			}
 		}
 		return true
@@ -161,9 +181,13 @@ func f() {
 	wait := clock.Sleep
 	wait(1)
 	_ = "time.Sleep(1)" // time.Sleep(1)
+	<-clock.After(1)
+	select {
+	case <-clock.After(1):
+	}
 }`
-	if got := countSleeps(t, "p_test.go", src); got != 2 {
-		t.Fatalf("counted %d sleeps, want 2", got)
+	if got := countSleeps(t, "p_test.go", src); got != 3 {
+		t.Fatalf("counted %d sleeps, want 3", got)
 	}
 	lowered := lowerCounts(map[string]int{"a": 3, "b": 1}, map[string]int{"a": 5, "c": 2})
 	if len(lowered) != 1 || lowered["a"] != 3 {
