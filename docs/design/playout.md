@@ -19,8 +19,8 @@ channel's segment timeline. It starts on the first tune and stops `DefaultGrace`
 viewer leaves. There is no boot warm-up, and the channel packager is the only live path.
 
 **Packages.** The engine's shared vocabulary (the probed `MediaFormat`, its stream class, the picture
-rectangle and the HDR tone curve) is the leaf package `internal/playout/media`, so the packages
-around the engine share it without importing the engine.
+rectangle and the HDR tone curve) is the leaf package `internal/playout/media`, so a package can
+share it without importing the engine.
 
 **The pipeline.**
 

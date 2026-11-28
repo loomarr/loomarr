@@ -3,7 +3,7 @@ package playout
 import "github.com/loomarr/loomarr/internal/playout/media"
 
 // The engine and its callers spell the media vocabulary through these names. The types and their
-// behaviour live in the leaf package, which the admission, probe and packager packages share.
+// behaviour live in the leaf package, which other packages can share without importing the engine.
 type (
 	MediaFormat  = media.MediaFormat
 	FormatProber = media.FormatProber
