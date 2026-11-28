@@ -117,7 +117,9 @@ const StripBlock = ({
   const spoken = [line, name].filter(Boolean).join(" ");
   const label = state === "ended" ? `${spoken}, ended ${formatTime(stopMs)}` : spoken;
 
-  const inside = layout === "row" || !artworkUri;
+  // Under the picture the words stand under the still, with or without one: a break's tick and the
+  // playhead cross the still and never the words. A Guide row keeps them inside.
+  const inside = layout === "row";
   // An ended block with no picture recedes into the page: canvas fill, quiet edge.
   const receded = state === "ended" && !artworkUri;
   const words = (

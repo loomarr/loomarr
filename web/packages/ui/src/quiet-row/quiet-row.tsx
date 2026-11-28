@@ -31,7 +31,10 @@ type QuietRowKey =
 interface QuietRowProps {
   /** `full` is a desktop at full screen, `window` a desktop window. */
   device: QuietRowDevice;
-  /** Watching behind live; a television then leads with Go live unless paused. */
+  /**
+   * Watching behind live; a television and a desktop window then lead with Go live unless paused,
+   * since neither has a lower third whose Go live takes focus.
+   */
   behindLive?: boolean;
   /** The channel group in play; anything but `All` is named on the Channels control. */
   group?: string;
@@ -111,7 +114,7 @@ const faceOf = (
 };
 
 const keysFor = ({ behindLive, device, paused }: QuietRowProps): readonly QuietRowKey[] =>
-  device === "tv" && behindLive && !paused ? ["live", ...KEYS.tv] : KEYS[device];
+  (device === "tv" || device === "window") && behindLive && !paused ? ["live", ...KEYS[device]] : KEYS[device];
 
 /**
  * The quiet row of The Cross (frontend-design §9.3, target): one toolbar of controls. It is one Tab

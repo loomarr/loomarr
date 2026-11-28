@@ -1,3 +1,5 @@
+import type { Ref } from "react";
+
 import type { StripAiring } from "./series-runs";
 
 /** What a viewer is pointing at or has focused, or pressed. */
@@ -37,6 +39,7 @@ interface FilmStripProps {
   onSelect?: (look: FilmStripLook) => void;
   /** Where the viewer is. Behind `nowMs`, the live mark shows too. */
   playheadMs?: number;
+  ref?: Ref<FilmStripHandle> | undefined;
   /**
    * The span the strip draws. In `row` layout a block is as wide as its share of it; in `strip`
    * layout it picks the programmes and trims what has aired before it.
@@ -44,4 +47,12 @@ interface FilmStripProps {
   window: { startMs: number; stopMs: number };
 }
 
-export type { FilmStripLook, FilmStripProps };
+interface FilmStripHandle {
+  /**
+   * Moves focus onto the programme `by` steps from the one on now, for a key that reached the strip
+   * from outside it; at either end it stops on the last there is.
+   */
+  focusFromNow: (by: -1 | 1) => void;
+}
+
+export type { FilmStripHandle, FilmStripLook, FilmStripProps };

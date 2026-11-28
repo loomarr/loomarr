@@ -86,6 +86,7 @@ const ChannelList = <C extends LineupChannel>({
   layout = "pointer",
   autoFocus = false,
   onLook,
+  scrollMemory,
   ref,
 }: ChannelListProps<C>) => {
   const { cursor, watchedId, group, query, open, television } = state;
@@ -143,18 +144,29 @@ const ChannelList = <C extends LineupChannel>({
   // Find's results stand at the top of the list.
   const restScroll = view.finding ? room : rest.scroll;
 
+  // What the list shows, apart from how it is measured.
+  const shows = [watchedId, group, view.finding && query, open].join();
+  const keep = (scroll: number) => {
+    if (scrollMemory) scrollMemory.current = { scroll, shows };
+  };
   const scrollTo = (to: number) => {
     scrolled.current = to;
+    keep(to);
     scroller.current?.scrollTo?.({ animated: false, y: to });
     if (Platform.OS !== "web") setNativeScroll(to);
   };
 
+  // A list mounted showing what the caller kept comes back where it was, while it still shows that
+  // and however its parts measure themselves on the way.
+  const kept = useRef(scrollMemory?.current);
   // The list re-centres when what it shows changes, and otherwise stays where it was scrolled.
-  const restKey = [watchedId, group, view.finding && query, open, viewport, pinnedHeight, restOffset].join();
+  const restKey = [shows, viewport, pinnedHeight, restOffset].join();
   useEffect(() => {
     if (!viewport || rested.current === restKey) return;
     rested.current = restKey;
-    scrollTo(restScroll);
+    const back = kept.current?.shows === shows ? kept.current.scroll : undefined;
+    if (back === undefined) kept.current = undefined;
+    scrollTo(back ?? restScroll);
   });
 
   // Other rows may now be under a pointer that has not moved, so its highlight is let go.
@@ -288,6 +300,8 @@ const ChannelList = <C extends LineupChannel>({
     const within = Math.min(bounds.max, Math.max(bounds.min, at));
     if (viewport && within !== at) return scrollTo(within);
     scrolled.current = at;
+    keep(at);
+    if (kept.current) kept.current = { scroll: at, shows };
     if (Platform.OS !== "web") setNativeScroll(at);
   };
 

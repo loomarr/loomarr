@@ -31,7 +31,18 @@ interface ChannelListProps<C extends LineupChannel> {
   autoFocus?: boolean | undefined;
   /** A pointer resting on another channel, and `undefined` the moment it leaves. */
   onLook?: ((channelId: string | undefined) => void) | undefined;
+  /**
+   * Where the list was scrolled, kept by the caller across a remount (a change of arrangement). A
+   * list mounted showing what it showed when it was kept comes back where it was, not re-centred.
+   */
+  scrollMemory?: { current: ChannelListScroll | undefined } | undefined;
   ref?: Ref<ChannelListHandle> | undefined;
+}
+
+/** What a list was showing, and how far it was scrolled. */
+interface ChannelListScroll {
+  shows: string;
+  scroll: number;
 }
 
 interface ChannelListHandle {
@@ -48,4 +59,11 @@ interface FocusHandle {
   blur?: () => void;
 }
 
-export type { ChannelListDetail, ChannelListHandle, ChannelListLayout, ChannelListProps, FocusHandle };
+export type {
+  ChannelListDetail,
+  ChannelListHandle,
+  ChannelListLayout,
+  ChannelListProps,
+  ChannelListScroll,
+  FocusHandle,
+};

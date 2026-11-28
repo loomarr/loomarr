@@ -9,6 +9,7 @@ export type {
   ChannelListHandle,
   ChannelListLayout,
   ChannelListProps,
+  ChannelListScroll,
 } from "./src/channel-list";
 export { ChannelList } from "./src/channel-list";
 export type {
@@ -49,6 +50,7 @@ export { confirmDisconnect, DeviceSheet } from "./src/device-sheet";
 export type { ClipSelectProps, DefectReviewProps } from "./src/filler";
 export { ClipSelect, DefectReview, NeedsDetailsChip } from "./src/filler";
 export type {
+  FilmStripHandle,
   FilmStripLook,
   FilmStripProps,
   StripAiring,

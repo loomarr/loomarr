@@ -4,4 +4,5 @@ export type {
   ChannelListHandle,
   ChannelListLayout,
   ChannelListProps,
+  ChannelListScroll,
 } from "./channel-list.type";

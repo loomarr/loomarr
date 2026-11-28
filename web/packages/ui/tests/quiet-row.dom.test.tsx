@@ -70,6 +70,22 @@ describe("QuietRow", () => {
     expect(names()).not.toContain("Go live");
   });
 
+  it("leads a desktop window with Go live too, whose pinned lower third takes no focus", () => {
+    const { unmount } = row({ behindLive: true, device: "window" });
+    expect(names()).toEqual([
+      "Go live",
+      "Pause (Space)",
+      "Subtitles (C)",
+      "Audio (A)",
+      "Mute (M)",
+      "Full screen (F)",
+      "More",
+    ]);
+    unmount();
+    row({ behindLive: true, device: "window", paused: true });
+    expect(names()).not.toContain("Go live");
+  });
+
   it("is one Tab stop with Left, Right, Home and End inside, and draws one amber ring", async () => {
     const onPress = vi.fn();
     keyboardFocus();
