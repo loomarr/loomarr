@@ -59,6 +59,9 @@ RETIRED=(
   'ReindexJob|V55: ApplyTaxonomyEdit owns the atomic set-based rebuild'
   'NewReindexJob|V55: ApplyTaxonomyEdit owns the atomic set-based rebuild'
   'ReindexStore|V55: the store exposes one semantic ApplyTaxonomyEdit operation'
+  # The web request detail draws the shared RequestDetailBody; a web screen of its own would drift
+  # from the one native renders.
+  '@/queue/request-detail"|retired (#4706): use @/queue/request-detail-page, which renders RequestDetailBody from @loomarr/ui'
   'ReindexResult|V55: there is no asynchronous taxonomy repair result'
   'RebuildClosure|V55: closure rebuilding is private to boot and ApplyTaxonomyEdit'
   'RebuildRollups|V55: rollup rebuilding is private to ApplyTaxonomyEdit'

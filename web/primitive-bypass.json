@@ -235,9 +235,6 @@
     "apps/web/src/people/users-page/users-page.tsx": {
       "inlineStyle": 1
     },
-    "apps/web/src/queue/request-detail/request-detail.tsx": {
-      "inlineStyle": 1
-    },
     "apps/web/src/channels/channel-detail/channel-detail-page/channel-detail-page.tsx": {
       "inlineStyle": 5
     },
