@@ -53,6 +53,7 @@
     "@storybook/react-vite": "10.6.3",
     "@tanstack/react-router": "1.170.46",
     "@tanstack/router-cli": "1.167.46",
+    "@loomarr/test-support": "workspace:*",
     "@tanstack/router-plugin": "1.168.48",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",
