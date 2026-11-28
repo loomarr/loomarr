@@ -20,9 +20,14 @@ const open = (local: boolean) => {
     getMeMockHandler(me({ role: "member", local })),
     getListUserSessionsMockHandler({
       sessions: [
-        { id: "mine", createdAt: Date.UTC(2026, 0, 1), current: true, clientLabel: "Firefox on Linux" },
-        { id: "other", createdAt: Date.UTC(2026, 0, 1), current: false, clientLabel: "Safari on iOS" },
-      ],
+        { id: "mine", current: true, clientLabel: "Firefox on Linux" },
+        { id: "other", current: false, clientLabel: "Safari on iOS" },
+      ].map((session) => ({
+        ...session,
+        userId: "u1",
+        createdAt: Date.UTC(2026, 0, 1),
+        expiresAt: Date.UTC(2027, 0, 1),
+      })),
     }),
     getRevokeSessionMockHandler(({ params }) => {
       revoked.push(String(params.hash));
