@@ -6,7 +6,10 @@ import type { WatchMenuOptions } from "./watch-menu.type";
 
 const channel = { id: "ch-4", name: "Night Owl", number: 4, playable: true };
 
-const options = (slot: Partial<WatchMenuOptions["slot"]>, over: Partial<WatchMenuOptions> = {}): WatchMenuOptions => ({
+const options = (
+  slot: Partial<WatchMenuOptions["slot"]>,
+  over: Partial<WatchMenuOptions> = {},
+): WatchMenuOptions => ({
   audio: [],
   density: "pointer",
   detailRows: [],
@@ -76,9 +79,13 @@ describe("watchMenu", () => {
 
   it("draws Subtitles and the shortcuts sheet as their own menus", () => {
     const { unmount } = draw(options({ name: "subtitles" }));
-    expect(within(screen.getByRole("dialog", { name: "Subtitles" })).getByRole("radio", { name: "Off" })).toBeTruthy();
+    expect(
+      within(screen.getByRole("dialog", { name: "Subtitles" })).getByRole("radio", { name: "Off" }),
+    ).toBeTruthy();
     unmount();
     draw(options({ name: "shortcuts" }));
-    expect(within(screen.getByRole("dialog", { name: "Keyboard shortcuts" })).getByText("Last channel")).toBeTruthy();
+    expect(
+      within(screen.getByRole("dialog", { name: "Keyboard shortcuts" })).getByText("Last channel"),
+    ).toBeTruthy();
   });
 });

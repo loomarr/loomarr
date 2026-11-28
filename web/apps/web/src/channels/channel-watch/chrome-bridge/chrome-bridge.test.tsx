@@ -10,7 +10,9 @@ describe("ChromeBridge", () => {
   it("hands the player's mute up as it changes, with the player's own setter, and draws nothing", () => {
     const setMuted = vi.fn();
     const onSound = vi.fn();
-    const { container, rerender } = render(<ChromeBridge chrome={chrome(false, setMuted)} onSound={onSound} />);
+    const { container, rerender } = render(
+      <ChromeBridge chrome={chrome(false, setMuted)} onSound={onSound} />,
+    );
     expect(container.childElementCount).toBe(0);
     expect(onSound).toHaveBeenLastCalledWith({ muted: false, setMuted });
     rerender(<ChromeBridge chrome={chrome(true, setMuted)} onSound={onSound} />);
