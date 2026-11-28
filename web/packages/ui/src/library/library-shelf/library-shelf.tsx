@@ -246,16 +246,16 @@ const NoMatch = ({
             : `Search looks at titles, years and genres across all ${titlesWord(total)}.`}
       </Text>
       <Line>
-        <Action onPress={onClear} variant="outline">
+        <Action density={wide ? "pointer" : "touch"} onPress={onClear} variant="outline">
           Clear search
         </Action>
         {onAllGenres ? (
-          <Action onPress={onAllGenres} variant="outline">
+          <Action density={wide ? "pointer" : "touch"} onPress={onAllGenres} variant="outline">
             Show all genres
           </Action>
         ) : null}
         {onClearFilters ? (
-          <Action onPress={onClearFilters} variant="outline">
+          <Action density={wide ? "pointer" : "touch"} onPress={onClearFilters} variant="outline">
             Clear filters
           </Action>
         ) : null}
@@ -685,19 +685,22 @@ const Controls = ({
       </Stack>
     );
   }
-  // With a genre chosen the count is that genre's. With filters on, the line of what is on carries
-  // the list's own count instead.
+  // The sheet covers the wall and its line of what is on, so it says how many titles the choices
+  // leave: with filters on the list's own total, with a genre chosen that genre's, else the tab's.
   const filtered = on > 0 || Boolean(filtering && genre);
-  const shown =
-    filtered || !showSearch
-      ? undefined
+  const shown = !showSearch
+    ? undefined
+    : filtered
+      ? filtering?.total
       : genre
         ? listed?.titles
         : counts && filter !== "collections"
           ? counts[filter]
           : undefined;
-  // What narrows the wall: Movies or Shows, the genre and the rest. The order narrows nothing.
-  const narrowing = on + (genre ? 1 : 0) + (filter === "movie" || filter === "series" ? 1 : 0);
+  // What narrows the wall: Movies or Shows, the genre and the rest. The order narrows nothing, and
+  // Collections shows none of them, so it counts none.
+  const narrowing =
+    filter === "collections" ? 0 : on + (genre ? 1 : 0) + (filter === "movie" || filter === "series" ? 1 : 0);
   // The sheet stays in this place as the tabs change, so choosing Collections leaves it open.
   return (
     <Line flexWrap="nowrap" gap="control">
@@ -717,6 +720,9 @@ const Controls = ({
             {/* A short window scrolls the choices; Done stays in reach under them. */}
             <ScrollView style={{ maxHeight: height * 0.7 }}>
               <Stack gap="control">
+                <Text as="h2" density="touch" textRole="label">
+                  Filters
+                </Text>
                 {tabs}
                 {showSearch ? (
                   <>
@@ -725,11 +731,14 @@ const Controls = ({
                     {filtering ? <FilterPanel filtering={filtering} /> : null}
                   </>
                 ) : null}
-                {shown === undefined ? null : (
-                  <Text textRole="compact" tone="secondary">
-                    {titlesWord(shown)}
-                  </Text>
-                )}
+                {/* Its own live region: the page's is hidden while the sheet is open. */}
+                <Stack role="status">
+                  {shown === undefined ? null : (
+                    <Text textRole="compact" tone="secondary">
+                      {titlesWord(shown)}
+                    </Text>
+                  )}
+                </Stack>
               </Stack>
             </ScrollView>
             <DialogClose>

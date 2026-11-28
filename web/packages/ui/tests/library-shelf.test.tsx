@@ -405,6 +405,31 @@ describe("LibraryShelf", () => {
     counting.cleanup();
   });
 
+  it("on a phone, says in the sheet how many titles the filters leave, and counts none on Collections", async () => {
+    screen.width = 390;
+    try {
+      const filtering = {
+        filters: { uhd: true },
+        onChange: vi.fn(),
+        onClear: vi.fn(),
+        personSearch: { value: "", onChange: vi.fn(), options: [], loading: false, failed: false },
+        total: 37,
+      };
+      const { button, cleanup } = render({ filter: "all", genres: [], filtering });
+      await act(async () => button("Filters (1)").click());
+      const sheet = doc.querySelector('[role="dialog"]');
+      expect(sheet?.querySelector('[role="status"]')?.textContent).toBe("37 titles");
+      expect(sheet?.textContent).toContain("Filters");
+      cleanup();
+
+      const collections = render({ filter: "collections", genres: [], filtering });
+      expect(collections.button("Filters").textContent?.trim()).toBe("Filters");
+      collections.cleanup();
+    } finally {
+      screen.width = 1440;
+    }
+  });
+
   it("on a phone, folds the tabs and filters into a sheet that applies and gives focus back", async () => {
     screen.width = 390;
     try {
