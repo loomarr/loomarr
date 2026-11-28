@@ -14,11 +14,17 @@ interface MyChannelsSnapshot extends MyChannels {
   status: MyChannelsStatus;
 }
 
+/** The part of the server's answer this client reads. */
+interface MyChannelsLists {
+  favourites: Pick<MyChannelsOutputBody["favourites"][number], "channelId">[];
+  recent: Pick<MyChannelsOutputBody["recent"][number], "channelId">[];
+}
+
 /** Every write answers with both lists, so a write replaces the snapshot rather than patching it. */
 interface MyChannelsPort {
-  load: (signal: AbortSignal) => Promise<MyChannelsOutputBody>;
-  recordTune: (channelId: string) => Promise<MyChannelsOutputBody>;
-  setFavourite: (channelId: string, starred: boolean) => Promise<MyChannelsOutputBody>;
+  load: (signal: AbortSignal) => Promise<MyChannelsLists>;
+  recordTune: (channelId: string) => Promise<MyChannelsLists>;
+  setFavourite: (channelId: string, starred: boolean) => Promise<MyChannelsLists>;
 }
 
 interface MyChannelsController {
@@ -35,4 +41,11 @@ interface MyChannelsController {
   subscribe: (listener: () => void) => () => void;
 }
 
-export type { MyChannels, MyChannelsController, MyChannelsPort, MyChannelsSnapshot, MyChannelsStatus };
+export type {
+  MyChannels,
+  MyChannelsController,
+  MyChannelsLists,
+  MyChannelsPort,
+  MyChannelsSnapshot,
+  MyChannelsStatus,
+};

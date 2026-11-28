@@ -6,6 +6,7 @@
 //   - the double-submit CSRF header on state-changing requests (§11)
 //   - RFC 7807 problem+json surfaced as a typed error (rendered by ErrorState, §3)
 
+import type { z } from "zod";
 import type { ErrorModel } from "../../generated/model";
 
 class ApiError extends Error {
@@ -51,6 +52,28 @@ const readResponse = async (res: Response): Promise<unknown> => {
   return body;
 };
 
+// A successful answer that is not the shape the caller reads: another service on the address, or a
+// server and client that disagree about a field.
+class ContractError extends Error {
+  constructor(
+    readonly url: string,
+    readonly status: number,
+    readonly issues: z.core.$ZodIssue[],
+  ) {
+    super("Loomarr's server didn't answer properly");
+    this.name = "ContractError";
+  }
+}
+
+// readBody is readResponse for a client that holds its own request function (a device's base URL
+// and token) and so cannot use the generated hooks. The schema names only the fields the caller
+// reads: anything else in the body is dropped, so a newer server's additions do not fail the parse.
+const readBody = async <S extends z.ZodType>(response: Response, schema: S): Promise<z.output<S>> => {
+  const parsed = schema.safeParse(await readResponse(response));
+  if (!parsed.success) throw new ContractError(response.url, response.status, parsed.error.issues);
+  return parsed.data;
+};
+
 const CSRF_HEADER = "X-Loomarr-Csrf";
 type ApiFailure = { requestId: string; status: number };
 let apiFailureObserver: ((failure: ApiFailure) => void) | undefined;
@@ -93,4 +116,4 @@ const customFetch = async <T>(url: string, options: RequestInit = {}): Promise<T
 };
 
 export type { ApiFailure };
-export { ApiError, customFetch, observeApiFailures, readResponse, toProblem };
+export { ApiError, ContractError, customFetch, observeApiFailures, readBody, readResponse, toProblem };

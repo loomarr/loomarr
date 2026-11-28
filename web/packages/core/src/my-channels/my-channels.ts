@@ -4,11 +4,12 @@ import {
   getRecordChannelTuneUrl,
   getRemoveFavouriteChannelUrl,
 } from "@loomarr/api/endpoints/channels";
-import type { MyChannelsOutputBody } from "@loomarr/api/models/myChannelsOutputBody";
+import { readBody } from "@loomarr/api/mutator";
 
 import type {
   MyChannels,
   MyChannelsController,
+  MyChannelsLists,
   MyChannelsPort,
   MyChannelsSnapshot,
 } from "./my-channels.type";
@@ -19,7 +20,8 @@ const createMyChannelsPort = (request: typeof globalThis.fetch): MyChannelsPort 
   const send = async (url: string, method: "DELETE" | "GET" | "PUT", signal?: AbortSignal) => {
     const response = await request(url, { method, signal });
     if (!response.ok) throw new Error(`Couldn't update your channels (${response.status}).`);
-    return (await response.json()) as MyChannelsOutputBody;
+    const { MyChannelsBody } = await import("../response-bodies");
+    return readBody(response, MyChannelsBody);
   };
   return {
     load: (signal) => send(getMyChannelsUrl(), "GET", signal),
@@ -31,7 +33,7 @@ const createMyChannelsPort = (request: typeof globalThis.fetch): MyChannelsPort 
   };
 };
 
-const listsFrom = (body: MyChannelsOutputBody): MyChannels => ({
+const listsFrom = (body: MyChannelsLists): MyChannels => ({
   favouriteIds: body.favourites.map((favourite) => favourite.channelId),
   recentIds: body.recent.map((recent) => recent.channelId),
 });
@@ -47,7 +49,7 @@ const createMyChannelsController = ({ port }: { port: MyChannelsPort }): MyChann
     snapshot = next;
     for (const listener of listeners) listener();
   };
-  const accept = (body: MyChannelsOutputBody) => publish({ ...listsFrom(body), status: "ready" });
+  const accept = (body: MyChannelsLists) => publish({ ...listsFrom(body), status: "ready" });
 
   return {
     dispose: () => {

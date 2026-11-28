@@ -2,6 +2,7 @@ import { getChannelSubtitlesUrl } from "@loomarr/api/endpoints/channels";
 import type { ChannelSubtitlesOutputBody } from "@loomarr/api/models/channelSubtitlesOutputBody";
 import type { SubtitleCueDTO } from "@loomarr/api/models/subtitleCueDTO";
 import type { SubtitleTrackDTO } from "@loomarr/api/models/subtitleTrackDTO";
+import { readBody } from "@loomarr/api/mutator";
 import { useEffect, useRef, useState } from "react";
 
 import { SUBTITLES_OFF } from "./subtitle-choices";
@@ -34,7 +35,8 @@ const createChannelSubtitlesSource = (request: typeof globalThis.fetch): Channel
       signal,
     });
     if (!response.ok) throw new Error(`Couldn't read the channel's subtitles (${response.status}).`);
-    return (await response.json()) as ChannelSubtitlesOutputBody;
+    const { SubtitlesBody } = await import("../response-bodies");
+    return readBody(response, SubtitlesBody);
   },
 });
 
