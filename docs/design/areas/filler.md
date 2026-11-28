@@ -46,7 +46,7 @@ One area of the [package map](../package-map.md#start-here).
   Assembles a commercial break (§10): which clips fill a pod, in what order, under the channel's language, era, geography, season and audience rules, with household-wide rotation and the quality ladder deciding between them.
 - **`filler/quarantine`** · 1 importer · → `filler/split`
   Where filler files Loomarr deletes on its own wait a day before their bytes go (#3855, "The goal is a 9" in #3838).
-- **`filler/records`** · 8 importers · → `filler`, `filler/acquisition`, `filler/asset`, `filler/clips`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/screening`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
+- **`filler/records`** · 8 importers · → `filler`, `filler/acquisition`, `filler/asset`, `filler/clips`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/screening`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
 - **`filler/research`** · 8 importers · → `platform/llm`
   Owns bounded external context lookup for publicly sourced filler.
@@ -74,7 +74,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
 - **`filler/structure/window`** · 2 importers · → `filler/structure`, `filler/structure/cut`
   Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
-- **`filler/taxonomy`** · 7 importers
+- **`filler/taxonomy`** · 8 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`filler/upkeep`** · 1 importer · → `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/identity`, `filler/pipelinestate`, `media/tools`, `platform/store/clipstore`
   Standing job that lets filler go of what it no longer needs, so storage never fills with work that already failed (#3855, step 1 of #3838).

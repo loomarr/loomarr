@@ -19,6 +19,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // Options configures one bench run.
@@ -52,7 +53,7 @@ type run struct {
 	host   encode.HostProfile
 	enc    encode.Encoder
 	out    playout.OutputProfile
-	prober playout.FormatProber
+	prober media.FormatProber
 	rep    *Report
 }
 

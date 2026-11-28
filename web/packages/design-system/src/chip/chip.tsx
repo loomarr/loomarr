@@ -4,29 +4,31 @@ import { forwardRef } from "react";
 import { Pressable } from "react-native";
 
 import { useFocusLook } from "../focus-look";
+import type { ItemLayoutProps } from "../item-layout";
 import { Text, type TextTone } from "../text";
 import { semanticRadius, semanticSpace } from "../tokens";
 
 type ChipTone = Extract<TextTone, "danger" | "info" | "muted" | "success" | "warning">;
 
-type ChipProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> & {
-  /** The label. It names the chip to a screen reader unless `accessibilityLabel` says more. */
-  children: string;
-  /**
-   * The chip is on. A toggle chip announces `aria-pressed` for both states, so an off chip reads as
-   * a toggle rather than a plain button; a chip that only runs an action leaves this out.
-   */
-  selected?: boolean;
-  /** Mono for a short code or a count ("2H", "AS AIRED"); the body face otherwise. */
-  mono?: boolean;
-  /** `pill` rounds the ends fully, for a suggestion the reader taps to fill a field. */
-  shape?: "box" | "pill";
-  /**
-   * The label colour: a status the chip filters by (danger, warning, success) or a link-like info.
-   * A muted chip takes the body colour while it is on.
-   */
-  tone?: ChipTone;
-};
+type ChipProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> &
+  ItemLayoutProps & {
+    /** The label. It names the chip to a screen reader unless `accessibilityLabel` says more. */
+    children: string;
+    /**
+     * The chip is on. A toggle chip announces `aria-pressed` for both states, so an off chip reads as
+     * a toggle rather than a plain button; a chip that only runs an action leaves this out.
+     */
+    selected?: boolean;
+    /** Mono for a short code or a count ("2H", "AS AIRED"); the body face otherwise. */
+    mono?: boolean;
+    /** `pill` rounds the ends fully, for a suggestion the reader taps to fill a field. */
+    shape?: "box" | "pill";
+    /**
+     * The label colour: a status the chip filters by (danger, warning, success) or a link-like info.
+     * A muted chip takes the body colour while it is on.
+     */
+    tone?: ChipTone;
+  };
 
 type ChipRef = ComponentRef<typeof Pressable>;
 
@@ -42,6 +44,7 @@ const Chip: ForwardRefExoticComponent<ChipProps & RefAttributes<ChipRef>> = forw
   (
     {
       accessibilityState,
+      alignSelf,
       children,
       disabled = false,
       mono = false,
@@ -67,7 +70,10 @@ const Chip: ForwardRefExoticComponent<ChipProps & RefAttributes<ChipRef>> = forw
         onBlur={focusLook.onBlur}
         onFocus={focusLook.onFocus}
         ref={ref}
-        style={({ pressed }) => ({ opacity: disabled ? 0.55 : pressed ? 0.82 : 1 })}
+        style={({ pressed }) => ({
+          ...(alignSelf !== undefined && { alignSelf }),
+          opacity: disabled ? 0.55 : pressed ? 0.82 : 1,
+        })}
       >
         <View
           alignItems="center"

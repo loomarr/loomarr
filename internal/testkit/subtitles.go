@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/subtitles"
 )
 
@@ -82,7 +82,7 @@ func (b *MediaBudget) Yield() {
 	defer b.mu.Unlock()
 	b.tight = true
 	for key, cancel := range b.live {
-		cancel(playout.ErrYielded)
+		cancel(admission.ErrYielded)
 		delete(b.live, key)
 	}
 }
@@ -106,7 +106,7 @@ func (b *MediaBudget) MediaWorkContext(ctx context.Context, _ bool) (context.Con
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.tight {
-		cancel(playout.ErrYielded)
+		cancel(admission.ErrYielded)
 		return wctx, func() {}
 	}
 	b.admits++

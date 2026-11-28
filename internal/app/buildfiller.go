@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/filler/capability"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/language"
@@ -18,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -34,7 +34,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -257,7 +257,7 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 	splitter *filler.Splitter, wake *operator.ChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom,
-	playoutRes *playoutresolve.Resolver, checkReplacement filler.ReplacementCheck,
+	playoutRes *resolve.Resolver, checkReplacement filler.ReplacementCheck,
 	interactiveLLM *llm.InteractiveGate) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
 	// Filler encodes on the channels' own hardware (#2121), asked per encode: detection settles
 	// after boot.
@@ -508,7 +508,7 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 // playbackHeadroomFor is filler's PlaybackHeadroom: the ResourceBudget, the one admission ledger
 // (#1512 G5), so filler waits exactly while a live transcode holds a lease. nil when there is no
 // internal playout, so the pipeline never waits.
-func playbackHeadroomFor(budget *playout.ResourceBudget) filler.PlaybackHeadroom {
+func playbackHeadroomFor(budget *admission.ResourceBudget) filler.PlaybackHeadroom {
 	if budget == nil {
 		return nil
 	}

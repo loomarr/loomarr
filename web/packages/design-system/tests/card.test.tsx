@@ -1,8 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-
+import { declarationsOf, tagBefore } from "../atomic-css";
 import { Card, LoomarrProvider } from "../index";
-import { declarationsOf, tagBefore } from "./support/atomic-css";
 
 describe("Card", () => {
   it("uses the compact 12px radius, not Surface's own 16px default", () => {

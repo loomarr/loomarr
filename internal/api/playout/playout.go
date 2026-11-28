@@ -19,11 +19,14 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
+
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/subtitles"
 )
 
@@ -113,7 +116,7 @@ type PlayoutObserver interface {
 	// Capacity is the admission bound — the denominator in "2 / 4".
 	Capacity() int
 	// Budget snapshots the ResourceBudget: capacity terms, per-class costs and what is in use.
-	Budget() playout.BudgetSnapshot
+	Budget() admission.BudgetSnapshot
 }
 
 // authorizePlayout checks the device token, writing a response and returning false on failure.
@@ -319,7 +322,7 @@ func (s *Handlers) tuneRaw(ctx context.Context, channelID string) (playout.Prese
 func (s *Handlers) writeRawTuneError(w http.ResponseWriter, r *http.Request, channelID string, err error) {
 	// At capacity is actionable. 503 + Retry-After makes a media server back off politely instead
 	// of hammering and preserves the measured safety boundary.
-	if errors.Is(err, playout.ErrAtCapacity) {
+	if errors.Is(err, admission.ErrAtCapacity) {
 		w.Header().Set("Retry-After", "30")
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "All tuners are busy", atCapacityDetail)
 		return
@@ -522,7 +525,7 @@ func (s *Handlers) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 				"Internal playout isn't running on this instance.")
 			return
 		}
-		if errors.Is(err, playout.ErrAtCapacity) {
+		if errors.Is(err, admission.ErrAtCapacity) {
 			w.Header().Set("Retry-After", "30")
 			s.writeProblem(w, r, http.StatusServiceUnavailable, "All tuners are busy",
 				atCapacityDetail)
@@ -845,5 +848,5 @@ type PlayoutResolver interface {
 	// LineupFormats returns the Library's stream facts of each distinct programme in the channel's
 	// lineup (zero for an item it has not read), from which the channel's formats are derived
 	// (#1512 G10).
-	LineupFormats(ctx context.Context, channelID string) ([]playout.MediaFormat, error)
+	LineupFormats(ctx context.Context, channelID string) ([]media.MediaFormat, error)
 }

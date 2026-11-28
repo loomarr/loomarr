@@ -11,7 +11,7 @@ extend it rather than writing a private mock.
 ```bash
 go test -race -run TestName ./internal/<pkg>/ # while editing
 make test-affected BASE=origin/main            # fallback when the exact test is unknown
-make verify BASE=origin/main                   # once, when the change is stable
+make verify BASE=origin/main                   # reproduce CI's affected gates (CI failure, gate changes)
 ```
 
 `make test-affected` is non-authoritative edit-loop feedback. It collects committed branch changes,
@@ -31,9 +31,11 @@ The threshold never changes the command's exit status—test failures remain the
 affected local evidence. It reports locally executable gates separately from specialized and
 platform-dependent gates owned by protected CI, and its completion line names only local evidence
 that ran successfully. For Go changes, both golangci-lint and tests consume the affected
-reverse-dependency package closure. Pull-request and merge-queue lanes provide protected remote evidence.
-Run it once after the diff is stable. If it fails, use the named failing command for the repair loop and
-rerun `make verify` once at the end; do not use it after each edit or commit.
+reverse-dependency package closure. CI runs the same selection and is the gate (the pull request
+runs the fast checks, and the merge queue's `CI assurance` adds `-race` and Postgres), so a push
+needs only the focused tests for each package and surface the diff touches. Run `make verify`
+to reproduce a CI failure, when CI is unavailable, or when the diff changes the gate or classifier
+machinery, one run per machine at a time.
 
 `make verify SCOPE=all` is the explicit complete-repository audit. Run it when a maintainer requests a full
 audit, when changing the gate/classifier machinery, or when diagnosing a selection boundary. It is
@@ -599,6 +601,22 @@ Each of these has happened here:
 - **A story on an unregistered route** snapshots "Not Found" as its baseline and stays green.
 - **A pnpm config only fails on a cold install** — with `node_modules` present, pnpm doesn't
   re-evaluate build scripts.
+
+## Universal component tests
+
+A component test in `web/packages/` mounts with `renderUi` from `@loomarr/test-support`, which wraps
+Testing Library's `render` in `LoomarrProvider`, and calls `cleanup` in `afterEach`.
+`@loomarr/test-support/css` reads the declarations behind Tamagui's atomic classes.
+
+`@loomarr/design-system` is below that package in the layer order and cannot depend on it: its tests
+use Testing Library directly and read styles from its own `atomic-css` entry.
+
+Vitest resolves a `.web.tsx` twin first, so those packages' tests draw the browser adapter. A
+`tests/*.native.test.tsx` file in design-system or ui runs in the `native` project instead, which
+resolves the `.tsx` adapter (React Native itself stays react-native-web, in jsdom).
+
+`web/test-harness.json` counts the `createRoot` calls left in tests. The counts may only fall
+(`pnpm test-harness:check`, part of `pnpm lint`).
 
 ## Determinism
 

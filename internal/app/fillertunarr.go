@@ -71,7 +71,7 @@ func (a fillerSourceAdapter) LocalClipIDsByName(ctx context.Context) (map[string
 
 // clipExposureAdapter is deliberately separate from the catalog reader: pod planning can read
 // actual-airing history but cannot write it. Playout owns the sole write boundary.
-type clipExposureAdapter struct{ st store.Store }
+type clipExposureAdapter struct{ st store.AiringStore }
 
 // airingSettle is how long before a break an airing must have been recorded to count for it.
 // Playout resolves a break's first clip no earlier than its run-ahead before the break and records

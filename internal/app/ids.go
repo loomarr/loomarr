@@ -22,7 +22,7 @@ func newID() string {
 // instanceDeviceID returns a stable per-install id (§11) used as the media
 // server DeviceId, so Loomarr appears as one device. Generated + stored on first
 // call; read thereafter. Best-effort — falls back to a constant if the store errs.
-func instanceDeviceID(ctx context.Context, st store.Store) string {
+func instanceDeviceID(ctx context.Context, st store.SettingStore) string {
 	const key = "instance_id"
 	if v, err := st.GetSetting(ctx, key); err == nil && v != "" {
 		return v

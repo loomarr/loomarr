@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-
+import { withoutRuntimeMarker } from "../atomic-css";
 import {
   ActivityIndicator,
   activityIndicatorMotion,
@@ -13,7 +13,6 @@ import {
   signalLoaderMotion,
   skeletonMotion,
 } from "../index";
-import { withoutRuntimeMarker } from "./support/atomic-css";
 
 describe("loading system", () => {
   it("keeps the branded acquisition rhythm stable", () => {

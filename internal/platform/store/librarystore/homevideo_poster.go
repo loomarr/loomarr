@@ -128,6 +128,31 @@ func (s *Store) ClearLibraryPoster(ctx context.Context, itemID string) error {
 	return nil
 }
 
+// ClearStaleHomeVideoPosters removes each frame whose title plays another main file. A title with
+// no main file keeps its frame: it has nothing to take another from.
+func (s *Store) ClearStaleHomeVideoPosters(ctx context.Context) error {
+	frames, err := s.homeVideoFrames(ctx, s.h, ` AND EXISTS (SELECT 1 FROM library_item_images r
+		WHERE r.item_id = i.id AND r.role = 'poster' AND r.source <> '')`)
+	if err != nil {
+		return fmt.Errorf("clear stale home video posters: %w", err)
+	}
+	for _, f := range frames {
+		var stale int
+		if err := s.h.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM library_item_images
+			WHERE item_id = ? AND role = 'poster' AND source <> '' AND source <> ?`), f.ItemID, f.file()).Scan(&stale); err != nil {
+			return fmt.Errorf("clear stale home video posters: %w", err)
+		}
+		if stale == 0 {
+			continue
+		}
+		// It reads the main file again under the title's lock.
+		if err := s.ClearLibraryPoster(ctx, f.ItemID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // withLockedItem runs fn in a transaction that holds the title's row, so one writer of its images
 // at a time reads and writes them: SQLite serialises writers, and the update takes Postgres's
 // row lock.

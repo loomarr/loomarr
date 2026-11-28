@@ -16,7 +16,6 @@ import (
 	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/nownext"
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/people/access"
@@ -34,6 +33,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -92,7 +92,7 @@ type operationsInput struct {
 	desiredSettings       resolved
 	refreshSecretRedactor func()
 	tmdbClient            *tmdb.Client
-	playoutResolver       *playoutresolve.Resolver
+	playoutResolver       *resolve.Resolver
 	appliedBackend        func(context.Context) (string, error)
 	protection            *secretprotection.Manager
 	secretRedactor        *settings.Redactor
@@ -379,7 +379,7 @@ func buildAuth(
 func buildGuide(
 	st store.Store,
 	set resolved,
-	playoutResolver *playoutresolve.Resolver,
+	playoutResolver *resolve.Resolver,
 	appliedBackend func(context.Context) (string, error),
 	metricRecorder *metrics.Recorder,
 ) guideapi.GuideReader {

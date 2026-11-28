@@ -1,8 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-
+import { declarationsOf, tagBefore } from "../atomic-css";
 import { Action, ChoiceGroup, Field, FieldHint, LoomarrProvider, semanticColors, Toggle } from "../index";
-import { declarationsOf, tagBefore } from "./support/atomic-css";
 
 describe("shared interaction controls", () => {
   it("publishes selected and disabled action state without corrupting its label", () => {

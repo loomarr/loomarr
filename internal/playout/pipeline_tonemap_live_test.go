@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // AN HDR PROGRAM MUST COME OUT AS A PICTURE on every tone-mapper the host can run (#1516).
@@ -32,7 +33,7 @@ func TestLive_HDRTonemapProducesAPicture(t *testing.T) {
 		t.Skip("this ffmpeg build has no zscale/tonemap")
 	}
 	src := makePQSource(t, bin)
-	facts := MediaFormat{VideoCodec: "hevc", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p10le",
+	facts := media.MediaFormat{VideoCodec: "hevc", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p10le",
 		ColorTransfer: "smpte2084", Container: "mpegts"}
 	ran := map[string]bool{}
 
@@ -57,7 +58,7 @@ func TestLive_HDRTonemapProducesAPicture(t *testing.T) {
 			continue
 		}
 		host := encode.HostFor(enc, true, GPUFiltersFor(bin)())
-		for _, curve := range ToneCurves {
+		for _, curve := range media.ToneCurves {
 			out := OutputProfile{Width: 1280, Height: 720, FPS: 25, Quality: 22, TargetKbps: 3600, MaxKbps: 5300, GOPSeconds: 1, AudioKbps: 128, ToneCurve: curve}
 			// The packager's retry ladder (itemFaults): a tone-mapper that fails before any output is
 			// dropped for this source and the next attempt takes the next one for the curve.
@@ -110,11 +111,11 @@ func TestLive_HDRTonemapRealFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe := FFprobeFormatNextTo(bin)
-	curves := []ToneCurve{DefaultToneCurve}
+	curves := []media.ToneCurve{media.DefaultToneCurve}
 	if s := os.Getenv("PLAYOUT_TEST_TONE_CURVES"); s != "" {
 		curves = nil
 		for _, c := range strings.Split(s, ",") {
-			curves = append(curves, ToneCurve(strings.TrimSpace(c)))
+			curves = append(curves, media.ToneCurve(strings.TrimSpace(c)))
 		}
 	}
 	for i, path := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
@@ -139,7 +140,7 @@ func TestLive_HDRTonemapRealFiles(t *testing.T) {
 
 // airRealFile airs one real title through the ladder: the first tone-mapper that produces output,
 // its luma, speed and CPU per stream, and one PNG into PLAYOUT_TEST_FRAME_DIR when set.
-func airRealFile(t *testing.T, bin string, title int, host encode.HostProfile, facts MediaFormat, profile OutputProfile, input string) {
+func airRealFile(t *testing.T, bin string, title int, host encode.HostProfile, facts media.MediaFormat, profile OutputProfile, input string) {
 	t.Helper()
 	faults := &itemFaults{by: map[string]itemFault{}}
 	for {

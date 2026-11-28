@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // probeEncoder is the encoder the live class probe runs on: software by default (every CI host),
@@ -36,8 +38,8 @@ func TestLive_ClassProbeMeasuresEveryClassAndSelfChecksTonemap(t *testing.T) {
 	t.Logf("tone-map self-check: %+v; failures: %v", res.Tonemap, res.Failures)
 
 	top := cfg.Outputs[0].Height
-	for _, class := range TranscodeClasses {
-		c, ok := res.Costs[HDRKey(class, top, ToneCurveHable)]
+	for _, class := range media.TranscodeClasses {
+		c, ok := res.Costs[admission.HDRKey(class, top, media.ToneCurveHable)]
 		if !ok {
 			// A software host can be too slow to clear a heavy class inside the probe's own
 			// measurement window (#1800: hevc10_1080p killed on a CPU-only release runner). That is
@@ -70,10 +72,10 @@ func TestLive_ClassProbeMeasuresThePremium(t *testing.T) {
 		FFmpeg: bin, ClipDir: t.TempDir(), Encoder: enc,
 		CPUTonemap: TonemapperFor(bin)(), GPU: GPUFiltersFor(bin)(),
 		Outputs: []Profile{Resolve(DefaultTier, enc, 0)},
-		Classes: []StreamClass{ClassPremium4K},
+		Classes: []media.StreamClass{media.ClassPremium4K},
 	}
 	res := ProbeClassCosts(t.Context(), cfg)
-	c, ok := res.Costs[CostKey{Class: ClassPremium4K, Height: premiumHeight}]
+	c, ok := res.Costs[admission.CostKey{Class: media.ClassPremium4K, Height: premiumHeight}]
 	t.Logf("premium: %+v (measured %v); failures: %v", c, ok, res.Failures)
 	if encode.IsSoftware(enc) {
 		if ok {
@@ -85,7 +87,7 @@ func TestLive_ClassProbeMeasuresThePremium(t *testing.T) {
 		t.Fatalf("premium cost = %+v (measured %v), want a real speed and CPU: %v", c, ok, res.Failures)
 	}
 	for k := range res.Costs {
-		if k.Class != ClassPremium4K {
+		if k.Class != media.ClassPremium4K {
 			t.Errorf("a premium-only run measured %s", k.Class)
 		}
 	}

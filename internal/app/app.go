@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/currenthealth"
@@ -20,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -152,7 +152,7 @@ func buildHandler(
 	log *slog.Logger,
 	ov Overrides,
 	owner *generationLifecycle,
-	capturePlayoutResolver func(*playoutresolve.Resolver),
+	capturePlayoutResolver func(*resolve.Resolver),
 ) (http.Handler, *slog.Logger, func() string, error) {
 	foundation, err := buildFoundation(rootCtx, st, log, ov, owner)
 	if err != nil {
@@ -178,7 +178,7 @@ func buildHandler(
 	// bound below, before the server takes a request.
 	subtitleDecoder := &subtitleWorkerDecoder{}
 
-	buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
+	buildProvisioning(newProvisioningStores(st), set, libraryClient, emitter, jobReg, activityRec,
 		foundation.processDiagnostics, log, foundation.metrics)
 
 	core := buildCore{
@@ -200,7 +200,7 @@ func buildHandler(
 	playoutRes, chanNumbers := channelsBuilt.playoutResolver, channelsBuilt.channelNumbers
 	setResidentVRAM := channelsBuilt.setResidentVRAM
 
-	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, emitter, libraryClient, foundation.holidays, log)
+	approval := buildApproval(newApprovalStores(st), channelSvc, playoutRes, activityRec, chanNumbers, emitter, libraryClient, foundation.holidays, log)
 	proposalApprover := approval.approver
 
 	// One count of interactive LLM work (suggestions) that background filler vision yields to (#1508).

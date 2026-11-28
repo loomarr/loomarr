@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/admission"
 )
 
 const audioRateHz = 48000
@@ -31,7 +32,7 @@ const audioRateHz = 48000
 // in flight (#1533's contract: no flush reaches the channel); the schedule then resumes the item on
 // the new rung.
 func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log *slog.Logger,
-	failed func(decodeFault bool), done func(cpu time.Duration), watch func(SpeedSample) bool,
+	failed func(decodeFault bool), done func(cpu time.Duration), watch func(admission.SpeedSample) bool,
 ) (io.ReadCloser, error) {
 	var progress, progressW *os.File
 	if watch != nil {
@@ -72,8 +73,8 @@ func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log
 			if cut.stop.Load() {
 				return
 			}
-			cpu, _ := processCPUTime(pid)
-			if watch(SpeedSample{At: time.Now(), OutTime: time.Duration(p.OutTimeMS) * time.Millisecond, CPU: cpu, Speed: p.Speed}) {
+			cpu, _ := admission.ProcessCPUTime(pid)
+			if watch(admission.SpeedSample{At: time.Now(), OutTime: time.Duration(p.OutTimeMS) * time.Millisecond, CPU: cpu, Speed: p.Speed}) {
 				cut.stop.Store(true)
 			}
 		})

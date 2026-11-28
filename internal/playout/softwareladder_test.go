@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 var ladderSources = []string{"hevc-4k-hdr-dv", "h264-1080p-sdr-25", "hevc10-1080p", "mpeg2-480i"}
@@ -15,7 +17,7 @@ var ladderSources = []string{"hevc-4k-hdr-dv", "h264-1080p-sdr-25", "hevc10-1080
 // software__*). Regenerate with `go test ./internal/playout -run TestBuild_SoftwareRungGolden
 // -update-pipeline`.
 func TestBuild_SoftwareRungGolden(t *testing.T) {
-	for _, rung := range SoftwareRungs[1:] {
+	for _, rung := range admission.SoftwareRungs[1:] {
 		for _, srcName := range ladderSources {
 			out := testOutput
 			out.SoftwareRung = rung
@@ -52,7 +54,7 @@ func TestBuild_SoftwareRungsKeepTheOutputUniform(t *testing.T) {
 		if !strings.HasPrefix(wantTail, "scale="+"w=1920:h=1080") || !strings.Contains(wantTail, "setsar=1") {
 			t.Fatalf("%s: rung 0 must scale to the channel and pin SAR 1:1: %q", srcName, base.VideoFilter)
 		}
-		for _, rung := range SoftwareRungs[1:] {
+		for _, rung := range admission.SoftwareRungs[1:] {
 			out := testOutput
 			out.SoftwareRung = rung
 			p, err := Build(host, src, out)
@@ -74,14 +76,14 @@ func TestBuild_SoftwareRungsKeepTheOutputUniform(t *testing.T) {
 func TestBuild_SoftwareRungDecoderOptions(t *testing.T) {
 	src := testSources()["hevc-4k-hdr-dv"]
 	cases := []struct {
-		rung    SoftwareRung
+		rung    admission.SoftwareRung
 		decoder []string
 		working string
 	}{
-		{RungFull, nil, "scale=w=1280:h=720:"},
-		{RungLight, []string{"-skip_loop_filter:v", "all"}, "scale=w=1280:h=720:"},
-		{RungNoRef, []string{"-skip_loop_filter:v", "all", "-skip_frame:v", "noref"}, "scale=w=1280:h=720:"},
-		{RungKeyframes, []string{"-skip_loop_filter:v", "all", "-skip_frame:v", "nokey"}, "scale=w=852:h=480:"},
+		{admission.RungFull, nil, "scale=w=1280:h=720:"},
+		{admission.RungLight, []string{"-skip_loop_filter:v", "all"}, "scale=w=1280:h=720:"},
+		{admission.RungNoRef, []string{"-skip_loop_filter:v", "all", "-skip_frame:v", "noref"}, "scale=w=1280:h=720:"},
+		{admission.RungKeyframes, []string{"-skip_loop_filter:v", "all", "-skip_frame:v", "nokey"}, "scale=w=852:h=480:"},
 	}
 	for _, c := range cases {
 		out := testOutput
@@ -111,7 +113,7 @@ func TestBuild_SoftwareRungDecoderOptions(t *testing.T) {
 // it never refuses. Only a build with no tone-mapper at all refuses HDR.
 func TestBuild_SoftwareNeverRefusesHDRForSpeed(t *testing.T) {
 	src := testSources()["hevc-4k-hdr-dv"]
-	for _, rung := range SoftwareRungs {
+	for _, rung := range admission.SoftwareRungs {
 		out := testOutput
 		out.SoftwareRung = rung
 		if _, err := Build(encode.HostProfile{Family: encode.FamilySoftware, CPUTonemap: true}, src, out); err != nil {
@@ -132,7 +134,7 @@ func TestBuild_RungIsSoftwareOnly(t *testing.T) {
 		for srcName, src := range testSources() {
 			want := buildGolden(host, src, testOutput)
 			out := testOutput
-			out.SoftwareRung = RungKeyframes
+			out.SoftwareRung = admission.RungKeyframes
 			if got := buildGolden(host, src, out); got != want {
 				t.Errorf("%s/%s: a rung changed a GPU family's argv:\n%s\nvs\n%s", hostName, srcName, got, want)
 			}
@@ -145,19 +147,19 @@ func TestStartRung(t *testing.T) {
 	hdr, sdr := testSources()["hevc-4k-hdr-dv"], testSources()["h264-1080p-sdr-25"]
 	cases := []struct {
 		name string
-		src  MediaFormat
+		src  media.MediaFormat
 		cost RungCost
-		want SoftwareRung
+		want admission.SoftwareRung
 	}{
 		// Unmeasured: SDR up to 1080p starts at full quality; 4K or HDR, which phase 0b measured
 		// at 2.3–3.7 cores, starts on the rung that always fits and steps up with headroom.
-		{"unmeasured sdr", sdr, RungCost{}, RungFull},
-		{"unmeasured hdr", hdr, RungCost{}, RungKeyframes},
-		{"fast", hdr, RungCost{Speed: 1.6, CPUCores: 2.5}, RungFull},
+		{"unmeasured sdr", sdr, RungCost{}, admission.RungFull},
+		{"unmeasured hdr", hdr, RungCost{}, admission.RungKeyframes},
+		{"fast", hdr, RungCost{Speed: 1.6, CPUCores: 2.5}, admission.RungFull},
 		// H1 alone at 1.06x: rung 1 saves ~5%, not enough for 1.2x; noref is never a start-time promise.
-		{"phase 0b H1 at 720p", hdr, RungCost{Speed: 1.06, CPUCores: 3.66}, RungKeyframes},
-		{"just short", sdr, RungCost{Speed: 1.16, CPUCores: 3}, RungLight},
-		{"hopeless", hdr, RungCost{Speed: 0.1, CPUCores: 4}, RungKeyframes},
+		{"phase 0b H1 at 720p", hdr, RungCost{Speed: 1.06, CPUCores: 3.66}, admission.RungKeyframes},
+		{"just short", sdr, RungCost{Speed: 1.16, CPUCores: 3}, admission.RungLight},
+		{"hopeless", hdr, RungCost{Speed: 0.1, CPUCores: 4}, admission.RungKeyframes},
 	}
 	for _, c := range cases {
 		if got := StartRung(c.src, c.cost); got != c.want {
@@ -170,19 +172,19 @@ func TestStartRung(t *testing.T) {
 // 720-line working size only for HDR or above-1080p sources. SDR up to 1080p decodes at its own
 // size with the decoder shortcuts; a 1080→720→1080 round trip measured slower than rung 0.
 func TestBuild_SoftwareRungsDownscaleOnlyHeavySources(t *testing.T) {
-	uhdSDR := MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, FrameRate: 24, PixelFormat: "yuv420p10le",
+	uhdSDR := media.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, FrameRate: 24, PixelFormat: "yuv420p10le",
 		AudioCodec: "eac3", AudioChannels: 6, AudioSampleRate: 48000, Container: "matroska,webm"}
 	cases := []struct {
 		name    string
-		src     MediaFormat
-		rung    SoftwareRung
+		src     media.MediaFormat
+		rung    admission.SoftwareRung
 		working string
 	}{
-		{"1080p SDR rung 1", testSources()["h264-1080p-sdr-25"], RungLight, "scale=w=1920:h=1080:"},
-		{"1080p SDR rung 2", testSources()["hevc10-1080p"], RungNoRef, "tpad=stop_mode=clone:stop_duration=10,scale=w=1920:h=1080:"},
-		{"1080p SDR rung 3", testSources()["hevc10-1080p"], RungKeyframes, "scale=w=852:h=480:"},
-		{"4K SDR rung 1", uhdSDR, RungLight, "scale=w=1280:h=720:"},
-		{"4K HDR rung 2", testSources()["hevc-4k-hdr-dv"], RungNoRef, "scale=w=1280:h=720:"},
+		{"1080p SDR rung 1", testSources()["h264-1080p-sdr-25"], admission.RungLight, "scale=w=1920:h=1080:"},
+		{"1080p SDR rung 2", testSources()["hevc10-1080p"], admission.RungNoRef, "tpad=stop_mode=clone:stop_duration=10,scale=w=1920:h=1080:"},
+		{"1080p SDR rung 3", testSources()["hevc10-1080p"], admission.RungKeyframes, "scale=w=852:h=480:"},
+		{"4K SDR rung 1", uhdSDR, admission.RungLight, "scale=w=1280:h=720:"},
+		{"4K HDR rung 2", testSources()["hevc-4k-hdr-dv"], admission.RungNoRef, "scale=w=1280:h=720:"},
 	}
 	for _, c := range cases {
 		out := testOutput

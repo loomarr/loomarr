@@ -12,8 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"golang.org/x/sync/singleflight"
+
+	"github.com/loomarr/loomarr/internal/platform/diagnostics"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // Channel stills — the frame the switch overlay shows while a channel's video is still starting.
@@ -320,7 +322,7 @@ func FFmpegSourceStill(ffmpegPath string, tonemap func() bool, observers ...*dia
 		defer cancel()
 		filter := fmt.Sprintf("scale='min(%d,iw)':-2", stillWidth)
 		if source.HDR && tonemap != nil && tonemap() {
-			filter += "," + hdrToSDR(ToneCurveHable)
+			filter += "," + hdrToSDR(media.ToneCurveHable)
 		}
 		args := []string{
 			"-hide_banner", "-loglevel", "error",

@@ -30,6 +30,7 @@ const Details = ({
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: state }}
+        aria-expanded={state}
         onPress={() => {
           setState(!state);
           onToggle?.(!state);

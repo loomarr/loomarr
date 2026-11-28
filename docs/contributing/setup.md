@@ -65,7 +65,7 @@ make bootstrap # pnpm install + codegen
 ```
 
 Setup prepares the workspace; it does not audit the entire repository. Use focused tests for the
-area you change and `make verify BASE=origin/main` before pushing. `make agent-baseline` remains an
+area you change; CI runs the affected gates. `make agent-baseline` remains an
 opt-in, shared `make verify SCOPE=all` proof when a complete audit is deliberately required.
 
 What each target does is in the [command reference](../reference/make.md), generated from the Makefile.

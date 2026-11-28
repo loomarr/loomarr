@@ -43,6 +43,9 @@ type ImportStore interface {
 	LibraryRoots(ctx context.Context) (librarystore.LibraryRoots, error)
 	CheckLibraryRoot(ctx context.Context, check librarystore.LibraryRootCheck, at time.Time) (librarystore.LibraryRootFlip, error)
 	librarystore.LibraryFileStore
+	// ClearStaleHomeVideoPosters is asked after file rows are saved: only then are a title's files
+	// the ones it plays.
+	ClearStaleHomeVideoPosters(ctx context.Context) error
 }
 
 // Artwork puts a title's artwork in the image service: its poster (#2151 step 10), its fanart as
@@ -867,6 +870,11 @@ func (im *Importer) importListed(ctx context.Context, root string, idx managerIn
 				im.log().Warn("library scan: couldn't empty a media folder's trash", "root", root, "err", err)
 			}
 		}
+	}
+	// A pass changes a title's main file by adding, renaming or removing files, and a series write
+	// above sees none of the rows saved here.
+	if err := im.Store.ClearStaleHomeVideoPosters(ctx); err != nil {
+		return result, nil, err
 	}
 	return result, queue, nil
 }

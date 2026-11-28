@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // fakeProbeFFmpeg writes an executable that stands in for ffmpeg: it records its pid and reports
@@ -78,11 +80,11 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, clip.fileName()), []byte("clip"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	budget := NewResourceBudget(nvencFacts)
+	budget := admission.NewResourceBudget(nvencFacts)
 	out := Profile{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}
 	cfg := ClassProbeConfig{
 		FFmpeg: fakeProbeFFmpeg(t, dir, pids), ClipDir: dir, Encoder: encode.EncoderSoftware,
-		Outputs: []Profile{out}, Classes: []StreamClass{clip.class}, Foreground: budget,
+		Outputs: []Profile{out}, Classes: []media.StreamClass{clip.class}, Foreground: budget,
 	}
 	done := make(chan ClassProbeResult, 1)
 	go func() { done <- ProbeClassCosts(t.Context(), cfg) }()
@@ -94,7 +96,7 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 	}
 
 	start := time.Now()
-	live, err := budget.Reserve(AdmitRequest{Class: ClassSDR})
+	live, err := budget.Reserve(admission.AdmitRequest{Class: media.ClassSDR})
 	if err != nil {
 		t.Fatalf("the tune was refused during the probe: %v", err)
 	}
@@ -112,7 +114,7 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 	live.Release()
 	select {
 	case res := <-done:
-		if _, ok := res.Costs[CostKey{Class: clip.class, Height: out.Height}]; !ok {
+		if _, ok := res.Costs[admission.CostKey{Class: clip.class, Height: out.Height}]; !ok {
 			t.Fatalf("the probe did not finish its measurement after playback went idle: %+v", res)
 		}
 	case <-time.After(probeWindow + 3*time.Second):
@@ -149,7 +151,7 @@ func TestProbeClassCosts_SoftwareDeadlineKillIsUnmeasuredWithReason(t *testing.T
 	out := Profile{Width: 1920, Height: 1080, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}
 	cfg := ClassProbeConfig{
 		FFmpeg: fakeStalledFFmpeg(t, dir), ClipDir: dir, Encoder: encode.EncoderSoftware,
-		Outputs: []Profile{out}, Classes: []StreamClass{clip.class},
+		Outputs: []Profile{out}, Classes: []media.StreamClass{clip.class},
 	}
 
 	start := time.Now()
@@ -157,7 +159,7 @@ func TestProbeClassCosts_SoftwareDeadlineKillIsUnmeasuredWithReason(t *testing.T
 	if took := time.Since(start); took > probeWindow+2*time.Second {
 		t.Fatalf("probe ran %v, want it bounded by its own %v window", took, probeWindow)
 	}
-	if _, ok := res.Costs[CostKey{Class: clip.class, Height: out.Height}]; ok {
+	if _, ok := res.Costs[admission.CostKey{Class: clip.class, Height: out.Height}]; ok {
 		t.Fatalf("a stalled encoder must not leave a measured cost: %+v", res.Costs)
 	}
 	if !deadlineKilled(res.Failures, clip.class) {
@@ -243,7 +245,7 @@ func fakeTonemapFFmpeg(t *testing.T, dir string, ymax int, yavg float64) string 
 func TestProbeClassCosts_TonemapSelfCheckRejectsABlackPicture(t *testing.T) {
 	var clip probeClip
 	for _, c := range probeClips {
-		if c.class == ClassHDR4K {
+		if c.class == media.ClassHDR4K {
 			clip = c
 		}
 	}
@@ -264,7 +266,7 @@ func TestProbeClassCosts_TonemapSelfCheckRejectsABlackPicture(t *testing.T) {
 			res := ProbeClassCosts(t.Context(), ClassProbeConfig{
 				FFmpeg: fakeTonemapFFmpeg(t, dir, tc.ymax, tc.yavg), ClipDir: dir, Encoder: encode.EncoderSoftware, CPUTonemap: true,
 				Outputs: []Profile{{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}},
-				Classes: []StreamClass{ClassHDR4K},
+				Classes: []media.StreamClass{media.ClassHDR4K},
 			})
 			check := res.Tonemap
 			if !check.Ran || check.OK != tc.wantOK {
@@ -303,7 +305,7 @@ func TestJudgeTonemapPicture(t *testing.T) {
 func TestProbeClassCosts_KeysHDRByTheLiveToneCurve(t *testing.T) {
 	var clip probeClip
 	for _, c := range probeClips {
-		if c.class == ClassHDR4K {
+		if c.class == media.ClassHDR4K {
 			clip = c
 		}
 	}
@@ -311,16 +313,16 @@ func TestProbeClassCosts_KeysHDRByTheLiveToneCurve(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, clip.fileName()), []byte("clip"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	const curve ToneCurve = "bt2390"
+	const curve media.ToneCurve = "bt2390"
 	res := ProbeClassCosts(t.Context(), ClassProbeConfig{
 		FFmpeg: fakeTonemapFFmpeg(t, dir, 235, 118.4), ClipDir: dir, Encoder: encode.EncoderSoftware, CPUTonemap: true,
 		Outputs: []Profile{{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}},
-		Classes: []StreamClass{ClassHDR4K}, Curve: curve,
+		Classes: []media.StreamClass{media.ClassHDR4K}, Curve: curve,
 	})
-	if _, ok := res.Costs[HDRKey(ClassHDR4K, 720, curve)]; !ok {
+	if _, ok := res.Costs[admission.HDRKey(media.ClassHDR4K, 720, curve)]; !ok {
 		t.Fatalf("HDR cost not keyed by the live curve %q: %+v", curve, res.Costs)
 	}
-	if _, ok := res.Costs[HDRKey(ClassHDR4K, 720, DefaultToneCurve)]; ok {
+	if _, ok := res.Costs[admission.HDRKey(media.ClassHDR4K, 720, media.DefaultToneCurve)]; ok {
 		t.Errorf("a %s measurement was stored as Hable's", curve)
 	}
 }

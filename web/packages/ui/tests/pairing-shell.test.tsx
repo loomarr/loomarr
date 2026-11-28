@@ -3,13 +3,12 @@
 import { PairingSession } from "@loomarr/core/pairing";
 import type { ServerDiscovery } from "@loomarr/core/server-discovery";
 import { LoomarrProvider } from "@loomarr/design-system";
+import { stylesOfText } from "@loomarr/test-support/css";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-
 import { PairingShell } from "../index";
-import { stylesOfText } from "./support/atomic-css";
 
 (
   globalThis as typeof globalThis & {

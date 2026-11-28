@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -32,7 +33,7 @@ type livePackager struct {
 	dir      string
 	host     encode.HostProfile
 	out      OutputProfile
-	facts    MediaFormat
+	facts    media.MediaFormat
 }
 
 // writeCheckBug writes the test bug, a white square at the check alpha (straight).
@@ -117,7 +118,7 @@ func TestLive_PackagerWatermarkKeepsTheParameterSets(t *testing.T) {
 		t.Fatal(err)
 	}
 	x, y := wm.position(facts, out)
-	m := compareBug(offY, onY, out.Width, Rect{X: x, Y: y, W: wm.Width, H: wm.Height})
+	m := compareBug(offY, onY, out.Width, media.Rect{X: x, Y: y, W: wm.Width, H: wm.Height})
 	t.Logf("packager items on %s: picture ΔY %.2f (YAVG off %.1f, on %.1f); bug luma %.1f, want %.1f over background %.1f",
 		host.Encoder, m.pictureDiff, m.pictureMean, m.onMean, m.bugLuma, m.bugWant, m.bugBackground)
 	if m.pictureDiff > pictureTolerance {

@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/testkit/execfixture"
 )
 
@@ -42,19 +44,19 @@ while :; do
   sleep 0.2
 done`)
 	res := probeVideoToolboxSDR(t, bin)
-	key := CostKey{Class: ClassSDR, Height: 1080}
+	key := admission.CostKey{Class: media.ClassSDR, Height: 1080}
 	cost, ok := res.Costs[key]
 	if !ok || cost.Speed >= 3 || !cost.ConservativeCPU {
 		t.Fatalf("fallback was not measured in the class envelope: %+v", res)
 	}
-	facts := BudgetFacts{Hardware: true, CPUAllowance: 1, Rungs: []int{1080}, Costs: res.Costs}
-	budget := NewResourceBudget(func() BudgetFacts { return facts })
-	lease, err := budget.Reserve(AdmitRequest{Class: ClassSDR})
+	facts := admission.BudgetFacts{Hardware: true, CPUAllowance: 1, Rungs: []int{1080}, Costs: res.Costs}
+	budget := admission.NewResourceBudget(func() admission.BudgetFacts { return facts })
+	lease, err := budget.Reserve(admission.AdmitRequest{Class: media.ClassSDR})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer lease.Release()
-	if _, err := budget.Reserve(AdmitRequest{Class: ClassSDR}); !errors.Is(err, ErrAtCapacity) {
+	if _, err := budget.Reserve(admission.AdmitRequest{Class: media.ClassSDR}); !errors.Is(err, admission.ErrAtCapacity) {
 		t.Fatalf("second stream borrowed progressive-only throughput: %v", err)
 	}
 }
@@ -84,7 +86,7 @@ func probeVideoToolboxSDR(t *testing.T, bin string) ClassProbeResult {
 	return ProbeClassCosts(t.Context(), ClassProbeConfig{
 		FFmpeg: bin, ClipDir: dir, Encoder: encode.EncoderVideoToolbox,
 		Outputs: []Profile{{Width: 1920, Height: 1080, Framerate: 25}},
-		Classes: []StreamClass{ClassSDR},
+		Classes: []media.StreamClass{media.ClassSDR},
 		now:     steppingClock(50 * time.Millisecond),
 	})
 }

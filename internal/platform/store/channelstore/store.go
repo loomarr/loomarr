@@ -65,7 +65,7 @@ func New(h storedb.Handle, claimSQL string, inv Invalidations) *Store {
 }
 
 // The two legal channel broadcast codecs (§9.1 V50). Kept as plain strings to match
-// how codecs flow everywhere else (playout.MediaFormat.VideoCodec, the plan capability
+// how codecs flow everywhere else (media.MediaFormat.VideoCodec, the plan capability
 // maps) — a fresh typed enum here would only need converting at every boundary. H264 is
 // the migration default, so an un-backfilled channel broadcasts h264/TS exactly as today.
 const (

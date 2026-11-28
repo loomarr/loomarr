@@ -48,7 +48,7 @@ type HostProfile struct {
 	// means the VAAPI→OpenCL surface mapping works, which the 10-bit letterbox needs (#1673).
 	TonemapOpenCL bool `json:"tonemapOpencl,omitempty"`
 	// Libplacebo: libplacebo on its own Vulkan device works: the first choice for the curves only it
-	// has (playout.ToneCurve), otherwise the second GPU choice, and on every GPU family the only
+	// has (media.ToneCurve), otherwise the second GPU choice, and on every GPU family the only
 	// correct SDR→HDR10 conversion (4K HDR premium). Always through system memory.
 	Libplacebo bool `json:"libplacebo,omitempty"`
 	// CPUTonemap: the build has zscale + tonemap, the last-resort tone-map.

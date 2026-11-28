@@ -105,7 +105,8 @@ clients-checks: brand-assets-verify knip ## everything in clients except the mob
 	  apps/web/src/client-platform-proof apps/web/tests/client-platform-proof.ssr.test.tsx \
 	  apps/web/vite.client-platform.config.ts \
 	  .rnstorybook native-stories packages/design-system packages/ui turbo.json \
-	  && pnpm imports:check && pnpm lint:boundaries && pnpm native-storybook:check && pnpm clients:proof
+	  && pnpm imports:check && pnpm test-harness:check && pnpm lint:boundaries \
+	  && pnpm native-storybook:check && pnpm clients:proof
 
 CLIENTS_APP ?=
 

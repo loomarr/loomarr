@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 const gib = int64(1) << 30
@@ -121,7 +123,7 @@ func TestHostMemory_UnknownMemoryLeavesTheGateOpen(t *testing.T) {
 func TestResourceBudget_MemoryGateRefusesAHardwareTranscodeIntoTheReserve(t *testing.T) {
 	host := &fakeHost{base: 2*gib + gib/2, cost: gib, known: true} // short before anything runs
 	b := NewResourceBudget(nvencFacts).WithMemoryGate(host.gate(2 * gib))
-	if _, err := b.Admit(context.Background(), AdmitRequest{Class: ClassSDR}); !errors.Is(err, ErrAtCapacity) {
+	if _, err := b.Admit(context.Background(), AdmitRequest{Class: media.ClassSDR}); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("hardware transcode into the memory reserve: err = %v, want ErrAtCapacity", err)
 	}
 	b.mu.Lock()
@@ -130,12 +132,12 @@ func TestResourceBudget_MemoryGateRefusesAHardwareTranscodeIntoTheReserve(t *tes
 	if booked != 0 {
 		t.Fatalf("a refused admission left %d transcode(s) booked", booked)
 	}
-	if _, err := b.Admit(context.Background(), AdmitRequest{Class: ClassCopy}); err != nil {
+	if _, err := b.Admit(context.Background(), AdmitRequest{Class: media.ClassCopy}); err != nil {
 		t.Fatalf("a copy holds no encoder and must not be gated: %v", err)
 	}
 	software := NewResourceBudget(func() BudgetFacts { f := nvencFacts(); f.Hardware = false; return f }).
 		WithMemoryGate(host.gate(2 * gib))
-	if _, err := software.Admit(context.Background(), AdmitRequest{Class: ClassSDR}); err != nil {
+	if _, err := software.Admit(context.Background(), AdmitRequest{Class: media.ClassSDR}); err != nil {
 		t.Fatalf("a software transcode holds no hardware encoder and must not be gated: %v", err)
 	}
 }
@@ -148,14 +150,14 @@ func TestResourceBudget_HardwareAdmissionFollowsTheLedgerBelowRungZero(t *testin
 		Hardware: true, SessionLimit: 12, CPUAllowance: 1,
 		Rungs: []int{1080, 720}, FirstRung: 1,
 		Costs: map[CostKey]ClassCost{
-			{Class: ClassSDR, Height: 1080}: {Speed: 2.4, CPUCores: 0.03}, // two fit at rung 0
-			{Class: ClassSDR, Height: 720}:  {Speed: 3.6, CPUCores: 0.02}, // three fit at 720p
+			{Class: media.ClassSDR, Height: 1080}: {Speed: 2.4, CPUCores: 0.03}, // two fit at rung 0
+			{Class: media.ClassSDR, Height: 720}:  {Speed: 3.6, CPUCores: 0.02}, // three fit at 720p
 		},
 	}
 	host := &fakeHost{base: 64 * gib, cost: gib, known: true}
 	b := NewResourceBudget(func() BudgetFacts { return facts }).WithMemoryGate(host.gate(2 * gib))
-	admitN(t, b, ClassSDR, 3)
-	if _, err := b.Admit(context.Background(), AdmitRequest{Class: ClassSDR}); !errors.Is(err, ErrAtCapacity) {
+	admitN(t, b, media.ClassSDR, 3)
+	if _, err := b.Admit(context.Background(), AdmitRequest{Class: media.ClassSDR}); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("a fourth stream past the ledger: err = %v, want ErrAtCapacity", err)
 	}
 }

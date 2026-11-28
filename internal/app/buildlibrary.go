@@ -9,7 +9,6 @@ import (
 	"time"
 
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/library/arrhook"
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/library/mediaserver"
@@ -29,6 +28,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 )
 
 // libraryStore is what Settings → Library and the scanner keep their state in.
@@ -287,7 +287,7 @@ func libraryHeader(probe playout.SourceProber) func(context.Context, string) (he
 		if err != nil {
 			return header.Header{}, err
 		}
-		facts := playoutresolve.InventoryFactsOf(observed)
+		facts := resolve.InventoryFactsOf(observed)
 		return header.Header{
 			Container: facts.Container, DurationMillis: facts.DurationMillis, Bitrate: facts.Bitrate,
 			Streams: facts.Streams,

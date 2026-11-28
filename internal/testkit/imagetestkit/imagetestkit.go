@@ -1,5 +1,5 @@
 // Package imagetestkit is the in-memory image store and a real image service over it, shared by the
-// adapter tests of internal/app and internal/app/playoutresolve.
+// adapter tests of internal/app and internal/playout/resolve.
 package imagetestkit
 
 import (

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -56,17 +57,17 @@ type itemLadder struct {
 	speed   *atomic.Uint64
 	mu      sync.Mutex
 	airing  string
-	monitor *RungMonitor
+	monitor *admission.RungMonitor
 	stepped bool // a step ended the airing's encoder: its next open resumes on the monitor's rung
 }
 
-func (l *itemLadder) begin(airing string, m *RungMonitor) {
+func (l *itemLadder) begin(airing string, m *admission.RungMonitor) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.airing, l.monitor, l.stepped = airing, m, false
 }
 
-func (l *itemLadder) current() *RungMonitor {
+func (l *itemLadder) current() *admission.RungMonitor {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.monitor
@@ -74,11 +75,11 @@ func (l *itemLadder) current() *RungMonitor {
 
 // resume reports whether airing is the one on air (a restart of it), on which rung, and whether a
 // step caused the restart.
-func (l *itemLadder) resume(airing string) (rung SoftwareRung, resumed, stepped bool) {
+func (l *itemLadder) resume(airing string) (rung admission.SoftwareRung, resumed, stepped bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.monitor == nil || l.airing != airing {
-		return RungFull, false, false
+		return admission.RungFull, false, false
 	}
 	stepped, l.stepped = l.stepped, false
 	return l.monitor.Rung(), true, stepped
@@ -87,8 +88,8 @@ func (l *itemLadder) resume(airing string) (rung SoftwareRung, resumed, stepped 
 // watch records an item encoder's speed, feeds its samples to m and ends that encoder on a step.
 // Samples from an encoder of an airing no longer on air are ignored by the monitor. m is nil on a
 // host with no monitor (GPU hosts): the encoder's progress is still read for its speed.
-func (l *itemLadder) watch(m *RungMonitor, log *slog.Logger, label string) func(SpeedSample) bool {
-	return func(s SpeedSample) bool {
+func (l *itemLadder) watch(m *admission.RungMonitor, log *slog.Logger, label string) func(admission.SpeedSample) bool {
+	return func(s admission.SpeedSample) bool {
 		if l.speed != nil && s.Speed > 0 {
 			l.speed.Store(math.Float64bits(s.Speed))
 		}

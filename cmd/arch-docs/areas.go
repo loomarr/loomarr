@@ -124,11 +124,12 @@ var areas = []area{
 			"play a channel. The Live TV wiring and the backend transition publish channels to the media " +
 			"server, LAN discovery lets TV apps find Loomarr, and the bench measures the pipeline on " +
 			"real hardware. The timeline is the pure arithmetic over a channel's schedule that the " +
-			"stream, the guide and reconcile all read.",
+			"stream, the guide and reconcile all read. `playout/resolve` is the wiring that reads the stores " +
+			"and settings `playout` must not know about, and turns a schedule into the file that airs.",
 		Packages: []string{
 			"playout", "playout/media", "playout/admission", "playout/packager", "playout/bench", "playout/watermark", "playout/watermark/raster", "playout/channelbug", "playout/tunarr",
 			"playout/tunarr/tunarrtest", "playout/livetvpublish", "playout/backendtransition",
-			"playout/landiscovery", "playout/subtitles", "playout/timeline",
+			"playout/landiscovery", "playout/subtitles", "playout/timeline", "playout/resolve",
 		},
 		MayImport: map[string]string{
 			"platform": "the diagnostics process manager that runs every encoder, the store behind a " +
@@ -140,6 +141,8 @@ var areas = []area{
 				"naming what a slot plays",
 			"media": "the encoder choice, loudness, media facts and process-tree control the stream is built " +
 				"from",
+			"filler": "the pod a break airs and the clip file it names, which `playout/resolve` turns into the " +
+				"input the encoder reads",
 		},
 	},
 	{
@@ -221,10 +224,8 @@ var areas = []area{
 		Description: "Where the outside world comes in. The api package is Loomarr's HTTP surface, and app " +
 			"is the composition root that builds every other area and hands them to it. " +
 			"`api/httpcore` is the plumbing every part of the HTTP surface shares: problem responses, " +
-			"request ids, roles and the route-role marker. " +
-			"`app/playoutresolve` is the composition root's playout wiring: it reads the stores and " +
-			"settings that `playout` must not know about.",
-		Packages:       []string{"api", "api/agents", "api/catalog", "api/channels", "api/filler", "api/guide", "api/httpcore", "api/images", "api/library", "api/ops", "api/people", "api/playout", "api/proposals", "api/setup", "api/system", "app", "app/connectiontest", "app/nownext", "app/playoutresolve"},
+			"request ids, roles and the route-role marker.",
+		Packages:       []string{"api", "api/agents", "api/catalog", "api/channels", "api/filler", "api/guide", "api/httpcore", "api/images", "api/library", "api/ops", "api/people", "api/playout", "api/proposals", "api/setup", "api/system", "app", "app/connectiontest", "app/nownext"},
 		ImportsAnyArea: true,
 	},
 	{

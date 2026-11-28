@@ -12,7 +12,6 @@ import (
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	setupapi "github.com/loomarr/loomarr/internal/api/setup"
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
@@ -29,8 +28,10 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
@@ -49,10 +50,10 @@ type channelBuild struct {
 	playoutCapability      func() playout.Capacity
 	playout                playoutapi.Playout
 	playoutResolverService playoutapi.PlayoutResolver
-	resourceBudget         *playout.ResourceBudget // nil without internal playout
-	watched                func() bool             // a viewer is fetching a channel; nil without the packager
+	resourceBudget         *admission.ResourceBudget // nil without internal playout
+	watched                func() bool               // a viewer is fetching a channel; nil without the packager
 	playoutGuide           playoutapi.PlayoutGuide
-	playoutResolver        *playoutresolve.Resolver
+	playoutResolver        *resolve.Resolver
 	setResidentVRAM        func(func(context.Context) (float64, string))
 	channelNumbers         approval.NumberSource
 }
@@ -76,7 +77,7 @@ type buildCore struct {
 
 type channelsInput struct {
 	buildCore
-	capturePlayoutResolver func(*playoutresolve.Resolver)
+	capturePlayoutResolver func(*resolve.Resolver)
 	activity               *activity.Recorder
 	fillerLayout           cliplibrary.Layout
 	processDiagnostics     *diagnostics.ProcessManager
@@ -161,17 +162,17 @@ func buildChannels(in channelsInput) (channelBuild, error) {
 	var playoutResolverSvc playoutapi.PlayoutResolver
 	// The one admission ledger for hardware and software transcodes (#1505, #1562), built beside
 	// the resolver that owns capability detection.
-	var resourceBudget *playout.ResourceBudget
+	var resourceBudget *admission.ResourceBudget
 	// Whether a viewer is watching a channel; the library's header reads wait while one is.
 	var watched func() bool
-	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutresolve.Resolver as above — one
+	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *resolve.Resolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
 	// not play.
 	var playoutGuideSvc playoutapi.PlayoutGuide
 	// Declared out here so the pod assembler can be attached further down: the resolver is
 	// built alongside the channel engine, while the pod adapter needs the filler catalog that
 	// is wired later. Both halves are required before a break can play a real commercial.
-	var playoutRes *playoutresolve.Resolver
+	var playoutRes *resolve.Resolver
 	var setResidentVRAM func(func(context.Context) (float64, string))
 	// Which channel numbers Tunarr already uses (§9 V54). Function scope for the same reason as
 	// `residentVRAM` above: it is SET where the programmer is built, and READ far below where the
@@ -235,7 +236,7 @@ func buildChannels(in channelsInput) (channelBuild, error) {
 		// Give the scheduler a resolver so program slots carry the Library's runtime before the
 		// Tunarr push, and an episode resolver so a series entry expands into the Library's
 		// episodes (§9, #2151 step 16).
-		meta := playoutresolve.ItemMetadata{Facts: st}
+		meta := resolve.ItemMetadata{Facts: st}
 		avail := channels.NewStoreAvailability(rootCtx, st, meta.ItemDurationMs, channels.LibraryEpisodeResolver(st))
 		// Bulk duration resolution, so a cycle layout costs ONE Library read instead of one per
 		// movie (§9 N+1).
