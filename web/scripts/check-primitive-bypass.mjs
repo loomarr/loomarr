@@ -11,9 +11,10 @@
 //   rawTooltip   role="tooltip" written by hand
 //   rawMenu      role="menu" written by hand
 //   flexStack    a className that makes an element a flex container (the design system's Stack)
-//   inlineStyle  a `style` attribute holding an object literal, directly or as a branch of a
-//                condition (primitive props and tokens carry layout and colour). The web app's
-//                client-adapters own the raw elements, so they are exempt.
+//   inlineStyle  a `style` attribute holding an object literal or a module-level object constant,
+//                directly, behind a TypeScript wrapper or as a branch of a condition (primitive
+//                props and tokens carry layout and colour). The web app's client-adapters own the
+//                raw elements, so they are exempt.
 //
 // The committed ledger (primitive-bypass.json) is a ratchet, like legacy-usage.json:
 //   - the check fails when any count rises or a file with a bypass is not in the ledger;
@@ -128,29 +129,62 @@ const classNameFlexes = (node) => {
   return false;
 };
 
-const holdsObjectLiteral = (node) => {
-  switch (node?.type) {
+const WRAPPERS = new Set([
+  "TSAsExpression",
+  "TSSatisfiesExpression",
+  "TSNonNullExpression",
+  "TSTypeAssertion",
+]);
+
+const unwrap = (node) => (WRAPPERS.has(node?.type) ? unwrap(node.expression) : node);
+
+// moduleObjects maps each module-level `const name = {…}` to its object literal.
+const moduleObjects = (program) => {
+  const objects = new Map();
+  for (const statement of program.body) {
+    const declaration = statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+    if (declaration?.type !== "VariableDeclaration" || declaration.kind !== "const") continue;
+    for (const { id, init } of declaration.declarations) {
+      const value = unwrap(init);
+      if (id.type === "Identifier" && value?.type === "ObjectExpression") objects.set(id.name, value);
+    }
+  }
+  return objects;
+};
+
+// holdsObject reports whether a style value is an object written for this element: a literal, or a
+// module-level object literal named here, whole (`ROW`) or by one of its entries (`styles.row`).
+const holdsObject = (node, objects) => {
+  const value = unwrap(node);
+  switch (value?.type) {
     case "ObjectExpression":
       return true;
+    case "Identifier":
+      return objects.has(value.name);
+    case "MemberExpression":
+    case "OptionalMemberExpression": {
+      const entry = objects
+        .get(value.object.name)
+        ?.properties.find((property) => !value.computed && property.key?.name === value.property.name);
+      return unwrap(entry?.value)?.type === "ObjectExpression";
+    }
     case "JSXExpressionContainer":
-    case "TSAsExpression":
-    case "TSSatisfiesExpression":
-      return holdsObjectLiteral(node.expression);
+      return holdsObject(value.expression, objects);
     case "ConditionalExpression":
-      return holdsObjectLiteral(node.consequent) || holdsObjectLiteral(node.alternate);
+      return holdsObject(value.consequent, objects) || holdsObject(value.alternate, objects);
     case "LogicalExpression":
-      return holdsObjectLiteral(node.left) || holdsObjectLiteral(node.right);
+      return holdsObject(value.left, objects) || holdsObject(value.right, objects);
     case "ArrayExpression":
-      return node.elements.some(holdsObjectLiteral);
+      return value.elements.some((element) => holdsObject(element, objects));
     default:
       return false;
   }
 };
 
-const walk = (node, counts) => {
+const walk = (node, counts, objects) => {
   if (!node || typeof node !== "object") return;
   if (Array.isArray(node)) {
-    for (const child of node) walk(child, counts);
+    for (const child of node) walk(child, counts, objects);
     return;
   }
   if (
@@ -191,7 +225,7 @@ const walk = (node, counts) => {
         if (measure) counts[measure] += 1;
       } else if (name === "aria-modal") {
         counts.rawDialog += 1;
-      } else if (name === "style" && holdsObjectLiteral(attribute.value)) {
+      } else if (name === "style" && holdsObject(attribute.value, objects)) {
         counts.inlineStyle += 1;
       } else if (name === "className" && attribute.value && classNameFlexes(attribute.value)) {
         flexes = true;
@@ -200,7 +234,7 @@ const walk = (node, counts) => {
     if (flexes) counts.flexStack += 1;
   }
   for (const [key, child] of Object.entries(node)) {
-    if (!NON_CHILD_KEYS.has(key) && child && typeof child === "object") walk(child, counts);
+    if (!NON_CHILD_KEYS.has(key) && child && typeof child === "object") walk(child, counts, objects);
   }
 };
 
@@ -216,7 +250,7 @@ const measureSource = (source, file) => {
     sourceType: "module",
     plugins: file.endsWith(".tsx") ? ["typescript", "jsx"] : ["typescript"],
   }).program;
-  walk(program, counts);
+  walk(program, counts, moduleObjects(program));
   if (file.split(sep).join("/").includes("apps/web/src/client-adapters/")) counts.inlineStyle = 0;
   return withoutZeros(counts);
 };

@@ -65,6 +65,39 @@ describe("inlineStyle", () => {
   it("exempts the web client-adapters", () => {
     assert.deepEqual(measureSource(source, "apps/web/src/client-adapters/x/x.tsx"), {});
   });
+
+  it("counts a module-level object constant, whole or by entry", () => {
+    const named = `
+      const ROW = { gap: 4 } as const;
+      export const COLUMN: Style = { gap: 4 };
+      const styles = { row: { gap: 4 }, label: "x" };
+      const LABEL = "x";
+      export const Row = ({ open, ROW_PROP }) => (
+        <div style={ROW}>
+          <span style={COLUMN} />
+          <span style={styles.row} />
+          <span style={open ? ROW : undefined} />
+          <span style={styles.label} />
+          <span style={LABEL} />
+          <span style={ROW_PROP} />
+          <span style={other.row} />
+        </div>
+      );
+    `;
+    assert.deepEqual(measureSource(named, "apps/web/src/x.tsx"), { inlineStyle: 4 });
+  });
+
+  it("sees through a non-null wrapper", () => {
+    const wrapped = `
+      const ROW = { gap: 4 };
+      export const Row = () => (
+        <div style={({ gap: 4 })!}>
+          <span style={ROW!} />
+        </div>
+      );
+    `;
+    assert.deepEqual(measureSource(wrapped, "apps/web/src/x.tsx"), { inlineStyle: 2 });
+  });
 });
 
 describe("ledger", () => {
