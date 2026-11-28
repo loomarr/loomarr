@@ -13,7 +13,7 @@ const reactNativeWebAssetRegistry = fileURLToPath(
   new URL("./node_modules/react-native-web/dist/cjs/modules/AssetRegistry/index.js", import.meta.url),
 );
 
-export default {
+const universal = {
   resolve: {
     alias: [
       { find: /^react-native$/, replacement: reactNativeWeb },
@@ -25,3 +25,31 @@ export default {
   },
   ssr: { noExternal: ["lucide-react-native"] },
 };
+
+// The same aliases without the `.web.*` extensions, so an import resolves to the native `.tsx`
+// adapter. React Native itself stays react-native-web: these tests drive the adapter in jsdom,
+// not on a device.
+const nativeAdapters = {
+  ...universal,
+  resolve: {
+    ...universal.resolve,
+    extensions: universal.resolve.extensions.filter((extension) => !extension.startsWith(".web.")),
+  },
+};
+
+// A package with `tests/**/*.native.test.tsx` runs both adapters: `web` (everything else) and
+// `native`. Each names its tests, so a file runs in exactly one project.
+const withNativeProject = () => ({
+  test: {
+    projects: [
+      {
+        ...universal,
+        test: { name: "web", include: ["tests/**/*.test.{ts,tsx}"], exclude: ["tests/**/*.native.test.tsx"] },
+      },
+      { ...nativeAdapters, test: { name: "native", include: ["tests/**/*.native.test.tsx"] } },
+    ],
+  },
+});
+
+export { withNativeProject };
+export default universal;

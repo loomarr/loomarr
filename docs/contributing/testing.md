@@ -609,6 +609,10 @@ Testing Library's `render` in `LoomarrProvider`, and calls `cleanup` in `afterEa
 `@loomarr/design-system` is below that package in the layer order and cannot depend on it: its tests
 use Testing Library directly and read styles from its own `atomic-css` entry.
 
+Vitest resolves a `.web.tsx` twin first, so those packages' tests draw the browser adapter. A
+`tests/*.native.test.tsx` file in design-system or ui runs in the `native` project instead, which
+resolves the `.tsx` adapter (React Native itself stays react-native-web, in jsdom).
+
 `web/test-harness.json` counts the `createRoot` calls left in tests. The counts may only fall
 (`pnpm test-harness:check`, part of `pnpm lint`).
 
