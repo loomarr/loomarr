@@ -84,6 +84,8 @@ export {
   GuideProgrammeDetail,
   GuideSurface,
 } from "./src/guide";
+export type { GuideViewEntry, GuideViewLayout, GuideViewProps } from "./src/guide-view";
+export { GuideView, guideViewChannels } from "./src/guide-view";
 export type { HighlightRowProps } from "./src/highlight-row";
 export { HighlightRow } from "./src/highlight-row";
 export type {

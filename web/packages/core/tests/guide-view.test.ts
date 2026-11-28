@@ -180,6 +180,9 @@ describe("the Guide's model", () => {
     const looked = run(open(), [{ channelId: "b", programmeId: "b1.5", type: "press" }]);
     expect([on(looked.state), looked.tune, looked.message]).toEqual(["b1.5", undefined, undefined]);
     expect(on(run(open(), [{ channelId: "a", programmeId: "a-2", type: "press" }]).state)).toBe("a-1");
+    expect(
+      run(open(), [{ channelId: "b", keyed: true, programmeId: "b1.5", type: "press" }]).message,
+    ).toContain("starts at T+1.5");
   });
 
   it("lets the time move on without moving the cursor", () => {

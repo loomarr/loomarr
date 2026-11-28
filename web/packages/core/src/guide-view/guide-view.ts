@@ -23,10 +23,7 @@ const bounds = <C extends GuideViewChannel>({ nowMs, widthMs, untilMs }: GuideVi
 
 /** The rows, in the channel list's order, with its headings and its word on an empty group. */
 const guideViewRows = <C extends GuideViewChannel>(state: GuideViewState, context: GuideViewContext<C>) =>
-  channelListView(
-    createChannelListState({ group: state.group, watchedId: state.watchedId }),
-    context.lineup,
-  );
+  channelListView(createChannelListState({ group: state.group, watchedId: state.watchedId }), context.lineup);
 
 /** The programmes the cursor can be on: drawn in the span, and not ended. */
 const reachable = <C extends GuideViewChannel>(
@@ -166,7 +163,8 @@ const across = <C extends GuideViewChannel>(
         )
       : undefined;
   const neighbour = by > 0 ? beside(current)?.[0] : beside(current)?.at(-1);
-  const drawnIn = (startMs: number) => reachable(channel, startMs, context).find((p) => p.id === neighbour?.id);
+  const drawnIn = (startMs: number) =>
+    reachable(channel, startMs, context).find((p) => p.id === neighbour?.id);
   const here = drawnIn(state.startMs);
   if (here) return onto(state, cursor.channelId, here, timeOf(here, state.startMs, context));
 
@@ -213,7 +211,9 @@ const guideViewReduce = <C extends GuideViewChannel>(
   const toRows = (): GuideViewStep => ({ state: onWatched(state, context) });
   const chooseGroup = (group: LineupGroupKind): GuideViewStep => {
     const next = { ...state, group };
-    return { state: cursor.kind === "tab" ? { ...next, cursor: { group, kind: "tab" } } : onWatched(next, context) };
+    return {
+      state: cursor.kind === "tab" ? { ...next, cursor: { group, kind: "tab" } } : onWatched(next, context),
+    };
   };
 
   switch (event.type) {
@@ -227,9 +227,7 @@ const guideViewReduce = <C extends GuideViewChannel>(
         if (row && programme) return { state: onto(state, row.id, programme, cursor.atMs) };
       }
       if (at < 0) return toRows();
-      return event.by < 0
-        ? { state: { ...state, cursor: { group: state.group, kind: "tab" } } }
-        : { state };
+      return event.by < 0 ? { state: { ...state, cursor: { group: state.group, kind: "tab" } } } : { state };
     }
     case "across":
       return { state: across(state, context, event.by) };
@@ -248,7 +246,9 @@ const guideViewReduce = <C extends GuideViewChannel>(
       );
       if (!programme || programme.stopMs <= context.nowMs) return { state };
       const next = onto(state, event.channelId, programme, timeOf(programme, state.startMs, context));
-      if (event.type === "focusProgramme" || programme.startMs > context.nowMs) return { state: next };
+      if (event.type === "focusProgramme") return { state: next };
+      // A click on a later programme only shows its facts; OK or Enter on it says when it starts.
+      if (programme.startMs > context.nowMs && !event.keyed) return { state: next };
       return choose(next, context, event.channelId, programme);
     }
     case "pressChannel": {
@@ -293,10 +293,7 @@ const guideViewLook = <C extends GuideViewChannel>(
 };
 
 /** Whether Earlier and Later can move, and where the schedule ends if this page reaches it. */
-const guideViewSpan = <C extends GuideViewChannel>(
-  state: GuideViewState,
-  context: GuideViewContext<C>,
-) => {
+const guideViewSpan = <C extends GuideViewChannel>(state: GuideViewState, context: GuideViewContext<C>) => {
   const { min, max } = bounds(context);
   const stopMs = state.startMs + context.widthMs;
   return {

@@ -272,7 +272,7 @@ describe("FilmStrip's edges", () => {
     const user = userEvent.setup();
     const keys: string[] = [];
     const owned = (id: string | undefined, takeFocus = false) => (
-      <div onKeyDown={(event) => keys.push(`${event.key}:${event.defaultPrevented}`)}>
+      <div role="application" onKeyDown={(event) => keys.push(`${event.key}:${event.defaultPrevented}`)}>
         <button type="button">Elsewhere</button>
         <FilmStrip
           airings={airings}

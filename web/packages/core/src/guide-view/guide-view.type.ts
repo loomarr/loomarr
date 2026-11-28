@@ -50,8 +50,8 @@ type GuideViewEvent =
   | { type: "page"; by: -1 | 1 }
   /** OK or Enter, on the cursor. */
   | { type: "choose" }
-  /** A click or tap on a programme's block. */
-  | { type: "press"; channelId: string; programmeId: string }
+  /** A programme's block was pressed: by a pointer, or `keyed` by OK or Enter on it. */
+  | { type: "press"; channelId: string; programmeId: string; keyed?: boolean }
   /** A click or tap on a row's channel number and name. */
   | { type: "pressChannel"; channelId: string }
   /** A remote or keyboard focus engine landed on a block or a tab. */
