@@ -259,4 +259,3 @@ func decodeBody(t *testing.T, resp *http.Response, v any) {
 		t.Fatalf("decode: %v", err)
 	}
 }
-

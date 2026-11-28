@@ -109,7 +109,7 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 	done := make(chan ClassProbeResult, 1)
 	go func() { done <- ProbeClassCosts(t.Context(), cfg) }()
 
-	testkit.Eventually(t, 2*time.Second,"the probe's measurement to start", func() bool { return len(readPids(t, pids)) == 1 })
+	testkit.Eventually(t, 2*time.Second, "the probe's measurement to start", func() bool { return len(readPids(t, pids)) == 1 })
 	probe := readPids(t, pids)[0]
 	if n := niceOf(t, probe); n != probeNice {
 		t.Errorf("probe encoder runs at nice %d, want %d (background priority)", n, probeNice)
@@ -144,7 +144,7 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 	case <-time.After(yieldGuard):
 		t.Fatal("the tune blocked on the probe")
 	}
-	testkit.Eventually(t, yieldGuard,"the probe's encoder to be killed", func() bool {
+	testkit.Eventually(t, yieldGuard, "the probe's encoder to be killed", func() bool {
 		return errors.Is(syscall.Kill(probe, 0), syscall.ESRCH)
 	})
 	select {
