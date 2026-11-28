@@ -771,6 +771,18 @@ step 5). Nothing reads the scanner's origins until the cutover.
   search find it. Members read it like any other title, a show's episodes included. The list and
   detail reads mark it `homeVideo`. The list read also marks `unidentified` a title that is waiting
   in Needs you.
+- **A home video's picture** (#4476). A kept movie or show has no catalog artwork, so its poster
+  is one frame of its main file: a movie's first playing part, or a show's first playing episode
+  file by path. The frame is the keyframe at or before a tenth of the file's length, decoded by the
+  same ffmpeg path as a channel still (tone-mapped when the file is HDR), and stored by the image
+  service in the `poster` role, so the wall and the title page draw it like any poster, with its
+  renditions. The frame is landscape; the 2:3 poster box shows its centre and crops the sides. A
+  low-priority job, apart from the scan, checks every two minutes for kept titles with no poster
+  and extracts at most ten frames, one at a time, and none while someone is watching. A file whose
+  length is not read yet waits for its header. The scanner owns the poster role: writing a kept
+  title clears it, which a changed file does (the job then takes a new frame) and taking the answer
+  back does. A failed frame is tried again after five minutes, doubling to a day; the wait is held
+  in memory, so a restart tries again.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left
