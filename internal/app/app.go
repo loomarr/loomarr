@@ -187,7 +187,8 @@ func buildHandler(
 		events: eventBus, emitter: emitter, jobs: jobReg, log: log, metrics: foundation.metrics,
 	}
 	channelsBuilt, err := buildChannels(channelsInput{
-		buildCore: core, capturePlayoutResolver: capturePlayoutResolver, activity: activityRec,
+		buildCore: core, stores: st, invalidations: invalidationsOf(st),
+		capturePlayoutResolver: capturePlayoutResolver, activity: activityRec,
 		fillerLayout: fillerLayout, processDiagnostics: foundation.processDiagnostics,
 		storageGovernor: foundation.storageGovernor, watermarks: watermarks, calendar: calendar,
 		subtitleDecoder: subtitleDecoder,
