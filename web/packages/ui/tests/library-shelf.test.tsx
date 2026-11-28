@@ -365,8 +365,8 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
-  // The monogram on an artless poster stands in for artwork and sits over the dimmed frame, at
-  // full contrast; assistive tech hears the title once, from the line under the poster.
+  // The monogram on an artless poster stands in for artwork, in the secondary tone over a neutral
+  // surface; assistive tech hears the title once, from the line under the poster.
   it("keeps an artless poster's monogram out of the tile's name", () => {
     const { tile, cleanup } = render({});
     const hidden = tile("Paper Kites").querySelector('[aria-hidden="true"]');

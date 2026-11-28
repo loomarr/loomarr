@@ -110,10 +110,16 @@ const Hero = ({ title, actions }: { title: LibraryTitleDetail; actions: ReactNod
           />
         </>
       ) : null}
-      <Stack flexDirection="row" justifyContent="space-between" padding="control" position="relative">
+      {/* Inside a picture the words keep off its edge; on the page they line up with what follows. */}
+      <Stack
+        flexDirection="row"
+        justifyContent="space-between"
+        padding={pictured ? "control" : 0}
+        position="relative"
+      >
         {actions}
       </Stack>
-      <Stack gap="inline" padding="control" position="relative">
+      <Stack gap="inline" padding={pictured ? "control" : 0} position="relative">
         {title.logo ? (
           <>
             {/* The logo stands for the name on screen; the heading still says it. */}

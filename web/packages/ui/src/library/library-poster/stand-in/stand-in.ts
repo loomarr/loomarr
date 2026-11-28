@@ -1,20 +1,19 @@
 // What a poster with no artwork draws (design/library): a quiet colour field picked from the title,
 // under its monogram.
 
-// Dark, low-chroma theme surfaces, so a wall of stand-ins stays calm and the chrome stays neutral.
-const POSTER_TONES = [
-  "stateInfoSurface",
-  "stateSuccessSurface",
-  "stateWarningSurface",
-  "stateAiringSurface",
-] as const;
+// Two neutral surface steps. A state's surface would read as that state beside the wall's warn dot,
+// and both steps keep the secondary monogram past 4.5:1 in either theme.
+const POSTER_TONES = ["surfaceRaised", "surfaceElevated"] as const;
 
-// FNV-1a over the seed, so a title keeps its colour on every visit and every surface.
+// FNV-1a over the seed, then a final mix so the pick depends on every bit and neighbouring ids
+// spread out. A title keeps its colour on every visit.
 const posterTone = (seed: string): (typeof POSTER_TONES)[number] => {
   let hash = 0x811c9dc5;
   for (let i = 0; i < seed.length; i++) {
     hash = Math.imul(hash ^ seed.charCodeAt(i), 0x01000193) >>> 0;
   }
+  hash = Math.imul(hash ^ (hash >>> 16), 0x85ebca6b) >>> 0;
+  hash = (hash ^ (hash >>> 13)) >>> 0;
   return POSTER_TONES[hash % POSTER_TONES.length] ?? POSTER_TONES[0];
 };
 
