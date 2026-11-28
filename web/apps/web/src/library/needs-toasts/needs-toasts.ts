@@ -22,7 +22,7 @@ const undoWords = (undoing: string): Words => ({
     Fragment,
     null,
     createElement("span", { "aria-hidden": true }, "Undo"),
-    createElement(VisuallyHidden, { as: "span" }, `Undo ${undoing}`),
+    createElement(VisuallyHidden, { as: "span", children: `Undo ${undoing}` }),
   ),
   failed: "Couldn't undo that",
 });
