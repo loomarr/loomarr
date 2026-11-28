@@ -533,11 +533,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   writes it again:
 
   ```text
-  identified(t) = t.kind in {movie, series} and t.name_from != ''
-                  and (t.match_basis != '' or answered(t)) and not ignored(t)
+  identified(t) = t.kind in {movie, series} and not ignored(t)
+                  and (kept(t) or (t.name_from != '' and (t.match_basis != '' or answered(t))))
   member reads t = identified(t)
                   or (t.kind = episode and not t.unnumbered and t.name_from != ''
                       and identified(t.series))
+                  or (t.kind = episode and kept(t.series))
   ```
 
   One store predicate applies it to the list, its search and filters, its total, one title, an
