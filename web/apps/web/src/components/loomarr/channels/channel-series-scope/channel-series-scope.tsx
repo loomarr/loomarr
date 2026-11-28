@@ -135,19 +135,14 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
               setQuery("");
               setAdding(false);
             }}
-            style={{ alignSelf: "flex-start" }}
+            alignSelf="flex-start"
             variant="ghost"
           >
             Cancel
           </Action>
         </Stack>
       ) : (
-        <Action
-          icon="plus"
-          onPress={() => setAdding(true)}
-          style={{ alignSelf: "flex-start" }}
-          variant="outline"
-        >
+        <Action icon="plus" onPress={() => setAdding(true)} alignSelf="flex-start" variant="outline">
           Add a show…
         </Action>
       )}

@@ -439,7 +439,7 @@ const ChannelPolicyFields = ({
             <Action
               layout="text"
               onPress={() => setAxesRequested(false)}
-              style={{ alignSelf: "flex-start" }}
+              alignSelf="flex-start"
               variant="ghost"
             >
               Use a single era

@@ -142,12 +142,12 @@ const ModelDiscover = ({
       )}
 
       {!expanded && hiddenCount > 0 && (
-        <Action onPress={() => setExpanded(true)} style={{ alignSelf: "flex-start" }} variant="ghost">
+        <Action onPress={() => setExpanded(true)} alignSelf="flex-start" variant="ghost">
           {`Show ${hiddenCount} more`}
         </Action>
       )}
       {expanded && total > DEFAULT_VISIBLE && (
-        <Action onPress={() => setExpanded(false)} style={{ alignSelf: "flex-start" }} variant="ghost">
+        <Action onPress={() => setExpanded(false)} alignSelf="flex-start" variant="ghost">
           Show fewer
         </Action>
       )}

@@ -349,7 +349,7 @@ const ChannelRulesEditor = ({
               </Stack>
             </SortableContext>
           </DndContext>
-          <Action icon="plus" onPress={addRule} style={{ alignSelf: "flex-start" }} variant="outline">
+          <Action icon="plus" onPress={addRule} alignSelf="flex-start" variant="outline">
             Add rule
           </Action>
         </>

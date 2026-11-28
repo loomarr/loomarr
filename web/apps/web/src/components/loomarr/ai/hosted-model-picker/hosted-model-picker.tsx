@@ -304,7 +304,7 @@ const HostedModelPicker = ({
             {models.length > (primary ? GUIDED_ALTERNATIVES + 1 : GUIDED_ALTERNATIVES) && (
               <Action
                 onPress={() => setSearching((value) => ({ ...value, [hp.key]: !isSearching }))}
-                style={{ alignSelf: "flex-start" }}
+                alignSelf="flex-start"
                 variant="ghost"
               >
                 {isSearching ? "Back to recommendations" : "Find another model"}

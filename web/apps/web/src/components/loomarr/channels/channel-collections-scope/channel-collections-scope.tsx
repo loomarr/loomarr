@@ -178,7 +178,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
                   setQuery("");
                   setAdding(false);
                 }}
-                style={{ alignSelf: "flex-start" }}
+                alignSelf="flex-start"
                 variant="ghost"
               >
                 Cancel
@@ -190,12 +190,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
               You have no collections yet. Make one in your media server and it will show up here.
             </Text>
           ) : (
-            <Action
-              icon="plus"
-              onPress={() => setAdding(true)}
-              style={{ alignSelf: "flex-start" }}
-              variant="outline"
-            >
+            <Action icon="plus" onPress={() => setAdding(true)} alignSelf="flex-start" variant="outline">
               Add a collection…
             </Action>
           )}

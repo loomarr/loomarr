@@ -439,7 +439,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
                 setQuery("");
                 setAdding(false);
               }}
-              style={{ alignSelf: "flex-start" }}
+              alignSelf="flex-start"
               variant="ghost"
             >
               Cancel
@@ -450,7 +450,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
             disabled={disabled}
             icon="plus"
             onPress={() => setAdding(true)}
-            style={{ alignSelf: "flex-start" }}
+            alignSelf="flex-start"
             variant="outline"
           >
             Add title
@@ -462,7 +462,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
           disabled={disabled || findingMore}
           icon={findingMore ? "loading" : undefined}
           onPress={onFindMore}
-          style={{ alignSelf: "flex-start" }}
+          alignSelf="flex-start"
           variant="outline"
         >
           {findingMore ? "Finding more suggestions…" : "Find more suggestions"}

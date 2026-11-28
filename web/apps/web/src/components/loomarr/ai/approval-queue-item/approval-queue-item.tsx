@@ -345,7 +345,7 @@ const ApprovalQueueItem = ({
             aria-expanded={open}
             icon={open ? "showLess" : "showMore"}
             onPress={() => setOpen((v) => !v)}
-            style={{ alignSelf: "flex-start" }}
+            alignSelf="flex-start"
             variant="ghost"
           >
             {open ? "Hide picks" : onEdit ? "Review & edit picks" : "Show picks"}
