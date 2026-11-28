@@ -16,8 +16,8 @@ import (
 const goRaceShardCount = 2
 
 // goCertificationLaneCount is scripts/go-certification-lanes.tsv's highest lane, which ci-go.yml's
-// matrix names as certification-<lane>/5.
-const goCertificationLaneCount = 5
+// matrix names as certification-<lane>/4.
+const goCertificationLaneCount = 4
 
 func TestGoShardUsesMeasuredLongestProcessingTime(t *testing.T) {
 	t.Parallel()
@@ -583,14 +583,13 @@ func TestGoCertificationLanePackageSetIsReviewed(t *testing.T) {
 		}
 	}
 	want := []string{
-		"1 internal/platform/store",
-		"2 internal/demolibrary",
-		"3 internal/channels/schedule",
-		"4 internal/api",
-		"4 internal/app",
-		"5 internal/playout/watermark",
-		"5 internal/integration",
-		"5 internal/playout",
+		"1 internal/demolibrary",
+		"2 internal/channels/schedule",
+		"3 internal/api",
+		"3 internal/app",
+		"4 internal/playout/watermark",
+		"4 internal/integration",
+		"4 internal/playout",
 	}
 	if strings.Join(packages, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("certification lane packages = %v, want reviewed set %v", packages, want)

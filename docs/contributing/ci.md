@@ -821,25 +821,24 @@ lane of its own, or be split, never be given a larger budget. (Until #1650 a tem
 Pull request #1631 made the 21 heaviest `internal/platform/store` tests (88% of its time) run in parallel. Pinned to four
 cores locally, that cut the package from 146.9s to 110.1s, but merge-group run 36359955148 measured
 it at 542s in ordinary lane 1/2: beside three other `-p=4` packages on a four-vCPU runner, its
-parallel tests only competed for the same cores. So the store package (now `internal/platform/store`) runs alone in the second
-serial lane, where one package at a time owns the runner, and the playout/capacity set shares the
-first. There, workflow-dispatch run 36366596157 measured it at 171s, which left it too light to
-balance the first lane's 405s, so `internal/integration`, whose tests are serial, shares its lane.
+parallel tests only competed for the same cores. So the store package (now `internal/platform/store`)
+runs with a runner to itself, in jobs of its own (below).
 The serial lanes hold two kinds of package: media certification that must not compete for a
 worker while asserting latency, and CPU-heavy packages whose own parallelism needs a runner to
 themselves.
 
-There are five serial lanes, `certification-1/5` to `certification-5/5` (#4538). The highest lane
+There are four serial lanes, `certification-1/4` to `certification-4/4` (#4538). The highest lane
 number in `scripts/go-certification-lanes.tsv` is the count, and the workflow matrix, cache keys and
 release-verifier pins name each lane. A package the race policy runs in both phases
 (`RACE_AND_PLAIN`, such as `internal/channels/schedule`) costs a serial lane twice, as it does an
-ordinary one. Store, schedule and the api+app pair each come close to the 469s lane budget, so no
-four-way split fits it; the five lanes model 444s, 332s, 434s, 427s and 337s.
+ordinary one. Schedule and the api+app pair each come close to the 469s lane budget, so no
+three-way split fits them. `make go-shard-verify` prints each lane's modeled seconds.
 
 A package too slow for any one lane has jobs of its own, listed in
 `scripts/go-split-lanes.tsv`. `internal/library/scan` runs under `-race` in two jobs,
-`scan-race-1/2` and `scan-race-2/2`, and without it in `scan-plain`. Each race job runs every
-second name of the sorted `go test -list` output (`GO_TEST_PART` in `scripts/go-test-packages.sh`),
+`scan-race-1/2` and `scan-race-2/2`, and without it in `scan-plain`. `internal/platform/store`
+runs only under `-race`, in `store-race-1/3` to `store-race-3/3`. Race job k of n runs every n-th
+name of the sorted `go test -list` output (`GO_TEST_PART` in `scripts/go-test-packages.sh`),
 so a new test joins a slice by itself, and an empty slice fails. Each job has its own weight row,
 `<package>@race-<k>/<n>` or `<package>@plain`, under the same per-package cap.
 `make go-race-weights ONLY=<package>` replaces one package's rows and keeps the rest.

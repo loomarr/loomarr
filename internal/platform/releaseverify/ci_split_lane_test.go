@@ -52,7 +52,7 @@ func TestGoShardSchedulesEveryPackageInEveryRacePolicyPhase(t *testing.T) {
 	for shard := range goRaceShardCount {
 		bothPhases = append(bothPhases, shardOutput(t, root, []string{"1/2", "2/2"}[shard])...)
 	}
-	for _, spec := range []string{"1/5", "2/5", "3/5", "4/5", "5/5"} {
+	for _, spec := range []string{"1/4", "2/4", "3/4", "4/4"} {
 		bothPhases = append(bothPhases, shardOutput(t, root, "--certification", spec)...)
 	}
 	workflow, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-go.yml"))
