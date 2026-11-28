@@ -138,6 +138,8 @@ interface LibraryNeedsCardsProps extends LibraryNeedsAnswers {
   onKeep?: (id: string) => Promise<void>;
   /** See why: opens a title's page. */
   onOpenTitle: (id: string) => void;
+  /** The last card still asking was answered, so there is no next card to focus. */
+  onNoneLeft?: () => void;
 }
 
 export type {

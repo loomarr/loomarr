@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/classprobe"
 	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
@@ -17,23 +18,23 @@ import (
 // (#1512 G5) and runs the tone-map self-check (G11). A stored table for the same FFmpeg, GPU and
 // encoder is reused, but the HDR class is measured at every start: the self-check is a startup
 // check, and a driver update can break a tone-mapper without changing the fingerprint.
-func (r *Resolver) ProbeCapacity(ctx context.Context, foreground playout.Foreground) {
+func (r *Resolver) ProbeCapacity(ctx context.Context, foreground classprobe.Foreground) {
 	enc := encode.Encoder(r.encoder())
 	if enc == "" {
 		enc = r.detectedEncoder(ctx)
 	}
 	bin, gpu, root := r.capabilityInputs()
 	started := time.Now()
-	fingerprint, fpErr := playout.HostFingerprint(ctx, bin, gpu)
-	cfg := playout.ClassProbeConfig{
+	fingerprint, fpErr := classprobe.HostFingerprint(ctx, bin, gpu)
+	cfg := classprobe.ClassProbeConfig{
 		FFmpeg: bin, ClipDir: filepath.Join(root, "probe-clips"), Encoder: enc,
 		CPUTonemap: playout.TonemapperFor(bin)(), GPU: playout.GPUFiltersFor(bin)(),
 		Outputs: playout.ProbeOutputs(enc), Manager: r.processDiagnostics, Foreground: foreground,
 		Curve: r.ToneCurve(),
 	}
-	stored, reused := playout.MeasuredCosts{}, false
+	stored, reused := classprobe.MeasuredCosts{}, false
 	if fpErr == nil {
-		stored, reused = playout.LoadClassCosts(root, fingerprint, enc, started)
+		stored, reused = classprobe.LoadClassCosts(root, fingerprint, enc, started)
 	}
 	if reused {
 		r.measuredCosts.Store(&stored)
@@ -47,7 +48,7 @@ func (r *Resolver) ProbeCapacity(ctx context.Context, foreground playout.Foregro
 			cfg.Classes = append(cfg.Classes, media.ClassPremium4K)
 		}
 	}
-	res := playout.ProbeClassCosts(ctx, cfg)
+	res := classprobe.ProbeClassCosts(ctx, cfg)
 	if ctx.Err() != nil {
 		return
 	}
@@ -55,7 +56,7 @@ func (r *Resolver) ProbeCapacity(ctx context.Context, foreground playout.Foregro
 		r.onTonemap(res.Tonemap)
 	}
 
-	m := playout.MeasuredCosts{Encoder: enc, Costs: map[admission.CostKey]admission.ClassCost{}, ObservedAt: started}
+	m := classprobe.MeasuredCosts{Encoder: enc, Costs: map[admission.CostKey]admission.ClassCost{}, ObservedAt: started}
 	if reused {
 		m.SessionLimit, m.ObservedAt = stored.SessionLimit, stored.ObservedAt // the full table re-measures weekly
 		for k, c := range stored.Costs {
@@ -74,13 +75,13 @@ func (r *Resolver) ProbeCapacity(ctx context.Context, foreground playout.Foregro
 		}
 	}
 	if !reused {
-		bound := playout.SessionProbeBound
+		bound := classprobe.SessionProbeBound
 		if sdr, ok := res.Costs[admission.CostKey{Class: media.ClassSDR, Height: cfg.Outputs[0].Height}]; ok {
 			bound = min(bound, max(1, int(sdr.Speed/1.2)+1)) // one past the throughput ceiling
 		}
-		limit, err := playout.ProbeSessionLimit(ctx, playout.SessionProbeConfig{
+		limit, err := classprobe.ProbeSessionLimit(ctx, classprobe.SessionProbeConfig{
 			FFmpeg: bin, Encoder: enc, Bound: bound, Manager: r.processDiagnostics,
-			InUse: playout.EncoderSessionsInUse(enc), Foreground: foreground,
+			InUse: classprobe.EncoderSessionsInUse(enc), Foreground: foreground,
 		})
 		if err != nil && r.log != nil {
 			r.log.Warn("playout: encoder session probe opened nothing; no session limit applied", "encoder", enc, "err", err)
@@ -92,7 +93,7 @@ func (r *Resolver) ProbeCapacity(ctx context.Context, foreground playout.Foregro
 	}
 	r.measuredCosts.Store(&m)
 	if fpErr == nil && len(m.Costs) > 0 {
-		if err := playout.StoreClassCosts(root, fingerprint, m); err != nil && r.log != nil {
+		if err := classprobe.StoreClassCosts(root, fingerprint, m); err != nil && r.log != nil {
 			r.log.Warn("playout: could not store the measured stream costs", "err", err)
 		}
 	}
@@ -104,7 +105,7 @@ func (r *Resolver) ProbeCapacity(ctx context.Context, foreground playout.Foregro
 }
 
 // CostsFor is the measured cost table for enc, nil until the probe has published one for it.
-func (r *Resolver) CostsFor(enc encode.Encoder) *playout.MeasuredCosts {
+func (r *Resolver) CostsFor(enc encode.Encoder) *classprobe.MeasuredCosts {
 	m := r.measuredCosts.Load()
 	if m == nil || m.Encoder != enc {
 		return nil
@@ -132,7 +133,7 @@ func costsForLog(costs map[admission.CostKey]admission.ClassCost) map[string]adm
 
 // TonemapObservation is the Diagnostics health of the tone-map self-check: a failure is red and
 // immediate (G11: never silent); a tone-map too slow for a live channel is a warning.
-func TonemapObservation(check playout.TonemapCheck) (diagnostics.HealthObservation, bool) {
+func TonemapObservation(check classprobe.TonemapCheck) (diagnostics.HealthObservation, bool) {
 	const route = "/settings/system/playback"
 	switch {
 	case !check.Ran:

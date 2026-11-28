@@ -26,7 +26,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
@@ -61,7 +60,6 @@ type channelBuild struct {
 // buildCore is what the large builders share. Build assembles it once per generation.
 type buildCore struct {
 	ctx                 context.Context
-	store               store.Store
 	settings            resolved
 	overrides           Overrides
 	owner               *generationLifecycle
@@ -77,6 +75,9 @@ type buildCore struct {
 
 type channelsInput struct {
 	buildCore
+	// stores is nil without persistence; invalidations is nil unless the backend publishes them.
+	stores                 channelsStore
+	invalidations          invalidationHandle
 	capturePlayoutResolver func(*resolve.Resolver)
 	activity               *activity.Recorder
 	fillerLayout           cliplibrary.Layout
@@ -88,7 +89,7 @@ type channelsInput struct {
 }
 
 func buildChannels(in channelsInput) (channelBuild, error) {
-	rootCtx, st, set, ov, owner := in.ctx, in.store, in.settings, in.overrides, in.owner
+	rootCtx, st, set, ov, owner := in.ctx, in.stores, in.settings, in.overrides, in.owner
 	libraryClient, secrets, readGeneratedSecret := in.libraryClient, in.secrets, in.readGeneratedSecret
 	eventBus, emitter, jobReg, log, metricRecorder := in.events, in.emitter, in.jobs, in.log, in.metrics
 	capturePlayoutResolver, activityRec, fillerLayout := in.capturePlayoutResolver, in.activity, in.fillerLayout
@@ -309,7 +310,7 @@ func buildChannels(in channelsInput) (channelBuild, error) {
 
 		backendView = backendtransition.NewDurableView(st)
 		playoutBuilt, err := buildPlayout(playoutDeps{
-			rootCtx: rootCtx, store: st, settings: set, owner: owner,
+			rootCtx: rootCtx, store: st, invalidations: in.invalidations, settings: set, owner: owner,
 			captureResolver: capturePlayoutResolver, secrets: secrets,
 			readSecret: readGeneratedSecret, events: eventBus, layout: fillerLayout,
 			channels: channelEngine, liveTVConnector: liveTVConnector, backendView: backendView,

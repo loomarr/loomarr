@@ -26,6 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/subtitles"
 )
@@ -94,8 +95,8 @@ const playoutModeParam = "mode"
 // Playout is the one playback interface used by HTTP transport adapters (§9.1 V56). It hides the
 // channel packagers and their filesystem layouts.
 type Playout interface {
-	Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error)
-	OpenAsset(ctx context.Context, channelID string, rel string, speculative bool) (playout.Asset, bool, error)
+	Tune(ctx context.Context, request hls.TuneRequest) (hls.Presentation, error)
+	OpenAsset(ctx context.Context, channelID string, rel string, speculative bool) (hls.Asset, bool, error)
 	// StopChannel immediately retires every live delivery for one channel. Lifecycle writes use
 	// it after the store commits, so viewers already attached cannot outlive pause/detach/backend
 	// transitions that make the channel ineligible for internal playout.
@@ -106,13 +107,13 @@ type Playout interface {
 // decoded frame. Separate from Playout because a still is a display aid, not delivery — an origin
 // without one simply has no stills and the route 404s.
 type StillProvider interface {
-	Still(ctx context.Context, channelID string) (playout.Still, bool, error)
+	Still(ctx context.Context, channelID string) (hls.Still, bool, error)
 }
 
 // PlayoutObserver is operational observation of playout, separate from the playback interface.
 type PlayoutObserver interface {
 	// Stats snapshots every live encoder for the dashboard (§12, V16).
-	Stats(now time.Time) []playout.SessionStat
+	Stats(now time.Time) []hls.SessionStat
 	// Capacity is the admission bound — the denominator in "2 / 4".
 	Capacity() int
 	// Budget snapshots the ResourceBudget: capacity terms, per-class costs and what is in use.
@@ -313,9 +314,9 @@ func (s *Handlers) streamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Handlers) tuneRaw(ctx context.Context, channelID string) (playout.Presentation, error) {
-	return s.playout.Tune(ctx, playout.TuneRequest{
-		ChannelID: channelID, Delivery: playout.DeliveryMPEGTS,
+func (s *Handlers) tuneRaw(ctx context.Context, channelID string) (hls.Presentation, error) {
+	return s.playout.Tune(ctx, hls.TuneRequest{
+		ChannelID: channelID, Delivery: hls.DeliveryMPEGTS,
 	})
 }
 
@@ -332,7 +333,7 @@ func (s *Handlers) writeRawTuneError(w http.ResponseWriter, r *http.Request, cha
 		"Loomarr couldn't start encoding this channel. Check the playout log for details.")
 }
 
-func firstTransportChunk(ctx context.Context, stream playout.Stream, timeout time.Duration) ([]byte, error) {
+func firstTransportChunk(ctx context.Context, stream hls.Stream, timeout time.Duration) ([]byte, error) {
 	startup, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	for {
@@ -515,12 +516,12 @@ func (s *Handlers) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	viewer, tagged := s.requestViewer(r.Context(), channelID, r.URL.Query())
-	presentation, err := s.playout.Tune(httpcore.WithPlayoutViewer(r.Context(), viewer, tagged), playout.TuneRequest{
-		ChannelID: channelID, Delivery: playout.DeliveryHLS,
+	presentation, err := s.playout.Tune(httpcore.WithPlayoutViewer(r.Context(), viewer, tagged), hls.TuneRequest{
+		ChannelID: channelID, Delivery: hls.DeliveryHLS,
 		Speculative: mode == "warm",
 	})
 	if err != nil {
-		if errors.Is(err, playout.ErrUnsupportedDelivery) {
+		if errors.Is(err, hls.ErrUnsupportedDelivery) {
 			s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
 				"Internal playout isn't running on this instance.")
 			return
@@ -682,7 +683,7 @@ func (s *Handlers) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // stillHandler serves a channel's current frame for the channel-switch overlay. The frame is
-// decoded at most once per segment (warm) or per airing (cold, from the source; playout.Origin.Still),
+// decoded at most once per segment (warm) or per airing (cold, from the source; hls.Origin.Still),
 // so this never transcodes per request.
 // Every failure — no provider, no segment, a failed decode — is the same 404: the client's answer
 // to all of them is "show the card on the plain background", and a broken image is worse.
@@ -745,7 +746,7 @@ func (s *Handlers) registerPlayout(api huma.API) {
 	}, "A continuous transport stream of whatever the channel is playing now.",
 		"video/mp2t"), s.streamHandler)
 
-	// The latest still frame of a channel, for the switch overlay (internal/playout/still.go). Authed like
+	// The latest still frame of a channel, for the switch overlay (internal/playout/hls/still.go). Authed like
 	// the HLS routes, so the play-url's signature covers it.
 	streamOp[playoutChannelInput](s, api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "playout-still", Method: http.MethodGet, Path: "/v1/playout/still/{id}",

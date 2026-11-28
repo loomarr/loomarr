@@ -84,7 +84,12 @@ const SERIES: LibraryTitleDetail = {
 };
 
 // An admin's page unless `member`, whose page has no fixes.
-const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleFix> = {}, member = false) => {
+const render = (
+  title: LibraryTitleDetail,
+  over: Partial<LibraryTitleFix> = {},
+  member = false,
+  extra: Pick<LibraryTitleProps, "watchLink"> = {},
+) => {
   const onBack = vi.fn();
   const fix: LibraryTitleFix = {
     onUpdateDetails: vi.fn(() => Promise.resolve()),
@@ -95,7 +100,7 @@ const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleFix> = {}, 
     onRemoveExtra: vi.fn(() => Promise.resolve()),
     ...over,
   };
-  const props: LibraryTitleProps = { title, onBack, fix: member ? undefined : fix };
+  const props: LibraryTitleProps = { title, onBack, fix: member ? undefined : fix, ...extra };
   const host = doc.createElement("div");
   doc.body.append(host);
   const root = createRoot(host);
@@ -267,6 +272,39 @@ describe("LibraryTitle", () => {
     expect(series.host.querySelectorAll('[aria-label="On these channels"]').length).toBe(0);
     expect(series.host.textContent).toContain("Not on a channel yet");
     series.cleanup();
+  });
+
+  it("makes a channel's row the link to watching it, with its logo, where the app can name its player", () => {
+    const withLogo: LibraryTitleDetail = {
+      ...MOVIE,
+      channels: [{ ...MOVIE.channels[0]!, logo: <span data-logo="late-show" /> }, MOVIE.channels[1]!],
+    };
+    const watchLink = (id: string) =>
+      // The row is drawn into the link in place of its children.
+      id === "ch-90000932" ? <a href={`/watch/${id}`}>Watch</a> : undefined;
+    const page = render(withLogo, {}, true, { watchLink });
+    const links = page.host.querySelectorAll('a[href="/watch/ch-90000932"]');
+    expect(links.length).toBe(1);
+    expect(links[0]?.textContent).toContain("Late Show");
+    expect(page.host.querySelectorAll('a[href="/watch/ch-90000932"] [data-logo="late-show"]').length).toBe(1);
+    // A channel the app gives no player stays a plain row.
+    expect(page.host.querySelectorAll("a").length).toBe(1);
+    expect(page.host.textContent).toContain("Quiet Hours");
+    page.cleanup();
+  });
+
+  it("offers an admin Collections for a title on no channel, and a member only the sentence", () => {
+    const collectionsLink = <a href="/library/collections">Collections</a>;
+    const admin = render(SERIES, { collectionsLink });
+    const link = admin.host.querySelectorAll('a[href="/library/collections"]');
+    expect(link.length).toBe(1);
+    expect(link[0]?.textContent).toContain("Add it to a collection");
+    admin.cleanup();
+
+    const member = render(SERIES, { collectionsLink }, true);
+    expect(member.host.querySelectorAll('a[href="/library/collections"]').length).toBe(0);
+    expect(member.host.textContent).toContain("Not on a channel yet");
+    member.cleanup();
   });
 
   it("goes back to the Library", () => {

@@ -3,7 +3,7 @@
 import { LoomarrProvider } from "@loomarr/design-system";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { type LibraryNeed, LibraryNeedsCards } from "../index";
 
@@ -42,7 +42,7 @@ const doc = (
   }
 ).document;
 
-type Rest = Partial<Pick<Parameters<typeof LibraryNeedsCards>[0], "orders" | "problems">>;
+type Rest = Partial<Parameters<typeof LibraryNeedsCards>[0]>;
 
 const mount = (needs: LibraryNeed[], rest: Rest = {}) => {
   const host = doc.createElement("div");
@@ -58,8 +58,9 @@ const mount = (needs: LibraryNeed[], rest: Rest = {}) => {
           onLink={answered}
           onOpenTitle={() => {}}
           onSearch={() => Promise.resolve([])}
-          orders={rest.orders ?? []}
-          problems={rest.problems ?? []}
+          orders={[]}
+          problems={[]}
+          {...rest}
         />
       </LoomarrProvider>,
     ),
@@ -141,6 +142,102 @@ describe("Needs you by folder", () => {
     const { host, cleanup } = mount([need("one", "Films")]);
     expect(host.textContent?.split("one.mkv")).toHaveLength(2);
     expect(host.textContent).not.toMatch(/one(?!\.mkv)/);
+    cleanup();
+  });
+});
+
+describe("where focus goes after an answer", () => {
+  const guess = {
+    externalId: { namespace: "tmdb", value: "1" },
+    kind: "movie" as const,
+    name: "Made Up Title",
+    nameMatches: true,
+    yearMatches: false,
+    lengthMatches: false,
+    episodesMatches: false,
+  };
+  const guessed = (id: string): LibraryNeed => ({ ...need(id, "Films"), best: guess, others: [guess] });
+  const show = { id: "show", name: "Kestrel Bay", disk: [], files: [], choices: [] };
+  const bad = {
+    id: "bad",
+    kind: "movie" as const,
+    name: "Low Tide",
+    unplayable: 1,
+    extraCopies: 0,
+    extraBytes: 0,
+  };
+  const press = (host: Host, name: string) => {
+    const hit = Array.from(host.querySelectorAll('[role="button"], button')).find(
+      (n) => (n.getAttribute("aria-label") ?? n.textContent?.trim()) === name,
+    );
+    if (!hit) throw new Error(`missing button: ${name}`);
+    act(() => hit.click());
+  };
+  const focusedName = () => doc.activeElement?.getAttribute("aria-label") ?? doc.activeElement?.textContent;
+
+  it("says none is left when the only card is answered", () => {
+    const onNoneLeft = vi.fn();
+    const { host, cleanup } = mount([need("one", "Films")], { onNoneLeft });
+    press(host, "Ignore this: one.mkv");
+    expect(onNoneLeft).toHaveBeenCalledOnce();
+    cleanup();
+  });
+
+  it("skips the whole folder a folder-wide Ignore answers, into the next one", () => {
+    const { host, cleanup } = mount(
+      [need("one", "Films"), need("two", "Films"), need("three", "Tapes"), need("four", "Films")],
+      { onIgnoreFolder: answered },
+    );
+    press(host, "Ignore these 3 in Films");
+    expect(focusedName()).toBe("Ignore this: three.mkv");
+    cleanup();
+  });
+
+  it("goes back to the card before when the last one is ignored", () => {
+    const { host, cleanup } = mount([need("one", "Films"), need("two", "Films")]);
+    press(host, "Ignore this: two.mkv");
+    expect(focusedName()).toBe("Ignore this: one.mkv");
+    cleanup();
+  });
+
+  it("lands on the next card's Ignore, not its Yes, after Yes", () => {
+    const { host, cleanup } = mount([guessed("one"), guessed("two")]);
+    press(host, "Yes, that's it: one.mkv");
+    expect(focusedName()).toBe("Ignore this: two.mkv");
+    cleanup();
+  });
+
+  it("moves on after Pick", () => {
+    const { host, cleanup } = mount([guessed("one"), guessed("two")]);
+    press(host, "Pick a different title: one.mkv");
+    press(host, "Use Made Up Title");
+    expect(focusedName()).toBe("Ignore this: two.mkv");
+    cleanup();
+  });
+
+  it("goes on to the order question's chosen radio, which saves nothing", () => {
+    const onChooseOrder = vi.fn(answered);
+    const layout = { seasons: [], episodes: 1, fits: false };
+    const ordered = {
+      ...show,
+      choices: [
+        { ...layout, choice: "catalog" as const },
+        { ...layout, choice: "order" as const, orderId: "dvd", kind: "dvd" as const, name: "DVD" },
+      ],
+    };
+    const { host, cleanup } = mount([need("one", "Films")], { orders: [ordered], onChooseOrder });
+    press(host, "Ignore this: one.mkv");
+    expect(doc.activeElement?.getAttribute("role")).toBe("radio");
+    expect(onChooseOrder).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("goes on to a title to look at after the order question is answered", () => {
+    const onNoneLeft = vi.fn();
+    const { host, cleanup } = mount([], { orders: [show], problems: [bad], onNoneLeft });
+    press(host, "That's fine");
+    expect(focusedName()).toBe("See why");
+    expect(onNoneLeft).not.toHaveBeenCalled();
     cleanup();
   });
 });

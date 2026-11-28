@@ -21,7 +21,7 @@ import (
 // tonemap_vaapi on the household Arc exits 0 at normal speed with every frame at Y=16: black. Speed,
 // start time and exit status all passed on it, twice. So this test asserts the PICTURE: signalstats
 // luma of the encoded output, on a real PQ source, for each family this host has and each tone-mapper
-// the packager's retry ladder (itemFaults) would try on it.
+// the packager's retry ladder would try on it.
 //
 // A tone-mapper whose runtime is missing (no OpenCL ICD, no Vulkan device) fails to start, which the
 // live chain answers by demoting; the test logs it and moves down the ladder. Set
@@ -54,17 +54,17 @@ func TestLive_HDRTonemapProducesAPicture(t *testing.T) {
 
 	for _, enc := range []encode.Encoder{encode.EncoderVAAPI, encode.EncoderNVENC} {
 		if c := trialEncodeObserved(context.Background(), bin, enc, DefaultProfile(), 1, nil); !c.Works {
-			t.Logf("%s: not usable on this host, skipped (%s)", enc, firstLine(c.Err))
+			t.Logf("%s: not usable on this host, skipped (%s)", enc, FirstLine(c.Err))
 			continue
 		}
 		host := encode.HostFor(enc, true, GPUFiltersFor(bin)())
 		for _, curve := range media.ToneCurves {
 			out := OutputProfile{Width: 1280, Height: 720, FPS: 25, Quality: 22, TargetKbps: 3600, MaxKbps: 5300, GOPSeconds: 1, AudioKbps: 128, ToneCurve: curve}
-			// The packager's retry ladder (itemFaults): a tone-mapper that fails before any output is
-			// dropped for this source and the next attempt takes the next one for the curve.
-			faults := &itemFaults{by: map[string]itemFault{}}
+			// The packager's retry ladder: a tone-mapper that fails before any output is dropped for
+			// this source and the next attempt takes the next one for the curve.
+			next := host
 			for {
-				pipe, err := Build(faults.get(src).apply(host), facts, out)
+				pipe, err := Build(next, facts, out)
 				if err != nil {
 					t.Fatalf("%s: %v", enc, err)
 				}
@@ -79,7 +79,7 @@ func TestLive_HDRTonemapProducesAPicture(t *testing.T) {
 					assertPicture(t, bin, o)
 					ran[name] = ran[name] || !t.Failed()
 				})
-				if !faults.record(src, pipe, false) {
+				if !demote(&next, pipe.Tonemapper, false) {
 					break
 				}
 			}
@@ -142,9 +142,8 @@ func TestLive_HDRTonemapRealFiles(t *testing.T) {
 // its luma, speed and CPU per stream, and one PNG into PLAYOUT_TEST_FRAME_DIR when set.
 func airRealFile(t *testing.T, bin string, title int, host encode.HostProfile, facts media.MediaFormat, profile OutputProfile, input string) {
 	t.Helper()
-	faults := &itemFaults{by: map[string]itemFault{}}
 	for {
-		pipe, err := Build(faults.get(input).apply(host), facts, profile)
+		pipe, err := Build(host, facts, profile)
 		if err != nil {
 			t.Fatalf("title %d: %v", title, err)
 		}
@@ -168,12 +167,26 @@ func airRealFile(t *testing.T, bin string, title int, host encode.HostProfile, f
 			}
 			return
 		}
-		t.Logf("title %d %s did not start (demoting): %s", title, what, firstLine(string(b)))
-		if !faults.record(input, pipe, encode.IsHardwareDecodeFault(string(b))) {
+		t.Logf("title %d %s did not start (demoting): %s", title, what, FirstLine(string(b)))
+		if !demote(&host, pipe.Tonemapper, encode.IsHardwareDecodeFault(string(b))) {
 			t.Errorf("title %d: no tone-mapper produced output for %s", title, what)
 			return
 		}
 	}
+}
+
+// demote moves host one step down the packager's retry ladder after an encode that produced nothing:
+// the decode leaves the GPU on a decode fault, otherwise the tone-mapper used is dropped. It reports
+// false when nothing is left to demote.
+func demote(host *encode.HostProfile, used string, decodeFault bool) bool {
+	if decodeFault && host.DecodeCodecs != nil {
+		host.DecodeCodecs = nil
+		return true
+	}
+	g := encode.GPUFilters{TonemapOpenCL: host.TonemapOpenCL, Libplacebo: host.Libplacebo}
+	ok := DemoteTonemapper(&g, used)
+	host.TonemapOpenCL, host.Libplacebo = g.TonemapOpenCL, g.Libplacebo
+	return ok
 }
 
 // makePQSource is a REAL HDR10 signal, not SDR pixels tagged PQ: testsrc2 converted into PQ/BT.2020
@@ -210,7 +223,7 @@ func encodeTo(t *testing.T, bin string, args []string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	if b, err := exec.CommandContext(ctx, bin, args...).CombinedOutput(); err != nil {
-		return err.Error() + ": " + firstLine(string(b))
+		return err.Error() + ": " + FirstLine(string(b))
 	}
 	return ""
 }

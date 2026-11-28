@@ -42,7 +42,7 @@ func TestLive_WatermarkCheck(t *testing.T) {
 		host := encode.HostFor(enc, TonemapperFor(bin)(), gpu)
 		w := want[host.Family]
 		if c := trialEncodeObserved(context.Background(), bin, enc, DefaultProfile(), 1, nil); !c.Works {
-			t.Logf("%s: not usable on this host (%s)", host.Family, firstLine(c.Err))
+			t.Logf("%s: not usable on this host (%s)", host.Family, FirstLine(c.Err))
 			if w != "" {
 				t.Errorf("%s: expected watermark %s but the encoder is unusable", host.Family, w)
 			}

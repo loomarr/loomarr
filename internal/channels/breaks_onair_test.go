@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/originfixture"
 )
 
 // Lowering the break length is an edit (#4140 step 1): it applies at once from the programme after
@@ -78,7 +79,7 @@ func TestReconcile_ReSizedBreaksNeverMoveWhatIsOnAir(t *testing.T) {
 		ReconcileTTL: 10 * time.Minute, BreaksPerHour: 1,
 		ResolvePlayoutBackendContext: func(context.Context) (string, error) { return schedule.PlayoutBackendInternal, nil },
 	}, func() time.Time { return now }, testkit.Logger()).WithPods(pods)
-	stops := &testkit.Playout{}
+	stops := &originfixture.Playout{}
 	e.WithScheduleInvalidator(stops)
 	seedChannel(t, st, "on-air", 9,
 		entry("movie:tmdb:90000001", "First"), entry("movie:tmdb:90000002", "Second"), entry("movie:tmdb:90000003", "Third"),

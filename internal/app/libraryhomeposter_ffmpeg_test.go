@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 )
 
 // The pinned still path takes a home video's frame about a tenth of the way in: the fixture is red
@@ -33,7 +33,7 @@ func TestLiveHomeVideoPosterFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 	p, keep, item := homePosterFixture(t, video, 20_000)
-	p.still = playout.FFmpegSourceStill(ffmpeg, nil)
+	p.still = hls.FFmpegSourceStill(ffmpeg, nil)
 	keep()
 	if err := p.pass(ctx); err != nil {
 		t.Fatal(err)

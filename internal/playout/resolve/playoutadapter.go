@@ -35,6 +35,8 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/classprobe"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
@@ -241,8 +243,8 @@ type Resolver struct {
 	loadCapabilityEvidence func(context.Context) (playout.Capacity, bool)
 	// measuredCosts is the class probe's published cost table (probeCapacity); onTonemap receives its
 	// tone-map self-check.
-	measuredCosts atomic.Pointer[playout.MeasuredCosts]
-	onTonemap     func(playout.TonemapCheck)
+	measuredCosts atomic.Pointer[classprobe.MeasuredCosts]
+	onTonemap     func(classprobe.TonemapCheck)
 }
 
 // PodPreviewer is the slice of the filler pod assembler the resolver airs a break from. It is
@@ -317,7 +319,7 @@ type Config struct {
 	Analyses     inventory.AnalysisStore
 	MeasureTools measure.Tools
 	// OnTonemap receives the capacity probe's tone-map self-check.
-	OnTonemap func(playout.TonemapCheck)
+	OnTonemap func(classprobe.TonemapCheck)
 	// Subtitles and SubtitleCues are the Library's subtitle tracks and the reader of their cues.
 	// Without them every subtitle window is empty.
 	Subtitles    LibrarySubtitleReader
@@ -328,7 +330,7 @@ type Config struct {
 	// InitialMaxChannels and InitialMeasuredCosts publish a capacity before any encoder trial or
 	// class probe runs. A test sets them to have a capacity without ffmpeg.
 	InitialMaxChannels   int
-	InitialMeasuredCosts *playout.MeasuredCosts
+	InitialMeasuredCosts *classprobe.MeasuredCosts
 }
 
 // New returns a Resolver wired from cfg, with its arranged-cycle cache. The pod assembler alone is
@@ -536,33 +538,33 @@ func (r *Resolver) RecordAiringServed(ctx context.Context, channelID string, air
 	}
 }
 
-// StillAiring is the cold-channel still's view of the schedule (playout.StillAiringResolver): the
+// StillAiring is the cold-channel still's view of the schedule (hls.StillAiringResolver): the
 // programme on now, with its source resolved lazily. Unlike AiringNow it writes nothing (no airing
 // history, no filler pick), because showing a picture is not airing it. It runs on every still
 // request, so it reads only the accepted cycle; the source lookup, which can cost a media-server
 // round trip, runs once per airing on the still cache's miss. A break has no still: resolving its
 // clip would pick, and count, filler.
-func (r *Resolver) StillAiring(ctx context.Context, channelID string) (playout.StillAiring, bool, error) {
+func (r *Resolver) StillAiring(ctx context.Context, channelID string) (hls.StillAiring, bool, error) {
 	now := r.now()
 	slots, epoch, err := r.acceptedCycle(ctx, channelID, now)
 	if err != nil {
-		return playout.StillAiring{}, false, err
+		return hls.StillAiring{}, false, err
 	}
 	airing := timeline.AiringAt(slots, epoch, now)
 	if airing.Kind == schedule.SlotFiller || !airing.Playable() {
-		return playout.StillAiring{}, false, nil
+		return hls.StillAiring{}, false, nil
 	}
 	itemID := airing.LibraryItemID
-	return playout.StillAiring{
+	return hls.StillAiring{
 		Key:    timeline.ScheduledBlockID(channelID, airing.StartedAt, airing.Kind, airing.Identity),
 		Offset: airing.Offset,
 		At:     airing.StartedAt,
-		Source: func(ctx context.Context) (playout.StillSource, bool, error) {
+		Source: func(ctx context.Context) (hls.StillSource, bool, error) {
 			input := r.programmeInput(ctx, itemID, airing.Offset)
 			if input.Path == "" {
-				return playout.StillSource{}, false, nil
+				return hls.StillSource{}, false, nil
 			}
-			source := playout.StillSource{Input: input.Path, HDR: r.inventoryHDR(ctx, itemID), PartStart: input.Start}
+			source := hls.StillSource{Input: input.Path, HDR: r.inventoryHDR(ctx, itemID), PartStart: input.Start}
 			source.Keyframe, source.Indexed = r.indexedKeyframe(ctx, input.Path, airing.Offset-input.Start)
 			return source, true, nil
 		},

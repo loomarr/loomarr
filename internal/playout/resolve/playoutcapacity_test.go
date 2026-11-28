@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/classprobe"
 )
 
 // G11: a tone-map that fails is a red, immediate Current Health error, never silent; one that works
@@ -17,12 +17,12 @@ func TestTonemapObservation_FailureIsRedAndImmediate(t *testing.T) {
 	startup.Complete(diagnostics.StartupCheckPlayoutTonemap, diagnostics.StartupSkipped, "pending probe", "", "")
 
 	cases := []struct {
-		check playout.TonemapCheck
+		check classprobe.TonemapCheck
 		want  diagnostics.HealthCheckStatus
 	}{
-		{playout.TonemapCheck{Ran: true, Detail: "tonemap_opencl: no OpenCL platform"}, diagnostics.HealthFailed},
-		{playout.TonemapCheck{Ran: true, OK: true, Stage: "cpu", Detail: "runs at 0.90x"}, diagnostics.HealthWarning},
-		{playout.TonemapCheck{Ran: true, OK: true, Stage: "tonemap_vaapi"}, diagnostics.HealthPassed},
+		{classprobe.TonemapCheck{Ran: true, Detail: "tonemap_opencl: no OpenCL platform"}, diagnostics.HealthFailed},
+		{classprobe.TonemapCheck{Ran: true, OK: true, Stage: "cpu", Detail: "runs at 0.90x"}, diagnostics.HealthWarning},
+		{classprobe.TonemapCheck{Ran: true, OK: true, Stage: "tonemap_vaapi"}, diagnostics.HealthPassed},
 	}
 	for _, tc := range cases {
 		obs, ok := TonemapObservation(tc.check)
@@ -35,7 +35,7 @@ func TestTonemapObservation_FailureIsRedAndImmediate(t *testing.T) {
 			t.Errorf("%+v: health %s, want %s (%s)", tc.check, got.Status, tc.want, got.Detail)
 		}
 	}
-	if _, ok := TonemapObservation(playout.TonemapCheck{}); ok {
+	if _, ok := TonemapObservation(classprobe.TonemapCheck{}); ok {
 		t.Error("a check that never ran reported health")
 	}
 }

@@ -38,14 +38,14 @@ func costClass(out OutputProfile, convert bool) FormatClass {
 		return CostHDRConvert
 	case out.HDR:
 		return Format4KHDR
-	case out.premium():
+	case out.Premium():
 		return Format4KSDR
 	}
 	return FormatBaseline
 }
 
-// isPremium reports whether c is one of the premium formats.
-func (c FormatClass) isPremium() bool { return c == Format4KSDR || c == Format4KHDR }
+// IsPremium reports whether c is one of the premium formats.
+func (c FormatClass) IsPremium() bool { return c == Format4KSDR || c == Format4KHDR }
 
 // FormatSpec is what a class puts on the wire.
 type FormatSpec struct {
@@ -61,9 +61,9 @@ func (c FormatClass) Spec() (FormatSpec, bool) {
 	case FormatBaseline:
 		return FormatSpec{Codec: "h264", Width: 1920, Height: 1080, DynamicRange: "sdr"}, true
 	case Format4KSDR:
-		return FormatSpec{Codec: "hevc", Width: premiumWidth, Height: premiumHeight, DynamicRange: "sdr"}, true
+		return FormatSpec{Codec: "hevc", Width: premiumWidth, Height: PremiumHeight, DynamicRange: "sdr"}, true
 	case Format4KHDR:
-		return FormatSpec{Codec: "hevc", Width: premiumWidth, Height: premiumHeight, DynamicRange: "hdr10"}, true
+		return FormatSpec{Codec: "hevc", Width: premiumWidth, Height: PremiumHeight, DynamicRange: "hdr10"}, true
 	}
 	return FormatSpec{}, false
 }
@@ -130,7 +130,7 @@ func (c ChannelFormats) OnHost(h encode.HostProfile) (ChannelFormats, string) {
 // baseline's 1.5x headroom (12M over 8M).
 const (
 	premiumWidth      = 3840
-	premiumHeight     = 2160
+	PremiumHeight     = 2160
 	premiumTargetKbps = 16000
 	premiumMaxKbps    = 24000
 )
@@ -143,15 +143,15 @@ func PremiumOutput(class FormatClass, base OutputProfile) (OutputProfile, bool) 
 		return OutputProfile{}, false
 	}
 	return OutputProfile{
-		Width: premiumWidth, Height: premiumHeight, FPS: base.FPS,
+		Width: premiumWidth, Height: PremiumHeight, FPS: base.FPS,
 		HEVC: true, HDR: class == Format4KHDR,
 		Quality: base.Quality, TargetKbps: premiumTargetKbps, MaxKbps: premiumMaxKbps,
 		GOPSeconds: base.GOPSeconds, AudioKbps: base.AudioKbps,
 	}, true
 }
 
-// premium reports whether this output is a premium format: HDR, or more pixels than 1080p.
-func (o OutputProfile) premium() bool {
+// Premium reports whether this output is a premium format: HDR, or more pixels than 1080p.
+func (o OutputProfile) Premium() bool {
 	return o.HDR || o.Width*o.Height > 1920*1080
 }
 
@@ -161,7 +161,7 @@ func (o OutputProfile) premium() bool {
 // with Main 10); Main tier at level 5.0 for 3840x2160 up to 30 fps, 5.1 above; progressive
 // frame-only; and the AAC-LC every item's audio is (BuildItem). A running packager's init replaces
 // it (packager.CodecsAttr).
-func (o OutputProfile) premiumCodecs() string {
+func (o OutputProfile) PremiumCodecs() string {
 	profile, level := "1.6", 150
 	if o.HDR {
 		profile = "2.4"

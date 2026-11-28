@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/langcode"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
@@ -128,7 +129,7 @@ func (s *SubtitleBurns) job(input string, t librarystore.LibraryStream) burnJob 
 
 // serve is stream t of input prepared for burning in, or nil, having queued it, when it is not
 // ready yet.
-func (s *SubtitleBurns) serve(input string, t librarystore.LibraryStream) *playout.ItemSubtitles {
+func (s *SubtitleBurns) serve(input string, t librarystore.LibraryStream) *hls.ItemSubtitles {
 	job := s.job(input, t)
 	b, ok := playout.LoadBurnIn(job.dir)
 	if !ok {
@@ -137,7 +138,7 @@ func (s *SubtitleBurns) serve(input string, t librarystore.LibraryStream) *playo
 	}
 	now := time.Now()
 	_ = os.Chtimes(job.dir, now, now) // most recently aired: evicted last
-	return &playout.ItemSubtitles{Track: b, Kernel: s.kernel()}
+	return &hls.ItemSubtitles{Track: b, Kernel: s.kernel()}
 }
 
 // Prepare queues stream t of input ahead of its airing.
@@ -267,7 +268,7 @@ func (s *SubtitleBurns) evict() {
 // queues the NEXT airing's track in the background (so a channel's following programme is ready
 // when it starts) and serves this programme's track from the Library's inventory. Only a source
 // read directly (a local file) is prepared: preparing reads all of it.
-func (r *Resolver) BurnSubtitlesFor(ctx context.Context, channelID string, airing timeline.Airing, at time.Time, input string) playout.SubtitlesFor {
+func (r *Resolver) BurnSubtitlesFor(ctx context.Context, channelID string, airing timeline.Airing, at time.Time, input string) hls.SubtitlesFor {
 	s := r.burns
 	if s == nil || !s.decodes || s.goOwned == nil || r.channels == nil || r.librarySubtitles == nil {
 		return nil
@@ -283,7 +284,7 @@ func (r *Resolver) BurnSubtitlesFor(ctx context.Context, channelID string, airin
 	next := at.Add(airing.Remaining)
 	local := airing.Kind == schedule.SlotProgram && airing.Source == "" && filepath.IsAbs(input)
 	lookup := context.WithoutCancel(ctx)
-	return func(enc encode.Encoder) *playout.ItemSubtitles {
+	return func(enc encode.Encoder) *hls.ItemSubtitles {
 		if !s.works(enc) {
 			return nil
 		}

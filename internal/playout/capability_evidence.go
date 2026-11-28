@@ -26,7 +26,7 @@ const (
 	// always had, so an install that already measured its host reads the same file.
 	capabilityEvidenceName       = ".host-capability-v1.json"
 	capabilityEvidenceTempPrefix = ".host-capability-"
-	capabilityEvidenceMaxAge     = 7 * 24 * time.Hour
+	CapabilityEvidenceMaxAge     = 7 * 24 * time.Hour
 	capabilityValidationSecs     = 1
 	capabilityIdentityTimeout    = 250 * time.Millisecond
 )
@@ -65,7 +65,7 @@ func DetectObservedWithEvidence(
 	return detectObservedWithEvidence(ctx, ffmpegPath, profile, gpu, root, capabilityEvidenceDependencies{
 		now:         time.Now,
 		log:         log,
-		fingerprint: hostCapabilityFingerprint,
+		fingerprint: HostCapabilityFingerprint,
 		detect: func(ctx context.Context, ffmpeg string, profile Profile, gpu string) Capacity {
 			return DetectObserved(ctx, ffmpeg, profile, gpu, manager)
 		},
@@ -85,7 +85,7 @@ func LoadMatchingObservedCapabilityEvidence(
 	capacity, _, ok := matchingCapabilityEvidence(ctx, ffmpegPath, profile, gpu, root, capabilityEvidenceDependencies{
 		now:         time.Now,
 		log:         log,
-		fingerprint: hostCapabilityFingerprint,
+		fingerprint: HostCapabilityFingerprint,
 	})
 	return capacity, ok
 }
@@ -205,7 +205,7 @@ func readCapabilityEvidence(root string, now time.Time, warn func(msg string, ar
 	}
 	if evidence.Version != capabilityEvidenceVersion ||
 		evidence.ObservedAt.IsZero() || now.Before(evidence.ObservedAt) ||
-		now.Sub(evidence.ObservedAt) > capabilityEvidenceMaxAge || evidence.MaxChannels <= 0 ||
+		now.Sub(evidence.ObservedAt) > CapabilityEvidenceMaxAge || evidence.MaxChannels <= 0 ||
 		encode.IsSoftware(evidence.Encoder) || !supportedHardwareEncoder(evidence.Encoder) {
 		return capabilityEvidence{}, false
 	}
@@ -213,11 +213,11 @@ func readCapabilityEvidence(root string, now time.Time, warn func(msg string, ar
 }
 
 func storeCapabilityEvidence(root string, evidence capabilityEvidence) error {
-	return writeEvidence(root, capabilityEvidenceName, evidence)
+	return WriteEvidence(root, capabilityEvidenceName, evidence)
 }
 
 // writeEvidence publishes one host-measurement file atomically: temp file, fsync, rename, dir fsync.
-func writeEvidence(root, name string, v any) error {
+func WriteEvidence(root, name string, v any) error {
 	root = strings.TrimSpace(root)
 	if root == "" {
 		return fmt.Errorf("playout: empty capability evidence root")
@@ -277,7 +277,7 @@ func supportedHardwareEncoder(encoder encode.Encoder) bool {
 	return false
 }
 
-func hostCapabilityFingerprint(
+func HostCapabilityFingerprint(
 	ctx context.Context, ffmpegPath, gpu string, profile Profile,
 ) (string, error) {
 	if strings.TrimSpace(ffmpegPath) == "" {

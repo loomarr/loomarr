@@ -6,7 +6,7 @@ Code that exists for tests and never ships in the server: the shared test double
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** any, by design — library (15), platform (12), proposals (7), channels (6), playout (3), media (2), filler (2), people (2)
+**Imports from other areas:** any, by design — library (15), platform (12), proposals (7), channels (6), playout (4), media (2), filler (2), people (2)
 
 ## Packages
 
@@ -36,6 +36,8 @@ One area of the [package map](../package-map.md#start-here).
   Locates the media binaries real-tool tests run, without importing application packages: it is a cycle-free leaf beneath testkit, so a package testkit itself imports can use it.
 - **`testkit/moviecollectionsfixture`** · → `library/tmdb`
   The shared deterministic source for movie-collection resolver tests.
+- **`testkit/originfixture`** · → `playout/hls`
+  Shared in-memory double for the playback seam the HLS origin serves.
 - **`testkit/outlookfixture`** · → `channels/schedule`, `library/mediaserver`
   Shared read-only library observations for tests.
 - **`testkit/playoutstreamfixture`**

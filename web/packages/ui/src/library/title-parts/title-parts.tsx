@@ -1,4 +1,4 @@
-import { Action, Surface, Text, useWindowWidth, VisuallyHidden } from "@loomarr/design-system";
+import { Action, PressableRow, Surface, Text, useWindowWidth, VisuallyHidden } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import { ChannelIdentity } from "../../identity";
 import { Line, Stack } from "../library-poster";
@@ -6,8 +6,10 @@ import type {
   LibraryPersonLink,
   LibraryTitleAiring,
   LibraryTitleDetail,
+  LibraryTitleFix,
   LibraryTitlePerson,
   LibraryTitlePlaying,
+  LibraryTitleProps,
 } from "../library-title/library-title.type";
 import { lengthPhrase, picturePhrase, soundPhrase } from "../technical-details";
 
@@ -154,13 +156,78 @@ const Hero = ({ title, actions }: { title: LibraryTitleDetail; actions: ReactNod
   );
 };
 
+type ChannelRowData = LibraryTitleAiring | Pick<LibraryTitleAiring, "channel">;
+
+// One channel and when it shows the title. Where the app can name its player, the whole row is that
+// link, drawn as the design system's bordered row: the same hairline card, with its hover fill and
+// amber focus border.
+const ChannelRow = ({ row, link }: { row: ChannelRowData; link: ReturnType<NonNullable<WatchLink>> }) => {
+  const { channel } = row;
+  const content = (
+    <>
+      <ChannelIdentity
+        channel={{
+          channelLogoState: channel.logo ? "ready" : "missing",
+          channelName: channel.name,
+          channelNumber: String(channel.number),
+        }}
+        logo={channel.logo}
+      />
+      {"when" in row ? (
+        <Stack>
+          <Text textRole="body">{row.when}</Text>
+          {row.episode ? (
+            <Text textRole="compact" tone="secondary">
+              {row.episode}
+            </Text>
+          ) : null}
+          {row.forecast ? (
+            <Text textRole="compact" tone="muted">
+              Expected time, it can still change
+            </Text>
+          ) : null}
+        </Stack>
+      ) : (
+        <Text textRole="compact" tone="muted">
+          Nothing scheduled soon
+        </Text>
+      )}
+    </>
+  );
+  if (!link) {
+    return (
+      <Surface gap="inline" padding="control">
+        {content}
+      </Surface>
+    );
+  }
+  return (
+    <PressableRow bordered render={link}>
+      <Stack gap="inline">{content}</Stack>
+    </PressableRow>
+  );
+};
+
+type WatchLink = LibraryTitleProps["watchLink"];
+
 // The page's main content: when each channel shows it next, earliest first, then the channels
 // that hold it with nothing scheduled.
-const OnChannels = ({ title }: { title: LibraryTitleDetail }) => {
+const OnChannels = ({
+  title,
+  watchLink,
+  collectionsLink,
+}: {
+  title: LibraryTitleDetail;
+  watchLink?: WatchLink;
+  collectionsLink?: LibraryTitleFix["collectionsLink"];
+}) => {
+  const { density } = useTitleLayout();
   const airings = title.airings ?? [];
   const scheduled = new Set(airings.map((a) => a.channel.id));
-  const rows: (LibraryTitleAiring | Pick<LibraryTitleAiring, "channel">)[] = [
-    ...airings,
+  // An airing names its channel by id, so the title's own channel entry is the one drawn.
+  const channels = new Map(title.channels.map((c) => [c.id, c]));
+  const rows: ChannelRowData[] = [
+    ...airings.map((a) => ({ ...a, channel: channels.get(a.channel.id) ?? a.channel })),
     ...title.channels.filter((c) => !scheduled.has(c.id)).map((channel) => ({ channel })),
   ];
   // The region is named by what it says, so a title on no channel has no "On these channels".
@@ -171,39 +238,21 @@ const OnChannels = ({ title }: { title: LibraryTitleDetail }) => {
         {heading}
       </Text>
       {rows.length === 0 ? (
-        <Text textRole="body" tone="secondary">
-          A channel can play it once it's in one of the channel's collections.
-        </Text>
+        <>
+          <Text textRole="body" tone="secondary">
+            A channel can play it once it's in one of the channel's collections.
+          </Text>
+          {collectionsLink ? (
+            <Line>
+              <Action accessibilityRole="link" density={density} render={collectionsLink} variant="outline">
+                Add it to a collection
+              </Action>
+            </Line>
+          ) : null}
+        </>
       ) : null}
       {rows.map((row) => (
-        <Surface gap="inline" key={row.channel.id} padding="control">
-          <ChannelIdentity
-            channel={{
-              channelLogoState: "missing",
-              channelName: row.channel.name,
-              channelNumber: String(row.channel.number),
-            }}
-          />
-          {"when" in row ? (
-            <Stack>
-              <Text textRole="body">{row.when}</Text>
-              {row.episode ? (
-                <Text textRole="compact" tone="secondary">
-                  {row.episode}
-                </Text>
-              ) : null}
-              {row.forecast ? (
-                <Text textRole="compact" tone="muted">
-                  Expected time, it can still change
-                </Text>
-              ) : null}
-            </Stack>
-          ) : (
-            <Text textRole="compact" tone="muted">
-              Nothing scheduled soon
-            </Text>
-          )}
-        </Surface>
+        <ChannelRow key={row.channel.id} link={watchLink?.(row.channel.id)} row={row} />
       ))}
     </Stack>
   );
