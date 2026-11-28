@@ -5,6 +5,7 @@ import { createElement } from "react";
 import type { ItemLayoutProps } from "../item-layout";
 import { TamaguiText } from "../text-base";
 import {
+  type DecadeTint,
   type Density,
   type LeadingStep,
   leadingSteps,
@@ -19,6 +20,7 @@ import {
 
 type TamaguiTextProps = ComponentProps<typeof TamaguiText>;
 type TextTone =
+  | DecadeTint
   | "danger"
   | "info"
   | "inverse"
@@ -210,6 +212,15 @@ const mutedRoles = new Set<TextRole>([
 // foreground at rest, and a display numeral (direct-tune digits, a pairing code) opts in with
 // `tone="signal"`.
 const textTones = {
+  // The Cross's decade tints (§2.1), named as `decadeTint` returns them: the watched channel's
+  // numeral and the By decade headings. Each follows the theme.
+  decadeTint1950: "decadeTint1950",
+  decadeTint1960: "decadeTint1960",
+  decadeTint1970: "decadeTint1970",
+  decadeTint1980: "decadeTint1980",
+  decadeTint1990: "decadeTint1990",
+  decadeTint2000: "decadeTint2000",
+  decadeTintNeutral: "decadeTintNeutral",
   danger: "stateDanger",
   info: "stateInfo",
   inverse: "contentInverse",
