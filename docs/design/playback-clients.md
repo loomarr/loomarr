@@ -163,9 +163,30 @@ is the cross-device player design ([`frontend-design.md`
 [`design/watch-player/`](../../design/watch-player/README.md)). Live Channels only: there is no
 on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause) already keeps.
 
-**Decided next (2026-11-27), not yet built:** [The Cross](../../design/watch/README.md) replaces this
-chrome on every client. Tuning, pause, the one-player rule and the keys' meanings below do not
-change; where things sit and what the Guide is do.
+**Decided next (2026-11-27):** [The Cross](../../design/watch/README.md) replaces this chrome on
+every client. Tuning, pause and the one-player rule below do not change; where things sit, what
+the Guide is and some keys do.
+
+**Shipped on the web (#4731):** the Watch route draws The Cross's watching screen
+([`frontend-design.md` §9.1](../frontend-design.md#91-layers), "The watching screen of The Cross"),
+over the picture in a window and at full screen alike until the window arrangement lands (#4732).
+The band, its film strip and the station-ID card, the channel cards, the Channels sheet, the
+on-screen channel keys, the white Play key and the volume level are gone from it; the bullets below
+still describe the phone and television apps, and the web where they agree with this list.
+
+- **Keys on the web's Watch** (when focus is not in a control or field that owns them): `↑`/`↓`
+  flip, showing only the lower third · digits tune direct, `Enter` at once · `Space` or a click on
+  the picture pause and resume · `End` goes live · `←`/`→` ten seconds through the window · `/`
+  find a channel · `G` the Guide · `L` last channel · `C` subtitles · `A` audio · `M` mute · `F` full
+  screen, from anywhere, the list and a menu included · `?` the shortcuts sheet · `Esc` one step
+  back: an inner page, a menu, typed digits, then the list's own steps, then out of full screen.
+  Channels opens the list: the arrows move through it without tuning, `Enter` or a click tunes, `Esc`
+  closes it. `Esc` no longer leaves `/watch`; the named back control does. Picture in picture and
+  Playback details are rows of More (`P` and `I` are not keys there).
+- **The tune on the web** follows the player: a flip to a warmed channel is a short static burst and
+  the bars; a channel that must start, and the page's first tune, hold the static for the real wait
+  with "Tuning in..." in the lower third, and the first frame uncovers it. A failure shows the
+  stopped cover.
 
 - **Seek inside `DVRHorizon`.** ⟲10 / ⟳10 and `←`/`→` move ten seconds; ⟳10 does nothing at the
   live edge. The playbar's past is seekable by click or drag; its future is preview only. `L` (and
