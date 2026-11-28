@@ -490,6 +490,9 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 			facts.Name = told
 		}
 	}
+	if res.kept {
+		nameHomeVideo(&facts)
+	}
 	// An episode its file names by the day it aired lists that day until a catalog says more.
 	if day := id.airDate(); facts.PremiereDate == "" && day != "" {
 		facts.PremiereDate = day
@@ -620,6 +623,8 @@ type resolution struct {
 	record *mp.Record
 	// entry is the entry of a season or order record that describes an episode; nil for none.
 	entry *mp.Record
+	// kept is a movie or series the maintainer kept as a home video.
+	kept bool
 	// unnumbered is an episode its show's catalog could not number, with no answer for the show.
 	unnumbered bool
 	// waiting is a title written without a catalog record it asked for and the Enricher has not
@@ -641,6 +646,13 @@ func (b *builder) resolveNamed(ctx context.Context, origin inventory.OriginKey, 
 		in.Records = append(append([]mp.Record(nil), in.Records...), rec)
 	}
 	out := resolution{resolved: b.im.Resolver.Resolve(in)}
+	// A home video is named by its file or folder (nameHomeVideo) and sits under its own genre,
+	// whatever its files say.
+	if b.im.keptHome(ctx, in.Kind, origin) {
+		out.kept = true
+		out.resolved.Title, out.resolved.Year = precedence.Picked[string]{}, precedence.Picked[int]{}
+		out.resolved.Genres.Value = []string{HomeVideoGenre}
+	}
 	// The catalog record below adds details, never identity: what decides is known now.
 	if in.Kind == mp.KindMovie || in.Kind == mp.KindSeries {
 		out.match = match(out.resolved, in.Records)
@@ -813,6 +825,10 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 			for year := range s.years {
 				facts.ProductionYear = year
 			}
+		}
+		if res.kept && s.dir != "" {
+			facts.Name = filepath.Base(filepath.FromSlash(s.dir))
+			nameHomeVideo(&facts)
 		}
 		coverage["sources"] = inventory.CoverageEmpty
 		snapshot := inventory.Snapshot{

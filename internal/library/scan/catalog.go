@@ -48,6 +48,31 @@ func (im *Importer) linkRecord(ctx context.Context, kind mp.Kind, origin invento
 	}, true
 }
 
+// HomeVideoGenre is the genre of a title the maintainer kept as a home video.
+const HomeVideoGenre = "Home videos"
+
+// nameHomeVideo splits a home video's file or folder name into its title and year, as the
+// catalog's search reads a name (saidBy).
+func nameHomeVideo(facts *inventory.ItemFacts) {
+	if s := saidBy(facts.Name); s.title != "" {
+		facts.Name, facts.ProductionYear = s.title, s.year
+	}
+}
+
+// keptHome reports whether the maintainer kept this movie or series as a home video. An answer
+// that cannot be read says nothing.
+func (im *Importer) keptHome(ctx context.Context, kind mp.Kind, origin inventory.OriginKey) bool {
+	if im.Answers == nil || (kind != mp.KindMovie && kind != mp.KindSeries) {
+		return false
+	}
+	answer, ok, err := im.Answers.LibraryAnswerFor(ctx, libraryOrigin(origin))
+	if err != nil {
+		im.log().Warn("library scan: answer not read", "err", err)
+		return false
+	}
+	return ok && answer.Kept && answer.Kind == string(kind)
+}
+
 // libraryID is id as the store keeps it; externalID, the store's id back.
 func libraryID(id mp.ExternalID) librarystore.LibraryID {
 	return librarystore.LibraryID{Namespace: string(id.Namespace), Value: id.Value}
