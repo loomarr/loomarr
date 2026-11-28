@@ -14,7 +14,7 @@ const webRoot = fileURLToPath(new URL("../", import.meta.url));
 const ledgerPath = join(webRoot, "test-harness.json");
 
 const LEDGER_NOTE =
-  "createRoot calls left in tests, maintained by web/scripts/check-test-harness.mjs. Counts may only fall: mount with renderUi from @loomarr/test-support and run `pnpm test-harness:update`. Never raise one to pass the check.";
+  "createRoot calls left in tests, maintained by web/scripts/check-test-harness.mjs. Counts may only fall: mount with renderUi from @loomarr/test-support and run `pnpm test-harness:update`. Never raise one to pass the check. The packages/design-system files keep their own roots because a dependency on test-support is a package cycle; the packages/ui/tests/library-* files belong to the library redesign (#4641).";
 
 const isTestFile = (path) => /\.test\.tsx?$/.test(path) || /\/tests\/.*\.tsx?$/.test(path);
 

@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -17,8 +16,6 @@ import {
   useWatchingControls,
 } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 /** Renders a hook the way a shell does; `latest()` is what it returned on the last render. */
 const mountHook = async <Result,>(hook: () => Result) => {
   let result!: Result;
@@ -26,19 +23,17 @@ const mountHook = async <Result,>(hook: () => Result) => {
     result = hook();
     return null;
   };
-  const container = (
-    globalThis as unknown as { document: { createElement: (tag: string) => never } }
-  ).document.createElement("div");
-  const root = createRoot(container);
-  await act(async () => root.render(<Probe />));
+  const view = renderUi(null);
+  await act(async () => view.rerender(<Probe />));
   return {
     latest: () => result,
-    rerender: () => act(async () => root.render(<Probe />)),
-    unmount: () => act(async () => root.unmount()),
+    rerender: () => act(async () => view.rerender(<Probe />)),
+    unmount: () => act(async () => view.unmount()),
   };
 };
 
 afterEach(() => {
+  cleanup();
   vi.useRealTimers();
 });
 

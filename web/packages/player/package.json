@@ -20,6 +20,7 @@
     "hls.js": "1.7.3"
   },
   "devDependencies": {
+    "@loomarr/test-support": "workspace:*",
     "@types/react-dom": "19.3.0",
     "expo": "58.1.0",
     "expo-video": "58.0.14",

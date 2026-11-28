@@ -1,11 +1,8 @@
 // @vitest-environment jsdom
 
 import { createPairedServer } from "@loomarr/fixtures";
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // What the device holds, and what the TV's native modules would answer: the app's own code runs as is,
 // against a paired server that answers from the test card (`createPairedServer`).
@@ -114,12 +111,10 @@ type Document = {
     querySelector(selector: string): Node | null;
     querySelectorAll(selector: string): ArrayLike<Node>;
   };
-  createElement(tag: string): Parameters<typeof createRoot>[0];
 };
 const page = (globalThis as unknown as { document: Document }).document;
 
 let server: ReturnType<typeof createPairedServer>;
-let root: Root;
 
 const label = (prefix: string) => page.body.querySelector(`[aria-label^="${prefix}"]`);
 // The Guide notice's button, which reads "Trying again…" while its retry is in flight.
@@ -143,7 +138,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await act(async () => root.unmount());
+  await act(async () => cleanup());
   Reflect.deleteProperty(globalThis.document, "visibilityState");
   vi.unstubAllGlobals();
   device.store.clear();
@@ -163,10 +158,9 @@ const setVisibility = async (state: "hidden" | "visible") => {
 };
 
 const launch = async () => {
-  const host = page.createElement("div");
-  page.body.append(host);
-  root = createRoot(host);
-  await act(async () => root.render(<App />));
+  await act(async () => {
+    renderUi(<App />);
+  });
 };
 
 describe("the TV app", () => {

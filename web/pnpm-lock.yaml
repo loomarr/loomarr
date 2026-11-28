@@ -191,6 +191,9 @@ importers:
       '@loomarr/fixtures':
         specifier: workspace:*
         version: link:../../packages/fixtures
+      '@loomarr/test-support':
+        specifier: workspace:*
+        version: link:../../packages/test-support
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0
@@ -291,6 +294,9 @@ importers:
       '@loomarr/fixtures':
         specifier: workspace:*
         version: link:../../packages/fixtures
+      '@loomarr/test-support':
+        specifier: workspace:*
+        version: link:../../packages/test-support
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0
@@ -668,6 +674,9 @@ importers:
         specifier: workspace:*
         version: link:../design-system
     devDependencies:
+      '@loomarr/test-support':
+        specifier: workspace:*
+        version: link:../test-support
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0
@@ -711,6 +720,9 @@ importers:
         specifier: workspace:*
         version: link:../player
     devDependencies:
+      '@loomarr/test-support':
+        specifier: workspace:*
+        version: link:../test-support
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0
@@ -757,6 +769,9 @@ importers:
         specifier: 1.7.3
         version: 1.7.3
     devDependencies:
+      '@loomarr/test-support':
+        specifier: workspace:*
+        version: link:../test-support
       '@types/react-dom':
         specifier: 19.3.0
         version: 19.3.0(@types/react@19.3.0)
@@ -877,6 +892,9 @@ importers:
       '@loomarr/fixtures':
         specifier: workspace:*
         version: link:../fixtures
+      '@loomarr/test-support':
+        specifier: workspace:*
+        version: link:../test-support
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0
