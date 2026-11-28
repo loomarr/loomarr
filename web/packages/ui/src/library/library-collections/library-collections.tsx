@@ -28,6 +28,7 @@ const PosterPile = ({ pile }: { pile: readonly LibraryCollectionPoster[] }) => {
         <Stack key={i} left={i * 8} position="absolute" top={(2 - i) * 6} width={PILE_WIDTH}>
           <LibraryPoster
             art={shown[i]?.poster}
+            compact
             dim={i > 0}
             homeVideo={shown[i]?.homeVideo}
             kind={shown[i]?.kind}

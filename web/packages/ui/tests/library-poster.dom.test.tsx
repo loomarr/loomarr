@@ -60,21 +60,16 @@ describe("a title with no artwork", () => {
     expect(drawn?.textContent).toBe("Paper Kites1987");
   });
 
-  it.each([
-    [{ kind: "series" }, "1987 · Series"],
-    [{ kind: "movie", homeVideo: true }, "1987 · Home video"],
-  ] as const)("says what %j is beside the year", (facts, foot) => {
-    const drawn = cover({ name: "Upriver", year: 1987, ...facts });
-    expect(drawn?.textContent).toBe(`Upriver${foot}`);
-  });
+  // The caption under the poster says the kind; the cover says only what the caption also says.
+  it.each([{ kind: "series" }, { kind: "movie", homeVideo: true }] as const)(
+    "says the year alone for %j",
+    (facts) => {
+      expect(cover({ name: "Upriver", year: 1987, ...facts })?.textContent).toBe("Upriver1987");
+    },
+  );
 
-  it("drops the kind from a phone's smaller tile", () => {
-    screen.width = 390;
-    expect(cover({ name: "Upriver", year: 1987, kind: "series" })?.textContent).toBe("Upriver1987");
-  });
-
-  it("says when the year isn't known", () => {
-    expect(cover({ name: "Upriver" })?.textContent).toBe("UpriverYear unknown");
+  it("has no foot when the year isn't known", () => {
+    expect(cover({ name: "Upriver" })?.textContent).toBe("Upriver");
   });
 
   it("is hidden from assistive tech, which hears the title once from what holds it", () => {

@@ -1,18 +1,9 @@
-// What the foot of a drawn cover says (frontend-design §2.1): the year, and the kind where a movie
-// is not what it is.
-
+// What a drawn cover knows of its title (frontend-design §2.1). Its foot says the year alone; the
+// caption under the poster says the kind, in the Library's own words.
 interface CoverFacts {
   year?: number;
   kind?: "movie" | "series";
   homeVideo?: boolean;
 }
 
-const coverYear = (year: number | undefined) => (year ? String(year) : "Year unknown");
-
-const coverKind = ({ kind, homeVideo }: CoverFacts) => {
-  if (homeVideo) return "Home video";
-  return kind === "series" ? "Series" : "";
-};
-
 export type { CoverFacts };
-export { coverKind, coverYear };

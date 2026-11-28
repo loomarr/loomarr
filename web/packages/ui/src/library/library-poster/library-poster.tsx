@@ -6,11 +6,11 @@ import {
   Surface,
   Text,
   ThemeScope,
+  useWindowWidth,
 } from "@loomarr/design-system";
 import type { ComponentProps, ReactNode } from "react";
-import { useWindowDimensions } from "react-native";
 
-import { type CoverFacts, coverKind, coverYear } from "./stand-in";
+import type { CoverFacts } from "./stand-in";
 
 // Transparent layout boxes: Surface without its card look.
 const Stack = (props: ComponentProps<typeof Surface>) => (
@@ -26,13 +26,17 @@ const PAGE_GUTTER = { phone: 16, wide: 32 } as const;
 // Covers the box it sits in without taking the pointer from the poster.
 const OVER = { bottom: 0, left: 0, pointerEvents: "none", position: "absolute", right: 0, top: 0 } as const;
 
-// The words of a drawn cover: the title at the head and the year at the foot, under a hairline, both
-// ruled and lettered in the decade's ink. A phone's small tiles take the smaller title and drop the
-// kind.
-const CoverWords = ({ name, year, kind, homeVideo }: CoverFacts & { name: string }) => {
-  const wide = useWindowDimensions().width >= 768;
+// The words of a drawn cover: the title at the head and the year at the foot, under a hairline in
+// the decade's ink. With no year there is no foot. Every word on the cover is also in the caption
+// that names the tile, so a speech-input user never reads a word the name lacks. A phone's tiles,
+// and a narrow poster such as a collection's pile, take the smaller title.
+const CoverWords = ({
+  name,
+  year,
+  compact,
+}: Pick<CoverFacts, "year"> & { name: string; compact: boolean }) => {
+  const wide = useWindowWidth() >= 768 && !compact;
   const ink = decadeTint(year && Math.floor(year / 10) * 10);
-  const what = wide ? coverKind({ homeVideo, kind }) : "";
   return (
     <Stack
       {...OVER}
@@ -51,12 +55,14 @@ const CoverWords = ({ name, year, kind, homeVideo }: CoverFacts & { name: string
       >
         {name}
       </Text>
-      <Stack flexShrink={0} gap={wide ? 8 : 5}>
-        <Surface backgroundColor={ink} borderRadius={0} borderWidth={0} height={1} opacity={0.35} />
-        <Text fontVariant={["tabular-nums"]} textRole="label" tone={ink}>
-          {what ? `${coverYear(year)} · ${what}` : coverYear(year)}
-        </Text>
-      </Stack>
+      {year ? (
+        <Stack flexShrink={0} gap={wide ? 8 : 5}>
+          <Surface backgroundColor={ink} borderRadius={0} borderWidth={0} height={1} opacity={0.35} />
+          <Text fontVariant={["tabular-nums"]} textRole="label" tone={ink}>
+            {String(year)}
+          </Text>
+        </Stack>
+      ) : null}
     </Stack>
   );
 };
@@ -73,10 +79,9 @@ const CoverWords = ({ name, year, kind, homeVideo }: CoverFacts & { name: string
 const LibraryPoster = ({
   name,
   year,
-  kind,
-  homeVideo,
   art,
   small = false,
+  compact = false,
   dim = false,
   children,
 }: CoverFacts & {
@@ -86,6 +91,8 @@ const LibraryPoster = ({
   art?: ReactNode;
   /** A thumbnail beside a row's words: its cover is the wash alone, with no room for words. */
   small?: boolean;
+  /** A narrow poster on any window, such as a collection's pile: its cover takes the smaller title. */
+  compact?: boolean;
   dim?: boolean;
   /** Overlays: a badge or a dot in a corner. */
   children?: ReactNode;
@@ -120,7 +127,7 @@ const LibraryPoster = ({
             borderWidth={1}
             opacity={0.18}
           />
-          {small ? null : <CoverWords homeVideo={homeVideo} kind={kind} name={name} year={year} />}
+          {small ? null : <CoverWords compact={compact} name={name} year={year} />}
         </ThemeScope>
       ) : (
         frame
