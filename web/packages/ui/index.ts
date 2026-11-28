@@ -246,6 +246,8 @@ export {
   surfPreviousChannel,
   watchingScheduleFromGuide,
 } from "./src/surf-rail";
+export type { TuneBarsProps, TuneStaticProps } from "./src/tune-static";
+export { TuneBars, TuneStatic } from "./src/tune-static";
 export type { BackHandlerSource } from "./src/use-client-destination";
 export { useClientDestination } from "./src/use-client-destination";
 export { useCommittedDraft } from "./src/use-committed-draft";
