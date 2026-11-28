@@ -305,6 +305,7 @@ tables:
       edition: Which version of the title this file is, such as a director's cut; empty for the usual one.
       part: Which part of a movie split over several files ("cd1", "cd2") this file is, from 1; 0 for a whole file.
       plays: True for the one copy that plays when the title has several (the one its arr lists, else the sharpest, else the biggest), or for each part of a movie in parts, which play in part order.
+      revision: The inventory's revision of the file, which a replaced file changes; empty until the title is next written.
 
   - name: library_streams
     about: >
@@ -650,6 +651,7 @@ tables:
       item_id: The title (a library_items id).
       role: What the image is for, one of poster, backdrop or logo.
       image_hash: The image (an images hash).
+      source: The file a home video's frame came from, as its inventory revision and path; empty for any other image.
 
   - name: library_candidate_images
     about: The posters of what a search found for a title that Needs you.
