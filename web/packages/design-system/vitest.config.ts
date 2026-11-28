@@ -1,1 +1,3 @@
-export { default } from "../../vitest.universal.config.js";
+import { withNativeProject } from "../../vitest.universal.config.js";
+
+export default withNativeProject();
