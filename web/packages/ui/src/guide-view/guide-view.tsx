@@ -274,6 +274,8 @@ const Ready = <C extends GuideViewEntry>({
           accessibilityLabel={`${channel.number} ${channel.name}, watch channel`}
           onPress={() => press({ channelId: channel.id, type: "pressChannel" })}
           pointerTakesNoFocus
+          // A phone's label is a line of its own, from the leading edge.
+          {...(phone ? ({ align: "start", fill: true } as const) : {})}
           // A row with nothing drawn has no block for the cursor, so its channel holds the focus.
           ref={hold(`${channel.id}/undefined`)}
           size={size.row}
@@ -343,16 +345,16 @@ const Ready = <C extends GuideViewEntry>({
           lowerThird={lowerThird}
           nowMs={nowMs}
           picture={picture}
-          tabs={layout === "television" ? tabs : undefined}
+          tabs={layout === "television" ? <Stack testID="guide-view-tabs">{tabs}</Stack> : undefined}
           watched={watched}
         />
         {layout === "television" ? null : (
           <Stack align={phone ? "stretch" : "center"} direction={phone ? "column" : "row"} justify="between">
-            {tabs}
-            {pager}
+            <Stack testID="guide-view-tabs">{tabs}</Stack>
+            <Stack testID="guide-view-pager">{pager}</Stack>
           </Stack>
         )}
-        <Stack direction="row">
+        <Stack direction="row" testID="guide-view-ruler">
           {size.label ? <Surface backgroundColor="transparent" borderWidth={0} width={size.label} /> : null}
           <Stack flex={1}>
             <Ruler
@@ -365,77 +367,81 @@ const Ready = <C extends GuideViewEntry>({
             />
           </Stack>
         </Stack>
-        <ScrollView showsVerticalScrollIndicator={false}>
-          <Stack gap="1" paddingVertical={2}>
-            {view.notice ? (
-              <Stack align="start" gap="2">
-                <Text textRole="body" tone="secondary">
-                  {NOTICES[view.notice]}
-                </Text>
-                <OwnKeys>
-                  <Action onPress={() => press({ type: "showAll" })} variant="outline">
-                    Show all channels
-                  </Action>
-                </OwnKeys>
-              </Stack>
-            ) : null}
-            {view.rows.map((channel) => {
-              const decade = view.headings.get(channel.id);
-              const mine = cursor.kind === "programme" && cursor.channelId === channel.id;
-              return (
-                <Stack gap="1" key={channel.id}>
-                  {decade === undefined ? null : (
-                    <Stack role="heading" {...({ "aria-level": 2 } as object)}>
-                      <Text textRole="label" tone={decadeTint(decade)}>{`${decade}s`}</Text>
-                    </Stack>
-                  )}
-                  <Stack
-                    aria-label={`${channel.number} ${channel.name}`}
-                    align={phone ? "stretch" : "center"}
-                    direction={phone ? "column" : "row"}
-                    role="group"
-                  >
-                    <Stack flexShrink={0} width={size.label || undefined}>
-                      {label(channel)}
-                    </Stack>
-                    <Stack flex={phone ? 0 : 1} minWidth={0}>
-                      {channel.id === state.watchedId &&
-                      channel.programmes.some((p) => p.stopMs > span.startMs && p.startMs < span.stopMs) ? (
-                        strip(channel)
-                      ) : (
-                        <Row
-                          artworkUri={artworkUri}
-                          blockRef={(id) => hold(`${channel.id}/${id}`)}
-                          channel={channel}
-                          cursorId={mine ? programme?.id : undefined}
-                          formatTime={formatTime}
-                          height={size.row}
-                          nowMs={nowMs}
-                          onPress={(programmeId) => pressBlock(channel.id, programmeId)}
-                          startMs={span.startMs}
-                          stopMs={span.stopMs}
-                        />
-                      )}
+        <Stack flex={1} minHeight={0} testID="guide-view-rows">
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <Stack gap="1" paddingVertical={2}>
+              {view.notice ? (
+                <Stack align="start" gap="2">
+                  <Text textRole="body" tone="secondary">
+                    {NOTICES[view.notice]}
+                  </Text>
+                  <OwnKeys>
+                    <Action onPress={() => press({ type: "showAll" })} variant="outline">
+                      Show all channels
+                    </Action>
+                  </OwnKeys>
+                </Stack>
+              ) : null}
+              {view.rows.map((channel) => {
+                const decade = view.headings.get(channel.id);
+                const mine = cursor.kind === "programme" && cursor.channelId === channel.id;
+                return (
+                  <Stack gap="1" key={channel.id}>
+                    {decade === undefined ? null : (
+                      <Stack role="heading" {...({ "aria-level": 2 } as object)}>
+                        <Text textRole="label" tone={decadeTint(decade)}>{`${decade}s`}</Text>
+                      </Stack>
+                    )}
+                    <Stack
+                      aria-label={`${channel.number} ${channel.name}`}
+                      align={phone ? "stretch" : "center"}
+                      direction={phone ? "column" : "row"}
+                      role="group"
+                    >
+                      <Stack flexShrink={0} testID="guide-view-label" width={size.label || undefined}>
+                        {label(channel)}
+                      </Stack>
+                      <Stack flex={phone ? undefined : 1} minWidth={0} testID="guide-view-row">
+                        {channel.id === state.watchedId &&
+                        channel.programmes.some((p) => p.stopMs > span.startMs && p.startMs < span.stopMs) ? (
+                          strip(channel)
+                        ) : (
+                          <Row
+                            artworkUri={artworkUri}
+                            blockRef={(id) => hold(`${channel.id}/${id}`)}
+                            channel={channel}
+                            cursorId={mine ? programme?.id : undefined}
+                            formatTime={formatTime}
+                            height={size.row}
+                            nowMs={nowMs}
+                            onPress={(programmeId) => pressBlock(channel.id, programmeId)}
+                            startMs={span.startMs}
+                            stopMs={span.stopMs}
+                          />
+                        )}
+                      </Stack>
                     </Stack>
                   </Stack>
-                </Stack>
-              );
-            })}
-            {span.endsAtMs === undefined ? null : (
-              <Text textRole="label" tone="secondary">
-                {`The schedule ends at ${formatTime(span.endsAtMs)}`}
-              </Text>
-            )}
-          </Stack>
-        </ScrollView>
+                );
+              })}
+              {span.endsAtMs === undefined ? null : (
+                <Text textRole="label" tone="secondary">
+                  {`The schedule ends at ${formatTime(span.endsAtMs)}`}
+                </Text>
+              )}
+            </Stack>
+          </ScrollView>
+        </Stack>
         {factsAiring ? (
-          <ProgrammeFacts
-            airing={factsAiring}
-            formatTime={formatTime}
-            nowMs={nowMs}
-            startMs={programme?.startMs ?? factsAiring.startMs}
-            stopMs={programme?.stopMs ?? factsAiring.stopMs}
-          />
+          <Stack flexShrink={0} testID="guide-view-facts">
+            <ProgrammeFacts
+              airing={factsAiring}
+              formatTime={formatTime}
+              nowMs={nowMs}
+              startMs={programme?.startMs ?? factsAiring.startMs}
+              stopMs={programme?.stopMs ?? factsAiring.stopMs}
+            />
+          </Stack>
         ) : null}
         <StripMessage message={message} />
       </Stack>

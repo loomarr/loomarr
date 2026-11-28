@@ -52,7 +52,7 @@ const Looking = ({
   // A television's header is one line beside a small picture; a phone's facts stand under the rows.
   if (layout !== "desktop") {
     return (
-      <Text numberOfLines={1} textRole="cardLabel">
+      <Text numberOfLines={layout === "phone" ? 2 : 1} textRole="cardLabel">
         {`${heading} · ${programme.title} · ${when}${airing.rating ? ` · ${airing.rating}` : ""}`}
       </Text>
     );
@@ -105,8 +105,9 @@ const Head = ({
     <Looking formatTime={formatTime} layout={layout} look={look} nowMs={nowMs} />
   );
   const described = (
-    <Stack flex={phone ? 0 : 1} gap="2" minWidth={0}>
-      <Stack aria-label="Looking" role="group">
+    // A phone's column takes its own height: `flex={0}` there would give it none.
+    <Stack flex={phone ? undefined : 1} gap="2" minWidth={0}>
+      <Stack aria-label="Looking" role="group" testID="guide-view-header">
         {words}
       </Stack>
       {tabs}
@@ -115,7 +116,7 @@ const Head = ({
   return (
     <Stack align={phone ? "stretch" : "start"} direction={phone ? "column" : "row"} gap="4">
       {phone ? null : described}
-      <Stack flexShrink={0} gap="1" width={PICTURE[layout].width}>
+      <Stack flexShrink={0} gap="1" testID="guide-view-picture" width={PICTURE[layout].width}>
         <Surface
           backgroundColor="surfaceElevated"
           borderRadius={6}
