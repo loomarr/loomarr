@@ -57,6 +57,11 @@ a dot for it.
   and contextual preview; short filler segments keep their separate density treatment.
   Filler previews retain supplied clip names and kinds, without inventing metadata. The compact
   phone Guide and remote TV interaction remain separate adapters.
+  - **Target, not shipped yet (The Cross, #4730):** the tuned channel's row is the film strip at full
+    height ([`docs/frontend-design.md` §9.2](../frontend-design.md#92-the-band)). What is on now
+    carries its artwork with the aired part dimmed, an ended programme is dimmed, a later one shows its
+    start time, a run of one series is one block with its episode count, and a break is a thin tick. A
+    later programme's facts show on a pointer or focus, under the Guide on an upright phone.
 - **Requests** (`/requests`) is one surface for everyone (#1405). Its nav count is what waits on the
   viewer, the same number as its **Needs you** tab.
 - **Home** (`/dashboard`, both roles) leads with what's on, not machine state (#1659, #1822): a
