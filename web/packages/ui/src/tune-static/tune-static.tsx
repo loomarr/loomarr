@@ -2,14 +2,13 @@ import type { TuneBarsPhase, TuneCover } from "@loomarr/core/tune";
 import { TUNE_BURST_MS, TUNE_FLIP_MS, TUNE_UNCOVER_MS } from "@loomarr/core/tune";
 import {
   AnalogSnow,
-  brandChroma,
-  playerChrome,
-  semanticColors,
+  Layer,
+  type LayerColor,
   ThemeScope,
   useReducedMotionPreference,
 } from "@loomarr/design-system";
 import { useEffect, useRef } from "react";
-import { Animated, Easing, View } from "react-native";
+import { Animated, Easing } from "react-native";
 
 // The Cross's tune (frontend-design §9.4): dim static over the picture and the seven bars along the
 // crossing. Both parts take what `tuneView` says and draw it. They decide nothing and play no sound.
@@ -21,14 +20,11 @@ const FADE_MS = TUNE_UNCOVER_MS - TUNE_BURST_MS;
 const CROSSFADE_MS = 120;
 
 // The brand chroma is the seven bars, in order. Waiting, they alternate two greys.
-const WAITING = brandChroma.map((_, i) =>
-  i % 2 === 0 ? semanticColors.content.secondary : semanticColors.action.disabled,
-);
+const CHROMA = ["chroma0", "chroma1", "chroma2", "chroma3", "chroma4", "chroma5", "chroma6"] as const;
+const WAITING = CHROMA.map((_, i): LayerColor => (i % 2 === 0 ? "contentSecondary" : "actionDisabled"));
 const BAR_HEIGHT = 3;
 // The share of a run spent crossing; the rest fades the bars away.
 const CROSSED = 0.7;
-
-const fill = { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 } as const;
 
 type TuneStaticProps = {
   cover: TuneCover;
@@ -61,13 +57,8 @@ const TuneStatic = ({ cover, holdSnow = false, reducedMotion }: TuneStaticProps)
   }, [cover, level, still]);
 
   return (
-    <Animated.View
-      aria-hidden
-      pointerEvents="none"
-      style={{ ...fill, opacity: level }}
-      testID={`tune-static-${cover}`}
-    >
-      <View style={{ ...fill, backgroundColor: playerChrome.surface }} />
+    <Layer aria-hidden fill opacity={level} pointerEvents="none" testID={`tune-static-${cover}`}>
+      <Layer background="playerSurface" fill />
       {still ? null : (
         // The picture's plane is dark in either theme, so the snow is never a light wash. The snow is
         // hundreds of views, so it stays mounted between covers, hidden and without its flicker.
@@ -76,7 +67,7 @@ const TuneStatic = ({ cover, holdSnow = false, reducedMotion }: TuneStaticProps)
           <AnalogSnow reducedMotion={holdSnow || cover === "none"} />
         </ThemeScope>
       )}
-    </Animated.View>
+    </Layer>
   );
 };
 
@@ -111,41 +102,41 @@ const TuneBars = ({ bars, reducedMotion, run }: TuneBarsProps) => {
   }, [progress, run, running]);
 
   if (bars === "none" || (bars === "run" && still)) return null;
-  const colours = bars === "waiting" ? WAITING : brandChroma;
+  const colours = bars === "waiting" ? WAITING : CHROMA;
 
   return (
-    <Animated.View
+    <Layer
       aria-hidden
+      direction="row"
+      height={BAR_HEIGHT}
+      inFlow
+      opacity={running ? progress.interpolate({ inputRange: [0, CROSSED, 1], outputRange: [1, 1, 0] }) : 1}
       pointerEvents="none"
-      style={{
-        flexDirection: "row",
-        height: BAR_HEIGHT,
-        opacity: running ? progress.interpolate({ inputRange: [0, CROSSED, 1], outputRange: [1, 1, 0] }) : 1,
-        width: "100%",
-      }}
       testID={`tune-bars-${bars}`}
+      width="100%"
     >
       {colours.map((colour, i) => {
         const arrives = (i / colours.length) * CROSSED;
         return (
-          <Animated.View
+          <Layer
+            background={colour}
+            flex={1}
+            inFlow
             // biome-ignore lint/suspicious/noArrayIndexKey: seven fixed positions; colours repeat
             key={i}
-            style={{
-              backgroundColor: colour,
-              flex: 1,
-              opacity: running
+            opacity={
+              running
                 ? progress.interpolate({
                     extrapolate: "clamp",
                     inputRange: [arrives, arrives + CROSSED / colours.length],
                     outputRange: [0, 1],
                   })
-                : 1,
-            }}
+                : 1
+            }
           />
         );
       })}
-    </Animated.View>
+    </Layer>
   );
 };
 

@@ -1,13 +1,10 @@
-import { Surface, Text, ThemeScope } from "@loomarr/design-system";
+import { Layer, Stack, Surface, Text, ThemeScope } from "@loomarr/design-system";
 import { type ComponentRef, useRef, useState } from "react";
 import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-  Platform,
   ScrollView,
-  View,
-  type ViewStyle,
 } from "react-native";
 
 import type { FilmStripLook, FilmStripProps } from "./film-strip.type";
@@ -177,24 +174,23 @@ const FilmStrip = ({
   );
 
   const track = (
-    <View
-      // react-native-web hands a View's key events to the DOM; native moves focus by itself.
-      {...(Platform.OS === "web" ? ({ onKeyDown } as object) : {})}
-      style={{ height, width: isRow ? "100%" : strip.width + FADE }}
-    >
-      <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: HEAD_ROOM }}>
+    <Layer height={height} inFlow onKeyDown={onKeyDown} width={isRow ? "100%" : strip.width + FADE}>
+      <Layer bottom={0} left={0} right={0} top={HEAD_ROOM}>
         {strip.placed.map(({ fromMs, item, left, width }) => {
           if (item.type === "break") {
             const middle = (item.startMs + item.stopMs) / 2;
             const x = !isRow && width > 0 ? left + width / 2 : xAt(middle);
             return x === undefined ? null : (
-              <View
-                accessibilityLabel={`Break at ${formatTime(item.startMs)}`}
+              <Layer
+                aria-label={`Break at ${formatTime(item.startMs)}`}
                 key={item.id}
+                left={x}
+                marginLeft={-1}
                 pointerEvents="none"
                 role="img"
-                style={{ left: x, marginLeft: -1, position: "absolute", top: STILL_HEIGHT * 0.3, zIndex: 2 }}
                 testID="film-strip-break"
+                top={STILL_HEIGHT * 0.3}
+                zIndex={2}
               >
                 <Surface
                   backgroundColor="contentSecondary"
@@ -203,7 +199,7 @@ const FilmStrip = ({
                   height={STILL_HEIGHT * 0.4}
                   width={2}
                 />
-              </View>
+              </Layer>
             );
           }
           const state = stateOf(item, nowMs);
@@ -252,14 +248,18 @@ const FilmStrip = ({
             />
           );
         })}
-      </View>
+      </Layer>
       {behind && liveX !== undefined ? (
-        <View
-          accessibilityLabel="Live"
+        <Layer
+          aria-label="Live"
+          left={liveX}
+          marginLeft={-1}
           pointerEvents="none"
           role="img"
-          style={{ left: liveX, marginLeft: -1, position: "absolute", top: 0, width: 2, zIndex: 3 }}
           testID="film-strip-live"
+          top={0}
+          width={2}
+          zIndex={3}
         >
           <Surface
             backgroundColor="stateLive"
@@ -268,48 +268,49 @@ const FilmStrip = ({
             height={STILL_HEIGHT + HEAD_ROOM}
             width={2}
           />
-          <View
-            style={{
-              alignItems: liveLeads ? "flex-end" : "flex-start",
-              position: "absolute",
-              top: HEAD_ROOM + 4,
-              width: 40,
-              ...(liveLeads ? { right: 5 } : { left: 5 }),
-            }}
+          <Layer
             testID={`film-strip-live-${liveLeads ? "leading" : "trailing"}`}
+            top={HEAD_ROOM + 4}
+            width={40}
+            {...(liveLeads ? { right: 5 } : { left: 5 })}
           >
-            <Surface backgroundColor="surfaceCanvas" borderRadius={4} borderWidth={0} paddingHorizontal={4}>
-              <Text textRole="label" tone="live">
-                Live
-              </Text>
-            </Surface>
-          </View>
-        </View>
+            <Stack align={liveLeads ? "end" : "start"}>
+              <Surface backgroundColor="surfaceCanvas" borderRadius={4} borderWidth={0} paddingHorizontal={4}>
+                <Text textRole="label" tone="live">
+                  Live
+                </Text>
+              </Surface>
+            </Stack>
+          </Layer>
+        </Layer>
       ) : null}
       {headX !== undefined ? (
-        <View
+        <Layer
+          left={headX}
+          marginLeft={-1}
           pointerEvents="none"
-          style={{ left: headX, marginLeft: -1, position: "absolute", top: 0, zIndex: 3 }}
           testID="film-strip-playhead"
+          top={0}
+          zIndex={3}
         >
           {/* White over a picture; over a flat tone, the page's own text colour. */}
           {under && pictureOf(under) ? <ThemeScope theme="dark">{playhead}</ThemeScope> : playhead}
-        </View>
+        </Layer>
       ) : null}
-    </View>
+    </Layer>
   );
 
-  // The mask fades whatever the strip is drawn on; a native client has none and cuts at the edge.
   const more = viewWidth > 0 && strip.width - scrolled - viewWidth > 1;
-  const mask = `linear-gradient(90deg, black calc(100% - ${FADE}px), transparent)`;
-  const fade = more && Platform.OS === "web" ? ({ maskImage: mask } as unknown as ViewStyle) : null;
 
   return (
-    <View
+    <Layer
       aria-label="Schedule"
+      inFlow
       onLayout={(e: LayoutChangeEvent) => setViewWidth(e.nativeEvent.layout.width)}
       role="group"
-      style={[{ width: "100%" }, isRow ? null : fade]}
+      width="100%"
+      // The fade says the strip goes on past its trailing edge.
+      {...(!isRow && more ? { trailingFade: FADE } : {})}
     >
       {isRow ? (
         track
@@ -327,7 +328,7 @@ const FilmStrip = ({
           {track}
         </ScrollView>
       )}
-    </View>
+    </Layer>
   );
 };
 
