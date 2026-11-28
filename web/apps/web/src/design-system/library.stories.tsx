@@ -685,6 +685,44 @@ const MemberSeries: Story = {
   render: () => <LibraryTitle onBack={() => {}} title={{ ...memberSeries, backdrop: art("#3b4a63") }} />,
 };
 
+// On air now: the channel's row, with its logo, is the link to watching it.
+const MemberWatchingNow: Story = {
+  render: () => {
+    const lateShow = {
+      id: "90000972",
+      name: "Late Show",
+      number: 7,
+      logo: <div style={{ background: "#c8862a", height: 32, width: 32 }} />,
+    };
+    return (
+      <LibraryTitle
+        onBack={() => {}}
+        title={{
+          ...memberSeries,
+          backdrop: art("#3b4a63"),
+          channels: [lateShow, { id: "90000973", name: "Sunday Stories", number: 12 }],
+          airings: [
+            { ...memberSeries.airings[0]!, channel: lateShow, when: "Watching now", forecast: false },
+          ],
+        }}
+        // The row is drawn into the link in place of its children.
+        watchLink={(id) => (id === lateShow.id ? <a href={`/watch/${id}`}>Watch</a> : undefined)}
+      />
+    );
+  },
+};
+
+// An admin's title on no channel: one next step, to Collections.
+const NotOnAChannel: Story = {
+  render: () => (
+    <LibraryTitle
+      fix={{ ...titleFixes, collectionsLink: <a href="/library/collections">Collections</a> }}
+      onBack={() => {}}
+      title={{ ...memberSeries, channels: [], airings: [] }}
+    />
+  ),
+};
+
 // A home video: no catalog details and on no channel.
 const homeVideoTitle = {
   kind: "movie" as const,
@@ -1147,6 +1185,7 @@ export {
   MemberMovie,
   MemberNoMatch,
   MemberSeries,
+  MemberWatchingNow,
   Movie,
   MovieFixOpen,
   NeedsCards,
@@ -1158,6 +1197,7 @@ export {
   NoMatch,
   NothingNeedsYou,
   NotInLibrary,
+  NotOnAChannel,
   Paused,
   PersonChip,
   RecentlyAdded,
