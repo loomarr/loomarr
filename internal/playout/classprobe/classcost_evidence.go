@@ -55,7 +55,7 @@ func HostFingerprint(ctx context.Context, ffmpegPath, gpu string) (string, error
 }
 
 // LoadClassCosts returns the stored costs when they were measured for this fingerprint and encoder
-// within capabilityEvidenceMaxAge.
+// within playout.CapabilityEvidenceMaxAge.
 func LoadClassCosts(root, fingerprint string, enc encode.Encoder, now time.Time) (MeasuredCosts, bool) {
 	if strings.TrimSpace(root) == "" || fingerprint == "" {
 		return MeasuredCosts{}, false

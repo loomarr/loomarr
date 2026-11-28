@@ -84,22 +84,17 @@ func nvencFacts() admission.BudgetFacts {
 	}
 }
 
-// watchedForeground reports each time the probe asks to wait for idle playback, and whether any wait
-// returned while the test's viewer was still watching.
+// watchedForeground reports each time the probe asks to wait for idle playback, and each time that
+// wait lets it go on.
 type watchedForeground struct {
 	Foreground
-	waits         chan struct{}
-	released      atomic.Bool
-	resumedEarly  atomic.Bool
-	viewerWatches atomic.Bool
+	waits, resumes chan struct{}
 }
 
 func (f *watchedForeground) WaitIdle(ctx context.Context) error {
 	f.waits <- struct{}{}
 	err := f.Foreground.WaitIdle(ctx)
-	if err == nil && f.viewerWatches.Load() && !f.released.Load() {
-		f.resumedEarly.Store(true)
-	}
+	f.resumes <- struct{}{}
 	return err
 }
 
@@ -116,7 +111,7 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 	}
 	budget := admission.NewResourceBudget(nvencFacts)
 	out := playout.Profile{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}
-	fg := &watchedForeground{Foreground: budget, waits: make(chan struct{}, 16)}
+	fg := &watchedForeground{Foreground: budget, waits: make(chan struct{}, 16), resumes: make(chan struct{}, 16)}
 	cfg := ClassProbeConfig{
 		FFmpeg: fakeProbeFFmpeg(t, dir, pids), ClipDir: dir, Encoder: encode.EncoderSoftware,
 		Outputs: []playout.Profile{out}, Classes: []media.StreamClass{clip.class}, Foreground: fg,
@@ -134,7 +129,12 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 	for len(fg.waits) > 0 {
 		<-fg.waits
 	}
-	fg.viewerWatches.Store(true)
+	for len(fg.resumes) > 0 {
+		<-fg.resumes
+	}
+	// Both guards end before the measurement window does, so neither a tune that waits the probe out
+	// nor an encoder that only dies at its deadline can pass.
+	const yieldGuard = probeWindow - 500*time.Millisecond
 	type tune struct {
 		lease *admission.Lease
 		err   error
@@ -151,10 +151,10 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 			t.Fatalf("the tune was refused during the probe: %v", got.err)
 		}
 		live = got.lease
-	case <-time.After(5 * time.Second):
+	case <-time.After(yieldGuard):
 		t.Fatal("the tune blocked on the probe")
 	}
-	waitFor(t, 5*time.Second, "the probe's encoder to be killed", func() bool {
+	waitFor(t, yieldGuard, "the probe's encoder to be killed", func() bool {
 		return errors.Is(syscall.Kill(probe, 0), syscall.ESRCH)
 	})
 	select {
@@ -162,14 +162,17 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the yielded probe never went back to wait for idle playback")
 	}
+	// The probe starts no encoder until its wait returns, so watch for that return. A slow machine
+	// cannot fail this window; it only has to be long enough for a wrong return to show.
+	select {
+	case <-fg.resumes:
+		t.Fatal("the probe resumed while a viewer was watching")
+	case <-time.After(400 * time.Millisecond):
+	}
 	if n := len(readPids(t, pids)); n != 1 {
 		t.Fatalf("the probe started %d more encoders while a viewer was watching", n-1)
 	}
-	if fg.resumedEarly.Load() {
-		t.Fatal("the probe resumed while a viewer was watching")
-	}
 
-	fg.released.Store(true)
 	live.Release()
 	select {
 	case res := <-done:
