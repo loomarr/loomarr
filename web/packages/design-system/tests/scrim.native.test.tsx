@@ -10,6 +10,8 @@ import { Scrim } from "../index";
 vi.mock("react-native", async (original) => {
   const native = await original<typeof import("react-native")>();
   const View = ({ onLayout, ...props }: React.ComponentProps<typeof native.View>) => {
+    // Once, as a layout is reported once for a box that does not change.
+    // biome-ignore lint/correctness/useExhaustiveDependencies: a new callback is not a new layout
     useEffect(() => {
       onLayout?.({ nativeEvent: { layout: { height: 100, width: 400, x: 0, y: 0 } } } as never);
     }, []);

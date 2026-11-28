@@ -83,7 +83,8 @@ const RingedPressable = ({
       >
         <Surface
           alignItems="center"
-          backgroundColor={on || hovered ? "surfaceFocus" : "transparent"}
+          // The hover fill is the lighter step of the two, so the live colour still reads on it.
+          backgroundColor={on ? "surfaceFocus" : hovered ? "surfaceElevated" : "transparent"}
           borderColor={ring}
           borderRadius={8}
           borderWidth={2}
