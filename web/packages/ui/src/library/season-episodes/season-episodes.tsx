@@ -1,4 +1,4 @@
-import { Icon, icons, PressableRow, Surface, Tabs, Text } from "@loomarr/design-system";
+import { Icon, icons, PressableRow, Surface, Tabs, Text, VisuallyHidden } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 
 import { FileFacts, lengthPhrase } from "../file-facts";
@@ -26,40 +26,63 @@ const episodeNumber = (number: number, end?: number) => {
 };
 
 // The episode's own file, asked for when its row opens: the series' answer holds no files.
-const EpisodeFile = ({ id, load }: { id: string; load: NonNullable<LibraryTitleFix["onEpisodeFiles"]> }) => {
+const EpisodeFile = ({
+  id,
+  load,
+  readAt,
+  onSay,
+}: {
+  id: string;
+  load: NonNullable<LibraryTitleFix["onEpisodeFiles"]>;
+  readAt?: number;
+  /** What the panel is waiting on, or couldn't do; "" once its files are shown. */
+  onSay: (words: string) => void;
+}) => {
   const { wide, density } = useTitleLayout();
   const [files, setFiles] = useState<readonly LibraryTitleFile[]>();
   const [failed, setFailed] = useState(false);
-  // The loader is a new function on every render of the page; the row asks once per episode.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: ask again only for another episode
+  // The loader is a new function on every render of the page; the row asks again only for another
+  // episode, or when the title has been read again. What it shows stays up meanwhile.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the loader's identity is not a reason
   useEffect(() => {
     let live = true;
     load(id).then(
-      (answer) => live && setFiles(answer),
+      (answer) => {
+        if (!live) return;
+        setFiles(answer);
+        setFailed(false);
+      },
       () => live && setFailed(true),
     );
     return () => {
       live = false;
     };
-  }, [id]);
+  }, [id, readAt]);
+  const words =
+    files === undefined
+      ? failed
+        ? "Couldn't load this file's details. Try again in a moment."
+        : "Loading the file's details…"
+      : files.length === 0
+        ? "No details for this file yet."
+        : "";
+  // biome-ignore lint/correctness/useExhaustiveDependencies: say it when the words change
+  useEffect(() => {
+    onSay(words);
+    return () => onSay("");
+  }, [words]);
   return (
     <Surface borderWidth={0} gap="control" padding="control">
       <Text textRole="body">This episode's file</Text>
-      {failed ? (
-        <Text textRole="compact" tone="secondary">
-          Couldn't load this file's details. Try again in a moment.
+      {/* The seasons' live region reads these words out, so this copy is for the eye. */}
+      {words ? (
+        <Text aria-hidden textRole="compact" tone="secondary">
+          {words}
         </Text>
-      ) : files === undefined ? (
-        <Text textRole="compact" tone="secondary">
-          Loading the file's details…
-        </Text>
-      ) : files.length === 0 ? (
-        <Text textRole="compact" tone="secondary">
-          No details for this file yet.
-        </Text>
-      ) : (
-        files.map((file) => <FileFacts defaultMore={wide} density={density} file={file} key={file.path} />)
-      )}
+      ) : null}
+      {files?.map((file) => (
+        <FileFacts defaultMore={wide} density={density} file={file} key={file.path} />
+      ))}
     </Surface>
   );
 };
@@ -128,8 +151,10 @@ const EpisodeContent = ({ episode, open }: { episode: LibraryTitleEpisode; open?
 const SeasonEpisodes = ({
   seasons,
   onEpisodeFiles,
+  readAt,
 }: {
   seasons: readonly LibraryTitleSeason[];
+  readAt?: number;
   /** Absent for a member, whose rows don't open. */
   onEpisodeFiles?: LibraryTitleFix["onEpisodeFiles"];
 }) => {
@@ -143,9 +168,13 @@ const SeasonEpisodes = ({
   const [chosen, setChosen] = useState<number>();
   const [open, setOpen] = useState<string>();
   const current = ordered.find((s) => s.number === chosen) ?? first;
+  const [said, setSaid] = useState("");
   if (!current) return null;
   return (
     <Stack aria-label="Seasons" gap="control" role="region">
+      <VisuallyHidden as="h2">
+        <Text textRole="headline">Seasons</Text>
+      </VisuallyHidden>
       <Tabs
         appearance="underline"
         density={density}
@@ -178,11 +207,19 @@ const SeasonEpisodes = ({
               </Stack>
             )}
             {onEpisodeFiles && open === episode.id ? (
-              <EpisodeFile id={episode.id} load={onEpisodeFiles} />
+              <EpisodeFile id={episode.id} load={onEpisodeFiles} onSay={setSaid} readAt={readAt} />
             ) : null}
           </Stack>
         ))}
       </Stack>
+      {/* Mounted before it has anything to say: a live region added with its words is often missed. */}
+      {onEpisodeFiles ? (
+        <VisuallyHidden>
+          <Text aria-live="polite" textRole="compact">
+            {said}
+          </Text>
+        </VisuallyHidden>
+      ) : null}
     </Stack>
   );
 };

@@ -47,9 +47,6 @@ const playingLine = ({ picture, audioChannels, subtitleLanguages }: LibraryTitle
     .filter(Boolean)
     .join(" · ");
 
-// The backdrop with the title over its foot. The fade to the page keeps the title readable over any
-// picture; with no backdrop the placeholder surface stands in. `actions` sit over its top, each on
-// its own solid surface.
 // The separator's column, which sits left of its fact.
 const DOT = 20;
 
@@ -76,6 +73,9 @@ const Facts = ({ facts }: { facts: readonly (ReactNode | false)[] }) => (
   </Stack>
 );
 
+// The backdrop with the title over its foot. The fade to the page keeps the title readable over any
+// picture; with no backdrop the placeholder surface stands in. `actions` sit over its top, each on
+// its own solid surface.
 const Hero = ({ title, actions }: { title: LibraryTitleDetail; actions: ReactNode }) => {
   const { wide } = useTitleLayout();
   return (
