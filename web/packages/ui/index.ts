@@ -52,6 +52,7 @@ export type {
   StripProgramme,
 } from "./src/film-strip";
 export { FilmStrip, groupSeriesRuns } from "./src/film-strip";
+export { FirstRunHint } from "./src/first-run-hint";
 export type { FocusableTargetHandle, FocusTargetRegistry } from "./src/focus-target";
 export { useUiForm } from "./src/form-kit";
 export type {
@@ -160,6 +161,8 @@ export {
 } from "./src/library";
 export type { ListGroupProps, ListRowProgress, ListRowProps } from "./src/list-row";
 export { ListGroup, ListRow } from "./src/list-row";
+export type { LowerThirdNext, LowerThirdProps, LowerThirdState } from "./src/lower-third";
+export { LowerThird } from "./src/lower-third";
 export type { LinkLike, NavTab, NavTabsProps } from "./src/nav-tabs";
 export { NavTabs } from "./src/nav-tabs";
 export type { NeedsLineItem, NeedsLineProps } from "./src/needs-line";
@@ -190,6 +193,8 @@ export type {
 export { ProgrammeCard } from "./src/programme-card";
 export type { ProgrammeFactsProps, StripMessageProps } from "./src/programme-facts";
 export { ProgrammeFacts, StripMessage } from "./src/programme-facts";
+export type { QuietRowDevice, QuietRowHandle, QuietRowKey, QuietRowProps } from "./src/quiet-row";
+export { QuietRow } from "./src/quiet-row";
 export type {
   ApprovalBulkGroupProps,
   ApprovalBulkRow,
