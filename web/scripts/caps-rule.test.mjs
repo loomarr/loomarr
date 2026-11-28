@@ -26,7 +26,7 @@ const ALLOWED = [
   // The Info sheet's "Up next" chip.
   "packages/ui/src/watching-surface/player-chrome/player-info/",
   // A channel page's number ("Ch 07").
-  "apps/web/src/routes/_authed/channels/$id/route.tsx",
+  "apps/web/src/channels/channel-detail/channel-detail-page/channel-detail-page.tsx",
   // A pairing code is typed and shown in capitals, as the device shows it.
   "apps/web/src/settings/pair-device/",
   "apps/web/src/settings/paired-devices/",

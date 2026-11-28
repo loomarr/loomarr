@@ -6,6 +6,7 @@ import { ChannelUnairable } from "@loomarr/ui";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ChannelDefaultAudio } from "@/channels/channel-default-audio";
+import { useChannelDetail } from "@/channels/channel-detail";
 import { ChannelOnScreenLogo } from "@/channels/channel-on-screen-logo";
 import { ChannelBreaks } from "@/components/loomarr/channels/channel-breaks";
 import { ChannelHero } from "@/components/loomarr/channels/channel-hero";
@@ -13,7 +14,6 @@ import { ChannelIconField } from "@/components/loomarr/channels/channel-icon-fie
 import { ChannelUpcoming } from "@/components/loomarr/channels/channel-upcoming";
 import { OnAirIndicator } from "@/components/loomarr/channels/on-air-indicator";
 import { ChannelAdvanced } from "./-channel-advanced";
-import { useChannelDetail } from "./-channel-detail-context";
 
 // CHANNEL INFO — the "is it working" at a glance. The default section, and the viewer's ONLY one
 // (a member never sees the tab bar at all, so this is the whole page for them — see index.tsx,
