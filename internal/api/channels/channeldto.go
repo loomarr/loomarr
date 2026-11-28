@@ -158,7 +158,7 @@ func channelToDTO(ch channelstore.Channel, entryState func(provision.Key) entryA
 		Decade:       schedule.WatermarkEraDecade(ch.Policy.Scope),
 		ProgramCount: d.ProgramCount(), PendingCount: d.PendingCount(),
 		BreakCount: d.BreakCount(), SlotCount: len(ch.Desired),
-		Policy: ch.Policy, Findings: ch.Findings, Lineup: lineup,
+		Policy: ch.Policy.WithAutomaticUnrated(), Findings: ch.Findings, Lineup: lineup,
 	}
 	if logoImage != nil && ch.Logo != "" {
 		out.LogoImage = logoImage(ch.Logo)

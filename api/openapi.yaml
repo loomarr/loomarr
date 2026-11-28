@@ -1571,6 +1571,13 @@ components:
           $ref: "#/components/schemas/AudiencePolicy"
         autoCurate:
           $ref: "#/components/schemas/AutoCurate"
+        automaticUnrated:
+          description: What the automatic unrated policy resolves to under this ceiling, whatever explicit choice is set. Ignored on write
+          enum:
+            - allow
+            - exclude
+          readOnly: true
+          type: string
         breakDuration:
           description: "Length of each commercial break as a Go-duration string, e.g. \"2m\" or \"5m\"; at least 30s. Omitted means the install setting filler.break_duration (default 2m). There is no off value: breaksPerHour 0 turns breaks off"
           examples:

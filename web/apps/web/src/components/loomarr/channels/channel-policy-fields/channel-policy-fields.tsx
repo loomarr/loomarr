@@ -144,34 +144,6 @@ const orderingOptions = (strategy?: ChannelDTOStrategy): { value: string; label:
   ...Object.entries(PLAY_ORDER_LABEL).map(([value, label]) => ({ value, label })),
 ];
 
-// The rating ladder, mirroring schedule/policy.go's `ladderRank`. Mirrored ONLY so the
-// "Automatic" unrated option can say which way it currently resolves; the gate itself is
-// enforced in Go and never relaxed by the relaxation ladder (§8). Kept as ranks rather than a
-// hand-copied set of "kids ratings" so the boundary stays one number to compare against —
-// KIDS_CEILING_RANK is `kidsCeilingRank` (TV-PG = 3), and "kids" means rank <= that.
-const LADDER_RANK: Record<string, number> = {
-  "TV-Y": 0,
-  "TV-Y7": 1,
-  "TV-G": 2,
-  G: 2,
-  "TV-PG": 3,
-  PG: 3,
-  "TV-14": 4,
-  "PG-13": 4,
-  "TV-MA": 5,
-  R: 5,
-  "NC-17": 5,
-};
-const KIDS_CEILING_RANK = 3;
-
-// How a `default` unrated policy resolves right now, given the ceiling above it (Go's
-// resolveUnrated): a kids ceiling fails closed and skips unrated titles; anything else —
-// including no ceiling at all — allows them.
-const unratedResolvesToExclude = (ceiling: string | undefined): boolean =>
-  ceiling !== undefined &&
-  ceiling !== "" &&
-  (LADDER_RANK[ceiling] ?? Number.POSITIVE_INFINITY) <= KIDS_CEILING_RANK;
-
 const UNRATED_OPTIONS: { value: string; label: string }[] = [
   { value: "default", label: "Automatic" },
   { value: "exclude", label: "Skip unrated" },
@@ -302,7 +274,7 @@ const ChannelPolicyFields = ({ policy, onChange, show, strategy, cycle }: Channe
               o.value === "default"
                 ? {
                     ...o,
-                    label: `${o.label}: ${unratedResolvesToExclude(policy.audience?.ceiling) ? "skipped" : "allowed"}`,
+                    label: `${o.label}: ${policy.automaticUnrated === "exclude" ? "skipped" : "allowed"}`,
                   }
                 : o,
             )}

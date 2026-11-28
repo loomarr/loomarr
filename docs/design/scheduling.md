@@ -135,6 +135,10 @@ reshuffle on each pass, so it holds whether or not the shuffle reseeds per pass.
   bench), then seeded slotting, then the relaxation ladder (recorded and surfaced; audience and scope
   never relax), then pods. Separation holds across the cycle seam. The audience filter's exclusion
   report (`{overCeiling, unrated, items}`) is shown at review and at reconcile.
+- **The API says what automatic means.** A channel's policy carries the read-only
+  `automaticUnrated` (`allow` or `exclude`): what the unset unrated policy resolves to under the
+  channel's ceiling, whatever explicit choice is stored. The rating ladder lives only in Go, so a
+  client labels its "Automatic" option from this field. It is ignored on write and never stored.
 - **Reconcile is backend-neutral and idempotent.** Every active channel recomputes and persists its
   desired lineup, its findings, status, healed metadata and next deadline. The **findings** are
   what the reconcile found rather than what anyone decided: the relaxations it applied and the

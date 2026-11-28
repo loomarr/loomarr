@@ -91,6 +91,7 @@ func (current ChannelPolicy) MergeFromProposal(incoming ChannelPolicy) ChannelPo
 // operator DID set stays expressible; it simply unpins rather than pinning emptiness.
 func (current ChannelPolicy) MergeFromOperator(incoming ChannelPolicy) ChannelPolicy {
 	out := incoming
+	out.AutomaticUnrated = "" // computed on read; a client echoing it back stores nothing
 
 	// ⚠ **An OMITTED `policy.filler` keeps the saved selection (§10 V51f) — the same class of
 	// silent data loss the comment above records for `scope`, in the half `OperatorSet` cannot
