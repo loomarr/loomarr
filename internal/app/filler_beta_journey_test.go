@@ -231,7 +231,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 func waitForAcquisition(t *testing.T, st records.Store, id string, at time.Time, want acquisition.RunStatus) {
 	t.Helper()
 	var (
-		run acquisition.Run
+		run acquisition.AcquisitionRun
 		err error
 	)
 	t.Cleanup(func() {
