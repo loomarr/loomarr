@@ -45,6 +45,37 @@ const timerHarness = () => {
 };
 
 describe("native event stream", () => {
+  it("keeps reading and reconnects when a listener throws, and still reports the error", () => {
+    vi.useFakeTimers();
+    try {
+      const timers = timerHarness();
+      const request = new RequestStub();
+      const stream = createNativeEventStream("http://loomarr.test/v1/events", {
+        clearTimer: timers.clearTimer,
+        createRequest: () => request,
+        setTimer: timers.setTimer,
+      });
+      const heard: string[] = [];
+      stream.addEventListener("channel", (event) => {
+        heard.push(event.data);
+        if (event.data === "one") throw new Error("listener broke");
+      });
+      timers.callbacks.shift()?.();
+
+      request.status = 200;
+      request.readyState = 4;
+      request.responseText = "event: channel\ndata: one\n\nevent: channel\ndata: two\n\n";
+      request.onreadystatechange?.({} as Event);
+
+      expect(heard).toEqual(["one", "two"]);
+      expect(timers.callbacks).toHaveLength(1);
+      expect(() => vi.runAllTimers()).toThrow("listener broke");
+      stream.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("parses named, multiline, comment, empty, CRLF, and incomplete SSE frames", () => {
     expect(
       parseEventFrames(
