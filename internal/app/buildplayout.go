@@ -22,7 +22,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
@@ -52,7 +51,8 @@ type playoutBuild struct {
 
 type playoutDeps struct {
 	rootCtx               context.Context
-	store                 store.Store
+	store                 playoutStore
+	invalidations         invalidationHandle
 	settings              resolved
 	owner                 *generationLifecycle
 	captureResolver       func(*resolve.Resolver)
@@ -341,7 +341,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	durablePlayoutEligibility := func(ctx context.Context, channelID string) (bool, error) {
 		return durableInternalTransportPlayable(ctx, st, backendView, channelID)
 	}
-	if store.PublishesInvalidations(store.DialectOf(st)) {
+	if deps.invalidations != nil {
 		lifecycleGate = &playoutAdmissionGate{}
 	}
 	// Live playout is the channel packager (#1512): one encoder per scheduled item,
@@ -422,7 +422,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	backendController = builtBackendController
 	if lifecycleGate != nil {
 		lifecycle := &postgresPlayoutLifecycle{
-			store: st, checkpoint: backendView, origin: origin, gate: lifecycleGate, log: log,
+			store: st, handle: deps.invalidations, checkpoint: backendView, origin: origin, gate: lifecycleGate, log: log,
 		}
 		if err := lifecycle.Start(rootCtx, owner); err != nil {
 			return playoutBuild{}, fmt.Errorf("start postgres playout lifecycle: %w", err)

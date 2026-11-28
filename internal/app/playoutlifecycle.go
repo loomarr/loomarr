@@ -57,14 +57,15 @@ type lifecycleCheckpoint interface {
 // publication state. Notifications are the commit latency path; fail-closed StopAll plus full
 // reconciliation on every subscription is the notification-loss recovery path.
 type postgresPlayoutLifecycle struct {
-	store      store.Store
+	store      playoutStore
+	handle     invalidationHandle // what listen subscribes through
 	checkpoint lifecycleCheckpoint
 	origin     lifecycleOrigin
 	gate       *playoutAdmissionGate
 	log        *slog.Logger
 	listen     func(
 		context.Context,
-		store.Store,
+		invalidationHandle,
 		func(context.Context) error,
 		func(context.Context, store.Invalidation) error,
 	) error
@@ -99,7 +100,7 @@ func (l *postgresPlayoutLifecycle) run(ctx context.Context, first chan<- error) 
 		if listen == nil {
 			listen = store.ListenInvalidations
 		}
-		err := listen(ctx, l.store, func(readyCtx context.Context) error {
+		err := listen(ctx, l.handle, func(readyCtx context.Context) error {
 			if err := l.reconcileAll(readyCtx); err != nil {
 				return err
 			}
