@@ -189,8 +189,8 @@ func jobRunCount(t *testing.T, h *harness, admin *http.Cookie, name string) int 
 
 func waitForJobRunCount(t *testing.T, h *harness, admin *http.Cookie, name string, want int) {
 	t.Helper()
-	waitFor(t, func() bool { return jobRunCount(t, h, admin, name) >= want },
-		"background job did not finish: "+name)
+	testkit.Eventually(t, 2*time.Second, "the background job to finish: "+name,
+		func() bool { return jobRunCount(t, h, admin, name) >= want })
 }
 
 func assertUserImportStatus(t *testing.T, h *harness, admin *http.Cookie, want int) {

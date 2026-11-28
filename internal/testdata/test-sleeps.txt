@@ -18,7 +18,6 @@ internal/filler/fetch/downloaders_test.go 3
 internal/integration/database_lifecycle_postgres_test.go 6
 internal/integration/discovery_feedback_recuration_test.go 1
 internal/integration/harness_test.go 1
-internal/integration/journey_admin_test.go 1
 internal/integration/pipeline_test.go 1
 internal/integration/scan_availability_test.go 1
 internal/library/scan/importer_test.go 9
@@ -40,7 +39,6 @@ internal/platform/llm/openai_stale_conn_test.go 1
 internal/platform/llm/selection/selection_test.go 1
 internal/platform/store/diagnostics_retention_test.go 1
 internal/platform/store/storedb/handle_test.go 1
-internal/playout/classprobe/classprobe_yield_test.go 1
 internal/playout/hls/origin_test.go 1
 internal/playout/hls/packager_admission_test.go 1
 internal/playout/hls/packager_hls_test.go 8

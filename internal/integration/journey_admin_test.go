@@ -123,7 +123,7 @@ func TestJourney_NewAdmin(t *testing.T) {
 	if pull.JobID == "" {
 		t.Fatal("pull returned no jobId")
 	}
-	waitFor(t, func() bool { return h.ollama.PullHits() >= 1 }, "ollama /api/pull was never called")
+	testkit.Eventually(t, 2*time.Second, "a call to ollama /api/pull", func() bool { return h.ollama.PullHits() >= 1 })
 
 	// A8: SUBMIT an intent → the real worker pool runs the real grounded suggester.
 	var submitted struct {
@@ -260,14 +260,3 @@ func decodeBody(t *testing.T, resp *http.Response, v any) {
 	}
 }
 
-// waitFor polls cond up to ~2s, failing with msg if it never holds.
-func waitFor(t *testing.T, cond func() bool, msg string) {
-	t.Helper()
-	for i := 0; i < 100; i++ {
-		if cond() {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatal(msg)
-}
