@@ -1,7 +1,7 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryIgnoredDTO } from "@loomarr/api/models/libraryIgnoredDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, FileName, Surface, Tabs, Text } from "@loomarr/design-system";
+import { Action, FileName, Stack, Surface, Tabs, Text } from "@loomarr/design-system";
 import { LibraryNeedsCards } from "@loomarr/ui";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -80,7 +80,7 @@ const LibraryNeedsView = ({
   onBack: () => void;
   children: ReactNode;
 }) => (
-  <div className="flex flex-col">
+  <Stack>
     <div className="px-6 pt-3">
       <Action icon="back" onPress={onBack} variant="ghost">
         Library
@@ -90,7 +90,7 @@ const LibraryNeedsView = ({
       description="Files Loomarr couldn't name on its own. Answer once and it remembers."
       title="Needs you"
     />
-    <div className="flex w-full max-w-4xl flex-col gap-4 px-6 pt-2 pb-28">
+    <Stack gap="4" maxWidth={896} paddingBottom={112} paddingHorizontal={24} paddingTop={8} width="100%">
       <Tabs
         appearance="underline"
         label="Which files"
@@ -102,8 +102,8 @@ const LibraryNeedsView = ({
         value={tab}
       />
       {children}
-    </div>
-  </div>
+    </Stack>
+  </Stack>
 );
 
 const LibraryNeedsPage = () => {
