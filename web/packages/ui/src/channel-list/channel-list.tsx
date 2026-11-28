@@ -10,7 +10,14 @@ import {
   scrollBounds,
   scrollToShow,
 } from "@loomarr/core/channel-list";
-import { decadeTint, PressableRow, Surface, Text, VisuallyHidden } from "@loomarr/design-system";
+import {
+  decadeTint,
+  PressableRow,
+  RingedPressable,
+  Surface,
+  Text,
+  VisuallyHidden,
+} from "@loomarr/design-system";
 import {
   type ComponentProps,
   type ComponentRef,
@@ -306,16 +313,25 @@ const ChannelList = <C extends LineupChannel>({
   const findCursor =
     query !== null && layout !== "touch" && cursor.kind === "row" ? cursor.channelId : undefined;
 
-  // A row or the pinned channel is named by what it shows, so each piece of text ends in a space.
-  // `selected` is the shipped row's fill, drawn here for a pointer and for find's cursor; whether
-  // the option is the selected one is said by `aria-selected` alone.
+  // The cursor resting on the watched channel draws its fill on the pinned slot, behind the
+  // caller's drawing, which stands on no plate of its own.
+  const pinnedCursor =
+    !view.finding && cursor.kind === "row" && cursor.channelId === watchedId ? watchedId : undefined;
+
+  // A row and the pinned channel are options, named by what they show, so each piece of a row's
+  // text ends in a space. The highlight is the list's own: under a pointer that a press would
+  // answer, on find's cursor, and on the pinned cursor; the ring is the design system's, amber for
+  // keys and never for a click. Whether the option is the selected one is said by `selected` alone.
   const target = (channel: C, selected: boolean, isRow: boolean) => ({
+    align: "start" as const,
+    fill: true,
+    highlighted:
+      hovered === channel.id || (isRow && findCursor === channel.id) || pinnedCursor === channel.id,
     onFocus: () => {
       if (isRow && (cursor.kind !== "row" || cursor.channelId !== channel.id)) {
         onEvent({ channelId: channel.id, type: "focusRow" });
       }
     },
-    // The shipped row's own hover handlers give way to these, so its highlight is drawn from here.
     onHoverIn: () => {
       underPointer.current = channel.id;
       // A row that slid under a still pointer will not answer a press yet, so it draws nothing.
@@ -327,15 +343,13 @@ const ChannelList = <C extends LineupChannel>({
       setHovered(undefined);
       look(undefined);
     },
-    selected: hovered === channel.id || (isRow && findCursor === channel.id),
     onMouseDown: keepFocus,
     onPress: press(channel.id),
     ref: (isRow ? rowRef(channel.id) : undefined) as never,
-    ...({
-      "aria-selected": selected,
-      role: "option",
-      tabIndex: isRow && tabStopRow === channel.id ? 0 : -1,
-    } as object),
+    role: "option" as const,
+    selected,
+    size: ROW_HEIGHT - 4,
+    tabIndex: (isRow && tabStopRow === channel.id ? 0 : -1) as 0 | -1,
   });
 
   const rowOf = (channel: C) => {
@@ -347,7 +361,7 @@ const ChannelList = <C extends LineupChannel>({
     const unseen = [decade && `${decade}s`, watched && "watching"].filter(Boolean).join(" ");
     return (
       <Bare height={ROW_HEIGHT} justifyContent="center">
-        <PressableRow inset={{ x: 8, y: 4 }} {...target(channel, watched, true)}>
+        <RingedPressable {...target(channel, watched, true)}>
           <Bare alignItems="flex-end" width={32}>
             <Text textRole="mono" tone="secondary">
               {channel.number}{" "}
@@ -369,7 +383,7 @@ const ChannelList = <C extends LineupChannel>({
             </Text>
           ) : null}
           {unseen ? <VisuallyHidden>{unseen}</VisuallyHidden> : null}
-        </PressableRow>
+        </RingedPressable>
       </Bare>
     );
   };
@@ -397,12 +411,12 @@ const ChannelList = <C extends LineupChannel>({
       y={shift}
       zIndex={2}
     >
-      <PressableRow inset={{ x: 2, y: 2 }} {...target(pinned, !listedTwice, !view.finding)}>
+      <RingedPressable {...target(pinned, !listedTwice, !view.finding)}>
         <Bare flex={1} minWidth={0}>
           {renderPinned(pinned)}
         </Bare>
         {listedTwice ? null : <VisuallyHidden>watching</VisuallyHidden>}
-      </PressableRow>
+      </RingedPressable>
     </Bare>
   ) : null;
 

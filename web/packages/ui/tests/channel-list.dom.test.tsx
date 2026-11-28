@@ -121,6 +121,33 @@ describe("ChannelList", () => {
     expect(focused()).toBe(row(2));
   });
 
+  it("draws the amber ring for keys alone: not on a row focused after a click, nor on a click", async () => {
+    // A browser answers `:focus-visible` with false for focus that follows a click, as when a
+    // pointer opens the list and it takes focus onto its cursor, and true for focus from a key.
+    const native = Element.prototype.matches;
+    let keyboard = false;
+    Element.prototype.matches = new Proxy(native, {
+      apply: (original, element, args: [string]) =>
+        args[0] === ":focus-visible" ? keyboard : Reflect.apply(original, element, args),
+    });
+    try {
+      renderUi(<Harness autoFocus start={{ cursor: { channelId: "ch-2", kind: "row" } }} />);
+      expect(focused()).toBe(row(2));
+      expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
+      await userEvent.click(row(3));
+      expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
+      // A key brings focus back to the list's cursor, with the amber ring.
+      keyboard = true;
+      act(() => row(3).focus());
+      expect(screen.getAllByTestId("ring-actionFocus")).toHaveLength(1);
+      await userEvent.keyboard("{ArrowDown}");
+      expect(focused()).toBe(row(4));
+      expect(screen.getAllByTestId("ring-actionFocus")).toHaveLength(1);
+    } finally {
+      Element.prototype.matches = native;
+    }
+  });
+
   it("never takes focus from a pointer, so a click draws no ring", async () => {
     renderUi(<Harness />);
     await userEvent.click(row(3));
