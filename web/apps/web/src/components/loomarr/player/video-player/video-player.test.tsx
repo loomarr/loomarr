@@ -54,7 +54,9 @@ describe("VideoPlayer", () => {
     };
     const press = (container: HTMLElement, key: string) =>
       fireEvent.keyDown(container.querySelector("video")?.parentElement as HTMLElement, { key });
-    const { container, unmount } = render(<VideoPlayer attach={() => () => undefined} live liveTransport={transport} />);
+    const { container, unmount } = render(
+      <VideoPlayer attach={() => () => undefined} live liveTransport={transport} />,
+    );
     press(container, "ArrowLeft");
     press(container, "m");
     expect(transport.seek).toHaveBeenCalledOnce();

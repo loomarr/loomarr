@@ -589,10 +589,14 @@ describe("PlayerMore", () => {
 
   it("offers to add the watched channel to Favourites, or to remove it", () => {
     const onPress = vi.fn();
-    const add = mount(<PlayerMore density="pointer" favourite={{ on: false, onPress }} formatTime={String} />);
+    const add = mount(
+      <PlayerMore density="pointer" favourite={{ on: false, onPress }} formatTime={String} />,
+    );
     act(() => row(add, "Add to Favourites")?.click());
     expect(onPress).toHaveBeenCalledOnce();
-    const remove = mount(<PlayerMore density="pointer" favourite={{ on: true, onPress }} formatTime={String} />);
+    const remove = mount(
+      <PlayerMore density="pointer" favourite={{ on: true, onPress }} formatTime={String} />,
+    );
     expect(row(remove, "Remove from Favourites")).toBeDefined();
     expect(row(remove, "Add to Favourites")).toBeUndefined();
   });

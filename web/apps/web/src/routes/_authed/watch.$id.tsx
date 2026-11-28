@@ -96,7 +96,9 @@ const Route = createFileRoute("/_authed/watch/$id")({
   // detail is only started. A link to a channel the list does not hold (or a list that failed)
   // waits on the detail, so the page opens on the channel or its error.
   loader: async ({ context: { queryClient }, params: { id } }) => {
-    const list = await queryClient.fetchQuery(channelsApi.getListChannelsQueryOptions()).catch(() => undefined);
+    const list = await queryClient
+      .fetchQuery(channelsApi.getListChannelsQueryOptions())
+      .catch(() => undefined);
     const listed = list?.status === 200 && list.data.channels?.some((channel) => channel.id === id);
     const detail = queryClient.prefetchQuery(channelsApi.getGetChannelQueryOptions(id));
     if (listed) return;

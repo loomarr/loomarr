@@ -167,15 +167,16 @@ const waitForDecodedFrame = async (page: Page, phase: string) => {
     await page.waitForFunction(() => Boolean(document.querySelector("video")?.currentSrc), undefined, {
       timeout: 9_000,
     });
-    // Give permitted autoplay a brief opportunity. If it produced no frame, Space twice on the
-    // picture pauses and plays again from a key, the watching screen's own gesture.
+    // Give permitted autoplay a brief opportunity. If the browser refused it, the watching screen
+    // covers the picture with Play: press it with keyboard semantics, the gesture the browser asks.
     await Promise.race([decoded, page.waitForTimeout(500)]);
     const frameCount = await page.evaluate(
       () => (window as Window & { __loomarrDecodedFrames?: number[] }).__loomarrDecodedFrames?.length ?? 0,
     );
-    if (frameCount === 0) {
-      await page.keyboard.press(" ");
-      await page.keyboard.press(" ");
+    const play = page.getByRole("button", { exact: true, name: "Play" });
+    if (frameCount === 0 && (await play.count()) > 0) {
+      await play.focus();
+      await page.keyboard.press("Enter");
     }
     await decoded;
   } catch (error) {

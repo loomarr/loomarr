@@ -217,7 +217,9 @@ describe("WatchScreen and focus a pointer meets", () => {
     Object.defineProperty(document, "elementFromPoint", {
       configurable: true,
       value: (x: number, y: number) =>
-        x === 120 && y === 600 ? (screen.queryByTestId("watch-lower-third")?.querySelector("span") ?? null) : null,
+        x === 120 && y === 600
+          ? (screen.queryByTestId("watch-lower-third")?.querySelector("span") ?? null)
+          : null,
     });
   };
 

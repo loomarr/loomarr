@@ -80,7 +80,9 @@ const onGuide = vi.fn();
 const onTuneSettled = vi.fn();
 const favourites = { ids: [] as string[] };
 const setFavourite = vi.fn(async (channelId: string, favourite: boolean) => {
-  favourites.ids = favourite ? [...favourites.ids, channelId] : favourites.ids.filter((id) => id !== channelId);
+  favourites.ids = favourite
+    ? [...favourites.ids, channelId]
+    : favourites.ids.filter((id) => id !== channelId);
 });
 
 // The route in miniature: the tune lives beside the player, and the screen mounts once there is a
@@ -90,7 +92,10 @@ const ChannelWatch = ({
   isAdmin = false,
   mounted = true,
   player,
-}: Partial<Omit<ChannelWatchProps, "player" | "tune">> & { mounted?: boolean; player?: Partial<WatchPlayer> }) => {
+}: Partial<Omit<ChannelWatchProps, "player" | "tune">> & {
+  mounted?: boolean;
+  player?: Partial<WatchPlayer>;
+}) => {
   const tune = useWatchTune();
   reports.current = tune.onTune;
   if (!mounted) return null;
@@ -162,8 +167,12 @@ const openMore = async () => {
   await userEvent.click(await screen.findByRole("button", { name: "More" }));
   return menu("More");
 };
-const report = (attemptId: number, channelId: string, warm: boolean, reason: WatchTuneReport["reason"] = "channel") =>
-  act(() => reports.current?.({ attemptId, channelId, reason, warm }));
+const report = (
+  attemptId: number,
+  channelId: string,
+  warm: boolean,
+  reason: WatchTuneReport["reason"] = "channel",
+) => act(() => reports.current?.({ attemptId, channelId, reason, warm }));
 
 beforeEach(() => {
   sessionStorage.setItem("loomarr.player.first-play", "1");
@@ -500,7 +509,10 @@ describe("ChannelWatch: the shipped menus in the screen's slot", () => {
 
   it("names full screen for the browser's real state, entering on F and leaving by the browser's own", () => {
     const request = vi.fn(async () => undefined);
-    Object.defineProperty(document.documentElement, "requestFullscreen", { configurable: true, value: request });
+    Object.defineProperty(document.documentElement, "requestFullscreen", {
+      configurable: true,
+      value: request,
+    });
     mount();
     expect(screen.getByRole("button", { name: "Full screen (F)" })).toBeInTheDocument();
     press("f");

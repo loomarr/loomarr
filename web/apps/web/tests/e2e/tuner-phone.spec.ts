@@ -5,10 +5,10 @@ import { channelId, installTunerBackend } from "./tuner-backend";
 // Watch at phone width on the web (#4731): the watching screen draws its over-the-picture
 // arrangement at every width until the window and phone arrangements land (#4732, #4738). The
 // picture spans the screen edge to edge, the back control and the quiet row are on it and unclipped,
-// and Down flips. Runs on the tuner fixture because Watch needs a real stream, and in every tuner
+// and touch alone tunes and pauses. Runs on the tuner fixture because Watch needs a real stream, and in every tuner
 // browser (WebKit stands in for a phone's Safari). The shell routes' phone gate
 // (phone-layout.spec.ts) has no channel to watch.
-test.use({ viewport: { width: 390, height: 844 } });
+test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
 
 test("Watch at phone width draws the picture edge to edge with its controls on it, unclipped", async ({
   page,
@@ -39,6 +39,11 @@ test("Watch at phone width draws the picture edge to edge with its controls on i
     "Watch should not clip content at 390 px",
   ).toEqual([]);
 
-  await page.keyboard.press("ArrowDown");
+  // A phone has no keys: a tap opens Channels, a tap on a row tunes it, a tap on the picture pauses.
+  await page.getByRole("button", { name: "Channels" }).tap();
+  await page.getByRole("option", { name: /Channel 2\b/ }).tap();
   await expect(page).toHaveURL(new RegExp(`/watch/${channelId(2)}$`));
+  await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState)).toBeGreaterThanOrEqual(2);
+  await page.getByTestId("watch-picture").tap();
+  await expect(page.getByRole("button", { name: "Play (Space)" })).toBeVisible();
 });

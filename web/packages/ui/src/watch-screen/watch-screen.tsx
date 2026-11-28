@@ -19,8 +19,8 @@ import { LowerThird, type LowerThirdState } from "../lower-third";
 import { summaryOf } from "../lower-third/summary";
 import { QuietRow, type QuietRowHandle, type QuietRowKey } from "../quiet-row";
 import { TuneBars, TuneStatic } from "../tune-static";
-import { clearOfWatermark } from "../watching-surface";
 import { WatchScrim } from "../watch-scrim";
+import { clearOfWatermark } from "../watching-surface";
 import type { WatchScreenProps } from "./watch-screen.type";
 
 // The full-screen arrangement (design/watch, `full`): the list's column stands in from the leading
@@ -219,7 +219,8 @@ const WatchScreen = <C extends LineupChannel>({
       .document;
     if (!thirdShown || !at || Platform.OS !== "web" || !page?.elementFromPoint) return;
     const hit = page.elementFromPoint(at.x, at.y);
-    if (hit && footThird.current?.contains?.(hit)) send({ held: true, region: "lowerThird", type: "pointerHold" });
+    if (hit && footThird.current?.contains?.(hit))
+      send({ held: true, region: "lowerThird", type: "pointerHold" });
   }, [thirdShown, send]);
 
   // The pointer resting on the controls holds the screen awake.
@@ -334,13 +335,7 @@ const WatchScreen = <C extends LineupChannel>({
           </Layer>
         ) : null}
 
-        <Layer
-          bottom={rowFoot}
-          opacity={shown}
-          right={EDGE}
-          testID="watch-quiet-row"
-          {...holdOn("quietRow")}
-        >
+        <Layer bottom={rowFoot} opacity={shown} right={EDGE} testID="watch-quiet-row" {...holdOn("quietRow")}>
           <Surface
             backgroundColor="transparent"
             borderWidth={0}

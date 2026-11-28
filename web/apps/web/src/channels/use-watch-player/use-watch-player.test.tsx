@@ -302,5 +302,4 @@ describe("useWatchPlayer", () => {
       expect(browser.controls.retry).toHaveBeenCalledOnce();
     });
   });
-
 });

@@ -138,7 +138,8 @@ const ChannelWatch = ({ back, channel, channels, isAdmin, onGuide, player, tune 
     const video = videoRef.current;
     if (!video) return undefined;
     const stopped = () => {
-      if (video.paused && !video.ended && waiting.current.loading && !waiting.current.paused) setRefused(true);
+      if (video.paused && !video.ended && waiting.current.loading && !waiting.current.paused)
+        setRefused(true);
     };
     const started = () => setRefused(false);
     video.addEventListener("pause", stopped);
@@ -414,7 +415,12 @@ const ChannelWatch = ({ back, channel, channels, isAdmin, onGuide, player, tune 
   const toggleFavourite = () => {
     channels.setFavourite(channel.id, !starred).then(
       () => toast(starred ? `${named} removed from Favourites` : `${named} added to Favourites`),
-      () => toast(starred ? `${named} could not be removed from Favourites` : `${named} could not be added to Favourites`),
+      () =>
+        toast(
+          starred
+            ? `${named} could not be removed from Favourites`
+            : `${named} could not be added to Favourites`,
+        ),
     );
   };
 
