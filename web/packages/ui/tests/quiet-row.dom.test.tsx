@@ -7,17 +7,17 @@ import { QuietRow, type QuietRowProps } from "../index";
 
 afterEach(() => {
   cleanup();
-  vi.restoreAllMocks();
+  Element.prototype.matches = nativeMatches;
 });
 
 // jsdom answers `:focus-visible` with false whatever gave the focus; a browser answers true for the
 // keyboard, and the stories check the ring there.
+const nativeMatches = Element.prototype.matches;
 const keyboardFocus = () => {
-  const matches = new Proxy(Element.prototype.matches, {
+  Element.prototype.matches = new Proxy(nativeMatches, {
     apply: (original, element, args: [string]) =>
       args[0] === ":focus-visible" || Reflect.apply(original, element, args),
   });
-  vi.spyOn(Element.prototype, "matches", "get").mockReturnValue(matches);
 };
 
 const row = (props: Partial<QuietRowProps> = {}) =>
