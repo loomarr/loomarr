@@ -1,4 +1,13 @@
-import { Action, Icon, icons, Menu, MenuAction, MenuContent, MenuTrigger, Text } from "@loomarr/design-system";
+import {
+  Action,
+  Icon,
+  icons,
+  Menu,
+  MenuAction,
+  MenuContent,
+  MenuTrigger,
+  Text,
+} from "@loomarr/design-system";
 import { Children, Fragment, type ReactNode } from "react";
 import { Platform } from "react-native";
 
@@ -38,7 +47,9 @@ const PhraseMenu = <Value extends string>({
       {options.map((option) => (
         <MenuAction
           density={PHRASE_DENSITY}
-          icon={option.value === value ? <Icon decorative glyph={icons.selected} size="compact" /> : undefined}
+          icon={
+            option.value === value ? <Icon decorative glyph={icons.selected} size="compact" /> : undefined
+          }
           key={option.value}
           onSelect={() => onValueChange(option.value)}
         >

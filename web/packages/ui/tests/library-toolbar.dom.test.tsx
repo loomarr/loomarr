@@ -3,7 +3,7 @@
 import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LibraryShelf, type LibraryShelfProps } from "../src/library/library-shelf";
+import { LibraryShelf, type LibraryShelfProps } from "../index";
 
 const screen = vi.hoisted(() => ({ width: 1440 }));
 vi.mock("react-native", async (importOriginal) => {
@@ -75,6 +75,36 @@ describe("the Library toolbar from a tablet up", () => {
     expect(props.onSortChange).toHaveBeenCalledWith("recent");
     await choose("Every genre, genre", "Drama · 12");
     expect(props.onGenreChange).toHaveBeenCalledWith("Drama");
+  });
+
+  it("ends the sentence on More filters, which opens the panel and keeps its place in the order", async () => {
+    const filtering = {
+      filters: {},
+      onChange: vi.fn(),
+      onClear: vi.fn(),
+      personSearch: { value: "", onChange: vi.fn(), options: [], loading: false, failed: false },
+      total: 1284,
+    } as unknown as NonNullable<LibraryShelfProps["filtering"]>;
+    renderUi(<LibraryShelf {...shelf({ filtering })} />);
+    const more = button("More filters");
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    const phrases = [button("A to Z, order"), button("Every genre, genre"), more];
+    expect(phrases[1]?.compareDocumentPosition(more)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    await act(async () => more.click());
+    expect(button("More filters").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("underlines only the current word", () => {
+    renderUi(<LibraryShelf {...shelf({ filter: "movie" })} />);
+    const [all, movies, shows, collections] = [...document.querySelectorAll("[role=tab]")].map((tab) =>
+      (tab.firstElementChild?.firstElementChild?.className ?? "").split(" "),
+    );
+    expect(shows).toEqual(all);
+    expect(collections).toEqual(all);
+    const own = movies?.filter((name) => !all?.includes(name));
+    // One class apart, the border's: the rule is the only box difference between the words.
+    expect(own).toHaveLength(1);
+    expect(own?.[0]).toMatch(/^_b/);
   });
 
   it("counts what the choices leave, and goes back to every genre", async () => {

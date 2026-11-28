@@ -169,6 +169,21 @@ const choose = (select: El, value: string) => {
   });
 };
 
+// Opens a sentence phrase's menu and returns its items, which are portalled out of the host.
+const openPhrase = async (phrase: El) => {
+  await act(async () => phrase.click());
+  const menu = win.document.querySelector('[role="menu"]');
+  if (!menu) throw new Error("missing the menu");
+  return Array.from(menu.querySelectorAll('[role="menuitem"]'));
+};
+const pick = async (items: El[], name: string) => {
+  const item = items.find((n) => n.textContent === name);
+  if (!item) throw new Error(`missing menu item: ${name}`);
+  await act(async () => item.click());
+};
+// The choice in force is the one item that draws a tick.
+const ticked = (items: El[]) => items.filter((n) => n.querySelector("svg")).map((n) => n.textContent);
+
 describe("LibraryShelf", () => {
   it("lists the titles with their year and kind, and opens one", () => {
     const { host, props, tile, cleanup } = render({});
@@ -561,24 +576,22 @@ describe("LibraryShelf", () => {
     }
   });
 
-  it("orders the wall by name or by the titles added last", () => {
-    const { host, props, cleanup } = render({});
-    const select = host.querySelector('select[aria-label="Order"]');
-    if (!select) throw new Error("missing the order");
-    expect(select.value).toBe("name");
-    expect(select.textContent).toContain("A–Z");
-    expect(select.textContent).toContain("Recently added");
-    choose(select, "recent");
+  it("orders the wall by name or by the titles added last", async () => {
+    const { props, button, cleanup } = render({});
+    const items = await openPhrase(button("A to Z, order"));
+    expect(items.map((n) => n.textContent)).toEqual(["A to Z", "Recently added"]);
+    expect(ticked(items)).toEqual(["A to Z"]);
+    await pick(items, "Recently added");
     expect(props.onSortChange).toHaveBeenCalledWith("recent");
     cleanup();
   });
 
   it("shows the collections in place of the search, the order and the grid on Collections", () => {
-    const { host, cleanup } = render({ filter: "collections", collections: <p>the collections</p> });
+    const { host, find, cleanup } = render({ filter: "collections", collections: <p>the collections</p> });
     expect(host.textContent).toContain("the collections");
     expect(host.textContent).not.toContain("Harbour Lights");
     expect(host.querySelector('[aria-label="Search titles"]')).toBeNull();
-    expect(host.querySelector('select[aria-label="Order"]')).toBeNull();
+    expect(find("A to Z, order")).toBeUndefined();
     cleanup();
   });
 
@@ -716,24 +729,21 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
-  it("lists each genre with its titles under All genres, and reports the choice", () => {
-    const { host, props, cleanup } = render({
+  it("lists each genre with its titles under Every genre, and reports the choice", async () => {
+    const { props, button, cleanup } = render({
       genres: [
         { name: "Drama", titles: 1204 },
         { name: "Comedy", titles: 7 },
       ],
       genre: "drama",
     });
-    const select = host.querySelector('select[aria-label="Genre"]');
-    if (!select) throw new Error("missing the genre filter");
     // The URL's spelling matches the list's in any case.
-    expect(select.value).toBe("Drama");
-    expect(select.textContent).toContain("All genres");
-    expect(select.textContent).toContain("Drama · 1,204");
-    expect(select.textContent).toContain("Comedy · 7");
-    choose(select, "Comedy");
+    const items = await openPhrase(button("Drama, genre"));
+    expect(items.map((n) => n.textContent)).toEqual(["Every genre", "Drama · 1,204", "Comedy · 7"]);
+    expect(ticked(items)).toEqual(["Drama · 1,204"]);
+    await pick(items, "Comedy · 7");
     expect(props.onGenreChange).toHaveBeenCalledWith("Comedy");
-    choose(select, "");
+    await pick(await openPhrase(button("Drama, genre")), "Every genre");
     expect(props.onGenreChange).toHaveBeenLastCalledWith(undefined);
     cleanup();
   });
@@ -746,7 +756,7 @@ describe("LibraryShelf", () => {
       titles: [],
     });
     expect(host.textContent).toContain("No shows in Western");
-    expect(host.querySelector('select[aria-label="Genre"]')?.value).toBe("Western");
+    expect(button("Western, genre").textContent).toBe("Western");
     act(() => button("Show all genres").click());
     expect(props.onGenreChange).toHaveBeenCalledWith(undefined);
     cleanup();

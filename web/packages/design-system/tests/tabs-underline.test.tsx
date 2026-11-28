@@ -37,6 +37,29 @@ const Sections = ({ onChange = vi.fn() }: { onChange?: (value: Section) => void 
 };
 
 describe("Tabs, underline appearance", () => {
+  it("draws its words larger at section size, and still as tabs", () => {
+    const labelClasses = (size?: "section") => {
+      render(
+        <LoomarrProvider theme="dark">
+          <Tabs
+            appearance="underline"
+            label="Shelf"
+            onValueChange={() => {}}
+            options={[{ label: "All", value: "all" }]}
+            size={size}
+            value="all"
+          />
+        </LoomarrProvider>,
+      );
+      const classes = screen.getByRole("tab", { name: "All" }).querySelector("span")?.className ?? "";
+      cleanup();
+      return classes.split(" ");
+    };
+    const plain = labelClasses();
+    const own = labelClasses("section").filter((name) => !plain.includes(name));
+    expect(own.join(" ")).toMatch(/_fs-/);
+  });
+
   it("is a named tablist of tabs, each named by its label and count", () => {
     render(<Sections />);
     expect(screen.getByRole("tablist", { name: "Library sections" })).toBeTruthy();

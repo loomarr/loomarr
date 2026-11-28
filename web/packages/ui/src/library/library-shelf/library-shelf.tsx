@@ -38,7 +38,6 @@ import { PHRASE_DENSITY, PhraseMenu, Sentence } from "../library-sentence";
 import { detailsWaiting, folderName, heldTitle, scanHeadline } from "../library-words";
 import type {
   LibraryShelfAdmin,
-  LibraryShelfCounts,
   LibraryShelfLetter,
   LibraryShelfProps,
   LibraryShelfTitle,
@@ -660,13 +659,7 @@ const Controls = ({
     />
   );
   const order = (
-    <CompactSelect
-      density={density}
-      label="Sort"
-      onValueChange={onSortChange}
-      options={SORTS}
-      value={sort}
-    />
+    <CompactSelect density={density} label="Sort" onValueChange={onSortChange} options={SORTS} value={sort} />
   );
   const listed = listedGenre(genres, genre);
   const chosen = listed?.name ?? genre;
