@@ -6,8 +6,11 @@ type StripAiring = GuideAiringLayout["source"];
 /** One block of the film strip: a programme, or a run of one series. */
 interface StripProgramme {
   airings: readonly StripAiring[];
-  /** How many different episodes the block holds; a film or a pending slot holds one. */
-  episodes: number;
+  /**
+   * How many different episodes the block holds; a film or a pending slot holds one. Undefined for a
+   * series run that is open: it touches the first or last programme supplied, so it may go on.
+   */
+  episodes: number | undefined;
   id: string;
   startMs: number;
   stopMs: number;
@@ -67,6 +70,13 @@ const groupSeriesRuns = (airings: readonly StripAiring[]): StripItem[] => {
     };
     items.push(item);
     run = { airings: grouped, item, series };
+  }
+
+  // A run is counted only with another programme on both sides of it. A break is no bound, since a
+  // run carries across one.
+  const programmes = items.filter((item): item is StripProgramme => item.type === "programme");
+  for (const item of [programmes[0], programmes.at(-1)]) {
+    if (item?.airings.some((airing) => seriesOf(airing))) item.episodes = undefined;
   }
   return items;
 };

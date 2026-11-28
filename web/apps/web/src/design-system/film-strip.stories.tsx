@@ -108,6 +108,9 @@ const DayLight: Story = { globals: light };
 const DayNoArtwork: Story = { args: { airings: bare } };
 const DayNoArtworkLight: Story = { args: { airings: bare }, globals: light };
 
+// More day than room: the strip runs off its trailing edge with a fade.
+const RunsOff: Story = { args: { minBlockWidth: 330 } };
+
 const GuideRow: Story = { args: { layout: "row" } };
 const GuideRowLight: Story = { args: { layout: "row" }, globals: light };
 const GuideRowNoArtwork: Story = { args: { airings: bare, layout: "row" } };
@@ -129,6 +132,17 @@ const Pointed: Story = {
     await expect(within(canvasElement).getByRole("group", { name: "Programme facts" })).toHaveTextContent(
       "Starts",
     );
+    await expect(within(canvasElement).getByTestId("film-strip-ring-contentPrimary")).toBeVisible();
+  },
+};
+
+// A click draws no amber ring: that one is the keyboard's and the remote's.
+const Clicked: Story = {
+  play: async ({ canvasElement }) => {
+    const film = within(canvasElement).getByRole("button", { name: /space mystery/ });
+    await userEvent.click(film);
+    await expect(film).toHaveFocus();
+    await expect(within(canvasElement).queryByTestId("film-strip-ring-actionFocus")).toBeNull();
   },
 };
 const PointedLight: Story = { ...Pointed, globals: light };
@@ -138,9 +152,9 @@ const PointedNoArtworkLight: Story = { ...Pointed, args: { airings: bare }, glob
 // The keyboard draws the amber ring and opens the same facts.
 const KeyboardFocus: Story = {
   play: async ({ canvasElement }) => {
+    // One Tab reaches the strip, on what is on now; Right moves to what is next.
     await userEvent.tab();
-    await userEvent.tab();
-    await userEvent.tab();
+    await userEvent.keyboard("{ArrowRight}");
     await expect(within(canvasElement).getByRole("group", { name: "Programme facts" })).toHaveTextContent(
       "Starts",
     );
@@ -160,6 +174,7 @@ export {
   BehindLiveLight,
   BehindLiveNoArtwork,
   BehindLiveNoArtworkLight,
+  Clicked,
   Day,
   DayLight,
   DayNoArtwork,
@@ -176,5 +191,6 @@ export {
   PointedLight,
   PointedNoArtwork,
   PointedNoArtworkLight,
+  RunsOff,
 };
 export default meta;

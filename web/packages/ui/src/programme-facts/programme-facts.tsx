@@ -4,6 +4,7 @@ import { View } from "react-native";
 
 interface ProgrammeFactsProps {
   airing: GuideAiringLayout["source"];
+  /** A clock time. For a programme after midnight the caller's formatter adds the day. */
   formatTime: (ms: number) => string;
   /** `picture` stands the facts on a solid ink plate; `page` sets them on the page, as under the Guide. */
   ground?: "page" | "picture";

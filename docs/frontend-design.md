@@ -626,13 +626,20 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
   no screen draws them yet. The strip is one part in two places: under the picture in a desktop window,
   and as the tuned channel's row in the Guide on every device. There is no strip over the picture and
   none opened by tapping a row on a phone.
-  - **Time-true.** The caller names the window, and a block is as wide as its share of it.
+  - **Two sizing rules.** A Guide row is true to the shared clock: a block is as wide as its share of
+    the window, and a focused or pointed block's ring and hit area are at least 44 px across without
+    changing that width. The strip under the picture is not a clock: a block's width follows its length
+    between a minimum and a maximum (150 and 330 px), so each has room for its still and two lines, and
+    the strip runs off its trailing edge with a fade.
+  - **One Tab stop.** Left and Right move between blocks, Home and End go to the first and last, and
+    focus stops at the ends. Breaks are not stops.
   - **What is on now** carries its artwork with the aired part dimmed and a playhead, white over
     artwork. Behind live,
     the live mark stands at now and the playhead where the viewer is.
   - **A run of one series** is one block that names the series and how many episodes. Adjacent
     airings of one series are a run, with or without a break between them; one episode split by a
-    break counts once. The count is derived in the client from those airings.
+    break counts once. The count is derived in the client from those airings, so a run that touches the
+    first or last programme supplied may go on and shows its title with no count.
   - **A later programme** shows its start time. **A programme that has ended** is dimmed and carries
     no time. **A break** is a thin tick, never a block, including a break inside a run.
   - **With artwork** the time and name sit under each still (or inside it, on ink, where the strip is a
