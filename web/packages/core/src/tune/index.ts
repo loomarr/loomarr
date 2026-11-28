@@ -5,6 +5,7 @@ export {
   TUNE_FLIP_MS,
   TUNE_MAX_COVERS_PER_SECOND,
   TUNE_UNCOVER_MS,
+  tuneAbandon,
   tuneFlip,
   tuneKind,
   tunePictureReady,

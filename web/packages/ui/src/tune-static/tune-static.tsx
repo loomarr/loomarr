@@ -37,10 +37,12 @@ type TuneStaticProps = {
 
 /**
  * The cover over the picture. Fills its parent, takes no touch and is hidden from assistive
- * technology. It stays mounted while clear. Under reduced motion, and until the preference is known,
- * it is a plain crossfade of the darkened picture with no static.
+ * technology. It stays mounted while clear. Under reduced motion it is a plain crossfade of the
+ * darkened picture with no static.
  */
 const TuneStatic = ({ cover, reducedMotion }: TuneStaticProps) => {
+  // An unknown preference (null, until the platform answers) counts as reduced: no static is drawn
+  // for someone who may have asked for none.
   const still = useReducedMotionPreference(reducedMotion) !== false;
   const level = useRef(new Animated.Value(still ? 0 : DIM[cover])).current;
 
@@ -64,10 +66,11 @@ const TuneStatic = ({ cover, reducedMotion }: TuneStaticProps) => {
       testID={`tune-static-${cover}`}
     >
       <View style={{ ...fill, backgroundColor: playerChrome.surface }} />
-      {still || cover === "none" ? null : (
-        // The picture's plane is dark in either theme, so the snow is never a light wash.
+      {still ? null : (
+        // The picture's plane is dark in either theme, so the snow is never a light wash. The snow is
+        // hundreds of views, so it stays mounted between covers, hidden and without its flicker.
         <ThemeScope theme="dark">
-          <AnalogSnow />
+          <AnalogSnow reducedMotion={cover === "none" ? true : undefined} />
         </ThemeScope>
       )}
     </Animated.View>

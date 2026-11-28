@@ -1,4 +1,11 @@
-import { idleTune, type TuneView, tuneFlip, tunePictureReady, tuneView } from "@loomarr/core/tune";
+import {
+  idleTune,
+  type TuneView,
+  tuneAbandon,
+  tuneFlip,
+  tunePictureReady,
+  tuneView,
+} from "@loomarr/core/tune";
 import { Action } from "@loomarr/design-system";
 import { TuneBars, TuneStatic } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -61,11 +68,16 @@ const Driven = () => {
   const [now, setNow] = useState(0);
   const view = tuneView(state, now);
 
+  const { nextAt } = view;
   useEffect(() => {
-    if (view.nextAt === null) return undefined;
-    const timer = window.setTimeout(() => setNow(performance.now()), view.nextAt - performance.now());
+    if (nextAt === null) return undefined;
+    // A timer may fire a millisecond early; reading before `nextAt` would name it again and stop here.
+    const timer = window.setTimeout(
+      () => setNow(Math.max(performance.now(), nextAt)),
+      nextAt - performance.now(),
+    );
     return () => window.clearTimeout(timer);
-  }, [view.nextAt]);
+  }, [nextAt]);
 
   const flip = (streaming: boolean) => {
     const at = performance.now();
@@ -74,9 +86,10 @@ const Driven = () => {
   };
   const ready = () => {
     const at = performance.now();
-    setState((current) => tunePictureReady(current, at));
+    setState((current) => tunePictureReady(current, view.flip, at));
     setNow(at);
   };
+  const fail = () => setState((current) => tuneAbandon(current, view.flip));
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -84,6 +97,7 @@ const Driven = () => {
         <Action onPress={() => flip(true)}>Change channel</Action>
         <Action onPress={() => flip(false)}>Tune in</Action>
         <Action onPress={ready}>Picture arrives</Action>
+        <Action onPress={fail}>Playback fails</Action>
       </div>
       <Plate bars={view.bars} cover={view.cover} flip={view.flip} />
     </div>

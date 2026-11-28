@@ -697,8 +697,13 @@ web's Channel-change sound switch decides that).
   picture arrives. "Tuning in…" belongs to the lower third.
 - **Fast flipping**: a flip that arrives while the picture is still covered turns the cover into one
   low wash, uncovered once, 220 ms after the last flip, so the pictures between never show.
-- **Never more than three covers in a second.** When one more cover would be too soon after it, the
-  third stays up until a second has passed since the first.
+- **Never more than three covers in a second, and never a late uncover.** A warm flip that lands
+  after the cover has cleared but within 334 ms of the moment it went up draws no static: its picture
+  shows bare and the bars still run, because another cover so soon would flash too fast, and holding
+  one up would hide a picture that is ready. A flip to a channel that must spin up always covers, as
+  its picture is not there to show.
+- **A tune-in can end without a picture** (playback failed, the channel went off air): the cover
+  clears and the bars do not lock. Only the current flip's picture or failure ends it.
 - **The static is dim**: fine grey snow over a darkened picture, never a white flash.
 - **Reduced motion**: a plain crossfade of the darkened picture, no static and no running bars. The
   grey and locked bars of a tune-in still show, still.
