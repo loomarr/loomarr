@@ -201,13 +201,15 @@ export type { TextLinkProps } from "./src/text-link";
 export { TextLink } from "./src/text-link";
 export type { ToggleProps } from "./src/toggle";
 export { Toggle } from "./src/toggle";
-export type { DecadeFill, Density, FontFamilyRole, TextRole } from "./src/tokens";
+export type { DecadeFill, DecadeTint, Density, FontFamilyRole, TextRole } from "./src/tokens";
 export {
   brandChroma,
   brandContract,
   breakpoints,
   decadeFill,
   decadeFillColor,
+  decadeTint,
+  decadeTintColor,
   iconography,
   nativeFontFace,
   playerChrome,

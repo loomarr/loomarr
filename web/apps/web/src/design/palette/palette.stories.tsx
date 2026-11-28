@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { DecadeTints as DecadeTintsPage } from "../decade-tints";
 import { Palette } from "./palette";
 
 // The palette, rendered from the generated tokens and measured live (§2.1, §5.1a). This is a
@@ -14,5 +15,7 @@ type Story = StoryObj<typeof meta>;
 
 const Default: Story = {};
 
+const DecadeTints: Story = { render: () => <DecadeTintsPage /> };
+
 export default meta;
-export { Default };
+export { DecadeTints, Default };

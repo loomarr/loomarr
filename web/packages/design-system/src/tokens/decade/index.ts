@@ -1,2 +1,2 @@
-export type { DecadeFill } from "./decade";
-export { decadeFill, decadeFillColor } from "./decade";
+export type { DecadeFill, DecadeTint } from "./decade";
+export { decadeFill, decadeFillColor, decadeTint, decadeTintColor } from "./decade";

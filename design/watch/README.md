@@ -137,7 +137,9 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled with i
    its decade's colour on its numeral, the large one; every other channel number is plain. The
    decade colours are six soft tints that reuse none of the system's accents, so a decade is never
    read as live, a link, a warning or focus: 1950s `#E6CFA8`, 1960s `#F0A8B8`, 1970s `#C9E08A`,
-   1980s `#B9A6F2`, 1990s `#9DB4F5`, 2000s `#8FD3C8`. They are new tokens: the build adds them to
+   1980s `#B9A6F2`, 1990s `#9DB4F5`, 2000s `#8FD3C8`. The tints are theme-paired: those are the
+   dark-theme values, and the light theme takes 1950s `#7A6644`, 1960s `#AB4764`, 1970s `#606F32`,
+   1980s `#7851CA`, 1990s `#4561C7`, 2000s `#4A706B`. They are new tokens: the build adds them to
    `docs/frontend-design.md` §2.1 and the token source under the `tokens` claim, and the contrast
    check must pass them on the dark and light grounds. Breaks are neutral grey. Amber means focus
    and typed digits, red means live, and cyan stays the break's "Back in n min".

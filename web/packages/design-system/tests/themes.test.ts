@@ -1,6 +1,13 @@
+import { getConfig } from "@tamagui/core";
 import { describe, expect, it } from "vitest";
-
-import { decadeFill, decadeFillColor, semanticThemes } from "../index";
+import {
+  brandChroma,
+  decadeFill,
+  decadeFillColor,
+  decadeTint,
+  decadeTintColor,
+  semanticThemes,
+} from "../index";
 
 const channel = (hex: string, offset: number) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
 const linear = (value: number) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
@@ -77,6 +84,59 @@ describe.each(Object.entries(semanticThemes))("%s theme", (_name, theme) => {
   // A channel number on its decade's fill (#2767): small mono text, so AA for small text.
   it.each(["1970", "1980", "1990"] as const)("keeps a channel number on the %s fill at WCAG AA", (decade) => {
     expect(contrast(theme.decade.ink, theme.decade[decade])).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+const tintDecades = ["1950", "1960", "1970", "1980", "1990", "2000"] as const;
+
+// The Cross's decade tints (§2.1): 12px headings, so AA for small text. Each theme's set is gated on
+// that theme's own surfaces. The selection fill takes only the watched numeral, which is large text.
+describe.each(Object.entries(semanticThemes))("%s decade tints", (_name, theme) => {
+  it.each([...tintDecades, "neutral"] as const)("keeps %s at WCAG AA on canvas, raised and hover", (key) => {
+    for (const surface of [theme.surface.canvas, theme.surface.raised, theme.surface.elevated]) {
+      expect(contrast(theme.decadeTint[key], surface)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it.each(tintDecades)("keeps the %s numeral at large-text contrast on the selection fill", (key) => {
+    expect(contrast(theme.decadeTint[key], theme.surface.focus)).toBeGreaterThanOrEqual(3);
+  });
+
+  it("reuses no accent", () => {
+    const accents = new Set<string>(
+      [
+        ...brandChroma.slice(0, 6),
+        ...Object.values(theme.state),
+        ...Object.values(theme.accent),
+        theme.action.primary,
+        theme.action.focus,
+      ].map((hex) => hex.toUpperCase()),
+    );
+    for (const key of tintDecades) expect(accents).not.toContain(theme.decadeTint[key]);
+  });
+});
+
+describe("decadeTint", () => {
+  it.each(tintDecades)("maps the %ss to their tint", (key) => {
+    expect(decadeTint(Number(key))).toBe(`decadeTint${key}`);
+    expect(decadeTintColor(Number(key))).toBe(semanticThemes.dark.decadeTint[key]);
+  });
+
+  it("maps no decade, or one outside the six, to neutral", () => {
+    for (const decade of [undefined, 0, 1900, 1940, 1985, 2010, 2090]) {
+      expect(decadeTint(decade)).toBe("decadeTintNeutral");
+      expect(decadeTintColor(decade)).toBe(semanticThemes.dark.decadeTint.neutral);
+    }
+  });
+
+  it("carries each theme's own set to the native theme", () => {
+    for (const mode of ["dark", "light"] as const) {
+      for (const key of [...tintDecades, "neutral"] as const) {
+        const name = key === "neutral" ? "decadeTintNeutral" : (`decadeTint${key}` as const);
+        const entry = getConfig().themes[mode]?.[name] as unknown as { val: string };
+        expect(entry.val).toBe(semanticThemes[mode].decadeTint[key]);
+      }
+    }
   });
 });
 
