@@ -1,10 +1,20 @@
-import { decadeTint, Icon, icons, Surface, Text, VisuallyHidden } from "@loomarr/design-system";
-import type { ReactNode } from "react";
+import {
+  decadeTint,
+  Icon,
+  icons,
+  RingedPressable,
+  type RingedPressableHandle,
+  Surface,
+  Text,
+  VisuallyHidden,
+} from "@loomarr/design-system";
+import { type ReactNode, useEffect, useRef } from "react";
+
+import { focusHost } from "../focus-host";
 import { PictureInk } from "../picture-ink";
 import type { QuietRowDevice } from "../quiet-row";
-import { RingedControl } from "../ringed-control";
 import { Box, Line } from "./layout";
-import { behindWords, type LowerThirdState, summaryOf } from "./summary";
+import { behindWords, type LowerThirdState, summaryOf, wholeMinutes } from "./summary";
 
 interface LowerThirdProps {
   channelName: string;
@@ -14,6 +24,11 @@ interface LowerThirdProps {
   /** `full` is a desktop at full screen, `window` a desktop window, `portrait` an upright phone. */
   device: QuietRowDevice;
   onGoLive?: () => void;
+  /**
+   * Go live left while it held focus, and this layout has no Pause of its own: send focus to the
+   * head of the quiet row (`QuietRow`'s `focusHead`).
+   */
+  onGoLiveDropped?: () => void;
   /** An upright phone's More. */
   onMore?: () => void;
   /** An upright phone's Pause, or Play while paused. */
@@ -53,6 +68,7 @@ const LowerThird = ({
   decade,
   device,
   onGoLive,
+  onGoLiveDropped,
   onMore,
   onTogglePause,
   state,
@@ -60,8 +76,26 @@ const LowerThird = ({
   const portrait = device === "portrait";
   const touch = portrait || device === "landscape";
   const typing = state.kind === "typing";
-  const behind = state.kind === "on" && !state.paused ? (state.behindSeconds ?? 0) : 0;
+  const behind = state.kind === "on" && !state.paused ? Math.floor(state.behindSeconds ?? 0) : 0;
   const paused = state.kind === "on" && Boolean(state.paused);
+  const goLive = behind > 0 && device !== "tv";
+
+  // Go live leaves from under the focus once it has been pressed. Focus goes to Pause where the
+  // lower third has one, and otherwise the screen is told, to send it to the quiet row.
+  const goLiveFocused = useRef(false);
+  const orphaned = useRef(false);
+  const pauseControl = useRef<RingedPressableHandle>(null);
+  if (!goLive && goLiveFocused.current) {
+    orphaned.current = true;
+    goLiveFocused.current = false;
+  }
+  // After the commit, so a sibling quiet row's handle is attached when the screen reaches for it.
+  useEffect(() => {
+    if (!orphaned.current) return;
+    orphaned.current = false;
+    if (portrait) focusHost(pauseControl.current);
+    else onGoLiveDropped?.();
+  });
 
   const title =
     state.kind === "typing"
@@ -88,7 +122,7 @@ const LowerThird = ({
         return (
           <>
             <Meta>{channelName} ·</Meta>
-            <Meta tone="info">Back in {state.backInMinutes} min</Meta>
+            <Meta tone="info">Back in {wholeMinutes(state.backInMinutes)} min</Meta>
           </>
         );
       case "on": {
@@ -99,7 +133,7 @@ const LowerThird = ({
         return (
           <>
             <Dot />
-            <Meta>{joined(where, `${state.minutesLeft} min left`)}</Meta>
+            <Meta>{joined(where, `${wholeMinutes(state.minutesLeft)} min left`)}</Meta>
           </>
         );
       }
@@ -107,18 +141,9 @@ const LowerThird = ({
   };
 
   const next = "next" in state ? state.next : undefined;
-  const goLive = behind > 0 && device !== "tv";
 
   const body = (
-    <Box
-      alignItems="center"
-      aria-label={`Channel ${channelNumber}, ${channelName}`}
-      flexDirection="row"
-      gap={20}
-      maxWidth={640}
-      paddingHorizontal={16}
-      role="group"
-    >
+    <Box alignItems="center" flexDirection="row" gap={20} maxWidth={640} paddingHorizontal={16}>
       <VisuallyHidden>
         <Text textRole="body">{summaryOf(channelNumber, channelName, state)}</Text>
       </VisuallyHidden>
@@ -158,9 +183,15 @@ const LowerThird = ({
           {goLive ? (
             // The target is a touch's height while the line keeps its own.
             <Box marginVertical={touch ? -8 : 0}>
-              <RingedControl
+              <RingedPressable
                 accessibilityLabel="Go live"
                 faceHeight={28}
+                onBlur={() => {
+                  goLiveFocused.current = false;
+                }}
+                onFocus={() => {
+                  goLiveFocused.current = true;
+                }}
                 onPress={onGoLive}
                 size={touch ? 44 : 28}
               >
@@ -168,7 +199,7 @@ const LowerThird = ({
                 <Text textRole="label" tone="live">
                   Go live
                 </Text>
-              </RingedControl>
+              </RingedPressable>
             </Box>
           ) : null}
           <Box alignItems="center" aria-hidden flexDirection="row" flexShrink={1} gap={6} minWidth={0}>
@@ -191,12 +222,17 @@ const LowerThird = ({
       </Box>
       {portrait ? (
         <Box flexDirection="row">
-          <RingedControl accessibilityLabel={paused ? "Play" : "Pause"} onPress={onTogglePause} size={44}>
+          <RingedPressable
+            accessibilityLabel={paused ? "Play" : "Pause"}
+            onPress={onTogglePause}
+            ref={pauseControl}
+            size={44}
+          >
             <Icon decorative glyph={icons[paused ? "play" : "pause"]} size="touch" tone="content" />
-          </RingedControl>
-          <RingedControl accessibilityLabel="More" onPress={onMore} size={44}>
+          </RingedPressable>
+          <RingedPressable accessibilityLabel="More" onPress={onMore} size={44}>
             <Icon decorative glyph={icons.more} size="touch" tone="content" />
-          </RingedControl>
+          </RingedPressable>
         </Box>
       ) : null}
     </Box>

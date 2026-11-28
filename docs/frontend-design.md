@@ -708,9 +708,14 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
   - **An upright phone** has Pause and More at its trailing edge, under the thumb.
   - **Over the picture** (full screen, a television, a phone on its side) it is dark in both themes
     and stands on a left scrim as wide as what stands on it. Beside the picture (a window, an upright
-    phone) it follows the theme.
+    phone) it follows the theme. The scrim is a gradient on every platform (the design system's
+    `Scrim`): CSS on the web, SVG on a phone or television, never a solid box.
   - **One spoken summary**: channel number and name, what is on and how long is left. The numeral is
-    not read on its own.
+    not read on its own, and nothing around the summary is labelled, so the channel is read once.
+  - **Minutes are never 0**: part of a minute counts as one. Seconds behind live count only what has
+    fully passed.
+  - **When Go live leaves from under the focus**, focus goes to Pause where the lower third has one,
+    and otherwise to the head of the quiet row.
   - **The first-run hint** is its own part, one line per device, and the screen decides when it goes.
     Window: `Click a channel to change it, or press Up and Down`. Full screen: `Up and Down change
     channel. Channels shows them all. Guide shows later today`. Television: `Up Down change channel ·
@@ -781,7 +786,11 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
   - **A toolbar:** one Tab stop, Left and Right move between controls and stop at the ends, Home and
     End go to the first and last. A television's remote reaches every control.
   - **Rings.** Keyboard and remote focus draws the amber ring on exactly one control; a pointer over a
-    control draws a plain ring.
+    control draws a plain ring, and none while the keyboard holds a ring elsewhere. A mouse click
+    leaves no amber ring: clicking the control that holds one takes it away until the next key press.
+    The design system's `useRingFocus` decides the ring and `RingedPressable` draws it.
+  - **When Go live leaves from under the focus**, as it does once pressed on a television, focus moves
+    to Channels.
   - Touch controls are at least 44 px. Over the picture the row is dark in both themes, on a foot
     scrim.
 

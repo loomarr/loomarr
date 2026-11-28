@@ -1,9 +1,17 @@
-import { Icon, type IconName, icons, Surface, Text, Tooltip } from "@loomarr/design-system";
-import { Fragment, useRef, useState } from "react";
+import {
+  Icon,
+  type IconName,
+  icons,
+  RingedPressable,
+  type RingedPressableHandle,
+  Surface,
+  Text,
+} from "@loomarr/design-system";
+import { Fragment, type Ref, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 
+import { focusHost } from "../focus-host";
 import { PictureInk } from "../picture-ink";
-import { RingedControl } from "../ringed-control";
 
 type QuietRowDevice = "landscape" | "portrait" | "tv" | "full" | "window";
 
@@ -33,6 +41,12 @@ interface QuietRowProps {
   openKey?: QuietRowKey;
   onPress: (key: QuietRowKey) => void;
   paused?: boolean;
+  ref?: Ref<QuietRowHandle>;
+}
+
+interface QuietRowHandle {
+  /** Moves focus to the control at the head of the row. */
+  focusHead: () => void;
 }
 
 const KEYS: Record<QuietRowDevice, readonly QuietRowKey[]> = {
@@ -87,9 +101,11 @@ const keysFor = ({ behindLive, device, paused }: QuietRowProps): readonly QuietR
  * presses and opens nothing.
  */
 const QuietRow = (props: QuietRowProps) => {
-  const { device, group, listOpen = false, onPress, openKey } = props;
-  const controls = useRef(new Map<QuietRowKey, { focus: () => void }>());
+  const { device, group, listOpen = false, onPress, openKey, ref } = props;
+  const controls = useRef(new Map<QuietRowKey, RingedPressableHandle>());
+  const focusedKey = useRef<QuietRowKey | undefined>(undefined);
   const [stopKey, setStopKey] = useState<QuietRowKey | undefined>(undefined);
+  const focusKey = (key: QuietRowKey) => focusHost(controls.current.get(key));
   const keys = keysFor(props);
   const stop = stopKey && keys.includes(stopKey) ? stopKey : keys[0];
   const desktop = device === "full" || device === "window";
@@ -109,14 +125,34 @@ const QuietRow = (props: QuietRowProps) => {
     if (to === undefined) return;
     event.preventDefault();
     const next = keys[Math.min(keys.length - 1, Math.max(0, to))];
-    if (next) controls.current.get(next)?.focus();
+    if (next) focusKey(next);
   };
 
+  // Read while rendering, before the control goes: its removal may or may not send a blur. A
+  // television's viewer presses Go live and it leaves the row from under the focus.
+  const orphaned = useRef(false);
+  if (focusedKey.current && !keys.includes(focusedKey.current)) {
+    orphaned.current = true;
+    focusedKey.current = undefined;
+  }
+  useLayoutEffect(() => {
+    if (!orphaned.current) return;
+    orphaned.current = false;
+    if (keys[0]) focusKey(keys[0]);
+  });
+  useImperativeHandle(ref, () => ({ focusHead: () => keys[0] && focusKey(keys[0]) }));
+
   const shared = (key: QuietRowKey) => ({
-    onFocus: () => setStopKey(key),
+    onBlur: () => {
+      if (focusedKey.current === key) focusedKey.current = undefined;
+    },
+    onFocus: () => {
+      focusedKey.current = key;
+      setStopKey(key);
+    },
     onPress: () => onPress(key),
-    ref: (node: unknown) => {
-      if (node) controls.current.set(key, node as { focus: () => void });
+    ref: (node: RingedPressableHandle | null) => {
+      if (node) controls.current.set(key, node);
       else controls.current.delete(key);
     },
     size,
@@ -127,12 +163,12 @@ const QuietRow = (props: QuietRowProps) => {
   const control = (key: QuietRowKey) => {
     if (key === "live") {
       return (
-        <RingedControl accessibilityLabel="Go live" {...shared(key)}>
+        <RingedPressable accessibilityLabel="Go live" {...shared(key)}>
           <Surface backgroundColor="stateLive" borderRadius={4} borderWidth={0} height={7} width={7} />
           <Text textRole="label" tone="live">
             Go live
           </Text>
-        </RingedControl>
+        </RingedPressable>
       );
     }
     if (key === "channels" || key === "guide") {
@@ -140,9 +176,9 @@ const QuietRow = (props: QuietRowProps) => {
       const words = key === "guide" ? "Guide" : grouped;
       const open = key === "channels" ? listOpen : openKey === "guide";
       return (
-        <RingedControl
+        <RingedPressable
           accessibilityLabel={words}
-          aria-expanded={key === "channels" ? listOpen : undefined}
+          expanded={key === "channels" ? listOpen : undefined}
           on={open}
           {...shared(key)}
         >
@@ -155,27 +191,25 @@ const QuietRow = (props: QuietRowProps) => {
           <Text numberOfLines={1} textRole="label" tone="primary">
             {words}
           </Text>
-        </RingedControl>
+        </RingedPressable>
       );
     }
     const face = faceOf(key, props);
     const shortcut = desktop ? SHORTCUTS[key] : undefined;
     const tip = shortcut ? `${face.name} (${shortcut})` : face.name;
-    const words = <Text textRole="label">{tip}</Text>;
-    const button = (
-      <RingedControl
+    return (
+      <RingedPressable
         accessibilityLabel={tip}
-        aria-expanded={openKey === undefined ? undefined : openKey === key}
-        // A native television has no hover and the Tooltip draws nothing, so the row names the
-        // focused control itself.
-        focusLabel={device === "tv" ? words : undefined}
+        expanded={openKey === undefined ? undefined : openKey === key}
         on={openKey === key}
+        tip={tip}
+        // A television has no hover, so the focused control is named above itself.
+        tipOn={device === "tv" ? "focus" : "hover"}
         {...shared(key)}
       >
         <Icon decorative glyph={icons[face.icon]} size="touch" tone="content" />
-      </RingedControl>
+      </RingedPressable>
     );
-    return device === "tv" ? button : <Tooltip content={tip}>{button}</Tooltip>;
   };
 
   const row = (
@@ -207,5 +241,5 @@ const QuietRow = (props: QuietRowProps) => {
   return overPicture ? <PictureInk edge="foot">{row}</PictureInk> : row;
 };
 
-export type { QuietRowDevice, QuietRowKey, QuietRowProps };
+export type { QuietRowDevice, QuietRowHandle, QuietRowKey, QuietRowProps };
 export { QuietRow };

@@ -28,8 +28,10 @@ import {
   ProgressTrack,
   RadioGroup,
   RadioItem,
+  RingedPressable,
   resolveBrandLaunchMinHeight,
   resolveViewportInsets,
+  Scrim,
   Screen,
   ScrollFrame,
   SelectControl,
@@ -45,6 +47,7 @@ import {
   typography,
   useReducedMotionPreference,
   useResolvedViewportInsets,
+  useRingFocus,
 } from "../index";
 
 describe("design-system public interface", () => {
@@ -94,6 +97,9 @@ describe("design-system public interface", () => {
       typography,
       useReducedMotionPreference,
       useResolvedViewportInsets,
+      RingedPressable,
+      Scrim,
+      useRingFocus,
     ]).not.toContain(undefined);
   });
 });

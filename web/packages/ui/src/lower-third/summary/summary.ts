@@ -25,9 +25,12 @@ interface LowerThirdNext {
 
 const minutes = (count: number) => `${count} ${count === 1 ? "minute" : "minutes"}`;
 
-/** `45 s behind live`, and minutes from a minute on. */
+/** Minutes left or until: part of a minute counts as one, and there is never "0 min". */
+const wholeMinutes = (count: number) => Math.max(1, Math.ceil(count));
+
+/** `45 s behind live`, and minutes from a minute on. Both count only what has fully passed. */
 const behindWords = (seconds: number) =>
-  seconds < 60 ? `${Math.round(seconds)} s behind live` : `${Math.floor(seconds / 60)} min behind`;
+  seconds < 60 ? `${Math.floor(seconds)} s behind live` : `${Math.floor(seconds / 60)} min behind`;
 
 /** The one sentence a screen reader hears: the channel, what is on and how long is left. */
 const summaryOf = (channelNumber: number, channelName: string, state: LowerThirdState): string => {
@@ -43,14 +46,14 @@ const summaryOf = (channelNumber: number, channelName: string, state: LowerThird
     case "nothing":
       return `${channel} Nothing scheduled.`;
     case "break":
-      return `${channel} In a break. ${state.title} is back in ${minutes(state.backInMinutes)}.${next}`;
+      return `${channel} In a break. ${state.title} is back in ${minutes(wholeMinutes(state.backInMinutes))}.${next}`;
     case "on": {
-      const behind = state.behindSeconds ?? 0;
+      const behind = Math.floor(state.behindSeconds ?? 0);
       const where = state.paused
         ? " Paused."
         : behind > 0
-          ? ` ${behind < 60 ? `${Math.round(behind)} seconds` : minutes(Math.floor(behind / 60))} behind live.`
-          : ` ${minutes(state.minutesLeft)} left.`;
+          ? ` ${behind < 60 ? `${behind} ${behind === 1 ? "second" : "seconds"}` : minutes(Math.floor(behind / 60))} behind live.`
+          : ` ${minutes(wholeMinutes(state.minutesLeft))} left.`;
       const rating = state.rating ? ` Rated ${state.rating}.` : "";
       return `${channel} ${state.title}.${rating}${where}${next}`;
     }
@@ -58,4 +61,4 @@ const summaryOf = (channelNumber: number, channelName: string, state: LowerThird
 };
 
 export type { LowerThirdNext, LowerThirdState };
-export { behindWords, summaryOf };
+export { behindWords, summaryOf, wholeMinutes };

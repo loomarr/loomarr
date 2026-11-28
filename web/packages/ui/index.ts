@@ -193,7 +193,7 @@ export type {
 export { ProgrammeCard } from "./src/programme-card";
 export type { ProgrammeFactsProps, StripMessageProps } from "./src/programme-facts";
 export { ProgrammeFacts, StripMessage } from "./src/programme-facts";
-export type { QuietRowDevice, QuietRowKey, QuietRowProps } from "./src/quiet-row";
+export type { QuietRowDevice, QuietRowHandle, QuietRowKey, QuietRowProps } from "./src/quiet-row";
 export { QuietRow } from "./src/quiet-row";
 export type {
   ApprovalBulkGroupProps,

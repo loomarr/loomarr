@@ -1,9 +1,17 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderUi, screen, userEvent } from "@loomarr/test-support";
+import { createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { FirstRunHint, LowerThird, type LowerThirdProps, type LowerThirdState } from "../index";
+import {
+  FirstRunHint,
+  LowerThird,
+  type LowerThirdProps,
+  type LowerThirdState,
+  QuietRow,
+  type QuietRowHandle,
+} from "../index";
 
 afterEach(cleanup);
 
@@ -18,18 +26,116 @@ const on: LowerThirdState = {
 const third = (props: Partial<LowerThirdProps> = {}) =>
   renderUi(<LowerThird channelName="Coast 90s" channelNumber={7} device="full" state={on} {...props} />);
 
-const group = () => screen.getByRole("group", { name: "Channel 7, Coast 90s" });
+/** Every word in the part: the spoken summary first, then what is drawn. */
+const words = () => document.body.textContent;
+
+const colourOf = (testId: string) => getComputedStyle(screen.getByTestId(testId)).color;
 
 describe("LowerThird", () => {
   it("reads one summary and hides the drawn numeral and facts from a screen reader", () => {
     third({ decade: 1990 });
-    expect(group().textContent).toContain(
-      "Channel 7, Coast 90s. The Diner Years. Rated TV-PG. 12 minutes left. Next at 10:30, Night Desk.",
-    );
+    const summary =
+      "Channel 7, Coast 90s. The Diner Years. Rated TV-PG. 12 minutes left. Next at 10:30, Night Desk.";
+    expect(screen.getByText(summary).closest('[aria-hidden="true"]')).toBeNull();
     for (const id of ["lower-third-numeral", "lower-third-title"]) {
       expect(screen.getByTestId(id).closest('[aria-hidden="true"]')).not.toBeNull();
     }
-    expect(group().textContent).toContain("Coast 90s · TV-PG · 12 min left");
+    expect(words()).toContain("Coast 90s · TV-PG · 12 min left");
+    // The summary is the one name: nothing around it is labelled, so it is not read twice.
+    expect(screen.queryByRole("group")).toBeNull();
+    expect(document.querySelector("[aria-label]")).toBeNull();
+  });
+
+  it("says the typed channel, not the watched one, while a number is typed", () => {
+    third({ state: { digits: "12", kind: "typing", target: { name: "Movie Matinee" } } });
+    expect(screen.getByText("Channel 12, Movie Matinee. Press Enter, or wait.")).toBeTruthy();
+    expect(words()).not.toContain("Coast 90s");
+  });
+
+  it.each([
+    [0, "1 min left", "1 minute left"],
+    [1, "1 min left", "1 minute left"],
+    [2, "2 min left", "2 minutes left"],
+  ])("never says 0 minutes: %i reads as %s", (minutesLeft, drawn, spoken) => {
+    third({ state: { ...on, minutesLeft } as LowerThirdState });
+    expect(words()).toContain(drawn);
+    expect(words()).toContain(spoken);
+    cleanup();
+    third({ state: { backInMinutes: minutesLeft, kind: "break", title: "The Diner Years" } });
+    expect(words()).toContain(`Back in ${Math.max(1, minutesLeft)} min`);
+    expect(words()).toContain(`is back in ${spoken.replace(" left", "")}`);
+  });
+
+  it.each([
+    [59, "59 s behind live", "59 seconds behind live"],
+    [59.6, "59 s behind live", "59 seconds behind live"],
+    [60, "1 min behind", "1 minute behind live"],
+    [61, "1 min behind", "1 minute behind live"],
+  ])("counts only what has passed behind live: %d s", (behindSeconds, drawn, spoken) => {
+    third({ state: { ...on, behindSeconds } as LowerThirdState });
+    expect(words()).toContain(drawn);
+    expect(words()).toContain(spoken);
+  });
+
+  it("tints only the watched channel's numeral, neutral with no decade, never typed digits", () => {
+    const seen = (props: Partial<LowerThirdProps>) => {
+      third(props);
+      const drawn = { numeral: colourOf("lower-third-numeral"), title: colourOf("lower-third-title") };
+      cleanup();
+      return drawn;
+    };
+    const nineties = seen({ decade: 1990 });
+    const none = seen({});
+    const typed = seen({ decade: 1990, state: { digits: "12", kind: "typing" } });
+    expect(nineties.numeral).toContain("decadeTint1990");
+    expect(none.numeral).toContain("decadeTintNeutral");
+    expect(typed.numeral).not.toContain("decadeTint");
+    expect(nineties.title).not.toContain("decadeTint");
+  });
+
+  it("keeps the dark set over the picture in the light theme, and follows the theme beside it", () => {
+    const light = (device: LowerThirdProps["device"]) => {
+      renderUi(
+        <LowerThird channelName="Coast 90s" channelNumber={7} decade={1990} device={device} state={on} />,
+        { theme: "light" },
+      );
+      // The nearest theme scope around the numeral decides which set its tint takes.
+      const scope = screen.getByTestId("lower-third-numeral").closest(".t_dark, .t_light");
+      const theme = scope?.classList.contains("t_dark") ? "dark" : "light";
+      cleanup();
+      return theme;
+    };
+    expect(light("full")).toBe("dark");
+    expect(light("window")).toBe("light");
+  });
+
+  it("sends focus on when Go live leaves from under it", async () => {
+    const behind = { ...on, behindSeconds: 40 } as LowerThirdState;
+    const screenOf = (device: LowerThirdProps["device"], state: LowerThirdState) => {
+      const row = createRef<QuietRowHandle>();
+      return (
+        <>
+          <LowerThird
+            channelName="Coast 90s"
+            channelNumber={7}
+            device={device}
+            onGoLiveDropped={() => row.current?.focusHead()}
+            state={state}
+          />
+          <QuietRow device={device} onPress={() => undefined} ref={row} />
+        </>
+      );
+    };
+    for (const [device, head] of [
+      ["full", "Channels"],
+      ["portrait", "Pause"],
+    ] as const) {
+      const view = renderUi(screenOf(device, behind));
+      screen.getByRole("button", { name: "Go live" }).focus();
+      view.rerender(screenOf(device, on));
+      expect(document.activeElement?.getAttribute("aria-label"), device).toBe(head);
+      cleanup();
+    }
   });
 
   it.each([
@@ -48,7 +154,7 @@ describe("LowerThird", () => {
     const onTogglePause = vi.fn();
     const onMore = vi.fn();
     third({ device: "portrait", onMore, onTogglePause });
-    expect(group().textContent).toContain("Coast 90s · 12 min left");
+    expect(words()).toContain("Coast 90s · 12 min left");
     await userEvent.click(screen.getByRole("button", { name: "Pause" }));
     await userEvent.click(screen.getByRole("button", { name: "More" }));
     expect(onTogglePause).toHaveBeenCalledTimes(1);
@@ -58,19 +164,19 @@ describe("LowerThird", () => {
   it("names the channel while tuning in, and says nothing is scheduled with no Next", () => {
     const { unmount } = third({ state: { kind: "tuning" } });
     expect(screen.getByTestId("lower-third-title").textContent).toBe("Coast 90s");
-    expect(group().textContent).toContain("Tuning in… Starting the channel");
+    expect(words()).toContain("Tuning in… Starting the channel");
     unmount();
     third({ state: { kind: "nothing" } });
-    expect(group().textContent).toContain("Nothing scheduled");
-    expect(group().textContent).not.toContain("Next");
+    expect(words()).toContain("Nothing scheduled");
+    expect(words()).not.toContain("Next");
   });
 
   it("names the programme coming back from a break, and says Paused", () => {
     const { unmount } = third({ state: { backInMinutes: 3, kind: "break", title: "The Diner Years" } });
-    expect(group().textContent).toContain("Back in 3 min");
+    expect(words()).toContain("Back in 3 min");
     unmount();
     third({ state: { ...on, paused: true } as LowerThirdState });
-    expect(group().textContent).toContain("TV-PG · Paused");
+    expect(words()).toContain("TV-PG · Paused");
     expect(screen.queryByRole("button")).toBeNull();
   });
 
@@ -78,12 +184,12 @@ describe("LowerThird", () => {
     const onGoLive = vi.fn();
     const behind = { ...on, behindSeconds: 40 } as LowerThirdState;
     const { unmount } = third({ onGoLive, state: behind });
-    expect(group().textContent).toContain("40 s behind live");
+    expect(words()).toContain("40 s behind live");
     await userEvent.click(screen.getByRole("button", { name: "Go live" }));
     expect(onGoLive).toHaveBeenCalledTimes(1);
     unmount();
     third({ device: "tv", state: { ...on, behindSeconds: 150 } as LowerThirdState });
-    expect(group().textContent).toContain("2 min behind");
+    expect(words()).toContain("2 min behind");
     expect(screen.queryByRole("button", { name: "Go live" })).toBeNull();
   });
 
@@ -93,11 +199,11 @@ describe("LowerThird", () => {
     });
     expect(screen.getByTestId("lower-third-numeral").textContent).toBe("12");
     expect(screen.getByTestId("lower-third-typing-rule")).toBeTruthy();
-    expect(group().textContent).toContain("A film · press Enter, or wait");
+    expect(words()).toContain("A film · press Enter, or wait");
     unmount();
     third({ state: { digits: "99", kind: "typing" } });
     expect(screen.getByTestId("lower-third-title").textContent).toBe("No such channel");
-    expect(group().textContent).toContain("There is no channel 99");
+    expect(words()).toContain("There is no channel 99");
   });
 });
 

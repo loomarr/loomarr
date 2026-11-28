@@ -92,6 +92,24 @@ describe("QuietRow", () => {
     expect(document.activeElement).toBe(document.body);
   });
 
+  it("moves focus to Channels when Go live leaves a television's row from under it", async () => {
+    const props = { behindLive: true, device: "tv", onPress: () => undefined } as const;
+    const view = renderUi(<QuietRow {...props} />);
+    await userEvent.tab();
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Go live");
+    view.rerender(<QuietRow {...props} behindLive={false} />);
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Channels");
+  });
+
+  it("leaves focus alone when Go live goes while another control holds it", async () => {
+    const props = { behindLive: true, device: "tv", onPress: () => undefined } as const;
+    const view = renderUi(<QuietRow {...props} />);
+    await userEvent.tab();
+    await userEvent.keyboard("{End}");
+    view.rerender(<QuietRow {...props} behindLive={false} />);
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("More");
+  });
+
   it("draws a plain ring under a pointer, never the amber one", async () => {
     row();
     await userEvent.hover(screen.getByRole("button", { name: "Guide" }));
