@@ -6,6 +6,7 @@ import {
   type RingedPressableHandle,
   Surface,
   Text,
+  ThemeScope,
 } from "@loomarr/design-system";
 import { Fragment, type Ref, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
@@ -40,6 +41,21 @@ interface QuietRowProps {
   /** The control whose menu is open. */
   openKey?: QuietRowKey;
   onPress: (key: QuietRowKey) => void;
+  /**
+   * A control took the keyboard's or the remote's focus, or that focus left the row (`undefined`).
+   * Focus a pointer gave is not said.
+   */
+  onFocusKey?: (key: QuietRowKey | undefined) => void;
+  /**
+   * Over the picture the row stands on a foot scrim of its own. A screen that draws one scrim under
+   * the row and the lower third together passes `false`; the row stays in the dark theme.
+   */
+  ownInk?: boolean;
+  /**
+   * A control left from under the focus (a television's Go live, once pressed). Given, the row
+   * says so and the screen decides where focus goes; left out, focus goes to the head of the row.
+   */
+  onFocusDropped?: () => void;
   paused?: boolean;
   ref?: Ref<QuietRowHandle>;
 }
@@ -47,6 +63,8 @@ interface QuietRowProps {
 interface QuietRowHandle {
   /** Moves focus to the control at the head of the row. */
   focusHead: () => void;
+  /** Moves focus to one control of the row, when the row has it. */
+  focusControl: (key: QuietRowKey) => void;
 }
 
 const KEYS: Record<QuietRowDevice, readonly QuietRowKey[]> = {
@@ -101,9 +119,20 @@ const keysFor = ({ behindLive, device, paused }: QuietRowProps): readonly QuietR
  * presses and opens nothing.
  */
 const QuietRow = (props: QuietRowProps) => {
-  const { device, group, listOpen = false, onPress, openKey, ref } = props;
+  const {
+    device,
+    group,
+    listOpen = false,
+    onFocusDropped,
+    onFocusKey,
+    onPress,
+    openKey,
+    ownInk = true,
+    ref,
+  } = props;
   const controls = useRef(new Map<QuietRowKey, RingedPressableHandle>());
   const focusedKey = useRef<QuietRowKey | undefined>(undefined);
+  const keyboardKey = useRef<QuietRowKey | undefined>(undefined);
   const [stopKey, setStopKey] = useState<QuietRowKey | undefined>(undefined);
   const focusKey = (key: QuietRowKey) => focusHost(controls.current.get(key));
   const keys = keysFor(props);
@@ -138,9 +167,13 @@ const QuietRow = (props: QuietRowProps) => {
   useLayoutEffect(() => {
     if (!orphaned.current) return;
     orphaned.current = false;
-    if (keys[0]) focusKey(keys[0]);
+    if (onFocusDropped) onFocusDropped();
+    else if (keys[0]) focusKey(keys[0]);
   });
-  useImperativeHandle(ref, () => ({ focusHead: () => keys[0] && focusKey(keys[0]) }));
+  useImperativeHandle(ref, () => ({
+    focusControl: (key: QuietRowKey) => keys.includes(key) && focusKey(key),
+    focusHead: () => keys[0] && focusKey(keys[0]),
+  }));
 
   const shared = (key: QuietRowKey) => ({
     onBlur: () => {
@@ -150,6 +183,20 @@ const QuietRow = (props: QuietRowProps) => {
       focusedKey.current = key;
       setStopKey(key);
     },
+    // Only the keyboard's and the remote's focus is said; a control that loses it says so only if
+    // it is still the one said, since the next may take it first.
+    onKeyboardFocus: (focused: boolean) => {
+      if (focused) {
+        keyboardKey.current = key;
+        onFocusKey?.(key);
+      } else if (keyboardKey.current === key) {
+        keyboardKey.current = undefined;
+        onFocusKey?.(undefined);
+      }
+    },
+    // A pointer never takes focus here, so a key pressed after a click is the picture's key and
+    // draws no ring on a control the viewer never moved to.
+    pointerTakesNoFocus: true,
     onPress: () => onPress(key),
     ref: (node: RingedPressableHandle | null) => {
       if (node) controls.current.set(key, node);
@@ -238,7 +285,8 @@ const QuietRow = (props: QuietRowProps) => {
     </Surface>
   );
 
-  return overPicture ? <PictureInk edge="foot">{row}</PictureInk> : row;
+  if (!overPicture) return row;
+  return ownInk ? <PictureInk edge="foot">{row}</PictureInk> : <ThemeScope theme="dark">{row}</ThemeScope>;
 };
 
 export type { QuietRowDevice, QuietRowHandle, QuietRowKey, QuietRowProps };
