@@ -151,7 +151,8 @@ are in the generated [package map](package-map.md).
   launcher has no queue, retries or claims.
 - **Persistence is broad only at the root.** `store.Store` is the full union held by the composition
   root and the conformance suite. A domain module accepts the smallest role interface it needs,
-  usually declared by that module, and does not widen it back.
+  usually declared by that module, and does not widen it back. A guard pins the union's role count:
+  it only goes down.
 
 ## HTTP API
 
