@@ -172,7 +172,7 @@ func (f *fakeTools) Cut(_ context.Context, in string, start, end int64, out stri
 	return os.WriteFile(out, []byte(fmt.Sprintf("cut %d-%d", start, end)), 0o644)
 }
 
-// splitMemStore is an in-memory SplitStore.
+// splitMemStore is an in-memory store serving the splitter's four ports.
 type splitMemStore struct {
 	mu           sync.Mutex
 	clips        map[string]clipstore.Clip
@@ -751,11 +751,23 @@ func stageParentForSplitReview(st *splitMemStore, hash string) {
 	}
 }
 
-func newSplitter(st filler.SplitStore, tools tools.MediaTools, provider *testkit.LLM, dropDir string) *filler.Splitter {
+// splitTestStore is one store serving all four of the splitter's ports.
+type splitTestStore interface {
+	filler.SplitCatalog
+	filler.SplitFingerprints
+	filler.SplitChildMeta
+	filler.SplitProposals
+}
+
+func portsOf(st splitTestStore) filler.SplitPorts {
+	return filler.SplitPorts{SplitCatalog: st, SplitFingerprints: st, SplitChildMeta: st, SplitProposals: st}
+}
+
+func newSplitter(st splitTestStore, tools tools.MediaTools, provider *testkit.LLM, dropDir string) *filler.Splitter {
 	return newSplitterLogging(st, tools, provider, dropDir, nil)
 }
 
-func newSplitterLogging(st filler.SplitStore, tools tools.MediaTools, provider *testkit.LLM, dropDir string, log *slog.Logger) *filler.Splitter {
+func newSplitterLogging(st splitTestStore, tools tools.MediaTools, provider *testkit.LLM, dropDir string, log *slog.Logger) *filler.Splitter {
 	materializeSplitSources(st, dropDir)
 	var p llm.Provider
 	if provider != nil {
@@ -765,7 +777,7 @@ func newSplitterLogging(st filler.SplitStore, tools tools.MediaTools, provider *
 	// ⚠ The REAL default (10s), not 0. The suite should exercise the number production runs with:
 	// a splitter built with no floor would pass tests that the live 10s floor then fails, which is
 	// exactly how the sub-floor problem stayed invisible until it was measured on a real reel.
-	return filler.NewSplitter(st, tools, p, dropDir,
+	return filler.NewSplitter(portsOf(st), tools, p, dropDir,
 		func() time.Duration { return 10 * time.Second },
 		func() string { n++; return fmt.Sprintf("sp_%d", n) },
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, log)
@@ -784,7 +796,7 @@ func splitFixtureIdentity(path string) string {
 	return id
 }
 
-func materializeSplitSources(st filler.SplitStore, root string) {
+func materializeSplitSources(st filler.SplitCatalog, root string) {
 	clips, err := st.ListClips(context.Background())
 	if err != nil {
 		panic(fmt.Sprintf("list split fixture clips: %v", err))
@@ -2447,7 +2459,7 @@ func TestConfirm_DurableFailureCannotExposeAnAirablePartialGeneration(t *testing
 				{StartMs: 0, EndMs: 30_000, Title: "First"},
 				{StartMs: 30_000, EndMs: 60_000, Title: "Second"},
 			}}
-			sp := filler.NewSplitter(store, tools, nil, drop, func() time.Duration { return 0 },
+			sp := filler.NewSplitter(portsOf(store), tools, nil, drop, func() time.Duration { return 0 },
 				func() string { return "generation-failure" }, time.Now, discardLog())
 			proposal, err := sp.Propose(context.Background(), parentHash)
 			if err != nil {
@@ -2514,7 +2526,7 @@ func TestConfirm_ConcurrentSyncDuringGenerationFailureSeesOnlyBoundHeldChildrenT
 		{StartMs: 0, EndMs: 30_000, Title: "First"},
 		{StartMs: 30_000, EndMs: 60_000, Title: "Second"},
 	}}
-	sp := filler.NewSplitter(store, tools, nil, drop, func() time.Duration { return 0 },
+	sp := filler.NewSplitter(portsOf(store), tools, nil, drop, func() time.Duration { return 0 },
 		func() string { return "concurrent-generation-failure" }, time.Now, discardLog())
 	proposal, err := sp.Propose(context.Background(), parentHash)
 	if err != nil {
@@ -2659,7 +2671,7 @@ func TestConfirm_MediaDeleteFailureRetainsOwnerLineageAndRebuildsHeld(t *testing
 		}
 		return os.WriteFile(filepath.Join(childFull, "open-handle"), []byte("delete denied"), 0o600)
 	}
-	sp := filler.NewSplitter(store, &fakeTools{}, nil, drop, func() time.Duration { return 0 },
+	sp := filler.NewSplitter(portsOf(store), &fakeTools{}, nil, drop, func() time.Duration { return 0 },
 		func() string { return "delete-owner" }, time.Now, discardLog())
 	if _, err := sp.Confirm(ctx, proposal.ID, proposal.Segments); err == nil {
 		t.Fatal("Confirm succeeded despite generation failure")
@@ -3030,9 +3042,9 @@ func TestConfirm_StaleRollbackCannotDeleteRecoveredWinnersMedia(t *testing.T) {
 	if err := base.UpsertSplitProposal(ctx, proposal); err != nil {
 		t.Fatal(err)
 	}
-	first := filler.NewSplitter(store, &fakeTools{}, nil, drop,
+	first := filler.NewSplitter(portsOf(store), &fakeTools{}, nil, drop,
 		func() time.Duration { return 10 * time.Second }, func() string { return "owner-a" }, time.Now, nil)
-	second := filler.NewSplitter(store, &fakeTools{}, nil, drop,
+	second := filler.NewSplitter(portsOf(store), &fakeTools{}, nil, drop,
 		func() time.Duration { return 10 * time.Second }, func() string { return "owner-b" }, time.Now, nil)
 
 	firstErr := make(chan error, 1)

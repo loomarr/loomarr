@@ -102,7 +102,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{ClipHash: parentHash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued, Disposition: pipelinestate.DispositionReview, EnrolledAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
-	splitter := filler.NewSplitter(storeadapter.NewSplit(st, nil), realReviewedSplitTools{
+	splitter := filler.NewSplitter(storeadapter.NewSplit(st, nil).Ports(), realReviewedSplitTools{
 		splitFakeTools: splitFakeTools{}, ffmpeg: mediaTools,
 	}, nil, dir, func() time.Duration { return 0 }, func() string { return "real-ffmpeg-proposal" }, time.Now, nil)
 	proposal, err := splitter.Propose(ctx, parentHash)
