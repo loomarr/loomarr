@@ -1,6 +1,7 @@
 export { LibraryTitleMissing } from "../title-missing";
 export { LibraryTitle } from "./library-title";
 export type {
+  LibraryPersonLink,
   LibraryTitleAiring,
   LibraryTitleChannel,
   LibraryTitleDetail,

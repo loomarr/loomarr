@@ -303,7 +303,7 @@ const Unplayable = ({
   );
 };
 
-const LibraryTitle = ({ title, onBack, fix }: LibraryTitleProps) => {
+const LibraryTitle = ({ title, onBack, fix, personLink }: LibraryTitleProps) => {
   const { wide, density } = useTitleLayout();
   const fixes = useTitleFixes(fix);
   // Closing "Wrong title?" removes the button that was pressed; focus goes back to what opened it.
@@ -367,7 +367,7 @@ const LibraryTitle = ({ title, onBack, fix }: LibraryTitleProps) => {
 
       <OnChannels title={title} />
 
-      <CastAndCrew title={title} />
+      <CastAndCrew personLink={personLink} title={title} />
 
       {fix && title.unplayable > 0 ? (
         <Unplayable count={title.unplayable} kind={title.kind} onCheck={fix.onCheckFiles} />

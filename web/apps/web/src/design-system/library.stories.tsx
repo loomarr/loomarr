@@ -494,6 +494,34 @@ const MemberMovie: Story = {
   ),
 };
 
+// Credits the library knows link to their titles; the one it doesn't stays text.
+const CastLinks: Story = {
+  render: () => (
+    <LibraryTitle
+      onBack={() => {}}
+      personLink={(person) => <a href={`/library?person=${person}`}>{person}</a>}
+      title={{
+        kind: "movie",
+        name: "Paper Kites",
+        year: 1996,
+        credits: [
+          { name: "Imelda Varge", character: "Agnes Fell", role: "actor", personId: "tmdb:90000981" },
+          { name: "Tobin Ashcroft", character: "Rafe Fell", role: "actor" },
+          { name: "Lorna Pettigrew", role: "director", personId: "tmdb:90000982" },
+          { name: "Bram Okonkwo", role: "writer" },
+        ],
+        genres: ["Crime"],
+        files: [],
+        unplayable: 0,
+        seasons: [],
+        match: { by: "none" },
+        detailsFrom: {},
+        channels: [],
+      }}
+    />
+  ),
+};
+
 const Series: Story = {
   render: () => (
     <LibraryTitle
@@ -993,6 +1021,7 @@ export {
   Adding,
   AddingStep1,
   AddingStep3,
+  CastLinks,
   CaughtUp,
   Checking,
   CollectionEditor,
