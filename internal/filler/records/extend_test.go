@@ -8,6 +8,18 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
+// Store is what filler consumers hold, so it stays short of the aggregate; Combined is the one
+// that is both.
+func TestStoreIsNotTheAggregate(t *testing.T) {
+	aggregate := reflect.TypeFor[store.Store]()
+	if reflect.TypeFor[Store]().Implements(aggregate) {
+		t.Error("records.Store satisfies store.Store: embed the core roles filler uses, not the aggregate")
+	}
+	if !reflect.TypeFor[Combined]().Implements(aggregate) {
+		t.Error("records.Combined no longer satisfies store.Store")
+	}
+}
+
 // TestExtendHidesNoCoreMethod guards the wrapper Extend returns. It embeds the store.Store
 // interface, so it promotes only that interface's methods: any other exported method on the core
 // adapter disappears behind it, and a caller that type-asserts for one silently takes its fallback
