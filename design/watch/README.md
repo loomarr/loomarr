@@ -249,4 +249,11 @@ Three independent reviews by use have scored the prototype: 25 of 40, 24 of 40, 
 the move to one channel list, with all 24 task attempts passing and nothing blocking. The third
 review's faults (a repeat click tuning the wrong channel, messages that never showed, missing focus
 rings, an unlabelled By decade, a Guide that could not move through the day) are fixed in the
-prototype and listed above. The next check is a person who has never seen it, with the Tasks panel.
+prototype and listed above. The same reviewer re-ran its findings against the fixes and scored
+32 of 40, with no heuristic under 3.
+
+Still open from that re-check: Go live has no key, F does nothing inside the Guide or a menu, the
+first list row on a television is cut at rest, a phone's By decade tab sits behind the Guide control
+until the tabs are scrolled, and a second tap on the same spot of a phone's list a second later
+tunes the row that slid there. The next check is a person who has never seen it, with the Tasks
+panel.

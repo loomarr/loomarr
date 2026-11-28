@@ -141,6 +141,9 @@ button:disabled{opacity:.35;cursor:default}
 .hint kbd{font-family:"Geist Mono",monospace;font-size:12px;color:var(--white);font-weight:500}
 .toast{position:absolute;left:50%;top:68px;transform:translateX(-50%);z-index:30;padding:8px 14px;border-radius:8px;background:rgba(var(--ink),.96);font-size:13px;max-width:calc(100% - 32px);text-align:center}
 .vguide .toast{top:auto;bottom:28px;background:var(--surface2)}
+.tv.vguide .toast{top:10px;bottom:auto}
+/* While a click is held off after a tune, the row under the pointer does not look clickable. */
+.still #clist .row:hover{background:none;cursor:default}
 .phone .toast,.phone.vguide .toast{top:272px;bottom:auto;background:rgba(var(--ink),.96)}
 .btn{display:inline-flex;align-items:center;height:40px;padding:0 16px;border-radius:8px;border:1px solid #666970;font-size:14px;font-weight:500}
 /* ----- desktop in a window: the cross sits beside the picture ----- */
@@ -166,6 +169,8 @@ button:disabled{opacity:.35;cursor:default}
 .colopen .over.l{opacity:1}
 #stage.full #col,#stage.tv #col{position:absolute;left:var(--pad);top:0;bottom:0;width:var(--colw);display:flex;flex-direction:column;padding-bottom:20px;pointer-events:none}
 .colopen #col,#stage #col .third,#stage #colhead .top{pointer-events:auto!important}
+/* With the list closed the lower third stands alone and takes the width its words need. */
+#stage.full:not(.colopen) #col,#stage.tv:not(.colopen) #col{width:min(640px,62%)}
 #stage.full #colhead,#stage.tv #colhead{padding-top:28px;display:flex;flex-direction:column;gap:14px}
 #stage.tv #colhead .top,#stage.full #colhead .gctl,#stage.tv .tabs [data-act="find"]{display:none}
 #stage.full #clist,#stage.tv #clist{flex:1}
@@ -200,7 +205,8 @@ button:disabled{opacity:.35;cursor:default}
 .phone .menu{left:0;right:0;bottom:0;width:auto;border-radius:16px 16px 0 0;padding:10px 12px 40px}
 .phone .menu .o{min-height:44px}
 .phone .menu .h button,.phone .find .fx{min-width:44px;height:44px}
-.phone .golive{height:44px}
+/* Go live keeps its line's height and takes a 44 px touch area, so the lower third does not jump when it appears. */
+.phone .golive{position:relative}.phone .golive::after{content:"";position:absolute;inset:-8px 0}
 .phone p button{min-height:44px}
 .phone .none{padding-left:0}
 .phone .dhead{padding-left:42px}
@@ -463,7 +469,7 @@ const menuHTML = () => { if (!S.menu) return ''; const [h, opts, body = ''] = ME
   return `<div class="menu" role="dialog" aria-label="${h}" style="${pos}"><div class="h">${SUB.includes(S.menu) ? `<button data-act="menuback" aria-label="Back to More" style="width:auto;display:inline-flex;gap:4px;padding:0 6px">${ic('back', 14)}More</button>` : h}<button data-act="menuclose" aria-label="Close">${ic('x', 16)}</button></div>
     ${SUB.includes(S.menu) ? `<div class="h" style="padding-top:0;color:var(--text);font-size:13px">${h}</div>` : ''}
     ${opts.map((o, i) => `<button class="o${S.mi === i ? ' cur' : ''}" data-mi="${i}"><span>${o.l}${o.s ? `<small>${o.s}</small>` : ''}</span>${o.v ? `<span class="v">${o.v}</span>` : o.sel ? ic('check', 18) : ''}</button>`).join('')}${body}</div>`; };
-const HINT = { window: 'Click a channel to change it, or press <kbd>Up</kbd> and <kbd>Down</kbd>', full: '<kbd>Up</kbd> and <kbd>Down</kbd> change channel. <kbd>Channels</kbd> shows them all',
+const HINT = { window: 'Click a channel to change it, or press <kbd>Up</kbd> and <kbd>Down</kbd>', full: '<kbd>Up</kbd> and <kbd>Down</kbd> change channel. <kbd>Channels</kbd> shows them all. <kbd>Guide</kbd> shows later today',
   tv: '<kbd>Up Down</kbd> change channel · <kbd>OK</kbd> pause · <kbd>Left Right</kbd> controls · <kbd>Back</kbd> Home', phone: 'Tap a channel to change it' };
 const hintHTML = () => S.hinted[S.mode] || S.cold || S.view !== 'watch' || S.toast || S.kf != null ? '' : `<div class="hint" role="note">${HINT[S.mode]}</div>`;
 
@@ -498,7 +504,7 @@ const guideHTML = () => {
   return `<div class="ghead"><div class="gleft"><div style="display:flex;justify-content:space-between;align-items:center"><button class="home" data-act="home">${ic('back', 20)}Home</button>${S.mode === 'tv' ? '' : `<button class="gctl on" data-act="guide">${ic('guide', 18)}Guide<span class="sr"> (showing; press to return to the picture)</span></button>`}</div>
       <div id="gthird" class="third">${head}</div><p class="gsyn">${facts(looking ? gb[2] : c.b[2])[1]}</p></div>
     <div class="gright"><div class="gdock" id="gdock"></div><div class="gplay">Playing <b>${S.T} ${CH[S.T][0]}</b></div></div></div>
-    <div class="gbar">${tabsHTML()}<span style="flex:1"></span>${phone ? '' : S.mode === 'tv' ? `<span class="mono" style="font-size:12px;color:var(--muted)"><b style="color:var(--text);font-weight:500;margin-right:8px">OK</b>watch this channel<b style="color:var(--text);font-weight:500;margin:0 8px 0 22px">Back</b>picture</span>` : `${pager}<button class="btn" data-act="guide">Back to the picture</button>`}</div>
+    <div class="gbar">${tabsHTML()}<span style="flex:1"></span>${phone ? '' : S.mode === 'tv' ? `<span class="mono" style="font-size:12px;color:var(--muted)">${gb && gb[0] > t ? '' : `<b style="color:var(--text);font-weight:500;margin-right:8px">OK</b>${g && g[0] === S.T ? 'picture' : 'watch this channel'}`}<b style="color:var(--text);font-weight:500;margin:0 8px 0 22px">Back</b>picture</span>` : `${pager}<button class="btn" data-act="guide">Back to the picture</button>`}</div>
     ${phone ? `<div class="gpg">${pager}</div>` : ''}
     <div class="ruler">${ruler}${t >= off ? `<span class="nowtag mono" style="left:${(t - off) / span * 100}%">${clock(t, false)}</span>` : ''}</div>
     <div class="grows" id="grows"><div style="position:relative">${rows}${t >= off ? `<i class="nowline" style="left:calc(var(--gl) + (100% - var(--gl)) * ${(t - off) / span})"></i>` : ''}</div></div>
@@ -515,7 +521,7 @@ const render = () => {
   const ph = S.mode === 'phone', win = S.mode === 'window', open = S.col || win || S.find != null;
   // A re-render keeps every list where the viewer scrolled it.
   const keep = Object.fromEntries(['#clist', '#grows', '#plist', '#wall'].map(s => [s, stage.querySelector(s)?.scrollTop ?? 0]));
-  stage.className = `${S.mode} v${S.view}${open ? ' colopen' : ''}${S.idle ? ' idle' : ''}`;
+  stage.className = `${S.mode} v${S.view}${open ? ' colopen' : ''}${S.idle ? ' idle' : ''}${S.still && !ph ? ' still' : ''}`;
   const noMatch = `<p style="padding:14px 0;color:var(--muted);font-size:14px">No channel or programme matches “${(S.find ?? '').replace(/</g, '&lt;')}”. <button data-act="findclose" style="color:var(--text);text-decoration:underline">Show all channels</button></p>`;
   const picwrap = `<div id="picwrap"><div id="pic" class="${S.cold ? 'cold' : ''}${S.paused ? ' paused' : ''}${S.tuning ? ' tuning' : ''}">${picHTML()}</div></div>`;
   const lonely = S.tab === 'Recent' && !finding() && LIST().length === 1 ? `<p class="none">Channels you watch collect here.</p>` : '';
@@ -660,6 +666,8 @@ stage.addEventListener('click', e => {
 // The list scrolls between its first and last channel, and always as far as its rest position.
 let REST = 0;
 stage.addEventListener('scroll', e => { const cl = e.target; if (cl.id !== 'clist') return;
+  // Scrolling moves a different row under the pointer, so what was being looked at is let go.
+  if (S.hov != null) { clearTimeout(hovT); S.hov = null; S.hb = null; render(); return; }
   const room = cl.firstElementChild.offsetHeight, lo = Math.min(REST, room - 4), hi = Math.max(REST, cl.scrollHeight - cl.clientHeight - room + 4);
   if (cl.scrollTop < lo) cl.scrollTop = lo; else if (cl.scrollTop > hi) cl.scrollTop = hi; }, true);
 stage.addEventListener('dblclick', e => { if (e.target.closest('#pic') && (S.mode === 'window' || S.mode === 'full') && S.view === 'watch') { pause(); act('full'); } });
@@ -667,7 +675,7 @@ stage.addEventListener('input', e => { if (e.target.id === 'q') { S.find = e.tar
 stage.addEventListener('pointermove', e => {
   if (S.mode === 'tv') return; if (S.idle) { S.idle = false; render(); } wake();
   // After a click the list re-centres under a pointer that has not moved. It must move before it looks at anything.
-  if (S.still && S.mode !== 'phone') { if (Math.hypot(e.clientX - S.still[0], e.clientY - S.still[1]) < 14) return; S.still = null; }
+  if (S.still && S.mode !== 'phone') { if (Math.hypot(e.clientX - S.still[0], e.clientY - S.still[1]) < 14) return; S.still = null; stage.classList.remove('still'); }
   if (S.mode !== 'window' || S.view !== 'watch') return;
   const r = e.target.closest('.row[data-n]'), b = e.target.closest('.blk[data-b]');
   const hn = r && +r.dataset.n !== S.T && S.find == null ? +r.dataset.n : (b ? S.hov : null), hb = b ? +b.dataset.b : null;
@@ -705,7 +713,7 @@ document.addEventListener('keydown', e => {
     else if (k === 'ArrowDown' || k === 'ArrowUp') { const n = L[L.indexOf(g[0]) + (k === 'ArrowDown' ? 1 : -1)]; if (n) { const lo = Math.max(S.goff, now()), hi = S.goff + SPAN() - 1, mid = Math.max(lo, Math.min(hi, (Math.max(SCHED[g[0]][g[1]][0], now()) + SCHED[g[0]][g[1]][1]) / 2)); let j = SCHED[n].findIndex(b => b[0] <= mid && b[1] > mid); if (j < 0) j = SCHED[n].findIndex(b => b[1] > lo && b[0] <= hi); if (j < 0) j = cur(n).i; S.gcur = [n, j]; render(); } }
     // Right past the last programme drawn moves the Guide later; Left past the first moves it earlier.
     else if (k === 'ArrowRight' || k === 'ArrowLeft') { const j = g[1] + (k === 'ArrowRight' ? 1 : -1), b = SCHED[g[0]][j]; if (b && b[1] > now()) {
-      if (b[0] >= S.goff + SPAN()) S.goff = Math.min(GMAX(), Math.max(S.goff + 60, Math.ceil((b[0] - SPAN() + 30) / 30) * 30));
+      if (b[0] > S.goff + SPAN() - 20) S.goff = Math.min(GMAX(), Math.max(S.goff + 60, Math.ceil((b[0] - SPAN() + 30) / 30) * 30));
       if (b[1] <= S.goff) S.goff = Math.max(0, Math.min(S.goff - 60, Math.floor(b[0] / 30) * 30));
       if (b[0] < S.goff + SPAN()) { S.gcur = [g[0], j]; if (j > cur(g[0]).i) done('later'); } render(); } }
     // OK on what is on now watches it, or returns to the picture when it is already playing. A later programme says when it starts.
