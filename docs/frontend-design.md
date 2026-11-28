@@ -621,7 +621,8 @@ the picture) is built. A desktop window, a television and a phone come in #4732,
   pointer on the controls, not paused and no digits pending, the lower third, the quiet row and the
   hint rest. A key or pointer movement wakes the screen, and the key that wakes it also does its job.
   Nothing that holds focus, the pointer or an open layer goes quiet on a timer.
-- **Digits tune direct.** Typed digits (two at most) replace the numeral, commit on Enter or 1.6
+- **Digits tune direct.** Typed digits (as many as the longest channel number has) replace the
+  numeral, commit on Enter or 1.6
   seconds after the last, and Esc cancels them. A number with no channel says so and tunes nothing.
 - **Pause.** Space or a click on the picture pauses and resumes; resuming plays on behind live by the
   time paused, and Go live returns to live. A double click on the picture toggles full screen and
