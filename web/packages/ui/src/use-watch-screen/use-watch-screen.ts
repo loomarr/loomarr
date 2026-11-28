@@ -15,6 +15,7 @@ import {
   watchScreenView,
 } from "@loomarr/core/watch-screen";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Platform } from "react-native";
 
 /** An event as a caller sends it; the hook dates it. */
 type WatchScreenInput = WatchScreenEvent extends infer E
@@ -49,6 +50,12 @@ interface WatchScreenModel<C extends LineupChannel> {
   state: WatchScreenState;
   view: WatchScreenView<C>;
   send: (event: WatchScreenInput) => void;
+  /**
+   * Whether the last input anywhere on the page was a key or a remote's, not a pointer's. The one
+   * note the screen reads before it moves focus by itself, and before it tells the model a list
+   * event came from a key.
+   */
+  keyed: () => boolean;
 }
 
 /**
@@ -87,8 +94,38 @@ const useWatchScreen = <C extends LineupChannel>({
     setSnapshot({ at: event.at, state: step.state });
     for (const request of step.requests) latest.current.onRequest(request);
   }, []);
+  // The last input's kind, for the whole document: a key reaches the screen from the document
+  // whatever holds focus, so a note kept inside the screen would miss one pressed on the page.
+  // The listeners only record; they handle, prevent and stop nothing, and so may listen first, in
+  // the capture phase, where a control that stops a key cannot hide it. Off the web every input
+  // is a key's or a remote's.
+  const lastKey = useRef(Platform.OS !== "web");
+  useEffect(() => {
+    type Listen = (type: string, listener: () => void, options: object) => void;
+    const page = (globalThis as { document?: { addEventListener: Listen; removeEventListener: Listen } })
+      .document;
+    if (Platform.OS !== "web" || !page) return undefined;
+    const key = () => {
+      lastKey.current = true;
+    };
+    const pointer = () => {
+      lastKey.current = false;
+    };
+    const options = { capture: true, passive: true };
+    page.addEventListener("keydown", key, options);
+    page.addEventListener("pointerdown", pointer, options);
+    return () => {
+      page.removeEventListener("keydown", key, options);
+      page.removeEventListener("pointerdown", pointer, options);
+    };
+  }, []);
+  const keyed = useCallback(() => lastKey.current, []);
+
   const send = useCallback(
-    (event: WatchScreenInput) => apply({ ...event, at: clock.current() } as WatchScreenEvent),
+    (event: WatchScreenInput) => {
+      if (event.type === "key") lastKey.current = true;
+      apply({ ...event, at: clock.current() } as WatchScreenEvent);
+    },
     [apply],
   );
 
@@ -115,7 +152,7 @@ const useWatchScreen = <C extends LineupChannel>({
     return () => clearTimeout(timer);
   }, [apply, nextAt]);
 
-  return { lineup, send, state: snapshot.state, view };
+  return { keyed, lineup, send, state: snapshot.state, view };
 };
 
 export type { UseWatchScreenArgs, WatchScreenInput, WatchScreenModel };

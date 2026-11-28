@@ -2,7 +2,7 @@
 
 import { idleTune, tuneView } from "@loomarr/core/tune";
 import { type WatchRequest, watchKeyOf } from "@loomarr/core/watch-screen";
-import { act, cleanup, fireEvent, renderUi, screen, userEvent } from "@loomarr/test-support";
+import { act, cleanup, fireEvent, renderUi, screen, userEvent, within } from "@loomarr/test-support";
 import { useEffect } from "react";
 import { Platform, Text } from "react-native";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -67,7 +67,13 @@ const Harness = ({ cover = false, hintSeen = true }: { cover?: boolean; hintSeen
     <WatchScreen
       layout="full"
       model={model}
-      cover={cover ? <Text>Off air</Text> : undefined}
+      cover={
+        cover ? (
+          <Text accessibilityRole="button" onPress={() => undefined}>
+            Off air
+          </Text>
+        ) : undefined
+      }
       picture={<Text>picture</Text>}
       programme={(channel) => ({
         kind: "on",
@@ -240,6 +246,101 @@ describe("WatchScreen and focus a pointer meets", () => {
   });
 });
 
+const blur = () => act(() => (document.activeElement as HTMLElement | null)?.blur());
+const mute = () => screen.getByRole("button", { name: "Mute (M)" });
+
+describe("WatchScreen and the one note of the last input", () => {
+  it("hands a list key pressed on the page to the list's cursor row", () => {
+    renderUi(<Harness />);
+    click(channelsControl());
+    blur();
+    key("ArrowDown", document.body);
+    expect(document.activeElement?.getAttribute("role")).toBe("option");
+    expect(tunes()).toEqual([]);
+  });
+
+  it("hands nothing on when a pointer closes a menu", () => {
+    keyboardFocus();
+    renderUi(<Harness />);
+    key("a", document.body);
+    click(screen.getByTestId("watch-picture").firstElementChild as HTMLElement);
+    expect(screen.queryByText(/^menu audio/)).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("hands nothing on, and draws no ring on Channels, when a row is clicked in a list a key opened", async () => {
+    keyboardFocus();
+    renderUi(<Harness />);
+    act(() => channelsControl().focus());
+    await userEvent.keyboard("{Enter}");
+    expect(listbox()).not.toBeNull();
+    await userEvent.click(screen.getByRole("option", { name: /^3 / }));
+    expect(tunes()).toEqual(["ch-3"]);
+    expect(document.activeElement).not.toBe(channelsControl());
+    expect(within(channelsControl()).queryByTestId("ring-actionFocus")).toBeNull();
+    requests.mockClear();
+  });
+
+  it("lands a key's hand-off with the ring, and stays awake while it holds focus", () => {
+    vi.useFakeTimers();
+    keyboardFocus();
+    renderUi(<Harness hintSeen={false} />);
+    key(" ", document.body);
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    key(" ", document.body);
+    const goLive = screen.getByRole("button", { name: "Go live" });
+    act(() => goLive.focus());
+    // End on Go live: it goes, and focus goes on to Channels.
+    key("End", goLive);
+    expect(document.activeElement).toBe(channelsControl());
+    expect(within(channelsControl()).getByTestId("ring-actionFocus")).toBeTruthy();
+    expect(focusOf.current).toBe("channels");
+    expect(restedAfter(60_000)).toBe(false);
+    // Esc closing the list Channels opened lands there too.
+    click(channelsControl());
+    key("Escape");
+    expect(listbox()).toBeNull();
+    expect(document.activeElement).toBe(channelsControl());
+    expect(within(channelsControl()).getByTestId("ring-actionFocus")).toBeTruthy();
+    expect(restedAfter(60_000)).toBe(false);
+    requests.mockClear();
+  });
+
+  it("never blurs the find field, a menu item or the cover's control on a press on the foot", () => {
+    renderUi(<Harness cover />);
+    key("/", document.body);
+    const find = screen.getByRole("searchbox");
+    expect(document.activeElement).toBe(find);
+    fireEvent.mouseDown(mute());
+    expect(document.activeElement).toBe(find);
+    key("Escape", document.body);
+    key("Escape", document.body);
+    key("a", document.body);
+    const item = screen.getByText("menu audio first");
+    act(() => item.focus());
+    fireEvent.mouseDown(mute());
+    expect(document.activeElement).toBe(item);
+    const offAir = screen.getByText("Off air");
+    act(() => offAir.focus());
+    fireEvent.mouseDown(mute());
+    expect(document.activeElement).toBe(offAir);
+  });
+
+  it("drops a foot control's keyboard focus on a press on the foot's empty space, and does nothing else", () => {
+    keyboardFocus();
+    renderUi(<Harness />);
+    act(() => mute().focus());
+    expect(screen.getAllByTestId("ring-actionFocus")).toHaveLength(1);
+    fireEvent.pointerDown(screen.getByTestId("watch-quiet-row"));
+    fireEvent.mouseDown(screen.getByTestId("watch-quiet-row").firstElementChild as Element);
+    expect(document.activeElement).toBe(document.body);
+    expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
+    expect(requests).not.toHaveBeenCalled();
+  });
+});
+
 describe("WatchScreen at rest", () => {
   it("rests after a click on Mute, the pointer moving onto the picture, and a key", () => {
     vi.useFakeTimers();
@@ -373,18 +474,28 @@ describe("WatchScreen", () => {
   });
 
   it("takes Back one step at a time: a menu's page, the menu, the list", async () => {
+    keyboardFocus();
     renderUi(<Harness />);
     await userEvent.click(channelsControl());
     key("a", document.body);
     await userEvent.click(screen.getByText("menu audio first"));
     expect(screen.getByText("menu audio inner")).toBeTruthy();
+    // Focus is on the page after the click; every key after it is still seen.
+    act(() => (document.activeElement as HTMLElement | null)?.blur());
     key("Escape", document.body);
     expect(screen.getByText("menu audio first")).toBeTruthy();
     key("Escape", document.body);
     expect(screen.queryByText(/^menu audio/)).toBeNull();
     expect(listbox()).not.toBeNull();
+    // A key closed the menu, so focus is back on its control, with the ring.
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Audio (A)");
+    expect(screen.getAllByTestId("ring-actionFocus")).toHaveLength(1);
+    act(() => (document.activeElement as HTMLElement | null)?.blur());
     key("Escape", document.body);
     expect(listbox()).toBeNull();
+    // A key closed the list that Channels opened: focus is on Channels, with the ring.
+    expect(document.activeElement).toBe(channelsControl());
+    expect(screen.getAllByTestId("ring-actionFocus")).toHaveLength(1);
     key("Escape", document.body);
     expect(requests).toHaveBeenLastCalledWith({ on: false, type: "fullScreen" });
     requests.mockClear();

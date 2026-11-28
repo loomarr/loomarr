@@ -429,6 +429,27 @@ describe("rule 6: the desktop's keys", () => {
 });
 
 describe("rule 7: Back goes one step", () => {
+  it("gives focus back to a menu's control when a key closes the menu, and not after a pointer", () => {
+    const s = screen();
+    s.key("c");
+    s.key("Escape");
+    expect(s.state.handOff).toEqual({ seq: 1, to: "subtitles" });
+    s.key("a");
+    s.key("a");
+    expect(s.state.handOff).toEqual({ seq: 2, to: "audio" });
+    s.send({ control: "more", type: "press" });
+    s.send({ fromKey: true, type: "closeMenu" });
+    expect(s.state.handOff).toEqual({ seq: 3, to: "more" });
+    // A pointer closing a menu hands nothing on.
+    s.send({ control: "more", type: "press" });
+    s.send({ type: "closeMenu" });
+    s.send({ control: "audio", type: "press" });
+    s.send({ type: "pictureClick" });
+    s.key("?");
+    s.key("Escape");
+    expect(s.state.handOff).toEqual({ seq: 3, to: "more" });
+  });
+
   it("returns from a menu's page to the menu, then closes it", () => {
     const s = screen();
     s.send({ control: "more", type: "press" });

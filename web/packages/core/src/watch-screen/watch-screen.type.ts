@@ -47,9 +47,12 @@ interface WatchMenu {
   page?: string | undefined;
 }
 
-/** Where the screen asks focus to go: the list's cursor, or the Channels control that opened it. */
+/**
+ * Where the screen asks focus to go: the list's cursor, the Channels control that opened the list,
+ * or the control whose menu a key closed.
+ */
 interface WatchHandOff {
-  to: "list" | "channels";
+  to: "list" | "channels" | "audio" | "more" | "subtitles";
   /** Counts the hand-offs, so a part knows when to move focus again. */
   seq: number;
 }
@@ -126,7 +129,8 @@ type WatchScreenEvent =
   | { type: "list"; event: ChannelListEvent; fromKey?: boolean; at: number }
   /** An open menu moved to one of its inner pages, or back to its first (`undefined`). */
   | { type: "menuPage"; page: string | undefined; at: number }
-  | { type: "closeMenu"; at: number }
+  /** The menu closed itself; `fromKey` says a key did it, so focus goes back to its control. */
+  | { type: "closeMenu"; fromKey?: boolean; at: number }
   /** Back or Esc, from a control that has no key of its own: one step. */
   | { type: "back"; at: number }
   /** The watched channel changed from outside the screen. */

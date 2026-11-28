@@ -97,14 +97,12 @@ const WatchScreen = <C extends LineupChannel>({
     send({ picture: showing, type: "picture" });
   }, [send, showing]);
 
-  // Whether the last thing to happen inside the screen was a key, so the model knows a list that a
-  // key closed from one a pointer closed. Away from the web every press is a remote's or a key's.
-  const byKey = useRef(Platform.OS !== "web");
-
   // The one gate for moving focus because a control went away or a layer closed: only after a
-  // key or a remote. After a pointer press focus stays where it is, on the page.
+  // key or a remote, by the hook's one note of the last input on the page. After a pointer press
+  // focus stays where it is, on the page.
+  const { keyed } = model;
   const handFocus = (move: () => void) => {
-    if (byKey.current) move();
+    if (keyed()) move();
   };
 
   // The one pointer rule for the foot of the screen, the lower third and the quiet row: a press
@@ -114,19 +112,21 @@ const WatchScreen = <C extends LineupChannel>({
   const footThird = useRef<Part>(null);
   const footRow = useRef<Part>(null);
   const pressFoot = () => {
-    byKey.current = false;
     const active = (globalThis as { document?: { activeElement?: unknown } }).document?.activeElement;
     if (active && [footThird.current, footRow.current].some((part) => part?.contains?.(active))) {
       (active as { blur?: () => void }).blur?.();
     }
   };
 
-  // Focus goes where the model hands it: onto the list's cursor, or back to Channels.
+  // Focus goes where the model hands it: onto the list's cursor, back to Channels, or back to the
+  // control whose menu closed.
   const handOff = state.handOff;
   // biome-ignore lint/correctness/useExhaustiveDependencies: each hand-off moves focus once
   useEffect(() => {
-    if (handOff?.to === "list") handFocus(() => list.current?.focusCursor());
-    if (handOff?.to === "channels") handFocus(() => quietRow.current?.focusHead());
+    const to = handOff?.to;
+    if (to === "list") handFocus(() => list.current?.focusCursor());
+    else if (to === "channels") handFocus(() => quietRow.current?.focusHead());
+    else if (to) handFocus(() => quietRow.current?.focusControl(to));
   }, [handOff?.seq]);
 
   const thirdState = (channel: C): LowerThirdState => {
@@ -172,9 +172,10 @@ const WatchScreen = <C extends LineupChannel>({
       ? [`${found.number} ${found.name}`, found.onNow].filter(Boolean).join(", ")
       : "No channel or programme matches";
 
-  // The lower third comes back under a pointer that has not moved when the list closes, and no
-  // pointer-enter comes with it, so on arrival it asks whether the pointer is already over it.
-  const holdIfHovered = useCallback(
+  // The lower third's element arrives, and does two things: it joins the foot, for the pointer
+  // rule, and, since it comes back under a pointer that has not moved when the list closes with
+  // no pointer-enter, it asks whether the pointer is already over it.
+  const thirdArrived = useCallback(
     (node: unknown) => {
       footThird.current = node as Part;
       const element = node as { matches?: (selector: string) => boolean } | null;
@@ -199,19 +200,7 @@ const WatchScreen = <C extends LineupChannel>({
     view.menu && QUIET_ROW_MENUS.has(view.menu.name) ? (view.menu.name as QuietRowKey) : undefined;
 
   return (
-    <Layer
-      fill
-      testID="watch-screen"
-      {...web({
-        onKeyDownCapture: () => {
-          byKey.current = true;
-        },
-        onPointerDownCapture: () => {
-          byKey.current = false;
-        },
-        onPointerMove,
-      })}
-    >
+    <Layer fill testID="watch-screen" {...web({ onPointerMove })}>
       <Layer fill>{picture}</Layer>
       <TuneStatic
         cover={tune.cover}
@@ -254,7 +243,7 @@ const WatchScreen = <C extends LineupChannel>({
             <Surface
               backgroundColor="transparent"
               borderWidth={0}
-              ref={holdIfHovered}
+              ref={thirdArrived}
               {...web({ onMouseDown: pressFoot })}
             >
               {third(watched, true)}
@@ -268,7 +257,7 @@ const WatchScreen = <C extends LineupChannel>({
               autoFocus
               detail={detail}
               lineup={lineup}
-              onEvent={(event) => send({ event, fromKey: byKey.current, type: "list" })}
+              onEvent={(event) => send({ event, fromKey: keyed(), type: "list" })}
               ref={list}
               renderPinned={(channel) => third(channel, false)}
               restFromBottom={CROSSING - LIST_FOOT}
@@ -311,7 +300,7 @@ const WatchScreen = <C extends LineupChannel>({
         {view.menu && renderMenu ? (
           <Layer bottom={MENU_FOOT} right={EDGE} testID="watch-menu">
             {renderMenu({
-              close: () => send({ type: "closeMenu" }),
+              close: () => send({ fromKey: keyed(), type: "closeMenu" }),
               lastChannel: view.lastChannel,
               name: view.menu.name,
               openPage: (page) => send({ page, type: "menuPage" }),

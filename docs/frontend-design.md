@@ -662,7 +662,8 @@ the picture) is built. A desktop window, a television and a phone come in #4732,
   screen owns: a pointer press anywhere in it takes focus off whichever of their controls holds it
   (the list, a menu and a cover are outside it).
 - **One rule for handing focus on.** Focus moves by itself because a control went away or a layer
-  closed only after a key or a remote; after a pointer press it stays on the page.
+  closed only after a key or a remote; after a pointer press it stays on the page. One note of the
+  last input, kept for the whole page, decides; a menu a key closes gives focus back to its control.
 - **Find** announces the result under its cursor through a polite live region: the search field has
   no `aria-activedescendant`, so the result cannot be carried by the field itself.
 - **The model asks; the caller does.** It emits requests (tune this channel, pause, resume, go live,

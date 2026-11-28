@@ -11,6 +11,7 @@ import {
 } from "../channel-list";
 import type {
   WatchControl,
+  WatchHandOff,
   WatchKeyInput,
   WatchLayout,
   WatchMenuName,
@@ -150,7 +151,14 @@ const reduceStep = <C extends LineupChannel>(
     requests,
     state: next,
   });
-  const handTo = (s: WatchScreenState, to: "list" | "channels") => ({ seq: (s.handOff?.seq ?? 0) + 1, to });
+  const handTo = (s: WatchScreenState, to: WatchHandOff["to"]) => ({ seq: (s.handOff?.seq ?? 0) + 1, to });
+  // A menu a key closes gives focus back to the control that opened it; the shortcuts sheet has
+  // none.
+  const closeMenuByKey = (s: WatchScreenState): WatchScreenState => {
+    const name = s.menu?.name;
+    const control = name && name !== "shortcuts" ? name : undefined;
+    return { ...s, handOff: control ? handTo(s, control) : s.handOff, menu: undefined };
+  };
 
   // A change of channel: the one left is remembered, and pause, digits and the hint are over.
   const changed = (s: WatchScreenState, channelId: string): WatchScreenState => ({
@@ -270,7 +278,7 @@ const reduceStep = <C extends LineupChannel>(
   // One step back: a menu's page, the menu, typed digits, then the list's own steps, then full screen.
   const back = (s: WatchScreenState): WatchScreenStep => {
     if (s.menu?.page !== undefined) return stay({ ...s, menu: { name: s.menu.name } });
-    if (s.menu) return stay({ ...s, menu: undefined });
+    if (s.menu) return stay(closeMenuByKey(s));
     if (s.digits) return stay({ ...s, digits: undefined });
     // Back is a key or a remote's button.
     if (s.list.open) return listStep(s, { type: "back" }, true);
@@ -314,7 +322,8 @@ const reduceStep = <C extends LineupChannel>(
     // Full screen answers from anywhere, a menu and the open list included.
     if (letter === "f" && s.layout !== "tv") return fullScreen(s);
     if (isBack) return back(s);
-    // An open menu keeps every other key.
+    // Its own key closes an open menu, as Esc does; the menu keeps every other key.
+    if (s.menu && MENU_KEYS[letter] === s.menu.name) return stay(closeMenuByKey(s));
     if (s.menu) return stay(s);
 
     if (/^[0-9]$/.test(pressed) && s.layout !== "tv") {
@@ -404,7 +413,7 @@ const reduceStep = <C extends LineupChannel>(
     case "menuPage":
       return stay(woken.menu ? { ...woken, menu: { name: woken.menu.name, page: event.page } } : woken);
     case "closeMenu":
-      return stay({ ...woken, menu: undefined });
+      return stay(event.fromKey ? closeMenuByKey(woken) : { ...woken, menu: undefined });
     case "back":
       return back(woken);
     case "tuned":

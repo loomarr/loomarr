@@ -63,6 +63,8 @@ interface QuietRowProps {
 interface QuietRowHandle {
   /** Moves focus to the control at the head of the row. */
   focusHead: () => void;
+  /** Moves focus to one control of the row, when the row has it. */
+  focusControl: (key: QuietRowKey) => void;
 }
 
 const KEYS: Record<QuietRowDevice, readonly QuietRowKey[]> = {
@@ -168,7 +170,10 @@ const QuietRow = (props: QuietRowProps) => {
     if (onFocusDropped) onFocusDropped();
     else if (keys[0]) focusKey(keys[0]);
   });
-  useImperativeHandle(ref, () => ({ focusHead: () => keys[0] && focusKey(keys[0]) }));
+  useImperativeHandle(ref, () => ({
+    focusControl: (key: QuietRowKey) => keys.includes(key) && focusKey(key),
+    focusHead: () => keys[0] && focusKey(keys[0]),
+  }));
 
   const shared = (key: QuietRowKey) => ({
     onBlur: () => {
