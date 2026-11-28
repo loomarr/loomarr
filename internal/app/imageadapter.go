@@ -17,7 +17,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // imageService boxes the concrete service into the api interface, keeping a nil one nil.
@@ -48,7 +47,7 @@ func imageService(s *images.Service) imagesapi.ImageService {
 //
 // It also returns the certified worker itself, which decodes image subtitle tracks for burn-in.
 func newImageService(
-	st store.Store,
+	st artworkStore,
 	set resolved,
 	explicitWorker, release string,
 	recorder *metrics.Recorder,
@@ -130,7 +129,7 @@ func resolveImageWorker(explicit string) (string, error) {
 // folder. `internal/media/images` must not know either; it takes absolute paths and never asks what
 // produced them.
 type artworkAdoptStore struct {
-	st        store.Store
+	st        artworkStore
 	fillerDir string
 }
 
