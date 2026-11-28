@@ -303,6 +303,8 @@ describe("ChannelWall — headed by the lineup's groups (#4734)", () => {
     ]);
     expect(screen.getByRole("tab", { selected: true })).toHaveAccessibleName("All");
     expect(screen.queryByRole("button", { name: "Find a channel" })).not.toBeInTheDocument();
+    // The row of tabs scrolls where it does not fit.
+    expect(screen.getByTestId("wall-tabs")).toContainElement(screen.getByRole("tablist"));
   });
 
   it.each([
