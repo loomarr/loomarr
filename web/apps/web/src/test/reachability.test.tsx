@@ -558,8 +558,8 @@ describe("feature-gated panels mount when their flag is on", () => {
     // oversight.
     ["/settings/access", /does not create an account here/i, "the SSO scope note"],
     ["/people", /import from emby\/jellyfin/i, "the §11 import dialog trigger"],
-    // ⚠ The ingest panel lives on INCOMING (V35): finding clips is something you do to a source,
-    // and the download tooling belongs to the tab that is about how clips ARRIVE. Keeping this pointed at a real URL is what stops a tab
+    // ⚠ The ingest panel lives on INCOMING (V35): finding clips is something you do
+    // to a source, and the download tooling belongs to the tab that is about how clips ARRIVE. Keeping this pointed at a real URL is what stops a tab
     // nobody can navigate to from passing as "reachable".
     //
     // ⚠ The ingest panel's assertion was here and is DELETED with it (V38b, retired-ok). This
@@ -620,7 +620,7 @@ describe("feature-gated panels mount when their flag is on", () => {
   //
   // ⚠ The assertion is the search's downloads-nothing promise, not merely the input. That line
   // is a behaviour claim — it is why an operator dares to browse a collection at all — and it
-  // sits behind a click, so guarding it needs that click,
+  // sits behind a click, so the test has to make that click,
   // or the promise could silently stop rendering with every test still green.
   it("/filler/sources opens an archive source workspace onto its downloads-nothing promise", async () => {
     stubReachable();

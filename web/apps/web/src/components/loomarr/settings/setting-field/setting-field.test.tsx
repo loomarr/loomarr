@@ -145,7 +145,7 @@ describe("SettingField", () => {
     expect(onChange).toHaveBeenLastCalledWith("28800s");
   });
 
-  // The backup default (0 30 3 * * *) is in no preset, and still reads as a time.
+  // The backup default (0 30 3 * * *) is in no preset, and reads as a time.
   it("shows a once-a-day cron as a time, not as cron fields", async () => {
     const onChange = vi.fn();
     render(
