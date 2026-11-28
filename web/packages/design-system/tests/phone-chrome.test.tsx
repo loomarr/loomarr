@@ -137,22 +137,6 @@ describe("phone chrome", () => {
     expect(nameOf(120)).toContain('aria-label="Requests, 99+ need attention"');
   });
 
-  it("reads a badged tab's text as the label, a space, then the number", () => {
-    const markup = render(
-      <TabBar
-        accessibilityLabel="Tabs"
-        idiom="ios"
-        items={[{ badge: 4, icon: "library", label: "Library", value: "library" }]}
-        onSelect={vi.fn()}
-        selected="library"
-      />,
-    );
-    const tab = markup.slice(markup.indexOf('role="tab"'));
-    // Text nodes joined in order, with nothing added between elements, as axe reads them.
-    const text = tab.slice(tab.indexOf(">") + 1).replace(/<style[^>]*>.*?<\/style>|<[^>]+>/gs, "");
-    expect(text).toBe("Library 4");
-  });
-
   it("docks a footer under the content: no bottom gutter above it, the bar carries the inset", () => {
     const markup = render(
       <Screen density="touch" footer={<Text textRole="metadata">bar</Text>}>

@@ -62,6 +62,8 @@ const idioms = {
 } as const;
 
 const attentionWords = { one: "needs attention", other: "need attention" };
+// A constant rather than JSX text, which a formatter reflow can drop.
+const wordSpace = " ";
 
 /**
  * A phone's bottom navigation, edge to edge: pass it as a Screen's `footer`. It carries the bottom
@@ -156,7 +158,7 @@ const TabBar = <Value extends string>({
         */}
         {count ? (
           <>
-            <TamaguiText position="absolute"> </TamaguiText>
+            <TamaguiText position="absolute">{wordSpace}</TamaguiText>
             <View
               alignItems="center"
               backgroundColor="stateLive"
