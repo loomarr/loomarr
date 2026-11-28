@@ -43,9 +43,12 @@ const ChannelDetailProvider = ({ value, children }: { value: ChannelDetailValue;
 // section with no channel to show, which is worse than a clear "used outside its route" error.
 const useChannelDetail = (): ChannelDetailValue => {
   const ctx = useContext(ChannelDetailContext);
-  if (!ctx) throw new Error("useChannelDetail must be used inside the channel-detail layout (channel-detail-page.tsx)");
+  if (!ctx)
+    throw new Error(
+      "useChannelDetail must be used inside the channel-detail layout (channel-detail-page.tsx)",
+    );
   return ctx;
 };
 
-export type { AirState, ChannelDetailValue };
+export type { ChannelDetailValue };
 export { ChannelDetailProvider, useChannelDetail };
