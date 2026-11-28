@@ -1,6 +1,11 @@
 import {
   Action,
+  BottomSheet,
   CompactSelect,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTrigger,
   Field,
   LetterRail,
   ProgressTrack,
@@ -21,7 +26,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, ScrollView, useWindowDimensions, View } from "react-native";
 
 import { StatePanel } from "../../state-panel";
 import { ActiveFilters, FilterPanel, type FocusTarget, filterCount } from "../library-filters";
@@ -82,6 +87,7 @@ const StatusLine = ({
   const held = status.held[0];
   const offline = status.health === "folder_offline" ? status.offline[0] : undefined;
   const waiting = detailsWaiting(status.details, status.scan, timeZone);
+  const density = useWindowWidth() >= 768 ? "pointer" : "touch";
   // What needs the maintainer comes first; the import's own words show only when nothing does.
   // Titles stuck waiting for details come after the folders: Settings says why.
   const alert: [ComponentProps<typeof StatusDot>["tone"], string] | undefined =
@@ -131,11 +137,11 @@ const StatusLine = ({
       </Stack>
       {status.needsYou > 0 ? <NeedsYouLine needsYou={status.needsYou} onOpenNeeds={onOpenNeeds} /> : null}
       {held ? (
-        <Action onPress={onRescan} tone="primary">
+        <Action density={density} onPress={onRescan} tone="primary">
           Check files again
         </Action>
       ) : offline ? (
-        <Action disabled={checking} onPress={onCheckAgain} tone="primary">
+        <Action density={density} disabled={checking} onPress={onCheckAgain} tone="primary">
           {checking ? "Checking…" : "Check again"}
         </Action>
       ) : null}
@@ -562,8 +568,8 @@ const listedGenre = (genres: LibraryShelfProps["genres"], genre: string | undefi
   genres?.find((g) => g.name.toLowerCase() === genre?.toLowerCase());
 
 // The tabs, then the search, the order and the genre. From a tablet up they share a line and the
-// tabs carry their counts; on a phone the search takes its own line and the count sits beside
-// the order and the genre.
+// tabs carry their counts. On a phone one line holds the search and Filters, which opens a sheet
+// with everything else, so the posters start near the top.
 const Controls = ({
   filter,
   onFilterChange,
@@ -595,6 +601,7 @@ const Controls = ({
   const wide = useWindowWidth() >= 768;
   const [open, setOpen] = useState(false);
   const [moreFocused, setMoreFocused] = useState(false);
+  const { height } = useWindowDimensions();
   // On a phone the controls are tapped, so they take the design system's touch targets.
   const density = wide ? "pointer" : "touch";
   const tabs = (
@@ -607,7 +614,7 @@ const Controls = ({
       value={filter}
     />
   );
-  if (!showSearch) return tabs;
+  if (wide && !showSearch) return tabs;
   const searchField = (
     <Field
       accessibilityLabel="Search titles"
@@ -640,13 +647,16 @@ const Controls = ({
     />
   );
   const on = filtering ? filterCount(filtering) : 0;
+  // The amber border is the focus look; forced colours turn the transparent outline visible.
+  const focusLook = {
+    onBlur: () => setMoreFocused(false),
+    onFocus: () => setMoreFocused(true),
+    style: { outlineColor: "transparent", outlineStyle: "solid", outlineWidth: moreFocused ? 2 : 0 } as const,
+  };
   const more = filtering ? (
     <Action
       aria-expanded={open}
-      onBlur={() => setMoreFocused(false)}
-      onFocus={() => setMoreFocused(true)}
-      // The amber border is the focus look; forced colours turn the transparent outline visible.
-      style={{ outlineColor: "transparent", outlineStyle: "solid", outlineWidth: moreFocused ? 2 : 0 }}
+      {...focusLook}
       density={density}
       icon="filter"
       onPress={() => setOpen(!open)}
@@ -675,39 +685,62 @@ const Controls = ({
       </Stack>
     );
   }
-  // With a genre chosen the count is that genre's. On a phone the order and the genre share the
-  // line equally, so a chosen genre's name and count stay readable; the count sits under them.
-  // With filters on, the line of what is on carries the list's own count instead.
+  // With a genre chosen the count is that genre's. With filters on, the line of what is on carries
+  // the list's own count instead.
   const filtered = on > 0 || Boolean(filtering && genre);
-  const shown = filtered
-    ? undefined
-    : genre
-      ? listed?.titles
-      : counts && filter !== "collections"
-        ? counts[filter]
-        : undefined;
+  const shown =
+    filtered || !showSearch
+      ? undefined
+      : genre
+        ? listed?.titles
+        : counts && filter !== "collections"
+          ? counts[filter]
+          : undefined;
+  // What narrows the wall: Movies or Shows, the genre and the rest. The order narrows nothing.
+  const narrowing = on + (genre ? 1 : 0) + (filter === "movie" || filter === "series" ? 1 : 0);
+  // The sheet stays in this place as the tabs change, so choosing Collections leaves it open.
   return (
-    <Stack gap="control">
-      {tabs}
-      {searchField}
-      <Line flexWrap="nowrap" gap="control">
+    <Line flexWrap="nowrap" gap="control">
+      {showSearch ? (
         <Stack flex={1} minWidth={0}>
-          {order}
+          {searchField}
         </Stack>
-        <Stack flex={1} minWidth={0}>
-          {genreSelect}
-        </Stack>
-      </Line>
-      {more}
-      {panel}
-      {shown === undefined ? null : (
-        <Stack alignItems="flex-end">
-          <Text textRole="compact" tone="secondary">
-            {titlesWord(shown)}
-          </Text>
-        </Stack>
-      )}
-    </Stack>
+      ) : null}
+      <Dialog>
+        <DialogTrigger>
+          <Action {...focusLook} density="touch" icon="filter" ref={moreRef} variant="outline">
+            {narrowing > 0 ? `Filters (${narrowing})` : "Filters"}
+          </Action>
+        </DialogTrigger>
+        <DialogContent accessibilityLabel="Filters" placement="bottom">
+          <BottomSheet handle={false}>
+            {/* A short window scrolls the choices; Done stays in reach under them. */}
+            <ScrollView style={{ maxHeight: height * 0.7 }}>
+              <Stack gap="control">
+                {tabs}
+                {showSearch ? (
+                  <>
+                    {order}
+                    {genreSelect}
+                    {filtering ? <FilterPanel filtering={filtering} /> : null}
+                  </>
+                ) : null}
+                {shown === undefined ? null : (
+                  <Text textRole="compact" tone="secondary">
+                    {titlesWord(shown)}
+                  </Text>
+                )}
+              </Stack>
+            </ScrollView>
+            <DialogClose>
+              <Action density="touch" tone="primary">
+                Done
+              </Action>
+            </DialogClose>
+          </BottomSheet>
+        </DialogContent>
+      </Dialog>
+    </Line>
   );
 };
 
@@ -747,7 +780,8 @@ const LibraryShelf = ({
   // Filters past the genre are on, so an empty list is theirs and the way back clears them all.
   const filtered = filtering && filterCount(filtering) > 0 ? filtering : undefined;
   const empty = !loading && titles.length === 0;
-  // Clearing takes away the control that was pressed; More filters stays, so focus goes there.
+  // Clearing takes away the control that was pressed; More filters (Filters on a phone) stays, so
+  // focus goes there.
   const more = useRef<FocusTarget | null>(null);
   const focusMore = () => more.current?.focus();
   const clearFilters = filtered
@@ -778,6 +812,7 @@ const LibraryShelf = ({
           </Text>
           {admin ? (
             <Action
+              density={wide ? "pointer" : "touch"}
               icon="settings"
               layout={wide ? "inline" : "icon"}
               onPress={admin.onOpenSettings}
