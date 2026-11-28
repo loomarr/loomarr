@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"strings"
 	"time"
 )
@@ -77,7 +78,7 @@ func (s *sqlStore) RecordTableRows(ctx context.Context, at, before time.Time) (i
 		return 0, fmt.Errorf("record table rows: count: %w", err)
 	}
 
-	day := Epoch(at.UTC().Truncate(24 * time.Hour))
+	day := storedb.Epoch(at.UTC().Truncate(24 * time.Hour))
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("record table rows: %w", err)
@@ -90,7 +91,7 @@ func (s *sqlStore) RecordTableRows(ctx context.Context, at, before time.Time) (i
 			return 0, fmt.Errorf("record table rows: %s: %w", table, err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM database_table_rows WHERE recorded_at < ?`), Epoch(before)); err != nil {
+	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM database_table_rows WHERE recorded_at < ?`), storedb.Epoch(before)); err != nil {
 		return 0, fmt.Errorf("record table rows: forget old days: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -102,7 +103,7 @@ func (s *sqlStore) RecordTableRows(ctx context.Context, at, before time.Time) (i
 // countedTables lists the application's tables (River's included) in name order.
 func (s *sqlStore) countedTables(ctx context.Context) ([]string, error) {
 	query := `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name`
-	if s.dialect == DialectPostgres {
+	if s.dialect == storedb.DialectPostgres {
 		query = `SELECT table_name FROM information_schema.tables
 			WHERE table_schema = current_schema() AND table_type = 'BASE TABLE' ORDER BY table_name`
 	}

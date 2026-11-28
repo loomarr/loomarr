@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"testing"
 )
 
@@ -17,12 +18,12 @@ func TestLibraryCatalogJSONMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testLibraryCatalogJSONMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testLibraryCatalogJSONMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testLibraryCatalogJSONMigration proves the migration keeps every fetched record, turns the empty
 // record of an unfetched or unknown title into NULL, and that afterwards a record must be JSON.
-func testLibraryCatalogJSONMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testLibraryCatalogJSONMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)

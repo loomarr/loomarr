@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
@@ -43,7 +44,7 @@ func buildSuggester() (*suggest.Suggester, ScheduleMaterializer, *observedProvid
 type evalClients struct {
 	library LibraryReader
 	// evidence is the Library's tags and credits for owned discovery hits (#3006); nil skips it.
-	evidence store.LibraryEvidenceReader
+	evidence librarystore.LibraryEvidenceReader
 	tmdb     *tmdb.Client
 }
 

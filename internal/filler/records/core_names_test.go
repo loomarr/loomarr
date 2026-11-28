@@ -5,6 +5,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // The filler conformance suite moved here from internal/platform/store unedited (#1747); these test-only
@@ -33,7 +34,7 @@ const (
 	InteractiveOperationLLMPull     = operationstore.InteractiveOperationLLMPull
 	InteractiveOperationFillerSplit = operationstore.InteractiveOperationFillerSplit
 
-	DialectPostgres = store.DialectPostgres
+	DialectPostgres = storedb.DialectPostgres
 )
 
 var (

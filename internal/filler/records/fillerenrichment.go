@@ -187,7 +187,7 @@ func (s *sqlStore) ApplyFillerEnrichment(ctx context.Context, candidate enrichme
 	return accepted, true, nil
 }
 
-func (s *sqlStore) requireEnrichmentClipTx(ctx context.Context, tx store.Tx, clipHash string) error {
+func (s *sqlStore) requireEnrichmentClipTx(ctx context.Context, tx storedb.Tx, clipHash string) error {
 	if err := s.db.Clips(tx).Require(ctx, clipHash); err != nil && !errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("apply filler enrichment: %w", err)
 	} else if err != nil {
@@ -196,7 +196,7 @@ func (s *sqlStore) requireEnrichmentClipTx(ctx context.Context, tx store.Tx, cli
 	return nil
 }
 
-func (s *sqlStore) applyFillerEnrichmentTx(ctx context.Context, tx store.Tx, candidate enrichment.State, updatedAt time.Time) (enrichment.State, bool, error) {
+func (s *sqlStore) applyFillerEnrichmentTx(ctx context.Context, tx storedb.Tx, candidate enrichment.State, updatedAt time.Time) (enrichment.State, bool, error) {
 	grounded, err := s.groundEnrichmentStateTx(ctx, tx, candidate)
 	if err != nil {
 		return enrichment.State{}, false, err
@@ -250,7 +250,7 @@ func taxonomyEnrichmentAxis(axis enrichment.Axis) bool {
 	}
 }
 
-func (s *sqlStore) groundEnrichmentStateTx(ctx context.Context, tx store.Tx, state enrichment.State) (enrichment.State, error) {
+func (s *sqlStore) groundEnrichmentStateTx(ctx context.Context, tx storedb.Tx, state enrichment.State) (enrichment.State, error) {
 	if !taxonomyEnrichmentAxis(state.Axis) || len(state.Value.Tags) == 0 {
 		return state, nil
 	}
@@ -268,7 +268,7 @@ func (s *sqlStore) groundEnrichmentStateTx(ctx context.Context, tx store.Tx, sta
 	return state, nil
 }
 
-func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx store.Tx, state enrichment.State, updatedAt time.Time) error {
+func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx storedb.Tx, state enrichment.State, updatedAt time.Time) error {
 	var err error
 	clips := s.db.Clips(tx)
 	switch state.Axis {

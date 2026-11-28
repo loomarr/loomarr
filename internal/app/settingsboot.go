@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -46,7 +47,7 @@ type generatedSecretValues interface {
 // advances this process's cache.
 func currentGeneratedSecret(
 	ctx context.Context,
-	dialect store.Dialect,
+	dialect storedb.Dialect,
 	secrets generatedSecretValues,
 	secret settings.GeneratedSecret,
 	onChange func(),

@@ -12,6 +12,7 @@ import (
 
 	"github.com/testcontainers/testcontainers-go"
 
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/platform/store/storetest"
 )
 
@@ -77,5 +78,5 @@ func TestPostgresFillerPullCommitMigrationPreservesHistoricalRuns(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testFillerPullCommitMigration(t, db, DialectPostgres, "migrations/postgres")
+	testFillerPullCommitMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }

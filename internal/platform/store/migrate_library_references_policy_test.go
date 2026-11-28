@@ -20,7 +20,7 @@ func TestLibraryReferencesPolicyMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testLibraryReferencesPolicyMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testLibraryReferencesPolicyMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // policyFixtures are channels' policies in the shapes ChannelPolicy writes, plus fields it does
@@ -92,7 +92,7 @@ var policyFixtures = []struct {
 // testLibraryReferencesPolicyMigration proves the migration takes out of each channel's policy
 // exactly the collection ids the library has no row for, in its scope and in each rule's what,
 // and changes nothing else in the policy or the desired schedule.
-func testLibraryReferencesPolicyMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testLibraryReferencesPolicyMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)
@@ -111,7 +111,7 @@ func testLibraryReferencesPolicyMigration(t *testing.T, db *sql.DB, dialect Dial
 		}
 	}
 	ph := placeholder(storedb.Passthrough)
-	if dialect == DialectPostgres {
+	if dialect == storedb.DialectPostgres {
 		ph = storedb.PgPlaceholders
 	}
 	for i, f := range policyFixtures {

@@ -108,7 +108,7 @@ func (s *sqlStore) ReserveInferenceEvaluation(ctx context.Context, e InferenceEv
 	return e, nil
 }
 
-func (s *sqlStore) reserveInferenceEvaluation(ctx context.Context, tx store.Tx, e InferenceEvaluation, budget InferenceBudget) (InferenceEvaluation, error) {
+func (s *sqlStore) reserveInferenceEvaluation(ctx context.Context, tx storedb.Tx, e InferenceEvaluation, budget InferenceBudget) (InferenceEvaluation, error) {
 	dayStart := e.CreatedAt.UTC().Truncate(24 * time.Hour)
 	scopes := []string{"clip:" + e.ClipHash, "day:" + dayStart.Format("2006-01-02")}
 	slices.Sort(scopes)
@@ -210,7 +210,7 @@ func sumInferenceBudget(ctx context.Context, q interface {
 	return used, nil
 }
 
-func insertInferenceEvaluation(ctx context.Context, tx store.Tx, ph placeholder, e InferenceEvaluation) error {
+func insertInferenceEvaluation(ctx context.Context, tx storedb.Tx, ph placeholder, e InferenceEvaluation) error {
 	modalities, err := json.Marshal(e.Modalities)
 	if err != nil {
 		return fmt.Errorf("marshal inference modalities: %w", err)
@@ -260,7 +260,7 @@ func (s *sqlStore) SettleInferenceEvaluation(ctx context.Context, id string, set
 	return got, nil
 }
 
-func (s *sqlStore) settleInferenceEvaluation(ctx context.Context, tx store.Tx, id string, settlement InferenceSettlement) (InferenceEvaluation, bool, error) {
+func (s *sqlStore) settleInferenceEvaluation(ctx context.Context, tx storedb.Tx, id string, settlement InferenceSettlement) (InferenceEvaluation, bool, error) {
 	if settlement.UpdatedAt.IsZero() || settlement.ChargedNanoUSD < 0 || settlement.EstimatedNanoUSD < 0 {
 		return InferenceEvaluation{}, false, fmt.Errorf("invalid inference settlement")
 	}

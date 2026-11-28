@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,7 +19,7 @@ func olderSchema(t *testing.T, path string) int64 {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	p, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	p, err := newMigrationProvider(db, storedb.DialectSQLite, "migrations/sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}

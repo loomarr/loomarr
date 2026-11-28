@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,7 +18,7 @@ import (
 // WAL is active (never cp a live SQLite file). Only the SQLite backend
 // implements this; the Postgres store does not (the API returns 501 there).
 func (s *sqlStore) StreamBackup(ctx context.Context, w io.Writer) error {
-	if s.dialect != DialectSQLite {
+	if s.dialect != storedb.DialectSQLite {
 		return fmt.Errorf("StreamBackup: not a SQLite store")
 	}
 	tmp, err := os.CreateTemp("", "loomarr-backup-*.db")
@@ -75,7 +76,7 @@ type BackupFile struct {
 // Same VACUUM INTO snapshot as the streaming path; the difference is that the file is
 // kept, in `backup.dir`, rather than copied to a writer and deleted.
 func (s *sqlStore) WriteBackup(ctx context.Context, dir string) (BackupFile, error) {
-	if s.dialect != DialectSQLite {
+	if s.dialect != storedb.DialectSQLite {
 		// Postgres has mature, well-understood backup tooling and an operator running it
 		// already has a strategy; inventing a second one here would be worse than theirs.
 		return BackupFile{}, fmt.Errorf("WriteBackup: not a SQLite store")
@@ -220,7 +221,7 @@ func SQLiteBackuper(st Store) interface {
 	StreamBackup(ctx context.Context, w io.Writer) error
 } {
 	s, ok := adapterOf(st)
-	if !ok || s.dialect != DialectSQLite {
+	if !ok || s.dialect != storedb.DialectSQLite {
 		return nil
 	}
 	return s
@@ -234,7 +235,7 @@ func BackupWriter(st Store) interface {
 	WriteBackup(ctx context.Context, dir string) (BackupFile, error)
 } {
 	s, ok := adapterOf(st)
-	if !ok || s.dialect != DialectSQLite {
+	if !ok || s.dialect != storedb.DialectSQLite {
 		return nil
 	}
 	return s
@@ -248,7 +249,7 @@ func BackupWriter(st Store) interface {
 // would widen that signature for no gain.
 func SQLitePath(st Store) string {
 	s, ok := adapterOf(st)
-	if !ok || s.dialect != DialectSQLite {
+	if !ok || s.dialect != storedb.DialectSQLite {
 		return ""
 	}
 	return s.path
@@ -256,7 +257,7 @@ func SQLitePath(st Store) string {
 
 // DialectOf reports a store's backend, or "" if it is not a SQL store. The Database
 // settings page needs it to know whether to offer a migration at all.
-func DialectOf(st Store) Dialect {
+func DialectOf(st Store) storedb.Dialect {
 	if s, ok := adapterOf(st); ok {
 		return s.dialect
 	}

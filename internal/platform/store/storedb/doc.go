@@ -16,6 +16,5 @@
 // future cluster package (programming, catalog, identity, ops) can depend on it without
 // pulling in, or cycling through, internal/platform/store.
 //
-// internal/platform/store re-exports these names as aliases so existing importers keep compiling; the
-// alias and the original are the same type or value, never a copy.
+// internal/platform/store re-exports only ErrNotFound, as the same value rather than a copy.
 package storedb

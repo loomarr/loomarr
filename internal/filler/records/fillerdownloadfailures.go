@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
@@ -98,7 +97,7 @@ func (s *sqlStore) DeferDownload(ctx context.Context, item acquisition.DownloadI
 	return nil
 }
 
-func (s *sqlStore) writeDownloadFailure(ctx context.Context, tx store.Tx, key string, f acquisition.DownloadFailure) error {
+func (s *sqlStore) writeDownloadFailure(ctx context.Context, tx storedb.Tx, key string, f acquisition.DownloadFailure) error {
 	_, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_download_failures
 		(item_key, provider, source_id, remote_id, url, duration_ms, height, gap,
 		 failures, first_failed_at, last_failed_at, retry_at, last_error)

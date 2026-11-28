@@ -12,7 +12,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
@@ -144,7 +143,7 @@ func (s *sqlStore) writeClipPipeline(ctx context.Context, exec pipelineExecer, p
 // advancePipelineTx moves the clip's pipeline row from one disposition to the next, leaving its
 // status and schedule alone, and reports whether it moved. Split confirmation completes the reel's
 // row and starts its children's.
-func (s *sqlStore) advancePipelineTx(ctx context.Context, tx store.Tx, hash string, from, to pipelinestate.Disposition, at time.Time) (bool, error) {
+func (s *sqlStore) advancePipelineTx(ctx context.Context, tx storedb.Tx, hash string, from, to pipelinestate.Disposition, at time.Time) (bool, error) {
 	return affectedOne(tx.ExecContext(ctx, s.ph(`UPDATE filler_clip_pipeline SET disposition = ?, updated_at = ?
 		WHERE clip_hash = ? AND disposition = ?`),
 		string(to), epoch(at), hash, string(from)))

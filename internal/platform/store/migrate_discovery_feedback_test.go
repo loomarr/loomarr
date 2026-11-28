@@ -16,10 +16,10 @@ func TestDiscoveryFeedbackOrphanCleanupMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testDiscoveryFeedbackOrphanCleanupMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testDiscoveryFeedbackOrphanCleanupMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
-func testDiscoveryFeedbackOrphanCleanupMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testDiscoveryFeedbackOrphanCleanupMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)
@@ -30,7 +30,7 @@ func testDiscoveryFeedbackOrphanCleanupMigration(t *testing.T, db *sql.DB, diale
 		t.Fatalf("migrate through 71: %v", err)
 	}
 	ph := placeholder(storedb.Passthrough)
-	if dialect == DialectPostgres {
+	if dialect == storedb.DialectPostgres {
 		ph = storedb.PgPlaceholders
 	}
 	for _, channel := range []struct {

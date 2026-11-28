@@ -19,13 +19,13 @@ func TestFillerRoleNamesMigration_SQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	testFillerRoleNamesMigration(t, s.db, DialectSQLite, "migrations/sqlite")
+	testFillerRoleNamesMigration(t, s.db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testFillerRoleNamesMigration seeds the pre-00173 names in raw SQL — a channel's chosen
 // filler.kinds and an accepted 'kind' enrichment axis — and checks the migration moves both to
 // "role" without touching the values or any neighbour.
-func testFillerRoleNamesMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testFillerRoleNamesMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)
@@ -33,7 +33,7 @@ func testFillerRoleNamesMigration(t *testing.T, db *sql.DB, dialect Dialect, dir
 		t.Fatal(err)
 	}
 	bind := func(query string) string {
-		if dialect == DialectPostgres {
+		if dialect == storedb.DialectPostgres {
 			return storedb.PgPlaceholders(query)
 		}
 		return query

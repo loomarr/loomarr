@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"testing"
 )
 
@@ -18,14 +19,14 @@ func TestPeopleKeysMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testPeopleKeysMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testPeopleKeysMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testPeopleKeysMigration proves the migration keeps each member, turns 'system', the empty id and
 // an id naming no user into NULL, drops a personal destination of no member, and that afterwards
 // deleting a member clears who changed a setting, redeemed an invitation or decided a pull, and
 // takes their personal destinations.
-func testPeopleKeysMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testPeopleKeysMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)

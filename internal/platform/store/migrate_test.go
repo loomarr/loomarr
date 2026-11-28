@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/pressly/goose/v3"
 )
 
@@ -50,7 +51,7 @@ func TestMigrationProviderIsDialectLocal(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	provider, err := newMigrationProvider(db, storedb.DialectSQLite, "migrations/sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +83,7 @@ func TestMigrationProviderScopesEmbeddedMigrations(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	provider, err := newMigrationProvider(db, storedb.DialectSQLite, "migrations/sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +110,7 @@ func TestUserMediaServerLinkedMigrationBackfillsOldImportedRows(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	provider, err := newMigrationProvider(db, storedb.DialectSQLite, "migrations/sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +154,7 @@ func TestUserContactAddressMigrationLeavesExistingUsersContactless(t *testing.T)
 	}
 	defer func() { _ = db.Close() }()
 
-	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	provider, err := newMigrationProvider(db, storedb.DialectSQLite, "migrations/sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +190,7 @@ func TestNotificationMigrationAddsEmptyDurableQueueWithoutChangingUsers(t *testi
 	}
 	defer func() { _ = db.Close() }()
 
-	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	provider, err := newMigrationProvider(db, storedb.DialectSQLite, "migrations/sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +237,7 @@ func TestNotificationProductVocabularyMigrationPreservesAccountDelivery(t *testi
 	}
 	defer func() { _ = db.Close() }()
 
-	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	provider, err := newMigrationProvider(db, storedb.DialectSQLite, "migrations/sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +288,7 @@ func TestFillerAdmissionDecisionTablesAreRetired(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	provider, err := newMigrationProvider(db, storedb.DialectSQLite, "migrations/sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +319,7 @@ func TestUniqueChannelIntentRefMigrationPreservesDuplicateChannels(t *testing.T)
 	}
 	defer func() { _ = db.Close() }()
 
-	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	provider, err := newMigrationProvider(db, storedb.DialectSQLite, "migrations/sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,7 +399,7 @@ func TestChannelRevisionMigrationBackfillsExistingRows(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	provider, err := newMigrationProvider(db, storedb.DialectSQLite, "migrations/sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +435,7 @@ func TestChannelPlayoutAnchorMigrationSeedsExistingRows(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	provider, err := newMigrationProvider(db, storedb.DialectSQLite, "migrations/sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +467,7 @@ func TestMigrationProviderRejectsUnknownDialect(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	if _, err := newMigrationProvider(db, Dialect("unknown"), "migrations/sqlite"); err == nil {
+	if _, err := newMigrationProvider(db, storedb.Dialect("unknown"), "migrations/sqlite"); err == nil {
 		t.Fatal("expected an unknown dialect error")
 	}
 }

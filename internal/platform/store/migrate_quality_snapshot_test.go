@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"path/filepath"
 	"testing"
 )
@@ -18,13 +19,13 @@ func TestQualitySnapshotMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testQualitySnapshotMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testQualitySnapshotMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testQualitySnapshotMigration proves the migration keeps a total that names a run, turns ” into
 // NULL, drops a total naming a run that is gone, and that afterwards the run is enforced, a run a
 // total names can't be deleted, and ordinary use still has one total per day, stage and outcome.
-func testQualitySnapshotMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testQualitySnapshotMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)
