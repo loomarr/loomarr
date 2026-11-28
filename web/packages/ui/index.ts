@@ -55,35 +55,6 @@ export { FilmStrip, groupSeriesRuns } from "./src/film-strip";
 export { FirstRunHint } from "./src/first-run-hint";
 export type { FocusableTargetHandle, FocusTargetRegistry } from "./src/focus-target";
 export { useUiForm } from "./src/form-kit";
-export type {
-  GuideArtworkRenderer,
-  GuideChannelWindow,
-  GuideCompactProps,
-  GuideExperienceProps,
-  GuideFilter,
-  GuideFilterOption,
-  GuideFocusTarget,
-  GuideGridProps,
-  GuideJourneyProps,
-  GuideLogoRenderer,
-  GuideNowNextProps,
-  GuidePhoneHeaderProps,
-  GuideProgrammeDetailProps,
-  GuideSurfaceProps,
-  GuideUnavailableState,
-} from "./src/guide";
-export {
-  GuideCompact,
-  GuideExperience,
-  GuideGrid,
-  GuideJourney,
-  GuideNowNext,
-  GuidePhoneHeader,
-  GuideProgrammeDetail,
-  GuideSurface,
-} from "./src/guide";
-export type { GuideViewEntry, GuideViewLayout, GuideViewProps } from "./src/guide-view";
-export { GuideView, guideViewChannels } from "./src/guide-view";
 export type { HighlightRowProps } from "./src/highlight-row";
 export { HighlightRow } from "./src/highlight-row";
 export type {

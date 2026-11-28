@@ -11,7 +11,8 @@ import { cleanup, renderUi, screen, userEvent } from "@loomarr/test-support";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GuideView, type GuideViewEntry, guideViewChannels, type StripAiring } from "../index";
+import { GuideView, type GuideViewEntry, guideViewChannels } from "../guide";
+import type { StripAiring } from "../index";
 
 afterEach(cleanup);
 

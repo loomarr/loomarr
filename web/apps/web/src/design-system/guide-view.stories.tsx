@@ -7,14 +7,8 @@ import {
   guideViewReduce,
 } from "@loomarr/core/guide-view";
 import { Surface } from "@loomarr/design-system";
-import {
-  GuideView,
-  type GuideViewEntry,
-  type GuideViewLayout,
-  guideViewChannels,
-  LowerThird,
-  type StripAiring,
-} from "@loomarr/ui";
+import { LowerThird, type StripAiring } from "@loomarr/ui";
+import { GuideView, type GuideViewEntry, type GuideViewLayout, guideViewChannels } from "@loomarr/ui/guide";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
