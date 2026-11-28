@@ -4,7 +4,7 @@ import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { AccessibilityInfo } from "react-native";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DeviceSheet, type DeviceSheetProps } from "../index";
+import { DeviceSheet, type DeviceSheetProps } from "../pairing";
 
 const noop = vi.fn();
 const props: DeviceSheetProps = {

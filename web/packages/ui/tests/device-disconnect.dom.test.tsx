@@ -4,7 +4,7 @@ import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { AccessibilityInfo } from "react-native";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DeviceDisconnectAction } from "../index";
+import { DeviceDisconnectAction } from "../pairing";
 
 afterEach(() => {
   cleanup();

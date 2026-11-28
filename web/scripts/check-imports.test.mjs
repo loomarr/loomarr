@@ -75,7 +75,7 @@ describe("findSharedImplementationImports", () => {
 
   it("accepts focused public entry points", () => {
     const source = `
-      import { GuideJourney } from "@loomarr/ui";
+      import { GuideJourney } from "@loomarr/ui/guide";
       import type { GuideSnapshot } from "@loomarr/core/guide";
       import { createGuideController } from "@loomarr/core/guide";
       import { reduceTvWatchingRemote } from "@loomarr/ui-tv";
