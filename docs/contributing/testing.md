@@ -624,6 +624,19 @@ Pod assembly and shuffling take an explicit seed. The visual suite pins the time
 Baselines are Linux-only, generated in the pinned Docker image; local macOS or Windows runs
 write differently-suffixed files that are gitignored.
 
+### Waiting in Go tests
+
+A Go test does not call `time.Sleep`; `internal/testsleeps_architecture_test.go` holds the count
+per file and only lets it fall. Wait on a channel or hook where the code offers one, and use
+`testkit.Eventually` where it does not. `testkit.Clock` drives code that takes a `now` function.
+
+`testing/synctest` suits a test that is only about time: inside the bubble the clock jumps once
+every goroutine is blocked, so a long wait is instant and exact. It does not suit a test that waits
+on a subprocess or the network, because those waits never count as blocked.
+
+To prove something does **not** happen, wait for the event that follows the point where it would
+have happened, then assert. A sleep followed by an assertion passes when the machine is slow.
+
 ### Reduced motion
 
 Both Playwright suites run with `prefers-reduced-motion: reduce`, set as
