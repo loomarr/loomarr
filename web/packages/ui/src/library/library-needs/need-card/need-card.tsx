@@ -1,5 +1,5 @@
-import { Action, Disclosure, StatusDot, Surface, Text, useWindowWidth } from "@loomarr/design-system";
-import { useState } from "react";
+import { Action, FileName, StatusDot, Surface, Text, useWindowWidth } from "@loomarr/design-system";
+import { type ComponentRef, useEffect, useRef, useState } from "react";
 
 import { LibraryPoster, Line, Stack } from "../../library-poster";
 import { nameYear, PickTitle } from "../../pick-title";
@@ -44,8 +44,20 @@ const NeedCard = ({
 }) => {
   const best = need.best;
   const [other, setOther] = useState(false);
-  const [files, setFiles] = useState(false);
   const wide = useWindowWidth() >= 640;
+  const opener = useRef<ComponentRef<typeof Action>>(null);
+  // Set by Cancel and Escape: focus goes back to the button that opened the search.
+  const [returning, setReturning] = useState(false);
+  useEffect(() => {
+    if (!returning) return;
+    (opener.current as { focus?: () => void } | null)?.focus?.();
+    setReturning(false);
+  }, [returning]);
+  const cancel = () => {
+    setOther(false);
+    setReturning(true);
+  };
+  const [first, ...rest] = need.files;
   const card = (
     <Surface gap="control" padding="section">
       <Line alignItems="flex-start" columnGap="section" flexWrap={wide ? "nowrap" : "wrap"} rowGap="control">
@@ -62,13 +74,15 @@ const NeedCard = ({
             </Line>
           ) : (
             <>
-              <Text textRole="title">
-                {best ? `Is this ${nameYear(best)}?` : "We're not sure what this is"}
-              </Text>
+              {first ? <FileName name={fileName(first)} strong /> : null}
+              {rest.length > 0 ? (
+                <Text textRole="compact" tone="secondary">
+                  {`With ${rest.length} more ${rest.length === 1 ? "file" : "files"}`}
+                </Text>
+              ) : null}
+              {best ? <Text textRole="title">{`Is this ${nameYear(best)}?`}</Text> : null}
               <Text textRole="body" tone="secondary">
-                {best
-                  ? reasonFor(best)
-                  : "The file name doesn't say what it is. Find it to pick the title yourself."}
+                {best ? reasonFor(best) : "The file name doesn't say what it is."}
               </Text>
               {best?.overview ? (
                 <Text textRole="compact" tone="muted">
@@ -85,12 +99,12 @@ const NeedCard = ({
                     >
                       Yes, that's it
                     </Action>
-                    <Action onPress={() => setOther(!other)} variant="outline">
+                    <Action onPress={() => setOther(!other)} ref={opener} variant="outline">
                       Pick a different title
                     </Action>
                   </>
                 ) : (
-                  <Action onPress={() => setOther(!other)} variant="outline">
+                  <Action onPress={() => setOther(!other)} ref={opener} variant="outline">
                     Find it
                   </Action>
                 )}
@@ -100,22 +114,13 @@ const NeedCard = ({
               </Line>
               {failed ? <NotSaved /> : null}
               {other ? (
-                <PickTitle kind={need.kind} onPick={onPick} onSearch={onSearch} others={need.others} />
-              ) : null}
-              {need.files.length > 0 ? (
-                <Disclosure
-                  expanded={files}
-                  label={need.files.length === 1 ? "1 file" : `${need.files.length} files`}
-                  onExpandedChange={setFiles}
-                >
-                  <Stack gap={4} padding="control">
-                    {need.files.map((f) => (
-                      <Text key={f} textRole="compact" tone="secondary">
-                        {fileName(f)}
-                      </Text>
-                    ))}
-                  </Stack>
-                </Disclosure>
+                <PickTitle
+                  kind={need.kind}
+                  onCancel={cancel}
+                  onPick={onPick}
+                  onSearch={onSearch}
+                  others={need.others}
+                />
               ) : null}
             </>
           )}

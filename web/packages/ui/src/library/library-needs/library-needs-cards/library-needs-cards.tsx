@@ -45,21 +45,35 @@ const LibraryNeedsCards = ({
           primary={i === 0}
         />
       ))}
-      {open.map((need, i) => (
-        <NeedCard
-          key={need.id}
-          need={need}
-          onDone={() => done(need.id)}
-          onIgnore={() => answer(need.id, "ignored", onIgnore(need.id))}
-          onPick={(c) => answer(need.id, "added", onLink(need.id, c.externalId))}
-          onSearch={onSearch}
-          onYes={() => {
-            if (need.best) answer(need.id, "added", onLink(need.id, need.best.externalId));
-          }}
-          failed={failed[need.id]}
-          phase={phases[need.id]}
-          primary={shows.list.length === 0 && i === 0}
-        />
+      {[...new Set(open.map((need) => need.folder ?? ""))].map((folder, group) => (
+        <Surface
+          aria-label={folder ? `Folder ${folder}` : undefined}
+          backgroundColor="transparent"
+          borderWidth={0}
+          gap="control"
+          key={folder}
+          role={folder ? "region" : undefined}
+        >
+          {folder ? <Text textRole="title">{folder}</Text> : null}
+          {open
+            .filter((need) => (need.folder ?? "") === folder)
+            .map((need, i) => (
+              <NeedCard
+                key={need.id}
+                need={need}
+                onDone={() => done(need.id)}
+                onIgnore={() => answer(need.id, "ignored", onIgnore(need.id))}
+                onPick={(c) => answer(need.id, "added", onLink(need.id, c.externalId))}
+                onSearch={onSearch}
+                onYes={() => {
+                  if (need.best) answer(need.id, "added", onLink(need.id, need.best.externalId));
+                }}
+                failed={failed[need.id]}
+                phase={phases[need.id]}
+                primary={shows.list.length === 0 && group === 0 && i === 0}
+              />
+            ))}
+        </Surface>
       ))}
       {entries.map((entry) => (
         <ProblemCard entry={entry} key={entry.key} onOpenTitle={onOpenTitle} />

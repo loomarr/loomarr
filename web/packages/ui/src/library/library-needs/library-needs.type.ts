@@ -30,6 +30,8 @@ interface LibraryNeed {
   /** The library title's id: what an answer is for. */
   id: string;
   kind: LibraryKind;
+  /** Where it sits, from its media folder's name down; absent draws no folder heading. */
+  folder?: string;
   /** Its files on this machine (a series' episodes), in path order. */
   files: readonly string[];
   /** The one guess good enough to ask about: its name agrees. Absent asks the household to find it. */
