@@ -145,7 +145,9 @@ const reduceStep = <C extends LineupChannel>(
   }
   // Everything but the clock and the picture is activity, and wakes the screen.
   const woken: WatchScreenState =
-    event.type === "tick" || event.type === "picture" ? state : { ...state, activeAt: at };
+    event.type === "tick" || event.type === "picture" || event.type === "playback"
+      ? state
+      : { ...state, activeAt: at };
   const stay = (next: WatchScreenState = woken): WatchScreenStep => ({ requests: [], state: next });
   const ask = (next: WatchScreenState, ...requests: WatchRequest[]): WatchScreenStep => ({
     requests,
@@ -181,9 +183,9 @@ const reduceStep = <C extends LineupChannel>(
   const tuneTo = (s: WatchScreenState, channelId: string): WatchScreenStep =>
     channelId === s.watchedId ? stay(s) : ask(changed(s, channelId), { channelId, type: "tune" });
 
-  // Nothing pauses while tuning in or under a cover: there is no picture to hold.
+  // Nothing pauses or resumes while tuning in or under a cover: there is no picture to hold.
   const togglePause = (s: WatchScreenState): WatchScreenStep =>
-    !s.paused && s.picture !== "playing"
+    s.picture !== "playing"
       ? stay(s)
       : s.paused
         ? ask(
@@ -435,6 +437,17 @@ const reduceStep = <C extends LineupChannel>(
     }
     case "picture":
       return stay({ ...state, picture: event.picture });
+    // The player's own word on pause and live, whoever moved them; a change wakes the screen.
+    case "playback": {
+      if (event.paused === state.paused && event.behindMs === state.behindMs) return stay(state);
+      return stay({
+        ...state,
+        activeAt: at,
+        behindMs: event.behindMs,
+        paused: event.paused,
+        pausedAt: event.paused ? (state.paused ? state.pausedAt : at) : undefined,
+      });
+    }
     case "key":
       return key(woken, event.key);
   }

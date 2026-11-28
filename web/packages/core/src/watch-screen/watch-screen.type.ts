@@ -144,7 +144,13 @@ type WatchScreenEvent =
   /** The time `nextAt` named has come. It is not activity: it wakes nothing. */
   | { type: "tick"; at: number }
   /** What the picture is doing changed. Like the clock, it wakes nothing. */
-  | { type: "picture"; picture: WatchPicture; at: number };
+  | { type: "picture"; picture: WatchPicture; at: number }
+  /**
+   * What the player really does: paused or not, and how far behind live, however it got there (a
+   * seek, Start over, the media keys, a Retry). The model takes it as the truth; its own pause,
+   * resume and go-live stay requests. A change wakes the screen, as any input does.
+   */
+  | { type: "playback"; behindMs: number; paused: boolean; at: number };
 
 /** What the screen asks the caller to do. It does none of it itself. */
 type WatchRequest =

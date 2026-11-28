@@ -326,6 +326,51 @@ describe("rule 5: pause, behind live and Go live", () => {
   });
 });
 
+describe("the player's own word on pause and live", () => {
+  it("takes a seek it did not ask for as behind live, so End goes live", () => {
+    const s = screen();
+    s.send({ behindMs: 30_000, paused: false, type: "playback" }, 1000);
+    expect(s.view().behindSeconds).toBe(30);
+    s.key("End");
+    expect(s.requests).toEqual([{ type: "goLive" }]);
+  });
+
+  it("takes a pause from outside the screen, so Space resumes it", () => {
+    const s = screen();
+    s.send({ behindMs: 0, paused: true, type: "playback" }, 1000);
+    expect(s.view().paused).toBe(true);
+    s.key(" ", 2000);
+    expect(s.requests).toEqual([{ type: "resume" }]);
+  });
+
+  it("drops a behind live the player no longer has, after a Retry", () => {
+    const s = screen();
+    s.send({ behindMs: 30_000, paused: false, type: "playback" }, 1000);
+    s.send({ behindMs: 0, paused: false, type: "playback" }, 2000);
+    expect(s.view().behindSeconds).toBe(0);
+    s.key("End");
+    expect(s.requests).toEqual([]);
+  });
+
+  it("wakes the screen when it changes, and not when it says the same again", () => {
+    const s = screen();
+    s.wait(WATCH_REST_MS);
+    expect(s.view().awake).toBe(false);
+    s.send({ behindMs: 0, paused: false, type: "playback" });
+    expect(s.view().awake).toBe(false);
+    s.send({ behindMs: 10_000, paused: false, type: "playback" });
+    expect(s.view().awake).toBe(true);
+  });
+
+  it("refuses to resume under a cover, as it refuses to pause", () => {
+    const s = screen();
+    s.key(" ", 0);
+    s.send({ picture: "covered", type: "picture" }, 100);
+    s.key(" ", 200);
+    expect(s.requests).toEqual([{ type: "pause" }]);
+  });
+});
+
 describe("rule 6: the desktop's keys", () => {
   it("opens the list with find on /", () => {
     const s = screen();
@@ -725,12 +770,15 @@ describe("only a playing picture pauses", () => {
     expect(s.requests).toEqual([{ type: "pause" }]);
   });
 
-  it("still resumes a pause that a cover came over, and the picture's news wakes nothing", () => {
+  it("holds a pause that a cover came over until the picture is back, and the picture's news wakes nothing", () => {
     const s = screen();
     s.key(" ", 0);
     s.send({ picture: "covered", type: "picture" }, 1000);
     expect(s.state.activeAt).toBe(0);
     s.key(" ", 2000);
+    expect(s.requests.at(-1)).toEqual({ type: "pause" });
+    s.send({ picture: "playing", type: "picture" }, 3000);
+    s.key(" ", 4000);
     expect(s.requests.at(-1)).toEqual({ type: "resume" });
   });
 });
