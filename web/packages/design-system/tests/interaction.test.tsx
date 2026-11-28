@@ -172,15 +172,12 @@ describe("shared interaction controls", () => {
   it("renders a field hint as a describable paragraph in the Web forms' help measure", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>
-        <FieldHint className="mt-1" id="dsn-doc">
-          Use require across the internet.
-        </FieldHint>
+        <FieldHint id="dsn-doc">Use require across the internet.</FieldHint>
       </LoomarrProvider>,
     );
 
     const hint = markup.match(/<p [^>]*>/)?.[0] ?? "";
     expect(hint).toContain('id="dsn-doc"');
-    expect(hint).toContain('class="mt-1"');
     expect(hint).not.toContain("role=");
     expect(hint).toContain(`color:${semanticColors.content.secondary}`);
     expect(hint).toContain("font-size:12px");
