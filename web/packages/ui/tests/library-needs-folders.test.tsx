@@ -14,6 +14,8 @@ const need = (id: string, folder: string, files = [`/media/${folder}/${id}.mkv`]
   kind: "movie",
   folder,
   files,
+  lengthMillis: 0,
+  bytes: 0,
   others: [],
 });
 

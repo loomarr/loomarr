@@ -21,6 +21,8 @@ import { ServedImage } from "@/components/loomarr/served-image";
 // the titles, since a linked title joins the shelf under its new name and an ignored one leaves it.
 
 const THUMB_SIZES = "144px";
+// A Needs you card draws its frame at most 192px wide.
+const FRAME_SIZES = "192px";
 
 // A title that needs a look (decision 24): Needs you words it from these counts.
 const problemOf = (p: LibraryProblemDTO): LibraryProblem => ({
@@ -65,6 +67,10 @@ const needOf = (n: LibraryNeedDTO): LibraryNeed => {
     kind: n.item.kind,
     folder: n.folder,
     files: n.files.map((f) => f.path),
+    lengthMillis: n.files[0]?.lengthMillis ?? 0,
+    bytes: n.files[0]?.size ?? 0,
+    // The file name heads the card, so the frame is decorative.
+    frame: n.frame ? <ServedImage alt="" image={n.frame} sizes={FRAME_SIZES} /> : undefined,
     best,
     others: best ? candidates.slice(1) : candidates,
   };
