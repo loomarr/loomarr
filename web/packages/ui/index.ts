@@ -4,26 +4,6 @@ export type { AiReconnectBannerProps } from "./src/ai-reconnect-banner";
 export { AiReconnectBanner } from "./src/ai-reconnect-banner";
 export type { ChannelIdentProps } from "./src/channel-ident";
 export { ChannelIdent } from "./src/channel-ident";
-export type { ChannelListDetail, ChannelListLayout, ChannelListProps } from "./src/channel-list";
-export { ChannelGroupTabs, ChannelList } from "./src/channel-list";
-export type {
-  ChannelAudioOption,
-  ChannelAudioSectionProps,
-  ChannelSeasonalFieldsProps,
-  ChannelUnairableProps,
-  SeasonalHoliday,
-  SeasonalMode,
-  SeasonalOffSeason,
-  SeasonalStrength,
-  UnairableReason,
-  UnairableTitle,
-} from "./src/channels";
-export {
-  ChannelAudioSection,
-  ChannelSeasonalFields,
-  ChannelUnairable,
-  seasonalModeLabel,
-} from "./src/channels";
 export type { ClientDestination, ClientNavigationProps } from "./src/client-navigation";
 export { ClientNavigation, clientBackDestination, clientDestinationLabel } from "./src/client-navigation";
 export { ClientPlatformProof } from "./src/client-platform-proof";
@@ -41,8 +21,6 @@ export type { DeviceDisconnectActionProps } from "./src/device-disconnect";
 export { DeviceDisconnectAction } from "./src/device-disconnect";
 export type { DeviceSheetAccount, DeviceSheetProps } from "./src/device-sheet";
 export { confirmDisconnect, DeviceSheet } from "./src/device-sheet";
-export type { ClipSelectProps, DefectReviewProps } from "./src/filler";
-export { ClipSelect, DefectReview, NeedsDetailsChip } from "./src/filler";
 export type {
   FilmStripLook,
   FilmStripProps,
@@ -164,40 +142,6 @@ export type { ProgrammeFactsProps, StripMessageProps } from "./src/programme-fac
 export { ProgrammeFacts, StripMessage } from "./src/programme-facts";
 export type { QuietRowDevice, QuietRowHandle, QuietRowKey, QuietRowProps } from "./src/quiet-row";
 export { QuietRow } from "./src/quiet-row";
-export type {
-  ApprovalBulkGroupProps,
-  ApprovalBulkRow,
-  ApprovalConsequenceDialogProps,
-  ApprovalGroupProps,
-  ApprovalRow,
-  BriefState,
-  BulkApproveConsequences,
-  BulkApproveOutcome,
-  ChannelRequestConsequence,
-  FillerDownloadConsequence,
-  RequestCardProps,
-  RequestChannelProps,
-  RequestDetailBodyProps,
-  RequestDetailProps,
-  RequestsJourneyProps,
-  RequestsListProps,
-  ReviewSheetProps,
-  ReviewState,
-} from "./src/requests";
-export {
-  ApprovalBulkGroup,
-  ApprovalConsequenceDialog,
-  ApprovalGroup,
-  initialReview,
-  RequestCard,
-  RequestChannel,
-  RequestDetail,
-  RequestDetailBody,
-  RequestsJourney,
-  RequestsList,
-  ReviewSheet,
-  reviewReducer,
-} from "./src/requests";
 export type { ScreenHeaderAction, ScreenHeaderProps } from "./src/screen-header";
 export { ScreenHeader } from "./src/screen-header";
 export type { SearchButtonProps } from "./src/search-button";
@@ -237,8 +181,13 @@ export { TuneBars, TuneStatic } from "./src/tune-static";
 export type { BackHandlerSource } from "./src/use-client-destination";
 export { useClientDestination } from "./src/use-client-destination";
 export { useCommittedDraft } from "./src/use-committed-draft";
+export type { UseWatchScreenArgs, WatchScreenInput, WatchScreenModel } from "./src/use-watch-screen";
+export { useWatchScreen } from "./src/use-watch-screen";
 export type { WallTileProps } from "./src/wall-tile";
 export { WallTile } from "./src/wall-tile";
+export type { WatchMenuSlot, WatchProgramme, WatchScreenLayout, WatchScreenProps } from "./src/watch-screen";
+export { WatchScreen } from "./src/watch-screen";
+export { WatchScrim } from "./src/watch-scrim";
 export type {
   ChannelNumberEntry,
   ClipChromeProps,

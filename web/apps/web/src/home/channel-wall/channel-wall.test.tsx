@@ -287,7 +287,10 @@ describe("ChannelWall — headed by the lineup's groups (#4734)", () => {
     await renderWall(channels, { ...mine, ...(lastChannelId ? { lastChannelId } : {}), ...over });
   };
 
-  afterEach(() => localStorage.clear());
+  afterEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
 
   it("heads the wall with four tabs in order, opening on All", async () => {
     await renderWall(channels, mine);
@@ -379,6 +382,33 @@ describe("ChannelWall — headed by the lineup's groups (#4734)", () => {
     expect(screen.getAllByRole("tab").filter((t) => t.tabIndex === 0)).toHaveLength(1);
     await userEvent.tab();
     expect(tiles()[0]).toHaveFocus();
+  });
+
+  it("draws no ring and takes no focus for a pointer press on a tab, and rings the keys", async () => {
+    await renderWall(channels, mine);
+    const tab = (name: string) => screen.getByRole("tab", { name });
+    await userEvent.click(tab("Favourites"));
+    expect(screen.getByRole("tab", { selected: true })).toBe(tab("Favourites"));
+    expect(document.body).toHaveFocus();
+    expect(screen.queryByTestId("ring-actionFocus")).not.toBeInTheDocument();
+    // jsdom does not know which focus came from a key, which a browser answers here.
+    const native = Element.prototype.matches;
+    vi.spyOn(Element.prototype, "matches").mockImplementation(
+      new Proxy(native, {
+        apply: (original, element, args: [string]) =>
+          args[0] === ":focus-visible" || Reflect.apply(original, element, args),
+      }),
+    );
+    // Tab reaches the Full guide link first, then the tabs.
+    await userEvent.tab();
+    await userEvent.tab();
+    expect(tab("Favourites")).toHaveFocus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(tab("All")).toHaveFocus();
+    expect(within(tab("All")).getByTestId("ring-actionFocus")).toBeInTheDocument();
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(within(tab("Favourites")).getByTestId("ring-actionFocus")).toBeInTheDocument();
+    expect(screen.getAllByTestId("ring-actionFocus")).toHaveLength(1);
   });
 
   it("tunes from a tile as before", async () => {

@@ -42,10 +42,12 @@ a dot for it.
   arrow leads ([`design/watch/`](../../design/watch/README.md)). The items below describe what ships.
 - **Home's wall (#4734):** the wall is headed by the four group tabs below, one tab stop with Left
   and Right inside, and Enter chooses. It opens on All, or on the group this browser last chose
-  (`localStorage` key `loomarr.channels.group`, which the channel list shares). The last watched
+  (`localStorage` key `loomarr.channels.group`, which the Watch route's channel list is to read too,
+  #4731). The last watched
   channel comes first, once, when the group holds it; the rest follow in the channel list's order.
   By decade heads each decade in its tint, below the last watched tile. An empty group says so in
-  the channel list's words and offers "Show all channels". A tile still tunes and opens Watch, and
+  the channel list's words and offers "Show all channels". That includes an empty Recent, which the
+  channel list never shows because it always holds the watched channel. A tile still tunes and opens Watch, and
   keyboard focus, never a pointer, draws the amber ring. A member's wall shows no viewer names. The
   tabs scroll sideways on a phone and never wrap.
 - **Channel groups (target for the channel list and Guide; #4725):** the channel list, the Guide and Home's wall are

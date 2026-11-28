@@ -25,6 +25,14 @@ describe("useChannelGroupPreference", () => {
     expect(renderHook(() => useChannelGroupPreference()).result.current[0]).toBe("all");
   });
 
+  it("opens on All when storage cannot be read, as in a private window", () => {
+    localStorage.setItem(CHANNEL_GROUP_KEY, "decade");
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    expect(renderHook(() => useChannelGroupPreference()).result.current[0]).toBe("all");
+  });
+
   it("still switches when storage refuses", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("full");

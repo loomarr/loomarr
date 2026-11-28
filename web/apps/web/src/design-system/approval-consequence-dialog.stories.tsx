@@ -5,7 +5,7 @@ import {
   type ApprovalConsequenceDialogProps,
   type ChannelRequestConsequence,
   type FillerDownloadConsequence,
-} from "@loomarr/ui";
+} from "@loomarr/ui/requests";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 // What a group's bulk approve will do, before and after (#1817, mock #1876). Every figure is the

@@ -11,7 +11,7 @@ import {
   ApprovalConsequenceDialog,
   type ApprovalConsequenceDialogProps,
   type ChannelRequestConsequence,
-} from "../index";
+} from "../requests";
 
 const doc = document;
 

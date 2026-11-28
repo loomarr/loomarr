@@ -1,6 +1,6 @@
 import type { LineupGroupKind } from "@loomarr/core/channel-lineup";
 import type { ChannelListCursor, ChannelListEvent } from "@loomarr/core/channel-list";
-import { Icon, icons, PressableRow, Surface, Text } from "@loomarr/design-system";
+import { Icon, icons, RingedPressable, Surface, Text } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/design-system/fields";
 
 import type { FocusHandle } from "../channel-list.type";
@@ -13,7 +13,7 @@ const TAB_NAMES: Record<LineupGroupKind, string> = {
 };
 const TABS: readonly LineupGroupKind[] = ["favourites", "all", "recent", "decade"];
 // Room enough that a tab or find's controls are a finger's height.
-const INSET = { x: 8, y: 12 };
+const TARGET = 44;
 const FIND_LABEL = "Find a channel or a programme";
 
 interface ListHeadProps {
@@ -22,12 +22,12 @@ interface ListHeadProps {
   query: string | null;
   television: boolean;
   onEvent: (event: ChannelListEvent) => void;
-  onMouseDown: (event: { preventDefault: () => void }) => void;
   tabRef: (group: LineupGroupKind) => (node: FocusHandle | null) => void;
 }
 
 /** The group tabs and find's control, or the open query in their place. */
-const ListHead = ({ cursor, group, query, television, onEvent, onMouseDown, tabRef }: ListHeadProps) => {
+// A pointer never takes focus in the head, as in the list, so the amber ring is the keys' alone.
+const ListHead = ({ cursor, group, query, television, onEvent, tabRef }: ListHeadProps) => {
   if (query !== null) {
     return (
       <Surface backgroundColor="transparent" borderWidth={0} flexDirection="row" gap={8} alignItems="center">
@@ -42,13 +42,14 @@ const ListHead = ({ cursor, group, query, television, onEvent, onMouseDown, tabR
           />
         </Surface>
         <Surface backgroundColor="transparent" borderWidth={0}>
-          <PressableRow
+          <RingedPressable
             accessibilityLabel="Close find"
-            inset={INSET}
+            pointerTakesNoFocus
             onPress={() => onEvent({ type: "clearFind" })}
+            size={TARGET}
           >
             <Icon decorative glyph={icons.close} size="compact" tone="muted" />
-          </PressableRow>
+          </RingedPressable>
         </Surface>
       </Surface>
     );
@@ -57,13 +58,14 @@ const ListHead = ({ cursor, group, query, television, onEvent, onMouseDown, tabR
     <Surface backgroundColor="transparent" borderWidth={0} flexDirection="row" alignItems="center" gap={4}>
       {television ? null : (
         <Surface backgroundColor="transparent" borderWidth={0}>
-          <PressableRow
+          <RingedPressable
             accessibilityLabel="Find a channel"
-            inset={INSET}
+            pointerTakesNoFocus
             onPress={() => onEvent({ query: "", type: "find" })}
+            size={TARGET}
           >
             <Icon decorative glyph={icons.search} size="compact" tone="muted" />
-          </PressableRow>
+          </RingedPressable>
         </Surface>
       )}
       <Surface
@@ -78,14 +80,16 @@ const ListHead = ({ cursor, group, query, television, onEvent, onMouseDown, tabR
           const tabStop = cursor.kind === "tab" ? cursor.group === kind : group === kind;
           return (
             <Surface backgroundColor="transparent" borderWidth={0} key={kind}>
-              <PressableRow
+              <RingedPressable
                 accessibilityLabel={TAB_NAMES[kind]}
-                inset={INSET}
                 onFocus={() => onEvent({ group: kind, type: "focusTab" })}
-                onMouseDown={onMouseDown}
+                pointerTakesNoFocus
                 onPress={() => onEvent({ group: kind, type: "chooseTab" })}
                 ref={tabRef(kind) as never}
-                {...({ "aria-selected": group === kind, role: "tab", tabIndex: tabStop ? 0 : -1 } as object)}
+                role="tab"
+                selected={group === kind}
+                size={TARGET}
+                tabIndex={tabStop ? 0 : -1}
               >
                 <Surface
                   backgroundColor="transparent"
@@ -98,7 +102,7 @@ const ListHead = ({ cursor, group, query, television, onEvent, onMouseDown, tabR
                     {TAB_NAMES[kind]}
                   </Text>
                 </Surface>
-              </PressableRow>
+              </RingedPressable>
             </Surface>
           );
         })}

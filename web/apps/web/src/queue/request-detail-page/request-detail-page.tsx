@@ -6,7 +6,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { requestFixLabel, requestStatus } from "@loomarr/core/requests";
 import { Action, Stack, Surface } from "@loomarr/design-system";
-import { RequestDetailBody } from "@loomarr/ui";
+import { RequestDetailBody } from "@loomarr/ui/requests";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";

@@ -32,6 +32,26 @@ if [[ "${GO_TEST_COMPILE_ONLY:-}" == 1 ]]; then
 	args+=(-exec true)
 fi
 
+# GO_TEST_PART=k/n runs the k-th of n slices of one package's top-level tests: every n-th name of
+# the sorted `go test -list`, built with this run's flags. Benchmarks do not run here, so they are
+# not listed. An empty slice fails, because `go test -run` matching nothing exits 0.
+if [[ -n "${GO_TEST_PART:-}" && "${GO_TEST_COMPILE_ONLY:-}" != 1 ]]; then
+	if [[ ! "$GO_TEST_PART" =~ ^([1-9])/([1-9])$ || "$#" -ne 1 ]] || ((BASH_REMATCH[1] > BASH_REMATCH[2])); then
+		echo "go-test-packages: GO_TEST_PART wants k/n and exactly one package, got '$GO_TEST_PART' for $*" >&2
+		exit 2
+	fi
+	part="${BASH_REMATCH[1]}"
+	parts="${BASH_REMATCH[2]}"
+	listed="$("$go_bin" "${args[@]}" -list . "$@")" || exit
+	names="$(printf '%s\n' "$listed" | awk '/^(Test|Fuzz|Example)/' | LC_ALL=C sort |
+		awk -v part="$part" -v parts="$parts" '(NR - 1) % parts == part - 1' | paste -sd '|' -)"
+	if [[ -z "$names" ]]; then
+		echo "go-test-packages: slice $GO_TEST_PART of $* holds no tests" >&2
+		exit 2
+	fi
+	args+=(-run "^($names)\$")
+fi
+
 set +e
 "$go_bin" "${args[@]}" "$@" 2>&1 | tee "$log"
 status="${PIPESTATUS[0]}"

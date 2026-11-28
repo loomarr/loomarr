@@ -1,6 +1,6 @@
 import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import { createChannelLineup } from "@loomarr/core/channel-lineup";
-import { type ChannelListNotice, channelListView, createChannelListState } from "@loomarr/core/channel-list";
+import { channelListView, createChannelListState } from "@loomarr/core/channel-list";
 import type { GuideChannelLayout } from "@loomarr/core/guide";
 import {
   formatGuideEpisode,
@@ -12,6 +12,7 @@ import {
 } from "@loomarr/core/guide";
 import { Action, decadeTint, SectionHeader, Stack, Surface, Text } from "@loomarr/design-system";
 import { NeedsLine, surfChannelData, WallTile } from "@loomarr/ui";
+import { CHANNEL_LIST_NOTICES } from "@loomarr/ui/channels";
 import { Link } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
@@ -147,13 +148,6 @@ const watchingCount = (viewers: ChannelViewer[]): string => {
   return `${people} ${people === 1 ? "person" : "people"} watching`;
 };
 
-// The words the channel list uses for a group with nothing in it.
-const EMPTY_NOTICES: Record<Exclude<ChannelListNotice, "no-match">, string> = {
-  "empty-decade": "No channels have a decade yet.",
-  "empty-favourites": "No favourites yet.",
-  "empty-recent": "Channels you watch collect here.",
-};
-
 // ChannelWall — Home's first section (#2764, Direction mock "Channel wall"): channels as live tiles,
 // like a TV multiview, headed by the lineup's four group tabs (#4734). The channel the viewer tuned
 // last is first and marked, the rest follow in the channel list's order, and By decade heads each
@@ -265,7 +259,7 @@ const ChannelWall = ({
         {!pending && notice && notice !== "no-match" ? (
           <Surface alignItems="flex-start" backgroundColor="transparent" borderWidth={0} gap={8}>
             <Text textRole="metadata" tone="secondary">
-              {EMPTY_NOTICES[notice]}
+              {CHANNEL_LIST_NOTICES[notice]}
             </Text>
             <Action onPress={() => setGroup("all")} variant="ghost">
               Show all channels

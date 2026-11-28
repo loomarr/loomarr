@@ -37,8 +37,21 @@ case "$lane" in
     lane_flags="-p=4"
     lane_label="$lane"
     ;;
+  *-race-[1-9]/[1-9] | *-plain)
+    # One job of a package that has its own (scripts/go-split-lanes.tsv). go-shard.sh refuses a
+    # name outside the manifest.
+    if [[ -n "${GOFLAGS:-}" ]]; then
+      echo "go-test-lane: lane-scoped GOFLAGS are owned by the runner" >&2
+      exit 2
+    fi
+    split="$($sharder --split "$lane")"
+    read -r split_mode split_package split_slice <<< "$split"
+    [[ "$split_slice" != "-" ]] || split_slice=""
+    GOFLAGS="-p=1" GO_BIN="${GO_BIN:-go}" GO_TEST_LANE="$lane" GO_TEST_PART="$split_slice" \
+      exec "$package_runner" "$split_mode" 25m "$split_package"
+    ;;
   *)
-    echo "go-test-lane: invalid lane '$lane' (want 1/2, 2/2, certification-<lane>/<count> from scripts/go-certification-lanes.tsv, or empty for the full local suite)" >&2
+    echo "go-test-lane: invalid lane '$lane' (want 1/2, 2/2, certification-<lane>/<count> from scripts/go-certification-lanes.tsv, a split lane from scripts/go-split-lanes.tsv, or empty for the full local suite)" >&2
     exit 2
     ;;
 esac
@@ -63,7 +76,8 @@ run_packages() {
   while IFS= read -r package; do
     [[ -n "$package" ]] && package_args+=("$package")
   done <<< "$package_list"
-  GOFLAGS="$lane_flags" GO_BIN="${GO_BIN:-go}" GO_TEST_LANE="$lane_label" \
+  # GO_TEST_PART is cleared: an inherited value would silently run a slice of these packages.
+  GOFLAGS="$lane_flags" GO_BIN="${GO_BIN:-go}" GO_TEST_LANE="$lane_label" GO_TEST_PART="" \
     "$package_runner" "$mode" 25m "${package_args[@]}"
 }
 

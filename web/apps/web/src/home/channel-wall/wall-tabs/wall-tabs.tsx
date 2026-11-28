@@ -1,22 +1,10 @@
 import type { LineupGroupKind } from "@loomarr/core/channel-lineup";
 import type { ChannelListEvent } from "@loomarr/core/channel-list";
 import { Stack } from "@loomarr/design-system";
-import { ChannelGroupTabs } from "@loomarr/ui";
-import {
-  type ComponentProps,
-  type ComponentType,
-  type FocusEvent,
-  type KeyboardEvent,
-  useRef,
-  useState,
-} from "react";
+import { ChannelGroupTabs } from "@loomarr/ui/channels";
+import { type FocusEvent, type KeyboardEvent, useRef, useState } from "react";
 
 type Handle = { focus: () => void };
-
-// The wall passes the tabs no pointer handler: the keyboard ring is theirs to draw.
-const GroupTabs = ChannelGroupTabs as ComponentType<
-  Omit<ComponentProps<typeof ChannelGroupTabs>, "onMouseDown">
->;
 
 interface WallTabsProps {
   /** The four groups in the order the tabs show them. */
@@ -49,20 +37,18 @@ const WallTabs = ({ kinds, group, onChoose }: WallTabsProps) => {
 
   return (
     // The tabs scroll sideways where they do not fit, and never wrap.
-    <Stack overflow="auto" {...({ onBlur, onKeyDown } as object)}>
-      <GroupTabs
+    <Stack data-testid="wall-tabs" overflow="auto" onBlur={onBlur} onKeyDown={onKeyDown}>
+      <ChannelGroupTabs
         cursor={focused ? { group: focused, kind: "tab" } : { kind: "none" }}
         group={group}
         onEvent={onEvent}
         query={null}
-        // The wall has no find of its own.
+        // The wall has no find. `television` is the tabs' one way to leave its control out.
         television
-        tabRef={
-          ((kind: LineupGroupKind) => (node: Handle | null) => {
-            if (node) tabs.current.set(kind, node);
-            else tabs.current.delete(kind);
-          }) as ComponentProps<typeof ChannelGroupTabs>["tabRef"]
-        }
+        tabRef={(kind) => (node) => {
+          if (node) tabs.current.set(kind, node);
+          else tabs.current.delete(kind);
+        }}
       />
     </Stack>
   );

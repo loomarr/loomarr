@@ -8,7 +8,8 @@
       "@loomarr/design-system": ["../packages/design-system/index.ts"],
       "@loomarr/fixtures": ["../packages/fixtures/src/index.ts"],
       "@loomarr/ui": ["../packages/ui/index.ts"],
-      "@loomarr/ui/guide": ["../packages/ui/guide.ts"]
+      "@loomarr/ui/guide": ["../packages/ui/guide.ts"],
+      "@loomarr/ui/requests": ["../packages/ui/requests.ts"]
     }
   },
   "include": ["./**/*.ts", "./**/*.tsx", "../native-stories/**/*.ts", "../native-stories/**/*.tsx"]

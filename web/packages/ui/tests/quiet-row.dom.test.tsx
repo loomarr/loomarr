@@ -101,6 +101,16 @@ describe("QuietRow", () => {
     expect(document.activeElement?.getAttribute("aria-label")).toBe("Channels");
   });
 
+  it("leaves where focus goes to the screen when told it may decide", async () => {
+    const onFocusDropped = vi.fn();
+    const props = { behindLive: true, device: "tv", onFocusDropped, onPress: () => undefined } as const;
+    const view = renderUi(<QuietRow {...props} />);
+    await userEvent.tab();
+    view.rerender(<QuietRow {...props} behindLive={false} />);
+    expect(onFocusDropped).toHaveBeenCalledTimes(1);
+    expect(document.activeElement?.getAttribute("aria-label")).not.toBe("Channels");
+  });
+
   it("leaves focus alone when Go live goes while another control holds it", async () => {
     const props = { behindLive: true, device: "tv", onPress: () => undefined } as const;
     const view = renderUi(<QuietRow {...props} />);
@@ -116,6 +126,47 @@ describe("QuietRow", () => {
     expect(screen.getAllByTestId("ring-contentPrimary")).toHaveLength(1);
     await userEvent.click(screen.getByRole("button", { name: "Guide" }));
     expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
+  });
+
+  it("draws no ink of its own when the screen draws the scrim", () => {
+    row();
+    expect(screen.getByTestId("picture-ink-foot")).toBeTruthy();
+    cleanup();
+    row({ ownInk: false });
+    expect(screen.queryByTestId("picture-ink-foot")).toBeNull();
+    expect(names()).toHaveLength(8);
+  });
+
+  it("says which control holds focus, and when focus leaves the row", async () => {
+    const onFocusKey = vi.fn();
+    row({ onFocusKey });
+    await userEvent.tab();
+    await userEvent.keyboard("{ArrowRight}");
+    await userEvent.tab();
+    expect(onFocusKey.mock.calls).toEqual([["channels"], [undefined], ["guide"], [undefined]]);
+  });
+
+  it("takes no focus from a click, so a key after it is not the row's", async () => {
+    const onFocusKey = vi.fn();
+    const onPress = vi.fn();
+    row({ onFocusKey, onPress });
+    await userEvent.click(screen.getByRole("button", { name: "Mute (M)" }));
+    expect(onPress).toHaveBeenCalledWith("volume");
+    expect(document.activeElement).toBe(document.body);
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(onFocusKey).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
+  });
+
+  it("keeps the control said when the keyboard moves left along the row", async () => {
+    keyboardFocus();
+    const onFocusKey = vi.fn();
+    row({ onFocusKey });
+    await userEvent.tab();
+    await userEvent.keyboard("{End}{ArrowLeft}");
+    expect(onFocusKey).toHaveBeenLastCalledWith("fullscreen");
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(onFocusKey).toHaveBeenLastCalledWith("volume");
   });
 
   it("names an icon in a tooltip with its key on a desktop", async () => {

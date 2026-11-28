@@ -10,8 +10,16 @@ import {
   scrollBounds,
   scrollToShow,
 } from "@loomarr/core/channel-list";
-import { decadeTint, PressableRow, Surface, Text, VisuallyHidden } from "@loomarr/design-system";
-import { type ComponentProps, type ComponentRef, Fragment, useEffect, useRef, useState } from "react";
+import { decadeTint, RingedPressable, Surface, Text, VisuallyHidden } from "@loomarr/design-system";
+import {
+  type ComponentProps,
+  type ComponentRef,
+  Fragment,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import {
   type GestureResponderEvent,
   type LayoutChangeEvent,
@@ -31,7 +39,8 @@ const HEADING_HEIGHT = 32;
 /** How long a pointer rests on a row before it is looking at that channel. */
 const LOOK_AFTER_MS = 140;
 
-const NOTICES = {
+/** The words for a group with nothing in it, which Home's wall says too. */
+const CHANNEL_LIST_NOTICES = {
   "empty-decade": "No channels have a decade yet.",
   "empty-favourites": "No favourites yet.",
   "empty-recent": "Channels you watch collect here.",
@@ -58,10 +67,6 @@ const pointOf = (event: GestureResponderEvent) => {
   return { x: native.pageX ?? native.clientX ?? 0, y: native.pageY ?? native.clientY ?? 0 };
 };
 
-// A pointer never takes focus, so the amber ring is the keyboard's and remote's alone and no press
-// scrolls the list under the pointer.
-const keepFocus = (event: { preventDefault: () => void }) => event.preventDefault();
-
 /** A box with no look of its own. */
 const Bare = (props: ComponentProps<typeof Surface>) => (
   <Surface backgroundColor="transparent" borderRadius={0} borderWidth={0} {...props} />
@@ -76,11 +81,13 @@ const ChannelList = <C extends LineupChannel>({
   state,
   onEvent,
   renderPinned,
-  restOffset,
+  restOffset: restFromTop = 0,
+  restFromBottom,
   detail,
   layout = "pointer",
   autoFocus = false,
   onLook,
+  ref,
 }: ChannelListProps<C>) => {
   const { cursor, watchedId, group, query, open, television } = state;
   const view = channelListView(state, lineup);
@@ -90,6 +97,8 @@ const ChannelList = <C extends LineupChannel>({
   const [viewport, setViewport] = useState(0);
   const [pinnedHeight, setPinnedHeight] = useState(ROW_HEIGHT * 2);
   const [nativeScroll, setNativeScroll] = useState(0);
+  const restOffset =
+    restFromBottom === undefined ? restFromTop : Math.max(0, viewport - pinnedHeight - restFromBottom);
   // The row drawn as under a pointer.
   const [hovered, setHovered] = useState<string | undefined>(undefined);
 
@@ -120,7 +129,7 @@ const ChannelList = <C extends LineupChannel>({
   const message =
     view.notice === "no-match"
       ? `No channel or programme matches “${query?.trim()}”.`
-      : view.notice && NOTICES[view.notice];
+      : view.notice && CHANNEL_LIST_NOTICES[view.notice];
   const anchorY = (pinnedAt < 0 ? y : places.get(watchedId ?? "")) ?? y;
   // A notice stands after the list's last channel, a row high.
   const listEnd = y + (pinnedAt < 0 && pinned ? pinnedHeight : 0);
@@ -185,6 +194,16 @@ const ChannelList = <C extends LineupChannel>({
     });
     if (to !== scrolled.current) scrollTo(to);
   });
+
+  useImperativeHandle(ref, () => ({
+    focusCursor: () => {
+      focusWanted.current = true;
+      if (cursor.kind === "tab") tabs.current.get(cursor.group)?.focus();
+      else if (cursor.kind === "row" && query === null) {
+        rows.current.get(cursor.channelId)?.focus({ preventScroll: true });
+      }
+    },
+  }));
 
   const look = (channelId: string | undefined) => {
     clearTimeout(lookTimer.current);
@@ -284,16 +303,25 @@ const ChannelList = <C extends LineupChannel>({
   const findCursor =
     query !== null && layout !== "touch" && cursor.kind === "row" ? cursor.channelId : undefined;
 
-  // A row or the pinned channel is named by what it shows, so each piece of text ends in a space.
-  // `selected` is the shipped row's fill, drawn here for a pointer and for find's cursor; whether
-  // the option is the selected one is said by `aria-selected` alone.
+  // The cursor resting on the watched channel draws its fill on the pinned slot, behind the
+  // caller's drawing, which stands on no plate of its own.
+  const pinnedCursor =
+    !view.finding && cursor.kind === "row" && cursor.channelId === watchedId ? watchedId : undefined;
+
+  // A row and the pinned channel are options, named by what they show, so each piece of a row's
+  // text ends in a space. The highlight is the list's own: under a pointer that a press would
+  // answer, on find's cursor, and on the pinned cursor; the ring is the design system's, amber for
+  // keys and never for a click. Whether the option is the selected one is said by `selected` alone.
   const target = (channel: C, selected: boolean, isRow: boolean) => ({
+    align: "start" as const,
+    fill: true,
+    highlighted:
+      hovered === channel.id || (isRow && findCursor === channel.id) || pinnedCursor === channel.id,
     onFocus: () => {
       if (isRow && (cursor.kind !== "row" || cursor.channelId !== channel.id)) {
         onEvent({ channelId: channel.id, type: "focusRow" });
       }
     },
-    // The shipped row's own hover handlers give way to these, so its highlight is drawn from here.
     onHoverIn: () => {
       underPointer.current = channel.id;
       // A row that slid under a still pointer will not answer a press yet, so it draws nothing.
@@ -305,15 +333,15 @@ const ChannelList = <C extends LineupChannel>({
       setHovered(undefined);
       look(undefined);
     },
-    selected: hovered === channel.id || (isRow && findCursor === channel.id),
-    onMouseDown: keepFocus,
+    // A pointer never takes focus, so the amber ring is the keyboard's and remote's alone and no
+    // press scrolls the list under the pointer.
+    pointerTakesNoFocus: true,
     onPress: press(channel.id),
     ref: (isRow ? rowRef(channel.id) : undefined) as never,
-    ...({
-      "aria-selected": selected,
-      role: "option",
-      tabIndex: isRow && tabStopRow === channel.id ? 0 : -1,
-    } as object),
+    role: "option" as const,
+    selected,
+    size: ROW_HEIGHT - 4,
+    tabIndex: (isRow && tabStopRow === channel.id ? 0 : -1) as 0 | -1,
   });
 
   const rowOf = (channel: C) => {
@@ -325,7 +353,7 @@ const ChannelList = <C extends LineupChannel>({
     const unseen = [decade && `${decade}s`, watched && "watching"].filter(Boolean).join(" ");
     return (
       <Bare height={ROW_HEIGHT} justifyContent="center">
-        <PressableRow inset={{ x: 8, y: 4 }} {...target(channel, watched, true)}>
+        <RingedPressable {...target(channel, watched, true)}>
           <Bare alignItems="flex-end" width={32}>
             <Text textRole="mono" tone="secondary">
               {channel.number}{" "}
@@ -336,7 +364,7 @@ const ChannelList = <C extends LineupChannel>({
               {channel.name}{" "}
             </Text>
             {channel.onNow ? (
-              <Text numberOfLines={1} textAlign="left" textRole="metadata" tone="secondary">
+              <Text numberOfLines={1} textAlign="left" textRole="compact" tone="secondary">
                 {channel.onNow}{" "}
               </Text>
             ) : null}
@@ -347,7 +375,7 @@ const ChannelList = <C extends LineupChannel>({
             </Text>
           ) : null}
           {unseen ? <VisuallyHidden>{unseen}</VisuallyHidden> : null}
-        </PressableRow>
+        </RingedPressable>
       </Bare>
     );
   };
@@ -375,12 +403,12 @@ const ChannelList = <C extends LineupChannel>({
       y={shift}
       zIndex={2}
     >
-      <PressableRow inset={{ x: 2, y: 2 }} {...target(pinned, !listedTwice, !view.finding)}>
+      <RingedPressable {...target(pinned, !listedTwice, !view.finding)}>
         <Bare flex={1} minWidth={0}>
           {renderPinned(pinned)}
         </Bare>
         {listedTwice ? null : <VisuallyHidden>watching</VisuallyHidden>}
-      </PressableRow>
+      </RingedPressable>
     </Bare>
   ) : null;
 
@@ -395,7 +423,6 @@ const ChannelList = <C extends LineupChannel>({
         cursor={cursor}
         group={group}
         onEvent={onEvent}
-        onMouseDown={keepFocus}
         query={query}
         tabRef={(kind) => (node) => {
           if (node) tabs.current.set(kind, node);
@@ -446,14 +473,14 @@ const ChannelList = <C extends LineupChannel>({
         </Bare>
       </Bare>
       {view.notice && view.notice !== "empty-recent" ? (
-        <PressableRow inset={{ x: 8, y: 12 }} onPress={() => onEvent({ type: "showAll" })}>
+        <RingedPressable align="start" fill onPress={() => onEvent({ type: "showAll" })} size={44}>
           <Text textDecorationLine="underline" textRole="cardLabel">
             Show all channels
           </Text>
-        </PressableRow>
+        </RingedPressable>
       ) : null}
     </Bare>
   );
 };
 
-export { ChannelList };
+export { CHANNEL_LIST_NOTICES, ChannelList };

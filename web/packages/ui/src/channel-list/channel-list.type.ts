@@ -1,6 +1,6 @@
 import type { ChannelLineup, LineupChannel } from "@loomarr/core/channel-lineup";
 import type { ChannelListEvent, ChannelListState } from "@loomarr/core/channel-list";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 /** How the list is used: a pointer in a window, a finger, or a remote. */
 type ChannelListLayout = "pointer" | "touch" | "television";
@@ -19,13 +19,24 @@ interface ChannelListProps<C extends LineupChannel> {
   /** The watched channel's drawing, pinned in the list. It holds nothing that takes focus. */
   renderPinned: (channel: C) => ReactNode;
   /** How far below the top of the list the pinned channel rests. */
-  restOffset: number;
+  restOffset?: number | undefined;
+  /**
+   * How far above the bottom of the list the pinned channel's foot rests, for a list whose crossing
+   * is measured from below; it takes the place of `restOffset`.
+   */
+  restFromBottom?: number | undefined;
   detail?: ((channel: C) => ChannelListDetail) | undefined;
   layout?: ChannelListLayout | undefined;
   /** Takes focus onto the cursor and draws its ring from the start, as a list opened from a key does. */
   autoFocus?: boolean | undefined;
   /** A pointer resting on another channel, and `undefined` the moment it leaves. */
   onLook?: ((channelId: string | undefined) => void) | undefined;
+  ref?: Ref<ChannelListHandle> | undefined;
+}
+
+interface ChannelListHandle {
+  /** Moves focus onto the cursor, for a key that reached the list from outside it. */
+  focusCursor: () => void;
 }
 
 /**
@@ -37,4 +48,4 @@ interface FocusHandle {
   blur?: () => void;
 }
 
-export type { ChannelListDetail, ChannelListLayout, ChannelListProps, FocusHandle };
+export type { ChannelListDetail, ChannelListHandle, ChannelListLayout, ChannelListProps, FocusHandle };

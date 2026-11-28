@@ -2,6 +2,7 @@ import { layoutGuide } from "@loomarr/core/guide";
 import { guideChannels, guideFrom, guideNow, guideTo } from "@loomarr/fixtures";
 import type { NeedsLineItem } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, within } from "storybook/test";
 import { withRouter } from "@/test/story-utils";
 import { CHANNEL_GROUP_KEY } from "../use-channel-group-preference";
 import { ChannelWall } from "./channel-wall";
@@ -127,6 +128,14 @@ const NoArtwork: Story = {
 };
 const PhoneWidth: Story = {
   args: { needs: [] },
+  // The tabs stay on one line, in a row that scrolls where they do not fit.
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const tabs = await canvas.findAllByRole("tab");
+    await expect(new Set(tabs.map((tab) => tab.getBoundingClientRect().top)).size).toBe(1);
+    const scroller = canvas.getByRole("tablist").closest<HTMLElement>("[data-testid='wall-tabs']");
+    await expect(getComputedStyle(scroller as HTMLElement).overflowX).toBe("auto");
+  },
   decorators: [
     (Story) => (
       <div style={{ width: 342 }}>
