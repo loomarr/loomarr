@@ -12,7 +12,7 @@ postgres-test-image-owner	internal/testkit/postgresimage/image.go	contracts,go,g
 ryuk-test-image-authority	internal/testkit/ryukimage/image.txt	postgres,policy
 composition-go	internal/app/application.go	contracts,go,go_full,postgres,image
 backend-transition-go	internal/playout/backendtransition/controller.go	contracts,go,postgres,image
-playout-go	internal/playout/packager_hls.go	contracts,go,postgres,image,playout_bench
+playout-go	internal/playout/pipeline.go	contracts,go,postgres,image,playout_bench
 playout-opencl-kernel	internal/playout/watermark.cl	contracts,go,image,playout_bench
 watermark-render-go	internal/playout/watermark/render.go	contracts,go,postgres,image,agent
 watermark-raster-go	internal/playout/watermark/raster/raster.go	contracts,go,postgres,image,agent
