@@ -24,7 +24,7 @@ const VOCAB = {
 
 const POPULATED: ChannelPolicy = {
   ordering: "shuffle",
-  applied: [{ kind: "blockMax", from: "8", to: "unbounded" }],
+  operatorSet: ["ordering"],
 };
 
 const radio = (name: string) => screen.getByRole("radio", { name });
@@ -59,7 +59,7 @@ describe("ChannelSeasonal", () => {
     await userEvent.click(radio("Holiday-only channel"));
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ seasonal: { mode: "exclusive" } }));
-    expect(onChange.mock.lastCall?.[0].applied).toBe(POPULATED.applied);
+    expect(onChange.mock.lastCall?.[0].operatorSet).toBe(POPULATED.operatorSet);
   });
 
   it("clears mode back to the default sentinel (empty string)", async () => {

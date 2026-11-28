@@ -32,14 +32,14 @@ const PolicyHarness = ({
 
 const EMPTY: ChannelPolicy = {};
 
-// A populated policy carrying `applied` (reconcile-owned, never edited here) so tests
+// A populated policy carrying `operatorSet` (bookkeeping, never edited here) so tests
 // can assert it survives every edit untouched.
 const POPULATED: ChannelPolicy = {
   ordering: "shuffle",
   audience: { ceiling: "TV-14" },
   scope: { dates: eraDates({ from: 1990, to: 1999 }) },
   separation: { movieNoRepeat: "168h", episodeNoRepeat: "24h" },
-  applied: [{ kind: "blockMax", from: "8", to: "unbounded" }],
+  operatorSet: ["ordering"],
 };
 
 describe("ChannelPolicyFields", () => {
@@ -237,7 +237,7 @@ describe("ChannelPolicyFields", () => {
     expect(screen.getByLabelText("Repeat spacing · same episode")).toHaveValue("24h");
   });
 
-  it("merges an ordering change into a NEW policy, preserving applied and other sections", async () => {
+  it("merges an ordering change into a NEW policy, preserving operatorSet and other sections", async () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
 
@@ -247,8 +247,8 @@ describe("ChannelPolicyFields", () => {
       ...POPULATED,
       ordering: "sequential",
     });
-    // applied survived, byref-equal — nothing rebuilt it.
-    expect(onChange.mock.lastCall?.[0].applied).toBe(POPULATED.applied);
+    // operatorSet survived, byref-equal — nothing rebuilt it.
+    expect(onChange.mock.lastCall?.[0].operatorSet).toBe(POPULATED.operatorSet);
   });
 
   it("clears ordering back to inherit (empty string) via the sentinel", async () => {

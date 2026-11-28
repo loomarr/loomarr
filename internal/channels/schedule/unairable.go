@@ -2,6 +2,25 @@ package schedule
 
 import "github.com/loomarr/loomarr/internal/library/provision"
 
+// ReconcileFindings is what the last reconcile found about a channel, as opposed to what anyone
+// decided (programming-design §2.1): the relaxations it applied and the lineup titles that cannot
+// air. Each reconcile recomputes it from scratch and saves it with the desired lineup, so it
+// un-relaxes and empties by itself once the pool recovers. No client writes it. Stored as
+// reconcile_findings_json on the channel row, beside policy_json.
+type ReconcileFindings struct {
+	// Applied records the relaxation-ladder steps the reconcile took (§7). Each separation guard
+	// relaxes at most once, so a channel records at most four.
+	Applied []AppliedRelaxation `json:"applied,omitempty" maxItems:"8"`
+	// Unairable lists the lineup titles that put nothing into the cycle, each with why (#4140), in
+	// lineup order.
+	Unairable []UnairableTitle `json:"unairable,omitempty" maxItems:"512"`
+}
+
+// Findings is what this computation found, as the reconcile records it on the channel.
+func (d DesiredLineup) Findings() ReconcileFindings {
+	return ReconcileFindings{Applied: d.Applied, Unairable: d.Unairable}
+}
+
 // UnairableTitle is one lineup title that contributes nothing to the channel's cycle, with why
 // (#4140 step 1). It answers "why has this never aired" on the channel page. A title the active
 // rule or the seasonal bench rests is not here: it airs at its time.

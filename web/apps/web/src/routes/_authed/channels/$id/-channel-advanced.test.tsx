@@ -5,8 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import { render } from "@/test/render";
 import { ChannelAdvanced } from "./-channel-advanced";
 
-// A minimal channel — only the fields ChannelAdvanced reads. `applied` is reconcile-owned
-// (§9), so the tests assert it survives a playout edit untouched.
+// A minimal channel — only the fields ChannelAdvanced reads. Its policy carries an
+// `operatorSet` the tests assert survives a playout edit untouched, and its findings a
+// relaxation the "Rules loosened" row renders.
 const CHANNEL: ChannelDTO = {
   revision: 1,
   id: "ch1",
@@ -15,7 +16,8 @@ const CHANNEL: ChannelDTO = {
   status: "live",
   strategy: "shuffle",
   tunarrId: "tun-abc",
-  policy: { applied: [{ kind: "blockMax", from: "8", to: "unbounded" }] },
+  policy: { operatorSet: ["ordering"] },
+  findings: { applied: [{ kind: "blockMax", from: "8", to: "unbounded" }] },
 } as ChannelDTO;
 
 describe("ChannelAdvanced — playout backend", () => {
@@ -32,8 +34,8 @@ describe("ChannelAdvanced — playout backend", () => {
     expect(onPolicyChange).toHaveBeenCalledWith(
       expect.objectContaining({ playout: { backend: "internal" } }),
     );
-    // Reconcile-owned `applied` rides through untouched — the edit merges, never rebuilds.
-    expect(onPolicyChange.mock.lastCall?.[0].applied).toBe(CHANNEL.policy?.applied);
+    // The rest of the policy rides through untouched — the edit merges, never rebuilds.
+    expect(onPolicyChange.mock.lastCall?.[0].operatorSet).toBe(CHANNEL.policy?.operatorSet);
   });
 
   // "" is the inherit sentinel (a nil *PlayoutPolicy and an empty Backend mean the same thing
@@ -85,5 +87,21 @@ describe("ChannelAdvanced — playout backend", () => {
   it("says Tunarr isn't used when Loomarr plays the channel itself", () => {
     render(<ChannelAdvanced channel={{ ...CHANNEL, tunarrId: undefined, inAppPlayable: true }} />);
     expect(screen.getByText("Not used — Loomarr plays this channel itself")).toBeInTheDocument();
+  });
+});
+
+describe("ChannelAdvanced — rules loosened", () => {
+  // The relaxations are the last reconcile's findings, not the operator's policy.
+  it("lists the relaxations the channel's findings record", () => {
+    render(<ChannelAdvanced channel={CHANNEL} />);
+    expect(screen.getByText("No cap on how many episodes run back-to-back (was 8).")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Running exactly as specified. Nothing had to be eased."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says nothing was eased when the findings record no relaxation", () => {
+    render(<ChannelAdvanced channel={{ ...CHANNEL, findings: {} }} />);
+    expect(screen.getByText("Running exactly as specified. Nothing had to be eased.")).toBeInTheDocument();
   });
 });

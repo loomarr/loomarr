@@ -60,11 +60,14 @@ type ChannelDTO struct {
 	PendingCount int `json:"pendingCount" doc:"Lineup titles not yet available — awaiting acquisition (coming-soon gaps + pod-fill placeholders). Health keys on this: pendingCount==0 means every title is ready, even on a channel full of commercial breaks."`
 	BreakCount   int `json:"breakCount" doc:"Commercial-break gaps (§10) — NOT titles; a healthy break-heavy channel has a large breakCount and zero pendingCount"`
 	SlotCount    int `json:"slotCount" doc:"Total desired slots incl. breaks + placeholders. NOT a readiness signal — use programCount/pendingCount (a break gap inflates this without any title pending). Kept for diagnostics."`
-	// Policy is the channel's ChannelPolicy (programming-design §2): scope/audience/
-	// separation/ordering/seasonal, plus the relaxation-ladder steps the last
-	// reconcile applied (policy.applied) — the UI renders these as policy chips and
-	// relaxation banners. Empty ⇒ the channel runs on built-in defaults.
-	Policy schedule.ChannelPolicy `json:"policy" doc:"Programming policy (scope/audience/separation/ordering/seasonal) + applied relaxations"`
+	// Policy is the channel's ChannelPolicy (programming-design §2): what an operator or a
+	// proposal decided about scope/audience/separation/ordering/seasonal and the rest — the UI
+	// renders these as policy chips. Empty ⇒ the channel runs on built-in defaults.
+	Policy schedule.ChannelPolicy `json:"policy" doc:"Programming policy (scope/audience/separation/ordering/seasonal and the rest): what an operator or a proposal decided"`
+	// Findings is what the last reconcile found (programming-design §2.1): the relaxation-ladder
+	// steps it applied and the lineup titles that cannot air, which the UI renders as relaxation
+	// banners and the Info page's cannot-air list. Read-only: no request writes it.
+	Findings schedule.ReconcileFindings `json:"findings" doc:"What the last reconcile found: the relaxations it applied and the lineup titles that cannot air. Read-only; each reconcile recomputes it."`
 	// Lineup is the intent-level "what should play" — the titles the channel is built
 	// from, in order (distinct from the summarized Desired slots above). Read-only here;
 	// the diff a refine shows (kept/added/removed) is computed against this. Edits arrive as a
@@ -155,7 +158,7 @@ func channelToDTO(ch channelstore.Channel, entryState func(provision.Key) entryA
 		Decade:       schedule.WatermarkEraDecade(ch.Policy.Scope),
 		ProgramCount: d.ProgramCount(), PendingCount: d.PendingCount(),
 		BreakCount: d.BreakCount(), SlotCount: len(ch.Desired),
-		Policy: ch.Policy, Lineup: lineup,
+		Policy: ch.Policy, Findings: ch.Findings, Lineup: lineup,
 	}
 	if logoImage != nil && ch.Logo != "" {
 		out.LogoImage = logoImage(ch.Logo)

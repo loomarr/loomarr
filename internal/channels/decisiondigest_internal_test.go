@@ -18,17 +18,11 @@ func digestInputs() scheduleInputs {
 	return in
 }
 
-// What reconcile writes back and what it heals are not decisions, so neither moves the digest:
-// otherwise every library change would read as an edit and re-deal the window on air (#4140).
-func TestDecisionDigestIgnoresWhatReconcileWrites(t *testing.T) {
+// What reconcile heals is not a decision, so it does not move the digest: otherwise every library
+// change would read as an edit and re-deal the window on air (#4140). What reconcile finds lives in
+// ReconcileFindings, which the digest's inputs do not carry.
+func TestDecisionDigestIgnoresWhatReconcileHeals(t *testing.T) {
 	want := decisionDigest(digestInputs())
-
-	empty := digestInputs()
-	empty.Policy.Applied = []schedule.AppliedRelaxation{}
-	empty.Policy.Unairable = []schedule.UnairableTitle{}
-	if got := decisionDigest(empty); got != want {
-		t.Errorf("empty findings moved the digest: %s, want %s", got, want)
-	}
 
 	healed := digestInputs()
 	healed.Lineup[0].OfficialRating = "PG"

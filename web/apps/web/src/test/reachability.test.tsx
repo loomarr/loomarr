@@ -792,6 +792,25 @@ describe("feature-gated panels mount when their flag is on", () => {
     expect(within(header).getByText("Watch").closest("a")).toHaveAttribute("href", "/watch/ch-1");
   });
 
+  // The titles that cannot air are the last reconcile's findings, which Info shows an admin (#4140).
+  it("/channels/ch-1/info lists the titles the channel's findings say cannot air", async () => {
+    stubReachable();
+    server.use(
+      getChannelsNowNextMockHandler({ channels: [] }),
+      getGetChannelMockHandler(
+        channel({
+          id: "ch-1",
+          findings: {
+            unairable: [{ key: "movie:tmdb:90000699", title: "Missing Film", reason: "not_in_library" }],
+          },
+        }),
+      ),
+    );
+    renderAt("/channels/ch-1/info");
+    expect(await screen.findByText("1 title can't air")).toBeInTheDocument();
+    expect(screen.getByText("Missing Film", { exact: false })).toBeInTheDocument();
+  });
+
   // The full-bleed player (#2088): reached from the channel header's Watch button, and from an old
   // `/channels/:id/watch` bookmark, which redirects. The app shell steps aside: no Primary nav.
   it("/channels/ch-1/watch reaches the full-bleed player at /watch/ch-1", async () => {

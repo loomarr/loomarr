@@ -66,6 +66,7 @@ const channels = Array.from({ length: 100 }, (_, index) => {
     strategy: "shuffle",
     lineup: [],
     policy: {},
+    findings: {},
     breakCount: 0,
     pendingCount: 0,
     programCount: 1,

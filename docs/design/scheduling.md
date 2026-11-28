@@ -34,7 +34,7 @@ change per channel.
   re-deal inside a window starts the cycle again at the programme on air (below).
 - **Nothing that has aired moves inside a window** (#4140). The channel row records what the
   accepted cycle was dealt from (`dealt_from`): what an operator decided (lineup titles and their
-  season and episode choices, the channel's policy without its applied relaxations, its ordering,
+  season and episode choices, the channel's policy, its ordering,
   the install's break, window and calendar settings, and whether the channel has filler to air at
   all, since that decides whether it has breaks) and the deal itself. Library facts are not decisions:
   a re-read runtime, a second file for an episode (a remux upgrade), an added episode, a healed
@@ -136,7 +136,11 @@ reshuffle on each pass, so it holds whether or not the shuffle reseeds per pass.
   never relax), then pods. Separation holds across the cycle seam. The audience filter's exclusion
   report (`{overCeiling, unrated, items}`) is shown at review and at reconcile.
 - **Reconcile is backend-neutral and idempotent.** Every active channel recomputes and persists its
-  desired lineup, applied policy, status, healed metadata and next deadline. An internal channel
+  desired lineup, its findings, status, healed metadata and next deadline. The **findings** are
+  what the reconcile found rather than what anyone decided: the relaxations it applied and the
+  lineup titles that cannot air. They live in the channel row's `reconcile_findings_json`, apart
+  from the operator's `policy_json`, and are written in the same save as the desired lineup, so a
+  reader never sees one reconcile's lineup with another's findings. An internal channel
   stops there; a Tunarr channel also diffs and patches the remote channel. `POST
   /v1/channels/{id}/reconcile` is safe any time.
 - **The periodic sweep** (`CHANNEL_RECONCILE_EVERY`, default `10m`) makes events a latency

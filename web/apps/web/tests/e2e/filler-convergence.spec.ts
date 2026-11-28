@@ -246,6 +246,7 @@ test("a fetched arrival becomes playable automatically after its checks complete
             },
           },
         },
+        findings: {},
         breakCount: readyCommitted ? 1 : 0,
         pendingCount: 0,
         programCount: 2,

@@ -168,7 +168,7 @@ func seedMember(ctx context.Context, st store.UserStore, usrID func() string) er
 //     a `wanted` straight to `available`;
 //  4. build a channel bound to that approved intent and compute its desired lineup
 //     with schedule.ComputeDesiredAt (the reconciler's pure core) so programCount /
-//     slotCount / policy.applied are genuinely what the scheduler produces.
+//     slotCount / findings are genuinely what the scheduler produces.
 func seedTitlesAndChannel(ctx context.Context, st proposalStore, adminID string) error {
 	now := time.Now()
 
@@ -202,7 +202,7 @@ func seedTitlesAndChannel(ctx context.Context, st proposalStore, adminID string)
 	// The channel's grounded policy: a 90s era scope + explicit separation windows the
 	// ~8.5h all-movie cycle can't fully honor, so the relaxation ladder descends a few
 	// legible steps (no-repeat window → series gap → block) and records each on
-	// policy.applied. Those chips are what the detail page's "To fill this channel,
+	// findings.applied. Those chips are what the detail page's "To fill this channel,
 	// Loomarr relaxed:" section renders. Whatever the ladder produces IS the seeded
 	// value — it's the real computation (schedule.ComputeDesiredAt), not typed literals,
 	// so if the ladder logic changes the seeded chips change with it. Windows are set
@@ -366,7 +366,7 @@ func seedChannel(ctx context.Context, st store.ChannelStore, channelID string, p
 	ch.Lineup = entries
 	ch.Desired = desired.Slots
 	ch.Policy = policy
-	ch.Policy.Applied = desired.Applied // surface the relaxations the ladder actually applied
+	ch.Findings = desired.Findings() // the relaxations the ladder applied and the titles that cannot air
 	if err := ch.Validate(); err != nil {
 		return fmt.Errorf("validate channel: %w", err)
 	}

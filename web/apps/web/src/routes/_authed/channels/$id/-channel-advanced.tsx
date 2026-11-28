@@ -53,7 +53,7 @@ const ChannelAdvanced = ({
   channel: ChannelDTO;
   onPolicyChange?: (next: ChannelPolicy) => void;
 }) => {
-  const applied = channel.policy?.applied ?? [];
+  const applied = channel.findings?.applied ?? [];
   const policy = channel.policy ?? {};
   const backend = policy.playout?.backend || "inherit";
 

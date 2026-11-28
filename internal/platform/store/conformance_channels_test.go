@@ -42,8 +42,8 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 		{Kind: schedule.SlotFiller, Key: "movie:tmdb:90000002", Title: "B"},
 	}
 	// A non-empty policy exercises the policy_json round-trip: an audience ceiling,
-	// a separation window (Duration → "168h" JSON), an era range, and an applied
-	// relaxation (the enforcement-written field). Every column path must preserve it.
+	// a separation window (Duration → "168h" JSON) and an era range. Every column path must
+	// preserve it.
 	ch.Policy = schedule.ChannelPolicy{
 		ProposalPolicy: schedule.ProposalPolicy{
 			Audience:   schedule.AudiencePolicy{Ceiling: "TV-Y7"},
@@ -51,7 +51,12 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 			Scope:      schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1990, To: 1999})},
 			Ordering:   schedule.OrderSyndication,
 		},
-		Applied: []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "168h", To: "84h"}},
+	}
+	// The reconcile findings (an applied relaxation and a title that cannot air) ride their own
+	// column, reconcile_findings_json.
+	ch.Findings = schedule.ReconcileFindings{
+		Applied:   []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "168h", To: "84h"}},
+		Unairable: []schedule.UnairableTitle{{Key: "movie:tmdb:90000003", Title: "C", Reason: schedule.UnairableNotInLibrary}},
 	}
 	// A non-default (hevc) broadcast codec (§9.1 V50) — using the non-default value
 	// proves the column preserves what's written, not that it fell back to the DDL default.
@@ -90,8 +95,8 @@ func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	if len(got.Desired) != 2 || got.Desired[0].Kind != schedule.SlotProgram || got.Desired[1].Kind != schedule.SlotFiller {
 		t.Errorf("desired JSON round-trip lost data: %+v", got.Desired)
 	}
-	// Policy round-trip: ceiling, the Duration ("168h") window, the era range, and
-	// the applied-relaxation entry must all survive policy_json.
+	// Policy round-trip: ceiling, the Duration ("168h") window and the era range must all
+	// survive policy_json.
 	if got.Policy.Audience.Ceiling != "TV-Y7" {
 		t.Errorf("policy ceiling round-trip: got %q", got.Policy.Audience.Ceiling)
 	}
@@ -101,8 +106,8 @@ func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	if era, ok := got.Policy.Scope.Dates.Era(); !ok || era != (schedule.Range{From: 1990, To: 1999}) {
 		t.Errorf("policy dates round-trip: got %+v", got.Policy.Scope.Dates)
 	}
-	if len(got.Policy.Applied) != 1 || got.Policy.Applied[0].Kind != "episodeNoRepeat" {
-		t.Errorf("policy applied-relaxation round-trip: got %+v", got.Policy.Applied)
+	if len(want.Findings.Applied) == 0 || !reflect.DeepEqual(got.Findings, want.Findings) {
+		t.Errorf("reconcile findings round-trip: got %+v want %+v", got.Findings, want.Findings)
 	}
 	// BroadcastCodec (§9.1 V50) round-trips the non-default hevc value verbatim — both the
 	// direct GetChannel path and (below) the claim RETURNING path scan the same column.
@@ -118,12 +123,17 @@ func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	if !got.ReconcileDeadline.Equal(want.ReconcileDeadline) {
 		t.Errorf("reconcile deadline round-trip: got %v want %v", got.ReconcileDeadline, want.ReconcileDeadline)
 	}
-	// A CAS save with the returned revision updates the row in place.
+	// A CAS save with the returned revision updates the row in place, the findings with it: a
+	// reconcile that found nothing clears the last one's.
 	want.Status = schedule.StatusDrifted
+	want.Findings = schedule.ReconcileFindings{}
 	want = mustSaveChannel(t, s, want)
 	got2, _ := s.GetChannel(ctx, "ch-a")
 	if got2.Status != schedule.StatusDrifted {
 		t.Errorf("save didn't update status: %s", got2.Status)
+	}
+	if len(got2.Findings.Applied) != 0 || len(got2.Findings.Unairable) != 0 {
+		t.Errorf("a save without findings kept the last ones: %+v", got2.Findings)
 	}
 	all, _ := s.ListChannels(ctx)
 	if len(all) != 1 {

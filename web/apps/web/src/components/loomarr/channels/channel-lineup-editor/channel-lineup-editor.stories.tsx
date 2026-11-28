@@ -60,6 +60,7 @@ const withStubbedLineup = (): Decorator => (Story) => {
           strategy: "shuffle",
           lineup: [],
           policy: {},
+          findings: {},
           breakCount: 0,
           pendingCount: 0,
           programCount: 0,

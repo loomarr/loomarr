@@ -49,8 +49,13 @@ tables:
       policy_json: >
         The channel's programming rules. What may air (era, genres), who it is for (the audience
         rating ceiling), how often things may repeat, the ordering, seasonal behaviour and
-        time-of-day rules, plus the rules an admin pinned and the loosening the last check had to
-        apply. `{}` means all defaults.
+        time-of-day rules, plus the rules an admin pinned. Only what someone decided: what a check
+        found is `reconcile_findings_json`. `{}` means all defaults.
+      reconcile_findings_json: >
+        What the last check found, as opposed to what anyone decided: the repeat and spacing rules
+        it had to loosen (`applied`) and the lineup titles that cannot air, each with why
+        (`unairable`). Written with the schedule in the same save and worked out again at every
+        check. `{}` when the check found nothing.
       broadcast_codec: >
         The video codec the channel streams in, `h264` or `hevc`, chosen from what most of its
         titles are encoded in. Every programme and filler clip is converted to it.

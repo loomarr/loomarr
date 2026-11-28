@@ -29,7 +29,7 @@ const (
 var forecastFields = map[string]forecastFieldClass{
 	// channelstore.Channel
 	"Revision": notAnInput, "IntentJSON": notAnInput, "RequestedBy": notAnInput,
-	"Lineup": keyed, "Desired": keyed, "Policy": keyed, "BroadcastCodec": notAnInput,
+	"Lineup": keyed, "Desired": keyed, "Policy": keyed, "Findings": notAnInput, "BroadcastCodec": notAnInput,
 	"PlayoutAnchor": keyed, "DealtFrom": notAnInput, "ReconcileDeadline": notAnInput, "CreatedAt": keyed,
 	// schedule.Channel
 	"ID": keyed, "IntentRef": notAnInput, "FromRequest": notAnInput, "Name": notAnInput,

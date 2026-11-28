@@ -73,6 +73,7 @@ const channel = (id, name, number) => ({
   number,
   pendingCount: 0,
   policy: {},
+  findings: {},
   programCount: 1,
   revision: 1,
   slotCount: 1,

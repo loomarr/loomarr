@@ -20,12 +20,13 @@ func TestLoadReadsTheInstallSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy := `{"ordering":"syndication","applied":[{"kind":"seriesMinGap","from":"2h0m0s","to":"0s"}],` +
-		`"rules":[{}],"filler":{"era":{"from":1990,"to":1999},"roles":["commercial"]}}`
+	policy := `{"ordering":"syndication","rules":[{}],"filler":{"era":{"from":1990,"to":1999},"roles":["commercial"]}}`
+	findings := `{"applied":[{"kind":"seriesMinGap","from":"2h0m0s","to":"0s"}]}`
 	aired := time.Date(2026, 11, 12, 1, 0, 0, 0, time.UTC).Unix()
 	for _, q := range []string{
 		`INSERT INTO settings (key, value) VALUES ('filler.home_country', 'US')`,
-		`INSERT INTO channels (id, name, number, strategy, status, policy_json) VALUES ('ch', 'Channel', 7, 'sequential', 'live', '` + policy + `')`,
+		`INSERT INTO channels (id, name, number, strategy, status, policy_json, reconcile_findings_json)
+			VALUES ('ch', 'Channel', 7, 'sequential', 'live', '` + policy + `', '` + findings + `')`,
 		`INSERT INTO titles (key, title_json, state) VALUES ('series:tmdb:141', '{}', 'available')`,
 		`INSERT INTO channel_lineup (channel_id, position, title_key, entry) VALUES ('ch', 0, 'series:tmdb:141', '{"Title":"A Show"}')`,
 		`INSERT INTO library_items (id, kind, name, sort_name, updated_at_ms) VALUES ('show', 'series', 'A Show', 'a show', 1)`,

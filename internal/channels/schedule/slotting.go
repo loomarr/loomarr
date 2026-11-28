@@ -28,7 +28,7 @@ import (
 // ⚠ It answers "why isn't X on my channel", but reaches exactly one reader: both
 // channel-preview endpoints, via
 // `channels.CycleResult.Excluded`. Reconcile keeps only the per-title summary of it
-// (DesiredLineup.Unairable, written to policy.unairable); the preview recomputes the identical
+// (DesiredLineup.Unairable, recorded as the channel's findings.unairable); the preview recomputes the identical
 // per-episode report from the same pure builder, so the operator-facing answer is the same one
 // reconcile made.
 //

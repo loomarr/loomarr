@@ -263,7 +263,7 @@ type updateChannelInput struct {
 		Group    *string                 `json:"group,omitempty"`
 		Logo     *string                 `json:"logo,omitempty" doc:"Channel icon URL (from TMDB, an upload path, or set directly). Empty string clears it."`
 		Strategy *string                 `json:"strategy,omitempty" enum:"sequential,shuffle,time_slot"`
-		Policy   *schedule.ChannelPolicy `json:"policy,omitempty" doc:"Per-channel programming policy; merged onto the channel. policy.applied is reconcile-owned and ignored on write."`
+		Policy   *schedule.ChannelPolicy `json:"policy,omitempty" doc:"Per-channel programming policy; merged onto the channel. What reconcile finds is the channel's read-only findings, not policy."`
 		// Status is limited to pause/resume: "paused" takes the channel off the sweep,
 		// "building" resumes it. Other lifecycle values (live/drifted/detached) are the
 		// reconciler's/delete's to set, never a client's.
@@ -279,7 +279,7 @@ type updateChannelInput struct {
 
 // updateChannel edits a channel (§7 PATCH) through channeledit, as a partial update that
 // preserves operator/proposal ownership: a client may set name/number/group/strategy/policy and
-// pause/resume, but never policy.applied (reconcile owns it) nor the derived Desired.
+// pause/resume, but never the reconcile's findings nor the derived Desired.
 // The edit AUTO-RECONCILES (best-effort, seamless) — there is no manual rebuild step.
 func (s *Handlers) updateChannel(ctx context.Context, in *updateChannelInput) (*channelOutput, error) {
 	checkpoint, err := s.checkpoint(ctx)
@@ -331,8 +331,7 @@ func applyChannelPatch(ch *channelstore.Channel, in *updateChannelInput, holiday
 		ch.Number = *in.Body.Number
 	}
 	// Policy merge goes through the single ownership site (schedule.MergeFromOperator, §2.1):
-	// the operator's values win, the reconcile-owned `applied` is force-preserved (never
-	// client-set), and every proposal-owned field the operator CHANGED is recorded in
+	// the operator's values win, and every proposal-owned field the operator CHANGED is recorded in
 	// OperatorSet so a later refine can't silently revert it (§8.2 stickiness). Validate
 	// rejects an off-ladder audience ceiling / bad enum values (§4 safety).
 	if in.Body.Policy != nil {

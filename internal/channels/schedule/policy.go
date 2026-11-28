@@ -24,8 +24,9 @@ import (
 // The struct groups its fields by OWNER via two anonymous embeds — encoding/json
 // flattens them, so policy_json stays a flat object (scope/audience/…, no nesting)
 // and every p.Scope / p.Filler access keeps working via field promotion. Ownership
-// is enforced in ONE place, the merge methods (MergeFromProposal / MergeFromOperator
-// / WithApplied), so no writer hand-restores fields (§8.2).
+// is enforced in ONE place, the merge methods (MergeFromProposal / MergeFromOperator),
+// so no writer hand-restores fields (§8.2). It holds only decisions: what a reconcile
+// finds is ReconcileFindings, stored beside it.
 type ChannelPolicy struct {
 	// ProposalPolicy — EXTRACTED by the suggester (§8) and refreshed by a refine/
 	// re-curation, EXCEPT any field the operator has pinned (see OperatorSet).
@@ -33,17 +34,6 @@ type ChannelPolicy struct {
 	// OperatorPolicy — never LLM-emitted; edited only on the channel page and always
 	// preserved across a re-approval.
 	OperatorPolicy
-	// Applied records the relaxation-ladder steps taken at the last reconcile (§7).
-	// It is NOT extracted — enforcement writes it, the API surfaces it. Recomputed
-	// from scratch each reconcile, so it un-relaxes automatically when the pool recovers.
-	// Reconcile-owned: rejected on write, force-preserved by MergeFromOperator.
-	// Each separation guard relaxes at most once (§7), so a channel records at most four.
-	Applied []AppliedRelaxation `json:"applied,omitempty" maxItems:"8"`
-	// Unairable lists the lineup titles that put nothing into the cycle at the last reconcile,
-	// each with why (#4140): not in the library, no episodes in the chosen seasons, refused by
-	// the ceiling or the scope. Reconcile-owned like Applied: recomputed each reconcile, ignored
-	// on write, and empty once every title airs.
-	Unairable []UnairableTitle `json:"unairable,omitempty" maxItems:"512"`
 	// OperatorSet lists the proposal-owned field paths the operator has explicitly set
 	// ("scope", "audience", "ordering", …). MergeFromProposal skips any field
 	// named here, so an operator edit is STICKY — a later refine/re-curation cannot silently

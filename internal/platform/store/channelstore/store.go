@@ -97,10 +97,14 @@ type Channel struct {
 	// sweep can diff without recomputing when nothing changed, and so a restart
 	// resumes from the known desired state.
 	Desired []schedule.Slot
-	// Policy is the channel's ChannelPolicy (programming-design §2): scope/audience/
-	// separation/ordering/seasonal + the last reconcile's applied relaxations.
+	// Policy is the channel's ChannelPolicy (programming-design §2): what an operator or a
+	// proposal decided about scope/audience/separation/ordering/seasonal and the rest.
 	// Stored as policy_json, sparse (omitted fields resolve to built-in defaults).
 	Policy schedule.ChannelPolicy
+	// Findings is what the last reconcile found (programming-design §2.1): the relaxations it
+	// applied and the lineup titles that cannot air. Stored as reconcile_findings_json, in the same
+	// row write as Desired, so a reader never sees one reconcile's lineup with another's findings.
+	Findings schedule.ReconcileFindings
 	// BroadcastCodec is the channel's uniform broadcast video codec (§9.1 V50): the
 	// codec every program on the timeline is normalized TO so the stream stays
 	// single-codec (which is what makes HEVC-fMP4 legal — fMP4 can't switch codec
@@ -289,6 +293,11 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 	if err != nil {
 		return Channel{}, fmt.Errorf("marshal policy: %w", err)
 	}
+	// Findings is a struct as well, so a channel with none writes "{}", the DDL default.
+	findingsBlob, err := json.Marshal(ch.Findings)
+	if err != nil {
+		return Channel{}, fmt.Errorf("marshal findings: %w", err)
+	}
 	// An empty BroadcastCodec (a Channel built without setting it) persists as the
 	// DDL default h264, so the round-trip never writes "" — matching what an
 	// un-backfilled row reads back as.
@@ -300,7 +309,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 		string(ch.Strategy), ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
 		string(desiredBlob), string(policyBlob), broadcastCodec,
 		storedb.Epoch(ch.PlayoutAnchor), storedb.Epoch(ch.ReconcileDeadline), ch.UpdatedAt, ch.DealtFrom,
-		anchorMillis(ch.PlayoutAnchor)}
+		anchorMillis(ch.PlayoutAnchor), string(findingsBlob)}
 	held, err := s.refuseNewDeadItems(ctx, exec, ch)
 	if err != nil {
 		return Channel{}, err
@@ -321,8 +330,9 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 			`INSERT INTO channels
 			   (id, intent_ref, from_request, intent_json, requested_by, name, number, grp, logo, strategy,
 			    tunarr_id, status, shuffle_seed, desired_json, policy_json, broadcast_codec,
-			    playout_anchor, reconcile_deadline, updated_at, dealt_from, playout_anchor_ms, revision, created_at)
-			 VALUES (?, ` + intentJobValue + `, ?, ?, ` + requesterValue + `, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+			    playout_anchor, reconcile_deadline, updated_at, dealt_from, playout_anchor_ms, reconcile_findings_json,
+			    revision, created_at)
+			 VALUES (?, ` + intentJobValue + `, ?, ?, ` + requesterValue + `, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 			 RETURNING revision`
 		queryArgs := append(append([]any{ch.ID}, args...), storedb.Epoch(ch.CreatedAt))
 		if s.inv != nil {
@@ -347,7 +357,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 		   intent_ref=` + intentJobValue + `, from_request=?, intent_json=?, requested_by=` + requesterValue + `, name=?, number=?, grp=?, logo=?, strategy=?,
 		   tunarr_id=?, status=?, shuffle_seed=?, desired_json=?,
 		   policy_json=?, broadcast_codec=?, playout_anchor=?, reconcile_deadline=?, updated_at=?,
-		   dealt_from=?, playout_anchor_ms=?, revision=revision+1
+		   dealt_from=?, playout_anchor_ms=?, reconcile_findings_json=?, revision=revision+1
 		 WHERE id=? AND revision=?
 		 RETURNING revision`
 	queryArgs := append(args, ch.ID, expected)
@@ -710,7 +720,7 @@ func ColumnsAs(alias, lineup string) string {
 	head := []string{"id", "intent_ref", "from_request", "intent_json", "requested_by", "name", "number",
 		"grp", "logo", "strategy", "tunarr_id", "status", "shuffle_seed"}
 	tail := []string{"desired_json", "policy_json", "broadcast_codec", "playout_anchor", "reconcile_deadline",
-		"updated_at", "revision", "created_at", "dealt_from", "playout_anchor_ms"}
+		"updated_at", "revision", "created_at", "dealt_from", "playout_anchor_ms", "reconcile_findings_json"}
 	qualify := func(cols []string) string {
 		if alias != "" {
 			for i, c := range cols {
@@ -811,13 +821,14 @@ func ScanChannel(sc storedb.Scannable) (Channel, error) {
 		ch                                  Channel
 		strategy, status                    string
 		lineupBlob, desiredBlob, policyBlob string
+		findingsBlob                        string
 		seed, anchor, deadline, updatedAt   int64
 		createdAt, anchorMs                 int64
 	)
 	err := sc.Scan(&ch.ID, (*storedb.OptionalID)(&ch.IntentRef), &ch.FromRequest, (*storedb.OptionalJSON)(&ch.IntentJSON), (*storedb.OptionalID)(&ch.RequestedBy), &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
 		&strategy, &ch.TunarrID, &status, &seed,
 		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &anchor, &deadline, &updatedAt, &ch.Revision,
-		&createdAt, &ch.DealtFrom, &anchorMs)
+		&createdAt, &ch.DealtFrom, &anchorMs, &findingsBlob)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Channel{}, storedb.ErrNotFound
 	}
@@ -839,6 +850,9 @@ func ScanChannel(sc storedb.Scannable) (Channel, error) {
 	}
 	if err := json.Unmarshal([]byte(policyBlob), &ch.Policy); err != nil {
 		return Channel{}, fmt.Errorf("unmarshal policy %s: %w", ch.ID, err)
+	}
+	if err := json.Unmarshal([]byte(findingsBlob), &ch.Findings); err != nil {
+		return Channel{}, fmt.Errorf("unmarshal reconcile findings %s: %w", ch.ID, err)
 	}
 	ch.ReconcileDeadline = storedb.FromEpoch(deadline)
 	ch.UpdatedAt = updatedAt
