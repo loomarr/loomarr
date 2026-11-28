@@ -118,7 +118,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/diagnostics` | `platform/storagegovernor` |
 | `platform/holidayvocab` | — |
 | `platform/httpx` | `platform/metrics` |
-| `platform/jobs` | `platform/store` |
+| `platform/jobs` | `platform/store`, `platform/store/storedb` |
 | `platform/langcode` | — |
 | `platform/llm` | `platform/httpx`, `platform/metrics` |
 | `platform/metrics` | `library/provision` |

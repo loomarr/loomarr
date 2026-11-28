@@ -14,21 +14,13 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
-// Dialect names a backend (storedb.Dialect, re-exported so importers keep one import).
-type Dialect = storedb.Dialect
-
-const (
-	DialectSQLite   = storedb.DialectSQLite
-	DialectPostgres = storedb.DialectPostgres
-)
-
 // sqlStore is the shared implementation over database/sql (§5, §14). Both the
 // SQLite and Postgres backends use it; the only dialect-specific piece is the
 // ClaimDueTitles SQL, injected as claimSQL. Placeholders differ too (? vs $1),
 // so each query is rebound via the backend's placeholder style.
 type sqlStore struct {
 	db      *sql.DB
-	dialect Dialect
+	dialect storedb.Dialect
 	// dsn is retained only by the Postgres adapter so commit invalidation listeners can own
 	// a dedicated pgx connection without consuming or retaining a database/sql pooled handle.
 	// Empty for SQLite.
@@ -202,7 +194,7 @@ func (s *sqlStore) GetSetting(ctx context.Context, key string) (string, error) {
 // updated_by NULL — these writes have no human author. The audited admin path is
 // UpsertSetting.
 func (s *sqlStore) SetSetting(ctx context.Context, key, value string) error {
-	if s.dialect == DialectPostgres {
+	if s.dialect == storedb.DialectPostgres {
 		payload, err := settingInvalidation(key, value)
 		if err != nil {
 			return err
@@ -239,7 +231,7 @@ func (s *sqlStore) WithSettingLock(ctx context.Context, key string, fn func(cont
 		return err
 	}
 
-	if s.dialect == DialectSQLite {
+	if s.dialect == storedb.DialectSQLite {
 		s.settingLock.Lock()
 		defer s.settingLock.Unlock()
 		if err := ctx.Err(); err != nil {

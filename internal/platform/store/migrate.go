@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/pressly/goose/v3"
 )
 
@@ -28,7 +29,7 @@ func migrate(ctx context.Context, db *sql.DB, dialect, dir string) error {
 // error from it stops the upgrade before the schema moves. A new database (schema 0) has nothing
 // to protect and skips it.
 func migrateWith(ctx context.Context, db *sql.DB, dialect, dir string, beforeUp func(ctx context.Context, from, to int64) error) error {
-	provider, err := newMigrationProvider(db, Dialect(dialect), dir)
+	provider, err := newMigrationProvider(db, storedb.Dialect(dialect), dir)
 	if err != nil {
 		return err
 	}
@@ -65,14 +66,14 @@ func migrateWith(ctx context.Context, db *sql.DB, dialect, dir string, beforeUp 
 // In particular, it avoids goose's legacy process-global dialect and filesystem
 // state, because the live migration stepper can use SQLite and Postgres in the
 // same process at the same time.
-func newMigrationProvider(db *sql.DB, dialect Dialect, dir string) (*goose.Provider, error) {
+func newMigrationProvider(db *sql.DB, dialect storedb.Dialect, dir string) (*goose.Provider, error) {
 	var gooseDialect goose.Dialect
 	switch dialect {
-	case DialectSQLite:
+	case storedb.DialectSQLite:
 		// Loomarr calls this dialect "sqlite"; Provider uses goose's canonical
 		// "sqlite3" spelling rather than the alias accepted by SetDialect.
 		gooseDialect = goose.DialectSQLite3
-	case DialectPostgres:
+	case storedb.DialectPostgres:
 		gooseDialect = goose.DialectPostgres
 	default:
 		return nil, fmt.Errorf("goose dialect %q: unsupported dialect", dialect)

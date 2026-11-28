@@ -4,6 +4,7 @@ package store
 
 import (
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"testing"
 )
 
@@ -13,5 +14,5 @@ func TestPostgresCrashDeviceMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testCrashDeviceMigration(t, db, DialectPostgres, "migrations/postgres")
+	testCrashDeviceMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }

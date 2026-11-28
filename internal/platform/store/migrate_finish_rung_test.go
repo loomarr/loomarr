@@ -19,20 +19,20 @@ func TestFinishRungMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testFinishRungMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testFinishRungMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testFinishRungMigration proves both the current stage and every ladder record move, the ladder
 // keeps its order and its other fields, and rows with no score record are left byte-for-byte.
-func testFinishRungMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testFinishRungMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rebindFor := func(dialect Dialect, query string) string {
-		if dialect == DialectPostgres {
+	rebindFor := func(dialect storedb.Dialect, query string) string {
+		if dialect == storedb.DialectPostgres {
 			return storedb.PgPlaceholders(query)
 		}
 		return query

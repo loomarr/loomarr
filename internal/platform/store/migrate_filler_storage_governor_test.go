@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"testing"
 )
 
@@ -87,7 +88,7 @@ func assertSettingAbsent(t *testing.T, ctx context.Context, s *sqlStore, key str
 	t.Helper()
 	var count int
 	query := `SELECT COUNT(*) FROM settings WHERE key = ?`
-	if s.dialect == DialectPostgres {
+	if s.dialect == storedb.DialectPostgres {
 		query = `SELECT COUNT(*) FROM settings WHERE key = $1`
 	}
 	if err := s.db.QueryRowContext(ctx, query, key).Scan(&count); err != nil {

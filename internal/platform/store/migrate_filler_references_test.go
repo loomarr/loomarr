@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"path/filepath"
 	"testing"
 )
@@ -18,14 +19,14 @@ func TestFillerReferencesMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testFillerReferencesMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testFillerReferencesMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testFillerReferencesMigration proves the migration keeps every link that names a row, turns an
 // empty link and a link naming a deleted source into NULL, and that afterwards the links are enforced:
 // deleting a source or pull forgets it, a run a clip pipeline names can't be deleted, and a ready
 // event forgets a deleted run.
-func testFillerReferencesMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testFillerReferencesMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)

@@ -80,5 +80,5 @@ func openPostgres(ctx context.Context, dsn string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
-	return bindClusters(&sqlStore{db: db, dialect: DialectPostgres, dsn: dsn, ph: storedb.PgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL}), nil
+	return bindClusters(&sqlStore{db: db, dialect: storedb.DialectPostgres, dsn: dsn, ph: storedb.PgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL}), nil
 }

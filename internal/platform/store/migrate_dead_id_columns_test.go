@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"path/filepath"
 	"testing"
 )
@@ -17,12 +18,12 @@ func TestDeadIDColumnsMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testDeadIDColumnsMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testDeadIDColumnsMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testDeadIDColumnsMigration proves the migration keeps every evaluation, operation and clip or day
 // budget guard, deletes the run guards, and removes both columns.
-func testDeadIDColumnsMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testDeadIDColumnsMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)

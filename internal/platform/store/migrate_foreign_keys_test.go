@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"testing"
 )
 
@@ -18,13 +19,13 @@ func TestForeignKeyPolicyMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testForeignKeyPolicyMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testForeignKeyPolicyMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testForeignKeyPolicyMigration proves the migration prunes airings of channels already deleted,
 // keeps everything else, and that afterwards deleting a user keeps their crash report while
 // deleting a channel takes its airings with it.
-func testForeignKeyPolicyMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testForeignKeyPolicyMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)

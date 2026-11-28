@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/playout/classprobe"
 	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
@@ -134,7 +135,7 @@ func internalPlayoutNeedsPublicURL(publicURL string) bool {
 
 func trackReplicaSettingsRefresh(
 	owner *generationLifecycle,
-	dialect store.Dialect,
+	dialect storedb.Dialect,
 	svc *settings.Service,
 	interval time.Duration,
 	after func(),

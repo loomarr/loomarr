@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 func TestTrackReplicaSettingsRefresh_SQLiteStartsNoReader(t *testing.T) {
@@ -26,7 +26,7 @@ func TestTrackReplicaSettingsRefresh_SQLiteStartsNoReader(t *testing.T) {
 			t.Errorf("shutdown settings lifecycle: %v", err)
 		}
 	})
-	if trackReplicaSettingsRefresh(owner, store.DialectSQLite, svc, time.Nanosecond, nil) {
+	if trackReplicaSettingsRefresh(owner, storedb.DialectSQLite, svc, time.Nanosecond, nil) {
 		t.Fatal("SQLite started a replica settings refresher")
 	}
 	time.Sleep(time.Millisecond)

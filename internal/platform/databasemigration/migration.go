@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // Sentinels Migrate and Preflight return; the HTTP surface maps them to status codes.
@@ -80,7 +81,7 @@ type Events interface {
 // failed atomic attempt starts a fresh SQLite generation and injects its error through
 // WithLastError, while a successful attempt starts on PostgreSQL.
 type Service struct {
-	dialect store.Dialect
+	dialect storedb.Dialect
 	writer  BackupWriter  // nil unless the source is SQLite
 	backupD func() string // reads backup.dir from settings at call time (hot-applied)
 	events  Events
@@ -108,7 +109,7 @@ type BackupWriter interface {
 
 // New returns the service over a source database of the given dialect. writer is nil unless the
 // source is SQLite. backupDir resolves backup.dir at call time; events may be nil.
-func New(dialect store.Dialect, writer BackupWriter, backupDir func() string, events Events) *Service {
+func New(dialect storedb.Dialect, writer BackupWriter, backupDir func() string, events Events) *Service {
 	return &Service{dialect: dialect, writer: writer, backupD: backupDir, events: events, phase: "idle", parity: "unknown"}
 }
 

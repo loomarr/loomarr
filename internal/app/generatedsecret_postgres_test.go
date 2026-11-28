@@ -8,7 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -31,7 +31,7 @@ func TestPostgresGeneratedSecretReaderObservesOtherReplicaRotation(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := currentGeneratedSecret(ctx, store.DialectPostgres, second,
+	got, err := currentGeneratedSecret(ctx, storedb.DialectPostgres, second,
 		settings.SecretPlayout, nil)
 	if err != nil {
 		t.Fatal(err)

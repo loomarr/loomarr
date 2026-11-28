@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"testing"
 )
 
@@ -17,13 +18,13 @@ func TestCrashDeviceMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testCrashDeviceMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testCrashDeviceMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testCrashDeviceMigration proves the migration keeps a paired device, turns an empty one and a device
 // already unpaired into NULL, and that afterwards the device is enforced and unpairing it clears
 // it from the reports it sent, which stay.
-func testCrashDeviceMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testCrashDeviceMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)

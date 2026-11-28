@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 type generatedSecretProbe struct {
@@ -24,7 +24,7 @@ func (p *generatedSecretProbe) Current(context.Context, settings.GeneratedSecret
 
 func TestCurrentGeneratedSecretKeepsSQLiteRequestPathCacheOnly(t *testing.T) {
 	probe := &generatedSecretProbe{value: "sqlite-cached", durable: "should-not-read"}
-	got, err := currentGeneratedSecret(context.Background(), store.DialectSQLite, probe,
+	got, err := currentGeneratedSecret(context.Background(), storedb.DialectSQLite, probe,
 		settings.SecretPlayout, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestCurrentGeneratedSecretKeepsSQLiteRequestPathCacheOnly(t *testing.T) {
 func TestCurrentGeneratedSecretRefreshesPostgresReplicaAndRedactor(t *testing.T) {
 	probe := &generatedSecretProbe{value: "stale-replica", durable: "rotated-durable"}
 	redactorRefreshes := 0
-	got, err := currentGeneratedSecret(context.Background(), store.DialectPostgres, probe,
+	got, err := currentGeneratedSecret(context.Background(), storedb.DialectPostgres, probe,
 		settings.SecretPlayout, func() { redactorRefreshes++ })
 	if err != nil {
 		t.Fatal(err)

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"sort"
 	"strings"
 )
@@ -171,7 +172,7 @@ func MigrateData(ctx context.Context, src, dst Store, onProgress func(MigrationP
 		// this is to change backend.
 		return MigrationProgress{}, fmt.Errorf("migrate: source and destination are both %s", s.dialect)
 	}
-	if s.dialect != DialectSQLite || d.dialect != DialectPostgres {
+	if s.dialect != storedb.DialectSQLite || d.dialect != storedb.DialectPostgres {
 		return MigrationProgress{}, fmt.Errorf("migrate: unsupported direction %s to %s", s.dialect, d.dialect)
 	}
 
@@ -354,9 +355,9 @@ func ParityMismatches(stats []TableStat) []TableStat {
 func userTables(ctx context.Context, s *sqlStore) ([]string, error) {
 	var q string
 	switch s.dialect {
-	case DialectPostgres:
+	case storedb.DialectPostgres:
 		q = `SELECT tablename FROM pg_tables WHERE schemaname = current_schema()`
-	case DialectSQLite:
+	case storedb.DialectSQLite:
 		q = `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`
 	default:
 		return nil, fmt.Errorf("userTables: unknown dialect %q", s.dialect)
@@ -396,7 +397,7 @@ func userTables(ctx context.Context, s *sqlStore) ([]string, error) {
 // a migration destination (§18), and it is the destination's constraints that decide
 // insert order.
 func fkParents(ctx context.Context, s *sqlStore) (map[string][]string, error) {
-	if s.dialect != DialectPostgres {
+	if s.dialect != storedb.DialectPostgres {
 		return nil, nil
 	}
 	const q = `

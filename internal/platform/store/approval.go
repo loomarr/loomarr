@@ -81,7 +81,7 @@ func (s *sqlStore) commitProposalApproval(
 	sort.Slice(encoded, func(i, j int) bool { return encoded[i].record.Key < encoded[j].record.Key })
 
 	orderKey := approvalOrderKey(commit.Proposal)
-	if s.dialect == DialectSQLite {
+	if s.dialect == storedb.DialectSQLite {
 		release, err := s.acquireSQLiteApprovalOrder(ctx, orderKey)
 		if err != nil {
 			return 0, err
@@ -96,10 +96,10 @@ func (s *sqlStore) commitProposalApproval(
 	defer func() { _ = tx.Rollback() }()
 
 	switch s.dialect {
-	case DialectSQLite:
+	case storedb.DialectSQLite:
 		// The process semaphore above is the complete lock domain: SQLite is
 		// explicitly single-instance.
-	case DialectPostgres:
+	case storedb.DialectPostgres:
 		const lockSQL = `SELECT pg_advisory_xact_lock(hashtextextended(current_database() || ':' || $1, 0))`
 		if _, err := tx.ExecContext(ctx, lockSQL, "loomarr:proposal-approval:"+orderKey); err != nil {
 			return 0, fmt.Errorf("approve proposal %s: acquire requester ordering: %w", commit.Proposal.ID, err)

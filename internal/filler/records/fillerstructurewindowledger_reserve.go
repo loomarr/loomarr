@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 func (s *sqlStore) ReserveStructureWindowCall(ctx context.Context, reservation window.CallReservation, budget InferenceBudget) (window.CallReservationState, error) {
@@ -72,7 +73,7 @@ func (s *sqlStore) ReserveStructureWindowCall(ctx context.Context, reservation w
 //
 // Everything else conflicts: an open reservation is a recovery hold, never permission to resend,
 // and a settled answer replays instead of reserving.
-func (s *sqlStore) nextStructureWindowCallAttempt(ctx context.Context, tx store.Tx, requestSHA256 string) (int, error) {
+func (s *sqlStore) nextStructureWindowCallAttempt(ctx context.Context, tx storedb.Tx, requestSHA256 string) (int, error) {
 	prior, err := s.getStructureWindowCallLedgerRow(ctx, tx, requestSHA256, true)
 	if errors.Is(err, store.ErrNotFound) {
 		return 1, nil
@@ -96,7 +97,7 @@ func (s *sqlStore) nextStructureWindowCallAttempt(ctx context.Context, tx store.
 
 // deleteStructureWindowCallAttempt removes a budget-held attempt and its evaluation, which holds
 // no reservation, so the retry reserves under the same identifiers without leaking a row.
-func (s *sqlStore) deleteStructureWindowCallAttempt(ctx context.Context, tx store.Tx, requestSHA256 string, row structureWindowCallLedgerRow) error {
+func (s *sqlStore) deleteStructureWindowCallAttempt(ctx context.Context, tx storedb.Tx, requestSHA256 string, row structureWindowCallLedgerRow) error {
 	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM filler_structure_window_call_ledger WHERE request_sha256 = ? AND attempt = ?`), requestSHA256, row.Attempt); err != nil {
 		return fmt.Errorf("replace held structure window call reservation: %w", err)
 	}

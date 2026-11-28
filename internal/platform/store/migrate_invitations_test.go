@@ -15,13 +15,13 @@ func TestInvitationMigrationPreservesExistingContactAddresses(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testInvitationMigrationPreservesExistingContactAddresses(t, db, DialectSQLite, "migrations/sqlite")
+	testInvitationMigrationPreservesExistingContactAddresses(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 func testInvitationMigrationPreservesExistingContactAddresses(
 	t *testing.T,
 	db *sql.DB,
-	dialect Dialect,
+	dialect storedb.Dialect,
 	dir string,
 ) {
 	t.Helper()
@@ -34,7 +34,7 @@ func testInvitationMigrationPreservesExistingContactAddresses(
 		t.Fatalf("migrate through 77: %v", err)
 	}
 	ph := placeholder(storedb.Passthrough)
-	if dialect == DialectPostgres {
+	if dialect == storedb.DialectPostgres {
 		ph = storedb.PgPlaceholders
 	}
 	if _, err := db.ExecContext(ctx, ph(`INSERT INTO users

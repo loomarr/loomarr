@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"testing"
 )
 
@@ -19,13 +20,13 @@ func TestStateChecksMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testStateChecksMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testStateChecksMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testStateChecksMigration proves the constraints keep every state the code writes, including a
 // superseded Proposal (written only by SQL, never named in Go), and refuse anything else. On
 // SQLite it also proves the rebuilt attempts table still points at the rebuilt jobs table.
-func testStateChecksMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testStateChecksMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)
@@ -64,7 +65,7 @@ func testStateChecksMigration(t *testing.T, db *sql.DB, dialect Dialect, dir str
 			t.Errorf("%s = %q, want %q kept", query, got, want)
 		}
 	}
-	if dialect == DialectSQLite {
+	if dialect == storedb.DialectSQLite {
 		var parent string
 		if err := db.QueryRowContext(ctx,
 			`SELECT "table" FROM pragma_foreign_key_list('proposal_job_attempts')`).Scan(&parent); err != nil {

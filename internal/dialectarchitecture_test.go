@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// dialectNames are the backend identities (storedb.Dialect, re-exported by internal/platform/store).
+// dialectNames are the backend identities (storedb.Dialect).
 var dialectNames = map[string]bool{
 	"DialectPostgres": true,
 	"DialectSQLite":   true,

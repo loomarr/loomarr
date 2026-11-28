@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
@@ -109,7 +110,7 @@ type podStore interface {
 type databaseHandle struct {
 	// open is false without a store; the rest are then zero.
 	open    bool
-	dialect store.Dialect
+	dialect storedb.Dialect
 	// writer writes a backup file; nil for a backend Loomarr does not back up.
 	writer interface {
 		WriteBackup(ctx context.Context, dir string) (store.BackupFile, error)

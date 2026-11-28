@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/platform/store/qualitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/platform/store/viewingstore"
 )
 
@@ -52,7 +53,7 @@ func bindClusters(s *sqlStore) *sqlStore {
 	s.activityCluster = activitystore.New(k)
 	s.channelDataCluster = channeldatastore.New(k)
 	var inv channelstore.Invalidations // nil on SQLite: no wake-ups are published
-	if s.dialect == DialectPostgres {
+	if s.dialect == storedb.DialectPostgres {
 		inv = channelInvalidations{}
 	}
 	s.channelCluster = channelstore.New(k, s.channelClaimSQL, inv)

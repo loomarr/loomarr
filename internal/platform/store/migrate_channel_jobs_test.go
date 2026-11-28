@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"testing"
 )
 
@@ -18,14 +19,14 @@ func TestChannelJobsMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testChannelJobsMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testChannelJobsMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testChannelJobsMigration proves the migration marks every channel made from a request as such,
 // keeps each link that names a row, turns ” and a link naming no row into NULL, drops a job whose
 // channel is gone, and that afterwards the links are enforced: a job goes with its channel, and a
 // purged job leaves its channel with no intent_ref.
-func testChannelJobsMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testChannelJobsMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)

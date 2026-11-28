@@ -10,9 +10,9 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
-// The store re-exports the storedb kernel by alias so importers keep one import. Aliases are only
-// safe if they are IDENTITY, not copies: a second errors.New("store: not found") would print the
-// same and make errors.Is silently false for every caller that matches the other one.
+// store.ErrNotFound is the storedb value under a second name. It is only safe as IDENTITY, not a
+// copy: a second errors.New("store: not found") would print the same and make errors.Is silently
+// false for every caller that matches the other one.
 func TestErrNotFoundIsTheStoredbError(t *testing.T) {
 	// errors.Is compares by identity, so a distinct errors.New copy with the same text fails here.
 	if !errors.Is(ErrNotFound, storedb.ErrNotFound) {
@@ -38,19 +38,11 @@ func TestMissingRowMatchesBothNotFoundNames(t *testing.T) {
 	}
 }
 
-// Tx, Dialect and Scannable are aliases: values of the storedb types satisfy the store's names with
-// no conversion.
-var (
-	_ Tx        = storedb.Tx(nil)
-	_ Scannable = storedb.Scannable(nil)
-	_ Dialect   = storedb.DialectSQLite
-)
-
 // store.Handle is a storedb.Handle plus Clips: a cluster store written against the kernel handle
 // runs on the one HandleOf lends, and store.Handle carries the same advisory lock and dialect.
 func TestStoreHandleIsAKernelHandle(t *testing.T) {
 	var kernel storedb.Handle = HandleOf(newSQLiteStore(t))
-	if kernel.Dialect() != DialectSQLite {
+	if kernel.Dialect() != storedb.DialectSQLite {
 		t.Fatalf("Dialect = %q", kernel.Dialect())
 	}
 	tx, err := kernel.Begin(context.Background())

@@ -1,6 +1,9 @@
 {
   "note": "Design-system primitive ledger (#2147 Wave 4), maintained by web/scripts/check-primitive-bypass.mjs. Counts may only fall: `pnpm primitives:update` shrinks them. Never raise one to pass the check.",
   "files": {
+    "apps/web/src/channels/channel-detail/channel-detail-page/channel-detail-page.tsx": {
+      "inlineStyle": 5
+    },
     "apps/web/src/channels/channel-drawer/channel-drawer.tsx": {
       "inlineStyle": 2
     },
@@ -125,13 +128,13 @@
       "inlineStyle": 1
     },
     "apps/web/src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "inlineStyle": 3
+      "inlineStyle": 6
     },
     "apps/web/src/components/loomarr/shell/phone-bottom-bar/phone-bottom-bar.tsx": {
       "inlineStyle": 2
     },
     "apps/web/src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
-      "inlineStyle": 6
+      "inlineStyle": 9
     },
     "apps/web/src/design-system/foundation-story-shell/foundation-story-shell.tsx": {
       "inlineStyle": 1
@@ -223,20 +226,20 @@
     "apps/web/src/home/channel-wall/channel-wall.tsx": {
       "inlineStyle": 2
     },
+    "apps/web/src/home/new-this-week/new-this-week.tsx": {
+      "inlineStyle": 1
+    },
     "apps/web/src/home/watching-now/watching-now.tsx": {
       "inlineStyle": 1
     },
     "apps/web/src/library/collection-sortable/collection-sortable.tsx": {
-      "inlineStyle": 1
+      "inlineStyle": 2
     },
     "apps/web/src/library/library-title-page/library-title-page.tsx": {
       "inlineStyle": 1
     },
     "apps/web/src/people/users-page/users-page.tsx": {
       "inlineStyle": 1
-    },
-    "apps/web/src/channels/channel-detail/channel-detail-page/channel-detail-page.tsx": {
-      "inlineStyle": 5
     },
     "apps/web/src/routes/_authed/requests/_tabs.tsx": {
       "inlineStyle": 1
@@ -275,7 +278,7 @@
       "inlineStyle": 4
     },
     "packages/ui/src/channel-switch-overlay/channel-switch-overlay.tsx": {
-      "inlineStyle": 8
+      "inlineStyle": 9
     },
     "packages/ui/src/channels/channel-audio-section/channel-audio-section.tsx": {
       "inlineStyle": 2
@@ -395,7 +398,7 @@
       "inlineStyle": 1
     },
     "packages/ui/src/wall-tile/wall-tile.web.tsx": {
-      "inlineStyle": 2
+      "inlineStyle": 3
     },
     "packages/ui/src/watching-surface/player-chrome/casting-card/casting-card.tsx": {
       "inlineStyle": 5

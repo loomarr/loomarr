@@ -30,6 +30,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // ErrInferenceNotReserved reports a settlement that lost the reserved-state
@@ -319,7 +320,7 @@ type Store interface {
 // core adapter's, so the methods read the same on both sides of the split.
 type sqlStore struct {
 	db      store.Handle
-	dialect store.Dialect
+	dialect storedb.Dialect
 	ph      placeholder
 	// core reads clips and the taxonomy through the core's own methods, which own how they are read.
 	core store.Store
@@ -360,10 +361,10 @@ func Open(ctx context.Context, databaseURL string, autoMigrate bool) (Store, err
 type placeholder func(query string) string
 
 // scannable is the one method *sql.Row and *sql.Rows share.
-type scannable = store.Scannable
+type scannable = storedb.Scannable
 
 // The core's Unix-seconds time-column codec, under the names the moved code already uses.
 var (
-	epoch     = store.Epoch
-	fromEpoch = store.FromEpoch
+	epoch     = storedb.Epoch
+	fromEpoch = storedb.FromEpoch
 )
