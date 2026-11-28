@@ -9,7 +9,6 @@ import type {
   PlayerControllerOptions,
   PlayerFailureCause,
   PlayerSnapshot,
-  TuneDirection,
   TuneReason,
 } from "./player-controller.type";
 
