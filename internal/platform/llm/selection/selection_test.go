@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -107,31 +108,27 @@ func TestWarm_LogsEachOutcomeHonestly(t *testing.T) {
 		{"a real warm-up is reported", okWarmer{}, "model warmed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var buf syncBuf
-			log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			synctest.Test(t, func(t *testing.T) {
+				var buf syncBuf
+				log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-			Warm(context.Background(), tc.warmer, log)
+				Warm(context.Background(), tc.warmer, log)
 
-			// Warm is fire-and-forget, so poll for the line. The silent case has nothing
-			// to wait for, so it polls out — that is the assertion, not a timeout.
-			deadline := time.Now().Add(2 * time.Second)
-			for time.Now().Before(deadline) {
-				if buf.String() != "" {
-					break
+				// Warm is fire-and-forget: Wait returns once its goroutine is done, so silence is
+				// proven rather than timed.
+				synctest.Wait()
+
+				got := buf.String()
+				if tc.wantLog == "" {
+					if got != "" {
+						t.Errorf("expected silence for a declined warm-up, logged: %s", got)
+					}
+					return
 				}
-				time.Sleep(5 * time.Millisecond)
-			}
-
-			got := buf.String()
-			if tc.wantLog == "" {
-				if got != "" {
-					t.Errorf("expected silence for a declined warm-up, logged: %s", got)
+				if !strings.Contains(got, tc.wantLog) {
+					t.Errorf("log = %q, want it to contain %q", got, tc.wantLog)
 				}
-				return
-			}
-			if !strings.Contains(got, tc.wantLog) {
-				t.Errorf("log = %q, want it to contain %q", got, tc.wantLog)
-			}
+			})
 		})
 	}
 }
