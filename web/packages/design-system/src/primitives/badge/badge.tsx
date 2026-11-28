@@ -1,6 +1,7 @@
 import { isWeb, useTheme, View } from "@tamagui/core";
 import type { ComponentProps, ReactNode } from "react";
 
+import type { ItemLayoutProps } from "../../item-layout";
 import { lineHeightPx, withAlpha } from "../../text";
 import { TamaguiText } from "../../text-base";
 import { brandChroma, type Density, typography } from "../../tokens";
@@ -20,23 +21,24 @@ type BadgeTone =
   | "tune"
   | "warning";
 type BadgeShape = "pill" | "square";
-type BadgeProps = Omit<ComponentProps<typeof View>, "children"> & {
-  children: ReactNode;
-  density?: Density;
-  /** Square only: a glyph before the label, 4px from it. On web it inherits the badge's colour. */
-  icon?: ReactNode;
-  /**
-   * `pill` is the rounded state chip (danger/info/live/neutral/success/warning). `square` is the
-   * machine-data tag (#970 legacy Badge): mono, sentence case (#2778), a hairline-free tinted-15% background,
-   * no border. The two shapes intentionally do not share a tone vocabulary below.
-   */
-  shape?: BadgeShape;
-  /** Square only: the accent tones' tint strength, lowered for a badge on a raised surface. */
-  tintOpacity?: number;
-  /** Web only: the browser's tooltip, for a tag whose short label needs explaining. */
-  title?: string;
-  tone?: BadgeTone;
-};
+type BadgeProps = Omit<ComponentProps<typeof View>, "alignSelf" | "children"> &
+  ItemLayoutProps & {
+    children: ReactNode;
+    density?: Density;
+    /** Square only: a glyph before the label, 4px from it. On web it inherits the badge's colour. */
+    icon?: ReactNode;
+    /**
+     * `pill` is the rounded state chip (danger/info/live/neutral/success/warning). `square` is the
+     * machine-data tag (#970 legacy Badge): mono, sentence case (#2778), a hairline-free tinted-15% background,
+     * no border. The two shapes intentionally do not share a tone vocabulary below.
+     */
+    shape?: BadgeShape;
+    /** Square only: the accent tones' tint strength, lowered for a badge on a raised surface. */
+    tintOpacity?: number;
+    /** Web only: the browser's tooltip, for a tag whose short label needs explaining. */
+    title?: string;
+    tone?: BadgeTone;
+  };
 
 const badgeTone = {
   danger: { backgroundColor: "stateDangerSurface", borderColor: "stateDanger", color: "stateDanger" },
@@ -91,6 +93,7 @@ const squareBadgeTone = (theme: ReturnType<typeof useTheme>, tint: number) =>
   }) as const;
 
 const Badge = ({
+  alignSelf,
   children,
   density = "pointer",
   flexShrink,
@@ -123,6 +126,7 @@ const Badge = ({
       <View
         {...props}
         {...placement}
+        {...(alignSelf !== undefined && { alignSelf })}
         alignItems="center"
         backgroundColor={colors.backgroundColor}
         borderColor={colors.borderColor}
@@ -154,7 +158,7 @@ const Badge = ({
     <View
       {...props}
       alignItems="center"
-      alignSelf="flex-start"
+      alignSelf={alignSelf ?? "flex-start"}
       backgroundColor={colors.backgroundColor}
       borderColor={colors.borderColor}
       borderRadius="round"

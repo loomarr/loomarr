@@ -78,6 +78,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
   (
     {
       accessibilityState,
+      alignSelf,
       "aria-pressed": ariaPressed,
       children,
       density = "pointer",
@@ -271,6 +272,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
 
     const boxStyle = {
       alignItems: "center" as const,
+      ...(alignSelf !== undefined && { alignSelf }),
       backgroundColor,
       borderColor,
       borderRadius: tv ? 8 : semanticRadius.control,
