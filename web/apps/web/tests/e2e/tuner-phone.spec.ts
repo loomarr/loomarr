@@ -44,6 +44,9 @@ test("Watch at phone width draws the picture edge to edge with its controls on i
   await page.getByRole("option", { name: /Channel 2\b/ }).tap();
   await expect(page).toHaveURL(new RegExp(`/watch/${channelId(2)}$`));
   await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState)).toBeGreaterThanOrEqual(2);
+  // The list stays open after a tune, and at this width its column covers the picture until the
+  // phone's own arrangement (#4738): Channels closes it.
+  await page.getByRole("button", { name: "Channels" }).tap();
   await page.getByTestId("watch-picture").tap();
   await expect(page.getByRole("button", { name: "Play (Space)" })).toBeVisible();
 });
