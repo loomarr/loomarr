@@ -426,6 +426,17 @@ describe("LibraryShelf", () => {
       expect(sheet?.textContent).toContain("Show 37 titles");
       cleanup();
 
+      // A search narrows the wall too, so the footer says the list's total, not the tab's count.
+      const searched = render({
+        filter: "all",
+        genres: [],
+        search: "alien",
+        filtering: { ...filtering, filters: {}, total: 3 },
+      });
+      await act(async () => searched.button("Filters").click());
+      expect(doc.querySelector('[role="dialog"]')?.textContent).toContain("Show 3 titles");
+      searched.cleanup();
+
       // The tabs are on the page; Collections has nothing to search or filter.
       const collections = render({ filter: "collections", genres: [], filtering });
       expect(collections.find("Filters")).toBeUndefined();

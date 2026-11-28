@@ -707,9 +707,11 @@ const Controls = ({
     );
   }
   // The sheet covers the wall and its line of what is on, so its way out says how many titles the
-  // choices leave: with filters on the list's own total, with a genre chosen that genre's, else the
-  // tab's.
-  const filtered = on > 0 || Boolean(filtering && genre);
+  // choices leave: with filters or a search on, the list's own total (the tab counts ignore the
+  // search); with a genre chosen, that genre's; else the tab's. A search with no list total says
+  // nothing, so the button reads Done.
+  const searching = search.trim() !== "";
+  const filtered = on > 0 || searching || Boolean(filtering && genre);
   const shown = filtered
     ? filtering?.total
     : genre
