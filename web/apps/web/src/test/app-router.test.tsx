@@ -516,6 +516,7 @@ describe("admin-only routes", () => {
     "/channels/ch-1/programming",
     "/channels/ch-1/filler",
     "/channels/ch-1/danger",
+    "/library/needs",
   ];
 
   it.each(ADMIN_ONLY)("a member at %s gets the no-access state and a way Home", async (path) => {

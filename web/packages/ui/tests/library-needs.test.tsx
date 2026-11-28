@@ -278,7 +278,7 @@ describe("LibraryNeedsCards", () => {
     const { host, cleanup } = mount(cards());
     expect(host.textContent).toContain("Is this Paper Kites (1996)?");
     expect(host.textContent).toContain("The name and length match; the year doesn't.");
-    expect(host.textContent).toContain("1 file");
+    expect(host.textContent).toContain("90000811.mkv");
     cleanup();
   });
 

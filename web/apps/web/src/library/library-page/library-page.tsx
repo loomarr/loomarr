@@ -6,7 +6,6 @@ import { unwrap } from "@loomarr/api/unwrap";
 import {
   LibraryCollections,
   type LibraryFilter,
-  LibraryNeedsCards,
   LibraryShelf,
   type LibraryShelfCounts,
   type LibraryShelfLetter,
@@ -142,11 +141,8 @@ interface LibraryPageProps {
   search: string;
   /** The wall's order; by name unless the URL says recent. */
   sort?: LibrarySort;
-  /**
-   * "needs" is Needs you's own screen, an admin's: its cards in place of the grid.
-   * "collections" is the Collections tab: the collections in place of the search and the grid.
-   */
-  view?: "titles" | "needs" | "collections";
+  /** "collections" is the Collections tab: the collections in place of the search and the grid. */
+  view?: "titles" | "collections";
 }
 
 const NO_FILTERS: LibraryUrlFilters = {};
@@ -167,7 +163,7 @@ const LibraryPage = ({
   const settled = useSettled(typed.trim());
   const collections = useLibraryCollections(view === "collections");
   const titlesView = view === "titles";
-  const counts = useTabCounts(view !== "needs");
+  const counts = useTabCounts(true);
   const kind =
     filter === ListLibraryItemsKind.movie || filter === ListLibraryItemsKind.series ? filter : undefined;
   const recent = sort === "recent" ? sort : undefined;
@@ -176,10 +172,10 @@ const LibraryPage = ({
   useLibraryScanFrames();
   const status = libraryApi.useLibraryStatus({ query: { enabled: isAdmin } });
   const current = isAdmin ? unwrap(status.data) : undefined;
-  // Needs you's cards, and on the wall the titles nothing in the catalogue matches: the list of
-  // titles doesn't flag them, so an admin's wall reads them from here while any are waiting.
+  // On the wall, the titles nothing in the catalogue matches: the list of titles doesn't flag them,
+  // so an admin's wall reads them from Needs you while any are waiting.
   const marking = isAdmin && titlesView && Boolean(current?.needsYou);
-  const needs = useLibraryNeeds(marking || (isAdmin && view === "needs"));
+  const needs = useLibraryNeeds(marking);
   // A list read earlier stays cached after the query is off, so it marks only while it is asked for.
   const unidentified = useMemo(
     () => new Set(marking ? needs.needs.map((need) => need.id) : []),
@@ -222,11 +218,7 @@ const LibraryPage = ({
     [items.data, unidentified],
   );
   // The page's content is the admin's status line and whatever the view shows under it.
-  const viewReady = titlesView
-    ? !items.isPending
-    : view === "collections"
-      ? collections.loaded
-      : needs.loaded;
+  const viewReady = titlesView ? !items.isPending : collections.loaded;
   useRouteContent(!authLoading && (!isAdmin || current !== undefined) && viewReady);
 
   // The next page loads once the grid's last rows are on screen.
@@ -270,9 +262,6 @@ const LibraryPage = ({
   return (
     <>
       {items.error ? <ErrorState error={items.error} onRetry={() => void items.refetch()} /> : null}
-      {needs.error && view === "needs" ? (
-        <ErrorState error={needs.error} onRetry={() => void needs.refetch()} />
-      ) : null}
       {collections.error && view === "collections" ? (
         <ErrorState error={collections.error} onRetry={() => void collections.refetch()} />
       ) : null}
@@ -292,7 +281,7 @@ const LibraryPage = ({
                 onCheckAgain: () => discover.mutate(),
                 onRescan: () => rescan.mutate(),
                 onOpenSettings: () => void navigate({ to: "/settings/library" }),
-                onOpenNeeds: view === "needs" ? undefined : () => void navigate({ to: "/library/needs" }),
+                onOpenNeeds: () => void navigate({ to: "/library/needs" }),
               }
             : undefined
         }
@@ -321,20 +310,6 @@ const LibraryPage = ({
         jumpingTo={jumpLoading ? jump?.letter : undefined}
         letters={recent ? undefined : letters}
         loading={items.isPending}
-        needs={
-          view === "needs" && needs.loaded ? (
-            <LibraryNeedsCards
-              needs={needs.needs}
-              onChooseOrder={needs.answers.onChooseOrder}
-              onIgnore={needs.answers.onIgnore}
-              onLink={needs.answers.onLink}
-              onOpenTitle={openTitle}
-              onSearch={needs.onSearch}
-              orders={needs.orders}
-              problems={needs.problems}
-            />
-          ) : null
-        }
         onEndReached={loadMore}
         onFilterChange={(next) =>
           next === "collections"
@@ -356,7 +331,6 @@ const LibraryPage = ({
         onSearchChange={setTyped}
         onSortChange={(next) => showWall({ ...shown, sort: next === "recent" ? next : undefined })}
         search={typed}
-        showTitles={titlesView}
         sort={sort}
         timeZone={timeZone}
         titles={titles}

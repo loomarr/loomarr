@@ -28,7 +28,10 @@ const PickTitle = ({
   others,
   onSearch,
   onPick,
+  onCancel,
 }: {
+  /** Given, the field takes focus and Cancel or Escape calls this. */
+  onCancel?: () => void;
   kind: LibraryKind;
   /** Shown before anything is typed. */
   others: readonly LibraryNeedCandidate[];
@@ -54,7 +57,11 @@ const PickTitle = ({
   return (
     <Surface gap="inline" padding="control">
       <Field
+        autoFocus={Boolean(onCancel)}
         label="Search for the title"
+        onKeyPress={(event) => {
+          if (event.nativeEvent.key === "Escape") onCancel?.();
+        }}
         onChangeText={setSearch}
         placeholder="Type a movie or show name"
         value={search}
@@ -79,6 +86,13 @@ const PickTitle = ({
           </Action>
         </Line>
       ))}
+      {onCancel ? (
+        <Line>
+          <Action onPress={onCancel} variant="ghost">
+            Cancel
+          </Action>
+        </Line>
+      ) : null}
     </Surface>
   );
 };

@@ -120,10 +120,6 @@ interface LibraryShelfProps {
   titleLink?: (id: string) => ReactElement<Record<string, unknown>>;
   /** The grid's last rows are on screen: load the next page, if there is one. */
   onEndReached?: () => void;
-  /** Needs you's own screen draws its cards here, in place of the grid. */
-  needs?: ReactNode;
-  /** False on Needs you's own screen: the tabs stay, the search and the grid go. Default true. */
-  showTitles?: boolean;
   /** The Collections tab's content, in place of the search and the grid while it's chosen. */
   collections?: ReactNode;
   /** The household's timezone, which times are told in; the device's while undefined. */
