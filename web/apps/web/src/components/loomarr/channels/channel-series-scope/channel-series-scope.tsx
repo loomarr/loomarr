@@ -35,7 +35,7 @@ const labelOfKey = (key: string): string => {
   return key;
 };
 
-const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeProps) => {
+const ChannelSeriesScope = ({ policy, onChange }: ChannelSeriesScopeProps) => {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -55,7 +55,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
   };
 
   return (
-    <Stack className={className} gap="inline">
+    <Stack gap="inline">
       <Stack align="center" direction="row" gap="1.5">
         <Text textRole="label">Only these shows</Text>
         <FieldHelp label="Only these shows">

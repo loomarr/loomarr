@@ -7,7 +7,6 @@ interface PolicyFieldSourceProps {
   label: string;
   overrideLabel?: string;
   defaultLabel?: string;
-  className?: string;
 }
 
 export type { PolicyFieldSourceProps };

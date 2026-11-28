@@ -17,8 +17,8 @@ const SR: Record<OnAirState, string> = {
   reconciling: "Updating",
 };
 
-const OnAirIndicator = ({ state, showLabel = false, className }: OnAirIndicatorProps) => (
-  <Stack align="center" className={className} direction="row" gap="1.5" render="span">
+const OnAirIndicator = ({ state, showLabel = false }: OnAirIndicatorProps) => (
+  <Stack align="center" direction="row" gap="1.5" render="span">
     <StatusDot label={showLabel ? "" : SR[state]} tone={TONE[state]} />
     {showLabel && (
       <Text as="span" textRole="guideCell" tone={state === "live" ? "live" : "secondary"}>

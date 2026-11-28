@@ -18,7 +18,6 @@ const ChannelDangerZone = ({
   onResume,
   onDelete,
   busy,
-  className,
 }: ChannelDangerZoneProps) => {
   const { confirming, arm, cancel: cancelConfirm } = useDeleteConfirm();
   const [removal, setRemoval] = useState<"detach" | "purge" | null>(null);
@@ -35,7 +34,7 @@ const ChannelDangerZone = ({
   };
 
   return (
-    <Card borderRadius={8} className={className} padding={16} tone="onair">
+    <Card borderRadius={8} padding={16} tone="onair">
       <Stack gap="4">
         <Stack gap="1">
           <Text as="h3" textRole="heading" tone="danger">

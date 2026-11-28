@@ -10,9 +10,8 @@ const PolicyFieldSource = ({
   label,
   overrideLabel = "Channel override",
   defaultLabel = "Default",
-  className,
 }: PolicyFieldSourceProps) => (
-  <Stack align="center" className={className} direction="row" gap="inline" wrap>
+  <Stack align="center" direction="row" gap="inline" wrap>
     {/* An override is neutral with a foreground label and a control hairline (#1909 Q5): the word
         carries the meaning, and amber stays for focus and the primary action. The `override` tone
         draws the hairline without making this badge taller than the Default one. */}

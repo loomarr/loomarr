@@ -12,7 +12,6 @@ interface ChannelDangerZoneProps {
   // True while a pause/resume/delete request from THIS component is in flight, so its
   // controls disable without the parent needing its own local busy state.
   busy?: boolean;
-  className?: string;
 }
 
 export type { ChannelDangerZoneProps };

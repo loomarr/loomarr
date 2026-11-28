@@ -11,7 +11,7 @@ import type { ChannelUpcomingProps } from "./channel-upcoming.type";
 // (GET /v1/channels/{id}/upcoming). Read-only, shown to every user on the channel Overview.
 // Gaps are already filtered out server-side, so this just renders the list of shows. The first
 // entry is "on now" when the channel is live and it has started.
-const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcomingProps) => {
+const ChannelUpcoming = ({ channelId, live = false }: ChannelUpcomingProps) => {
   const upcoming = channelsApi.useChannelUpcoming(channelId, undefined, {
     query: { retry: false },
   });
@@ -31,7 +31,7 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
   // and a red NOW badge on the one airing. Every row keeps its time, so the NOW row still says
   // when it started.
   return (
-    <Stack className={className} gap="1.5" render="section">
+    <Stack gap="1.5" render="section">
       <Stack paddingBottom={4}>
         <Text as="h3" textRole="hint" tone="secondary">
           What's on

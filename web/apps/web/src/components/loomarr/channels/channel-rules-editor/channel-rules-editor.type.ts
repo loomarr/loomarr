@@ -16,7 +16,6 @@ interface ChannelRulesEditorProps {
   // channel's actually-grounded picks"). Optional — an empty/omitted list just means the
   // series option has nothing to offer yet.
   lineupKeys?: { key: string; title: string }[];
-  className?: string;
 }
 
 export type { ChannelRulesEditorProps };

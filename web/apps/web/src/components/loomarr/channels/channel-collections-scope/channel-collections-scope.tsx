@@ -41,7 +41,7 @@ import type { ChannelCollectionsScopeProps } from "./channel-collections-scope.t
 // label — never to drop anything, because being wrong then costs the operator nothing.
 const isFranchise = (name: string): boolean => name.trim().endsWith("Collection");
 
-const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollectionsScopeProps) => {
+const ChannelCollectionsScope = ({ policy, onChange }: ChannelCollectionsScopeProps) => {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -92,7 +92,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
   if (unavailable) return null;
 
   return (
-    <Stack className={className} gap="inline">
+    <Stack gap="inline">
       <Stack align="center" direction="row" gap="1.5">
         <Text textRole="label">Only these collections</Text>
         <FieldHelp label="Only these collections">

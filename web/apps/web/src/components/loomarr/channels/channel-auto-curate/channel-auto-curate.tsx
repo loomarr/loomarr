@@ -41,7 +41,7 @@ const overrideOrInherit = (raw: string): number => {
   return Math.max(0, Math.round(Number(trimmed)));
 };
 
-const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }: ChannelAutoCurateProps) => {
+const ChannelAutoCurate = ({ policy, onChange, intentBacked = true }: ChannelAutoCurateProps) => {
   const auto = policy.autoCurate;
   const enabled = auto !== undefined;
 
@@ -58,7 +58,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
   };
 
   return (
-    <Stack className={className} gap="control">
+    <Stack gap="control">
       <Stack align="start" direction="row" gap="2.5">
         <Toggle
           id="policy-auto-curate"

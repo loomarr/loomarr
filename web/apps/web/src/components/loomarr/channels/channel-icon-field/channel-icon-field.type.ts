@@ -24,7 +24,6 @@ interface ChannelIconFieldProps {
   // admin can change what's broadcast (§7 authorization model). Matches the `isAdmin`
   // gate already used by AppShell/ChannelDangerZone/etc.
   isAdmin?: boolean;
-  className?: string;
 }
 
 export type { ChannelIconFieldProps };
