@@ -107,6 +107,17 @@ describe("channel list cursor", () => {
     });
   });
 
+  it("stays on a tab when the channel changes from outside, and comes Down onto the new one", () => {
+    const state = play(open(), { type: "tabs" }, { channelId: "ch-1", type: "tuned" }).state;
+    expect(state).toMatchObject({ cursor: { group: "all", kind: "tab" }, watchedId: "ch-1" });
+    expect(play(state, down).state.cursor).toEqual({ channelId: "ch-1", kind: "row" });
+  });
+
+  it("opens on the watched channel after a visit to the tabs", () => {
+    const state = play(open(), { type: "tabs" }, right, { type: "close" }, { type: "open" }).state;
+    expect(state.cursor).toEqual({ channelId: "ch-3", kind: "row" });
+  });
+
   it("goes to the first and last row on Home and End", () => {
     const end = play(open(), { to: 1, type: "edge" });
     expect(end.state.cursor).toEqual({ channelId: "ch-6", kind: "row" });

@@ -172,15 +172,17 @@ describe("ChannelList", () => {
     const query = screen.getByRole("searchbox");
     // Every channel's title matches.
     await userEvent.type(query, "Programme");
-    const cursor = () => screen.getByTestId("channel-list-find-cursor");
-    expect(cursor().contains(row(1))).toBe(true);
+    const fills = () =>
+      [1, 2, 3, 4].filter((n) => declarationsOfTree(row(n)).includes("var(--surfaceElevated)"));
+    expect(fills()).toEqual([1]);
     await userEvent.keyboard("{ArrowDown}");
     expect(focused()).toBe(query);
-    expect(screen.getAllByTestId("channel-list-find-cursor")).toHaveLength(1);
+    expect(fills()).toEqual([2]);
     // The second result is channel 2, the one on screen, so step on to the third.
     await userEvent.keyboard("{ArrowDown}");
-    expect(cursor().contains(row(3))).toBe(true);
-    expect(declarationsOfElement(cursor())).toContain("var(--actionFocus)");
+    expect(fills()).toEqual([3]);
+    // The query's ring is the only amber one.
+    expect(declarationsOfElement(row(3).parentElement as HTMLElement)).not.toContain("var(--actionFocus)");
     await userEvent.keyboard("{Enter}");
     expect(tuned).toHaveBeenCalledExactlyOnceWith("ch-3");
     expect(screen.queryByRole("searchbox")).toBeNull();
@@ -233,8 +235,70 @@ describe("ChannelList", () => {
   it("keeps its notice out of the options", async () => {
     renderUi(<Harness />);
     await userEvent.click(screen.getByRole("tab", { name: "Recent" }));
-    const notice = screen.getByRole("group", { name: "Channels you watch collect here." });
-    expect(notice.querySelector('[role="option"]')).toBeNull();
+    const notice = screen.getByText("Channels you watch collect here.");
+    expect(notice.closest('[role="listbox"]')).toBeNull();
+  });
+
+  const filled = (element: HTMLElement) => declarationsOfTree(element).includes("var(--surfaceElevated)");
+
+  it("draws the cursor from the moment find opens, before anything is typed", async () => {
+    tuned.mockClear();
+    renderUi(<Harness autoFocus start={{ cursor: { channelId: "ch-2", kind: "row" } }} />);
+    await userEvent.keyboard("/");
+    expect(filled(row(2))).toBe(true);
+    await userEvent.keyboard("{ArrowDown}");
+    expect(focused()).toBe(screen.getByRole("searchbox"));
+    expect(filled(row(3))).toBe(true);
+    expect(filled(row(2))).toBe(false);
+    await userEvent.keyboard("{Enter}");
+    expect(tuned).toHaveBeenCalledExactlyOnceWith("ch-3");
+  });
+
+  it("leaves Enter to an input method while it is composing", () => {
+    tuned.mockClear();
+    renderUi(<Harness start={{ cursor: { channelId: "ch-3", kind: "row" }, query: "Station" }} />);
+    fireEvent.keyDown(screen.getByRole("searchbox"), { isComposing: true, key: "Enter" });
+    expect(tuned).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByRole("searchbox"), { key: "Enter" });
+    expect(tuned).toHaveBeenCalledExactlyOnceWith("ch-3");
+  });
+
+  it("leaves the caret's keys to the query", async () => {
+    tuned.mockClear();
+    renderUi(<Harness autoFocus start={{ cursor: { channelId: "ch-2", kind: "row" } }} />);
+    await userEvent.keyboard("/");
+    const query = screen.getByRole<HTMLInputElement>("searchbox");
+    await userEvent.type(query, "Programme");
+    await userEvent.keyboard("{Home}");
+    expect(query.selectionStart).toBe(0);
+    await userEvent.keyboard("{ArrowRight}{ArrowRight}{ArrowLeft}");
+    expect(query.selectionStart).toBe(1);
+    expect(filled(row(1))).toBe(true);
+    await userEvent.keyboard("{End}");
+    expect(query.selectionStart).toBe("Programme".length);
+    expect(filled(row(1))).toBe(true);
+    expect(screen.getAllByRole("option")).toHaveLength(5);
+    expect(tuned).not.toHaveBeenCalled();
+  });
+
+  it("lets a highlight go when the list scrolls or changes under the pointer", async () => {
+    renderUi(<Harness />);
+    fireEvent.pointerEnter(row(3), { pointerType: "mouse" });
+    expect(filled(row(3))).toBe(true);
+    fireEvent.scroll(screen.getByTestId("channel-list-scroller"));
+    expect(filled(row(3))).toBe(false);
+    fireEvent.pointerEnter(row(4), { pointerType: "mouse" });
+    await userEvent.click(screen.getByRole("tab", { name: "By decade" }));
+    expect(filled(row(4))).toBe(false);
+  });
+
+  it("draws no highlight on a row a press would not answer, until the pointer moves", () => {
+    renderUi(<Harness />);
+    fireEvent.click(row(3), { clientX: 40, clientY: 60 });
+    fireEvent.pointerEnter(row(4), { pointerType: "mouse" });
+    expect(filled(row(4))).toBe(false);
+    fireEvent.pointerMove(row(4), { clientX: 80, clientY: 60 });
+    expect(filled(row(4))).toBe(true);
   });
 
   it("says what an empty Recent is for, and heads By decade with its decades", async () => {

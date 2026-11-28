@@ -198,10 +198,15 @@ export const FindWithResults: Story = {
     const canvas = within(canvasElement);
     const query = canvas.getByRole("searchbox");
     await userEvent.click(query);
+    const results = canvas.getAllByRole("option");
+    const fill = (index: number) =>
+      getComputedStyle(results[index]?.firstElementChild as Element).backgroundColor;
+    const [first, second] = [fill(0), fill(1)];
     await userEvent.keyboard("{ArrowDown}");
     await expect(query).toHaveFocus();
-    const cursor = canvas.getByTestId("channel-list-find-cursor");
-    await expect(cursor).not.toHaveTextContent("Drama Hour");
+    // The selected fill moves from the first result to the second.
+    await expect(fill(0)).toBe(second);
+    await expect(fill(1)).toBe(first);
   },
 };
 export const FindWithNoMatch: Story = { args: { start: { query: "opera" } } };

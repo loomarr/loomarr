@@ -37,7 +37,12 @@ const NOTICES = {
   "empty-recent": "Channels you watch collect here.",
 } as const;
 
-type KeyEvent = { key: string; preventDefault: () => void; target?: { tagName?: string } };
+type KeyEvent = {
+  key: string;
+  nativeEvent?: { isComposing?: boolean };
+  preventDefault: () => void;
+  target?: { tagName?: string };
+};
 
 /** A mouse or finger press carries a place; a key press does not. */
 const pointOf = (event: GestureResponderEvent) => {
@@ -85,15 +90,15 @@ const ChannelList = <C extends LineupChannel>({
   const [viewport, setViewport] = useState(0);
   const [pinnedHeight, setPinnedHeight] = useState(ROW_HEIGHT * 2);
   const [nativeScroll, setNativeScroll] = useState(0);
-  // The row under a pointer, and the row holding focus.
+  // The row drawn as under a pointer.
   const [hovered, setHovered] = useState<string | undefined>(undefined);
-  const [focusedRow, setFocusedRow] = useState<string | undefined>(undefined);
 
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
   const scrolled = useRef(0);
   const rows = useRef(new Map<string, FocusHandle>());
   const tabs = useRef(new Map<LineupGroupKind, FocusHandle>());
   const lastPress = useRef<ChannelListPress | undefined>(undefined);
+  const underPointer = useRef<string | undefined>(undefined);
   const lookTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const looking = useRef<string | undefined>(undefined);
   const rested = useRef("");
@@ -116,10 +121,10 @@ const ChannelList = <C extends LineupChannel>({
     view.notice === "no-match"
       ? `No channel or programme matches “${query?.trim()}”.`
       : view.notice && NOTICES[view.notice];
-  // A notice stands after the rows, a row high.
-  if (message) y += ROW_HEIGHT;
   const anchorY = (pinnedAt < 0 ? y : places.get(watchedId ?? "")) ?? y;
-  const contentHeight = y + (pinnedAt < 0 && pinned ? pinnedHeight : 0) + room;
+  // A notice stands after the list's last channel, a row high.
+  const listEnd = y + (pinnedAt < 0 && pinned ? pinnedHeight : 0);
+  const contentHeight = listEnd + (message ? ROW_HEIGHT : 0) + room;
   const rest = listRest({
     anchorY,
     pinnedHeight,
@@ -142,6 +147,15 @@ const ChannelList = <C extends LineupChannel>({
     if (!viewport || rested.current === restKey) return;
     rested.current = restKey;
     scrollTo(restScroll);
+  });
+
+  // Other rows may now be under a pointer that has not moved, so its highlight is let go.
+  const rowsKey = [group, JSON.stringify(query), watchedId].join();
+  const drawnKey = useRef(rowsKey);
+  useEffect(() => {
+    if (drawnKey.current === rowsKey) return;
+    drawnKey.current = rowsKey;
+    setHovered(undefined);
   });
 
   // Focus follows the cursor, and only from keys.
@@ -194,6 +208,7 @@ const ChannelList = <C extends LineupChannel>({
       const next = { ...point, at: Date.now(), touch: layout === "touch" };
       if (!channelListAllowsPress(lastPress.current, next)) return;
       lastPress.current = next;
+      setHovered(undefined);
       focusWanted.current = false;
       // The ring a key left behind goes with the keys.
       if (cursor.kind === "row") rows.current.get(cursor.channelId)?.blur?.();
@@ -206,10 +221,14 @@ const ChannelList = <C extends LineupChannel>({
     const last = lastPress.current;
     if (!last) return;
     const { pageX = 0, pageY = 0 } = event.nativeEvent;
-    if (Math.hypot(pageX - last.x, pageY - last.y) >= PRESS_MOVE_PX) lastPress.current = undefined;
+    if (Math.hypot(pageX - last.x, pageY - last.y) < PRESS_MOVE_PX) return;
+    lastPress.current = undefined;
+    setHovered(underPointer.current);
   };
 
   const onKeyDown = (event: KeyEvent) => {
+    // Enter while an input method is building a character finishes the character.
+    if (event.key === "Enter" && event.nativeEvent?.isComposing) return;
     const typing = event.target?.tagName === "INPUT";
     const back: ChannelListEvent = { type: "back" };
     const send: Record<string, ChannelListEvent | undefined> = {
@@ -238,10 +257,7 @@ const ChannelList = <C extends LineupChannel>({
       if (!fromInput(event)) onKeyDown(event);
     },
     onKeyDownCapture: (event: KeyEvent) => {
-      if (!fromInput(event)) return;
-      // The query has focus. A row taken down while focused never says it lost it.
-      setFocusedRow(undefined);
-      if (event.key !== "Escape") onKeyDown(event);
+      if (fromInput(event) && event.key !== "Escape") onKeyDown(event);
     },
   };
 
@@ -249,6 +265,7 @@ const ChannelList = <C extends LineupChannel>({
     const at = event.nativeEvent.contentOffset.y;
     // A different row slides under a resting pointer, so what was looked at is let go.
     look(undefined);
+    setHovered(undefined);
     const bounds = scrollBounds({ contentHeight, height: rest.height, rest: restScroll, room });
     const within = Math.min(bounds.max, Math.max(bounds.min, at));
     if (viewport && within !== at) return scrollTo(within);
@@ -262,27 +279,29 @@ const ChannelList = <C extends LineupChannel>({
     else rows.current.delete(channelId);
   };
 
-  // Where find's cursor is drawn: focus stays in the query, so no row can draw it by holding focus.
+  // While find is open, focus and its ring stay in the query, and the row the cursor rests on takes
+  // the selected fill, as a combobox's highlighted option does.
   const findCursor =
-    view.finding && layout !== "touch" && cursor.kind === "row" ? cursor.channelId : undefined;
+    query !== null && layout !== "touch" && cursor.kind === "row" ? cursor.channelId : undefined;
 
   // A row or the pinned channel is named by what it shows, so each piece of text ends in a space.
   // `selected` is the shipped row's fill, drawn here for a pointer and for find's cursor; whether
   // the option is the selected one is said by `aria-selected` alone.
   const target = (channel: C, selected: boolean, isRow: boolean) => ({
-    onBlur: () => setFocusedRow(undefined),
     onFocus: () => {
-      setFocusedRow(channel.id);
       if (isRow && (cursor.kind !== "row" || cursor.channelId !== channel.id)) {
         onEvent({ channelId: channel.id, type: "focusRow" });
       }
     },
     // The shipped row's own hover handlers give way to these, so its highlight is drawn from here.
     onHoverIn: () => {
-      setHovered(channel.id);
+      underPointer.current = channel.id;
+      // A row that slid under a still pointer will not answer a press yet, so it draws nothing.
+      if (!lastPress.current) setHovered(channel.id);
       look(channel.id);
     },
     onHoverOut: () => {
+      underPointer.current = undefined;
       setHovered(undefined);
       look(undefined);
     },
@@ -304,18 +323,9 @@ const ChannelList = <C extends LineupChannel>({
     const decade = view.headings.size ? channel.decade : undefined;
     // What is not drawn but is said: the heading a row stands under, and that it is on screen.
     const unseen = [decade && `${decade}s`, watched && "watching"].filter(Boolean).join(" ");
-    // A focused row draws its own ring.
-    const cursorHere = findCursor === channel.id && focusedRow !== channel.id;
     return (
-      <Bare
-        borderColor={cursorHere ? "actionFocus" : "transparent"}
-        borderRadius="control"
-        borderWidth={2}
-        height={ROW_HEIGHT}
-        justifyContent="center"
-        testID={cursorHere ? "channel-list-find-cursor" : undefined}
-      >
-        <PressableRow inset={{ x: 8, y: 2 }} {...target(channel, watched, true)}>
+      <Bare height={ROW_HEIGHT} justifyContent="center">
+        <PressableRow inset={{ x: 8, y: 4 }} {...target(channel, watched, true)}>
           <Bare alignItems="flex-end" width={32}>
             <Text textRole="mono" tone="secondary">
               {channel.number}{" "}
@@ -420,23 +430,18 @@ const ChannelList = <C extends LineupChannel>({
                   {index === pinnedAt ? pinnedSlot : rowOf(channel)}
                 </Fragment>
               ))}
-              {/* A listbox holds only options and groups, so the notice is a group of its own. */}
-              {message ? (
-                <Bare
-                  aria-label={message}
-                  height={ROW_HEIGHT}
-                  justifyContent="center"
-                  paddingHorizontal={8}
-                  role="group"
-                >
-                  <Text numberOfLines={2} textRole="metadata" tone="secondary">
-                    {message}
-                  </Text>
-                </Bare>
-              ) : null}
               {pinnedAt < 0 ? pinnedSlot : null}
               <Bare aria-hidden height={room} />
             </Bare>
+            {/* A listbox holds only options, so the notice follows it, drawn up into the room below
+                the last channel. */}
+            {message ? (
+              <Bare height={ROW_HEIGHT} justifyContent="center" marginTop={-room} paddingHorizontal={8}>
+                <Text numberOfLines={2} textRole="metadata" tone="secondary">
+                  {message}
+                </Text>
+              </Bare>
+            ) : null}
           </ScrollView>
         </Bare>
       </Bare>

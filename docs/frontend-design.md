@@ -838,11 +838,13 @@ then off the tabs back to the list, then closed. Nothing closes it on a timer.
   and Right move between tabs; OK chooses one and the cursor stays on it, so Left and Right can go on
   stepping; Down returns to the list on the watched channel. In the list, Left and Right change the
   group directly, and Home and End go to the first and last row.
-- **Find.** Focus stays in the query while Up and Down move the cursor over the results, which the
-  result it rests on draws. Enter or a click on a result tunes it, closes find and leaves the list
+- **Find.** Focus and its ring stay in the query while Up and Down move the cursor over the rows,
+  from the moment find opens. The row it rests on takes the selected fill, not a second amber ring,
+  as a combobox's highlighted option does. Left, Right, Home and End move the caret. Enter or a click on a result tunes it, closes find and leaves the list
   open with the cursor on the new channel; choosing the watched channel only closes find.
 - **Focus** is one amber ring, on the cursor's row, the pinned channel or a tab. A pointer draws a
-  plain highlight. In a desktop window a pointer resting on a row is "looking" at it, which ends as
+  plain highlight, which goes when the list scrolls or changes under it, and is not drawn while a
+  press there would not count. In a desktop window a pointer resting on a row is "looking" at it, which ends as
   soon as it leaves or the list scrolls. After a click the list re-centres, so a further click or tap
   counts only after the pointer has moved about 14 px or, on touch, after a short gap. Only keyboard
   focus scrolls a row into view.
