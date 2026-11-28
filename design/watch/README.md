@@ -77,9 +77,14 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled.
 2. **Beside the picture where there is room, over it where there is not.** In a desktop window the
    column runs down the left and the film strip under the picture, and nothing covers it. An upright
    phone stacks the same parts under the picture. Full screen, a television and a phone on its side
-   put the same cross over the picture. A window narrower than about 900 px stacks as the phone does.
-3. **Two beats over the picture.** Up or Down opens the column. Right, or resting on a row, opens the
-   film strip. Enter or Esc returns to the picture.
+   put the channel list over the picture and keep the day in the Guide. A window narrower than about
+   900 px stacks as the phone does.
+3. **Flipping tunes; the list looks** (maintainer, 2026-11-27). Up and Down on the bare picture
+   change channel at once and show only the lower third. **Channels** opens the list: moving through
+   it looks, OK or a click tunes, and Back or Esc closes it. The list is one scrollable list on every
+   device, with the channel you are watching pinned in it as the lower third, so it stays in view
+   however far the list is scrolled. Nothing that holds focus, the pointer or an open layer closes
+   on a timer; only the bare picture goes quiet.
 4. **A pointer looks before it tunes.** In a window, pointing at a channel shows its day and
    pointing at a programme shows its facts. A click on a row tunes. The wheel scrolls the column and
    never flips channels.
@@ -97,14 +102,21 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled.
    keys. A desktop window and an upright phone keep the column in view instead, with the Guide
    control in the column's header or pinned at the end of the tabs. The Guide nav item opens the
    same view.
-   - **A television's focus map.** Up and Down change channel and bring up the column. Left and Right
-     wake the quiet row and move along it: Channels, Guide, Subtitles, Audio, More. OK activates the
-     focused control. With the column up, Right opens the film strip and Back returns to the
-     picture. One hint line says the first two.
+   - **"Later today" is the Guide** (maintainer, 2026-11-27). Over the picture there is no film
+     strip of its own: the Guide opens focused on the row of the channel you are watching, which is
+     that strip at full height. A desktop window keeps the strip under the picture.
+   - **A television's focus map.** Up and Down change channel. OK on the bare picture pauses and
+     resumes. Left and Right wake the quiet row and move along it: Channels, Guide, Pause,
+     Subtitles, Audio, More, with Go live leading the row while behind live. OK activates the
+     focused control. Back clears focus, then goes Home. In the open list, Up from the first channel
+     reaches the group tabs, Left and Right move between them, OK chooses one and Down returns. The
+     key that wakes the screen also does its job. One hint line says the first three.
+   - **A television has no typed find** (maintainer, 2026-11-27). Its group tabs and the Guide are
+     how it narrows 30 channels; find stays on desktop and phone.
 7. **30 channels and more, in one order.** Every list of channels is in number order, scrolled so
    the tuned channel sits on the crossing. It never wraps on screen, though flipping past the last
    channel still reaches the first. On an upright phone the whole list sits under the lower third,
-   scrolled to the tuned channel, which is marked "watching"; tapping it opens its film strip. Group
+   scrolled to the tuned channel, which is marked "watching". Group
    tabs (Favourites, All, Recent, By decade) head the column, the Guide and the wall, and the wall
    follows the same order after the last watched. Digits tune direct. A find control opens the
    query, `/` does the same, and results list straight under it. Typing letters does not open find:
@@ -146,9 +158,9 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled.
     do not fade, and facts set over the picture stand on a solid ink plate. `bright` proves it over a
     washed-out frame on desktop, a television and a phone on its side.
 14. **Every touch control is at least 44 px**, and no text is under 12 px.
-15. **Focus is always drawn.** On a television the tuned row carries the amber ring while the column
-    is up, and a strip block carries it when focus moves there. On desktop the same ring shows for
-    keyboard focus.
+15. **Focus is always drawn.** On a television the list's cursor row, the focused tab or the focused
+    control carries the amber ring, and so does the focused programme in the Guide. On desktop the
+    same ring shows for keyboard focus.
 16. **The rating reads with the programme's facts** in the lower third, not beside the back arrow.
 17. **Sizes.** The numeral and title are 64 and 34 px full screen, 56 and 28 px in a window, 52 and
     30 px on a television, 44 and 22 px on an upright phone.
@@ -185,24 +197,33 @@ shortcuts sheet under More. Its artwork is the mock's stand-ins, and the picture
 
 ### What using it changed
 
-A review by use (six tasks, cold, on each layout) passed 22 of 24 attempts and found these. The
-prototype carries the fixes; the mock's stills do not yet.
+Two reviews by use (six tasks, cold, on each layout) found these. The prototype carries the fixes;
+the mock's stills and sheets do not yet, so where they differ the prototype and the list above win.
 
-- **One rule for "later today".** A **Today** control sits with Channels and Guide in the quiet row
-  on full screen and a television, and opens the day of the channel you are watching. A window
-  keeps the strip open always; a phone opens it by tapping your channel. Right still opens it too.
-- **A television's remote reaches everything.** Its quiet row is Channels, Today, Guide, Pause,
-  Subtitles, Audio, More. Back on the bare picture goes Home, where arrows move between tiles and
-  OK watches one. This replaces the focus map in item 6.
-- **The column closes only when left alone**: six seconds after the last key, nine on a television,
-  and never while the pointer is moving inside it.
+- **One model for the channel list** on every device (item 3). The first prototype gave each layout
+  its own: a list that opened on a flip and closed on a timer, a Today control, a strip opened by
+  tapping your row. Both reviews scored it lowest on control and consistency, so those went.
+- **"Later today" is the Guide** over the picture (item 6). The Today control and the strip over
+  the picture are gone.
+- **A television's remote reaches everything** (item 6): OK pauses, the group tabs are reachable,
+  Go live is in the quiet row, and Back on the bare picture goes Home, where arrows move between
+  tiles and OK watches one.
+- **Fast flipping holds one wash.** The picture is covered at once and uncovered once, 220 ms after
+  the last flip, so a run of flips never shows the pictures in between.
+- **Back goes one step.** Inside Playback details, Keyboard shortcuts or Remote buttons it returns
+  to More.
+- **A phone's find works by tapping.** The prototype draws a stand-in keyboard, and the Guide
+  control steps aside while find is open.
 - **Focus never leaves the screen.** Whatever carries the ring is scrolled into view, focus stops at
   the last programme drawn, and a re-render keeps every list where it was scrolled.
 - **Looking is not playing.** Pointing at another channel says "Looking at 9 Movie Matinee · still
   playing 7 Coast 90s". After a click the list re-centres, and the pointer must move before it
   looks at anything, so a second click cannot tune a channel that slid under it.
-- **A phone answers every tap.** A later programme shows its facts under the strip or the Guide, the
-  Guide's control reads "Channels" while the Guide is up, and Go live leads its line.
+- **Looking is not playing in the Guide either.** With the cursor on another channel the header
+  says "Looking at Game Night", and the docked picture keeps its own caption, "Playing 9 Movie
+  Matinee".
+- **A phone answers every tap.** A later programme shows its facts under the Guide, the Guide's
+  control reads "Channels" while the Guide is up, and Go live leads its line.
 - **The first-run hint** sits at the top of the picture, clear of the lists, and fades with the
   controls. More holds Keyboard shortcuts, or Remote buttons on a television.
 - **The group tabs filter**, and "no match" offers "Show all channels".
