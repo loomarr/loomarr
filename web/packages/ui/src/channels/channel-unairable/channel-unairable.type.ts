@@ -1,4 +1,4 @@
-/** Why a lineup title cannot air, as reconcile records it on the channel's policy. */
+/** Why a lineup title cannot air, as reconcile records it in the channel's findings. */
 type UnairableReason =
   | "no_episodes_in_seasons"
   | "no_episodes_selected"

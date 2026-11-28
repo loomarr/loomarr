@@ -96,8 +96,8 @@ const useChannelRulesDraft = (channelId: string, policy: ChannelPolicy | undefin
     at,
     setAt,
     isDirty: draftKey !== savedKey,
-    // PATCH replaces `policy` whole (only reconcile-owned `applied` and — since §10 V51f —
-    // an OMITTED `filler` are preserved server-side), so the draft IS the policy: no merge
+    // PATCH replaces `policy` whole (only an OMITTED `filler` or `growth` is preserved
+    // server-side, §10 V51f), so the draft IS the policy: no merge
     // needed, unlike the filler draft which owns one key.
     //
     // ⚠ The draft is seeded from `policy ?? {}`, so before the page's channel resolves it is the

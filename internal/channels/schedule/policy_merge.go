@@ -27,14 +27,14 @@ const (
 // MergeFromProposal materializes a fresh proposal onto the channel (approve / refine /
 // re-curation). Proposal-owned fields refresh from `incoming` UNLESS the operator has
 // pinned them (OperatorSet, §8.2 stickiness); operator-owned fields (filler/window/
-// autoCurate/playout), Applied, and OperatorSet are preserved from current via
+// autoCurate/playout) and OperatorSet are preserved from current via
 // `out := current`. Playout backend (§9.1) is an OPERATOR choice about infrastructure,
 // never a creative one about content — a refine must not be able to move a channel
 // between streaming backends, so it is deliberately absent from the refresh list below.
 // Rules merge by provenance. The audience ceiling is NEVER relaxed — even a pinned ceiling
 // may be tightened by a stricter proposal, never loosened (§4 safety outranks stickiness).
 func (current ChannelPolicy) MergeFromProposal(incoming ChannelPolicy) ChannelPolicy {
-	out := current // keeps OperatorPolicy, Applied, OperatorSet, and any future field
+	out := current // keeps OperatorPolicy, OperatorSet, and any future field
 	pinned := pathSet(current.OperatorSet)
 
 	if !pinned[pathScope] {
@@ -62,8 +62,7 @@ func (current ChannelPolicy) MergeFromProposal(incoming ChannelPolicy) ChannelPo
 }
 
 // MergeFromOperator applies an operator PATCH of the whole policy (the channel page). The
-// operator's values win wholesale; Applied is reconcile-owned so it is force-preserved from
-// current (never client-settable); and every proposal-owned field the operator CHANGED TO A
+// operator's values win wholesale, and every proposal-owned field the operator CHANGED TO A
 // NON-EMPTY VALUE is recorded in OperatorSet so a later refine can't revert it (§8.2).
 // OperatorSet on the incoming body is ignored — it is Loomarr's bookkeeping, not a
 // client-settable field.

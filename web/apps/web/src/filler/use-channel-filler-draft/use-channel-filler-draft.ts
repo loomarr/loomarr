@@ -84,7 +84,7 @@ const canonicalize = (s: FillerDraft): string => {
 // usePreviewChannelPods, which reads the SAVED selection via GET.
 //
 // It takes the WHOLE `policy`, not just `policy.filler`: PATCH /channels replaces the
-// policy object whole (only reconcile-owned `applied` is preserved server-side), so apply
+// policy object whole, so apply
 // must merge onto the policy or it would wipe scope/audience/separation/ordering.
 const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefined): ChannelFillerDraft => {
   const saved: FillerSelection | undefined = policy?.filler;

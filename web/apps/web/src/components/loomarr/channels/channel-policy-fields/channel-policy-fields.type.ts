@@ -4,8 +4,8 @@ import type { PlayOrderCycle } from "@/lib/play-order-copy";
 interface ChannelPolicyFieldsProps {
   policy: ChannelPolicy;
   // Controlled: the parent owns the policy and persists it. Every edit here produces a
-  // NEW policy object with just that field merged in — `applied` (reconcile-owned, §9)
-  // and every other section are always carried through untouched.
+  // NEW policy object with just that field merged in — every other section is always
+  // carried through untouched.
   onChange: (next: ChannelPolicy) => void;
   // `show` renders a subset so the Programming surface (§12) can split the fields across its
   // "What plays" (scope: audience ceiling + era) and "How it's ordered" (ordering + no-repeat)

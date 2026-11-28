@@ -164,6 +164,7 @@ const POPULATED: HomeFixture = (() => {
         number: 24,
         pendingCount: 0,
         policy: {},
+        findings: {},
         programCount: 0,
         revision: 1,
         slotCount: 0,

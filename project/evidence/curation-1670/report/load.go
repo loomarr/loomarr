@@ -134,7 +134,9 @@ func loadSettings(ctx context.Context, db *sql.DB, s *Snapshot) error {
 }
 
 // policyJSON is the subset of schedule.ChannelPolicy the report reads. It is decoded here rather
-// than through the schedule package so a snapshot from an older install still loads.
+// than through the schedule package so a policy field the schedule package changes does not stop a
+// snapshot loading. A snapshot must be migrated through 00264, which gives channels their
+// reconcile_findings_json.
 type policyJSON struct {
 	Ordering string        `json:"ordering"`
 	Rules    []any         `json:"rules"`

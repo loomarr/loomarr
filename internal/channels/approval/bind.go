@@ -63,7 +63,8 @@ type Binding struct {
 //
 // Policy ownership is enforced in ONE place (schedule.MergeFromProposal, §2.1/§8.2): the proposal
 // refreshes what it owns EXCEPT any field the operator pinned, while operator-owned fields (filler,
-// window, autoCurate), pinned fields and the reconcile-owned Applied are preserved.
+// window, autoCurate) and pinned fields are preserved. The channel's reconcile findings are not
+// policy and ride the row untouched.
 func Bind(in BindInput) (Binding, error) {
 	p := in.Proposal
 	if p.JobID == "" {
