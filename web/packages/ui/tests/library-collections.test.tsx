@@ -121,8 +121,8 @@ describe("LibraryCollections", () => {
     await settle();
     expect(props.manage?.onCopy).toHaveBeenCalledWith("90000611");
     expect(
-      button("Copied — it's under Yours").hasAttribute("disabled") ||
-        button("Copied — it's under Yours").getAttribute("aria-disabled") === "true",
+      button("Copied. It's under Yours").hasAttribute("disabled") ||
+        button("Copied. It's under Yours").getAttribute("aria-disabled") === "true",
     ).toBe(true);
     cleanup();
   });

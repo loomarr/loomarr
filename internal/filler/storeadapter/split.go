@@ -82,7 +82,7 @@ func (a Split) ReleaseCompositeHolds(ctx context.Context, paths []string, at tim
 	return updated, err
 }
 
-func clipsByPath(ctx context.Context, st store.Store, paths []string) []clips.Clip {
+func clipsByPath(ctx context.Context, st clipPathReader, paths []string) []clips.Clip {
 	out := make([]clips.Clip, 0, len(paths))
 	for _, path := range paths {
 		if clip, err := st.GetClipByPath(ctx, path); err == nil {

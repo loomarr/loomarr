@@ -6,7 +6,6 @@ import { unwrap } from "@loomarr/api/unwrap";
 import {
   LibraryCollections,
   type LibraryFilter,
-  LibraryNeedsCards,
   LibraryShelf,
   type LibraryShelfCounts,
   type LibraryShelfLetter,
@@ -23,13 +22,14 @@ import { ServedImage } from "@/components/loomarr/served-image";
 import { useRouteContent } from "@/lib/use-route-content";
 import { LIBRARY_COUNTS, LIBRARY_PAGE_SIZE, libraryItemsQueryOptions } from "../library-items-query";
 import { useLibraryCollections } from "../use-library-collections";
+import { type LibraryUrlFilters, useLibraryFiltering } from "../use-library-filtering";
 import { useLibraryNeeds } from "../use-library-needs";
 import { useLibraryScanFrames } from "../use-library-scan-frames";
 
 // THE WALL (#4476): the titles Loomarr found in its media folders, as a poster grid. An admin sees
 // one line about the library above it, with Needs you's count; a member browses the same wall
 // read-only and the page asks only the routes a member reads (the titles and the collections).
-// The filter, the order, the genre and the search live in the URL; the grid loads a page at a time as it
+// The filters, the order and the search live in the URL; the grid loads a page at a time as it
 // scrolls. Nothing polls: an import's progress arrives as library_scan frames written into the
 // status, and each library_titles frame refetches the titles (the events bus), so new titles
 // appear and "Getting ready" clears on their own.
@@ -136,17 +136,25 @@ interface LibraryPageProps {
   filter: LibraryFilter;
   /** Only titles with this genre; absent is every genre. */
   genre?: string;
+  /** The filters past the genre, as the URL holds them. */
+  filters?: LibraryUrlFilters;
   search: string;
   /** The wall's order; by name unless the URL says recent. */
   sort?: LibrarySort;
-  /**
-   * "needs" is Needs you's own screen, an admin's: its cards in place of the grid.
-   * "collections" is the Collections tab: the collections in place of the search and the grid.
-   */
-  view?: "titles" | "needs" | "collections";
+  /** "collections" is the Collections tab: the collections in place of the search and the grid. */
+  view?: "titles" | "collections";
 }
 
-const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: LibraryPageProps) => {
+const NO_FILTERS: LibraryUrlFilters = {};
+
+const LibraryPage = ({
+  filter,
+  genre,
+  filters = NO_FILTERS,
+  search,
+  sort = "name",
+  view = "titles",
+}: LibraryPageProps) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const timeZone = useHouseholdTimeZone();
@@ -155,7 +163,7 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
   const settled = useSettled(typed.trim());
   const collections = useLibraryCollections(view === "collections");
   const titlesView = view === "titles";
-  const counts = useTabCounts(view !== "needs");
+  const counts = useTabCounts(true);
   const kind =
     filter === ListLibraryItemsKind.movie || filter === ListLibraryItemsKind.series ? filter : undefined;
   const recent = sort === "recent" ? sort : undefined;
@@ -164,10 +172,10 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
   useLibraryScanFrames();
   const status = libraryApi.useLibraryStatus({ query: { enabled: isAdmin } });
   const current = isAdmin ? unwrap(status.data) : undefined;
-  // Needs you's cards, and on the wall the titles nothing in the catalogue matches: the list of
-  // titles doesn't flag them, so an admin's wall reads them from here while any are waiting.
+  // On the wall, the titles nothing in the catalogue matches: the list of titles doesn't flag them,
+  // so an admin's wall reads them from Needs you while any are waiting.
   const marking = isAdmin && titlesView && Boolean(current?.needsYou);
-  const needs = useLibraryNeeds(marking || (isAdmin && view === "needs"));
+  const needs = useLibraryNeeds(marking);
   // A list read earlier stays cached after the query is off, so it marks only while it is asked for.
   const unidentified = useMemo(
     () => new Set(marking ? needs.needs.map((need) => need.id) : []),
@@ -188,16 +196,18 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
     synced.current = settled;
     void navigate({
       to: "/library",
-      search: { kind, q: settled || undefined, sort: recent, genre },
+      search: { ...filters, kind, q: settled || undefined, sort: recent, genre },
       replace: true,
     });
-  }, [settled, kind, recent, genre, navigate, titlesView]);
+  }, [settled, kind, recent, genre, filters, navigate, titlesView]);
 
-  const { jump, onJump, cancel, reach } = useLetterJump(JSON.stringify([kind, settled, recent, genre]));
+  const list = { ...filters, kind, search: settled || undefined, sort: recent, genre };
+  const { jump, onJump, cancel, reach } = useLetterJump(JSON.stringify(list));
   const items = useInfiniteQuery({
-    ...libraryItemsQueryOptions({ kind, search: settled || undefined, sort: recent, genre, reach }),
+    ...libraryItemsQueryOptions({ ...list, reach }),
     enabled: titlesView,
   });
+  const filtering = useLibraryFiltering({ enabled: titlesView, kind, filters });
   // The tab's genres, each with its titles; a member reads them too.
   const genreList = libraryApi.useListLibraryGenres({ kind }, { query: { enabled: titlesView } });
   const titles = useMemo(
@@ -208,11 +218,7 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
     [items.data, unidentified],
   );
   // The page's content is the admin's status line and whatever the view shows under it.
-  const viewReady = titlesView
-    ? !items.isPending
-    : view === "collections"
-      ? collections.loaded
-      : needs.loaded;
+  const viewReady = titlesView ? !items.isPending : collections.loaded;
   useRouteContent(!authLoading && (!isAdmin || current !== undefined) && viewReady);
 
   // The next page loads once the grid's last rows are on screen.
@@ -249,15 +255,13 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
   const offline = (unwrap(roots.data)?.roots ?? []).filter((f) => f.inUse && !f.readable).map((f) => f.path);
 
   const openTitle = (id: string) => void navigate({ to: "/library/$id", params: { id } });
-  const showWall = (next: { kind?: typeof kind; sort?: typeof recent; genre?: string }) =>
+  const showWall = (next: LibraryUrlFilters & { kind?: typeof kind; sort?: typeof recent; genre?: string }) =>
     void navigate({ to: "/library", search: { ...next, q: settled || undefined } });
+  const shown = { ...filters, kind, sort: recent, genre };
 
   return (
     <>
       {items.error ? <ErrorState error={items.error} onRetry={() => void items.refetch()} /> : null}
-      {needs.error && view === "needs" ? (
-        <ErrorState error={needs.error} onRetry={() => void needs.refetch()} />
-      ) : null}
       {collections.error && view === "collections" ? (
         <ErrorState error={collections.error} onRetry={() => void collections.refetch()} />
       ) : null}
@@ -277,7 +281,7 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
                 onCheckAgain: () => discover.mutate(),
                 onRescan: () => rescan.mutate(),
                 onOpenSettings: () => void navigate({ to: "/settings/library" }),
-                onOpenNeeds: view === "needs" ? undefined : () => void navigate({ to: "/library/needs" }),
+                onOpenNeeds: () => void navigate({ to: "/library/needs" }),
               }
             : undefined
         }
@@ -306,34 +310,27 @@ const LibraryPage = ({ filter, genre, search, sort = "name", view = "titles" }: 
         jumpingTo={jumpLoading ? jump?.letter : undefined}
         letters={recent ? undefined : letters}
         loading={items.isPending}
-        needs={
-          view === "needs" && needs.loaded ? (
-            <LibraryNeedsCards
-              needs={needs.needs}
-              onChooseOrder={needs.answers.onChooseOrder}
-              onIgnore={needs.answers.onIgnore}
-              onLink={needs.answers.onLink}
-              onOpenTitle={openTitle}
-              onSearch={needs.onSearch}
-              orders={needs.orders}
-              problems={needs.problems}
-            />
-          ) : null
-        }
         onEndReached={loadMore}
         onFilterChange={(next) =>
           next === "collections"
             ? void navigate({ to: "/library/collections" })
-            : showWall({ kind: next === "all" ? undefined : next, sort: recent, genre })
+            : showWall({ ...shown, kind: next === "all" ? undefined : next })
         }
-        onGenreChange={(next) => showWall({ kind, sort: recent, genre: next })}
+        filtering={{
+          ...filtering,
+          filters,
+          // The panel offers only values the list takes (`hdr` is "any" or a listed kind).
+          onChange: (patch) => showWall({ ...shown, ...(patch as LibraryUrlFilters) }),
+          onClear: () => showWall({ kind, sort: recent }),
+          total: items.data?.pages.at(-1)?.total,
+        }}
+        onGenreChange={(next) => showWall({ ...shown, genre: next })}
         onJump={(letter) => onJump(letter, items.errorUpdatedAt)}
         onOpenTitle={openTitle}
         titleLink={(id) => <Link params={{ id }} to="/library/$id" />}
         onSearchChange={setTyped}
-        onSortChange={(next) => showWall({ kind, sort: next === "recent" ? next : undefined, genre })}
+        onSortChange={(next) => showWall({ ...shown, sort: next === "recent" ? next : undefined })}
         search={typed}
-        showTitles={titlesView}
         sort={sort}
         timeZone={timeZone}
         titles={titles}

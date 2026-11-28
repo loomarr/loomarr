@@ -509,7 +509,8 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Who reads the Library** (#4476, decided 2026-11-21). A household member browses the
   Library read-only: the wall and a title's page, and the Collections tab. On the web, Library is
   in a member's navigation and fourth in their phone bar (Home · Watch · Guide · Library), with no
-  Needs you count; an admin's phone bar keeps Requests there. The member-readable
+  Needs you count. An admin's phone bar is the same four, with the Needs you count on Library. The
+  member-readable
   routes are `GET /v1/library/items`, `GET /v1/library/items/{id}`, `GET /v1/library/genres`,
   `GET /v1/library/facets`, `GET /v1/library/people`, `GET /v1/library/people/{id}`,
   `GET /v1/collections`,

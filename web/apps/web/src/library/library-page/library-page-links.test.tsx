@@ -1,6 +1,7 @@
 import {
   getHouseholdMockHandler,
   getLibraryStatusMockHandler,
+  getListLibraryFacetsMockHandler,
   getListLibraryGenresMockHandler,
   getListLibraryItemsMockHandler,
   getListLibraryNeedsMockHandler,
@@ -33,6 +34,7 @@ describe("LibraryPage's cards", () => {
       getMeMockHandler(me()),
       getHouseholdMockHandler({ timeZone: "" }),
       getListLibraryGenresMockHandler({ genres: [] }),
+      getListLibraryFacetsMockHandler({ studios: [], audio: [], subtitles: [], hdr: [], uhd: 0, hdrAny: 0 }),
       getListLibraryNeedsMockHandler({ needs: [], orders: [], problems: [] }),
       getLibraryStatusMockHandler(libraryStatus()),
       getListLibraryItemsMockHandler({ items: [alpha], total: 1 }),

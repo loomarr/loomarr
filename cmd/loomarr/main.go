@@ -170,10 +170,7 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 		st, err = records.Open(context.Background(), cfg.DatabaseURL, cfg.AutoMigrate)
 		if err != nil {
 			if databaseMigration.fallbackSQLiteURL != "" {
-				if restoreErr := databaseMigration.restoreSQLite(fmt.Errorf("open first PostgreSQL generation: %w", err)); restoreErr != nil {
-					return false, restoreErr
-				}
-				return true, nil
+				return databaseMigration.failGeneration("open first PostgreSQL generation", err)
 			}
 			startup.Complete(diagnostics.StartupCheckDatabase, diagnostics.StartupFailed,
 				"database open or migration failed", "/settings/system/database", "")
@@ -268,13 +265,7 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 	})
 	if err != nil {
 		printStartupReport(os.Stdout, startup.Snapshot(), stdoutInteractive(), terminalWidth(), os.Getenv("NO_COLOR") == "")
-		if databaseMigration.fallbackSQLiteURL != "" {
-			if restoreErr := databaseMigration.restoreSQLite(fmt.Errorf("build first PostgreSQL generation: %w", err)); restoreErr != nil {
-				return false, restoreErr
-			}
-			return true, nil
-		}
-		return false, err
+		return databaseMigration.failGeneration("build first PostgreSQL generation", err)
 	}
 	// From this point onward, process lifecycle messages belong to this generation's retained
 	// diagnostic timeline as well as stdout. Pre-store/open failures necessarily remain stdout-only.
@@ -297,13 +288,7 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 		startup.Complete(diagnostics.StartupCheckHTTP, diagnostics.StartupFailed,
 			"listener could not start", "/settings/system/diagnostics", "")
 		printStartupReport(os.Stdout, startup.Snapshot(), stdoutInteractive(), terminalWidth(), os.Getenv("NO_COLOR") == "")
-		if databaseMigration.fallbackSQLiteURL != "" {
-			if restoreErr := databaseMigration.restoreSQLite(fmt.Errorf("listen for first PostgreSQL generation: %w", err)); restoreErr != nil {
-				return false, restoreErr
-			}
-			return true, nil
-		}
-		return false, err
+		return databaseMigration.failGeneration("listen for first PostgreSQL generation", err)
 	}
 	startup.Complete(diagnostics.StartupCheckHTTP, diagnostics.StartupPassed,
 		"listener is accepting connections", "", "")
@@ -506,6 +491,18 @@ type databaseMigrationState struct {
 	lastError         string
 	fallbackSQLiteURL string
 	bootstrapDir      string
+}
+
+// failGeneration ends a generation that could not start. While a first PostgreSQL generation is on
+// trial it restores the SQLite bootstrap and asks for a restart; otherwise it returns cause.
+func (s *databaseMigrationState) failGeneration(stage string, cause error) (restart bool, err error) {
+	if s.fallbackSQLiteURL == "" {
+		return false, cause
+	}
+	if restoreErr := s.restoreSQLite(fmt.Errorf("%s: %w", stage, cause)); restoreErr != nil {
+		return false, restoreErr
+	}
+	return true, nil
 }
 
 func (s *databaseMigrationState) restoreSQLite(cause error) error {

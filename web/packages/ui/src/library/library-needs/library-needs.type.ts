@@ -30,6 +30,8 @@ interface LibraryNeed {
   /** The library title's id: what an answer is for. */
   id: string;
   kind: LibraryKind;
+  /** Where it sits, from its media folder's name down; absent draws no folder heading. */
+  folder?: string;
   /** Its files on this machine (a series' episodes), in path order. */
   files: readonly string[];
   /** The one guess good enough to ask about: its name agrees. Absent asks the household to find it. */
@@ -122,6 +124,14 @@ interface LibraryNeedsCardsProps extends LibraryNeedsAnswers {
   orders: readonly LibraryOrderNeed[];
   problems: readonly LibraryProblem[];
   onSearch: LibraryNeedSearch;
+  /** The page around the cards already says "Needs you" and how many wait. */
+  hideHeading?: boolean;
+  /** How often each title has been brought back; a new count asks about that title again. */
+  restored?: Readonly<Record<string, number>>;
+  /** Drawn once nothing is left to ask; absent says so in one line. */
+  empty?: ReactNode;
+  /** Ignores exactly these titles in one save; absent offers no folder answer. */
+  onIgnoreFolder?: (folder: string, ids: string[]) => Promise<void>;
   /** See why: opens a title's page. */
   onOpenTitle: (id: string) => void;
 }

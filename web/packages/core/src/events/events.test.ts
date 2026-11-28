@@ -57,6 +57,12 @@ describe("the frame-to-query map", () => {
     expect(EVENT_INVALIDATIONS.library_titles.prefixes).toContain("/v1/library/genres");
   });
 
+  // So do the other filters' counts and the people the titles credit, one person's page included.
+  it("reads the filter choices and people again when the Library's titles change", () => {
+    expect(EVENT_INVALIDATIONS.library_titles.prefixes).toContain("/v1/library/facets");
+    expect(EVENT_INVALIDATIONS.library_titles.prefixes).toContain("/v1/library/people");
+  });
+
   it("trusts nothing that moves with the clock, carries a signed URL, or has no frame", () => {
     for (const url of [
       "/v1/channels/now-next",
@@ -154,6 +160,23 @@ describe("openEventStream", () => {
 
     stop();
     expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("lets a handler's own failure reach the stream, rather than reading it as a bad frame", () => {
+    const listeners = new Map<string, (event: EventStreamMessage) => void>();
+    openEventStream(
+      {
+        onChannel: () => {
+          throw new Error("handler broke");
+        },
+      },
+      "http://loomarr.test/v1/events",
+      () => ({ addEventListener: (type, listener) => listeners.set(type, listener), close: () => {} }),
+    );
+
+    expect(() => listeners.get("channel")?.({ data: '{"channelId":"seven","status":"live"}' })).toThrow(
+      "handler broke",
+    );
   });
 });
 

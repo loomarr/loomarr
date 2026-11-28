@@ -73,7 +73,7 @@ describe("LibraryWizardStep", () => {
   it("says where the folders were found, and uses one", () => {
     const { host, props, button, cleanup } = render({});
     expect(host.textContent).toContain(
-      "We found these through Emby and Sonarr — pick the ones that hold your library.",
+      "We found these through Emby and Sonarr. Pick the ones that hold your library.",
     );
     expect(host.textContent).toContain("Make them available to Loomarr");
     act(() => button("Use this folder").click());

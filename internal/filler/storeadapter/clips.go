@@ -28,7 +28,7 @@ import (
 // the gate already tombstoned must not come back round as work: it would be re-detected forever,
 // and on the local backend that is ~341s of QEMU per clip per pass, spent to re-learn an answer
 // already recorded.
-func listWorkClips(ctx context.Context, st store.Store, f filler.ClipQuery) ([]clipstore.Clip, error) {
+func listWorkClips(ctx context.Context, st clipLister, f filler.ClipQuery) ([]clipstore.Clip, error) {
 	return st.ListClips(ctx, clipstore.ClipFilter{IncludeHeld: f.IncludeHeld})
 }
 
@@ -113,10 +113,10 @@ func (a AiringClips) ListClips(ctx context.Context, f filler.ClipQuery) ([]clips
 }
 
 // Language bridges the store → filler.LanguageClipStore (the language gate, V40).
-type Language struct{ st store.Store }
+type Language struct{ st languageStore }
 
 // NewLanguage returns the language gate's clip store over st.
-func NewLanguage(st store.Store) Language { return Language{st: st} }
+func NewLanguage(st languageStore) Language { return Language{st: st} }
 
 // ListClips is the job's work list: held candidates in, removed clips out (listWorkClips).
 func (a Language) ListClips(ctx context.Context, f filler.ClipQuery) ([]clipstore.Clip, error) {
@@ -133,10 +133,10 @@ func (a Language) SetClipsRemoved(ctx context.Context, paths []string, at time.T
 
 // Transcribe bridges the store → filler.TranscribeClipStore (§10 V44). Its work list
 // has the language gate's polarity (listWorkClips).
-type Transcribe struct{ st store.Store }
+type Transcribe struct{ st transcribeStore }
 
 // NewTranscribe returns the transcribe rung's clip store over st.
-func NewTranscribe(st store.Store) Transcribe { return Transcribe{st: st} }
+func NewTranscribe(st transcribeStore) Transcribe { return Transcribe{st: st} }
 
 func (a Transcribe) ListClips(ctx context.Context, f filler.ClipQuery) ([]clipstore.Clip, error) {
 	return listWorkClips(ctx, a.st, f)
