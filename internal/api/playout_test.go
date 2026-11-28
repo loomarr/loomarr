@@ -22,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/hls"
 	"github.com/loomarr/loomarr/internal/testkit/playoutstreamfixture"
+	"github.com/loomarr/loomarr/internal/testkit/waitfor"
 )
 
 const (
@@ -653,14 +654,8 @@ func TestPlayoutStream_ClientDisconnectDetaches(t *testing.T) {
 	cancel() // the television goes away
 	_ = resp.Body.Close()
 
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if f.detachCount() > 0 {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Error("a disconnected viewer was never detached — the channel would encode forever")
+	waitfor.Eventually(t, 3*time.Second, "the disconnected viewer to be detached, or the channel encodes forever",
+		func() bool { return f.detachCount() > 0 })
 }
 
 // The session ending (encoder exited, channel stopped, viewer dropped for falling behind) must
