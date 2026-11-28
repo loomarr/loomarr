@@ -277,6 +277,9 @@
     "packages/ui/src/client-navigation/client-navigation.tsx": {
       "inlineStyle": 1
     },
+    "packages/ui/src/film-strip/strip-block/strip-block.tsx": {
+      "inlineStyle": 1
+    },
     "packages/ui/src/guide/guide-compact/guide-compact.tsx": {
       "inlineStyle": 19
     },

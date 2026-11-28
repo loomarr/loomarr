@@ -34,15 +34,16 @@ const fromKeyboard = (event: unknown) => {
  * Spread `handlers` onto the pressable that takes the focus, and draw `ring` on its face. The
  * control turns the platform's own focus mark off, so this ring is the only one.
  */
-const useRingFocus = (own: { onBlur?: () => void; onFocus?: () => void } = {}) => {
+const useRingFocus = (own: { onBlur?: () => void; onFocus?: (fromKeys: boolean) => void } = {}) => {
   const id = useId();
   const [hovered, setHovered] = useState(false);
   const [keyboard, setKeyboard] = useState(false);
   const { focused, onBlur, onFocus } = useFocusLook({
     onBlur: () => own.onBlur?.(),
     onFocus: (event: unknown) => {
-      setKeyboard(fromKeyboard(event));
-      own.onFocus?.();
+      const fromKeys = fromKeyboard(event);
+      setKeyboard(fromKeys);
+      own.onFocus?.(fromKeys);
     },
   });
   const amber = focused && keyboard;
