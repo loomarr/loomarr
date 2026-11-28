@@ -683,6 +683,44 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
     solid ink plate; on an upright phone they show under the Guide.
   - **A message** shows when it is raised, as a short line on an ink plate: OK on a later programme on a
     television says when it starts.
+- **The lower third of The Cross (target, not shipped yet; #4728).** The band and the station ident
+  above ship unchanged. The new parts, `LowerThird` and `FirstRunHint` in `@loomarr/ui`, are built
+  beside them and no screen draws them yet. The lower third takes its data as props and fetches
+  nothing.
+  - **Type, with no box.** The channel's number as a numeral, the title (two lines at most; one on an
+    upright phone), a meta line (a decorative red live dot, the channel, the episode, the rating and
+    `n min left`), and a **Next** line with the start time. The rating reads here, with the
+    programme's facts; an upright phone's line is short and leaves it to those facts.
+  - **Only the watched channel's numeral takes its decade tint** (§2.1). A decade with no tint takes
+    the neutral one.
+  - **Sizes**, numeral and title: 64 and 34 px full screen, 56 and 28 px in a window, 52 and 30 px on
+    a television, 44 and 22 px on an upright phone (§2.2's lower third roles). A phone on its side
+    takes 40 and 22 px, the landscape column of `design/watch/mock.html`.
+  - **Tuning in** names the channel as the title over `Tuning in… Starting the channel`, in the place
+    the lower third stays.
+  - **In a break:** the programme that comes back, and `Back in n min` in the break's cyan.
+  - **Paused** says `Paused` in the meta line. **Behind live** says `n s behind live`, or
+    `n min behind` from a minute on; everywhere but a television **Go live** leads the line as a
+    control, so it is never the part cut off.
+  - **Nothing scheduled:** the channel's name over `Nothing scheduled`, with no Next.
+  - **Typing a number:** the digits replace the numeral, amber and underlined, over the channel they
+    name and `press Enter, or wait`, or `No such channel`.
+  - **An upright phone** has Pause and More at its trailing edge, under the thumb.
+  - **Over the picture** (full screen, a television, a phone on its side) it is dark in both themes
+    and stands on a left scrim as wide as what stands on it. Beside the picture (a window, an upright
+    phone) it follows the theme. The scrim is a gradient on every platform (the design system's
+    `Scrim`): CSS on the web, SVG on a phone or television, never a solid box.
+  - **One spoken summary**: channel number and name, what is on and how long is left. The numeral is
+    not read on its own, and nothing around the summary is labelled, so the channel is read once.
+  - **Minutes are never 0**: part of a minute counts as one. Seconds behind live count only what has
+    fully passed.
+  - **When Go live leaves from under the focus**, focus goes to Pause where the lower third has one,
+    and otherwise to the head of the quiet row.
+  - **The first-run hint** is its own part, one line per device, and the screen decides when it goes.
+    Window: `Click a channel to change it, or press Up and Down`. Full screen: `Up and Down change
+    channel. Channels shows them all. Guide shows later today`. Television: `Up Down change channel ·
+    OK pause · Left Right controls · Back Home`. Upright phone: `Tap a channel to change it`. A phone
+    on its side has none.
 
 ### 9.3 The control cluster and Leave
 
@@ -726,6 +764,35 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
   direct, `L` last channel, `C` subtitles, `A` audio, `I` Playback details, `M` mute, `F`
   fullscreen, `Esc` closes the top layer and then leaves. Tooltips name them.
 - **Auto-hide** after three seconds; the cluster stays while something in it is open.
+- **The quiet row of The Cross (target, not shipped yet; #4728).** The keys, utilities and Leave
+  above ship unchanged. The new part, `QuietRow` in `@loomarr/ui`, is built beside them and no screen
+  draws it yet. It reports presses and opens nothing itself.
+  - **One row.** Over the picture it leads with two controls that carry their words, **Channels** and
+    **Guide**, then a divider, then icons:
+
+    | Device | Icons, in order |
+    | --- | --- |
+    | Desktop, full screen | Pause, Subtitles, Audio, Volume, Full screen, More |
+    | Television | Pause, Subtitles, Audio, More; **Go live** leads the whole row while behind live and not paused |
+    | Phone on its side | Pause, Subtitles, Audio, AirPlay, More |
+    | Desktop, in a window | Pause, Subtitles, Audio, Volume, Full screen, More |
+    | Upright phone | Subtitles, Audio, AirPlay (Pause and More sit by the lower third) |
+
+    A window and an upright phone draw neither named control: the list is already in view.
+  - **Channels** reads `Channels: <group>` when a group other than All is on, and shows as on while
+    the list is open. A control whose menu is open shows as on too.
+  - **Tooltips** name every icon, with its key on a desktop (Space, C, A, M, F). A television's names
+    it with no key.
+  - **A toolbar:** one Tab stop, Left and Right move between controls and stop at the ends, Home and
+    End go to the first and last. A television's remote reaches every control.
+  - **Rings.** Keyboard and remote focus draws the amber ring on exactly one control; a pointer over a
+    control draws a plain ring, and none while the keyboard holds a ring elsewhere. A mouse click
+    leaves no amber ring: clicking the control that holds one takes it away until the next key press.
+    The design system's `useRingFocus` decides the ring and `RingedPressable` draws it.
+  - **When Go live leaves from under the focus**, as it does once pressed on a television, focus moves
+    to Channels.
+  - Touch controls are at least 44 px. Over the picture the row is dark in both themes, on a foot
+    scrim.
 
 ### 9.4 The tune
 

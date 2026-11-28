@@ -155,6 +155,12 @@ export type { QrCodeProps } from "./src/qr-code";
 export { QrCode } from "./src/qr-code";
 export type { RevealProps, RevealRowProps } from "./src/reveal";
 export { Reveal, useRevealOnHover } from "./src/reveal";
+export type { Ring } from "./src/ring-focus";
+export { useRingFocus } from "./src/ring-focus";
+export type { RingedPressableHandle, RingedPressableProps } from "./src/ringed-pressable";
+export { RingedPressable } from "./src/ringed-pressable";
+export type { ScrimProps } from "./src/scrim";
+export { Scrim } from "./src/scrim";
 export type { SegmentedControlProps, SegmentOption } from "./src/segmented-control";
 export { SegmentedControl } from "./src/segmented-control";
 export type {
