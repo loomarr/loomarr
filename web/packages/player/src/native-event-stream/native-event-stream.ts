@@ -69,7 +69,17 @@ const createNativeEventStream = (
   let processedLength = 0;
 
   const dispatch = (type: string, data: string) => {
-    for (const listener of listeners.get(type) ?? []) listener({ data });
+    for (const listener of listeners.get(type) ?? []) {
+      try {
+        listener({ data });
+      } catch (error) {
+        // Reported as an uncaught error, off this turn, so one listener's failure cannot drop the
+        // frames behind it or skip the reconnect.
+        setTimeout(() => {
+          throw error;
+        }, 0);
+      }
+    }
   };
   const close = () => {
     if (closed) return;
