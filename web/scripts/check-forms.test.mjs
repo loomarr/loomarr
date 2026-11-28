@@ -658,7 +658,7 @@ describe("the settings draft", () => {
     for (const file of [
       "apps/web/src/settings/settings-edits/settings-edits.tsx",
       "apps/web/src/settings/settings-page/settings-page.tsx",
-      "apps/web/src/routes/wizard.tsx",
+      "apps/web/src/wizard/wizard-page/wizard-page.tsx",
       "apps/web/src/wizard/checklist-step/checklist-step.tsx",
       "apps/web/src/wizard/library-step/library-step.tsx",
       "apps/web/src/wizard/playout-step/playout-step.tsx",
