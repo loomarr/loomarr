@@ -38,12 +38,19 @@ const ports: Port[] = [
       fromMs: 0,
       toMs: 5,
     }),
+    // A list's items pass through whole: only the fields the controller reads are checked.
     expected: {
-      channels: [{ ...channel, status: "hibernating", airings: [{ ...airing, kind: "hologram" }] }],
+      channels: [
+        { ...channel, ...newer, status: "hibernating", airings: [{ ...airing, ...newer, kind: "hologram" }] },
+      ],
       fromMs: 0,
       toMs: 5,
     },
-    wrongBody: { channels: [{ channelId: "c1" }], fromMs: 0, toMs: 5 },
+    wrongBody: {
+      channels: [{ ...channel, status: "live", airings: [{ ...airing, kind: "program", startMs: "1" }] }],
+      fromMs: 0,
+      toMs: 5,
+    },
   },
   {
     name: "account",
@@ -56,7 +63,7 @@ const ports: Port[] = [
     name: "my channels",
     read: (request) => createMyChannelsPort(request).load(signal),
     newerBody: () => ({ ...newer, favourites: [{ ...newer, channelId: "c1" }], recent: [] }),
-    expected: { favourites: [{ channelId: "c1" }], recent: [] },
+    expected: { favourites: [{ ...newer, channelId: "c1" }], recent: [] },
     wrongBody: { favourites: null, recent: [] },
   },
   {
