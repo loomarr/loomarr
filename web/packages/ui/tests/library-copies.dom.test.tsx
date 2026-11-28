@@ -1,25 +1,9 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { act, renderUi } from "@loomarr/test-support";
 import { describe, expect, it, vi } from "vitest";
 
 import { LibraryTitle, type LibraryTitleDetail, type LibraryTitleFile } from "../index";
-
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-type El = { click(): void; getAttribute(n: string): string | null; textContent: string | null };
-type Host = Parameters<typeof createRoot>[0] & {
-  querySelectorAll(s: string): ArrayLike<El>;
-  remove(): void;
-  textContent: string | null;
-};
-const doc = (
-  globalThis as unknown as {
-    document: { body: { append(n: unknown): void }; createElement(t: string): Host };
-  }
-).document;
 
 const file = (
   name: string,
@@ -50,9 +34,6 @@ const movie = (files: LibraryTitleFile[], unplayable = 0): LibraryTitleDetail =>
 });
 
 const render = (title: LibraryTitleDetail, member = false) => {
-  const host = doc.createElement("div");
-  doc.body.append(host);
-  const root = createRoot(host);
   const onRemoveExtra = vi.fn(() => Promise.resolve());
   const fix = {
     onUpdateDetails: () => Promise.resolve(),
@@ -62,22 +43,15 @@ const render = (title: LibraryTitleDetail, member = false) => {
     onForget: () => Promise.resolve(),
     onRemoveExtra,
   };
-  act(() =>
-    root.render(
-      <LoomarrProvider theme="dark">
-        <LibraryTitle fix={member ? undefined : fix} onBack={() => {}} title={title} />
-      </LoomarrProvider>,
-    ),
+  const { container: host, unmount } = renderUi(
+    <LibraryTitle fix={member ? undefined : fix} onBack={() => {}} title={title} />,
   );
   const rows = () => Array.from(host.querySelectorAll('[role="listitem"]'), (n) => n.textContent ?? "");
   const removes = () =>
     Array.from(host.querySelectorAll('button, [role="button"]')).filter((n) =>
       n.textContent?.startsWith("Remove"),
     );
-  const cleanup = () => {
-    act(() => root.unmount());
-    host.remove();
-  };
+  const cleanup = () => unmount();
   return { cleanup, host, onRemoveExtra, removes, rows };
 };
 
