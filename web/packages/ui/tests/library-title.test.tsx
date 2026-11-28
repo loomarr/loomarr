@@ -150,7 +150,7 @@ describe("LibraryTitle", () => {
       ],
     });
     const cast = host.querySelectorAll('[aria-label="Cast"]')[0];
-    expect(cast?.querySelectorAll('[data-testid="cast-photo"]')).toHaveLength(1);
+    expect(host.querySelectorAll('[aria-label="Cast"] [data-testid="cast-photo"]')).toHaveLength(1);
     expect(cast?.textContent).not.toContain("IV");
     expect(cast?.textContent).toContain("TA");
   });
