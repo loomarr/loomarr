@@ -677,4 +677,24 @@ describe("LibraryTitle", () => {
     expect(props.onBack).toHaveBeenCalled();
     cleanup();
   });
+
+  it.each([390, 1280])("draws a backdrop band only for a title that has one, at %ipx", (width) => {
+    const view = globalThis as unknown as { innerWidth: number };
+    const before = view.innerWidth;
+    view.innerWidth = width;
+    const band = '[data-testid="title-backdrop"]';
+
+    const pictured = render({ ...MOVIE, backdrop: "A still" });
+    expect(pictured.host.querySelectorAll(band)[0]?.textContent).toBe("A still");
+    pictured.cleanup();
+
+    const bare = render(MOVIE);
+    expect(bare.host.querySelectorAll(band).length).toBe(0);
+    // The title block and the actions over it stay.
+    expect(bare.host.querySelectorAll("h1")[0]?.textContent).toBe(MOVIE.name);
+    expect(bare.button("Library")).toBeTruthy();
+    expect(bare.button("Fix")).toBeTruthy();
+    bare.cleanup();
+    view.innerWidth = before;
+  });
 });

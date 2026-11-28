@@ -20,7 +20,7 @@ const ProblemCard = ({
     <Surface gap="control" padding="section">
       <Line alignItems="flex-start" columnGap="section" flexWrap={wide ? "nowrap" : "wrap"} rowGap="control">
         <Stack flexShrink={0} width={wide ? 144 : 112}>
-          <LibraryPoster art={entry.poster} big name={entry.name} />
+          <LibraryPoster art={entry.poster} big id={entry.id} name={entry.name} />
         </Stack>
         <Stack flexBasis={240} flexGrow={1} flexShrink={1} gap="control" minWidth={0}>
           <ProblemReasons lead reasons={entry.reasons} />
