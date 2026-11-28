@@ -82,17 +82,10 @@ func TestWorker_LLMFailureCauseReachesLastError(t *testing.T) {
 			go svc.Run(ctx)
 
 			var job proposalstore.Job
-			deadline := time.Now().Add(10 * time.Second)
-			for time.Now().Before(deadline) {
+			testkit.Eventually(t, 10*time.Second, "the job to fail", func() bool {
 				job, _ = st.GetJob(context.Background(), jobID)
-				if job.Status == "failed" {
-					break
-				}
-				time.Sleep(20 * time.Millisecond)
-			}
-			if job.Status != "failed" {
-				t.Fatalf("job status = %q, want failed", job.Status)
-			}
+				return job.Status == "failed"
+			})
 			for _, want := range tc.wantAll {
 				if !strings.Contains(job.LastError, want) {
 					t.Errorf("last_error %q missing %q", job.LastError, want)
