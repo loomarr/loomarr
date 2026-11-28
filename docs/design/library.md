@@ -934,9 +934,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `reading`, `waiting`). A movie with more than one file, or a file that can't be played, has one
   Copies card on its page for an admin: each file by quality ("4K copy", "1080p copy"; "A copy that
   can't be played" when its header gave no picture), its size and its state (Plays, Can't be
-  played, Extra, Reading, Waiting). Only an extra copy has a Remove, named by quality ("Remove the
-  4K copy", or "Remove the broken copy"), never by file name (`POST …/remove-copy`, 409 for any
-  file that is not `extra`). Removing moves the file to `<media folder>/.loomarr-trash/<date>/<its path>`, the
+  played, Extra, "Extra · can't be played", Reading, Waiting; Technical details labels each file
+  with the same words). Only an extra copy has a Remove, named by quality ("Remove the
+  4K copy", or "Remove the broken copy") (`POST …/remove-copy`, 409 for any file that is not
+  `extra`). Two rows with one quality and size each add the end of their file name, to the row and
+  to the Remove's accessible name; otherwise no file name shows. After a removal, focus goes to
+  the next Remove, else the Copies heading, else the page heading. Removing moves the file to `<media folder>/.loomarr-trash/<date>/<its path>`, the
   same share, so it is a rename; the trash holds a `.ignore`, so walks and watches skip it.
   Loomarr marks the file missing at once, so no removal guard holds it. A complete walk of the
   folder deletes each day's trash 30 days on; a folder there that isn't a date is left alone. A

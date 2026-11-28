@@ -11,7 +11,7 @@ import {
   Text,
 } from "@loomarr/design-system";
 import { type ComponentProps, type ReactNode, type Ref, useRef, useState } from "react";
-import { Copies, needsCopies } from "../copies";
+import { Copies, needsCopies, useCopyFocus } from "../copies";
 import { Line, PAGE_GUTTER, Stack } from "../library-poster";
 import { PickTitle } from "../pick-title";
 import { SeasonEpisodes } from "../season-episodes";
@@ -258,6 +258,7 @@ const LibraryTitle = ({ title, onBack, fix, personLink, watchLink }: LibraryTitl
   const fixes = useTitleFixes(fix);
   // Closing "Wrong title?" removes the button that was pressed; focus goes back to what opened it.
   const fixTrigger = useRef<ActionRef>(null);
+  const copyFocus = useCopyFocus(title.files);
   const closeWrong = () => {
     fixes.closeWrong();
     fixTrigger.current?.focus();
@@ -288,6 +289,7 @@ const LibraryTitle = ({ title, onBack, fix, personLink, watchLink }: LibraryTitl
               {fix ? <FixMenu fixes={fixes} homeVideo={title.homeVideo} triggerRef={fixTrigger} /> : null}
             </>
           }
+          headingRef={copyFocus.pageHeading}
           title={title}
         />
         {technical ? (
@@ -334,7 +336,9 @@ const LibraryTitle = ({ title, onBack, fix, personLink, watchLink }: LibraryTitl
       ) : null}
 
       {/* A series carries no files of its own. */}
-      {fix && needsCopies(title.files) ? <Copies files={title.files} onRemove={fix.onRemoveExtra} /> : null}
+      {fix && needsCopies(title.files) ? (
+        <Copies files={title.files} focus={copyFocus} onRemove={fix.onRemoveExtra} />
+      ) : null}
 
       {fix?.onChooseOrder && title.seasons.some((s) => s.episodes.some((e) => e.fromFile)) ? (
         <Surface

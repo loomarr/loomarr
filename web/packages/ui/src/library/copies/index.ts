@@ -1,1 +1,1 @@
-export { Copies, needsCopies } from "./copies";
+export { Copies, needsCopies, useCopyFocus } from "./copies";
