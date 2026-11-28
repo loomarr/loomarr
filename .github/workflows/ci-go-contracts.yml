@@ -53,7 +53,7 @@ jobs:
         run: make vet vet-tags lint # serial: each already uses every core, and -j4 was slower
       - name: Repository contracts
         if: matrix.shard == 2
-        run: make fmt tags-verify compose-verify go-race-verify eval-contract
+        run: make fmt tags-verify compose-verify go-race-verify eval-contract guard-test
         env:
           MAKEFLAGS: -j4 --output-sync=target # independent checks
       - name: The test lanes cover every package
