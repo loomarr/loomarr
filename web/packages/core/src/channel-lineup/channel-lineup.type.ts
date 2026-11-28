@@ -7,6 +7,8 @@ interface LineupChannel {
   playable: boolean;
   /** The decade the channel's titles share; absent for a channel with no single decade. */
   decade?: number | undefined;
+  /** The title on now, so find can match it; without one, find matches name and number. */
+  onNow?: string | undefined;
 }
 
 type LineupGroupKind = "favourites" | "all" | "recent" | "decade";
@@ -46,7 +48,7 @@ interface ChannelLineup<C extends LineupChannel> {
   positionOf: (channelId: string, kind?: LineupGroupKind) => number | undefined;
   /** A group with the last tuned channel moved to the front, the order Home's wall uses. */
   lastTunedFirst: (kind?: LineupGroupKind) => readonly C[];
-  /** Channels whose name contains the query, or whose number is the query, in number order. */
+  /** Channels whose name or title on now contains the query, or whose number is it, in number order. */
   find: (query: string) => readonly C[];
   /** The channel that typed digits tune to. */
   channelByNumber: (digits: string) => C | undefined;

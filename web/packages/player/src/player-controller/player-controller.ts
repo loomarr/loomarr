@@ -1,3 +1,5 @@
+import { createChannelLineup } from "@loomarr/core/channel-lineup";
+
 import { createNeighbourWarmer } from "../neighbour-warmer";
 import type { PlayerChannel } from "../player-source";
 import { ServerUnreachable, StartFailure } from "../start-failure";
@@ -27,10 +29,19 @@ const sameLivePlayback = (left: LivePlaybackState | undefined, right: LivePlayba
   left.noticeRevision === right.noticeRevision &&
   left.viewerTimeMs === right.viewerTimeMs;
 
+const lineupOf = (channels: readonly PlayerChannel[]) =>
+  createChannelLineup({
+    channels: channels.map((channel) => ({
+      channel,
+      id: channel.id,
+      name: channel.name,
+      number: channel.number,
+      playable: channel.inAppPlayable,
+    })),
+  });
+
 const playableCatalog = (channels: readonly PlayerChannel[]): PlayerChannel[] =>
-  [...channels]
-    .filter((channel) => channel.inAppPlayable)
-    .sort((left, right) => left.number - right.number || left.id.localeCompare(right.id));
+  lineupOf(channels).channels.flatMap(({ channel, playable }) => (playable ? [channel] : []));
 
 const createPlayerController = ({
   initialTune = "first",
@@ -302,14 +313,6 @@ const createPlayerController = ({
     }
   };
 
-  const findAdjacent = (direction: TuneDirection) => {
-    const catalog = snapshot.catalog;
-    if (catalog.length === 0) return undefined;
-    const index = catalog.findIndex((channel) => channel.id === snapshot.channel?.id);
-    if (index < 0) return direction > 0 ? catalog[0] : catalog.at(-1);
-    return catalog[(index + direction + catalog.length) % catalog.length];
-  };
-
   const unsubscribeTransport = transport.subscribe((event) => {
     if (!isCurrentAttempt(event.attemptId) || event.attemptId !== snapshot.attemptId) return;
     if (event.type === "live-state") {
@@ -440,10 +443,8 @@ const createPlayerController = ({
       await transport.seek?.(wallClockMs);
     },
     step: async (direction) => {
-      const channel = findAdjacent(direction);
-      if (channel && (snapshot.catalog.length > 1 || channel.id !== snapshot.channel?.id)) {
-        await tune(channel, "step");
-      }
+      const next = lineupOf(snapshot.catalog).neighbour(snapshot.channel?.id, direction);
+      if (next) await tune(next.channel, "step");
     },
     subscribe: (listener) => {
       listeners.add(listener);

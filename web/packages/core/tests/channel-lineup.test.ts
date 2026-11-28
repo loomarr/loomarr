@@ -138,8 +138,39 @@ describe("find", () => {
   });
 });
 
+describe("find by what is on now", () => {
+  const lineup = createChannelLineup({
+    channels: [
+      channel(12, { name: "Movie Matinee", onNow: "The Long Coast" }),
+      channel(7, { name: "Coast 90s", onNow: "Night Drive" }),
+      channel(3, { name: "Cartoons" }),
+      channel(9, { name: "Late Show", onNow: "Apollo 12" }),
+    ],
+  });
+
+  it("matches a name or a title on now, in number order", () => {
+    expect(numbers(lineup.find("COAST"))).toEqual([7, 12]);
+    expect(numbers(lineup.find("night drive"))).toEqual([7]);
+    expect(numbers(lineup.find("cartoon"))).toEqual([3]);
+  });
+
+  it("keeps digits tuning to the channel number, not to a title", () => {
+    expect(numbers(lineup.find("12"))).toEqual([9, 12]);
+    expect(lineup.channelByNumber("12")?.number).toBe(12);
+  });
+});
+
 describe("landing and last channel", () => {
   const channels = [channel(5, { playable: false }), channel(10), channel(20)];
+
+  it("lands on the lowest number whatever order the channels arrive in", () => {
+    const lineup = createChannelLineup({ channels: [channel(30), channel(10), channel(20)] });
+    expect(lineup.landing?.number).toBe(10);
+  });
+
+  it("lands nowhere with no channels", () => {
+    expect(createChannelLineup({ channels: [] }).landing).toBeUndefined();
+  });
 
   it("lands on the last tuned channel", () => {
     expect(createChannelLineup({ channels, lastTunedId: "ch-20" }).landing?.number).toBe(20);

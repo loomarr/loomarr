@@ -82,8 +82,9 @@ const createChannelLineup = <C extends LineupChannel>({
     find: (query) => {
       const needle = query.trim().toLocaleLowerCase();
       if (!needle) return [];
+      const matches = (text: string | undefined) => text?.toLocaleLowerCase().includes(needle) ?? false;
       return ordered.filter(
-        (channel) => String(channel.number) === needle || channel.name.toLocaleLowerCase().includes(needle),
+        (channel) => String(channel.number) === needle || matches(channel.name) || matches(channel.onNow),
       );
     },
     channelByNumber: (digits) =>
