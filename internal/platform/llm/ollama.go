@@ -206,7 +206,7 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 // `images` array as bare base64 — no data-URI prefix (that is the hosted image_url shape,
 // vision.go) — so a fully-local install running a vision model (llava / llama-vision) gets
 // visual tagging without egress or per-clip cost. Ollama reports a `vision` capability
-// (probed live 2026-08-03, §10 quality gate); this is the wiring that uses it.
+// (probed live, §10 quality gate); this is the wiring that uses it.
 //
 // It reuses the shared Chat wire type deliberately — the images ride on the same ollamaMessage
 // the text path uses, which is why that field carries omitempty (see ollamaMessage.Images):

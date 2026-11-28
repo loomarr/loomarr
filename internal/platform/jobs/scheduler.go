@@ -49,7 +49,7 @@ type Job struct {
 	//	whisper-cli: signal: killed
 	//	ffmpeg wav extract: context deadline exceeded
 	//
-	// which reads as a broken file or a broken binary. Measured 2026-08-11: that same boundary
+	// which reads as a broken file or a broken binary. Measured: that same boundary
 	// scan completes in **40s** run by hand, so the file was fine and the ceiling was the fault.
 	//
 	// ⚠ The ceiling is also not the budget the design doc reasons about. §10 V51g compares a
@@ -74,7 +74,7 @@ type Job struct {
 	// Watchdog marks the job whose observations decide readiness (system-health). It runs on a
 	// worker of its own and never waits behind another job: an ordinary job may hold the shared
 	// worker for River's full minute, longer than readiness tolerates a missed observation, and a
-	// stale readiness takes Loomarr off the reverse proxy (2026-11-18). Ordinary work must not set it.
+	// stale readiness takes Loomarr off the reverse proxy. Ordinary work must not set it.
 	Watchdog bool
 }
 
