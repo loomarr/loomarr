@@ -2,10 +2,9 @@
 
 import { PairingSession } from "@loomarr/core/pairing";
 import { LoomarrProvider } from "@loomarr/design-system";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const backHandlers = vi.hoisted(() => new Set<() => boolean | null | undefined>());
 
@@ -25,18 +24,12 @@ vi.mock("react-native", async (importOriginal) => {
 
 const { PairingShell, pairingBackAvailable } = await import("../index");
 
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
-const createTestContainer = () =>
-  (
-    globalThis as unknown as {
-      document: { createElement: (tagName: string) => Parameters<typeof createRoot>[0] };
-    }
-  ).document.createElement("div");
+// A root the test renders into more than once, unmounted by `cleanup`.
+const testRoot = () => {
+  const { rerender, unmount } = renderUi(null);
+  return { render: rerender, unmount };
+};
+afterEach(cleanup);
 
 const awaitingSession = async () => {
   const session = new PairingSession({
@@ -109,8 +102,7 @@ describe("pairing Back (#1500 Apple TV audit #1, #13)", () => {
 
   it("sends Back from the code screen to server choice, then leaves the root to the platform", async () => {
     const { pairing, session } = await awaitingSession();
-    const container = createTestContainer();
-    const root = createRoot(container);
+    const root = testRoot();
 
     act(() =>
       root.render(

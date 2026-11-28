@@ -1,30 +1,11 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { declarationsOfTree } from "@loomarr/test-support/css";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { OnScreenLogoSection, type OnScreenLogoSectionProps } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-type Node = { click(): void; getAttribute(n: string): string | null; textContent: string | null };
-type Root = Parameters<typeof createRoot>[0] & {
-  querySelectorAll(s: string): ArrayLike<Node>;
-  remove(): void;
-  textContent: string | null;
-};
-const doc = (
-  globalThis as unknown as {
-    document: { body: { append(n: unknown): void }; createElement(t: string): Root };
-  }
-).document;
-type EventCtor = new (type: string, init: { bubbles: boolean; key?: string }) => unknown;
-const { FocusEvent, KeyboardEvent } = globalThis as unknown as {
-  FocusEvent: EventCtor;
-  KeyboardEvent: EventCtor;
-};
+afterEach(cleanup);
 
 const render = (over: Partial<OnScreenLogoSectionProps> = {}) => {
   const props: OnScreenLogoSectionProps = {
@@ -68,26 +49,18 @@ const render = (over: Partial<OnScreenLogoSectionProps> = {}) => {
     previewSrc: vi.fn((r) => `/preview?look=${r.look ?? ""}&holiday=${r.holiday ?? ""}`),
     ...over,
   };
-  const container = doc.createElement("div");
-  doc.body.append(container);
-  const root = createRoot(container);
+  const view = renderUi(<OnScreenLogoSection {...props} />);
+  const { container } = view;
   const rerender = (next: Partial<OnScreenLogoSectionProps>) =>
-    act(() => {
-      root.render(
-        <LoomarrProvider theme="dark">
-          <OnScreenLogoSection {...props} {...next} />
-        </LoomarrProvider>,
-      );
-    });
-  rerender({});
+    view.rerender(<OnScreenLogoSection {...props} {...next} />);
   const radio = (name: string) => {
-    const hit = Array.from(container.querySelectorAll('[role="radio"]')).find(
+    const hit = Array.from(container.querySelectorAll<HTMLElement>('[role="radio"]')).find(
       (n) => n.getAttribute("aria-label") === name,
     );
     if (!hit) throw new Error(`missing radio: ${name}`);
     return hit;
   };
-  return { container, props, radio, rerender, unmount: () => act(() => root.unmount()) };
+  return { container, props, radio, rerender, unmount: view.unmount };
 };
 
 describe("OnScreenLogoSection", () => {
@@ -146,7 +119,7 @@ describe("OnScreenLogoSection", () => {
   it("points an Ignore-holidays channel at Programming instead of offering holiday touches", () => {
     const { container, props, unmount } = render({ holidays: [] });
     expect(container.textContent).toContain("This channel ignores holidays");
-    const open = Array.from(container.querySelectorAll('[role="button"], button')).find(
+    const open = Array.from(container.querySelectorAll<HTMLElement>('[role="button"], button')).find(
       (n) => n.textContent?.trim() === "Open Programming",
     );
     act(() => open?.click());
@@ -260,7 +233,7 @@ describe("OnScreenLogoSection", () => {
     expect(thumb).toHaveLength(1);
     expect(container.textContent).toContain("Your own image");
     expect(container.textContent).not.toContain("Your image is in use.");
-    const remove = Array.from(container.querySelectorAll('[role="button"], button')).find(
+    const remove = Array.from(container.querySelectorAll<HTMLElement>('[role="button"], button')).find(
       (n) => n.textContent === "Remove",
     );
     act(() => remove?.click());

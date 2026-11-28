@@ -1,53 +1,23 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
-import { act, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { normalizeYearRanges, type YearRange, YearRangeListField } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-// This package has no DOM lib (it targets React Native too), so the slice of the jsdom document
-// the test touches is typed here.
-type Node_ = {
-  click(): void;
-  dispatchEvent(event: unknown): boolean;
-  textContent: string | null;
-  value: string;
-};
-type Doc = {
-  body: {
-    append(node: unknown): void;
-    querySelector(s: string): Node_ | null;
-    querySelectorAll(s: string): ArrayLike<Node_>;
-    replaceChildren(): void;
-    textContent: string | null;
-  };
-  createElement(tag: string): Parameters<typeof createRoot>[0];
-};
-const doc = (globalThis as unknown as { document: Doc }).document;
-const win = globalThis as unknown as {
-  Event: new (type: string, init?: { bubbles?: boolean }) => unknown;
-  FocusEvent: new (type: string, init?: { bubbles?: boolean }) => unknown;
-  HTMLInputElement: { prototype: object };
-};
+const doc = document;
+const win = window;
 
 const mount = async (node: ReactNode) => {
-  const container = doc.createElement("div");
-  doc.body.append(container);
-  const root = createRoot(container);
   await act(async () => {
-    root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>);
+    renderUi(node);
   });
 };
-afterEach(() => {
-  doc.body.replaceChildren();
-});
+afterEach(cleanup);
 
 const named = (name: string) => {
-  const found = doc.body.querySelector(`[aria-label="${name}"]`);
+  const found = doc.body.querySelector<HTMLInputElement>(`[aria-label="${name}"]`);
   if (!found) throw new Error(`nothing named: ${name}`);
   return found;
 };
@@ -125,16 +95,10 @@ describe("YearRangeListField", () => {
   });
 
   it("keeps an invalid endpoint on screen, then reseeds the row when the ranges are replaced", async () => {
-    const container = doc.createElement("div");
-    doc.body.append(container);
-    const root = createRoot(container);
+    const view = renderUi(null);
     const render = (next: YearRange[]) =>
       act(async () => {
-        root.render(
-          <LoomarrProvider theme="dark">
-            <YearRangeListField label="Movie release" onChange={vi.fn()} ranges={next} />
-          </LoomarrProvider>,
-        );
+        view.rerender(<YearRangeListField label="Movie release" onChange={vi.fn()} ranges={next} />);
       });
     await render(ranges);
     await typeInto("From year (Movie release, range 1)", "2050");

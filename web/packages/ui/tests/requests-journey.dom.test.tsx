@@ -1,15 +1,14 @@
 // @vitest-environment jsdom
 
 import type { RequestsController, RequestsSnapshot } from "@loomarr/core/requests";
-import { LoomarrProvider } from "@loomarr/design-system";
 import { requestFixtures, requestsSnapshot } from "@loomarr/fixtures";
-import { act, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RequestsJourney } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+const doc = document;
 
 // The props of every pull-to-refresh control the journey draws, newest last.
 const refreshControls = vi.hoisted(
@@ -37,21 +36,7 @@ vi.mock("react-native", async (importOriginal) => {
   };
 });
 
-type Node = {
-  click(): void;
-  getAttribute(name: string): string | null;
-  querySelectorAll(selector: string): ArrayLike<unknown>;
-  textContent: string | null;
-};
-type Doc = {
-  body: {
-    append(node: unknown): void;
-    textContent: string | null;
-    querySelectorAll(s: string): ArrayLike<Node>;
-  };
-  createElement(tag: string): Parameters<typeof createRoot>[0] & { remove(): void };
-};
-const doc = (globalThis as unknown as { document: Doc }).document;
+type Node = HTMLElement;
 
 const { journeys } = requestFixtures;
 const noop = vi.fn();
@@ -93,42 +78,29 @@ const fakeController = (initial: RequestsSnapshot) => {
 const only = (...ids: (keyof typeof journeys)[]) =>
   requestsSnapshot().entries.filter((entry) => ids.some((id) => journeys[id].jobId === entry.journey.jobId));
 
-const mounted: { unmount: () => unknown }[] = [];
 const guideChannels = [{ id: "channel-rainy", name: "Rainy Day Detectives", number: 14 }];
 const mount = async (controller: RequestsController, channels = guideChannels) => {
-  const container = doc.createElement("div");
-  doc.body.append(container);
-  const root = createRoot(container);
+  let view!: ReturnType<typeof renderUi>;
   await act(async () => {
-    root.render(
-      <LoomarrProvider theme="dark">
-        <RequestsJourney
-          channels={channels}
-          controller={controller}
-          nowMs={Date.UTC(2026, 9, 1)}
-          onOpenChannel={noop}
-        />
-      </LoomarrProvider>,
+    view = renderUi(
+      <RequestsJourney
+        channels={channels}
+        controller={controller}
+        nowMs={Date.UTC(2026, 9, 1)}
+        onOpenChannel={noop}
+      />,
     );
   });
-  const handle = {
-    unmount: () =>
-      act(() => {
-        root.unmount();
-        container.remove();
-      }),
-  };
-  mounted.push(handle);
-  return handle;
+  return { unmount: () => act(() => view.unmount()) };
 };
-afterEach(async () => {
-  for (const handle of mounted.splice(0)) await handle.unmount();
+afterEach(() => {
+  cleanup();
   backHandlers.length = 0;
   refreshControls.length = 0;
   noop.mockClear();
 });
 
-const all = (selector: string) => Array.from(doc.body.querySelectorAll(selector));
+const all = (selector: string) => Array.from(doc.body.querySelectorAll<HTMLElement>(selector));
 const byLabel = (label: string) => {
   const found = all(`[aria-label="${label}"]`)[0];
   if (!found) throw new Error(`missing: ${label}`);
@@ -183,9 +155,9 @@ describe("the section Requests opens on", () => {
 
   it("starts over with a new controller, as after pairing again", async () => {
     const entries = only("generating", "live");
-    await mount(fakeController(requestsSnapshot({ entries })).controller);
+    const first = await mount(fakeController(requestsSnapshot({ entries })).controller);
     await click(byLabel("Done, 1"));
-    await mounted[0]?.unmount();
+    await first.unmount();
     await mount(fakeController(requestsSnapshot({ entries })).controller);
     expect(selectedSection()).toEqual(["In progress, 1"]);
   });
