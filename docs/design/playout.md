@@ -22,6 +22,8 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
 rectangle and the HDR tone curve) is the leaf package `internal/playout/media`, so a package can
 share it without importing the engine. The resource budget, the host's CPU and memory readings, the
 software rungs and their speed monitor are `internal/playout/admission`, which imports only `media`.
+The host's class-cost and session-limit probe is `internal/playout/classprobe`, which builds its
+measurements with the engine's pipeline.
 
 **The pipeline.**
 

@@ -843,10 +843,10 @@ func premiumFacts(measured bool) admission.BudgetFacts {
 	f := admission.BudgetFacts{Hardware: true, SessionLimit: 12, CPUAllowance: 8, Rungs: []int{1080}, Costs: map[admission.CostKey]admission.ClassCost{
 		{Class: media.ClassSDR, Height: 1080}:                            {Speed: 6, CPUCores: 0.2},
 		admission.HDRKey(media.ClassHDR4K, 1080, media.DefaultToneCurve): {Speed: 2.4, CPUCores: 0.4},
-		{Class: media.ClassPremium4K, Height: premiumHeight}:             {Speed: 2.4, CPUCores: 0.5},
+		{Class: media.ClassPremium4K, Height: PremiumHeight}:             {Speed: 2.4, CPUCores: 0.5},
 	}}
 	if !measured {
-		delete(f.Costs, admission.CostKey{Class: media.ClassPremium4K, Height: premiumHeight})
+		delete(f.Costs, admission.CostKey{Class: media.ClassPremium4K, Height: PremiumHeight})
 	}
 	return f
 }
@@ -972,7 +972,7 @@ func TestPackagerHLSPremiumPlaylistStartsThePremiumPackager(t *testing.T) {
 	if c == nil || keys != 1 {
 		t.Fatalf("premium play started %d packagers (premium: %v); want the premium only", keys, c != nil)
 	}
-	if !c.out.HDR || c.out.Height != premiumHeight {
+	if !c.out.HDR || c.out.Height != PremiumHeight {
 		t.Fatalf("premium packager encodes %+v, want 4K HDR10", c.out)
 	}
 	use := budget.Snapshot().InUse

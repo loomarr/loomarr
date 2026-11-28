@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/classprobe"
 	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -37,7 +38,7 @@ func TestBuild_ToneCurveSettingPicksTheHDRCell(t *testing.T) {
 	t.Cleanup(cancel)
 	// Install the table the class probe would publish, with distinct Hable and BT.2390 HDR cells.
 	top := playout.LadderHeights(playout.TierFor(""))[0]
-	costs := &playout.MeasuredCosts{Encoder: encode.EncoderSoftware, Costs: map[admission.CostKey]admission.ClassCost{
+	costs := &classprobe.MeasuredCosts{Encoder: encode.EncoderSoftware, Costs: map[admission.CostKey]admission.ClassCost{
 		{Class: media.ClassSDR, Height: top}:                           {Speed: 20, CPUCores: 0.5},
 		admission.HDRKey(media.ClassHDR4K, top, media.ToneCurveHable):  {Speed: 4, CPUCores: 1},
 		admission.HDRKey(media.ClassHDR4K, top, media.ToneCurveBT2390): {Speed: 3, CPUCores: 2},

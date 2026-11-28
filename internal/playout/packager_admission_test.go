@@ -215,7 +215,7 @@ func warmFacts(operatorCap int) admission.BudgetFacts {
 	f := premiumFacts(true)
 	f.OperatorCap = operatorCap
 	f.Costs[admission.HDRKey(media.ClassHDR4K, 1080, media.DefaultToneCurve)] = admission.ClassCost{Speed: 12, CPUCores: 0.1}
-	f.Costs[admission.CostKey{Class: media.ClassPremium4K, Height: premiumHeight}] = admission.ClassCost{Speed: 12, CPUCores: 0.1}
+	f.Costs[admission.CostKey{Class: media.ClassPremium4K, Height: PremiumHeight}] = admission.ClassCost{Speed: 12, CPUCores: 0.1}
 	return f
 }
 

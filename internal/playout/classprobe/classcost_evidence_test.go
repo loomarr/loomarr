@@ -1,4 +1,4 @@
-package playout
+package classprobe
 
 import (
 	"encoding/json"

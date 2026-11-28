@@ -50,7 +50,7 @@ func TestCapabilityEvidenceFailuresAreLogged(t *testing.T) {
 		root := t.TempDir()
 		if err := storeCapabilityEvidence(root, capabilityEvidence{
 			Version: capabilityEvidenceVersion, Fingerprint: "host-a", Encoder: encode.EncoderNVENC,
-			MaxChannels: 7, ObservedAt: now.Add(-2 * capabilityEvidenceMaxAge),
+			MaxChannels: 7, ObservedAt: now.Add(-2 * CapabilityEvidenceMaxAge),
 		}); err != nil {
 			t.Fatal(err)
 		}

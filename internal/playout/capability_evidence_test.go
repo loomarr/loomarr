@@ -113,7 +113,7 @@ func TestDetectObservedWithEvidenceRejectsMismatchExpiryAndFailedValidation(t *t
 		works      bool
 	}{
 		{name: "fingerprint changed", secondHost: "host-b", works: true},
-		{name: "expired", secondHost: "host-a", advance: capabilityEvidenceMaxAge + time.Second, works: true},
+		{name: "expired", secondHost: "host-a", advance: CapabilityEvidenceMaxAge + time.Second, works: true},
 		{name: "validation failed", secondHost: "host-a", works: false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -141,7 +141,7 @@ func TestDetectObservedWithEvidenceRejectsMismatchExpiryAndFailedValidation(t *t
 				t.Fatalf("reused=%v detect calls=%d, want fresh full detection", reused, detectCalls)
 			}
 			wantValidation := 0
-			if test.secondHost == "host-a" && test.advance <= capabilityEvidenceMaxAge {
+			if test.secondHost == "host-a" && test.advance <= CapabilityEvidenceMaxAge {
 				wantValidation = 1
 			}
 			if validationCalls != wantValidation {
