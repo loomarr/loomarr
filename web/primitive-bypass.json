@@ -382,9 +382,6 @@
     "packages/ui/src/search-button/search-button.tsx": {
       "inlineStyle": 1
     },
-    "packages/ui/src/search-field/search-field.tsx": {
-      "inlineStyle": 2
-    },
     "packages/ui/src/settings-overview/settings-overview.tsx": {
       "inlineStyle": 4
     },
