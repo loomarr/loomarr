@@ -157,6 +157,8 @@ export type { RevealProps, RevealRowProps } from "./src/reveal";
 export { Reveal, useRevealOnHover } from "./src/reveal";
 export type { Ring } from "./src/ring-focus";
 export { useRingFocus } from "./src/ring-focus";
+export type { RingTargetFace, RingTargetHandle, RingTargetProps } from "./src/ring-target";
+export { RingTarget } from "./src/ring-target";
 export type { RingedPressableHandle, RingedPressableProps } from "./src/ringed-pressable";
 export { RingedPressable } from "./src/ringed-pressable";
 export type { ScrimProps } from "./src/scrim";
