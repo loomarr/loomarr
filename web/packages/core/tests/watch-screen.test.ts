@@ -798,8 +798,167 @@ describe("what holds the screen awake", () => {
     const s = screen();
     s.send({ control: "channels", type: "press" });
     s.key("c");
-    s.send({ layout: "window", type: "layout" });
+    s.send({ layout: "landscape", type: "layout" });
     expect(s.view()).toMatchObject({ listOpen: false, menu: undefined });
+  });
+});
+
+describe("a desktop window: the list beside the picture", () => {
+  const windowed = () => screen({ layout: "window" });
+
+  it("keeps the list up from the start, through every step that would close it", () => {
+    const s = windowed();
+    expect(s.view().listOpen).toBe(true);
+    expect(s.state.list.cursor).toEqual({ kind: "none" });
+    s.send({ event: { type: "back" }, fromKey: true, type: "list" });
+    s.send({ event: { channelId: "ch-1", type: "choose" }, type: "list" });
+    s.send({ control: "guide", type: "press" });
+    s.key("g");
+    expect(s.view().listOpen).toBe(true);
+  });
+
+  it("flips on Up and Down from the bare picture, where the list would take them over it", () => {
+    const s = windowed();
+    s.key("ArrowDown");
+    s.key("ArrowDown");
+    s.key("ArrowUp");
+    expect(s.tunes()).toEqual(["ch-2", "ch-3", "ch-2"]);
+  });
+
+  it("walks the rows without tuning with focus on a row, and Enter there tunes", () => {
+    const s = windowed();
+    s.send({ event: { channelId: "ch-3", type: "focusRow" }, fromKey: true, type: "list" });
+    s.send({ event: { by: 1, type: "move" }, fromKey: true, type: "list" });
+    s.send({ event: { by: 1, type: "move" }, fromKey: true, type: "list" });
+    expect(s.state.list.cursor).toEqual({ channelId: "ch-5", kind: "row" });
+    expect(s.tunes()).toEqual([]);
+    s.send({ event: { type: "choose" }, fromKey: true, type: "list" });
+    // 5 cannot be played; the cursor moves on and Enter tunes.
+    s.send({ event: { by: 1, type: "move" }, fromKey: true, type: "list" });
+    s.send({ event: { type: "choose" }, fromKey: true, type: "list" });
+    expect(s.tunes()).toEqual(["ch-6"]);
+    expect(s.view().listOpen).toBe(true);
+  });
+
+  it("does not choose the list's cursor with Enter on the bare picture", () => {
+    const s = windowed();
+    s.send({ event: { channelId: "ch-3", type: "focusRow" }, type: "list" });
+    s.key("Enter");
+    expect(s.tunes()).toEqual([]);
+  });
+
+  it("hands focus to the picture on Esc from a row, and from anywhere else", () => {
+    const s = windowed();
+    s.send({ event: { channelId: "ch-3", type: "focusRow" }, fromKey: true, type: "list" });
+    s.send({ event: { type: "back" }, fromKey: true, type: "list" });
+    expect(s.state.handOff).toEqual({ seq: 1, to: "picture" });
+    expect(s.state.list.cursor).toEqual({ kind: "none" });
+    s.key("Escape");
+    expect(s.state.handOff).toEqual({ seq: 2, to: "picture" });
+    expect(s.requests).toEqual([]);
+  });
+
+  it("closes find on Esc before it hands focus to the picture", () => {
+    const s = windowed();
+    s.key("/");
+    expect(s.state.list.query).toBe("");
+    s.key("Escape");
+    expect(s.state.list.query).toBeNull();
+    expect(s.state.handOff).toBeUndefined();
+    s.key("Escape");
+    expect(s.state.handOff?.to).toBe("picture");
+  });
+
+  it("takes Left and Right into the film strip, and nowhere over the picture", () => {
+    const s = windowed();
+    s.key("ArrowRight");
+    expect(s.state.handOff).toEqual({ by: 1, seq: 1, to: "strip" });
+    s.key("ArrowLeft");
+    expect(s.state.handOff).toEqual({ by: -1, seq: 2, to: "strip" });
+    const full = screen();
+    full.key("ArrowRight");
+    expect(full.state.handOff).toBeUndefined();
+  });
+
+  it("pauses on a click on the picture, which has nothing to close", () => {
+    const s = windowed();
+    s.send({ type: "pictureClick" });
+    expect(s.requests).toEqual([{ type: "pause" }]);
+    expect(s.view().listOpen).toBe(true);
+  });
+
+  it("shows the hint with the list up, since the list covers nothing", () => {
+    expect(screen({ layout: "window" }).view().hint).toBe(true);
+  });
+
+  it("brings the list up on a change to a window, and takes it down on a change to full screen", () => {
+    const s = screen({ group: "favourites" });
+    s.send({ layout: "window", type: "layout" });
+    expect(s.view().listOpen).toBe(true);
+    expect(s.state.list).toMatchObject({ cursor: { kind: "none" }, group: "favourites" });
+    s.key("c");
+    s.send({ layout: "full", type: "layout" });
+    expect(s.view()).toMatchObject({ listOpen: false, menu: undefined });
+    expect(s.state).toMatchObject({ list: { group: "favourites" }, watchedId: "ch-1" });
+  });
+});
+
+describe("a desktop window: looking is not playing", () => {
+  const windowed = () => screen({ layout: "window" });
+
+  it("shows the channel a pointer rests on, and tunes nothing", () => {
+    const s = windowed();
+    s.send({ channelId: "ch-3", type: "look" });
+    expect(s.view().looking?.name).toBe("Game Night");
+    expect(s.view().shown?.id).toBe("ch-3");
+    expect(s.state.watchedId).toBe("ch-1");
+    expect(s.requests).toEqual([]);
+  });
+
+  it("ends the moment the pointer leaves", () => {
+    const s = windowed();
+    s.send({ channelId: "ch-3", type: "look" });
+    s.send({ channelId: undefined, type: "look" });
+    expect(s.view()).toMatchObject({ looking: undefined, shown: { id: "ch-1" } });
+  });
+
+  it("ends when a tune happens, by a click, a flip or from outside", () => {
+    const s = windowed();
+    s.send({ channelId: "ch-3", type: "look" });
+    s.send({ event: { channelId: "ch-3", type: "choose" }, type: "list" });
+    expect(s.view()).toMatchObject({ looking: undefined, shown: { id: "ch-3" } });
+    s.send({ channelId: "ch-4", type: "look" });
+    s.key("ArrowDown");
+    expect(s.view().looking).toBeUndefined();
+    s.send({ channelId: "ch-6", type: "look" });
+    s.send({ channelId: "ch-9", type: "tuned" });
+    expect(s.view()).toMatchObject({ looking: undefined, shown: { id: "ch-9" } });
+  });
+
+  it("looks at nothing but another channel in the lineup", () => {
+    const s = windowed();
+    s.send({ channelId: "ch-1", type: "look" });
+    expect(s.view().looking).toBeUndefined();
+    s.send({ channelId: "ch-99", type: "look" });
+    expect(s.view().looking).toBeUndefined();
+  });
+
+  it("is a window's alone, and ends on a change of layout", () => {
+    const full = screen();
+    full.send({ channelId: "ch-3", type: "look" });
+    expect(full.view().looking).toBeUndefined();
+    const s = windowed();
+    s.send({ channelId: "ch-3", type: "look" });
+    s.send({ layout: "full", type: "layout" });
+    s.send({ layout: "window", type: "layout" });
+    expect(s.view().looking).toBeUndefined();
+  });
+
+  it("holds nothing awake that a window does not already, and never rests", () => {
+    const s = windowed();
+    s.send({ channelId: "ch-3", type: "look" });
+    s.wait(WATCH_REST_MS * 3);
+    expect(s.view()).toMatchObject({ awake: true, nextAt: null });
   });
 });
 

@@ -18,6 +18,7 @@ export { DemoBanner } from "./src/demo-banner";
 export type { DemoSignInProps } from "./src/demo-sign-in";
 export { DemoSignIn } from "./src/demo-sign-in";
 export type {
+  FilmStripHandle,
   FilmStripLook,
   FilmStripProps,
   StripAiring,
@@ -153,7 +154,14 @@ export type { UseWatchScreenArgs, WatchScreenInput, WatchScreenModel } from "./s
 export { useWatchScreen } from "./src/use-watch-screen";
 export type { WallTileProps } from "./src/wall-tile";
 export { WallTile } from "./src/wall-tile";
-export type { WatchMenuSlot, WatchProgramme, WatchScreenLayout, WatchScreenProps } from "./src/watch-screen";
+export type {
+  WatchBack,
+  WatchMenuSlot,
+  WatchProgramme,
+  WatchSchedule,
+  WatchScreenLayout,
+  WatchScreenProps,
+} from "./src/watch-screen";
 export { WatchScreen } from "./src/watch-screen";
 export { WatchScrim } from "./src/watch-scrim";
 export type {

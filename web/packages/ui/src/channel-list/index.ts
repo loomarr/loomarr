@@ -4,6 +4,7 @@ export type {
   ChannelListHandle,
   ChannelListLayout,
   ChannelListProps,
+  ChannelListScroll,
 } from "./channel-list.type";
 // The group tabs, which head the Guide as they head the list.
 export { ListHead as ChannelGroupTabs } from "./list-head";

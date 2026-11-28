@@ -1,3 +1,5 @@
+import type { Ref } from "react";
+
 import type { StripAiring } from "./series-runs";
 
 /** What a viewer is pointing at or has focused, or pressed. */
@@ -47,10 +49,24 @@ interface FilmStripProps {
   /** Where the viewer is. Behind `nowMs`, the live mark shows too. */
   playheadMs?: number;
   /**
+   * Web: a pointer press on a block takes no focus, so a key pressed after a click goes where it
+   * would have gone without the click. The keyboard still focuses a block, with its ring.
+   */
+  pointerTakesNoFocus?: boolean;
+  ref?: Ref<FilmStripHandle> | undefined;
+  /**
    * The span the strip draws. In `row` layout a block is as wide as its share of it; in `strip`
    * layout it picks the programmes and trims what has aired before it.
    */
   window: { startMs: number; stopMs: number };
 }
 
-export type { FilmStripLook, FilmStripProps };
+interface FilmStripHandle {
+  /**
+   * Moves focus onto the programme `by` steps from the one on now, for a key that reached the strip
+   * from outside it; at either end it stops on the last there is.
+   */
+  focusFromNow: (by: -1 | 1) => void;
+}
+
+export type { FilmStripHandle, FilmStripLook, FilmStripProps };

@@ -49,13 +49,16 @@ interface WatchMenu {
 
 /**
  * Where the screen asks focus to go: the list's cursor, the Channels control that opened the list,
- * or the control whose menu a key closed.
+ * the control whose menu a key closed, or, in a window, the picture (off every control) or the film
+ * strip, onto the programme `by` steps from the one on now.
  */
-interface WatchHandOff {
-  to: "list" | "channels" | "audio" | "more" | "subtitles";
-  /** Counts the hand-offs, so a part knows when to move focus again. */
-  seq: number;
-}
+type WatchHandOff =
+  | {
+      to: "list" | "channels" | "audio" | "more" | "subtitles" | "picture";
+      /** Counts the hand-offs, so a part knows when to move focus again. */
+      seq: number;
+    }
+  | { to: "strip"; by: -1 | 1; seq: number };
 
 interface WatchScreenState {
   layout: WatchLayout;
@@ -67,8 +70,13 @@ interface WatchScreenState {
    * `leftIds`, so the lineup's `lastChannel` is the one this screen left.
    */
   leftIds: readonly string[];
-  /** The channel list's own state; it is open while `list.open`. */
+  /** The channel list's own state; it is open while `list.open`, and always in a window. */
   list: ChannelListState;
+  /**
+   * In a window, the channel a pointer rests on: its day and facts show in place of the watched
+   * channel's, and nothing tunes. It ends when the pointer leaves, the list scrolls or a tune happens.
+   */
+  looking: string | undefined;
   /** True when Channels opened the list, so closing it gives focus back to Channels. */
   listFromControl: boolean;
   menu: WatchMenu | undefined;
@@ -127,6 +135,8 @@ type WatchScreenEvent =
    * gives focus back to the Channels control that opened it; a pointer's close leaves focus alone.
    */
   | { type: "list"; event: ChannelListEvent; fromKey?: boolean; at: number }
+  /** In a window, a pointer came to rest on a channel's row, or left it (`undefined`). */
+  | { type: "look"; channelId: string | undefined; at: number }
   /** An open menu moved to one of its inner pages, or back to its first (`undefined`). */
   | { type: "menuPage"; page: string | undefined; at: number }
   /** The menu closed itself; `fromKey` says a key did it, so focus goes back to its control. */
@@ -165,6 +175,10 @@ interface WatchScreenView<C extends LineupChannel> {
   /** The first-run hint shows. */
   hint: boolean;
   listOpen: boolean;
+  /** In a window, the channel looked at, else the watched one: the strip and facts show its day. */
+  shown: C | undefined;
+  /** In a window, the channel a pointer is looking at; undefined while it looks at nothing. */
+  looking: C | undefined;
   menu: WatchMenu | undefined;
   /** The digits typed and the channel they name, if any. */
   digits: { typed: string; target: C | undefined } | undefined;

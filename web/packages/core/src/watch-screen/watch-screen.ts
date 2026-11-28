@@ -50,8 +50,9 @@ const createWatchScreenState = ({
   hintSeen,
   layout,
   leftIds: [],
-  list: createChannelListState({ group, television: layout === "tv", watchedId }),
+  list: createChannelListState({ group, open: layout === "window", television: layout === "tv", watchedId }),
   listFromControl: false,
+  looking: undefined,
   menu: undefined,
   paused: false,
   pausedAt: undefined,
@@ -119,6 +120,23 @@ const withoutHiddenThird = <C extends LineupChannel>(
 };
 
 /**
+ * In a window the list is part of the arrangement, not a layer: a step that would close it leaves
+ * it up with no cursor. Looking is only a window's, and only at another channel in the lineup.
+ */
+const windowed = <C extends LineupChannel>(
+  state: WatchScreenState,
+  lineup: ChannelLineup<C>,
+): WatchScreenState => {
+  const inWindow = state.layout === "window";
+  const list = inWindow && !state.list.open ? { ...state.list, open: true } : state.list;
+  const looking =
+    inWindow && state.looking !== state.watchedId && lineup.channels.some((each) => each.id === state.looking)
+      ? state.looking
+      : undefined;
+  return list === state.list && looking === state.looking ? state : { ...state, list, looking };
+};
+
+/**
  * The watching screen's interaction model. Flipping tunes at once; the list only looks until OK or
  * a click. It asks for every effect in `requests` and performs none.
  */
@@ -128,7 +146,7 @@ const watchScreenReduce = <C extends LineupChannel>(
   lineup: ChannelLineup<C>,
 ): WatchScreenStep => {
   const step = reduceStep(state, event, lineup);
-  return { ...step, state: withoutHiddenThird(step.state, lineup) };
+  return { ...step, state: windowed(withoutHiddenThird(step.state, lineup), lineup) };
 };
 
 const reduceStep = <C extends LineupChannel>(
@@ -151,7 +169,11 @@ const reduceStep = <C extends LineupChannel>(
     requests,
     state: next,
   });
-  const handTo = (s: WatchScreenState, to: WatchHandOff["to"]) => ({ seq: (s.handOff?.seq ?? 0) + 1, to });
+  const handTo = (s: WatchScreenState, to: Exclude<WatchHandOff["to"], "strip">): WatchHandOff => ({
+    seq: (s.handOff?.seq ?? 0) + 1,
+    to,
+  });
+  const inWindow = state.layout === "window";
   // A menu a key closes gives focus back to the control that opened it; the shortcuts sheet has
   // none.
   const closeMenuByKey = (s: WatchScreenState): WatchScreenState => {
@@ -174,6 +196,7 @@ const reduceStep = <C extends LineupChannel>(
             LEFT_LIMIT,
           ),
     list: channelListReduce(s.list, { channelId, type: "tuned" }, lineup).state,
+    looking: undefined,
     paused: false,
     pausedAt: undefined,
     watchedId: channelId,
@@ -210,13 +233,15 @@ const reduceStep = <C extends LineupChannel>(
       : ask({ ...s, menu: { name } }, { name, type: "menu" });
 
   // The list reported something, or a key was sent to it. A key that closes it hands focus back to
-  // Channels when Channels opened it; a pointer that closes it leaves focus where it is.
+  // Channels when Channels opened it; a pointer that closes it leaves focus where it is. In a window
+  // the list stays up, and a key that would close it hands focus to the picture.
   const listStep = (s: WatchScreenState, listEvent: ChannelListEvent, fromKey = false): WatchScreenStep => {
     const step = channelListReduce(s.list, listEvent, lineup);
     const closed = s.list.open && !step.state.open;
+    const handBack = inWindow ? "picture" : s.listFromControl ? "channels" : undefined;
     const next: WatchScreenState = {
       ...s,
-      handOff: closed && fromKey && s.listFromControl ? handTo(s, "channels") : s.handOff,
+      handOff: closed && fromKey && handBack ? handTo(s, handBack) : s.handOff,
       list: step.state,
       listFromControl: closed ? false : s.listFromControl,
     };
@@ -280,7 +305,13 @@ const reduceStep = <C extends LineupChannel>(
     if (s.menu?.page !== undefined) return stay({ ...s, menu: { name: s.menu.name } });
     if (s.menu) return stay(closeMenuByKey(s));
     if (s.digits) return stay({ ...s, digits: undefined });
-    // Back is a key or a remote's button.
+    // Back is a key or a remote's button. In a window it closes find, and otherwise takes focus off
+    // whatever holds it, back to the picture.
+    if (inWindow) {
+      return s.list.query === null
+        ? stay({ ...s, handOff: handTo(s, "picture"), list: { ...s.list, cursor: { kind: "none" } } })
+        : listStep(s, { type: "back" }, true);
+    }
     if (s.list.open) return listStep(s, { type: "back" }, true);
     return s.layout === "full" ? ask(s, { on: false, type: "fullScreen" }) : stay(s);
   };
@@ -332,8 +363,9 @@ const reduceStep = <C extends LineupChannel>(
     }
     if (s.digits && pressed === "Enter") return commitDigits(s);
 
-    // The open list owns its keys; it took them already when focus was in it.
-    const listEvent = s.list.open ? LIST_KEYS[pressed] : undefined;
+    // The open list owns its keys; it took them already when focus was in it. A window's list is
+    // no layer: it answers keys only with focus in it, and the bare picture keeps its own.
+    const listEvent = s.list.open && !inWindow ? LIST_KEYS[pressed] : undefined;
     if (listEvent) {
       const step = listStep(s, listEvent, true);
       return step.state.list.open
@@ -346,6 +378,15 @@ const reduceStep = <C extends LineupChannel>(
         return flip(s, 1);
       case "ArrowUp":
         return flip(s, -1);
+      // In a window Left and Right take focus into the film strip, a step from what is on now.
+      case "ArrowLeft":
+      case "ArrowRight":
+        return inWindow
+          ? stay({
+              ...s,
+              handOff: { by: letter === "ArrowLeft" ? -1 : 1, seq: (s.handOff?.seq ?? 0) + 1, to: "strip" },
+            })
+          : stay(s);
       // A focused control presses itself with Space.
       case " ":
         return s.focus ? stay(s) : togglePause(s);
@@ -392,7 +433,7 @@ const reduceStep = <C extends LineupChannel>(
       const s = { ...woken, clicked: { at, before, previous } };
       // A click away from an open layer closes it and does nothing else.
       if (s.menu) return stay({ ...s, menu: undefined });
-      if (s.list.open) return listStep(s, { type: "close" });
+      if (s.list.open && !inWindow) return listStep(s, { type: "close" });
       return togglePause(s);
     }
     case "pictureDoubleClick": {
@@ -410,6 +451,8 @@ const reduceStep = <C extends LineupChannel>(
     }
     case "list":
       return listStep(woken, event.event, event.fromKey ?? false);
+    case "look":
+      return stay({ ...woken, looking: event.channelId });
     case "menuPage":
       return stay(woken.menu ? { ...woken, menu: { name: woken.menu.name, page: event.page } } : woken);
     case "closeMenu":
@@ -420,13 +463,15 @@ const reduceStep = <C extends LineupChannel>(
       // An echo of the channel on screen is no change, and wakes nothing.
       return stay(event.channelId === state.watchedId ? state : changed(woken, event.channelId));
     case "layout": {
-      // A new arrangement starts bare: the list and any menu close, as the prototype's do.
+      // A new arrangement starts bare: any menu and the list over the picture close, as the
+      // prototype's do, and looking ends. A window's list comes up with no cursor; the group stays.
       const list = channelListReduce(woken.list, { type: "close" }, lineup).state;
       return stay({
         ...woken,
         layout: event.layout,
-        list: { ...list, television: event.layout === "tv" },
+        list: { ...list, open: event.layout === "window", television: event.layout === "tv" },
         listFromControl: false,
+        looking: undefined,
         menu: undefined,
       });
     }
@@ -450,13 +495,19 @@ const watchScreenView = <C extends LineupChannel>(
     (time): time is number => time !== undefined,
   );
   const typed = state.digits?.typed;
+  // A window's list is no layer, so it hides nothing.
+  const overPicture = state.list.open && state.layout !== "window";
+  const watched = lineup.channels.find((channel) => channel.id === state.watchedId);
+  const looking = lineup.channels.find((channel) => channel.id === state.looking);
   return {
     awake,
     behindSeconds: state.paused ? 0 : Math.floor(state.behindMs / 1000),
     digits: typed === undefined ? undefined : { target: lineup.channelByNumber(typed), typed },
-    hint: awake && !state.hintSeen && !state.list.open && state.menu === undefined,
+    hint: awake && !state.hintSeen && !overPicture && state.menu === undefined,
     lastChannel: lineup.lastChannel,
     listOpen: state.list.open,
+    looking,
+    shown: looking ?? watched,
     menu: state.menu,
     nextAt: times.length ? Math.min(...times) : null,
     paused: state.paused,

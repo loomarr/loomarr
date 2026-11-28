@@ -3,7 +3,14 @@
 import { act, cleanup, fireEvent, renderUi, screen, userEvent } from "@loomarr/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { FilmStrip, type FilmStripProps, ProgrammeFacts, type StripAiring, StripMessage } from "../index";
+import {
+  FilmStrip,
+  type FilmStripHandle,
+  type FilmStripProps,
+  ProgrammeFacts,
+  type StripAiring,
+  StripMessage,
+} from "../index";
 
 afterEach(cleanup);
 
@@ -169,6 +176,48 @@ describe("FilmStrip by keyboard", () => {
     key("End");
     expect(document.activeElement).toBe(last);
     expect(stops()).toEqual([last]);
+  });
+
+  it("takes focus from outside a step from what is on now, and stops at either end", () => {
+    const handle: { current: FilmStripHandle | null } = { current: null };
+    strip({ ref: handle });
+    const [first, , last] = screen.getAllByRole("button") as [HTMLElement, HTMLElement, HTMLElement];
+    act(() => handle.current?.focusFromNow(1));
+    expect(document.activeElement).toBe(last);
+    act(() => handle.current?.focusFromNow(-1));
+    expect(document.activeElement).toBe(first);
+    strip({ airings: [airing(0, 30), airing(30, 60)], nowMs: at(50), ref: handle });
+    act(() => handle.current?.focusFromNow(1));
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Now · until T60 Film 30");
+  });
+});
+
+describe("FilmStrip's leading edge", () => {
+  it("fades only once the strip is scrolled along from its start", async () => {
+    strip();
+    const group = screen.getByRole("group", { name: "Schedule" });
+    const masked = () => (group.getAttribute("style") ?? "").includes("transparent, black 90px");
+    expect(masked()).toBe(false);
+    const scroller = group.firstElementChild as HTMLElement;
+    fireEvent.scroll(scroller, { target: { scrollLeft: 120 } });
+    expect(masked()).toBe(true);
+    // The scroll view reports a scroll at most every 16 ms.
+    await act(() => new Promise((done) => setTimeout(done, 40)));
+    fireEvent.scroll(scroller, { target: { scrollLeft: 0 } });
+    expect(masked()).toBe(false);
+  });
+});
+
+describe("FilmStrip's words under the picture", () => {
+  it("stand under every block, with artwork or without, so no tick or playhead crosses them", () => {
+    strip({ airings: airings.map(({ thumbUrl: _, ...rest }) => rest) });
+    expect(screen.queryByTestId("film-strip-words")).toBeNull();
+    expect(screen.getByTestId("film-strip-now").textContent).toContain("Diner");
+  });
+
+  it("stay inside the block in a Guide row", () => {
+    strip({ layout: "row" });
+    expect(screen.getAllByTestId("film-strip-words").length).toBeGreaterThan(0);
   });
 });
 

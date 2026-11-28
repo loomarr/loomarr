@@ -1,5 +1,5 @@
 import { Layer, Stack, Surface, Text, ThemeScope } from "@loomarr/design-system";
-import { type ComponentRef, useEffect, useRef, useState } from "react";
+import { type ComponentRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -98,6 +98,8 @@ const FilmStrip = ({
   onLook,
   onSelect,
   playheadMs = nowMs,
+  pointerTakesNoFocus = false,
+  ref,
   window,
 }: FilmStripProps) => {
   // Focus outlasts a pointer passing over: leaving a block returns the look to the focused one.
@@ -125,7 +127,6 @@ const FilmStrip = ({
   };
 
   const pictureOf = (item: StripProgramme) => artworkUri(lookOf(item, nowMs).airing);
-  const pictured = programmes.some((i) => pictureOf(i));
   const headMs = Math.min(playheadMs, nowMs);
   const behind = nowMs - headMs >= 1000;
   const headX = xAt(headMs);
@@ -133,7 +134,8 @@ const FilmStrip = ({
   const under = programmes.find((i) => i.startMs <= headMs && headMs < i.stopMs);
   const liveLeads =
     typeof liveX === "number" ? liveX + LIVE_ROOM > strip.width : ratio(nowMs) > LIVE_ROOM_RATIO;
-  const height = HEAD_ROOM + STILL_HEIGHT + (!isRow && pictured ? CAPTION_HEIGHT : 0);
+  // Under the picture the words always stand under the stills, so no tick or playhead crosses them.
+  const height = HEAD_ROOM + STILL_HEIGHT + (isRow ? 0 : CAPTION_HEIGHT);
 
   const cursorId = cursor?.id;
   const takeFocus = cursor?.takeFocus;
@@ -150,6 +152,14 @@ const FilmStrip = ({
 
   // The browser brings a focused block only as far as the edge, which the fade covers; scroll on
   // until it stands clear. The track ends with the fade's width of padding, so the last block can too.
+  useImperativeHandle(ref, () => ({
+    focusFromNow: (by) => {
+      const now = programmes.findIndex((i) => stateOf(i, nowMs) === "now");
+      const next = programmes[clamp(Math.max(now, 0) + by, 0, programmes.length - 1)];
+      if (next) blocks.current.get(next.id)?.focus();
+    },
+  }));
+
   const reveal = (id: string) => {
     const at = strip.placed.find((p) => p.item.id === id);
     if (isRow || !at || viewWidth === 0) return;
@@ -254,6 +264,7 @@ const FilmStrip = ({
               startMs={item.startMs}
               state={state}
               stopMs={item.stopMs}
+              pointerTakesNoFocus={pointerTakesNoFocus}
               tabStop={item.id === stop?.id}
               width={isRow ? `${(ratio(item.stopMs) - ratio(item.startMs)) * 100}%` : width}
               wordsFrom={roomy && aired > 0 ? `${aired * 100}%` : 0}
@@ -314,6 +325,8 @@ const FilmStrip = ({
   );
 
   const more = viewWidth > 0 && strip.width - scrolled - viewWidth > 1;
+  // Scrolled along from its start, the leading edge fades too, so it never cuts words hard.
+  const along = scrolled > 1;
 
   return (
     <Layer
@@ -324,6 +337,7 @@ const FilmStrip = ({
       width="100%"
       // The fade says the strip goes on past its trailing edge.
       {...(!isRow && more ? { trailingFade: FADE } : {})}
+      {...(!isRow && along ? { leadingFade: FADE } : {})}
     >
       {isRow ? (
         track

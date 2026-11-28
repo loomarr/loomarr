@@ -54,6 +54,8 @@ interface StripBlockProps {
   stopMs: number;
   /** Whether this block is the strip's one Tab stop. */
   tabStop: boolean;
+  /** Web: a pointer press takes no focus. */
+  pointerTakesNoFocus: boolean;
   width: Length;
   /** Where the words start across the block, clear of the playhead. */
   wordsFrom: Length;
@@ -97,6 +99,7 @@ const StripBlock = ({
   state,
   stopMs,
   tabStop,
+  pointerTakesNoFocus,
   width,
   wordsFrom,
   wordsInset,
@@ -121,7 +124,9 @@ const StripBlock = ({
     .filter(Boolean)
     .join(", ");
 
-  const inside = layout === "row" || !artworkUri;
+  // Under the picture the words stand under the still, with or without one: a break's tick and the
+  // playhead cross the still and never the words. A Guide row keeps them inside.
+  const inside = layout === "row";
   // An ended block with no picture recedes into the page: canvas fill, quiet edge.
   const receded = state === "ended" && !artworkUri;
   const words = (
@@ -263,6 +268,7 @@ const StripBlock = ({
         }}
         onKeyboardFocus={setKeyboard}
         onPress={onPress}
+        pointerTakesNoFocus={pointerTakesNoFocus}
         ref={blockRef}
         // The roving Tab stop is the web's: a television's remote has to reach every block, and a
         // native view with a negative tabIndex takes no focus.
