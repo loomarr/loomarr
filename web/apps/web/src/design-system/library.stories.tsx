@@ -435,6 +435,21 @@ const FOLDER = NEEDS.map((need) => ({ ...need, folder: "Discs" }));
 
 const NeedsCards: Story = { render: () => needsStory(FOLDER, ORDERS, PROBLEMS) };
 
+// One title with two reasons draws one card: its episode order and its episodes that can't be played.
+const NeedsMerged: Story = {
+  render: () =>
+    needsStory([], ORDERS.slice(0, 1), [
+      {
+        id: "90000821",
+        kind: "series",
+        name: "Tidewater",
+        poster: art("#3b4a63"),
+        unplayable: 2,
+        extraBytes: 0,
+      },
+    ]),
+};
+
 const NeedsPhone: Story = {
   globals: { viewport: { value: "mobile2" } },
   render: () => needsStory(FOLDER, ORDERS, PROBLEMS),
@@ -1136,6 +1151,7 @@ export {
   MovieFixOpen,
   NeedsCards,
   NeedsIgnored,
+  NeedsMerged,
   NeedsPhone,
   NeedsYou,
   NewCollection,

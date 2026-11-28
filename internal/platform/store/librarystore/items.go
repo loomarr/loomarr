@@ -88,8 +88,11 @@ type LibrarySource struct {
 	// edition that plays is marked Plays, and they play in part order.
 	Part int
 	// Plays marks the copy that plays (decision 37), or each of its parts.
-	Plays   bool
-	Streams []LibraryStream
+	Plays bool
+	// Revision is the inventory's revision of the file. It is written, and read only by the home
+	// video poster queries.
+	Revision string
+	Streams  []LibraryStream
 	// Trickplay are the trickplay files beside it, referenced and never imported (decision 61).
 	Trickplay []LibraryTrickplay
 	// Chapters are its chapter marks, in order; Markers its .edl markers.

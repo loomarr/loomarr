@@ -77,8 +77,44 @@ func testLibraryHomeVideoPoster(t *testing.T, newStore NewStoreFunc) {
 	if got, want := frames(), []librarystore.LibraryHomeVideoFrame{show}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("with a poster = %+v, want %+v", got, want)
 	}
+	// A frame is saved only for the file the title plays, and only while it has no poster.
+	other := show
+	other.Revision = "stat:9:9"
+	for _, c := range []struct {
+		frame librarystore.LibraryHomeVideoFrame
+		want  bool
+	}{{other, false}, {movie, false}, {show, true}, {show, false}} {
+		if put, err := st.PutHomeVideoPoster(ctx, c.frame, img.Hash); err != nil || put != c.want {
+			t.Fatalf("put %+v = %v, %v; want %v", c.frame, put, err, c.want)
+		}
+	}
+	poster := func(id string) bool {
+		owned, err := st.ImagesForOwner(ctx, librarystore.LibraryItemImageOwner, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(owned) == 1
+	}
+	// Clearing keeps the frame of the file still played, and no other poster.
+	for _, id := range []string{"s1", "m1"} {
+		if err := st.ClearLibraryPoster(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !poster("s1") || poster("m1") {
+		t.Fatalf("after clearing: show kept = %v, movie kept = %v; want true, false", poster("s1"), poster("m1"))
+	}
 	if err := st.DeleteLibraryAnswer(ctx, origin("/media/show")); err != nil {
 		t.Fatal(err)
+	}
+	if put, err := st.PutHomeVideoPoster(ctx, show, img.Hash); err != nil || put {
+		t.Fatalf("put after the answer was taken back = %v, %v", put, err)
+	}
+	if err := st.ClearLibraryPoster(ctx, "s1"); err != nil || poster("s1") {
+		t.Fatalf("a title no longer kept kept its frame: %v", err)
+	}
+	if err := st.SetLibraryItemImage(ctx, "m1", "poster", img.Hash); err != nil || !poster("m1") {
+		t.Fatalf("set image: %v", err)
 	}
 	if got := frames(); len(got) != 0 {
 		t.Fatalf("after taking the answer back = %+v, want none", got)

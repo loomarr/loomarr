@@ -853,6 +853,7 @@ A title's present files, one row each, with the copy that plays marked. Replaced
 | `edition` | Which version of the title this file is, such as a director's cut; empty for the usual one. | `TEXT` |
 | `plays` | True for the one copy that plays when the title has several (the one its arr lists, else the sharpest, else the biggest), or for each part of a movie in parts, which play in part order. | `BOOLEAN` |
 | `part` | Which part of a movie split over several files ("cd1", "cd2") this file is, from 1; 0 for a whole file. | `INTEGER` |
+| `revision` | The inventory's revision of the file, which a replaced file changes; empty until the title is next written. | `TEXT` |
 
 ### library_streams
 
@@ -1162,6 +1163,7 @@ A title's poster, backdrop and logo, the one record of which image each is.
 | `item_id` | The title (a library_items id). | `TEXT` · key · → `library_items.id` |
 | `role` | What the image is for, one of poster, backdrop or logo. | `TEXT` · key |
 | `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
+| `source` | The file a home video's frame came from, as its inventory revision and path; empty for any other image. | `TEXT` |
 
 ### library_candidate_images
 
