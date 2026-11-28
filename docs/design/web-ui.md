@@ -32,6 +32,11 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
 | admin | Home · Guide · Library · Requests · Filler · People · Settings · Help |
 | member | Home · Guide · Library · Requests · Notifications · Help |
 
+A phone has a bottom bar instead: **Home · Watch · Guide · Library** and **More**, the same four for
+both roles (Watch is absent until a channel exists). An admin's Library tab carries the Needs you
+count. Everything else is behind More, Requests first; its count shows in the sheet and More carries
+a dot for it.
+
 - **Guide** (`/guide`, headed "Guide" like its nav item; #3413) is the single channels surface: a cross-channel time grid,
   with channel creation (describe → review → approve) as a header action. The old Channels and Suggest
   routes redirect to it.

@@ -63,7 +63,7 @@ const Card = ({
   </Surface>
 );
 
-// "Make my own copy", then "Copied — it's under Yours" once it is.
+// "Make my own copy", then "Copied. It's under Yours" once it is.
 const CopyAction = ({ onCopy }: { onCopy: () => Promise<void> }) => {
   const [state, setState] = useState<"idle" | "copying" | "copied" | "failed">("idle");
   const copy = () => {
@@ -76,7 +76,7 @@ const CopyAction = ({ onCopy }: { onCopy: () => Promise<void> }) => {
   return (
     <Stack gap="inline">
       <Action disabled={state === "copying" || state === "copied"} onPress={copy} variant="outline">
-        {state === "copied" ? "Copied — it's under Yours" : "Make my own copy"}
+        {state === "copied" ? "Copied. It's under Yours" : "Make my own copy"}
       </Action>
       {state === "failed" ? (
         <Text textRole="compact" tone="secondary">

@@ -221,7 +221,7 @@ describe("LibrarySettings", () => {
 
   it("says all is caught up, and nothing about what keeps it so while all of it works", () => {
     const { host, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
-    expect(host.textContent).toContain("All caught up — every title's ready to air");
+    expect(host.textContent).toContain("All caught up. Every title's ready to air");
     // The folder watch and Sonarr's webhook both work: the section is left out.
     expect(host.textContent).not.toContain("Keeping up to date");
     expect(host.textContent).not.toContain("notices new and deleted files");
@@ -251,7 +251,7 @@ describe("LibrarySettings", () => {
       health: "folder_empty",
       folders: [{ ...TV_IN_USE, empty: true }],
     });
-    expect(host.textContent).toContain("This folder is empty — is the drive connected?");
+    expect(host.textContent).toContain("This folder is empty. Is the drive connected?");
     expect(host.textContent).not.toContain("Loomarr can open this folder");
     expect(host.textContent).toContain("Up to date");
     expect(host.textContent).not.toContain("All caught up");
@@ -268,7 +268,7 @@ describe("LibrarySettings", () => {
   // local time, as the line shows it.
   const RETRY = new Date(2026, 10, 2, 15, 40).toISOString();
   it.each([
-    [true, "Can't reach TMDB — trying again at 3:40 PM"],
+    [true, "Can't reach TMDB. Trying again at 3:40 PM"],
     [false, "Trying again at 3:40 PM"],
   ] as const)(
     "says when titles waiting for details are tried again (unreachable: %s)",
@@ -582,7 +582,7 @@ describe("LibrarySettings", () => {
     });
     expect(host.textContent).toContain("1 video file is empty");
     expect(host.textContent).toContain(
-      "Fallow (1971).mkv has nothing in it — a copy that never finished. Copy it again or delete it, then check files again.",
+      "Fallow (1971).mkv has nothing in it. The copy never finished. Copy it again or delete it, then check files again.",
     );
     expect(host.textContent).toContain("5 shortcuts point to files that are gone");
     expect(host.textContent).toContain(
@@ -613,11 +613,11 @@ describe("LibrarySettings", () => {
       ],
     });
     expect(host.textContent).toContain(
-      "Loomarr notices new and deleted files on its own — waiting for Movies",
+      "Loomarr notices new and deleted files on its own. Waiting for Movies.",
     );
-    expect(host.textContent).toContain("Sonarr tells Loomarr about new downloads — waiting for Sonarr");
+    expect(host.textContent).toContain("Sonarr tells Loomarr about new downloads. Waiting for Sonarr.");
     expect(host.textContent).toContain(
-      "Radarr tells Loomarr about new downloads — waiting for Loomarr's address",
+      "Radarr tells Loomarr about new downloads. Waiting for Loomarr's address.",
     );
     cleanup();
   });

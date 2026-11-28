@@ -32,12 +32,15 @@
 # worst outcome available here — a gate that reports success over code it did not execute. CI
 # runs --verify for exactly that reason.
 #
-# ⚠ inherit_errexit is load-bearing. Every model below runs inside `$(...)`, where bash otherwise
-# drops `set -e`: a transient `go list` failure then yields an EMPTY package list, which models as a
-# load of 0 and exits 0. Self-hosted dispatch run 37210850416 saw exactly that signature
-# (`loads=[363 0]`) and reported it as an imbalance instead of the failing command.
+# ⚠ A failure inside `$(...)` must be carried out explicitly. Every model below runs inside one,
+# where bash drops `set -e`: a transient `go list` failure then yields an EMPTY package list, which
+# models as a load of 0 and exits 0 (self-hosted dispatch run 37210850416, `loads=[363 0]`).
+# inherit_errexit closes that on bash 4.4+, but macOS ships bash 3.2, which has no such option. So
+# every fallible command in a function or substitution ends in `|| return` or `|| exit`.
 set -euo pipefail
-shopt -s inherit_errexit
+if ((BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4))); then
+  shopt -s inherit_errexit
+fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -92,7 +95,7 @@ packages() { go list ./...; }
 # The manifest order is reviewable and stable; set operations sort their own copies when required.
 certification_rows() {
   local module line lane path extra
-  module="$(go list -m)"
+  module="$(go list -m)" || return
   while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line%%#*}"
     line="${line#"${line%%[![:space:]]*}"}"
@@ -124,7 +127,7 @@ certification_paths() {
 # empty lane on its zero load, and --certification refuses to emit one.
 certification_lane_count() {
   local rows
-  rows="$(certification_rows)"
+  rows="$(certification_rows)" || return
   printf '%s\n' "$rows" | cut -f1 | sort -n | tail -n 1
 }
 
@@ -137,8 +140,8 @@ ordinary_packages() {
   local all certified
   # Captured first: a failure inside `<(...)` reaches no exit status, so comm would subtract from
   # an empty list and succeed.
-  all="$(packages | sort)"
-  certified="$(certification_paths | sort -u)"
+  all="$(packages | sort)" || return
+  certified="$(certification_paths | sort -u)" || return
   comm -23 <(printf '%s\n' "$all") <(printf '%s\n' "$certified")
 }
 
@@ -151,12 +154,12 @@ ordinary_packages() {
 # worker model counts it, so it is placed at twice its weight.
 partition() {
   local mode="$1" index="$2" total="$3" module ordinary race plain twice
-  module="$(go list -m)"
+  module="$(go list -m)" || return
   # Captured first, as in ordinary_packages: a failure inside `<(...)` reaches no exit status.
-  ordinary="$(ordinary_packages)"
-  race="$(printf '%s\n' "$ordinary" | "$RACE_POLICY" --race | sort)"
-  plain="$(printf '%s\n' "$ordinary" | "$RACE_POLICY" --no-race | sort)"
-  twice="$(comm -12 <(printf '%s\n' "$race") <(printf '%s\n' "$plain") | tr '\n' ' ')"
+  ordinary="$(ordinary_packages)" || return
+  race="$(printf '%s\n' "$ordinary" | "$RACE_POLICY" --race | sort)" || return
+  plain="$(printf '%s\n' "$ordinary" | "$RACE_POLICY" --no-race | sort)" || return
+  twice="$(comm -12 <(printf '%s\n' "$race") <(printf '%s\n' "$plain") | tr '\n' ' ')" || return
   printf '%s\n' "$ordinary" | awk -v mode="$mode" -v target="$index" -v n="$total" -v module="$module" -v weights_file="$WEIGHTS" -v twice="$twice" '
     BEGIN {
       while ((getline line < weights_file) > 0) {
@@ -221,17 +224,17 @@ partition() {
 # does an ordinary one in partition().
 certification_load() {
   local lane="$1" module paths race plain twice
-  module="$(go list -m)"
+  module="$(go list -m)" || return
   # Captured first, as in partition: a failure inside `<(...)` reaches no exit status.
-  paths="$(certification_lane_paths "$lane")"
+  paths="$(certification_lane_paths "$lane")" || return
   # An empty lane loads nothing, which --verify rejects; the race policy refuses an empty list.
   if [ -z "$paths" ]; then
     echo 0
     return
   fi
-  race="$(printf '%s\n' "$paths" | "$RACE_POLICY" --race | sort)"
-  plain="$(printf '%s\n' "$paths" | "$RACE_POLICY" --no-race | sort)"
-  twice="$(comm -12 <(printf '%s\n' "$race") <(printf '%s\n' "$plain") | tr '\n' ' ')"
+  race="$(printf '%s\n' "$paths" | "$RACE_POLICY" --race | sort)" || return
+  plain="$(printf '%s\n' "$paths" | "$RACE_POLICY" --no-race | sort)" || return
+  twice="$(comm -12 <(printf '%s\n' "$race") <(printf '%s\n' "$plain") | tr '\n' ' ')" || return
   printf '%s\n' "$paths" | awk -v module="$module" -v weights_file="$WEIGHTS" -v twice="$twice" '
     BEGIN {
       while ((getline line < weights_file) > 0) {
@@ -269,7 +272,7 @@ plan() {
 # work and a latency regression hidden by the bounded package overlap.
 weighted_worker_makespan() {
   local module
-  module="$(go list -m)"
+  module="$(go list -m)" || return
   awk -v module="$module" -v weights_file="$WEIGHTS" -v workers="$ORDINARY_WORKERS" '
     BEGIN {
       while ((getline line < weights_file) > 0) {
@@ -319,9 +322,9 @@ weighted_worker_makespan() {
 
 ordinary_worker_load() {
   local lane="$1" total="$2" shard_packages race_packages plain_packages
-  shard_packages="$(slice "$lane" "$total")"
-  race_packages="$(printf '%s\n' "$shard_packages" | "$RACE_POLICY" --race)"
-  plain_packages="$(printf '%s\n' "$shard_packages" | "$RACE_POLICY" --no-race)"
+  shard_packages="$(slice "$lane" "$total")" || return
+  race_packages="$(printf '%s\n' "$shard_packages" | "$RACE_POLICY" --race)" || return
+  plain_packages="$(printf '%s\n' "$shard_packages" | "$RACE_POLICY" --no-race)" || return
   # An ordinary lane runs its race and plain phases at once (go-test-lane.sh), so they share the
   # runner's four workers: one makespan over both lists, a RACE_AND_PLAIN package in each.
   printf '%s\n%s\n' "$race_packages" "$plain_packages" | grep -v '^$' | weighted_worker_makespan
@@ -331,7 +334,7 @@ worker_plan() {
   local total="$1" lane load
   for ((lane = 1; lane <= total; lane++)); do
     # Assigned, not inlined: a substitution inside printf's arguments loses its exit status.
-    load="$(ordinary_worker_load "$lane" "$total")"
+    load="$(ordinary_worker_load "$lane" "$total")" || return
     printf '%s %s\n' "$lane" "$load"
   done
 }
@@ -350,7 +353,7 @@ if [ "${1:-}" = "--verify" ]; then
 
   CERTIFICATION_LANES="$(certification_lane_count)"
   all="$(packages | sort)"
-  union="$( { for ((i = 1; i <= total; i++)); do slice "$i" "$total"; done; certification_paths; } | sort)"
+  union="$( { for ((i = 1; i <= total; i++)); do slice "$i" "$total" || exit; done; certification_paths || exit; } | sort)"
 
   # Compare the SORTED UNION against the full list. `comm` needs sorted input and reports
   # both directions, so a package that went missing and one that got duplicated into two
@@ -404,7 +407,7 @@ if [ "${1:-}" = "--verify" ]; then
   fi
   certification_modeled="$(for ((i = 1; i <= CERTIFICATION_LANES; i++)); do
     # Assigned first: a failure inside a printf argument reaches no exit status.
-    load="$(certification_load "$i")"
+    load="$(certification_load "$i")" || exit
     printf '%s %s %s\n' "$i" "$load" "$LANE_TEST_SECONDS"
   done)"
   if ! printf '%s\n' "$certification_modeled" | awk -v ratio="$MAX_CERTIFICATION_IMBALANCE_PERCENT" '

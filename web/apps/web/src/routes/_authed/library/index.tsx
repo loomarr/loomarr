@@ -20,6 +20,7 @@ interface LibrarySearch {
   sort?: "recent";
   genre?: string;
   studio?: string;
+  /** A credit's personId, from the person search or the title page's cast and crew links. */
   person?: string;
   audio?: string;
   subtitles?: string;

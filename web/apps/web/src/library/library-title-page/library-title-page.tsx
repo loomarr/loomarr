@@ -5,7 +5,7 @@ import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { LibraryTitle, LibraryTitleMissing } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useRouter } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -128,6 +128,7 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
           : undefined
       }
       onBack={back}
+      personLink={(person) => <Link search={{ person }} to="/library" />}
       title={{
         kind: item.kind,
         name: item.name,

@@ -161,6 +161,23 @@ describe("openEventStream", () => {
     stop();
     expect(close).toHaveBeenCalledOnce();
   });
+
+  it("lets a handler's own failure reach the stream, rather than reading it as a bad frame", () => {
+    const listeners = new Map<string, (event: EventStreamMessage) => void>();
+    openEventStream(
+      {
+        onChannel: () => {
+          throw new Error("handler broke");
+        },
+      },
+      "http://loomarr.test/v1/events",
+      () => ({ addEventListener: (type, listener) => listeners.set(type, listener), close: () => {} }),
+    );
+
+    expect(() => listeners.get("channel")?.({ data: '{"channelId":"seven","status":"live"}' })).toThrow(
+      "handler broke",
+    );
+  });
 });
 
 describe("a stream that opens", () => {
