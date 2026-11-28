@@ -18,11 +18,13 @@ import {
   type ReactElement,
   type ReactNode,
   useCallback,
+  useRef,
   useState,
 } from "react";
 import { Pressable, View } from "react-native";
 
 import { StatePanel } from "../../state-panel";
+import { ActiveFilters, FilterPanel, type FocusTarget, filterCount } from "../library-filters";
 import { LibraryGrid } from "../library-grid";
 import { LibraryPoster, Line, PAGE_GUTTER, Stack, Twirl } from "../library-poster";
 import { detailsWaiting, folderName, heldTitle, scanHeadline } from "../library-words";
@@ -194,18 +196,30 @@ const EmptyGenre = ({
   );
 };
 
+// Filters on and nothing left: the one way back is clearing them.
+const EmptyFilters = ({ onClear }: { onClear: () => void }) => (
+  <StatePanel
+    action={{ label: "Clear filters", onPress: onClear }}
+    description="Remove a filter, or clear them all."
+    kind="empty"
+    title="No titles match these filters"
+  />
+);
+
 // A search that found nothing: what was asked, what the search reads, and the way back. With a
-// genre chosen the search is inside it, so leaving the genre is a way back too.
+// genre or another filter on, the search is inside it, so leaving it is a way back too.
 const NoMatch = ({
   search,
   total,
   onClear,
   onAllGenres,
+  onClearFilters,
 }: {
   search: string;
   total?: number;
   onClear: () => void;
   onAllGenres?: () => void;
+  onClearFilters?: () => void;
 }) => {
   const wide = useWindowWidth() >= 768;
   return (
@@ -219,9 +233,11 @@ const NoMatch = ({
         {`Nothing here matches “${search}”`}
       </Text>
       <Text textAlign={wide ? "center" : "left"} textRole="body" tone="secondary">
-        {total === undefined
-          ? "Search looks at titles, years and genres."
-          : `Search looks at titles, years and genres across all ${titlesWord(total)}.`}
+        {onClearFilters
+          ? "Search looks at titles, years and genres, only in titles that match your filters."
+          : total === undefined
+            ? "Search looks at titles, years and genres."
+            : `Search looks at titles, years and genres across all ${titlesWord(total)}.`}
       </Text>
       <Line>
         <Action onPress={onClear} variant="outline">
@@ -230,6 +246,11 @@ const NoMatch = ({
         {onAllGenres ? (
           <Action onPress={onAllGenres} variant="outline">
             Show all genres
+          </Action>
+        ) : null}
+        {onClearFilters ? (
+          <Action onPress={onClearFilters} variant="outline">
+            Clear filters
           </Action>
         ) : null}
       </Line>
@@ -549,6 +570,8 @@ const Controls = ({
   search,
   onSearchChange,
   showSearch,
+  filtering,
+  moreRef,
 }: Pick<
   LibraryShelfProps,
   | "filter"
@@ -561,8 +584,10 @@ const Controls = ({
   | "onGenreChange"
   | "search"
   | "onSearchChange"
-> & { showSearch: boolean }) => {
+  | "filtering"
+> & { showSearch: boolean; moreRef: (node: unknown) => void }) => {
   const wide = useWindowWidth() >= 768;
+  const [open, setOpen] = useState(false);
   // On a phone the controls are tapped, so they take the design system's touch targets.
   const density = wide ? "pointer" : "touch";
   const tabs = (
@@ -607,23 +632,49 @@ const Controls = ({
       width={wide ? 168 : undefined}
     />
   );
+  const on = filtering ? filterCount(filtering) : 0;
+  const more = filtering ? (
+    <Action
+      aria-expanded={open}
+      density={density}
+      icon="filter"
+      onPress={() => setOpen(!open)}
+      ref={moreRef}
+      variant="outline"
+    >
+      {on > 0 ? `More filters (${on})` : "More filters"}
+    </Action>
+  ) : null;
+  const panel = filtering && open ? <FilterPanel filtering={filtering} /> : null;
   if (wide) {
     return (
-      <Line columnGap="control" flexWrap="nowrap" justifyContent="space-between">
-        {tabs}
-        <Line flexShrink={1} flexWrap="nowrap" gap="control">
-          <Stack flexShrink={1} minWidth={0} width={288}>
-            {searchField}
-          </Stack>
-          {order}
-          {genreSelect}
+      <Stack gap="control">
+        <Line columnGap="control" justifyContent="space-between" rowGap="control">
+          {tabs}
+          <Line flexShrink={1} flexWrap="nowrap" gap="control">
+            <Stack flexShrink={1} minWidth={0} width={288}>
+              {searchField}
+            </Stack>
+            {order}
+            {genreSelect}
+            {more}
+          </Line>
         </Line>
-      </Line>
+        {panel}
+      </Stack>
     );
   }
   // With a genre chosen the count is that genre's. On a phone the order and the genre share the
   // line equally, so a chosen genre's name and count stay readable; the count sits under them.
-  const shown = genre ? listed?.titles : counts && filter !== "collections" ? counts[filter] : undefined;
+  // With filters on, the line of what is on carries the list's own count instead.
+  const filtered = on > 0 || Boolean(filtering && genre);
+  const shown = filtered
+    ? undefined
+    : genre
+      ? listed?.titles
+      : counts && filter !== "collections"
+        ? counts[filter]
+        : undefined;
   return (
     <Stack gap="control">
       {tabs}
@@ -636,6 +687,8 @@ const Controls = ({
           {genreSelect}
         </Stack>
       </Line>
+      {more}
+      {panel}
       {shown === undefined ? null : (
         <Stack alignItems="flex-end">
           <Text textRole="compact" tone="secondary">
@@ -657,6 +710,7 @@ const LibraryShelf = ({
   genres,
   genre,
   onGenreChange,
+  filtering,
   letters,
   onJump,
   jump,
@@ -679,6 +733,18 @@ const LibraryShelf = ({
   const searched = search.trim();
   const allGenres = () => onGenreChange(undefined);
   const chosenGenre = genre ? (listedGenre(genres, genre)?.name ?? genre) : undefined;
+  // Filters past the genre are on, so an empty list is theirs and the way back clears them all.
+  const filtered = filtering && filterCount(filtering) > 0 ? filtering : undefined;
+  const empty = !loading && titles.length === 0;
+  // Clearing takes away the control that was pressed; More filters stays, so focus goes there.
+  const more = useRef<FocusTarget | null>(null);
+  const focusMore = () => more.current?.focus();
+  const clearFilters = filtered
+    ? () => {
+        focusMore();
+        filtered.onClear();
+      }
+    : undefined;
   // The All tab with no titles. While an import is adding them, an admin's status line tells that
   // story, so the dead air panel waits until nothing is running.
   const emptyLibrary = !admin ? (
@@ -719,8 +785,12 @@ const LibraryShelf = ({
           <Controls
             counts={counts}
             filter={filter}
+            filtering={filtering}
             genre={genre}
             genres={genres}
+            moreRef={(node) => {
+              more.current = node as FocusTarget | null;
+            }}
             onFilterChange={onFilterChange}
             onGenreChange={onGenreChange}
             onSearchChange={onSearchChange}
@@ -729,16 +799,28 @@ const LibraryShelf = ({
             showSearch={showTitles}
             sort={sort}
           />
+          {showTitles && filtering ? (
+            <ActiveFilters
+              clearable={!empty}
+              filtering={filtering}
+              genre={chosenGenre}
+              onGenreClear={allGenres}
+              onLast={focusMore}
+            />
+          ) : null}
           {onCollections ? collections : null}
           {!showTitles ? null : loading ? (
             <Loading />
           ) : titles.length === 0 && searched !== "" ? (
             <NoMatch
-              onAllGenres={chosenGenre ? allGenres : undefined}
+              onAllGenres={chosenGenre && !filtered ? allGenres : undefined}
               onClear={() => onSearchChange("")}
+              onClearFilters={clearFilters}
               search={searched}
               total={chosenGenre ? undefined : counts?.[filter]}
             />
+          ) : titles.length === 0 && clearFilters ? (
+            <EmptyFilters onClear={clearFilters} />
           ) : titles.length === 0 && chosenGenre ? (
             <EmptyGenre genre={chosenGenre} kind={filter} onAllGenres={allGenres} />
           ) : titles.length === 0 && (filter === "movie" || filter === "series") ? (
