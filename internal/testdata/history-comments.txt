@@ -12,12 +12,6 @@ internal/api/guide/channelpreview.go 1
 internal/api/proposals/proposals.go 2
 internal/api/setup/setup.go 1
 internal/app/buildplayout.go 1
-internal/channels/growth/fill.go 1
-internal/channels/reconcile.go 1
-internal/channels/schedule/passes.go 3
-internal/channels/schedule/seasonal_arrange.go 1
-internal/channels/schedule/slotting.go 1
-internal/channels/schedule/watermark_policy.go 1
 internal/library/mediaserver/filler.go 2
 internal/library/mediaserver/metadata.go 1
 internal/library/mediaserver/search.go 1

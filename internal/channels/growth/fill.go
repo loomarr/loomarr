@@ -21,7 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 )
 
-// The numbers the maintainer chose from the measured install (#4333, 2026-11-15).
+// The numbers the maintainer chose from the measured install (#4333).
 const (
 	Margin       = 3    // years either side of the seeds' span
 	Bar          = 0.5  // genre share a clear fit reaches both ways (see Line.Classify)
