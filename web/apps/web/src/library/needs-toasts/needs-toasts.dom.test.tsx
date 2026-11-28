@@ -33,5 +33,8 @@ describe("the Needs you toast's Undo", () => {
     // The shown word is hidden from the name, so the file is not announced after a second "Undo".
     expect(screen.getByRole("button", { name: named })).toBeDefined();
     expect(screen.getByText("Undo").getAttribute("aria-hidden")).toBe("true");
+    // The longer name is out of sight: clipped to one pixel, not drawn beside "Undo".
+    const named$ = getComputedStyle(screen.getByText(named));
+    expect([named$.position, named$.width, named$.height]).toEqual(["absolute", "1px", "1px"]);
   });
 });
