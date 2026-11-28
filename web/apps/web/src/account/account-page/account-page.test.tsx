@@ -3,7 +3,7 @@ import {
   getMeMockHandler,
   getRevokeSessionMockHandler,
 } from "@loomarr/api/msw";
-import { cleanup, renderUi, screen, userEvent, waitFor } from "@loomarr/test-support";
+import { cleanup, renderUi, screen, userEvent, waitFor, within } from "@loomarr/test-support";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { afterEach, describe, expect, it } from "vitest";
@@ -60,18 +60,22 @@ describe("AccountPage", () => {
 
     // Only the other device offers it: your own session has no Sign out in the list.
     const row = screen.getByText("Safari on iOS").closest("li") as HTMLElement;
-    await user.click(row.querySelector("button") as HTMLButtonElement);
+    await user.click(within(row).getByRole("button", { name: "Sign out" }));
     expect(screen.getByText(/Sign out Safari on iOS\?/)).toBeInTheDocument();
     expect(revoked).toEqual([]);
 
     const confirm = screen.getByText(/Sign out Safari on iOS\?/).closest("li") as HTMLElement;
-    await user.click(
-      [...confirm.querySelectorAll("button")].find((b) => b.textContent === "Sign out") as HTMLButtonElement,
-    );
+    await user.click(within(confirm).getByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(revoked).toEqual(["other"]));
   });
 
-  it("offers a password change to a local account only", async () => {
+  it("offers a password change to a local account", async () => {
+    open(true);
+
+    expect(await screen.findByLabelText("New password", {}, { timeout: 5000 })).toBeInTheDocument();
+  });
+
+  it("offers no password change to a media-server account", async () => {
     open(false);
 
     expect(

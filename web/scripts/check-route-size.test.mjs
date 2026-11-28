@@ -11,7 +11,13 @@ describe("route-size ratchet", () => {
     assert.equal(violations({ a: LIMIT }, {}).length, 0);
     assert.equal(violations({ a: LIMIT + 1 }, {}).length, 1);
     assert.equal(violations({ a: 100 }, { a: 99 }).length, 1);
-    assert.equal(violations({ a: 90 }, { a: 99 }).length, 0);
+    assert.equal(violations({ a: 90 }, { a: 90 }).length, 0);
+  });
+
+  it("fails an entry left above its file's size, so the ledger cannot hold slack", () => {
+    assert.match(violations({ a: 90 }, { a: 99 })[0], /route-size:update/);
+    assert.equal(violations({ a: 30 }, { a: 99 }).length, 1);
+    assert.equal(violations({}, { gone: 99 }).length, 1);
   });
 
   it("only lowers or drops ledger entries, never adds", () => {

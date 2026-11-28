@@ -1,6 +1,7 @@
 // The route-size ratchet (#4706). A route file keeps its params, loader and component wiring; page
 // bodies live in feature folders. A route file over LIMIT lines must be in apps/web/route-size.json
-// at no fewer lines than it has. Counts that fall pass; `--write` only lowers or drops entries.
+// at exactly the lines it has: a file that grew fails, and so does an entry left above its file's
+// size, which `--write` lowers or drops. `--write` never raises or adds one.
 // With no ledger, `--write` records the current state.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -27,10 +28,20 @@ const lineCount = (source) => source.replace(/\n$/, "").split("\n").length;
 
 const oversized = (sizes) => Object.fromEntries(Object.entries(sizes).filter(([, n]) => n > LIMIT));
 
-const violations = (sizes, ledger) =>
-  Object.entries(oversized(sizes))
+const violations = (sizes, ledger) => [
+  ...Object.entries(oversized(sizes))
     .filter(([file, n]) => n > (ledger[file] ?? 0))
-    .map(([file, n]) => `${file}: ${n} lines (allowed ${ledger[file] ?? LIMIT})`);
+    .map(
+      ([file, n]) =>
+        `${file}: ${n} lines (allowed ${ledger[file] ?? LIMIT}). Move the page into a feature folder.`,
+    ),
+  ...Object.entries(ledger)
+    .filter(([file, allowed]) => allowed > (sizes[file] ?? 0))
+    .map(
+      ([file, allowed]) =>
+        `${file}: the ledger allows ${allowed} but the file has ${sizes[file] ?? 0}. Run \`pnpm route-size:update\`.`,
+    ),
+];
 
 const shrink = (sizes, ledger) =>
   Object.fromEntries(
@@ -54,9 +65,7 @@ const main = () => {
   }
   const found = violations(sizes, ledger ?? {});
   if (found.length > 0) {
-    console.error(
-      `Route files grew past route-size.json. Move the page into a feature folder:\n  ${found.join("\n  ")}`,
-    );
+    console.error(`Route files disagree with route-size.json:\n  ${found.join("\n  ")}`);
     process.exit(1);
   }
   console.log("route-size: within the ledger");
