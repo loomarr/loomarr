@@ -27,7 +27,6 @@ import { createPlaybackMarks, NativePlayerView, PairedNativeImage } from "@looma
 import {
   clientBackDestination,
   playerChromeFromGuide,
-  SurfJourney,
   surfCardsFromGuide,
   useClientDestination,
   type WatchingLayer,
@@ -36,6 +35,7 @@ import {
 } from "@loomarr/ui";
 import { GuideJourney } from "@loomarr/ui/guide";
 import { PairingShell, pairingBackAvailable } from "@loomarr/ui/pairing";
+import { SurfJourney } from "@loomarr/ui/watching";
 import {
   createTvAutoTuneSetting,
   createTvGuideFocusRegistry,

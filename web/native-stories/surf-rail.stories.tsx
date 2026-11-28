@@ -1,5 +1,5 @@
 import { surfGroups } from "@loomarr/fixtures";
-import { SurfRail, type SurfSelection } from "@loomarr/ui";
+import { SurfRail, type SurfSelection } from "@loomarr/ui/watching";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { useState } from "react";
 

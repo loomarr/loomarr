@@ -1,5 +1,6 @@
 import { Grid, SectionHeader, useFocusLook } from "@loomarr/design-system";
-import { ProgrammeCard, surfChannelData } from "@loomarr/ui";
+import { ProgrammeCard } from "@loomarr/ui";
+import { surfChannelData } from "@loomarr/ui/watching";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { AiringArtwork } from "../channel-wall";

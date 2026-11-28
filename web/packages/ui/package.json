@@ -10,7 +10,8 @@
     "./filler": "./filler.ts",
     "./guide": "./guide.ts",
     "./pairing": "./pairing.ts",
-    "./requests": "./requests.ts"
+    "./requests": "./requests.ts",
+    "./watching": "./watching.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc -p tests",

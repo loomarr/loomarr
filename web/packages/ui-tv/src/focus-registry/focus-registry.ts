@@ -1,5 +1,6 @@
-import type { FocusableTargetHandle, FocusTargetRegistry, SurfSelection } from "@loomarr/ui";
+import type { FocusableTargetHandle, FocusTargetRegistry } from "@loomarr/ui";
 import type { GuideFocusTarget } from "@loomarr/ui/guide";
+import type { SurfSelection } from "@loomarr/ui/watching";
 
 class TvFocusRegistry<TTarget> implements FocusTargetRegistry<TTarget> {
   private readonly handles = new Map<string, FocusableTargetHandle>();
