@@ -17,7 +17,7 @@ import {
   type BulkApproveOutcome,
   type ChannelRequestConsequence,
   type FillerDownloadConsequence,
-} from "@loomarr/ui";
+} from "@loomarr/ui/requests";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";

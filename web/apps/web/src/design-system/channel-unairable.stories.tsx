@@ -1,4 +1,4 @@
-import { ChannelUnairable } from "@loomarr/ui";
+import { ChannelUnairable } from "@loomarr/ui/channels";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 // The lineup titles a channel cannot air, and why (#4140): on the channel's Info page, for admins.

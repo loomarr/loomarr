@@ -4,7 +4,7 @@ import {
   type SeasonalMode,
   type SeasonalOffSeason,
   type SeasonalStrength,
-} from "@loomarr/ui";
+} from "@loomarr/ui/channels";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 

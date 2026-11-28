@@ -18,7 +18,7 @@ import {
   type ReviewSheetProps,
   type ReviewState,
   reviewReducer,
-} from "../index";
+} from "../requests";
 
 const render = (node: React.ReactNode) =>
   renderToStaticMarkup(<LoomarrProvider theme="dark">{node}</LoomarrProvider>);

@@ -7,7 +7,7 @@ import {
   type GuideControllerSnapshot,
   layoutGuide,
 } from "@loomarr/core/guide";
-import { GuideGrid, GuideProgrammeDetail } from "@loomarr/ui";
+import { GuideGrid, GuideProgrammeDetail } from "@loomarr/ui/guide";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useEffect, useState } from "react";
 import { expect, screen, waitFor } from "storybook/test";

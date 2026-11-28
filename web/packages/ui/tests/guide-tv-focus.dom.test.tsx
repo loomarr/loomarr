@@ -3,7 +3,7 @@ import type { GuideLayout } from "@loomarr/core/guide";
 import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { declarationsOfElement } from "@loomarr/test-support/css";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GuideSurface } from "../index";
+import { GuideSurface } from "../guide";
 
 type GuideNode = HTMLElement;
 type QueryRoot = ParentNode;

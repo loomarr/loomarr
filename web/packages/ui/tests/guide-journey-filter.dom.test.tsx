@@ -4,7 +4,7 @@ import { createGuideController } from "@loomarr/core/guide";
 import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GuideJourney } from "../index";
+import { GuideJourney } from "../guide";
 
 afterEach(cleanup);
 

@@ -8,7 +8,7 @@ import { useState } from "react";
 import { Text } from "react-native";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ChannelList, type ChannelListProps } from "../index";
+import { ChannelList, type ChannelListProps } from "../channels";
 
 afterEach(() => {
   cleanup();

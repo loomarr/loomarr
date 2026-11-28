@@ -4,7 +4,7 @@ import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ClipSelect, NeedsDetailsChip } from "../index";
+import { ClipSelect, NeedsDetailsChip } from "../filler";
 
 const render = (node: React.ReactNode) =>
   renderToStaticMarkup(<LoomarrProvider theme="dark">{node}</LoomarrProvider>);
