@@ -1,4 +1,4 @@
-import { Action, Surface, Text } from "@loomarr/design-system";
+import { Action, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 
 import { Line } from "../../library-poster";
@@ -38,6 +38,8 @@ const LibraryNeedsCards = ({
   orders,
   problems,
   hideHeading,
+  restored,
+  empty,
   onLink,
   onIgnore,
   onIgnoreFolder,
@@ -45,7 +47,8 @@ const LibraryNeedsCards = ({
   onSearch,
   onOpenTitle,
 }: LibraryNeedsCardsProps) => {
-  const { list: open, phases, failed, answer, done } = useAnswers(needs);
+  const { list: open, phases, failed, answer, done } = useAnswers(needs, restored);
+  const wide = useWindowWidth() >= 640;
   const shows = useOrderAnswers(orders, onChooseOrder);
   const entries = problemEntries(problems);
   const waiting =
@@ -63,17 +66,19 @@ const LibraryNeedsCards = ({
   return (
     <Surface aria-label="Needs you" backgroundColor="transparent" borderWidth={0} gap="control" role="region">
       {hideHeading ? null : <Text as="h2" textRole="headline">{`Needs you (${waiting})`}</Text>}
-      {shows.list.length + open.length + entries.length === 0 ? (
-        <Text textRole="body" tone="secondary">
-          Nothing needs you.
-        </Text>
-      ) : null}
+      {shows.list.length + open.length + entries.length === 0
+        ? (empty ?? (
+            <Text textRole="body" tone="secondary">
+              Nothing needs you.
+            </Text>
+          ))
+        : null}
       {folders.map((folder, group) => {
         const cards = open.filter((need) => (need.folder ?? "") === folder);
         const asking = cards.filter((need) => !phases[need.id]).map((need) => need.id);
         const list = cards.map((need, i) => (
           <NeedCard
-            key={need.id}
+            key={`${need.id}:${restored?.[need.id] ?? 0}`}
             need={need}
             onDone={() => done(need.id)}
             onIgnore={() => answer(need.id, "ignored", onIgnore(need.id))}
@@ -92,7 +97,11 @@ const LibraryNeedsCards = ({
           <Group
             action={
               onIgnoreFolder && asking.length > 1 ? (
-                <Action onPress={() => ignoreFolder(folder, asking)} variant="ghost">
+                <Action
+                  density={wide ? "pointer" : "touch"}
+                  onPress={() => ignoreFolder(folder, asking)}
+                  variant="ghost"
+                >
                   {`Ignore these ${asking.length}`}
                 </Action>
               ) : null

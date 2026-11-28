@@ -119,4 +119,26 @@ describe("Needs you by folder", () => {
     expect(doc.activeElement).toBe(button("Find it"));
     cleanup();
   });
+
+  it("closes Find it on Escape", () => {
+    const { host, cleanup } = mount([need("one", "Films")]);
+    const find = Array.from(host.querySelectorAll('[role="button"], button')).find(
+      (n) => n.textContent?.trim() === "Find it",
+    );
+    act(() => find?.click());
+    const { KeyboardEvent } = globalThis as unknown as {
+      KeyboardEvent: new (type: string, init: { key: string; bubbles: boolean }) => object;
+    };
+    const input = host.querySelector("input") as unknown as { dispatchEvent(event: object): void };
+    act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(host.querySelector("input")).toBeNull();
+    cleanup();
+  });
+
+  it("names a file nothing was guessed for once", () => {
+    const { host, cleanup } = mount([need("one", "Films")]);
+    expect(host.textContent?.split("one.mkv")).toHaveLength(2);
+    expect(host.textContent).not.toMatch(/one(?!\.mkv)/);
+    cleanup();
+  });
 });

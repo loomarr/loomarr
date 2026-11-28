@@ -126,6 +126,10 @@ interface LibraryNeedsCardsProps extends LibraryNeedsAnswers {
   onSearch: LibraryNeedSearch;
   /** The page around the cards already says "Needs you" and how many wait. */
   hideHeading?: boolean;
+  /** How often each title has been brought back; a new count asks about that title again. */
+  restored?: Readonly<Record<string, number>>;
+  /** Drawn once nothing is left to ask; absent says so in one line. */
+  empty?: ReactNode;
   /** Ignores exactly these titles in one save; absent offers no folder answer. */
   onIgnoreFolder?: (folder: string, ids: string[]) => Promise<void>;
   /** See why: opens a title's page. */

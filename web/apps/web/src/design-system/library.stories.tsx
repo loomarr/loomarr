@@ -18,7 +18,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, screen, waitFor } from "storybook/test";
 import { AppToaster } from "@/components/loomarr/feedback/app-toaster";
 import { toastRemoved, toastRestoreRefused } from "@/library/extra-copy-toasts";
-import { IgnoredList, LibraryNeedsView } from "@/library/library-needs-page";
+import { AllCaughtUp, IgnoredList, LibraryNeedsView } from "@/library/library-needs-page";
 
 // The Library (#2151, design/library variant D): the poster grid in each scan state and a title's
 // page. Stories load no remote images: a title with artwork gets a flat stand-in in its own colour.
@@ -366,6 +366,7 @@ const needsStory = (needs: LibraryNeed[], orders: LibraryOrderNeed[], problems: 
       onSearch={search}
       orders={orders}
       problems={problems}
+      empty={<AllCaughtUp ignored={3} onBack={() => {}} onShowIgnored={() => {}} />}
     />
   </LibraryNeedsView>
 );

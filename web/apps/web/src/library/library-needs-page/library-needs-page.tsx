@@ -1,15 +1,25 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryIgnoredDTO } from "@loomarr/api/models/libraryIgnoredDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, FileName, Stack, Surface, Tabs, Text } from "@loomarr/design-system";
+import {
+  Action as BaseAction,
+  FileName,
+  Icon,
+  icons,
+  Stack,
+  Surface,
+  Tabs,
+  Text,
+  useWindowWidth,
+} from "@loomarr/design-system";
 import { LibraryNeedsCards } from "@loomarr/ui";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { type ReactNode, useState } from "react";
+import { type ComponentProps, type ReactNode, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useRouteContent } from "@/lib/use-route-content";
-import { toastIgnored, toastUndoFailed } from "../needs-toasts";
+import { toastBringBackFailed, toastIgnored } from "../needs-toasts";
 import { useLibraryNeeds } from "../use-library-needs";
 import { useLibraryScanFrames } from "../use-library-scan-frames";
 
@@ -19,6 +29,10 @@ const IGNORED_PAGE = 50;
 const IGNORED_KEY = "/v1/library/ignored";
 
 type NeedsTab = "waiting" | "ignored";
+
+// A phone is touched, so its controls get the touch target.
+const useDensity = () => (useWindowWidth() >= 640 ? "pointer" : "touch");
+const Action = (props: ComponentProps<typeof BaseAction>) => <BaseAction {...props} density={useDensity()} />;
 
 const IgnoredList = ({
   items,
@@ -63,6 +77,38 @@ const IgnoredList = ({
   </Surface>
 );
 
+/** The Waiting tab with nothing left to ask. */
+const AllCaughtUp = ({
+  ignored,
+  onBack,
+  onShowIgnored,
+}: {
+  /** How many titles are ignored; none or unknown offers no way to them. */
+  ignored?: number;
+  onBack: () => void;
+  onShowIgnored: () => void;
+}) => (
+  <Stack align="center" gap="3" paddingVertical={64}>
+    <Icon decorative glyph={icons.success} size="tv" />
+    <Text as="h2" textRole="heading">
+      All caught up
+    </Text>
+    <Text textRole="body" tone="secondary">
+      Loomarr named every file it found. When it can't name a new one, it waits here.
+    </Text>
+    <Stack align="center" direction="row" gap="4" wrap>
+      <Action icon="back" onPress={onBack} tone="primary">
+        Back to the Library
+      </Action>
+      {ignored ? (
+        <Action onPress={onShowIgnored} variant="ghost">
+          {ignored === 1 ? "1 ignored file" : `${ignored} ignored files`}
+        </Action>
+      ) : null}
+    </Stack>
+  </Stack>
+);
+
 /** The page's frame: the header, the way back and the two tabs. */
 const LibraryNeedsView = ({
   tab,
@@ -92,6 +138,7 @@ const LibraryNeedsView = ({
     />
     <Stack gap="4" maxWidth={896} paddingBottom={112} paddingHorizontal={24} paddingTop={8} width="100%">
       <Tabs
+        density={useDensity()}
         appearance="underline"
         label="Which files"
         onValueChange={onTabChange}
@@ -111,8 +158,10 @@ const LibraryNeedsPage = () => {
   const queryClient = useQueryClient();
   // Which titles are listed: a filter of the page, not an answer being drafted.
   const [tab, setFilterTab] = useState<NeedsTab>("waiting");
-  // An answered card remembers that it left. A new key forgets that, so a restored title shows.
-  const [restored, setRestored] = useState(0);
+  // An answered card remembers that it left. Counting a title's restores asks about it again.
+  const [restored, setRestored] = useState<Record<string, number>>({});
+  // The titles whose Bring back is on its way: the server refuses a second restore.
+  const bringing = useRef(new Set<string>());
   useLibraryScanFrames();
   const needs = useLibraryNeeds();
   const ignored = useInfiniteQuery({
@@ -140,9 +189,21 @@ const LibraryNeedsPage = () => {
       ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
     );
   const restore = async (ids: string[]) => {
-    await libraryApi.restoreLibraryIgnored({ ids });
-    await refresh();
-    setRestored((n) => n + 1);
+    try {
+      await libraryApi.restoreLibraryIgnored({ ids });
+    } finally {
+      // A refusal means the list on screen is stale, so it is read again either way.
+      await refresh();
+    }
+    setRestored((all) => ({ ...all, ...Object.fromEntries(ids.map((id) => [id, (all[id] ?? 0) + 1])) }));
+  };
+  const bringBack = (id: string) => {
+    if (bringing.current.has(id)) return;
+    bringing.current.add(id);
+    const bring = () => restore([id]);
+    bring()
+      .catch((e: unknown) => toastBringBackFailed(e, bring))
+      .finally(() => bringing.current.delete(id));
   };
 
   const nameOf = (id: string) => {
@@ -160,7 +221,9 @@ const LibraryNeedsPage = () => {
       const body = unwrap(await libraryApi.ignoreLibraryNeeds({ ids }));
       if (!body) throw new Error("Couldn't ignore the folder");
       const done = body.ids;
-      toastIgnored(`${done.length} in ${folder}`, () => restore(done));
+      toastIgnored(`${done.length === 1 ? "1 file" : `${done.length} files`} in ${folder}`, () =>
+        restore(done),
+      );
     } finally {
       void refresh();
     }
@@ -181,9 +244,16 @@ const LibraryNeedsPage = () => {
       {shown.error ? <ErrorState error={shown.error} onRetry={() => void shown.refetch()} /> : null}
       {tab === "waiting" && needs.loaded ? (
         <LibraryNeedsCards
+          empty={
+            <AllCaughtUp
+              ignored={total}
+              onBack={() => void navigate({ to: "/library" })}
+              onShowIgnored={() => setFilterTab("ignored")}
+            />
+          }
           hideHeading
-          key={restored}
           needs={needs.needs}
+          restored={restored}
           onChooseOrder={needs.answers.onChooseOrder}
           onIgnore={ignoreOne}
           onIgnoreFolder={ignoreFolder}
@@ -197,10 +267,7 @@ const LibraryNeedsPage = () => {
       {tab === "ignored" && ignored.data ? (
         <IgnoredList
           items={ignored.data.pages.flatMap((page) => page.items)}
-          onBringBack={(item) => {
-            const bring = () => restore([item.id]);
-            bring().catch((e: unknown) => toastUndoFailed(e, bring));
-          }}
+          onBringBack={(item) => bringBack(item.id)}
           onMore={ignored.hasNextPage ? () => void ignored.fetchNextPage() : undefined}
         />
       ) : null}
@@ -209,4 +276,4 @@ const LibraryNeedsPage = () => {
 };
 
 export type { NeedsTab };
-export { IgnoredList, LibraryNeedsPage, LibraryNeedsView };
+export { AllCaughtUp, IgnoredList, LibraryNeedsPage, LibraryNeedsView };

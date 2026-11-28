@@ -45,6 +45,8 @@ const NeedCard = ({
   const best = need.best;
   const [other, setOther] = useState(false);
   const wide = useWindowWidth() >= 640;
+  // A phone is touched, so its answers get the touch target.
+  const density = wide ? "pointer" : "touch";
   const opener = useRef<ComponentRef<typeof Action>>(null);
   // Set by Cancel and Escape: focus goes back to the button that opened the search.
   const [returning, setReturning] = useState(false);
@@ -62,7 +64,8 @@ const NeedCard = ({
     <Surface gap="control" padding="section">
       <Line alignItems="flex-start" columnGap="section" flexWrap={wide ? "nowrap" : "wrap"} rowGap="control">
         <Stack flexShrink={0} width={wide ? 144 : 112}>
-          <LibraryPoster art={best?.poster} big name={needName(need)} />
+          {/* With no guess the file name already leads the card, so the empty tile stays blank. */}
+          <LibraryPoster art={best?.poster} big name={best ? needName(need) : ""} />
         </Stack>
         <Stack flexBasis={240} flexGrow={1} flexShrink={1} gap="control" minWidth={0}>
           {phase ? (
@@ -93,22 +96,23 @@ const NeedCard = ({
                 {best ? (
                   <>
                     <Action
+                      density={density}
                       onPress={onYes}
                       tone={primary ? "primary" : undefined}
                       variant={primary ? undefined : "outline"}
                     >
                       Yes, that's it
                     </Action>
-                    <Action onPress={() => setOther(!other)} ref={opener} variant="outline">
+                    <Action density={density} onPress={() => setOther(!other)} ref={opener} variant="outline">
                       Pick a different title
                     </Action>
                   </>
                 ) : (
-                  <Action onPress={() => setOther(!other)} ref={opener} variant="outline">
+                  <Action density={density} onPress={() => setOther(!other)} ref={opener} variant="outline">
                     Find it
                   </Action>
                 )}
-                <Action onPress={onIgnore} variant="ghost">
+                <Action density={density} onPress={onIgnore} variant="ghost">
                   Ignore this
                 </Action>
               </Line>
