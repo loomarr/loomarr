@@ -72,8 +72,27 @@ type LibraryIgnoredTitle struct {
 	IgnoredAt time.Time
 }
 
+// LibraryAnswered is a title a batch answer or restore touched.
+type LibraryAnswered struct {
+	ID     string
+	Origin LibraryOrigin
+}
+
+var (
+	// ErrNotNeeded is a batch ignore naming a title that is not waiting in Needs you.
+	ErrNotNeeded = errors.New("library: that title does not need you")
+	// ErrNotIgnored is a batch restore naming a title that is not ignored.
+	ErrNotIgnored = errors.New("library: that title is not ignored")
+)
+
 // LibraryNeedsStore keeps Needs you (#2151 step 11).
 type LibraryNeedsStore interface {
+	// IgnoreLibraryNeeds ignores titles that need the maintainer, all in one transaction:
+	// ErrNotNeeded, and nothing saved, if any is not waiting in Needs you.
+	IgnoreLibraryNeeds(ctx context.Context, itemIDs []string, at time.Time) ([]LibraryAnswered, error)
+	// RestoreLibraryIgnored takes back the ignore of titles, all in one transaction:
+	// ErrNotIgnored, and nothing removed, if any is not ignored.
+	RestoreLibraryIgnored(ctx context.Context, itemIDs []string) ([]LibraryAnswered, error)
 	// LibraryIgnored is a page of the ignored titles with a present file, newest ignore first, and
 	// how many there are in all.
 	LibraryIgnored(ctx context.Context, limit, offset int) ([]LibraryIgnoredTitle, int, error)

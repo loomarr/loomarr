@@ -62,6 +62,8 @@ type LibraryRootService interface {
 	Link(ctx context.Context, itemID string, id librarystore.LibraryID) error
 	Ignore(ctx context.Context, itemID string) error
 	Unanswer(ctx context.Context, itemID string) error
+	IgnoreAll(ctx context.Context, itemIDs []string) error
+	RestoreAll(ctx context.Context, itemIDs []string) error
 	SearchTitles(ctx context.Context, term, kind string) ([]scan.SearchHit, error)
 	// Episode orders (#2151 decision 53).
 	OrderNeeds(ctx context.Context) ([]scan.OrderNeed, error)

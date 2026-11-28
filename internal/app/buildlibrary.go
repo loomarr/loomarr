@@ -206,7 +206,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	deps.owner.goRunAfterBuild(watcher.Run)
 	deps.owner.goRunAfterBuild(hooks.Run)
 	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
-		Orders: st, CollectionStore: st, Records: st, Keys: keys}
+		Orders: st, CollectionStore: st, Records: st, Keys: keys, Log: deps.log}
 	if provider != nil {
 		enricher = &scan.Enricher{
 			Store: st, Provider: provider, Rewrite: scanner.Rewrite,
