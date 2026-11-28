@@ -26,9 +26,9 @@ func ProjectConfirmedDecision(source SourceAsset, detector *Assessment, artifact
 	}
 	claims := make([]RoleClaim, 0, len(decision.Segments))
 	for index, segment := range decision.Segments {
-		role := Role(segment.Role)
+		role := segment.Role
 		disposition, dispositionErr := projectedStructureDisposition(segment.Disposition)
-		if dispositionErr != nil || !ValidRole(role) || disposition == DispositionUnresolved {
+		if dispositionErr != nil || !structure.ValidRole(role) || disposition == DispositionUnresolved {
 			return Assessment{}, fmt.Errorf("project structure decision: interval %d cannot enter V67", index)
 		}
 		intervalID := fmt.Sprintf("%sinterval-%04d", structureDecisionObservationPrefix, index+1)
