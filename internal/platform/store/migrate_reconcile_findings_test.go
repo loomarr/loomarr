@@ -33,9 +33,12 @@ type findingsMigrationCase struct {
 
 const (
 	appliedJSON   = `[{"kind":"episodeNoRepeat","from":"168h0m0s","to":"84h0m0s"},{"kind":"seriesMinGap","from":"2h0m0s","to":"0s"}]`
-	unairableJSON = `[{"key":"movie:tmdb:603","title":"Tom & Jerry <Restored>","reason":"not_in_library"},{"key":"series:tvdb:7","title":"Café","reason":"over_ceiling"}]`
+	// The first title is as Go's encoder writes "Pots & Pans <Restored>": with &, < and > escaped.
+	unairableJSON = `[{"key":"movie:tmdb:90000603","title":"Pots ` + escAmp + ` Pans ` + escLT + `Restored` + escGT +
+		`","reason":"not_in_library"},{"key":"series:tvdb:90000007","title":"Café","reason":"over_ceiling"}]`
+	escAmp, escLT, escGT = `\` + `u0026`, `\` + `u003c`, `\` + `u003e`
 	decidedJSON   = `"scope":{"dates":{"movieRelease":[{"from":1980,"to":1989}]},"collections":["comedy"]},"audience":{"ceiling":"PG-13","allowUnrated":true},"separation":{"seriesMinGap":"2h0m0s"},"ordering":"syndication"`
-	operatorJSON  = `"filler":{"pins":["clip_1"]},"window":"168h0m0s","growth":{"keep":true,"declined":["movie:tmdb:9"]}`
+	operatorJSON  = `"filler":{"pins":["clip_1"]},"window":"168h0m0s","growth":{"keep":true,"declined":["movie:tmdb:90000009"]}`
 )
 
 var findingsMigrationCases = []findingsMigrationCase{
@@ -163,7 +166,7 @@ func testReconcileFindingsMigration(t *testing.T, db *sql.DB, dialect Dialect, d
 		t.Fatal(err)
 	}
 	if len(both.Applied) != 2 || both.Applied[0].Kind != "episodeNoRepeat" || len(both.Unairable) != 2 ||
-		both.Unairable[0].Title != "Tom & Jerry <Restored>" || both.Unairable[1].Reason != schedule.UnairableOverCeiling {
+		both.Unairable[0].Title != "Pots & Pans <Restored>" || both.Unairable[1].Reason != schedule.UnairableOverCeiling {
 		t.Errorf("both findings decode to %+v", both)
 	}
 }

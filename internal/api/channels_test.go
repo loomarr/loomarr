@@ -1205,7 +1205,7 @@ func TestUpdateChannel_CannotWriteFindings(t *testing.T) {
 	forged := `[{"kind":"hacked","from":"x","to":"y"}]`
 	for _, body := range []string{
 		`{"policy":{"ordering":"shuffle","applied":` + forged + `}}`,
-		`{"policy":{"ordering":"shuffle","unairable":[{"key":"movie:tmdb:1","title":"x","reason":"unrated"}]}}`,
+		`{"policy":{"ordering":"shuffle","unairable":[{"key":"movie:tmdb:90000778","title":"x","reason":"unrated"}]}}`,
 		`{"findings":{"applied":` + forged + `}}`,
 	} {
 		resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, channelPatchBody(t, st, "c1", body))
