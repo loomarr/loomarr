@@ -17,10 +17,6 @@ export type { DemoBannerNext, DemoBannerProps } from "./src/demo-banner";
 export { DemoBanner } from "./src/demo-banner";
 export type { DemoSignInProps } from "./src/demo-sign-in";
 export { DemoSignIn } from "./src/demo-sign-in";
-export type { DeviceDisconnectActionProps } from "./src/device-disconnect";
-export { DeviceDisconnectAction } from "./src/device-disconnect";
-export type { DeviceSheetAccount, DeviceSheetProps } from "./src/device-sheet";
-export { confirmDisconnect, DeviceSheet } from "./src/device-sheet";
 export type {
   FilmStripLook,
   FilmStripProps,
@@ -127,8 +123,6 @@ export type {
 export { OnScreenLogoSection } from "./src/on-screen-logo";
 export type { ModalOverlayProps, OverlayAction, TransientOverlayProps } from "./src/overlay";
 export { ModalOverlay, TransientOverlay } from "./src/overlay";
-export type { ApprovalBrowser, PairingShellProps } from "./src/pairing-shell";
-export { PairingShell, pairingBackAvailable } from "./src/pairing-shell";
 export type { PictureCardProps, PictureRatio } from "./src/picture-card";
 export { PictureCard } from "./src/picture-card";
 export type {

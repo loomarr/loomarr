@@ -8,18 +8,16 @@ import {
   ClientPlatformProof,
   ClientShell,
   clientBackDestination,
-  DeviceDisconnectAction,
   ModalOverlay,
-  PairingShell,
   ProgrammeCard,
   ProgrammeIdentity,
-  pairingBackAvailable,
   StatePanel,
   SurfJourney,
   SurfRail,
   TransientOverlay,
   WatchingSurface,
 } from "../index";
+import { DeviceDisconnectAction, PairingShell, pairingBackAvailable } from "../pairing";
 
 describe("ui public interface", () => {
   it("exports the shared scaffold surface", () => {

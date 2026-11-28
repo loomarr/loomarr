@@ -9,6 +9,7 @@
     "./channels": "./channels.ts",
     "./filler": "./filler.ts",
     "./guide": "./guide.ts",
+    "./pairing": "./pairing.ts",
     "./requests": "./requests.ts"
   },
   "scripts": {

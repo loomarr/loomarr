@@ -9,6 +9,7 @@
       "@loomarr/fixtures": ["../packages/fixtures/src/index.ts"],
       "@loomarr/ui": ["../packages/ui/index.ts"],
       "@loomarr/ui/guide": ["../packages/ui/guide.ts"],
+      "@loomarr/ui/pairing": ["../packages/ui/pairing.ts"],
       "@loomarr/ui/requests": ["../packages/ui/requests.ts"]
     }
   },
