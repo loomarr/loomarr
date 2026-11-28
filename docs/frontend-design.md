@@ -884,7 +884,8 @@ the picture) is built. A desktop window, a television and a phone come in #4732,
   - **Rings.** Keyboard and remote focus draws the amber ring on exactly one control; a pointer over a
     control draws a plain ring, and none while the keyboard holds a ring elsewhere. A mouse click
     leaves no amber ring: clicking the control that holds one takes it away until the next key press.
-    The design system's `useRingFocus` decides the ring and `RingedPressable` draws it.
+    The design system's `useRingFocus` decides the ring; `RingTarget` is the pressable that carries
+    it for a face the caller draws, and `RingedPressable` is `RingTarget` with a fixed flat face.
   - **When Go live leaves from under the focus**, as it does once pressed on a television, focus moves
     to Channels.
   - Touch controls are at least 44 px. Over the picture the row is dark in both themes, on a foot
