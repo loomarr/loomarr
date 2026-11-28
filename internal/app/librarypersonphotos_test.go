@@ -138,6 +138,49 @@ func TestLibraryPersonPhotoSwapsWhenTheNewOneArrives(t *testing.T) {
 	}
 }
 
+// upload gives the person an uploaded photo, as an upload naming them as its owner does.
+func (p personPhotos) upload(personID, hash string) {
+	p.t.Helper()
+	at := time.UnixMilli(1_790_000_000_000)
+	err := errors.Join(
+		p.st.PutImage(p.ctx, clipstore.Image{Hash: hash, Origin: string(images.OriginUpload), Role: string(images.RolePoster),
+			Visibility: "member", CreatedAt: at, UpdatedAt: at, LastUsedAt: at}),
+		p.st.PutImageRef(p.ctx, clipstore.ImageRef{ImageHash: hash, OwnerKind: librarystore.LibraryPersonImageOwner,
+			OwnerID: personID, Role: string(images.RolePoster)}))
+	if err != nil {
+		p.t.Fatal(err)
+	}
+}
+
+// An uploaded photo wins over the provider's: the sweep keeps it, the page shows it, and the
+// importer never adopts over it.
+func TestLibraryPersonPhotoUploadWins(t *testing.T) {
+	p := newPersonPhotos(t)
+	const first, second = "https://image.example.org/1.jpg", "https://image.example.org/2.jpg"
+	provider, mine := strings.Repeat("1", 64), strings.Repeat("f", 64)
+	p.credit("Ada Quill", first)
+	p.land(first, provider)
+	p.upload("name:Ada Quill", mine)
+	// check fails unless the upload is held and shown, and nothing is queued over it.
+	check := func(when string) {
+		t.Helper()
+		p.tick()
+		owned, err := p.st.ImagesForOwner(p.ctx, librarystore.LibraryPersonImageOwner, "name:Ada Quill")
+		if err != nil || !slices.ContainsFunc(owned, func(i clipstore.Image) bool { return i.Hash == mine }) {
+			t.Fatalf("%s: owned = %+v, %v; the upload is gone", when, owned, err)
+		}
+		if got := p.shown(); !slices.Equal(got, []string{mine}) {
+			t.Fatalf("%s: shown = %v, want the upload", when, got)
+		}
+		if q := p.queue(); len(q) != 0 {
+			t.Fatalf("%s: queued over the upload: %+v", when, q)
+		}
+	}
+	check("after the upload")
+	p.credit("Ada Quill", second)
+	check("after the provider's photo changed")
+}
+
 // A cast photo is adopted at w185 in the bulk class (#4476), so it is fetched after a title's
 // artwork however late that arrives, and a second pass adopts nothing again.
 func TestLibraryPersonPhotos(t *testing.T) {

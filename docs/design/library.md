@@ -590,7 +590,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   who directed or created a listed title, or is among its ten top-billed actors, and has an https
   photo (`library_person_images`, on the poster ladder). A TMDB photo is requested at `w185`. The
   image fetch job pulls it in the bulk class, after title artwork, and backs off when it fails. A
-  person who changes photo is adopted again, and a removed person lets theirs go. A title page's
+  person who changes photo is adopted again and keeps the old one until the new bytes are stored.
+  A removed person lets theirs go. An uploaded photo wins over the provider's: the page shows it
+  (the newest, of several), nothing is adopted for that person, and the cleanup of replaced
+  photos never releases it. A title page's
   credit carries `photo`, an image reference and never the source's URL; it is absent until the
   bytes arrive, and the page shows initials. A member is sent photos only for the credits of a
   title they read.

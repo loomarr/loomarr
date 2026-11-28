@@ -49,13 +49,14 @@ type LibraryPeopleStore interface {
 	PruneLibraryPeople(ctx context.Context) (int, error)
 	// DueLibraryPersonPhotos lists up to limit people past the id after whose photo is to be
 	// imported, in id order: those who directed or created a listed title or are among its ten
-	// top-billed actors, with an https photo that no ref of theirs was adopted for.
+	// top-billed actors, with an https photo that no ref of theirs was adopted for, and no
+	// uploaded photo.
 	DueLibraryPersonPhotos(ctx context.Context, after string, limit int) ([]LibraryPersonPhoto, error)
 	// PutLibraryPersonPhoto gives a person the image hash adopted for their photo URL source,
 	// beside any they hold.
 	PutLibraryPersonPhoto(ctx context.Context, personID, role, imageHash, source string) error
-	// SettleLibraryPersonPhotos lets go of a person's other photos once the bytes of the one
-	// adopted for their current URL are stored.
+	// SettleLibraryPersonPhotos lets go of a person's other adopted photos once the bytes of the
+	// one adopted for their current URL are stored. An uploaded photo is never let go.
 	SettleLibraryPersonPhotos(ctx context.Context) error
 }
 
@@ -79,7 +80,8 @@ func (s *Store) PutLibraryPersonPhoto(ctx context.Context, personID, role, image
 
 func (s *Store) SettleLibraryPersonPhotos(ctx context.Context) error {
 	if _, err := s.h.ExecContext(ctx, `DELETE FROM library_person_images
-		WHERE source_url <> (SELECT p.photo FROM library_people p WHERE p.id = library_person_images.person_id)
+		WHERE source_url <> '' AND image_hash IN (SELECT hash FROM images WHERE origin = 'remote')
+		AND source_url <> (SELECT p.photo FROM library_people p WHERE p.id = library_person_images.person_id)
 		AND EXISTS (SELECT 1 FROM library_person_images n
 			JOIN library_people p ON p.id = n.person_id
 			JOIN images img ON img.hash = n.image_hash
@@ -91,7 +93,8 @@ func (s *Store) SettleLibraryPersonPhotos(ctx context.Context) error {
 }
 
 // DueLibraryPersonPhotos reads what each ref was adopted for, never the image's source URL: people
-// whose URLs serve identical bytes share one image row, which keeps only the latest URL.
+// whose URLs serve identical bytes share one image row, which keeps only the latest URL. A ref
+// with no source_url is an upload, which the importer leaves in charge.
 func (s *Store) DueLibraryPersonPhotos(ctx context.Context, after string, limit int) ([]LibraryPersonPhoto, error) {
 	if limit <= 0 {
 		return nil, nil
@@ -101,7 +104,7 @@ func (s *Store) DueLibraryPersonPhotos(ctx context.Context, after string, limit 
 		AND EXISTS (SELECT 1 FROM library_credits c WHERE c.person_id = p.id AND `+creditListed+`
 			AND (c.role IN ('director', 'creator') OR (c.role = 'actor' AND c.position < 10)))
 		AND NOT EXISTS (SELECT 1 FROM library_person_images r
-			WHERE r.person_id = p.id AND r.source_url = p.photo)
+			WHERE r.person_id = p.id AND r.source_url IN ('', p.photo))
 		ORDER BY p.id LIMIT ?`), after, limit)
 	if err != nil {
 		return nil, fmt.Errorf("due library person photos: %w", err)
