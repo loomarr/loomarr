@@ -42,7 +42,9 @@ const doc = (
   }
 ).document;
 
-const mount = (needs: LibraryNeed[]) => {
+type Rest = Partial<Pick<Parameters<typeof LibraryNeedsCards>[0], "orders" | "problems">>;
+
+const mount = (needs: LibraryNeed[], rest: Rest = {}) => {
   const host = doc.createElement("div");
   doc.body.append(host);
   const root = createRoot(host);
@@ -56,8 +58,8 @@ const mount = (needs: LibraryNeed[]) => {
           onLink={answered}
           onOpenTitle={() => {}}
           onSearch={() => Promise.resolve([])}
-          orders={[]}
-          problems={[]}
+          orders={rest.orders ?? []}
+          problems={rest.problems ?? []}
         />
       </LoomarrProvider>,
     ),
@@ -70,6 +72,20 @@ const mount = (needs: LibraryNeed[]) => {
 };
 
 describe("Needs you by folder", () => {
+  it("heads the order questions and the titles to look at, after the folders", () => {
+    const { host, cleanup } = mount([need("one", "Films")], {
+      orders: [{ id: "show", name: "Kestrel Bay", disk: [], files: [], choices: [] }],
+      problems: [{ id: "bad", kind: "movie", name: "Low Tide", unplayable: 1, extraBytes: 0 }],
+    });
+    const groups = Array.from(host.querySelectorAll('[role="region"] [role="region"]'));
+    expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual([
+      "Folder Films",
+      "Episode order questions",
+      "Needs a look",
+    ]);
+    cleanup();
+  });
+
   it("puts each folder's cards together under its heading", () => {
     const { host, cleanup } = mount([need("one", "Films"), need("two", "Tapes"), need("three", "Films")]);
     const sections = Array.from(host.querySelectorAll('[role="region"][aria-label^="Folder "]'));

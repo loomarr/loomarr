@@ -124,6 +124,10 @@ interface LibraryNeedsCardsProps extends LibraryNeedsAnswers {
   orders: readonly LibraryOrderNeed[];
   problems: readonly LibraryProblem[];
   onSearch: LibraryNeedSearch;
+  /** The page around the cards already says "Needs you" and how many wait. */
+  hideHeading?: boolean;
+  /** Ignores exactly these titles in one save; absent offers no folder answer. */
+  onIgnoreFolder?: (folder: string, ids: string[]) => Promise<void>;
   /** See why: opens a title's page. */
   onOpenTitle: (id: string) => void;
 }
