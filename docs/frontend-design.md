@@ -603,8 +603,10 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
 
 The layers above ship unchanged. The Cross's watching screen, `WatchScreen` in `@loomarr/ui`, is
 built beside them, driven by one framework-free model, `@loomarr/core/watch-screen`, and no route
-draws it yet. It takes the layout as a prop; only the desktop at full screen (`full`, the list over
-the picture) is built. A desktop window, a television and a phone come in #4732, #4736 and #4738.
+draws it yet. It takes the layout as a prop: the desktop at full screen (`full`, the list over the
+picture) and the desktop window (`window`, the list beside the picture and the film strip under it;
+§9.7) are built. A television and a phone come in #4736 and #4738. Switching between `window` and
+`full` keeps the picture playing, the watched channel, the list's group and its scroll position.
 
 - **What it draws, back to front.** The picture (a slot), the tune's static and bars (§9.4), the
   scrims, the lower third at the crossing and the quiet row under it (§9.2, §9.3), the first-run
@@ -644,17 +646,20 @@ the picture) is built. A desktop window, a television and a phone come in #4732,
   alone: it goes back to the playback before the first of its two clicks, however far apart they
   were, so the picture plays on afterwards and the clicks add nothing behind live. The player really
   was paused between the two clicks; that is under a second, and the screen counts it as nothing on
-  purpose. With the list open, a click on the picture closes the list instead.
+  purpose. With the list open over the picture, a click on the picture closes the list instead; in a
+  window the list is no layer, and a click on the picture pauses.
 - **A press away from an open menu** closes it and does nothing else, unless the control opens a menu
-  itself: then it switches to its own menu, or closes its own. A change of layout closes the list and
-  any menu.
+  itself: then it switches to its own menu, or closes its own. A change of layout closes any menu and
+  the list over the picture; in a window the list is always up.
 - **Back goes one step**: a menu's inner page back to the menu, a menu closed, typed digits cancelled,
   then the list's own steps (find closed, the tabs back to the list, the list closed); on the bare
-  picture Esc leaves full screen.
+  picture Esc leaves full screen. In a window the list never closes: its last step, and Esc from
+  anywhere else in the window, returns focus to the picture.
 - **A tune from outside** reaches the model as a `tuned` event; a caller never sends one to echo its
   own tune request, and an echo of the channel on screen changes nothing.
 - **The first-run hint** shows until the first channel change and then not again in that session; the
-  caller says whether it was seen before. It hides while the list is open and rests with the controls.
+  caller says whether it was seen before. It hides while the list is open over the picture and rests
+  with the controls; in a window it sits at the foot of the list's column.
 - **Last channel** is the channel just left. When the lineup says it cannot be played, `L` tunes
   nothing and the screen says why.
 - **One amber ring** at any moment, on the quiet row, the lower third's Go live or the list's cursor;
@@ -663,7 +668,9 @@ the picture) is built. A desktop window, a television and a phone come in #4732,
   is the picture's key. With the list open, the cursor's fill stays visible on the pinned channel.
 - **One pointer rule for the foot.** The lower third and the quiet row are one region that the
   screen owns: a pointer press anywhere in it takes focus off whichever of their controls holds it
-  (the list, a menu and a cover are outside it).
+  (the list, a menu and a cover are outside it). In a window the same rule holds for every region of
+  chrome the screen draws beside the picture: the list's header, the line under the picture with the
+  quiet row, the film strip and the facts.
 - **One rule for handing focus on.** Focus moves by itself because a control went away or a layer
   closed only after a key or a remote; after a pointer press it stays on the page. One note of the
   last input, kept for the whole page, decides; a menu a key closes gives focus back to its control.
@@ -1054,3 +1061,48 @@ then off the tabs back to the list, then closed. Nothing closes it on a timer.
   clear five seconds after the last key. There is no hint line: J draws none.
 - **Not drawn yet:** an iPad, an Android phone (until it is, it follows the iPhone layout without
   AirPlay), and what the remote's left and right do while the chrome is hidden.
+
+#### The Cross in a desktop window (target, not shipped yet; #4732)
+
+The table above is the shipped chrome. The Cross's watching screen (§9.1) draws a desktop window as
+`layout="window"`: nothing covers the picture, both arms are always up, and nothing rests.
+
+- **The arrangement** is two columns, 28 px from the top, 48 px from the sides and 32 px from the
+  foot, 48 px apart. The leading column, 400 px wide, holds the list's header (the back control,
+  named, then the Guide control; under them the group tabs and find) and, under it, the channel list
+  to the foot. The trailing column holds the picture at the top, the largest 16:9 box that fits,
+  standing on a line with the label ("Today on Coast 90s") and the quiet row's icons (§9.3: Pause,
+  Subtitles, Audio, Volume, Full screen, More; Go live leads them while behind live, since the
+  pinned lower third takes no focus); under the line the film strip of the channel shown (§9.2,
+  `strip` layout), and under that its programme's facts. Numeral and title are 56 and 28 px.
+- **The crossing** is level with the top of the strip: the watched channel is pinned in the list as
+  the lower third there, and the tune's seven bars run along the top of that pinned lower third. The
+  static covers the picture alone. The first-run hint sits at the foot of the list's column; a menu
+  stands over the quiet row; Playback details stays a panel over the upper left.
+- **A pointer looks before it tunes.** A pointer resting on another channel's row (about 140 ms)
+  looks at it: the strip shows that channel's day, the facts its programme on now, and the label
+  reads "Looking at 9 Movie Matinee · still playing 7 Coast 90s · click to tune". Looking ends the
+  moment the pointer leaves the row, the list scrolls, or a tune happens. A click on a row tunes;
+  after it the list re-centres, and the pointer must move about 14 px before it looks at or tunes
+  anything. Pointing at a programme in the strip shows its facts in place of the one on now.
+  Pointing is not focus: a plain highlight or a plain ring, never amber.
+- **Keys in a window.** Up and Down on the bare picture flip, as everywhere. With keyboard focus on
+  a row, Up and Down walk the rows without tuning and Enter tunes. Left and Right on the bare
+  picture take focus into the strip, onto the programme after or before the one on now, and move
+  along it from there (the strip is one Tab stop). Esc returns focus to the picture. The wheel
+  scrolls the list and never flips.
+- **The strip's words.** Under the picture the words always stand under the block, with or without
+  artwork, so a break's tick and the playhead never cross them; a Guide row keeps its words inside.
+  The screen hands the strip every airing the caller has for the channel's day, wider than the strip
+  draws, so a series run at either edge keeps its episode count; a run cut where the caller's own
+  airings stop shows none.
+- **Switching arrangements.** `F`, the Full screen control and a double click on the picture ask
+  for full screen; the caller swaps the layout prop. The picture keeps playing, and the watched
+  channel, the list's group and its scroll position are kept; any menu closes, and so does looking.
+- **A narrow window** (narrower than 900 px, measured on the screen itself, not the browser) stacks
+  the same parts as an upright phone does: the picture across the full width at 16:9, the lower
+  third with the quiet row's icons on the line under it, then the list's header and the whole list,
+  one scrollable list with the watched channel pinned in it as a row marked "watching". There is no
+  strip and no facts. 900 px is where the columns stop fitting: the 400 px list, the 48 px gap and
+  the 96 px of margins leave the picture 356 px across (200 px high), and any narrower it would be
+  smaller than the list beside it. The phone's own Guide is not drawn here.
