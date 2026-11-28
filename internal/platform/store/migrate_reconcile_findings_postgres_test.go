@@ -4,6 +4,7 @@ package store
 
 import (
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"testing"
 )
 
@@ -13,5 +14,5 @@ func TestPostgresReconcileFindingsMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testReconcileFindingsMigration(t, db, DialectPostgres, "migrations/postgres")
+	testReconcileFindingsMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }

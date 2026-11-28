@@ -21,7 +21,7 @@ func TestReconcileFindingsMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testReconcileFindingsMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testReconcileFindingsMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 type findingsMigrationCase struct {
@@ -80,7 +80,7 @@ var findingsMigrationCases = []findingsMigrationCase{
 // and is jsonb on Postgres, so both refuse them on write.
 var malformedPolicies = []string{`{"applied":[{"kind":"episodeNoRepeat"`, ``, `{"applied":[],}`}
 
-func testReconcileFindingsMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testReconcileFindingsMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)
@@ -91,7 +91,7 @@ func testReconcileFindingsMigration(t *testing.T, db *sql.DB, dialect Dialect, d
 		t.Fatalf("migrate through 263: %v", err)
 	}
 	ph := placeholder(storedb.Passthrough)
-	if dialect == DialectPostgres {
+	if dialect == storedb.DialectPostgres {
 		ph = storedb.PgPlaceholders
 	}
 	for i, c := range findingsMigrationCases {
@@ -109,7 +109,7 @@ func testReconcileFindingsMigration(t *testing.T, db *sql.DB, dialect Dialect, d
 	// stored is how the dialect renders a policy it holds: jsonb has its own spacing and key
 	// order, so on Postgres "byte for byte" means the bytes jsonb gives back for the wanted policy.
 	stored := func(policy string) string {
-		if dialect != DialectPostgres {
+		if dialect != storedb.DialectPostgres {
 			return policy
 		}
 		var out string

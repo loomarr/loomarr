@@ -1,19 +1,8 @@
 package store
 
 import (
-	"time"
-
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
-)
-
-// Tx and Scannable are the storedb kernel's types, re-exported so importers of this package keep
-// one import. They are aliases: the same types, not copies.
-type (
-	// Tx is one transaction begun through Handle.Begin (storedb.Tx).
-	Tx = storedb.Tx
-	// Scannable is the one method *sql.Row and *sql.Rows share (storedb.Scannable).
-	Scannable = storedb.Scannable
 )
 
 // Handle is the core store's database handle, lent to the stores that extend it
@@ -31,7 +20,7 @@ type Handle interface {
 	storedb.Handle
 	// Clips writes clip columns and tags inside tx, which Begin started. Extension stores write
 	// the clips table only through it.
-	Clips(tx Tx) clipstore.ClipTx
+	Clips(tx storedb.Tx) clipstore.ClipTx
 }
 
 // HandleOf lends st's database handle to an extension store, or returns nil for a non-SQL store.
@@ -61,15 +50,10 @@ type sqlHandle struct {
 	s *sqlStore
 }
 
-func (h sqlHandle) Clips(tx Tx) clipstore.ClipTx { return clipstore.ClipsOn(h.s.catalogCluster, tx) }
+func (h sqlHandle) Clips(tx storedb.Tx) clipstore.ClipTx {
+	return clipstore.ClipsOn(h.s.catalogCluster, tx)
+}
 
 // kernel is this store's pool, dialect and placeholder style as a storedb.Handle, for the store
 // packages that run on the kernel and for this package's own keyed locks.
 func (s *sqlStore) kernel() storedb.DB { return storedb.NewDB(s.db, s.dialect, s.ph) }
-
-// Epoch and FromEpoch are the store's Unix-seconds time-column codec, exported so extension stores
-// encode time exactly as the core does.
-func Epoch(t time.Time) int64 { return storedb.Epoch(t) }
-
-// FromEpoch decodes Epoch.
-func FromEpoch(n int64) time.Time { return storedb.FromEpoch(n) }

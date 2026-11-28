@@ -5,6 +5,8 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
+	"maps"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -135,52 +137,35 @@ var clusterPackages = map[string]bool{
 	modulePath + "/internal/platform/store/librarystore":     true,
 }
 
-// The store's cluster aliases are for the store itself. Everything else names the cluster type
-// (identitystore.User, clipstore.Clip), so a reader lands on the package that owns it. The
-// alias names are read from the store's own declarations, so adding an alias needs no edit here.
-func TestStoreClusterAliasesStayInsideTheStore(t *testing.T) {
-	packages := loomarrPackages(t)
-	storePkg := packages[modulePath+"/internal/platform/store"]
-	if storePkg == nil {
-		t.Fatal("internal/platform/store is not in the package graph")
+// A cluster's names have one spelling (identitystore.User, clipstore.Clip), so a reader lands on
+// the package that owns them. The store root therefore re-exports none of them.
+func TestStoreRootReExportsNoClusterName(t *testing.T) {
+	storePkg := loomarrPackages(t)[modulePath+"/internal/platform/store"]
+	if storePkg == nil || len(storePkg.GoFiles) == 0 {
+		t.Fatal("internal/platform/store is not in the package graph — the scan would vacuously pass")
 	}
-	aliases := storeClusterAliases(t, storePkg)
-	if len(aliases) == 0 {
-		t.Fatal("found no cluster aliases in internal/platform/store — the scan would vacuously pass")
+	for name, cluster := range storeClusterAliases(t, storePkg) {
+		t.Errorf("store re-exports %s.%s: consumers name the cluster package", cluster, name)
 	}
-	for packagePath, pkg := range packages {
-		if packagePath == modulePath+"/internal/platform/store" {
-			continue
-		}
-		files := append(append(append(append([]string(nil), pkg.GoFiles...), pkg.CgoFiles...),
-			pkg.TestGoFiles...), pkg.XTestGoFiles...)
-		for _, name := range files {
-			path := filepath.Join(pkg.Dir, name)
-			fset := token.NewFileSet()
-			file, err := parser.ParseFile(fset, path, nil, 0)
-			if err != nil {
-				t.Fatalf("parse %s: %v", path, err)
-			}
-			storeNames := importNames(t, path, file, modulePath+"/internal/platform/store")
-			if len(storeNames) == 0 {
-				continue
-			}
-			ast.Inspect(file, func(node ast.Node) bool {
-				selector, ok := node.(*ast.SelectorExpr)
-				if !ok {
-					return true
-				}
-				ident, ok := selector.X.(*ast.Ident)
-				if !ok || !storeNames[ident.Name] {
-					return true
-				}
-				if cluster, ok := aliases[selector.Sel.Name]; ok {
-					t.Errorf("%s:%d names store.%s — use %s.%s", path, fset.Position(selector.Pos()).Line,
-						selector.Sel.Name, cluster, selector.Sel.Name)
-				}
-				return true
-			})
-		}
+}
+
+func TestStoreClusterAliasesFindsTypesAndValues(t *testing.T) {
+	dir := t.TempDir()
+	src := `package store
+import (
+	"` + modulePath + `/internal/platform/store/clipstore"
+	"` + modulePath + `/internal/platform/store/storedb"
+)
+type Clip = clipstore.Clip
+var ErrTaxonConflict = clipstore.ErrTaxonConflict
+var ErrNotFound = storedb.ErrNotFound`
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := storeClusterAliases(t, &build.Package{Dir: dir, GoFiles: []string{"a.go"}})
+	want := map[string]string{"Clip": "clipstore", "ErrTaxonConflict": "clipstore"}
+	if !maps.Equal(got, want) {
+		t.Errorf("storeClusterAliases = %v, want %v", got, want)
 	}
 }
 

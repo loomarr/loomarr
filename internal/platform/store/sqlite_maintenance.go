@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // sqliteIncrementalVacuum is PRAGMA auto_vacuum's INCREMENTAL mode: freed pages are tracked so
@@ -54,7 +55,7 @@ func sqliteAutoVacuum(ctx context.Context, conn *sql.Conn) (int, error) {
 // refreshes the planner's statistics. The nightly housekeeping pass ends with it, right after its
 // purges free the most pages; Postgres does both itself (autovacuum).
 func (s *sqlStore) Tidy(ctx context.Context) (freedBytes int64, err error) {
-	if s.dialect != DialectSQLite {
+	if s.dialect != storedb.DialectSQLite {
 		return 0, errors.New("Tidy: not a SQLite store")
 	}
 	var free, pageSize int64
@@ -76,7 +77,7 @@ func DatabaseTidier(st Store) interface {
 	Tidy(ctx context.Context) (freedBytes int64, err error)
 } {
 	s, ok := adapterOf(st)
-	if !ok || s.dialect != DialectSQLite {
+	if !ok || s.dialect != storedb.DialectSQLite {
 		return nil
 	}
 	return s

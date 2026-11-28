@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/store/diagnosticsstore"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 func TestPostgresDiscoveryFeedbackOrphanCleanupMigration(t *testing.T) {
@@ -19,7 +20,7 @@ func TestPostgresDiscoveryFeedbackOrphanCleanupMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testDiscoveryFeedbackOrphanCleanupMigration(t, db, DialectPostgres, "migrations/postgres")
+	testDiscoveryFeedbackOrphanCleanupMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresFoldScopeEraMigration(t *testing.T) {
@@ -28,7 +29,7 @@ func TestPostgresFoldScopeEraMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testFoldScopeEraMigration(t, db, DialectPostgres, "migrations/postgres")
+	testFoldScopeEraMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresProposalDeniedTopicMigration(t *testing.T) {
@@ -37,7 +38,7 @@ func TestPostgresProposalDeniedTopicMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testProposalDeniedTopicMigration(t, db, DialectPostgres, "migrations/postgres")
+	testProposalDeniedTopicMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresStateChecksMigration(t *testing.T) {
@@ -46,7 +47,7 @@ func TestPostgresStateChecksMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testStateChecksMigration(t, db, DialectPostgres, "migrations/postgres")
+	testStateChecksMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresForeignKeyPolicyMigration(t *testing.T) {
@@ -55,7 +56,7 @@ func TestPostgresForeignKeyPolicyMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testForeignKeyPolicyMigration(t, db, DialectPostgres, "migrations/postgres")
+	testForeignKeyPolicyMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresQualitySnapshotMigration(t *testing.T) {
@@ -64,7 +65,7 @@ func TestPostgresQualitySnapshotMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testQualitySnapshotMigration(t, db, DialectPostgres, "migrations/postgres")
+	testQualitySnapshotMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresLibraryLinksMigration(t *testing.T) {
@@ -73,7 +74,7 @@ func TestPostgresLibraryLinksMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testLibraryLinksMigration(t, db, DialectPostgres, "migrations/postgres")
+	testLibraryLinksMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresFillerReferencesMigration(t *testing.T) {
@@ -82,7 +83,7 @@ func TestPostgresFillerReferencesMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testFillerReferencesMigration(t, db, DialectPostgres, "migrations/postgres")
+	testFillerReferencesMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresDeadIDColumnsMigration(t *testing.T) {
@@ -91,7 +92,7 @@ func TestPostgresDeadIDColumnsMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testDeadIDColumnsMigration(t, db, DialectPostgres, "migrations/postgres")
+	testDeadIDColumnsMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresLibraryReferencesMigration(t *testing.T) {
@@ -100,7 +101,7 @@ func TestPostgresLibraryReferencesMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testLibraryReferencesMigration(t, db, DialectPostgres, "migrations/postgres")
+	testLibraryReferencesMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresUpcomingAiringsReferenceMigration(t *testing.T) {
@@ -109,7 +110,7 @@ func TestPostgresUpcomingAiringsReferenceMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testUpcomingAiringsReferenceMigration(t, db, DialectPostgres, "migrations/postgres")
+	testUpcomingAiringsReferenceMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresLibraryReferencesPolicyMigration(t *testing.T) {
@@ -118,7 +119,7 @@ func TestPostgresLibraryReferencesPolicyMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testLibraryReferencesPolicyMigration(t, db, DialectPostgres, "migrations/postgres")
+	testLibraryReferencesPolicyMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresChannelJobsMigration(t *testing.T) {
@@ -127,7 +128,7 @@ func TestPostgresChannelJobsMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testChannelJobsMigration(t, db, DialectPostgres, "migrations/postgres")
+	testChannelJobsMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresPeopleKeysMigration(t *testing.T) {
@@ -136,7 +137,7 @@ func TestPostgresPeopleKeysMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testPeopleKeysMigration(t, db, DialectPostgres, "migrations/postgres")
+	testPeopleKeysMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresProposalPeopleMigration(t *testing.T) {
@@ -145,7 +146,7 @@ func TestPostgresProposalPeopleMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testProposalPeopleMigration(t, db, DialectPostgres, "migrations/postgres")
+	testProposalPeopleMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresLibraryCatalogJSONMigration(t *testing.T) {
@@ -154,7 +155,7 @@ func TestPostgresLibraryCatalogJSONMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testLibraryCatalogJSONMigration(t, db, DialectPostgres, "migrations/postgres")
+	testLibraryCatalogJSONMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresIndexNamesFollowConvention(t *testing.T) {
@@ -163,7 +164,7 @@ func TestPostgresIndexNamesFollowConvention(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testIndexNamesFollowConvention(t, db, DialectPostgres, "migrations/postgres")
+	testIndexNamesFollowConvention(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresFinishRungMigration(t *testing.T) {
@@ -172,7 +173,7 @@ func TestPostgresFinishRungMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testFinishRungMigration(t, db, DialectPostgres, "migrations/postgres")
+	testFinishRungMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresInvitationMigrationPreservesExistingContactAddresses(t *testing.T) {
@@ -181,7 +182,7 @@ func TestPostgresInvitationMigrationPreservesExistingContactAddresses(t *testing
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testInvitationMigrationPreservesExistingContactAddresses(t, db, DialectPostgres, "migrations/postgres")
+	testInvitationMigrationPreservesExistingContactAddresses(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresQuarantineLegacyFillerMigration(t *testing.T) {
@@ -190,7 +191,7 @@ func TestPostgresQuarantineLegacyFillerMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testQuarantineLegacyFillerMigration(t, db, DialectPostgres, "migrations/postgres")
+	testQuarantineLegacyFillerMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresFillerRoleNamesMigration(t *testing.T) {
@@ -199,7 +200,7 @@ func TestPostgresFillerRoleNamesMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testFillerRoleNamesMigration(t, db, DialectPostgres, "migrations/postgres")
+	testFillerRoleNamesMigration(t, db, storedb.DialectPostgres, "migrations/postgres")
 }
 
 func TestPostgresRetireFillerRuntimeRightsMigration(t *testing.T) {
@@ -281,7 +282,7 @@ func TestPostgresFillerStorageGovernorMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = s.Close() }()
-	provider, err := newMigrationProvider(s.db, DialectPostgres, "migrations/postgres")
+	provider, err := newMigrationProvider(s.db, storedb.DialectPostgres, "migrations/postgres")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +320,7 @@ func TestPostgresUniqueChannelIntentRefMigrationPreservesDuplicateChannels(t *te
 	}
 	defer func() { _ = db.Close() }()
 
-	provider, err := newMigrationProvider(db, DialectPostgres, "migrations/postgres")
+	provider, err := newMigrationProvider(db, storedb.DialectPostgres, "migrations/postgres")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,7 +399,7 @@ func TestPostgresChannelRevisionMigrationBackfillsExistingRows(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	provider, err := newMigrationProvider(db, DialectPostgres, "migrations/postgres")
+	provider, err := newMigrationProvider(db, storedb.DialectPostgres, "migrations/postgres")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +435,7 @@ func TestPostgresDiagnosticRetainedBytesMigrationSeedsTheTotalAndTrimsIndexes(t 
 		t.Fatal(err)
 	}
 	defer func() { _ = s.Close() }()
-	provider, err := newMigrationProvider(s.db, DialectPostgres, "migrations/postgres")
+	provider, err := newMigrationProvider(s.db, storedb.DialectPostgres, "migrations/postgres")
 	if err != nil {
 		t.Fatal(err)
 	}

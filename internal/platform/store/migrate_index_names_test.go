@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"strings"
 	"testing"
 )
@@ -14,13 +15,13 @@ func TestIndexNamesFollowConvention(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testIndexNamesFollowConvention(t, db, DialectSQLite, "migrations/sqlite")
+	testIndexNamesFollowConvention(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testIndexNamesFollowConvention holds every index the migrations create to storage.md's
 // `idx_<table>_<purpose>` (#2323). Indexes a database makes for a primary key or UNIQUE constraint
 // carry the engine's own names and are not checked.
-func testIndexNamesFollowConvention(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testIndexNamesFollowConvention(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)
@@ -31,7 +32,7 @@ func testIndexNamesFollowConvention(t *testing.T, db *sql.DB, dialect Dialect, d
 		t.Fatalf("migrate: %v", err)
 	}
 	query := `SELECT name, tbl_name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL`
-	if dialect == DialectPostgres {
+	if dialect == storedb.DialectPostgres {
 		query = `SELECT i.indexname, i.tablename FROM pg_indexes i
 			WHERE i.schemaname = current_schema() AND i.tablename <> 'goose_db_version'
 			  AND NOT EXISTS (SELECT 1 FROM pg_constraint c

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"testing"
 )
 
@@ -18,14 +19,14 @@ func TestProposalPeopleMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testProposalPeopleMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testProposalPeopleMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testProposalPeopleMigration proves the migration keeps each person who is a member, turns the
 // API token's empty id and 'api-token' and an id naming no user into NULL, records how each decided
 // suggestion was decided, and that afterwards the people are enforced and a deleted member is
 // cleared from what they asked for, decided and said.
-func testProposalPeopleMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testProposalPeopleMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)

@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"testing"
 )
 
@@ -12,10 +13,10 @@ func TestFillerPullCommitMigrationPreservesHistoricalRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testFillerPullCommitMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testFillerPullCommitMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
-func testFillerPullCommitMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testFillerPullCommitMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	provider, err := newMigrationProvider(db, dialect, dir)
 	if err != nil {

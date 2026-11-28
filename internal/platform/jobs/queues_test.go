@@ -8,7 +8,7 @@ import (
 
 	"github.com/riverqueue/river"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // The queue split (§18.1): a job's ceiling must bound only the jobs that share its queue.
@@ -47,7 +47,7 @@ func TestRiverQueues_EveryJobRoutesToAQueueThatHasAProducer(t *testing.T) {
 		Add(queueTestJob("slow", LongJobTimeout))
 	s := New(newFakeStore(), reg, nil, time.Now, testLog())
 
-	queues := s.riverQueues(store.DialectSQLite)
+	queues := s.riverQueues(storedb.DialectSQLite)
 
 	for _, j := range s.jobs {
 		if _, ok := queues[queueFor(j)]; !ok {
@@ -74,7 +74,7 @@ func TestQueueFor_TheWatchdogWaitsForNobody(t *testing.T) {
 		t.Errorf("the watchdog = %q, want %q", got, watchdogQueue)
 	}
 	s := New(newFakeStore(), NewRegistry().Add(queueTestJob("quick", 0)).Add(dog), nil, time.Now, testLog())
-	queues := s.riverQueues(store.DialectSQLite)
+	queues := s.riverQueues(storedb.DialectSQLite)
 	if q, ok := queues[watchdogQueue]; !ok || q.MaxWorkers != 1 {
 		t.Errorf("queues = %v, want a one-worker watchdog producer beside default", queues)
 	}
@@ -86,7 +86,7 @@ func TestRiverQueues_NoLongJobsMeansNoLongQueue(t *testing.T) {
 		Add(queueTestJob("quick", 0)).
 		Add(queueTestJob("bounded", 10*time.Second)), nil, time.Now, testLog())
 
-	queues := s.riverQueues(store.DialectSQLite)
+	queues := s.riverQueues(storedb.DialectSQLite)
 
 	if _, ok := queues[longQueue]; ok {
 		t.Errorf("queues = %v, want no `long` producer when no ceiling exceeds River's default", queues)

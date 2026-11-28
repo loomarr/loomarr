@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"slices"
 	"strings"
 	"testing"
@@ -78,7 +79,7 @@ func TestFlagsDeclaredOneWayMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	provider, err := newMigrationProvider(db, storedb.DialectSQLite, "migrations/sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}

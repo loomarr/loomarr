@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"testing"
 )
 
@@ -17,13 +18,13 @@ func TestLibraryLinksMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testLibraryLinksMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testLibraryLinksMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testLibraryLinksMigration proves the migration keeps every link that names a row, turns ” and
 // a link naming no row into NULL, drops a candidate whose title is gone, carries a title's
 // descendants across whole, and that afterwards the links are enforced.
-func testLibraryLinksMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testLibraryLinksMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)

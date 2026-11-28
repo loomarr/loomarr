@@ -27,7 +27,7 @@ One area of the [package map](../package-map.md#start-here).
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`platform/currenthealth`** · 1 importer · → `platform/diagnostics`, `platform/jobs`, `platform/settings`, `platform/store`
   Runs Loomarr's health checks: the startup report's integration checks, and the continuous Current Health probes the scheduler and the manual refresh share.
-- **`platform/databasemigration`** · 2 importers · → `platform/config`, `platform/store`
+- **`platform/databasemigration`** · 2 importers · → `platform/config`, `platform/store`, `platform/store/storedb`
   SQLite→PostgreSQL migration stepper's backend (§18, V11): it preflights a target, takes the backup the migration requires, and admits one atomic migrate-and-restart request.
 - **`platform/diagnostics`** · 16 importers · → `platform/storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
@@ -39,7 +39,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 - **`platform/httpx`** · 15 importers · → `platform/metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
-- **`platform/jobs`** · 10 importers · → `platform/store`, `platform/store/jobstore`
+- **`platform/jobs`** · 10 importers · → `platform/store`, `platform/store/jobstore`, `platform/store/storedb`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`platform/langcode`** · 6 importers
   Maps the ways a language gets written down onto one code per language, so a channel's commercial language, a setting and a detector's answer compare equal (#2030 decision 12).
@@ -95,7 +95,7 @@ One area of the [package map](../package-map.md#start-here).
   Persists the proposal-quality ledger (#2147 Wave 8): per-attempt receipts, their daily roll-ups, and the immutable run snapshots an evaluation pins its facts to.
 - **`platform/store/schemadoc`** · 1 importer
   The plain-words description of every table and column Loomarr's migrations create, and renders it as docs/reference/database.md for someone browsing the database (`make db-view`, sqlite3, any SQL client).
-- **`platform/store/storedb`** · 16 importers
+- **`platform/store/storedb`** · 19 importers
   Dependency-free kernel of Loomarr's persistence layer (design §5): the small, backend-level pieces every store package needs and that know nothing about any table.
 - **`platform/store/viewingstore`** · 3 importers · → `platform/store/storedb`
   Keeps the watch history (#3010): who watched what, on which channel and device, and for how long.

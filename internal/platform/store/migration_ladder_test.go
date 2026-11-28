@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"os"
 	"path/filepath"
 	"sync"
@@ -146,7 +147,7 @@ func migrateSQLiteFile(path string, version int64, connections sqliteConnections
 	if err != nil {
 		return err
 	}
-	provider, err := newMigrationProvider(db, DialectSQLite, "migrations/sqlite")
+	provider, err := newMigrationProvider(db, storedb.DialectSQLite, "migrations/sqlite")
 	if err != nil {
 		_ = db.Close()
 		return err

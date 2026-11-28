@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -20,13 +21,13 @@ func TestLibraryReferencesMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testLibraryReferencesMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testLibraryReferencesMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testLibraryReferencesMigration proves the migration keeps every title and airing that names a
 // library item, turns a title's empty or dangling library id into NULL, drops an airing that names
 // no item, and that afterwards the references are enforced and an item they name can't be deleted.
-func testLibraryReferencesMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testLibraryReferencesMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)

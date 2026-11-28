@@ -21,7 +21,7 @@ func TestFoldScopeEraMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testFoldScopeEraMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testFoldScopeEraMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 type eraFoldCase struct {
@@ -54,7 +54,7 @@ var eraFoldCases = []eraFoldCase{
 	}},
 }
 
-func testFoldScopeEraMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testFoldScopeEraMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)
@@ -65,7 +65,7 @@ func testFoldScopeEraMigration(t *testing.T, db *sql.DB, dialect Dialect, dir st
 		t.Fatalf("migrate through 245: %v", err)
 	}
 	ph := placeholder(storedb.Passthrough)
-	if dialect == DialectPostgres {
+	if dialect == storedb.DialectPostgres {
 		ph = storedb.PgPlaceholders
 	}
 	untouched := `{"scope":{"collections":["drama"]},"filler":{"era":{"from":1980,"to":1989}}}`

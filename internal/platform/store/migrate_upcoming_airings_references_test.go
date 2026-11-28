@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"path/filepath"
 	"testing"
 )
@@ -18,13 +19,13 @@ func TestUpcomingAiringsReferenceMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testUpcomingAiringsReferenceMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testUpcomingAiringsReferenceMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testUpcomingAiringsReferenceMigration proves the migration keeps every upcoming airing that
 // names a library item and drops one that names none, and that afterwards the reference is
 // enforced and an airing goes with its item.
-func testUpcomingAiringsReferenceMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testUpcomingAiringsReferenceMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)

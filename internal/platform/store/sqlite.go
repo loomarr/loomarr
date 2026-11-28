@@ -136,7 +136,7 @@ func openSQLiteDriver(ctx context.Context, driverName, path string) (*sqlStore, 
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
-	return bindClusters(&sqlStore{db: db, dialect: DialectSQLite, path: path, ph: storedb.Passthrough, claimSQL: sqliteClaimSQL, channelClaimSQL: sqliteChannelClaimSQL}), nil
+	return bindClusters(&sqlStore{db: db, dialect: storedb.DialectSQLite, path: path, ph: storedb.Passthrough, claimSQL: sqliteClaimSQL, channelClaimSQL: sqliteChannelClaimSQL}), nil
 }
 
 // openSQLiteReadOnly is the migration source opener. Both URI mode=ro and
@@ -154,5 +154,5 @@ func openSQLiteReadOnly(ctx context.Context, path string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping read-only sqlite: %w", err)
 	}
-	return bindClusters(&sqlStore{db: db, dialect: DialectSQLite, path: path, ph: storedb.Passthrough}), nil
+	return bindClusters(&sqlStore{db: db, dialect: storedb.DialectSQLite, path: path, ph: storedb.Passthrough}), nil
 }

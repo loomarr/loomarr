@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 const (
@@ -91,7 +92,7 @@ func ListenInvalidations(
 	handle func(context.Context, Invalidation) error,
 ) error {
 	s, ok := adapterOf(st)
-	if !ok || s.dialect != DialectPostgres || s.dsn == "" {
+	if !ok || s.dialect != storedb.DialectPostgres || s.dsn == "" {
 		return fmt.Errorf("listen durable invalidations: postgres store required")
 	}
 	conn, err := pgx.Connect(ctx, s.dsn)

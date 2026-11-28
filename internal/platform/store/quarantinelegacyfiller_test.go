@@ -17,14 +17,14 @@ func TestQuarantineLegacyFillerMigration_SQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	testQuarantineLegacyFillerMigration(t, s.db, DialectSQLite, "migrations/sqlite")
+	testQuarantineLegacyFillerMigration(t, s.db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testQuarantineLegacyFillerMigration applies the shipped migration to the schema it was written
 // for (through 00100), seeded with a deliberately old catalog. Running it at head would replay SQL
 // against columns later migrations dropped (#2323), so the fixture speaks the 00100 schema in raw
 // SQL rather than the current store API.
-func testQuarantineLegacyFillerMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testQuarantineLegacyFillerMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)
@@ -32,7 +32,7 @@ func testQuarantineLegacyFillerMigration(t *testing.T, db *sql.DB, dialect Diale
 		t.Fatal(err)
 	}
 	bind := func(query string) string {
-		if dialect == DialectPostgres {
+		if dialect == storedb.DialectPostgres {
 			return storedb.PgPlaceholders(query)
 		}
 		return query

@@ -19,13 +19,13 @@ func TestProposalDeniedTopicMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	testProposalDeniedTopicMigration(t, db, DialectSQLite, "migrations/sqlite")
+	testProposalDeniedTopicMigration(t, db, storedb.DialectSQLite, "migrations/sqlite")
 }
 
 // testProposalDeniedTopicMigration proves the rename moves what is already stored: an intent
 // queued under the old topic and a destination that chose it both carry the new name, and the
 // decider survives the column rename.
-func testProposalDeniedTopicMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
+func testProposalDeniedTopicMigration(t *testing.T, db *sql.DB, dialect storedb.Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
 	provider, err := newMigrationProvider(db, dialect, dir)
@@ -36,7 +36,7 @@ func testProposalDeniedTopicMigration(t *testing.T, db *sql.DB, dialect Dialect,
 		t.Fatalf("migrate through %d: %v", proposalDeniedMigration-1, err)
 	}
 	ph := placeholder(storedb.Passthrough)
-	if dialect == DialectPostgres {
+	if dialect == storedb.DialectPostgres {
 		ph = storedb.PgPlaceholders
 	}
 	for _, stmt := range []string{
