@@ -50,12 +50,12 @@ func buildRestart(overrides Overrides, log *slog.Logger) (system.RestartService,
 	return service, bootConfig
 }
 
-func buildDatabase(st store.Store, set resolved, overrides Overrides, eventBus *events.Bus) system.DatabaseService {
-	if st == nil {
+func buildDatabase(db databaseHandle, set resolved, overrides Overrides, eventBus *events.Bus) system.DatabaseService {
+	if !db.open {
 		return nil
 	}
 	service := databasemigration.New(
-		store.DialectOf(st), store.BackupWriter(st),
+		db.dialect, db.writer,
 		func() string { return settings.BackupDir.Get(set) }, databaseEvents{bus: eventBus}).
 		WithMigrationRequest(overrides.DatabaseMigration).
 		WithLastError(overrides.DatabaseMigrationError)
@@ -89,6 +89,8 @@ type operationsBuild struct {
 
 type operationsInput struct {
 	buildCore
+	stores                operationsStore // nil without persistence
+	database              databaseHandle
 	desiredSettings       resolved
 	refreshSecretRedactor func()
 	tmdbClient            *tmdb.Client
@@ -99,7 +101,7 @@ type operationsInput struct {
 }
 
 func buildOperations(in operationsInput) (operationsBuild, error) {
-	rootCtx, st, set, overrides, owner := in.ctx, in.store, in.settings, in.overrides, in.owner
+	rootCtx, st, set, overrides, owner := in.ctx, in.stores, in.settings, in.overrides, in.owner
 	libraryClient, secrets, readGeneratedSecret := in.libraryClient, in.secrets, in.readGeneratedSecret
 	eventBus, emitter, registry, log, metricRecorder := in.events, in.emitter, in.jobs, in.log, in.metrics
 	desiredSet, refreshSecretRedactor, tmdbClient := in.desiredSettings, in.refreshSecretRedactor, in.tmdbClient
@@ -107,8 +109,8 @@ func buildOperations(in operationsInput) (operationsBuild, error) {
 	protection, secretRedactor := in.protection, in.secretRedactor
 
 	restart, bootConfig := buildRestart(overrides, log)
-	backups := buildBackups(st, set, registry, log)
-	authResult := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
+	backups := buildBackups(in.database, set, registry, log)
+	authResult := buildAuth(st, in.database, set, secrets, readGeneratedSecret, libraryClient, log)
 	invitationService, _ := authResult.invitations.(*access.Service)
 	recoveryService := authResult.passwordRecovery
 	destinationRepository := notifications.NewProtectedRepository(st, protection).
@@ -149,7 +151,7 @@ func buildOperations(in operationsInput) (operationsBuild, error) {
 		})
 	}
 	providerValidators = append(accountDelivery.Validators, providerValidators...)
-	scheduler, err := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
+	scheduler, err := buildScheduler(rootCtx, st, in.database, set, registry, emitter, owner, log, metricRecorder)
 	if err != nil {
 		return operationsBuild{}, err
 	}
@@ -181,7 +183,7 @@ func buildOperations(in operationsInput) (operationsBuild, error) {
 		passwordRecovery:     accountDelivery.Recovery,
 		jobs:                 jobService,
 		scheduler:            scheduler,
-		database:             buildDatabase(st, set, overrides, eventBus),
+		database:             buildDatabase(in.database, set, overrides, eventBus),
 		residentLLM:          buildResidentLLM(set, log),
 	}
 	if secrets != nil {
@@ -196,7 +198,7 @@ func buildOperations(in operationsInput) (operationsBuild, error) {
 
 func migrateLegacySMTPProvider(
 	ctx context.Context,
-	st store.Store,
+	st operationsStore,
 	repository notifications.Repository,
 	set resolved,
 ) error {
@@ -277,8 +279,8 @@ func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
 	return residentLLMBuild{probe: probe}
 }
 
-func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *slog.Logger) system.BackupsService {
-	if writer := store.BackupWriter(st); writer != nil {
+func buildBackups(db databaseHandle, set resolved, registry *jobs.Registry, log *slog.Logger) system.BackupsService {
+	if writer := db.writer; writer != nil {
 		service := backup.New(backup.Config{
 			Writer:   writer,
 			Dir:      func() string { return settings.BackupDir.Get(set) },
@@ -288,7 +290,7 @@ func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *sl
 		registry.Add(service.Job(log))
 		return backupsAPI{service: service}
 	}
-	if st != nil {
+	if db.open {
 		registry.Add(backup.UnavailableJob(
 			"Loomarr does not back up PostgreSQL itself — use pg_dump on your usual schedule."))
 	}
@@ -314,7 +316,8 @@ type authBuild struct {
 }
 
 func buildAuth(
-	st store.Store,
+	st operationsStore,
+	db databaseHandle,
 	set resolved,
 	secrets *settings.Secrets,
 	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
@@ -370,14 +373,14 @@ func buildAuth(
 			return readGeneratedSecret(ctx, settings.SecretAPI)
 		},
 	)
-	if backuper := store.SQLiteBackuper(st); backuper != nil {
+	if backuper := db.streamer; backuper != nil {
 		result.backup = backuper
 	}
 	return result
 }
 
 func buildGuide(
-	st store.Store,
+	st operationsStore,
 	set resolved,
 	playoutResolver *resolve.Resolver,
 	appliedBackend func(context.Context) (string, error),
@@ -399,7 +402,7 @@ func buildGuide(
 }
 
 func buildSettings(
-	st store.Store,
+	st operationsStore,
 	set resolved,
 	desiredSet resolved,
 	secrets *settings.Secrets,
@@ -423,7 +426,8 @@ func buildSettings(
 
 func buildScheduler(
 	rootCtx context.Context,
-	st store.Store,
+	st operationsStore,
+	db databaseHandle,
 	set resolved,
 	registry *jobs.Registry,
 	emitter *eventEmitter,
@@ -445,11 +449,11 @@ func buildScheduler(
 	service.SeedRegistry(rootCtx)
 	// River is the only job executor: without it nothing runs on its schedule, so a failure to
 	// start fails the build rather than serving an app with a dead background.
-	pool := store.PoolOf(st)
+	pool := db.pool
 	if pool == nil {
 		return nil, errors.New("start River job queue: store exposes no database pool")
 	}
-	stop, err := service.StartRiver(rootCtx, store.DialectOf(st), pool, log)
+	stop, err := service.StartRiver(rootCtx, db.dialect, pool, log)
 	if err != nil {
 		return nil, fmt.Errorf("start River job queue: %w", err)
 	}

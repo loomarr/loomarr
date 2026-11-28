@@ -182,7 +182,7 @@ func buildHandler(
 		foundation.processDiagnostics, log, foundation.metrics)
 
 	core := buildCore{
-		ctx: rootCtx, store: st, settings: set, overrides: ov, owner: owner,
+		ctx: rootCtx, settings: set, overrides: ov, owner: owner,
 		libraryClient: libraryClient, secrets: secrets, readGeneratedSecret: readGeneratedSecret,
 		events: eventBus, emitter: emitter, jobs: jobReg, log: log, metrics: foundation.metrics,
 	}
@@ -233,7 +233,7 @@ func buildHandler(
 		"checked by Current Health once the scheduler is running", currenthealth.ScheduledTasksRoute, "")
 
 	operations, err := buildOperations(operationsInput{
-		buildCore: core, desiredSettings: desiredSet, refreshSecretRedactor: refreshSecretRedactor,
+		buildCore: core, stores: st, database: databaseOf(st), desiredSettings: desiredSet, refreshSecretRedactor: refreshSecretRedactor,
 		tmdbClient: tmdbClient, playoutResolver: playoutRes, appliedBackend: appliedBackendContext,
 		protection: foundation.protection, secretRedactor: foundation.secretRedactor,
 	})
