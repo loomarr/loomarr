@@ -135,7 +135,12 @@ const OrderCard = ({
                   {picked === FILES ? "Keep the file names" : "Use this order"}
                 </Action>
                 {problem ? (
-                  <Action density={density} onPress={() => onOpenTitle(need.id)} variant="ghost">
+                  <Action
+                    accessibilityLabel={`See why: ${need.name}`}
+                    density={density}
+                    onPress={() => onOpenTitle(need.id)}
+                    variant="ghost"
+                  >
                     See why
                   </Action>
                 ) : null}

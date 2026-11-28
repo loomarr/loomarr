@@ -1,13 +1,12 @@
 /// <reference lib="dom" />
-import { useState } from "react";
-
+import { useFocusLook } from "../focus-look";
 import { semanticRadius, semanticSpace, semanticTargets, typography } from "../tokens";
 import type { CompactSelectProps } from "./compact-select.type";
 
 // The web adapter: a native <select>, as the mocks draw every toolbar and settings-row choice, so
 // the browser owns the open list, typeahead and the phone's own picker. The closed box is the field
 // select's (SelectControl's `field` look) value for value, read through the theme's CSS variables so
-// light and dark both hold, with the amber ring outside a gap from the keyboard.
+// light and dark both hold, with the field's amber border on focus.
 const CompactSelect = <Value extends string>({
   "aria-describedby": describedBy,
   "aria-labelledby": labelledBy,
@@ -24,7 +23,8 @@ const CompactSelect = <Value extends string>({
 }: CompactSelectProps<Value>) => {
   // A <select> has no read-only state, so a locked one is disabled but keeps full strength.
   const locked = disabled || readOnly;
-  const [ringed, setRinged] = useState(false);
+  const { focused, onBlur, onFocus } = useFocusLook();
+  const borderWidth = focused ? 2 : 1;
   const text = typography[density].compact;
   return (
     <select
@@ -34,15 +34,15 @@ const CompactSelect = <Value extends string>({
       aria-labelledby={labelledBy}
       disabled={locked}
       id={id}
-      onBlur={() => setRinged(false)}
+      onBlur={onBlur}
       onChange={(event) => onValueChange(event.currentTarget.value as Value)}
-      onFocus={(event) => setRinged(event.currentTarget.matches(":focus-visible"))}
+      onFocus={onFocus}
       style={{
         backgroundColor: "var(--surfaceCanvas)",
-        borderColor: invalid ? "var(--stateDanger)" : "var(--borderControl)",
+        borderColor: invalid ? "var(--stateDanger)" : focused ? "var(--actionFocus)" : "var(--borderControl)",
         borderRadius: semanticRadius.control,
         borderStyle: "solid",
-        borderWidth: 1,
+        borderWidth,
         boxSizing: "border-box",
         color: "var(--contentPrimary)",
         cursor: disabled ? "not-allowed" : readOnly ? "default" : "pointer",
@@ -52,9 +52,10 @@ const CompactSelect = <Value extends string>({
         maxWidth: "100%",
         minHeight: semanticTargets[density],
         opacity: disabled ? 0.62 : 1,
-        outline: ringed ? `${density === "tv" ? 3 : 2}px solid var(--actionFocus)` : "none",
-        outlineOffset: 2,
-        paddingInline: semanticSpace.control,
+        // One ring, the border. A transparent outline is what forced colours paint instead.
+        outline: focused ? "2px solid transparent" : "none",
+        // The wider border takes its extra pixel from the padding, so the words stay put.
+        paddingInline: semanticSpace.control - (borderWidth - 1),
         width: width ?? "100%",
       }}
       value={value}

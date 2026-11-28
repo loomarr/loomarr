@@ -309,7 +309,7 @@ describe("Action primary focus (WCAG 2.4.7)", () => {
     },
   );
 
-  it("keeps the amber focus border on a secondary action, with no ring", () => {
+  it("keeps the amber focus border on a secondary action, with no second ring", () => {
     act(() => {
       root.render(
         <LoomarrProvider>
@@ -319,7 +319,10 @@ describe("Action primary focus (WCAG 2.4.7)", () => {
     });
     act(() => button().focus());
     expect(button().style.borderTopColor).toBe("rgb(255, 176, 32)");
-    expect(button().style.outlineStyle).not.toBe("solid");
+    // The outline is spoken for, so the browser draws none, and transparent, so only forced colours
+    // paint it.
+    expect(button().style.outlineStyle).toBe("solid");
+    expect(button().style.outlineColor).toBe("transparent");
   });
 });
 

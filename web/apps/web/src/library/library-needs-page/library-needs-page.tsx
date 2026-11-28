@@ -43,7 +43,7 @@ const IgnoredList = ({
   items: readonly LibraryIgnoredDTO[];
   onBringBack: (item: LibraryIgnoredDTO) => void;
   /** The rows whose Bring back is on its way. */
-  bringing?: ReadonlySet<string>;
+  bringing: ReadonlySet<string>;
   /** Absent once every ignored title is listed. */
   onMore?: () => void;
 }) => {
@@ -55,7 +55,7 @@ const IgnoredList = ({
     const row = pressed.current;
     if (!row) return;
     const listed = items.some((item) => item.id === row.id);
-    if (listed && bringing?.has(row.id)) return;
+    if (listed && bringing.has(row.id)) return;
     pressed.current = null;
     if (document.activeElement && document.activeElement !== document.body) return;
     // A refused row is still listed and takes focus back; a restored one hands it to its neighbour.
@@ -84,7 +84,7 @@ const IgnoredList = ({
           <div>
             <Action
               accessibilityLabel={`Bring back ${item.name}`}
-              disabled={bringing?.has(item.id)}
+              disabled={bringing.has(item.id)}
               onPress={() => bring(item, index)}
               ref={(node) => {
                 if (node) buttons.current.set(item.id, node as unknown as { focus?: () => void });
@@ -262,9 +262,9 @@ const LibraryNeedsPage = () => {
     if (bringing.current.has(id)) return;
     bringing.current.add(id);
     setBringingShown(new Set(bringing.current));
-    const bring = () => restore([id]);
-    bring()
-      .catch((e: unknown) => toastBringBackFailed(e, bring))
+    restore([id])
+      // The toast's Try again comes back through here, so it waits its turn like the row does.
+      .catch((e: unknown) => toastBringBackFailed(e, async () => bringBack(id)))
       .finally(() => {
         bringing.current.delete(id);
         setBringingShown(new Set(bringing.current));
