@@ -44,7 +44,11 @@ const withNativeProject = () => ({
     projects: [
       {
         ...universal,
-        test: { name: "web", include: ["tests/**/*.test.{ts,tsx}"], exclude: ["tests/**/*.native.test.tsx"] },
+        test: {
+          name: "web",
+          include: ["{src,tests}/**/*.test.{ts,tsx}"],
+          exclude: ["tests/**/*.native.test.tsx"],
+        },
       },
       { ...nativeAdapters, test: { name: "native", include: ["tests/**/*.native.test.tsx"] } },
     ],
