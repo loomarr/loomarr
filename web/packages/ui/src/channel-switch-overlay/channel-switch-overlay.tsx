@@ -1,4 +1,4 @@
-import { AnalogSnow, SignalLoader, Text, useReducedMotionPreference } from "@loomarr/design-system";
+import { AnalogSnow, Layer, SignalLoader, Text, useReducedMotionPreference } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Image, View } from "react-native";
 import type { ChannelSwitchOverlayProps } from "./channel-switch-overlay.type";
@@ -135,17 +135,14 @@ const ChannelSwitchOverlay = ({
   const motion = shown ? reducedMotion : true;
 
   return (
-    <View
-      accessibilityElementsHidden={!shown}
-      accessibilityLabel={
-        shown ? `Tuning in to channel ${channel.channelNumber}, ${channel.channelName}` : undefined
-      }
+    <Layer
       aria-hidden={!shown}
-      importantForAccessibility={shown ? "auto" : "no-hide-descendants"}
+      aria-label={shown ? `Tuning in to channel ${channel.channelNumber}, ${channel.channelName}` : undefined}
+      fill
+      opacity={shown ? 1 : 0}
       pointerEvents="none"
-      style={[fill, { opacity: shown ? 1 : 0 }]}
     >
-      <Animated.View style={[fill, { backgroundColor: "#0B0C0E", opacity: fade }]}>
+      <Layer background="playerSurface" fill opacity={fade}>
         {stillUri && failedUri !== stillUri ? (
           <Animated.View style={[fill, { filter: GREYED, opacity: drain }]}>
             <Image
@@ -161,9 +158,9 @@ const ChannelSwitchOverlay = ({
             />
           </Animated.View>
         ) : null}
-        <Animated.View style={[fill, { opacity: wash }]}>
+        <Layer fill opacity={wash}>
           <AnalogSnow reducedMotion={motion} />
-        </Animated.View>
+        </Layer>
         <View
           style={[fill, { alignItems: "center", gap: 12, justifyContent: "center", paddingHorizontal: 48 }]}
         >
@@ -192,8 +189,8 @@ const ChannelSwitchOverlay = ({
             </>
           ) : null}
         </View>
-      </Animated.View>
-    </View>
+      </Layer>
+    </Layer>
   );
 };
 

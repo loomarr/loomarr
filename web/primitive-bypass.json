@@ -278,15 +278,12 @@
       "inlineStyle": 4
     },
     "packages/ui/src/channel-switch-overlay/channel-switch-overlay.tsx": {
-      "inlineStyle": 9
+      "inlineStyle": 6
     },
     "packages/ui/src/channels/channel-audio-section/channel-audio-section.tsx": {
       "inlineStyle": 2
     },
     "packages/ui/src/client-navigation/client-navigation.tsx": {
-      "inlineStyle": 1
-    },
-    "packages/ui/src/film-strip/strip-block/strip-block.tsx": {
       "inlineStyle": 1
     },
     "packages/ui/src/guide/guide-compact/guide-compact.tsx": {
@@ -471,9 +468,6 @@
     },
     "packages/ui/src/watching-surface/player-chrome/preview-playbar/preview-playbar.tsx": {
       "inlineStyle": 17
-    },
-    "packages/ui/src/watching-surface/player-chrome/tune-dip/tune-dip.tsx": {
-      "inlineStyle": 1
     },
     "packages/ui/src/watching-surface/player-chrome/unmute-pill/unmute-pill.tsx": {
       "inlineStyle": 1

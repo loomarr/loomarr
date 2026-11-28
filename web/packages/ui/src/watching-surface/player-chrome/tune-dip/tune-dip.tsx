@@ -1,4 +1,4 @@
-import { playerChrome, useReducedMotionPreference } from "@loomarr/design-system";
+import { Layer, useReducedMotionPreference } from "@loomarr/design-system";
 import { useEffect, useRef } from "react";
 import { Animated } from "react-native";
 
@@ -24,21 +24,7 @@ const TuneDip = ({ tuneKey }: { tuneKey: string }) => {
     level.setValue(DEPTH);
     Animated.timing(level, { duration: DIP_MS, toValue: 0, useNativeDriver: false }).start();
   }, [tuneKey]);
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={{
-        backgroundColor: playerChrome.surface,
-        bottom: 0,
-        left: 0,
-        opacity: level,
-        position: "absolute",
-        right: 0,
-        top: 0,
-        zIndex: 20,
-      }}
-    />
-  );
+  return <Layer background="playerSurface" fill opacity={level} pointerEvents="none" zIndex={20} />;
 };
 
 export { TuneDip };
