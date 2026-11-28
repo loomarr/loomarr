@@ -579,7 +579,7 @@ func (b *ResourceBudget) PlaybackBusy() (bool, string) {
 // tightLocked reports whether live playout leaves too little room for background media work: room
 // for two more streams like the ones running, one for the media work itself and one for the next
 // viewer to tune in. Waiting while ANY stream ran starved filler for weeks on a household that
-// watches all day (2026-11-18: 16 clips queued since early November). An install whose capacity was
+// watches all day (one had 16 clips queued for over two weeks). An install whose capacity was
 // never measured has nothing to judge room by, so it keeps that rule: busy while anything transcodes.
 func (b *ResourceBudget) tightLocked(f BudgetFacts) (bool, string) {
 	use := b.useLocked(nil)

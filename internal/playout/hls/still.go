@@ -303,7 +303,7 @@ func FFmpegStill(ffmpegPath string, observers ...*diagnostics.ProcessManager) St
 }
 
 // FFmpegSourceStill builds the cold-channel extractor: seek the source to the airing's offset and
-// decode ONE frame on the CPU. Measured on 2026-09-26 (RTX 3080 Ti host): 1080p H.264 ~95 ms and 4K
+// decode ONE frame on the CPU. Measured on an RTX 3080 Ti host: 1080p H.264 ~95 ms and 4K
 // HEVC 10-bit ~105 ms end to end. -hwaccel cuda took ~330 ms for the same frame, because initialising
 // the GPU context costs more than the one decode it saves. Two choices make that speed possible:
 //   - -noaccurate_seek + -skip_frame nokey: the frame is the keyframe at or before "now" (at most one

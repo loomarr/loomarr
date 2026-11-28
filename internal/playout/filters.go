@@ -144,7 +144,7 @@ func GPUFiltersFor(ffmpegPath string) func() encode.GPUFilters {
 // an HDR transfer to SDR pixels, which is worse than doing nothing.
 //
 // ⚠ **No `-colorspace`/`-color_trc`/`-color_primaries`/`-color_range` output flags are needed, and
-// adding them would be cargo.** Measured 2026-08-09 against a real HDR10 source: this chain alone
+// adding them would be cargo.** Measured against a real HDR10 source: this chain alone
 // yields `yuv420p,tv,bt709,bt709,bt709`, byte-identical to the same run with all four flags set.
 // zscale rewrites the frames' colour properties and ffmpeg propagates them to the stream. A flag
 // that asserts what the pixels already prove does nothing.
