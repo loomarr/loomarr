@@ -340,10 +340,10 @@ func TestBuild_OneToneCurveEverywhere(t *testing.T) {
 					}
 				}
 			}
-			cpu, exact := c.cpu()
+			cpu, exact := c.CPU()
 			want := map[string]string{
-				TonemapperOpenCL:     "tonemap_opencl=" + c.openCL(),
-				TonemapperLibplacebo: "libplacebo=" + c.placebo(),
+				TonemapperOpenCL:     "tonemap_opencl=" + c.OpenCL(),
+				TonemapperLibplacebo: "libplacebo=" + c.Placebo(),
 				TonemapperCPU:        "tonemap=" + string(cpu),
 			}[p.Tonemapper]
 			if len(got) != 1 || got[0] != want {
@@ -365,13 +365,13 @@ func TestToneCurve_SpellingsExistInEachFilter(t *testing.T) {
 	cpuAndOpenCL := []string{"none", "linear", "gamma", "clip", "reinhard", "hable", "mobius"}
 	placebo := []string{"auto", "clip", "st2094-40", "st2094-10", "bt.2390", "bt.2446a", "spline", "reinhard", "mobius", "hable", "gamma", "linear"}
 	for _, c := range ToneCurves {
-		if o := c.openCL(); o != "" && !slices.Contains(cpuAndOpenCL, o) {
+		if o := c.OpenCL(); o != "" && !slices.Contains(cpuAndOpenCL, o) {
 			t.Errorf("%s: tonemap_opencl has no %q", c, o)
 		}
-		if !slices.Contains(placebo, c.placebo()) {
-			t.Errorf("%s: libplacebo has no %q", c, c.placebo())
+		if !slices.Contains(placebo, c.Placebo()) {
+			t.Errorf("%s: libplacebo has no %q", c, c.Placebo())
 		}
-		if cpu, _ := c.cpu(); !slices.Contains(cpuAndOpenCL, string(cpu)) {
+		if cpu, _ := c.CPU(); !slices.Contains(cpuAndOpenCL, string(cpu)) {
 			t.Errorf("%s: tonemap has no %q", c, cpu)
 		}
 		if ParseToneCurve(string(c)) != c {
