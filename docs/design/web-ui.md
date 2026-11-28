@@ -43,7 +43,17 @@ a dot for it.
 - **Favourites on Watch (#4731):** with the Channels drawer gone, the watched channel is starred or
   unstarred from More's Add to Favourites or Remove from Favourites row; the message line says what
   it did (`frontend-design.md` §9.5).
-- **Channel groups (target, not shipped; #4725):** the channel list, the Guide and Home's wall are
+- **Home's wall (#4734):** the wall is headed by the four group tabs below, one tab stop with Left
+  and Right inside, and Enter chooses. It opens on All, or on the group this browser last chose
+  (`localStorage` key `loomarr.channels.group`, which the Watch route's channel list is to read too,
+  #4731). The last watched
+  channel comes first, once, when the group holds it; the rest follow in the channel list's order.
+  By decade heads each decade in its tint, below the last watched tile. An empty group says so in
+  the channel list's words and offers "Show all channels". That includes an empty Recent, which the
+  channel list never shows because it always holds the watched channel. A tile still tunes and opens Watch, and
+  keyboard focus, never a pointer, draws the amber ring. A member's wall shows no viewer names. The
+  tabs scroll sideways on a phone and never wrap.
+- **Channel groups (target for the channel list and Guide; #4725):** the channel list, the Guide and Home's wall are
   headed by the same four groups, from `@loomarr/core/channel-lineup`: **Favourites** (the lineup
   keeps the order starred; the channel list shows them in number order), **All** (number order), **Recent** (newest first, at most 20) and **By decade** (each
   decade's channels in number order, decades ascending; a channel with no single decade is under All
@@ -75,8 +85,8 @@ a dot for it.
     later programme's facts show on a pointer or focus, under the Guide on an upright phone.
 - **Requests** (`/requests`) is one surface for everyone (#1405). Its nav count is what waits on the
   viewer, the same number as its **Needs you** tab.
-- **Home** (`/dashboard`, both roles) leads with what's on, not machine state (#1659, #1822): a
-  neutral channel-count line, then — only once something exists to show — the caller's recently
+- **Home** (`/dashboard`, both roles) leads with what's on, not machine state (#1659, #1822): the
+  channel wall (grouped as above) under a neutral channel-count line, then — only once something exists to show — the caller's recently
   tuned channel, up to six currently scheduled live channels ("Your channels" and each one's actual
   lifecycle when none currently has a block), actual Watching now sessions, typed Tonight
   highlights (premieres and marathons only), New this week, and each role's own requests or

@@ -18,6 +18,18 @@ const mount = async (node: ReactNode) => {
 afterEach(cleanup);
 
 describe("WallTile", () => {
+  it("draws the amber ring for the keyboard and none for a pointer, when asked to", async () => {
+    await mount(<WallTile art={null} channelName="Coast 90s" focusRing number="7" title="Coastline" />);
+    const tile = doc.body.querySelector("button") as HTMLButtonElement;
+    const press = (type: string) =>
+      act(async () => void tile.dispatchEvent(new Event(type, { bubbles: true })));
+    await act(async () => tile.focus());
+    await press("keydown");
+    expect(tile.style.outline).toContain("var(--actionFocus)");
+    await press("pointerdown");
+    expect(tile.style.outline).not.toContain("var(--actionFocus)");
+  });
+
   it("is one control holding the number, name, programme and detail", async () => {
     const onClick = vi.fn();
     await mount(

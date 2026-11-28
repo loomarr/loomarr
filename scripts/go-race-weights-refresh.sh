@@ -98,7 +98,7 @@ if [[ -n "$only" ]]; then
   mv "$samples.only" "$samples"
 else
   echo "# Measured \`go test\` seconds per package in the Go race-policy lanes: the median over the"
-  echo "# finished packages of the lane jobs in merge-group runs $*, rounded up. Regenerate with"
+  echo "# finished packages of the lane jobs in hosted runs $*, rounded up. Regenerate with"
   echo "# \`make go-race-weights RUNS=\"...\"\` (scripts/go-race-weights-refresh.sh); never edit by hand."
   echo "# Packages below five seconds use the one-second floor in go-shard.sh."
 fi
