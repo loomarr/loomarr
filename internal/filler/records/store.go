@@ -124,6 +124,7 @@ type FillerEnrichmentStore interface {
 	ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]clipstore.Clip, error)
 	ListFillerEnrichmentCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]clipstore.Clip, error)
 	ApplyFillerEnrichmentPass(ctx context.Context, pass enrichment.Pass) (int, error)
+	ApplyOperatorClipEdit(ctx context.Context, edit OperatorClipEdit) error
 	ListSettledGeographyClips(ctx context.Context) ([]SettledGeographyClip, error)
 }
 

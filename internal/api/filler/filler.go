@@ -22,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/filler/records"
 
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -491,7 +492,6 @@ func (s *Handlers) patchFillerClip(ctx context.Context, in *patchClipInput) (*cl
 	now := time.Now()
 	var operatorLeaves []string
 	var operatorForest *taxonomy.Forest
-	var operatorGeography *enrichment.Value
 	if in.Body.Hash == "" {
 		return nil, httpcore.Unprocessable("Missing clip", "A clip tag edit must name the clip by its hash.")
 	}
@@ -515,9 +515,8 @@ func (s *Handlers) patchFillerClip(ctx context.Context, in *patchClipInput) (*cl
 		}
 		return nil, err
 	}
-	// ⚠ EVERY refusal is decided before the first write. The writes below are separate store calls,
-	// so a tag or station rejected after the rename would leave the clip renamed and retagged
-	// behind a 422 — the operator would see "not saved" for an edit that had half-saved.
+	// ⚠ EVERY refusal is decided before the first write: the sidecar is written outside the store's
+	// transaction, so a tag or station rejected later would leave it renamed behind a 422.
 	//
 	// Resolve the operator's tag edit against the LIVE taxonomy (§10 V45a). Tags nil ⇒ leave the
 	// clip's tags alone (an era/audience/kind-only edit); an explicit [] ⇒ clear them. Each slug is
@@ -537,9 +536,25 @@ func (s *Handlers) patchFillerClip(ctx context.Context, in *patchClipInput) (*cl
 		}
 		geography = &g
 	}
-	// The rename goes before every other write, so a sidecar that cannot be updated refuses the
-	// whole edit rather than saving half of it.
+	edit := records.OperatorClipEdit{
+		Hash: clip.Hash, At: now, Reference: "operator.clip_edit",
+		// Only the fields the edit names are written, so a role-only or rename-only edit never
+		// blanks the era or audience. Setting an era also makes any era guess moot.
+		Era: in.Body.Era, Audience: in.Body.Audience, Geography: geography,
+	}
+	if in.Body.Role != "" {
+		edit.Role = &in.Body.Role
+	}
+	if in.Body.Brand != nil {
+		brand := strings.TrimSpace(*in.Body.Brand)
+		edit.Brand = &brand
+	}
+	if in.Body.Tags != nil {
+		edit.Tags = &records.OperatorTags{Leaves: operatorLeaves, Forest: operatorForest}
+	}
+	// The sidecar goes before the store, so one that cannot be updated refuses the whole edit.
 	if name != "" {
+		edit.Name = &name
 		// The sidecar first: a name only the database holds would be lost to the next scan, while a
 		// sidecar ahead of its row is healed by that scan. A clip with no file in the drop-folder is
 		// never rescanned, so the row alone is enough for it.
@@ -549,97 +564,15 @@ func (s *Handlers) patchFillerClip(ctx context.Context, in *patchClipInput) (*cl
 					"The clip's metadata file could not be updated, so nothing was changed. Try again.", err)
 			}
 		}
-		if err := s.store.RenameClip(ctx, clip.Hash, name, clips.NameFromCurated, now); err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return nil, httpcore.NotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
-			}
-			return nil, err
-		}
 	}
-	if in.Body.Tags != nil {
-		if err := s.store.SetClipTags(ctx, clip.Hash, operatorLeaves); err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return nil, httpcore.NotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
-			}
-			if errors.Is(err, clipstore.ErrTaxonConflict) {
-				return nil, httpcore.Conflict("Taxonomy changed", "The tag vocabulary changed while this clip was being edited. Review the tags and try again.")
-			}
-			return nil, err
+	if err := s.store.ApplyOperatorClipEdit(ctx, edit); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, httpcore.NotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 		}
-	}
-	// Setting an era makes any era guess moot: the Context suggestion hides its era once the clip
-	// has a verified one (clipContextSuggestionDTO).
-	// Only the fields the edit names are written: the columns carry the clip's stored values for
-	// the rest, so a role-only or rename-only edit never blanks the era or audience.
-	if in.Body.Era != nil || in.Body.Audience != nil {
-		era, audience := clip.Era, string(clip.Audience)
-		if in.Body.Era != nil {
-			era = *in.Body.Era
+		if errors.Is(err, clipstore.ErrTaxonConflict) {
+			return nil, httpcore.Conflict("Taxonomy changed", "The tag vocabulary changed while this clip was being edited. Review the tags and try again.")
 		}
-		if in.Body.Audience != nil {
-			audience = *in.Body.Audience
-		}
-		if err := s.store.UpdateClipClassification(ctx, clip.Hash, era, audience, now); err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return nil, httpcore.NotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
-			}
-			return nil, err
-		}
-	}
-	// Kind is a separate write because the AI tagging job shares UpdateClipClassification and must
-	// never touch kind. Both are idempotent single-row updates, so the same PATCH is
-	// safe to retry if the second fails.
-	if in.Body.Role != "" {
-		if err := s.store.UpdateClipRole(ctx, clip.Hash, in.Body.Role, now); err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return nil, httpcore.NotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
-			}
-			return nil, err
-		}
-	}
-	if geography != nil {
-		g := *geography
-		if err := s.store.UpdateClipGeography(ctx, clip.Hash, g.Scope, g.Country, g.Network, g.Station, g.AirDate, "operator", now); err != nil {
-			return nil, err
-		}
-		operatorGeography = &enrichment.Value{Geography: g}
-	}
-	if in.Body.Brand != nil {
-		brand := strings.TrimSpace(*in.Body.Brand)
-		if err := s.store.SetClipBrand(ctx, clip.Path, brand, now); err != nil {
-			return nil, err
-		}
-	}
-	evidence := operatorEvidence{s: s, clipHash: clip.Hash, reference: "operator.clip_edit", at: now}
-	if in.Body.Era != nil {
-		if err := evidence.record(ctx, enrichment.AxisEra, enrichment.Value{Year: *in.Body.Era}); err != nil {
-			return nil, err
-		}
-	}
-	if in.Body.Audience != nil {
-		if err := evidence.record(ctx, enrichment.AxisAudience, enrichment.Value{Text: *in.Body.Audience}); err != nil {
-			return nil, err
-		}
-	}
-	if in.Body.Role != "" {
-		if err := evidence.record(ctx, enrichment.AxisRole, enrichment.Value{Text: in.Body.Role}); err != nil {
-			return nil, err
-		}
-	}
-	if in.Body.Brand != nil {
-		if err := evidence.record(ctx, enrichment.AxisBrand, enrichment.Value{Text: strings.TrimSpace(*in.Body.Brand)}); err != nil {
-			return nil, err
-		}
-	}
-	if operatorGeography != nil {
-		if err := evidence.record(ctx, enrichment.AxisGeography, *operatorGeography); err != nil {
-			return nil, err
-		}
-	}
-	if in.Body.Tags != nil {
-		if err := evidence.recordTags(ctx, operatorForest, operatorLeaves); err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
 	c, err := s.store.GetClip(ctx, clip.Hash)
 	if err != nil {
