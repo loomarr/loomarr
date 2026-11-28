@@ -16,7 +16,7 @@ import type {
 const channelPhrase = (c: LibraryCollectionChannel) => `On ${c.name} (channel ${c.number})`;
 
 // Up to three posters fanned behind one another, the front one leading; the ones behind are dimmer.
-// Bare, as in the mock: the collection's name sits beside the pile, so no poster draws a title.
+// The collection's name sits beside the pile, so a poster with no artwork draws only its stand-in.
 const PILE_WIDTH = 96;
 const PosterPile = ({ pile }: { pile: readonly LibraryCollectionPoster[] }) => {
   const shown = pile.slice(0, 3);
@@ -26,7 +26,7 @@ const PosterPile = ({ pile }: { pile: readonly LibraryCollectionPoster[] }) => {
     <Stack aria-hidden flexShrink={0} height={160} position="relative" width={PILE_WIDTH + 16}>
       {layers.map((i) => (
         <Stack key={i} left={i * 8} position="absolute" top={(2 - i) * 6} width={PILE_WIDTH}>
-          <LibraryPoster art={shown[i]?.poster} dim={i > 0} name="" />
+          <LibraryPoster art={shown[i]?.poster} dim={i > 0} id={shown[i]?.id} name={shown[i]?.name ?? ""} />
         </Stack>
       ))}
     </Stack>

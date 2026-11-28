@@ -365,13 +365,13 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
-  // The name set on an artless poster stands in for artwork and sits over the dimmed frame, at
+  // The monogram on an artless poster stands in for artwork and sits over the dimmed frame, at
   // full contrast; assistive tech hears the title once, from the line under the poster.
-  it("keeps an artless poster's name out of the tile's name", () => {
+  it("keeps an artless poster's monogram out of the tile's name", () => {
     const { tile, cleanup } = render({});
     const hidden = tile("Paper Kites").querySelector('[aria-hidden="true"]');
-    expect(hidden?.textContent).toBe("Paper Kites");
-    // Nor does the frame caption itself "No artwork" under the name it already shows.
+    expect(hidden?.textContent).toBe("PK");
+    // Nor does the frame caption itself "No artwork" under the monogram.
     expect(tile("Paper Kites").textContent).not.toContain("No artwork");
     cleanup();
   });
