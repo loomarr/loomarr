@@ -166,6 +166,17 @@ const sendAppState = (state: string) =>
     for (const listener of [...appListeners]) listener(state);
   });
 
+// A read arrives some turns after the mount, and React applies its state only when an `act` ends,
+// so each try ends one before it looks.
+const eventually = (check: () => void) =>
+  vi.waitFor(
+    async () => {
+      await act(async () => {});
+      check();
+    },
+    { timeout: 4_000 },
+  );
+
 const mountClient = async (
   diagnostics?: { platform: string },
   lastChannel?: LastChannelStore,
@@ -527,21 +538,24 @@ describe("paired client", () => {
 
       expect(client().catalogState.error).toBe("catalog down");
       expect(fakes.lifetimes).toContain("myChannels:use");
-      await act(() => vi.waitFor(() => expect(client().serverVersion).toBe("1.2.3")));
+      await eventually(() => expect(client().serverVersion).toBe("1.2.3"));
       await act(async () => root.unmount());
     });
 
     it("loads all three at once, so a slow catalog does not hold the others back", async () => {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () => new Response(JSON.stringify({ dirty: false, version: "1.2.3" }), { status: 200 })),
+        vi.fn(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          return new Response(JSON.stringify({ dirty: false, version: "1.2.3" }), { status: 200 });
+        }),
       );
       fakes.catalogHeld = true;
       const { client, root } = await mountClient();
 
       expect(fakes.catalogLists).toHaveLength(1);
       expect(fakes.lifetimes).toContain("myChannels:use");
-      await act(() => vi.waitFor(() => expect(client().serverVersion).toBe("1.2.3")));
+      await eventually(() => expect(client().serverVersion).toBe("1.2.3"));
       await act(async () => root.unmount());
     });
 
