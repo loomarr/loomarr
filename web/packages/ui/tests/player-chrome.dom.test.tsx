@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider, playerChrome, semanticColors } from "@loomarr/design-system";
+import { playerChrome, semanticColors } from "@loomarr/design-system";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import type { ReactNode } from "react";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -19,41 +18,14 @@ import {
   PlayerVolume,
 } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+type Host = HTMLElement;
+type Node = Element;
 
-// The package compiles without the DOM lib (it is React Native first), so the test names the little
-// of the DOM it touches.
-type Node = { click(): void; getAttribute(n: string): string | null; textContent: string | null };
-type Host = Parameters<typeof createRoot>[0] & {
-  querySelector(s: string): Node | null;
-  querySelectorAll(s: string): ArrayLike<Node>;
-  remove(): void;
-  textContent: string | null;
-};
-const doc = (
-  globalThis as unknown as {
-    document: { body: { append(n: unknown): void }; createElement(t: string): Host };
-  }
-).document;
-
-const mounted: { host: Host; unmount: () => void }[] = [];
-const mount = (node: ReactNode) => {
-  const host = doc.createElement("div");
-  doc.body.append(host);
-  const root = createRoot(host);
-  act(() => root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>));
-  mounted.push({ host, unmount: () => act(() => root.unmount()) });
-  return host;
-};
-afterEach(() => {
-  for (const { host, unmount } of mounted.splice(0)) {
-    unmount();
-    host.remove();
-  }
-});
+const mount = (node: ReactNode) => renderUi(node).container;
+afterEach(cleanup);
 
 const button = (host: Host, name: string) =>
-  Array.from(host.querySelectorAll('[role="button"]')).find(
+  Array.from(host.querySelectorAll<HTMLElement>('[role="button"]')).find(
     (el) => el.getAttribute("aria-label") === name || el.textContent === name,
   );
 
@@ -66,7 +38,7 @@ const bandHidden = (host: Host) =>
 
 // A More row with a detail is named by what it shows, so it is found by its leading words.
 const row = (host: Host, name: string) =>
-  Array.from(host.querySelectorAll('[role="button"]')).find(
+  Array.from(host.querySelectorAll<HTMLElement>('[role="button"]')).find(
     (el) => el.getAttribute("aria-label") === name || el.textContent?.startsWith(name),
   );
 
@@ -493,24 +465,14 @@ describe("PlayerChrome", () => {
   });
 
   it("flips to the next channel quietly: the band stays up and names it, the sweep and dip add nothing to the tree", () => {
-    const host = doc.createElement("div");
-    doc.body.append(host);
-    const root = createRoot(host);
+    const { container: host, rerender } = renderUi(null);
     const draw = (channelNumber: string, channelName: string) =>
-      act(() =>
-        root.render(
-          <LoomarrProvider theme="dark">
-            {chrome({ band: { ...band, channelName, channelNumber } })}
-          </LoomarrProvider>,
-        ),
-      );
+      rerender(chrome({ band: { ...band, channelName, channelNumber } }));
     draw("7", "Coast 90s");
     draw("9", "Movie Matinee");
     expect(host.textContent).toContain("Movie Matinee");
     expect(host.textContent).toContain("CH9");
     expect(bandHidden(host)).toBe(false);
-    act(() => root.unmount());
-    host.remove();
   });
 
   it("leaves the picture bare when hidden, with its keys still reachable by focus", () => {
@@ -576,7 +538,7 @@ describe("PlayerOptions", () => {
       />,
     );
 
-    const radios = Array.from(host.querySelectorAll('[role="radio"]'));
+    const radios = Array.from(host.querySelectorAll<HTMLElement>('[role="radio"]'));
     expect(radios.map((r) => r.getAttribute("aria-checked"))).toEqual(["true", "false"]);
     expect(host.textContent).toContain("Best for your connection");
     act(() => radios[1]?.click());

@@ -1,10 +1,8 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
 import type { PlayerSnapshot } from "@loomarr/player";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import type { ReactNode } from "react";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WatchingSurface, type WatchingSurfaceProps } from "../index";
@@ -22,44 +20,20 @@ vi.mock("react-native", async (importOriginal) => {
   return { ...original, Pressable };
 });
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+type Host = HTMLElement;
 
-// The package compiles without the DOM lib (it is React Native first), so the test names the little
-// of the DOM it touches.
-type Node = { click(): void; getAttribute(n: string): string | null; textContent: string | null };
-type Host = Parameters<typeof createRoot>[0] & {
-  querySelector(s: string): Node | null;
-  querySelectorAll(s: string): ArrayLike<Node>;
-  remove(): void;
-  textContent: string | null;
-};
-const doc = (
-  globalThis as unknown as {
-    document: { body: { append(n: unknown): void }; createElement(t: string): Host };
-  }
-).document;
-
-const mounted: { host: Host; unmount: () => void }[] = [];
 const mount = (node: () => ReactNode) => {
-  const host = doc.createElement("div");
-  doc.body.append(host);
-  const root = createRoot(host);
-  const render = (next: () => ReactNode = node) =>
-    act(() => root.render(<LoomarrProvider theme="dark">{next()}</LoomarrProvider>));
-  render();
-  mounted.push({ host, unmount: () => act(() => root.unmount()) });
+  const { container: host, rerender } = renderUi(node());
+  const render = (next: () => ReactNode = node) => rerender(next());
   return { host, render };
 };
 afterEach(() => {
-  for (const { host, unmount } of mounted.splice(0)) {
-    unmount();
-    host.remove();
-  }
+  cleanup();
   vi.useRealTimers();
 });
 
 const button = (host: Host, name: string) =>
-  Array.from(host.querySelectorAll('[role="button"]')).find(
+  Array.from(host.querySelectorAll<HTMLElement>('[role="button"]')).find(
     (el) => el.getAttribute("aria-label") === name || el.textContent === name,
   );
 
@@ -205,7 +179,7 @@ describe("WatchingSurface", () => {
     );
     expect(host.textContent).toContain("Go live");
     // Named by what it shows: "Start over" and the programme.
-    const startOver = Array.from(host.querySelectorAll('[role="button"]')).find((el) =>
+    const startOver = Array.from(host.querySelectorAll<HTMLElement>('[role="button"]')).find((el) =>
       el.textContent?.startsWith("Start over"),
     );
     act(() => startOver?.click());
@@ -263,7 +237,7 @@ describe("WatchingSurface", () => {
     expect(onLayer).toHaveBeenLastCalledWith("subtitles");
     render(() => surface({ layer: "subtitles", onLayer, subtitles: subtitles(choose) }));
     const menu = '[role="dialog"][aria-label="Subtitles"]';
-    const rows = Array.from(host.querySelectorAll(`${menu} [role="radio"]`));
+    const rows = Array.from(host.querySelectorAll<HTMLElement>(`${menu} [role="radio"]`));
     expect(rows.map((row) => [row.textContent, row.getAttribute("aria-checked")])).toEqual([
       ["Off", "false"],
       ["English", "true"],

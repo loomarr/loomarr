@@ -1,51 +1,21 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
-import { act, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WallTile } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-// This package has no DOM lib (it targets React Native too), so the slice of the jsdom document
-// the test touches is typed here.
-type Node = {
-  click(): void;
-  getAttribute(name: string): string | null;
-  parentElement: Node | null;
-  querySelector(s: string): Node | null;
-  tagName: string;
-  textContent: string | null;
-};
-type Doc = {
-  body: Node & {
-    append(node: unknown): void;
-    querySelectorAll(s: string): ArrayLike<Node>;
-    replaceChildren(): void;
-  };
-  createElement(tag: string): Parameters<typeof createRoot>[0];
-};
-const doc = (globalThis as unknown as { document: Doc }).document;
-const computed = (node: Node) =>
-  (
-    globalThis as unknown as {
-      getComputedStyle(n: Node): { backgroundColor: string; color: string };
-    }
-  ).getComputedStyle(node);
+const doc = document;
+type Node = HTMLElement;
+const computed = (node: Element) => getComputedStyle(node);
 
 const mount = async (node: ReactNode) => {
-  const container = doc.createElement("div");
-  doc.body.append(container);
-  const root = createRoot(container);
   await act(async () => {
-    root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>);
+    renderUi(node);
   });
 };
-afterEach(() => {
-  doc.body.replaceChildren();
-});
+afterEach(cleanup);
 
 describe("WallTile", () => {
   it("is one control holding the number, name, programme and detail", async () => {
@@ -236,15 +206,10 @@ describe("WallTile compact (#3407)", () => {
 
 describe("WallTile in the light theme", () => {
   it("keeps its words in the dark scope, light on the scrim, as the player does", async () => {
-    const container = doc.createElement("div");
-    doc.body.append(container);
-    const root = createRoot(container);
     await act(async () => {
-      root.render(
-        <LoomarrProvider theme="light">
-          <WallTile art={null} channelName="Coast 90s" number="07" title="Coastline Mysteries" />
-        </LoomarrProvider>,
-      );
+      renderUi(<WallTile art={null} channelName="Coast 90s" number="07" title="Coastline Mysteries" />, {
+        theme: "light",
+      });
     });
     const title = doc.body.querySelector("h3") as Node;
     let scope: Node | null = title;

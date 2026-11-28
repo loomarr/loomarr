@@ -1,40 +1,19 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
-import { act, type ReactNode, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import { type ReactNode, useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { SearchButton, SearchField } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-// This package has no DOM lib (it targets React Native too), so the slice of the jsdom document
-// the test touches is typed here.
-type Input = { getAttribute(name: string): string | null; value: string };
-type Doc = {
-  body: {
-    append(node: unknown): void;
-    querySelector(s: string): Input | null;
-    querySelectorAll(s: string): ArrayLike<unknown>;
-    replaceChildren(): void;
-    textContent: string | null;
-  };
-  createElement(tag: string): Parameters<typeof createRoot>[0];
-};
-const doc = (globalThis as unknown as { document: Doc }).document;
+const doc = document;
 
 const mount = async (node: ReactNode) => {
-  const container = doc.createElement("div");
-  doc.body.append(container);
-  const root = createRoot(container);
   await act(async () => {
-    root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>);
+    renderUi(node);
   });
 };
-afterEach(() => {
-  doc.body.replaceChildren();
-});
+afterEach(cleanup);
 
 let latest = "";
 const Controlled = ({ clearLabel }: { clearLabel?: string }) => {

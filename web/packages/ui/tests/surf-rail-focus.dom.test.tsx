@@ -1,30 +1,12 @@
 // @vitest-environment jsdom
-import { LoomarrProvider } from "@loomarr/design-system";
 import { surfGroups } from "@loomarr/fixtures";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { declarationsOfElement } from "@loomarr/test-support/css";
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SurfRail } from "../index";
 
-// The package type-checks without the DOM lib, so the test names only the node surface it reads.
-type RailNode = {
-  className: string;
-  firstElementChild: RailNode | null;
-  focus(): void;
-  style?: { borderTopColor: string };
-  textContent: string | null;
-};
-type QueryRoot = {
-  querySelector(selector: string): RailNode | null;
-  querySelectorAll(selector: string): ArrayLike<RailNode>;
-};
-type Host = Parameters<typeof createRoot>[0] & QueryRoot & { remove(): void };
-const testDocument = (
-  globalThis as unknown as {
-    document: { body: { append(node: unknown): void }; createElement(tagName: string): Host };
-  }
-).document;
+type RailNode = HTMLElement;
+type QueryRoot = ParentNode;
 
 // The selected card draws focus through a Tamagui atomic class whose rule names `actionFocus`; an
 // Action draws it as react-native-web's inline border colour. Either is an amber on screen.
@@ -32,41 +14,33 @@ const amberCard = (node: RailNode) =>
   /(?<![-\w])border(?:-top)?-color:var\(--actionFocus\)/.test(declarationsOfElement(node));
 const amberAction = (node: RailNode) => node.style?.borderTopColor === "rgb(255, 176, 32)";
 const ambers = (host: QueryRoot) =>
-  Array.from(host.querySelectorAll("*")).filter((node) => amberCard(node) || amberAction(node));
+  Array.from(host.querySelectorAll<HTMLElement>("*")).filter((node) => amberCard(node) || amberAction(node));
 
 describe("TV surf rail focus (#1887)", () => {
   const channel = surfGroups.find((group) => group.kind === "recent")?.channels[0];
-  let host: Host;
-  let root: Root;
+  let host: HTMLElement;
+  let view: ReturnType<typeof renderUi>;
 
   beforeEach(() => {
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     // The dedicated ten-foot rail renders from a 1280px canvas.
     vi.stubGlobal("innerWidth", 1280);
-    host = testDocument.createElement("div");
-    testDocument.body.append(host);
-    root = createRoot(host);
-    act(() => {
-      root.render(
-        <LoomarrProvider>
-          <SurfRail
-            autoTune={{ choicesMs: [1_200, 5_000], onChange: vi.fn(), valueMs: 5_000 }}
-            clientVersion="prototype"
-            density="tv"
-            groups={surfGroups}
-            onDisconnect={vi.fn()}
-            onFocusSelection={vi.fn()}
-            onTune={vi.fn()}
-            selection={{ channelId: channel?.id ?? "", group: "recent" }}
-          />
-        </LoomarrProvider>,
-      );
-    });
+    view = renderUi(
+      <SurfRail
+        autoTune={{ choicesMs: [1_200, 5_000], onChange: vi.fn(), valueMs: 5_000 }}
+        clientVersion="prototype"
+        density="tv"
+        groups={surfGroups}
+        onDisconnect={vi.fn()}
+        onFocusSelection={vi.fn()}
+        onTune={vi.fn()}
+        selection={{ channelId: channel?.id ?? "", group: "recent" }}
+      />,
+    );
+    host = view.container;
   });
 
   afterEach(() => {
-    act(() => root.unmount());
-    host.remove();
+    cleanup();
     vi.unstubAllGlobals();
   });
 
@@ -131,23 +105,19 @@ describe("TV surf rail focus (#1887)", () => {
     onFocusSelection: () => void,
     focusRegistry?: { focused: () => void; register: () => void; request: () => void },
   ) =>
-    act(() => {
-      root.render(
-        <LoomarrProvider>
-          <SurfRail
-            autoTune={{ choicesMs: [1_200, 5_000], onChange: vi.fn(), valueMs: 5_000 }}
-            clientVersion="prototype"
-            density="tv"
-            focusRegistry={focusRegistry}
-            groups={surfGroups}
-            onDisconnect={vi.fn()}
-            onFocusSelection={onFocusSelection}
-            onTune={vi.fn()}
-            selection={{ channelId: channel?.id ?? "", group: "recent" }}
-          />
-        </LoomarrProvider>,
-      );
-    });
+    view.rerender(
+      <SurfRail
+        autoTune={{ choicesMs: [1_200, 5_000], onChange: vi.fn(), valueMs: 5_000 }}
+        clientVersion="prototype"
+        density="tv"
+        focusRegistry={focusRegistry}
+        groups={surfGroups}
+        onDisconnect={vi.fn()}
+        onFocusSelection={onFocusSelection}
+        onTune={vi.fn()}
+        selection={{ channelId: channel?.id ?? "", group: "recent" }}
+      />,
+    );
 
   it("registers each card with the focus registry and reports focus to it before the rail", () => {
     const calls: string[] = [];
