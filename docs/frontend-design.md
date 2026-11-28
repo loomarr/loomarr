@@ -118,7 +118,7 @@ Additional statics from the prototype: **`signal-400` `#FFC14D`** (hover/active 
 
 Semantic aliases map onto these (`primary`→signal, `destructive`→onair, `success`→lock, `warning`→caution, `info`→tune). The lifecycle states (§ main doc §4) map: `wanted`/`requested` static-400 · `downloading` tune · `available` lock · `unavailable` static-400 strikethrough · drift caution.
 
-**Decade tints (The Cross, #4722: the tokens exist, no surface draws them yet).** Six soft tints, one per decade, that reuse none of the accents above, so a decade is never read as live, a link, a warning or focus. They are theme-paired:
+**Decade tints (The Cross, #4722).** Six soft tints, one per decade, that reuse none of the accents above, so a decade is never read as live, a link, a warning or focus. They are theme-paired:
 
 | Decade | Dark theme | Light theme |
 | --- | --- | --- |
@@ -131,9 +131,10 @@ Semantic aliases map onto these (`primary`→signal, `destructive`→onair, `suc
 | Neutral (breaks) | `#8B93A3` | `#515866` |
 
 - **Where they go.** Only the watched channel's numeral and the By decade headings take them; every other channel number is plain. A channel with no single decade, or a decade outside the six, takes neutral, which is also the colour of a break.
-- **Contrast.** Each clears 4.5:1 (the headings are 12px, so small text) on its own theme's canvas, raised and elevated (nested and hover) surfaces, checked in CI. A tint is never drawn on the selection fill (`surface.focus`), where the light set does not clear 4.5:1.
+- **Contrast.** Each clears 4.5:1 (the headings are 12px, so small text) on its own theme's canvas, raised and elevated (nested and hover) surfaces, checked in CI.
+- **On the selection fill** (`surface.focus`). A By decade heading (12px, small text) is never drawn on it. The watched channel's numeral (large text) may be: each theme's six tints clear 3:1 there, checked in CI.
 - **Always-dark watching chrome** (the player's chrome over the picture) takes the dark set in both themes, as the player chrome tokens do.
-- The 1950s light value is deliberately low in saturation so it is not read as amber (`#795000`). Amber stays focus and typed digits, red stays live, cyan stays the break's "Back in n min".
+- The 1950s light value is less saturated than amber's light text stop (`#795000`). Amber stays focus and typed digits, red stays live, cyan stays the break's "Back in n min".
 - **Beside the shipped rule.** The shipped player and Guide fill a channel's number block with the three-decade era colour (§9.2) and draw it nowhere else. The Cross changes this when it ships; until then both token sets exist.
 
 The tokens in `web/packages/design-system/src/tokens` are the source of truth; hex above is for human reference.

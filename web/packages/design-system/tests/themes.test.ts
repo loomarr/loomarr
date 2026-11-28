@@ -90,12 +90,16 @@ describe.each(Object.entries(semanticThemes))("%s theme", (_name, theme) => {
 const tintDecades = ["1950", "1960", "1970", "1980", "1990", "2000"] as const;
 
 // The Cross's decade tints (§2.1): 12px headings, so AA for small text. Each theme's set is gated on
-// that theme's own surfaces; a tint is never drawn on the selection fill.
+// that theme's own surfaces. The selection fill takes only the watched numeral, which is large text.
 describe.each(Object.entries(semanticThemes))("%s decade tints", (_name, theme) => {
   it.each([...tintDecades, "neutral"] as const)("keeps %s at WCAG AA on canvas, raised and hover", (key) => {
     for (const surface of [theme.surface.canvas, theme.surface.raised, theme.surface.elevated]) {
       expect(contrast(theme.decadeTint[key], surface)).toBeGreaterThanOrEqual(4.5);
     }
+  });
+
+  it.each(tintDecades)("keeps the %s numeral at large-text contrast on the selection fill", (key) => {
+    expect(contrast(theme.decadeTint[key], theme.surface.focus)).toBeGreaterThanOrEqual(3);
   });
 
   it("reuses no accent", () => {
@@ -127,8 +131,9 @@ describe("decadeTint", () => {
 
   it("carries each theme's own set to the native theme", () => {
     for (const mode of ["dark", "light"] as const) {
-      for (const key of tintDecades) {
-        const entry = getConfig().themes[mode]?.[`decadeTint${key}`] as unknown as { val: string };
+      for (const key of [...tintDecades, "neutral"] as const) {
+        const name = key === "neutral" ? "decadeTintNeutral" : (`decadeTint${key}` as const);
+        const entry = getConfig().themes[mode]?.[name] as unknown as { val: string };
         expect(entry.val).toBe(semanticThemes[mode].decadeTint[key]);
       }
     }

@@ -199,7 +199,7 @@ const semanticThemes = {
       ink: brandContract.ground,
     },
     // Each dark tint's hue, darkened to clear 4.5:1 as small text on the light canvas, raised and
-    // elevated surfaces. The 1950s stays low in saturation so it is not read as amber (#795000).
+    // elevated surfaces. The 1950s is less saturated than amber's light text stop (#795000).
     decadeTint: {
       "1950": "#7A6644",
       "1960": "#AB4764",
