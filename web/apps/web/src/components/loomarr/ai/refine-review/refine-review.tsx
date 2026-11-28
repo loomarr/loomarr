@@ -4,7 +4,7 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { Range } from "@loomarr/api/models/range";
 import { tidyGoDuration } from "@loomarr/core/format";
 import { Action, Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
-import { seasonalModeLabel } from "@loomarr/ui";
+import { seasonalModeLabel } from "@loomarr/ui/channels";
 import { seasonalModeOf } from "@/components/loomarr/channels/channel-seasonal";
 import { eraOf } from "@/lib/era-dates";
 import { playOrderLabel } from "@/lib/play-order-copy";
