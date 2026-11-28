@@ -658,6 +658,14 @@ tables:
       role: What the image is for, poster.
       image_hash: The image (an images hash).
 
+  - name: library_person_images
+    about: The photo of a person the Library credits, shown in a title page's cast and crew.
+    retention: Goes with its person or its image.
+    columns:
+      person_id: The person (a library_people id).
+      role: What the image is for, poster.
+      image_hash: The image (an images hash).
+
   - name: image_derivatives
     about: >
       One resized copy of an image in one format, stored as a file on disk. Made on demand or in the
