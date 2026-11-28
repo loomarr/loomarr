@@ -12,16 +12,18 @@ import (
 )
 
 // LibraryAnswer is the answer for a title nothing grounds (#2151 step 11): the catalog title it is
-// (a link), or that it is not a title at all.
+// (a link), that it is not a title at all, or that it is the household's own, kept as it is.
 type LibraryAnswer struct {
 	Origin LibraryOrigin
 	// Kind is movie or series.
 	Kind string
-	// ID is the linked title, by any catalog's id; zero when Ignored.
-	ID         LibraryID
-	Ignored    bool
+	// ID is the linked title, by any catalog's id; zero when Ignored or Kept.
+	ID      LibraryID
+	Ignored bool
+	// Kept is a home video.
+	Kept       bool
 	AnsweredAt time.Time
-	// By is who answered; "" saves as the maintainer. Only the maintainer ignores a title.
+	// By is who answered; "" saves as the maintainer. Only the maintainer ignores or keeps a title.
 	By LibraryAnswerBy
 }
 
@@ -83,6 +85,8 @@ var (
 	ErrNotNeeded = errors.New("library: that title does not need you")
 	// ErrNotIgnored is a batch restore naming a title that is not ignored.
 	ErrNotIgnored = errors.New("library: that title is not ignored")
+	// ErrNotKeepable is a keep of a title that is not waiting in Needs you, or that has a guess.
+	ErrNotKeepable = errors.New("library: only a title that needs you and has no guess can be kept")
 )
 
 // LibraryNeedsStore keeps Needs you (#2151 step 11).
@@ -90,6 +94,9 @@ type LibraryNeedsStore interface {
 	// IgnoreLibraryNeeds ignores titles that need the maintainer, all in one transaction:
 	// ErrNotNeeded, and nothing saved, if any is not waiting in Needs you.
 	IgnoreLibraryNeeds(ctx context.Context, itemIDs []string, at time.Time) ([]LibraryAnswered, error)
+	// KeepLibraryNeed answers a title that needs the maintainer and has no candidate as a home
+	// video: ErrNotKeepable, and nothing saved, otherwise.
+	KeepLibraryNeed(ctx context.Context, itemID string, at time.Time) (LibraryAnswered, error)
 	// RestoreLibraryIgnored takes back the ignore of titles, all in one transaction:
 	// ErrNotIgnored, and nothing removed, if any is not ignored.
 	RestoreLibraryIgnored(ctx context.Context, itemIDs []string) ([]LibraryAnswered, error)
@@ -293,9 +300,9 @@ func (s *Store) LibraryItemOrigin(ctx context.Context, itemID string) (string, L
 func (s *Store) LibraryAnswerFor(ctx context.Context, origin LibraryOrigin) (LibraryAnswer, bool, error) {
 	a := LibraryAnswer{Origin: origin}
 	var at int64
-	err := s.h.QueryRowContext(ctx, s.ph(`SELECT kind, namespace, external_id, ignored, answered_at_ms, answered_by
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT kind, namespace, external_id, ignored, kept, answered_at_ms, answered_by
 		FROM library_answers WHERE origin_authority = ? AND origin_key = ?`), origin.Authority, origin.Key).Scan(
-		&a.Kind, &a.ID.Namespace, &a.ID.Value, &a.Ignored, &at, &a.By)
+		&a.Kind, &a.ID.Namespace, &a.ID.Value, &a.Ignored, &a.Kept, &at, &a.By)
 	if errors.Is(err, sql.ErrNoRows) {
 		return LibraryAnswer{}, false, nil
 	}
@@ -310,28 +317,29 @@ func (s *Store) SaveLibraryAnswer(ctx context.Context, a LibraryAnswer) error {
 	if a.Origin.Authority == "" || a.Origin.Key == "" || a.Kind == "" || a.AnsweredAt.IsZero() {
 		return fmt.Errorf("save library answer: origin, kind and time are required")
 	}
-	if a.Ignored == (a.ID != LibraryID{}) {
-		return fmt.Errorf("save library answer: an answer is either a link or ignored")
+	linked := a.ID != LibraryID{}
+	if a.Ignored && a.Kept || linked == (a.Ignored || a.Kept) {
+		return fmt.Errorf("save library answer: an answer is exactly one of a link, ignored or kept")
 	}
-	if !a.Ignored && (a.ID.Namespace == "" || a.ID.Value == "") {
+	if linked && (a.ID.Namespace == "" || a.ID.Value == "") {
 		return fmt.Errorf("save library answer: a link names a catalog and an id")
 	}
 	if a.By == "" {
 		a.By = AnsweredByYou
 	}
-	if a.By != AnsweredByYou && (a.By != AnsweredBySearch || a.Ignored) {
+	if a.By != AnsweredByYou && (a.By != AnsweredBySearch || !linked) {
 		return fmt.Errorf("save library answer: %q cannot give this answer", a.By)
 	}
 	// A search never replaces the maintainer's answer (decision 58), even one given between the
 	// Matcher's look and this write.
 	if _, err := s.h.ExecContext(ctx, s.ph(`INSERT INTO library_answers
-		(origin_authority, origin_key, kind, namespace, external_id, ignored, answered_at_ms, answered_by)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		(origin_authority, origin_key, kind, namespace, external_id, ignored, kept, answered_at_ms, answered_by)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (origin_authority, origin_key) DO UPDATE SET kind = excluded.kind, namespace = excluded.namespace,
-		external_id = excluded.external_id, ignored = excluded.ignored, answered_at_ms = excluded.answered_at_ms,
-		answered_by = excluded.answered_by
+		external_id = excluded.external_id, ignored = excluded.ignored, kept = excluded.kept,
+		answered_at_ms = excluded.answered_at_ms, answered_by = excluded.answered_by
 		WHERE excluded.answered_by = ? OR library_answers.answered_by <> ?`),
-		a.Origin.Authority, a.Origin.Key, a.Kind, a.ID.Namespace, a.ID.Value, a.Ignored, a.AnsweredAt.UnixMilli(), string(a.By),
+		a.Origin.Authority, a.Origin.Key, a.Kind, a.ID.Namespace, a.ID.Value, a.Ignored, a.Kept, a.AnsweredAt.UnixMilli(), string(a.By),
 		string(AnsweredByYou), string(AnsweredByYou)); err != nil {
 		return fmt.Errorf("save library answer: %w", err)
 	}

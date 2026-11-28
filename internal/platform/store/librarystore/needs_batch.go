@@ -21,6 +21,23 @@ func (s *Store) IgnoreLibraryNeeds(ctx context.Context, itemIDs []string, at tim
 		})
 }
 
+func (s *Store) KeepLibraryNeed(ctx context.Context, itemID string, at time.Time) (LibraryAnswered, error) {
+	out, err := s.answerEach(ctx, "keep library need", ErrNotKeepable, []string{itemID},
+		`SELECT i.origin_authority, i.origin_key FROM library_items i WHERE i.id = ? AND `+needWhere+` AND `+itemListed+`
+			AND NOT EXISTS (SELECT 1 FROM library_candidates c WHERE c.inventory_item_id = i.id)`,
+		func(ctx context.Context, tx execer, o LibraryOrigin, itemID string) (sql.Result, error) {
+			return tx.ExecContext(ctx, s.ph(`INSERT INTO library_answers
+				(origin_authority, origin_key, kind, kept, answered_at_ms, answered_by)
+				SELECT ?, ?, kind, TRUE, ?, ? FROM library_items WHERE id = ?
+				ON CONFLICT (origin_authority, origin_key) DO NOTHING`),
+				o.Authority, o.Key, at.UnixMilli(), string(AnsweredByYou), itemID)
+		})
+	if err != nil {
+		return LibraryAnswered{}, err
+	}
+	return out[0], nil
+}
+
 func (s *Store) RestoreLibraryIgnored(ctx context.Context, itemIDs []string) ([]LibraryAnswered, error) {
 	return s.answerEach(ctx, "restore ignored library titles", ErrNotIgnored, itemIDs,
 		`SELECT i.origin_authority, i.origin_key FROM library_items i WHERE i.id = ?`,

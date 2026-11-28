@@ -522,6 +522,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   **A member reads only an identified title named by a catalogue.** A movie or series is one a
   member reads when a catalogue identifies it (it has a match basis) or the maintainer has
   answered it, the maintainer has not said it is not a title, and its name came from a catalogue
+  (or the maintainer kept it as a home video, which keeps its file's name)
   or sidecar (`name_from`). An episode is one when its show is, and its show's catalog numbers and
   names it. Everything waiting in Needs you is left out, because its name is its file's or its
   folder's. So is an identified title whose catalogue record isn't read yet, and an episode the
@@ -750,6 +751,17 @@ step 5). Nothing reads the scanner's origins until the cutover.
   queuing the files to be read again is best-effort, carries on if the request is dropped, is
   bounded to a minute, and only logs a failure. Episode order and "needs a look" cards are not in
   folder groups.
+- **Home videos** (#4476). "It's ours, keep it as is" (`POST /v1/library/items/{id}/keep`, admin
+  only) answers a waiting title that has no catalog guess: no row in `library_candidates`. A title
+  with a guess, or one not waiting in Needs you, is refused (409). The answer is stored in
+  `library_answers` as `kept`; an answer is exactly one of a link, ignored or kept. `DELETE
+  …/answer` takes it back, and the title waits in Needs you again; "Wrong title?" replaces it with
+  a link. A kept title is answered, so no scan or Matcher pass matches it or returns it to Needs
+  you. It keeps the name its file or folder gives it, with the year when the name has one, and a
+  multi-part folder is one title with parts. Its genre is "Home videos", so the genre filter and
+  search find it. Members read it like any other title, a show's episodes included. The list and
+  detail reads mark it `homeVideo`. The list read also marks `unidentified` a title that is waiting
+  in Needs you.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left

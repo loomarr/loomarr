@@ -1000,7 +1000,7 @@ The catalog search results for a movie or show Loomarr can't identify, offered i
 
 ### library_answers
 
-The answer for a movie or show nothing else identifies, either the catalog title it is or "not a title". Kept against the title's scan origin, so it outlives the title being rewritten; deleted when the answer is taken back.
+The answer for a movie or show nothing else identifies: the catalog title it is, "not a title", or a home video kept as it is. Kept against the title's scan origin, so it outlives the title being rewritten; deleted when the answer is taken back.
 
 **Kept:** Kept until someone takes the answer back, even after the title leaves the library.
 
@@ -1009,11 +1009,12 @@ The answer for a movie or show nothing else identifies, either the catalog title
 | `origin_authority` | The scanned folder of the title's scan origin, as in library_items. | `TEXT` · key |
 | `origin_key` | Where in that folder the title is, as in library_items. | `TEXT` · key |
 | `kind` | One of movie or series. | `TEXT` |
-| `external_id` | The title's id in that catalog; empty when ignored. | `TEXT` |
+| `external_id` | The title's id in that catalog; empty when ignored or kept. | `TEXT` |
 | `ignored` | 1 when a person said it is not a title. | `BOOLEAN` |
 | `answered_at_ms` | When the answer was given, in Unix milliseconds. | `INTEGER` |
 | `answered_by` | Who gave it. you is a person, in Needs you or Wrong title?; search is Loomarr itself, when exactly one catalog result agreed on name, year and length. A person's answer replaces a search answer. | `TEXT` |
-| `namespace` | The catalog of the title it is linked to, such as tmdb; empty when ignored. | `TEXT` |
+| `namespace` | The catalog of the title it is linked to, such as tmdb; empty when ignored or kept. | `TEXT` |
+| `kept` | 1 when a person kept it as a home video. | `BOOLEAN` |
 
 ### library_episode_orders
 

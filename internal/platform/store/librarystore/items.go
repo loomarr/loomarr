@@ -436,7 +436,15 @@ const extraCopies = `library_sources s WHERE s.item_id = i.id AND NOT s.plays`
 var memberReads = `(` + titleIdentified("i") + ` OR (i.kind = 'episode' AND i.unnumbered = FALSE
 	AND i.name_from <> ''
 	AND EXISTS (SELECT 1 FROM library_files f JOIN library_items s ON s.id = f.inventory_series_id
-		WHERE f.inventory_item_id = i.id AND ` + presentFile + ` AND ` + titleIdentified("s") + `)))`
+		WHERE f.inventory_item_id = i.id AND ` + presentFile + ` AND ` + titleIdentified("s") + `))
+	OR (i.kind = 'episode' AND EXISTS (SELECT 1 FROM library_files f JOIN library_items s ON s.id = f.inventory_series_id
+		WHERE f.inventory_item_id = i.id AND ` + presentFile + ` AND ` + titleKept("s") + `)))`
+
+// titleKept is the condition on the movie or series t that the maintainer kept it as a home video.
+func titleKept(t string) string {
+	return `EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = ` + t + `.origin_authority
+		AND a.origin_key = ` + t + `.origin_key AND a.kept = TRUE)`
+}
 
 // titleIdentified is memberReads for the movie or series t. Identified is read from the match
 // basis, not the grounded flag: a row written before the scanner recorded either reads grounded
@@ -444,8 +452,9 @@ var memberReads = `(` + titleIdentified("i") + ` OR (i.kind = 'episode' AND i.un
 func titleIdentified(t string) string {
 	answer := `SELECT 1 FROM library_answers a WHERE a.origin_authority = ` + t + `.origin_authority
 		AND a.origin_key = ` + t + `.origin_key`
-	return `(` + t + `.kind IN ('movie', 'series') AND ` + t + `.name_from <> ''
-		AND (` + t + `.match_basis <> '' OR EXISTS (` + answer + `))
+	return `(` + t + `.kind IN ('movie', 'series')
+		AND ((` + t + `.name_from <> '' AND (` + t + `.match_basis <> '' OR EXISTS (` + answer + `)))
+			OR ` + titleKept(t) + `)
 		AND NOT EXISTS (` + answer + ` AND a.ignored = TRUE))`
 }
 
