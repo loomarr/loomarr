@@ -53,7 +53,7 @@ func (a Split) Ports() filler.SplitPorts {
 
 // GetClip reports an absent clip as not found rather than as an error.
 func (a Split) GetClip(ctx context.Context, id string) (clipstore.Clip, bool, error) {
-	return Sync{st: a.st}.GetClip(ctx, id)
+	return findClip(ctx, a.st, id)
 }
 
 // ListClips is the unfiltered catalog.

@@ -397,7 +397,7 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 				Tools:    fillerTools,
 				Loudness: fillerTools,
 				Provider: visionProvider,
-				Taxa:     storeadapter.NewVision(st),
+				Taxa:     st,
 				ClipDir:  clipDir,
 				Budget: func() int {
 					if !settings.FillerVisionEnabled.Get(set) {

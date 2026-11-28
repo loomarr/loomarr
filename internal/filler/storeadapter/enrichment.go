@@ -6,15 +6,17 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
-	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // Enrichment bridges the store → the enrichment package's repository seams.
-type Enrichment struct{ st records.Store }
+type Enrichment struct {
+	taxaLister
+	st records.Store
+}
 
 // NewEnrichment returns the enrichment repository over st.
-func NewEnrichment(st records.Store) Enrichment { return Enrichment{st: st} }
+func NewEnrichment(st records.Store) Enrichment { return Enrichment{taxaLister: st, st: st} }
 
 func (r Enrichment) ListCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]enrichment.Candidate, error) {
 	clips, err := r.st.ListFillerEnrichmentCandidates(ctx, producer, producerVersion, taxonomyVersion, limit)
@@ -40,10 +42,6 @@ func enrichmentCandidates(clips []clipstore.Clip, err error) ([]enrichment.Candi
 
 func (r Enrichment) ListStates(ctx context.Context, clipHash string) ([]enrichment.State, error) {
 	return r.st.ListFillerEnrichment(ctx, clipHash)
-}
-
-func (r Enrichment) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error) {
-	return r.st.ListTaxa(ctx)
 }
 
 func (r Enrichment) ApplyPass(ctx context.Context, pass enrichment.Pass) (int, error) {
