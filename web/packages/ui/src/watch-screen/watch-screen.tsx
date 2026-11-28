@@ -11,7 +11,7 @@ import {
   VisuallyHidden,
 } from "@loomarr/design-system";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { Animated, type LayoutChangeEvent, Platform, useWindowDimensions } from "react-native";
+import { Animated, type LayoutChangeEvent, Platform } from "react-native";
 
 import { ChannelList, type ChannelListHandle, type ChannelListScroll } from "../channel-list";
 import { FilmStrip, type FilmStripHandle, type FilmStripLook } from "../film-strip";
@@ -103,6 +103,13 @@ const sizeOf = (event: LayoutChangeEvent): Size => {
   const { height, width } = event.nativeEvent.layout;
   return { height, width };
 };
+/** The browser window's size, before anything is measured; nothing off the web. */
+const browserWindow = (): Size => {
+  const page = (
+    globalThis as { document?: { documentElement?: { clientHeight: number; clientWidth: number } } }
+  ).document?.documentElement;
+  return { height: page?.clientHeight ?? 0, width: page?.clientWidth ?? 0 };
+};
 const rectOf = (event: LayoutChangeEvent): Rect => {
   const { height, width, x, y } = event.nativeEvent.layout;
   return { height, width, x, y };
@@ -139,11 +146,10 @@ const WatchScreen = <C extends LineupChannel>({
   const watched = lineup.channels.find((channel) => channel.id === state.watchedId);
 
   // The window's measurements: the screen, the picture's room, and where the line under it starts.
-  // Until the screen is measured, the platform's window is the best guess at its size, so a narrow
+  // Until the screen is measured, the browser's window is the best guess at its size, so a narrow
   // window never draws the columns first.
-  const platformWindow = useWindowDimensions();
   const [measured, setMeasured] = useState<Size | undefined>(undefined);
-  const box = measured ?? { height: platformWindow.height, width: platformWindow.width };
+  const box = measured ?? browserWindow();
   const [room, setRoom] = useState<Rect | undefined>(undefined);
   const [lineTop, setLineTop] = useState(0);
   const [lineHeight, setLineHeight] = useState(LINE_HEIGHT);
