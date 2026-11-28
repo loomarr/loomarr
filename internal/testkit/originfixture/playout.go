@@ -1,32 +1,33 @@
-package testkit
+// Package originfixture is the shared in-memory double for the playback seam the HLS origin serves.
+// It is its own package because it names hls types, which the playout engine's tests must not import.
+package originfixture
 
 import (
 	"context"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 )
 
-// Playout is the shared in-memory double for the API's playback seam. It records per-channel
-// lifecycle stops; tests concerned with tuning can provide TuneResult/TuneErr without creating a
-// private playback implementation.
+// Playout records per-channel lifecycle stops; tests concerned with tuning can provide
+// TuneResult/TuneErr without creating a private playback implementation.
 type Playout struct {
 	mu sync.Mutex
 
-	TuneResult playout.Presentation
+	TuneResult hls.Presentation
 	TuneErr    error
 	stopped    []string
 	stoppedAll int
 }
 
-func (p *Playout) Tune(context.Context, playout.TuneRequest) (playout.Presentation, error) {
+func (p *Playout) Tune(context.Context, hls.TuneRequest) (hls.Presentation, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.TuneResult, p.TuneErr
 }
 
-func (*Playout) OpenAsset(context.Context, string, string, bool) (playout.Asset, bool, error) {
-	return playout.Asset{}, false, nil
+func (*Playout) OpenAsset(context.Context, string, string, bool) (hls.Asset, bool, error) {
+	return hls.Asset{}, false, nil
 }
 
 func (p *Playout) StopChannel(channelID string) {
@@ -66,26 +67,4 @@ func (p *Playout) StopAllCalls() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.stoppedAll
-}
-
-// TunerRescanner is the shared in-memory double for operation-specific media-server channel-list
-// refreshes. Err injects a best-effort poke failure.
-type TunerRescanner struct {
-	mu    sync.Mutex
-	Err   error
-	calls int
-}
-
-func (r *TunerRescanner) RescanTuner(context.Context) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.calls++
-	return r.Err
-}
-
-// Calls returns the number of tuner re-scans requested.
-func (r *TunerRescanner) Calls() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.calls
 }

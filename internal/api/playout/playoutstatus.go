@@ -10,8 +10,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/media/encode"
-	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
@@ -208,7 +208,7 @@ func (s *Handlers) channelIdentities(ctx context.Context) map[string]channelIden
 }
 
 // channelHealthFrom turns one raw SessionStat into a health row with a verdict + reason.
-func channelHealthFrom(st playout.SessionStat) ChannelHealth {
+func channelHealthFrom(st hls.SessionStat) ChannelHealth {
 	copying := st.Encoder == "copy" || st.Encoder == ""
 	mode := "transcode"
 	if copying {

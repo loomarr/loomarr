@@ -1,10 +1,11 @@
-package playout
+package hls
 
 import (
 	"bytes"
 	"context"
 	"sync"
 
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -13,7 +14,7 @@ import (
 // TV is one encode; each tuner gets its own TSWriter (its own continuity counters), joins at the
 // segment airing now, and is paced by the listing gate like a player.
 func (m *PackagerHLS) Attach(ctx context.Context, channelID string) (Stream, func(), error) {
-	c, release, err := m.acquire(channelID, FormatBaseline, false)
+	c, release, err := m.acquire(channelID, playout.FormatBaseline, false)
 	if err != nil {
 		return nil, nil, err
 	}

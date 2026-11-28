@@ -26,6 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/playout/classprobe"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/playout/subtitles"
@@ -157,7 +158,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		return facts
 	}).WithLog(log)
 	// The channel packager is built after the resolver it reads the schedule through.
-	var packagedHLS *playout.PackagerHLS
+	var packagedHLS *hls.PackagerHLS
 	var watched func() bool
 	// Host measurements live in playout.state_dir. The retired prepared library's setting is gone, so
 	// its default home, <data dir>/prepared (the sibling of the default state directory), is the one
@@ -354,7 +355,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// `ffmpeg -filters` probes, ~0.2 s of the first tune after a restart): idle channels start no
 	// FFmpeg, and those probes are FFmpeg runs.
 	tonemap, gpuFilters := playout.TonemapperFor(settings.PlayoutFFmpegPath.Get(set)), playout.GPUFiltersFor(settings.PlayoutFFmpegPath.Get(set))
-	if pk, perr := playout.NewPackagerHLS(resolve.PackagerSource{
+	if pk, perr := hls.NewPackagerHLS(resolve.PackagerSource{
 		Res:     playoutRes,
 		Tonemap: tonemap,
 		GPU:     gpuFilters,
@@ -362,7 +363,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		TargetLUFS: func() string { return settings.FillerTargetLufs.Get(set) },
 		Watermark:  deps.watermarks.For,
 		Log:        log,
-	}, settings.PlayoutFFmpegPath.Get(set), settings.PlayoutHLSDir.Get(set), playout.DefaultGrace, log); perr != nil {
+	}, settings.PlayoutFFmpegPath.Get(set), settings.PlayoutHLSDir.Get(set), hls.DefaultGrace, log); perr != nil {
 		log.Warn("internal playout: channel packager unavailable — live playout disabled", "err", perr)
 	} else {
 		// One lease per running channel packager in the ResourceBudget ledger (#1520).
@@ -383,16 +384,16 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			return nil
 		})
 	}
-	origin := playout.NewOrigin(playout.OriginDependencies{
+	origin := hls.NewOrigin(hls.OriginDependencies{
 		Packager: packagedHLS,
 		Available: func() bool {
 			return lifecycleGate == nil || lifecycleGate.Available()
 		},
 		Eligible: durablePlayoutEligibility,
-		Still:    playout.FFmpegStill(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
+		Still:    hls.FFmpegStill(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
 		// A cold channel's still: one frame of the airing on now, decoded from its source (#1512).
 		StillAiring: playoutRes.StillAiring,
-		SourceStill: playout.FFmpegSourceStill(settings.PlayoutFFmpegPath.Get(set),
+		SourceStill: hls.FFmpegSourceStill(settings.PlayoutFFmpegPath.Get(set),
 			playout.TonemapperFor(settings.PlayoutFFmpegPath.Get(set)), deps.processDiagnostics),
 	})
 	owner.addQuiesce(func(context.Context) error {

@@ -1,4 +1,8 @@
-package playout
+// Package hls serves live channels over HLS and MPEG-TS: the Origin a viewer tunes, the channel
+// packager that owns each channel's segment timeline with one encoder per item, and the guide's
+// stills taken from what is airing. It builds every encode with the engine's pipeline (package
+// playout) and admits it through the admission ledger; the engine never imports it.
+package hls
 
 import (
 	"bytes"

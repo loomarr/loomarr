@@ -1,4 +1,4 @@
-package playout
+package hls
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout"
 )
 
 // hostPerChannelSource airs slowItemSource's item on every channel, encoded on the channel's host.
@@ -18,8 +19,8 @@ type hostPerChannelSource struct {
 	hosts map[string]encode.HostProfile
 }
 
-func (s hostPerChannelSource) Output(_ context.Context, channelID string, _ FormatClass, rung int) (encode.HostProfile, OutputProfile) {
-	_, out := s.slowItemSource.Output(context.Background(), channelID, FormatBaseline, rung)
+func (s hostPerChannelSource) Output(_ context.Context, channelID string, _ playout.FormatClass, rung int) (encode.HostProfile, playout.OutputProfile) {
+	_, out := s.slowItemSource.Output(context.Background(), channelID, playout.FormatBaseline, rung)
 	return s.hosts[channelID], out
 }
 
@@ -71,7 +72,7 @@ func newTestPackagerHLS(t *testing.T, source PackagerSource, grace time.Duration
 
 func tune(t *testing.T, m *PackagerHLS, channelID string) func() {
 	t.Helper()
-	_, release, err := m.acquire(channelID, FormatBaseline, false)
+	_, release, err := m.acquire(channelID, playout.FormatBaseline, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +106,7 @@ func TestPackagerStatsSnapshotsEachRunningPackager(t *testing.T) {
 		t.Errorf("encoders = %+v / %+v, want software then hardware nvenc", a, b)
 	}
 	for _, s := range stats {
-		if s.Target != string(FormatBaseline) || s.TranscodeCost != 1 || s.UptimeMS < 1000 || s.ColdStartMS != 0 {
+		if s.Target != string(playout.FormatBaseline) || s.TranscodeCost != 1 || s.UptimeMS < 1000 || s.ColdStartMS != 0 {
 			t.Errorf("%s: %+v, want the baseline target, cost 1, uptime >= 1s and no cold start before a segment", s.ChannelID, s)
 		}
 	}
@@ -162,7 +163,7 @@ func TestPackagerStopChannelInvalidatesOnlyThatChannel(t *testing.T) {
 	defer tune(t, m, "edited")()
 	defer tune(t, m, "other")()
 	m.mu.Lock()
-	stale := m.channels[packagedKey{channel: "edited", format: FormatBaseline}]
+	stale := m.channels[packagedKey{channel: "edited", format: playout.FormatBaseline}]
 	m.mu.Unlock()
 	for range 2 {
 		<-changes
@@ -188,7 +189,7 @@ func TestPackagerStopChannelInvalidatesOnlyThatChannel(t *testing.T) {
 
 	defer tune(t, m, "edited")()
 	m.mu.Lock()
-	fresh := m.channels[packagedKey{channel: "edited", format: FormatBaseline}]
+	fresh := m.channels[packagedKey{channel: "edited", format: playout.FormatBaseline}]
 	m.mu.Unlock()
 	if fresh == nil || fresh == stale {
 		t.Fatal("the next tune after invalidation did not start a fresh packager")

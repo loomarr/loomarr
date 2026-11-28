@@ -73,7 +73,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 | Package | Depends on |
 | --- | --- |
-| `api/httpcore` | `channels/schedule`, `channels/viewing`, `filler/source`, `media/images`, `platform/rating`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout` |
+| `api/httpcore` | `channels/schedule`, `channels/viewing`, `filler/source`, `media/images`, `platform/rating`, `platform/settings`, `platform/store/channelstore`, `platform/store/identitystore`, `playout/hls` |
 | `channels` | `channels/schedule`, `filler/clips`, `filler/language`, `filler/pod`, `library/inventory`, `library/provision`, `platform/jobs`, `platform/rating`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `playout/timeline`, `playout/tunarr` |
 | `channels/schedule` | `library/inventory`, `library/provision`, `platform/holidayvocab`, `platform/langcode`, `platform/rating` |
 | `channels/viewing` | `platform/store/channelstore` |
@@ -137,6 +137,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/store/storedb` | — |
 | `playout` | `media/encode`, `platform/diagnostics`, `platform/langcode`, `playout/admission`, `playout/media`, `playout/timeline` |
 | `playout/admission` | `playout/media` |
+| `playout/hls` | `media/encode`, `platform/diagnostics`, `playout`, `playout/admission`, `playout/media` |
 | `playout/media` | — |
 | `playout/timeline` | `channels/schedule`, `library/provision` |
 | `playout/tunarr` | `channels/schedule`, `platform/httpx`, `platform/metrics` |

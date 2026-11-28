@@ -1,4 +1,4 @@
-package playout
+package hls
 
 import (
 	"bytes"
@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/packager"
@@ -50,7 +51,7 @@ func TestPackagerHLSAssetPathServesOnlyItsOwnFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := &PackagerHLS{channels: map[packagedKey]*packagedChannel{
-		{channel: "ch", format: FormatBaseline}: {dir: "/scratch/ch-1", p: p},
+		{channel: "ch", format: playout.FormatBaseline}: {dir: "/scratch/ch-1", p: p},
 	}}
 	// A channel's formats share one flat namespace, `<format>-<file>`; the files keep bare names.
 	for rel, want := range map[string]string{
@@ -67,59 +68,11 @@ func TestPackagerHLSAssetPathServesOnlyItsOwnFiles(t *testing.T) {
 	}
 }
 
-// playout.hls_dir is disk-backed beside the database (#1512), so a crash (which skips Stop) would
-// leave its segments there for good. A new process sweeps the roots no live process owns, by the
-// owner's lock, not by age: live, a new build swept the still-serving process's root because it
-// had been idle for ten minutes, and that process's next tune failed.
-func TestNewScratchRootSweepsOnlyUnownedRoots(t *testing.T) {
-	base := t.TempDir()
-	mk := func(rel string, age time.Duration, lock bool) string {
-		p := filepath.Join(base, rel)
-		if err := os.MkdirAll(p, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if lock {
-			if err := os.WriteFile(filepath.Join(p, scratchLock), nil, 0o600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		mtime := time.Now().Add(-age)
-		if err := os.Chtimes(p, mtime, mtime); err != nil {
-			t.Fatal(err)
-		}
-		return p
-	}
-	crashed := mk("loomarr-packager-1", 0, true) // fresh, but its owner is gone
-	crashedRemux := mk("loomarr-hls-2", 0, true)
-	idle := mk("loomarr-packager-3", time.Hour, true) // a live process with no viewers for an hour
-	release, err := holdScratch(idle)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(release)
-	legacy := mk("loomarr-hls-4", time.Hour, false) // no lock file: spared until long quiet
-	legacyDead := mk("loomarr-hls-5", 25*time.Hour, false)
-	other := mk("operator-files", 25*time.Hour, false)
-
-	m, err := NewPackagerHLS(nil, "ffmpeg", base, time.Second, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(m.Stop)
-	for p, want := range map[string]bool{
-		crashed: false, crashedRemux: false, legacyDead: false, idle: true, legacy: true, other: true, m.root: true,
-	} {
-		if _, err := os.Stat(p); (err == nil) != want {
-			t.Errorf("%s exists = %v, want %v", filepath.Base(p), err == nil, want)
-		}
-	}
-}
-
 // Filler on the packager path gets the static gain the old chain applied (#1512 G6), in the
 // builder's audio stage; a library title (GainDB 0) gets no audio filter at all.
 func TestPackagerItemArgsApplyTheFillerGain(t *testing.T) {
 	host := encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{})
-	out := OutputProfile{Width: 1280, Height: 720, FPS: 25, Quality: 23, TargetKbps: 3000, MaxKbps: 4500, GOPSeconds: 1, AudioKbps: 128}
+	out := playout.OutputProfile{Width: 1280, Height: 720, FPS: 25, Quality: 23, TargetKbps: 3000, MaxKbps: 4500, GOPSeconds: 1, AudioKbps: 128}
 	format := media.MediaFormat{VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
 		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}
 	slot := packager.Slot{Frames: 250, AudioFrames: 469}
@@ -145,7 +98,7 @@ func TestPackagerItemArgsApplyTheFillerGain(t *testing.T) {
 // SDR 1080p stays full.
 func TestPackagerItemArgsStartOnTheSoftwareRung(t *testing.T) {
 	host := encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{})
-	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
+	out := playout.OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
 	slot := packager.Slot{Frames: 250, AudioFrames: 469}
 	for name, want := range map[string]bool{"hevc-4k-hdr-dv": true, "h264-1080p-sdr-25": false} {
 		ffmpeg, runs := failingEncoder(t, "")
@@ -154,7 +107,7 @@ func TestPackagerItemArgsStartOnTheSoftwareRung(t *testing.T) {
 			t.Fatal(err)
 		}
 		m.source = fixedItemSource{item: PackagerItem{Label: "prog", Remaining: time.Hour, Input: "title.mkv", Format: testSources()[name]}}
-		item, err := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, host, out, nil, nil, slog.New(slog.DiscardHandler))(t.Context(), time.Now())
+		item, err := m.schedule(packagedKey{channel: "ch", format: playout.FormatBaseline}, host, out, nil, nil, slog.New(slog.DiscardHandler))(t.Context(), time.Now())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -202,8 +155,8 @@ func openItem(t *testing.T, ffmpeg string, host encode.HostProfile, it PackagerI
 	obs := &countingObserver{}
 	m.WithObserver(obs)
 	m.source = fixedItemSource{item: it}
-	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
-	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, host, out, nil, nil, slog.New(slog.DiscardHandler))
+	out := playout.OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
+	sched := m.schedule(packagedKey{channel: "ch", format: playout.FormatBaseline}, host, out, nil, nil, slog.New(slog.DiscardHandler))
 	for range n {
 		item, err := sched(t.Context(), time.Now())
 		if err != nil {
@@ -242,7 +195,7 @@ func TestPackagerItemRecordsOnlyWhenServed(t *testing.T) {
 	}
 	t.Cleanup(m.Stop)
 
-	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, encode.HostProfile{}, OutputProfile{FPS: 25},
+	sched := m.schedule(packagedKey{channel: "ch", format: playout.FormatBaseline}, encode.HostProfile{}, playout.OutputProfile{FPS: 25},
 		nil, nil, slog.New(slog.DiscardHandler))
 	item, err := sched(t.Context(), time.Now())
 	if err != nil {
@@ -279,10 +232,10 @@ func progItem(format media.MediaFormat) PackagerItem {
 // (filler, bumper, ID), one whose resolver declines (the channel turned it off, or this host's
 // overlay failed its self-check) and a host with no GPU overlay graph all encode bug-free.
 func TestPackagerDrawsTheBugOnProgrammesOnly(t *testing.T) {
-	bug := &Watermark{Straight: "/wm/bug.png", Width: 120, Height: 60, Corner: CornerTopRight, MarginX: 96, MarginY: 54}
+	bug := &playout.Watermark{Straight: "/wm/bug.png", Width: 120, Height: 60, Corner: playout.CornerTopRight, MarginX: 96, MarginY: 54}
 	var asked []string
 	resolver := func(declines bool) WatermarkFor {
-		return func(_ context.Context, enc encode.Encoder, width, height int) *Watermark {
+		return func(_ context.Context, enc encode.Encoder, width, height int) *playout.Watermark {
 			asked = append(asked, fmt.Sprintf("%s %dx%d", enc, width, height))
 			if declines {
 				return nil
@@ -418,7 +371,7 @@ func TestFillerGainIsFillerOnly(t *testing.T) {
 		"target not a number":  {timeline.Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "loud", 0, true},
 		"no target":            {timeline.Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "", 0, false},
 	} {
-		gain, note := FillerGain(tc.a, tc.target)
+		gain, note := playout.FillerGain(tc.a, tc.target)
 		if gain != tc.gain || (note != "") != tc.noted {
 			t.Errorf("%s: FillerGain = %v, %q", name, gain, note)
 		}
@@ -431,10 +384,10 @@ type stuckSlateSource struct{}
 func (stuckSlateSource) ItemAt(context.Context, string, time.Time) (PackagerItem, error) {
 	return PackagerItem{Label: "card", Remaining: time.Minute}, nil
 }
-func (stuckSlateSource) Premium(context.Context, string) FormatClass { return "" }
+func (stuckSlateSource) Premium(context.Context, string) playout.FormatClass { return "" }
 
-func (stuckSlateSource) Output(context.Context, string, FormatClass, int) (encode.HostProfile, OutputProfile) {
-	return encode.HostProfile{}, OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
+func (stuckSlateSource) Output(context.Context, string, playout.FormatClass, int) (encode.HostProfile, playout.OutputProfile) {
+	return encode.HostProfile{}, playout.OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
 }
 
 // The slate is not on the tune path (#1512 G2): live, a cold process spent 0.8 s encoding it before
@@ -549,7 +502,7 @@ func TestSlateEncodeWaitsForTheFirstItem(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 	}
 	// The observer does report a slate encode when one starts.
-	m.slateEncodeFor(encode.HostProfile{}, OutputProfile{Width: 64, Height: 36, FPS: 25})
+	m.slateEncodeFor(encode.HostProfile{}, playout.OutputProfile{Width: 64, Height: 36, FPS: 25})
 	select {
 	case <-slates:
 	default:
@@ -607,10 +560,10 @@ func (hdrItemSource) ItemAt(context.Context, string, time.Time) (PackagerItem, e
 		ColorTransfer: "smpte2084", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}}, nil
 }
 
-func (hdrItemSource) Premium(context.Context, string) FormatClass { return "" }
+func (hdrItemSource) Premium(context.Context, string) playout.FormatClass { return "" }
 
-func (hdrItemSource) Output(context.Context, string, FormatClass, int) (encode.HostProfile, OutputProfile) {
-	return encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{}), OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
+func (hdrItemSource) Output(context.Context, string, playout.FormatClass, int) (encode.HostProfile, playout.OutputProfile) {
+	return encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{}), playout.OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
 }
 
 // The channel packager is admitted by the ResourceBudget (#1520): one lease per running (channel,
@@ -755,8 +708,8 @@ func TestPackagerItemEncoderTeachesTheLedgerItsCPUCost(t *testing.T) {
 	defer lease.Release()
 	cost := func() float64 { return budget.Snapshot().Classes[media.ClassSDR].CPUCores }
 	base := cost()
-	_, out := slowItemSource{}.Output(t.Context(), "ch", FormatBaseline, 0)
-	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline},
+	_, out := slowItemSource{}.Output(t.Context(), "ch", playout.FormatBaseline, 0)
+	sched := m.schedule(packagedKey{channel: "ch", format: playout.FormatBaseline},
 		encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{}), out, lease, nil, slog.New(slog.DiscardHandler))
 	// encodeItem airs one item into a 60 s slot as airItem does; delivered < 0 is a channel that
 	// stopped mid-item (airItem reports nothing).
@@ -839,20 +792,20 @@ func TestOriginServesThePackagerVariantPlaylist(t *testing.T) {
 // HDR programme. The encoder is whatever ffmpeg the test gives the packager.
 type premiumSource struct {
 	hdrItemSource
-	premium FormatClass
+	premium playout.FormatClass
 	lookups atomic.Int32 // Premium calls
 }
 
-func (s *premiumSource) Premium(context.Context, string) FormatClass {
+func (s *premiumSource) Premium(context.Context, string) playout.FormatClass {
 	s.lookups.Add(1)
 	return s.premium
 }
 
-func (s *premiumSource) Output(_ context.Context, _ string, class FormatClass, _ int) (encode.HostProfile, OutputProfile) {
-	base := OutputProfile{Width: 1920, Height: 1080, FPS: 25, GOPSeconds: 2, TargetKbps: 8000, MaxKbps: 12000, AudioKbps: 160}
+func (s *premiumSource) Output(_ context.Context, _ string, class playout.FormatClass, _ int) (encode.HostProfile, playout.OutputProfile) {
+	base := playout.OutputProfile{Width: 1920, Height: 1080, FPS: 25, GOPSeconds: 2, TargetKbps: 8000, MaxKbps: 12000, AudioKbps: 160}
 	out := base
-	if class != FormatBaseline {
-		out, _ = PremiumOutput(class, base)
+	if class != playout.FormatBaseline {
+		out, _ = playout.PremiumOutput(class, base)
 	}
 	return encode.HostFor(encode.EncoderNVENC, false, encode.GPUFilters{Libplacebo: true}), out
 }
@@ -863,10 +816,10 @@ func premiumFacts(measured bool) admission.BudgetFacts {
 	f := admission.BudgetFacts{Hardware: true, SessionLimit: 12, CPUAllowance: 8, Rungs: []int{1080}, Costs: map[admission.CostKey]admission.ClassCost{
 		{Class: media.ClassSDR, Height: 1080}:                            {Speed: 6, CPUCores: 0.2},
 		admission.HDRKey(media.ClassHDR4K, 1080, media.DefaultToneCurve): {Speed: 2.4, CPUCores: 0.4},
-		{Class: media.ClassPremium4K, Height: PremiumHeight}:             {Speed: 2.4, CPUCores: 0.5},
+		{Class: media.ClassPremium4K, Height: playout.PremiumHeight}:     {Speed: 2.4, CPUCores: 0.5},
 	}}
 	if !measured {
-		delete(f.Costs, admission.CostKey{Class: media.ClassPremium4K, Height: PremiumHeight})
+		delete(f.Costs, admission.CostKey{Class: media.ClassPremium4K, Height: playout.PremiumHeight})
 	}
 	return f
 }
@@ -884,7 +837,7 @@ func sleepingFFmpeg(t *testing.T) string {
 // from its output alone (HEVC Main 10 CODECS, 3840x2160, VIDEO-RANGE=PQ), so a baseline viewer
 // never starts the premium encode.
 func TestPackagerHLSMasterListsThePremiumWithoutStartingIt(t *testing.T) {
-	source := &premiumSource{premium: Format4KHDR}
+	source := &premiumSource{premium: playout.Format4KHDR}
 	m, err := NewPackagerHLS(source, sleepingFFmpeg(t), t.TempDir(), time.Hour, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -913,7 +866,7 @@ func TestPackagerHLSMasterListsThePremiumWithoutStartingIt(t *testing.T) {
 	}
 	m.mu.Lock()
 	keys := len(m.channels)
-	_, premiumRunning := m.channels[packagedKey{channel: "ch", format: Format4KHDR}]
+	_, premiumRunning := m.channels[packagedKey{channel: "ch", format: playout.Format4KHDR}]
 	m.mu.Unlock()
 	if keys != 1 || premiumRunning {
 		t.Fatalf("a baseline tune started %d packagers (premium running: %v); want the baseline only", keys, premiumRunning)
@@ -930,9 +883,9 @@ type stalledPremiumSource struct {
 	unblock chan struct{}
 }
 
-func (s *stalledPremiumSource) Premium(context.Context, string) FormatClass {
+func (s *stalledPremiumSource) Premium(context.Context, string) playout.FormatClass {
 	<-s.unblock
-	return Format4KHDR
+	return playout.Format4KHDR
 }
 
 // A premium lookup that outruns its bound must not hold the master: the master lists the baseline
@@ -968,7 +921,7 @@ func TestPackagerHLSMasterDoesNotWaitPastThePremiumLookupBound(t *testing.T) {
 // own measured price (NVENC 2.4x = a 0.5 GPU share, 0.5 cores), never the item's; a premium the
 // channel does not air is not served and starts nothing.
 func TestPackagerHLSPremiumPlaylistStartsThePremiumPackager(t *testing.T) {
-	source := &premiumSource{premium: Format4KHDR}
+	source := &premiumSource{premium: playout.Format4KHDR}
 	m, err := NewPackagerHLS(source, sleepingFFmpeg(t), t.TempDir(), time.Hour, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -986,13 +939,13 @@ func TestPackagerHLSPremiumPlaylistStartsThePremiumPackager(t *testing.T) {
 		t.Fatalf("premium playlist err = %v, want the wait for its first segment", err)
 	}
 	m.mu.Lock()
-	c := m.channels[packagedKey{channel: "ch", format: Format4KHDR}]
+	c := m.channels[packagedKey{channel: "ch", format: playout.Format4KHDR}]
 	keys := len(m.channels)
 	m.mu.Unlock()
 	if c == nil || keys != 1 {
 		t.Fatalf("premium play started %d packagers (premium: %v); want the premium only", keys, c != nil)
 	}
-	if !c.out.HDR || c.out.Height != PremiumHeight {
+	if !c.out.HDR || c.out.Height != playout.PremiumHeight {
 		t.Fatalf("premium packager encodes %+v, want 4K HDR10", c.out)
 	}
 	use := budget.Snapshot().InUse
@@ -1026,7 +979,7 @@ func TestPackagerHLSDropsPremiumThatDoesNotFit(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			m, err := NewPackagerHLS(&premiumSource{premium: Format4KHDR}, ffmpeg, t.TempDir(), time.Hour, nil)
+			m, err := NewPackagerHLS(&premiumSource{premium: playout.Format4KHDR}, ffmpeg, t.TempDir(), time.Hour, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1040,7 +993,7 @@ func TestPackagerHLSDropsPremiumThatDoesNotFit(t *testing.T) {
 			if _, err := os.Stat(ran); err == nil {
 				t.Fatal("an encoder started for a refused premium")
 			}
-			if v := m.premiumVariant(t.Context(), "ch", Format4KHDR); v != nil {
+			if v := m.premiumVariant(t.Context(), "ch", playout.Format4KHDR); v != nil {
 				t.Fatalf("master offers %+v, want the premium dropped", *v)
 			}
 		})

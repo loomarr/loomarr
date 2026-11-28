@@ -10,7 +10,7 @@ import (
 // DemoteTonemapper drops the GPU tone-mapper a graph used, so the next build takes the next one
 // for the curve: its preferred GPU tone-mapper, the other one, then the CPU (the maintainer order,
 // #1512); false when it used none. The capacity probe's tone-map self-check walks this order, and
-// the packager's item retry (itemFaults) demotes the same stages, so the startup check and the live
+// the packager's item retry (hls's itemFaults) demotes the same stages, so the startup check and the live
 // ladder cannot disagree.
 func DemoteTonemapper(g *encode.GPUFilters, used string) bool {
 	switch used {

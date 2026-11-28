@@ -127,7 +127,7 @@ var areas = []area{
 			"stream, the guide and reconcile all read. `playout/resolve` is the wiring that reads the stores " +
 			"and settings `playout` must not know about, and turns a schedule into the file that airs.",
 		Packages: []string{
-			"playout", "playout/media", "playout/admission", "playout/classprobe", "playout/packager", "playout/bench", "playout/watermark", "playout/watermark/raster", "playout/channelbug", "playout/tunarr",
+			"playout", "playout/media", "playout/admission", "playout/classprobe", "playout/hls", "playout/packager", "playout/bench", "playout/watermark", "playout/watermark/raster", "playout/channelbug", "playout/tunarr",
 			"playout/tunarr/tunarrtest", "playout/livetvpublish", "playout/backendtransition",
 			"playout/landiscovery", "playout/subtitles", "playout/timeline", "playout/resolve",
 		},
@@ -238,7 +238,7 @@ var areas = []area{
 			"build tag.",
 		Packages: []string{
 			"testkit", "testkit/execfixture", "testkit/httpfixture",
-			"testkit/playoutstreamfixture", "testkit/postgresimage", "testkit/recordfixture",
+			"testkit/originfixture", "testkit/playoutstreamfixture", "testkit/postgresimage", "testkit/recordfixture",
 			"testkit/channeljourney", "testkit/libraryfixture", "testkit/outlookfixture",
 			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "testkit/imagetestkit",
 			"testkit/mediatool",

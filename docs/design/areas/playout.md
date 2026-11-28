@@ -8,17 +8,17 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 15 imports — the diagnostics process manager that runs every encoder, the store behind a backend transition, start-up configuration, Tunarr's HTTP client and metrics, the address check that keeps LAN discovery answering only the household's network, and the language codes an audio track is chosen by
-- **media** · 10 imports — the encoder choice, loudness, media facts and process-tree control the stream is built from
+- **platform** · 16 imports — the diagnostics process manager that runs every encoder, the store behind a backend transition, start-up configuration, Tunarr's HTTP client and metrics, the address check that keeps LAN discovery answering only the household's network, and the language codes an audio track is chosen by
+- **media** · 11 imports — the encoder choice, loudness, media facts and process-tree control the stream is built from
 - **library** · 6 imports — the media server's Live TV API that channels are published to, and `library/provision` keys naming what a slot plays
 - **channels** · 6 imports — the `channels/schedule` programming a backend plays
 - **filler** · 3 imports — the pod a break airs and the clip file it names, which `playout/resolve` turns into the input the encoder reads
 
 ## Packages
 
-- **`playout`** · 12 importers · → `media/encode`, `media/measure`, `platform/diagnostics`, `platform/langcode`, `playout/admission`, `playout/media`, `playout/packager`, `playout/timeline`
+- **`playout`** · 9 importers · → `media/encode`, `media/measure`, `platform/diagnostics`, `platform/langcode`, `playout/admission`, `playout/media`, `playout/packager`, `playout/timeline`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
-- **`playout/admission`** · 6 importers · → `playout/media`
+- **`playout/admission`** · 7 importers · → `playout/media`
   Decides what a host can encode at once: the resource budget and its leases, the measured and host-derived capacity limits, and the speed monitor that steps a heavy item down the software ladder.
 - **`playout/backendtransition`** · 1 importer · → `channels/schedule`, `platform/store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
@@ -28,15 +28,17 @@ One area of the [package map](../package-map.md#start-here).
   Turns a channel's watermark policy into the bug its programmes air with: it picks the look, colour and holiday version, renders through playout/watermark, caches the files, and runs the per-encoder GPU overlay self-check that gates the bug.
 - **`playout/classprobe`** · 2 importers · → `media/encode`, `media/proctree`, `platform/diagnostics`, `playout`, `playout/admission`, `playout/media`
   Measures what one stream of each class costs this host (and how many encoder sessions it allows), on real clips through the engine's own pipeline, and keeps that evidence.
+- **`playout/hls`** · 8 importers · → `media/encode`, `platform/diagnostics`, `playout`, `playout/admission`, `playout/media`, `playout/packager`
+  Serves live channels over HLS and MPEG-TS: the Origin a viewer tunes, the channel packager that owns each channel's segment timeline with one encoder per item, and the guide's stills taken from what is airing.
 - **`playout/landiscovery`** · → `platform/httpx`
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
 - **`playout/livetvpublish`** · 1 importer · → `library/mediaserver`, `playout/tunarr`
   Publishes Loomarr's channels to the media server's Live TV (§6, §9.1): it registers, verifies, refreshes and retires the one tuner + guide pair Loomarr owns, and wires the media server as Tunarr's media source.
-- **`playout/media`** · 6 importers
+- **`playout/media`** · 7 importers
   Vocabulary of what a source is and what it costs to air: the probed MediaFormat, its stream class, the picture rectangle and the HDR tone curve.
-- **`playout/packager`** · 3 importers
+- **`playout/packager`** · 4 importers
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
-- **`playout/resolve`** · 1 importer · → `channels/schedule`, `filler/asset`, `filler/cliplibrary`, `filler/pod`, `library/inventory`, `library/mediaserver`, `library/provision`, `library/tmdb`, `media/encode`, `media/images`, `media/measure`, `platform/diagnostics`, `platform/langcode`, `platform/metrics`, `platform/store/channelstore`, `platform/store/librarystore`, `playout`, `playout/admission`, `playout/classprobe`, `playout/media`, `playout/subtitles`, `playout/timeline`
+- **`playout/resolve`** · 1 importer · → `channels/schedule`, `filler/asset`, `filler/cliplibrary`, `filler/pod`, `library/inventory`, `library/mediaserver`, `library/provision`, `library/tmdb`, `media/encode`, `media/images`, `media/measure`, `platform/diagnostics`, `platform/langcode`, `platform/metrics`, `platform/store/channelstore`, `platform/store/librarystore`, `playout`, `playout/admission`, `playout/classprobe`, `playout/hls`, `playout/media`, `playout/subtitles`, `playout/timeline`
   Adapter that makes internal playout work (§9.1): where three separately-verified pieces finally compose.
 - **`playout/subtitles`** · 4 importers · → `media/bgexec`, `platform/langcode`
   Serves a channel's soft subtitles beside its stream (#2088 decision 5): the text subtitle tracks the programme on air carries, and the chosen track's cues on the channel's wall clock.

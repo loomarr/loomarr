@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/originfixture"
 )
 
 func TestCurrentBackendTransitionMutatesBeforeResolvingDesired(t *testing.T) {
@@ -143,7 +144,7 @@ func TestInheritedInternalCutoverStopsOnlyChannelsLeavingInternal(t *testing.T) 
 	seed("pinned-internal", &schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendInternal})
 	seed("pinned-tunarr", &schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendTunarr})
 
-	play := &testkit.Playout{}
+	play := &originfixture.Playout{}
 	cutover := inheritedInternalCutover{channels: st, playout: play}
 	if err := cutover.BeforePublish(ctx, backendtransition.BackendInternal, backendtransition.BackendTunarr); err != nil {
 		t.Fatal(err)

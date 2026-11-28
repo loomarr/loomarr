@@ -38,14 +38,14 @@ func costClass(out OutputProfile, convert bool) FormatClass {
 		return CostHDRConvert
 	case out.HDR:
 		return Format4KHDR
-	case out.premium():
+	case out.Premium():
 		return Format4KSDR
 	}
 	return FormatBaseline
 }
 
-// isPremium reports whether c is one of the premium formats.
-func (c FormatClass) isPremium() bool { return c == Format4KSDR || c == Format4KHDR }
+// IsPremium reports whether c is one of the premium formats.
+func (c FormatClass) IsPremium() bool { return c == Format4KSDR || c == Format4KHDR }
 
 // FormatSpec is what a class puts on the wire.
 type FormatSpec struct {
@@ -150,8 +150,8 @@ func PremiumOutput(class FormatClass, base OutputProfile) (OutputProfile, bool) 
 	}, true
 }
 
-// premium reports whether this output is a premium format: HDR, or more pixels than 1080p.
-func (o OutputProfile) premium() bool {
+// Premium reports whether this output is a premium format: HDR, or more pixels than 1080p.
+func (o OutputProfile) Premium() bool {
 	return o.HDR || o.Width*o.Height > 1920*1080
 }
 
@@ -161,7 +161,7 @@ func (o OutputProfile) premium() bool {
 // with Main 10); Main tier at level 5.0 for 3840x2160 up to 30 fps, 5.1 above; progressive
 // frame-only; and the AAC-LC every item's audio is (BuildItem). A running packager's init replaces
 // it (packager.CodecsAttr).
-func (o OutputProfile) premiumCodecs() string {
+func (o OutputProfile) PremiumCodecs() string {
 	profile, level := "1.6", 150
 	if o.HDR {
 		profile = "2.4"

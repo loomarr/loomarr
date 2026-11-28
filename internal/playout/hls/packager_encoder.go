@@ -1,4 +1,4 @@
-package playout
+package hls
 
 import (
 	"bytes"
@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 )
 
@@ -51,7 +52,7 @@ func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log
 	cmd := exec.CommandContext(ctx, ffmpeg, args...)
 	cmd.WaitDelay = 2 * time.Second
 	var stderr bytes.Buffer
-	faults := &limitedWriter{w: &stderr, n: 4096}
+	faults := playout.CappedWriter(&stderr, 4096)
 	cmd.Stderr = faults
 	if progressW != nil {
 		cmd.ExtraFiles = []*os.File{progressW}
@@ -143,7 +144,7 @@ type encoderOutput struct {
 	ctx           context.Context
 	cmd           *exec.Cmd
 	stderr        *bytes.Buffer
-	watch         *limitedWriter
+	watch         *playout.LimitedWriter
 	failed        func(decodeFault bool)
 	// done receives the CPU time of an encoder that produced, for the ledger's measured class cost
 	// (Lease.ObserveCPU, #1520); the schedule divides it by the frames the packager took.
@@ -232,33 +233,8 @@ func (e *encoderOutput) Close() error {
 			e.log.Warn("packager hls: item encoder failed", "err", err, "stderr", strings.TrimSpace(e.stderr.String()))
 		}
 		if !e.produced && e.failed != nil {
-			e.failed(e.watch.decodeFault)
+			e.failed(e.watch.DecodeFault())
 		}
 	})
 	return nil
-}
-
-// limitedWriter keeps the first n bytes of an encoder's stderr for its failure log, and notes a GPU
-// decode fault anywhere in it. ffmpeg writes one log line per write, so a line is never split.
-// The fault is read only after cmd.Wait, which waits for the copy into this writer.
-type limitedWriter struct {
-	w           io.Writer
-	n           int
-	decodeFault bool
-}
-
-// CappedWriter passes the first n bytes through to w and discards the rest, so a failing encoder
-// cannot grow its captured output without bound.
-func CappedWriter(w io.Writer, n int) io.Writer { return &limitedWriter{w: w, n: n} }
-
-func (l *limitedWriter) Write(b []byte) (int, error) {
-	if !l.decodeFault && encode.IsHardwareDecodeFault(string(b)) {
-		l.decodeFault = true
-	}
-	if l.n > 0 {
-		k := min(len(b), l.n)
-		_, _ = l.w.Write(b[:k])
-		l.n -= k
-	}
-	return len(b), nil
 }

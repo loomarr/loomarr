@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 )
 
 // BackupStreamer streams a consistent DB snapshot (§16). Implemented by the
@@ -29,7 +29,7 @@ type InteractiveOperations interface {
 // SessionObserver counts the live encoders the restart page warns about.
 type SessionObserver interface {
 	// Stats snapshots every live encoder.
-	Stats(now time.Time) []playout.SessionStat
+	Stats(now time.Time) []hls.SessionStat
 }
 
 // Deps is what the system routes need from the rest of the server. Every field is optional: a nil

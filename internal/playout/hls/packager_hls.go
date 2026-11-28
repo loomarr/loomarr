@@ -1,4 +1,4 @@
-package playout
+package hls
 
 import (
 	"bytes"
@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/packager"
@@ -64,24 +65,24 @@ type SubtitlesFor func(enc encode.Encoder) *ItemSubtitles
 
 // ItemSubtitles is a prepared track and the VAAPI family's blend kernel (WriteBlendKernel).
 type ItemSubtitles struct {
-	Track  *BurnIn
+	Track  *playout.BurnIn
 	Kernel string
 }
 
 // WatermarkFor returns the channel's rendered bug for an encoder and output size, or nil when the
 // channel turned it off or this host's GPU overlay failed its self-check (WatermarkCheck); the item
 // then airs bug-free.
-type WatermarkFor func(ctx context.Context, enc encode.Encoder, width, height int) *Watermark
+type WatermarkFor func(ctx context.Context, enc encode.Encoder, width, height int) *playout.Watermark
 
 // PackagerSource is the application's side of the channel packager (#1512): the schedule,
 // and the host and output one of a channel's formats encodes with at an output ladder rung (the
 // lease's).
 type PackagerSource interface {
 	ItemAt(ctx context.Context, channelID string, at time.Time) (PackagerItem, error)
-	Output(ctx context.Context, channelID string, class FormatClass, rung int) (encode.HostProfile, OutputProfile)
+	Output(ctx context.Context, channelID string, class playout.FormatClass, rung int) (encode.HostProfile, playout.OutputProfile)
 	// Premium is the premium format the channel airs on this host (its lineup's, after
 	// ChannelFormats.OnHost); empty when none.
-	Premium(ctx context.Context, channelID string) FormatClass
+	Premium(ctx context.Context, channelID string) playout.FormatClass
 }
 
 // packagedKey is one packager: a channel at one output format. Every client and plan reads the
@@ -89,7 +90,7 @@ type PackagerSource interface {
 // client that opts in to it.
 type packagedKey struct {
 	channel string
-	format  FormatClass
+	format  playout.FormatClass
 }
 
 // PackagerHLS serves in-app HLS from one channel packager per (channel, format): one encoder per
@@ -139,7 +140,7 @@ type PackagerHLS struct {
 type packagedChannel struct {
 	p       *packager.Packager
 	host    encode.HostProfile
-	out     OutputProfile
+	out     playout.OutputProfile
 	started time.Time
 	dir     string
 	cancel  context.CancelFunc
@@ -170,7 +171,7 @@ func NewPackagerHLS(source PackagerSource, ffmpeg, root string, grace time.Durat
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	root, unlock, err := newScratchRoot(root, "loomarr-packager-", log)
+	root, unlock, err := playout.NewScratchRoot(root, "loomarr-packager-", log)
 	if err != nil {
 		return nil, fmt.Errorf("packager hls: scratch root: %w", err)
 	}
@@ -214,7 +215,7 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, speculative bool, viewer
 		}
 		*premium = m.premiumVariant(ctx, channelID, class)
 	}()
-	c, release, err := m.acquire(channelID, FormatBaseline, speculative)
+	c, release, err := m.acquire(channelID, playout.FormatBaseline, speculative)
 	admitted <- err == nil
 	if err != nil {
 		return hlsPlaylistLease{}, err
@@ -224,7 +225,7 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, speculative bool, viewer
 		release: release,
 		await:   c.p.AwaitPlaylist,
 		snapshot: func(ctx context.Context) ([]byte, error) {
-			vs := []hlsVariant{c.variant(FormatBaseline)}
+			vs := []hlsVariant{c.variant(playout.FormatBaseline)}
 			// ⚠ The deadline is the master's own, not only the lookup's context. The lookup walks the
 			// channel's whole cycle, and a step that outruns its context held every master behind it:
 			// one channel's took ~30 s, its players gave up at ~10 s, and the channel would not play.
@@ -294,7 +295,7 @@ func (m *PackagerHLS) takesPremium(viewer string) bool {
 // warmPremium warms a neighbour's premium for a viewer whose client takes it (#1037), under the
 // warm's own admission: into spare room only, evicting nothing. Its warm hold gives it the
 // baseline's grace, renewed by every warm while the channel stays adjacent to the viewer.
-func (m *PackagerHLS) warmPremium(channelID string, class FormatClass) {
+func (m *PackagerHLS) warmPremium(channelID string, class playout.FormatClass) {
 	_, release, err := m.acquire(channelID, class, true)
 	if err != nil {
 		if !errors.Is(err, admission.ErrAtCapacity) { // a refusal is logged by admit
@@ -308,7 +309,7 @@ func (m *PackagerHLS) warmPremium(channelID string, class FormatClass) {
 // premiumVariant is the master's entry for the channel's premium format class, or nil when it airs
 // none on this host ("") or the ledger has no room for another one now (#1520: premium is admitted
 // only on its own measured cost). A running premium is described from its own init.
-func (m *PackagerHLS) premiumVariant(ctx context.Context, channelID string, class FormatClass) *hlsVariant {
+func (m *PackagerHLS) premiumVariant(ctx context.Context, channelID string, class playout.FormatClass) *hlsVariant {
 	if class == "" {
 		return nil
 	}
@@ -351,19 +352,19 @@ func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, rel s
 }
 
 func (m *PackagerHLS) acquireMediaPlaylist(ctx context.Context, channelID string, rel string, speculative bool) (hlsPlaylistLease, bool, error) {
-	class := FormatClass(strings.TrimSuffix(rel, ".m3u8"))
+	class := playout.FormatClass(strings.TrimSuffix(rel, ".m3u8"))
 	if filepath.Base(rel) != rel || !strings.HasSuffix(rel, ".m3u8") {
 		return hlsPlaylistLease{}, false, nil
 	}
 	switch class {
-	case FormatBaseline, Format4KSDR, Format4KHDR:
+	case playout.FormatBaseline, playout.Format4KSDR, playout.Format4KHDR:
 	default:
 		return hlsPlaylistLease{}, false, nil
 	}
 	if speculative {
 		return m.acquireWarmMediaPlaylist(ctx, channelID, class)
 	}
-	if class != FormatBaseline {
+	if class != playout.FormatBaseline {
 		m.mu.Lock()
 		running := m.channels[packagedKey{channel: channelID, format: class}] != nil
 		m.mu.Unlock()
@@ -382,8 +383,8 @@ func (m *PackagerHLS) acquireMediaPlaylist(ctx context.Context, channelID string
 // acquireWarmMediaPlaylist retains only work the warm master already admitted. In particular, an
 // advertised premium is not permission to start it, choose it for the viewer, or evict another
 // channel. Hold the reference across readiness so expiry cannot retire it during this fetch.
-func (m *PackagerHLS) acquireWarmMediaPlaylist(ctx context.Context, channelID string, class FormatClass) (hlsPlaylistLease, bool, error) {
-	if class != FormatBaseline && !m.takesPremium(ViewerFrom(ctx)) {
+func (m *PackagerHLS) acquireWarmMediaPlaylist(ctx context.Context, channelID string, class playout.FormatClass) (hlsPlaylistLease, bool, error) {
+	if class != playout.FormatBaseline && !m.takesPremium(ViewerFrom(ctx)) {
 		return hlsPlaylistLease{}, false, nil
 	}
 	key := packagedKey{channel: channelID, format: class}
@@ -421,7 +422,7 @@ func mediaPlaylistLease(c *packagedChannel, release func()) hlsPlaylistLease {
 // acquire counts a viewer (browser or tuner) on a channel format's packager, starting it if needed.
 // A speculative acquire (a neighbour warm) never evicts anything, and the packager it starts stays
 // speculative until a real viewer joins it (#1780).
-func (m *PackagerHLS) acquire(channelID string, class FormatClass, speculative bool) (*packagedChannel, func(), error) {
+func (m *PackagerHLS) acquire(channelID string, class playout.FormatClass, speculative bool) (*packagedChannel, func(), error) {
 	key := packagedKey{channel: channelID, format: class}
 	m.mu.Lock()
 	c := m.channels[key]
@@ -498,7 +499,7 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 	first, ferr := m.source.ItemAt(lookupCtx, key.channel, resolvedAt)
 	cancelLookup()
 	req := admission.AdmitRequest{Class: media.ClassSDR}
-	if key.format.isPremium() {
+	if key.format.IsPremium() {
 		req = premiumAdmission
 	} else if ferr == nil && first.Input != "" {
 		req.Class = media.ClassOf(first.Format)
@@ -533,7 +534,7 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 	cfg := packager.Config{FPS: out.FPS, Dir: dir, DVR: DVRHorizon, URIPrefix: string(key.format) + "-", Log: log,
 		StartDeadline: m.startDeadline}
 	if out.HDR {
-		cfg.HDR10 = ChannelHDR10.Packager() // no encoder writes the channel's fixed metadata (#1527)
+		cfg.HDR10 = playout.ChannelHDR10.Packager() // no encoder writes the channel's fixed metadata (#1527)
 	}
 	p, err := packager.New(cfg, m.schedule(key, host, out, lease, pre, log), slate)
 	if err != nil {
@@ -568,7 +569,7 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 // class, and encodes at the software ladder rung the ledger picks for it (#1517, #1520). A lookup
 // only reads the schedule: an item airs when a viewer receives its segments (PackagerItem.RecordAiringServed).
 func (m *PackagerHLS) schedule(
-	key packagedKey, host encode.HostProfile, out OutputProfile, lease *admission.Lease, pre *prefetchedItem, log *slog.Logger,
+	key packagedKey, host encode.HostProfile, out playout.OutputProfile, lease *admission.Lease, pre *prefetchedItem, log *slog.Logger,
 ) packager.Schedule {
 	faults := &itemFaults{by: map[string]itemFault{}}
 	ladder := &itemLadder{speed: m.speedFor(key)}
@@ -608,7 +609,7 @@ func (m *PackagerHLS) schedule(
 		itemOut := out
 		// A premium lease keeps its class: it was priced for the channel's whole lineup.
 		itemClass := media.ClassOf(it.Format)
-		if key.format.isPremium() {
+		if key.format.IsPremium() {
 			itemClass = media.ClassPremium4K
 		}
 		airing := it.Label + "\x00" + it.Input
@@ -620,7 +621,7 @@ func (m *PackagerHLS) schedule(
 			lease.ReclassItem(ctx, itemClass) // a transcoding lease always moves
 			itemOut.SoftwareRung = lease.SoftwareRung()
 		default:
-			itemOut.SoftwareRung = StartRung(it.Format, RungCost{})
+			itemOut.SoftwareRung = playout.StartRung(it.Format, playout.RungCost{})
 		}
 		var monitor *admission.RungMonitor
 		switch {
@@ -632,7 +633,7 @@ func (m *PackagerHLS) schedule(
 			monitor = lease.NewRungMonitor(m.ladderCfg)
 		default:
 			cfg := m.ladderCfg
-			cfg.Costs = RungCostsFor(it.Format)
+			cfg.Costs = playout.RungCostsFor(it.Format)
 			monitor = admission.NewRungMonitor(itemOut.SoftwareRung, cfg)
 		}
 		if monitor != nil && !resumed {
@@ -643,7 +644,7 @@ func (m *PackagerHLS) schedule(
 		}
 		// The channel's bug, programmes only (#1512): resolved once per item at this
 		// packager's encoder and output size, so a retried Open reuses it.
-		var wm *Watermark
+		var wm *playout.Watermark
 		if it.Watermark != nil {
 			wm = it.Watermark(ctx, host.Encoder, out.Width, out.Height)
 		}
@@ -757,7 +758,7 @@ func (m *PackagerHLS) AssetPath(channelID string, rel string) (string, bool) {
 		return "", false
 	}
 	m.mu.Lock()
-	c := m.channels[packagedKey{channel: channelID, format: FormatClass(class)}]
+	c := m.channels[packagedKey{channel: channelID, format: playout.FormatClass(class)}]
 	m.mu.Unlock()
 	if c == nil {
 		return "", false
@@ -802,14 +803,14 @@ type hlsVariant struct {
 }
 
 // variant describes a running format's media playlist from its output and its channel init.
-func (c *packagedChannel) variant(class FormatClass) hlsVariant {
+func (c *packagedChannel) variant(class playout.FormatClass) hlsVariant {
 	return variantOf(class, c.out, c.p.Init())
 }
 
 // variantOf describes a format's media playlist from its output and, once it has one, its channel
-// init. A premium with no init yet names its predicted CODECS (premiumCodecs), because a web player
+// init. A premium with no init yet names its predicted CODECS (PremiumCodecs), because a web player
 // offers it only when it can decode that exact string.
-func variantOf(class FormatClass, o OutputProfile, init []byte) hlsVariant {
+func variantOf(class playout.FormatClass, o playout.OutputProfile, init []byte) hlsVariant {
 	v := hlsVariant{
 		uri:       string(class) + ".m3u8",
 		bandwidth: (o.MaxKbps + o.AudioKbps) * 1000, average: (o.TargetKbps + o.AudioKbps) * 1000,
@@ -819,8 +820,8 @@ func variantOf(class FormatClass, o OutputProfile, init []byte) hlsVariant {
 	if o.HDR {
 		v.videoRange = "PQ"
 	}
-	if v.codecs == "" && o.premium() {
-		v.codecs = o.premiumCodecs()
+	if v.codecs == "" && o.Premium() {
+		v.codecs = o.PremiumCodecs()
 	}
 	return v
 }
