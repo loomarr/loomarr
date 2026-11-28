@@ -79,6 +79,8 @@ const pairingFailureMessage = (error: unknown, serverUrl: string): string => {
   const host = new URL(serverUrl).host;
   if (error instanceof PairingHttpError)
     return `${host} answered, but couldn’t start pairing (error ${error.status}). Check that it’s your Loomarr server, then try again.`;
+  // No answer was read at all (a schema chunk that didn't load): its own words say what to do.
+  if (error instanceof ApiError && error.status === 0) return error.message;
   // A failure or success page that is not JSON, or JSON of another shape: not a Loomarr server.
   if (error instanceof SyntaxError || error instanceof ApiError || error instanceof ContractError)
     return `${host} isn’t answering as a Loomarr server. Check the address.`;
