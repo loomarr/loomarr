@@ -1,3 +1,4 @@
+import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import { LibraryDetailsFromDTODescription } from "@loomarr/api/models/libraryDetailsFromDTODescription";
 import { LibraryMatchDTOApp } from "@loomarr/api/models/libraryMatchDTOApp";
@@ -49,6 +50,20 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
   const detail = libraryApi.useGetLibraryItem(id);
   const body = unwrap(detail.data);
   useDocumentTitle(body?.item.name ?? "Library");
+  // The title names its channels; the channel list has their logos and whether each can be watched.
+  const channelList = channelsApi.useListChannels();
+  const channels = new Map(unwrap(channelList.data)?.channels?.map((c) => [c.id, c]));
+  const withLogo = <C extends { id: string }>(channel: C) => {
+    const { logo, logoImage } = channels.get(channel.id) ?? {};
+    return {
+      ...channel,
+      logo: logoImage ? (
+        <ServedImage alt="" image={logoImage} sizes="44px" />
+      ) : logo ? (
+        <img alt="" src={logo} style={{ height: "100%", objectFit: "cover", width: "100%" }} />
+      ) : undefined,
+    };
+  };
   // An airing starts and ends with nothing sent, so the title is read again at that moment: the
   // words follow the clock, and an ended airing gives way to the channel's next one.
   useRefetchAt({
@@ -118,6 +133,7 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
               },
               episodeFilesAt: detail.dataUpdatedAt,
               onChooseOrder: () => void navigate({ to: "/library/needs" }),
+              collectionsLink: <Link to="/library/collections" />,
               onForget: () => act(libraryApi.unanswerLibraryItem(id)),
               onLink: (externalId) => act(libraryApi.linkLibraryItem(id, { externalId })),
               onOpenApp: page ? () => window.open(page, "_blank", "noopener,noreferrer") : undefined,
@@ -129,6 +145,12 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
       }
       onBack={back}
       personLink={(person) => <Link search={{ person }} to="/library" />}
+      // The player moves on from a channel with nothing to play, so only a playable one is linked.
+      watchLink={(channelId) =>
+        channels.get(channelId)?.inAppPlayable ? (
+          <Link params={{ id: channelId }} to="/watch/$id" />
+        ) : undefined
+      }
       title={{
         kind: item.kind,
         homeVideo: item.homeVideo,
@@ -174,7 +196,7 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
           })),
         })),
         match: { by: match.by, app: match.app ? APP_NAMES[match.app] : undefined },
-        channels: body.channels,
+        channels: body.channels.map(withLogo),
         detailsFrom: {
           description: sourceName(body.detailsFrom?.description),
           rating: sourceName(body.detailsFrom?.rating),

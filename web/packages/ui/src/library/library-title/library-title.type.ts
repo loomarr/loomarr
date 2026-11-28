@@ -155,6 +155,8 @@ interface LibraryTitleChannel {
   id: string;
   name: string;
   number: number;
+  /** The channel's logo, drawn by the app; absent draws its monogram. */
+  logo?: ReactNode;
 }
 
 /**
@@ -177,6 +179,11 @@ interface LibraryTitleProps {
   /** Makes each credit with a personId a link; absent leaves every name as text. */
   personLink?: LibraryPersonLink;
   /**
+   * The app's own link element to a channel's player, which the channel's row is drawn on. Absent,
+   * or answering undefined for a channel nobody can watch, leaves the row as text.
+   */
+  watchLink?: (channelId: string) => ReactElement<Record<string, unknown>> | undefined;
+  /**
    * What an admin does about the title. Absent for a member, who reads the page only: no Update
    * details, Check files again or Wrong title?, no file cards and no Technical details, only the
    * one technical line.
@@ -194,6 +201,8 @@ interface LibraryTitleFix {
   onEpisodeFiles?: (episodeId: string) => Promise<readonly LibraryTitleFile[]>;
   /** Changes each time the title is read again, so an open episode's file is read again too. */
   episodeFilesAt?: number;
+  /** The app's own link element to Collections, offered for a title that is on no channel. */
+  collectionsLink?: ReactElement<Record<string, unknown>>;
   /** Opens the title's page in the app that decides; absent when it has none. */
   onOpenApp?: () => void;
   /** Wrong title? when the household's answer, or nothing, decides: searches for the title. */

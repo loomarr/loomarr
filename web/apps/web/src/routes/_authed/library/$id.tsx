@@ -1,3 +1,4 @@
+import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import { ApiError } from "@loomarr/api/mutator";
 import { createFileRoute } from "@tanstack/react-router";
@@ -13,8 +14,10 @@ const LibraryTitleScreen = () => {
 const Route = createFileRoute("/_authed/library/$id")({
   component: LibraryTitleScreen,
   // The title's detail is the whole page. A 404 is the page's to say in plain words, so it doesn't
-  // fail the route.
+  // fail the route. The channel list gives the rows their logos and links; it is fetched alongside
+  // so the rows draw complete, and a failure only leaves them as plain rows.
   loader: async ({ context: { queryClient }, params: { id } }) => {
+    void queryClient.prefetchQuery(channelsApi.getListChannelsQueryOptions());
     try {
       await queryClient.ensureQueryData(libraryApi.getGetLibraryItemQueryOptions(id));
     } catch (error) {
