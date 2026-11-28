@@ -1,4 +1,488 @@
 {
   "note": "Design-system primitive ledger (#2147 Wave 4), maintained by web/scripts/check-primitive-bypass.mjs. Counts may only fall: `pnpm primitives:update` shrinks them. Never raise one to pass the check.",
-  "files": {}
+  "files": {
+    "apps/web/src/channels/channel-drawer/channel-drawer.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/channels/channel-identity-field/channel-identity-field.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/channels/channel-on-screen-logo/channel-on-screen-logo.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/channels/channel-watch/channel-watch.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/channels/guide-page/guide-page.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/channels/guide-page/guide-toolbar/guide-toolbar.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/ai/hosted-model-picker/hosted-model-picker.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/ai/proposal-edit/proposal-edit.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
+      "inlineStyle": 3
+    },
+    "apps/web/src/components/loomarr/ai/refine-review/refine-review.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/artwork-fallback/artwork-fallback.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
+      "inlineStyle": 6
+    },
+    "apps/web/src/components/loomarr/channels/channel-icon-field/channel-icon-field.tsx": {
+      "inlineStyle": 4
+    },
+    "apps/web/src/components/loomarr/channels/channel-lineup-editor/channel-lineup-editor.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/components/loomarr/channels/channel-upcoming/channel-upcoming.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/channels/state-badge/state-badge.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/feedback/error-details/error-details.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/filler/clip-card/clip-card.tsx": {
+      "inlineStyle": 4
+    },
+    "apps/web/src/components/loomarr/filler/coverage-meter/coverage-meter.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/filler/pool-health/pool-health.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/filler/pull-card/pull-card.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.tsx": {
+      "inlineStyle": 4
+    },
+    "apps/web/src/components/loomarr/filler/segment-preview/segment-preview.tsx": {
+      "inlineStyle": 6
+    },
+    "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/filler/split-review-editor/segment-inspector/segment-inspector.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/components/loomarr/filler/split-review-editor/segment-summary-row/segment-summary-row.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/components/loomarr/filler/watch-line/watch-line.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/people/invitation-dialog/invitation-dialog.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/player/video-player/video-player.tsx": {
+      "inlineStyle": 3
+    },
+    "apps/web/src/components/loomarr/served-image/served-image.tsx": {
+      "inlineStyle": 3
+    },
+    "apps/web/src/components/loomarr/settings/advanced-settings-table/advanced-settings-table.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/settings/database-migration/database-migration.tsx": {
+      "inlineStyle": 3
+    },
+    "apps/web/src/components/loomarr/settings/secrets-panel/secrets-panel.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/settings/setting-field/setting-field.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/settings/settings-save-bar/settings-save-bar.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/setup/wizard-shell/wizard-shell.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/components/loomarr/shell/app-shell/app-shell.tsx": {
+      "inlineStyle": 3
+    },
+    "apps/web/src/components/loomarr/shell/phone-bottom-bar/phone-bottom-bar.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
+      "inlineStyle": 6
+    },
+    "apps/web/src/design-system/foundation-story-shell/foundation-story-shell.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/design/decade-tints/decade-tints.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/design/palette/palette.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/design/spacing/spacing.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/design/tokens/tokens.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/design/typography/typography.tsx": {
+      "inlineStyle": 4
+    },
+    "apps/web/src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/diagnostics/application-diagnostics/event-detail/event-detail.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
+      "inlineStyle": 3
+    },
+    "apps/web/src/diagnostics/startup-report-page/startup-report-page.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/diagnostics/support-bundle/support-bundle.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/discovery-feedback/discovery-feedback.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/filler/channel-filler/channel-filler.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/filler/channel-filler/filler-clip-list/filler-clip-list.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/filler/clip-details-editor/clip-details-editor.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/filler/clip-details-settings/clip-details-settings.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/filler/filler-catalog/catalog-toolbar/catalog-toolbar.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/filler/filler-catalog/catalog-view-toggle/catalog-view-toggle.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/filler/filler-page/filler-page.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/filler/filler-settings/filler-settings.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/filler/incoming/incoming.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/filler/sources-panel/source-item-preview-dialog/source-item-preview-dialog.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/filler/sources-panel/source-storage-card/source-storage-card.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/filler/taxonomy-tab/taxon-editor/taxon-impact-review/taxon-impact-review.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/filler/taxonomy-tab/taxon-tree/taxon-tree.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/help/doc-view/doc-view.tsx": {
+      "inlineStyle": 7
+    },
+    "apps/web/src/help/help-page/help-page.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/home/channel-ideas/channel-ideas.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/home/channel-wall/channel-wall.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/home/watching-now/watching-now.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/library/collection-sortable/collection-sortable.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/library/library-title-page/library-title-page.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/people/users-page/users-page.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/queue/request-detail/request-detail.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/routes/_authed/channels/$id/route.tsx": {
+      "inlineStyle": 5
+    },
+    "apps/web/src/routes/_authed/requests/_tabs.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/routes/_authed/settings/system/about.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/settings/notification-destinations-panel/provider-form/provider-form.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/settings/notification-destinations-panel/web-push-form/web-push-form.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/settings/pair-device/pair-device.tsx": {
+      "inlineStyle": 2
+    },
+    "apps/web/src/settings/paired-devices/paired-devices.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/web/src/settings/tasks-page/tasks-page.tsx": {
+      "inlineStyle": 1
+    },
+    "apps/mobile/app/index.tsx": {
+      "inlineStyle": 7
+    },
+    "apps/tv/src/app.tsx": {
+      "inlineStyle": 5
+    },
+    "packages/native-app/src/launch-stage/launch-stage.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/player/src/native/native.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/channel-ident/channel-ident.tsx": {
+      "inlineStyle": 4
+    },
+    "packages/ui/src/channel-switch-overlay/channel-switch-overlay.tsx": {
+      "inlineStyle": 8
+    },
+    "packages/ui/src/channels/channel-audio-section/channel-audio-section.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/client-navigation/client-navigation.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/guide/guide-compact/guide-compact.tsx": {
+      "inlineStyle": 19
+    },
+    "packages/ui/src/guide/guide-grid/guide-blocks/guide-blocks.tsx": {
+      "inlineStyle": 3
+    },
+    "packages/ui/src/guide/guide-grid/guide-row/guide-row.tsx": {
+      "inlineStyle": 5
+    },
+    "packages/ui/src/guide/guide-grid/guide-rows/guide-rows.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/guide/guide-grid/guide-rows/guide-rows.web.tsx": {
+      "inlineStyle": 4
+    },
+    "packages/ui/src/guide/guide-grid/guide-ruler/guide-ruler.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/guide/guide-now-next/guide-now-next.tsx": {
+      "inlineStyle": 24
+    },
+    "packages/ui/src/guide/guide-tv/guide-tv.tsx": {
+      "inlineStyle": 9
+    },
+    "packages/ui/src/guide/guide.tsx": {
+      "inlineStyle": 10
+    },
+    "packages/ui/src/highlight-row/highlight-row.web.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/library/library-grid/library-grid.web.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/library/library-needs/lock-in/lock-in.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/library/library-shelf/library-shelf.tsx": {
+      "inlineStyle": 3
+    },
+    "packages/ui/src/library/title-parts/title-parts.tsx": {
+      "inlineStyle": 3
+    },
+    "packages/ui/src/nav-tabs/nav-tabs.web.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/needs-line/needs-line.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/on-screen-logo/field-row/field-row.tsx": {
+      "inlineStyle": 6
+    },
+    "packages/ui/src/on-screen-logo/holiday-touches/holiday-touches.tsx": {
+      "inlineStyle": 4
+    },
+    "packages/ui/src/on-screen-logo/logo-fields/logo-fields.tsx": {
+      "inlineStyle": 8
+    },
+    "packages/ui/src/on-screen-logo/logo-preview/logo-preview.tsx": {
+      "inlineStyle": 6
+    },
+    "packages/ui/src/on-screen-logo/on-screen-logo.tsx": {
+      "inlineStyle": 3
+    },
+    "packages/ui/src/on-screen-logo/pick/pick.tsx": {
+      "inlineStyle": 5
+    },
+    "packages/ui/src/on-screen-logo/preview-parts/preview-parts.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/overlay/overlay.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/pairing-shell/pairing-shell.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/requests/approval-group/approval-group.tsx": {
+      "inlineStyle": 3
+    },
+    "packages/ui/src/requests/request-card/request-card.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/requests/request-channel/request-channel.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/requests/request-done-row/request-done-row.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/requests/requests-back/requests-back.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/requests/requests-journey/requests-journey.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/requests/review-sheet/review-sheet.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/search-button/search-button.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/search-field/search-field.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/settings-overview/settings-overview.tsx": {
+      "inlineStyle": 4
+    },
+    "packages/ui/src/surf-rail/surf-channel-card/surf-channel-card.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/surf-rail/surf-rail.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/wall-tile/wall-tile.web.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/watching-surface/player-chrome/casting-card/casting-card.tsx": {
+      "inlineStyle": 5
+    },
+    "packages/ui/src/watching-surface/player-chrome/channel-band/channel-band.tsx": {
+      "inlineStyle": 35
+    },
+    "packages/ui/src/watching-surface/player-chrome/channel-cards/channel-cards.tsx": {
+      "inlineStyle": 7
+    },
+    "packages/ui/src/watching-surface/player-chrome/clip-chrome/clip-chrome.tsx": {
+      "inlineStyle": 4
+    },
+    "packages/ui/src/watching-surface/player-chrome/playbar-still/playbar-still.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-audio/player-audio.tsx": {
+      "inlineStyle": 3
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-bottom-sheet/player-bottom-sheet.tsx": {
+      "inlineStyle": 7
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-caption/player-caption.tsx": {
+      "inlineStyle": 3
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-chrome.tsx": {
+      "inlineStyle": 8
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-cover/player-cover.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-details/player-details.tsx": {
+      "inlineStyle": 10
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-info/player-info.tsx": {
+      "inlineStyle": 10
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-keys/player-keys.tsx": {
+      "inlineStyle": 6
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-menu/player-menu.tsx": {
+      "inlineStyle": 3
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-more/player-more.tsx": {
+      "inlineStyle": 4
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-options/player-options.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-readout/player-readout.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-sheet/player-sheet.tsx": {
+      "inlineStyle": 6
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-transport/player-transport.tsx": {
+      "inlineStyle": 12
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-utilities/player-utilities.tsx": {
+      "inlineStyle": 6
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-volume/player-volume.tsx": {
+      "inlineStyle": 2
+    },
+    "packages/ui/src/watching-surface/player-chrome/portrait-chrome/portrait-chrome.tsx": {
+      "inlineStyle": 5
+    },
+    "packages/ui/src/watching-surface/player-chrome/preview-card/preview-card.tsx": {
+      "inlineStyle": 14
+    },
+    "packages/ui/src/watching-surface/player-chrome/preview-playbar/preview-playbar.tsx": {
+      "inlineStyle": 17
+    },
+    "packages/ui/src/watching-surface/player-chrome/tune-dip/tune-dip.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/watching-surface/player-chrome/unmute-pill/unmute-pill.tsx": {
+      "inlineStyle": 1
+    },
+    "packages/ui/src/watching-surface/watching-surface.tsx": {
+      "inlineStyle": 6
+    },
+    "packages/ui-tv/src/tv-screens/tv-screens.tsx": {
+      "inlineStyle": 2
+    }
+  }
 }

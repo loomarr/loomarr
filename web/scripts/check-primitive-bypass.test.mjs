@@ -45,6 +45,28 @@ describe("measureSource", () => {
   });
 });
 
+describe("inlineStyle", () => {
+  const source = `
+    export const Row = ({ open, styles }) => (
+      <div style={{ gap: 4 }}>
+        <span style={open ? { top: 0 } : undefined} />
+        <span style={open && { top: 0 }} />
+        <View style={[styles.row, { flex: 1 }]} />
+        <span style={styles.row} />
+        <span style={style} />
+      </div>
+    );
+  `;
+
+  it("counts object literals handed to style", () => {
+    assert.deepEqual(measureSource(source, "apps/web/src/x.tsx"), { inlineStyle: 4 });
+  });
+
+  it("exempts the web client-adapters", () => {
+    assert.deepEqual(measureSource(source, "apps/web/src/client-adapters/x/x.tsx"), {});
+  });
+});
+
 describe("ledger", () => {
   it("fails on a rise or a new file and shrinks without adding", () => {
     const ledger = { "a.tsx": { rawTable: 2 }, "b.tsx": { flexStack: 1 } };

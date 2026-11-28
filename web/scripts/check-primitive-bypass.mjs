@@ -11,6 +11,9 @@
 //   rawTooltip   role="tooltip" written by hand
 //   rawMenu      role="menu" written by hand
 //   flexStack    a className that makes an element a flex container (the design system's Stack)
+//   inlineStyle  a `style` attribute holding an object literal, directly or as a branch of a
+//                condition (primitive props and tokens carry layout and colour). The web app's
+//                client-adapters own the raw elements, so they are exempt.
 //
 // The committed ledger (primitive-bypass.json) is a ratchet, like legacy-usage.json:
 //   - the check fails when any count rises or a file with a bypass is not in the ledger;
@@ -48,6 +51,7 @@ const MEASURES = [
   "rawTooltip",
   "rawMenu",
   "flexStack",
+  "inlineStyle",
 ];
 
 const ROLE_MEASURE = {
@@ -124,6 +128,25 @@ const classNameFlexes = (node) => {
   return false;
 };
 
+const holdsObjectLiteral = (node) => {
+  switch (node?.type) {
+    case "ObjectExpression":
+      return true;
+    case "JSXExpressionContainer":
+    case "TSAsExpression":
+    case "TSSatisfiesExpression":
+      return holdsObjectLiteral(node.expression);
+    case "ConditionalExpression":
+      return holdsObjectLiteral(node.consequent) || holdsObjectLiteral(node.alternate);
+    case "LogicalExpression":
+      return holdsObjectLiteral(node.left) || holdsObjectLiteral(node.right);
+    case "ArrayExpression":
+      return node.elements.some(holdsObjectLiteral);
+    default:
+      return false;
+  }
+};
+
 const walk = (node, counts) => {
   if (!node || typeof node !== "object") return;
   if (Array.isArray(node)) {
@@ -168,6 +191,8 @@ const walk = (node, counts) => {
         if (measure) counts[measure] += 1;
       } else if (name === "aria-modal") {
         counts.rawDialog += 1;
+      } else if (name === "style" && holdsObjectLiteral(attribute.value)) {
+        counts.inlineStyle += 1;
       } else if (name === "className" && attribute.value && classNameFlexes(attribute.value)) {
         flexes = true;
       }
@@ -192,6 +217,7 @@ const measureSource = (source, file) => {
     plugins: file.endsWith(".tsx") ? ["typescript", "jsx"] : ["typescript"],
   }).program;
   walk(program, counts);
+  if (file.split(sep).join("/").includes("apps/web/src/client-adapters/")) counts.inlineStyle = 0;
   return withoutZeros(counts);
 };
 
@@ -280,7 +306,7 @@ if (isMain) {
       console.error("Design-system primitive bypasses rose past primitive-bypass.json (#2147):");
       for (const violation of violations) console.error(`  ${violation}`);
       console.error(
-        "Use the @loomarr/design-system primitive (Dialog, Table, Menu, Tooltip, select, Stack) instead.",
+        "Use the @loomarr/design-system primitive (Dialog, Table, Menu, Tooltip, select, Stack) or its props instead.",
       );
       process.exitCode = 1;
     } else {

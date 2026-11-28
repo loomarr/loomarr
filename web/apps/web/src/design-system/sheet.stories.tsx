@@ -3,6 +3,7 @@ import {
   ArtworkFrame,
   BottomSheet,
   LoomarrProvider,
+  Stack,
   semanticThemes,
   Text,
 } from "@loomarr/design-system";
@@ -27,7 +28,7 @@ const SheetGallery = ({ theme = "dark" }: { theme?: "dark" | "light" }) => {
           padding: 32,
         }}
       >
-        <section aria-label="iPhone sheet" style={{ alignSelf: "end" }}>
+        <Stack alignSelf="flex-end" aria-label="iPhone sheet" render="section">
           <BottomSheet accessibilityLabel="Selected programme" onDismiss={() => undefined}>
             <View style={{ flexDirection: "row", gap: 12 }}>
               <ArtworkFrame borderRadius={8} density="touch" state="missing" width={112} />
@@ -45,8 +46,8 @@ const SheetGallery = ({ theme = "dark" }: { theme?: "dark" | "light" }) => {
             </View>
             <Action density="touch">Watch 21 now</Action>
           </BottomSheet>
-        </section>
-        <section aria-label="Android docked strip" style={{ alignSelf: "end" }}>
+        </Stack>
+        <Stack alignSelf="flex-end" aria-label="Android docked strip" render="section">
           <BottomSheet accessibilityLabel="Selected programme" handle={false}>
             <View style={{ alignItems: "center", flexDirection: "row", gap: 12 }}>
               <ArtworkFrame borderRadius={4} density="touch" state="missing" width={96} />
@@ -61,7 +62,7 @@ const SheetGallery = ({ theme = "dark" }: { theme?: "dark" | "light" }) => {
               <Action density="touch">Watch</Action>
             </View>
           </BottomSheet>
-        </section>
+        </Stack>
       </main>
     </LoomarrProvider>
   );
