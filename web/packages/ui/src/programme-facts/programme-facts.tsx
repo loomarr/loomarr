@@ -1,6 +1,5 @@
 import { formatGuideEpisode, type GuideAiringLayout } from "@loomarr/core/guide";
-import { Surface, Text, ThemeScope } from "@loomarr/design-system";
-import { View } from "react-native";
+import { Stack, Surface, Text, ThemeScope } from "@loomarr/design-system";
 
 interface ProgrammeFactsProps {
   airing: GuideAiringLayout["source"];
@@ -41,7 +40,16 @@ const ProgrammeFacts = ({
   const facts = [airing.rating, airing.genres?.join(", "), when].filter(Boolean).join(" · ");
 
   const body = (
-    <View aria-label="Programme facts" role="group" style={{ gap: 4, maxWidth: 520, minWidth: 0 }}>
+    <Stack
+      aria-label="Programme facts"
+      flexShrink={0}
+      gap="1"
+      maxWidth={520}
+      minWidth={0}
+      position="relative"
+      role="group"
+      zIndex={0}
+    >
       <Text numberOfLines={2} textRole="title">
         {title}
       </Text>
@@ -58,7 +66,7 @@ const ProgrammeFacts = ({
           {airing.description}
         </Text>
       ) : null}
-    </View>
+    </Stack>
   );
 
   if (ground === "page") return body;

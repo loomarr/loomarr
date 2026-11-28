@@ -1,4 +1,73 @@
-# Files whose non-test Go comments narrate history ("re-score #N", "write version N", "now" as "as
-# of this change"), held by TestCommentsDoNotNarrateHistory.
-# One "path count" line per file. This list only shrinks: reword a comment to the present tense and
-# lower the count, delete the line when the file reaches zero.
+# Files whose non-test Go comments narrate history, held by TestCommentsDoNotNarrateHistory
+# (internal/historycomments_architecture_test.go has the rules).
+# One "path count" line per file. This list only shrinks: reword a comment to the present tense, then
+# go test ./internal/ -run TestCommentsDoNotNarrateHistory -lower-history-ledger
+cmd/filler-encode-bench/main.go 1
+cmd/station-data/main.go 2
+docs/embed.go 1
+internal/api/api.go 1
+internal/api/filler/fillerclipdto.go 1
+internal/api/filler/fillersources.go 1
+internal/api/guide/channelpreview.go 1
+internal/api/proposals/proposals.go 2
+internal/api/setup/setup.go 1
+internal/app/buildplayout.go 1
+internal/channels/growth/fill.go 1
+internal/channels/reconcile.go 1
+internal/channels/schedule/passes.go 3
+internal/channels/schedule/seasonal_arrange.go 1
+internal/channels/schedule/slotting.go 1
+internal/channels/schedule/watermark_policy.go 1
+internal/filler/cliplibrary/artwork.go 2
+internal/filler/cliplibrary/clip.go 2
+internal/filler/cliplibrary/intake.go 1
+internal/filler/cliplibrary/naming.go 1
+internal/filler/cliplibrary/scan.go 2
+internal/filler/clips/clip.go 2
+internal/filler/doc.go 1
+internal/filler/fetch/archive.go 2
+internal/filler/fetch/discover.go 1
+internal/filler/fetch/recovery.go 1
+internal/filler/pipeline.go 1
+internal/filler/pod/adapter.go 3
+internal/filler/pod/coverage.go 2
+internal/filler/pod/ladder.go 2
+internal/filler/pod/pod.go 7
+internal/filler/records/fillersources.go 1
+internal/filler/records/splitproposals.go 1
+internal/filler/routine/driver.go 1
+internal/filler/split.go 1
+internal/filler/split/segment.go 1
+internal/filler/stage_split.go 1
+internal/filler/sync.go 1
+internal/library/mediaserver/filler.go 2
+internal/library/mediaserver/metadata.go 1
+internal/library/mediaserver/search.go 1
+internal/media/defects/defects.go 1
+internal/media/encode/video.go 2
+internal/media/tools/conditioning_cut.go 1
+internal/media/tools/derivative_recipe.go 1
+internal/platform/housekeeping/housekeeping.go 1
+internal/platform/jobs/river.go 2
+internal/platform/jobs/scheduler.go 2
+internal/platform/llm/ollama.go 1
+internal/platform/store/clipstore/clipread.go 1
+internal/platform/store/clipstore/clips.go 3
+internal/platform/store/librarystore/files.go 1
+internal/platform/store/open.go 1
+internal/platform/store/store.go 1
+internal/platform/store/storedb/querier.go 1
+internal/playout/admission/budget.go 1
+internal/playout/args.go 1
+internal/playout/bench/compare.go 1
+internal/playout/capability.go 2
+internal/playout/filters.go 1
+internal/playout/hls/packager_encoder.go 1
+internal/playout/hls/still.go 1
+internal/playout/pipeline.go 1
+internal/playout/resolve/timelinethumbs.go 1
+internal/playout/watermark/design.go 1
+internal/playout/watermark/render.go 1
+internal/playout/watermark_check.go 1
+internal/testkit/mediaserver.go 1
+project/evidence/curation-1670/sim/main.go 1

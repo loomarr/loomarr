@@ -23,21 +23,28 @@ interface PlaybarStillBox {
 }
 
 interface PlaybarStillProps {
+  /** Fills its positioned parent, in place of `style`. */
+  fill?: boolean;
   style?: PlaybarStillBox;
   uri?: string;
 }
 
-const PlaybarStill = ({ style, uri }: PlaybarStillProps) =>
-  uri ? (
+// An image takes no size from its insets alone on every client, so width and height are written out.
+const FILL: PlaybarStillBox = { height: "100%", left: 0, position: "absolute", top: 0, width: "100%" };
+
+const PlaybarStill = ({ fill = false, style, uri }: PlaybarStillProps) => {
+  const box = fill ? FILL : style;
+  return uri ? (
     <Image
       accessibilityIgnoresInvertColors
       resizeMode="cover"
       source={{ uri }}
-      style={[{ backgroundColor: semanticColors.artwork.placeholder }, style]}
+      style={[{ backgroundColor: semanticColors.artwork.placeholder }, box]}
     />
   ) : (
-    <View style={[{ backgroundColor: semanticColors.artwork.placeholder }, style]} />
+    <View style={[{ backgroundColor: semanticColors.artwork.placeholder }, box]} />
   );
+};
 
 export type { PlaybarStillProps };
 export { PlaybarStill };
