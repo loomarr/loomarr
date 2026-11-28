@@ -7,7 +7,7 @@ const NOW = Date.parse("2026-03-10T17:00:00Z"); // noon there
 
 describe("airingWhen", () => {
   it.each([
-    ["2026-03-10T16:30:00Z", "On now"],
+    ["2026-03-10T16:30:00Z", "Watching now"],
     ["2026-03-10T19:00:00Z", "Next today at 2:00 PM"],
     ["2026-03-11T02:00:00Z", "Next tonight at 9:00 PM"],
     ["2026-03-11T15:00:00Z", "Next tomorrow at 10:00 AM"],

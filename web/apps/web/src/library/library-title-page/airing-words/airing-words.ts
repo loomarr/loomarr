@@ -43,7 +43,7 @@ const airingWhen = (
 ) => {
   if (Date.parse(end) <= now) return undefined;
   const at = Date.parse(start);
-  if (at <= now) return "On now";
+  if (at <= now) return "Watching now";
   return `Next ${dayWords(at, now, timeZone)} at ${formatGuideTime(at, timeZone)}`;
 };
 
