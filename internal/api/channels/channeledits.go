@@ -103,5 +103,5 @@ func validateChannelPlace(policy schedule.ChannelPolicy) error {
 // valid when authored, but the channel changed before it could commit. The only honest recovery
 // is to refresh and let the operator decide again, especially for whole-list lineup replacement.
 func staleChannelConflict() error {
-	return httpcore.Conflict("Channel changed", "This channel changed after you opened it. Refresh it, review the latest version, and try again.")
+	return httpcore.CodedConflict(httpcore.ProblemChannelChanged, "Channel changed", "This channel changed after you opened it. Refresh it, review the latest version, and try again.")
 }

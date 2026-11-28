@@ -47,7 +47,11 @@ const choir: LineupEntryDTO = { key: "movie:tmdb:90009426", name: "The Seventh S
 
 const stale = () =>
   HttpResponse.json(
-    { title: "Channel changed", detail: "This channel changed after you opened it." },
+    {
+      title: "Channel changed",
+      detail: "This channel changed after you opened it.",
+      code: "channel_changed",
+    },
     { status: 409 },
   );
 

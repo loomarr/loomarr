@@ -1,6 +1,7 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import { ErrorModelCode } from "@loomarr/api/models/errorModelCode";
 import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
@@ -9,17 +10,15 @@ import { useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import type { ChannelEdit, ChannelSave, ChannelSaveOptions } from "./use-channel-save.type";
 
-// A 409 "Channel changed" means another writer (a reconcile, a sweep, a second admin) saved the
+// A stale-revision 409 means another writer (a reconcile, a sweep, a second admin) saved the
 // channel first. Each one is rebased and retried; a run of them this long means the channel is
 // changing under the editor faster than it can save, and the operator hears about it instead.
 const MAX_CONFLICT_RETRIES = 3;
 
-// The stale-revision problem's title (internal/api/channels.go staleChannelConflict, pinned by
-// channels_test.go). A 409 with any other title, such as a renumber onto a taken number, is a
-// real failure: refetching cannot fix it.
-const STALE_TITLE = "Channel changed";
+// Any other 409, such as a renumber onto a taken number, carries no such code and is a real
+// failure: refetching cannot fix it.
 const isStale = (err: unknown): boolean =>
-  err instanceof ApiError && err.status === 409 && err.problem.title === STALE_TITLE;
+  err instanceof ApiError && err.problem.code === ErrorModelCode.channel_changed;
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 

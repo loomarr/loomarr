@@ -103,6 +103,7 @@ func humaConfig() huma.Config {
 	// behavior. Kept inside humaConfig so the "single constructor owns it" invariant above holds.
 	arrayNullableOnce.Do(func() { huma.DefaultArrayNullable = false })
 	cfg := huma.DefaultConfig("Loomarr API", "0.1.0")
+	cfg.Components.Schemas = huma.NewMapRegistry("#/components/schemas/", httpcore.SchemaName)
 	// A fresh map: DefaultConfig hands out Huma's package-level DefaultFormats.
 	cfg.Formats = map[string]huma.Format{"application/json": httpcore.WireJSONFormat, "json": httpcore.WireJSONFormat}
 	cfg.Info.Description = "Turn a sentence into a self-maintaining virtual TV channel. " +
