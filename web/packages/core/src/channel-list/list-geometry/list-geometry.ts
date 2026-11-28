@@ -56,5 +56,31 @@ const pinnedShift = ({
   return Math.min(0, scroll + height - pinnedHeight - anchorY);
 };
 
+/**
+ * The scroll position that shows a row clear of the pinned channel, which covers the top of the box
+ * once the list has passed it and the bottom while the list is short of it.
+ */
+const scrollToShow = ({
+  rowY,
+  rowHeight,
+  anchorY,
+  scroll,
+  height,
+  pinnedHeight,
+}: {
+  rowY: number;
+  rowHeight: number;
+  anchorY: number;
+  scroll: number;
+  height: number;
+  pinnedHeight: number;
+}) => {
+  const above = rowY < anchorY ? 0 : pinnedHeight;
+  const below = rowY > anchorY ? 0 : pinnedHeight;
+  if (rowY - above < scroll) return rowY - above;
+  if (rowY + rowHeight + below > scroll + height) return rowY + rowHeight + below - height;
+  return scroll;
+};
+
 export type { ListRest };
-export { listRest, pinnedShift, scrollBounds };
+export { listRest, pinnedShift, scrollBounds, scrollToShow };

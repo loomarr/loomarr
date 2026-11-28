@@ -1,5 +1,5 @@
-import type { ChannelListEvent, ChannelListState } from "@loomarr/core/channel-list";
 import type { ChannelLineup, LineupChannel } from "@loomarr/core/channel-lineup";
+import type { ChannelListEvent, ChannelListState } from "@loomarr/core/channel-list";
 import type { ReactNode } from "react";
 
 /** How the list is used: a pointer in a window, a finger, or a remote. */
@@ -28,4 +28,13 @@ interface ChannelListProps<C extends LineupChannel> {
   onLook?: ((channelId: string | undefined) => void) | undefined;
 }
 
-export type { ChannelListDetail, ChannelListLayout, ChannelListProps };
+/**
+ * What the list needs of a mounted row or tab. ⚠ Not React Native's View type: Storybook's docgen
+ * follows a prop's types into their imports and cannot parse react-native's source.
+ */
+interface FocusHandle {
+  focus: (options?: { preventScroll?: boolean }) => void;
+  blur?: () => void;
+}
+
+export type { ChannelListDetail, ChannelListLayout, ChannelListProps, FocusHandle };

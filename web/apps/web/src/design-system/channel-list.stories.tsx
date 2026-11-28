@@ -1,9 +1,5 @@
-import {
-  type ChannelListState,
-  channelListReduce,
-  createChannelListState,
-} from "@loomarr/core/channel-list";
 import { createChannelLineup, type LineupChannel } from "@loomarr/core/channel-lineup";
+import { type ChannelListState, channelListReduce, createChannelListState } from "@loomarr/core/channel-list";
 import { Surface, Text, ThemeScope } from "@loomarr/design-system";
 import { ChannelList, type ChannelListLayout } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -13,7 +9,18 @@ import { expect, fireEvent, userEvent, waitFor, within } from "storybook/test";
 // The channel list of The Cross (frontend-design §9.5, target). Genre words only: the repo is public,
 // so no real titles or channels. The pinned channel's drawing is a plain stand-in for the lower third.
 
-const KINDS = ["Comedy", "Drama", "Mystery", "Western", "Cartoon", "Nature", "Cooking", "News", "Quiz", "Film"];
+const KINDS = [
+  "Comedy",
+  "Drama",
+  "Mystery",
+  "Western",
+  "Cartoon",
+  "Nature",
+  "Cooking",
+  "News",
+  "Quiz",
+  "Film",
+];
 const DECADES = [1950, 1960, 1970, 1980, 1990, 2000];
 
 const channels: LineupChannel[] = Array.from({ length: 30 }, (_, index) => ({
@@ -63,6 +70,8 @@ const List = ({ frame, start, watched = 14, recent = "some", digits, autoFocus }
       television: frame === "television",
       watchedId: `ch-${watched}`,
     }),
+    // A list opened from a key or a remote starts with the cursor on the watched channel.
+    ...(autoFocus ? { cursor: { channelId: `ch-${watched}`, kind: "row" } as const } : {}),
     ...start,
   }));
   const [looking, setLooking] = useState<string | undefined>(undefined);
@@ -157,11 +166,11 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const row = (id: number) => `[aria-label^="${id} "]`;
+const row = (canvas: HTMLElement, number: number) =>
+  within(canvas).getByRole("option", { name: new RegExp(`^${number} `) });
 const scroller = (canvas: HTMLElement) =>
   canvas.querySelector<HTMLElement>('[data-testid="channel-list-scroller"]') as HTMLElement;
-const settled = (canvas: HTMLElement) =>
-  waitFor(() => expect(scroller(canvas).scrollTop).toBeGreaterThan(0));
+const settled = (canvas: HTMLElement) => waitFor(() => expect(scroller(canvas).scrollTop).toBeGreaterThan(0));
 
 export const ThirtyChannelsInAWindow: Story = {};
 export const FullScreenOverThePicture: Story = { args: { frame: "full" } };
@@ -205,7 +214,7 @@ export const CursorOnATab: Story = {
 export const PointerLooking: Story = {
   play: async ({ canvasElement }) => {
     await settled(canvasElement);
-    await userEvent.hover(canvasElement.querySelector(row(12)) as HTMLElement);
+    await userEvent.hover(row(canvasElement, 12));
     await expect(await within(canvasElement).findByText(/^Looking at 12 /)).toBeVisible();
   },
 };

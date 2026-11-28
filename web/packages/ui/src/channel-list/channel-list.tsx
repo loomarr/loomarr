@@ -1,4 +1,6 @@
+import type { LineupChannel, LineupGroupKind } from "@loomarr/core/channel-lineup";
 import {
+  type ChannelListEvent,
   type ChannelListPress,
   channelListAllowsPress,
   channelListView,
@@ -6,25 +8,21 @@ import {
   PRESS_MOVE_PX,
   pinnedShift,
   scrollBounds,
+  scrollToShow,
 } from "@loomarr/core/channel-list";
-import type { LineupChannel, LineupGroupKind } from "@loomarr/core/channel-lineup";
-import { Surface, Text } from "@loomarr/design-system";
-import { type ComponentRef, Fragment, useEffect, useRef, useState } from "react";
+import { PressableRow, Surface, Text, VisuallyHidden } from "@loomarr/design-system";
+import { type ComponentProps, type ComponentRef, Fragment, useEffect, useRef, useState } from "react";
 import {
   type GestureResponderEvent,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Platform,
-  Pressable,
   ScrollView,
-  View,
-  type ViewStyle,
 } from "react-native";
 
-import type { ChannelListProps } from "./channel-list.type";
+import type { ChannelListProps, FocusHandle } from "./channel-list.type";
 import { ListHead } from "./list-head";
-import { ListTarget, type TargetHandle } from "./list-target";
 
 /** A row's height: at least a finger's, and the same everywhere so a television can rest on whole rows. */
 const ROW_HEIGHT = 48;
@@ -55,12 +53,14 @@ const pointOf = (event: GestureResponderEvent) => {
   return { x: native.pageX ?? native.clientX ?? 0, y: native.pageY ?? native.clientY ?? 0 };
 };
 
-// The pinned channel sticks to whichever end of the list it would leave by. Only a browser can stick
-// at both ends; a native view is moved by the scroll position instead.
-const STICKY =
-  Platform.OS === "web"
-    ? ({ bottom: 0, position: "sticky", top: 0, zIndex: 2 } as unknown as ViewStyle)
-    : ({ zIndex: 2 } as ViewStyle);
+// A pointer never takes focus, so the amber ring is the keyboard's and remote's alone and no press
+// scrolls the list under the pointer.
+const keepFocus = (event: { preventDefault: () => void }) => event.preventDefault();
+
+/** A box with no look of its own. */
+const Bare = (props: ComponentProps<typeof Surface>) => (
+  <Surface backgroundColor="transparent" borderRadius={0} borderWidth={0} {...props} />
+);
 
 /**
  * The Cross's channel list (frontend-design §9.5): every channel of a group in one scrollable list,
@@ -84,28 +84,33 @@ const ChannelList = <C extends LineupChannel>({
 
   const [viewport, setViewport] = useState(0);
   const [pinnedHeight, setPinnedHeight] = useState(ROW_HEIGHT * 2);
-  const [scrollY, setScrollY] = useState(0);
-  // Whether the last input was a key or a remote, which is when the cursor draws its ring.
-  const [keys, setKeys] = useState(autoFocus || wholeRows);
+  const [nativeScroll, setNativeScroll] = useState(0);
 
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
-  const rows = useRef(new Map<string, TargetHandle>());
-  const tabs = useRef(new Map<LineupGroupKind, TargetHandle>());
+  const scrolled = useRef(0);
+  const rows = useRef(new Map<string, FocusHandle>());
+  const tabs = useRef(new Map<LineupGroupKind, FocusHandle>());
   const lastPress = useRef<ChannelListPress | undefined>(undefined);
   const lookTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const looking = useRef<string | undefined>(undefined);
   const rested = useRef("");
-  const focusWanted = useRef(autoFocus);
+  // Whether the last input was a key or a remote, which is when focus follows the cursor.
+  const focusWanted = useRef(autoFocus || wholeRows);
 
   const pinned = lineup.channels.find((channel) => channel.id === watchedId);
   const pinnedAt = view.finding ? -1 : view.rows.findIndex((channel) => channel.id === watchedId);
-  // The watched channel's place down the content: a heading each time a section starts, then rows.
-  const before = view.rows.slice(0, pinnedAt < 0 ? view.rows.length : pinnedAt);
-  const headingsBefore = view.rows
-    .slice(0, pinnedAt < 0 ? view.rows.length : pinnedAt + 1)
-    .filter((channel) => view.headings.has(channel.id)).length;
+
+  // Each row's place down the content, below the room above the first: a heading, then its rows.
   const room = viewport;
-  const anchorY = room + before.length * ROW_HEIGHT + headingsBefore * headingHeight;
+  const places = new Map<string, number>();
+  let y = room;
+  view.rows.forEach((channel, index) => {
+    if (view.headings.has(channel.id)) y += headingHeight;
+    places.set(channel.id, y);
+    y += index === pinnedAt ? pinnedHeight : ROW_HEIGHT;
+  });
+  const anchorY = (pinnedAt < 0 ? y : places.get(watchedId ?? "")) ?? y;
+  const contentHeight = y + (pinnedAt < 0 && pinned ? pinnedHeight : 0) + room;
   const rest = listRest({
     anchorY,
     pinnedHeight,
@@ -115,30 +120,45 @@ const ChannelList = <C extends LineupChannel>({
   });
   // Find's results stand at the top of the list.
   const restScroll = view.finding ? room : rest.scroll;
-  const notice = view.notice && view.notice !== "no-match" ? NOTICES[view.notice] : undefined;
-  const contentHeight =
-    2 * room +
-    view.rows.length * ROW_HEIGHT +
-    view.headings.size * headingHeight +
-    (pinned ? pinnedHeight - (pinnedAt < 0 ? 0 : ROW_HEIGHT) : 0);
+
+  const scrollTo = (to: number) => {
+    scrolled.current = to;
+    scroller.current?.scrollTo?.({ animated: false, y: to });
+    if (Platform.OS !== "web") setNativeScroll(to);
+  };
 
   // The list re-centres when what it shows changes, and otherwise stays where it was scrolled.
   const restKey = [watchedId, group, view.finding && query, open, viewport, pinnedHeight, restOffset].join();
   useEffect(() => {
     if (!viewport || rested.current === restKey) return;
     rested.current = restKey;
-    scroller.current?.scrollTo?.({ animated: false, y: restScroll });
-    setScrollY(restScroll);
+    scrollTo(restScroll);
   });
 
-  // Focus follows the cursor, and only from keys: a pointer never moves the list under itself.
+  // Focus follows the cursor, and only from keys.
   const cursorKey =
     cursor.kind === "row" ? cursor.channelId : cursor.kind === "tab" ? `tab:${cursor.group}` : "";
+  const focusKey = [cursorKey, query, watchedId, group, viewport].join();
+  const focusedKey = useRef("");
   useEffect(() => {
+    if (focusedKey.current === focusKey) return;
+    focusedKey.current = focusKey;
     if (!focusWanted.current || query !== null) return;
-    if (cursor.kind === "row") rows.current.get(cursor.channelId)?.focus();
     if (cursor.kind === "tab") tabs.current.get(cursor.group)?.focus();
-  }, [cursorKey, query, watchedId, group]);
+    if (cursor.kind !== "row") return;
+    rows.current.get(cursor.channelId)?.focus({ preventScroll: true });
+    const rowY = places.get(cursor.channelId);
+    if (!viewport || rowY === undefined || cursor.channelId === watchedId) return;
+    const to = scrollToShow({
+      anchorY,
+      height: rest.height,
+      pinnedHeight,
+      rowHeight: ROW_HEIGHT,
+      rowY,
+      scroll: scrolled.current,
+    });
+    if (to !== scrolled.current) scrollTo(to);
+  });
 
   const look = (channelId: string | undefined) => {
     clearTimeout(lookTimer.current);
@@ -163,7 +183,8 @@ const ChannelList = <C extends LineupChannel>({
       if (!channelListAllowsPress(lastPress.current, next)) return;
       lastPress.current = next;
       focusWanted.current = false;
-      setKeys(false);
+      // The ring a key left behind goes with the keys.
+      if (cursor.kind === "row") rows.current.get(cursor.channelId)?.blur?.();
     }
     look(undefined);
     onEvent({ channelId, type: "choose" });
@@ -178,18 +199,18 @@ const ChannelList = <C extends LineupChannel>({
 
   const onKeyDown = (event: KeyEvent) => {
     const typing = event.target?.tagName === "INPUT";
-    const send: Record<string, Parameters<typeof onEvent>[0] | undefined> = {
+    const back: ChannelListEvent = { type: query === null ? "close" : "clearFind" };
+    const send: Record<string, ChannelListEvent | undefined> = {
       "/": typing || television ? undefined : { query: "", type: "find" },
       ArrowDown: { by: 1, type: "move" },
       ArrowLeft: typing ? undefined : { by: -1, type: "across" },
       ArrowRight: typing ? undefined : { by: 1, type: "across" },
       ArrowUp: { by: -1, type: "move" },
-      Backspace: typing ? undefined : { type: query === null ? "close" : "clearFind" },
+      Backspace: typing ? undefined : back,
       Enter: typing ? { type: "choose" } : undefined,
-      Escape: { type: query === null ? "close" : "clearFind" },
+      Escape: back,
     };
     focusWanted.current = true;
-    setKeys(true);
     const next = send[event.key];
     if (!next) return;
     event.preventDefault();
@@ -197,181 +218,175 @@ const ChannelList = <C extends LineupChannel>({
   };
 
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const y = event.nativeEvent.contentOffset.y;
+    const at = event.nativeEvent.contentOffset.y;
     // A different row slides under a resting pointer, so what was looked at is let go.
     look(undefined);
     const bounds = scrollBounds({ contentHeight, height: rest.height, rest: restScroll, room });
-    const within = Math.min(bounds.max, Math.max(bounds.min, y));
-    if (viewport && within !== y) scroller.current?.scrollTo?.({ animated: false, y: within });
-    if (Platform.OS !== "web") setScrollY(within);
+    const within = Math.min(bounds.max, Math.max(bounds.min, at));
+    if (viewport && within !== at) return scrollTo(within);
+    scrolled.current = at;
+    if (Platform.OS !== "web") setNativeScroll(at);
   };
 
-  const ring = keys && open;
-  const cursorRow = cursor.kind === "row" ? cursor.channelId : undefined;
-  const tabStopRow = cursorRow ?? watchedId;
-  const rowRef = (channelId: string) => (node: TargetHandle | null) => {
+  const tabStopRow = cursor.kind === "row" ? cursor.channelId : watchedId;
+  const rowRef = (channelId: string) => (node: FocusHandle | null) => {
     if (node) rows.current.set(channelId, node);
     else rows.current.delete(channelId);
   };
-  const keyFocus = (channelId: string) => () => {
-    if (cursorRow !== channelId) onEvent({ channelId, type: "focusRow" });
-  };
-  // Rows a focus scrolls to stand clear of the pinned channel.
-  const clearance = { scrollMarginBottom: pinnedHeight, scrollMarginTop: pinnedHeight } as ViewStyle;
-  const spoken = (channel: C) => {
-    const { minutesLeft, inBreak } = detail?.(channel) ?? {};
-    const left = inBreak ? "in a break" : minutesLeft === undefined ? undefined : `${minutesLeft} min left`;
-    return { left, onNow: channel.onNow };
-  };
+
+  // A row or the pinned channel is named by what it shows, so each piece of text ends in a space.
+  const target = (channel: C, selected: boolean, isRow: boolean) => ({
+    onFocus: () => {
+      if (isRow && (cursor.kind !== "row" || cursor.channelId !== channel.id)) {
+        onEvent({ channelId: channel.id, type: "focusRow" });
+      }
+    },
+    onHoverIn: () => look(channel.id),
+    onHoverOut: () => look(undefined),
+    onMouseDown: keepFocus,
+    onPress: press(channel.id),
+    ref: (isRow ? rowRef(channel.id) : undefined) as never,
+    ...({
+      "aria-selected": selected,
+      role: "option",
+      tabIndex: isRow && tabStopRow === channel.id ? 0 : -1,
+    } as object),
+  });
 
   const rowOf = (channel: C) => {
-    const { left, onNow } = spoken(channel);
+    const { minutesLeft, inBreak } = detail?.(channel) ?? {};
+    const left = inBreak ? "in a break" : minutesLeft === undefined ? undefined : `${minutesLeft} min left`;
     const watched = channel.id === watchedId;
     const decade = view.headings.size ? channel.decade : undefined;
+    // What is not drawn but is said: the heading a row stands under, and that it is on screen.
+    const unseen = [decade && `${decade}s`, watched && "watching"].filter(Boolean).join(" ");
     return (
-      <ListTarget
-        label={[`${channel.number} ${channel.name}`, onNow, left, decade && `${decade}s`, watched && "watching"]
-          .filter(Boolean)
-          .join(", ")}
-        minHeight={ROW_HEIGHT - 4}
-        onHoverIn={() => look(channel.id)}
-        onHoverOut={() => look(undefined)}
-        onKeyFocus={keyFocus(channel.id)}
-        onPress={press(channel.id)}
-        ringed={ring && cursorRow === channel.id}
-        role="option"
-        selected={watched}
-        style={{ height: ROW_HEIGHT, justifyContent: "center", ...clearance }}
-        tabStop={tabStopRow === channel.id}
-        targetRef={rowRef(channel.id)}
-      >
-        <Surface backgroundColor="transparent" borderWidth={0} width={32} alignItems="flex-end">
-          <Text textRole="mono" tone="secondary">
-            {channel.number}
-          </Text>
-        </Surface>
-        <Surface backgroundColor="transparent" borderWidth={0} flex={1} minWidth={0}>
-          <Text numberOfLines={1} textRole="cardLabel">
-            {channel.name}
-          </Text>
-          {onNow ? (
-            <Text numberOfLines={1} textRole="metadata" tone="secondary">
-              {onNow}
+      <Bare height={ROW_HEIGHT} justifyContent="center">
+        <PressableRow inset={{ x: 8, y: 4 }} {...target(channel, watched, true)}>
+          <Bare alignItems="flex-end" width={32}>
+            <Text textRole="mono" tone="secondary">
+              {channel.number}{" "}
+            </Text>
+          </Bare>
+          <Bare flex={1} minWidth={0}>
+            <Text numberOfLines={1} textAlign="left" textRole="cardLabel">
+              {channel.name}{" "}
+            </Text>
+            {channel.onNow ? (
+              <Text numberOfLines={1} textAlign="left" textRole="metadata" tone="secondary">
+                {channel.onNow}{" "}
+              </Text>
+            ) : null}
+          </Bare>
+          {left ? (
+            <Text textRole="metadata" tone="secondary">
+              {left}{" "}
             </Text>
           ) : null}
-        </Surface>
-        {left ? (
-          <Text textRole="metadata" tone="secondary">
-            {left}
-          </Text>
-        ) : null}
-      </ListTarget>
+          {unseen ? <VisuallyHidden>{unseen}</VisuallyHidden> : null}
+        </PressableRow>
+      </Bare>
     );
   };
 
   const shift =
     Platform.OS === "web"
       ? 0
-      : pinnedShift({ anchorY, height: rest.height, pinnedHeight, scroll: scrollY });
+      : pinnedShift({ anchorY, height: rest.height, pinnedHeight, scroll: nativeScroll });
+  // The pinned channel sticks to whichever end of the list it would leave by. Only a browser can
+  // stick at both ends; a native view is moved by the scroll position instead.
   const pinnedSlot = pinned ? (
-    <View
+    <Bare
+      bottom={0}
       onLayout={(event: LayoutChangeEvent) => {
         const { height } = event.nativeEvent.layout;
         if (height) setPinnedHeight(height);
       }}
-      style={[STICKY, shift ? { transform: [{ translateY: shift }] } : null]}
+      position={(Platform.OS === "web" ? "sticky" : "relative") as "relative"}
       testID="channel-list-pinned"
+      top={0}
+      y={shift}
+      zIndex={2}
     >
-      <ListTarget
-        label={`${pinned.number} ${pinned.name}, watching`}
-        minHeight={ROW_HEIGHT}
-        onKeyFocus={view.finding ? undefined : keyFocus(pinned.id)}
-        onPress={press(pinned.id)}
-        ringed={ring && !view.finding && cursorRow === pinned.id}
-        role="option"
-        selected={!view.finding}
-        tabStop={!view.finding && tabStopRow === pinned.id}
-        targetRef={view.finding ? undefined : rowRef(pinned.id)}
-      >
-        <Surface backgroundColor="transparent" borderWidth={0} flex={1} minWidth={0}>
+      <PressableRow inset={{ x: 2, y: 2 }} {...target(pinned, !view.finding, !view.finding)}>
+        <Bare flex={1} minWidth={0}>
           {renderPinned(pinned)}
-        </Surface>
-      </ListTarget>
-    </View>
+        </Bare>
+        <VisuallyHidden>watching</VisuallyHidden>
+      </PressableRow>
+    </Bare>
   ) : null;
 
+  const message =
+    view.notice === "no-match"
+      ? `No channel or programme matches “${query?.trim()}”.`
+      : view.notice && NOTICES[view.notice];
+
   return (
-    <View
+    <Bare
+      flex={1}
+      gap={4}
+      minHeight={0}
       {...(Platform.OS === "web" ? ({ onKeyDown, onPointerMove } as object) : {})}
-      style={{ flex: 1, gap: 4, minHeight: 0 }}
     >
       <ListHead
         cursor={cursor}
         group={group}
         onEvent={onEvent}
+        onMouseDown={keepFocus}
         query={query}
-        ring={ring}
         tabRef={(kind) => (node) => {
           if (node) tabs.current.set(kind, node);
           else tabs.current.delete(kind);
         }}
         television={television}
       />
-      <View
+      <Bare
+        flex={1}
+        minHeight={0}
         onLayout={(event: LayoutChangeEvent) => setViewport(event.nativeEvent.layout.height)}
-        style={{ flex: 1, minHeight: 0 }}
       >
-        <ScrollView
-          onScroll={onScroll}
-          ref={scroller}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={false}
-          style={viewport ? { flexGrow: 0, height: rest.height } : { flex: 1 }}
-          testID="channel-list-scroller"
-        >
-          <View aria-label="Channels" role={"listbox" as never}>
-            <View aria-hidden style={{ height: room }} />
-            {view.rows.map((channel, index) => (
-              <Fragment key={channel.id}>
-                {view.headings.has(channel.id) ? (
-                  <View aria-hidden style={{ height: headingHeight, justifyContent: "flex-end", paddingLeft: 52 }}>
-                    <Text textRole="metadata" tone="secondary">{`${view.headings.get(channel.id)}s`}</Text>
-                  </View>
-                ) : null}
-                {index === pinnedAt ? pinnedSlot : rowOf(channel)}
-              </Fragment>
-            ))}
-            {notice ? (
-              <Surface backgroundColor="transparent" borderWidth={0} paddingHorizontal={8} paddingVertical={12}>
-                <Text textRole="metadata" tone="secondary">
-                  {notice}
-                </Text>
-              </Surface>
-            ) : null}
-            {view.finding && !view.rows.length ? (
-              <Surface backgroundColor="transparent" borderWidth={0} paddingHorizontal={8} paddingVertical={12}>
-                <Text textRole="metadata" tone="secondary">
-                  {`No channel or programme matches “${query?.trim()}”.`}
-                </Text>
-              </Surface>
-            ) : null}
-            {pinnedAt < 0 ? pinnedSlot : null}
-            <View aria-hidden style={{ height: room }} />
-          </View>
-        </ScrollView>
-      </View>
+        <Bare height={viewport ? rest.height : "100%"}>
+          <ScrollView
+            onScroll={onScroll}
+            ref={scroller}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
+            testID="channel-list-scroller"
+          >
+            <Bare aria-label="Channels" role={"listbox" as never}>
+              <Bare aria-hidden height={room} />
+              {view.rows.map((channel, index) => (
+                <Fragment key={channel.id}>
+                  {view.headings.has(channel.id) ? (
+                    <Bare aria-hidden height={headingHeight} justifyContent="flex-end" paddingLeft={52}>
+                      <Text textRole="metadata" tone="secondary">{`${view.headings.get(channel.id)}s`}</Text>
+                    </Bare>
+                  ) : null}
+                  {index === pinnedAt ? pinnedSlot : rowOf(channel)}
+                </Fragment>
+              ))}
+              {message ? (
+                <Bare paddingHorizontal={8} paddingVertical={12}>
+                  <Text textRole="metadata" tone="secondary">
+                    {message}
+                  </Text>
+                </Bare>
+              ) : null}
+              {pinnedAt < 0 ? pinnedSlot : null}
+              <Bare aria-hidden height={room} />
+            </Bare>
+          </ScrollView>
+        </Bare>
+      </Bare>
       {view.notice && view.notice !== "empty-recent" ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => onEvent({ type: "showAll" })}
-          style={{ justifyContent: "center", minHeight: 44, paddingHorizontal: 8 }}
-        >
+        <PressableRow inset={{ x: 8, y: 12 }} onPress={() => onEvent({ type: "showAll" })}>
           <Text textDecorationLine="underline" textRole="cardLabel">
             Show all channels
           </Text>
-        </Pressable>
+        </PressableRow>
       ) : null}
-    </View>
+    </Bare>
   );
 };
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { type ChannelListState, channelListReduce, createChannelListState } from "@loomarr/core/channel-list";
 import { createChannelLineup } from "@loomarr/core/channel-lineup";
+import { type ChannelListState, channelListReduce, createChannelListState } from "@loomarr/core/channel-list";
 import { act, cleanup, fireEvent, renderUi, screen, userEvent } from "@loomarr/test-support";
 import { useState } from "react";
 import { Text } from "react-native";
@@ -59,17 +59,18 @@ const Harness = ({
   );
 };
 
-const row = (number: number) => screen.getByRole("option", { name: new RegExp(`^${number} Station`) });
-const ringed = () => [...document.querySelectorAll("[data-ringed]")].map((each) => each.textContent);
+// A row's name begins with its number; the pinned one begins with the caller's drawing.
+const row = (number: number) => screen.getByRole("option", { name: new RegExp(`^(Pinned )?${number} `) });
+// The amber ring is the focused element's, so focus is where the ring is.
+const focused = () => document.activeElement;
 
 describe("ChannelList", () => {
   it("lists every row with its title and time, and marks the watched channel in its pinned slot", () => {
     renderUi(<Harness />);
-    expect(row(1).getAttribute("aria-label")).toBe("1 Station 1, Programme 1, 12 min left");
-    expect(row(3).getAttribute("aria-label")).toBe("3 Station 3, Programme 3, in a break");
-    expect(row(2).getAttribute("aria-label")).toBe("2 Station 2, watching");
+    expect(row(1).textContent).toBe("1 Station 1 Programme 1 12 min left ");
+    expect(row(3).textContent).toBe("3 Station 3 Programme 3 in a break ");
     expect(row(2).getAttribute("aria-selected")).toBe("true");
-    expect(row(2).textContent).toBe("Pinned 2");
+    expect(row(2).textContent).toBe("Pinned 2watching");
     expect(screen.getByTestId("channel-list-pinned").contains(row(2))).toBe(true);
     expect(screen.getAllByRole("option")).toHaveLength(4);
   });
@@ -77,18 +78,15 @@ describe("ChannelList", () => {
   it("moves one amber ring with the keys, through the pinned channel and up to the tabs, without tuning", async () => {
     tuned.mockClear();
     renderUi(<Harness autoFocus start={{ cursor: { channelId: "ch-2", kind: "row" } }} />);
-    expect(ringed()).toEqual(["Pinned 2"]);
-    expect(document.activeElement).toBe(row(2));
+    expect(focused()).toBe(row(2));
     await userEvent.keyboard("{ArrowUp}");
-    expect(document.activeElement).toBe(row(1));
-    expect(ringed()).toHaveLength(1);
+    expect(focused()).toBe(row(1));
     await userEvent.keyboard("{ArrowUp}");
-    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "All" }));
-    expect(ringed()).toEqual(["All"]);
+    expect(focused()).toBe(screen.getByRole("tab", { name: "All" }));
     await userEvent.keyboard("{ArrowRight}");
-    expect(ringed()).toEqual(["Recent"]);
+    expect(focused()).toBe(screen.getByRole("tab", { name: "Recent" }));
     await userEvent.keyboard("{ArrowDown}");
-    expect(document.activeElement).toBe(row(1));
+    expect(focused()).toBe(row(1));
     expect(tuned).not.toHaveBeenCalled();
   });
 
@@ -118,7 +116,13 @@ describe("ChannelList", () => {
     renderUi(<Harness autoFocus start={{ cursor: { channelId: "ch-2", kind: "row" } }} />);
     fireEvent.wheel(screen.getByTestId("channel-list-scroller"), { deltaY: 400 });
     expect(tuned).not.toHaveBeenCalled();
-    expect(ringed()).toEqual(["Pinned 2"]);
+    expect(focused()).toBe(row(2));
+  });
+
+  it("never takes focus from a pointer, so a click draws no ring", async () => {
+    renderUi(<Harness />);
+    await userEvent.click(row(3));
+    expect(focused()).toBe(document.body);
   });
 
   it("reports looking after a rest, ends it at once, and closes on no timer", () => {
@@ -153,7 +157,8 @@ describe("ChannelList", () => {
     await userEvent.click(screen.getByRole("tab", { name: "Recent" }));
     expect(screen.getByText("Channels you watch collect here.")).toBeTruthy();
     await userEvent.click(screen.getByRole("tab", { name: "By decade" }));
-    expect(screen.getByText("1980s")).toBeTruthy();
-    expect(screen.getByText("1990s")).toBeTruthy();
+    // The headings are drawn for the eye; each row says its own decade.
+    const headings = [...document.querySelectorAll('[aria-hidden="true"]')].map((each) => each.textContent);
+    expect(headings.filter(Boolean)).toEqual(["1980s", "1990s"]);
   });
 });

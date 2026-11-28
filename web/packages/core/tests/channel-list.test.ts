@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { createChannelLineup, type LineupChannel } from "../channel-lineup";
 import {
   type ChannelListEvent,
   type ChannelListState,
@@ -10,8 +10,8 @@ import {
   listRest,
   pinnedShift,
   scrollBounds,
+  scrollToShow,
 } from "../channel-list";
-import { createChannelLineup, type LineupChannel } from "../channel-lineup";
 
 const channel = (number: number, over: Partial<LineupChannel> = {}): LineupChannel => ({
   decade: number <= 3 ? 1980 : 1990,
@@ -251,6 +251,16 @@ describe("channel list geometry", () => {
       max: 300,
       min: 300,
     });
+  });
+
+  it("scrolls a row clear of the pinned channel, and leaves a visible one alone", () => {
+    const list = { anchorY: 1000, height: 500, pinnedHeight: 100, rowHeight: 50 };
+    expect(scrollToShow({ ...list, rowY: 800, scroll: 700 })).toBe(700);
+    expect(scrollToShow({ ...list, rowY: 650, scroll: 700 })).toBe(650);
+    // Past the pinned channel, it holds the top of the box.
+    expect(scrollToShow({ ...list, rowY: 1150, scroll: 1100 })).toBe(1050);
+    // Short of it, it holds the bottom.
+    expect(scrollToShow({ ...list, rowY: 750, scroll: 300 })).toBe(400);
   });
 
   it("holds the pinned channel at whichever edge it would leave by", () => {

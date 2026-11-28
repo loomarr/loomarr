@@ -46,7 +46,8 @@ const channelListView = <C extends LineupChannel>(
   const watched = lineup.channels.find((channel) => channel.id === state.watchedId);
   let rows = members;
   if (watched && !members.includes(watched)) {
-    rows = state.group === "recent" || state.group === "decade" ? [watched, ...members] : [...members, watched];
+    rows =
+      state.group === "recent" || state.group === "decade" ? [watched, ...members] : [...members, watched];
   }
 
   const headings = new Map<string, number>();
@@ -63,7 +64,8 @@ const channelListView = <C extends LineupChannel>(
     recent: "empty-recent",
   };
   // Recent always holds the channel on screen, so it is empty when that is all it holds.
-  const nothing = state.group === "recent" ? members.every((channel) => channel === watched) : !members.length;
+  const nothing =
+    state.group === "recent" ? members.every((channel) => channel === watched) : !members.length;
   return { finding: false, headings, notice: nothing ? empties[state.group] : undefined, rows };
 };
 
@@ -170,7 +172,10 @@ const channelListReduce = <C extends LineupChannel>(
       if (channel.id === state.watchedId) return to({ cursor: { kind: "none" }, open: false, query: null });
       if (!channel.playable) return stay;
       // Choosing a result closes find and leaves the group as it was.
-      return { state: { ...state, cursor: { channelId: channel.id, kind: "row" }, query: null }, tune: channel.id };
+      return {
+        state: { ...state, cursor: { channelId: channel.id, kind: "row" }, query: null },
+        tune: channel.id,
+      };
     }
     case "focusRow":
       return to({ cursor: { channelId: event.channelId, kind: "row" } });
