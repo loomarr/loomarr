@@ -20,7 +20,7 @@ import {
   GuideNowNext,
   GuidePhoneHeader,
   GuideProgrammeDetail,
-} from "@loomarr/ui";
+} from "@loomarr/ui/guide";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

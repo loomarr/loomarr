@@ -6,7 +6,7 @@ import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GuideNowNext, GuidePhoneHeader } from "../index";
+import { GuideNowNext, GuidePhoneHeader } from "../guide";
 
 const MINUTE = 60_000;
 const FROM = Date.UTC(2026, 8, 28, 20, 0);

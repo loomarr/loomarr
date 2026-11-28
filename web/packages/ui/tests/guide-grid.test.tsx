@@ -13,7 +13,7 @@ vi.mock("react-native", async (importOriginal) => {
   return { ...actual, useWindowDimensions: () => ({ ...actual.useWindowDimensions(), width: window.width }) };
 });
 
-const { GuideGrid } = await import("../index");
+const { GuideGrid } = await import("../guide");
 
 const day = Date.UTC(2026, 8, 28);
 const at = (h: number, m = 0) => day + (h * 60 + m) * 60_000;

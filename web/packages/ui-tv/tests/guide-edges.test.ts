@@ -1,5 +1,5 @@
 import { createGuideController, type GuideLayout, type GuideSelection } from "@loomarr/core/guide";
-import type { GuideFocusTarget } from "@loomarr/ui";
+import type { GuideFocusTarget } from "@loomarr/ui/guide";
 import { describe, expect, it, vi } from "vitest";
 
 import { createTvGuideFocusRegistry, tvGuideTimeEdge } from "../index";

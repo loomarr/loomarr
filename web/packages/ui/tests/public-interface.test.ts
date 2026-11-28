@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { GuideExperience, GuideJourney, GuideSurface } from "../guide";
 import {
   ChannelIdentity,
   ClientNavigation,
@@ -8,9 +9,6 @@ import {
   ClipSelect,
   clientBackDestination,
   DeviceDisconnectAction,
-  GuideExperience,
-  GuideJourney,
-  GuideSurface,
   ModalOverlay,
   NeedsDetailsChip,
   PairingShell,

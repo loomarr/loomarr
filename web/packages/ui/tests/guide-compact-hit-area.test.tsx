@@ -34,7 +34,7 @@ vi.mock("react-native", async (importOriginal) => {
   };
 });
 
-const { GuideCompact } = await import("../index");
+const { GuideCompact } = await import("../guide");
 
 const MINUTE = 60_000;
 const FROM = Date.UTC(2026, 8, 28, 20, 0);
