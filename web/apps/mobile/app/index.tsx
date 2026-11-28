@@ -37,7 +37,6 @@ import {
   PlayerSheet,
   playerChromeFromGuide,
   playerCoverOf,
-  RequestsJourney,
   ScreenHeader,
   StatePanel,
   surfCardsFromGuide,
@@ -46,6 +45,7 @@ import {
   watchingScheduleTimeMs,
 } from "@loomarr/ui";
 import { GuideJourney } from "@loomarr/ui/guide";
+import { RequestsJourney } from "@loomarr/ui/requests";
 import Constants from "expo-constants";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { StatusBar } from "expo-status-bar";
