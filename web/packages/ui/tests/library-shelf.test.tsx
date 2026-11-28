@@ -392,12 +392,10 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
-  it("counts each tab across the library, and filters by kind", () => {
-    const { props, button, cleanup } = render({});
-    expect(button("All, 3,412 titles").textContent).toContain("3,412");
-    expect(button("Movies, 2,180 titles").textContent).toContain("2,180");
-    expect(button("Shows, 1,232 titles").textContent).toContain("1,232");
-    act(() => button("Shows, 1,232 titles").click());
+  it("counts the library under the tabs, and filters by kind", () => {
+    const { host, props, button, cleanup } = render({});
+    expect(host.textContent).toContain("3,412 titles");
+    act(() => button("Shows").click());
     expect(props.onFilterChange).toHaveBeenCalledWith("series");
     act(() => button("Collections").click());
     expect(props.onFilterChange).toHaveBeenCalledWith("collections");

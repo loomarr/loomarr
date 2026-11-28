@@ -48,7 +48,12 @@ type TabsProps<Value extends string> = TabsBaseProps<Value> &
         appearance?: "action";
         options: readonly (TabOption<Value> & { count?: never; countLabel?: never })[];
       }
-    | { appearance: "underline"; options: readonly UnderlineTabOption<Value>[] }
+    | {
+        appearance: "underline";
+        options: readonly UnderlineTabOption<Value>[];
+        /** `section` draws the words at section size (20/600), as a page's top shelf. */
+        size?: "section";
+      }
   );
 
 // Where a tab sits along its list, from the list's start.
@@ -68,8 +73,10 @@ const UnderlineTab = <Value extends string>({
   onPress,
   option,
   selected,
+  size,
 }: {
   density: Density;
+  size?: "section";
   /** Where the tab sits in the list, so the list can bring it into view. */
   onLayout: (layout: TabPlace) => void;
   onPress: () => void;
@@ -118,7 +125,7 @@ const UnderlineTab = <Value extends string>({
             density={density}
             numberOfLines={1}
             strong
-            textRole="body"
+            textRole={size === "section" ? "headline" : "body"}
             tone={lit ? "primary" : "secondary"}
           >
             {option.label}
@@ -143,8 +150,9 @@ const UnderlineTabs = <Value extends string>({
   label,
   onValueChange,
   options,
+  size,
   value,
-}: TabsBaseProps<Value> & { options: readonly UnderlineTabOption<Value>[] }) => {
+}: TabsBaseProps<Value> & { options: readonly UnderlineTabOption<Value>[]; size?: "section" }) => {
   const reducedMotion = useReducedMotionPreference();
   const animated = useRef(false);
   animated.current = reducedMotion === false;
@@ -218,6 +226,7 @@ const UnderlineTabs = <Value extends string>({
             onPress={() => onValueChange(option.value)}
             option={option}
             selected={option.value === value}
+            size={size}
           />
         ))}
       </View>

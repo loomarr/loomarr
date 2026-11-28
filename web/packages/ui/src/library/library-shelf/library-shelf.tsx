@@ -34,6 +34,7 @@ import { StatePanel } from "../../state-panel";
 import { ActiveFilters, FilterPanel, type FocusTarget, filterCount } from "../library-filters";
 import { LibraryGrid } from "../library-grid";
 import { LibraryPoster, Line, PAGE_GUTTER, Stack, Twirl } from "../library-poster";
+import { PHRASE_DENSITY, PhraseMenu, Sentence } from "../library-sentence";
 import { detailsWaiting, folderName, heldTitle, scanHeadline } from "../library-words";
 import type {
   LibraryShelfAdmin,
@@ -547,18 +548,18 @@ const SORTS: { label: string; value: LibrarySort }[] = [
   { label: "Recently added", value: "recent" },
 ];
 
-const filterOptions = (counts: LibraryShelfCounts | undefined, withCounts: boolean) => {
-  const counted = (label: string, value: "all" | "movie" | "series") =>
-    withCounts && counts
-      ? { label, value, count: count(counts[value]), countLabel: titlesWord(counts[value]) }
-      : { label, value };
-  return [
-    counted("All", "all"),
-    counted("Movies", "movie"),
-    counted("Shows", "series"),
-    { label: "Collections", value: "collections" as const },
-  ];
-};
+const FILTERS: { label: string; value: LibraryShelfProps["filter"] }[] = [
+  { label: "All", value: "all" },
+  { label: "Movies", value: "movie" },
+  { label: "Shows", value: "series" },
+  { label: "Collections", value: "collections" },
+];
+
+// The order as the desktop sentence says it.
+const ORDER_WORDS: { label: string; value: LibrarySort }[] = [
+  { label: "A to Z", value: "name" },
+  { label: "Recently added", value: "recent" },
+];
 
 // The genre choice: every genre with its titles, under "All genres". A chosen genre the tab has
 // none of is still listed, so the select shows what is filtering.
@@ -586,8 +587,9 @@ const Labelled = ({ label, children }: { label: string; children: ReactNode }) =
   </Stack>
 );
 
-// The tabs, then the search, the order and the genre. From a tablet up they share a line and the
-// tabs carry their counts. On a phone one line holds the search and Filters with the tabs under it,
+// The tabs, then the search, the order and the genre. From a tablet up the tabs are section-size
+// words with the search at the end of their line, and under them one sentence says how many titles
+// show, in what order and what narrows them, each phrase the control that changes it. On a phone one line holds the search and Filters with the tabs under it,
 // so Movies or Shows is one tap away, and Filters opens a sheet with the order, the genre and the
 // rest, so the posters start near the top.
 const Controls = ({
@@ -639,7 +641,8 @@ const Controls = ({
       density={density}
       label="What to show"
       onValueChange={onFilterChange}
-      options={filterOptions(counts, wide)}
+      options={FILTERS}
+      size={wide ? "section" : undefined}
       value={filter}
     />
   );
@@ -659,11 +662,10 @@ const Controls = ({
   const order = (
     <CompactSelect
       density={density}
-      label={wide ? "Order" : "Sort"}
+      label="Sort"
       onValueChange={onSortChange}
       options={SORTS}
       value={sort}
-      width={wide ? 168 : undefined}
     />
   );
   const listed = listedGenre(genres, genre);
@@ -675,48 +677,13 @@ const Controls = ({
       onValueChange={(next) => onGenreChange(next === ALL_GENRES ? undefined : next)}
       options={genreOptions(genres ?? [], chosen)}
       value={chosen ?? ALL_GENRES}
-      width={wide ? 168 : undefined}
     />
   );
   const on = filtering ? filterCount(filtering) : 0;
-  const more = filtering ? (
-    <Action
-      aria-expanded={open}
-      density={density}
-      icon="filter"
-      onPress={() => setOpen(!open)}
-      ref={(node) => {
-        moreNode.current = node as FocusTarget | null;
-        moreRef(node);
-      }}
-      variant="outline"
-    >
-      {on > 0 ? `More filters (${on})` : "More filters"}
-    </Action>
-  ) : null;
-  const panel = filtering && open ? <FilterPanel filtering={filtering} /> : null;
-  if (wide) {
-    return (
-      <Stack gap="control">
-        <Line columnGap="control" justifyContent="space-between" rowGap="control">
-          {tabs}
-          <Line flexShrink={1} flexWrap="nowrap" gap="control">
-            <Stack flexShrink={1} minWidth={0} width={288}>
-              {searchField}
-            </Stack>
-            {order}
-            {genreSelect}
-            {more}
-          </Line>
-        </Line>
-        {panel}
-      </Stack>
-    );
-  }
-  // The sheet covers the wall and its line of what is on, so its way out says how many titles the
-  // choices leave: with filters or a search on, the list's own total (the tab counts ignore the
-  // search); with a genre chosen, that genre's; else the tab's. A search with no list total says
-  // nothing, so the button reads Done.
+  // How many titles the choices leave, for the desktop sentence and the phone sheet's way out: with
+  // filters or a search on, the list's own total (the tab counts ignore the search); with a genre
+  // chosen, that genre's; else the tab's. A search with no list total says nothing, so the sentence
+  // drops the count and the sheet's button reads Done.
   const searching = search.trim() !== "";
   const filtered = on > 0 || searching || Boolean(filtering && genre);
   const shown = filtered
@@ -726,6 +693,70 @@ const Controls = ({
       : counts && filter !== "collections"
         ? counts[filter]
         : undefined;
+  if (wide) {
+    return (
+      <Stack gap="inline">
+        <Line alignItems="stretch" columnGap={0} flexWrap="nowrap">
+          <Stack flex={1} minWidth={0}>
+            {tabs}
+          </Stack>
+          {/* The tabs' rule carries on under the search, so the two read as one line. */}
+          <Stack
+            borderBottomColor="borderDecorative"
+            borderBottomWidth={1}
+            flexShrink={1}
+            justifyContent="flex-end"
+            minWidth={0}
+            paddingBottom="inline"
+            paddingLeft="control"
+            width={288}
+          >
+            {searchField}
+          </Stack>
+        </Line>
+        <Sentence>
+          {shown === undefined ? null : (
+            <Text textRole="compact" tone="secondary">
+              {titlesWord(shown)}
+            </Text>
+          )}
+          <PhraseMenu
+            label="order"
+            onValueChange={onSortChange}
+            options={ORDER_WORDS}
+            value={sort}
+            words={ORDER_WORDS.find((o) => o.value === sort)?.label ?? ""}
+          />
+          <PhraseMenu
+            label="genre"
+            onValueChange={(next) => onGenreChange(next === ALL_GENRES ? undefined : next)}
+            options={genreOptions(genres ?? [], chosen).map((option) =>
+              option.value === ALL_GENRES ? { ...option, label: "Every genre" } : option,
+            )}
+            value={chosen ?? ALL_GENRES}
+            words={chosen ?? "Every genre"}
+          />
+          {filtering ? (
+            <Action
+              aria-expanded={open}
+              density={PHRASE_DENSITY}
+              icon={open ? "channelUp" : "channelDown"}
+              iconPlacement="end"
+              onPress={() => setOpen(!open)}
+              ref={(node) => {
+                moreNode.current = node as FocusTarget | null;
+                moreRef(node);
+              }}
+              variant="ghost"
+            >
+              {on > 0 ? `More filters (${on})` : "More filters"}
+            </Action>
+          ) : null}
+        </Sentence>
+        {filtering && open ? <FilterPanel filtering={filtering} /> : null}
+      </Stack>
+    );
+  }
   // What the sheet holds that narrows the wall. The order narrows nothing, and Movies or Shows is
   // chosen on the page, not in the sheet.
   const narrowing = on + (genre ? 1 : 0);

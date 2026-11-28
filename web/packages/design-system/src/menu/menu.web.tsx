@@ -57,8 +57,11 @@ const MenuContent = ({ align, children, portalContainer, side, width }: MenuCont
           display: "flex",
           flexDirection: "column",
           gap: 2,
+          // A long list (every genre) scrolls inside the room the window leaves it.
+          maxHeight: "var(--available-height)",
           minWidth: 160,
           outline: "none",
+          overflowY: "auto",
           padding: 6,
           width,
         }}
