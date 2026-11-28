@@ -152,6 +152,7 @@ const PhoneBottomBar = ({ badges, isAdmin, watchChannelId }: PhoneBottomBarProps
   const items = [
     ...primary.map((destination) => ({
       badge: destination.badgeCount,
+      badgeWords: destination.badgeWords,
       icon: destination.icon,
       label: destination.label,
       value: destination.key as BarValue,

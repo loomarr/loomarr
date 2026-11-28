@@ -159,6 +159,12 @@ go-race-weights: ## regenerate the race-lane package weights from hosted merge-g
 	@mv scripts/go-race-weights.tsv.tmp scripts/go-race-weights.tsv
 	@./scripts/go-shard.sh --verify 2
 
+.PHONY: guard-test
+guard-test: ## architecture guard tests in the root internal package
+# The pull-request lane runs no unit-test shards, and these guards read the tree from disk, so the
+# repository contracts job runs them on its own.
+	$(GO) test ./internal/
+
 .PHONY: go-race-verify
 go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package
 # ⚠ A GUARD, not decoration. The opt-out list is FAIL-SAFE by construction — race stays ON for

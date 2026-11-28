@@ -47,10 +47,15 @@ describe("PhoneBottomBar", () => {
   // #4476: the Needs you count is on the admin's Library tab, in its name as well as its badge.
   it("counts Needs you on the Library tab, and marks More for the requests behind it", async () => {
     renderBar({ isAdmin: true, badges: { "/library": 4, "/requests": 2 } });
-    expect(await screen.findByRole("tab", { name: "Library, 4 need attention" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Library, 4 need you" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /^More/ }));
     const dialog = await screen.findByRole("dialog", { name: "More" });
     expect(within(dialog).getByRole("button", { name: "Requests" })).toHaveTextContent("2");
+  });
+
+  it("says one Library title needs you in the singular", async () => {
+    renderBar({ isAdmin: true, badges: { "/library": 1 } });
+    expect(await screen.findByRole("tab", { name: "Library, 1 needs you" })).toBeInTheDocument();
   });
 
   it("opens More to exactly the admin overflow, and selecting a row navigates and closes it", async () => {
