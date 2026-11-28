@@ -351,14 +351,79 @@ describe("LibraryNeedsCards", () => {
     second.cleanup();
   });
 
-  it("gives a title with both problems two entries", () => {
+  const seeWhys = (host: Host) =>
+    Array.from(host.querySelectorAll('[role="button"], button')).filter(
+      (n) => n.textContent?.trim() === "See why",
+    );
+
+  it("gives a title with both problems one card listing both", () => {
     const { host, cleanup } = mount(
       cards({ needs: [], problems: [problem("90000823", { extraBytes: 4_300_000_000, unplayable: 2 })] }),
     );
-    expect(host.textContent).toContain("Needs you (2)");
+    expect(host.textContent).toContain("Needs you (1)");
     expect(host.textContent).toContain("Quiet Orchard can't be played");
     expect(host.textContent).toContain("Quiet Orchard has an extra copy");
+    expect(seeWhys(host)).toHaveLength(1);
     cleanup();
+  });
+
+  it("puts a problem on the card of a title that also needs a name", async () => {
+    const onLink = vi.fn(() => Promise.resolve());
+    const onOpenTitle = vi.fn();
+    const extra = problem("90000811", { extraBytes: 4_300_000_000 });
+    const { host, button, cleanup } = mount(cards({ problems: [extra], onLink, onOpenTitle }));
+    expect(host.textContent).toContain("Needs you (1)");
+    expect(host.textContent).toContain("90000811.mkv");
+    expect(host.textContent).toContain("Is this Paper Kites (1996)?");
+    expect(host.textContent).toContain("Quiet Orchard has an extra copy");
+    expect(host.textContent).not.toContain("Needs a look");
+    expect(seeWhys(host)).toHaveLength(1);
+    act(() => button("See why").click());
+    expect(onOpenTitle).toHaveBeenCalledWith("90000811");
+    await act(async () => button("Yes, that's it").click());
+    expect(onLink).toHaveBeenCalledWith("90000811", { namespace: "tmdb", value: "90000901" });
+    // Naming the title leaves its extra copy waiting, on a card of its own once the answer leaves.
+    expect(host.textContent).toContain("Needs you (1)");
+    await act(async () => vi.runAllTimers());
+    expect(host.textContent).not.toContain("Is this Paper Kites (1996)?");
+    expect(host.textContent).toContain("Needs a look");
+    expect(host.textContent).toContain("Quiet Orchard has an extra copy");
+    cleanup();
+  });
+
+  it("puts a problem on the card of a show that also asks its episode order", () => {
+    const damaged = problem(tidewater.id, { kind: "series", name: "Tidewater", unplayable: 1 });
+    const { host, cleanup } = mount(cards({ needs: [], orders: [tidewater], problems: [damaged] }));
+    expect(host.textContent).toContain("Needs you (1)");
+    expect(host.textContent).toContain("Which order are your Tidewater episodes in?");
+    expect(host.textContent).toContain("Tidewater has an episode that can't be played");
+    expect(host.textContent).not.toContain("Needs a look");
+    expect(seeWhys(host)).toHaveLength(1);
+    cleanup();
+  });
+
+  it("gives the episode order and problem cards touch targets on a phone", () => {
+    const view = globalThis as unknown as { innerWidth: number };
+    const wide = view.innerWidth;
+    view.innerWidth = 390;
+    const { host, cleanup } = mount(
+      cards({
+        needs: [],
+        orders: [tidewater, kestrel],
+        problems: [problem("90000824", { extraBytes: 4_300_000_000 })],
+      }),
+    );
+    const heights = Array.from(host.querySelectorAll('[role="button"], button'))
+      .filter((n) =>
+        ["Use this order", "That's fine", "See the show", "See why", "1 episode"].includes(
+          n.textContent?.trim() ?? "",
+        ),
+      )
+      .map((n) => (n as unknown as { style: { minHeight: string } }).style.minHeight);
+    expect(heights.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(heights)).toEqual(new Set(["48px"]));
+    cleanup();
+    view.innerWidth = wide;
   });
 
   it("picks one of the other guesses", () => {

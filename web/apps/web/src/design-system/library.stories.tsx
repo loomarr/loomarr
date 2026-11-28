@@ -13,6 +13,7 @@ import {
   LibraryTitle,
   LibraryTitleMissing,
   LibraryWizardStep,
+  waitingTitles,
 } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, screen, waitFor } from "storybook/test";
@@ -346,14 +347,17 @@ const ORDERS: LibraryOrderNeed[] = [
 const answered = () => Promise.resolve();
 const search = () => Promise.resolve([]);
 
+// The Ignored tab and the "ignored files" button count the same files.
+const IGNORED = 3;
+
 // Needs you's own page, with what the app puts in it.
 const needsStory = (needs: LibraryNeed[], orders: LibraryOrderNeed[], problems: LibraryProblem[]) => (
   <LibraryNeedsView
-    ignored={1}
+    ignored={IGNORED}
     onBack={() => {}}
     onTabChange={() => {}}
     tab="waiting"
-    waiting={needs.length + orders.length + problems.length}
+    waiting={waitingTitles(needs, orders, problems)}
   >
     <LibraryNeedsCards
       hideHeading
@@ -366,7 +370,7 @@ const needsStory = (needs: LibraryNeed[], orders: LibraryOrderNeed[], problems: 
       onSearch={search}
       orders={orders}
       problems={problems}
-      empty={<AllCaughtUp ignored={3} onBack={() => {}} onShowIgnored={() => {}} />}
+      empty={<AllCaughtUp ignored={IGNORED} onBack={() => {}} onShowIgnored={() => {}} />}
     />
   </LibraryNeedsView>
 );

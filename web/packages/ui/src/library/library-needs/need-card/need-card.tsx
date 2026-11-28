@@ -8,6 +8,8 @@ import type { LibraryNeed, LibraryNeedCandidate, LibraryNeedSearch } from "../li
 import { LockIn } from "../lock-in";
 import { needName } from "../need-name";
 import { NotSaved } from "../not-saved";
+import type { ProblemEntry } from "../problem-entries";
+import { ProblemReasons } from "../problem-reasons";
 import type { Phase } from "../use-answers";
 
 // The one reason line: which of the file's facts the guess agrees with.
@@ -30,8 +32,13 @@ const NeedCard = ({
   onIgnore,
   onDone,
   onSearch,
+  problem,
+  onOpenTitle,
 }: {
   need: LibraryNeed;
+  /** What else is wrong with this title, listed on the same card. */
+  problem?: ProblemEntry;
+  onOpenTitle: (id: string) => void;
   primary: boolean;
   phase?: Phase;
   /** The last answer was not saved. */
@@ -92,6 +99,7 @@ const NeedCard = ({
                   {best.overview}
                 </Text>
               ) : null}
+              {problem ? <ProblemReasons reasons={problem.reasons} /> : null}
               <Line>
                 {best ? (
                   <>
@@ -115,6 +123,11 @@ const NeedCard = ({
                 <Action density={density} onPress={onIgnore} variant="ghost">
                   Ignore this
                 </Action>
+                {problem ? (
+                  <Action density={density} onPress={() => onOpenTitle(need.id)} variant="ghost">
+                    See why
+                  </Action>
+                ) : null}
               </Line>
               {failed ? <NotSaved /> : null}
               {other ? (
