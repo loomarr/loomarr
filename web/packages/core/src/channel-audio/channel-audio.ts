@@ -1,15 +1,8 @@
 import { getChannelTracksUrl, getGetChannelUrl } from "@loomarr/api/endpoints/channels";
 import { readBody } from "@loomarr/api/mutator";
-import { ChannelTracksResponse, GetChannelResponse } from "@loomarr/api/zod/channels";
-import { z } from "zod";
+import type { z } from "zod";
 
 import { audioChoices } from "./audio-options";
-
-const TracksBody = ChannelTracksResponse.pick({ audio: true });
-const playout = GetChannelResponse.shape.policy.shape.playout.unwrap();
-const ChannelBody = z.object({
-  policy: z.object({ playout: playout.pick({ audioLanguage: true }).optional() }),
-});
 
 type AudioChoice = ReturnType<typeof audioChoices>[number];
 
@@ -33,12 +26,13 @@ const createChannelAudioSource = (request: typeof globalThis.fetch): ChannelAudi
     // As on the web, tracks that can't be read still leave the channel's language to show; only the
     // channel itself is required, since without it nothing can be marked as the one in use.
     load: async (channelId, signal) => {
+      const { ChannelAudioBody, TracksBody } = await import("../response-bodies");
       const [tracks, channel] = await Promise.all([
         read(getChannelTracksUrl(channelId), TracksBody, signal).catch((error: unknown) => {
           if (signal.aborted) throw error;
           return undefined;
         }),
-        read(getGetChannelUrl(channelId), ChannelBody, signal),
+        read(getGetChannelUrl(channelId), ChannelAudioBody, signal),
       ]);
       return audioChoices(tracks?.audio ?? [], channel.policy?.playout?.audioLanguage);
     },
