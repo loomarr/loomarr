@@ -118,6 +118,24 @@ describe("QuietRow", () => {
     expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
   });
 
+  it("draws no ink of its own when the screen draws the scrim", () => {
+    row();
+    expect(screen.getByTestId("picture-ink-foot")).toBeTruthy();
+    cleanup();
+    row({ ownInk: false });
+    expect(screen.queryByTestId("picture-ink-foot")).toBeNull();
+    expect(names()).toHaveLength(8);
+  });
+
+  it("says which control holds focus, and when focus leaves the row", async () => {
+    const onFocusKey = vi.fn();
+    row({ onFocusKey });
+    await userEvent.tab();
+    await userEvent.keyboard("{ArrowRight}");
+    await userEvent.tab();
+    expect(onFocusKey.mock.calls).toEqual([["channels"], [undefined], ["guide"], [undefined]]);
+  });
+
   it("names an icon in a tooltip with its key on a desktop", async () => {
     row();
     await userEvent.hover(screen.getByRole("button", { name: "Subtitles (C)" }));

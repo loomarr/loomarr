@@ -6,6 +6,7 @@ import {
   type RingedPressableHandle,
   Surface,
   Text,
+  ThemeScope,
 } from "@loomarr/design-system";
 import { Fragment, type Ref, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
@@ -40,6 +41,13 @@ interface QuietRowProps {
   /** The control whose menu is open. */
   openKey?: QuietRowKey;
   onPress: (key: QuietRowKey) => void;
+  /** A control took focus, or focus left the row (`undefined`). */
+  onFocusKey?: (key: QuietRowKey | undefined) => void;
+  /**
+   * Over the picture the row stands on a foot scrim of its own. A screen that draws one scrim under
+   * the row and the lower third together passes `false`; the row stays in the dark theme.
+   */
+  ownInk?: boolean;
   paused?: boolean;
   ref?: Ref<QuietRowHandle>;
 }
@@ -101,7 +109,7 @@ const keysFor = ({ behindLive, device, paused }: QuietRowProps): readonly QuietR
  * presses and opens nothing.
  */
 const QuietRow = (props: QuietRowProps) => {
-  const { device, group, listOpen = false, onPress, openKey, ref } = props;
+  const { device, group, listOpen = false, onFocusKey, onPress, openKey, ownInk = true, ref } = props;
   const controls = useRef(new Map<QuietRowKey, RingedPressableHandle>());
   const focusedKey = useRef<QuietRowKey | undefined>(undefined);
   const [stopKey, setStopKey] = useState<QuietRowKey | undefined>(undefined);
@@ -145,10 +153,13 @@ const QuietRow = (props: QuietRowProps) => {
   const shared = (key: QuietRowKey) => ({
     onBlur: () => {
       if (focusedKey.current === key) focusedKey.current = undefined;
+      // Focus moving along the row blurs one control before the next takes it.
+      onFocusKey?.(undefined);
     },
     onFocus: () => {
       focusedKey.current = key;
       setStopKey(key);
+      onFocusKey?.(key);
     },
     onPress: () => onPress(key),
     ref: (node: RingedPressableHandle | null) => {
@@ -238,7 +249,8 @@ const QuietRow = (props: QuietRowProps) => {
     </Surface>
   );
 
-  return overPicture ? <PictureInk edge="foot">{row}</PictureInk> : row;
+  if (!overPicture) return row;
+  return ownInk ? <PictureInk edge="foot">{row}</PictureInk> : <ThemeScope theme="dark">{row}</ThemeScope>;
 };
 
 export type { QuietRowDevice, QuietRowHandle, QuietRowKey, QuietRowProps };

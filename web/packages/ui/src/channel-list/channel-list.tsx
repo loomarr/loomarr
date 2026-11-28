@@ -11,7 +11,15 @@ import {
   scrollToShow,
 } from "@loomarr/core/channel-list";
 import { decadeTint, PressableRow, Surface, Text, VisuallyHidden } from "@loomarr/design-system";
-import { type ComponentProps, type ComponentRef, Fragment, useEffect, useRef, useState } from "react";
+import {
+  type ComponentProps,
+  type ComponentRef,
+  Fragment,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import {
   type GestureResponderEvent,
   type LayoutChangeEvent,
@@ -76,11 +84,13 @@ const ChannelList = <C extends LineupChannel>({
   state,
   onEvent,
   renderPinned,
-  restOffset,
+  restOffset: restFromTop = 0,
+  restFromBottom,
   detail,
   layout = "pointer",
   autoFocus = false,
   onLook,
+  ref,
 }: ChannelListProps<C>) => {
   const { cursor, watchedId, group, query, open, television } = state;
   const view = channelListView(state, lineup);
@@ -90,6 +100,8 @@ const ChannelList = <C extends LineupChannel>({
   const [viewport, setViewport] = useState(0);
   const [pinnedHeight, setPinnedHeight] = useState(ROW_HEIGHT * 2);
   const [nativeScroll, setNativeScroll] = useState(0);
+  const restOffset =
+    restFromBottom === undefined ? restFromTop : Math.max(0, viewport - pinnedHeight - restFromBottom);
   // The row drawn as under a pointer.
   const [hovered, setHovered] = useState<string | undefined>(undefined);
 
@@ -185,6 +197,16 @@ const ChannelList = <C extends LineupChannel>({
     });
     if (to !== scrolled.current) scrollTo(to);
   });
+
+  useImperativeHandle(ref, () => ({
+    focusCursor: () => {
+      focusWanted.current = true;
+      if (cursor.kind === "tab") tabs.current.get(cursor.group)?.focus();
+      else if (cursor.kind === "row" && query === null) {
+        rows.current.get(cursor.channelId)?.focus({ preventScroll: true });
+      }
+    },
+  }));
 
   const look = (channelId: string | undefined) => {
     clearTimeout(lookTimer.current);
@@ -336,7 +358,7 @@ const ChannelList = <C extends LineupChannel>({
               {channel.name}{" "}
             </Text>
             {channel.onNow ? (
-              <Text numberOfLines={1} textAlign="left" textRole="metadata" tone="secondary">
+              <Text numberOfLines={1} textAlign="left" textRole="compact" tone="secondary">
                 {channel.onNow}{" "}
               </Text>
             ) : null}

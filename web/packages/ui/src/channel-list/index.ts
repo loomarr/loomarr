@@ -1,2 +1,7 @@
 export { ChannelList } from "./channel-list";
-export type { ChannelListDetail, ChannelListLayout, ChannelListProps } from "./channel-list.type";
+export type {
+  ChannelListDetail,
+  ChannelListHandle,
+  ChannelListLayout,
+  ChannelListProps,
+} from "./channel-list.type";

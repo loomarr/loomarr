@@ -207,6 +207,47 @@ describe("LowerThird", () => {
   });
 });
 
+describe("LowerThird in a screen's arrangement", () => {
+  const behind = { ...on, behindSeconds: 40 } as LowerThirdState;
+
+  it("draws no ink of its own when the screen draws the scrim, and stays dark", () => {
+    third();
+    expect(screen.getByTestId("picture-ink-side")).toBeTruthy();
+    cleanup();
+    renderUi(
+      <LowerThird channelName="Coast 90s" channelNumber={7} device="full" ownInk={false} state={on} />,
+      { theme: "light" },
+    );
+    expect(screen.queryByTestId("picture-ink-side")).toBeNull();
+    const scope = screen.getByTestId("lower-third-numeral").closest(".t_dark, .t_light");
+    expect(scope?.classList.contains("t_dark")).toBe(true);
+  });
+
+  it("draws the words alone without its controls", () => {
+    third({ controls: false, state: behind });
+    expect(screen.queryByRole("button", { name: "Go live" })).toBeNull();
+    expect(words()).toContain("40 s behind live");
+    cleanup();
+    third({ controls: false, device: "portrait" });
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+
+  it("says when Go live takes and lets go of focus", () => {
+    const onGoLiveFocus = vi.fn();
+    third({ onGoLiveFocus, state: behind });
+    const goLive = screen.getByRole("button", { name: "Go live" });
+    goLive.focus();
+    goLive.blur();
+    expect(onGoLiveFocus.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it("names Go live's key, End, in its tooltip on a desktop", async () => {
+    third({ state: behind });
+    await userEvent.hover(screen.getByRole("button", { name: "Go live" }));
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Go live (End)");
+  });
+});
+
 describe("FirstRunHint", () => {
   it("words each device, and a phone on its side has none", () => {
     const { unmount } = renderUi(<FirstRunHint device="portrait" />);
