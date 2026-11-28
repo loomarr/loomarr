@@ -12,6 +12,40 @@ import (
 	"time"
 )
 
+// A channel packager holds the lease it was admitted with, so the ledger is the only count (#1505,
+// #1562): the budget is full exactly when the packagers hold it, and a stopped packager returns its
+// lease.
+func TestPackagerAdmissionHoldsAndReturnsTheLedger(t *testing.T) {
+	facts := nvencFacts()
+	facts.OperatorCap = 2
+	budget := NewResourceBudget(func() BudgetFacts { return facts })
+	m := newTestPackagerHLS(t, slowItemSource{}, time.Hour)
+	m.WithBudget(budget)
+
+	for _, ch := range []string{"a", "b"} {
+		c, release, err := m.acquire(ch, FormatBaseline, false)
+		if err != nil || c == nil {
+			t.Fatalf("acquire %s: %v", ch, err)
+		}
+		defer release()
+	}
+	if _, _, err := m.acquire("c", FormatBaseline, false); !errors.Is(err, ErrAtCapacity) {
+		t.Fatalf("third transcode: err = %v, want ErrAtCapacity", err)
+	}
+	if budget.Fits(AdmitRequest{Class: ClassSDR}) {
+		t.Fatal("the budget has room for a transcode it already gave to packagers")
+	}
+	m.StopChannel("a")
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if budget.Fits(AdmitRequest{Class: ClassSDR}) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("a stopped packager did not return its lease")
+		}
+	}
+}
+
 // runningChannels lists the channels with a live packager, for assertions.
 func (m *PackagerHLS) runningChannels() []string {
 	m.mu.Lock()

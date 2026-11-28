@@ -1,4 +1,4 @@
-package playout
+package admission
 
 // EffectiveCapacity returns the live video-transcode budget for this process. Measurement is the
 // authority: a positive operator cap may lower it but cannot claim more capacity than the encoder

@@ -1,4 +1,4 @@
-package playout
+package admission
 
 import (
 	"fmt"
@@ -170,11 +170,11 @@ func TestRungMonitor_StepsUpOnlyWithHeadroomForTheNextRung(t *testing.T) {
 // TestRungMonitor_StepUpBarIsTheClassCostRatio: the same 8x headroom holds a 4K HDR item on
 // keyframes-only (rung 1 costs 7.9x as much) but lifts a 1080p SDR item (4.3x: bar 5.2x).
 func TestRungMonitor_StepUpBarIsTheClassCostRatio(t *testing.T) {
-	hdr := NewRungMonitor(RungKeyframes, RungMonitorConfig{CPUAllowance: 4, Costs: RungCostsFor(testSources()["hevc-4k-hdr-dv"])})
+	hdr := NewRungMonitor(RungKeyframes, RungMonitorConfig{CPUAllowance: 4, Costs: HeavyRungCosts})
 	if got := runScript(t, hdr, phase{3 * time.Minute, 1, 0.5}); len(got) != 0 {
 		t.Fatalf("4K HDR stepped up on 8x headroom: %+v", got)
 	}
-	sdr := NewRungMonitor(RungKeyframes, RungMonitorConfig{CPUAllowance: 4, Costs: RungCostsFor(testSources()["hevc10-1080p"])})
+	sdr := NewRungMonitor(RungKeyframes, RungMonitorConfig{CPUAllowance: 4, Costs: SDRRungCosts})
 	if got := runScript(t, sdr, phase{3 * time.Minute, 1, 0.5}); len(got) == 0 || got[0].rung != RungLight {
 		t.Fatalf("1080p SDR held keyframes-only on 8x headroom: %+v", got)
 	}

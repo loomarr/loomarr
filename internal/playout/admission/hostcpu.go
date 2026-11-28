@@ -1,4 +1,4 @@
-package playout
+package admission
 
 import (
 	"io/fs"
