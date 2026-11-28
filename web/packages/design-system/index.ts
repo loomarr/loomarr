@@ -64,6 +64,8 @@ export type {
   FieldProps,
 } from "./src/interaction";
 export { Action, ChoiceGroup, Field, FieldHint } from "./src/interaction";
+export type { LayerColor, LayerProps } from "./src/layer";
+export { Layer } from "./src/layer";
 export type {
   AdaptiveDirection,
   AdaptiveSplitProps,
