@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // said is the title and year a name gives, as the catalog's search reads them.
@@ -34,6 +35,8 @@ type told struct {
 	// length is a whole movie file's running time, 0 when no header has read it; nil for a part.
 	// It is looked up only when the record's runtime is weighed.
 	length func() time.Duration
+	// groups are the scanner's ids a movie file joins its title by (movieGroups).
+	groups []librarystore.LibraryID
 }
 
 // movieTold is what a movie file's names and length say of it. Its length is the header's as it

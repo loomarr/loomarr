@@ -219,6 +219,9 @@ type libraryItemDTO struct {
 	// for an admin, zero included.
 	Unplayable  *int `json:"unplayable,omitempty" doc:"Files that can't be played: their details couldn't be read. Admins only"`
 	ExtraCopies *int `json:"extraCopies,omitempty" doc:"A movie's files that never play, beyond the copy of each edition (or each part) that does. Admins only"`
+	HomeVideo   bool `json:"homeVideo,omitempty" doc:"Kept as it is, as your own video. Absent otherwise"`
+	// Unidentified is for admins: a member reads no title that waits.
+	Unidentified bool `json:"unidentified,omitempty" doc:"Waiting in Needs you. Admins only; absent otherwise"`
 }
 
 // libraryItemOf is it as the caller reads it: admin carries its file count and the counts that
@@ -226,9 +229,10 @@ type libraryItemDTO struct {
 func libraryItemOf(it librarystore.LibraryItemSummary, posters map[string]*httpcore.ImageDTO, admin bool) libraryItemDTO {
 	out := libraryItemDTO{
 		ID: it.ID, Kind: it.Kind, Name: it.Name, Year: it.Year, Ready: it.Pending == 0,
-		Poster: posters[it.Poster],
+		Poster: posters[it.Poster], HomeVideo: it.HomeVideo,
 	}
 	if admin {
+		out.Unidentified = it.Unidentified
 		files, unplayable, extra := it.Files, it.Unplayable, 0
 		if it.Kind == "movie" {
 			extra = it.ExtraCopies

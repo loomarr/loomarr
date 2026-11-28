@@ -45,6 +45,12 @@ func (s *Handlers) registerLibraryNeeds(api huma.API) {
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
 	}, httpcore.RoleAdmin), s.ignoreLibraryItem)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "keepLibraryItem", Method: http.MethodPost, Path: "/v1/library/items/{id}/keep",
+		Summary:     "Keep a title as a home video",
+		Description: "Says a title waiting in Needs you with no guess is your own: it is kept as it is, as a home video.",
+		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
+	}, httpcore.RoleAdmin), s.keepLibraryItem)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "ignoreLibraryNeeds", Method: http.MethodPost, Path: "/v1/library/needs/ignore",
 		Summary:     "Ignore several titles",
 		Description: "Ignores titles waiting in Needs you, such as the ones under one folder: all of them or none.",
@@ -59,7 +65,7 @@ func (s *Handlers) registerLibraryNeeds(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "unanswerLibraryItem", Method: http.MethodDelete, Path: "/v1/library/items/{id}/answer",
 		Summary:     "Take back an answer",
-		Description: "Undoes a link or an ignore. A title nothing else identifies needs you again.",
+		Description: "Undoes a link, an ignore or a home video. A title nothing else identifies needs you again.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
 	}, httpcore.RoleAdmin), s.unanswerLibraryItem)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
@@ -302,6 +308,14 @@ func (s *Handlers) ignoreLibraryItem(ctx context.Context, in *libraryItemIDInput
 	return nil, libraryAnswerErr(svc.Ignore(ctx, in.ID))
 }
 
+func (s *Handlers) keepLibraryItem(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	return nil, libraryAnswerErr(svc.Keep(ctx, in.ID))
+}
+
 func (s *Handlers) ignoreLibraryNeeds(ctx context.Context, in *libraryTitleIDsInput) (*ignoreLibraryNeedsOutput, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
@@ -388,6 +402,9 @@ func libraryAnswerErr(err error) error {
 	case errors.Is(err, librarystore.ErrNotNeeded):
 		return httpcore.Problem(http.StatusConflict, "Needs you has changed",
 			"Some of these titles aren't waiting any more, so none were ignored. Reload Needs you and try again.")
+	case errors.Is(err, librarystore.ErrNotKeepable):
+		return httpcore.Problem(http.StatusConflict, "This one can't be kept as it is",
+			"Only a title waiting in Needs you with no guess can be kept. Reload Needs you and try again.")
 	case errors.Is(err, librarystore.ErrNotIgnored):
 		return httpcore.Problem(http.StatusConflict, "Your ignored list has changed",
 			"Some of these titles aren't ignored any more, so none were brought back. Reload and try again.")

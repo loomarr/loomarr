@@ -149,7 +149,7 @@ func (s *Store) LibraryOrderNeeds(ctx context.Context) ([]LibraryOrderNeed, erro
 		var catalog, set string
 		if err := rows.Scan(&n.ID, &n.Kind, &n.Name, &n.SortName, &n.Year, &catalog, &n.Match.Basis, &n.Match.App,
 			&n.Match.Page, &set, &n.Poster, &n.Backdrop, &n.Logo, &n.Files, &n.Pending, &n.Unplayable, &n.ExtraCopies,
-			&n.ExtraBytes, &n.Unnumbered); err != nil {
+			&n.ExtraBytes, &n.HomeVideo, &n.Unidentified, &n.Unnumbered); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("library order needs: %w", err)
 		}
