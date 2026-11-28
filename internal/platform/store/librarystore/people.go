@@ -2,6 +2,7 @@ package librarystore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -46,6 +47,47 @@ type LibraryPeopleStore interface {
 	// PruneLibraryPeople removes the people no title credits any more, with their filmographies,
 	// drops the filmography of anyone credited only on titles no longer listed, and counts both.
 	PruneLibraryPeople(ctx context.Context) (int, error)
+	// DueLibraryPersonPhotos lists up to limit people past the id after whose photo is to be
+	// imported, in id order: those who directed or created a listed title or are among its ten
+	// top-billed actors, with an https photo that no image of theirs was adopted from.
+	DueLibraryPersonPhotos(ctx context.Context, after string, limit int) ([]LibraryPersonPhoto, error)
+}
+
+// LibraryPersonImageOwner is the image owner kind of a person's photo (library_person_images).
+const LibraryPersonImageOwner = "library_person"
+
+// LibraryPersonPhoto is a person and the source URL of their photo.
+type LibraryPersonPhoto struct {
+	PersonID, URL string
+}
+
+// DueLibraryPersonPhotos matches a photo against the URL its image was adopted from, which for a
+// TMDB photo held at original is the w185 one.
+func (s *Store) DueLibraryPersonPhotos(ctx context.Context, after string, limit int) ([]LibraryPersonPhoto, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT p.id, p.photo FROM library_people p
+		WHERE p.id > ? AND p.photo LIKE 'https://%'
+		AND EXISTS (SELECT 1 FROM library_credits c WHERE c.person_id = p.id AND `+creditListed+`
+			AND (c.role IN ('director', 'creator') OR (c.role = 'actor' AND c.position < 10)))
+		AND NOT EXISTS (SELECT 1 FROM library_person_images r JOIN images img ON img.hash = r.image_hash
+			WHERE r.person_id = p.id
+			AND img.source_url IN (p.photo, REPLACE(p.photo, '/t/p/original/', '/t/p/w185/')))
+		ORDER BY p.id LIMIT ?`), after, limit)
+	if err != nil {
+		return nil, fmt.Errorf("due library person photos: %w", err)
+	}
+	var out []LibraryPersonPhoto
+	for rows.Next() {
+		var p LibraryPersonPhoto
+		if err := rows.Scan(&p.PersonID, &p.URL); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("due library person photos: %w", err)
+		}
+		out = append(out, p)
+	}
+	return out, errors.Join(rows.Err(), rows.Close())
 }
 
 func (s *Store) DueLibraryFilmographies(ctx context.Context, due LibraryFilmographyDue) ([]LibraryPersonRef, error) {

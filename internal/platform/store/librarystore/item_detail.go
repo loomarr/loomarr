@@ -29,7 +29,8 @@ type LibraryItemDetail struct {
 	// Still is the image hash of the item's still (role thumb, #4476): an episode's; "" for none.
 	Still string
 	From  LibraryFrom
-	// Credits are in billing order, each with Name, Role and Character; no photo or catalog id.
+	// Credits are in billing order, each with Name, Role, Character, catalog id and PhotoHash;
+	// never the source's photo URL.
 	Credits []LibraryCredit
 	// Sources are the item's own files, in path order; a series has none, and its episodes'
 	// sources are not read. A source carries every column but SizeBytes, with its Streams in
@@ -155,7 +156,8 @@ func (s *Store) detailNames(ctx context.Context, q storedb.Querier, table, id st
 // detailCredits reads an item's credits in billing order, each with its person's name and
 // catalog id, so PersonID names the same library_people row.
 func (s *Store) detailCredits(ctx context.Context, q storedb.Querier, id string) ([]LibraryCredit, error) {
-	rows, err := q.QueryContext(ctx, s.ph(`SELECT p.name, c.role, c.character_name, p.namespace, p.external_id
+	rows, err := q.QueryContext(ctx, s.ph(`SELECT p.name, c.role, c.character_name, p.namespace, p.external_id,
+		COALESCE((SELECT MIN(r.image_hash) FROM library_person_images r WHERE r.person_id = p.id), '')
 		FROM library_credits c
 		JOIN library_people p ON p.id = c.person_id WHERE c.item_id = ? ORDER BY c.position`), id)
 	if err != nil {
@@ -164,7 +166,7 @@ func (s *Store) detailCredits(ctx context.Context, q storedb.Querier, id string)
 	var out []LibraryCredit
 	for rows.Next() {
 		var c LibraryCredit
-		if err := rows.Scan(&c.Name, &c.Role, &c.Character, &c.ID.Namespace, &c.ID.Value); err != nil {
+		if err := rows.Scan(&c.Name, &c.Role, &c.Character, &c.ID.Namespace, &c.ID.Value, &c.PhotoHash); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}

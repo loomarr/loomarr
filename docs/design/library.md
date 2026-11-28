@@ -497,8 +497,8 @@ step 5). Nothing reads the scanner's origins until the cutover.
   them together, and the track choices come from one read of the playing tracks. People are too
   many to list, so `GET /v1/library/people?q=` searches them by part of their name (the most
   credited first, at most `limit`), and `GET /v1/library/people/{id}` is one person's name and
-  title count; their titles are the list under `person=<id>`. A person has no photo field: the
-  Library holds only a source's remote photo URL, and imports no cast photos. A person's id is
+  title count; their titles are the list under `person=<id>`. These two routes carry no photo; a
+  title page's credits do ("Cast and crew photos", below). A person's id is
   `<catalog>:<id>`, or `name:<name>` for one no catalog identifies, and a title's credits carry
   it as `personId`.
   `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's
@@ -586,6 +586,14 @@ step 5). Nothing reads the scanner's origins until the cutover.
   the folder's one video. A poster that fails to import leaves the title as it was, and the next
   write tries again. A movie the walk wrote while its catalog record was still to come takes the
   record's artwork when the header stage writes it with that record.
+- **Cast and crew photos** (#4476). Every few minutes the Library adopts the photo of each person
+  who directed or created a listed title, or is among its ten top-billed actors, and has an https
+  photo (`library_person_images`, on the poster ladder). A TMDB photo is requested at `w185`. The
+  image fetch job pulls it in the bulk class, after title artwork, and backs off when it fails. A
+  person who changes photo is adopted again, and a removed person lets theirs go. A title page's
+  credit carries `photo`, an image reference and never the source's URL; it is absent until the
+  bytes arrive, and the page shows initials. A member is sent photos only for the credits of a
+  title they read.
 - **Episode stills** (#4476). When the importer writes an episode it hands the resolved still
   (artwork kind `thumb`) to the image service the same way, and the episode owns it through a
   `library_item_images` row of role `thumb`, the image service's 16:9 still on the 300/780/1280

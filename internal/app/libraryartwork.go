@@ -97,6 +97,23 @@ func (p libraryArtwork) Art(ctx context.Context, itemID, kind, ref string) error
 	})
 }
 
+// PersonPhoto adopts a person's photo (#4476), on the poster ladder and fetched in the bulk class,
+// after every title's artwork. A new photo replaces the one the person had.
+func (p libraryArtwork) PersonPhoto(ctx context.Context, personID, url string) error {
+	rec, err := p.images.Adopt(ctx, url, images.IngestRequest{
+		Role: images.RolePoster, Visibility: images.VisibilityMember, FetchPriority: images.FetchBulk,
+	})
+	if err != nil {
+		return err
+	}
+	if err := p.refs.DeleteImageRefsByRole(ctx, librarystore.LibraryPersonImageOwner, personID, string(images.RolePoster)); err != nil {
+		return err
+	}
+	return p.refs.PutImageRef(ctx, clipstore.ImageRef{
+		ImageHash: rec.Hash, OwnerKind: librarystore.LibraryPersonImageOwner, OwnerID: personID, Role: string(images.RolePoster),
+	})
+}
+
 // importFile reads an artwork file beside the media. It opens only a regular file, never through
 // a symlink, so a link cannot point the import outside the share. Bytes the service already holds
 // are not imported again.

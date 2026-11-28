@@ -86,6 +86,7 @@ var imageOwners = []imageOwner{
 	{"channel", "channel_images", "channel_id"},
 	{"library_item", "library_item_images", "item_id"},
 	{"library_candidate", "library_candidate_images", "item_id"},
+	{"library_person", "library_person_images", "person_id"},
 }
 
 // ImageOwnerKinds lists the owner kinds an image ref may name, in table order.
