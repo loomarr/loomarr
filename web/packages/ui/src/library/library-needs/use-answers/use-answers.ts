@@ -4,8 +4,19 @@ import type { Phase } from "./use-answers.type";
 // The answers given here. An answered title locks in and leaves on its own time: the list that
 // refetches after the answer no longer holds it, so it is kept where it was until it has left. A
 // failed answer puts the question back and says so, as the title page does.
-const useAnswers = <T extends { id: string }>(needs: readonly T[]) => {
+// `restored` counts how often each title has been brought back: a new count forgets its answer.
+const useAnswers = <T extends { id: string }>(
+  needs: readonly T[],
+  restored?: Readonly<Record<string, number>>,
+) => {
   const [phases, setPhases] = useState<Record<string, Phase>>({});
+  const [seenRestored, setSeenRestored] = useState(restored);
+  if (restored !== seenRestored) {
+    setSeenRestored(restored);
+    setPhases((all) =>
+      Object.fromEntries(Object.entries(all).filter(([id]) => restored?.[id] === seenRestored?.[id])),
+    );
+  }
   const [failed, setFailed] = useState<Record<string, boolean>>({});
   const last = useRef<readonly T[]>([]);
   const fresh = new Map(needs.map((n) => [n.id, n]));

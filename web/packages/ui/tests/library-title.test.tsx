@@ -225,7 +225,7 @@ describe("LibraryTitle", () => {
     fine.cleanup();
 
     const movie = render({ ...MOVIE, unplayable: 1 });
-    expect(movie.host.textContent).toContain("This movie can't be played — the file may be damaged");
+    expect(movie.host.textContent).toContain("This movie can't be played. The file may be damaged");
     await act(async () => movie.button("Check files again").click());
     expect(movie.props.fix?.onCheckFiles).toHaveBeenCalled();
     expect(movie.host.textContent).toContain("Checked just now");
@@ -233,7 +233,7 @@ describe("LibraryTitle", () => {
 
     const onCheckFiles = vi.fn(() => Promise.reject(new Error("offline")));
     const series = render({ ...SERIES, unplayable: 2 }, { onCheckFiles });
-    expect(series.host.textContent).toContain("2 episodes can't be played — the files may be damaged");
+    expect(series.host.textContent).toContain("2 episodes can't be played. The files may be damaged");
     await act(async () => series.button("Check files again").click());
     expect(series.host.textContent).toContain("Couldn't check the files just now. Try again in a moment.");
     series.cleanup();

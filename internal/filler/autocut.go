@@ -8,7 +8,7 @@ import (
 
 // The unattended cut (#4409, #3838 decisions 10, 11 and 19). A compilation splits itself: a cut
 // that is one clean piece of filler is cut and then meets the same bar as a single downloaded ad,
-// and every other cut is dropped. Nobody reviews.
+// and every other cut is dropped. Nobody reviews the unattended cut.
 //
 // The bar for the cut itself is about where it was cut and what the whole cut is, never about what
 // it advertises: era, audience and category are judged on the cut-out clip by the same rungs a

@@ -24,6 +24,7 @@ import {
   getListFillerPullsMockHandler,
   getListFillerSourcesMockHandler,
   getListLibraryCollectionsMockHandler,
+  getListLibraryIgnoredMockHandler,
   getListLibraryItemsMockHandler,
   getListLibraryNeedsMockHandler,
   getListLibraryRootsMockHandler,
@@ -340,6 +341,7 @@ const stubReachable = () => {
       ],
       total: 1,
     }),
+    getListLibraryIgnoredMockHandler({ items: [], total: 0 }),
     // Needs you: one file nothing identifies, with no guess.
     getListLibraryNeedsMockHandler({
       needs: [

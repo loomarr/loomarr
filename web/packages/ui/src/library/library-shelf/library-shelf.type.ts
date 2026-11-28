@@ -1,4 +1,5 @@
 import type { ReactElement, ReactNode } from "react";
+import type { LibraryShelfFiltering } from "../library-filters";
 import type {
   LibraryDetails,
   LibraryHealth,
@@ -95,6 +96,8 @@ interface LibraryShelfProps {
   /** The chosen genre; absent is every genre. */
   genre?: string;
   onGenreChange: (genre: string | undefined) => void;
+  /** The filters past the genre; absent offers none. */
+  filtering?: LibraryShelfFiltering;
   /** The list's letters, drawn as a rail on a desktop window; absent (as by Recently added) draws none. */
   letters?: readonly LibraryShelfLetter[];
   /** A letter on the rail was pressed: load as far as it. */
@@ -117,10 +120,6 @@ interface LibraryShelfProps {
   titleLink?: (id: string) => ReactElement<Record<string, unknown>>;
   /** The grid's last rows are on screen: load the next page, if there is one. */
   onEndReached?: () => void;
-  /** Needs you's own screen draws its cards here, in place of the grid. */
-  needs?: ReactNode;
-  /** False on Needs you's own screen: the tabs stay, the search and the grid go. Default true. */
-  showTitles?: boolean;
   /** The Collections tab's content, in place of the search and the grid while it's chosen. */
   collections?: ReactNode;
   /** The household's timezone, which times are told in; the device's while undefined. */

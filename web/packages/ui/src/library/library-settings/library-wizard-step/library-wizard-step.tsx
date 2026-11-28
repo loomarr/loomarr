@@ -31,7 +31,7 @@ const LibraryWizardStep = ({
     <Stack gap="section">
       <Text textRole="body" tone="secondary">
         {names.length > 0
-          ? `We found these through ${joinNames(names)} — pick the ones that hold your library.`
+          ? `We found these through ${joinNames(names)}. Pick the ones that hold your library.`
           : folders.length > 0
             ? "Pick the folders that hold your library."
             : "Loomarr didn't find any folders yet. Add the folder that holds your shows and movies."}
