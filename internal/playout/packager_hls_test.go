@@ -515,9 +515,9 @@ func (slowItemSource) ItemAt(context.Context, string, time.Time) (PackagerItem, 
 // item is on air, or until a slot needs it.
 func TestSlateEncodeWaitsForTheFirstItem(t *testing.T) {
 	dir := t.TempDir()
-	mark := filepath.Join(dir, "slate-started")
+	item := filepath.Join(dir, "item-started")
 	ffmpeg := filepath.Join(dir, "ffmpeg")
-	script := "#!/bin/sh\ncase \"$*\" in *lavfi*) touch " + mark + ";; esac\nexec sleep 5\n"
+	script := "#!/bin/sh\ncase \"$*\" in *lavfi*) ;; *movie.mkv*) touch " + item + ";; esac\nexec sleep 5\n"
 	if err := os.WriteFile(ffmpeg, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -526,14 +526,34 @@ func TestSlateEncodeWaitsForTheFirstItem(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.Stop)
+	slates := make(chan struct{}, 8)
+	m.onSlateEncode = func() { slates <- struct{}{} }
 	lease, err := m.acquirePlaylist("ch", false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer lease.release()
-	time.Sleep(time.Second)
-	if _, err := os.Stat(mark); err == nil {
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if _, err := os.Stat(item); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the tune-in item's encoder never started")
+		}
+	}
+	// The item's encoder is running and never goes on air. A slow machine cannot fail this window;
+	// it only has to be long enough for a wrong slate encode to show.
+	select {
+	case <-slates:
 		t.Fatal("the slate encode started beside the tune-in item's encoder")
+	case <-time.After(500 * time.Millisecond):
+	}
+	// The observer does report a slate encode when one starts.
+	m.slateEncodeFor(encode.HostProfile{}, OutputProfile{Width: 64, Height: 36, FPS: 25})
+	select {
+	case <-slates:
+	default:
+		t.Fatal("the observer missed a slate encode")
 	}
 }
 
@@ -843,10 +863,10 @@ func premiumFacts(measured bool) admission.BudgetFacts {
 	f := admission.BudgetFacts{Hardware: true, SessionLimit: 12, CPUAllowance: 8, Rungs: []int{1080}, Costs: map[admission.CostKey]admission.ClassCost{
 		{Class: media.ClassSDR, Height: 1080}:                            {Speed: 6, CPUCores: 0.2},
 		admission.HDRKey(media.ClassHDR4K, 1080, media.DefaultToneCurve): {Speed: 2.4, CPUCores: 0.4},
-		{Class: media.ClassPremium4K, Height: premiumHeight}:             {Speed: 2.4, CPUCores: 0.5},
+		{Class: media.ClassPremium4K, Height: PremiumHeight}:             {Speed: 2.4, CPUCores: 0.5},
 	}}
 	if !measured {
-		delete(f.Costs, admission.CostKey{Class: media.ClassPremium4K, Height: premiumHeight})
+		delete(f.Costs, admission.CostKey{Class: media.ClassPremium4K, Height: PremiumHeight})
 	}
 	return f
 }
@@ -972,7 +992,7 @@ func TestPackagerHLSPremiumPlaylistStartsThePremiumPackager(t *testing.T) {
 	if c == nil || keys != 1 {
 		t.Fatalf("premium play started %d packagers (premium: %v); want the premium only", keys, c != nil)
 	}
-	if !c.out.HDR || c.out.Height != premiumHeight {
+	if !c.out.HDR || c.out.Height != PremiumHeight {
 		t.Fatalf("premium packager encodes %+v, want 4K HDR10", c.out)
 	}
 	use := budget.Snapshot().InUse

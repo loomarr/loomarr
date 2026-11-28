@@ -542,7 +542,7 @@ const Movie: Story = {
             picture: { width: 3840, height: 2160, hdr: true },
             audioChannels: 6,
             subtitles: [{ language: "en" }, { language: "es" }],
-            extra: false,
+            state: "plays",
           },
           {
             path: "/media/movies/Paper Kites (1996)/Paper Kites (1996) DVD.mkv",
@@ -551,7 +551,7 @@ const Movie: Story = {
             picture: { width: 720, height: 480, hdr: false },
             audioChannels: 2,
             subtitles: [],
-            extra: true,
+            state: "extra",
           },
         ],
         unplayable: 0,
@@ -685,6 +685,42 @@ const memberSeries = {
 
 const MemberSeries: Story = {
   render: () => <LibraryTitle onBack={() => {}} title={{ ...memberSeries, backdrop: art("#3b4a63") }} />,
+};
+
+// On air now: the channel's row, with its logo, is the link to watching it.
+const MemberOnNow: Story = {
+  render: () => {
+    const lateShow = {
+      id: "90000972",
+      name: "Late Show",
+      number: 7,
+      logo: <div style={{ background: "#c8862a", height: 32, width: 32 }} />,
+    };
+    return (
+      <LibraryTitle
+        onBack={() => {}}
+        title={{
+          ...memberSeries,
+          backdrop: art("#3b4a63"),
+          channels: [lateShow, { id: "90000973", name: "Sunday Stories", number: 12 }],
+          airings: [{ ...memberSeries.airings[0]!, channel: lateShow, when: "On now", forecast: false }],
+        }}
+        // The row is drawn into the link in place of its children.
+        watchLink={(id) => (id === lateShow.id ? <a href={`/watch/${id}`}>Watch</a> : undefined)}
+      />
+    );
+  },
+};
+
+// An admin's title on no channel: one next step, to Collections.
+const NotOnAChannel: Story = {
+  render: () => (
+    <LibraryTitle
+      fix={{ ...titleFixes, collectionsLink: <a href="/library/collections">Collections</a> }}
+      onBack={() => {}}
+      title={{ ...memberSeries, channels: [], airings: [] }}
+    />
+  ),
 };
 
 // A home video: no catalog details and on no channel.
@@ -941,7 +977,7 @@ const episodeFile = {
   picture: { width: 1920, height: 1080, hdr: false },
   audioChannels: 6,
   subtitles: [{ language: "en" }],
-  extra: false,
+  state: "plays" as const,
   container: "matroska,webm",
   bitrate: 9_800_000,
   streams: [
@@ -1083,7 +1119,7 @@ const ExtraCopyRemoved: Story = {
               path: "/media/movies/Paper Kites (1996)/Paper Kites DVD.mkv",
               size: 4_300_000_000,
               subtitles: [],
-              extra: true,
+              state: "extra",
             },
           ],
           unplayable: 0,
@@ -1148,6 +1184,7 @@ export {
   MemberHomeVideo,
   MemberMovie,
   MemberNoMatch,
+  MemberOnNow,
   MemberSeries,
   Movie,
   MovieFixOpen,
@@ -1160,6 +1197,7 @@ export {
   NoMatch,
   NothingNeedsYou,
   NotInLibrary,
+  NotOnAChannel,
   Paused,
   PersonChip,
   RecentlyAdded,

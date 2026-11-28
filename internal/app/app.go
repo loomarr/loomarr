@@ -18,7 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/classprobe"
 	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
@@ -57,7 +57,7 @@ type Overrides struct {
 	// PlayoutMaxChannels and PlayoutMeasuredCosts give playout a capacity before any encoder trial
 	// or class probe. Composition tests set them; run() leaves them zero.
 	PlayoutMaxChannels   int
-	PlayoutMeasuredCosts *playout.MeasuredCosts
+	PlayoutMeasuredCosts *classprobe.MeasuredCosts
 	// MetricsToken is the Prometheus scrape bearer for /metrics (§7). run() sets it from
 	// LOOMARR_METRICS_TOKEN[_FILE]; empty ⇒ the endpoint refuses (fail closed).
 	MetricsToken string
@@ -154,7 +154,7 @@ func buildHandler(
 	owner *generationLifecycle,
 	capturePlayoutResolver func(*resolve.Resolver),
 ) (http.Handler, *slog.Logger, func() string, error) {
-	foundation, err := buildFoundation(rootCtx, st, log, ov, owner)
+	foundation, err := buildFoundation(rootCtx, st, databaseOf(st), log, ov, owner)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -182,12 +182,13 @@ func buildHandler(
 		foundation.processDiagnostics, log, foundation.metrics)
 
 	core := buildCore{
-		ctx: rootCtx, store: st, settings: set, overrides: ov, owner: owner,
+		ctx: rootCtx, settings: set, overrides: ov, owner: owner,
 		libraryClient: libraryClient, secrets: secrets, readGeneratedSecret: readGeneratedSecret,
 		events: eventBus, emitter: emitter, jobs: jobReg, log: log, metrics: foundation.metrics,
 	}
 	channelsBuilt, err := buildChannels(channelsInput{
-		buildCore: core, capturePlayoutResolver: capturePlayoutResolver, activity: activityRec,
+		buildCore: core, stores: st, invalidations: invalidationsOf(st),
+		capturePlayoutResolver: capturePlayoutResolver, activity: activityRec,
 		fillerLayout: fillerLayout, processDiagnostics: foundation.processDiagnostics,
 		storageGovernor: foundation.storageGovernor, watermarks: watermarks, calendar: calendar,
 		subtitleDecoder: subtitleDecoder,
@@ -232,7 +233,7 @@ func buildHandler(
 		"checked by Current Health once the scheduler is running", currenthealth.ScheduledTasksRoute, "")
 
 	operations, err := buildOperations(operationsInput{
-		buildCore: core, desiredSettings: desiredSet, refreshSecretRedactor: refreshSecretRedactor,
+		buildCore: core, stores: st, database: databaseOf(st), desiredSettings: desiredSet, refreshSecretRedactor: refreshSecretRedactor,
 		tmdbClient: tmdbClient, playoutResolver: playoutRes, appliedBackend: appliedBackendContext,
 		protection: foundation.protection, secretRedactor: foundation.secretRedactor,
 	})

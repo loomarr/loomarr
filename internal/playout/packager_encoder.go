@@ -247,6 +247,10 @@ type limitedWriter struct {
 	decodeFault bool
 }
 
+// CappedWriter passes the first n bytes through to w and discards the rest, so a failing encoder
+// cannot grow its captured output without bound.
+func CappedWriter(w io.Writer, n int) io.Writer { return &limitedWriter{w: w, n: n} }
+
 func (l *limitedWriter) Write(b []byte) (int, error) {
 	if !l.decodeFault && encode.IsHardwareDecodeFault(string(b)) {
 		l.decodeFault = true

@@ -54,7 +54,7 @@ func TestLive_HDRTonemapProducesAPicture(t *testing.T) {
 
 	for _, enc := range []encode.Encoder{encode.EncoderVAAPI, encode.EncoderNVENC} {
 		if c := trialEncodeObserved(context.Background(), bin, enc, DefaultProfile(), 1, nil); !c.Works {
-			t.Logf("%s: not usable on this host, skipped (%s)", enc, firstLine(c.Err))
+			t.Logf("%s: not usable on this host, skipped (%s)", enc, FirstLine(c.Err))
 			continue
 		}
 		host := encode.HostFor(enc, true, GPUFiltersFor(bin)())
@@ -168,7 +168,7 @@ func airRealFile(t *testing.T, bin string, title int, host encode.HostProfile, f
 			}
 			return
 		}
-		t.Logf("title %d %s did not start (demoting): %s", title, what, firstLine(string(b)))
+		t.Logf("title %d %s did not start (demoting): %s", title, what, FirstLine(string(b)))
 		if !faults.record(input, pipe, encode.IsHardwareDecodeFault(string(b))) {
 			t.Errorf("title %d: no tone-mapper produced output for %s", title, what)
 			return
@@ -210,7 +210,7 @@ func encodeTo(t *testing.T, bin string, args []string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	if b, err := exec.CommandContext(ctx, bin, args...).CombinedOutput(); err != nil {
-		return err.Error() + ": " + firstLine(string(b))
+		return err.Error() + ": " + FirstLine(string(b))
 	}
 	return ""
 }

@@ -22,10 +22,10 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
+	"github.com/loomarr/loomarr/internal/playout/classprobe"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/playout/subtitles"
@@ -52,7 +52,8 @@ type playoutBuild struct {
 
 type playoutDeps struct {
 	rootCtx               context.Context
-	store                 store.Store
+	store                 playoutStore
+	invalidations         invalidationHandle
 	settings              resolved
 	owner                 *generationLifecycle
 	captureResolver       func(*resolve.Resolver)
@@ -77,7 +78,7 @@ type playoutDeps struct {
 	startup       *diagnostics.Startup
 	// initialMaxChannels and initialMeasuredCosts are Overrides' capacity without ffmpeg.
 	initialMaxChannels   int
-	initialMeasuredCosts *playout.MeasuredCosts
+	initialMeasuredCosts *classprobe.MeasuredCosts
 	// watermarks draws the channel's bug on programme items (#1512).
 	watermarks *channelWatermarks
 	// subtitleDecoder decodes the image subtitle tracks a channel burns in (#2088 step 8); nil
@@ -139,7 +140,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	resourceBudget := admission.NewResourceBudget(func() admission.BudgetFacts {
 		hardware := playoutRes != nil && playoutRes.DetectReady() &&
 			!encode.IsSoftware(playoutRes.PublishedEncoder())
-		var costs *playout.MeasuredCosts
+		var costs *classprobe.MeasuredCosts
 		if playoutRes != nil {
 			enc := encode.Encoder(settings.PlayoutEncoder.Get(set))
 			if enc == "" {
@@ -202,7 +203,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		Analyses:     st,
 		MeasureTools: measure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)),
 		// The capacity probe's tone-map self-check reports to Current Health.
-		OnTonemap: func(check playout.TonemapCheck) {
+		OnTonemap: func(check classprobe.TonemapCheck) {
 			if obs, ok := resolve.TonemapObservation(check); ok {
 				deps.startup.Observe(diagnostics.StartupCheckPlayoutTonemap, obs)
 			}
@@ -341,7 +342,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	durablePlayoutEligibility := func(ctx context.Context, channelID string) (bool, error) {
 		return durableInternalTransportPlayable(ctx, st, backendView, channelID)
 	}
-	if store.PublishesInvalidations(store.DialectOf(st)) {
+	if deps.invalidations != nil {
 		lifecycleGate = &playoutAdmissionGate{}
 	}
 	// Live playout is the channel packager (#1512): one encoder per scheduled item,
@@ -422,7 +423,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	backendController = builtBackendController
 	if lifecycleGate != nil {
 		lifecycle := &postgresPlayoutLifecycle{
-			store: st, checkpoint: backendView, origin: origin, gate: lifecycleGate, log: log,
+			store: st, handle: deps.invalidations, checkpoint: backendView, origin: origin, gate: lifecycleGate, log: log,
 		}
 		if err := lifecycle.Start(rootCtx, owner); err != nil {
 			return playoutBuild{}, fmt.Errorf("start postgres playout lifecycle: %w", err)
@@ -496,7 +497,7 @@ func encodeMemoryGate(
 // of the measured whole-stream capacity (operator cap and VRAM shading included), and a host that
 // measured at most one stream starts sessions on the bottom rung.
 func playoutBudgetFacts(
-	host admission.HostCPU, hardware bool, measured int, costs *playout.MeasuredCosts, effective func(int) int,
+	host admission.HostCPU, hardware bool, measured int, costs *classprobe.MeasuredCosts, effective func(int) int,
 	tier playout.Tier, gpuMillicores, appReserveMillicores int,
 ) admission.BudgetFacts {
 	rungs := playout.LadderHeights(tier)

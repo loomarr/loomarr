@@ -1,12 +1,13 @@
 //go:build ffmpeg
 
-package playout
+package classprobe
 
 import (
 	"os"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/media"
 )
@@ -27,9 +28,9 @@ func TestLive_ClassProbeMeasuresEveryClassAndSelfChecksTonemap(t *testing.T) {
 	enc := probeEncoder()
 	cfg := ClassProbeConfig{
 		FFmpeg: bin, ClipDir: t.TempDir(), Encoder: enc,
-		CPUTonemap: TonemapperFor(bin)(),
-		GPU:        GPUFiltersFor(bin)(),
-		Outputs:    []Profile{Resolve(DefaultTier, enc, 0)},
+		CPUTonemap: playout.TonemapperFor(bin)(),
+		GPU:        playout.GPUFiltersFor(bin)(),
+		Outputs:    []playout.Profile{playout.Resolve(playout.DefaultTier, enc, 0)},
 	}
 	res := ProbeClassCosts(t.Context(), cfg)
 	for key, cost := range res.Costs {
@@ -70,12 +71,12 @@ func TestLive_ClassProbeMeasuresThePremium(t *testing.T) {
 	enc := probeEncoder()
 	cfg := ClassProbeConfig{
 		FFmpeg: bin, ClipDir: t.TempDir(), Encoder: enc,
-		CPUTonemap: TonemapperFor(bin)(), GPU: GPUFiltersFor(bin)(),
-		Outputs: []Profile{Resolve(DefaultTier, enc, 0)},
+		CPUTonemap: playout.TonemapperFor(bin)(), GPU: playout.GPUFiltersFor(bin)(),
+		Outputs: []playout.Profile{playout.Resolve(playout.DefaultTier, enc, 0)},
 		Classes: []media.StreamClass{media.ClassPremium4K},
 	}
 	res := ProbeClassCosts(t.Context(), cfg)
-	c, ok := res.Costs[admission.CostKey{Class: media.ClassPremium4K, Height: premiumHeight}]
+	c, ok := res.Costs[admission.CostKey{Class: media.ClassPremium4K, Height: playout.PremiumHeight}]
 	t.Logf("premium: %+v (measured %v); failures: %v", c, ok, res.Failures)
 	if encode.IsSoftware(enc) {
 		if ok {

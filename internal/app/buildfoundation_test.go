@@ -42,7 +42,7 @@ func testFoundationStorageBudgetAndProjectionSurviveRestart(t *testing.T, st sto
 	build := func() foundationBuild {
 		t.Helper()
 		lifecycle := newGenerationLifecycle(t.Context())
-		foundation, err := buildFoundation(t.Context(), st, slog.New(slog.DiscardHandler), overrides, lifecycle)
+		foundation, err := buildFoundation(t.Context(), st, databaseOf(st), slog.New(slog.DiscardHandler), overrides, lifecycle)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -85,7 +85,7 @@ func TestFoundationRecomputesStorageForChangedFillerPathAfterRestart(t *testing.
 	project := func(wantPath string, wantManaged int64) {
 		t.Helper()
 		lifecycle := newGenerationLifecycle(t.Context())
-		foundation, err := buildFoundation(t.Context(), st, slog.New(slog.DiscardHandler), overrides, lifecycle)
+		foundation, err := buildFoundation(t.Context(), st, databaseOf(st), slog.New(slog.DiscardHandler), overrides, lifecycle)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -156,7 +156,7 @@ func TestFoundationDiagnosticsFlushOnGenerationShutdown(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	lifecycle := newGenerationLifecycle(t.Context())
 	foundation, err := buildFoundation(
-		t.Context(), st, slog.New(slog.DiscardHandler), Overrides{}, lifecycle,
+		t.Context(), st, databaseOf(st), slog.New(slog.DiscardHandler), Overrides{}, lifecycle,
 	)
 	if err != nil {
 		t.Fatalf("buildFoundation: %v", err)
@@ -192,7 +192,7 @@ func TestFoundationLoggerRedactsAndPersistsTheSameSlogRecord(t *testing.T) {
 	lifecycle := newGenerationLifecycle(t.Context())
 	var stdout bytes.Buffer
 	base := slog.New(slog.NewJSONHandler(&stdout, nil))
-	foundation, err := buildFoundation(t.Context(), st, base, Overrides{}, lifecycle)
+	foundation, err := buildFoundation(t.Context(), st, databaseOf(st), base, Overrides{}, lifecycle)
 	if err != nil {
 		t.Fatalf("buildFoundation: %v", err)
 	}

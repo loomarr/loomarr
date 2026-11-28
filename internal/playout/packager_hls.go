@@ -107,6 +107,8 @@ type PackagerHLS struct {
 	budget *admission.ResourceBudget
 	// ladderCfg tunes each airing's RungMonitor; zero is the defaults (a test seam for its dwell times).
 	ladderCfg admission.RungMonitorConfig
+	// onSlateEncode, when set, is told each time a slate encode starts (a test seam).
+	onSlateEncode func()
 	// premiumLookup bounds how long a master waits for its premium lookup; zero is
 	// premiumLookupTimeout (a test seam).
 	premiumLookup time.Duration

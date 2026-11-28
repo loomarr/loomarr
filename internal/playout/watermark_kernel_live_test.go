@@ -50,7 +50,7 @@ func TestLive_BlendKernelMatchesTheCPUOverlay(t *testing.T) {
 		if os.Getenv("PLAYOUT_TEST_OPENCL") != "" {
 			t.Fatalf("no OpenCL device: %v: %s", err, out)
 		}
-		t.Skipf("no OpenCL device: %s", firstLine(string(out)))
+		t.Skipf("no OpenCL device: %s", FirstLine(string(out)))
 	}
 
 	const w, h, frames = 1920, 1080, 30

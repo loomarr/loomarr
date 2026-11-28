@@ -15,7 +15,7 @@ import {
 import { LibraryNeedsCards, waitingTitles } from "@loomarr/ui";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { type ComponentProps, type ReactNode, useRef, useState } from "react";
+import { type ComponentProps, type ReactNode, useEffect, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useRouteContent } from "@/lib/use-route-content";
@@ -38,21 +38,35 @@ const IgnoredList = ({
   items,
   onBringBack,
   onMore,
+  bringing,
 }: {
   items: readonly LibraryIgnoredDTO[];
   onBringBack: (item: LibraryIgnoredDTO) => void;
+  /** The rows whose Bring back is on its way. */
+  bringing?: ReadonlySet<string>;
   /** Absent once every ignored title is listed. */
   onMore?: () => void;
 }) => {
   const buttons = useRef(new Map<string, { focus?: () => void }>());
-  // The pressed row leaves once the server answers, so focus moves on first.
-  const bring = (index: number) => {
-    const next = items[index + 1] ?? items[index - 1];
+  const pressed = useRef<{ id: string; index: number }>(null);
+  // Focus waits for the list to reload, so a second Enter can't bring back the next file. It moves
+  // only if the page lost it: someone who has gone elsewhere is left there.
+  useEffect(() => {
+    const row = pressed.current;
+    if (!row) return;
+    const listed = items.some((item) => item.id === row.id);
+    if (listed && bringing?.has(row.id)) return;
+    pressed.current = null;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    // A refused row is still listed and takes focus back; a restored one hands it to its neighbour.
+    const next = listed ? row : (items[row.index] ?? items[row.index - 1]);
     const target = next && buttons.current.get(next.id);
     if (target) target.focus?.();
     else focusHeading();
-    const item = items[index];
-    if (item) onBringBack(item);
+  });
+  const bring = (item: LibraryIgnoredDTO, index: number) => {
+    pressed.current = { id: item.id, index };
+    onBringBack(item);
   };
   return (
     <Surface backgroundColor="transparent" borderWidth={0} gap="control">
@@ -70,7 +84,8 @@ const IgnoredList = ({
           <div>
             <Action
               accessibilityLabel={`Bring back ${item.name}`}
-              onPress={() => bring(index)}
+              disabled={bringing?.has(item.id)}
+              onPress={() => bring(item, index)}
               ref={(node) => {
                 if (node) buttons.current.set(item.id, node as unknown as { focus?: () => void });
                 else buttons.current.delete(item.id);
@@ -126,10 +141,21 @@ const AllCaughtUp = ({
 );
 
 // With no card or row left to take focus, the page's heading takes it, so it stays in the page.
+// It is focusable only while it holds focus, and draws the amber look rather than the browser's ring.
 const focusHeading = () => {
   const heading = document.querySelector("h1");
-  heading?.setAttribute("tabindex", "-1");
-  heading?.focus();
+  if (!heading) return;
+  heading.setAttribute("tabindex", "-1");
+  heading.style.outline = "2px solid var(--actionFocus)";
+  heading.addEventListener(
+    "blur",
+    () => {
+      heading.removeAttribute("tabindex");
+      heading.style.outline = "";
+    },
+    { once: true },
+  );
+  heading.focus({ preventScroll: true });
 };
 
 /** The page's frame: the header, the way back and the two tabs. */
@@ -185,6 +211,8 @@ const LibraryNeedsPage = () => {
   const [restored, setRestored] = useState<Record<string, number>>({});
   // The titles whose Bring back is on its way: the server refuses a second restore.
   const bringing = useRef(new Set<string>());
+  // The same set as drawn: their rows are disabled.
+  const [bringingShown, setBringingShown] = useState<ReadonlySet<string>>(new Set<string>());
   useLibraryScanFrames();
   const needs = useLibraryNeeds();
   const ignored = useInfiniteQuery({
@@ -233,10 +261,14 @@ const LibraryNeedsPage = () => {
   const bringBack = (id: string) => {
     if (bringing.current.has(id)) return;
     bringing.current.add(id);
+    setBringingShown(new Set(bringing.current));
     const bring = () => restore([id]);
     bring()
       .catch((e: unknown) => toastBringBackFailed(e, bring))
-      .finally(() => bringing.current.delete(id));
+      .finally(() => {
+        bringing.current.delete(id);
+        setBringingShown(new Set(bringing.current));
+      });
   };
 
   const nameOf = (id: string) => {
@@ -306,6 +338,7 @@ const LibraryNeedsPage = () => {
       ) : null}
       {tab === "ignored" && ignored.data ? (
         <IgnoredList
+          bringing={bringingShown}
           items={ignored.data.pages.flatMap((page) => page.items)}
           onBringBack={(item) => bringBack(item.id)}
           onMore={ignored.hasNextPage ? () => void ignored.fetchNextPage() : undefined}
