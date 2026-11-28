@@ -31,7 +31,6 @@ internal/media/tools/conditioning_test.go 1
 internal/people/auth/sso_authelia_test.go 1
 internal/people/auth/sso_authentik_test.go 1
 internal/platform/llm/openai_stale_conn_test.go 1
-internal/platform/llm/selection/selection_test.go 1
 internal/platform/store/diagnostics_retention_test.go 1
 internal/platform/store/storedb/handle_test.go 1
 internal/playout/hls/packager_hls_test.go 2
