@@ -178,7 +178,7 @@ func src1(t *testing.T, s Combined) FillerSource {
 
 // setClipGeography writes a clip's projected geography the way the enrichment pass does, inside a
 // transaction on the core's handle.
-func setClipGeography(t *testing.T, s Store, hash string, g clipstore.ClipGeography, evidence string, at time.Time) {
+func setClipGeography(t *testing.T, s Combined, hash string, g clipstore.ClipGeography, evidence string, at time.Time) {
 	t.Helper()
 	ctx := context.Background()
 	h := store.HandleOf(s)
