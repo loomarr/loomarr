@@ -176,12 +176,17 @@ func buildHandler(
 	buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
 		foundation.processDiagnostics, log, foundation.metrics)
 
-	channelsBuilt, err := buildChannels(
-		rootCtx, st, set, ov, owner, capturePlayoutResolver, libraryClient, secrets,
-		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, fillerLayout, log,
-		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, watermarks, calendar,
-		subtitleDecoder,
-	)
+	core := buildCore{
+		ctx: rootCtx, store: st, settings: set, overrides: ov, owner: owner,
+		libraryClient: libraryClient, secrets: secrets, readGeneratedSecret: readGeneratedSecret,
+		events: eventBus, emitter: emitter, jobs: jobReg, log: log, metrics: foundation.metrics,
+	}
+	channelsBuilt, err := buildChannels(channelsInput{
+		buildCore: core, capturePlayoutResolver: capturePlayoutResolver, activity: activityRec,
+		fillerLayout: fillerLayout, processDiagnostics: foundation.processDiagnostics,
+		storageGovernor: foundation.storageGovernor, watermarks: watermarks, calendar: calendar,
+		subtitleDecoder: subtitleDecoder,
+	})
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -221,12 +226,11 @@ func buildHandler(
 	foundation.startup.Complete(diagnostics.StartupCheckScheduledTasks, diagnostics.StartupSkipped,
 		"checked by Current Health once the scheduler is running", currenthealth.ScheduledTasksRoute, "")
 
-	operations, err := buildOperations(
-		rootCtx, st, set, desiredSet, secrets, readGeneratedSecret, refreshSecretRedactor,
-		libraryClient, tmdbClient, eventBus, emitter, jobReg, owner, playoutRes,
-		appliedBackendContext, ov, log, foundation.metrics,
-		foundation.protection, foundation.secretRedactor,
-	)
+	operations, err := buildOperations(operationsInput{
+		buildCore: core, desiredSettings: desiredSet, refreshSecretRedactor: refreshSecretRedactor,
+		tmdbClient: tmdbClient, playoutResolver: playoutRes, appliedBackend: appliedBackendContext,
+		protection: foundation.protection, secretRedactor: foundation.secretRedactor,
+	})
 	if err != nil {
 		return nil, nil, nil, err
 	}
