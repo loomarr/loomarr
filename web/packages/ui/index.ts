@@ -212,8 +212,6 @@ export type {
   SurfCatalogChannel,
   WatchFrameProps,
   WatchingLayer,
-  WatchingPanelData,
-  WatchingPanelDataArgs,
   WatchingProgrammeData,
   WatchingScheduleData,
   WatchingSurfaceProps,
@@ -246,7 +244,6 @@ export {
   useSurfCards,
   WatchFrame,
   WatchingSurface,
-  watchingPanelFromGuide,
   watchingScheduleTimeMs,
   watermarkOf,
 } from "./src/watching-surface";

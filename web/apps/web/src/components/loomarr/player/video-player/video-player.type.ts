@@ -48,22 +48,12 @@ interface VideoPlayerProps {
   // hands them over; the caller draws everything. `hold(true)` keeps the controls shown while
   // something in them is open (a preview card, a sheet), as an open menu does.
   renderChrome?: (chrome: VideoPlayerChrome) => React.ReactNode;
-  // A centered SLOT over the video, beneath the controls. The caller renders a transient state
-  // here. The player only places it (fills the frame, centered) and stays ignorant of what it is;
-  // pass `undefined` to show nothing. It sits UNDER the controls so those stay operable over it.
-  overlay?: React.ReactNode;
-  // Keys the player doesn't use itself, offered to the caller. Return
-  // true when the key was handled. Never called while focus is in a text field or a menu.
-  onShortcut?: (key: string) => boolean;
   // Custom source binding. When provided, the primitive does NOT set `<video src>`; instead it
   // calls `attach(videoEl)` once the element is mounted and invokes the returned cleanup on
   // unmount/source-change. This is the seam the channel-watch surface uses to bind hls.js (which
   // needs `attachMedia`, not a plain `src`) while keeping every accessible control here — the
   // primitive stays clip-and-transport-agnostic, exactly as its header promises.
   attach?: (video: HTMLVideoElement) => () => void;
-  // Live-tuner navigation. Kept as a direction callback so this transport-agnostic primitive does
-  // not learn channel ids/catalog order. Arrow/Page/media Channel keys all lower to this seam.
-  onChannelStep?: (direction: -1 | 1) => void;
   // Fill the container's height instead of keeping a 16:9 frame; the <video> letterboxes the
   // picture inside it, centred. On an upright phone that is the strip mid-screen the chrome's toolbar,
   // band and keys sit clear of (§9.7).

@@ -142,118 +142,9 @@ describe("VideoPlayer", () => {
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
   });
 
-  it("lowers keyboard, page, and media channel keys to one live-tuner seam", () => {
-    const onChannelStep = vi.fn();
-    const { container } = render(<VideoPlayer src={SRC} live onChannelStep={onChannelStep} />);
-    const video = container.querySelector("video") as HTMLVideoElement;
-
-    fireEvent.keyDown(video, { key: "ArrowUp" });
-    fireEvent.keyDown(video, { key: "PageDown" });
-    fireEvent.keyDown(video, { key: "ChannelUp" });
-    expect(onChannelStep.mock.calls.map(([direction]) => direction)).toEqual([1, -1, 1]);
-  });
-
-  // #1459: keys are handled on the player's surface, and a freshly tuned page has focus on <body>.
-  // The first channel key therefore went nowhere until something inside the player was focused. A
-  // live player with a tuner seam owns keyboard focus on mount, so the very first press tunes.
-  it("routes the first channel key after mount without any prior interaction", () => {
-    const onChannelStep = vi.fn();
-    render(<VideoPlayer src={SRC} live onChannelStep={onChannelStep} />);
-
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: "ArrowUp" });
-    expect(onChannelStep).toHaveBeenCalledExactlyOnceWith(1);
-  });
-
   it("does not take focus for a non-live player", () => {
     render(<VideoPlayer src={SRC} />);
     expect(document.body).toHaveFocus();
-  });
-
-  // The channel keys are the page's while a live, tunable player is up: a button does nothing with
-  // ↑/↓, so a chrome button the viewer just clicked must not swallow them, and neither may <body>
-  // once focus has left the frame.
-  it("changes channel from a chrome button and from <body>, once per press", () => {
-    const onChannelStep = vi.fn();
-    const { container } = render(
-      <VideoPlayer
-        src={SRC}
-        live
-        onChannelStep={onChannelStep}
-        renderChrome={() => <button type="button">Mute</button>}
-      />,
-    );
-    const frame = container.querySelector("video")?.parentElement as HTMLElement;
-
-    fireEvent.keyDown(frame, { key: "ArrowUp" });
-    expect(onChannelStep).toHaveBeenCalledExactlyOnceWith(1);
-
-    const mute = screen.getByRole("button", { name: "Mute" });
-    mute.focus();
-    fireEvent.keyDown(mute, { key: "ArrowDown" });
-    fireEvent.keyDown(mute, { key: "PageUp" });
-
-    mute.blur();
-    expect(document.body).toHaveFocus();
-    fireEvent.keyDown(document.body, { key: "ArrowDown" });
-    expect(onChannelStep.mock.calls.map(([direction]) => direction)).toEqual([1, -1, 1, -1]);
-  });
-
-  it("leaves the arrows to controls that use them, to an open dialog, and to browser chords", () => {
-    const onChannelStep = vi.fn();
-    render(
-      <VideoPlayer
-        src={SRC}
-        live
-        onChannelStep={onChannelStep}
-        renderChrome={() => (
-          <>
-            <div role="slider" aria-label="Volume" aria-valuenow={50} tabIndex={0} />
-            <input aria-label="Find" />
-            <div role="menu">
-              <div role="menuitem" tabIndex={-1}>
-                Quality
-              </div>
-            </div>
-            <div role="listbox" aria-label="Languages">
-              <div role="option" aria-selected tabIndex={-1}>
-                English
-              </div>
-            </div>
-          </>
-        )}
-      />,
-    );
-    for (const name of ["Volume", "Find", "Languages"]) {
-      fireEvent.keyDown(screen.getByLabelText(name), { key: "ArrowUp" });
-    }
-    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Quality" }), { key: "ArrowDown" });
-    fireEvent.keyDown(screen.getByRole("option", { name: "English" }), { key: "ArrowDown" });
-    fireEvent.keyDown(document.body, { key: "ArrowUp", altKey: true });
-    expect(onChannelStep).not.toHaveBeenCalled();
-
-    // A sheet or dialog open anywhere on the page keeps them, even with focus outside it.
-    const dialog = document.createElement("div");
-    dialog.setAttribute("role", "dialog");
-    document.body.append(dialog);
-    onTestFinished(() => dialog.remove());
-    fireEvent.keyDown(document.body, { key: "ArrowUp" });
-    expect(onChannelStep).not.toHaveBeenCalled();
-  });
-
-  it("stops listening for the channel keys once the player is gone", () => {
-    const onChannelStep = vi.fn();
-    const { unmount } = render(<VideoPlayer src={SRC} live onChannelStep={onChannelStep} />);
-    unmount();
-    fireEvent.keyDown(document.body, { key: "ArrowUp" });
-    expect(onChannelStep).not.toHaveBeenCalled();
-  });
-
-  it("leaves the channel keys alone for a player that cannot tune", () => {
-    render(<VideoPlayer src={SRC} live />);
-    const event = new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true });
-    document.body.dispatchEvent(event);
-    // Not taken, so the page still scrolls.
-    expect(event.defaultPrevented).toBe(false);
   });
 
   // The live window (#2088 decision 2): ←/→ step 10 s from the frame on screen, L goes live.
@@ -287,13 +178,11 @@ describe("VideoPlayer", () => {
   });
 
   // The live chrome's controls are RN-web Pressables, which render `div[role=button]`.
-  it("leaves Space to a role=button child, as to a <button>, but still changes channel on ↑", () => {
-    const onChannelStep = vi.fn();
+  it("leaves Space to a role=button child, as to a <button>", () => {
     const { container } = render(
       <VideoPlayer
         src={SRC}
         live
-        onChannelStep={onChannelStep}
         renderChrome={() => (
           // biome-ignore lint/a11y/useSemanticElements: stands in for an RN-web Pressable
           <div role="button" tabIndex={0}>
@@ -307,9 +196,7 @@ describe("VideoPlayer", () => {
     video.play = play;
     const control = screen.getByRole("button", { name: "Mute" });
     fireEvent.keyDown(control, { key: " " });
-    fireEvent.keyDown(control, { key: "ArrowUp" });
     expect(play).not.toHaveBeenCalled();
-    expect(onChannelStep).toHaveBeenCalledExactlyOnceWith(1);
   });
 
   it("binds an attached transport to its own element once, and releases it on unmount", () => {
@@ -318,7 +205,7 @@ describe("VideoPlayer", () => {
     const { container, rerender, unmount } = render(<VideoPlayer attach={attach} live />);
     const video = container.querySelector("video") as HTMLVideoElement;
 
-    rerender(<VideoPlayer attach={attach} live overlay={<p>tuning</p>} />);
+    rerender(<VideoPlayer attach={attach} fill live />);
     expect(attach).toHaveBeenCalledExactlyOnceWith(video);
     expect(release).not.toHaveBeenCalled();
 
