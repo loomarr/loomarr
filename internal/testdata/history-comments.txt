@@ -2,25 +2,9 @@
 # (internal/historycomments_architecture_test.go has the rules).
 # One "path count" line per file. This list only shrinks: reword a comment to the present tense, then
 # go test ./internal/ -run TestCommentsDoNotNarrateHistory -lower-history-ledger
-cmd/filler-encode-bench/main.go 1
-cmd/station-data/main.go 2
-docs/embed.go 1
-internal/api/api.go 1
-internal/api/filler/fillerclipdto.go 1
-internal/api/filler/fillersources.go 1
-internal/api/guide/channelpreview.go 1
-internal/api/proposals/proposals.go 2
-internal/api/setup/setup.go 1
-internal/app/buildplayout.go 1
 internal/library/mediaserver/filler.go 2
 internal/library/mediaserver/metadata.go 1
 internal/library/mediaserver/search.go 1
-internal/media/defects/defects.go 1
-internal/media/encode/video.go 2
-internal/media/tools/conditioning_cut.go 1
-internal/media/tools/derivative_recipe.go 1
 internal/platform/store/librarystore/files.go 1
 internal/platform/store/open.go 1
 internal/platform/store/store.go 1
-internal/testkit/mediaserver.go 1
-project/evidence/curation-1670/sim/main.go 1

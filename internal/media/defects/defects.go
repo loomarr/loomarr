@@ -83,7 +83,7 @@ const FramingVersion = "framing-v1"
 // a break too tightly starts or ends mid-scene and mid-sound, where a whole advert opens and closes
 // on black or quiet.
 //
-// ⚠ RECORD-ONLY until the household labels calibrate it (maintainer decision, 2026-11-08). The
+// ⚠ RECORD-ONLY until the household labels calibrate it (maintainer decision). The
 // floor retires and deletes clear fails (#2036), and the synthetic corpus alone cannot set a bar
 // that a real advert opening on a music sting or a bright card would pass. No check reads this,
 // so it never fails, holds, retires or deletes a clip.

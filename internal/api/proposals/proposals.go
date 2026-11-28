@@ -146,7 +146,7 @@ type ProposalDTO struct {
 	// ModSummary and Note are the approval provenance (§7, D-K). Both are PERSISTED (V25) and
 	// both must be served: a note an approver wrote to explain an edited request that reached
 	// the database but not the wire would be the "stored but never rendered" shape the audit
-	// found `denyReason` in before V23 wired it up.
+	// warns about for `denyReason`.
 	//
 	// ModSummary is generated server-side ("dropped 2, added 1"); Note is the approver's own
 	// words. The distinction is deliberate and worth preserving in any UI: a summary the
@@ -269,7 +269,7 @@ func (s *Handlers) listProposals(ctx context.Context, in *listProposalsInput) (*
 		props = filtered
 	} else {
 		// Everyone's proposals, readable by any authenticated user: read visibility is global in
-		// this household-scale app (design §342), and the maintainer re-confirmed it on 2026-09-25
+		// this household-scale app (design §342), as the maintainer has re-confirmed
 		// (#1429). Do not add an admin gate here without changing §342 first; members' UI hides
 		// admin-only ACTIONS, which the server still enforces on the mutating routes.
 		props, err = s.store.ListProposalsByStatus(ctx, status)

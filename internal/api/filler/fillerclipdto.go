@@ -12,7 +12,7 @@ import (
 )
 
 // ClipDTO is the API view of a filler clip (§10). Identity is the content HASH (V38c/V45a) — the
-// store has keyed on hash since V38c, and V45a makes the wire identity the hash too, so a
+// store keys on hash (V38c), and V45a makes the wire identity the hash too, so a
 // slash-bearing path never crosses the API (the source of the routing/proxy 404 class).
 type ClipDTO struct {
 	// Hash is the clip's IDENTITY (its sparse content hash, V38c) — what every clip-addressing route

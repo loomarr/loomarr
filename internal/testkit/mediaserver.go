@@ -90,7 +90,7 @@ func NewMediaServer(t testing.TB) *MediaServer {
 	// item id `ParentId` needs (§10 V38c).
 	//
 	// ⚠ Serves a BARE ARRAY, because that is what Emby 4.10.0.22 returns — the one endpoint here
-	// without the `{"Items": […]}` envelope. Captured 2026-08-02; see fixtures/emby/FINDINGS.md.
+	// without the `{"Items": […]}` envelope. See fixtures/emby/FINDINGS.md.
 	// Wrapping it for consistency would make every test agree with a parser that cannot read the
 	// real server.
 	mux.HandleFunc("GET /Library/VirtualFolders", func(w http.ResponseWriter, r *http.Request) {

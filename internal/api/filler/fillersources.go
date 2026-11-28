@@ -145,7 +145,7 @@ type FillerSourceDTO struct {
 	// License is what the source DECLARED about its material — the mock's per-row licence chip.
 	//
 	// ⚠ **Absent means UNKNOWN, never "public domain".** ~92% of archive.org items declare no
-	// licence at all (667 of 8362 measured in `classic_tv_commercials`, 2026-07-31), so absence is
+	// licence at all (667 of 8362 measured in `classic_tv_commercials`), so absence is
 	// the common case and carries no permission whatsoever. The UI must render nothing rather than
 	// a reassuring default — a chip that said "public domain" by omission would be Loomarr
 	// asserting a legal fact nobody checked.
