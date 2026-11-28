@@ -126,7 +126,7 @@ var simLoc = func() *time.Location {
 	return l
 }()
 
-// utcGrid lays the rolling-window grid on UTC, as it was before #1675, to separate the effect of
+// utcGrid lays the rolling-window grid on UTC, the grid #1675 replaced, to separate the effect of
 // the grid's zone from the carry-over itself.
 var utcGrid = flag.Bool("utc-grid", false, "turn rolling windows at 00:00 UTC instead of local midnight")
 

@@ -54,9 +54,9 @@ type File struct {
 func FileLevel(f Family) (level int, ok bool) {
 	switch f {
 	case FamilyNVENC:
-		return 25, true // measured on a GeForce RTX 3080 Ti, 2026-10-30
+		return 25, true // measured on a GeForce RTX 3080 Ti
 	case FamilySoftware:
-		return 16, true // libx264 veryfast, 2026-10-30
+		return 16, true // measured with libx264 veryfast
 	}
 	return 0, false
 }

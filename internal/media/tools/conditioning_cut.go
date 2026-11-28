@@ -34,7 +34,7 @@ type conditioningPacket struct {
 func (t *FFmpegTools) measureConditioningCut(ctx context.Context, childPath, parentPath string, childContainerStartMs, childDurationMs int64, childStreams []ConditioningStream, intended Interval) (ConditioningCutMeasurement, error) {
 	measured := ConditioningCutMeasurement{}
 	// The child's edge windows follow its container timeline, which starts at format.start_time
-	// (never read before zero, as before #1540) and ends format.duration later.
+	// (never read before zero; #1540) and ends format.duration later.
 	childTimelineStart := max(int64(0), childContainerStartMs)
 	childTimelineEnd, err := checkedConditioningAdd(childContainerStartMs, childDurationMs)
 	if err != nil {

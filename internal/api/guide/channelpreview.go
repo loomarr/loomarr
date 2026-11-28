@@ -140,7 +140,7 @@ type CoverageCriterionDTO struct {
 // CoverageDTO answers "what would this channel's breaks resolve to", from the same ladder
 // reconcile uses (V29a/V29b).
 type CoverageDTO struct {
-	// ⚠ Every rung is always present since V51f. `EraStrict` (retired-ok) was the only thing that could skip
+	// ⚠ Every rung is always present (V51f). `EraStrict` (retired-ok) was the only thing that could skip
 	// one, and it was unreachable — set in tests and nowhere else — so the absent-not-zero rule
 	// it justified went with it. A rung at 0 now means what a reader assumes it means.
 	Rungs []CoverageRungDTO `json:"rungs" doc:"Ladder rungs, TIGHTEST FIRST. Always all of them; a rung at 0 means nothing in the catalog reaches it."`

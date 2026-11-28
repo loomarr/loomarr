@@ -34,7 +34,7 @@ func main() {
 	}
 }
 
-// baseline is the evidence recipe before #2121 (filler-evidence-v1), which the measured levels replace.
+// baseline is the filler-evidence-v1 recipe, the reference the measured levels (#2121) compare against.
 var baseline = []string{"-c:v", "libx264", "-preset", "slow", "-crf", "14", "-profile:v", "high",
 	"-force_key_frames", "expr:gte(t,n_forced*1)"}
 

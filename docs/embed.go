@@ -37,7 +37,7 @@ var screenshotFS embed.FS
 // helpDirs are the embedded folders, "." being docs/ itself (get-started.md).
 var helpDirs = []string{".", "guides", "explanation"}
 
-// movedPages maps a slug from before #1572's restructure to the page that now holds its
+// movedPages maps a slug of the layout #1572 replaced to the page that holds its
 // content. An older build, a bookmark or a support answer can still carry the old one.
 var movedPages = map[string]string{
 	"quickstart":   "get-started",
