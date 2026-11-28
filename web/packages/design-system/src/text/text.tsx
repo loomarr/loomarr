@@ -197,6 +197,9 @@ const dataRoles = new Set<TextRole>([
   "microBadge",
   "footnote",
   "stationTag",
+  "thirdNumeral",
+  "thirdNumeralSide",
+  "thirdNumeralWindow",
 ]);
 const mutedRoles = new Set<TextRole>([
   "label",

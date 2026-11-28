@@ -160,6 +160,11 @@ The tokens in `web/packages/design-system/src/tokens` are the source of truth; h
   `clamp(18px, 2.8vw, 28px)` and 0.62 of it. A role's letter spacing is in em (`roleLetterSpacing`), and
   `Text`'s `leading="none"` sets a line height of 1 for a glyph whose box is its own height. `Design/Typography`
   shows each at its real values.
+- **Lower third roles (#4728):** `thirdNumeral` (mono, 500, tracked -0.02em) and `thirdTitle` (600,
+  tracked -0.01em) vary by density: 64/64 and 34/38 at pointer (full screen), 44/44 and 22/25 at touch
+  (an upright phone), 52/52 and 30/34 on a television. A desktop window takes `thirdNumeralWindow`
+  56/56 and `thirdTitleWindow` 28/31, and a phone on its side `thirdNumeralSide` 40/40 with the touch
+  title; these three are the same at every density.
 
 ### 2.3 Space, radius, elevation
 

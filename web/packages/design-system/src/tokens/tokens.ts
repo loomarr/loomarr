@@ -446,6 +446,14 @@ const typography = {
     // line height is 1.5 times the size at every width.
     stationName: { size: 28, lineHeight: 42, weight: "600", fluid: { min: 18, vw: 2.8 } },
     stationTag: { size: 17.36, lineHeight: 26.04, weight: "500", fluid: { min: 11.16, vw: 1.736 } },
+    // The Cross's lower third (§9.2): the watched channel's numeral and the title beside it. Density
+    // gives full screen (pointer), an upright phone (touch) and a television (tv); a desktop window
+    // and a phone on its side take roles of their own, the same at every density.
+    thirdNumeral: { size: 64, lineHeight: 64, weight: "500" },
+    thirdTitle: { size: 34, lineHeight: 38, weight: "600" },
+    thirdNumeralWindow: { size: 56, lineHeight: 56, weight: "500" },
+    thirdTitleWindow: { size: 28, lineHeight: 31, weight: "600" },
+    thirdNumeralSide: { size: 40, lineHeight: 40, weight: "500" },
   },
   touch: {
     display: { size: 38, lineHeight: 42, weight: "700" },
@@ -485,6 +493,11 @@ const typography = {
     footnote: { size: 12, lineHeight: 18, weight: "400" },
     stationName: { size: 28, lineHeight: 42, weight: "600" },
     stationTag: { size: 17, lineHeight: 26, weight: "500" },
+    thirdNumeral: { size: 44, lineHeight: 44, weight: "500" },
+    thirdTitle: { size: 22, lineHeight: 25, weight: "600" },
+    thirdNumeralWindow: { size: 56, lineHeight: 56, weight: "500" },
+    thirdTitleWindow: { size: 28, lineHeight: 31, weight: "600" },
+    thirdNumeralSide: { size: 40, lineHeight: 40, weight: "500" },
   },
   tv: {
     display: { size: 54, lineHeight: 60, weight: "700" },
@@ -523,6 +536,11 @@ const typography = {
     footnote: { size: 15, lineHeight: 22, weight: "400" },
     stationName: { size: 40, lineHeight: 60, weight: "600" },
     stationTag: { size: 25, lineHeight: 38, weight: "500" },
+    thirdNumeral: { size: 52, lineHeight: 52, weight: "500" },
+    thirdTitle: { size: 30, lineHeight: 34, weight: "600" },
+    thirdNumeralWindow: { size: 56, lineHeight: 56, weight: "500" },
+    thirdTitleWindow: { size: 28, lineHeight: 31, weight: "600" },
+    thirdNumeralSide: { size: 40, lineHeight: 40, weight: "500" },
   },
 } as const;
 
@@ -533,6 +551,11 @@ const roleLetterSpacing = {
   pairCode: 0.3,
   stationName: 0.01,
   stationTag: 0.16,
+  thirdNumeral: -0.02,
+  thirdNumeralSide: -0.02,
+  thirdNumeralWindow: -0.02,
+  thirdTitle: -0.01,
+  thirdTitleWindow: -0.01,
 } as const;
 
 // Line height as a multiple of the size, for text whose box is exactly its glyph height (a ✕ or ★
