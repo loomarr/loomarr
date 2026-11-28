@@ -9,11 +9,8 @@ import type { SegmentPreviewProps } from "./segment-preview.type";
 // SegmentPreview — one proposed cut, played from the parent recording (§10 V54/V70). It remains
 // a lazy tile where used alone and renders only the bounded player inside split review's Sheet.
 //
-// ⚠ **The gap this closes.** The split-review page asked an operator whether a cut at 04:17 was
-// right and gave them nothing to see or hear: measured 2026-08-12 on a 52-segment reel, the page's
-// entire toolkit was a name field, two mm:ss fields, Merge, Drop and Confirm. V54 A7 was honest
-// about it — it deleted the mock's "click to preview" caption because clicking had never previewed
-// anything — but the affordance stayed unbuilt.
+// ⚠ **Why it exists.** The split-review page asks an operator whether a cut at 04:17 is right, and
+// name, time, Merge, Drop and Confirm controls give them nothing to see or hear.
 //
 // ⚠ **It plays the PARENT, not the segment.** A proposed cut has no bytes until `confirm` writes
 // them, so the preview is a byte-range window of the composite it was detected in. That is the

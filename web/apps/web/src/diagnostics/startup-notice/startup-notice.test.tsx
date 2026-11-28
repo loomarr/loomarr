@@ -178,8 +178,8 @@ describe("HealthNotice", () => {
     );
   });
 
-  // A check that flaps re-raised the same notice on every return (2026-11-18: ~1,180 transitions a
-  // day). Once dismissed, the same set of checks stays quiet until Loomarr restarts.
+  // A flapping check can change state about a thousand times a day. Once dismissed, the same set of
+  // checks stays quiet until Loomarr restarts.
   it("does not raise a dismissed notice again when the same checks come back", async () => {
     server.use(getGetCurrentHealthMockHandler(report("degraded", 2)));
     const { client } = renderNotice();

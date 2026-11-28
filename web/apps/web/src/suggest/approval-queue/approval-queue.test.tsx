@@ -403,9 +403,8 @@ describe("ApprovalQueue — pulls, names, per-row pending", () => {
     expect(bulkApprove).toHaveAccessibleName("Approve 2 selected in channel requests");
   });
 
-  // #1430: a failed decision used to surface in one banner above the whole queue, away from the
-  // row it happened to. It must render on the row whose approve/dismiss actually failed, and must
-  // not appear on an unrelated row rendered at the same time.
+  // #1430: a failed decision renders on the row whose approve/dismiss actually failed, not in a
+  // banner above the queue, and not on an unrelated row rendered at the same time.
   it("renders an approve failure on its own row, not a page-level banner", async () => {
     vi.stubGlobal(
       "fetch",

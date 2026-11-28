@@ -207,8 +207,8 @@ describe("AppShell", () => {
     expect(search).toHaveAttribute("aria-keyshortcuts", apple ? "Meta+K" : "Control+K");
   });
 
-  // #1405: one name for everyone. Members used to see "My requests" and admins "Queue"; the page
-  // is now the same Requests page for both, so the label no longer varies by role.
+  // #1405: one name for everyone. Members and admins share the Requests page, so its label does not
+  // vary by role.
   it("names the shared route Requests for a member and an admin alike", async () => {
     renderShell(false);
     expect(await screen.findByRole("link", { name: "Requests" })).toHaveAttribute("href", "/requests");

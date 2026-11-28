@@ -44,10 +44,8 @@ export default defineConfig({
       client: "react-query",
       httpClient: "fetch",
       clean: true,
-      // NOTE: orval 8.24 removed the `prettier` output option outright (it is absent from
-      // OutputOptions, not deprecated). It was set to `false` here to stop orval formatting
-      // its own output; 8.24 no longer formats, so dropping it changes nothing at runtime —
-      // but leaving it in is a tsc error, which is how this surfaced.
+      // NOTE: there is no `prettier` output option (it is absent from OutputOptions, so setting
+      // it is a tsc error): orval does not format its output.
       // MSW handlers per operation (V53d). What is generated here is the WIRING — the URL, the
       // method, the status — and that is the part worth generating: when a route is renamed, a
       // regenerate fixes every handler, where hand-written ones would silently stop matching.
@@ -63,9 +61,8 @@ export default defineConfig({
       // back to faker. Setting it would imply a guarantee that does not hold — measured before
       // V53b: 0 of 53 example tags used. (V53b did fix the OTHER half of this: non-nullable
       // arrays took never-populated list mocks from 137 to 0.)
-      // orval 8.24 replaced the single-generator `mock: { type }` with a `generators` ARRAY,
-      // and throws on the old shape rather than falling back — so this is a hard migration,
-      // not a deprecation. Per-generator options (`delay`) moved onto the entry: the
+      // `mock` takes a `generators` ARRAY, and orval throws on any other shape rather than falling
+      // back. Per-generator options (`delay`) sit on the entry: the
       // normalizer reads only `generators`, `indexMockFiles`, and `path` at mock level, so a
       // `delay` left out here would be silently dropped and every handler would go back to a
       // random delay.

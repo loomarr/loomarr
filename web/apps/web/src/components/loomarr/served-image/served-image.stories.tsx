@@ -6,11 +6,10 @@ import { ServedImage } from "./served-image";
 // THE image primitive (§22, V52). Every surface that shows something the image service stores
 // goes through this; none hand-writes an `<img>` against `/v1/images`.
 //
-// ⚠ **These URLs are same-origin STATIC ASSETS, and they used to be `data:` URIs — which silently
-// broke every story in this file (#210).** A base64 data URI always contains a comma, and a comma
-// is `srcset`'s candidate separator, so every candidate was unloadable: the <img> rendered at
-// naturalWidth 0 and each baseline captured the ThumbHash placeholder instead of an image. Green
-// forever, proving nothing about the one attribute this primitive exists to emit.
+// ⚠ **These URLs are same-origin STATIC ASSETS, never `data:` URIs (#210).** A base64 data URI
+// always contains a comma, and a comma is `srcset`'s candidate separator, so every candidate is
+// unloadable: the <img> renders at naturalWidth 0 and the baseline captures the ThumbHash
+// placeholder, proving nothing about the one attribute this primitive exists to emit.
 //
 // Remote URLs are still banned (they race the snapshot). These come from
 // `.storybook/story-assets/` via `staticDirs`, so they are same-origin — no race — and comma-free.

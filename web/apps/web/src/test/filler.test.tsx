@@ -272,10 +272,8 @@ describe("Filler page", () => {
     ).toBe(true);
   });
 
-  // ⚠ The whole-catalog Sync and AI-tag buttons are GONE (V38c, maintainer). Two tests here
-  // pinned them — "runs a catalog sync and reports what changed" and "disables AI tagging when
-  // no LLM is configured" — and both were removed rather than repaired, because they asserted
-  // affordances that no longer exist rather than behaviour that broke.
+  // ⚠ There are no whole-catalog Sync or AI-tag buttons (V38c, maintainer), so no test here asks
+  // for them.
   //
   // Neither was work an operator should have to remember to start: the sync runs on its own
   // schedule and drains the watch folder every pass, and tagging follows it. A button for

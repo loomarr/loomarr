@@ -48,12 +48,10 @@ const previewBody: PreviewProgrammingOutputBody = {
 // Records what the preview POST / apply PATCH actually SENT — the wire shape, not a mocked
 // hook's arguments.
 //
-// ⚠ Two separate lists, because they are two separate ROUTES. The stub this replaces kept one
-// `calls` array and filtered it by `c.method === "PATCH"` — true of a PATCH to anything — and by
-// `c.url.includes("/programming/preview")`, a string the test itself supplied. Splitting them at
-// the resolver means "a preview happened" and "a save happened" can no longer be confused, which
-// matters here more than usual: the central claim of this hook is that editing previews and does
-// NOT save, so the two must be distinguishable by construction.
+// ⚠ Two separate lists, because they are two separate ROUTES. One list filtered by method or by
+// a URL substring cannot tell a preview from a save with certainty, and the central claim of this
+// hook is that editing previews and does NOT save, so the resolvers keep them apart by
+// construction.
 const stubDraft = () => {
   const previews: { url: string; body: unknown }[] = [];
   const saves: { body: unknown }[] = [];

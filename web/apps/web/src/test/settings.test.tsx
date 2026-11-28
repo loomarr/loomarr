@@ -924,7 +924,7 @@ describe("Settings honesty", () => {
   });
 });
 
-// Wiring (Tunarr → the guide; Tunarr → the library) is no longer a manual button on
+// Wiring (Tunarr → the guide; Tunarr → the library) is not a manual button on
 // Connections: it's an idempotent effect the server runs on save (config-design §5). So the
 // Connections page must NOT show wiring actions, and saving a connection must just PATCH
 // settings — the BE auto-wires (its own test proves the connectors fire). This guards that

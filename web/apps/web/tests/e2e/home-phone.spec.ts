@@ -19,8 +19,8 @@ import { installMockBackend } from "./mock-backend";
 // explicitly marks it "for eventual implementation" — it names the future behaviour but the
 // approved build does not implement it, so there is nothing running to assert against.
 //
-// Below `md` nothing sits beside Home's content: the phone bottom bar (#1785 Alt A) replaced the
-// 56px rail the geometry table was drawn within (page-consistency.spec.ts pins the bar for every
+// Below `md` nothing sits beside Home's content: the phone bottom bar (#1785 Alt A) stands in for
+// the 56px rail the geometry table is drawn within (page-consistency.spec.ts pins the bar for every
 // shell route). Home's own content area takes 16 px of padding at this width (the geometry
 // table's "16px padding"), so content width is `viewport - 32`. New this week's posters are two
 // columns, and one below 284px of content width — the table's own rule.

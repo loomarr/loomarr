@@ -39,10 +39,8 @@ const base = {
 };
 
 describe("FillerClipList", () => {
-  // ⚠ **A pin whose clip left the catalog used to render the raw 64-character hash.** This file's
-  // own comment called that "the honest signal that the override points at something no longer
-  // airable" — honest to someone who already knew, unreadable to everyone else, and silent about
-  // the fact that the assembler skips the pin entirely.
+  // ⚠ **A pin can point at a clip the catalog does not have.** Its raw 64-character hash would be
+  // unreadable, and silent about the fact that the assembler skips the pin entirely.
   it("names a clip that is no longer in the catalog instead of showing a hash", () => {
     renderList(
       <FillerClipList

@@ -43,10 +43,10 @@ const DOCS = {
 // quickstart "Upgrading" section now lives on its own page.
 const MOVED: Record<string, keyof typeof DOCS> = { "quickstart#upgrading": "upgrade" };
 
-// ⚠ The old stub matched docs by URL SUBSTRING, which forced a specificity ordering it had to get
-// right by hand: `/v1/docs/troubleshooting` was tested before `/v1/docs`, because `includes` has
-// no notion of a more specific route. `getGetDocMockHandler` binds to `*/v1/docs/:slug`, so MSW
-// parses the path and hands over `params.slug` — the list and the single-page reads can no longer
+// ⚠ Matching docs by URL SUBSTRING forces a specificity ordering kept by hand
+// (`/v1/docs/troubleshooting` before `/v1/docs`), because `includes` has no notion of a more
+// specific route. `getGetDocMockHandler` binds to `*/v1/docs/:slug`, so MSW
+// parses the path and hands over `params.slug` — the list and the single-page reads cannot
 // shadow each other, and a doc fetched at a path the spec does not declare goes UNHANDLED rather
 // than falling through to the list branch.
 const stubHelp = () => {

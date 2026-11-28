@@ -14,8 +14,8 @@ const SECRETS: SecretRow[] = [
     label: "API token",
     purpose: "Break-glass admin access for scripts and automation.",
     consequence:
-      // Paired parenthetical: commas here gave "Anything using it, scripts, automation, must
-      // be updated", where the aside reads as a list of subjects. Moved to the end instead.
+      // The aside goes at the end: between commas ("Anything using it, scripts, automation, must be
+      // updated") it reads as a list of subjects.
       "The current token stops working immediately. Anything using it must be updated with the new one: scripts, automation.",
   },
   {

@@ -24,19 +24,13 @@ afterEach(() => FakeEventSource.reset());
 
 // DOM APIs jsdom doesn't implement, shimmed so components that use them can render in tests.
 //
-// ⚠ This block used to read "Radix primitives (Select, …) call DOM APIs jsdom doesn't implement"
-// and shimmed FIVE things. Leaving Radix was the moment to check whether that was still true, so
-// each shim was removed and the full suite re-run rather than carried forward on faith. The
-// results were not what the old comment implied:
-//
-//   hasPointerCapture / setPointerCapture / releasePointerCapture
-//       DELETED. 1209 tests pass without them. They existed for Radix's pointer handling — the
-//       old comment's "without these, opening the listbox throws" is no longer true of Base UI.
+// ⚠ Only the DOM APIs the suite actually needs are shimmed; check by removing one and running it.
+// Base UI needs no pointer-capture shims.
 //
 //   scrollIntoView
 //       KEPT, but it was never the primitive's need: the caller is OUR OWN `search-command`
 //       (`listRef.current?.querySelector(…)?.scrollIntoView`), which keeps the active ⌘K result in
-//       view. Removing it fails 31 tests. The old comment credited this to Radix; it was ours.
+//       view.
 //
 //   ResizeObserver
 //       KEPT. The Guide's rows (react-virtual, in `ui/guide`) observe their scroller with one,
