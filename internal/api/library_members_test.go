@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -465,17 +466,19 @@ func TestMemberReadsLibraryWithoutFilesOrFixFacts(t *testing.T) {
 	}
 	var adminFiles []struct {
 		Path  string `json:"path"`
-		Extra bool   `json:"extra"`
+		State string `json:"state"`
 	}
 	if err := json.Unmarshal(admin["files"], &adminFiles); err != nil {
 		t.Fatal(err)
 	}
-	extra := false
+	states := map[string]string{}
 	for _, f := range adminFiles {
-		extra = extra || (f.Extra && strings.HasSuffix(f.Path, "alpha.copy.mkv"))
+		states[filepath.Base(f.Path)] = f.State
 	}
-	if len(adminFiles) < 3 || !extra {
-		t.Errorf("admin files = %s", admin["files"])
+	for name, want := range map[string]string{"alpha.mkv": "plays", "alpha.copy.mkv": "extra", "alpha.broken.mkv": "unplayable"} {
+		if states[name] != want {
+			t.Errorf("admin files = %s; want %s %s", admin["files"], name, want)
+		}
 	}
 }
 

@@ -309,6 +309,18 @@ func librarySources(item inventory.Item) []librarystore.LibrarySource {
 		return nil
 	}
 	slices.SortFunc(files, func(a, b file) int { return strings.Compare(a.src.Path, b.src.Path) })
+	// Every copy of one edition carries one label, the first in path order's: "Directors Cut" and
+	// "Director's Cut" are one edition, and the store matches a copy to the one that plays in its
+	// place by the label as written (librarystore.LibraryItemCopies).
+	labels := map[string]string{}
+	for i := range files {
+		k := editionKey(files[i].src.Edition)
+		if label, ok := labels[k]; ok {
+			files[i].src.Edition = label
+		} else {
+			labels[k] = files[i].src.Edition
+		}
+	}
 	plays := playingCopies(len(files), func(i int) string { return files[i].src.Edition },
 		func(i int) int { return files[i].src.Part },
 		func(i int) bool { return files[i].managed }, func(i int) int {

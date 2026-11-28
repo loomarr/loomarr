@@ -27,8 +27,9 @@ const (
 )
 
 var (
-	// ErrPlays refuses to remove the copy that plays.
-	ErrPlays = errors.New("library: that copy is the one that plays")
+	// ErrPlays refuses to remove a file that is not an extra copy: the copy that plays, one that
+	// can't be played, or one still being read or waiting.
+	ErrPlays = errors.New("library: that copy isn't an extra")
 	// ErrPlayingCopyUnseen refuses to remove an extra copy while no copy that plays in its place
 	// is found on disk: it is gone, or its share does not answer.
 	ErrPlayingCopyUnseen = errors.New("library: the copy that plays is not on disk now")
@@ -40,7 +41,7 @@ var (
 // RemoveExtraCopy is "Remove extra copy": path, one of the title's files that never plays, moves to
 // its media folder's trash and leaves the title, and the folder is passed over. It answers with the
 // token that RestoreExtraCopy takes to undo it. store.ErrNotFound when the title has no such present
-// file; ErrPlays when it is the copy that plays; ErrPlayingCopyUnseen when no copy that plays in its
+// file; ErrPlays when it is not an extra copy (librarystore.LibraryCopyExtra); ErrPlayingCopyUnseen when no copy that plays in its
 // place is on disk now. One removal runs at a time, from reading the title to marking the file gone,
 // so a second sees what the first did.
 func (l *Library) RemoveExtraCopy(ctx context.Context, id, path string) (string, error) {
@@ -50,18 +51,17 @@ func (l *Library) RemoveExtraCopy(ctx context.Context, id, path string) (string,
 	if err != nil {
 		return "", err
 	}
-	for i, f := range d.Files {
+	for _, f := range d.Files {
 		if f.Path != path {
 			continue
 		}
-		// The rule is held here on its own, not taken from the page's Extra. The list can keep a
-		// file that is gone (a held removal, an arr not answering), so the copy in its place must
-		// be on disk too.
-		twins := playsInPlaceOf(d.Files, i)
-		if len(twins) == 0 {
+		// Only an extra copy goes, by the store's rule. The list can keep a file that is gone (a
+		// held removal, an arr not answering), so a copy that plays in its place must be on disk
+		// too.
+		if f.State != librarystore.LibraryCopyExtra || len(f.InPlaceOf) == 0 {
 			return "", ErrPlays
 		}
-		if !slices.ContainsFunc(twins, func(g ItemFile) bool { return l.disk().File(ctx, g.Path) }) {
+		if !slices.ContainsFunc(f.InPlaceOf, func(p string) bool { return l.disk().File(ctx, p) }) {
 			return "", ErrPlayingCopyUnseen
 		}
 		now := l.now()
