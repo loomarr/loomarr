@@ -3,7 +3,7 @@ import { LoomarrProvider } from "@loomarr/design-system";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { SurfJourney } from "../index";
+import { SurfJourney } from "../watching";
 
 const sourceGuide = {
   channels: [

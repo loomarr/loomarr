@@ -3,7 +3,7 @@
 import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { declarationsOfTree } from "@loomarr/test-support/css";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OnScreenLogoSection, type OnScreenLogoSectionProps } from "../index";
+import { OnScreenLogoSection, type OnScreenLogoSectionProps } from "../watching";
 
 afterEach(cleanup);
 

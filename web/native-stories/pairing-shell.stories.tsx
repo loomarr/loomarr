@@ -1,6 +1,6 @@
 import { PairingSession } from "@loomarr/core";
 import { Surface, Text } from "@loomarr/design-system";
-import { PairingShell } from "@loomarr/ui";
+import { PairingShell } from "@loomarr/ui/pairing";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { useMemo } from "react";
 

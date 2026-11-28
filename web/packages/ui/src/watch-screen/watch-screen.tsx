@@ -743,6 +743,8 @@ const WatchScreen = <C extends LineupChannel>({
                       nowMs={nowMs}
                       onLook={(look) => setPointed(look ? { channelId: dayOf.id, look } : undefined)}
                       playheadMs={headMs}
+                      // A click shows a programme's facts and leaves the keys to the picture.
+                      pointerTakesNoFocus
                       ref={strip}
                       window={{ startMs: stripFrom, stopMs: stripFrom + STRIP_SPAN_MS }}
                     />

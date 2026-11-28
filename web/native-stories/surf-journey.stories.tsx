@@ -1,6 +1,6 @@
 import { createGuideController } from "@loomarr/core";
 import { guideChannels, guideFrom, guideNow, guideTo } from "@loomarr/fixtures";
-import { SurfJourney } from "@loomarr/ui";
+import { SurfJourney } from "@loomarr/ui/watching";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { useEffect, useMemo } from "react";
 

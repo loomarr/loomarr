@@ -54,7 +54,7 @@ jobs:
       fail-fast: false
       # ci-go.yml's race lanes, plus `postgres` for ci-postgres.yml.
       matrix:
-        lane: ["1/2", "2/2", "certification-1/5", "certification-2/5", "certification-3/5", "certification-4/5", "certification-5/5", "scan-race-1/2", "scan-race-2/2", "scan-plain", "postgres"]
+        lane: ["1/2", "2/2", "certification-1/4", "certification-2/4", "certification-3/4", "certification-4/4", "scan-race-1/2", "scan-race-2/2", "scan-plain", "store-race-1/3", "store-race-2/3", "store-race-3/3", "postgres"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7

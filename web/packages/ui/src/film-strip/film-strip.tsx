@@ -1,5 +1,5 @@
 import { Layer, Stack, Surface, Text, ThemeScope } from "@loomarr/design-system";
-import { type ComponentRef, useImperativeHandle, useRef, useState } from "react";
+import { type ComponentRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -88,6 +88,8 @@ const placeStrip = (
 const FilmStrip = ({
   airings,
   artworkUri = defaultArtwork,
+  blockContext,
+  cursor,
   formatTime,
   layout = "strip",
   maxBlockWidth = 330,
@@ -96,6 +98,7 @@ const FilmStrip = ({
   onLook,
   onSelect,
   playheadMs = nowMs,
+  pointerTakesNoFocus = false,
   ref,
   window,
 }: FilmStripProps) => {
@@ -134,7 +137,15 @@ const FilmStrip = ({
   // Under the picture the words always stand under the stills, so no tick or playhead crosses them.
   const height = HEAD_ROOM + STILL_HEIGHT + (isRow ? 0 : CAPTION_HEIGHT);
 
+  const cursorId = cursor?.id;
+  const takeFocus = cursor?.takeFocus;
+  useEffect(() => {
+    // A new cursor alone never takes focus from elsewhere.
+    if (cursorId && (takeFocus || focusedLook.current)) blocks.current.get(cursorId)?.focus();
+  }, [cursorId, takeFocus]);
+
   const stop =
+    programmes.find((i) => i.id === cursorId) ??
     programmes.find((i) => i.id === stopId) ??
     programmes.find((i) => stateOf(i, nowMs) === "now") ??
     programmes[0];
@@ -163,7 +174,8 @@ const FilmStrip = ({
     metaKey: boolean;
     preventDefault: () => void;
   }) => {
-    if (event.altKey || event.ctrlKey || event.metaKey || !stop) return;
+    // With a cursor from outside, the keys bubble to the owner.
+    if (cursor || event.altKey || event.ctrlKey || event.metaKey || !stop) return;
     const here = programmes.indexOf(stop);
     const to = { ArrowLeft: here - 1, ArrowRight: here + 1, End: programmes.length - 1, Home: 0 }[event.key];
     if (to === undefined) return;
@@ -224,6 +236,8 @@ const FilmStrip = ({
               aired={aired}
               airing={look.airing}
               artworkUri={artworkUri(look.airing)}
+              context={blockContext}
+              cursor={cursor ? item.id === cursorId : undefined}
               blockRef={(node) => {
                 if (node) blocks.current.set(item.id, node);
                 else blocks.current.delete(item.id);
@@ -250,6 +264,7 @@ const FilmStrip = ({
               startMs={item.startMs}
               state={state}
               stopMs={item.stopMs}
+              pointerTakesNoFocus={pointerTakesNoFocus}
               tabStop={item.id === stop?.id}
               width={isRow ? `${(ratio(item.stopMs) - ratio(item.startMs)) * 100}%` : width}
               wordsFrom={roomy && aired > 0 ? `${aired * 100}%` : 0}
@@ -344,4 +359,5 @@ const FilmStrip = ({
   );
 };
 
+export { PlaybarStill as StripStill } from "../watching-surface/player-chrome/playbar-still";
 export { FilmStrip };

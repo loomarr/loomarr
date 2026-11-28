@@ -186,6 +186,34 @@ describe("WatchScreen in a window", () => {
     expect(document.activeElement).toBe(document.body);
   });
 
+  it("leaves the keys to the picture after a click on a programme in the strip", () => {
+    renderUi(<Harness />);
+    const later = screen.getByRole("button", { name: /Show 1 at 90/ });
+    // A click as a browser gives it: the press focuses the block unless the mousedown's default
+    // was prevented.
+    fireEvent.pointerDown(later, { pointerType: "mouse" });
+    if (fireEvent.mouseDown(later)) act(() => later.focus());
+    fireEvent.click(later);
+    expect(document.activeElement).toBe(document.body);
+    key(" ", document.body);
+    expect(requests).toHaveBeenLastCalledWith({ type: "pause" });
+  });
+
+  it("still takes the keyboard into the strip, with the amber ring", () => {
+    const matches = Element.prototype.matches;
+    Element.prototype.matches = new Proxy(matches, {
+      apply: (original, element, args: [string]) =>
+        args[0] === ":focus-visible" || Reflect.apply(original, element, args),
+    });
+    try {
+      renderUi(<Harness />);
+      act(() => screen.getByRole("button", { name: /Now · until T60/ }).focus());
+      expect(screen.getAllByTestId("film-strip-ring-actionFocus")).toHaveLength(1);
+    } finally {
+      Element.prototype.matches = matches;
+    }
+  });
+
   it("pauses on a click on the picture", () => {
     renderUi(<Harness />);
     fireEvent.click(screen.getByTestId("watch-picture").firstElementChild as HTMLElement);

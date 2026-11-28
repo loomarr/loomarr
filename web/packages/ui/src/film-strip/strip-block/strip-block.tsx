@@ -1,7 +1,15 @@
 import { formatProgrammeTitle } from "@loomarr/core/guide";
-import { Layer, Stack, Surface, Text, ThemeScope, useFocusLook } from "@loomarr/design-system";
-import { type ComponentRef, type ReactNode, type Ref, useState } from "react";
-import { Platform, Pressable, type View, type ViewStyle } from "react-native";
+import {
+  Layer,
+  RingTarget,
+  type RingTargetFace,
+  Stack,
+  Surface,
+  Text,
+  ThemeScope,
+} from "@loomarr/design-system";
+import { type ReactNode, useState } from "react";
+import { Platform } from "react-native";
 
 import { PlaybarStill } from "../../watching-surface/player-chrome/playbar-still";
 import type { StripAiring } from "../series-runs";
@@ -23,10 +31,14 @@ interface BlockHandle {
 
 interface StripBlockProps {
   airing: StripAiring;
+  /** Words that end the block's name, such as its channel. */
+  context?: string | undefined;
   /** How much of the block has aired, 0 to 1; only the block on now has any. */
   aired: number;
   artworkUri: string | undefined;
   blockRef: (node: BlockHandle | null) => void;
+  /** With a cursor from outside, whether it is on this block; undefined lets focus draw the ring. */
+  cursor?: boolean | undefined;
   episodes: number | undefined;
   formatTime: (ms: number) => string;
   layout: "row" | "strip";
@@ -42,6 +54,8 @@ interface StripBlockProps {
   stopMs: number;
   /** Whether this block is the strip's one Tab stop. */
   tabStop: boolean;
+  /** Web: a pointer press takes no focus. */
+  pointerTakesNoFocus: boolean;
   width: Length;
   /** Where the words start across the block, clear of the playhead. */
   wordsFrom: Length;
@@ -49,15 +63,15 @@ interface StripBlockProps {
   wordsInset: number;
 }
 
-// The browser's own test of keyboard focus, so a click never draws the amber ring. A native view has
-// no `matches`, and there focus only ever comes from a remote or a keyboard.
-const fromKeyboard = (event: unknown) => {
-  const target = (event as { target?: { matches?: (selector: string) => boolean } } | undefined)?.target;
-  return target?.matches ? target.matches(":focus-visible") : true;
+/**
+ * The ring a block draws. With a cursor from outside, only its block may be amber, and only while the
+ * keyboard or a remote holds it; otherwise the cursor's ring is the plain one.
+ */
+const ringOf = (face: RingTargetFace, cursor: boolean | undefined) => {
+  if (cursor === undefined) return face.ring;
+  if (cursor) return face.keyboard ? "actionFocus" : "contentPrimary";
+  return face.keyboard ? "transparent" : face.ring;
 };
-
-// The ring below is the block's only focus and hover drawing, so the browser's outline is off.
-const noOutline = Platform.OS === "web" ? ({ outlineStyle: "none" } as unknown as ViewStyle) : null;
 
 const percent = (ratio: number) => `${ratio * 100}%` as const;
 
@@ -70,6 +84,8 @@ const StripBlock = ({
   airing,
   artworkUri,
   blockRef,
+  context,
+  cursor,
   episodes,
   formatTime,
   layout,
@@ -83,24 +99,13 @@ const StripBlock = ({
   state,
   stopMs,
   tabStop,
+  pointerTakesNoFocus,
   width,
   wordsFrom,
   wordsInset,
 }: StripBlockProps) => {
   const [hovered, setHovered] = useState(false);
   const [keyboard, setKeyboard] = useState(false);
-  const { focused, ...focusHandlers } = useFocusLook({
-    onBlur: () => onBlur(),
-    onFocus: (event: unknown) => {
-      const fromKeys = fromKeyboard(event);
-      setKeyboard(fromKeys);
-      onFocus(fromKeys);
-    },
-  });
-  const ring = focused && keyboard ? "actionFocus" : hovered ? "contentPrimary" : "transparent";
-  const ringed = ring !== "transparent";
-  // A Guide row's block can be a few pixels wide, so its ring is drawn on a target of its own.
-  const wideRing = ringed && layout === "row";
 
   const name = airing.series?.trim() || formatProgrammeTitle(airing);
   const time =
@@ -115,7 +120,9 @@ const StripBlock = ({
   // The accessible name starts with the words on screen, in their order; an ended block shows no
   // time, so its name adds one.
   const spoken = [line, name].filter(Boolean).join(" ");
-  const label = state === "ended" ? `${spoken}, ended ${formatTime(stopMs)}` : spoken;
+  const label = [spoken, state === "ended" ? `ended ${formatTime(stopMs)}` : undefined, context]
+    .filter(Boolean)
+    .join(", ");
 
   // Under the picture the words stand under the still, with or without one: a break's tick and the
   // playhead cross the still and never the words. A Guide row keeps them inside.
@@ -141,29 +148,13 @@ const StripBlock = ({
     </Stack>
   );
 
-  return (
-    // The layer places the block; the button fills it.
-    <Layer left={left} top={0} width={width} zIndex={ringed ? 1 : 0}>
-      <Pressable
-        accessibilityLabel={label}
-        accessibilityRole="button"
-        {...focusHandlers}
-        onHoverIn={() => {
-          setHovered(true);
-          onHoverIn();
-        }}
-        onHoverOut={() => {
-          setHovered(false);
-          onHoverOut();
-        }}
-        onPress={onPress}
-        ref={blockRef as unknown as Ref<ComponentRef<typeof View>>}
-        style={noOutline}
-        // The roving Tab stop is the web's: a television's remote has to reach every block, and a
-        // native view with a negative tabIndex takes no focus.
-        tabIndex={Platform.OS !== "web" || tabStop ? 0 : -1}
-        testID={`film-strip-${state}`}
-      >
+  const face = (given: RingTargetFace) => {
+    const ring = ringOf(given, cursor);
+    const ringed = ring !== "transparent";
+    // A Guide row's block can be a few pixels wide, so its ring is drawn on a target of its own.
+    const wideRing = ringed && layout === "row";
+    return (
+      <>
         <Stack flexShrink={0} gap="1.5" paddingHorizontal={1} position="relative" zIndex={0}>
           <Surface
             backgroundColor={
@@ -256,7 +247,36 @@ const StripBlock = ({
             />
           </Layer>
         ) : null}
-      </Pressable>
+      </>
+    );
+  };
+
+  return (
+    // The layer places the block; the button fills it.
+    <Layer left={left} top={0} width={width} zIndex={cursor || hovered || keyboard ? 1 : 0}>
+      <RingTarget
+        accessibilityLabel={label}
+        onBlur={onBlur}
+        onFocus={onFocus}
+        onHoverIn={() => {
+          setHovered(true);
+          onHoverIn();
+        }}
+        onHoverOut={() => {
+          setHovered(false);
+          onHoverOut();
+        }}
+        onKeyboardFocus={setKeyboard}
+        onPress={onPress}
+        pointerTakesNoFocus={pointerTakesNoFocus}
+        ref={blockRef}
+        // The roving Tab stop is the web's: a television's remote has to reach every block, and a
+        // native view with a negative tabIndex takes no focus.
+        tabIndex={Platform.OS !== "web" || tabStop ? 0 : -1}
+        testID={`film-strip-${state}`}
+      >
+        {face}
+      </RingTarget>
     </Layer>
   );
 };

@@ -13,7 +13,7 @@ vi.mock("react-native", async (importOriginal) => ({
   Platform: platform,
 }));
 
-const { confirmDisconnect } = await import("../index");
+const { confirmDisconnect } = await import("../pairing");
 
 beforeEach(() => {
   alert.mockReset();

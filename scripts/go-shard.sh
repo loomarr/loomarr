@@ -23,9 +23,10 @@
 # a balanced 2026-09-01 sample to 1430/657/583 package-seconds in merge-group run 35472062915.
 # Packages that must not share a runner live in reviewed serial lanes, still identified as
 # `certification`: latency-sensitive media packages, and CPU-heavy packages whose own parallel tests
-# need every core (internal/platform/store, #1570; schedule and demolibrary, #2716). The remaining
-# weighted packages are balanced across two ordinary lanes. Separate runners let the serial groups
-# overlap without allowing package concurrency inside any of them.
+# need every core (schedule and demolibrary, #2716). A package too slow for any one lane has jobs of
+# its own (scripts/go-split-lanes.tsv). The remaining weighted packages are balanced across two
+# ordinary lanes. Separate runners let the serial groups overlap without allowing package concurrency
+# inside any of them.
 #
 # ⚠ THE --verify MODE IS NOT OPTIONAL DECORATION. A sharding bug that DROPS a package does not
 # fail anything: the dropped tests simply never run and every shard stays green, which is the
@@ -50,9 +51,9 @@ CERTIFICATION="${GO_SHARD_CERTIFICATION:-$ROOT/scripts/go-certification-lanes.ts
 SPLIT="${GO_SHARD_SPLIT:-$ROOT/scripts/go-split-lanes.tsv}"
 RACE_POLICY="${GO_SHARD_RACE_POLICY:-$ROOT/scripts/go-race-policy.sh}"
 MAX_IMBALANCE_PERCENT=125
-# The serial lanes hold a handful of indivisible packages from 45s to over 400s, and no assignment of
-# them stays within 125% (#4538: the best of every five-lane split is 134%). Imbalance there costs
-# only idle runner time; the lane budget below still bounds each lane, so they get a wider band.
+# The serial lanes hold a handful of indivisible packages of very different sizes, which do not
+# divide within 125% (#4538). Imbalance there costs only idle runner time; the lane budget below
+# still bounds each lane, so they get a wider band.
 MAX_CERTIFICATION_IMBALANCE_PERCENT=150
 ORDINARY_WORKERS=4
 

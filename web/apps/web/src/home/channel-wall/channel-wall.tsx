@@ -1,5 +1,6 @@
 import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import { createChannelLineup } from "@loomarr/core/channel-lineup";
+import { channelListView, createChannelListState } from "@loomarr/core/channel-list";
 import type { GuideChannelLayout } from "@loomarr/core/guide";
 import {
   formatGuideEpisode,
@@ -9,14 +10,18 @@ import {
   guideChannelState,
   guideWaitingForTitles,
 } from "@loomarr/core/guide";
-import { Action, SectionHeader, Surface } from "@loomarr/design-system";
-import { NeedsLine, surfChannelData, WallTile } from "@loomarr/ui";
+import { Action, decadeTint, SectionHeader, Stack, Surface, Text } from "@loomarr/design-system";
+import { NeedsLine, WallTile } from "@loomarr/ui";
+import { CHANNEL_LIST_NOTICES } from "@loomarr/ui/channels";
+import { surfChannelData } from "@loomarr/ui/watching";
 import { Link } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { usePhoneWidth } from "@/lib/use-phone-width";
+import { useChannelGroupPreference } from "../use-channel-group-preference";
 import type { AiringArtworkProps, ChannelViewer, ChannelWallProps } from "./channel-wall.type";
+import { WallTabs } from "./wall-tabs";
 
 // A legacy thumbnail URL that 404s must not leave a blank box (#2762): it falls to the generated art.
 const ThumbUrl = ({ url, fallback }: { url: string; fallback: ReactNode }) => {
@@ -144,30 +149,99 @@ const watchingCount = (viewers: ChannelViewer[]): string => {
   return `${people} ${people === 1 ? "person" : "people"} watching`;
 };
 
-// ChannelWall — Home's first section (#2764, Direction mock "Channel wall"): every channel as a live
-// tile, like a TV multiview, the channel the viewer tuned last first and marked, the rest in channel
-// number order. No hero picture and no filled button: the tile is the control. A channel still
+// ChannelWall — Home's first section (#2764, Direction mock "Channel wall"): channels as live tiles,
+// like a TV multiview, headed by the lineup's four group tabs (#4734). The channel the viewer tuned
+// last is first and marked, the rest follow in the channel list's order, and By decade heads each
+// decade in its tint. No hero picture and no filled button: the tile is the control. A channel still
 // downloading its titles is a dimmer tile that says so instead of airing an ad as its "now". For an
 // admin, the "Needs you" counts sit as one quiet line between the header and the tiles (#2785).
-const ChannelWall = ({ lastChannelId, layout, needs = [], nowMs, viewers }: ChannelWallProps) => {
+const ChannelWall = ({
+  favouriteIds,
+  lastChannelId,
+  layout,
+  needs = [],
+  nowMs,
+  recentIds,
+  viewers,
+}: ChannelWallProps) => {
   const phone = usePhoneWidth();
+  const [group, setGroup] = useChannelGroupPreference();
   const lineup = createChannelLineup({
     channels: layout.channels.map((channel) => ({
       channel,
+      decade: channel.source.decade,
       id: channel.source.channelId,
       name: channel.source.name,
       number: channel.source.number,
       playable: channel.source.status === "live",
     })),
-    lastTunedId: lastChannelId,
+    favouriteIds,
+    recentIds,
   });
-  const entries = lineup.lastTunedFirst().map(({ channel }) => wallEntry(channel, nowMs, layout.timezone));
-  const filling = entries.filter((e) => e.waiting).length;
+  const all = lineup.channels.map(({ channel }) => wallEntry(channel, nowMs, layout.timezone));
+  const filling = all.filter((e) => e.waiting).length;
   const meta =
     filling > 0
-      ? `${filling} of ${entries.length} channels are still filling up`
-      : `${entries.length} ${entries.length === 1 ? "channel" : "channels"}`;
+      ? `${filling} of ${all.length} channels are still filling up`
+      : `${all.length} ${all.length === 1 ? "channel" : "channels"}`;
   const headerMeta = viewers ? `${meta} · ${watchingCount(viewers)}` : meta;
+
+  // A group made from the viewer's own lists says nothing until they have been read.
+  const pending = (group === "favourites" && !favouriteIds) || (group === "recent" && !recentIds);
+  const { notice, rows } = channelListView(createChannelListState({ group }), lineup);
+  const last = rows.find((row) => row.id === lastChannelId);
+  const rest = rows.filter((row) => row !== last);
+  // The tiles in runs: the last watched tile and the rest as one, or under By decade a run to a
+  // decade. The rows arrive in order, so a run ends where the decade changes.
+  const runs: { decade?: number | undefined; rows: typeof rows }[] =
+    group === "decade"
+      ? [
+          ...(last ? [{ rows: [last] }] : []),
+          ...[...new Set(rest.map((row) => row.decade))].map((decade) => ({
+            decade,
+            rows: rest.filter((row) => row.decade === decade),
+          })),
+        ]
+      : [{ rows: last ? [last, ...rest] : rest }];
+
+  const tile = ({ channel }: (typeof rows)[number]) => {
+    const entry = wallEntry(channel, nowMs, layout.timezone);
+    const { channelName } = entry;
+    const art = entry.airing ? (
+      <AiringArtwork
+        airing={entry.airing}
+        channel={{ name: channelName, number: channel.source.number }}
+        sizes="(min-width: 1024px) 33vw, 50vw"
+        wordless={phone}
+      />
+    ) : phone ? (
+      <ArtworkFallback seed={channel.source.number} />
+    ) : (
+      <ArtworkFallback channel={{ name: channelName, number: channel.source.number }} />
+    );
+    return (
+      <WallTile
+        key={channel.source.channelId}
+        art={art}
+        channelName={channelName}
+        compact={phone}
+        dim={entry.dim}
+        focusRing
+        last={channel.source.channelId === lastChannelId}
+        number={String(channel.source.number)}
+        render={<Link to="/watch/$id" params={{ id: channel.source.channelId }} />}
+        title={entry.title}
+        {...(channel.source.decade === undefined ? {} : { decade: channel.source.decade })}
+        {...(viewers ? { watchers: watchersOn(viewers, channel.source.channelId) } : {})}
+        {...(phone && entry.compactDetail
+          ? { detail: entry.compactDetail }
+          : entry.detail
+            ? { detail: entry.detail }
+            : {})}
+        {...(entry.progressPercent === undefined ? {} : { progressPercent: entry.progressPercent })}
+      />
+    );
+  };
 
   return (
     <section aria-labelledby="home-wall">
@@ -181,52 +255,43 @@ const ChannelWall = ({ lastChannelId, layout, needs = [], nowMs, viewers }: Chan
           <NeedsLine compact={phone} items={needs} />
         </Surface>
       )}
-      <Surface
-        backgroundColor="transparent"
-        borderWidth={0}
-        style={{
-          display: "grid",
-          gap: phone ? 12 : 16,
-          gridTemplateColumns: phone ? "repeat(2, minmax(0, 1fr))" : "repeat(3, minmax(0, 1fr))",
-        }}
-      >
-        {entries.map((entry) => {
-          const { channel, channelName } = entry;
-          const art = entry.airing ? (
-            <AiringArtwork
-              airing={entry.airing}
-              channel={{ name: channelName, number: channel.source.number }}
-              sizes="(min-width: 1024px) 33vw, 50vw"
-              wordless={phone}
-            />
-          ) : phone ? (
-            <ArtworkFallback seed={channel.source.number} />
-          ) : (
-            <ArtworkFallback channel={{ name: channelName, number: channel.source.number }} />
-          );
-          return (
-            <WallTile
-              key={channel.source.channelId}
-              art={art}
-              channelName={channelName}
-              compact={phone}
-              dim={entry.dim}
-              last={channel.source.channelId === lastChannelId}
-              number={String(channel.source.number)}
-              render={<Link to="/watch/$id" params={{ id: channel.source.channelId }} />}
-              title={entry.title}
-              {...(channel.source.decade === undefined ? {} : { decade: channel.source.decade })}
-              {...(viewers ? { watchers: watchersOn(viewers, channel.source.channelId) } : {})}
-              {...(phone && entry.compactDetail
-                ? { detail: entry.compactDetail }
-                : entry.detail
-                  ? { detail: entry.detail }
-                  : {})}
-              {...(entry.progressPercent === undefined ? {} : { progressPercent: entry.progressPercent })}
-            />
-          );
-        })}
-      </Surface>
+      <Stack gap={phone ? "3" : "4"}>
+        <WallTabs group={group} kinds={lineup.groups.map((each) => each.kind)} onChoose={setGroup} />
+        {!pending && notice && notice !== "no-match" ? (
+          <Surface alignItems="flex-start" backgroundColor="transparent" borderWidth={0} gap={8}>
+            <Text textRole="metadata" tone="secondary">
+              {CHANNEL_LIST_NOTICES[notice]}
+            </Text>
+            <Action onPress={() => setGroup("all")} variant="ghost">
+              Show all channels
+            </Action>
+          </Surface>
+        ) : null}
+        {pending
+          ? null
+          : runs.map((run) =>
+              run.rows.length ? (
+                <Stack key={run.decade ?? "first"} gap="2">
+                  {run.decade === undefined ? null : (
+                    <Text as="h3" strong textRole="metadata" tone={decadeTint(run.decade)}>
+                      {`${run.decade}s`}
+                    </Text>
+                  )}
+                  <Surface
+                    backgroundColor="transparent"
+                    borderWidth={0}
+                    style={{
+                      display: "grid",
+                      gap: phone ? 12 : 16,
+                      gridTemplateColumns: phone ? "repeat(2, minmax(0, 1fr))" : "repeat(3, minmax(0, 1fr))",
+                    }}
+                  >
+                    {run.rows.map(tile)}
+                  </Surface>
+                </Stack>
+              ) : null,
+            )}
+      </Stack>
     </section>
   );
 };

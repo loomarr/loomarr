@@ -18,6 +18,15 @@ interface FilmStripProps {
    * first or last programme here is open and shows no episode count, since the run may go on.
    */
   airings: readonly StripAiring[];
+  /**
+   * Hands the cursor to the owner. The named block (a `groupSeriesRuns` id) is the Tab stop and the
+   * only one that is ever amber (while keys hold it; a plain ring otherwise), none when `id` is
+   * undefined, and Left, Right, Home and End are the owner's to handle. Focus follows a new `id` only while the strip holds focus, or when the owner
+   * sets `takeFocus` as it moves its own focus in. Left out, the strip runs its own cursor.
+   */
+  cursor?: { id: string | undefined; takeFocus?: boolean };
+  /** Words that end every block's name, such as the channel the strip is a row of. */
+  blockContext?: string;
   /** Where an airing's picture comes from; a client with a server base URL resolves it here. */
   artworkUri?: (airing: StripAiring) => string | undefined;
   /** A clock time. For a programme after midnight the caller's formatter adds the day. */
@@ -39,6 +48,11 @@ interface FilmStripProps {
   onSelect?: (look: FilmStripLook) => void;
   /** Where the viewer is. Behind `nowMs`, the live mark shows too. */
   playheadMs?: number;
+  /**
+   * Web: a pointer press on a block takes no focus, so a key pressed after a click goes where it
+   * would have gone without the click. The keyboard still focuses a block, with its ring.
+   */
+  pointerTakesNoFocus?: boolean;
   ref?: Ref<FilmStripHandle> | undefined;
   /**
    * The span the strip draws. In `row` layout a block is as wide as its share of it; in `strip`

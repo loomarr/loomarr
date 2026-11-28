@@ -39,7 +39,8 @@ const HEADING_HEIGHT = 32;
 /** How long a pointer rests on a row before it is looking at that channel. */
 const LOOK_AFTER_MS = 140;
 
-const NOTICES = {
+/** The words for a group with nothing in it, which Home's wall says too. */
+const CHANNEL_LIST_NOTICES = {
   "empty-decade": "No channels have a decade yet.",
   "empty-favourites": "No favourites yet.",
   "empty-recent": "Channels you watch collect here.",
@@ -136,7 +137,7 @@ const ChannelList = <C extends LineupChannel>({
   const message =
     view.notice === "no-match"
       ? `No channel or programme matches “${query?.trim()}”.`
-      : view.notice && NOTICES[view.notice];
+      : view.notice && CHANNEL_LIST_NOTICES[view.notice];
   const anchorY = (pinnedAt < 0 ? y : places.get(watchedId ?? "")) ?? y;
   // A notice stands after the list's last channel, a row high.
   const listEnd = y + (pinnedAt < 0 && pinned ? pinnedHeight : 0);
@@ -506,4 +507,4 @@ const ChannelList = <C extends LineupChannel>({
   );
 };
 
-export { ChannelList };
+export { CHANNEL_LIST_NOTICES, ChannelList };

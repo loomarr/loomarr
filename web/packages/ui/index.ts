@@ -17,10 +17,6 @@ export type { DemoBannerNext, DemoBannerProps } from "./src/demo-banner";
 export { DemoBanner } from "./src/demo-banner";
 export type { DemoSignInProps } from "./src/demo-sign-in";
 export { DemoSignIn } from "./src/demo-sign-in";
-export type { DeviceDisconnectActionProps } from "./src/device-disconnect";
-export { DeviceDisconnectAction } from "./src/device-disconnect";
-export type { DeviceSheetAccount, DeviceSheetProps } from "./src/device-sheet";
-export { confirmDisconnect, DeviceSheet } from "./src/device-sheet";
 export type {
   FilmStripHandle,
   FilmStripLook,
@@ -119,17 +115,8 @@ export type { NeedsLineItem, NeedsLineProps } from "./src/needs-line";
 export { NeedsLine } from "./src/needs-line";
 export type { NumberFieldProps } from "./src/number-field";
 export { NumberField } from "./src/number-field";
-export type {
-  OnScreenLogoHoliday,
-  OnScreenLogoPolicy,
-  OnScreenLogoPreviewRequest,
-  OnScreenLogoSectionProps,
-} from "./src/on-screen-logo";
-export { OnScreenLogoSection } from "./src/on-screen-logo";
 export type { ModalOverlayProps, OverlayAction, TransientOverlayProps } from "./src/overlay";
 export { ModalOverlay, TransientOverlay } from "./src/overlay";
-export type { ApprovalBrowser, PairingShellProps } from "./src/pairing-shell";
-export { PairingShell, pairingBackAvailable } from "./src/pairing-shell";
 export type { PictureCardProps, PictureRatio } from "./src/picture-card";
 export { PictureCard } from "./src/picture-card";
 export type {
@@ -158,25 +145,6 @@ export type {
 export { SettingsOverview } from "./src/settings-overview";
 export type { StatePanelAction, StatePanelKind, StatePanelProps } from "./src/state-panel";
 export { StatePanel } from "./src/state-panel";
-export type {
-  SurfChannelData,
-  SurfGroupData,
-  SurfGroupKind,
-  SurfGroupsArgs,
-  SurfJourneyProps,
-  SurfProgrammeData,
-  SurfRailProps,
-  SurfSelection,
-} from "./src/surf-rail";
-export {
-  restoreSurfSelection,
-  SurfJourney,
-  SurfRail,
-  surfChannelData,
-  surfGroupsFromGuide,
-  surfPreviousChannel,
-  watchingScheduleFromGuide,
-} from "./src/surf-rail";
 export type { TuneBarsProps, TuneStaticProps } from "./src/tune-static";
 export { TuneBars, TuneStatic } from "./src/tune-static";
 export type { BackHandlerSource } from "./src/use-client-destination";

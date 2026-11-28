@@ -5,7 +5,7 @@ export type {
   ChannelListProps,
   ChannelListScroll,
 } from "./src/channel-list";
-export { ChannelList } from "./src/channel-list";
+export { CHANNEL_LIST_NOTICES, ChannelGroupTabs, ChannelList } from "./src/channel-list";
 export type {
   ChannelAudioOption,
   ChannelAudioSectionProps,
