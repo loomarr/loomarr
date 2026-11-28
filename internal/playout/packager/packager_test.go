@@ -1125,6 +1125,11 @@ func TestSubFrameCardRemainderRollsIntoTheNextItem(t *testing.T) {
 		t.Fatal(err)
 	}
 	start(t, p)
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("stats %+v after %d schedule lookups", p.Stats(), asked.Load())
+		}
+	})
 	waitfor.Eventually(t, 3*time.Second, "the item after the card to air", func() bool { return p.Stats().Items >= 1 })
 }
 
