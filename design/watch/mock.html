@@ -257,7 +257,8 @@ const SCHED = {
   21:[[-3,106,'Midnight at the Mapleton'],[106,200,'Cold Relay']],
   22:[[-30,72,'The Harvest House'],[75,165,'A Cold October'],[168,260,'The Harvest House']],
   23:[[-20,97,'Two Sides of the Ridge'],[100,200,'The Iron Ferry']],
-  24:[[-9,38,'Beacon of the Hollow Moon'],[41,85,'Hollow Moon, Part Two'],[88,132,'Signal Fires'],[135,200,'Signal Fires']]
+  24:[[-9,38,'Beacon of the Hollow Moon'],[41,85,'Hollow Moon, Part Two'],[88,132,'Signal Fires'],[135,200,'Signal Fires']],
+  40:[[-40,143,'A baseball classic'],[146,260,'A baseball classic']]
 };
 const clock = m => { const h = 10 + Math.floor(m / 60), mm = String(m % 60).padStart(2, '0'); return `${h > 12 ? h - 12 : h}:${mm} ${h >= 12 ? 'PM' : 'AM'}`; };
 
@@ -367,9 +368,8 @@ const row = (d, n, top, fade = 1) => `<div class="row" style="left:${d.pad}px;to
   <div style="min-width:0"><div class="name" style="font-size:${d.rowName}px">${CH[n].name}</div><div class="now" style="font-size:${d.rowNow}px;margin-top:3px">${CH[n].now}</div></div>
   <span class="left mono" style="font-size:12px">${leftOf(n)}</span></div>`;
 // The two groups of the invented household that the stills draw besides All.
-// A tall screen has room for the whole of By decade; a short one shows the decades around 7.
-const BYDEC_ALL = [14, 19, 55, 21, 31, 5, 20, 22, 23, 3, 4, 9, 40, 2, 7, 12, 24, 1, 6];
-const BYDEC = [9, 2, 7, 12, 1, 6];
+// By decade: decades ascending, channels by number inside each. A screen shows one unbroken run of it.
+const BYDEC = [14, 19, 55, 21, 31, 5, 20, 22, 23, 3, 4, 9, 40, 2, 7, 12, 24, 1, 6];
 // The cursor ring on a row of the list.
 const cursor = (d, top) => `<div class="abs" style="left:${d.pad - 10}px;top:${top - 8}px;width:${d.rowW + 20}px;height:${d.rowName * 3 + 8}px;border-radius:6px;outline:2px solid var(--amber);outline-offset:-2px;background:rgba(231,234,240,.08)"></div>`;
 // The query takes the tabs' place and its results list straight under it.
@@ -377,7 +377,7 @@ const query = (x, y, size) => `<div class="query" style="left:${x}px;top:${y}px;
 // The channel list around the pinned lower third, in number order or headed by decade. `at` is the
 // row the cursor ring is on.
 const column = (d, o = {}) => {
-  const tx = d.pad + d.numW + d.gap, th = d.touch ? 44 : 30, list = o.byDecade ? (d.remote || d.touch ? BYDEC : BYDEC_ALL) : ORDER, i0 = list.indexOf(7);
+  const tx = d.pad + d.numW + d.gap, th = d.touch ? 44 : 30, list = o.byDecade ? BYDEC : ORDER, i0 = list.indexOf(7);
   let h = o.find
     ? query(tx, d.tabs - 4, d.tabF)
     : tabs({left: tx, top: d.tabs - (th - d.tabF) / 2, gap: d.tabF * 1.7, size: d.tabF, touch: d.touch, nofind: d.remote, sel: o.byDecade ? 'By decade' : null, cur: o.tab});
@@ -460,8 +460,9 @@ const wide = (d, state) => {
   if (state.startsWith('guide')) return tvGuide(d, state);
   // The cursor ring rests on the pinned channel. A touch screen draws no ring.
   const ring = d.touch ? '' : `<div class="ring" style="left:${d.pad - 10}px;top:${d.cross - 12}px;width:${d.rowW + d.gap + 60}px;height:${d.title * 1.12 + d.meta * 3 + 30}px"></div>`;
-  // The channel list over the picture. On a phone the quiet row steps away while it is open.
-  const list = (o = {}, r = ring) => B + L + T + column(d, o) + r + third(d, {next: 1}) + (d.touch ? '' : keys(d, {col: 1, group: o.byDecade ? 'By decade' : null}));
+  // The channel list over the picture. The quiet row stays, with Channels shown as on. On a phone on
+  // its side the longer "Channels: By decade" would cover the list, so the row steps away there.
+  const list = (o = {}, r = ring) => B + L + T + column(d, o) + r + third(d, {next: 1}) + (d.touch && o.byDecade ? '' : keys(d, {col: 1, group: o.byDecade ? 'By decade' : null}));
   const onAir = (o = {}) => `<span class="dot"></span><em>Coast 90s</em>${d.short ? '' : ' · “Opening Night”'} · TV-PG · <em>35 min left</em>`;
   switch (state) {
     case 'rest': return P;
@@ -496,7 +497,7 @@ const wide = (d, state) => {
 // line, and a remote pages it with Right, so there are no Earlier and Later controls.
 const tvGuide = (d, state) => {
   const looking = state === 'guide-later' || state === 'guide-message', paged = state === 'guide-paged', byDecade = state === 'guide-decade';
-  const g = {x:264,y:130,k:5.4,span:120,now:20,off:paged ? 60 : 0,rows:byDecade ? [4,9,2,7,12,24,1] : [3,4,5,6,7,9,12,14],bh:34,th:60,rg:5,cx:d.pad,numW:44,gap:16,nameW:150,fn:16,fname:15,fb:14};
+  const g = {x:264,y:130,k:5.4,span:120,now:20,off:paged ? 60 : 0,rows:byDecade ? [3,4,9,40,2,7,12,24] : [3,4,5,6,7,9,12,14],bh:34,th:60,rg:5,cx:d.pad,numW:44,gap:16,nameW:150,fn:16,fname:15,fb:14};
   // With the cursor on another channel the header says so; the picture's caption stays.
   const hd = {...d, cross: 34, num: 40, title: 24, meta: 14};
   const head = looking
@@ -529,12 +530,21 @@ const desk = state => {
   const tabsRow = find ? query(tx, 88, 14) : tabs({left: tx, top: 84, gap: 22, sel: decade ? 'By decade' : recent ? 'Recent' : null});
   // Number order, scrolled so the tuned channel sits on the crossing. A tune or typed digits move the list at once.
   const T = state === 'tune' || state === 'typing' ? 12 : 7;
-  const order = decade ? BYDEC_ALL : recent ? [7] : ORDER, i0 = order.indexOf(T);
+  const order = decade ? BYDEC : recent ? [7] : ORDER, i0 = order.indexOf(T);
   const newDec = i => decade && (i === 0 || DECADE[order[i - 1]] !== DECADE[order[i]]);
   const hov = state === 'peek' ? 9 : null;
   let col = '';
+  // The pinned channel sits on the crossing, or at the list's foot when the list is scrolled to its top.
+  const pinned = decade ? 780 : d.cross;
   if (find) col += cursor(d, 146) + row(d, 14, 146) + row(d, 55, 202);
-  else {
+  else if (decade) {
+    for (let i = 0, y = 124; ; i++) {
+      const head = newDec(i) ? 24 : 0;
+      if (y + head + 48 > pinned - 6) break;
+      if (head) col += dhead(order[i], `left:${tx}px;top:${y + 4}px`);
+      col += row(d, order[i], y + head); y += head + 56;
+    }
+  } else {
     let y = d.cross - 6;
     if (newDec(i0)) { y -= 24; col += dhead(T, `left:${tx}px;top:${y + 4}px`); }
     for (let i = i0 - 1; i >= 0 && y - 56 >= 124; i--) { y -= 56; col += row(d, order[i], y); if (newDec(i)) { y -= 22; col += dhead(order[i], `left:${tx}px;top:${y}px`); } }
@@ -557,11 +567,11 @@ const desk = state => {
   const info = (h, f, p) => `<div class="info" style="left:${pic.x}px;top:748px;width:600px">${h ? `<h2 style="font-size:17px">${h}</h2>` : ''}<div class="f mono" style="font-size:12px${h ? '' : ';margin-top:0'}">${f}</div><p style="font-size:14px">${p}</p></div>`;
   const onAir = info('', 'S02E04 · 1994 · TV-PG · Comedy', 'Two friends open a diner and learn the hard way who their regulars are.');
   const K = o => keys(d, {top: 548, ...o});
-  const base = (o, extra = '') => home + tabs_ + col + picture + third(d, {next: 1, ...o}) + arm() + extra;
+  const base = (o, extra = '') => home + tabs_ + col + picture + third({...d, cross: pinned}, {next: 1, ...o}) + arm() + extra;
   if (inGuide) {
     // The guide: the picture steps into the corner and keeps playing; every channel's day runs on one clock.
     const looking = state === 'guide-later' || state === 'guide-message', paged = state === 'guide-paged', byDecade = state === 'guide-decade';
-    const g = {x:312,y:296,k:6,span:180,now:20,off:paged ? 60 : 0,rows:byDecade ? [3,4,9,2,7,12,24,1] : [1,2,3,4,5,6,7,9,12,14,19,20],bh:36,th:80,rg:5,cx:48,numW:56,gap:20,nameW:170,fn:15,fname:14,fb:13};
+    const g = {x:312,y:296,k:6,span:180,now:20,off:paged ? 60 : 0,rows:byDecade ? [3,4,9,40,2,7,12,24,1,6] : [1,2,3,4,5,6,7,9,12,14,19,20],bh:36,th:80,rg:5,cx:48,numW:56,gap:20,nameW:170,fn:15,fname:14,fb:13};
     // With the cursor on another channel's programme the header says "Looking at", and the picture keeps its caption.
     const head = third({...d, cross: 88}, looking
       ? {w: 560, n: 9, looking: 1, title: 'Beacon of the Hollow Moon', meta: `Looking at <em>Movie Matinee</em> · 11:23 AM to 12:55 PM · ${FACTS['Beacon of the Hollow Moon'][0]}`}
@@ -610,10 +620,11 @@ const portrait = state => {
   const T = state === 'tune' ? 12 : 7;
   const pic = `<div class="pic" style="left:0;top:104px;width:390px;height:219px"></div>${state === 'tune' ? '<div class="dip" style="inset:104px 0 521px 0"></div>' + snow(.22, 'inset:104px 0 521px 0') : ''}${state === 'cold' ? drained('inset:104px 0 521px 0') : ''}`;
   // The whole list in number order, or headed by decade, scrolled so the watched channel is in view and marked.
-  const rows = (order) => { let y = 482, h = ''; const at = order.indexOf(T), first = Math.max(0, at - 2);
+  // By decade rests one row above the watched channel, which here is its decade's first.
+  const rows = (order) => { let y = 482, h = ''; const at = order.indexOf(T), first = Math.max(0, at - (order === BYDEC ? 1 : 2));
     for (let i = first; i < order.length && y < 800; i++) {
       const n = order[i], on = n === T;
-      if (order === BYDEC && (i === first || DECADE[order[i - 1]] !== DECADE[n])) { h += dhead(n, `left:58px;top:${y + 4}px`); y += 24; }
+      if (order === BYDEC && (i === 0 || DECADE[order[i - 1]] !== DECADE[n])) { h += dhead(n, `left:58px;top:${y + 4}px`); y += 24; }
       h += `<div class="row" style="left:16px;top:${y}px;width:358px;grid-template-columns:36px 1fr auto;column-gap:14px">
         <span class="n mono" style="font-size:15px${on ? `;color:${dec(n)}` : ''}">${n}</span>
         <div style="min-width:0"><div class="name" style="font-size:15px${on ? ';color:var(--white);font-weight:600' : ''}">${CH[n].name}</div><div class="now" style="font-size:13px;margin-top:2px">${CH[n].now}</div></div>
@@ -633,7 +644,7 @@ const portrait = state => {
   if (state.startsWith('guide') || state === 'later') {
     // The Guide on a phone is a time view: one channel's day per row, its number and name on a line above.
     const looking = state === 'later', paged = state === 'guide-paged', byDecade = state === 'guide-decade';
-    const g = {x:16,y:512,k:3.9,span:90,off:paged || looking ? 60 : 0,now:20,rows:looking ? [7,9] : byDecade ? [9,2,7,12] : [5,6,7,9,12],bh:34,th:54,rg:28,cx:16,numW:0,gap:0,nameW:0,fn:15,fb:13,above:1,bg:'#000'};
+    const g = {x:16,y:512,k:3.9,span:90,off:paged || looking ? 60 : 0,now:20,rows:looking ? [7,9] : byDecade ? [2,7,12,24] : [5,6,7,9,12],bh:34,th:54,rg:28,cx:16,numW:0,gap:0,nameW:0,fn:15,fb:13,above:1,bg:'#000'};
     const detail = looking ? `<div class="abs" style="left:16px;right:16px;top:702px;border-top:1px solid var(--line);padding-top:12px"><h2 style="font-size:16px;font-weight:600;color:var(--white)">Beacon of the Hollow Moon</h2>
       <div class="mono" style="font-size:12px;color:var(--muted);margin-top:4px">9 Movie Matinee · 11:23 AM to 12:55 PM · ${FACTS['Beacon of the Hollow Moon'][0]}</div><p style="font-size:13px;line-height:1.45;margin-top:6px">${FACTS['Beacon of the Hollow Moon'][1]}</p></div><div class="homeind"></div>` : fade;
     return bar + pic + t({}) + tabRow(true, byDecade ? 'By decade' : null) + pager('right:8px;top:468px', !paged && !looking, 44) + guide(g, {byDecade})
