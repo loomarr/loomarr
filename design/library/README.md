@@ -67,7 +67,12 @@ The maintainer raised these in order; they amend decisions 23–28 and 34 of #21
 1. **Posters first.** The wall opens on the posters. Needs you is one line above them, with a
    count and Review, not a strip of cards.
 2. **The wall has a count, tabs, sort, genre and a letter rail.** The tabs are All, Movies, Shows
-   and Collections. The letter rail is on desktop only. On a phone the wall keeps the search and a
+   and Collections. The letter rail is on desktop only. From a tablet up the toolbar is words first
+   (#4860): the tabs are section-size words with a neutral underline and no counts, with the search
+   at the end of their line, and under them one quiet sentence, "1,284 titles · A to Z · Every
+   genre · More filters". The count is plain text; each other phrase is the control that changes
+   it, the order and the genre as menus and More filters opening its panel. This supersedes the
+   toolbar in the desktop mock. On a phone the wall keeps the search and a
    "Filters" control on one row, with the tabs as a row under it, one tap each. Sort, genre and the
    other filters sit in the sheet Filters opens; its badge counts what in the sheet narrows the
    wall, and its footer, "Show N titles", says how many the choices and the search leave (A5 and A6
