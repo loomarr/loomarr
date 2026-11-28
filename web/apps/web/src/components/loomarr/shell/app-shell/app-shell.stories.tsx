@@ -37,5 +37,10 @@ const RequestsBadge: Story = {
   args: { isAdmin: true, userName: "Adela Hale", badges: { "/requests": 3 } },
 };
 
+// Library carrying the Needs you count (#4476): a tab on a phone, an entry on the rail.
+const NeedsYouBadge: Story = {
+  args: { isAdmin: true, userName: "Adela Hale", badges: { "/library": 4 } },
+};
+
 export default meta;
-export { Admin, Member, RequestsBadge };
+export { Admin, Member, NeedsYouBadge, RequestsBadge };
