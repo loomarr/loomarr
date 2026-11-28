@@ -80,6 +80,7 @@ export {
   resolveAdaptiveDirection,
   ScrollFrame,
   SectionHeader,
+  useWindowSize,
   useWindowWidth,
 } from "./src/layout";
 export type { LetterRailProps } from "./src/letter-rail";

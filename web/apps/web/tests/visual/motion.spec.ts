@@ -29,7 +29,8 @@ const tuneParts = async (page: Page) => {
   await cover.waitFor({ state: "attached" });
   return {
     runningBars: await page.getByTestId("tune-bars-run").count(),
-    snow: await cover.evaluate((element) => element.childElementCount),
+    // The cover's first child is the plane the crossfade draws; anything after it is the snow.
+    snow: await cover.evaluate((element) => element.childElementCount - 1),
   };
 };
 

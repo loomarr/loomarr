@@ -8,10 +8,11 @@ import {
   Text,
   ThemeScope,
   useReducedMotionPreference,
+  useWindowSize,
   VisuallyHidden,
 } from "@loomarr/design-system";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { Animated, Platform, useWindowDimensions } from "react-native";
+import { Animated, Platform } from "react-native";
 
 import { ChannelList, type ChannelListHandle } from "../channel-list";
 import { FirstRunHint } from "../first-run-hint";
@@ -20,7 +21,7 @@ import { summaryOf } from "../lower-third/summary";
 import { QuietRow, type QuietRowHandle, type QuietRowKey } from "../quiet-row";
 import { TuneBars, TuneStatic } from "../tune-static";
 import { WatchScrim } from "../watch-scrim";
-import { clearOfWatermark } from "../watching-surface";
+import { clearOfWatermark } from "../watching-surface/player-chrome/watermark-clearance";
 import type { WatchScreenProps } from "./watch-screen.type";
 
 // The full-screen arrangement (design/watch, `full`): the list's column stands in from the leading
@@ -106,7 +107,8 @@ const WatchScreen = <C extends LineupChannel>({
 
   // The channel's logo is burned into a corner of the picture; only the chrome in that corner steps
   // clear of it, measured on the 16:9 picture inside the screen (§9.6).
-  const frame = useWindowDimensions();
+  // The design system's window size: a react-native call here would fail Storybook's docgen.
+  const frame = useWindowSize();
   const clear = (base: number, edge: "bottom" | "top", side: "left" | "right", extent: number) =>
     clearOfWatermark({ base, edge, extent, frame, side, watermark });
   const backTop = clear(BACK_TOP, "top", "left", CONTROL_HEIGHT);

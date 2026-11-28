@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import type { ChannelListDetail } from "../channel-list";
 import type { LowerThirdState } from "../lower-third";
 import type { WatchScreenModel } from "../use-watch-screen";
-import type { PlayerWatermark } from "../watching-surface";
+import type { PlayerWatermark } from "../watching-surface/player-chrome/watermark-clearance";
 
 /**
  * The layouts this part draws: a desktop at full screen, the list over the picture. A window, a
