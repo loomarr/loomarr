@@ -1,7 +1,7 @@
 import { layoutGuide } from "@loomarr/core/guide";
 import { describe, expect, it } from "vitest";
 
-import { watchingPanelFromGuide } from "../index";
+import { watchingPanelFromGuide } from "../watching";
 
 const NOW = Date.UTC(2026, 8, 28, 20, 26);
 const HOUR = 3_600_000;

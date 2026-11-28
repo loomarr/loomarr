@@ -1,5 +1,5 @@
 import { Stack, ThemeScope } from "@loomarr/design-system";
-import { PlayerCover } from "@loomarr/ui";
+import { PlayerCover } from "@loomarr/ui/watching";
 import type { ComponentProps } from "react";
 
 // A paused channel has nothing to watch: the off-air cover takes the whole frame.

@@ -1,4 +1,4 @@
-import { ClipChrome } from "@loomarr/ui";
+import { ClipChrome } from "@loomarr/ui/watching";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { HoldControlsContext } from "./internal/hold-controls-context";
 import { useAutoHideControls } from "./internal/use-auto-hide-controls";

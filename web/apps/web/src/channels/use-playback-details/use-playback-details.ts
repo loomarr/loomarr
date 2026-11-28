@@ -1,4 +1,4 @@
-import type { PlayerDetailRow } from "@loomarr/ui";
+import type { PlayerDetailRow } from "@loomarr/ui/watching";
 import { type RefObject, useEffect, useState } from "react";
 import type { PlaybackFacts } from "./use-playback-details.type";
 

@@ -4,7 +4,7 @@ import { act, cleanup, renderUi } from "@loomarr/test-support";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PlayerBottomSheet, PlayerDetailsPanel, PlayerMenu, PlayerSheet } from "../index";
+import { PlayerBottomSheet, PlayerDetailsPanel, PlayerMenu, PlayerSheet } from "../watching";
 
 type El = HTMLElement;
 type Host = HTMLElement;

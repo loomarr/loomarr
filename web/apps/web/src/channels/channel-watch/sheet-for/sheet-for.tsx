@@ -8,7 +8,7 @@ import {
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
-} from "@loomarr/ui";
+} from "@loomarr/ui/watching";
 import type { ReactNode } from "react";
 import { ChannelDrawer } from "@/channels/channel-drawer";
 import type { SheetForOptions } from "./sheet-for.type";

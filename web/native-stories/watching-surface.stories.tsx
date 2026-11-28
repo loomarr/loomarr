@@ -1,5 +1,5 @@
 import { LoomarrProvider } from "@loomarr/design-system";
-import { WatchingSurface, type WatchingSurfaceProps } from "@loomarr/ui";
+import { WatchingSurface, type WatchingSurfaceProps } from "@loomarr/ui/watching";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { View } from "react-native";
 
