@@ -1016,6 +1016,56 @@ then off the tabs back to the list, then closed. Nothing closes it on a timer.
   the pinned channel, so neither the tabs nor the screen's edge cuts a row. A decade heading is the
   height of a row there. Moving away from rest may cut a row at the bottom, as scrolling does.
 
+#### The Guide as a view (The Cross, target, not shipped yet; #4735)
+
+The Guide is a view of the watching screen: every channel's day on one clock, with the picture still
+playing, docked in a corner. This part is built beside the shipped Guide and is wired to no route.
+
+- **Layout.** A desktop window shows three hours and a television two, with the header on one line
+  beside a small picture so that eight channels fit at 960 by 540. An upright phone is a time view
+  too: one channel's day per row, its number and name on the line above, and a later programme's
+  facts under the rows.
+- **Header.** With the cursor on what is playing, it is the lower third's content for the watched
+  channel. Otherwise it says "Looking at <channel>" with the programme's title, time and facts. A
+  television says either in its one line, with the group tabs under it: the lower third is too tall
+  for eight channels. The docked picture keeps its own caption, "Playing 7 Coast 90s": looking is not playing.
+- **Rows.** One per channel in the group's order, number and name leading, on one shared clock. The
+  watched channel's row is the film strip in row layout at full height; the others are compact. What
+  is on now carries its artwork with the aired part dimmed, a later programme its start time, an
+  ended one is dimmed with no time, a break is a thin tick, and a run of one series is one block with
+  its episode count (none where the span's edge cuts it). By decade is headed by its decades, each in
+  its decade's tone and never on a selection fill. The playhead may cross the words of a programme
+  with less than 24 minutes left, and a break tick inside a run may cross the run's words: both are
+  thin, and moving the words would leave too little of them.
+- **Cursor.** One amber ring, on a programme or a group tab; a pointer draws a plain ring. The Guide
+  opens on what is on now on the watched channel. Up and Down keep the time of day and land only on a
+  drawn programme that has not ended, taking the next one drawn where a channel is in a break. Left
+  and Right move along the row; past either edge the span moves by an hour. Up from the first row
+  reaches the group tabs, as in the channel list.
+  Amber is only on a control the keys or a remote hold: a cursor a pointer set, or one left behind
+  when focus moves to a tab or Earlier, draws the plain ring.
+- **A programme that ends.** The cursor never rests on an ended programme. When the one under it
+  ends it moves to what is on now on that channel, or the next drawn in a break: the one time it
+  moves by itself. An outside tune that takes its row out of the group puts it on the watched
+  channel's row.
+- **Focus.** When the focused control leaves the screen, focus goes to the cursor's block after a
+  key, and to the Guide itself after a pointer, so keys still reach it.
+- **The clock.** Hours and half hours are the viewer's: the caller gives the start of the present
+  hour, so a zone 30 or 45 minutes off reads whole hours.
+- **Choosing.** OK or Enter on what is on now tunes that channel and stays in the Guide, or returns to
+  the picture on the watched channel. On a later programme it says "<title> starts at <time>. <OK or
+  Enter> on what is on now watches <channel>". A click on a row's channel tunes; a click on a later
+  programme shows its facts. Back returns to the picture, from the tabs to the rows first. Only
+  keyboard focus scrolls.
+- **Other days.** Earlier and Later (and Left and Right past the edge) page by an hour for as long as
+  the schedule read holds, never before the present hour. Once the ruler reaches another day it names
+  it ("Tomorrow", else the weekday). The last page the schedule holds says "The schedule ends at
+  <time>".
+- **Loading and empty.** Before the schedule arrives: "Loading channels", "Reading the latest channel
+  schedule." A group with no channels keeps its tabs and says the channel list's words ("No
+  favourites yet.", "Channels you watch collect here.", "No channels have a decade yet.") with "Show
+  all channels". A channel with nothing in the span says "Nothing scheduled" across its row.
+
 ### 9.6 Amber discipline, type and the watermark
 
 - **Amber** is the channel block (or its decade colour) and focus rings, nothing else. The play key,

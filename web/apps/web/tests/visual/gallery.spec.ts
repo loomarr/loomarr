@@ -78,6 +78,14 @@ for (const story of stories) {
   const tag = [...(story.tags?.includes("route") ? ["@route"] : []), ...(showsMotion ? ["@motion"] : [])];
   test(`${story.title} — ${story.name}`, { tag }, async ({ page }) => {
     if (showsMotion) await page.emulateMedia({ reducedMotion: "no-preference" });
+    // Storybook ends a render as `finished` even when `play()` threw, so a story tagged
+    // `checked-play` has its failures read from the console.
+    const playErrors: string[] = [];
+    if (story.tags?.includes("checked-play")) {
+      page.on("console", (message) => {
+        if (/^\w*Error:/.test(message.text())) playErrors.push(message.text().split("\n")[0] as string);
+      });
+    }
     await page.clock.setSystemTime(GALLERY_NOW);
     await page.goto(`/iframe.html?id=${story.id}&viewMode=story`);
     // The preference this story is shot under, read in the page itself: the kit's setting was once
@@ -120,6 +128,7 @@ for (const story of stories) {
       )
       .then((handle) => handle.jsonValue());
     expect(phase, `Storybook interaction for ${story.id} must finish successfully`).toBe("finished");
+    expect(playErrors, `the play() assertions of ${story.id} must hold`).toEqual([]);
 
     await page.evaluate(async () => {
       await document.fonts.ready;
