@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { clearOfWatermark, pictureIn, watermarkOf } from "../index";
+import { clearOfWatermark, pictureIn, watermarkOf } from "../watching";
 
 type WatermarkCorner = "bottom-left" | "bottom-right" | "top-left" | "top-right";
 

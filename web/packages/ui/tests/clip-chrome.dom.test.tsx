@@ -4,7 +4,7 @@ import { act, cleanup, renderUi } from "@loomarr/test-support";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ClipChrome, type ClipChromeProps } from "../index";
+import { ClipChrome, type ClipChromeProps } from "../watching";
 
 const mount = (node: ReactNode) => renderUi(node).container;
 afterEach(cleanup);

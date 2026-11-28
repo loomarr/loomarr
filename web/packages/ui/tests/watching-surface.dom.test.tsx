@@ -5,7 +5,7 @@ import { act, cleanup, renderUi } from "@loomarr/test-support";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { WatchingSurface, type WatchingSurfaceProps } from "../index";
+import { WatchingSurface, type WatchingSurfaceProps } from "../watching";
 
 // Records which pressable asks for the TV's focus as it renders; react-native-web drops the prop.
 const preferredFocus = vi.hoisted(() => ({ labels: [] as string[] }));

@@ -17,7 +17,7 @@ import {
   PlayerVolume,
   pictureIn,
   playbarFromTimeline,
-} from "@loomarr/ui";
+} from "@loomarr/ui/watching";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { ReactNode } from "react";
 import { fn } from "storybook/test";

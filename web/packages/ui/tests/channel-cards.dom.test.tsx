@@ -13,7 +13,7 @@ import {
   SURF_LINGER_MS,
   surfCardsFromGuide,
   useSurfCards,
-} from "../index";
+} from "../watching";
 
 type Host = HTMLElement;
 

@@ -7,7 +7,7 @@ import type {
   PlayerOptions,
   PlayerSheet,
   playbarFromTimeline,
-} from "@loomarr/ui";
+} from "@loomarr/ui/watching";
 import type { ComponentProps, RefObject } from "react";
 import type { VideoPlayerChrome } from "@/components/loomarr/player/video-player";
 import type { WatchChannels } from "../../use-watch-channels";

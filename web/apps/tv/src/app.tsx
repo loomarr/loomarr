@@ -24,18 +24,17 @@ import {
   usePairedSubtitles,
 } from "@loomarr/paired-client";
 import { createPlaybackMarks, NativePlayerView, PairedNativeImage } from "@loomarr/player/native";
+import { clientBackDestination, useClientDestination } from "@loomarr/ui";
+import { GuideJourney } from "@loomarr/ui/guide";
+import { PairingShell, pairingBackAvailable } from "@loomarr/ui/pairing";
 import {
-  clientBackDestination,
   playerChromeFromGuide,
+  SurfJourney,
   surfCardsFromGuide,
-  useClientDestination,
   type WatchingLayer,
   WatchingSurface,
   watchingScheduleTimeMs,
-} from "@loomarr/ui";
-import { GuideJourney } from "@loomarr/ui/guide";
-import { PairingShell, pairingBackAvailable } from "@loomarr/ui/pairing";
-import { SurfJourney } from "@loomarr/ui/watching";
+} from "@loomarr/ui/watching";
 import {
   createTvAutoTuneSetting,
   createTvGuideFocusRegistry,

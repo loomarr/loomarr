@@ -1,7 +1,7 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
 import { Surface, Text } from "@loomarr/design-system";
-import { WatchFrame } from "@loomarr/ui";
+import { WatchFrame } from "@loomarr/ui/watching";
 import { createFileRoute, useCanGoBack, useRouter } from "@tanstack/react-router";
 import { type ReactNode, useCallback } from "react";
 import { useAuth } from "@/auth/use-auth";

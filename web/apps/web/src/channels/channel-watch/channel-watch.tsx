@@ -20,7 +20,7 @@ import {
   surfCardsFromGuide,
   useSurfCards,
   watermarkOf,
-} from "@loomarr/ui";
+} from "@loomarr/ui/watching";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VideoPlayer, type VideoPlayerChrome } from "@/components/loomarr/player/video-player";
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";

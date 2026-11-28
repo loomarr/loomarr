@@ -23,8 +23,11 @@ import {
   PairedNativeImage,
   useShellTune,
 } from "@loomarr/player/native";
+import { ClientShell, ScreenHeader, StatePanel, useClientDestination } from "@loomarr/ui";
+import { GuideJourney } from "@loomarr/ui/guide";
+import { DeviceSheet, PairingShell } from "@loomarr/ui/pairing";
+import { RequestsJourney } from "@loomarr/ui/requests";
 import {
-  ClientShell,
   PlayerAudio,
   PlayerBottomSheet,
   PlayerChrome,
@@ -35,16 +38,10 @@ import {
   PlayerSheet,
   playerChromeFromGuide,
   playerCoverOf,
-  ScreenHeader,
-  StatePanel,
   surfCardsFromGuide,
-  useClientDestination,
   useSurfCards,
   watchingScheduleTimeMs,
-} from "@loomarr/ui";
-import { GuideJourney } from "@loomarr/ui/guide";
-import { DeviceSheet, PairingShell } from "@loomarr/ui/pairing";
-import { RequestsJourney } from "@loomarr/ui/requests";
+} from "@loomarr/ui/watching";
 import Constants from "expo-constants";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { StatusBar } from "expo-status-bar";

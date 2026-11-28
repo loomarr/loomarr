@@ -4,7 +4,7 @@ import type { PlayerSnapshot } from "@loomarr/player";
 import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { WatchingSurface } from "../index";
+import { WatchingSurface } from "../watching";
 
 afterEach(cleanup);
 

@@ -2,12 +2,12 @@ import { layoutGuide } from "@loomarr/core/guide";
 import type { PlayerSnapshot } from "@loomarr/player";
 import { describe, expect, it } from "vitest";
 
-import { watchingScheduleTimeMs } from "../index";
 import {
   restoreSurfSelection,
   surfGroupsFromGuide,
   surfPreviousChannel,
   watchingScheduleFromGuide,
+  watchingScheduleTimeMs,
 } from "../watching";
 
 const layout = layoutGuide(

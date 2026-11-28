@@ -1,6 +1,6 @@
 import { ThemeScope } from "@loomarr/design-system";
 import type { PlayerFailureCause } from "@loomarr/player";
-import { PlayerCover } from "@loomarr/ui";
+import { PlayerCover } from "@loomarr/ui/watching";
 import type { ComponentProps } from "react";
 
 // What the stopped cover says for each cause, in plain words (the H mock's copy). A channel the app

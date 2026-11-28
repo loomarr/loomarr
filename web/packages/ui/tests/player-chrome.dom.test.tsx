@@ -16,7 +16,7 @@ import {
   PlayerSheet,
   type PlayerUtilitiesProps,
   PlayerVolume,
-} from "../index";
+} from "../watching";
 
 type Host = HTMLElement;
 type Node = Element;

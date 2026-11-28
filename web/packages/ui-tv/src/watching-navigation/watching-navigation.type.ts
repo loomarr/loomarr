@@ -1,4 +1,4 @@
-import type { ChannelNumberEntry } from "@loomarr/ui";
+import type { ChannelNumberEntry } from "@loomarr/ui/watching";
 
 type TvRemoteDigit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
 

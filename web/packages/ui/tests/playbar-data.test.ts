@@ -2,7 +2,7 @@ import type { GuideAiringLayout, GuideLayout } from "@loomarr/core/guide";
 import type { PlayerSnapshot } from "@loomarr/player";
 import { describe, expect, it } from "vitest";
 
-import { playbarFromTimeline, playerChromeFromGuide } from "../index";
+import { playbarFromTimeline, playerChromeFromGuide } from "../watching";
 
 type Airing = GuideAiringLayout["source"];
 

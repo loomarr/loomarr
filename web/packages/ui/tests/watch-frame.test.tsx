@@ -2,7 +2,7 @@ import { LoomarrProvider, Surface } from "@loomarr/design-system";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { WatchFrame } from "../index";
+import { WatchFrame } from "../watching";
 
 describe("WatchFrame", () => {
   it("is the page's main landmark, headed for assistive tech, around the player", () => {

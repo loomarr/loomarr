@@ -5,7 +5,7 @@ import { cleanup, renderUi } from "@loomarr/test-support";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PlayerChrome, type PlayerChromeProps } from "../index";
+import { PlayerChrome, type PlayerChromeProps } from "../watching";
 
 // The phone's band (#3408, variant J): a 56px block held either way, a two-line title upright, a next
 // time that never wraps, and the toolbar above the picture holding Leave and the utilities.

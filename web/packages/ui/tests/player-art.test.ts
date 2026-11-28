@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { logoSize, rungFor } from "../index";
+import { logoSize, rungFor } from "../watching";
 
 const SET =
   "/v1/images/h?w=300&f=webp 300w, /v1/images/h?w=780&f=webp 780w, /v1/images/h?w=1280&f=webp 1280w, /v1/images/h?w=1920&f=webp 1920w";
