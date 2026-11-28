@@ -20139,7 +20139,7 @@ paths:
         - library
   /v1/library/items/{id}/answer:
     delete:
-      description: Undoes a link or an ignore. A title nothing else identifies needs you again.
+      description: Undoes a link, an ignore or a home video. A title nothing else identifies needs you again.
       operationId: unanswerLibraryItem
       parameters:
         - in: path
@@ -20233,6 +20233,29 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Ignore a title
+      tags:
+        - library
+  /v1/library/items/{id}/keep:
+    post:
+      description: "Says a title waiting in Needs you with no guess is your own: it is kept as it is, as a home video."
+      operationId: keepLibraryItem
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Keep a title as a home video
       tags:
         - library
   /v1/library/items/{id}/link:
