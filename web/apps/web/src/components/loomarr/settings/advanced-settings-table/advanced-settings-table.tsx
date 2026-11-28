@@ -205,7 +205,7 @@ const AdvancedSettingsTable = ({
                     disabled={entry.provenance !== SettingEntryProvenance.db || !onClear}
                     layout="text"
                     onPress={() => onClear?.(entry)}
-                    style={{ alignSelf: "flex-start" }}
+                    alignSelf="flex-start"
                     variant="ghost"
                   >
                     Use default

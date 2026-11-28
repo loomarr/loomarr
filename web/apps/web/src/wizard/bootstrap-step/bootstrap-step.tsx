@@ -140,7 +140,7 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
         )}
       </form.AppField>
 
-      <Action disabled={busy} style={{ alignSelf: "flex-start" }} submit>
+      <Action disabled={busy} alignSelf="flex-start" submit>
         {busy ? "Creating…" : "Create admin"}
       </Action>
     </Stack>

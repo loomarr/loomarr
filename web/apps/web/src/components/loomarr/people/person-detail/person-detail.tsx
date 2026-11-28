@@ -187,7 +187,7 @@ const PersonDetail = ({
             <Action
               disabled={contactSaving}
               onPress={() => void runContactAction(onCancelContactReplacement)}
-              style={{ alignSelf: "flex-start" }}
+              alignSelf="flex-start"
               variant="ghost"
             >
               Cancel replacement
@@ -419,7 +419,7 @@ const PersonDetail = ({
               </Stack>
             </Stack>
           ) : (
-            <Action onPress={() => setResetOpen(true)} style={{ alignSelf: "flex-start" }} variant="outline">
+            <Action onPress={() => setResetOpen(true)} alignSelf="flex-start" variant="outline">
               Reset password
             </Action>
           ))}
@@ -439,7 +439,7 @@ const PersonDetail = ({
         <Action
           disabled={busy || isSelf}
           onPress={() => onToggleDisabled?.(!user.disabled)}
-          style={{ alignSelf: "flex-start" }}
+          alignSelf="flex-start"
           tone={user.disabled ? undefined : "danger"}
           variant="outline"
         >

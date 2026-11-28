@@ -97,7 +97,7 @@ const SourceStatus = ({ source, fetching, fetchError, onFetch }: SourceStatusPro
             setCheckResult(undefined);
             onFetch(source.id, setCheckResult);
           }}
-          style={{ alignSelf: "flex-start" }}
+          alignSelf="flex-start"
         >
           {fetching ? `Looking in ${source.target}…` : "Look for new clips"}
         </Action>

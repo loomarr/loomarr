@@ -68,7 +68,7 @@ const FirstChannelStep = ({ llmReady }: FirstChannelStepProps) => {
       <Action
         disabled={complete.isPending}
         onPress={() => complete.finish({ to: "/guide" })}
-        style={{ alignSelf: "flex-start" }}
+        alignSelf="flex-start"
         variant="ghost"
       >
         Finish setup without a channel

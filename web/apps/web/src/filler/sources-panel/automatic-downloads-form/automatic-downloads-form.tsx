@@ -240,7 +240,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
       <Action
         disabled={actions.updating || !changed}
         ref={saveButton}
-        style={{ alignSelf: "flex-start" }}
+        alignSelf="flex-start"
         variant="outline"
         onPress={() => void form.handleSubmit()}
       >
