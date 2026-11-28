@@ -1,26 +1,11 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ChannelSeasonalFields, type ChannelSeasonalFieldsProps } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-type Node = { click(): void; getAttribute(name: string): string | null; textContent?: string | null };
-type QueryRoot = { querySelectorAll(selector: string): ArrayLike<Node> };
-const testDocument = (
-  globalThis as unknown as {
-    document: {
-      body: { append(node: unknown): void };
-      createElement(
-        tagName: string,
-      ): Parameters<typeof createRoot>[0] & QueryRoot & { remove(): void; textContent?: string | null };
-    };
-  }
-).document;
+afterEach(cleanup);
 
 const HOLIDAYS = [
   { id: "christmas", label: "Christmas" },
@@ -44,27 +29,21 @@ const baseProps = (over: Partial<ChannelSeasonalFieldsProps> = {}): ChannelSeaso
 });
 
 const mount = async (props: ChannelSeasonalFieldsProps) => {
-  const container = testDocument.createElement("div");
-  testDocument.body.append(container);
-  const root = createRoot(container);
+  let view!: ReturnType<typeof renderUi>;
   await act(async () => {
-    root.render(
-      <LoomarrProvider theme="dark">
-        <ChannelSeasonalFields {...props} />
-      </LoomarrProvider>,
-    );
+    view = renderUi(<ChannelSeasonalFields {...props} />);
   });
+  const { container } = view;
   return {
     container,
     byRole: (role: string, name: string) => {
-      const found = Array.from(container.querySelectorAll(`[role="${role}"]`)).find(
+      const found = Array.from(container.querySelectorAll<HTMLElement>(`[role="${role}"]`)).find(
         (node) => node.getAttribute("aria-label") === name,
       );
       return found;
     },
     unmount: async () => {
-      await act(async () => root.unmount());
-      container.remove();
+      await act(async () => view.unmount());
     },
   };
 };

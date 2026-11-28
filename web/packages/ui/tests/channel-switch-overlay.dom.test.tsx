@@ -1,18 +1,12 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
 import type { PlayerSnapshot } from "@loomarr/player";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WatchingSurface } from "../index";
 
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
+afterEach(cleanup);
 
 const channel = { id: "seven", inAppPlayable: true, name: "Science Fiction", number: 7 };
 const tuning: PlayerSnapshot = {
@@ -31,47 +25,31 @@ const chrome = {
   window: { endMs: 1, nowMs: 0, startMs: 0 },
 };
 
-// This package compiles without the DOM lib, so type just the jsdom surface these tests use.
-type DomElement = {
-  getAttribute: (name: string) => string | null;
-  innerHTML: string;
-  parentElement: DomElement;
-  querySelector: (selector: string) => DomElement | null;
-  remove: () => void;
-  textContent: string | null;
-};
-
 const mount = () => {
-  const container = (
-    globalThis as unknown as {
-      document: { createElement: (tagName: string) => Parameters<typeof createRoot>[0] & DomElement };
-    }
-  ).document.createElement("div");
-  return { container, root: createRoot(container) };
+  const { container, rerender, unmount } = renderUi(null);
+  return { container, root: { render: rerender, unmount } };
 };
 
 const surface = (snapshot: PlayerSnapshot, props: Partial<Parameters<typeof WatchingSurface>[0]> = {}) => (
-  <LoomarrProvider>
-    <WatchingSurface
-      chrome={chrome}
-      formatTime={String}
-      onDismissControls={vi.fn()}
-      onGoLive={vi.fn()}
-      onLayer={vi.fn()}
-      onOpenGuide={vi.fn()}
-      onOpenSurf={vi.fn()}
-      onRetry={vi.fn()}
-      onSeek={vi.fn()}
-      onTuneChannel={vi.fn()}
-      playheadMs={0}
-      player={<div data-player="one-native-player" />}
-      snapshot={snapshot}
-      {...props}
-    />
-  </LoomarrProvider>
+  <WatchingSurface
+    chrome={chrome}
+    formatTime={String}
+    onDismissControls={vi.fn()}
+    onGoLive={vi.fn()}
+    onLayer={vi.fn()}
+    onOpenGuide={vi.fn()}
+    onOpenSurf={vi.fn()}
+    onRetry={vi.fn()}
+    onSeek={vi.fn()}
+    onTuneChannel={vi.fn()}
+    playheadMs={0}
+    player={<div data-player="one-native-player" />}
+    snapshot={snapshot}
+    {...props}
+  />
 );
 
-const overlay = (container: DomElement) => container.querySelector('[aria-label^="Tuning in to channel"]');
+const overlay = (container: Element) => container.querySelector('[aria-label^="Tuning in to channel"]');
 
 describe("TV channel switch overlay (B4, #1627)", () => {
   it("shows the channel line and TUNING IN over snow and the channel's still the moment a switch starts", () => {
@@ -216,12 +194,7 @@ describe("TV channel switch overlay (B4, #1627)", () => {
   });
 
   it("centres the loading spinner (its own align-self must not undo the container's centring)", () => {
-    const dom = globalThis as unknown as {
-      document: { body: { appendChild: (node: unknown) => void } };
-      getComputedStyle: (node: DomElement) => { alignSelf: string };
-    };
     const { container, root } = mount();
-    dom.document.body.appendChild(container);
     act(() =>
       root.render(
         surface({ catalog: [], recentChannelIds: [], status: "empty" }, { chrome: undefined, loading: true }),
@@ -231,10 +204,9 @@ describe("TV channel switch overlay (B4, #1627)", () => {
     if (!strip) throw new Error("no loading strip rendered");
     // The strip sits at the screen's left edge unless a shrink-wrapping, centred wrapper carries it.
     expect(strip.getAttribute("role")).toBe("progressbar");
-    expect(dom.getComputedStyle(strip.parentElement).alignSelf).toBe("center");
+    expect(getComputedStyle(strip.parentElement as Element).alignSelf).toBe("center");
     // Unmount: a tree left mounted keeps its strip animating after jsdom tears down, and the
     // next frame throws "window is not defined" as an unhandled error that fails the run.
     act(() => root.unmount());
-    container.remove();
   });
 });

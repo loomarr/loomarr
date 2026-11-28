@@ -1,43 +1,22 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
-import { act, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type LinkLike, NavTabs } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-// This package has no DOM lib (it targets React Native too), so the slice of the jsdom document
-// the test touches is typed here.
-type Style = Record<string, string>;
-type Node = {
-  getAttribute(name: string): string | null;
-  hasAttribute(name: string): boolean;
-  querySelector(s: string): Node | null;
-  querySelectorAll(s: string): ArrayLike<Node>;
-  style: Style;
-  textContent: string | null;
-};
-type Doc = {
-  body: Node & { append(node: unknown): void; replaceChildren(): void };
-  createElement(tag: string): Parameters<typeof createRoot>[0];
-};
-const doc = (globalThis as unknown as { document: Doc }).document;
-const elementPrototype = (globalThis as unknown as { HTMLElement: { prototype: object } }).HTMLElement
-  .prototype;
+const doc = document;
+type Node = HTMLElement;
+const elementPrototype = HTMLElement.prototype;
 
 const mount = async (node: ReactNode) => {
-  const container = doc.createElement("div");
-  doc.body.append(container);
-  const root = createRoot(container);
   await act(async () => {
-    root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>);
+    renderUi(node);
   });
 };
 afterEach(() => {
-  doc.body.replaceChildren();
+  cleanup();
   vi.restoreAllMocks();
 });
 

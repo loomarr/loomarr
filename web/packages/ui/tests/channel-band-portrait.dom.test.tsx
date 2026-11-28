@@ -1,57 +1,28 @@
 // @vitest-environment jsdom
 
 import { LoomarrProvider } from "@loomarr/design-system";
+import { cleanup, renderUi } from "@loomarr/test-support";
 import type { ReactNode } from "react";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PlayerChrome, type PlayerChromeProps } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 // The phone's band (#3408, variant J): a 56px block held either way, a two-line title upright, a next
 // time that never wraps, and the toolbar above the picture holding Leave and the utilities.
 
-type El = {
-  children: ArrayLike<El>;
-  parentElement: El | null;
-  querySelector(s: string): El | null;
-  textContent: string | null;
-};
-type Host = Parameters<typeof createRoot>[0] &
-  El & { remove(): void; querySelectorAll(s: string): ArrayLike<El> };
+type El = Element;
+type Host = HTMLElement;
 
-const doc = (
-  globalThis as unknown as {
-    document: { body: { append(n: unknown): void }; createElement(t: string): Host };
-  }
-).document;
-const computed = (el: El) =>
-  (globalThis as unknown as { getComputedStyle(n: El): Record<string, string> }).getComputedStyle(el);
+const computed = (el: El) => getComputedStyle(el) as unknown as Record<string, string>;
 
-const mounted: { host: Host; unmount: () => void }[] = [];
-const mount = (node: ReactNode) => {
-  const host = doc.createElement("div");
-  doc.body.append(host);
-  const root = createRoot(host);
-  // An iPhone's safe areas, as the native app's provider hands them down.
-  act(() =>
-    root.render(
-      <LoomarrProvider insets={IPHONE} theme="dark">
-        {node}
-      </LoomarrProvider>,
-    ),
-  );
-  mounted.push({ host, unmount: () => act(() => root.unmount()) });
-  return host;
-};
-afterEach(() => {
-  for (const { host, unmount } of mounted.splice(0)) {
-    unmount();
-    host.remove();
-  }
-});
+// An iPhone's safe areas, as the native app's provider hands them down.
+const mount = (node: ReactNode) =>
+  renderUi(
+    <LoomarrProvider insets={IPHONE} theme="dark">
+      {node}
+    </LoomarrProvider>,
+  ).container;
+afterEach(cleanup);
 
 const band = {
   channelName: "Saturday Morning Cartoon Club",

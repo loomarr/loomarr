@@ -1,10 +1,8 @@
 // @vitest-environment jsdom
 
 import { layoutGuide } from "@loomarr/core/guide";
-import { LoomarrProvider } from "@loomarr/design-system";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import type { ReactNode } from "react";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -17,42 +15,15 @@ import {
   useSurfCards,
 } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+type Host = HTMLElement;
 
-// The package compiles without the DOM lib (it is React Native first), so the test names the little
-// of the DOM it touches.
-type Node = { getAttribute(n: string): string | null; textContent: string | null };
-type Host = Parameters<typeof createRoot>[0] & {
-  querySelector(s: string): Node | null;
-  querySelectorAll(s: string): ArrayLike<Node>;
-  remove(): void;
-  textContent: string | null;
-};
-const doc = (
-  globalThis as unknown as {
-    document: { body: { append(n: unknown): void }; createElement(t: string): Host };
-  }
-).document;
-
-const mounted: { host: Host; unmount: () => void }[] = [];
 const mount = (node: ReactNode) => {
-  const host = doc.createElement("div");
-  doc.body.append(host);
-  const root = createRoot(host);
-  act(() => root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>));
-  mounted.push({ host, unmount: () => act(() => root.unmount()) });
-  return {
-    host,
-    rerender: (next: ReactNode) =>
-      act(() => root.render(<LoomarrProvider theme="dark">{next}</LoomarrProvider>)),
-  };
+  const { container: host, rerender } = renderUi(node);
+  return { host, rerender };
 };
 afterEach(() => {
   vi.useRealTimers();
-  for (const { host, unmount } of mounted.splice(0)) {
-    unmount();
-    host.remove();
-  }
+  cleanup();
 });
 
 const labelled = (host: Host, name: string) =>

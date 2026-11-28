@@ -2,10 +2,9 @@
 
 import type { GuideLayout } from "@loomarr/core/guide";
 import { LoomarrProvider } from "@loomarr/design-system";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // The window the guide is drawn in, in points; each test sets it.
 const window = vi.hoisted(() => ({ width: 1280 }));
@@ -64,45 +63,27 @@ const gridRailWidths = (width: number) => {
 };
 
 describe("the rail's decade bar (#2767)", () => {
-  type El = { getAttribute(n: string): string | null; textContent: string | null };
-  const g = globalThis as unknown as {
-    document: {
-      body: { append(n: unknown): void };
-      createElement(t: string): Parameters<typeof createRoot>[0] & {
-        querySelectorAll(s: string): ArrayLike<El>;
-        remove(): void;
-      };
-    };
-    getComputedStyle(n: El): { backgroundColor: string; color: string };
-    IS_REACT_ACT_ENVIRONMENT: boolean;
-  };
+  afterEach(cleanup);
 
   // The rail's leading bar and the number's colour, as jsdom reports them (theme variables, lower-cased).
   const rail = async (decade?: number) => {
-    g.IS_REACT_ACT_ENVIRONMENT = true;
     window.width = 1280;
     const row = layout.channels[0] as GuideLayout["channels"][number];
     const source = decade === undefined ? row.source : { ...row.source, decade };
-    const host = g.document.createElement("div");
-    g.document.body.append(host);
-    const root = createRoot(host);
-    await act(async () =>
-      root.render(
-        <LoomarrProvider theme="dark">
-          <GuideGrid layout={{ ...layout, channels: [{ ...row, source }] }} nowMs={0} />
-        </LoomarrProvider>,
-      ),
-    );
+    let view!: ReturnType<typeof renderUi>;
+    await act(async () => {
+      view = renderUi(<GuideGrid layout={{ ...layout, channels: [{ ...row, source }] }} nowMs={0} />);
+    });
+    const host = view.container;
     const bars = Array.from(host.querySelectorAll('[aria-hidden="true"]')).filter(
       (el) => el.textContent === "",
     );
-    const number = Array.from(host.querySelectorAll("span")).find((el) => el.textContent === "4") as El;
+    const number = Array.from(host.querySelectorAll("span")).find((el) => el.textContent === "4") as Element;
     const out = {
-      bars: bars.map((el) => g.getComputedStyle(el).backgroundColor.toLowerCase()),
-      number: g.getComputedStyle(number).color.toLowerCase(),
+      bars: bars.map((el) => getComputedStyle(el).backgroundColor.toLowerCase()),
+      number: getComputedStyle(number).color.toLowerCase(),
     };
-    await act(async () => root.unmount());
-    host.remove();
+    await act(async () => view.unmount());
     return out;
   };
 

@@ -1,28 +1,10 @@
 // @vitest-environment jsdom
 import { LoomarrProvider } from "@loomarr/design-system";
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ClipSelect, NeedsDetailsChip } from "../index";
-
-// The package type-checks without the DOM lib, so the test names only the node surface it reads.
-type BoxNode = {
-  click(): void;
-  closest(selector: string): BoxNode | null;
-  getAttribute(name: string): string | null;
-};
-type Host = Parameters<typeof createRoot>[0] & {
-  querySelector(selector: string): BoxNode | null;
-  remove(): void;
-  textContent: string | null;
-};
-const testDocument = (
-  globalThis as unknown as {
-    document: { body: { append(node: unknown): void }; createElement(tagName: string): Host };
-  }
-).document;
 
 const render = (node: React.ReactNode) =>
   renderToStaticMarkup(<LoomarrProvider theme="dark">{node}</LoomarrProvider>);
@@ -34,27 +16,21 @@ describe("NeedsDetailsChip", () => {
 });
 
 describe("ClipSelect", () => {
-  let host: Host;
-  let root: Root;
+  let host: HTMLElement;
+  let view: ReturnType<typeof renderUi>;
   const mount = (node: React.ReactNode) => {
-    act(() => root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>));
-    const box = host.querySelector('[role="checkbox"]');
+    view.rerender(node);
+    const box = host.querySelector<HTMLElement>('[role="checkbox"]');
     if (!box) throw new Error("no checkbox rendered");
     return box;
   };
 
   beforeEach(() => {
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    host = testDocument.createElement("div");
-    testDocument.body.append(host);
-    root = createRoot(host);
+    view = renderUi(null);
+    host = view.container;
   });
 
-  afterEach(() => {
-    act(() => root.unmount());
-    host.remove();
-    vi.unstubAllGlobals();
-  });
+  afterEach(cleanup);
 
   it("is a checkbox named for the clip that prints no label", () => {
     const box = mount(<ClipSelect clipName="Sunbeam Juice" onSelectedChange={() => {}} selected={false} />);
