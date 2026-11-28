@@ -13,6 +13,8 @@ import (
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
+// legacySplitObservationProducer names the detector's observations in stored assessments, so its
+// value is part of the persisted format.
 const legacySplitObservationProducer = "v34-split-shadow-v1"
 
 // AssessDetection projects the V34 detector's durable facts into the V67 contract.
