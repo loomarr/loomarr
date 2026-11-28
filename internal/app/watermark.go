@@ -11,7 +11,6 @@ import (
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout/channelbug"
 )
 
@@ -22,7 +21,7 @@ type channelWatermarks struct{ *channelbug.Service }
 // newChannelWatermarks builds the service before the channel packager that asks it for bugs. The
 // image service is built later and bound with withOriginals. Rendered bugs are derived files, kept
 // beside the image store rather than inside it (the image GC owns that tree).
-func newChannelWatermarks(owner *generationLifecycle, st store.Store, set resolved, calendar func() schedule.Calendar, events *diagnostics.Recorder, log *slog.Logger) *channelWatermarks {
+func newChannelWatermarks(owner *generationLifecycle, st watermarkStore, set resolved, calendar func() schedule.Calendar, events *diagnostics.Recorder, log *slog.Logger) *channelWatermarks {
 	cfg := channelbug.Config{
 		FFmpeg:   settings.PlayoutFFmpegPath.Get(set),
 		Dir:      filepath.Join(filepath.Dir(filepath.Clean(settings.ImagesDir.Get(set))), "watermarks"),

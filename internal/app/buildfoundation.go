@@ -65,19 +65,20 @@ type foundationBuild struct {
 // value is immutable composition output, not a builder carried and mutated across phases.
 func buildFoundation(
 	rootCtx context.Context,
-	st store.Store,
+	st foundationStore,
+	db databaseHandle,
 	log *slog.Logger,
 	overrides Overrides,
 	owner *generationLifecycle,
 ) (foundationBuild, error) {
 	result := foundationBuild{holidays: holidayvocab.Default, reloadHolidays: func(context.Context) {}}
 	info := buildinfo.Get()
-	database := string(store.DialectOf(st))
+	database := string(db.dialect)
 	if database == "" {
 		database = "unavailable"
 	}
 	var databaseStats func() sql.DBStats
-	if pool := store.PoolOf(st); pool != nil {
+	if pool := db.pool; pool != nil {
 		databaseStats = pool.Stats
 	}
 	result.metrics = metrics.New(metrics.Options{
@@ -131,7 +132,7 @@ func buildFoundation(
 		result.holidays, result.reloadHolidays = holidays.Current, holidays.Reload
 	}
 	if st != nil {
-		protection, err := buildSecretProtection(rootCtx, st, overrides.DataDir, log)
+		protection, err := buildSecretProtection(rootCtx, st, db, overrides.DataDir, log)
 		if err != nil {
 			result.startup.Complete(diagnostics.StartupCheckGeneratedSecrets, diagnostics.StartupFailed,
 				"database secret protection could not be initialized", "/settings/system/security", "")
@@ -210,7 +211,7 @@ func buildFoundation(
 	}
 	result.readGeneratedSecret = func(ctx context.Context, secret settings.GeneratedSecret) (string, error) {
 		return currentGeneratedSecret(
-			ctx, store.DialectOf(st), result.secrets, secret, result.refreshSecretRedactor,
+			ctx, db.dialect, result.secrets, secret, result.refreshSecretRedactor,
 		)
 	}
 	result.startup.SetHealthNotifier(result.emitter.HealthChanged)

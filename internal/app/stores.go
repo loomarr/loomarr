@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/library/resolvers"
+	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/housekeeping"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
@@ -66,7 +67,44 @@ type operationsStore interface {
 	store.NotificationStore
 }
 
-// databaseHandle is what operations needs from the database itself rather than from a role.
+// foundationStore is what boot reaches: settings, secrets, diagnostics and the language model.
+type foundationStore interface {
+	store.CountStore
+	store.TableRowStore
+	store.InteractiveOperationStore
+	holidayvocab.Lister
+	store.SettingStore
+	store.SecretProtectionStore
+	store.DiagnosticStore
+	store.ClientCrashStore
+	store.ActivityStore
+	store.NotificationStore
+}
+
+// artworkStore is what the image service's owners and jobs read and write.
+type artworkStore interface {
+	store.ImageStore
+	store.ChannelStore
+	store.ClipStore
+	store.TitleStore
+	store.UserStore
+}
+
+// watermarkStore is what the channel bug reads.
+type watermarkStore interface {
+	store.ChannelStore
+	store.SettingStore
+	store.ImageStore
+}
+
+// podStore is what pod assembly reads.
+type podStore interface {
+	store.FillerBreakStore
+	store.ClipStore
+	store.AiringStore
+}
+
+// databaseHandle is what boot and operations need from the database itself rather than from a role.
 type databaseHandle struct {
 	// open is false without a store; the rest are then zero.
 	open    bool
@@ -81,6 +119,8 @@ type databaseHandle struct {
 	}
 	// pool is the connection pool the job queue runs on.
 	pool *sql.DB
+	// sqlitePath is the database file, empty for a backend with none.
+	sqlitePath string
 }
 
 func databaseOf(st store.Store) databaseHandle {
@@ -89,7 +129,7 @@ func databaseOf(st store.Store) databaseHandle {
 	}
 	return databaseHandle{
 		open: true, dialect: store.DialectOf(st), writer: store.BackupWriter(st),
-		streamer: store.SQLiteBackuper(st), pool: store.PoolOf(st),
+		streamer: store.SQLiteBackuper(st), pool: store.PoolOf(st), sqlitePath: store.SQLitePath(st),
 	}
 }
 

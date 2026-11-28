@@ -8,14 +8,13 @@ import (
 	"github.com/loomarr/loomarr/internal/people/keyrotation"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
-	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // buildSecretProtection opens the secret-protection manager over the store, locating the
 // installation key from the data directory and the SQLite file's path.
-func buildSecretProtection(ctx context.Context, st store.Store, dataDir string, log *slog.Logger) (*secretprotection.Manager, error) {
+func buildSecretProtection(ctx context.Context, st foundationStore, db databaseHandle, dataDir string, log *slog.Logger) (*secretprotection.Manager, error) {
 	return secretprotection.Boot(ctx, st, secretprotection.BootOptions{
-		DataDir: dataDir, DatabasePath: store.SQLitePath(st), Log: log,
+		DataDir: dataDir, DatabasePath: db.sqlitePath, Log: log,
 	})
 }
 
@@ -23,7 +22,7 @@ func buildSecretProtection(ctx context.Context, st store.Store, dataDir string, 
 // status to the API's.
 type encryptionAPI struct{ service keyrotation.Service }
 
-func buildEncryptionService(st store.Store, manager *secretprotection.Manager) system.EncryptionService {
+func buildEncryptionService(st foundationStore, manager *secretprotection.Manager) system.EncryptionService {
 	if st == nil || manager == nil {
 		return nil
 	}
