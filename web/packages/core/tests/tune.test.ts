@@ -57,6 +57,31 @@ describe("changing channel", () => {
     expect(tuneView(state, 220).nextAt).toBe(340);
   });
 
+  it("keeps naming nextAt a millisecond early, and moves on at it", () => {
+    const state = warm(idleTune, 0);
+    expect(tuneView(state, 149)).toMatchObject({ cover: "burst", nextAt: 150 });
+    expect(tuneView(state, 150)).toMatchObject({ cover: "fading", nextAt: 220 });
+  });
+
+  it("lets a run of the bars finish, however many flips land during it", () => {
+    const third = warm(warm(warm(idleTune, 0), 100), 200);
+    expect(tuneView(third, 200).run).toBe(tuneView(warm(idleTune, 0), 0).run);
+    expect(tuneView(third, 339).bars).toBe("run");
+    expect(tuneView(third, 340).bars).toBe("none");
+  });
+
+  it("runs the bars again for a flip after they finished, covered or bare", () => {
+    const first = warm(idleTune, 0);
+    const covered = warm(first, 400);
+    expect(tuneView(covered, 400)).toMatchObject({ bars: "run", cover: "burst" });
+    expect(tuneView(covered, 400).run).toBe(tuneView(first, 0).run + 1);
+    expect(tuneView(covered, 740).bars).toBe("none");
+    // A cover at 334 leaves the first run going; a flip at 600 follows that run and shows bare.
+    const afterRun = warm(warm(first, 334), 600);
+    expect(tuneView(afterRun, 600)).toMatchObject({ bars: "run", cover: "none" });
+    expect(tuneView(afterRun, 600).run).toBe(tuneView(first, 0).run + 1);
+  });
+
   it("ignores the picture being ready: it adds no waiting", () => {
     const state = warm(idleTune, 0);
     expect(ready(state, 10)).toBe(state);
@@ -79,7 +104,7 @@ describe("fast flipping", () => {
       expect(tuneView(state, at), `flip at ${at}`).toMatchObject({
         bars: "run",
         cover: "none",
-        nextAt: at + 340,
+        nextAt: 340,
       });
     }
     expect(coverAt(warm(warm(idleTune, 0), 334), 334)).toBe("burst");

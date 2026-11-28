@@ -32,6 +32,8 @@ const fill = { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 } as c
 
 type TuneStaticProps = {
   cover: TuneCover;
+  /** Draws the static without its flicker, for a picture that must hold still (a story's baseline). */
+  holdSnow?: boolean;
   reducedMotion?: boolean;
 };
 
@@ -40,7 +42,7 @@ type TuneStaticProps = {
  * technology. It stays mounted while clear. Under reduced motion it is a plain crossfade of the
  * darkened picture with no static.
  */
-const TuneStatic = ({ cover, reducedMotion }: TuneStaticProps) => {
+const TuneStatic = ({ cover, holdSnow = false, reducedMotion }: TuneStaticProps) => {
   // An unknown preference (null, until the platform answers) counts as reduced: no static is drawn
   // for someone who may have asked for none.
   const still = useReducedMotionPreference(reducedMotion) !== false;
@@ -69,8 +71,9 @@ const TuneStatic = ({ cover, reducedMotion }: TuneStaticProps) => {
       {still ? null : (
         // The picture's plane is dark in either theme, so the snow is never a light wash. The snow is
         // hundreds of views, so it stays mounted between covers, hidden and without its flicker.
+        // The snow is told outright, so it never asks the platform and its flicker starts with the cover.
         <ThemeScope theme="dark">
-          <AnalogSnow reducedMotion={cover === "none" ? true : undefined} />
+          <AnalogSnow reducedMotion={holdSnow || cover === "none"} />
         </ThemeScope>
       )}
     </Animated.View>
@@ -79,25 +82,25 @@ const TuneStatic = ({ cover, reducedMotion }: TuneStaticProps) => {
 
 type TuneBarsProps = {
   bars: TuneBarsPhase;
-  /** `tuneView`'s flip count: a new one runs the bars again. */
-  flip: number;
   reducedMotion?: boolean;
+  /** `tuneView`'s run count: a new one runs the bars again. */
+  run: number;
 };
 
 /**
  * The seven bars, a thin strip as wide as its parent; the host places it along the crossing.
  * Under reduced motion the run is not drawn, and waiting and locked bars hold still.
  */
-const TuneBars = ({ bars, flip, reducedMotion }: TuneBarsProps) => {
+const TuneBars = ({ bars, reducedMotion, run }: TuneBarsProps) => {
   const still = useReducedMotionPreference(reducedMotion) !== false;
-  const run = useRef(new Animated.Value(0)).current;
+  const progress = useRef(new Animated.Value(0)).current;
   const running = bars === "run" && !still;
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `flip` runs the bars again
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `run` runs the bars again
   useEffect(() => {
     if (!running) return undefined;
-    run.setValue(0);
-    const animation = Animated.timing(run, {
+    progress.setValue(0);
+    const animation = Animated.timing(progress, {
       duration: TUNE_FLIP_MS,
       easing: Easing.linear,
       toValue: 1,
@@ -105,7 +108,7 @@ const TuneBars = ({ bars, flip, reducedMotion }: TuneBarsProps) => {
     });
     animation.start();
     return () => animation.stop();
-  }, [flip, run, running]);
+  }, [progress, run, running]);
 
   if (bars === "none" || (bars === "run" && still)) return null;
   const colours = bars === "waiting" ? WAITING : brandChroma;
@@ -117,7 +120,7 @@ const TuneBars = ({ bars, flip, reducedMotion }: TuneBarsProps) => {
       style={{
         flexDirection: "row",
         height: BAR_HEIGHT,
-        opacity: running ? run.interpolate({ inputRange: [0, CROSSED, 1], outputRange: [1, 1, 0] }) : 1,
+        opacity: running ? progress.interpolate({ inputRange: [0, CROSSED, 1], outputRange: [1, 1, 0] }) : 1,
         width: "100%",
       }}
       testID={`tune-bars-${bars}`}
@@ -132,7 +135,7 @@ const TuneBars = ({ bars, flip, reducedMotion }: TuneBarsProps) => {
               backgroundColor: colour,
               flex: 1,
               opacity: running
-                ? run.interpolate({
+                ? progress.interpolate({
                     extrapolate: "clamp",
                     inputRange: [arrives, arrives + CROSSED / colours.length],
                     outputRange: [0, 1],

@@ -33,11 +33,15 @@ type TuneState = {
   abandoned: boolean;
   /** When the latest cover went up. */
   coveredAt: number | null;
-  /** The current flip's identity. It counts up, so a part can also run the bars again for each one. */
+  /** The current flip's identity. */
   flips: number;
   kind: TuneKind;
   lastFlipAt: number | null;
   readyAt: number | null;
+  /** When the latest run of the bars began, or null when the latest flip waits instead. */
+  runAt: number | null;
+  /** Counts the runs, so a part knows when to run the bars again. */
+  runs: number;
   /** `bare`: no static. `wash`: the flip landed on a cover that was still up. */
   treatment: "bare" | "burst" | "wash";
 };
@@ -47,6 +51,8 @@ type TuneView = {
   cover: TuneCover;
   /** The current flip's identity, to hand back to `tunePictureReady` or `tuneAbandon`. */
   flip: number;
+  /** Which run of the bars this is: a flip that lands during a run leaves it to finish. */
+  run: number;
   /** When the view next changes on its own, or null while it waits for an event. */
   nextAt: number | null;
 };
@@ -58,6 +64,8 @@ const idleTune: TuneState = {
   kind: "changing",
   lastFlipAt: null,
   readyAt: null,
+  runAt: null,
+  runs: 0,
   treatment: "bare",
 };
 
@@ -84,6 +92,9 @@ const tuneFlip = (state: TuneState, flip: TuneFlip): TuneState => {
     kind === "changing" &&
     state.coveredAt !== null &&
     flip.at - state.coveredAt < COVER_GAP_MS;
+  // A run in progress finishes, so a held flip key cannot restart the bars at its repeat rate.
+  const running = history && state.runAt !== null && flip.at < state.runAt + TUNE_FLIP_MS;
+  const runs = kind === "changing" && !running;
 
   return {
     abandoned: false,
@@ -92,6 +103,8 @@ const tuneFlip = (state: TuneState, flip: TuneFlip): TuneState => {
     kind,
     lastFlipAt: flip.at,
     readyAt: null,
+    runAt: kind === "tuning-in" ? null : runs ? flip.at : state.runAt,
+    runs: state.runs + (runs ? 1 : 0),
     treatment: joins ? "wash" : bare ? "bare" : "burst",
   };
 };
@@ -114,8 +127,8 @@ const nextAfter = (now: number, times: readonly number[]) => {
 
 /** What to draw at `now`. After a timer, pass `Math.max(now, nextAt)`. */
 const tuneView = (state: TuneState, now: number): TuneView => {
-  const { flips: flip, lastFlipAt, readyAt } = state;
-  const clear: TuneView = { bars: "none", cover: "none", flip, nextAt: null };
+  const { flips: flip, lastFlipAt, readyAt, runs: run } = state;
+  const clear: TuneView = { bars: "none", cover: "none", flip, nextAt: null, run };
   if (lastFlipAt === null || state.abandoned) return clear;
 
   if (state.kind === "tuning-in") {
@@ -126,16 +139,16 @@ const tuneView = (state: TuneState, now: number): TuneView => {
 
   const fadeAt = lastFlipAt + TUNE_BURST_MS;
   const clearAt = lastFlipAt + TUNE_UNCOVER_MS;
-  const ran = lastFlipAt + TUNE_FLIP_MS;
+  const ran = (state.runAt ?? lastFlipAt) + TUNE_FLIP_MS;
   const bars = now < ran ? "run" : "none";
   if (state.treatment === "bare") return { ...clear, bars, nextAt: nextAfter(now, [ran]) };
 
   const washed = state.treatment === "wash";
   const covering = washed ? "wash" : now < fadeAt ? "burst" : "fading";
   return {
+    ...clear,
     bars,
     cover: now < clearAt ? covering : "none",
-    flip,
     nextAt: nextAfter(now, washed ? [clearAt, ran] : [fadeAt, clearAt, ran]),
   };
 };

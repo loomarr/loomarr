@@ -19,17 +19,18 @@ const FRAMES = [
   { name: "Dark frame", picture: "linear-gradient(135deg, #10141C, #2A1B2E)" },
 ] as const;
 
-type PlateProps = Pick<TuneView, "bars" | "cover" | "flip"> & { reducedMotion?: boolean };
+// The snow holds still in the single states, as a screenshot baseline needs.
+type PlateProps = Pick<TuneView, "bars" | "cover" | "run"> & { holdSnow?: boolean; reducedMotion?: boolean };
 
-const Plate = ({ bars, cover, flip, reducedMotion = false }: PlateProps) => (
+const Plate = ({ bars, cover, holdSnow = true, reducedMotion = false, run }: PlateProps) => (
   <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
     {FRAMES.map((frame) => (
       <figure key={frame.name} style={{ margin: 0, width: 360 }}>
         <div style={{ background: frame.picture, height: 202, position: "relative" }}>
-          <TuneStatic cover={cover} reducedMotion={reducedMotion} />
+          <TuneStatic cover={cover} holdSnow={holdSnow} reducedMotion={reducedMotion} />
         </div>
         <div style={{ height: 3, marginTop: 8 }}>
-          <TuneBars bars={bars} flip={flip} reducedMotion={reducedMotion} />
+          <TuneBars bars={bars} reducedMotion={reducedMotion} run={run} />
         </div>
         <figcaption style={{ fontSize: 13, marginTop: 8 }}>{frame.name}</figcaption>
       </figure>
@@ -41,7 +42,7 @@ const meta = {
   title: "Watching/Tune",
   component: Plate,
   parameters: { layout: "padded" },
-  args: { bars: "none", cover: "none", flip: 1 },
+  args: { bars: "none", cover: "none", run: 1 },
 } satisfies Meta<typeof Plate>;
 
 type Story = StoryObj<typeof meta>;
@@ -99,7 +100,7 @@ const Driven = () => {
         <Action onPress={ready}>Picture arrives</Action>
         <Action onPress={fail}>Playback fails</Action>
       </div>
-      <Plate bars={view.bars} cover={view.cover} flip={view.flip} />
+      <Plate bars={view.bars} cover={view.cover} holdSnow={false} run={view.run} />
     </div>
   );
 };

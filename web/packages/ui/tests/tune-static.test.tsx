@@ -72,6 +72,27 @@ describe("TuneStatic", () => {
     expect(part(host)?.style.opacity).toBe("0.8");
   });
 
+  it("flickers only while covering, starting with the cover and without asking the platform", async () => {
+    const loops: { start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> }[] = [];
+    vi.spyOn(Animated, "loop").mockImplementation(() => {
+      const loop = { reset: vi.fn(), start: vi.fn(), stop: vi.fn() };
+      loops.push(loop);
+      return loop;
+    });
+    const setting = vi.spyOn(AccessibilityInfo, "isReduceMotionEnabled");
+    const { render } = await mount(<TuneStatic cover="none" reducedMotion={false} />);
+    expect(loops).toHaveLength(0);
+    await render(<TuneStatic cover="burst" reducedMotion={false} />);
+    expect(loops).toHaveLength(1);
+    expect(loops[0]?.start).toHaveBeenCalledOnce();
+    await render(<TuneStatic cover="none" reducedMotion={false} />);
+    expect(loops[0]?.stop).toHaveBeenCalled();
+    expect(loops).toHaveLength(1);
+    await render(<TuneStatic cover="wash" holdSnow reducedMotion={false} />);
+    expect(loops).toHaveLength(1);
+    expect(setting).not.toHaveBeenCalled();
+  });
+
   it("crossfades the darkened picture, with no static, under reduced motion", async () => {
     // The test platform finishes an animation at once, so the fade shows as the timing it asks for.
     const timing = vi.spyOn(Animated, "timing");
@@ -131,21 +152,21 @@ describe("TuneBars", () => {
   ];
 
   it("waits in two greys and locks to the seven colours", async () => {
-    const { host, render } = await mount(<TuneBars bars="waiting" flip={1} reducedMotion={false} />);
+    const { host, render } = await mount(<TuneBars bars="waiting" run={1} reducedMotion={false} />);
     expect(colours(host)).toHaveLength(7);
     expect(new Set(colours(host))).toEqual(new Set(["139,147,163", "90,97,112"]));
-    await render(<TuneBars bars="locked" flip={1} reducedMotion={false} />);
+    await render(<TuneBars bars="locked" run={1} reducedMotion={false} />);
     expect(colours(host)).toEqual(chroma);
   });
 
   it("runs the seven colours on a flip, and does not run them under reduced motion", async () => {
-    const { host, render } = await mount(<TuneBars bars="run" flip={1} reducedMotion={false} />);
+    const { host, render } = await mount(<TuneBars bars="run" run={1} reducedMotion={false} />);
     expect(colours(host)).toEqual(chroma);
-    await render(<TuneBars bars="run" flip={1} reducedMotion />);
+    await render(<TuneBars bars="run" run={1} reducedMotion />);
     expect(bars(host)).toBeNull();
-    await render(<TuneBars bars="waiting" flip={1} reducedMotion />);
+    await render(<TuneBars bars="waiting" run={1} reducedMotion />);
     expect(bars(host)).not.toBeNull();
-    await render(<TuneBars bars="none" flip={1} reducedMotion={false} />);
+    await render(<TuneBars bars="none" run={1} reducedMotion={false} />);
     expect(bars(host)).toBeNull();
   });
 });
