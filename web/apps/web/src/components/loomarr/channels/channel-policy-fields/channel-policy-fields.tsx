@@ -1,3 +1,4 @@
+import type { ChannelDTOStrategy } from "@loomarr/api/models/channelDTOStrategy";
 import { tidyGoDuration } from "@loomarr/core/format";
 import { Action, CompactSelect, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
 import { CommitField, normalizeYearRanges, YearRangeListField } from "@loomarr/ui";
@@ -123,7 +124,8 @@ const DURATION_FIELDS = [
   },
 ] as const satisfies readonly { field: PolicyFieldName; id: string; label: string; help: string }[];
 
-const STRATEGY_LABELS: Record<string, string> = {
+// Keyed on the generated enum, so a strategy the server adds fails to compile until it is named.
+const STRATEGY_LABELS: Record<ChannelDTOStrategy, string> = {
   sequential: "In order",
   shuffle: "Shuffled",
   time_slot: "Time slots",
@@ -132,7 +134,7 @@ const STRATEGY_LABELS: Record<string, string> = {
 // Channel.Strategy is a stored create-time fallback, not a second operator-facing order knob.
 // Name its resolved value inside the one policy control so "inherit" never asks the operator to
 // remember which similarly-named setting it refers to.
-const orderingOptions = (strategy?: string): { value: string; label: string }[] => [
+const orderingOptions = (strategy?: ChannelDTOStrategy): { value: string; label: string }[] => [
   {
     value: "inherit",
     label: strategy

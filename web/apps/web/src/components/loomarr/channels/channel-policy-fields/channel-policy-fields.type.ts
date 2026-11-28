@@ -1,3 +1,4 @@
+import type { ChannelDTOStrategy } from "@loomarr/api/models/channelDTOStrategy";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { PlayOrderCycle } from "@/lib/play-order-copy";
 
@@ -14,7 +15,7 @@ interface ChannelPolicyFieldsProps {
   // The CHANNEL's stored playback strategy — not part of ChannelPolicy, but named inside the
   // unset ordering option so the operator can see exactly what that fallback resolves to.
   // It remains read-only here: policy.ordering is the one operator-facing play-order knob.
-  strategy?: string;
+  strategy?: ChannelDTOStrategy;
   // One full pass through this channel's titles, from the backend's cycle preview. Drives the
   // plain-language consequence under Play order; absent while loading, the line drops its numbers.
   cycle?: PlayOrderCycle;
