@@ -12,7 +12,7 @@ import (
 // #1512); false when it used none. The capacity probe's tone-map self-check walks this order, and
 // the packager's item retry (itemFaults) demotes the same stages, so the startup check and the live
 // ladder cannot disagree.
-func demoteTonemapper(g *encode.GPUFilters, used string) bool {
+func DemoteTonemapper(g *encode.GPUFilters, used string) bool {
 	switch used {
 	case TonemapperOpenCL:
 		g.TonemapOpenCL = false

@@ -61,9 +61,9 @@ func (c FormatClass) Spec() (FormatSpec, bool) {
 	case FormatBaseline:
 		return FormatSpec{Codec: "h264", Width: 1920, Height: 1080, DynamicRange: "sdr"}, true
 	case Format4KSDR:
-		return FormatSpec{Codec: "hevc", Width: premiumWidth, Height: premiumHeight, DynamicRange: "sdr"}, true
+		return FormatSpec{Codec: "hevc", Width: premiumWidth, Height: PremiumHeight, DynamicRange: "sdr"}, true
 	case Format4KHDR:
-		return FormatSpec{Codec: "hevc", Width: premiumWidth, Height: premiumHeight, DynamicRange: "hdr10"}, true
+		return FormatSpec{Codec: "hevc", Width: premiumWidth, Height: PremiumHeight, DynamicRange: "hdr10"}, true
 	}
 	return FormatSpec{}, false
 }
@@ -130,7 +130,7 @@ func (c ChannelFormats) OnHost(h encode.HostProfile) (ChannelFormats, string) {
 // baseline's 1.5x headroom (12M over 8M).
 const (
 	premiumWidth      = 3840
-	premiumHeight     = 2160
+	PremiumHeight     = 2160
 	premiumTargetKbps = 16000
 	premiumMaxKbps    = 24000
 )
@@ -143,7 +143,7 @@ func PremiumOutput(class FormatClass, base OutputProfile) (OutputProfile, bool) 
 		return OutputProfile{}, false
 	}
 	return OutputProfile{
-		Width: premiumWidth, Height: premiumHeight, FPS: base.FPS,
+		Width: premiumWidth, Height: PremiumHeight, FPS: base.FPS,
 		HEVC: true, HDR: class == Format4KHDR,
 		Quality: base.Quality, TargetKbps: premiumTargetKbps, MaxKbps: premiumMaxKbps,
 		GOPSeconds: base.GOPSeconds, AudioKbps: base.AudioKbps,

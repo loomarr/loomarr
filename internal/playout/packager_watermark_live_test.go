@@ -44,7 +44,7 @@ func newLivePackager(t *testing.T) *livePackager {
 	bin := ffmpegBin(t)
 	ctx := context.Background()
 	if c := trialEncodeObserved(ctx, bin, encode.EncoderNVENC, DefaultProfile(), 1, nil); !c.Works {
-		t.Skipf("NVENC is not usable here: %s", firstLine(c.Err))
+		t.Skipf("NVENC is not usable here: %s", FirstLine(c.Err))
 	}
 	host := encode.HostFor(encode.EncoderNVENC, TonemapperFor(bin)(), GPUFiltersFor(bin)())
 	out, _ := FormatOutput(FormatBaseline, DefaultProfile())

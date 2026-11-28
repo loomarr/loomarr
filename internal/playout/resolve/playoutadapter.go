@@ -35,6 +35,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/classprobe"
 	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
@@ -241,8 +242,8 @@ type Resolver struct {
 	loadCapabilityEvidence func(context.Context) (playout.Capacity, bool)
 	// measuredCosts is the class probe's published cost table (probeCapacity); onTonemap receives its
 	// tone-map self-check.
-	measuredCosts atomic.Pointer[playout.MeasuredCosts]
-	onTonemap     func(playout.TonemapCheck)
+	measuredCosts atomic.Pointer[classprobe.MeasuredCosts]
+	onTonemap     func(classprobe.TonemapCheck)
 }
 
 // PodPreviewer is the slice of the filler pod assembler the resolver airs a break from. It is
@@ -317,7 +318,7 @@ type Config struct {
 	Analyses     inventory.AnalysisStore
 	MeasureTools measure.Tools
 	// OnTonemap receives the capacity probe's tone-map self-check.
-	OnTonemap func(playout.TonemapCheck)
+	OnTonemap func(classprobe.TonemapCheck)
 	// Subtitles and SubtitleCues are the Library's subtitle tracks and the reader of their cues.
 	// Without them every subtitle window is empty.
 	Subtitles    LibrarySubtitleReader
@@ -328,7 +329,7 @@ type Config struct {
 	// InitialMaxChannels and InitialMeasuredCosts publish a capacity before any encoder trial or
 	// class probe runs. A test sets them to have a capacity without ffmpeg.
 	InitialMaxChannels   int
-	InitialMeasuredCosts *playout.MeasuredCosts
+	InitialMeasuredCosts *classprobe.MeasuredCosts
 }
 
 // New returns a Resolver wired from cfg, with its arranged-cycle cache. The pod assembler alone is

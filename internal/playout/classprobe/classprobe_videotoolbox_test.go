@@ -1,6 +1,6 @@
 //go:build !windows
 
-package playout
+package classprobe
 
 import (
 	"errors"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/testkit/execfixture"
@@ -22,7 +23,7 @@ func TestVideoToolboxFallbackProbe_NormalizesEncoderOverride(t *testing.T) {
 	if !ok || !clip.source().Interlaced {
 		t.Fatal("HEVC VideoToolbox override omitted the CPU-deinterlace measurement")
 	}
-	pipe, err := Build(encode.HostFor(encode.EncoderVTHEVC, true, encode.GPUFilters{}), clip.source(), testOutput)
+	pipe, err := playout.Build(encode.HostFor(encode.EncoderVTHEVC, true, encode.GPUFilters{}), clip.source(), testOutput)
 	if err != nil || !strings.HasPrefix(pipe.VideoFilter, "bwdif=mode=send_frame,scale=") {
 		t.Fatalf("override probe does not exercise the live CPU-deinterlace graph: %+v %v", pipe, err)
 	}
@@ -85,7 +86,7 @@ func probeVideoToolboxSDR(t *testing.T, bin string) ClassProbeResult {
 	}
 	return ProbeClassCosts(t.Context(), ClassProbeConfig{
 		FFmpeg: bin, ClipDir: dir, Encoder: encode.EncoderVideoToolbox,
-		Outputs: []Profile{{Width: 1920, Height: 1080, Framerate: 25}},
+		Outputs: []playout.Profile{{Width: 1920, Height: 1080, Framerate: 25}},
 		Classes: []media.StreamClass{media.ClassSDR},
 		now:     steppingClock(50 * time.Millisecond),
 	})
@@ -93,6 +94,8 @@ func probeVideoToolboxSDR(t *testing.T, bin string) ClassProbeResult {
 
 // steppingClock moves step on every reading: a probe reads it once at start and once per progress
 // sample, so every sample is step of probe time apart.
+var testOutput = playout.OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 22, TargetKbps: 8000, MaxKbps: 12000, GOPSeconds: 1, AudioKbps: 160}
+
 func steppingClock(step time.Duration) func() time.Time {
 	t0 := time.Unix(0, 0)
 	var n atomic.Int64

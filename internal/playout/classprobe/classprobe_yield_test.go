@@ -1,6 +1,6 @@
 //go:build linux
 
-package playout
+package classprobe
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/media"
 )
@@ -69,6 +70,39 @@ func niceOf(t *testing.T, pid int) int {
 	return n
 }
 
+// nvencFacts is a measured NVENC host.
+func nvencFacts() admission.BudgetFacts {
+	return admission.BudgetFacts{
+		Hardware: true, SessionLimit: 12, CPUAllowance: 1,
+		Rungs: []int{1080, 1080, 720, 720},
+		Costs: map[admission.CostKey]admission.ClassCost{
+			{Class: media.ClassSDR, Height: 1080}:   {Speed: 19, CPUCores: 0.034},
+			{Class: media.ClassSDR, Height: 720}:    {Speed: 30, CPUCores: 0.025},
+			{Class: media.ClassHDR4K, Height: 1080}: {Speed: 2.4, CPUCores: 0.12},
+			{Class: media.ClassHDR4K, Height: 720}:  {Speed: 3.6, CPUCores: 0.1},
+		},
+	}
+}
+
+// watchedForeground reports each time the probe asks to wait for idle playback, and whether any wait
+// returned while the test's viewer was still watching.
+type watchedForeground struct {
+	Foreground
+	waits         chan struct{}
+	released      atomic.Bool
+	resumedEarly  atomic.Bool
+	viewerWatches atomic.Bool
+}
+
+func (f *watchedForeground) WaitIdle(ctx context.Context) error {
+	f.waits <- struct{}{}
+	err := f.Foreground.WaitIdle(ctx)
+	if err == nil && f.viewerWatches.Load() && !f.released.Load() {
+		f.resumedEarly.Store(true)
+	}
+	return err
+}
+
 // The first-boot probe is low-priority background work (#1512): it runs niced, and a viewer who tunes
 // in mid-measurement neither waits on it nor shares the encoder with it. The measurement is killed
 // the moment the live transcode is admitted, nothing restarts while the viewer watches, and the probe
@@ -81,10 +115,11 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 		t.Fatal(err)
 	}
 	budget := admission.NewResourceBudget(nvencFacts)
-	out := Profile{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}
+	out := playout.Profile{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}
+	fg := &watchedForeground{Foreground: budget, waits: make(chan struct{}, 16)}
 	cfg := ClassProbeConfig{
 		FFmpeg: fakeProbeFFmpeg(t, dir, pids), ClipDir: dir, Encoder: encode.EncoderSoftware,
-		Outputs: []Profile{out}, Classes: []media.StreamClass{clip.class}, Foreground: budget,
+		Outputs: []playout.Profile{out}, Classes: []media.StreamClass{clip.class}, Foreground: fg,
 	}
 	done := make(chan ClassProbeResult, 1)
 	go func() { done <- ProbeClassCosts(t.Context(), cfg) }()
@@ -95,22 +130,46 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 		t.Errorf("probe encoder runs at nice %d, want %d (background priority)", n, probeNice)
 	}
 
-	start := time.Now()
-	live, err := budget.Reserve(admission.AdmitRequest{Class: media.ClassSDR})
-	if err != nil {
-		t.Fatalf("the tune was refused during the probe: %v", err)
+	// Forget the waits that led to this measurement: the next one is the yielded probe's.
+	for len(fg.waits) > 0 {
+		<-fg.waits
 	}
-	if took := time.Since(start); took > 50*time.Millisecond {
-		t.Errorf("the tune waited %v on the probe", took)
+	fg.viewerWatches.Store(true)
+	type tune struct {
+		lease *admission.Lease
+		err   error
 	}
-	waitFor(t, 500*time.Millisecond, "the probe's encoder to be killed", func() bool {
+	tuned := make(chan tune, 1)
+	go func() {
+		lease, err := budget.Reserve(admission.AdmitRequest{Class: media.ClassSDR})
+		tuned <- tune{lease, err}
+	}()
+	var live *admission.Lease
+	select {
+	case got := <-tuned:
+		if got.err != nil {
+			t.Fatalf("the tune was refused during the probe: %v", got.err)
+		}
+		live = got.lease
+	case <-time.After(5 * time.Second):
+		t.Fatal("the tune blocked on the probe")
+	}
+	waitFor(t, 5*time.Second, "the probe's encoder to be killed", func() bool {
 		return errors.Is(syscall.Kill(probe, 0), syscall.ESRCH)
 	})
-	time.Sleep(400 * time.Millisecond)
+	select {
+	case <-fg.waits: // the probe is back at the gate, waiting out the viewer
+	case <-time.After(5 * time.Second):
+		t.Fatal("the yielded probe never went back to wait for idle playback")
+	}
 	if n := len(readPids(t, pids)); n != 1 {
 		t.Fatalf("the probe started %d more encoders while a viewer was watching", n-1)
 	}
+	if fg.resumedEarly.Load() {
+		t.Fatal("the probe resumed while a viewer was watching")
+	}
 
+	fg.released.Store(true)
 	live.Release()
 	select {
 	case res := <-done:
@@ -148,10 +207,10 @@ func TestProbeClassCosts_SoftwareDeadlineKillIsUnmeasuredWithReason(t *testing.T
 	if err := os.WriteFile(filepath.Join(dir, clip.fileName()), []byte("clip"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out := Profile{Width: 1920, Height: 1080, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}
+	out := playout.Profile{Width: 1920, Height: 1080, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}
 	cfg := ClassProbeConfig{
 		FFmpeg: fakeStalledFFmpeg(t, dir), ClipDir: dir, Encoder: encode.EncoderSoftware,
-		Outputs: []Profile{out}, Classes: []media.StreamClass{clip.class},
+		Outputs: []playout.Profile{out}, Classes: []media.StreamClass{clip.class},
 	}
 
 	start := time.Now()
@@ -265,7 +324,7 @@ func TestProbeClassCosts_TonemapSelfCheckRejectsABlackPicture(t *testing.T) {
 			}
 			res := ProbeClassCosts(t.Context(), ClassProbeConfig{
 				FFmpeg: fakeTonemapFFmpeg(t, dir, tc.ymax, tc.yavg), ClipDir: dir, Encoder: encode.EncoderSoftware, CPUTonemap: true,
-				Outputs: []Profile{{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}},
+				Outputs: []playout.Profile{{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}},
 				Classes: []media.StreamClass{media.ClassHDR4K},
 			})
 			check := res.Tonemap
@@ -316,7 +375,7 @@ func TestProbeClassCosts_KeysHDRByTheLiveToneCurve(t *testing.T) {
 	const curve media.ToneCurve = "bt2390"
 	res := ProbeClassCosts(t.Context(), ClassProbeConfig{
 		FFmpeg: fakeTonemapFFmpeg(t, dir, 235, 118.4), ClipDir: dir, Encoder: encode.EncoderSoftware, CPUTonemap: true,
-		Outputs: []Profile{{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}},
+		Outputs: []playout.Profile{{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}},
 		Classes: []media.StreamClass{media.ClassHDR4K}, Curve: curve,
 	})
 	if _, ok := res.Costs[admission.HDRKey(media.ClassHDR4K, 720, curve)]; !ok {

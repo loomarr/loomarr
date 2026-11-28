@@ -8,13 +8,14 @@ import (
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/classprobe"
 	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 func TestPlayoutBudgetFacts_FailedProbeDoesNotRestoreWholeStreamAllowance(t *testing.T) {
 	host := admission.HostCPU{Cores: 4, Source: "cgroup-v2"}
 	for _, table := range []map[admission.CostKey]admission.ClassCost{nil, {}} {
-		costs := &playout.MeasuredCosts{Encoder: encode.EncoderVideoToolbox, Costs: table}
+		costs := &classprobe.MeasuredCosts{Encoder: encode.EncoderVideoToolbox, Costs: table}
 		facts := playoutBudgetFacts(host, true, 12, costs, nil, playout.TierBalanced, 1000, 1000)
 		budget := admission.NewResourceBudget(func() admission.BudgetFacts { return facts })
 		if _, err := budget.Reserve(admission.AdmitRequest{Class: media.ClassSDR}); !errors.Is(err, admission.ErrAtCapacity) {
@@ -54,7 +55,7 @@ func TestPlayoutBudgetFacts(t *testing.T) {
 // rung is the top one, and the operator cap and VRAM shading apply to the measured ceiling.
 func TestPlayoutBudgetFacts_MeasuredCostsDriveAdmission(t *testing.T) {
 	host := admission.HostCPU{Cores: 4, Source: "cgroup-v2"}
-	costs := &playout.MeasuredCosts{Encoder: encode.EncoderNVENC, SessionLimit: 12, Costs: map[admission.CostKey]admission.ClassCost{
+	costs := &classprobe.MeasuredCosts{Encoder: encode.EncoderNVENC, SessionLimit: 12, Costs: map[admission.CostKey]admission.ClassCost{
 		{Class: media.ClassSDR, Height: 1080}: {Speed: 19.18, CPUCores: 0.026},
 	}}
 	capAt := func(n int) int { return min(n, 5) } // playout.max_channels = 5

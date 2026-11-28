@@ -1,4 +1,4 @@
-package playout
+package classprobe
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/media"
 )
@@ -50,7 +51,7 @@ type classCostCell struct {
 // HostFingerprint identifies this FFmpeg build, GPU and default profile, the same key the encoder
 // evidence uses: any change re-measures.
 func HostFingerprint(ctx context.Context, ffmpegPath, gpu string) (string, error) {
-	return hostCapabilityFingerprint(ctx, ffmpegPath, gpu, DefaultProfile())
+	return playout.HostCapabilityFingerprint(ctx, ffmpegPath, gpu, playout.DefaultProfile())
 }
 
 // LoadClassCosts returns the stored costs when they were measured for this fingerprint and encoder
@@ -66,7 +67,7 @@ func LoadClassCosts(root, fingerprint string, enc encode.Encoder, now time.Time)
 	var e classCostEvidence
 	if json.Unmarshal(body, &e) != nil || e.Version != classCostEvidenceVersion || e.Fingerprint != fingerprint ||
 		e.Encoder != enc || e.ObservedAt.IsZero() || now.Before(e.ObservedAt) ||
-		now.Sub(e.ObservedAt) > capabilityEvidenceMaxAge || len(e.Costs) == 0 {
+		now.Sub(e.ObservedAt) > playout.CapabilityEvidenceMaxAge || len(e.Costs) == 0 {
 		return MeasuredCosts{}, false
 	}
 	m := MeasuredCosts{Encoder: e.Encoder, SessionLimit: e.SessionLimit, ObservedAt: e.ObservedAt, Costs: map[admission.CostKey]admission.ClassCost{}}
@@ -87,5 +88,5 @@ func StoreClassCosts(root, fingerprint string, m MeasuredCosts) error {
 			}
 		}
 	}
-	return writeEvidence(root, classCostEvidenceName, e)
+	return playout.WriteEvidence(root, classCostEvidenceName, e)
 }

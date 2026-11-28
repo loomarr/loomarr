@@ -113,7 +113,7 @@ func WatermarkCheck(ctx context.Context, ffmpeg string, host encode.HostProfile,
 		src, err := class.make(ctx, ffmpeg, dir)
 		if err != nil {
 			if class.optional {
-				details = append(details, class.name+": not checked ("+firstLine(err.Error())+")")
+				details = append(details, class.name+": not checked ("+FirstLine(err.Error())+")")
 				continue
 			}
 			return fail("%s source: %v", class.name, err)
@@ -215,7 +215,7 @@ func checkClass(ctx context.Context, ffmpeg string, host encode.HostProfile, fac
 		defer cancel()
 		start := time.Now()
 		if b, err := exec.CommandContext(ctx, ffmpeg, args...).CombinedOutput(); err != nil {
-			return 0, fmt.Errorf("encode: %w: %s", err, firstLine(string(bytes.TrimSpace(b))))
+			return 0, fmt.Errorf("encode: %w: %s", err, FirstLine(string(bytes.TrimSpace(b))))
 		}
 		return time.Since(start), nil
 	}
@@ -340,7 +340,7 @@ func decodeFrame(ctx context.Context, ffmpeg, path string, n int) ([]byte, error
 	cmd.Stderr = &stderr
 	yuv, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("decode %s: %w: %s", filepath.Base(path), err, firstLine(stderr.String()))
+		return nil, fmt.Errorf("decode %s: %w: %s", filepath.Base(path), err, FirstLine(stderr.String()))
 	}
 	if len(yuv) != checkWidth*checkHeight*3/2 {
 		return nil, fmt.Errorf("decode %s: %d yuv420p bytes, want %dx%d", filepath.Base(path), len(yuv), checkWidth, checkHeight)
