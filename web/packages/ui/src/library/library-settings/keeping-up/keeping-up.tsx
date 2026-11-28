@@ -50,7 +50,7 @@ const KeepingUp = ({
         {signals.map((signal) => (
           <Line alignItems="flex-start" flexWrap="nowrap" gap="inline" key={signal.key}>
             <StatusDot label="Waiting" size="compact" tone="warn" />
-            <Text textRole="body">{`${signal.label} — waiting for ${signal.waitingFor}`}</Text>
+            <Text textRole="body">{`${signal.label}. Waiting for ${signal.waitingFor}.`}</Text>
           </Line>
         ))}
         {waiting ? (

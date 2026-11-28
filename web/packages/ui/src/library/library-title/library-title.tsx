@@ -72,7 +72,7 @@ const WrongTitle = ({
     return (
       <Line>
         <StatusDot label="Done" tone="ok" />
-        <Text textRole="body">{`Done — ${done} is sorted.`}</Text>
+        <Text textRole="body">{`Done. ${done} is sorted.`}</Text>
       </Line>
     );
   }
@@ -280,10 +280,10 @@ const Unplayable = ({
   };
   const what =
     kind === "movie"
-      ? "This movie can't be played — the file may be damaged"
+      ? "This movie can't be played. The file may be damaged"
       : count === 1
-        ? "1 episode can't be played — the file may be damaged"
-        : `${count} episodes can't be played — the files may be damaged`;
+        ? "1 episode can't be played. The file may be damaged"
+        : `${count} episodes can't be played. The files may be damaged`;
   return (
     <Surface borderColor="stateWarning" gap="control" padding="section">
       <Text as="h2" textRole="title">
