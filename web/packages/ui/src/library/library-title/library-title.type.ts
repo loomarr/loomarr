@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import type { LibraryExternalId, LibraryNeedSearch } from "../library-needs/library-needs.type";
 import type { LibraryKind } from "../library-shelf/library-shelf.type";
 
@@ -97,6 +97,8 @@ interface LibraryTitleAiring {
 
 interface LibraryTitlePerson {
   name: string;
+  /** Who they are in the library, for the link to their titles; absent or empty draws plain text. */
+  personId?: string;
   character?: string;
   role: "actor" | "director" | "writer" | "creator";
 }
@@ -162,9 +164,14 @@ interface LibraryTitleMatch {
   app?: string;
 }
 
+/** The app's own link element to a person's titles; the name is drawn onto it. */
+type LibraryPersonLink = (personId: string) => ReactElement<Record<string, unknown>>;
+
 interface LibraryTitleProps {
   title: LibraryTitleDetail;
   onBack: () => void;
+  /** Makes each credit with a personId a link; absent leaves every name as text. */
+  personLink?: LibraryPersonLink;
   /**
    * What an admin does about the title. Absent for a member, who reads the page only: no Update
    * details, Check files again or Wrong title?, no file cards and no Technical details, only the
@@ -198,6 +205,7 @@ interface LibraryTitleFix {
 }
 
 export type {
+  LibraryPersonLink,
   LibraryTitleAiring,
   LibraryTitleChannel,
   LibraryTitleDetail,

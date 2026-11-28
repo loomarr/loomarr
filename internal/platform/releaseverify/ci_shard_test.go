@@ -394,6 +394,58 @@ example.invalid/cert-two`
 
 // The budgets are derived from #1570's ten-minute Go-only queue target, not free constants:
 // the lane test step is the target minus the measured queue overhead, and four workers share it.
+// A `go list` that fails at any one point must fail the sharder. Most calls happen inside `$(...)`,
+// where bash drops `set -e`, and a swallowed failure models an empty lane from a green command.
+func TestGoShardFailsWhenAnyGoListCallFails(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Clean(filepath.Join("..", "..", ".."))
+	dir := t.TempDir()
+	// The Nth call fails, counted by the size of a file each call appends one byte to.
+	fakeGo := "#!/usr/bin/env bash\nset -euo pipefail\nprintf x >>\"$GO_CALLS\"\n" +
+		"if (($(wc -c <\"$GO_CALLS\") == GO_FAIL_AT)); then echo 'go: injected failure' >&2; exit 1; fi\n" +
+		"if [[ \"$*\" == \"list -m\" ]]; then echo example.invalid; exit; fi\n" +
+		"printf '%s\\n' example.invalid/a example.invalid/b example.invalid/cert\n"
+	for name, content := range map[string]string{"go": fakeGo, "weights.tsv": "a 1\nb 1\ncert 1\n", "certification.tsv": "1 cert\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{{"1/2"}, {"--plan", "2"}, {"--worker-plan", "2"}, {"--certification", "1/1"}, {"--verify", "2"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Parallel()
+			state := t.TempDir()
+			run := func(failAt int) (int, []byte, error) {
+				calls := filepath.Join(state, strconv.Itoa(failAt))
+				cmd := exec.Command("bash", append([]string{filepath.Join("scripts", "go-shard.sh")}, args...)...)
+				cmd.Dir = root
+				cmd.Env = append(os.Environ(),
+					"PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
+					"GO_SHARD_WEIGHTS="+filepath.Join(dir, "weights.tsv"),
+					"GO_SHARD_CERTIFICATION="+filepath.Join(dir, "certification.tsv"),
+					"GO_CALLS="+calls,
+					"GO_FAIL_AT="+strconv.Itoa(failAt),
+				)
+				output, err := cmd.CombinedOutput()
+				made, readErr := os.ReadFile(calls)
+				if readErr != nil {
+					t.Fatal(readErr)
+				}
+				return len(made), output, err
+			}
+			total, output, err := run(0)
+			if err != nil {
+				t.Fatalf("with a working go list: %v\n%s", err, output)
+			}
+			for failAt := 1; failAt <= total; failAt++ {
+				if _, output, err := run(failAt); err == nil {
+					t.Errorf("go call %d of %d failed and go-shard still succeeded:\n%s", failAt, total, output)
+				}
+			}
+		})
+	}
+}
+
 func TestGoShardBudgetsDeriveFromTheQueueTarget(t *testing.T) {
 	t.Parallel()
 

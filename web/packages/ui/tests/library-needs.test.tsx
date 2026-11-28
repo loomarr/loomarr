@@ -181,7 +181,7 @@ describe("LibraryNeedsCards", () => {
     // The title card below isn't primary: only the first card is.
     act(() => button("Use this order").click());
     expect(onChooseOrder).toHaveBeenCalledWith("90000831", { choice: "order", orderId: "90000799a" });
-    expect(host.textContent).toContain("Done — Tidewater uses DVD order.");
+    expect(host.textContent).toContain("Done. Tidewater uses DVD order.");
     expect(host.textContent).toContain("5 episodes now have their names and details from TMDB.");
     cleanup();
   });
@@ -195,7 +195,7 @@ describe("LibraryNeedsCards", () => {
     act(() => keep?.click());
     act(() => button("Keep the file names").click());
     expect(onChooseOrder).toHaveBeenCalledWith("90000831", { choice: "files" });
-    expect(host.textContent).toContain("Done — Tidewater keeps the names in its files.");
+    expect(host.textContent).toContain("Done. Tidewater keeps the names in its files.");
     expect(host.textContent).not.toContain("from TMDB");
     cleanup();
   });
@@ -204,9 +204,9 @@ describe("LibraryNeedsCards", () => {
     const { host, cleanup } = mount(cards({ needs: [], orders: [tidewater] }));
     expect(host.textContent).toContain("5 episodes");
     act(() => host.querySelectorAll("[aria-expanded]")[0]?.click());
-    expect(host.textContent).toContain("S02E06 — Tidewater.S02E06.mkv");
-    expect(host.textContent).toContain("S02E08 — Tidewater.S02E08.mkv");
-    expect(host.textContent).not.toContain("S02E09 —");
+    expect(host.textContent).toContain("S02E06: Tidewater.S02E06.mkv");
+    expect(host.textContent).toContain("S02E08: Tidewater.S02E08.mkv");
+    expect(host.textContent).not.toContain("S02E09:");
     expect(host.textContent).toContain("and 2 more");
     cleanup();
   });

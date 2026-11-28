@@ -6,14 +6,13 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // SplitProposalArtworkOwner is the image owner kind of a split proposal's segment artwork.
 const SplitProposalArtworkOwner = "filler_split_proposal"
 
 // DeleteSplitProposalArtwork drops the image references a split proposal's segments hold.
-func DeleteSplitProposalArtwork(ctx context.Context, st store.Store, proposalID string) {
+func DeleteSplitProposalArtwork(ctx context.Context, st imageRefDeleter, proposalID string) {
 	if st == nil || proposalID == "" {
 		return
 	}

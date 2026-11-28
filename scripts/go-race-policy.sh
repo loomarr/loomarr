@@ -84,7 +84,8 @@ module_path() { go list -m; }
 # The given entries as fully-qualified import paths, one per line, sorted.
 import_paths() {
 	local mod
-	mod="$(module_path)"
+	# Explicit: callers run this inside `$(...)`, where bash drops `set -e`.
+	mod="$(module_path)" || return
 	local p
 	for p in "$@"; do
 		# Allow entries written either as full import paths or as module-relative (./internal/x).

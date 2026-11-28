@@ -5,8 +5,8 @@ import type { NavTo } from "../../app-shell/app-shell.type";
 // Alt A (maintainer-approved, #1785/#1659 evidence 2026-10-03): the bar's first three are ALWAYS
 // Home, Watch, Guide — never reshuffled by role or channel state, so a returning viewer's muscle
 // memory for "second tab is Watch" either holds or the tab is absent, never a different
-// destination. The fourth is the role's: an admin's Requests, a member's Library (#4476, where a
-// member browses the titles). Everything else lives behind More.
+// destination. The fourth is Library for both roles (#4476): a member browses the titles there, and
+// an admin's carries the Needs you count. Everything else lives behind More.
 type PhoneDestinationKey =
   | "filler"
   | "guide"
@@ -21,8 +21,8 @@ type PhoneDestinationKey =
 
 type PhoneDestination = {
   /**
-   * The bar draws this as a plain dot (today's icon-rail dot); the More sheet draws the number
-   * itself (today's labelled-rail numeral), and More carries the dot for it.
+   * The bar and the More sheet both draw the number; More itself carries a plain dot when any
+   * destination behind it has one.
    */
   badgeCount?: number;
   icon: IconName;
@@ -30,10 +30,9 @@ type PhoneDestination = {
   label: string;
 } & ({ params?: never; to: NavTo } | { params: { id: string }; to: "/watch/$id" });
 
-const ADMIN_PRIMARY: readonly PhoneDestinationKey[] = ["home", "watch", "guide", "requests"];
-const MEMBER_PRIMARY: readonly PhoneDestinationKey[] = ["home", "watch", "guide", "library"];
-// In the sidebar's order: Library sits after Guide and before Requests, so it leads the overflow.
-const ADMIN_OVERFLOW: readonly PhoneDestinationKey[] = ["library", "filler", "people", "settings", "help"];
+const PRIMARY: readonly PhoneDestinationKey[] = ["home", "watch", "guide", "library"];
+// In the sidebar's order: Requests sits right after Library, so it leads the overflow.
+const ADMIN_OVERFLOW: readonly PhoneDestinationKey[] = ["requests", "filler", "people", "settings", "help"];
 const MEMBER_OVERFLOW: readonly PhoneDestinationKey[] = ["requests", "notifications", "help"];
 
 const destinationFor = (
@@ -75,18 +74,17 @@ const withBadge = (
   return count > 0 ? { ...destination, badgeCount: count } : destination;
 };
 
-/** Home, Watch (if a channel exists), Guide, then an admin's Requests or a member's Library. */
+/** Home, Watch (if a channel exists), Guide, Library: the same bar for both roles. */
 const phoneBarPrimary = (
-  isAdmin: boolean,
   watchChannelId: string | undefined,
   badges?: Partial<Record<NavTo, number>>,
 ): PhoneDestination[] =>
-  (isAdmin ? ADMIN_PRIMARY : MEMBER_PRIMARY).flatMap((key) => {
+  PRIMARY.flatMap((key) => {
     const destination = destinationFor(key, watchChannelId);
     return destination ? [withBadge(destination, badges)] : [];
   });
 
-/** Everything else: admin's Library/Filler/People/Settings/Help, member's Requests/Notifications/Help. */
+/** Everything else: admin's Requests/Filler/People/Settings/Help, member's Requests/Notifications/Help. */
 const phoneBarOverflow = (isAdmin: boolean, badges?: Partial<Record<NavTo, number>>): PhoneDestination[] =>
   (isAdmin ? ADMIN_OVERFLOW : MEMBER_OVERFLOW).flatMap((key) => {
     const destination = destinationFor(key, undefined);

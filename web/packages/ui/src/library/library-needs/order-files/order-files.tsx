@@ -28,7 +28,7 @@ const OrderFiles = ({
       <Stack gap={4} padding="control">
         {files.slice(0, FILES_SHOWN).map((f) => (
           <Text key={f.path} textRole="compact" tone="secondary">
-            {`S${pad(f.season)}E${pad(f.episode)} — ${fileName(f.path)}`}
+            {`S${pad(f.season)}E${pad(f.episode)}: ${fileName(f.path)}`}
           </Text>
         ))}
         {files.length > FILES_SHOWN ? (

@@ -53,7 +53,7 @@ const OrderCard = ({
             <>
               <Line paddingTop="section">
                 <StatusDot label="Done" tone="ok" />
-                <Text textRole="title">{`Done — ${need.name} ${done.line}.`}</Text>
+                <Text textRole="title">{`Done. ${need.name} ${done.line}.`}</Text>
               </Line>
               {done.fromTmdb ? (
                 <Text textRole="compact" tone="muted">

@@ -72,7 +72,7 @@ const WrongTitle = ({
     return (
       <Line>
         <StatusDot label="Done" tone="ok" />
-        <Text textRole="body">{`Done — ${done} is sorted.`}</Text>
+        <Text textRole="body">{`Done. ${done} is sorted.`}</Text>
       </Line>
     );
   }
@@ -280,10 +280,10 @@ const Unplayable = ({
   };
   const what =
     kind === "movie"
-      ? "This movie can't be played — the file may be damaged"
+      ? "This movie can't be played. The file may be damaged"
       : count === 1
-        ? "1 episode can't be played — the file may be damaged"
-        : `${count} episodes can't be played — the files may be damaged`;
+        ? "1 episode can't be played. The file may be damaged"
+        : `${count} episodes can't be played. The files may be damaged`;
   return (
     <Surface borderColor="stateWarning" gap="control" padding="section">
       <Text as="h2" textRole="title">
@@ -303,7 +303,7 @@ const Unplayable = ({
   );
 };
 
-const LibraryTitle = ({ title, onBack, fix }: LibraryTitleProps) => {
+const LibraryTitle = ({ title, onBack, fix, personLink }: LibraryTitleProps) => {
   const { wide, density } = useTitleLayout();
   const fixes = useTitleFixes(fix);
   // Closing "Wrong title?" removes the button that was pressed; focus goes back to what opened it.
@@ -367,7 +367,7 @@ const LibraryTitle = ({ title, onBack, fix }: LibraryTitleProps) => {
 
       <OnChannels title={title} />
 
-      <CastAndCrew title={title} />
+      <CastAndCrew personLink={personLink} title={title} />
 
       {fix && title.unplayable > 0 ? (
         <Unplayable count={title.unplayable} kind={title.kind} onCheck={fix.onCheckFiles} />
