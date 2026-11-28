@@ -118,7 +118,7 @@ Additional statics from the prototype: **`signal-400` `#FFC14D`** (hover/active 
 
 Semantic aliases map onto these (`primary`→signal, `destructive`→onair, `success`→lock, `warning`→caution, `info`→tune). The lifecycle states (§ main doc §4) map: `wanted`/`requested` static-400 · `downloading` tune · `available` lock · `unavailable` static-400 strikethrough · drift caution.
 
-**Decade tints (The Cross, #4722).** Six soft tints, one per decade, that reuse none of the accents above, so a decade is never read as live, a link, a warning or focus. They are theme-paired:
+**Decade tints (The Cross, #4722).** Eight soft tints, one per decade, that reuse none of the accents above, so a decade is never read as live, a link, a warning or focus. They also draw a Library title's stand-in cover (#4860). They are theme-paired:
 
 | Decade | Dark theme | Light theme |
 | --- | --- | --- |
@@ -128,11 +128,14 @@ Semantic aliases map onto these (`primary`→signal, `destructive`→onair, `suc
 | 1980s | `#B9A6F2` | `#7851CA` |
 | 1990s | `#9DB4F5` | `#4561C7` |
 | 2000s | `#8FD3C8` | `#4A706B` |
+| 2010s | `#EDB29E` | `#96533C` |
+| 2020s | `#D8B0E4` | `#84508F` |
 | Neutral (breaks) | `#8B93A3` | `#515866` |
 
-- **Where they go.** Only the watched channel's numeral and the By decade headings take them; every other channel number is plain. A channel with no single decade, or a decade outside the six, takes neutral, which is also the colour of a break.
+- **Where they go.** The watched channel's numeral, the By decade headings and a Library stand-in cover take them; every other channel number is plain. A channel with no single decade, or a decade outside the eight, takes neutral, which is also the colour of a break.
+- **Stand-in covers (#4860).** A Library title with no artwork draws a cover: the title in the body face on a dark wash of its decade's tint (`coverWash`), with the year alone at the foot in that decade's dark tint under a hairline; the caption under the poster says the kind. No year means no foot. A year outside the eight decades, or none, takes the neutral wash. A narrow poster (a collection's pile) and a phone's tiles take the smaller title. A cover stands in for artwork, so it is the same in both themes. Title and year clear 4.5:1 on every wash, checked in CI. A thumbnail too small for words is the wash alone.
 - **Contrast.** Each clears 4.5:1 (the headings are 12px, so small text) on its own theme's canvas, raised and elevated (nested and hover) surfaces, checked in CI.
-- **On the selection fill** (`surface.focus`). A By decade heading (12px, small text) is never drawn on it. The watched channel's numeral (large text) may be: each theme's six tints clear 3:1 there, checked in CI.
+- **On the selection fill** (`surface.focus`). A By decade heading (12px, small text) is never drawn on it. The watched channel's numeral (large text) may be: each theme's eight tints clear 3:1 there, checked in CI.
 - **Always-dark watching chrome** (the player's chrome over the picture) takes the dark set in both themes, as the player chrome tokens do.
 - The 1950s light value is less saturated than amber's light text stop (`#795000`). Amber stays focus and typed digits, red stays live, cyan stays the break's "Back in n min".
 - **Beside the shipped rule.** The shipped player and Guide fill a channel's number block with the three-decade era colour (§9.2) and draw it nowhere else. The Cross changes this when it ships; until then both token sets exist.

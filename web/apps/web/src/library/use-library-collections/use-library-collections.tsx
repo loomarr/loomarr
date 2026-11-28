@@ -22,6 +22,9 @@ const pileOf = (titles: readonly LibraryItemDTO[]): LibraryCollectionPoster[] =>
   titles.slice(0, 3).map((t) => ({
     id: t.id,
     name: t.name,
+    year: t.year,
+    kind: t.kind,
+    homeVideo: t.homeVideo,
     poster: t.poster ? <ServedImage alt="" image={t.poster} sizes={PILE_SIZES} /> : undefined,
   }));
 

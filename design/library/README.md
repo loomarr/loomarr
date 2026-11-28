@@ -58,7 +58,7 @@ The maintainer raised these in order; they amend decisions 23–28 and 34 of #21
    where the details came from, the title match, file, size, picture, sound, subtitles, length.
    This replaces the per-field provenance chips of decision 25.
 4. **Not childish:** stand-in artwork is dark and quiet, the chrome is neutral, and the artwork
-   carries the colour.
+   carries the colour. Stand-ins are title covers tinted by decade, the same in both themes (#4860).
 5. **Built from the design system, not beside it.** Amber is focus and the one primary action per
    view. Import progress is `ProgressTrack` in its `tune` tone (preparation), neutral when paused.
 

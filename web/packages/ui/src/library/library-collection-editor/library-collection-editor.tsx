@@ -30,7 +30,7 @@ const useSettled = (value: string) => {
 
 const Thumb = ({ member }: { member: LibraryCollectionMember }) => (
   <Stack flexShrink={0} width={36}>
-    <LibraryPoster art={member.poster} id={member.id} name={member.name} small />
+    <LibraryPoster art={member.poster} name={member.name} small year={member.year} />
   </Stack>
 );
 

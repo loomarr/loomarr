@@ -342,7 +342,14 @@ const Tile = ({
         >
           {/* A title getting ready is dimmed, and its caption says so: a word on the poster
               doesn't fit a three-across phone grid. */}
-          <LibraryPoster art={title.poster} dim={!title.ready} id={title.id} name={title.name}>
+          <LibraryPoster
+            art={title.poster}
+            dim={!title.ready}
+            homeVideo={title.homeVideo}
+            kind={title.kind}
+            name={title.name}
+            year={title.year}
+          >
             {title.ready && (title.attention || title.unidentified) ? (
               // A dot, not a badge, for the same reason.
               <Surface

@@ -87,7 +87,7 @@ describe.each(Object.entries(semanticThemes))("%s theme", (_name, theme) => {
   });
 });
 
-const tintDecades = ["1950", "1960", "1970", "1980", "1990", "2000"] as const;
+const tintDecades = ["1950", "1960", "1970", "1980", "1990", "2000", "2010", "2020"] as const;
 
 // The Cross's decade tints (§2.1): 12px headings, so AA for small text. Each theme's set is gated on
 // that theme's own surfaces. The selection fill takes only the watched numeral, which is large text.
@@ -122,8 +122,8 @@ describe("decadeTint", () => {
     expect(decadeTintColor(Number(key))).toBe(semanticThemes.dark.decadeTint[key]);
   });
 
-  it("maps no decade, or one outside the six, to neutral", () => {
-    for (const decade of [undefined, 0, 1900, 1940, 1985, 2010, 2090]) {
+  it("maps no decade, or one outside the eight, to neutral", () => {
+    for (const decade of [undefined, 0, 1900, 1940, 1985, 2030, 2090]) {
       expect(decadeTint(decade)).toBe("decadeTintNeutral");
       expect(decadeTintColor(decade)).toBe(semanticThemes.dark.decadeTint.neutral);
     }

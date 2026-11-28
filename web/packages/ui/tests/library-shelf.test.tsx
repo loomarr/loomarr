@@ -378,13 +378,13 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
-  // The monogram on an artless poster stands in for artwork, in the secondary tone over a neutral
-  // surface; assistive tech hears the title once, from the line under the poster.
-  it("keeps an artless poster's monogram out of the tile's name", () => {
+  // The cover on an artless poster stands in for artwork; assistive tech hears the title once, from
+  // the line under the poster.
+  it("keeps an artless poster's cover out of the tile's name", () => {
     const { tile, cleanup } = render({});
     const hidden = tile("Paper Kites").querySelector('[aria-hidden="true"]');
-    expect(hidden?.textContent).toBe("PK");
-    // Nor does the frame caption itself "No artwork" under the monogram.
+    expect(hidden?.textContent).toBe("Paper Kites1996");
+    // Nor does the frame caption itself "No artwork" under the cover.
     expect(tile("Paper Kites").textContent).not.toContain("No artwork");
     cleanup();
   });
