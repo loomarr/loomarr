@@ -35,7 +35,7 @@ const stubChannel = (stored: Stored, failWith?: number | ((body: Patch) => Respo
         return HttpResponse.json({ title: "Couldn't save the channel" }, { status: failWith });
       }
       if (body.revision !== stored.revision)
-        return HttpResponse.json({ title: "Channel changed" }, { status: 409 });
+        return HttpResponse.json({ title: "Channel changed", code: "channel_changed" }, { status: 409 });
       if (body.policy) stored.policy = body.policy;
       if (body.lineup) stored.lineup = body.lineup;
       if (body.name !== undefined) stored.name = body.name;
@@ -170,14 +170,18 @@ describe("useChannelSave", () => {
       }),
       http.patch("*/v1/channels/:id", async ({ request }) => {
         patches.push((await request.json()) as Patch);
-        return HttpResponse.json({ title: "Channel changed" }, { status: 409 });
+        // The code is what marks it stale; the title is copy and is deliberately different.
+        return HttpResponse.json(
+          { title: "Someone got there first", code: "channel_changed" },
+          { status: 409 },
+        );
       }),
     );
     const { result } = renderSave(stored);
 
     act(() => void result.current.save({ policy: { ordering: "sequential" } }).catch(ignoreFailure));
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Channel changed"));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Someone got there first"));
     expect(patches).toHaveLength(4);
     expect(result.current.pending).toBeUndefined();
   });

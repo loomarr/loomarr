@@ -188,6 +188,14 @@ download share the selection. Entry names are fixed (`manifest.json`, `system.js
 windows, counts, drops, truncation and redaction; `system.json` contains no host names, addresses,
 targets, paths or user data. Assembly redacts again. Nothing is ever sent anywhere automatically.
 
+## Problem responses
+
+Every refusal is an RFC 7807 problem (`ErrorModel`): `title` and `detail` are written for a person,
+`instance` is the request id and `type` may link to the docs. `code` is the only field a client
+branches on. It is set where a client treats one refusal differently from others of the same status,
+and is absent otherwise. `channel_changed` marks a channel save made from a stale revision: refetch
+and retry. Titles are copy and can change.
+
 ## Metrics
 
 Prometheus metrics are an operator contract, not a mirror of domain events. One generation-scoped

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"reflect"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -40,11 +41,58 @@ func StatusFromError(err error, fallback int) int {
 // problem's `type`. The request `instance` id + server-side logging are added centrally by
 // ErrorTransformer, so callers never handle them.
 func Problem(status int, title, detail string, docHref ...string) huma.StatusError {
-	m := &huma.ErrorModel{Status: status, Title: title, Detail: detail}
+	m := &ProblemDetail{ErrorModel: huma.ErrorModel{Status: status, Title: title, Detail: detail}}
 	if len(docHref) > 0 && docHref[0] != "" {
 		m.Type = "/help?page=" + docHref[0]
 	}
 	return m
+}
+
+// ProblemCode names a refusal a client treats differently from others of the same status. A title
+// is copy, so a client never branches on it.
+type ProblemCode string
+
+// ProblemChannelChanged is a channel save made from a stale revision: refetch and retry.
+const ProblemChannelChanged ProblemCode = "channel_changed"
+
+// ProblemDetail is the problem body every refusal carries: RFC 7807 plus an optional code. The
+// spec names its schema ErrorModel (see SchemaName). A new code is added to the enum tag too.
+type ProblemDetail struct {
+	huma.ErrorModel
+	Code ProblemCode `json:"code,omitempty" enum:"channel_changed" doc:"Machine-readable reason, set only where a client handles this refusal differently"`
+}
+
+// CodedConflict is a 409 a client can recognise by its code.
+func CodedConflict(code ProblemCode, title, detail string) huma.StatusError {
+	return &ProblemDetail{
+		ErrorModel: huma.ErrorModel{Status: http.StatusConflict, Title: title, Detail: detail},
+		Code:       code,
+	}
+}
+
+// SchemaName is huma's namer, with ProblemDetail published as ErrorModel.
+func SchemaName(t reflect.Type, hint string) string {
+	base := t
+	for base.Kind() == reflect.Pointer {
+		base = base.Elem()
+	}
+	if base == reflect.TypeFor[ProblemDetail]() {
+		return "ErrorModel"
+	}
+	return huma.DefaultSchemaNamer(t, hint)
+}
+
+// huma builds its own refusals (validation, huma.WriteErr) through NewError and derives the
+// spec's error schema from what it returns, so it returns a ProblemDetail as well.
+func init() {
+	build := huma.NewError
+	huma.NewError = func(status int, msg string, errs ...error) huma.StatusError {
+		m, ok := build(status, msg, errs...).(*huma.ErrorModel)
+		if !ok {
+			return build(status, msg, errs...)
+		}
+		return &ProblemDetail{ErrorModel: *m}
+	}
 }
 
 // ProblemWithCause is Problem for a call that has an underlying cause to record. The cause is
@@ -53,7 +101,7 @@ func Problem(status int, title, detail string, docHref ...string) huma.StatusErr
 func ProblemWithCause(status int, title, detail string, errs ...error) huma.StatusError {
 	// Build via huma so the causes ride along as ErrorModel.Errors for the hook to log;
 	// then overwrite the status-label title with our friendly one.
-	m, ok := huma.NewError(status, detail, errs...).(*huma.ErrorModel)
+	m, ok := huma.NewError(status, detail, errs...).(*ProblemDetail)
 	if !ok {
 		return Problem(status, title, detail)
 	}
@@ -82,20 +130,20 @@ func Conflict(title, detail string, doc ...string) huma.StatusError {
 	return Problem(http.StatusConflict, title, detail, doc...)
 }
 func FeatureNotConfigured(title, detail string) huma.StatusError {
-	return &huma.ErrorModel{
+	return &ProblemDetail{ErrorModel: huma.ErrorModel{
 		Status: http.StatusConflict,
 		Title:  title,
 		Detail: detail,
 		Type:   "feature_not_configured",
-	}
+	}}
 }
 func GroundingNotConfigured(title, detail string) huma.StatusError {
-	return &huma.ErrorModel{
+	return &ProblemDetail{ErrorModel: huma.ErrorModel{
 		Status: http.StatusConflict,
 		Title:  title,
 		Detail: detail,
 		Type:   "grounding_not_configured",
-	}
+	}}
 }
 func Unprocessable(title, detail string, doc ...string) huma.StatusError {
 	return Problem(http.StatusUnprocessableEntity, title, detail, doc...)
@@ -133,8 +181,13 @@ func NotImplemented(title, detail string, doc ...string) huma.StatusError {
 // is the one seam that catches every error body. Registered once in humaConfig.
 func ErrorTransformer(log *slog.Logger) huma.Transformer {
 	return func(ctx huma.Context, _ string, v any) (any, error) {
-		m, ok := v.(*huma.ErrorModel)
-		if !ok {
+		var m *huma.ErrorModel
+		switch body := v.(type) {
+		case *ProblemDetail:
+			m = &body.ErrorModel
+		case *huma.ErrorModel:
+			m = body
+		default:
 			return v, nil // not an error body — leave it alone
 		}
 		reqID, path := "", ""
@@ -171,7 +224,7 @@ func ErrorTransformer(log *slog.Logger) huma.Transformer {
 		} else if m.Status >= 400 {
 			log.Info("request rejected", attrs...)
 		}
-		return m, nil
+		return v, nil
 	}
 }
 
@@ -190,7 +243,7 @@ func WriteJSON(w http.ResponseWriter, code int, v any) {
 // log writes the body and logs nothing.
 func WriteProblem(log *slog.Logger, w http.ResponseWriter, r *http.Request, status int, title, detail string) {
 	reqID := RequestIDFrom(r.Context())
-	body := &huma.ErrorModel{Status: status, Title: title, Detail: detail, Instance: reqID}
+	body := &ProblemDetail{ErrorModel: huma.ErrorModel{Status: status, Title: title, Detail: detail, Instance: reqID}}
 	if log != nil {
 		eventName := "api.request_rejected"
 		if status >= 500 {

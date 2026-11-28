@@ -323,12 +323,13 @@ func TestPurgeConflictReturnsConflictInsteadOfBadGateway(t *testing.T) {
 	}
 	var problem struct {
 		Title string `json:"title"`
+		Code  string `json:"code"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&problem); err != nil {
 		t.Fatal(err)
 	}
-	if problem.Title != "Channel changed" {
-		t.Fatalf("problem title = %q, want Channel changed", problem.Title)
+	if problem.Title != "Channel changed" || problem.Code != "channel_changed" {
+		t.Fatalf("problem = %+v, want Channel changed / channel_changed", problem)
 	}
 }
 
