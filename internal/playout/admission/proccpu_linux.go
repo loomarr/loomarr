@@ -1,4 +1,4 @@
-package playout
+package admission
 
 import (
 	"os"
@@ -10,8 +10,8 @@ import (
 // clockTicks is USER_HZ, which Linux fixes at 100 for /proc on every mainstream architecture.
 const clockTicks = 100
 
-// processCPUTime is a running process's user+system CPU time from /proc/<pid>/stat.
-func processCPUTime(pid int) (time.Duration, bool) {
+// ProcessCPUTime is a running process's user+system CPU time from /proc/<pid>/stat.
+func ProcessCPUTime(pid int) (time.Duration, bool) {
 	raw, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
 	if err != nil {
 		return 0, false

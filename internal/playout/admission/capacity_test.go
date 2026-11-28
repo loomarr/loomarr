@@ -1,13 +1,13 @@
-package playout_test
+package admission_test
 
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
 )
 
 func TestEffectiveCapacity_AutomaticUsesMeasurement(t *testing.T) {
-	if got := playout.EffectiveCapacity(6, 0, 0); got != 6 {
+	if got := admission.EffectiveCapacity(6, 0, 0); got != 6 {
 		t.Fatalf("EffectiveCapacity(6 measured, automatic cap) = %d, want 6", got)
 	}
 }
@@ -23,7 +23,7 @@ func TestEffectiveCapacity_ConfiguredCapCanOnlyLowerMeasurement(t *testing.T) {
 		{name: "higher cap", measured: 3, cap: 9, want: 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := playout.EffectiveCapacity(tc.measured, tc.cap, 0); got != tc.want {
+			if got := admission.EffectiveCapacity(tc.measured, tc.cap, 0); got != tc.want {
 				t.Fatalf("EffectiveCapacity(%d measured, %d cap) = %d, want %d",
 					tc.measured, tc.cap, got, tc.want)
 			}
@@ -33,7 +33,7 @@ func TestEffectiveCapacity_ConfiguredCapCanOnlyLowerMeasurement(t *testing.T) {
 
 func TestEffectiveCapacity_UnknownMeasurementAllowsOneSafeTranscode(t *testing.T) {
 	for _, measured := range []int{0, -1} {
-		if got := playout.EffectiveCapacity(measured, 0, 0); got != 1 {
+		if got := admission.EffectiveCapacity(measured, 0, 0); got != 1 {
 			t.Errorf("EffectiveCapacity(%d measured, automatic cap) = %d, want 1", measured, got)
 		}
 	}
@@ -51,7 +51,7 @@ func TestEffectiveCapacity_ShadesResidentVRAMWithoutDisablingPlayout(t *testing.
 		{name: "floor", measured: 2, cap: 0, residentGiB: 16, want: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := playout.EffectiveCapacity(tc.measured, tc.cap, tc.residentGiB); got != tc.want {
+			if got := admission.EffectiveCapacity(tc.measured, tc.cap, tc.residentGiB); got != tc.want {
 				t.Fatalf("EffectiveCapacity(%d measured, %d cap, %.1f GiB) = %d, want %d",
 					tc.measured, tc.cap, tc.residentGiB, got, tc.want)
 			}

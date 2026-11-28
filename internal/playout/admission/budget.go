@@ -1,4 +1,8 @@
-package playout
+// Package admission decides what a host can encode at once: the resource budget and its leases,
+// the measured and host-derived capacity limits, and the speed monitor that steps a heavy item down
+// the software ladder. It imports only the media vocabulary, so a package can use the ledger without
+// importing the engine.
+package admission
 
 import (
 	"context"
@@ -10,9 +14,9 @@ import (
 	"time"
 )
 
-// minStreamSpeed is the realtime multiple every admitted stream must keep (phase 0: 1.2x). A stream
+// MinStreamSpeed is the realtime multiple every admitted stream must keep (phase 0: 1.2x). A stream
 // class measured at speed S alone therefore uses 1.2/S of the GPU's throughput.
-const minStreamSpeed = 1.2
+const MinStreamSpeed = 1.2
 
 // capacityEpsilon absorbs float error when a whole number of streams exactly fills a limit.
 const capacityEpsilon = 1e-9
@@ -804,10 +808,10 @@ func (f BudgetFacts) demandAt(class StreamClass, height int, sw SoftwareRung) (d
 	if !f.Hardware {
 		return demand{cpu: c.CPUCores * rungCostsOf(class)[sw], session: true}, true
 	}
-	if c.Speed < minStreamSpeed {
+	if c.Speed < MinStreamSpeed {
 		return demand{}, false
 	}
-	return demand{gpu: minStreamSpeed / c.Speed, cpu: c.CPUCores, session: true}, true
+	return demand{gpu: MinStreamSpeed / c.Speed, cpu: c.CPUCores, session: true}, true
 }
 
 // softwareRungs are the software ladder rungs admission tries for class, best first. Only a
@@ -841,12 +845,12 @@ func (b *ResourceBudget) pickLocked(
 	return demand{}, RungFull, false
 }
 
-// rungCostsOf is the rung cost table for a stream class (RungCostsFor by class).
+// rungCostsOf is the rung cost table for a stream class (playout's RungCostsFor by class).
 func rungCostsOf(class StreamClass) RungCosts {
 	if class == ClassHDR4K {
-		return heavyRungCosts
+		return HeavyRungCosts
 	}
-	return sdrRungCosts
+	return SDRRungCosts
 }
 
 // capacity is how many streams of class at height fit an empty ledger.

@@ -1,4 +1,4 @@
-package playout
+package admission
 
 import (
 	"os"
@@ -6,10 +6,10 @@ import (
 	"runtime"
 )
 
-// peakRSSBytes is a finished child's peak resident set, or 0 when the platform does not report it.
+// PeakRSSBytes is a finished child's peak resident set, or 0 when the platform does not report it.
 // It reads ru_maxrss through reflection so one file compiles everywhere without platform build tags:
 // Linux reports KiB, Darwin reports bytes, and Windows has no such field.
-func peakRSSBytes(state *os.ProcessState) int64 {
+func PeakRSSBytes(state *os.ProcessState) int64 {
 	if state == nil {
 		return 0
 	}

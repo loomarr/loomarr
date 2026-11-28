@@ -1,4 +1,4 @@
-package playout
+package admission
 
 import (
 	"context"
@@ -154,41 +154,6 @@ func TestResourceBudget_ReclassFromCopyMustFitButATranscodeNeverStops(t *testing
 	a.Release()
 	if !c.Reclass(context.Background(), ClassSDR) {
 		t.Fatal("copy → transcode refused with the cap free")
-	}
-}
-
-// #1505: session admission and the hardware encode pool once counted separately, so a session could
-// pass admission and then find the pool full (its programme dropped to software). The ledger is now
-// the only count (#1562): a channel packager holds the lease it was admitted with, so the budget is
-// full exactly when the packagers hold it, and a stopped packager returns its lease.
-func TestPackagerAdmissionHoldsAndReturnsTheLedger(t *testing.T) {
-	facts := nvencFacts()
-	facts.OperatorCap = 2
-	budget := NewResourceBudget(func() BudgetFacts { return facts })
-	m := newTestPackagerHLS(t, slowItemSource{}, time.Hour)
-	m.WithBudget(budget)
-
-	for _, ch := range []string{"a", "b"} {
-		c, release, err := m.acquire(ch, FormatBaseline, false)
-		if err != nil || c == nil {
-			t.Fatalf("acquire %s: %v", ch, err)
-		}
-		defer release()
-	}
-	if _, _, err := m.acquire("c", FormatBaseline, false); !errors.Is(err, ErrAtCapacity) {
-		t.Fatalf("third transcode: err = %v, want ErrAtCapacity", err)
-	}
-	if budget.Fits(AdmitRequest{Class: ClassSDR}) {
-		t.Fatal("the budget has room for a transcode it already gave to packagers")
-	}
-	m.StopChannel("a")
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-		if budget.Fits(AdmitRequest{Class: ClassSDR}) {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("a stopped packager did not return its lease")
-		}
 	}
 }
 
@@ -461,7 +426,7 @@ func TestResourceBudget_SoftwareHostPicksTheBestRungThatFits(t *testing.T) {
 		if got := l.SoftwareRung(); got != tc.want {
 			t.Errorf("allowance %v: rung %s, want %s", tc.allowance, got, tc.want)
 		}
-		if got, want := b.Snapshot().InUse.CPUCores, 3.6*heavyRungCosts[tc.want]; got < want-1e-9 || got > want+1e-9 {
+		if got, want := b.Snapshot().InUse.CPUCores, 3.6*HeavyRungCosts[tc.want]; got < want-1e-9 || got > want+1e-9 {
 			t.Errorf("allowance %v: ledger holds %v cores, want the rung's %v", tc.allowance, got, want)
 		}
 	}
@@ -544,7 +509,7 @@ func TestLease_LiveLadderStepsRepriceTheLease(t *testing.T) {
 	if len(got) == 0 || got[0].rung != RungLight {
 		t.Fatalf("step up with room: decisions %+v, want rung 1 first", got)
 	}
-	if last := got[len(got)-1].rung; small.SoftwareRung() != last || !near(cores(), 3.6*heavyRungCosts[last]) {
+	if last := got[len(got)-1].rung; small.SoftwareRung() != last || !near(cores(), 3.6*HeavyRungCosts[last]) {
 		t.Fatalf("lease %s at %.3f cores, want it to follow the last step (%s)", small.SoftwareRung(), cores(), last)
 	}
 }

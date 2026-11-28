@@ -726,12 +726,12 @@ func (b *builder) videotoolbox() error {
 // rounds a scope frame's SAR differently from a one-stage one).
 func (b *builder) software() error {
 	rung := b.out.SoftwareRung
-	b.p.PreInput = append(b.p.PreInput, rung.decoderOptions()...)
+	b.p.PreInput = append(b.p.PreInput, rungDecoderOptions(rung)...)
 	var f []string
 	if b.src.Interlaced {
 		f = append(f, "bwdif=mode=send_frame")
 	}
-	lines := rung.workingLines(heavySource(b.src))
+	lines := rungWorkingLines(rung, heavySource(b.src))
 	if b.tonemap {
 		if !b.host.CPUTonemap {
 			return fmt.Errorf("%w: HDR source and no tone-mapper", ErrRefused)
@@ -749,7 +749,7 @@ func (b *builder) software() error {
 	if b.tonemap {
 		f = append(f, b.cpuChain())
 	}
-	if fill := rung.tailFill(); fill != "" {
+	if fill := rungTailFill(rung); fill != "" {
 		f = append(f, fill)
 	}
 	f = append(f, "scale="+b.fit(), "format=yuv420p",
