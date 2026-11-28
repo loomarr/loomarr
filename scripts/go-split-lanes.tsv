@@ -5,3 +5,8 @@
 # Each job has its own weight row, `<package>@race-<k>/<n>` or `<package>@plain`.
 # Columns: lane name, package, number of race slices.
 scan internal/library/scan 2
+# store's race run takes 447-828s. Its slices are uneven in test time (the largest of three holds up
+# to 44% of it, and one of two held up to 56%), so it takes three. Its migration tests start from
+# the migration ladder (migration_ladder_test.go): replaying the history from an empty file costs
+# tens of seconds per test under -race (#4538).
+store internal/platform/store 3

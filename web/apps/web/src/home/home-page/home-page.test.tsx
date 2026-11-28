@@ -3,6 +3,7 @@ import {
   getGuideHighlightsMockHandler,
   getHouseholdViewingMockHandler,
   getJobsListMockHandler,
+  getMyChannelsMockHandler,
 } from "@loomarr/api/msw";
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -180,6 +181,42 @@ describe("HomePage — Needs you (#2785)", () => {
       "href",
       "/settings/system/tasks",
     );
+  });
+
+  it.each([
+    ["favourites", "c2"],
+    ["recent", "c1"],
+  ])("gives the wall the viewer's %s", async (group, expected) => {
+    stub({ me: MEMBER });
+    const channel = (channelId: string, number: number) => ({
+      airings: [],
+      channelId,
+      name: `Station ${number}`,
+      number,
+      pendingCount: 0,
+      status: "live" as const,
+    });
+    server.use(
+      getChannelGuideMockHandler({ channels: [channel("c1", 1), channel("c2", 2)], fromMs: 0, toMs: 0 }),
+      getMyChannelsMockHandler({
+        favourites: [{ addedAt: "2026-11-01T00:00:00Z", channelId: "c2" }],
+        recent: [{ channelId: "c1", tunedAt: "2026-11-01T00:00:00Z" }],
+      }),
+    );
+    localStorage.setItem("loomarr.channels.group", group);
+    try {
+      renderAt("/dashboard");
+      const wall = await screen.findByRole("region", { name: "On now" });
+      await waitFor(() => {
+        const hrefs = within(wall)
+          .getAllByRole("link")
+          .map((link) => link.getAttribute("href"))
+          .filter((href) => href?.startsWith("/watch/"));
+        expect(hrefs).toEqual([`/watch/${expected}`]);
+      });
+    } finally {
+      localStorage.removeItem("loomarr.channels.group");
+    }
   });
 
   it("hides the line when nothing needs the admin", async () => {

@@ -64,6 +64,11 @@ const HomePage = () => {
   const arrivals = titlesApi.useListTitles({ since }, { query: { enabled: hasLife } });
   const allChannels = channelsApi.useListChannels({ query: { enabled: hasLife } });
   const needs = useNeedsYou(isAdmin && hasLife);
+  // The viewer's favourites and recents, the read the Watch route makes, so each warms the other.
+  // A failed read counts as empty lists; one still on its way is left undefined.
+  const mine = channelsApi.useMyChannels({ query: { retry: false, enabled: hasLife } });
+  const mineBody = unwrap(mine.data);
+  const mineRead = Boolean(mineBody) || mine.isError;
 
   return (
     <Stack height="100%">
@@ -85,6 +90,12 @@ const HomePage = () => {
               layout={layout}
               needs={needs}
               nowMs={nowMs}
+              {...(mineRead
+                ? {
+                    favouriteIds: mineBody?.favourites?.map((f) => f.channelId) ?? [],
+                    recentIds: mineBody?.recent?.map((r) => r.channelId) ?? [],
+                  }
+                : {})}
               {...(isAdmin && viewingBody?.scope === "household"
                 ? { viewers: viewingBody.viewers ?? [] }
                 : {})}

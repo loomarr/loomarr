@@ -13,6 +13,8 @@ interface WallTileProps {
   dim?: boolean;
   /** The channel the viewer tuned last: a ring and a pill ("You were here", "Last" when compact). */
   last?: boolean;
+  /** Web only: draw the amber ring while the keyboard is on the tile, and none for a pointer. */
+  focusRing?: boolean;
   /** Who is watching this channel now, by name (an admin's view only, #2785): a pill in the top-right corner. The last-tuned tile shows its own pill instead. */
   watchers?: string[];
   /** The channel number as the guide and player print it, unpadded ("7"). */

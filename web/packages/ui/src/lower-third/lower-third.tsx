@@ -47,6 +47,8 @@ interface LowerThirdProps {
   /** An upright phone's Pause, or Play while paused. */
   onTogglePause?: () => void;
   state: LowerThirdState;
+  /** How many lines an upright phone's title may take: one over the picture, two under the Guide. */
+  portraitTitleLines?: 1 | 2;
 }
 
 // The numeral and title roles per device (frontend-design §2.2 and §9.2).
@@ -86,6 +88,7 @@ const LowerThird = ({
   onGoLiveFocus,
   onMore,
   onTogglePause,
+  portraitTitleLines = 1,
   ownInk = true,
   state,
 }: LowerThirdProps) => {
@@ -187,7 +190,7 @@ const LowerThird = ({
         <Box aria-hidden>
           <Text
             density={TYPE[device].density}
-            numberOfLines={portrait ? 1 : 2}
+            numberOfLines={portrait ? portraitTitleLines : 2}
             testID="lower-third-title"
             textRole={TYPE[device].title}
             tone="primary"
