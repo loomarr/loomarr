@@ -37,7 +37,7 @@ import (
 // validates it" — an SVG carrying <script> gets stored and served from Loomarr's own origin by
 // the PUBLIC serve half. Deleting the sniff is a one-line change that no other test notices.
 
-func newIconUploadServer(t *testing.T) (*httptest.Server, records.Store, *fakeImageService) {
+func newIconUploadServer(t *testing.T) (*httptest.Server, records.Combined, *fakeImageService) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/iconupload.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -199,7 +199,7 @@ func TestUploadChannelIcon_ConcurrentChannelEditIsPreserved(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wrapped := &staleOnceChannelStore{Store: base}
+	wrapped := &staleOnceChannelStore{Combined: base}
 	wrapped.before = func(ctx context.Context, _ channelstore.Channel) error {
 		winner, err := base.GetChannel(ctx, "ch-1")
 		if err != nil {
@@ -258,7 +258,7 @@ func TestUploadChannelIcon_ConcurrentChannelDeleteReturnsNotFound(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	wrapped := &staleOnceChannelStore{Store: base}
+	wrapped := &staleOnceChannelStore{Combined: base}
 	wrapped.before = func(ctx context.Context, _ channelstore.Channel) error {
 		current, err := base.GetChannel(ctx, "ch-1")
 		if err != nil {

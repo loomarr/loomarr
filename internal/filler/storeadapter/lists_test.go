@@ -14,7 +14,7 @@ import (
 )
 
 // catalogStore holds one playable, one held, one removed and one composite clip.
-func catalogStore(t *testing.T) records.Store {
+func catalogStore(t *testing.T) records.Combined {
 	t.Helper()
 	st := testkit.MigratedSQLiteStore(t)
 	for _, name := range []string{"ready", "held", "removed", "reel"} {

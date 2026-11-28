@@ -104,7 +104,7 @@ func (s growthSpend) SettleReview(ctx context.Context, id string, cost llm.Attri
 // is not the live, swappable selection (a test override), and the review is not registered. With no
 // model selected, each run asks nothing, and the fill lets unclear fits join a short channel by
 // itself (decision 8).
-func growthReview(st records.Store, provider llm.Provider, reconciler edit.Reconciler, busy func() bool, set settings.Reader, log *slog.Logger) (*growth.Review, bool) {
+func growthReview(st records.Combined, provider llm.Provider, reconciler edit.Reconciler, busy func() bool, set settings.Reader, log *slog.Logger) (*growth.Review, bool) {
 	sw, ok := provider.(*llm.Swappable)
 	if !ok {
 		return nil, false

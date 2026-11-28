@@ -293,9 +293,15 @@ type FillerSourceStore interface {
 	ChangeFillerSource(ctx context.Context, id string, change FillerSourceChange) error
 }
 
-// Store is the core store extended with the filler store: the one value the composition root
-// opens and hands to the app, the API and the filler runtime. Callers keep calling one value;
-// which half owns a method is this package's business.
+// Combined is the core store beside the filler store, as one value: what Open returns, for the
+// holders that reach both (app.Build, the API, the seeders, testkit). Everything else takes Store
+// or a narrower role.
+type Combined interface {
+	store.Store
+	Store
+}
+
+// Store is the filler store, with the core roles the filler runtime also reaches.
 type Store interface {
 	store.Store
 	FillerInferenceStore
@@ -326,7 +332,7 @@ type sqlStore struct {
 	core store.Store
 }
 
-// extended is Store: the core store's methods promoted, the filler half's methods beside them.
+// extended is Combined: the core store's methods promoted, the filler half's methods beside them.
 type extended struct {
 	store.Store
 	*sqlStore
@@ -334,14 +340,14 @@ type extended struct {
 
 func (e extended) Core() store.Store { return e.Store }
 
-// Extend builds the filler store over core's handle and returns the two as one Store. An
+// Extend builds the filler store over core's handle and returns the two as one value. An
 // already-extended store is returned as it is, and no store extends to none: app.Build without a
 // database still serves readiness.
-func Extend(core store.Store) Store {
+func Extend(core store.Store) Combined {
 	if core == nil {
 		return nil
 	}
-	if s, ok := core.(Store); ok {
+	if s, ok := core.(Combined); ok {
 		return s
 	}
 	h := store.HandleOf(core)
@@ -349,7 +355,7 @@ func Extend(core store.Store) Store {
 }
 
 // Open opens the core store (store.Open) and extends it.
-func Open(ctx context.Context, databaseURL string, autoMigrate bool) (Store, error) {
+func Open(ctx context.Context, databaseURL string, autoMigrate bool) (Combined, error) {
 	core, err := store.Open(ctx, databaseURL, autoMigrate)
 	if err != nil {
 		return nil, err

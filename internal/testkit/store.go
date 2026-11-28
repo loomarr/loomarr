@@ -251,7 +251,7 @@ func migrateTemplate() (string, error) {
 //
 // Every call still gets an independent on-disk database: the template is only
 // ever read from, and each test copies it into a fresh file it alone owns.
-func MigratedSQLiteStore(t testing.TB) records.Store {
+func MigratedSQLiteStore(t testing.TB) records.Combined {
 	t.Helper()
 
 	st, err := records.Open(context.Background(), MigratedSQLiteDSN(t), false)

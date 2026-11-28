@@ -29,7 +29,7 @@ import (
 type httpBuild struct {
 	rootCtx     context.Context
 	owner       *generationLifecycle
-	store       records.Store
+	store       records.Combined
 	log         *slog.Logger
 	overrides   Overrides
 	foundation  foundationBuild
@@ -247,7 +247,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 // the recorder that writes it to the watch history (#3010) until the generation ends. Each row's programme is
 // the title the guide says is airing; a gap between programmes has none. changed runs when a viewing
 // starts or ends; the recorder's reads are what notice an ended one.
-func startWatchHistory(owner *generationLifecycle, st records.Store, guide guideapi.GuideReader, changed func(), log *slog.Logger) *viewing.Tracker {
+func startWatchHistory(owner *generationLifecycle, st records.Combined, guide guideapi.GuideReader, changed func(), log *slog.Logger) *viewing.Tracker {
 	tracker := viewing.New()
 	tracker.OnChange = changed
 	var programmes viewing.Programmes

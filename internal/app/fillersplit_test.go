@@ -123,7 +123,7 @@ const (
 	compPath = "a3/f9/" + compHash + ".mp4"
 )
 
-func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerServiceAdapter, records.Store) {
+func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerServiceAdapter, records.Combined) {
 	t.Helper()
 	st := testkit.MigratedSQLiteStore(t)
 	// A compilation to split.
@@ -220,7 +220,7 @@ func TestSplit_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 }
 
 type markPipelineFiledFailureStore struct {
-	records.Store
+	records.Combined
 	calls int
 }
 
@@ -307,7 +307,7 @@ func TestConfirmSplit_CannotFailAfterTheReviewedGenerationCommits(t *testing.T) 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	failing := &markPipelineFiledFailureStore{Store: st}
+	failing := &markPipelineFiledFailureStore{Combined: st}
 	a.splitClips = storeadapter.NewSplit(failing, nil)
 
 	if err := a.ConfirmSplit(ctx, proposal.ID, proposal.Segments); err != nil {
@@ -668,7 +668,7 @@ func TestConfirmSplit_DurableClaimAllowsOnlyOnePublisher(t *testing.T) {
 // defect was never "the column says review" — it was "nothing claims this row, ever", and a test
 // that reads the field it just wrote passes against an un-park that leaves `next_run` in the
 // future, which is the same dead end wearing a different value.
-func parkReel(t *testing.T, st records.Store) func() bool {
+func parkReel(t *testing.T, st records.Combined) func() bool {
 	t.Helper()
 	ctx := context.Background()
 	if err := st.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{

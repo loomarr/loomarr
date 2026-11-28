@@ -60,7 +60,7 @@ type suggestionBuild struct {
 
 func buildSuggestions(
 	rootCtx context.Context,
-	st records.Store,
+	st records.Combined,
 	set resolved,
 	overrides Overrides,
 	eventBus *events.Bus,

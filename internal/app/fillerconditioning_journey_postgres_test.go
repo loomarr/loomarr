@@ -10,5 +10,5 @@ import (
 )
 
 func TestFillerConditioningJourney_RestartDistinguishesPreAndPostRekeyPublicationPostgres(t *testing.T) {
-	runFillerConditioningRestartJourney(t, func(t *testing.T) records.Store { return testkit.PostgresStore(t) })
+	runFillerConditioningRestartJourney(t, func(t *testing.T) records.Combined { return testkit.PostgresStore(t) })
 }

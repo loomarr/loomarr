@@ -20,14 +20,14 @@ import (
 type apiHarness struct {
 	t      *testing.T
 	Server *httptest.Server
-	Store  records.Store
+	Store  records.Combined
 }
 
 // apiHarnessDefaults is the invariant input available to focused route-family
 // harnesses. It intentionally does not expose api.Options: each family still
 // names only the production dependency and behavior it varies.
 type apiHarnessDefaults struct {
-	Store records.Store
+	Store records.Combined
 	Auth  httpcore.Authorizer
 	Log   *slog.Logger
 }

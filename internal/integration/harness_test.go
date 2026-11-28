@@ -30,7 +30,7 @@ import (
 type harness struct {
 	t          *testing.T
 	srv        *httptest.Server
-	store      records.Store
+	store      records.Combined
 	ms         *testkit.MediaServer
 	seerr      *testkit.Seerr
 	tmdb       *testkit.TMDB

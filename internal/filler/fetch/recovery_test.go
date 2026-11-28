@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-func openRecoveryStore(t *testing.T) records.Store {
+func openRecoveryStore(t *testing.T) records.Combined {
 	t.Helper()
 	db, err := records.Open(t.Context(), testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
@@ -23,7 +23,7 @@ func openRecoveryStore(t *testing.T) records.Store {
 	return db
 }
 
-func seedRecoveryArtifact(t *testing.T, db records.Store, artifact acquisition.Artifact) {
+func seedRecoveryArtifact(t *testing.T, db records.Combined, artifact acquisition.Artifact) {
 	t.Helper()
 	testkit.SaveFillerSources(t, db, artifact.SourceID)
 	if err := db.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{

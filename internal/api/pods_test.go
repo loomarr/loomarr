@@ -130,7 +130,7 @@ func (f *fakePods) Pool(context.Context) (pod.PoolReport, error) {
 	return f.pool, f.err
 }
 
-func newPodsServer(t *testing.T) (*httptest.Server, records.Store, *fakePods) {
+func newPodsServer(t *testing.T) (*httptest.Server, records.Combined, *fakePods) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/p.db")
 	t.Cleanup(func() { _ = st.Close() })
