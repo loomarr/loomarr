@@ -11,10 +11,10 @@ const tagBefore = (markup: string, text: string): string => {
   return tags.at(-1)?.[0] ?? "";
 };
 
-/** The declarations, joined with `;`, that the atomic classes among `names` have in `css`. */
+/** The declarations, joined with `;`, that the classes in `names` have in `css`. */
 const declarationsFor = (css: string, names: Iterable<string>): string =>
   [...names]
-    .filter((name) => name.startsWith("_"))
+    .filter(Boolean)
     .flatMap((name) =>
       [...css.matchAll(new RegExp(`\\.${escapeRegExp(name)}(?![\\w-])[^{}]*\\{([^}]*)\\}`, "g"))].map(
         (match) => match[1] ?? "",
@@ -22,7 +22,7 @@ const declarationsFor = (css: string, names: Iterable<string>): string =>
     )
     .join(";");
 
-/** Every declaration an opening tag's atomic classes carry in the markup's own stylesheet. */
+/** Every declaration an opening tag's classes (atomic, `is_*`, `font_*`) carry in the markup. */
 const declarationsOf = (markup: string, tag: string): string =>
   declarationsFor(markup, (/class="([^"]*)"/.exec(tag)?.[1] ?? "").split(/\s+/));
 
@@ -58,7 +58,10 @@ const documentCss = (): string => {
 
 /** Declarations of a live DOM element's atomic classes, read from the document's stylesheets. */
 const declarationsOfElement = (node: object): string =>
-  declarationsFor(documentCss(), (node as LiveElement).classList);
+  declarationsFor(
+    documentCss(),
+    [...(node as LiveElement).classList].filter((name) => name.startsWith("_")),
+  );
 
 /** Declarations of a live DOM element and every element inside it. */
 const declarationsOfTree = (node: object): string => {

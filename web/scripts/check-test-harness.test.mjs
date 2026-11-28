@@ -10,8 +10,9 @@ test("counts createRoot calls, not mentions", () => {
     const a: unknown = createRoot(document.body);
     const b = () => createRoot(<div />);
     const c = "createRoot(";
+    const d = ReactDOM.createRoot(document.body);
   `;
-  assert.equal(countRoots(source), 2);
+  assert.equal(countRoots(source), 3);
 });
 
 test("fails on a rise or a new file, passes on a fall", () => {

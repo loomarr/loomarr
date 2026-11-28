@@ -33,7 +33,9 @@ const countRoots = (source, { jsx = true } = {}) => {
   const visit = (node) => {
     if (Array.isArray(node)) return node.forEach(visit);
     if (!node || typeof node.type !== "string") return;
-    if (node.type === "CallExpression" && node.callee.name === "createRoot") count += 1;
+    // `createRoot(...)` and `ReactDOM.createRoot(...)`.
+    if (node.type === "CallExpression" && (node.callee.property ?? node.callee).name === "createRoot")
+      count += 1;
     Object.values(node).forEach(visit);
   };
   visit(ast.program);
