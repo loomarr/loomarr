@@ -13,8 +13,11 @@ const RECENT_LIMIT = 20;
 const byNumberThenId = (left: LineupChannel, right: LineupChannel) =>
   left.number - right.number || left.id.localeCompare(right.id);
 
-/** The newest recent that is not on screen and can be played: where Last channel goes. */
-const lastChannelId = (
+/**
+ * The newest of the server's recents that is not on screen and can be played: the shipped phone
+ * panel's Previous. The lineup's `lastChannel` is the channel this screen left.
+ */
+const newestOtherPlayableRecent = (
   currentId: string | undefined,
   recentIds: readonly string[],
   playableIds: readonly string[],
@@ -27,11 +30,12 @@ const createChannelLineup = <C extends LineupChannel>({
   channels,
   favouriteIds = [],
   lastTunedId,
+  leftIds = [],
   recentIds = [],
 }: ChannelLineupArgs<C>): ChannelLineup<C> => {
   const ordered = [...channels].sort(byNumberThenId);
   const byId = new Map(ordered.map((channel) => [channel.id, channel]));
-  const playableIds = ordered.filter((channel) => channel.playable).map((channel) => channel.id);
+  const [leftId] = leftIds;
 
   // The named channels that exist, in the order named, each once.
   const named = (ids: readonly string[]): C[] =>
@@ -102,8 +106,11 @@ const createChannelLineup = <C extends LineupChannel>({
       return undefined;
     },
     landing: playable(lastTunedId) ?? ordered.find((channel) => channel.playable),
-    lastChannel: (currentId) => playable(lastChannelId(currentId, recentIds, playableIds)),
+    lastChannel:
+      leftId === undefined
+        ? undefined
+        : { channel: byId.get(leftId), id: leftId, playable: byId.get(leftId)?.playable ?? false },
   };
 };
 
-export { createChannelLineup, lastChannelId, RECENT_LIMIT };
+export { createChannelLineup, newestOtherPlayableRecent, RECENT_LIMIT };

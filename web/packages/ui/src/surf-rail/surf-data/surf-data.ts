@@ -1,4 +1,4 @@
-import { createChannelLineup, lastChannelId } from "@loomarr/core/channel-lineup";
+import { createChannelLineup, newestOtherPlayableRecent } from "@loomarr/core/channel-lineup";
 import {
   formatGuideEpisode,
   formatGuideTime,
@@ -157,7 +157,7 @@ const restoreSurfSelection = (
 };
 
 export {
-  lastChannelId as surfPreviousChannel,
+  newestOtherPlayableRecent as surfPreviousChannel,
   restoreSurfSelection,
   surfChannelData,
   surfGroupsFromGuide,

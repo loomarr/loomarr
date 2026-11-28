@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createChannelLineup, type LineupChannel, lastChannelId, RECENT_LIMIT } from "../channel-lineup";
+import {
+  createChannelLineup,
+  type LineupChannel,
+  newestOtherPlayableRecent,
+  RECENT_LIMIT,
+} from "../channel-lineup";
 
 const channel = (number: number, over: Partial<LineupChannel> = {}): LineupChannel => ({
   id: `ch-${number}`,
@@ -191,10 +196,35 @@ describe("landing and last channel", () => {
     expect(lineup.neighbour(undefined, 1)).toBeUndefined();
   });
 
-  it("returns to the newest other playable recent", () => {
+  it("offers the newest other playable recent for the shipped phone panel", () => {
     const recentIds = ["ch-10", "ch-5", "ch-20"];
-    expect(createChannelLineup({ channels, recentIds }).lastChannel("ch-10")?.number).toBe(20);
-    expect(createChannelLineup({ channels }).lastChannel("ch-10")).toBeUndefined();
-    expect(lastChannelId("ch-20", recentIds, ["ch-10", "ch-20"])).toBe("ch-10");
+    expect(newestOtherPlayableRecent("ch-10", recentIds, ["ch-10", "ch-20"])).toBe("ch-20");
+    expect(newestOtherPlayableRecent("ch-10", ["ch-10"], ["ch-10"])).toBeUndefined();
+  });
+});
+
+describe("last channel", () => {
+  const channels = [channel(5, { playable: false }), channel(10), channel(20)];
+  const lastAfter = (leftIds: readonly string[]) => createChannelLineup({ channels, leftIds }).lastChannel;
+
+  it("is the channel just left", () => {
+    const last = lastAfter(["ch-20", "ch-10"]);
+    expect(last).toMatchObject({ id: "ch-20", playable: true });
+    expect(last?.channel?.number).toBe(20);
+  });
+
+  it("stays the channel just left when it cannot be played, never an older one", () => {
+    expect(lastAfter(["ch-5", "ch-10"])).toMatchObject({ id: "ch-5", playable: false });
+    expect(lastAfter(["gone", "ch-10"])).toEqual({ channel: undefined, id: "gone", playable: false });
+  });
+
+  it("is absent when no channel has been left, whatever the server's recents say", () => {
+    expect(createChannelLineup({ channels, recentIds: ["ch-10", "ch-20"] }).lastChannel).toBeUndefined();
+  });
+
+  it("is the channel on screen when that is the one just left", () => {
+    const lineup = createChannelLineup({ channels, lastTunedId: "ch-10", leftIds: ["ch-10", "ch-20"] });
+    expect(lineup.landing?.id).toBe("ch-10");
+    expect(lineup.lastChannel).toMatchObject({ id: "ch-10", playable: true });
   });
 });

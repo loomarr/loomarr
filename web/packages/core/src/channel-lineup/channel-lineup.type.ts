@@ -36,6 +36,20 @@ interface ChannelLineupArgs<C extends LineupChannel> {
   recentIds?: readonly string[] | undefined;
   /** The channel this person last tuned, from any device. */
   lastTunedId?: string | undefined;
+  /**
+   * The channels this screen has left, newest first. Not `recentIds`: the server's list also holds
+   * the channel on screen.
+   */
+  leftIds?: readonly string[] | undefined;
+}
+
+/** The channel just left. */
+interface LineupLastChannel<C extends LineupChannel> {
+  id: string;
+  /** Absent when the lineup does not list it. */
+  channel: C | undefined;
+  /** False means Last channel is unavailable: acting on it does nothing. */
+  playable: boolean;
 }
 
 interface ChannelLineup<C extends LineupChannel> {
@@ -56,8 +70,19 @@ interface ChannelLineup<C extends LineupChannel> {
   neighbour: (currentId: string | undefined, direction: -1 | 1, kind?: LineupGroupKind) => C | undefined;
   /** The last tuned channel, else the lowest-numbered playable one. */
   landing: C | undefined;
-  /** The channel the Last channel action returns to. */
-  lastChannel: (currentId: string | undefined) => C | undefined;
+  /**
+   * Where the Last channel action goes: the channel just left, even when it cannot be played now,
+   * and never an older one in its place. Absent when none has been left.
+   */
+  lastChannel: LineupLastChannel<C> | undefined;
 }
 
-export type { ChannelLineup, ChannelLineupArgs, LineupChannel, LineupDecade, LineupGroup, LineupGroupKind };
+export type {
+  ChannelLineup,
+  ChannelLineupArgs,
+  LineupChannel,
+  LineupDecade,
+  LineupGroup,
+  LineupGroupKind,
+  LineupLastChannel,
+};

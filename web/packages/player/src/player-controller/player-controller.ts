@@ -28,8 +28,9 @@ const sameLivePlayback = (left: LivePlaybackState | undefined, right: LivePlayba
   left.noticeRevision === right.noticeRevision &&
   left.viewerTimeMs === right.viewerTimeMs;
 
-const lineupOf = (channels: readonly PlayerChannel[]) =>
+const lineupOf = (channels: readonly PlayerChannel[], leftIds: readonly string[] = []) =>
   createChannelLineup({
+    leftIds,
     channels: channels.map((channel) => ({
       channel,
       id: channel.id,
@@ -240,7 +241,7 @@ const createPlayerController = ({
         noticeRevision: 0,
         viewerTimeMs: tunedAt,
       },
-      previousChannelId: recentChannelIds[0],
+      previousChannelId: lineupOf(snapshot.catalog, recentChannelIds).lastChannel?.id,
       reconnecting: recovering ? { attempt: consecutiveFailures, maxAttempts: backoffMs.length } : undefined,
       recentChannelIds,
       status: "tuning",
@@ -385,8 +386,9 @@ const createPlayerController = ({
       await transport.play();
     },
     previous: async () => {
-      const channel = snapshot.catalog.find(({ id }) => id === snapshot.previousChannelId);
-      if (channel) await tune(channel, "previous");
+      const leftIds = snapshot.previousChannelId ? [snapshot.previousChannelId] : [];
+      const last = lineupOf(snapshot.catalog, leftIds).lastChannel;
+      if (last?.playable && last.channel) await tune(last.channel.channel, "previous");
     },
     reconcile: async (channels) => {
       if (disposed) return;
