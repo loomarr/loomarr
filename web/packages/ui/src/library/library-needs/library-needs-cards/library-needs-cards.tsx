@@ -1,5 +1,5 @@
 import { Action, Surface, Text, useWindowWidth } from "@loomarr/design-system";
-import type { ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 
 import { Line } from "../../library-poster";
 import type { LibraryNeedsCardsProps } from "../library-needs.type";
@@ -15,17 +15,20 @@ import { waitingTitles } from "../waiting-titles";
 const Group = ({
   label,
   heading,
+  level,
   action,
   children,
 }: {
   label: string;
   heading: string;
+  /** h2 under the page's own heading, h3 under "Needs you (n)". */
+  level: "h2" | "h3";
   action?: ReactNode;
   children: ReactNode;
 }) => (
   <Surface aria-label={label} backgroundColor="transparent" borderWidth={0} gap="control" role="region">
     <Line justifyContent="space-between">
-      <Text as="h3" textRole="title">
+      <Text as={level} textRole="title">
         {heading}
       </Text>
       {action}
@@ -48,7 +51,10 @@ const LibraryNeedsCards = ({
   onChooseOrder,
   onSearch,
   onOpenTitle,
+  onNoneLeft,
 }: LibraryNeedsCardsProps) => {
+  const level = hideHeading ? "h2" : "h3";
+  const firstActions = useRef(new Map<string, { focus?: () => void }>());
   const { list: open, phases, failed, answer, done } = useAnswers(needs, restored);
   const wide = useWindowWidth() >= 640;
   const shows = useOrderAnswers(orders, onChooseOrder);
@@ -64,10 +70,24 @@ const LibraryNeedsCards = ({
   );
   const folders = [...new Set(open.map((need) => need.folder ?? ""))];
 
+  // An answered card loses its buttons, so focus moves on first: to the next card still asking,
+  // else the one before it.
+  const moveFocusPast = (ids: string[]) => {
+    const order = folders.flatMap((folder) => open.filter((need) => (need.folder ?? "") === folder));
+    const from = order.findIndex((need) => need.id === ids[0]);
+    const stays = (need: { id: string }) => !ids.includes(need.id) && !phases[need.id];
+    const next = order.slice(from + 1).find(stays) ?? order.slice(0, from).reverse().find(stays);
+    const target = next && firstActions.current.get(next.id);
+    if (target) target.focus?.();
+    else onNoneLeft?.();
+  };
+
   // Exactly the cards still asking under the heading, in one save.
   const ignoreFolder = (folder: string, ids: string[]) => {
     const save = onIgnoreFolder?.(folder, ids);
-    if (save) for (const id of ids) answer(id, "ignored", save);
+    if (!save) return;
+    moveFocusPast(ids);
+    for (const id of ids) answer(id, "ignored", save);
   };
 
   return (
@@ -88,8 +108,22 @@ const LibraryNeedsCards = ({
             key={`${need.id}:${restored?.[need.id] ?? 0}`}
             need={need}
             onDone={() => done(need.id)}
-            onIgnore={() => answer(need.id, "ignored", onIgnore(need.id))}
-            onKeep={onKeep ? () => answer(need.id, "added", onKeep(need.id)) : undefined}
+            onFirstAction={(node) => {
+              if (node) firstActions.current.set(need.id, node as { focus?: () => void });
+              else firstActions.current.delete(need.id);
+            }}
+            onIgnore={() => {
+              moveFocusPast([need.id]);
+              answer(need.id, "ignored", onIgnore(need.id));
+            }}
+            onKeep={
+              onKeep
+                ? () => {
+                    moveFocusPast([need.id]);
+                    answer(need.id, "added", onKeep(need.id));
+                  }
+                : undefined
+            }
             onOpenTitle={onOpenTitle}
             problem={problemOf.get(need.id)}
             onPick={(c) => answer(need.id, "added", onLink(need.id, c.externalId))}
@@ -119,13 +153,14 @@ const LibraryNeedsCards = ({
             heading={folder}
             key={folder}
             label={`Folder ${folder}`}
+            level={level}
           >
             {list}
           </Group>
         );
       })}
       {shows.list.length > 0 ? (
-        <Group heading="Episode order" label="Episode order questions">
+        <Group heading="Episode order" label="Episode order questions" level={level}>
           {shows.list.map((need, i) => (
             <OrderCard
               done={shows.doneOf(need.id)}
@@ -142,7 +177,7 @@ const LibraryNeedsCards = ({
         </Group>
       ) : null}
       {alone.length > 0 ? (
-        <Group heading="Needs a look" label="Needs a look">
+        <Group heading="Needs a look" label="Needs a look" level={level}>
           {alone.map((entry) => (
             <ProblemCard entry={entry} key={entry.id} onOpenTitle={onOpenTitle} />
           ))}

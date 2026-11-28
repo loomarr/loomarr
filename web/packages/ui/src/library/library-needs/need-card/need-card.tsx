@@ -35,8 +35,11 @@ const NeedCard = ({
   onSearch,
   problem,
   onOpenTitle,
+  onFirstAction,
 }: {
   need: LibraryNeed;
+  /** Hands over the card's first button, where focus goes when the card above it leaves. */
+  onFirstAction?: (node: unknown) => void;
   /** What else is wrong with this title, listed on the same card. */
   problem?: ProblemEntry;
   onOpenTitle: (id: string) => void;
@@ -70,6 +73,8 @@ const NeedCard = ({
     setReturning(true);
   };
   const [first, ...rest] = need.files;
+  // Every card's buttons look alike, so each one's accessible name says which file it answers.
+  const file = first ? fileName(first) : needName(need);
   const card = (
     <Surface gap="control" padding="section">
       <Line alignItems="flex-start" columnGap="section" flexWrap={wide ? "nowrap" : "wrap"} rowGap="control">
@@ -107,32 +112,64 @@ const NeedCard = ({
                 {best ? (
                   <>
                     <Action
+                      accessibilityLabel={`Yes, that's it: ${file}`}
                       density={density}
                       onPress={onYes}
+                      ref={onFirstAction}
                       tone={primary ? "primary" : undefined}
                       variant={primary ? undefined : "outline"}
                     >
                       Yes, that's it
                     </Action>
-                    <Action density={density} onPress={() => setOther(!other)} ref={opener} variant="outline">
+                    <Action
+                      accessibilityLabel={`Pick a different title: ${file}`}
+                      density={density}
+                      onPress={() => setOther(!other)}
+                      ref={opener}
+                      variant="outline"
+                    >
                       Pick a different title
                     </Action>
                   </>
                 ) : (
-                  <Action density={density} onPress={() => setOther(!other)} ref={opener} variant="outline">
+                  <Action
+                    accessibilityLabel={`Find it: ${file}`}
+                    density={density}
+                    onPress={() => setOther(!other)}
+                    ref={(node) => {
+                      opener.current = node;
+                      onFirstAction?.(node);
+                    }}
+                    variant="outline"
+                  >
                     Find it
                   </Action>
                 )}
                 {onKeep && !best && need.others.length === 0 ? (
-                  <Action density={density} onPress={onKeep} variant="ghost">
+                  <Action
+                    accessibilityLabel={`It's ours, keep it as is: ${file}`}
+                    density={density}
+                    onPress={onKeep}
+                    variant="ghost"
+                  >
                     It's ours, keep it as is
                   </Action>
                 ) : null}
-                <Action density={density} onPress={onIgnore} variant="ghost">
+                <Action
+                  accessibilityLabel={`Ignore this: ${file}`}
+                  density={density}
+                  onPress={onIgnore}
+                  variant="ghost"
+                >
                   Ignore this
                 </Action>
                 {problem ? (
-                  <Action density={density} onPress={() => onOpenTitle(need.id)} variant="ghost">
+                  <Action
+                    accessibilityLabel={`See why: ${file}`}
+                    density={density}
+                    onPress={() => onOpenTitle(need.id)}
+                    variant="ghost"
+                  >
                     See why
                   </Action>
                 ) : null}

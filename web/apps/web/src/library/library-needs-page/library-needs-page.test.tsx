@@ -109,13 +109,16 @@ describe("LibraryNeedsPage", () => {
 
   it("undoes a single ignore and shows the card again", async () => {
     renderPage();
-    const [first] = await screen.findAllByRole("button", { name: "Ignore this" });
+    const [first] = await screen.findAllByRole("button", { name: /^Ignore this: / });
     if (!first) throw new Error("no card");
     await userEvent.click(first);
+    // Focus moves to the next card's first action rather than dropping to the page.
+    expect(document.activeElement).toHaveAccessibleName(/: (?!one\.mkv).+/);
+    expect(document.activeElement).toHaveAttribute("role", "button");
     await pressUndo();
     expect(vi.mocked(toast).mock.calls[0]?.[0]).toBe("Ignored one.mkv");
     await waitFor(() => expect(sent.restore).toEqual([{ ids: ["one"] }]));
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "Ignore this" })).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /^Ignore this: / })).toHaveLength(2));
   });
 
   it("keeps a title with no guess and undoes it once, however often Undo is pressed", async () => {
@@ -134,7 +137,7 @@ describe("LibraryNeedsPage", () => {
       }),
     );
     renderPage();
-    const [first] = await screen.findAllByRole("button", { name: "It's ours, keep it as is" });
+    const [first] = await screen.findAllByRole("button", { name: /^It's ours, keep it as is: / });
     if (!first) throw new Error("no card");
     await userEvent.click(first);
     await pressUndo();
@@ -147,7 +150,7 @@ describe("LibraryNeedsPage", () => {
     });
     await waitFor(() => expect(undone).toEqual(["one"]));
     await waitFor(() =>
-      expect(screen.getAllByRole("button", { name: "It's ours, keep it as is" })).toHaveLength(2),
+      expect(screen.getAllByRole("button", { name: /^It's ours, keep it as is: / })).toHaveLength(2),
     );
   });
 
@@ -159,7 +162,7 @@ describe("LibraryNeedsPage", () => {
       ),
     );
     renderPage();
-    const [first] = await screen.findAllByRole("button", { name: "It's ours, keep it as is" });
+    const [first] = await screen.findAllByRole("button", { name: /^It's ours, keep it as is: / });
     if (!first) throw new Error("no card");
     await userEvent.click(first);
     await pressUndo();
@@ -194,8 +197,8 @@ describe("LibraryNeedsPage", () => {
       ),
     );
     renderPage();
-    await screen.findByRole("button", { name: "Find it" });
-    expect(screen.queryByRole("button", { name: "It's ours, keep it as is" })).not.toBeInTheDocument();
+    await screen.findByRole("button", { name: /^Find it: / });
+    expect(screen.queryByRole("button", { name: /^It's ours, keep it as is: / })).not.toBeInTheDocument();
   });
 
   it("lists the ignored titles page by page and brings one back", async () => {
@@ -262,7 +265,7 @@ describe("LibraryNeedsPage", () => {
     );
     renderPage();
     expect(await screen.findByRole("tab", { name: /Waiting\s*1/ })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "See why" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^See why/ })).toHaveLength(1);
     expect(screen.queryByText("Needs a look")).not.toBeInTheDocument();
   });
 
@@ -279,13 +282,13 @@ describe("LibraryNeedsPage", () => {
 
   it("leaves other cards as they were when one is restored", async () => {
     renderPage();
-    const [first] = await screen.findAllByRole("button", { name: "Ignore this" });
-    const [, second] = screen.getAllByRole("button", { name: "Find it" });
+    const [first] = await screen.findAllByRole("button", { name: /^Ignore this: / });
+    const [, second] = screen.getAllByRole("button", { name: /^Find it: / });
     if (!first || !second) throw new Error("no cards");
     await userEvent.click(second);
     await userEvent.click(first);
     await pressUndo();
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "Ignore this" })).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /^Ignore this: / })).toHaveLength(2));
     expect(screen.getByLabelText("Search for the title")).toBeInTheDocument();
   });
 

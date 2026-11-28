@@ -43,39 +43,55 @@ const IgnoredList = ({
   onBringBack: (item: LibraryIgnoredDTO) => void;
   /** Absent once every ignored title is listed. */
   onMore?: () => void;
-}) => (
-  <Surface backgroundColor="transparent" borderWidth={0} gap="control">
-    <Text textRole="body" tone="secondary">
-      {items.length === 0
-        ? "Nothing is ignored."
-        : "Ignored files stay where they are. Bring one back and it waits here again."}
-    </Text>
-    {items.map((item) => (
-      <Surface gap="inline" key={item.id} padding="control">
-        <FileName name={item.name} strong />
-        <Text textRole="compact" tone="secondary">
-          {item.folder}
-        </Text>
+}) => {
+  const buttons = useRef(new Map<string, { focus?: () => void }>());
+  // The pressed row leaves once the server answers, so focus moves on first.
+  const bring = (index: number) => {
+    const next = items[index + 1] ?? items[index - 1];
+    const target = next && buttons.current.get(next.id);
+    if (target) target.focus?.();
+    else focusHeading();
+    const item = items[index];
+    if (item) onBringBack(item);
+  };
+  return (
+    <Surface backgroundColor="transparent" borderWidth={0} gap="control">
+      <Text textRole="body" tone="secondary">
+        {items.length === 0
+          ? "Nothing is ignored."
+          : "Ignored files stay where they are. Bring one back and it waits here again."}
+      </Text>
+      {items.map((item, index) => (
+        <Surface gap="inline" key={item.id} padding="control">
+          <FileName name={item.name} strong />
+          <Text textRole="compact" tone="secondary">
+            {item.folder}
+          </Text>
+          <div>
+            <Action
+              accessibilityLabel={`Bring back ${item.name}`}
+              onPress={() => bring(index)}
+              ref={(node) => {
+                if (node) buttons.current.set(item.id, node as unknown as { focus?: () => void });
+                else buttons.current.delete(item.id);
+              }}
+              variant="outline"
+            >
+              Bring back
+            </Action>
+          </div>
+        </Surface>
+      ))}
+      {onMore ? (
         <div>
-          <Action
-            accessibilityLabel={`Bring back ${item.name}`}
-            onPress={() => onBringBack(item)}
-            variant="outline"
-          >
-            Bring back
+          <Action onPress={onMore} variant="ghost">
+            Show more
           </Action>
         </div>
-      </Surface>
-    ))}
-    {onMore ? (
-      <div>
-        <Action onPress={onMore} variant="ghost">
-          Show more
-        </Action>
-      </div>
-    ) : null}
-  </Surface>
-);
+      ) : null}
+    </Surface>
+  );
+};
 
 /** The Waiting tab with nothing left to ask. */
 const AllCaughtUp = ({
@@ -108,6 +124,13 @@ const AllCaughtUp = ({
     </Stack>
   </Stack>
 );
+
+// With no card or row left to take focus, the page's heading takes it, so it stays in the page.
+const focusHeading = () => {
+  const heading = document.querySelector("h1");
+  heading?.setAttribute("tabindex", "-1");
+  heading?.focus();
+};
 
 /** The page's frame: the header, the way back and the two tabs. */
 const LibraryNeedsView = ({
@@ -273,6 +296,7 @@ const LibraryNeedsPage = () => {
           onIgnore={ignoreOne}
           onIgnoreFolder={ignoreFolder}
           onKeep={keepOne}
+          onNoneLeft={focusHeading}
           onLink={needs.answers.onLink}
           onOpenTitle={(id) => void navigate({ to: "/library/$id", params: { id } })}
           onSearch={needs.onSearch}
