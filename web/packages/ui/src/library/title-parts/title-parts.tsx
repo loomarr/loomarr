@@ -1,5 +1,15 @@
-import { Action, PressableRow, Surface, Text, useWindowWidth, VisuallyHidden } from "@loomarr/design-system";
-import type { ReactNode } from "react";
+import {
+  Action,
+  Icon,
+  icons,
+  PressableRow,
+  Surface,
+  Text,
+  useWindowWidth,
+  VisuallyHidden,
+} from "@loomarr/design-system";
+import type { ComponentRef, ReactNode, Ref } from "react";
+import { View } from "react-native";
 import { ChannelIdentity } from "../../identity";
 import { Line, Stack } from "../library-poster";
 import type {
@@ -79,7 +89,18 @@ const Facts = ({ facts }: { facts: readonly (ReactNode | false)[] }) => (
 // The backdrop with the title over its foot. The fade to the page keeps the title readable over any
 // picture. With no backdrop there is no band: the actions and the title block sit on the page at
 // their own height. `actions` sit over the top, each on its own solid surface.
-const Hero = ({ title, actions }: { title: LibraryTitleDetail; actions: ReactNode }) => {
+const Hero = ({
+  title,
+  actions,
+  headingRef,
+}: {
+  title: LibraryTitleDetail;
+  actions: ReactNode;
+  /** The heading's wrapper, which script can focus when the pressed control has gone. */
+  // Typed loosely here: Storybook's docgen follows a prop's types, and react-native's own source is
+  // Flow it can't parse. The heading's View takes it below.
+  headingRef?: Ref<unknown>;
+}) => {
   const { wide } = useTitleLayout();
   const pictured = Boolean(title.backdrop);
   return (
@@ -120,22 +141,24 @@ const Hero = ({ title, actions }: { title: LibraryTitleDetail; actions: ReactNod
         {actions}
       </Stack>
       <Stack gap="inline" padding={pictured ? "control" : 0} position="relative">
-        {title.logo ? (
-          <>
-            {/* The logo stands for the name on screen; the heading still says it. */}
-            <VisuallyHidden as="h1">
-              <Text textRole="display">{title.name}</Text>
-            </VisuallyHidden>
-            <Stack aria-hidden height={wide ? 96 : 64} maxWidth={wide ? 420 : 280} width="100%">
-              {title.logo}
-            </Stack>
-          </>
-        ) : (
-          // A name no one has fixed yet can be a file name with no spaces; it breaks mid-word.
-          <Text as="h1" style={{ overflowWrap: "anywhere" }} textRole="display">
-            {title.name}
-          </Text>
-        )}
+        <View ref={headingRef as Ref<ComponentRef<typeof View>>} tabIndex={-1}>
+          {title.logo ? (
+            <>
+              {/* The logo stands for the name on screen; the heading still says it. */}
+              <VisuallyHidden as="h1">
+                <Text textRole="display">{title.name}</Text>
+              </VisuallyHidden>
+              <Stack aria-hidden height={wide ? 96 : 64} maxWidth={wide ? 420 : 280} width="100%">
+                {title.logo}
+              </Stack>
+            </>
+          ) : (
+            // A name no one has fixed yet can be a file name with no spaces; it breaks mid-word.
+            <Text as="h1" style={{ overflowWrap: "anywhere" }} textRole="display">
+              {title.name}
+            </Text>
+          )}
+        </View>
         <Facts
           facts={[
             ...heroFacts(title).map((fact) => (
@@ -171,9 +194,14 @@ type ChannelRowData = LibraryTitleAiring | Pick<LibraryTitleAiring, "channel">;
 
 // One channel and when it shows the title. Where the app can name its player, the whole row is that
 // link, drawn as the design system's bordered row: the same hairline card, with its hover fill and
-// amber focus border.
+// amber focus border. A linked row ends in "Watch ›", so its name ends in Watch.
 const ChannelRow = ({ row, link }: { row: ChannelRowData; link: ReturnType<NonNullable<WatchLink>> }) => {
   const { channel } = row;
+  const when = "when" in row ? row.when : "Nothing scheduled soon";
+  // On air, a linked row says "On now" beside Watch rather than on a line of its own.
+  const onAir = Boolean(link) && when === "On now";
+  const episode = "when" in row ? row.episode : undefined;
+  const forecast = "when" in row && row.forecast;
   const content = (
     <>
       <ChannelIdentity
@@ -186,21 +214,23 @@ const ChannelRow = ({ row, link }: { row: ChannelRowData; link: ReturnType<NonNu
       />
       {"when" in row ? (
         <Stack>
-          <Text textRole="body">{row.when}</Text>
-          {row.episode ? (
-            <Text textRole="compact" tone="secondary">
-              {row.episode}
-            </Text>
-          ) : null}
-          {row.forecast ? (
-            <Text textRole="compact" tone="muted">
-              Expected time, it can still change
-            </Text>
-          ) : null}
+          {onAir ? null : <Text textRole="body">{when}</Text>}
+          <Stack>
+            {episode ? (
+              <Text textRole="compact" tone="secondary">
+                {episode}
+              </Text>
+            ) : null}
+            {forecast ? (
+              <Text textRole="compact" tone="muted">
+                Expected time, it can still change
+              </Text>
+            ) : null}
+          </Stack>
         </Stack>
       ) : (
         <Text textRole="compact" tone="muted">
-          Nothing scheduled soon
+          {when}
         </Text>
       )}
     </>
@@ -213,8 +243,18 @@ const ChannelRow = ({ row, link }: { row: ChannelRowData; link: ReturnType<NonNu
     );
   }
   return (
+    // The link is named by its own words, in the order they are drawn, ending in "Watch": a separate
+    // label would differ from what a speech-input user reads on screen (WCAG 2.5.3).
     <PressableRow bordered render={link}>
-      <Stack gap="inline">{content}</Stack>
+      <Line flexWrap="nowrap" gap="control">
+        <Stack flexGrow={1} flexShrink={1} gap="inline" minWidth={0}>
+          {content}
+        </Stack>
+        <Line flexShrink={0} flexWrap="nowrap" gap={4}>
+          <Text textRole="label">{onAir ? "On now · Watch" : "Watch"}</Text>
+          <Icon decorative glyph={icons.disclosure} size="compact" tone="muted" />
+        </Line>
+      </Line>
     </PressableRow>
   );
 };

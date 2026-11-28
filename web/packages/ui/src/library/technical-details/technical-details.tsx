@@ -2,6 +2,7 @@ import { Disclosure } from "@loomarr/design-system";
 import { useState } from "react";
 
 import { FileFacts, fileName, lengthPhrase, picturePhrase, Row, soundPhrase } from "../file-facts";
+import { fileState } from "../file-state";
 import { Stack } from "../library-poster";
 import type {
   LibraryTitleDetail,
@@ -41,12 +42,12 @@ const MATCH_WORDS: Record<LibraryTitleMatch["by"], (app?: string) => string> = {
   none: () => "Not recognised yet",
 };
 
-// A file is named for what it is to the title: an extra copy, one part of a movie split over
-// several files ("Part 1 of 2"), or the file.
+// A file is named for what it is to the title, in the Copies card's words, after its place in a
+// movie split over several files ("Part 1 of 2 · Plays").
 const fileLabel = (file: LibraryTitleFile, parts: number): string => {
-  if (file.state === "extra") return "Extra copy";
-  if (file.part && parts > 1) return `Part ${file.part} of ${parts}`;
-  return "File";
+  const { words } = fileState(file);
+  if (file.state !== "extra" && file.part && parts > 1) return `Part ${file.part} of ${parts} · ${words}`;
+  return words;
 };
 
 const TechnicalDetails = ({
@@ -60,7 +61,7 @@ const TechnicalDetails = ({
   const origin = originSentence(title.detailsFrom);
   const parts = title.files.filter((file) => file.part && file.state !== "extra").length;
   return (
-    <Disclosure expanded={open} label="Technical details" onExpandedChange={setOpen}>
+    <Disclosure density={density} expanded={open} label="Technical details" onExpandedChange={setOpen}>
       <Stack gap="control">
         {origin ? <Row label="Where details come from" value={origin} /> : null}
         <Row label="Title match" value={MATCH_WORDS[title.match.by](title.match.app)} />
