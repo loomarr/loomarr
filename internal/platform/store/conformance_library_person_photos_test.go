@@ -70,11 +70,11 @@ func testLibraryPersonPhotos(t *testing.T, newStore NewStoreFunc) {
 		SourceURL: "https://image.tmdb.org/t/p/w185/1.jpg", CreatedAt: at, UpdatedAt: at, LastUsedAt: at}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.PutImageRef(ctx, clipstore.ImageRef{ImageHash: hash, OwnerKind: librarystore.LibraryPersonImageOwner,
-		OwnerID: "tmdb:1", Role: "poster"}); err != nil {
+	if err := st.PutLibraryPersonPhoto(ctx, "tmdb:1", "poster", hash,
+		"https://image.tmdb.org/t/p/original/1.jpg"); err != nil {
 		t.Fatal(err)
 	}
-	// Adopted at w185, the lead is no longer due.
+	// Adopted for the URL held, the lead is no longer due.
 	if got := due("", 10); !slices.Equal(got, []string{"tmdb:4", "tmdb:5"}) {
 		t.Fatalf("due after adopting = %v", got)
 	}
@@ -84,6 +84,25 @@ func testLibraryPersonPhotos(t *testing.T, newStore NewStoreFunc) {
 	}
 	if detail.Credits[0].PhotoHash != hash || detail.Credits[0].Photo != "" || detail.Credits[1].PhotoHash != "" {
 		t.Fatalf("credits = %+v", detail.Credits[:2])
+	}
+	// Re-keyed to the bytes' hash, the ref keeps what it was adopted for, even where the person
+	// already holds those bytes for an earlier URL.
+	content := fmt.Sprintf("%064d", 2)
+	if err := st.PutImage(ctx, clipstore.Image{Hash: content, Origin: "remote", Role: "poster", Visibility: "member",
+		OriginFetchedAt: at, CreatedAt: at, UpdatedAt: at, LastUsedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutLibraryPersonPhoto(ctx, "tmdb:1", "poster", content, "https://image.example.org/old.jpg"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RepointImageRefs(ctx, hash, content); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SettleLibraryPersonPhotos(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := due("", 10); !slices.Equal(got, []string{"tmdb:4", "tmdb:5"}) {
+		t.Fatalf("due after the bytes landed = %v", got)
 	}
 
 	// A new photo is due again.

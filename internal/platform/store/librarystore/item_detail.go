@@ -157,7 +157,10 @@ func (s *Store) detailNames(ctx context.Context, q storedb.Querier, table, id st
 // catalog id, so PersonID names the same library_people row.
 func (s *Store) detailCredits(ctx context.Context, q storedb.Querier, id string) ([]LibraryCredit, error) {
 	rows, err := q.QueryContext(ctx, s.ph(`SELECT p.name, c.role, c.character_name, p.namespace, p.external_id,
-		COALESCE((SELECT MIN(r.image_hash) FROM library_person_images r WHERE r.person_id = p.id), '')
+		COALESCE((SELECT r.image_hash FROM library_person_images r JOIN images img ON img.hash = r.image_hash
+			WHERE r.person_id = p.id
+			ORDER BY CASE WHEN img.origin_fetched_at > 0 THEN 0 ELSE 1 END,
+				CASE WHEN r.source_url = p.photo THEN 0 ELSE 1 END, r.image_hash LIMIT 1), '')
 		FROM library_credits c
 		JOIN library_people p ON p.id = c.person_id WHERE c.item_id = ? ORDER BY c.position`), id)
 	if err != nil {

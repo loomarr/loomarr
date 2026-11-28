@@ -60,4 +60,32 @@ func TestLibraryCreditsCarryPhotos(t *testing.T) {
 	if strings.Contains(body, `"photo"`) {
 		t.Errorf("a credit with no photo has a photo field: %s", body)
 	}
+
+	// A person credited only on a title a member doesn't read: their photo reaches no member.
+	hidden := img
+	hidden.Hash = strings.Repeat("d4", 32)
+	imgs.records[hidden.Hash] = hidden
+	if err := h.Store.SaveLibraryItems(ctx, []librarystore.LibraryItem{{ID: unidentifiedMovie, Kind: "movie",
+		Name: "Charlie Folder Extras", Credits: []librarystore.LibraryCredit{{Name: "Hal Verity", Role: "director"}}}}, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Store.PutImage(ctx, clipstore.Image{Hash: hidden.Hash, Origin: string(hidden.Origin), Role: string(hidden.Role),
+		Visibility: "member", OriginFetchedAt: at, CreatedAt: at, UpdatedAt: at, LastUsedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Store.PutImageRef(ctx, clipstore.ImageRef{ImageHash: hidden.Hash, OwnerKind: librarystore.LibraryPersonImageOwner,
+		OwnerID: "name:Hal Verity", Role: "poster"}); err != nil {
+		t.Fatal(err)
+	}
+	if body := readBody(t, h.Do(http.MethodGet, "/v1/library/items/"+unidentifiedMovie, adminToken, "")); !strings.Contains(body, hidden.Hash) {
+		t.Fatalf("the admin's page has no photo to withhold: %s", body)
+	}
+	if res := h.Do(http.MethodGet, "/v1/library/items/"+unidentifiedMovie, memberToken, ""); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("member's read of a hidden title = %d, want 404", res.StatusCode)
+	}
+	for _, id := range []string{"90000001", "90000002", "90000011"} {
+		if body := readBody(t, h.Do(http.MethodGet, "/v1/library/items/"+id, memberToken, "")); strings.Contains(body, hidden.Hash) {
+			t.Errorf("member's %s page carries a hidden title's person: %s", id, body)
+		}
+	}
 }

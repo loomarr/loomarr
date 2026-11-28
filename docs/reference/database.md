@@ -1185,6 +1185,7 @@ The photo of a person the Library credits, shown in a title page's cast and crew
 | `person_id` | The person (a library_people id). | `TEXT` · key · → `library_people.id` |
 | `role` | What the image is for, poster. | `TEXT` · key |
 | `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
+| `source_url` | The person's photo URL the image was adopted for. | `TEXT` |
 
 ### image_derivatives
 

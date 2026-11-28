@@ -46,6 +46,7 @@ var scannedWhole = map[string]string{
 	"DELETE password_recoveries":       "bounded sweep: expired and settled recoveries",
 	"DELETE library_roots":             "bounded: one row per media folder",
 	"DELETE library_root_paths":        "bounded: one row per media folder a source reports",
+	"DELETE library_person_images":     "cleanup sweep: every few minutes, replaced cast photos are let go",
 	"INSERT library_root_paths":        "bounded: one row per media folder a source reports",
 
 	// Sweeps: retention and orphan passes run off the request path and read their table whole by

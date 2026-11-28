@@ -77,16 +77,19 @@ type ImageRef struct {
 // key to the owner, so deleting the owner deletes its refs and frees its images for the GC.
 type imageOwner struct {
 	kind, table, column string
+	// carried is one more column of the ref, "" for none, that moves with it when it is
+	// repointed. Where the owner already holds the new hash, the moving ref's value wins.
+	carried string
 }
 
 // imageOwners is every kind of thing an image can decorate (#2793).
 var imageOwners = []imageOwner{
-	{"clip", "clip_images", "clip_hash"},
-	{"filler_split_proposal", "filler_split_proposal_images", "proposal_id"},
-	{"channel", "channel_images", "channel_id"},
-	{"library_item", "library_item_images", "item_id"},
-	{"library_candidate", "library_candidate_images", "item_id"},
-	{"library_person", "library_person_images", "person_id"},
+	{kind: "clip", table: "clip_images", column: "clip_hash"},
+	{kind: "filler_split_proposal", table: "filler_split_proposal_images", column: "proposal_id"},
+	{kind: "channel", table: "channel_images", column: "channel_id"},
+	{kind: "library_item", table: "library_item_images", column: "item_id"},
+	{kind: "library_candidate", table: "library_candidate_images", column: "item_id"},
+	{kind: "library_person", table: "library_person_images", column: "person_id", carried: "source_url"},
 }
 
 // ImageOwnerKinds lists the owner kinds an image ref may name, in table order.
@@ -666,10 +669,14 @@ func (s *Store) RepointImageRefs(ctx context.Context, from, to string) error {
 	// (owner, role, image_hash). DO NOTHING makes the collision the no-op it should be — the ref
 	// already says what the update was trying to say.
 	for _, o := range imageOwners {
+		extra, onConflict := "", "DO NOTHING"
+		if o.carried != "" {
+			extra, onConflict = ", "+o.carried, "DO UPDATE SET "+o.carried+" = excluded."+o.carried
+		}
 		if _, err := s.h.ExecContext(ctx, s.h.Rebind(
-			`INSERT INTO `+o.table+` (`+o.column+`, role, image_hash)
-			 SELECT `+o.column+`, role, ? FROM `+o.table+` WHERE image_hash = ?
-			 ON CONFLICT (`+o.column+`, role, image_hash) DO NOTHING`), to, from); err != nil {
+			`INSERT INTO `+o.table+` (`+o.column+`, role, image_hash`+extra+`)
+			 SELECT `+o.column+`, role, ?`+extra+` FROM `+o.table+` WHERE image_hash = ?
+			 ON CONFLICT (`+o.column+`, role, image_hash) `+onConflict), to, from); err != nil {
 			return fmt.Errorf("repoint %s image refs %s->%s: %w", o.kind, from, to, err)
 		}
 		if _, err := s.h.ExecContext(ctx, s.h.Rebind(
