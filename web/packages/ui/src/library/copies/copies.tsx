@@ -1,5 +1,5 @@
 import { formatBytes } from "@loomarr/core/format";
-import { Action, Badge, Surface, Text } from "@loomarr/design-system";
+import { Action, Badge, FileName, Surface, Text } from "@loomarr/design-system";
 import { type ComponentRef, type RefObject, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
@@ -185,7 +185,12 @@ const Copy = ({
           <Text textRole="compact" tone="muted">
             {formatBytes(file.size)}
           </Text>
-          {tail ? <Text textRole="data">{tail}</Text> : null}
+          {/* One line, shortened in the middle, so a long name keeps its end and never widens the row. */}
+          {tail ? (
+            <Stack flexShrink={1} minWidth={0}>
+              <FileName name={tail} tone="secondary" />
+            </Stack>
+          ) : null}
           <Badge tone={tone}>{words}</Badge>
         </Line>
         {file.state === "extra" ? (

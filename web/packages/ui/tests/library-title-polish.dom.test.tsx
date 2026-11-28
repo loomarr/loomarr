@@ -63,12 +63,12 @@ const channelPage = (airing: { when: string; episode?: string }, linked = true) 
 const region = (host: HTMLElement) => host.querySelector('[aria-label="On these channels"]');
 
 describe("a title's channel row", () => {
-  it("says Watch, is named for watching the channel, and draws the channel's initials", () => {
+  it("says Watch, is named by the words it shows, and draws the channel's initials", () => {
     const { container, unmount } = channelPage({ when: "Next today at 4:02 AM" });
     const link = container.querySelector("a");
-    expect(link?.getAttribute("aria-label")).toBe("Watch 104 Premium Reels, next today at 4:02 AM");
-    expect(link?.textContent).toContain("Next today at 4:02 AM");
-    expect(link?.textContent).toContain("Watch");
+    // No separate label: the name is the visible text, so speech input matches what is on screen.
+    expect(link?.getAttribute("aria-label")).toBeNull();
+    expect(link?.textContent).toMatch(/104.*Premium Reels.*Next today at 4:02 AM.*Watch$/);
     // The placeholder tile holds the initials; the number is written once.
     expect(link?.querySelector('[aria-hidden="true"]')?.textContent).toBe("PR");
     expect(link?.textContent?.split("104")).toHaveLength(2);
@@ -80,9 +80,8 @@ describe("a title's channel row", () => {
     const link = container.querySelector("a");
     expect(link?.textContent).toContain("On now · Watch");
     expect(link?.textContent?.split("On now")).toHaveLength(2);
-    expect(link?.getAttribute("aria-label")).toBe("Watch 104 Premium Reels, on now");
-    const described = link?.getAttribute("aria-describedby") ?? "";
-    expect(document.getElementById(described)?.textContent).toBe("S1 E2 Low Tide");
+    expect(link?.getAttribute("aria-label")).toBeNull();
+    expect(link?.textContent).toContain("S1 E2 Low Tide");
     unmount();
   });
 

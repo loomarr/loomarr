@@ -232,8 +232,7 @@ describe("LibraryTitle", () => {
     expect(host.textContent).toContain(
       "Couldn't remove it. Loomarr may not be allowed to change this folder.",
     );
-    act(() => button("Technical details").click());
-    expect(host.textContent).toContain("Extra");
+    // Technical details' label for the file is pinned in library-title-polish.dom.test.tsx.
     cleanup();
   });
 

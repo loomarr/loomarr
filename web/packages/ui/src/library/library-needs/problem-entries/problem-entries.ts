@@ -38,7 +38,7 @@ const extraReason = (p: LibraryProblem): ProblemReason => {
       ? `${p.extraCopies} extra ${copies(p.extraCopies)}`
       : sound === 0
         ? `${broken} broken ${copies(broken)}`
-        : `${broken} broken and ${sound} extra ${copies(sound)}`;
+        : `${broken} broken ${copies(broken)} and ${sound} extra ${copies(sound)}`;
   // A lone sound extra is "the extra copy"; any broken one is counted.
   const subject = one && broken === 0 ? "The extra copy" : counted;
   return {

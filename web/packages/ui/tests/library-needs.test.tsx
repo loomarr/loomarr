@@ -308,6 +308,30 @@ describe("LibraryNeedsCards", () => {
     two.cleanup();
   });
 
+  it("counts a title's broken copies apart from its extra ones, when the count is known", () => {
+    const worded = (extraCopies: number, brokenCopies?: number) => {
+      const page = mount(
+        cards({
+          needs: [],
+          problems: [problem("90000823", { extraCopies, extraBytes: 58_400_000, brokenCopies })],
+        }),
+      );
+      const text = page.host.textContent ?? "";
+      page.cleanup();
+      return text;
+    };
+    expect(worded(2, 1)).toContain("Quiet Orchard has 1 broken copy and 1 extra copy");
+    expect(worded(2, 1)).toMatch(/1 broken copy and 1 extra copy are taking .+ and never play\./);
+    expect(worded(3, 2)).toContain("Quiet Orchard has 2 broken copies and 1 extra copy");
+    expect(worded(1, 1)).toMatch(
+      /Quiet Orchard has 1 broken copy.*1 broken copy is taking .+ and never plays\./,
+    );
+    expect(worded(2, 2)).toContain("Quiet Orchard has 2 broken copies");
+    // Without the broken count, the words are the extra copies' own.
+    expect(worded(2)).toContain("Quiet Orchard has 2 extra copies");
+    expect(worded(1, 0)).toContain("Quiet Orchard has an extra copy");
+  });
+
   it("says why it guessed", () => {
     const { host, cleanup } = mount(cards());
     expect(host.textContent).toContain("Is this Paper Kites (1996)?");

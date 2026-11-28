@@ -8,7 +8,7 @@ import {
   useWindowWidth,
   VisuallyHidden,
 } from "@loomarr/design-system";
-import { type ComponentRef, type ReactNode, type Ref, useId } from "react";
+import type { ComponentRef, ReactNode, Ref } from "react";
 import { View } from "react-native";
 import { ChannelIdentity } from "../../identity";
 import { Line, Stack } from "../library-poster";
@@ -192,10 +192,9 @@ type ChannelRowData = LibraryTitleAiring | Pick<LibraryTitleAiring, "channel">;
 
 // One channel and when it shows the title. Where the app can name its player, the whole row is that
 // link, drawn as the design system's bordered row: the same hairline card, with its hover fill and
-// amber focus border. A linked row ends in "Watch ›" and is named for watching its channel.
+// amber focus border. A linked row ends in "Watch ›", so its name ends in Watch.
 const ChannelRow = ({ row, link }: { row: ChannelRowData; link: ReturnType<NonNullable<WatchLink>> }) => {
   const { channel } = row;
-  const detailsId = useId();
   const when = "when" in row ? row.when : "Nothing scheduled soon";
   // On air, a linked row says "On now" beside Watch rather than on a line of its own.
   const onAir = Boolean(link) && when === "On now";
@@ -214,7 +213,7 @@ const ChannelRow = ({ row, link }: { row: ChannelRowData; link: ReturnType<NonNu
       {"when" in row ? (
         <Stack>
           {onAir ? null : <Text textRole="body">{when}</Text>}
-          <Stack id={detailsId}>
+          <Stack>
             {episode ? (
               <Text textRole="compact" tone="secondary">
                 {episode}
@@ -242,13 +241,9 @@ const ChannelRow = ({ row, link }: { row: ChannelRowData; link: ReturnType<NonNu
     );
   }
   return (
-    <PressableRow
-      accessibilityLabel={`Watch ${channel.number} ${channel.name}, ${when.charAt(0).toLowerCase()}${when.slice(1)}`}
-      // The name replaces the row's words, so the episode and the forecast note describe it.
-      aria-describedby={episode || forecast ? detailsId : undefined}
-      bordered
-      render={link}
-    >
+    // The link is named by its own words, in the order they are drawn, ending in "Watch": a separate
+    // label would differ from what a speech-input user reads on screen (WCAG 2.5.3).
+    <PressableRow bordered render={link}>
       <Line flexWrap="nowrap" gap="control">
         <Stack flexGrow={1} flexShrink={1} gap="inline" minWidth={0}>
           {content}
