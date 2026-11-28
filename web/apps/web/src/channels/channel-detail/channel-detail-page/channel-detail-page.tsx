@@ -12,9 +12,9 @@ import { ChannelIdentityField } from "@/channels/channel-identity-field";
 import { ignoreFailure, useChannelSave, withPending } from "@/channels/use-channel-save";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useBelowSm } from "@/lib/use-phone-width";
-import { airStateOf, headerAirLine } from "./channel-air-state";
-import { ChannelDetailProvider } from "./channel-detail-context";
-import { useChannelDetailData } from "./use-channel-detail-data";
+import { airStateOf, headerAirLine } from "../channel-air-state";
+import { ChannelDetailProvider } from "../channel-detail-context";
+import { useChannelDetailData } from "../use-channel-detail-data";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,
 // what's playing, what's next, how full is it — in plain words. Editing (rename/renumber,

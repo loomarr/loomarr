@@ -3,7 +3,7 @@ import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
 import type { ChannelEdit } from "@/channels/use-channel-save";
-import type { AirState } from "./channel-air-state";
+import type { AirState } from "../channel-air-state";
 
 // The channel-detail layout's shared state (V-nav-paths), read by each section route
 // (`info.tsx`, `programming.tsx`, `filler.tsx`, `danger.tsx`). Each section is its own route and
