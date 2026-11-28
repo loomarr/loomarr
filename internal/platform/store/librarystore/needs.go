@@ -107,6 +107,8 @@ type LibraryNeedsStore interface {
 	// ClearLibraryPoster removes a title's posters, except a frame of the file a kept title still
 	// plays.
 	ClearLibraryPoster(ctx context.Context, itemID string) error
+	// ClearStaleHomeVideoPosters removes each frame whose title plays another main file.
+	ClearStaleHomeVideoPosters(ctx context.Context) error
 	// KeptLibraryTitle reports whether a file belongs to a title kept as a home video.
 	KeptLibraryTitle(ctx context.Context, kind string, origin LibraryOrigin, groups []LibraryID) (bool, error)
 	// RestoreLibraryIgnored takes back the ignore of titles, all in one transaction:
