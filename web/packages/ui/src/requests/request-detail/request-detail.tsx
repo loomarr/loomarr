@@ -3,9 +3,9 @@ import { Action, ScrollFrame, Surface, Text } from "@loomarr/design-system";
 
 import { StatePanel } from "../../state-panel";
 import { calendarDay, requestedOn } from "../request-card";
+import { RequestDetailBody } from "../request-detail-body";
 import { RequestsBack } from "../requests-back";
 import type { RequestDetailProps } from "./request-detail.type";
-import { RequestDetailBody } from "./request-detail-body";
 
 // One request end to end on a touch screen: the way back and the scroll around RequestDetailBody.
 const RequestDetail = ({ entry, onBack, onFix, onOpenChannel, timeZone, titles }: RequestDetailProps) => {
