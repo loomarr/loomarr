@@ -48,7 +48,7 @@ type Segment struct {
 	Tags     []string `json:"tags,omitempty" maxItems:"64"` // at most 64, as on a clip
 	Category string   `json:"category,omitempty"`
 	// BoundaryConfidence is how much Loomarr trusts WHERE this was cut, 0–100 (§10 V34 ladder).
-	// `0` means never scored — every proposal detected before V54 deserialises that way, and the
+	// `0` means never scored — a proposal stored without a score deserialises that way, and the
 	// review surface must treat "unscored" as "no opinion", never as "doubtful".
 	//
 	// It answers "did we cut in the right place?", nothing about what the segment is.

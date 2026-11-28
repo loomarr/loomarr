@@ -256,7 +256,7 @@ type rungClip struct {
 
 // ladderBand is the placement band a candidate belongs to: its rung, with every clip resting
 // inside its cooldown moved below all rested ones, and every clip the household has seen this
-// evening below both (#3838 decision 1, amended 2026-11-18). A break airs no repeat while an unseen
+// evening below both (#3838 decision 1). A break airs no repeat while an unseen
 // ad fits; once the unseen ones run out, the ads seen longest ago fill what is left, so a set below
 // its recipe keeps its breaks full instead of shrinking them to the station ID. Bands are what
 // ladderLess orders.
@@ -345,8 +345,8 @@ func contains(out []Clip, id string) bool {
 
 // --- pure filters (deterministic, no rng) ---
 
-// EraRange is the year window a channel draws its breaks from — §10's "a year range", which the
-// wire has always carried and the domain, until V51f, threw half of away.
+// EraRange is the year window a channel draws its breaks from — §10's "a year range", carried whole
+// by both the wire and the domain.
 //
 // ⚠ **The zero value means ANY, and the ambiguity that costs is resolved one layer up, not here.**
 // `SelectionForChannel` owns the three states the operator sees (unset = inherit the channel's

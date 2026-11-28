@@ -382,9 +382,9 @@ func (e extended) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, 
 //
 // ⚠ **An orphan proposal is not inert.** Incoming renders one as a "compilation to review" titled
 // with a raw 64-character hash (the name falls back to the clip identity when `GetClip` misses),
-// carrying a Review-cuts button that opens a review of a file that no longer exists. Measured
-// 2026-08-11: deleting every clip file and running filler-sync pruned `clips` to 0 and left **48**
-// such rows, which then dominated the tab.
+// carrying a Review-cuts button that opens a review of a file that no longer exists. Deleting
+// every clip file and running filler-sync prunes `clips` to 0 and leaves such rows behind (**48** in
+// one measured run), where they dominate the tab.
 //
 // Written as "no matching clip" rather than "not in the keep set" so it stays correct whichever
 // branch of the prune ran, and so a clip deleted by any other route is covered too. Errors are

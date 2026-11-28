@@ -384,7 +384,7 @@ func (s *SplitStage) groundSkipped(ctx context.Context, c clipstore.Clip, why st
 //
 // ⚠ **The `learned == 0` case is the one this exists for, and it is not an error anywhere.** A
 // model can answer every single call, parse cleanly, and still ground nothing — `llava:7b`
-// (measured 2026-08-13) echoed the prompt's own placeholder list back as its answer, so
+// (measured) echoes the prompt's own placeholder list back as its answer, so
 // `"category":"toys|cereal|cars|..."` arrived as well-formed JSON and `groundVisionTags` correctly
 // dropped every field. Thirty-seven segments, thirty-seven successful calls, one usable category,
 // and the reel refused as untagged. Every counter along that path says "fine": no provider error,

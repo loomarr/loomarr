@@ -280,7 +280,7 @@ func parseLengthMS(raw string) int {
 }
 
 // Search finds candidate clips across ALL of archive.org by keyword, rather than listing one
-// named collection (V33, maintainer decision 2026-07-31).
+// named collection (V33, maintainer decision).
 //
 // ⚠ The distinction from DiscoverCollection matters at the API layer: this returns ITEMS an
 // operator might want, from anywhere, so each result is a candidate clip rather than a source to

@@ -115,9 +115,6 @@ func (s NameSource) ShownToViewers() bool { return s.Known() && s != NameFromFil
 //  3. V38c moved it to the content hash: a path is unique only WITHIN a folder, so once many
 //     watched folders were allowed, two clips at `ads/coke.mp4` collided and silently
 //     overwrote one another.
-//
-// ⚠ This comment read "IDENTITY IS `Path`" until 2026-08-10 — one architecture behind the
-// field it introduces, which is the failure mode a long doc comment is most prone to.
 type Clip struct {
 	// Hash is the identity: the clip's sparse content hash (§10 V38c) — 64 hex characters.
 	// Read it through `ID()` rather than directly; see that method.
@@ -191,7 +188,7 @@ type Clip struct {
 	// at scan time (SidecarLicense, V33) — e.g. "https://creativecommons.org/licenses/by-nc-sa/4.0/".
 	//
 	// ⚠ **"" means UNKNOWN, never "public domain".** About 92% of archive.org items declare no
-	// licence at all (667 of 8362 measured in `classic_tv_commercials`, 2026-07-31), so an empty
+	// licence at all (667 of 8362 measured in `classic_tv_commercials`), so an empty
 	// value is the COMMON case and carries no permission. Nothing may treat it as one: this field
 	// is a record of what a source claimed, not a rights determination, and it never gates
 	// selection or playback.

@@ -22,7 +22,7 @@ import (
 
 // Archive.org ingestion (§10): a plain-net/http walk of Archive's public JSON
 // APIs (no key, no tooling — that's why the design picked net/http here). The
-// walk, captured live 2026-07-13 (fixtures/archive/):
+// walk, as captured from the live API (fixtures/archive/):
 //
 //  1. Resolve the URL to an Archive id, then GET /metadata/<id> →
 //     {server, dir, files[], metadata{mediatype, title, description}}.
@@ -89,8 +89,8 @@ type archiveMetadata struct {
 	// LicenseURL is Archive's declared licence, e.g.
 	// "https://creativecommons.org/licenses/by-nc-sa/4.0/" (V33).
 	//
-	// ⚠ The field is `licenseurl`, ONE WORD — not `license`, not `rights`. Both of those were
-	// checked against the live API during the 2026-07-31 capture and neither exists.
+	// ⚠ The field is `licenseurl`, ONE WORD — not `license`, not `rights`. Neither of those
+	// exists in the live API.
 	//
 	// ⚠ **Usually absent, and that is the normal case.** In `classic_tv_commercials`, 667 of
 	// 8362 items declare one — about 8%. Empty therefore means UNKNOWN, never "public domain",
