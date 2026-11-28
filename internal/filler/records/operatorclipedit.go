@@ -41,18 +41,22 @@ func (s *sqlStore) ApplyOperatorClipEdit(ctx context.Context, e OperatorClipEdit
 		return fmt.Errorf("apply operator clip edit: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	// Tags go first: they take the taxonomy lock, which precedes any clip row lock.
-	if e.Tags != nil {
-		if err := s.db.Clips(tx).ReplaceLeafTags(ctx, e.Hash, e.Tags.Leaves); err != nil {
-			return err
-		}
-	}
 	if err := s.requireEnrichmentClipTx(ctx, tx, e.Hash); err != nil {
 		return err
 	}
 	clips := s.db.Clips(tx)
+	// Read for its lock, not its value: on Postgres the clip row is held before its tags are
+	// rewritten, the order an enrichment pass takes them in, so the two cannot deadlock.
+	if _, err := clips.EnrichmentRevision(ctx, e.Hash); err != nil {
+		return fmt.Errorf("apply operator clip edit: lock clip: %w", err)
+	}
 	if e.Name != nil {
 		if err := clips.Rename(ctx, e.Hash, *e.Name, catalogclips.NameFromCurated, e.At); err != nil {
+			return err
+		}
+	}
+	if e.Tags != nil {
+		if err := clips.ReplaceLeafTags(ctx, e.Hash, e.Tags.Leaves); err != nil {
 			return err
 		}
 	}

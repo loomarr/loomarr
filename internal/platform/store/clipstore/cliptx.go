@@ -121,9 +121,8 @@ func (c ClipTx) SetOperatorGeography(ctx context.Context, hash string, g ClipGeo
 		g.Scope, g.Country, g.Network, g.Station, g.AirDate, epoch(at), hash)
 }
 
-// ReplaceLeafTags makes leaves the clip's whole asserted set and rebuilds its rollups. It takes the
-// shared taxonomy lock, so a transaction that also writes the clip's row calls it first: graph
-// edits lock the taxonomy before they touch clips.
+// ReplaceLeafTags makes leaves the clip's whole asserted set and rebuilds its rollups, under the
+// same taxonomy lock as graph edits.
 func (c ClipTx) ReplaceLeafTags(ctx context.Context, hash string, leaves []string) error {
 	if err := storedb.XactLock(ctx, c.s.h.Dialect(), c.tx, taxonomySharedLockSQL); err != nil {
 		return fmt.Errorf("replace clip tags: taxonomy lock: %w", err)

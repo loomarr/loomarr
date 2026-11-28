@@ -505,9 +505,9 @@ func (s *Handlers) patchFillerClip(ctx context.Context, in *patchClipInput) (*cl
 			return nil, httpcore.Unprocessable("Name is too long", "A clip name can be at most 120 characters.")
 		}
 	}
-	// ⚠ Identity is the HASH (§10 V45a), so the store lookups (`GetClip`/classification update/
-	// `UpdateClipRole`, all keyed `WHERE hash = ?`) take it directly — no path resolution. Fetch once
-	// to 404 a missing clip synchronously and to read the pre-edit tags below.
+	// ⚠ Identity is the HASH (§10 V45a), so the read and the edit take it directly, with no path
+	// resolution. Fetch once to 404 a missing clip before the sidecar is touched and to know the
+	// clip as it was.
 	clip, err := s.store.GetClip(ctx, in.Body.Hash)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
