@@ -43,17 +43,6 @@ type (
 	ImageStore = clipstore.ImageStore
 )
 
-type catalogCluster = clipstore.Store
-
-// bindCatalog gives s its catalog cluster, built on s's own kernel handle. Every constructor of a
-// sqlStore calls it; the cluster is embedded, so its methods are sqlStore's and the aggregate Store
-// interface is satisfied without forwarders.
-func bindCatalog(s *sqlStore) *sqlStore {
-	// See identityCluster for why the embed goes through an alias.
-	s.catalogCluster = clipstore.New(s.kernel(), channelPolicies{s})
-	return s
-}
-
 // channelPolicies is clipstore.ChannelPolicies over the channels table, which programming owns.
 // The catalog rekeys clip hashes inside a policy and the SQL on channels stays here.
 type channelPolicies struct{ s *sqlStore }

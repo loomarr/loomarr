@@ -16,9 +16,6 @@ type (
 // channelstore.ErrChannelConflict, the same value under a second name.
 var ErrChannelConflict = channelstore.ErrChannelConflict
 
-// channelCluster names the embedded channel store; see identityCluster for why an alias.
-type channelCluster = channelstore.Store
-
 // channelInvalidations gives the channel store the durable Postgres wake-ups it publishes on
 // writes and deletes.
 type channelInvalidations struct{}
@@ -31,14 +28,3 @@ func (channelInvalidations) Deleted(id string) (string, error) {
 }
 
 func (channelInvalidations) NotifyChannel() string { return postgresInvalidationChannel }
-
-// bindChannels installs the channel cluster on s; bindClusters calls it on every construction, after
-// the dialect set s.channelClaimSQL.
-func bindChannels(s *sqlStore) *sqlStore {
-	var inv channelstore.Invalidations // nil on SQLite: no wake-ups are published
-	if s.dialect == DialectPostgres {
-		inv = channelInvalidations{}
-	}
-	s.channelCluster = channelstore.New(s.kernel(), s.channelClaimSQL, inv)
-	return s
-}
