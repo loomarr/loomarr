@@ -13,8 +13,8 @@ import (
 // This file deals a channel's shuffled deck one PASS at a time (#1676, programming-design §5).
 //
 // A pass is one trip of the rolling window around the catalog: window w starts at program
-// w*stride of the ring, so the ring wraps every nProg/stride windows. Until #1676 the ring was a
-// single deck, so every pass replayed the last one pair for pair. Now each pass is dealt under
+// w*stride of the ring, so the ring wraps every nProg/stride windows. A ring that is a
+// single deck replays each pass pair for pair (#1676), so each pass is dealt under
 // `seed XOR pass`, so successive passes differ and each is still reproducible.
 //
 // Passes are counted from the channel's DealOrigin, not from the Unix epoch. That makes the count
@@ -46,8 +46,8 @@ import (
 // of (inputs, pass) however old the channel is. The anchor's predecessor is the last pass of the
 // segment before, so the walk deals warmUpPasses passes ahead of the anchor to reach it: a walk
 // from any start forgets it within that, so the anchor is repaired against the deck that aired
-// (#1965; it used to be repaired against its predecessor as dealt, and the window crossing it
-// re-aired what closed the window before, an episode back to back on 80 a day).
+// (#1965; repaired against its predecessor as dealt, the window crossing it would
+// re-air what closed the window before, an episode back to back on 80 a day).
 const (
 	chainBudget = 2048
 	// checkpointEvery is how often a walk keeps the deck it reached, so asking for an earlier pass
@@ -231,7 +231,7 @@ func (d *deckDealer) applied(pass int64) []AppliedRelaxation { return d.base(pas
 // modify it.
 //
 // A catalog that fits inside one window has no ring to wrap: it airs whole in every window, and
-// before #1676 aired the same deck in the same order every day. There a window is the pass, so each
+// one deck there is the same order every day (#1676). There a window is the pass, so each
 // window deals a fresh permutation, repaired against the previous window's like any other seam.
 func (d *deckDealer) deck(pass int64) []Slot {
 	switch {

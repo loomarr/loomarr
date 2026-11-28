@@ -93,7 +93,7 @@ func (p *holidayPlanner) arrangeTile(tile []Slot, w int64) []Slot {
 
 func never(Slot) bool { return false }
 
-// beforeBandSwaps is always on in production. Off, a window arranges as before #1971, the oracle a
+// beforeBandSwaps is always on in production. Off, a window arranges without the swaps (#1971), the oracle a
 // test checks the swaps against near a season.
 var beforeBandSwaps = true
 

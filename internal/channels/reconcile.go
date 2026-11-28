@@ -489,8 +489,8 @@ func (e *Engine) commitReconcile(ctx context.Context, plan *reconcilePlan, run *
 	// next lookup on reaches the stream by itself. Only a change to what is on air now (an item the
 	// packager may already be encoding, up to its run-ahead) needs the stream stopped, and only
 	// after the replacement Desired cycle is durable; the next request starts at the correct
-	// wall-clock offset. Stopping on ANY change restarted every viewer at every re-size
-	// (2026-10-24). A turned window aired its new slice before this commit, from the preview this
+	// wall-clock offset. Stopping on ANY change would restart every viewer at every
+	// re-size. A turned window airs its new slice before this commit, from the preview this
 	// reconcile computes again, so it keeps the stop-on-change rule. Postgres lifecycle
 	// invalidations apply the same rule on peer replicas (timeline.OnAirChanged).
 	onAirChanged := desiredChangedLocally

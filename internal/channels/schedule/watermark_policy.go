@@ -45,7 +45,7 @@ type WatermarkPolicy struct {
 	Callsign string `json:"callsign,omitempty" maxLength:"12" doc:"Text of the generated Plate bug; omitted derives it from the channel name"`
 }
 
-// Watermark defaults: the maintainer-approved look (2026-09-26, PR #1532). The default opacity and
+// Watermark defaults: the maintainer-approved look (PR #1532). The default opacity and
 // look are the install settings' (#1617), passed to ResolveWatermark.
 const (
 	WatermarkDefaultCorner = "top-right"
