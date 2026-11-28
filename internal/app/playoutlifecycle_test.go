@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/originfixture"
 )
 
 func TestPostgresPlayoutLifecycleReconcilesDurableEligibility(t *testing.T) {
@@ -20,7 +21,7 @@ func TestPostgresPlayoutLifecycleReconcilesDurableEligibility(t *testing.T) {
 	seedLifecycleChannel(t, st, "pinned", 2, schedule.StatusLive,
 		&schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendInternal})
 	seedLifecycleChannel(t, st, "paused", 3, schedule.StatusPaused, nil)
-	origin := &testkit.Playout{}
+	origin := &originfixture.Playout{}
 	lifecycle := &postgresPlayoutLifecycle{
 		store: st,
 		checkpoint: testkit.Snapshotter[backendtransition.Snapshot]{Result: backendtransition.Snapshot{
@@ -44,7 +45,7 @@ func TestPostgresPlayoutLifecycleReconcilesDurableEligibility(t *testing.T) {
 func TestPostgresPlayoutLifecyclePreservesCommittedPausePayload(t *testing.T) {
 	t.Parallel()
 	wantReadErr := errors.New("checkpoint should not be read for a committed pause")
-	origin := &testkit.Playout{}
+	origin := &originfixture.Playout{}
 	lifecycle := &postgresPlayoutLifecycle{
 		checkpoint: testkit.Snapshotter[backendtransition.Snapshot]{Err: wantReadErr}, origin: origin,
 	}
@@ -90,7 +91,7 @@ func TestPostgresPlayoutLifecycleRestartsOnlyWhenOnAirChanges(t *testing.T) {
 			ScheduleVersion: store.ChannelScheduleVersion(ch),
 		}
 	}
-	origin := &testkit.Playout{}
+	origin := &originfixture.Playout{}
 	lifecycle := &postgresPlayoutLifecycle{
 		store: st,
 		checkpoint: testkit.Snapshotter[backendtransition.Snapshot]{Result: backendtransition.Snapshot{
@@ -139,7 +140,7 @@ func TestPostgresPlayoutLifecycleBackendCutoverKeepsExplicitInternalPins(t *test
 	seedLifecycleChannel(t, st, "inherited", 1, schedule.StatusLive, nil)
 	seedLifecycleChannel(t, st, "pinned", 2, schedule.StatusLive,
 		&schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendInternal})
-	origin := &testkit.Playout{}
+	origin := &originfixture.Playout{}
 	lifecycle := &postgresPlayoutLifecycle{store: st, origin: origin}
 	if err := lifecycle.apply(context.Background(), store.Invalidation{
 		Kind: store.InvalidationSetting, Key: "system.unrelated", Value: `{`,
@@ -161,7 +162,7 @@ func TestPostgresPlayoutLifecycleBackendCutoverKeepsExplicitInternalPins(t *test
 func TestPostgresPlayoutLifecycleListenerLossClosesUntilDurableCatchUp(t *testing.T) {
 	t.Parallel()
 	st := testkit.StockedLibrary(t, testkit.MigratedSQLiteStore(t))
-	origin := &testkit.Playout{}
+	origin := &originfixture.Playout{}
 	gate := &playoutAdmissionGate{}
 	failFirst := make(chan struct{})
 	secondSubscribed := make(chan struct{})

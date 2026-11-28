@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 )
 
 func newDashboardServer(t *testing.T, sessions playoutapi.PlayoutObserver) *httptest.Server {
@@ -56,7 +56,7 @@ func TestPlayoutTelemetry_RequiresAdmin(t *testing.T) {
 func TestPlayoutTelemetry_ReportsSessionsAndLoad(t *testing.T) {
 	srv := newDashboardServer(t, &fakePlayoutSessions{
 		capacity: 4,
-		stats: []playout.SessionStat{
+		stats: []hls.SessionStat{
 			{ChannelID: "ch1", Viewers: 2, Encoder: "h264_nvenc", Hardware: true, Speed: 12.4, BufferedMS: 96_000, TranscodeCost: 1},
 			{ChannelID: "ch2", Viewers: 1, Encoder: "libx264", Hardware: false, Speed: 1.4, BufferedMS: 12_000},
 		},
@@ -96,7 +96,7 @@ func TestPlayoutTelemetry_ReportsSessionsAndLoad(t *testing.T) {
 func TestPlayoutTelemetry_SeparatesViewerActiveAndGraceIdleSessions(t *testing.T) {
 	srv := newDashboardServer(t, &fakePlayoutSessions{
 		capacity: 4,
-		stats: []playout.SessionStat{
+		stats: []hls.SessionStat{
 			{ChannelID: "watched", Viewers: 1},
 			{ChannelID: "warm", Viewers: 0},
 		},

@@ -8,7 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 )
 
 // The dashboard's telemetry surface (§12, V16).
@@ -27,7 +27,7 @@ import (
 // PlayoutTelemetry is the live encoder picture the dashboard renders.
 type PlayoutTelemetry struct {
 	// Sessions is one row per channel currently encoding, sorted by channel id.
-	Sessions []playout.SessionStat `json:"sessions"`
+	Sessions []hls.SessionStat `json:"sessions"`
 	// Active and Capacity are the "2 / 4" load line. Capacity is the effective measured admission
 	// bound after any operator safety cap and VRAM shading — the point at which a new viewer is
 	// refused rather than someone else's channel being evicted (§9.1).
@@ -80,13 +80,13 @@ func (s *Handlers) playoutTelemetry(now time.Time) PlayoutTelemetry {
 		// Not wired: a Tunarr-only install, or playout disabled. `Running:false` with an empty
 		// list, so the panel can say "Tunarr streams these channels" instead of rendering an
 		// empty table that looks like every channel just died.
-		return PlayoutTelemetry{Sessions: []playout.SessionStat{}}
+		return PlayoutTelemetry{Sessions: []hls.SessionStat{}}
 	}
 	stats := s.playoutObserver.Stats(now)
 	if stats == nil {
 		// A non-nil empty slice: `null` and `[]` are different things to a client, and the
 		// difference here is "no data" versus "no streams", which the panel renders differently.
-		stats = []playout.SessionStat{}
+		stats = []hls.SessionStat{}
 	}
 	viewerActive, transcodeCost := 0, 0
 	for _, stat := range stats {

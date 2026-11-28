@@ -387,7 +387,7 @@ const LibraryTitle = ({ title, onBack, fix, personLink, watchLink }: LibraryTitl
 
       {fix
         ? title.files
-            .filter((file) => file.extra)
+            .filter((file) => file.state === "extra")
             .map((file) => (
               <ExtraCopy
                 file={file}

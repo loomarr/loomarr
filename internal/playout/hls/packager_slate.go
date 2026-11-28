@@ -1,4 +1,4 @@
-package playout
+package hls
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
@@ -27,7 +28,7 @@ const slateEncodeTimeout = time.Minute
 // slate returns the house slate for an encode as a SlateSource: the packager waits on it only when a
 // slot needs slate (#1512 G2: never on the tune path; the first manifest waits for a real item
 // anyway). The encode starts on that first need or, when prewarmed, once the channel is on air.
-func (m *PackagerHLS) slate(host encode.HostProfile, out OutputProfile) packager.SlateSource {
+func (m *PackagerHLS) slate(host encode.HostProfile, out playout.OutputProfile) packager.SlateSource {
 	return func(ctx context.Context) (*packager.Slate, error) {
 		e := m.slateEncodeFor(host, out)
 		select {
@@ -42,7 +43,7 @@ func (m *PackagerHLS) slate(host encode.HostProfile, out OutputProfile) packager
 // slateEncodeFor returns the (host, output) slate encode, starting it in the background if none is
 // running or done. Encodes are shared across channels and sessions; a failed one is forgotten, so
 // the next need encodes it again.
-func (m *PackagerHLS) slateEncodeFor(host encode.HostProfile, out OutputProfile) *slateEncode {
+func (m *PackagerHLS) slateEncodeFor(host encode.HostProfile, out playout.OutputProfile) *slateEncode {
 	key := fmt.Sprintf("%+v|%+v", host, out)
 	m.slateMu.Lock()
 	e := m.slates[key]
@@ -76,7 +77,7 @@ func (m *PackagerHLS) slateEncodeFor(host encode.HostProfile, out OutputProfile)
 
 // encodeSlate encodes a house slate: a black, silent source run through the same builder and
 // encoder as the items, so its sample descriptions match theirs.
-func (m *PackagerHLS) encodeSlate(ctx context.Context, host encode.HostProfile, out OutputProfile) (*packager.Slate, error) {
+func (m *PackagerHLS) encodeSlate(ctx context.Context, host encode.HostProfile, out playout.OutputProfile) (*packager.Slate, error) {
 	src := filepath.Join(m.root, fmt.Sprintf("slate-%dx%d-%d.mkv", out.Width, out.Height, out.FPS))
 	if _, err := os.Stat(src); err != nil {
 		// Two hosts with one output size may make the source at once: each writes its own temp.
@@ -100,11 +101,11 @@ func (m *PackagerHLS) encodeSlate(ctx context.Context, host encode.HostProfile, 
 	}
 	format := media.MediaFormat{VideoCodec: "h264", Width: out.Width, Height: out.Height, FrameRate: float64(out.FPS),
 		PixelFormat: "yuv420p", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}
-	pl, err := Build(host, format, out)
+	pl, err := playout.Build(host, format, out)
 	if err != nil {
 		return nil, fmt.Errorf("packager hls: slate pipeline: %w", err)
 	}
-	gop := int64(out.gop())
+	gop := int64(out.GOP())
 	args := pl.FragmentArgs(src, 0, 0, gop, gop*audioRateHz/int64(out.FPS)/1024+1, out.FPS, 0)
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, m.ffmpeg, args...)

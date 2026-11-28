@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
@@ -28,7 +29,7 @@ type PackagerSource struct {
 
 // WatermarkFor is an item's bug resolver: a library programme's only, never a break's commercial, a
 // filler clip (Source), a bumper or an ID.
-func (s PackagerSource) WatermarkFor(channelID string, airing timeline.Airing) playout.WatermarkFor {
+func (s PackagerSource) WatermarkFor(channelID string, airing timeline.Airing) hls.WatermarkFor {
 	if s.Watermark == nil || airing.Kind != schedule.SlotProgram || airing.Source != "" {
 		return nil
 	}
@@ -37,13 +38,13 @@ func (s PackagerSource) WatermarkFor(channelID string, airing timeline.Airing) p
 	}
 }
 
-func (s PackagerSource) ItemAt(ctx context.Context, channelID string, at time.Time) (playout.PackagerItem, error) {
+func (s PackagerSource) ItemAt(ctx context.Context, channelID string, at time.Time) (hls.PackagerItem, error) {
 	t0 := time.Now()
 	airing, streamURL, err := s.Res.AiringAt(ctx, channelID, at)
 	if err != nil {
-		return playout.PackagerItem{}, err
+		return hls.PackagerItem{}, err
 	}
-	item := playout.PackagerItem{Label: string(airing.Kind) + ":" + airing.Identity, Remaining: airing.Remaining}
+	item := hls.PackagerItem{Label: string(airing.Kind) + ":" + airing.Identity, Remaining: airing.Remaining}
 	if !airing.Playable() || streamURL == "" {
 		return item, nil // a card slot: the packager slates it
 	}

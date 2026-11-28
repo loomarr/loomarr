@@ -33,7 +33,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
@@ -465,7 +464,7 @@ func hostedSpeechClient(set resolved, recorder *metrics.Recorder) tools.AudioTra
 // back-patches (the resolver is built with the channel engine, the adapter needs the filler
 // catalog), and pulling them in here would mean handing a builder the two services it exists to
 // stay independent of.
-func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Calendar, log *slog.Logger) *pod.Adapter {
+func buildPodAdapter(st podStore, set resolved, calendar func() schedule.Calendar, log *slog.Logger) *pod.Adapter {
 	// ⚠ **A CLOSURE, not a struct literal — the whole filler policy is resolved per pod.**
 	// A value built here at boot would be a snapshot: writing `filler.pod_max`,
 	// `filler.min_quality`, `filler.min_clip_duration` or `filler.max_clip_duration` would

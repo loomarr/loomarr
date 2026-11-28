@@ -594,6 +594,7 @@ const Controls = ({
 > & { showSearch: boolean; moreRef: (node: unknown) => void }) => {
   const wide = useWindowWidth() >= 768;
   const [open, setOpen] = useState(false);
+  const [moreFocused, setMoreFocused] = useState(false);
   // On a phone the controls are tapped, so they take the design system's touch targets.
   const density = wide ? "pointer" : "touch";
   const tabs = (
@@ -642,6 +643,10 @@ const Controls = ({
   const more = filtering ? (
     <Action
       aria-expanded={open}
+      onBlur={() => setMoreFocused(false)}
+      onFocus={() => setMoreFocused(true)}
+      // The amber border is the focus look; forced colours turn the transparent outline visible.
+      style={{ outlineColor: "transparent", outlineStyle: "solid", outlineWidth: moreFocused ? 2 : 0 }}
       density={density}
       icon="filter"
       onPress={() => setOpen(!open)}

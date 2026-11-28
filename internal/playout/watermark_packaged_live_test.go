@@ -10,15 +10,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout/media"
-	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
 // A PROGRAMME WITH THE BUG AND A BREAK WITHOUT IT SPLICE AS ONE STREAM (#1512 phase 1d through the
-// packager). Both items are encoded by the packager's own item command (packagerItemArgs, fMP4)
+// packager). Both items are encoded as the packager encodes an item (BuildItemBurning, then
+// FragmentArgs: fMP4)
 // on this host's NVENC: their SPS and PPS must be byte-identical, or the programme→break boundary
 // resets the decoder. The bug-on item must keep the programme picture and blend the bug. Run it
 // under the GPU lock; it skips where NVENC cannot encode. FFMPEG_PATH picks the build: n9 (native
@@ -67,11 +66,13 @@ func newLivePackager(t *testing.T) *livePackager {
 func (p *livePackager) encode(bug *Watermark, name string) (string, Pipeline) {
 	t := p.t
 	t.Helper()
-	it := PackagerItem{Label: name, Input: p.src, Remaining: time.Second, Format: p.facts}
-	pl, args, err := packagerItemArgs(p.host, p.out, it, bug, nil, packager.Slot{Frames: checkFrames, AudioFrames: 47}, itemFault{})
+	host := p.host
+	host.Overlay = bug != nil
+	pl, err := BuildItemBurning(host, p.facts, p.out, bug, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	args := pl.FragmentArgs(p.src, 0, 0, checkFrames, 47, p.out.FPS, 0)
 	fragments := filepath.Join(p.dir, name+".mp4")
 	args[len(args)-1] = fragments // pipe:1 in production
 	if b, err := exec.CommandContext(p.ctx, p.bin, append([]string{"-y"}, args...)...).CombinedOutput(); err != nil {

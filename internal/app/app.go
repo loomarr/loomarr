@@ -154,7 +154,7 @@ func buildHandler(
 	owner *generationLifecycle,
 	capturePlayoutResolver func(*resolve.Resolver),
 ) (http.Handler, *slog.Logger, func() string, error) {
-	foundation, err := buildFoundation(rootCtx, st, log, ov, owner)
+	foundation, err := buildFoundation(rootCtx, st, databaseOf(st), log, ov, owner)
 	if err != nil {
 		return nil, nil, nil, err
 	}

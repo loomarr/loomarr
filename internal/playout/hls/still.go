@@ -1,4 +1,4 @@
-package playout
+package hls
 
 import (
 	"bytes"
@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
@@ -322,7 +323,7 @@ func FFmpegSourceStill(ffmpegPath string, tonemap func() bool, observers ...*dia
 		defer cancel()
 		filter := fmt.Sprintf("scale='min(%d,iw)':-2", stillWidth)
 		if source.HDR && tonemap != nil && tonemap() {
-			filter += "," + hdrToSDR(media.ToneCurveHable)
+			filter += "," + playout.HDRToSDR(media.ToneCurveHable)
 		}
 		args := []string{
 			"-hide_banner", "-loglevel", "error",

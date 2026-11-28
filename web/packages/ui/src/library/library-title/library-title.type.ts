@@ -15,8 +15,12 @@ interface LibraryTitleFile {
   audioChannels?: number;
   /** Each subtitle stream; a language is an ISO 639 code, absent when the file doesn't say. */
   subtitles: readonly { language?: string }[];
-  /** A copy that never plays, because another of the title's files does. */
-  extra: boolean;
+  /**
+   * What the file is to the title: the copy that plays, an extra copy that never plays because
+   * another of its files plays in its place, one that can't be played, one being read, or a copy
+   * waiting while the copy in its place is missing or can't be played.
+   */
+  state: "plays" | "extra" | "unplayable" | "reading" | "waiting";
   /** Which part of a movie split over several files it is, from 1; absent for a whole file. */
   part?: number;
   /** The format its header names, such as matroska,webm. */
