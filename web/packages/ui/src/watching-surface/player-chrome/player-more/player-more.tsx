@@ -31,6 +31,8 @@ interface PlayerMoreProps {
    * that cannot be pressed, for a channel that cannot be played now.
    */
   lastChannel?: { detail: string; onPress: () => void; unavailable?: boolean };
+  /** The watched channel is a favourite (`on`): the row adds it to Favourites or removes it. */
+  favourite?: { on: boolean; onPress: () => void };
   /** Picture: the quality on air ("Auto · 1080p"). */
   picture?: { detail: string; onPress: () => void };
   /** Playback details: the technical panel (§9.5). */
@@ -122,6 +124,7 @@ const PlayerMore = ({
   formatTime,
   goLive,
   info,
+  favourite,
   lastChannel,
   picture,
   pictureInPicture,
@@ -149,6 +152,7 @@ const PlayerMore = ({
     <View style={{ gap: 2 }}>
       {rowsOf({
         channels,
+        favourite,
         goLive,
         info,
         lastChannel,
@@ -176,6 +180,7 @@ type MoreRowSpec = {
 /** The rows in J's order, each only where the caller offers it. */
 const rowsOf = ({
   channels,
+  favourite,
   goLive,
   info,
   lastChannel,
@@ -185,6 +190,11 @@ const rowsOf = ({
   startOver,
 }: Omit<PlayerMoreProps, "density" | "formatTime" | "schedule">): MoreRowSpec[] =>
   [
+    favourite && {
+      icon: favourite.on ? "starFilled" : "star",
+      label: favourite.on ? "Remove from Favourites" : "Add to Favourites",
+      onPress: favourite.onPress,
+    },
     lastChannel && {
       detail: lastChannel.detail,
       icon: "swap",

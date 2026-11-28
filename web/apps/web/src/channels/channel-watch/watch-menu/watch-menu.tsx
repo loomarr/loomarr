@@ -33,6 +33,7 @@ const watchMenu = ({
   audio,
   density,
   detailRows,
+  favourite,
   goLive,
   onCopyDetails,
   onLastChannel,
@@ -112,6 +113,7 @@ const watchMenu = ({
     <PlayerMore
       density={density}
       formatTime={formatGuideTime}
+      favourite={favourite}
       goLive={goLive}
       lastChannel={
         last && lastChannel

@@ -48,13 +48,11 @@ interface VideoPlayerProps {
   // hands them over; the caller draws everything. `hold(true)` keeps the controls shown while
   // something in them is open (a preview card, a sheet), as an open menu does.
   renderChrome?: (chrome: VideoPlayerChrome) => React.ReactNode;
-  // A centered SLOT over the video, beneath the controls (§9.1 Watch). The caller renders a
-  // transient state here — channel-watch passes the TunerLoader while the stream warms up, so the
-  // cold-start beat reads as a tuner acquiring signal instead of a black frame. The player only
-  // places it (fills the frame, centered) and stays ignorant of what it is; pass `undefined` to
-  // show nothing. It sits UNDER the controls so those stay operable over it.
+  // A centered SLOT over the video, beneath the controls. The caller renders a transient state
+  // here. The player only places it (fills the frame, centered) and stays ignorant of what it is;
+  // pass `undefined` to show nothing. It sits UNDER the controls so those stay operable over it.
   overlay?: React.ReactNode;
-  // Keys the player doesn't use itself, offered to the caller (channel-watch: 0-9 and G). Return
+  // Keys the player doesn't use itself, offered to the caller. Return
   // true when the key was handled. Never called while focus is in a text field or a menu.
   onShortcut?: (key: string) => boolean;
   // Custom source binding. When provided, the primitive does NOT set `<video src>`; instead it
@@ -70,6 +68,10 @@ interface VideoPlayerProps {
   // picture inside it, centred. On an upright phone that is the strip mid-screen the chrome's toolbar,
   // band and keys sit clear of (§9.7).
   fill?: boolean;
+  // The frame's own keys: Space and K play and pause, M mutes, ←/→ seek, L goes live. On unless a
+  // caller handles every key itself (the watching screen, whose keys mean other things), which
+  // passes false so no key is handled twice.
+  keys?: boolean;
 }
 
 // What a live player's caller draws its controls from (`renderChrome`).

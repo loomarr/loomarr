@@ -87,6 +87,7 @@ const VideoPlayer = ({
   attach,
   onChannelStep,
   fill = false,
+  keys = true,
 }: VideoPlayerProps) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -177,6 +178,8 @@ const VideoPlayer = ({
   // keys (Space on a <button> must click). The channel keys are not among them: the document
   // listener above takes those, wherever focus is.
   const onKeyDown = (e: React.KeyboardEvent) => {
+    // A caller that handles every key itself takes these too.
+    if (!keys) return;
     const target = e.target as HTMLElement;
     // Typing belongs to the field: a search box in the panel must be able to take "m" and "k".
     if (target.closest("input:not([type=range]), textarea, select")) return;
@@ -275,9 +278,9 @@ const VideoPlayer = ({
           {...mediaHandlers}
         />
 
-        {/* OVERLAY SLOT — a caller-rendered transient state (channel-watch's TunerLoader during
-          warm-up). Sits directly over the video but UNDER the control-bar scrims below, so the
-          controls stay operable. pointer-events-none so it never eats a click on the frame. */}
+        {/* OVERLAY SLOT — a caller-rendered transient state. Sits directly over the video but
+          UNDER the control-bar scrims below, so the controls stay operable. pointer-events-none
+          so it never eats a click on the frame. */}
         {overlay && (
           <div style={{ inset: 0, pointerEvents: "none", position: "absolute", zIndex: 0 }}>{overlay}</div>
         )}

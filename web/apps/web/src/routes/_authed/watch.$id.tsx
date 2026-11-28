@@ -3,12 +3,13 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { Surface, Text } from "@loomarr/design-system";
 import { WatchFrame } from "@loomarr/ui";
 import { createFileRoute } from "@tanstack/react-router";
-import { type ReactNode, useCallback, useRef } from "react";
+import { type ReactNode, useCallback } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ChannelWatch } from "@/channels/channel-watch";
 import { useWatchChannels } from "@/channels/use-watch-channels";
 import { useWatchExits } from "@/channels/use-watch-exits";
-import { useWatchPlayer, type WatchTuneReport } from "@/channels/use-watch-player";
+import { useWatchPlayer } from "@/channels/use-watch-player";
+import { useWatchTune } from "@/channels/use-watch-tune";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
@@ -39,23 +40,16 @@ const WatchRoute = () => {
   const channel = unwrap(channelQuery.data);
   useDocumentTitle(channel?.name);
   const channels = channelsApi.useListChannels();
-  const nowNext = channelsApi.useChannelsNowNext({ query: { staleTime: 15_000 } });
   const follow = useCallback(
     (channelId: string) => {
       void navigate({ to: "/watch/$id", params: { id: channelId }, replace: true });
     },
     [navigate],
   );
-  const tuneReports = useRef<((report: WatchTuneReport) => void) | undefined>(undefined);
-  const onTune = useCallback((report: WatchTuneReport) => tuneReports.current?.(report), []);
+  // The tune sits beside the player, so it hears the first tune too, before the page has a channel.
+  const tune = useWatchTune();
   const listed = unwrap(channels.data)?.channels;
-  const player = useWatchPlayer({
-    channelId: id,
-    channels: listed,
-    nowNext: unwrap(nowNext.data)?.channels ?? [],
-    onNavigate: follow,
-    onTune,
-  });
+  const player = useWatchPlayer({ channelId: id, channels: listed, onNavigate: follow, onTune: tune.onTune });
   const tunedChannel = player.channel ?? channel;
   const { back, openGuide } = useWatchExits();
   const around = useWatchChannels(listed);
@@ -90,22 +84,19 @@ const WatchRoute = () => {
         isAdmin={isAdmin}
         onGuide={openGuide}
         player={player}
-        tuneReports={tuneReports}
+        tune={tune}
       />
     </WatchFrame>
   );
 };
 
 const Route = createFileRoute("/_authed/watch/$id")({
-  // The channel list and the on-air line the player tunes from. Surfing changes `$id` and must not
-  // wait on the target's own read: ChannelWatch paints the target from the list, so when the list
-  // has it the channel's detail is only started. A link to a channel the list does not hold (or a
-  // list that failed) waits on the detail, so the page opens on the channel or its error.
+  // The channel list the player tunes from. Surfing changes `$id` and must not wait on the target's
+  // own read: ChannelWatch paints the target from the list, so when the list has it the channel's
+  // detail is only started. A link to a channel the list does not hold (or a list that failed)
+  // waits on the detail, so the page opens on the channel or its error.
   loader: async ({ context: { queryClient }, params: { id } }) => {
-    const [list] = await Promise.all([
-      queryClient.fetchQuery(channelsApi.getListChannelsQueryOptions()).catch(() => undefined),
-      queryClient.prefetchQuery(channelsApi.getChannelsNowNextQueryOptions({ query: { staleTime: 15_000 } })),
-    ]);
+    const list = await queryClient.fetchQuery(channelsApi.getListChannelsQueryOptions()).catch(() => undefined);
     const listed = list?.status === 200 && list.data.channels?.some((channel) => channel.id === id);
     const detail = queryClient.prefetchQuery(channelsApi.getGetChannelQueryOptions(id));
     if (listed) return;

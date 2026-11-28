@@ -9,9 +9,17 @@ import {
 } from "@loomarr/core/channel-subtitles";
 import { formatGuideTime } from "@loomarr/core/guide";
 import { type WatchRequest, watchKeyOf } from "@loomarr/core/watch-screen";
-import { Layer, Stack } from "@loomarr/design-system";
-import { PlayerCaption, playbarFromTimeline, UnmutePill, useWatchScreen, WatchScreen } from "@loomarr/ui";
-import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Layer, Stack, ThemeScope } from "@loomarr/design-system";
+import {
+  PlayerCaption,
+  PlayerCover,
+  playbarFromTimeline,
+  UnmutePill,
+  useWatchScreen,
+  WatchScreen,
+  watermarkOf,
+} from "@loomarr/ui";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { VideoPlayer } from "@/components/loomarr/player/video-player";
 import { copyText } from "@/lib/copy-text";
@@ -21,9 +29,9 @@ import { useSubtitlesPreference } from "../use-subtitles-preference";
 import { useSwitchSound } from "../use-switch-sound";
 import type { WatchChannels } from "../use-watch-channels";
 import { useWatchHintPreference } from "../use-watch-hint-preference";
-import type { WatchPlayer, WatchTuneReport } from "../use-watch-player";
+import type { WatchPlayer } from "../use-watch-player";
 import { useWatchTelemetry } from "../use-watch-telemetry";
-import { useWatchTune } from "../use-watch-tune";
+import type { WatchTune } from "../use-watch-tune";
 import { ChromeBridge, type PlayerSound } from "./chrome-bridge";
 import { FirstPlayMuted } from "./first-play-muted";
 import { PausedCover } from "./paused-cover";
@@ -67,19 +75,11 @@ interface ChannelWatchProps {
   player: WatchPlayer;
   /** The channels the screen lists, and the viewer's own. */
   channels: WatchChannels;
-  /** Where the route's player says a tune began; this component listens there while it is mounted. */
-  tuneReports: RefObject<((report: WatchTuneReport) => void) | undefined>;
+  /** The tune, which the route keeps beside the player, so it hears every tune the player begins. */
+  tune: WatchTune;
 }
 
-const ChannelWatch = ({
-  back,
-  channel,
-  channels,
-  isAdmin,
-  onGuide,
-  player,
-  tuneReports,
-}: ChannelWatchProps) => {
+const ChannelWatch = ({ back, channel, channels, isAdmin, onGuide, player, tune }: ChannelWatchProps) => {
   const { lineup, onTuneSettled } = channels;
   const touch = useCoarsePointer();
   const density = touch ? "touch" : "pointer";
@@ -96,13 +96,10 @@ const ChannelWatch = ({
   );
   useExpiryNotice(channel.id, player.liveTransport.state.noticeRevision);
 
-  // Whether a picture has played on this page: before one, any tune is the page's first.
+  // Whether a picture has played on this page: the channel-change sound waits for one.
   const [heldFrame, setHeldFrame] = useState(false);
-  const played = useRef(false);
   useEffect(() => {
-    if (player.status !== "playing") return;
-    played.current = true;
-    setHeldFrame(true);
+    if (player.status === "playing") setHeldFrame(true);
   }, [player.status]);
 
   // Recents record a tune once it settles, never a channel flipped past (the API's rule): once per
@@ -124,27 +121,38 @@ const ChannelWatch = ({
 
   const offAir = channel.status === "paused" || channel.status === "detached";
 
-  // The tune follows the player: a tune that begins is a flip, its first frame the picture, a
-  // failure or a channel off air the end of a tune-in with none.
-  const tune = useWatchTune();
-  const flips = useRef(new Map<number, number>());
-  useLayoutEffect(() => {
-    tuneReports.current = (report) => {
-      const flip = tune.flip({ firstTune: !played.current, streaming: report.warm });
-      flips.current.set(report.attemptId, flip);
-      for (const stale of [...flips.current.keys()].slice(0, -REMEMBERED_TUNES)) flips.current.delete(stale);
-    };
-    return () => {
-      tuneReports.current = undefined;
-    };
-  }, [tune.flip, tuneReports]);
-  const { abandon, ready } = tune;
+  // The tune follows the player: its first frame is the picture, a failure or a channel off air the
+  // end of a tune-in with none.
+  const { settle } = tune;
   useEffect(() => {
-    const flip = player.attemptId === undefined ? undefined : flips.current.get(player.attemptId);
-    if (flip === undefined) return;
-    if (player.status === "playing") ready(flip);
-    else if (player.status === "error" || offAir) abandon(flip);
-  }, [player.attemptId, player.status, offAir, ready, abandon]);
+    if (player.status === "playing") settle(player.attemptId, "picture");
+    else if (player.status === "error" || offAir) settle(player.attemptId, "none");
+  }, [player.attemptId, player.status, offAir, settle]);
+
+  // A browser may refuse to start a picture no one pressed for (its autoplay policy): the element
+  // stops before its first frame, unasked. Then a press of the cover's Play starts it.
+  const [refused, setRefused] = useState(false);
+  const waiting = useRef({ loading: player.status === "loading", paused: player.paused });
+  waiting.current = { loading: player.status === "loading", paused: player.paused };
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return undefined;
+    const stopped = () => {
+      if (video.paused && !video.ended && waiting.current.loading && !waiting.current.paused) setRefused(true);
+    };
+    const started = () => setRefused(false);
+    video.addEventListener("pause", stopped);
+    video.addEventListener("canplay", stopped);
+    video.addEventListener("playing", started);
+    return () => {
+      video.removeEventListener("pause", stopped);
+      video.removeEventListener("canplay", stopped);
+      video.removeEventListener("playing", started);
+    };
+  }, []);
+  useEffect(() => {
+    if (player.attemptId !== undefined) setRefused(false);
+  }, [player.attemptId]);
 
   // Settings' audio list is the tracks the airing programme actually carries, fetched, never
   // hardcoded. `enabled` gates the probe on a playing channel (a paused one has nothing to probe).
@@ -281,6 +289,23 @@ const ChannelWatch = ({
     watchedId: player.channel?.id ?? channel.id,
   });
   const { send } = model;
+
+  // What the player really does, however it got there (a seek, Start over, the media keys, a
+  // Retry), in whole seconds behind live, so the clock alone says nothing new.
+  const behindMs = Math.round(player.liveTransport.state.lagSeconds) * 1000;
+  useEffect(() => {
+    send({ behindMs, paused: player.paused, type: "playback" });
+  }, [behindMs, player.paused, send]);
+
+  // The browser's own full screen, however it was entered or left (F, the control, a double click,
+  // the browser's Esc or its own controls), names the full-screen control.
+  const [fullScreen, setFullScreen] = useState(() => Boolean(document.fullscreenElement));
+  useEffect(() => {
+    const changed = () => setFullScreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", changed);
+    return () => document.removeEventListener("fullscreenchange", changed);
+  }, []);
+
   const seenHint = model.state.hintSeen;
   useEffect(() => {
     if (seenHint && !hintSeen) rememberHint();
@@ -358,7 +383,40 @@ const ChannelWatch = ({
       onLeave={back.onPress}
       onRetry={player.retry}
     />
+  ) : player.status === "loading" && tune.reconnecting ? (
+    // A reconnect to the channel on screen is not a tune: no static and no "Tuning in".
+    <ThemeScope theme="dark">
+      <PlayerCover
+        channelLabel={channelLabel}
+        density={density}
+        kind="off-air"
+        message="The picture will be back in a moment."
+        title="Reconnecting"
+      />
+    </ThemeScope>
+  ) : refused && player.status === "loading" ? (
+    <ThemeScope theme="dark">
+      <PlayerCover
+        channelLabel={channelLabel}
+        density={density}
+        kind="off-air"
+        message="Your browser waits for you to start the picture."
+        onRetry={() => void player.liveTransport.play()}
+        retryLabel="Play"
+        title="Ready to play"
+      />
+    </ThemeScope>
   ) : undefined;
+
+  // The watched channel's star, from More, said in the message line.
+  const starred = lineup.favouriteIds.includes(channel.id);
+  const named = `${channel.number} ${channel.name}`;
+  const toggleFavourite = () => {
+    channels.setFavourite(channel.id, !starred).then(
+      () => toast(starred ? `${named} removed from Favourites` : `${named} added to Favourites`),
+      () => toast(starred ? `${named} could not be removed from Favourites` : `${named} could not be added to Favourites`),
+    );
+  };
 
   const { info, startOverMs } = chromeData;
   const watched = { band: chromeData.band, id: channel.id, playheadMs: viewerTimeMs };
@@ -369,6 +427,8 @@ const ChannelWatch = ({
       <VideoPlayer
         attach={attach}
         fill
+        // The watching screen's keys are the only keys here.
+        keys={false}
         live
         liveTransport={player.liveTransport}
         renderChrome={(chrome) => (
@@ -395,6 +455,7 @@ const ChannelWatch = ({
         back={back}
         cover={cover}
         detail={(each) => (each.minutesLeft === undefined ? {} : { minutesLeft: each.minutesLeft })}
+        fullScreen={fullScreen}
         layout="full"
         model={model}
         muted={muted}
@@ -411,15 +472,18 @@ const ChannelWatch = ({
                 : {
                     detail: formatGuideTime(serverNowMs ?? Date.now()),
                     onPress: () => {
-                      // A press away from the menu only closes it, so the menu closes first. The
-                      // screen knows only the pauses it asked for; behind live by Start over or
-                      // the arrows across, the player goes live by itself.
+                      // A press away from the menu only closes it, so the menu closes first.
                       slot.close();
-                      const { behindMs, paused } = model.state;
-                      if (paused || behindMs > 0) send({ control: "goLive", type: "press" });
-                      else void player.liveTransport.goLive();
+                      send({ control: "goLive", type: "press" });
                     },
                   },
+            favourite: {
+              on: starred,
+              onPress: () => {
+                slot.close();
+                toggleFavourite();
+              },
+            },
             onCopyDetails: (text) => void copyText(text),
             onLastChannel: player.tune,
             onQuality: (value) => player.setQuality(value === "auto" ? "auto" : Number(value)),
@@ -436,6 +500,7 @@ const ChannelWatch = ({
           })
         }
         tune={tune.view}
+        watermark={watermarkOf(channel.policy?.watermark)}
       />
       {startedMuted && muted ? (
         <Layer centred top={PILL_TOP}>

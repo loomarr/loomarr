@@ -44,6 +44,34 @@ describe("VideoPlayer", () => {
   // soon as the video is muted, and a screen-reader user has no other way to know which way it
   // will go. (Play/pause has the same rule, but its state is driven by media events jsdom never
   // fires, so mute is where the rule is testable.)
+  it("handles its own keys on its frame, and none for a caller that handles every key", () => {
+    const transport = {
+      goLive: vi.fn(),
+      pause: vi.fn(),
+      play: vi.fn(),
+      seek: vi.fn(),
+      state: { lagSeconds: 0, mode: "live" as const, noticeRevision: 0, viewerTimeMs: 1_000_000 },
+    };
+    const press = (container: HTMLElement, key: string) =>
+      fireEvent.keyDown(container.querySelector("video")?.parentElement as HTMLElement, { key });
+    const { container, unmount } = render(<VideoPlayer attach={() => () => undefined} live liveTransport={transport} />);
+    press(container, "ArrowLeft");
+    press(container, "m");
+    expect(transport.seek).toHaveBeenCalledOnce();
+    expect((container.querySelector("video") as HTMLVideoElement).muted).toBe(true);
+    unmount();
+    vi.clearAllMocks();
+    const quiet = render(
+      <VideoPlayer attach={() => () => undefined} keys={false} live liveTransport={transport} />,
+    );
+    for (const key of [" ", "k", "l", "m", "ArrowLeft"]) press(quiet.container, key);
+    expect(transport.seek).not.toHaveBeenCalled();
+    expect(transport.pause).not.toHaveBeenCalled();
+    expect(transport.play).not.toHaveBeenCalled();
+    expect(transport.goLive).not.toHaveBeenCalled();
+    expect((quiet.container.querySelector("video") as HTMLVideoElement).muted).toBe(false);
+  });
+
   it("renames the mute button once muted", () => {
     render(<VideoPlayer src={SRC} />);
 

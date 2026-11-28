@@ -18,6 +18,8 @@ interface WatchMenuOptions {
   goLive: { detail: string; onPress: () => void } | undefined;
   /** The programme on air began inside the window: back to its start. */
   startOver: { detail: string; onPress: () => void } | undefined;
+  /** Whether the watched channel is a favourite, and the press that stars or unstars it. */
+  favourite: { on: boolean; onPress: () => void } | undefined;
   /** Tunes the channel Last channel names. */
   onLastChannel: (channelId: string) => void;
   video: RefObject<HTMLVideoElement | null>;

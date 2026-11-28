@@ -16,6 +16,7 @@ import type { LivePlaybackState } from "@/components/loomarr/player/video-player
 import { channel } from "@/test/fixtures/channels";
 import { server } from "@/test/msw/server";
 import type { WatchPlayer, WatchTuneReport } from "../use-watch-player";
+import { useWatchTune } from "../use-watch-tune";
 import { watchLineupChannels } from "../watch-lineup";
 import { type ChannelWatchProps, ChannelWatch as WatchSurface } from "./channel-watch";
 
@@ -23,6 +24,7 @@ import { type ChannelWatchProps, ChannelWatch as WatchSurface } from "./channel-
 const hls = vi.hoisted(() => ({
   status: "playing" as "loading" | "playing" | "error",
   attemptId: 1 as number | undefined,
+  paused: false,
   attach: vi.fn(() => () => undefined),
   retry: vi.fn(),
   step: vi.fn(),
@@ -44,6 +46,9 @@ const switchSound = vi.hoisted(() =>
   })),
 );
 vi.mock("../switch-sound", () => ({ startChannelSwitchSound: switchSound }));
+// The message line: what the screen says, as the app's toaster shows it.
+const toast = vi.hoisted(() => vi.fn());
+vi.mock("sonner", () => ({ toast }));
 
 const CHANNELS = [
   channel({ id: "ch-1", name: "Late Night Noir", number: 1, status: "live" }),
@@ -55,8 +60,6 @@ const [noir, toons, games] = CHANNELS as [ChannelDTO, ChannelDTO, ChannelDTO];
 const watchPlayer = (tuned: ChannelDTO, overrides: Partial<WatchPlayer>): WatchPlayer => ({
   attach: hls.attach,
   ...(hls.attemptId === undefined ? {} : { attemptId: hls.attemptId }),
-  canSurf: true,
-  catalog: [],
   channel: tuned,
   ladder: { rungs: [] },
   liveTransport: hls.liveTransport,
@@ -64,42 +67,54 @@ const watchPlayer = (tuned: ChannelDTO, overrides: Partial<WatchPlayer>): WatchP
   quality: "auto",
   retry: hls.retry,
   setQuality: hls.setQuality,
+  paused: hls.paused,
   status: hls.status,
-  step: hls.step,
   tune: hls.tune,
   ...overrides,
 });
 
-// Where the route's player says a tune began; the page listens on it while it is mounted.
+// Where the route's player says a tune began: the route's own tune hears it.
 const reports: { current: ((report: WatchTuneReport) => void) | undefined } = { current: undefined };
 const back = { label: "Back", onPress: vi.fn() };
 const onGuide = vi.fn();
 const onTuneSettled = vi.fn();
+const favourites = { ids: [] as string[] };
+const setFavourite = vi.fn(async (channelId: string, favourite: boolean) => {
+  favourites.ids = favourite ? [...favourites.ids, channelId] : favourites.ids.filter((id) => id !== channelId);
+});
 
-// Reads the double when it renders, so a rerender sees what the test has changed since.
+// The route in miniature: the tune lives beside the player, and the screen mounts once there is a
+// channel (`mounted`), as the route's does. Reads the double when it renders.
 const ChannelWatch = ({
   channel: tuned = noir,
   isAdmin = false,
+  mounted = true,
   player,
-}: Partial<Omit<ChannelWatchProps, "player">> & { player?: Partial<WatchPlayer> }) => (
-  <WatchSurface
-    back={back}
-    channel={tuned}
-    channels={{
-      lineup: {
-        channels: watchLineupChannels(CHANNELS, [], Date.now()),
-        favouriteIds: [],
-        lastTunedId: undefined,
-        recentIds: [],
-      },
-      onTuneSettled,
-    }}
-    isAdmin={isAdmin}
-    onGuide={onGuide}
-    player={watchPlayer(tuned, player ?? {})}
-    tuneReports={reports}
-  />
-);
+}: Partial<Omit<ChannelWatchProps, "player" | "tune">> & { mounted?: boolean; player?: Partial<WatchPlayer> }) => {
+  const tune = useWatchTune();
+  reports.current = tune.onTune;
+  if (!mounted) return null;
+  return (
+    <WatchSurface
+      back={back}
+      channel={tuned}
+      channels={{
+        lineup: {
+          channels: watchLineupChannels(CHANNELS, [], Date.now()),
+          favouriteIds: favourites.ids,
+          lastTunedId: undefined,
+          recentIds: [],
+        },
+        onTuneSettled,
+        setFavourite,
+      }}
+      isAdmin={isAdmin}
+      onGuide={onGuide}
+      player={watchPlayer(tuned, player ?? {})}
+      tune={tune}
+    />
+  );
+};
 
 const makeWrapper = () => {
   const client = new QueryClient({
@@ -147,14 +162,16 @@ const openMore = async () => {
   await userEvent.click(await screen.findByRole("button", { name: "More" }));
   return menu("More");
 };
-const report = (attemptId: number, channelId: string, warm: boolean) =>
-  act(() => reports.current?.({ attemptId, channelId, warm }));
+const report = (attemptId: number, channelId: string, warm: boolean, reason: WatchTuneReport["reason"] = "channel") =>
+  act(() => reports.current?.({ attemptId, channelId, reason, warm }));
 
 beforeEach(() => {
   sessionStorage.setItem("loomarr.player.first-play", "1");
   localStorage.setItem("loomarr.player.first-run-hint", "seen");
   hls.status = "playing";
   hls.attemptId = 1;
+  hls.paused = false;
+  favourites.ids = [];
   hls.liveTransport.state = { mode: "live", lagSeconds: 0, viewerTimeMs: 1_000_000, noticeRevision: 0 };
   stubTracks();
 });
@@ -386,14 +403,136 @@ describe("ChannelWatch: the shipped menus in the screen's slot", () => {
   });
 
   it("offers Go live from More while behind live, and Last channel once one was left", async () => {
-    hls.liveTransport.state = { mode: "paused", lagSeconds: 60, viewerTimeMs: 1_000_000, noticeRevision: 0 };
+    // Behind live by a seek the screen did not ask for: the player's own word says so.
+    hls.liveTransport.state = { mode: "behind", lagSeconds: 60, viewerTimeMs: 1_000_000, noticeRevision: 0 };
     mount();
+    await userEvent.click(within(await openMore()).getByRole("button", { name: /^Go live/ }));
+    expect(hls.liveTransport.goLive).toHaveBeenCalledOnce();
     press("ArrowDown");
     const more = await openMore();
     await userEvent.click(within(more).getByRole("button", { name: /^Last channel/ }));
     expect(hls.tune).toHaveBeenLastCalledWith("ch-1");
-    await userEvent.click(within(await openMore()).getByRole("button", { name: /^Go live/ }));
+  });
+
+  it("goes live with End after seeks it did not ask for, and the lower third says how far behind", () => {
+    const { again } = mount();
+    press("End");
+    expect(hls.liveTransport.goLive).not.toHaveBeenCalled();
+    hls.liveTransport.state = { mode: "behind", lagSeconds: 30, viewerTimeMs: 970_000, noticeRevision: 0 };
+    again();
+    press("End");
     expect(hls.liveTransport.goLive).toHaveBeenCalledOnce();
+  });
+
+  it("takes a pause from outside the screen, so Space resumes it", () => {
+    const { again } = mount();
+    hls.paused = true;
+    again();
+    press(" ");
+    expect(hls.liveTransport.play).toHaveBeenCalledOnce();
+    expect(hls.liveTransport.pause).not.toHaveBeenCalled();
+  });
+
+  it("stars and unstars the watched channel from More, and says so", async () => {
+    const { again } = mount();
+    await userEvent.click(within(await openMore()).getByRole("button", { name: "Add to Favourites" }));
+    expect(setFavourite).toHaveBeenLastCalledWith("ch-1", true);
+    await waitFor(() => expect(toast).toHaveBeenLastCalledWith("1 Late Night Noir added to Favourites"));
+    again();
+    await userEvent.click(within(await openMore()).getByRole("button", { name: "Remove from Favourites" }));
+    expect(setFavourite).toHaveBeenLastCalledWith("ch-1", false);
+    await waitFor(() => expect(toast).toHaveBeenLastCalledWith("1 Late Night Noir removed from Favourites"));
+  });
+
+  it("says a star the server refused, and changes nothing", async () => {
+    setFavourite.mockRejectedValueOnce(new Error("refused"));
+    const { again } = mount();
+    await userEvent.click(within(await openMore()).getByRole("button", { name: "Add to Favourites" }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenLastCalledWith("1 Late Night Noir could not be added to Favourites"),
+    );
+    again();
+    expect(within(await openMore()).getByRole("button", { name: "Add to Favourites" })).toBeInTheDocument();
+  });
+
+  it("shows the first tune of a visit as tuning in when the screen mounts after the player began it", () => {
+    hls.status = "loading";
+    const { again } = mount({ mounted: false });
+    // The player tunes the URL's channel before the page has a channel to draw.
+    report(1, "ch-1", true);
+    again({ mounted: true });
+    expect(screen.getByTestId("tune-static-cold")).toBeInTheDocument();
+    expect(screen.getByText(/^Tuning in…/)).toBeInTheDocument();
+    press(" ");
+    expect(hls.liveTransport.pause).not.toHaveBeenCalled();
+    hls.status = "playing";
+    again();
+    expect(screen.getByTestId("tune-static-none")).toBeInTheDocument();
+    press(" ");
+    expect(hls.liveTransport.pause).toHaveBeenCalledOnce();
+  });
+
+  it("shows a reconnect to the channel on screen as reconnecting, with no static", () => {
+    const { again } = mount();
+    report(1, "ch-1", true);
+    report(2, "ch-1", false, "retry");
+    hls.status = "loading";
+    hls.attemptId = 2;
+    again();
+    expect(screen.getByText("Reconnecting")).toBeInTheDocument();
+    expect(screen.queryByTestId("tune-static-cold")).toBeNull();
+  });
+
+  it("offers Play when the browser refuses to start the picture by itself", async () => {
+    hls.status = "loading";
+    mount();
+    const video = document.querySelector("video") as HTMLVideoElement;
+    act(() => {
+      video.dispatchEvent(new Event("pause"));
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Play" }));
+    expect(hls.liveTransport.play).toHaveBeenCalledOnce();
+    act(() => {
+      video.dispatchEvent(new Event("playing"));
+    });
+    expect(screen.queryByText("Ready to play")).toBeNull();
+  });
+
+  it("names full screen for the browser's real state, entering on F and leaving by the browser's own", () => {
+    const request = vi.fn(async () => undefined);
+    Object.defineProperty(document.documentElement, "requestFullscreen", { configurable: true, value: request });
+    mount();
+    expect(screen.getByRole("button", { name: "Full screen (F)" })).toBeInTheDocument();
+    press("f");
+    expect(request).toHaveBeenCalledOnce();
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, value: document.body });
+    act(() => {
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    expect(screen.getByRole("button", { name: "Leave full screen (F)" })).toBeInTheDocument();
+    // The browser's own Esc leaves it.
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, value: null });
+    act(() => {
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    expect(screen.getByRole("button", { name: "Full screen (F)" })).toBeInTheDocument();
+    Reflect.deleteProperty(document, "fullscreenElement");
+    Reflect.deleteProperty(document.documentElement, "requestFullscreen");
+  });
+
+  it("says in the message line why a key did nothing", () => {
+    mount();
+    press("l");
+    expect(toast).toHaveBeenCalledWith("There is no last channel yet");
+  });
+
+  it("follows the player's mute through its chrome, from M and back", async () => {
+    mount();
+    press("m");
+    expect(await screen.findByRole("button", { name: "Unmute (M)" })).toBeInTheDocument();
+    press("m");
+    expect(await screen.findByRole("button", { name: "Mute (M)" })).toBeInTheDocument();
+    expect((document.querySelector("video") as HTMLVideoElement).muted).toBe(false);
   });
 
   it("opens the shortcuts sheet from ?", () => {

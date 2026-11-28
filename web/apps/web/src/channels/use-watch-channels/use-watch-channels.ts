@@ -18,6 +18,9 @@ type WatchChannels = {
   };
   // A tune has settled on this channel (its first frame played): the viewer's recents record it.
   onTuneSettled: (channelId: string) => void;
+  // Stars or unstars a channel; the answer replaces the viewer's lists, so the lineup follows at
+  // once. Rejects when the server refuses, and then nothing has changed.
+  setFavourite: (channelId: string, favourite: boolean) => Promise<void>;
 };
 
 const NO_CHANNELS: readonly ChannelDTO[] = [];
@@ -33,11 +36,12 @@ const useWatchChannels = (channels: readonly ChannelDTO[] | undefined): WatchCha
   const queryClient = useQueryClient();
   const mine = channelsApi.useMyChannels({ query: { retry: false } });
   const mineBody = unwrap(mine.data);
-  const recordTune = channelsApi.useRecordChannelTune({
-    mutation: {
-      onSuccess: (res: unknown) => queryClient.setQueryData(channelsApi.getMyChannelsQueryKey(), res),
-    },
-  });
+  const storeMine = {
+    onSuccess: (res: unknown) => queryClient.setQueryData(channelsApi.getMyChannelsQueryKey(), res),
+  };
+  const recordTune = channelsApi.useRecordChannelTune({ mutation: storeMine });
+  const addFavourite = channelsApi.useAddFavouriteChannel({ mutation: storeMine });
+  const removeFavourite = channelsApi.useRemoveFavouriteChannel({ mutation: storeMine });
 
   const listed = channels ?? NO_CHANNELS;
   // Read defensively: a guide body without `channels` lists every channel with nothing on.
@@ -52,6 +56,9 @@ const useWatchChannels = (channels: readonly ChannelDTO[] | undefined): WatchCha
   return {
     lineup: { channels: lineupChannels, favouriteIds, lastTunedId: recentIds[0], recentIds },
     onTuneSettled: (channelId) => recordTune.mutate({ channelId }),
+    setFavourite: async (channelId, favourite) => {
+      await (favourite ? addFavourite : removeFavourite).mutateAsync({ channelId });
+    },
   };
 };
 
