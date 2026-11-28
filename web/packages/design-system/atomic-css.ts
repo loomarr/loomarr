@@ -32,7 +32,7 @@ const stylesOfText = (markup: string, text: string): string =>
 
 /** The markup minus Tamagui's hidden config-revision marker, which is not content. */
 const withoutRuntimeMarker = (markup: string): string =>
-  markup.replace(/<span aria-hidden="true" hidden="" data-tamagui-config-revision[^>]*><\/span>/g, "");
+  markup.replace(/<span aria-hidden="true" hidden="" data-tamagui-config-revision[^<>]*><\/span>/g, "");
 
 // Packages that also target React Native compile without the DOM lib, so the jsdom side is typed
 // structurally, and `document` is read only when a live-DOM helper is called.
