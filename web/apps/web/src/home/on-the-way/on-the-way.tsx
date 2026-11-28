@@ -3,7 +3,7 @@ import type { TitleDTO } from "@loomarr/api/models/titleDTO";
 import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
 import { Action, SectionHeader } from "@loomarr/design-system";
-import { CardAction, ListGroup, ListRow, type ListRowProps } from "@loomarr/ui";
+import { CardAction, ListGroup, ListRow, type ListRowProps } from "@loomarr/design-system/rows";
 import { useQueries } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { RequestRow } from "@/queue/request-row";

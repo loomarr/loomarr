@@ -2,7 +2,7 @@ import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { Action, Badge, Grid, type GridTrack, Stack, Text, TextLink } from "@loomarr/design-system";
-import { SearchField } from "@loomarr/ui";
+import { SearchField } from "@loomarr/design-system/fields";
 import { Link } from "@tanstack/react-router";
 import { destinationForOwner } from "@/settings/settings-destinations";
 import { SettingField } from "../setting-field";

@@ -1,6 +1,6 @@
-import { Surface, Text } from "@loomarr/design-system";
-
 import { CardMeta } from "../card-parts";
+import { Surface } from "../primitives";
+import { Text } from "../text";
 import type { RowCardProps } from "./row-card.type";
 
 const LEAD = 36;

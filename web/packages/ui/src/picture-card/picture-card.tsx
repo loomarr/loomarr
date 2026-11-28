@@ -1,6 +1,6 @@
 import { Surface, Text } from "@loomarr/design-system";
+import { CardMeta } from "@loomarr/design-system/rows";
 
-import { CardMeta } from "../card-parts";
 import type { PictureCardProps, PictureRatio } from "./picture-card.type";
 
 // The fixed media width per ratio in a `left` card, so every row of one kind lines up.

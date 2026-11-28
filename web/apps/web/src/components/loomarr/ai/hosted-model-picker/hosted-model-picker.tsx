@@ -1,7 +1,7 @@
 import type { HostedModelView } from "@loomarr/api/models/hostedModelView";
 import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView";
 import { Action, Badge, Card, Stack, Text, TextLink } from "@loomarr/design-system";
-import { SearchField } from "@loomarr/ui";
+import { SearchField } from "@loomarr/design-system/fields";
 import { useState } from "react";
 import type { HostedModelPickerProps } from "./hosted-model-picker.type";
 

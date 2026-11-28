@@ -1,4 +1,4 @@
-import { CardAction } from "@loomarr/ui";
+import { CardAction } from "@loomarr/design-system/rows";
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { render } from "@/test/render";

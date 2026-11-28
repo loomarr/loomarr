@@ -1,6 +1,6 @@
 import { formatRelative } from "@loomarr/core/format";
 import { Stack, Surface, Text } from "@loomarr/design-system";
-import { ListGroup, PanelRow } from "@loomarr/ui";
+import { ListGroup, PanelRow } from "@loomarr/design-system/rows";
 import type { ActivityFeedProps } from "./activity-feed.type";
 
 // ActivityFeed — "what has Loomarr been doing?" (§12, V32; v2 mock Dashboard § Recent activity).

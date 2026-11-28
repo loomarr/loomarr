@@ -12,7 +12,8 @@ import {
   Tooltip,
   typography,
 } from "@loomarr/design-system";
-import { CardAction, CardStatus, ClipSelect, PictureCard } from "@loomarr/ui";
+import { CardAction, CardStatus } from "@loomarr/design-system/rows";
+import { ClipSelect, PictureCard } from "@loomarr/ui";
 import { useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ServedImage } from "@/components/loomarr/served-image";

@@ -1,5 +1,6 @@
 import { Action } from "@loomarr/design-system";
-import { HighlightRow, ListGroup, ListRow } from "@loomarr/ui";
+import { ListGroup, ListRow } from "@loomarr/design-system/rows";
+import { HighlightRow } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 // ListGroup + ListRow — state rows (#1659 web mock: On the way, Your requests) — and HighlightRow,

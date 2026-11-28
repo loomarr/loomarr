@@ -1,4 +1,5 @@
-import type { ActionProps, StatusTone } from "@loomarr/design-system";
+import type { ActionProps } from "../interaction";
+import type { StatusTone } from "../primitives";
 
 interface CardActionProps extends Omit<ActionProps, "variant"> {
   /** The item needs the viewer: the action is drawn as a secondary button instead of a quiet one. */
