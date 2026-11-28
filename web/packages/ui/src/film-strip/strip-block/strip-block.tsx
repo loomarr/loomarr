@@ -1,7 +1,7 @@
 import { formatProgrammeTitle } from "@loomarr/core/guide";
-import { Surface, Text, ThemeScope, useFocusLook } from "@loomarr/design-system";
+import { Layer, Stack, Surface, Text, ThemeScope, useFocusLook } from "@loomarr/design-system";
 import { type ComponentRef, type ReactNode, type Ref, useState } from "react";
-import { Platform, Pressable, View, type ViewStyle } from "react-native";
+import { Platform, Pressable, type View, type ViewStyle } from "react-native";
 
 import { PlaybarStill } from "../../watching-surface/player-chrome/playbar-still";
 import type { StripAiring } from "../series-runs";
@@ -121,7 +121,7 @@ const StripBlock = ({
   // An ended block with no picture recedes into the page: canvas fill, quiet edge.
   const receded = state === "ended" && !artworkUri;
   const words = (
-    <View style={{ gap: 2, minWidth: 0 }}>
+    <Stack flexShrink={0} gap="0.5" minWidth={0} position="relative" zIndex={0}>
       {line ? (
         <Text numberOfLines={1} textAlign="left" textRole="mono">
           {line}
@@ -136,134 +136,126 @@ const StripBlock = ({
       >
         {name}
       </Text>
-    </View>
+    </Stack>
   );
 
   return (
-    <Pressable
-      accessibilityLabel={label}
-      accessibilityRole="button"
-      {...focusHandlers}
-      onHoverIn={() => {
-        setHovered(true);
-        onHoverIn();
-      }}
-      onHoverOut={() => {
-        setHovered(false);
-        onHoverOut();
-      }}
-      onPress={onPress}
-      ref={blockRef as unknown as Ref<ComponentRef<typeof View>>}
-      style={[{ left, position: "absolute", top: 0, width, zIndex: ringed ? 1 : 0 }, noOutline]}
-      // The roving Tab stop is the web's: a television's remote has to reach every block, and a
-      // native view with a negative tabIndex takes no focus.
-      tabIndex={Platform.OS !== "web" || tabStop ? 0 : -1}
-      testID={`film-strip-${state}`}
-    >
-      <View style={{ gap: 6, paddingHorizontal: 1 }}>
-        <Surface
-          backgroundColor={
-            receded ? "surfaceCanvas" : state === "now" ? "stateAiringSurface" : "surfaceElevated"
-          }
-          borderColor={ringed && !wideRing ? ring : receded ? "borderDecorative" : "transparent"}
-          borderRadius={8}
-          borderWidth={2}
-          height={STILL_HEIGHT}
-          overflow="hidden"
-          // The picture, the dim and the words are placed against this box.
-          position="relative"
-          testID={
-            ringed && !wideRing ? `film-strip-ring-${ring}` : receded ? "film-strip-receded" : undefined
-          }
-        >
-          {artworkUri ? (
-            <PlaybarStill
-              style={{ height: "100%", left: 0, position: "absolute", top: 0, width: "100%" }}
-              uri={artworkUri}
-            />
-          ) : null}
-          {artworkUri && state === "ended" ? (
-            <Surface
-              backgroundColor="artworkScrim"
-              borderRadius={0}
-              borderWidth={0}
-              bottom={0}
-              left={0}
-              position="absolute"
-              right={0}
-              testID="film-strip-ended-dim"
-              top={0}
-            />
-          ) : null}
-          {aired > 0 ? (
-            <Surface
-              // Over a picture the dim is ink; over a flat tone it is a step toward the page.
-              backgroundColor={artworkUri ? "artworkScrim" : "surfaceCanvas"}
-              borderRadius={0}
-              borderWidth={0}
-              bottom={0}
-              left={0}
-              opacity={artworkUri ? 1 : 0.6}
-              position="absolute"
-              testID="film-strip-aired"
-              top={0}
-              width={percent(aired)}
-            />
-          ) : null}
-          {inside ? (
-            <View
-              style={{
-                bottom: 0,
-                left: wordsFrom,
-                paddingLeft: wordsInset,
-                position: "absolute",
-                right: 0,
-                ...(artworkUri ? {} : { top: 0 }),
-              }}
-              testID="film-strip-words"
-            >
-              <OnInk ink={Boolean(artworkUri)}>
-                <Surface
-                  backgroundColor={artworkUri ? "artworkScrim" : "transparent"}
-                  borderRadius={0}
-                  borderWidth={0}
-                  paddingHorizontal={8}
-                  paddingVertical={6}
-                  {...(artworkUri ? {} : { height: "100%", justifyContent: "center" })}
-                >
-                  {words}
-                </Surface>
-              </OnInk>
-            </View>
-          ) : null}
-        </Surface>
-        {inside ? null : words}
-      </View>
-      {wideRing ? (
-        // Centred on the block and above its neighbours; the drawn width stays as it is.
-        <View
-          style={{
-            height: STILL_HEIGHT,
-            left: "50%",
-            minWidth: MIN_TARGET,
-            position: "absolute",
-            top: 0,
-            transform: [{ translateX: "-50%" }],
-            width: "100%",
-          }}
-          testID="film-strip-target"
-        >
+    // The layer places the block; the button fills it.
+    <Layer left={left} top={0} width={width} zIndex={ringed ? 1 : 0}>
+      <Pressable
+        accessibilityLabel={label}
+        accessibilityRole="button"
+        {...focusHandlers}
+        onHoverIn={() => {
+          setHovered(true);
+          onHoverIn();
+        }}
+        onHoverOut={() => {
+          setHovered(false);
+          onHoverOut();
+        }}
+        onPress={onPress}
+        ref={blockRef as unknown as Ref<ComponentRef<typeof View>>}
+        style={noOutline}
+        // The roving Tab stop is the web's: a television's remote has to reach every block, and a
+        // native view with a negative tabIndex takes no focus.
+        tabIndex={Platform.OS !== "web" || tabStop ? 0 : -1}
+        testID={`film-strip-${state}`}
+      >
+        <Stack flexShrink={0} gap="1.5" paddingHorizontal={1} position="relative" zIndex={0}>
           <Surface
-            backgroundColor="transparent"
-            borderColor={ring}
+            backgroundColor={
+              receded ? "surfaceCanvas" : state === "now" ? "stateAiringSurface" : "surfaceElevated"
+            }
+            borderColor={ringed && !wideRing ? ring : receded ? "borderDecorative" : "transparent"}
             borderRadius={8}
             borderWidth={2}
-            height="100%"
-            testID={`film-strip-ring-${ring}`}
-          />
-        </View>
-      ) : null}
-    </Pressable>
+            height={STILL_HEIGHT}
+            overflow="hidden"
+            // The picture, the dim and the words are placed against this box.
+            position="relative"
+            testID={
+              ringed && !wideRing ? `film-strip-ring-${ring}` : receded ? "film-strip-receded" : undefined
+            }
+          >
+            {artworkUri ? <PlaybarStill fill uri={artworkUri} /> : null}
+            {artworkUri && state === "ended" ? (
+              <Surface
+                backgroundColor="artworkScrim"
+                borderRadius={0}
+                borderWidth={0}
+                bottom={0}
+                left={0}
+                position="absolute"
+                right={0}
+                testID="film-strip-ended-dim"
+                top={0}
+              />
+            ) : null}
+            {aired > 0 ? (
+              <Surface
+                // Over a picture the dim is ink; over a flat tone it is a step toward the page.
+                backgroundColor={artworkUri ? "artworkScrim" : "surfaceCanvas"}
+                borderRadius={0}
+                borderWidth={0}
+                bottom={0}
+                left={0}
+                opacity={artworkUri ? 1 : 0.6}
+                position="absolute"
+                testID="film-strip-aired"
+                top={0}
+                width={percent(aired)}
+              />
+            ) : null}
+            {inside ? (
+              <Layer
+                bottom={0}
+                left={wordsFrom}
+                right={0}
+                testID="film-strip-words"
+                {...(artworkUri ? {} : { top: 0 })}
+              >
+                <Stack paddingLeft={wordsInset} {...(artworkUri ? {} : { height: "100%" })}>
+                  <OnInk ink={Boolean(artworkUri)}>
+                    <Surface
+                      backgroundColor={artworkUri ? "artworkScrim" : "transparent"}
+                      borderRadius={0}
+                      borderWidth={0}
+                      paddingHorizontal={8}
+                      paddingVertical={6}
+                      {...(artworkUri ? {} : { height: "100%", justifyContent: "center" })}
+                    >
+                      {words}
+                    </Surface>
+                  </OnInk>
+                </Stack>
+              </Layer>
+            ) : null}
+          </Surface>
+          {inside ? null : words}
+        </Stack>
+        {wideRing ? (
+          // Centred on the block and above its neighbours; the drawn width stays as it is.
+          <Layer
+            centred
+            height={STILL_HEIGHT}
+            minWidth={MIN_TARGET}
+            testID="film-strip-target"
+            top={0}
+            width="100%"
+          >
+            <Surface
+              backgroundColor="transparent"
+              borderColor={ring}
+              borderRadius={8}
+              borderWidth={2}
+              height="100%"
+              testID={`film-strip-ring-${ring}`}
+            />
+          </Layer>
+        ) : null}
+      </Pressable>
+    </Layer>
   );
 };
 
