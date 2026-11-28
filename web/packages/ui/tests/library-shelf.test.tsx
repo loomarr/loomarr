@@ -308,7 +308,7 @@ describe("LibraryShelf", () => {
         details: { waiting: 12, unreachable: true, retryAt: new Date(2026, 10, 2, 15, 40).toISOString() },
       }),
     });
-    expect(host.textContent).toContain("12 titles are waiting on details — trying again at 3:40 PM");
+    expect(host.textContent).toContain("12 titles are waiting on details. Trying again at 3:40 PM");
     expect(host.textContent).not.toContain("Up to date");
     cleanup();
   });
@@ -318,7 +318,7 @@ describe("LibraryShelf", () => {
       admin: admin({ details: { waiting: 12, unreachable: true, retryAt: "2026-11-02T02:40:00Z" } }),
       timeZone: "Pacific/Auckland",
     });
-    expect(host.textContent).toContain("12 titles are waiting on details — trying again at 3:40 PM");
+    expect(host.textContent).toContain("12 titles are waiting on details. Trying again at 3:40 PM");
     cleanup();
   });
 

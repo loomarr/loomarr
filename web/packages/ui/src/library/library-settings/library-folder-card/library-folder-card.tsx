@@ -55,7 +55,7 @@ const LibraryFolderCard = ({
         <>
           <StatusDot label="Empty" tone="warn" />
           <Text textRole="body" tone="warning">
-            This folder is empty — is the drive connected?
+            This folder is empty. Is the drive connected?
           </Text>
         </>
       ) : folder.readable ? (

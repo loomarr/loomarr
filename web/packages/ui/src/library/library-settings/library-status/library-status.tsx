@@ -89,7 +89,7 @@ const LibraryStatus = ({
           key={removal.path}
           title={heldTitle(removal)}
         >
-          {[heldNames(removal), "We haven't removed anything — if a drive is unplugged, plug it back in."]
+          {[heldNames(removal), "We haven't removed anything. If a drive is unplugged, plug it back in."]
             .filter(Boolean)
             .join(" ")}
         </Callout>
