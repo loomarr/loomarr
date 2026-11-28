@@ -78,12 +78,9 @@ func TestNoFFmpegRunsUntilAViewerTunes(t *testing.T) {
 	tune := httptest.NewRequestWithContext(ctx, http.MethodGet, play.RelativeURL, nil)
 	application.Handler().ServeHTTP(httptest.NewRecorder(), tune)
 
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(marker); err == nil {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatal("a viewer tuned but no FFmpeg started: the stub is not on the tune path, so the idle half proves nothing")
+	// Without this the idle half proves nothing: the stub would not be on the tune path.
+	testkit.Eventually(t, 5*time.Second, "the viewer's tune to start FFmpeg", func() bool {
+		_, err := os.Stat(marker)
+		return err == nil
+	})
 }

@@ -204,13 +204,7 @@ func TestPostgresPlayoutLifecycleListenerLossClosesUntilDurableCatchUp(t *testin
 		t.Fatalf("StopAll calls = %d, want initial close plus listener-loss close", stopAllCalls)
 	}
 	close(allowSecondCatchUp)
-	deadline := time.Now().Add(2 * time.Second)
-	for !gate.Available() && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
-	if !gate.Available() {
-		t.Fatal("admission did not reopen after reconnect durable catch-up")
-	}
+	testkit.Eventually(t, 2*time.Second, "admission to reopen after reconnect durable catch-up", gate.Available)
 }
 
 func seedLifecycleChannel(

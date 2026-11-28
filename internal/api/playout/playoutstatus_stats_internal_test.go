@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/hls"
 	"github.com/loomarr/loomarr/internal/playout/media"
+	"github.com/loomarr/loomarr/internal/testkit/waitfor"
 )
 
 // slowEncodeSource airs one never-ending movie on a fixed host.
@@ -55,17 +56,14 @@ func TestChannelHealth_SlowEncoderReadsStalledFromPackagerStats(t *testing.T) {
 			go func() { _, _, _ = m.MediaPlaylist(ctx, "ch", string(playout.FormatBaseline)+".m3u8", false) }()
 
 			var row ChannelHealth
-			deadline := time.Now().Add(10 * time.Second)
-			for time.Now().Before(deadline) {
-				if stats := m.Stats(time.Now()); len(stats) == 1 && stats[0].Speed > 0 {
-					row = channelHealthFrom(stats[0])
-					break
+			waitfor.Eventually(t, 10*time.Second, "Stats to report the encoder's speed", func() bool {
+				stats := m.Stats(time.Now())
+				if len(stats) != 1 || stats[0].Speed <= 0 {
+					return false
 				}
-				time.Sleep(20 * time.Millisecond)
-			}
-			if row.ChannelID == "" {
-				t.Fatalf("Stats never reported the encoder's speed: %+v", m.Stats(time.Now()))
-			}
+				row = channelHealthFrom(stats[0])
+				return true
+			})
 			if row.Health != HealthStalled {
 				t.Errorf("a 0.6x transcode read %q (speed %v, reason %q), want %q", row.Health, row.Speed, row.Reason, HealthStalled)
 			}

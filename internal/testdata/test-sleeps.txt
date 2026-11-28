@@ -3,15 +3,11 @@
 # One "path count" line per file. This list only shrinks: replace a sleep, then
 # go test ./internal/ -run TestTestsDoNotSleep -lower-sleep-ledger
 internal/api/guide_test.go 1
-internal/api/playout/playoutstatus_stats_internal_test.go 1
-internal/api/playout_test.go 1
-internal/app/application_bound_test.go 2
+internal/app/application_bound_test.go 1
 internal/app/application_finish_test.go 5
 internal/app/application_test.go 2
 internal/app/buildlibrary_test.go 1
-internal/app/filler_beta_journey_test.go 1
-internal/app/playout_noviewer_test.go 2
-internal/app/playoutlifecycle_test.go 1
+internal/app/playout_noviewer_test.go 1
 internal/app/restart_test.go 1
 internal/app/settings_replica_test.go 1
 internal/filler/fetch/downloaders_test.go 3
