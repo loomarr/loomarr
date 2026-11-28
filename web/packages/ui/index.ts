@@ -6,6 +6,8 @@ export type { CardActionProps, CardStatusProps, ChannelChipProps } from "./src/c
 export { CardAction, CardMeta, CardStatus, ChannelChip } from "./src/card-parts";
 export type { ChannelIdentProps } from "./src/channel-ident";
 export { ChannelIdent } from "./src/channel-ident";
+export type { ChannelListDetail, ChannelListLayout, ChannelListProps } from "./src/channel-list";
+export { ChannelList } from "./src/channel-list";
 export type {
   ChannelAudioOption,
   ChannelAudioSectionProps,
