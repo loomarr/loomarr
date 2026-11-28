@@ -117,7 +117,7 @@ const MoreSheet = ({
 
 /**
  * The web shell's phone-width (< `md`) footer nav, replacing the 56 px icon rail (#1785, #1659
- * Shell section, Alt A approved 2026-10-03). Home/Watch/Guide/Requests are fixed bar slots — Watch
+ * Shell section, Alt A approved 2026-10-03). Home/Watch/Guide/Library are fixed bar slots — Watch
  * absent until `watchChannelId` exists (X2) — and everything else for the role sits behind More.
  */
 const PhoneBottomBar = ({ badges, isAdmin, watchChannelId }: PhoneBottomBarProps) => {
@@ -125,7 +125,7 @@ const PhoneBottomBar = ({ badges, isAdmin, watchChannelId }: PhoneBottomBarProps
   const { pathname } = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  const primary = phoneBarPrimary(isAdmin, watchChannelId, badges);
+  const primary = phoneBarPrimary(watchChannelId, badges);
   const overflow = phoneBarOverflow(isAdmin, badges);
   // Decision X2 (critique row 5), shared with the desktop rail: a channel's `/watch/$id` player
   // highlights Watch, its management tabs (Info/Programming/Filler/Danger) highlight Guide instead —
@@ -151,7 +151,7 @@ const PhoneBottomBar = ({ badges, isAdmin, watchChannelId }: PhoneBottomBarProps
 
   const items = [
     ...primary.map((destination) => ({
-      badge: (destination.badgeCount ?? 0) > 0,
+      badge: destination.badgeCount,
       icon: destination.icon,
       label: destination.label,
       value: destination.key as BarValue,
