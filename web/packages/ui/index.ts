@@ -5,7 +5,7 @@ export { AiReconnectBanner } from "./src/ai-reconnect-banner";
 export type { ChannelIdentProps } from "./src/channel-ident";
 export { ChannelIdent } from "./src/channel-ident";
 export type { ChannelListDetail, ChannelListLayout, ChannelListProps } from "./src/channel-list";
-export { ChannelList } from "./src/channel-list";
+export { ChannelGroupTabs, ChannelList } from "./src/channel-list";
 export type {
   ChannelAudioOption,
   ChannelAudioSectionProps,

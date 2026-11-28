@@ -3,6 +3,10 @@ import type { GuideLayout } from "@loomarr/core/guide";
 import type { NeedsLineItem } from "@loomarr/ui";
 
 interface ChannelWallProps {
+  /** The viewer's starred channels (GET /v1/me/channels); undefined until read. */
+  favouriteIds?: readonly string[] | undefined;
+  /** The viewer's recently tuned channels, newest first; undefined until read. */
+  recentIds?: readonly string[] | undefined;
   /** The caller's last-tuned channel (GET /v1/household/viewing's continueWatching): first, and marked. */
   lastChannelId?: string | undefined;
   layout: GuideLayout;

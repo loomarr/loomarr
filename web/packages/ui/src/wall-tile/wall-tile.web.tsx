@@ -1,4 +1,4 @@
-import { decadeFill, Surface, semanticColors, Text, ThemeScope } from "@loomarr/design-system";
+import { decadeFill, Surface, semanticColors, Text, ThemeScope, useRingFocus } from "@loomarr/design-system";
 import { cloneElement, type ReactElement } from "react";
 
 import type { WallTileProps } from "./wall-tile.type";
@@ -67,6 +67,7 @@ const WallTile = ({
   decade,
   dim = false,
   detail,
+  focusRing = false,
   last = false,
   number,
   onClick,
@@ -77,6 +78,7 @@ const WallTile = ({
 }: WallTileProps) => {
   const host: ReactElement<Record<string, unknown>> = render ?? <button type="button" />;
   const own = host.props as { onClick?: (event: unknown) => void; style?: object };
+  const { handlers, ring } = useRingFocus();
   const pad = compact ? 8 : 12;
   const caption = compact ? [channelName, detail].filter(Boolean).join(" · ") : detail;
   const hasArt = art !== null && art !== undefined && art !== false;
@@ -85,6 +87,16 @@ const WallTile = ({
     host,
     {
       ...own,
+      // The ring's handlers, in the DOM's names. The tile's own hover has no drawing.
+      ...(focusRing
+        ? {
+            onBlur: handlers.onBlur,
+            onFocus: handlers.onFocus,
+            ...("onPointerDown" in handlers
+              ? { onKeyDownCapture: handlers.onKeyDownCapture, onPointerDown: handlers.onPointerDown }
+              : {}),
+          }
+        : {}),
       onClick: (event: unknown) => {
         own.onClick?.(event);
         onClick?.();
@@ -108,6 +120,10 @@ const WallTile = ({
         textAlign: "left",
         textDecoration: "none",
         width: "100%",
+        // The amber ring stands off the tile, clear of the last-watched tile's own ring.
+        ...(focusRing
+          ? { outline: ring === "actionFocus" ? "2px solid var(--actionFocus)" : "none", outlineOffset: 3 }
+          : {}),
         ...own.style,
       },
     },

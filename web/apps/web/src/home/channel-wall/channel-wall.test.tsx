@@ -1,13 +1,17 @@
 import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
 import { layoutGuide } from "@loomarr/core/guide";
+import { decadeTint, Text } from "@loomarr/design-system";
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
-import { screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "@/test/render";
+import { CHANNEL_GROUP_KEY } from "../use-channel-group-preference";
 import { ChannelWall } from "./channel-wall";
 import type { ChannelViewer } from "./channel-wall.type";
 
 const MIN = 60_000;
+let history = createMemoryHistory();
 
 // A mounted router: every tile and the Full guide link route through it.
 const renderWall = async (
@@ -17,18 +21,32 @@ const renderWall = async (
     toMs = 1,
     lastChannelId,
     viewers,
-  }: { nowMs?: number; toMs?: number; lastChannelId?: string; viewers?: ChannelViewer[] } = {},
+    favouriteIds,
+    recentIds,
+  }: {
+    nowMs?: number;
+    toMs?: number;
+    lastChannelId?: string;
+    viewers?: ChannelViewer[];
+    favouriteIds?: string[];
+    recentIds?: string[];
+  } = {},
 ) => {
   const layout = layoutGuide({ channels, fromMs: 0, toMs }, nowMs);
   const rootRoute = createRootRoute({
     component: () => (
-      <ChannelWall layout={layout} nowMs={nowMs} lastChannelId={lastChannelId} viewers={viewers} />
+      <ChannelWall
+        layout={layout}
+        nowMs={nowMs}
+        lastChannelId={lastChannelId}
+        viewers={viewers}
+        favouriteIds={favouriteIds}
+        recentIds={recentIds}
+      />
     ),
   });
-  const router = createRouter({
-    routeTree: rootRoute,
-    history: createMemoryHistory({ initialEntries: ["/"] }),
-  });
+  history = createMemoryHistory({ initialEntries: ["/"] });
+  const router = createRouter({ routeTree: rootRoute, history });
   render(<RouterProvider router={router} />);
   await screen.findByRole("heading", { level: 2 });
 };
@@ -250,6 +268,123 @@ describe("ChannelWall — every channel as a live tile (#2764)", () => {
       }),
     ]);
     expect(screen.getByRole("heading", { level: 3, name: longTitle })).toBeInTheDocument();
+  });
+});
+
+describe("ChannelWall — headed by the lineup's groups (#4734)", () => {
+  // Numbered 1 to 5; c2 and c4 are 1980s, c3 and c5 1990s, c1 has no decade.
+  const channels = [
+    live("c1", 1),
+    live("c2", 2, { decade: 1980 }),
+    live("c3", 3, { decade: 1990 }),
+    live("c4", 4, { decade: 1980 }),
+    live("c5", 5, { decade: 1990 }),
+  ];
+  const mine = { favouriteIds: ["c4", "c2"], recentIds: ["c3", "c1"] };
+  const order = () => tiles().map((t) => t.getAttribute("href")?.replace("/watch/", ""));
+  const open = async (group: string, lastChannelId?: string, over = {}) => {
+    localStorage.setItem(CHANNEL_GROUP_KEY, group);
+    await renderWall(channels, { ...mine, ...(lastChannelId ? { lastChannelId } : {}), ...over });
+  };
+
+  afterEach(() => localStorage.clear());
+
+  it("heads the wall with four tabs in order, opening on All", async () => {
+    await renderWall(channels, mine);
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual([
+      "Favourites",
+      "All",
+      "Recent",
+      "By decade",
+    ]);
+    expect(screen.getByRole("tab", { selected: true })).toHaveAccessibleName("All");
+    expect(screen.queryByRole("button", { name: "Find a channel" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["all", undefined, ["c1", "c2", "c3", "c4", "c5"]],
+    ["all", "c4", ["c4", "c1", "c2", "c3", "c5"]],
+    ["favourites", "c4", ["c4", "c2"]],
+    ["favourites", "c5", ["c2", "c4"]],
+    ["recent", "c1", ["c1", "c3"]],
+    ["recent", "c5", ["c3", "c1"]],
+    ["decade", undefined, ["c2", "c4", "c3", "c5"]],
+    ["decade", "c5", ["c5", "c2", "c4", "c3"]],
+    ["decade", "c1", ["c2", "c4", "c3", "c5"]],
+  ])("orders %s with %s last watched, which appears once", async (group, last, expected) => {
+    await open(group, last);
+    expect(order()).toEqual(expected);
+  });
+
+  it("heads By decade with each decade in its tint", async () => {
+    await open("decade");
+    const heading = (name: string) => screen.getByRole("heading", { level: 3, name });
+    // The design system's own drawing of each tint, to compare with.
+    render(
+      <>
+        <Text as="h3" textRole="metadata" tone={decadeTint(1980)}>
+          tint80
+        </Text>
+        <Text as="h3" textRole="metadata" tone={decadeTint(1990)}>
+          tint90
+        </Text>
+      </>,
+    );
+    const colour = (element: HTMLElement) => getComputedStyle(element).color;
+    expect(colour(heading("1980s"))).toBe(colour(screen.getByText("tint80")));
+    expect(colour(heading("1990s"))).toBe(colour(screen.getByText("tint90")));
+    expect(colour(heading("1980s"))).not.toBe(colour(heading("1990s")));
+    expect(heading("1980s").compareDocumentPosition(heading("1990s"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it.each([
+    ["favourites", "No favourites yet."],
+    ["recent", "Channels you watch collect here."],
+    ["decade", "No channels have a decade yet."],
+  ])("says an empty %s is empty and offers every channel", async (group, words) => {
+    localStorage.setItem(CHANNEL_GROUP_KEY, group);
+    await renderWall([live("c1", 1)], { favouriteIds: [], recentIds: [] });
+    expect(screen.getByText(words)).toBeInTheDocument();
+    expect(screen.queryAllByRole("link", { name: /Programme/ })).toHaveLength(0);
+    await userEvent.click(screen.getByRole("button", { name: "Show all channels" }));
+    expect(tiles()).toHaveLength(1);
+    expect(screen.getByRole("tab", { selected: true })).toHaveAccessibleName("All");
+  });
+
+  it("says nothing about favourites before they are read", async () => {
+    localStorage.setItem(CHANNEL_GROUP_KEY, "favourites");
+    await renderWall(channels);
+    expect(screen.queryByText("No favourites yet.")).not.toBeInTheDocument();
+  });
+
+  it("remembers the chosen group", async () => {
+    await renderWall(channels, mine);
+    await userEvent.click(screen.getByRole("tab", { name: "Favourites" }));
+    expect(order()).toEqual(["c2", "c4"]);
+    expect(localStorage.getItem(CHANNEL_GROUP_KEY)).toBe("favourites");
+  });
+
+  it("is one tab stop with Left and Right inside, then the tiles", async () => {
+    await renderWall(channels, mine);
+    const tab = (name: string) => screen.getByRole("tab", { name });
+    act(() => tab("All").focus());
+    await userEvent.keyboard("{ArrowRight}");
+    expect(tab("Recent")).toHaveFocus();
+    expect(screen.getByRole("tab", { selected: true })).toBe(tab("All"));
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByRole("tab", { selected: true })).toBe(tab("Recent"));
+    await userEvent.keyboard("{ArrowLeft}{ArrowLeft}{ArrowLeft}");
+    expect(tab("Favourites")).toHaveFocus();
+    expect(screen.getAllByRole("tab").filter((t) => t.tabIndex === 0)).toHaveLength(1);
+    await userEvent.tab();
+    expect(tiles()[0]).toHaveFocus();
+  });
+
+  it("tunes from a tile as before", async () => {
+    await open("favourites");
+    await userEvent.click(tiles()[0] as HTMLElement);
+    expect(history.location.pathname).toBe("/watch/c2");
   });
 });
 
