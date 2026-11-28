@@ -31,7 +31,7 @@ import (
 // save there (one channel, once per programme, versus every channel on every grid poll).
 //
 // Degrades to the live computation whenever the cache cannot be trusted: no store, no cache, or
-// a channel that will not load or fingerprint. Every one of those returns the same answer
+// a channel that will not load or has no forecast key. Every one of those returns the same answer
 // CyclePreview would — only slower — so a cache failure is a performance regression, never a
 // wrong lineup.
 // Returns the arranged slots AND the resolved rolling-window horizon, which segmentedBroadcasts
@@ -58,7 +58,7 @@ func (r *Resolver) cycleAt(
 	// rolling-window index is added inside the cache), not the wall-clock — so a navigated window
 	// or a later visit reuses the work. See the cycle cache's header.
 	_, zone := r.engine.RollingWindow(ch.Policy, at)
-	key, ok := fingerprintChannel(channelID, ch.Lineup, ch.Policy, schedule.ClockSignature(ch.Policy, at, r.engine.Calendar()))
+	key, ok := r.engine.ForecastKey(ctx, ch, at)
 	if !ok {
 		_, slots, _, window, cerr := r.engine.CyclePreview(ctx, channelID, at)
 		return slots, window, cerr

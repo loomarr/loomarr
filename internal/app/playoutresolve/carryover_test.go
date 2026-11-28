@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
@@ -114,6 +115,10 @@ func (d *windowDecks) RollingWindow(schedule.ChannelPolicy, time.Time) (time.Dur
 }
 
 func (d *windowDecks) Calendar() schedule.Calendar { return schedule.Calendar{} }
+
+func (d *windowDecks) ForecastKey(ctx context.Context, ch channelstore.Channel, at time.Time) (uint64, bool) {
+	return sharedForecastKeys.ForecastKey(ctx, ch, at)
+}
 
 func (d *windowDecks) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
 	return !d.fixed, nil

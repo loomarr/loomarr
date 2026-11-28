@@ -51,6 +51,9 @@ type CyclePreviewer interface {
 	// exactly as reconcile resolves them, so the resolver turns the window where reconcile will.
 	RollingWindow(policy schedule.ChannelPolicy, at time.Time) (time.Duration, *time.Location)
 	CarriesOver(ctx context.Context, policy schedule.ChannelPolicy) (bool, error)
+	// ForecastKey is the guide cache's key: a hash of every input CyclePreview reads from the
+	// channel row and the install settings at `at`. ok=false means compute instead.
+	ForecastKey(ctx context.Context, ch channelstore.Channel, at time.Time) (uint64, bool)
 	// TurnedWindow is the next window as it airs before reconcile commits it: CyclePreview's
 	// cycle with each break at the length reconcile planned for it ahead of the turn (#3838 step
 	// 2). A read like the rest: reconcile is the only writer of the break plans.
@@ -88,8 +91,8 @@ type AiringRecorder interface {
 }
 
 // ChannelReader is the one store method both broadcast and guide need. Broadcast reads Desired,
-// the accepted cycle reconciliation committed; guide also fingerprints Lineup and Policy when it
-// forecasts a future rolling window (see cyclecache.go). Narrowed like the readers above — both
+// the accepted cycle reconciliation committed; guide also keys its forecast cache on the row
+// through Engine.ForecastKey when it forecasts a future rolling window (see cyclecache.go). Narrowed like the readers above — both
 // are reads, and neither path may mutate the channel it observes.
 type ChannelReader interface {
 	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)

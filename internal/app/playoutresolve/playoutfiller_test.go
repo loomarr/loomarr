@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
@@ -38,6 +39,10 @@ func (stubCycle) RollingWindow(schedule.ChannelPolicy, time.Time) (time.Duration
 }
 
 func (stubCycle) Calendar() schedule.Calendar { return schedule.Calendar{} }
+
+func (stubCycle) ForecastKey(ctx context.Context, ch channelstore.Channel, at time.Time) (uint64, bool) {
+	return sharedForecastKeys.ForecastKey(ctx, ch, at)
+}
 
 func (stubCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
 	return true, nil
