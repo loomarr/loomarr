@@ -7626,7 +7626,7 @@ components:
       additionalProperties: false
       properties:
         lengthMillis:
-          description: How long it plays, in milliseconds; 0 until its details are read
+          description: How long it plays, in milliseconds; absent until its details give a length
           format: int64
           type: integer
         path:
@@ -7643,7 +7643,6 @@ components:
         - path
         - size
         - ready
-        - lengthMillis
       type: object
     LibraryOrderChoiceDTO:
       additionalProperties: false

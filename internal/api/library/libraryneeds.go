@@ -129,8 +129,8 @@ type libraryNeedFileDTO struct {
 	Path  string `json:"path" doc:"The file on this machine"`
 	Size  int64  `json:"size" doc:"Bytes"`
 	Ready bool   `json:"ready" doc:"Its details are read"`
-	// LengthMillis is 0 until the header is read.
-	LengthMillis int64 `json:"lengthMillis" doc:"How long it plays, in milliseconds; 0 until its details are read"`
+	// LengthMillis is absent until the header gives a length, like every other length here.
+	LengthMillis int64 `json:"lengthMillis,omitempty" doc:"How long it plays, in milliseconds; absent until its details give a length"`
 }
 
 // libraryProblemDTO is a title that needs a look: its item says how many files can't be played and

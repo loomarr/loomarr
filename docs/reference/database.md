@@ -1154,16 +1154,16 @@ A channel's icon and watermark.
 
 ### library_item_images
 
-A title's poster, backdrop and logo, the one record of which image each is.
+A title's poster, backdrop, logo and Needs you frame, the one record of which image each is.
 
 **Kept:** Goes with its title or its image; a kind replaces only its own role's row.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `item_id` | The title (a library_items id). | `TEXT` · key · → `library_items.id` |
-| `role` | What the image is for, one of poster, backdrop or logo. | `TEXT` · key |
+| `role` | What the image is for, one of poster, backdrop, logo or frame (a Needs you title's picture of its file, never drawn as a poster). | `TEXT` · key |
 | `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
-| `source` | The file a home video's frame came from, as its inventory revision and path; empty for any other image. | `TEXT` |
+| `source` | The file a frame came from (a home video's poster or a Needs you title's frame), as its inventory revision and path; empty for any other image. | `TEXT` |
 
 ### library_candidate_images
 

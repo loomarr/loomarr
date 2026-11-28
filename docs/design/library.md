@@ -816,7 +816,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   home-video frame, after each pass's and header stage's file rows, clears a need's frame once its
   main file is another one (the job then takes a new one) or once the title no longer waits in
   Needs you: linked, ignored, kept, or identified by a scan. `GET /v1/library/needs` returns the
-  frame as `frame`, and each file's `lengthMillis` from its header, 0 until the header is read.
+  frame as `frame`, and each file's `lengthMillis` from its header, absent until the header gives a length.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left
