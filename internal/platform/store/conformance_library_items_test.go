@@ -158,6 +158,38 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// A movie's broken extra copies, those whose header could not be read, are counted apart from its
+// extra copies, which include them.
+func testLibraryItemBrokenCopies(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	st := newStore(t)
+	at := time.UnixMilli(1_790_000_000_000).UTC()
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
+		{ID: "meridian", Kind: "movie", Name: "Coral Meridian", Sources: []librarystore.LibrarySource{
+			{Path: "/media/meridian/main.mkv", SizeBytes: 5, Plays: true},
+			{Path: "/media/meridian/broken.mkv", SizeBytes: 7},
+			{Path: "/media/meridian/sound.mkv", SizeBytes: 9}}},
+	}, at); err != nil {
+		t.Fatal(err)
+	}
+	var files []librarystore.LibraryFile
+	for name, header := range map[string]string{"main": librarystore.LibraryHeaderRead,
+		"broken": librarystore.LibraryHeaderFailed, "sound": librarystore.LibraryHeaderRead} {
+		files = append(files, librarystore.LibraryFile{Path: "/media/meridian/" + name + ".mkv", Root: "/media",
+			Size: 1, ModifiedNs: 1, Kind: "movie", Header: header, SeenAt: at, ItemID: "meridian"})
+	}
+	if err := st.SaveLibraryFiles(ctx, files); err != nil {
+		t.Fatal(err)
+	}
+	page, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Problems: true})
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("problems = %+v, %v; want the one title", page.Items, err)
+	}
+	if it := page.Items[0]; it.Unplayable != 0 || it.ExtraCopies != 2 || it.BrokenCopies != 1 {
+		t.Errorf("unplayable %d, extra %d, broken %d; want 0, 2, 1", it.Unplayable, it.ExtraCopies, it.BrokenCopies)
+	}
+}
+
 // A file whose header couldn't be read counts as unplayable toward its item and its series, and
 // the problems list keeps just the titles that need a look: one with an unplayable file, or a movie
 // with a copy that does not play, sized by its file. A skipped file (a disc image) is neither, and

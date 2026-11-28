@@ -257,7 +257,7 @@ func (s *Store) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
 		var n LibraryNeed
 		var catalog, set string
 		if err := rows.Scan(&n.ID, &n.Kind, &n.Name, &n.SortName, &n.Year, &catalog, &n.Match.Basis, &n.Match.App,
-			&n.Match.Page, &set, &n.Poster, &n.Backdrop, &n.Logo, &n.Files, &n.Pending, &n.Unplayable, &n.ExtraCopies, &n.ExtraBytes, &n.HomeVideo, &n.Unidentified, &n.Origin.Authority, &n.Origin.Key,
+			&n.Match.Page, &set, &n.Poster, &n.Backdrop, &n.Logo, &n.Files, &n.Pending, &n.Unplayable, &n.ExtraCopies, &n.ExtraBytes, &n.BrokenCopies, &n.HomeVideo, &n.Unidentified, &n.Origin.Authority, &n.Origin.Key,
 			&n.Searched, &n.Frame); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("library needs: %w", err)

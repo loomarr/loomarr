@@ -219,7 +219,9 @@ type libraryItemDTO struct {
 	// for an admin, zero included.
 	Unplayable  *int `json:"unplayable,omitempty" doc:"Files that can't be played: their details couldn't be read and no other copy plays in their place. Admins only"`
 	ExtraCopies *int `json:"extraCopies,omitempty" doc:"A movie's extra copies: files that never play because another of its files plays in their place (state extra). Admins only"`
-	HomeVideo   bool `json:"homeVideo,omitempty" doc:"Kept as it is, as your own video. Absent otherwise"`
+	// BrokenCopies is a subset of ExtraCopies; never add the two.
+	BrokenCopies int  `json:"brokenCopies,omitempty" doc:"How many of the extra copies can't be played because their details couldn't be read. Admins only; absent when none"`
+	HomeVideo    bool `json:"homeVideo,omitempty" doc:"Kept as it is, as your own video. Absent otherwise"`
 	// Unidentified is for admins: a member reads no title that waits.
 	Unidentified bool `json:"unidentified,omitempty" doc:"Waiting in Needs you. Admins only; absent otherwise"`
 }
@@ -235,7 +237,7 @@ func libraryItemOf(it librarystore.LibraryItemSummary, posters map[string]*httpc
 		out.Unidentified = it.Unidentified
 		files, unplayable, extra := it.Files, it.Unplayable, 0
 		if it.Kind == "movie" {
-			extra = it.ExtraCopies
+			extra, out.BrokenCopies = it.ExtraCopies, it.BrokenCopies
 		}
 		out.Files, out.Unplayable, out.ExtraCopies = &files, &unplayable, &extra
 	}
