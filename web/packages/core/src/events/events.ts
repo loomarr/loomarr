@@ -253,11 +253,14 @@ const openFrameStream = (
   es.addEventListener("open", () => onOpen?.());
   for (const type of EVENT_TYPES) {
     es.addEventListener(type, (ev) => {
+      // Only the parse is guarded: a handler that throws is a bug to surface, not a bad frame.
+      let payload: EventPayloads[typeof type];
       try {
-        onFrame(type, JSON.parse(ev.data) as EventPayloads[typeof type]);
+        payload = JSON.parse(ev.data) as EventPayloads[typeof type];
       } catch {
-        /* ignore malformed frame */
+        return;
       }
+      onFrame(type, payload);
     });
   }
   return () => es.close();

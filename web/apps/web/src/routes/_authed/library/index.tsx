@@ -18,6 +18,8 @@ interface LibrarySearch {
   /** Recently added first; absent is by name. */
   sort?: "recent";
   genre?: string;
+  /** A credit's personId, from the title page's cast and crew links. */
+  person?: string;
 }
 
 const validateLibrarySearch = (search: Record<string, unknown>): LibrarySearch => ({
@@ -26,6 +28,9 @@ const validateLibrarySearch = (search: Record<string, unknown>): LibrarySearch =
   ...(search.sort === "recent" ? { sort: search.sort } : {}),
   ...(typeof search.genre === "string" && search.genre.trim() !== ""
     ? { genre: search.genre.slice(0, 100) }
+    : {}),
+  ...(typeof search.person === "string" && search.person.trim() !== ""
+    ? { person: search.person.slice(0, 600) }
     : {}),
 });
 

@@ -14,6 +14,10 @@ import { LibraryTitlePage } from "./library-title-page";
 
 const mocks = vi.hoisted(() => ({ navigate: vi.fn(), back: vi.fn(), canGoBack: vi.fn(() => false) }));
 vi.mock("@tanstack/react-router", () => ({
+  // The router's link as an anchor, so its address is what the test reads.
+  Link: ({ to, search, ...rest }: { to: string; search: Record<string, string> }) => (
+    <a {...rest} href={`${to}?${new URLSearchParams(search)}`} />
+  ),
   useNavigate: () => mocks.navigate,
   useRouter: () => ({ history: { canGoBack: mocks.canGoBack, back: mocks.back } }),
 }));
@@ -86,6 +90,28 @@ describe("LibraryTitlePage", () => {
     expect(await screen.findByRole("heading", { name: "Echo" })).toBeInTheDocument();
     expect(screen.getByText("A story.")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Fix" })).toBeInTheDocument();
+  });
+
+  it("links the cast and crew the library knows to their titles", async () => {
+    server.use(
+      getGetLibraryItemMockHandler({
+        ...echo,
+        credits: [
+          { name: "Imelda Varge", role: "actor" as const, personId: "tmdb:90000981" },
+          { name: "Tobin Ashcroft", role: "actor" as const, personId: "" },
+          { name: "Lorna Pettigrew", role: "director" as const, personId: "tmdb:90000982" },
+        ],
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByRole("link", { name: "Imelda Varge" })).toHaveAttribute(
+      "href",
+      "/library?person=tmdb%3A90000981",
+    );
+    expect(screen.getByRole("link", { name: "Lorna Pettigrew" })).toBeInTheDocument();
+    expect(screen.getByText("Tobin Ashcroft")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Tobin Ashcroft" })).not.toBeInTheDocument();
   });
 
   it("offers the three fixes in one menu", async () => {
