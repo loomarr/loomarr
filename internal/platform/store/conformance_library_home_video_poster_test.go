@@ -104,6 +104,25 @@ func testLibraryHomeVideoPoster(t *testing.T, newStore NewStoreFunc) {
 	if !poster("s1") || poster("m1") {
 		t.Fatalf("after clearing: show kept = %v, movie kept = %v; want true, false", poster("s1"), poster("m1"))
 	}
+	// The sweep keeps a frame of the file still played, and drops it once that file is gone.
+	if err := st.ClearStaleHomeVideoPosters(ctx); err != nil || !poster("s1") {
+		t.Fatalf("a frame of the file still played was dropped: %v", err)
+	}
+	gone := files[3]
+	gone.MissingAt = at
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{gone}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ClearStaleHomeVideoPosters(ctx); err != nil || poster("s1") {
+		t.Fatalf("a frame of a file no longer played was kept: %v", err)
+	}
+	gone.MissingAt = time.Time{}
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{gone}); err != nil {
+		t.Fatal(err)
+	}
+	if put, err := st.PutHomeVideoPoster(ctx, show, img.Hash); err != nil || !put {
+		t.Fatalf("put again = %v, %v", put, err)
+	}
 	if err := st.DeleteLibraryAnswer(ctx, origin("/media/show")); err != nil {
 		t.Fatal(err)
 	}

@@ -12,7 +12,7 @@ import (
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/platform/activity"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 )
 
 // fakeRestart records that the loop was asked to rebuild. Counting rather than a bool so
@@ -138,7 +138,7 @@ func TestSystemRestart_IsRecordedInTheActivityFeed(t *testing.T) {
 func TestSystemRestart_ReportsWhatItWouldCost(t *testing.T) {
 	srv := newSystemRestartHarness(t, systemRestartHarnessConfig{
 		Restart:         &fakeRestart{},
-		PlayoutObserver: &fakePlayoutSessions{stats: make([]playout.SessionStat, 3)},
+		PlayoutObserver: &fakePlayoutSessions{stats: make([]hls.SessionStat, 3)},
 		RestartDrift:    func() []string { return []string{"DATABASE_URL"} },
 	}).Server
 

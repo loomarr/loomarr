@@ -795,7 +795,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   kept, has no poster and plays that file, checked and written in one transaction. The scanner owns
   the poster role: writing a kept title keeps the frame while the title plays the same file (same
   path and inventory revision), and clears it when that file changes (the job then takes a new
-  frame) or the answer is taken back. A failed frame is tried again after five minutes, doubling to
+  frame) or the answer is taken back. After it saves file rows, in a pass and in the header stage,
+  it also clears each frame whose title's main file is by then another one, so an added, renamed or
+  removed episode counts once its row and length are known. A failed frame is tried again after
+  five minutes, doubling to
   a day; the wait belongs to that file, so another one is tried at once, and it is held in memory,
   so a restart tries again.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
@@ -875,13 +878,23 @@ step 5). Nothing reads the scanner's origins until the cutover.
   that could not hear from an arr and marked no origin unseen, and while a new file waits for
   its first write. The list can also keep files that are gone from disk: a removal past the hold
   threshold is held, not marked missing, and nothing is marked missing while an arr does not
-  answer. A listed file is therefore an extra copy only when it has a source row that does not
-  play and another listed file with a source row plays in its place: one in the same edition
-  with the same part, or a whole file of that edition. A file with no source row yet is never an
-  extra and never plays in another's place. So a title's last listed file is never offered for
-  removal. Remove extra copy holds the same rule itself, and before it moves anything it checks
-  on disk that a copy playing in its place is there, refusing (409, "Loomarr can't find the copy
-  that plays right now") when none is. One removal runs at a time, from reading the title to
+  answer. One store rule (`librarystore` `replacedFile`, read per file by `LibraryItemCopies`)
+  therefore decides what each of a title's own listed files is, and the title page, the counts,
+  Needs you and the wall all read it. A listed file is an extra copy when it has a source row that
+  does not play, or its header failed, and another listed file whose header did not fail plays in
+  its place: a source row that plays in the same edition with the same part, or a whole file of
+  that edition. Otherwise a file whose header failed can't be played (`unplayable`); one whose
+  header is pending, or with no source row yet, is being read (`reading`); one whose row plays is
+  the copy that plays (`plays`); and one whose row does not play while the copy in its place is
+  not listed or can't be read is `waiting`. A waiting copy stays so for as long as that copy plays:
+  the walk ranks the file an arr manages first, so a broken copy the arr manages keeps playing and
+  the readable copy beside it waits. The rule matches editions by their stored label, so
+  the projection gives every copy of one edition the label of its first copy in path order. A
+  file with no source row yet is never an extra and never plays in another's place, and a broken
+  copy never plays in another's place. So a title's last listed file is never offered for
+  removal. Remove extra copy refuses (409) any file that is not `extra`, and before it moves
+  anything it checks on disk that a copy playing in its place is there, refusing (409, "Loomarr
+  can't find the copy that plays right now") when none is. One removal runs at a time, from reading the title to
   marking the file gone, so two at once cannot take both copies. Each scan origin's observation
   JSON stays as evidence of what the scan saw, not a source the page reads (decision 40).
   `library_markers` and `library_trickplay` are stored ahead of use: the player will read them
@@ -898,9 +911,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   editions yet: that needs a mock.
 - **Extra copies** (step 10e, decision 37). When a movie has several files, one plays in each
   edition: the file its arr lists (each file origin's extension notes `managed`), else the
-  sharpest picture, else the biggest file. Each other file is an extra copy: a warning card on the title's page ("An
-  extra copy is taking 4.0 GB") with Remove <file name> (`POST …/remove-copy`, 409 for the copy
-  that plays). Removing moves the file to `<media folder>/.loomarr-trash/<date>/<its path>`, the
+  sharpest picture, else the biggest file. Each other file is an extra copy while the copy that
+  plays in its place is listed and readable (the store rule above), including a copy whose own
+  header failed: a broken 4K copy beside a main file that plays is an extra, not a title that
+  can't be played. Each file on the wire carries its `state` (`plays`, `extra`, `unplayable`,
+  `reading`, `waiting`). An extra copy is a warning card on the title's page ("An extra copy is
+  taking 4.0 GB", its file's size) with Remove <file name> (`POST …/remove-copy`, 409 for any file
+  that is not `extra`). Removing moves the file to `<media folder>/.loomarr-trash/<date>/<its path>`, the
   same share, so it is a rename; the trash holds a `.ignore`, so walks and watches skip it.
   Loomarr marks the file missing at once, so no removal guard holds it. A complete walk of the
   folder deletes each day's trash 30 days on; a folder there that isn't a date is left alone. A
@@ -923,11 +940,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   server fails or can't be reached, the toast says to try again and offers Undo with the same
   token. The card says that after the Undo the way back is the `.loomarr-trash` folder inside the
   media folder, for the 30 days it keeps the file.
-- **Titles that need a look** (step 10f, decision 24). A title with a file whose header failed
-  (`unplayable`) or a movie with an extra copy is a problem: `ListLibraryItems{Problems: true}`
-  finds them per title through the file indexes, an extra copy being a `library_sources` row no
-  edition plays, and `GET /v1/library/needs` returns them as `problems` (each with `extraBytes`,
-  the size of those rows) after the titles nobody can
+- **Titles that need a look** (step 10f, decision 24). A title with a file that can't be played
+  (`unplayable`: its header failed and no copy plays in its place, counting a series' episodes) or
+  a movie with an extra copy (`extraCopies`) is a problem: `ListLibraryItems{Problems: true}`
+  finds them per title through the file indexes, both counts read from the same store rule as the
+  title page's files, and `GET /v1/library/needs` returns them as `problems` (each with
+  `extraBytes`, the size of the extra copies' files) after the titles nobody can
   identify. Both count towards `needsYou`, the nav badge. Needs you words them in plain words
   ("Night Ferry has 2 episodes that can't be played", "Paper Kites has an extra copy") with
   See why, which opens the title. The title's page gives an unplayable title a warning card with
@@ -1402,6 +1420,11 @@ header is kept, so no file is opened again. Each version and what it changed:
   hashed again but not ingested when the service holds its bytes, an adopted URL is one lookup,
   and either rewrites its ref row. The fetch job then works through the adopted stills, 64 a
   minute, in the bulk class behind every title's artwork.
+- **93:** every source row of one edition carries one label, the first in path order (#4476,
+  "Extra copies"), because the store matches a copy to the copy that plays in its place by its
+  exact edition label. A title whose copies read "Extended" and "Extended Edition" takes one label,
+  so its extra copy reads as an extra again. Every file is written once more with no header read:
+  one inventory write per file, as for 92, with artwork handed over again the same way.
 
 ## Search
 

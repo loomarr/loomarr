@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 )
 
 func homeFrame(t *testing.T, width int) []byte {
@@ -46,7 +46,7 @@ func TestHomeVideoPosterRacingWrites(t *testing.T) {
 	for _, width := range []int{32, 48} {
 		frame := homeFrame(t, width)
 		racer := *p
-		racer.still = func(context.Context, playout.StillSource, time.Duration) ([]byte, error) {
+		racer.still = func(context.Context, hls.StillSource, time.Duration) ([]byte, error) {
 			both.Done()
 			both.Wait()
 			return frame, nil
@@ -73,7 +73,7 @@ func TestHomeVideoPosterBackoffBelongsToTheFile(t *testing.T) {
 	saveHomeVideo(t, p, "stat:1:1")
 	keep()
 	attempts := 0
-	p.still = func(context.Context, playout.StillSource, time.Duration) ([]byte, error) {
+	p.still = func(context.Context, hls.StillSource, time.Duration) ([]byte, error) {
 		attempts++
 		return nil, errors.New("unreadable")
 	}
@@ -99,7 +99,7 @@ func TestHomeVideoPosterSurvivesARewrite(t *testing.T) {
 	saveHomeVideo(t, p, "stat:1:1")
 	keep()
 	frame := homeFrame(t, 32)
-	p.still = func(context.Context, playout.StillSource, time.Duration) ([]byte, error) { return frame, nil }
+	p.still = func(context.Context, hls.StillSource, time.Duration) ([]byte, error) { return frame, nil }
 	if err := p.pass(ctx); err != nil {
 		t.Fatal(err)
 	}

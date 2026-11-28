@@ -248,6 +248,7 @@ web/
   packages/api/            # orval output: wire models and query functions
   packages/core/           # validation, SSE, formatters, platform-neutral domain logic
   packages/fixtures/       # deterministic domain scenarios shared by stories and tests
+  packages/test-support/   # test-only: renderUi and the atomic-CSS readers for universal packages
   packages/design-system/  # semantic tokens, Tamagui config, fonts, icons, primitives
   packages/ui/             # shared product and viewer modules
   packages/ui-tv/          # D-pad focus, overscan, remote, and TV guide adapters

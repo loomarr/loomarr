@@ -294,8 +294,12 @@ make agent-start TASK=filler-refresh CLAIMS=openapi-client
 
 During implementation, run focused tests for the edited surface. When no exact test is known,
 `make test-affected BASE=origin/main` runs direct and related unit feedback without publication
-prerequisites or reverse dependants. Before publication, run `make verify BASE=origin/main` once after
-the diff is stable. It reports the changed-file scope and runs affected local evidence through
+prerequisites or reverse dependants. Before publication, run the focused tests for each package and
+surface the diff touches; CI is the gate. Pull-request CI runs the fast affected checks, and
+`CI assurance` in the merge queue the complete affected set, including `-race` and Postgres.
+`make verify BASE=origin/main` reproduces that selection locally, so run it to reproduce a CI failure,
+when CI is unavailable, or when the diff changes gate or classifier machinery, one run per machine at
+a time. It reports the changed-file scope and runs affected local evidence through
 the fail-closed CI classifier. Its output distinguishes the complete CI impact, locally executed
 gates, protected gates, and the local gates that actually completed; it never presents protected
 Postgres, browser, native-client, or release-image evidence as a local success. The PR fast lane and
@@ -390,9 +394,9 @@ state after the gate and refuses to cache if implementation began while the base
 mixed-tree output is not evidence for either version.
 
 Run exact tests or `make test-affected BASE=<base>` while editing, formatting and `git diff --check`
-before commit, then `make verify BASE=<base>` once the diff is stable. A failed final verification is
-debugged with its failing focused command before one final rerun. CI owns expensive native and platform
-matrices.
+before commit. CI owns the affected gates: the pull request runs the fast checks, and the merge
+queue's `CI assurance` the reverse-dependant Go closure under `-race`, Postgres, and the native and
+platform matrices. A CI failure is debugged with its failing focused command.
 Never run `make smoke*` from an agent session; those commands drive the maintainer's live stack.
 
 Screenshot baselines render on their own. Every push to a pull request that touches `web/` starts the

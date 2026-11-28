@@ -3,8 +3,8 @@ migration-rehearsal-script	scripts/migration-rehearsal.sh	contracts,agent
 hardware-gate-script	scripts/check-hardware-gate.sh	contracts,agent
 migration-order-check	scripts/check-migration-order.sh;scripts/check-migration-order-test.sh	agent,policy
 leaf-go	internal/proposals/suggest/score.go	contracts,go,postgres,image
-releaseverify-production	internal/platform/releaseverify/ci_container_downloads.go	policy
-releaseverify-red-tests	internal/platform/releaseverify/ci_container_downloads_test.go	policy
+releaseverify-production	internal/platform/releaseverify/ci_container_downloads.go	contracts,policy
+releaseverify-red-tests	internal/platform/releaseverify/ci_container_downloads_test.go	contracts,policy
 releaseverify-policy-fixtures	internal/platform/releaseverify/testdata/make_policy_normalization.mk;internal/platform/releaseverify/testdata/make_policy_normalization.golden	policy
 store-go	internal/platform/store/store.go	contracts,go,postgres,image
 postgres-test-image-authority	internal/testkit/postgresimage/image.txt	contracts,go,go_full,postgres,image,policy
@@ -12,7 +12,7 @@ postgres-test-image-owner	internal/testkit/postgresimage/image.go	contracts,go,g
 ryuk-test-image-authority	internal/testkit/ryukimage/image.txt	postgres,policy
 composition-go	internal/app/application.go	contracts,go,go_full,postgres,image
 backend-transition-go	internal/playout/backendtransition/controller.go	contracts,go,postgres,image
-playout-go	internal/playout/packager_hls.go	contracts,go,postgres,image,playout_bench
+playout-go	internal/playout/pipeline.go	contracts,go,postgres,image,playout_bench
 playout-opencl-kernel	internal/playout/watermark.cl	contracts,go,image,playout_bench
 watermark-render-go	internal/playout/watermark/render.go	contracts,go,postgres,image,agent
 watermark-raster-go	internal/playout/watermark/raster/raster.go	contracts,go,postgres,image,agent
@@ -48,6 +48,7 @@ paired-client	web/packages/paired-client/src/paired-client/paired-client.ts	clie
 shared-client-ui	web/packages/ui/src/client-platform-proof/client-platform-proof.tsx	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,android
 shared-client-ui-tv	web/packages/ui-tv/src/watching-navigation/watching-navigation.ts	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,android
 shared-client-api	web/packages/api/src/unwrap/unwrap.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
+web-test-support	web/packages/test-support/src/render/render.tsx	web,clients
 shared-client-core	web/packages/core/src/guide/guide.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 shared-client-fixtures	web/packages/fixtures/src/index.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 web-testcard-fixtures	web/packages/fixtures/src/testcard/testcard.ts	web,visual,image
@@ -116,7 +117,7 @@ agent-orca-adapter	orca.yaml	agent,policy
 dev-watchers	scripts/dev/watch-resources.sh;scripts/dev/watch-test.sh	agent
 claude-shared-settings	.claude/settings.json	docs,agent
 affected-test-tooling	scripts/changed-paths.sh;scripts/go-direct-impact.sh;scripts/test-affected.sh	agent,policy
-affected-loop-control-plane	AGENTS.md;docs/agents/harness.md;docs/reference/make.md;docs/contributing/testing.md;docs/contributing/ci.md;mk/agent.mk;scripts/agent-harness-test.sh;scripts/agent.sh;scripts/changed-paths-test.sh;scripts/changed-paths.sh;scripts/ci-impact.sh;scripts/go-direct-impact-test.sh;scripts/go-direct-impact.sh;scripts/test-affected-test.sh;scripts/test-affected.sh;scripts/testdata/ci-impact.tsv;scripts/validate-android-release-source-test.sh;.github/workflows/ci.yml;internal/platform/releaseverify/ci.go;internal/platform/releaseverify/ci_container_bootstrap.go;internal/platform/releaseverify/ci_container_bootstrap_test.go;internal/platform/releaseverify/ci_container_workflow_authority.go;internal/platform/releaseverify/ci_test.go	docs,agent,policy
+affected-loop-control-plane	AGENTS.md;docs/agents/harness.md;docs/reference/make.md;docs/contributing/testing.md;docs/contributing/ci.md;mk/agent.mk;scripts/agent-harness-test.sh;scripts/agent.sh;scripts/changed-paths-test.sh;scripts/changed-paths.sh;scripts/ci-impact.sh;scripts/go-direct-impact-test.sh;scripts/go-direct-impact.sh;scripts/test-affected-test.sh;scripts/test-affected.sh;scripts/testdata/ci-impact.tsv;scripts/validate-android-release-source-test.sh;.github/workflows/ci.yml;internal/platform/releaseverify/ci.go;internal/platform/releaseverify/ci_container_bootstrap.go;internal/platform/releaseverify/ci_container_bootstrap_test.go;internal/platform/releaseverify/ci_container_workflow_authority.go;internal/platform/releaseverify/ci_test.go	contracts,docs,agent,policy
 release-workflow	.github/workflows/release.yml	policy
 ci-workflow	.github/workflows/ci.yml	policy
 ci-agent-workflow	.github/workflows/ci-agent.yml	agent,policy
@@ -158,7 +159,7 @@ tuner-args	scripts/tuner-args.sh;scripts/tuner-args-test.sh	tuner,agent,policy
 merge-queue-policy	scripts/ci-merge-queue-policy.sh;scripts/ci-merge-queue-policy-test.sh	agent,policy
 shared-cache-retention	scripts/ci-cache-retention.sh;scripts/ci-cache-retention-test.sh	agent,policy
 ci-policy-bootstrap	.github/workflows/ci.yml	policy
-ci-tooling-bundle	.github/workflows/ci.yml;internal/platform/releaseverify/ci.go;cmd/releaseverify/main.go;scripts/agent.sh;docs/contributing/ci.md	docs,agent,policy
+ci-tooling-bundle	.github/workflows/ci.yml;internal/platform/releaseverify/ci.go;cmd/releaseverify/main.go;scripts/agent.sh;docs/contributing/ci.md	contracts,docs,agent,policy
 dev-compose	docker/compose.dev.yaml	contracts,agent
 production-compose	docker/compose.yaml	contracts,go,go_full
 combined-leaf-and-docs	internal/proposals/suggest/score.go;docs/contributing/testing.md	contracts,go,postgres,image,docs

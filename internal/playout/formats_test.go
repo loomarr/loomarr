@@ -4,36 +4,37 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // TestDeriveChannelFormats: top resolution and dynamic range are derived INDEPENDENTLY from the
 // lineup's inventory facts (maintainer rule, #1512 G10). The baseline always exists.
 func TestDeriveChannelFormats(t *testing.T) {
-	sdr1080 := MediaFormat{VideoCodec: "h264", Width: 1920, Height: 1080}
-	hdr1080 := MediaFormat{VideoCodec: "hevc", Width: 1920, Height: 1080, ColorTransfer: "smpte2084"}
-	hlg1080 := MediaFormat{VideoCodec: "hevc", Width: 1920, Height: 1080, ColorTransfer: "arib-std-b67"}
-	sdr4K := MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, ColorTransfer: "bt709"}
-	hdr4K := MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, ColorTransfer: "smpte2084"}
-	scope4K := MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 1600} // 2.40:1 UHD film
-	qhd := MediaFormat{VideoCodec: "h264", Width: 2560, Height: 1440}
-	unmeasured := MediaFormat{}
+	sdr1080 := media.MediaFormat{VideoCodec: "h264", Width: 1920, Height: 1080}
+	hdr1080 := media.MediaFormat{VideoCodec: "hevc", Width: 1920, Height: 1080, ColorTransfer: "smpte2084"}
+	hlg1080 := media.MediaFormat{VideoCodec: "hevc", Width: 1920, Height: 1080, ColorTransfer: "arib-std-b67"}
+	sdr4K := media.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, ColorTransfer: "bt709"}
+	hdr4K := media.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, ColorTransfer: "smpte2084"}
+	scope4K := media.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 1600} // 2.40:1 UHD film
+	qhd := media.MediaFormat{VideoCodec: "h264", Width: 2560, Height: 1440}
+	unmeasured := media.MediaFormat{}
 
 	cases := []struct {
 		name    string
-		items   []MediaFormat
+		items   []media.MediaFormat
 		premium FormatClass
 	}{
 		{"empty lineup: baseline only", nil, ""},
-		{"no inventory facts: baseline only", []MediaFormat{unmeasured, unmeasured}, ""},
-		{"all 1080p SDR: baseline only", []MediaFormat{sdr1080, sdr1080}, ""},
-		{"1080p HDR without 4K: baseline only", []MediaFormat{hdr1080, sdr1080}, ""},
-		{"QHD is not 4K", []MediaFormat{qhd}, ""},
-		{"4K SDR items, none HDR: 4K SDR", []MediaFormat{sdr1080, sdr4K}, Format4KSDR},
-		{"scope 4K (3840x1600) counts as 4K", []MediaFormat{scope4K}, Format4KSDR},
-		{"4K HDR item: 4K HDR", []MediaFormat{sdr1080, hdr4K}, Format4KHDR},
-		{"1080p HDR plus 4K SDR: 4K HDR (independent axes)", []MediaFormat{hdr1080, sdr4K}, Format4KHDR},
-		{"HLG counts as HDR", []MediaFormat{hlg1080, sdr4K}, Format4KHDR},
-		{"unmeasured items do not block a measured 4K HDR", []MediaFormat{unmeasured, hdr4K}, Format4KHDR},
+		{"no inventory facts: baseline only", []media.MediaFormat{unmeasured, unmeasured}, ""},
+		{"all 1080p SDR: baseline only", []media.MediaFormat{sdr1080, sdr1080}, ""},
+		{"1080p HDR without 4K: baseline only", []media.MediaFormat{hdr1080, sdr1080}, ""},
+		{"QHD is not 4K", []media.MediaFormat{qhd}, ""},
+		{"4K SDR items, none HDR: 4K SDR", []media.MediaFormat{sdr1080, sdr4K}, Format4KSDR},
+		{"scope 4K (3840x1600) counts as 4K", []media.MediaFormat{scope4K}, Format4KSDR},
+		{"4K HDR item: 4K HDR", []media.MediaFormat{sdr1080, hdr4K}, Format4KHDR},
+		{"1080p HDR plus 4K SDR: 4K HDR (independent axes)", []media.MediaFormat{hdr1080, sdr4K}, Format4KHDR},
+		{"HLG counts as HDR", []media.MediaFormat{hlg1080, sdr4K}, Format4KHDR},
+		{"unmeasured items do not block a measured 4K HDR", []media.MediaFormat{unmeasured, hdr4K}, Format4KHDR},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -93,7 +94,7 @@ func TestBuild_CostClass(t *testing.T) {
 	sdrOut, _ := PremiumOutput(Format4KSDR, testOutput)
 	for _, tc := range []struct {
 		name string
-		src  MediaFormat
+		src  media.MediaFormat
 		out  OutputProfile
 		want FormatClass
 	}{

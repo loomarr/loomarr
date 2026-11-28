@@ -34,7 +34,7 @@ type fillerRoomPods interface {
 	PreviewAtMany(ctx context.Context, channelID string, slots []pod.BreakSlot) ([]pod.Pod, error)
 }
 
-// fillerRoomTimeline is the guide's timeline walk (playoutresolve.Resolver).
+// fillerRoomTimeline is the guide's timeline walk (resolve.Resolver).
 type fillerRoomTimeline interface {
 	BroadcastsWithPending(ctx context.Context, channelID string, from, to time.Time) ([]timeline.Broadcast, error)
 }

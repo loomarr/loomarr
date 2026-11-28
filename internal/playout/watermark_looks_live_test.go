@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/watermark"
 )
 
@@ -62,7 +63,7 @@ func TestLive_PackagerWatermarkEveryLook(t *testing.T) {
 			t.Fatal(err)
 		}
 		x, y := wm.position(p.facts, p.out)
-		picture := compareBug(offY, onY, p.out.Width, Rect{X: x, Y: y, W: w, H: h}).pictureDiff
+		picture := compareBug(offY, onY, p.out.Width, media.Rect{X: x, Y: y, W: w, H: h}).pictureDiff
 		// Where the bug's white is (premultiplied ≥ 0.3), coded luma against a·(16 + 219·grey) +
 		// (1−a)·programme. On this host's NVENC a correct blend measured 0.9-2.4 (Outline's 2 px
 		// strokes carry the most coding error) and a full-range white (#1541) 7.2-8.6; a wrong

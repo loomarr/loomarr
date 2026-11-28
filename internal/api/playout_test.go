@@ -19,7 +19,8 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 	"github.com/loomarr/loomarr/internal/testkit/playoutstreamfixture"
 )
 
@@ -41,20 +42,20 @@ type fakePlayoutSessions struct {
 	attempts []chan []byte
 	detached int
 	// V16 telemetry: what the handlers reported, and what Stats hands back.
-	stats      []playout.SessionStat
+	stats      []hls.SessionStat
 	capacity   int
-	asset      playout.Asset
+	asset      hls.Asset
 	assetOK    bool
 	opened     string
 	tunes      int
 	stopped    []string
-	still      playout.Still
+	still      hls.Still
 	stillOK    bool
 	stillErr   error
 	stillAsked []string
 }
 
-func (f *fakePlayoutSessions) Stats(time.Time) []playout.SessionStat {
+func (f *fakePlayoutSessions) Stats(time.Time) []hls.SessionStat {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.stats
@@ -66,7 +67,7 @@ func (f *fakePlayoutSessions) Capacity() int {
 	return f.capacity
 }
 
-func (f *fakePlayoutSessions) Budget() playout.BudgetSnapshot { return playout.BudgetSnapshot{} }
+func (f *fakePlayoutSessions) Budget() admission.BudgetSnapshot { return admission.BudgetSnapshot{} }
 
 func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string) (<-chan []byte, func(), error) {
 	f.mu.Lock()
@@ -100,15 +101,15 @@ func (f *fakePlayoutSessions) attachments() []string {
 	return append([]string(nil), f.attached...)
 }
 
-func (f *fakePlayoutSessions) Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error) {
+func (f *fakePlayoutSessions) Tune(ctx context.Context, request hls.TuneRequest) (hls.Presentation, error) {
 	f.mu.Lock()
 	f.tunes++
 	f.mu.Unlock()
 	chunks, release, err := f.Attach(ctx, request.ChannelID)
-	return playout.Presentation{Stream: playoutstreamfixture.Channel{Chunks: chunks}, Release: release}, err
+	return hls.Presentation{Stream: playoutstreamfixture.Channel{Chunks: chunks}, Release: release}, err
 }
 
-func (f *fakePlayoutSessions) OpenAsset(_ context.Context, _ string, rel string, speculative bool) (playout.Asset, bool, error) {
+func (f *fakePlayoutSessions) OpenAsset(_ context.Context, _ string, rel string, speculative bool) (hls.Asset, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.opened = rel
@@ -263,7 +264,7 @@ func TestChannelPlayURLIgnoresALegacyDeviceBody(t *testing.T) {
 // minted a play-url for a neighbour channel can prefetch its still with no extra round trip — and
 // the URL it is handed must actually open the still route.
 func TestChannelPlayURLCarriesAWorkingStillURL(t *testing.T) {
-	f := &fakePlayoutSessions{still: playout.Still{JPEG: []byte("\xff\xd8frame"), At: time.Unix(1, 0)}, stillOK: true}
+	f := &fakePlayoutSessions{still: hls.Still{JPEG: []byte("\xff\xd8frame"), At: time.Unix(1, 0)}, stillOK: true}
 	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
 	seedChannel(t, harness.Store, "ch1", "Channel One", 1, "internal")
 
@@ -457,7 +458,7 @@ func TestPlayoutHLS_PackagerAssetMatchesTheRegisteredRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := &fakePlayoutSessions{
-		asset:   playout.Asset{Content: file, Modified: time.Unix(1_000, 0)},
+		asset:   hls.Asset{Content: file, Modified: time.Unix(1_000, 0)},
 		assetOK: true,
 	}
 	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
@@ -693,7 +694,7 @@ func TestPlayoutStream_SessionEndEndsTheResponse(t *testing.T) {
 // that raising a configured cap creates hardware headroom.
 func TestPlayoutStream_AtCapacityIsActionable(t *testing.T) {
 	harness := newPlayoutHarness(t, playoutHarnessConfig{
-		Sessions: &fakePlayoutSessions{err: playout.ErrAtCapacity},
+		Sessions: &fakePlayoutSessions{err: admission.ErrAtCapacity},
 	})
 	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
@@ -881,7 +882,7 @@ func TestPlayoutTuner_QuotesInChannelNamesDoNotBreakTheM3U(t *testing.T) {
 }
 
 // Still returns the configured frame, satisfying api.StillProvider.
-func (f *fakePlayoutSessions) Still(_ context.Context, channelID string) (playout.Still, bool, error) {
+func (f *fakePlayoutSessions) Still(_ context.Context, channelID string) (hls.Still, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.stillAsked = append(f.stillAsked, channelID)
@@ -892,7 +893,7 @@ func (f *fakePlayoutSessions) Still(_ context.Context, channelID string) (playou
 // as a revalidating image (never cached as the live edge moves) stamped with the segment time.
 func TestPlayoutStill_ServesTheLatestFrame(t *testing.T) {
 	at := time.Unix(1_700_000_000, 0)
-	f := &fakePlayoutSessions{still: playout.Still{JPEG: []byte("\xff\xd8frame"), At: at}, stillOK: true}
+	f := &fakePlayoutSessions{still: hls.Still{JPEG: []byte("\xff\xd8frame"), At: at}, stillOK: true}
 	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
 
 	resp := getPlayout(t, harness.Server, "/v1/playout/still/ch1?token="+playoutToken)
@@ -929,7 +930,7 @@ func TestPlayoutStill_MissingIs404(t *testing.T) {
 }
 
 func TestPlayoutStill_RejectsMissingOrWrongToken(t *testing.T) {
-	f := &fakePlayoutSessions{still: playout.Still{JPEG: []byte("x")}, stillOK: true}
+	f := &fakePlayoutSessions{still: hls.Still{JPEG: []byte("x")}, stillOK: true}
 	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
 	for _, q := range []string{"", "?token=nope", "?token=" + playoutToken[:10]} {
 		if resp := getPlayout(t, harness.Server, "/v1/playout/still/ch1"+q); resp.StatusCode != http.StatusNotFound {

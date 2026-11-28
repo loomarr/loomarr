@@ -124,6 +124,9 @@ RETIRED=(
   # an image tag that is not published. Exactly the docs/help failure this script exists for.
   'loomarr-ingest|the ingest sidecar was folded into the core (internal/filler/fetch); there is no separate service or image'
   'loomarr:filler|the two-tag split was replaced by the SINGLE image (§16) — yt-dlp/ffmpeg always ship, so telling an operator to switch tags is a dead end'
+  # #4706: the playout wiring is internal/playout/resolve, package resolve.
+  'app/playoutresolve/|the package is internal/playout/resolve'
+  'playoutresolve.|the package is named resolve (internal/playout/resolve)'
   # V38b: clips arrive because you added a SOURCE, not because you pasted a URL. The panel was
   # the odd one out once Sources had registration, per-row search, pulls and auto-fetch — and
   # leaving its name in help text would send an operator hunting a box that is not there.

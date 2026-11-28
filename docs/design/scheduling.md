@@ -39,6 +39,22 @@ change per channel.
   all, since that decides whether it has breaks) and the deal itself. Library facts are not decisions:
   a re-read runtime, a second file for an episode (a remux upgrade), an added episode, a healed
   rating or collection.
+  - **The decision half is fleet-wide state.** Every internal channel stores it, so a change to
+    what it hashes, or to how a hashed type encodes, re-deals every channel after the programme on
+    air at the first sweep after deploy. A new policy field keeps it only with `omitempty` and a
+    zero default. A field without `omitempty`, or a non-pointer struct field (which `omitempty`
+    never omits), changes every channel's digest once. A field reconcile writes back belongs
+    outside the decided policy, or every library change reads as an edit.
+  - **The forecast cache key is a different hash.** The guide caches each channel's forecast
+    under a key the engine computes from the same settings snapshot the forecast reads: the
+    channel id, the lineup and policy whole (library facts and written-back findings included,
+    because the forecast reads them), the ordering strategy and shuffle seed, the creation time,
+    the playout anchor, the accepted cycle, the install's break, window, calendar and backend
+    settings, and the active rule and holidays at that instant. Anything else on the row is either
+    derived during assembly or not a forecast input, and a test classifies every field. Inputs
+    that are not on the row (availability, the filler pool, airing history, natural-break
+    measurements) are bounded by the cache's five-minute TTL. The row's revision is not the key,
+    because every reconcile save moves it.
   - **Library facts wait for the next window.** While the decisions are unchanged, reconcile keeps
     the accepted cycle and only heals, in place and at the same runtime, a programme that has not
     finished airing and whose file vanished: a re-identified file (the same film, or the same
@@ -200,10 +216,13 @@ reads no history.
 
 `airings` is the **watched** signal: a channel nobody tunes to records nothing there.
 `scheduled_airings` (same shape) is the **scheduled** signal (#1677; "aired" means both, as separate
-signals, #1678 decision 1). On internal playout, each reconcile records every programme the accepted
-cycle has started, up to where that cycle hands over at its window boundary. Each row is stamped
-`recorded_at = aired_at`, so it counts for every window that opens after the programme started,
-however late the reconcile that writes it. The write is idempotent and best-effort. Placement takes
+signals, #1678 decision 1). On internal playout, each reconcile that commits records every programme
+the cycle accepted before the commit had started, up to where that cycle hands over at its window boundary. The
+write follows the commit: a successful CAS proves that cycle was still the accepted one, so an
+attempt that stops on a failed read, or loses to another replica's re-deal, records nothing, and
+the retry records from the winning row. Each row is stamped `recorded_at = aired_at`, so it counts
+for every window that opens after the programme started, however late the reconcile that writes
+it. The write is idempotent and best-effort. Placement takes
 each unit's later time across watched airings, the scheduled ledger, and the accepted cycle's own
 programmes that started before the window opened. The last of these is read in memory, so a window
 the playout resolver arranges at the turn, before reconcile has recorded the old cycle's final
@@ -388,7 +407,7 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   a commercial seen on any channel rests on every channel. One row per watched airing
   (`filler_airings`: channel, clip, scheduled start, recorded at) keeps every airing younger than a
   day and each clip's newest four beyond that, so it stays bounded. Internal playout writes it when
-  a viewer receives the clip's segments (`playoutresolve.Resolver.RecordAiringServed`, called once per item
+  a viewer receives the clip's segments (`resolve.Resolver.RecordAiringServed`, called once per item
   from the packager's segment serve path), keyed by scheduled start, so tune-ins and rebuilds cannot
   inflate it; resolving the airing is a read, so preview, reconcile, the guide and the Watch
   pickers' `/tracks` never write it. Programme airing history is written at the same point.

@@ -44,7 +44,7 @@ func declaredPlayout() []Setting {
 			Detail:  "The picture-versus-bandwidth target. Efficient is 720p and roughly half the bitrate — the right answer for a NAS running several channels, or for watching away from home. Balanced is 1080p and the default. Quality is 1080p at a higher frame rate and bitrate, which on grainy or dark film can be visibly cleaner but costs noticeably more bandwidth per channel. Whichever you pick, playout still steps down automatically as more channels start, so the choice is a ceiling rather than a promise.",
 		},
 		{
-			// One curve on every family (G11, #1512); playout.ToneCurve maps it to each tone-mapper.
+			// One curve on every family (G11, #1512); media.ToneCurve maps it to each tone-mapper.
 			// Read once when a stream starts and pinned for its life, so a change never alters the
 			// look mid-stream. Costs are the household Arc's, per HDR stream at 1080p (#1516).
 			Key: "playout.tone_curve", Label: "HDR tone curve", EnvVar: "PLAYOUT_TONE_CURVE", Group: GroupPlayout,

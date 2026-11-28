@@ -159,6 +159,12 @@ go-race-weights: ## regenerate the race-lane package weights from hosted merge-g
 	@mv scripts/go-race-weights.tsv.tmp scripts/go-race-weights.tsv
 	@./scripts/go-shard.sh --verify 2
 
+.PHONY: guard-test
+guard-test: ## architecture guard tests in the root internal package
+# The pull-request lane runs no unit-test shards, and these guards read the tree from disk, so the
+# repository contracts job runs them on its own.
+	$(GO) test ./internal/
+
 .PHONY: go-race-verify
 go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package
 # ⚠ A GUARD, not decoration. The opt-out list is FAIL-SAFE by construction — race stays ON for
@@ -171,6 +177,6 @@ go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must
 .PHONY: test-ffmpeg
 test-ffmpeg: ## media tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in comprehensive verification)
 	$(GO) test -tags ffmpeg ./internal/media/tools/ ./internal/testkit/ -v
-	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ ./internal/app/ -v
+	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/playout/classprobe/ ./internal/playout/hls/ ./internal/api/ ./internal/app/ -v
 
 .PHONY: eval-contract eval eval-cert eval-planner-cert eval-planner-smoke planner-tool-diagnostic channel-recommend-cert channel-recommend-cert-dry-run channel-recommend-compare eval-planner-compare eval-matrix filler-bakeoff-ollama filler-bakeoff-openrouter filler-bakeoff-transcribe filler-corpus-archive filler-corpus-cdc filler-corpus-commons filler-corpus-direct filler-corpus-download filler-corpus-inventory filler-corpus-lock filler-corpus-loc filler-corpus-met filler-corpus-nasa filler-corpus-pilot filler-corpus-pilot-rights-lock filler-corpus-pilot-rights-review filler-corpus-prepare filler-corpus-review filler-corpus-review-package filler-eval-contract filler-eval-cert filler-media-integrity-prepare filler-media-integrity-score filler-openrouter-snapshot filler-visual-corpus-nomination-prepare filler-visual-corpus-nomination-lock

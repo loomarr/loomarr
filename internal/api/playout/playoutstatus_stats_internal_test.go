@@ -9,13 +9,15 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // slowEncodeSource airs one never-ending movie on a fixed host.
 type slowEncodeSource struct{ host encode.HostProfile }
 
-func (slowEncodeSource) ItemAt(context.Context, string, time.Time) (playout.PackagerItem, error) {
-	return playout.PackagerItem{Label: "prog", Remaining: time.Hour, Input: "movie.mkv", Format: playout.MediaFormat{
+func (slowEncodeSource) ItemAt(context.Context, string, time.Time) (hls.PackagerItem, error) {
+	return hls.PackagerItem{Label: "prog", Remaining: time.Hour, Input: "movie.mkv", Format: media.MediaFormat{
 		VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
 		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm",
 	}}, nil
@@ -41,7 +43,7 @@ func TestChannelHealth_SlowEncoderReadsStalledFromPackagerStats(t *testing.T) {
 			if err := os.WriteFile(ffmpeg, []byte(script), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			m, err := playout.NewPackagerHLS(slowEncodeSource{host: host}, ffmpeg, t.TempDir(), time.Minute, nil)
+			m, err := hls.NewPackagerHLS(slowEncodeSource{host: host}, ffmpeg, t.TempDir(), time.Minute, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

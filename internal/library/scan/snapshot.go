@@ -58,7 +58,7 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 // writeVersion changes when what a write produces from the same inputs changes, so every file is
 // written once more with the new shape; its header is kept, so none is opened again. What each
 // version changed is in docs/design/library.md, "Write versions".
-const writeVersion = 92
+const writeVersion = 93
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. version is the writeVersion and reader the
@@ -309,6 +309,18 @@ func librarySources(item inventory.Item) []librarystore.LibrarySource {
 		return nil
 	}
 	slices.SortFunc(files, func(a, b file) int { return strings.Compare(a.src.Path, b.src.Path) })
+	// Every copy of one edition carries one label, the first in path order's: "Directors Cut" and
+	// "Director's Cut" are one edition, and the store matches a copy to the one that plays in its
+	// place by the label as written (librarystore.LibraryItemCopies).
+	labels := map[string]string{}
+	for i := range files {
+		k := editionKey(files[i].src.Edition)
+		if label, ok := labels[k]; ok {
+			files[i].src.Edition = label
+		} else {
+			labels[k] = files[i].src.Edition
+		}
+	}
 	plays := playingCopies(len(files), func(i int) string { return files[i].src.Edition },
 		func(i int) int { return files[i].src.Part },
 		func(i int) bool { return files[i].managed }, func(i int) int {

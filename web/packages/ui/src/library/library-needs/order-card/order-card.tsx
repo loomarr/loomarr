@@ -21,8 +21,11 @@ const OrderCard = ({
   onDone,
   onOpenTitle,
   problem,
+  onSafeTarget,
 }: {
   need: LibraryOrderNeed;
+  /** Hands over where focus goes when another card is answered: never a button that saves. */
+  onSafeTarget?: (node: { focus?: () => void } | null) => void;
   /** What else is wrong with this show, listed on the same card. */
   problem?: ProblemEntry;
   primary: boolean;
@@ -46,7 +49,7 @@ const OrderCard = ({
     <Surface gap="control" padding="section">
       <Line alignItems="flex-start" columnGap="section" flexWrap={wide ? "nowrap" : "wrap"} rowGap="control">
         <Stack flexShrink={0} width={wide ? 144 : 112}>
-          <LibraryPoster art={need.poster} big name={need.name} />
+          <LibraryPoster art={need.poster} big id={need.id} name={need.name} />
         </Stack>
         <Stack flexBasis={240} flexGrow={1} flexShrink={1} gap="control" minWidth={0}>
           {done ? (
@@ -73,7 +76,12 @@ const OrderCard = ({
                   That's fine
                 </Action>
                 {/* See the show opens the same page See why would. */}
-                <Action density={density} onPress={() => onOpenTitle(need.id)} variant="outline">
+                <Action
+                  density={density}
+                  onPress={() => onOpenTitle(need.id)}
+                  ref={onSafeTarget}
+                  variant="outline"
+                >
                   See the show
                 </Action>
               </Line>
@@ -86,27 +94,41 @@ const OrderCard = ({
               <Text textRole="body" tone="secondary">
                 {`TMDB lists this show in more than one order, and your files don't say which they follow. Until you choose, ${plural(waiting, "episode")} use the name and number in ${waiting === 1 ? "its" : "their"} file.`}
               </Text>
-              <RadioGroup
-                borderColor="borderDecorative"
-                borderRadius="control"
-                borderWidth={1}
-                label="Episode order"
-                onValueChange={setPicked}
-                overflow="hidden"
-                values={options.map((o) => o.key)}
-                value={picked}
+              <Stack
+                ref={(node: unknown) => {
+                  // The chosen radio: pressing Enter on it saves nothing.
+                  const group = node as {
+                    querySelector?: (selector: string) => { focus?: () => void } | null;
+                  } | null;
+                  onSafeTarget?.(
+                    group && {
+                      focus: () => group.querySelector?.('[role="radio"][tabindex="0"]')?.focus?.(),
+                    },
+                  );
+                }}
               >
-                {options.map((o, i) => (
-                  <Stack
-                    borderColor="borderDecorative"
-                    borderRadius={0}
-                    borderTopWidth={i === 0 ? 0 : 1}
-                    key={o.key}
-                  >
-                    <OrderRadio option={o} />
-                  </Stack>
-                ))}
-              </RadioGroup>
+                <RadioGroup
+                  borderColor="borderDecorative"
+                  borderRadius="control"
+                  borderWidth={1}
+                  label="Episode order"
+                  onValueChange={setPicked}
+                  overflow="hidden"
+                  values={options.map((o) => o.key)}
+                  value={picked}
+                >
+                  {options.map((o, i) => (
+                    <Stack
+                      borderColor="borderDecorative"
+                      borderRadius={0}
+                      borderTopWidth={i === 0 ? 0 : 1}
+                      key={o.key}
+                    >
+                      <OrderRadio option={o} />
+                    </Stack>
+                  ))}
+                </RadioGroup>
+              </Stack>
               {problem ? <ProblemReasons reasons={problem.reasons} /> : null}
               <Line>
                 <Action density={density} onPress={() => chosen && onChoose(chosen)} {...tone}>

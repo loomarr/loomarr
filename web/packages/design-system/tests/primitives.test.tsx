@@ -1,8 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-
+import { declarationsOf, stylesOfText, tagBefore, withoutRuntimeMarker } from "../atomic-css";
 import { Badge, LoomarrProvider, ProgressTrack, StatusDot, StatusWord, Text } from "../index";
-import { declarationsOf, stylesOfText, tagBefore, withoutRuntimeMarker } from "./support/atomic-css";
 
 describe("StatusDot", () => {
   it("carries the tone's colour and an accessible name", () => {

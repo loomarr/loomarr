@@ -307,7 +307,7 @@ const Unplayable = ({
   );
 };
 
-const LibraryTitle = ({ title, onBack, fix, personLink }: LibraryTitleProps) => {
+const LibraryTitle = ({ title, onBack, fix, personLink, watchLink }: LibraryTitleProps) => {
   const { wide, density } = useTitleLayout();
   const fixes = useTitleFixes(fix);
   // Closing "Wrong title?" removes the button that was pressed; focus goes back to what opened it.
@@ -377,7 +377,7 @@ const LibraryTitle = ({ title, onBack, fix, personLink }: LibraryTitleProps) => 
         </Text>
       ) : null}
 
-      <OnChannels title={title} />
+      <OnChannels collectionsLink={fix?.collectionsLink} title={title} watchLink={watchLink} />
 
       <CastAndCrew personLink={personLink} title={title} />
 
@@ -387,7 +387,7 @@ const LibraryTitle = ({ title, onBack, fix, personLink }: LibraryTitleProps) => 
 
       {fix
         ? title.files
-            .filter((file) => file.extra)
+            .filter((file) => file.state === "extra")
             .map((file) => (
               <ExtraCopy
                 file={file}

@@ -85,8 +85,24 @@ source_readers() {
   (cd "$ROOT" && go list -e -f '{{if .Error}}{{else}}{{.ImportPath}}{{end}}' "${readers[@]}")
 }
 
+# The root `internal` package holds architecture guards that parse the whole source tree from disk
+# and import none of what they police, so neither importers nor source_readers reaches it. Any Go
+# change under internal/ or cmd/ selects it (#4628).
+root_guards() {
+  local path
+  for path in "${paths[@]}"; do
+    case "${path#./}" in
+      internal/*.go | cmd/*.go)
+        (cd "$ROOT" && go list -e -f '{{if .Error}}{{else}}{{.ImportPath}}{{end}}' ./internal)
+        return 0
+        ;;
+    esac
+  done
+}
+
 {
   source_readers
+  root_guards
   (
     cd "$ROOT"
     export CHANGED_IMPORTS="$changed_list"

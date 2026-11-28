@@ -25,6 +25,8 @@ type PhoneDestination = {
    * destination behind it has one.
    */
   badgeCount?: number;
+  /** The words after the count in the bar's tab name; the tab bar's own when omitted. */
+  badgeWords?: { one: string; other: string };
   icon: IconName;
   key: PhoneDestinationKey;
   label: string;
@@ -52,7 +54,14 @@ const destinationFor = (
     case "requests":
       return { icon: "requests", key, label: "Requests", to: "/requests" };
     case "library":
-      return { icon: "library", key, label: "Library", to: "/library" };
+      // The Library's own phrasing, as its wall and its Needs you page say it.
+      return {
+        badgeWords: { one: "needs you", other: "need you" },
+        icon: "library",
+        key,
+        label: "Library",
+        to: "/library",
+      };
     case "filler":
       return { icon: "filler", key, label: "Filler", to: "/filler" };
     case "people":

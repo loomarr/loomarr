@@ -110,6 +110,8 @@ const UnderlineTab = <Value extends string>({
           justifyContent="flex-end"
           minHeight={semanticTargets[density]}
           paddingBottom={semanticSpace.inline}
+          // A finger needs the target as wide as it is tall, and a short word such as "All" is not.
+          {...(density === "touch" ? { alignItems: "center", minWidth: semanticTargets.touch } : null)}
         >
           {/* The count is nested in the label's line, so the two share a baseline and one name. */}
           <Text
