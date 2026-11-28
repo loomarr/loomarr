@@ -1,25 +1,11 @@
 // @vitest-environment jsdom
 import type { FillerDefectReportDTO } from "@loomarr/core/filler-defects";
 import { LoomarrProvider } from "@loomarr/design-system";
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DefectReview } from "../index";
-
-// The package type-checks without the DOM lib, so the test names only the node surface it reads.
-type Node = { click(): void; textContent: string | null; getAttribute(name: string): string | null };
-type Host = Parameters<typeof createRoot>[0] & {
-  querySelectorAll(selector: string): ArrayLike<Node>;
-  remove(): void;
-  textContent: string | null;
-};
-const testDocument = (
-  globalThis as unknown as {
-    document: { body: { append(node: unknown): void }; createElement(tagName: string): Host };
-  }
-).document;
 
 const report = (over: Partial<FillerDefectReportDTO> = {}): FillerDefectReportDTO => ({
   floorVersion: "floor-v3-provisional",
@@ -64,28 +50,23 @@ const report = (over: Partial<FillerDefectReportDTO> = {}): FillerDefectReportDT
 });
 
 describe("DefectReview", () => {
-  let host: Host;
-  let root: Root;
-  const mount = (node: React.ReactNode) =>
-    act(() => root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>));
+  let host: HTMLElement;
+  let view: ReturnType<typeof renderUi>;
+  const mount = (node: React.ReactNode) => view.rerender(node);
   const button = (name: string) => {
-    const found = Array.from(host.querySelectorAll('[role="button"]')).find((b) => b.textContent === name);
+    const found = Array.from(host.querySelectorAll<HTMLElement>('[role="button"]')).find(
+      (b) => b.textContent === name,
+    );
     if (!found) throw new Error(`no ${name} button`);
     return found;
   };
 
   beforeEach(() => {
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    host = testDocument.createElement("div");
-    testDocument.body.append(host);
-    root = createRoot(host);
+    view = renderUi(null);
+    host = view.container;
   });
 
-  afterEach(() => {
-    act(() => root.unmount());
-    host.remove();
-    vi.unstubAllGlobals();
-  });
+  afterEach(cleanup);
 
   it("shows the standing, the scores and what the floor found on the clip to label", () => {
     mount(

@@ -2,30 +2,13 @@
 
 import { createGuideController } from "@loomarr/core/guide";
 import { LoomarrProvider } from "@loomarr/design-system";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GuideJourney } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-// This package has no DOM lib (it targets React Native too), so the slice of the jsdom document
-// the test touches is typed here.
-type Node = { click(): void; focus(): void; textContent: string | null };
-type Doc = {
-  activeElement: unknown;
-  body: {
-    append(node: unknown): void;
-    replaceChildren(): void;
-    textContent: string | null;
-    querySelector(s: string): Node | null;
-    querySelectorAll(s: string): ArrayLike<Node>;
-  };
-  createElement(tag: string): Parameters<typeof createRoot>[0];
-};
-const doc = (globalThis as unknown as { document: Doc }).document;
+const doc = document;
 
 const sourceGuide = {
   channels: [
@@ -51,9 +34,7 @@ const sourceGuide = {
   toMs: 3_600_000,
 };
 
-afterEach(() => {
-  doc.body.replaceChildren();
-});
+afterEach(cleanup);
 
 // Where a remote's focus goes on purpose: the Guide's selected programme.
 const home = {
@@ -160,15 +141,8 @@ describe("GuideJourney", () => {
     expect(markup(controller)).not.toContain("Couldn't refresh the Guide");
 
     // Mounting refreshes the Guide; that read fails, so the grid stays but is no longer current.
-    const container = doc.createElement("div");
-    doc.body.append(container);
-    const root = createRoot(container);
     await act(async () => {
-      root.render(
-        <LoomarrProvider>
-          <GuideJourney controller={controller} onTune={vi.fn()} preferredChannelId="cartoons" />
-        </LoomarrProvider>,
-      );
+      renderUi(<GuideJourney controller={controller} onTune={vi.fn()} preferredChannelId="cartoons" />);
     });
 
     const notice = doc.body.querySelector('[role="status"]');
@@ -177,7 +151,7 @@ describe("GuideJourney", () => {
     expect(doc.body.textContent).toContain("Cartoon Classics");
 
     const before = load.mock.calls.length;
-    const retry = Array.from(doc.body.querySelectorAll('[role="button"]')).find(
+    const retry = Array.from(doc.body.querySelectorAll<HTMLElement>('[role="button"]')).find(
       (node) => node.textContent?.trim() === "Try again",
     );
     await act(async () => {
@@ -198,15 +172,8 @@ describe("GuideJourney", () => {
     await controller.refresh();
     expect(controller.getSnapshot().status).toBe("empty");
 
-    const container = doc.createElement("div");
-    doc.body.append(container);
-    const root = createRoot(container);
     await act(async () => {
-      root.render(
-        <LoomarrProvider>
-          <GuideJourney controller={controller} onTune={vi.fn()} preferredChannelId="cartoons" />
-        </LoomarrProvider>,
-      );
+      renderUi(<GuideJourney controller={controller} onTune={vi.fn()} preferredChannelId="cartoons" />);
     });
 
     expect(controller.getSnapshot()).toMatchObject({ error: "offline", status: "empty" });
@@ -219,7 +186,7 @@ describe("GuideJourney", () => {
   // fails brought the notice back with nothing focused.
   describe("retrying from the notice", () => {
     const retryButton = () =>
-      Array.from(doc.body.querySelectorAll('[role="button"]')).find((node) =>
+      Array.from(doc.body.querySelectorAll<HTMLElement>('[role="button"]')).find((node) =>
         /^(Try again|Trying again…)$/.test(node.textContent?.trim() ?? ""),
       );
 
@@ -246,18 +213,14 @@ describe("GuideJourney", () => {
       );
       const controller = createGuideController({ now: () => 900_000, source: { load } });
       if (!firstLoadFails) await controller.refresh("cartoons");
-      const container = doc.createElement("div");
-      doc.body.append(container);
       await act(async () => {
-        createRoot(container).render(
-          <LoomarrProvider>
-            <GuideJourney
-              controller={controller}
-              focusRegistry={focusRegistry}
-              onTune={vi.fn()}
-              preferredChannelId="cartoons"
-            />
-          </LoomarrProvider>,
+        renderUi(
+          <GuideJourney
+            controller={controller}
+            focusRegistry={focusRegistry}
+            onTune={vi.fn()}
+            preferredChannelId="cartoons"
+          />,
         );
       });
       focusRegistry?.request.mockClear();
@@ -412,7 +375,7 @@ describe("GuideJourney", () => {
   // taking the button (and the viewer's focus) with it.
   describe("retrying from the error panel", () => {
     const retryButton = () =>
-      Array.from(doc.body.querySelectorAll('[role="button"]')).find((node) =>
+      Array.from(doc.body.querySelectorAll<HTMLElement>('[role="button"]')).find((node) =>
         /^(Try again|Trying again…)$/.test(node.textContent?.trim() ?? ""),
       );
 
@@ -426,18 +389,14 @@ describe("GuideJourney", () => {
           }),
       );
       const controller = createGuideController({ now: () => 900_000, source: { load } });
-      const container = doc.createElement("div");
-      doc.body.append(container);
       await act(async () => {
-        createRoot(container).render(
-          <LoomarrProvider>
-            <GuideJourney
-              controller={controller}
-              focusRegistry={focusRegistry}
-              onTune={vi.fn()}
-              preferredChannelId="cartoons"
-            />
-          </LoomarrProvider>,
+        renderUi(
+          <GuideJourney
+            controller={controller}
+            focusRegistry={focusRegistry}
+            onTune={vi.fn()}
+            preferredChannelId="cartoons"
+          />,
         );
       });
       const button = retryButton();

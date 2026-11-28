@@ -2,10 +2,9 @@
 
 import { layoutGuide } from "@loomarr/core/guide";
 import { LoomarrProvider } from "@loomarr/design-system";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GuideNowNext, GuidePhoneHeader } from "../index";
 
@@ -286,20 +285,11 @@ describe("GuideNowNext", () => {
 });
 
 describe("GuideNowNext number block", () => {
-  type El = { parentElement: El | null; textContent: string | null };
-  const g = globalThis as unknown as {
-    document: {
-      body: { append(n: unknown): void; querySelectorAll(s: string): ArrayLike<El> };
-      createElement(t: string): Parameters<typeof createRoot>[0] & { remove(): void };
-    };
-    getComputedStyle(n: El): { backgroundColor: string; color: string };
-    IS_REACT_ACT_ENVIRONMENT: boolean;
-  };
+  afterEach(cleanup);
 
   it.each([false, true])(
     "fills a channel's number with its decade colour and leaves the rest clear (wide: %s)",
     async (wide) => {
-      g.IS_REACT_ACT_ENVIRONMENT = true;
       const eraLayout = layoutGuide(
         {
           channels: [
@@ -327,29 +317,20 @@ describe("GuideNowNext number block", () => {
         },
         NOW,
       );
-      const host = g.document.createElement("div");
-      g.document.body.append(host);
-      const root = createRoot(host);
-      await act(async () =>
-        root.render(
-          <LoomarrProvider theme="dark">
-            <GuideNowNext layout={eraLayout} nowMs={NOW} onWatch={vi.fn()} wide={wide} />
-          </LoomarrProvider>,
-        ),
-      );
+      await act(async () => {
+        renderUi(<GuideNowNext layout={eraLayout} nowMs={NOW} onWatch={vi.fn()} wide={wide} />);
+      });
       const number = (text: string) => {
-        const el = Array.from(g.document.body.querySelectorAll("span")).find(
+        const el = Array.from(document.body.querySelectorAll("span")).find(
           (n) => n.textContent === text,
-        ) as El;
+        ) as HTMLElement;
         return {
-          fill: g.getComputedStyle(el.parentElement as El).backgroundColor.toLowerCase(),
-          ink: g.getComputedStyle(el).color.toLowerCase(),
+          fill: getComputedStyle(el.parentElement as Element).backgroundColor.toLowerCase(),
+          ink: getComputedStyle(el).color.toLowerCase(),
         };
       };
       expect(number("3")).toEqual({ fill: "var(--decade1980)", ink: "var(--decadeink)" });
       expect(number("12")).toEqual({ fill: "rgba(0, 0, 0, 0)", ink: "var(--contentsecondary)" });
-      await act(async () => root.unmount());
-      host.remove();
     },
   );
 });

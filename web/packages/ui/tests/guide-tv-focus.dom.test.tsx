@@ -1,31 +1,12 @@
 // @vitest-environment jsdom
 import type { GuideLayout } from "@loomarr/core/guide";
-import { LoomarrProvider } from "@loomarr/design-system";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { declarationsOfElement } from "@loomarr/test-support/css";
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GuideSurface } from "../index";
 
-// The package type-checks without the DOM lib, so the test names only the node surface it reads.
-type GuideNode = {
-  className: string;
-  closest(selector: string): GuideNode | null;
-  firstElementChild: GuideNode | null;
-  focus(): void;
-  getAttribute(name: string): string | null;
-  textContent: string | null;
-};
-type QueryRoot = {
-  querySelector(selector: string): GuideNode | null;
-  querySelectorAll(selector: string): ArrayLike<GuideNode>;
-};
-type Host = Parameters<typeof createRoot>[0] & QueryRoot & { remove(): void };
-const testDocument = (
-  globalThis as unknown as {
-    document: { body: { append(node: unknown): void }; createElement(tagName: string): Host };
-  }
-).document;
+type GuideNode = HTMLElement;
+type QueryRoot = ParentNode;
 
 const airing = (scheduleBlockId: string, startMs: number, isOnNow: boolean) => ({
   channelId: "harbor",
@@ -73,8 +54,8 @@ const amberBorder = /(?<![-\w])border(?:-top)?-color:var\(--actionFocus\)/;
 const amberText = /(?<![-\w])color:var\(--actionPrimary\)/;
 // Harbor Lights' monogram ident is lettered in its hue's text stop, and that hue is the brand amber
 // (#3011): identity, not focus, so the decorative tile is not counted.
-const inIdent = (node: GuideNode) => node.closest('[aria-hidden="true"]')?.textContent === "HL";
-const isAmber = (node: GuideNode) => {
+const inIdent = (node: Element) => node.closest('[aria-hidden="true"]')?.textContent === "HL";
+const isAmber = (node: Element) => {
   if (inIdent(node)) return false;
   const styles = declarationsOfElement(node);
   return amberBorder.test(styles) || amberText.test(styles);
@@ -82,38 +63,28 @@ const isAmber = (node: GuideNode) => {
 const ambers = (host: QueryRoot) => Array.from(host.querySelectorAll("*")).filter(isAmber);
 
 describe("TV guide focus (#1887)", () => {
-  let host: Host;
-  let root: Root;
+  let host: HTMLElement;
 
   beforeEach(() => {
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     // The dedicated ten-foot guide renders from a 1280px canvas.
     vi.stubGlobal("innerWidth", 1280);
-    host = testDocument.createElement("div");
-    testDocument.body.append(host);
-    root = createRoot(host);
-    act(() => {
-      root.render(
-        <LoomarrProvider>
-          <GuideSurface
-            density="tv"
-            filter="all"
-            filters={[
-              { label: "All", value: "all" },
-              { label: "Recent", value: "recent" },
-            ]}
-            layout={layout}
-            onSelectionChange={vi.fn()}
-            selection={{ anchorMs: 900_000, channelId: "harbor", scheduleBlockId: "now" }}
-          />
-        </LoomarrProvider>,
-      );
-    });
+    host = renderUi(
+      <GuideSurface
+        density="tv"
+        filter="all"
+        filters={[
+          { label: "All", value: "all" },
+          { label: "Recent", value: "recent" },
+        ]}
+        layout={layout}
+        onSelectionChange={vi.fn()}
+        selection={{ anchorMs: 900_000, channelId: "harbor", scheduleBlockId: "now" }}
+      />,
+    ).container;
   });
 
   afterEach(() => {
-    act(() => root.unmount());
-    host.remove();
+    cleanup();
     vi.unstubAllGlobals();
   });
 

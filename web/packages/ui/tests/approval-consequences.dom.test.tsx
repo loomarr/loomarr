@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 
 import { SizeConfidence } from "@loomarr/core/requests";
-import { LoomarrProvider } from "@loomarr/design-system";
-import { act, type ReactNode, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import { type ReactNode, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -14,48 +13,26 @@ import {
   type ChannelRequestConsequence,
 } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-type Node = {
-  click(): void;
-  getAttribute(name: string): string | null;
-  textContent: string | null;
-};
-type Doc = {
-  body: {
-    append(node: unknown): void;
-    textContent: string | null;
-    querySelectorAll(s: string): ArrayLike<Node>;
-  };
-  createElement(tag: string): Parameters<typeof createRoot>[0] & { remove(): void };
-  dispatchEvent(event: unknown): boolean;
-};
-const doc = (globalThis as unknown as { document: Doc }).document;
+const doc = document;
 
 // The modal portals into <body>, so every query reads the whole document.
 const mount = async (node: ReactNode) => {
-  const container = doc.createElement("div");
-  doc.body.append(container);
-  const root = createRoot(container);
+  let view!: ReturnType<typeof renderUi>;
   await act(async () => {
-    root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>);
+    view = renderUi(node);
   });
   return {
     text: () => doc.body.textContent ?? "",
-    unmount: () =>
-      act(() => {
-        root.unmount();
-        container.remove();
-      }),
+    unmount: () => act(() => view.unmount()),
   };
 };
 // A failed test skips its own unmount; never let its DOM leak into the next one.
 afterEach(() => {
-  for (const node of Array.from(doc.body.querySelectorAll(":scope > *")))
-    (node as unknown as { remove(): void }).remove();
+  cleanup();
+  doc.body.replaceChildren();
 });
 
-const byRole = (role: string) => Array.from(doc.body.querySelectorAll(`[role="${role}"]`));
+const byRole = (role: string) => Array.from(doc.body.querySelectorAll<HTMLElement>(`[role="${role}"]`));
 const named = (role: string, name: string) => {
   const found = byRole(role).find(
     (n) => (n.getAttribute("aria-label") ?? n.textContent?.trim()) === name || n.textContent?.trim() === name,
@@ -63,7 +40,7 @@ const named = (role: string, name: string) => {
   if (!found) throw new Error(`missing ${role}: ${name}`);
   return found;
 };
-const click = (node: Node) => act(async () => node.click());
+const click = (node: HTMLElement) => act(async () => node.click());
 
 const GiB = 1024 ** 3;
 const request = (over: Partial<ChannelRequestConsequence> = {}): ChannelRequestConsequence => ({
@@ -338,7 +315,7 @@ describe("ApprovalBulkGroup", () => {
   // A row's own Approve and the group's bulk Approve do different things, so they must never share
   // an accessible name — at zero the bulk button's visible text is the same bare "Approve" (#1904).
   it("never gives the bulk Approve the same accessible name as a row's Approve", async () => {
-    const accessibleName = (n: Node) => (n.getAttribute("aria-label") ?? n.textContent ?? "").trim();
+    const accessibleName = (n: Element) => (n.getAttribute("aria-label") ?? n.textContent ?? "").trim();
     const withRowApprove = (id: string, label: string): ApprovalBulkRow => ({
       ...row(id, label),
       content: <button type="button">Approve</button>,
