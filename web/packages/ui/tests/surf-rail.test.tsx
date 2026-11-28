@@ -4,7 +4,7 @@ import { surfGroups } from "@loomarr/fixtures";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { SurfRail } from "../index";
+import { SurfRail } from "../watching";
 
 const renderRail = (serverVersion?: string) =>
   renderToStaticMarkup(

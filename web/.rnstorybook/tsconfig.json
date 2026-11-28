@@ -10,7 +10,8 @@
       "@loomarr/ui": ["../packages/ui/index.ts"],
       "@loomarr/ui/guide": ["../packages/ui/guide.ts"],
       "@loomarr/ui/pairing": ["../packages/ui/pairing.ts"],
-      "@loomarr/ui/requests": ["../packages/ui/requests.ts"]
+      "@loomarr/ui/requests": ["../packages/ui/requests.ts"],
+      "@loomarr/ui/watching": ["../packages/ui/watching.ts"]
     }
   },
   "include": ["./**/*.ts", "./**/*.tsx", "../native-stories/**/*.ts", "../native-stories/**/*.tsx"]
