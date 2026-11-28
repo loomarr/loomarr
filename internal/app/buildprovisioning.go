@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/library/resolvers"
@@ -14,13 +13,12 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
 
 // buildProvisioning registers acquisition, availability, retention, and queue work.
 func buildProvisioning(
-	st records.Store,
+	st provisioningStores,
 	set resolved,
 	libraryClient *mediaserver.Client,
 	emitter *eventEmitter,
@@ -30,16 +28,16 @@ func buildProvisioning(
 	log *slog.Logger,
 	metricRecorder *metrics.Recorder,
 ) {
-	if st == nil {
+	if st.titles == nil {
 		return
 	}
-	reconciler := provisionbackstop.NewDynamic(st, set.requesterFor(metricRecorder), func() provisionbackstop.LibraryLookup {
-		return resolvers.NewOwnedLookup(st)
+	reconciler := provisionbackstop.NewDynamic(st.titles, set.requesterFor(metricRecorder), func() provisionbackstop.LibraryLookup {
+		return resolvers.NewOwnedLookup(st.library)
 	}, emitter, provisionbackstop.Config{
 		RequestTTL: settings.RequestTTL.Get(set), DownloadingTTL: settings.DownloadingTTL.Get(set),
-	}, time.Now, log).WithQualityRecorder(quality.NewAcquisitionRecorder(st, log))
+	}, time.Now, log).WithQualityRecorder(quality.NewAcquisitionRecorder(st.observations, log))
 	registry.Add(reconciler.Job())
-	keeper := housekeeping.New(st, housekeeping.Windows{
+	keeper := housekeeping.New(st.housekeeping, housekeeping.Windows{
 		Proposals:   func() time.Duration { return settings.ProposalsRetention.Get(set) },
 		Jobs:        func() time.Duration { return settings.JobsRetention.Get(set) },
 		Activity:    func() time.Duration { return settings.ActivityRetention.Get(set) },
@@ -48,22 +46,22 @@ func buildProvisioning(
 			return int64(settings.DiagnosticsMaxStorageMb.Get(set)) * 1024 * 1024
 		},
 	}, time.Now, log).WithDiagnostics(processDiagnostics)
-	if tidier := store.DatabaseTidier(st); tidier != nil {
-		keeper.WithTidier(tidier.Tidy)
+	if st.tidy != nil {
+		keeper.WithTidier(st.tidy)
 	}
 	registry.Add(keeper.Job())
 
 	libraryScan := provisionbackstop.NewLibraryScan(
-		st, resolvers.NewScanner(st), emitter, settings.JobLibraryScanLookback.Get(set), time.Now, log,
-	).WithActivity(activityRecorder).WithQualityRecorder(quality.NewAcquisitionRecorder(st, log))
+		st.titles, resolvers.NewScanner(st.library), emitter, settings.JobLibraryScanLookback.Get(set), time.Now, log,
+	).WithActivity(activityRecorder).WithQualityRecorder(quality.NewAcquisitionRecorder(st.observations, log))
 	registry.AddAll(libraryScan.Jobs())
 
 	if arr := set.arrRequester(metricRecorder); arr != nil {
-		queuePoll := provisionbackstop.NewQueuePoll(st, arr, emitter, settings.DownloadingTTL.Get(set), time.Now, log)
+		queuePoll := provisionbackstop.NewQueuePoll(st.titles, arr, emitter, settings.DownloadingTTL.Get(set), time.Now, log)
 		registry.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr and Radarr",
 			"Updates acquisition progress and detects stalled downloads from Sonarr and Radarr."))
 	} else if seerr := set.seerrRequester(metricRecorder); seerr != nil {
-		queuePoll := provisionbackstop.NewQueuePoll(st, seerr, emitter, settings.DownloadingTTL.Get(set), time.Now, log)
+		queuePoll := provisionbackstop.NewQueuePoll(st.titles, seerr, emitter, settings.DownloadingTTL.Get(set), time.Now, log)
 		registry.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisitions",
 			"Updates requested titles from the coarse acquisition states reported by Seerr."))
 	}
