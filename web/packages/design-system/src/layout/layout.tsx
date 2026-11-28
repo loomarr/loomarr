@@ -15,6 +15,12 @@ type AdaptiveDirection = "column" | "row";
 // the app out at TV width. A component outside the design system reads it here, not from
 // react-native, so Storybook's docgen never has to parse the native package's Flow source.
 const useWindowWidth = () => useWindowDimensions().width / useViewportScale();
+/** The window's width and height in layout units, read the same way as `useWindowWidth`. */
+const useWindowSize = () => {
+  const { height, width } = useWindowDimensions();
+  const scale = useViewportScale();
+  return { height: height / scale, width: width / scale };
+};
 
 const adaptiveBreakpoints: Record<Density, number> = {
   pointer: 900,
@@ -325,5 +331,6 @@ export {
   resolveAdaptiveDirection,
   ScrollFrame,
   SectionHeader,
+  useWindowSize,
   useWindowWidth,
 };

@@ -7,13 +7,20 @@ import { useEffect } from "react";
 import { Platform, Text } from "react-native";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { useWatchScreen, WatchScreen } from "../index";
+import { type PlayerWatermark, useWatchScreen, WatchScreen } from "../index";
+
+// A desktop's window, for the logo's clearance.
+vi.mock("react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native")>();
+  return { ...actual, useWindowDimensions: () => ({ fontScale: 1, height: 720, scale: 1, width: 1280 }) };
+});
 
 const nativeMatches = Element.prototype.matches;
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
   Element.prototype.matches = nativeMatches;
+  Reflect.deleteProperty(document, "elementFromPoint");
 });
 
 // jsdom answers `:focus-visible` with false whatever gave the focus; a browser answers true for the
@@ -41,7 +48,19 @@ const tunes = () =>
 const focusOf: { current: string | undefined } = { current: undefined };
 
 // The caller's part: the model, the document's keys, and slots for a menu.
-const Harness = ({ cover = false, hintSeen = true }: { cover?: boolean; hintSeen?: boolean }) => {
+const Harness = ({
+  back,
+  cover = false,
+  fullScreen,
+  hintSeen = true,
+  watermark,
+}: {
+  back?: { label: string; onPress: () => void };
+  cover?: boolean;
+  fullScreen?: boolean;
+  hintSeen?: boolean;
+  watermark?: PlayerWatermark;
+}) => {
   const model = useWatchScreen({ hintSeen, layout: "full", lineup, onRequest: requests, watchedId: "ch-1" });
   const { send } = model;
   useEffect(() => {
@@ -65,7 +84,10 @@ const Harness = ({ cover = false, hintSeen = true }: { cover?: boolean; hintSeen
   focusOf.current = model.state.focus;
   return (
     <WatchScreen
+      back={back}
+      fullScreen={fullScreen}
       layout="full"
+      watermark={watermark}
       model={model}
       cover={
         cover ? (
@@ -188,22 +210,51 @@ describe("WatchScreen and focus a pointer meets", () => {
     clickGoLiveFrom(() => screen.getByRole("button", { name: "Mute (M)" }));
   });
 
-  // The browser's answer for where the pointer is: over the lower third.
+  // The pointer moves onto the lower third and stays: the page's answer for what is at its place is
+  // the lower third, whenever the lower third is drawn.
   const pointerOnLowerThird = () => {
-    const matches = Element.prototype.matches;
-    Element.prototype.matches = new Proxy(matches, {
-      apply: (original, element: Element, args: [string]) =>
-        args[0] === ":hover"
-          ? Boolean(element.closest('[data-testid="watch-lower-third"]'))
-          : Reflect.apply(original, element, args),
+    fireEvent.pointerMove(screen.getByTestId("watch-screen"), { clientX: 120, clientY: 600 });
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: (x: number, y: number) =>
+        x === 120 && y === 600
+          ? (screen.queryByTestId("watch-lower-third")?.querySelector("span") ?? null)
+          : null,
     });
   };
+
+  it("ends the hold the page's answer made once the pointer moves off the lower third, with no pointer-leave", () => {
+    vi.useFakeTimers();
+    pointerFocus();
+    renderUi(<Harness hintSeen={false} />);
+    pointerOnLowerThird();
+    key("/", document.body);
+    key("Escape", document.body);
+    key("Escape", document.body);
+    expect(restedAfter(60_000)).toBe(false);
+    // The browser sends no pointer-leave for an element it never saw the pointer enter.
+    fireEvent.pointerMove(screen.getByTestId("watch-screen"), { clientX: 5, clientY: 5 });
+    expect(restedAfter(6000)).toBe(true);
+  });
+
+  it("holds nothing when the lower third comes back and no pointer has moved", () => {
+    vi.useFakeTimers();
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: () => screen.queryByTestId("watch-lower-third")?.querySelector("span") ?? null,
+    });
+    renderUi(<Harness hintSeen={false} />);
+    key("/", document.body);
+    key("Escape", document.body);
+    key("Escape", document.body);
+    expect(restedAfter(6000)).toBe(true);
+  });
 
   it("holds awake when the lower third comes back under a pointer that is already on it", () => {
     vi.useFakeTimers();
     pointerFocus();
-    pointerOnLowerThird();
     renderUi(<Harness hintSeen={false} />);
+    pointerOnLowerThird();
     click(channelsControl());
     click(channelsControl());
     expect(listbox()).toBeNull();
@@ -217,8 +268,8 @@ describe("WatchScreen and focus a pointer meets", () => {
   it("holds awake under a still pointer when find opened the list and Esc closed it", () => {
     vi.useFakeTimers();
     pointerFocus();
-    pointerOnLowerThird();
     renderUi(<Harness hintSeen={false} />);
+    pointerOnLowerThird();
     key("/", document.body);
     expect(listbox()).not.toBeNull();
     key("Escape", document.body);
@@ -511,10 +562,13 @@ describe("WatchScreen", () => {
   });
 
   it("pauses on a click on the picture, and goes live on End", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
     renderUi(<Harness />);
     const picture = screen.getByTestId("watch-picture").firstElementChild as Element;
     fireEvent.click(picture);
     expect(screen.getByRole("button", { name: "Play (Space)" })).toBeTruthy();
+    // Paused for two seconds, so the picture plays on behind live by whole seconds the lower third says.
+    vi.advanceTimersByTime(2000);
     fireEvent.click(picture);
     key("End", document.body);
     expect(requests.mock.calls.map(([request]) => request.type)).toEqual(["pause", "resume", "goLive"]);
@@ -573,6 +627,100 @@ describe("WatchScreen", () => {
       vi.advanceTimersByTime(1600);
     });
     expect(tunes()).toEqual(["ch-4"]);
+    requests.mockClear();
+  });
+});
+
+describe("WatchScreen's back control and what it says aloud", () => {
+  it("names the back control beside its arrow, and its press is the caller's", () => {
+    const onPress = vi.fn();
+    renderUi(<Harness back={{ label: "Back", onPress }} />);
+    const back = screen.getByRole("button", { name: "Back" });
+    expect(within(back).getByText("Back")).toBeTruthy();
+    fireEvent.click(back);
+    expect(onPress).toHaveBeenCalledOnce();
+    expect(requests).not.toHaveBeenCalled();
+  });
+
+  it("takes the keyboard's focus off the back control when the pointer presses another control", () => {
+    keyboardFocus();
+    renderUi(<Harness back={{ label: "Back", onPress: () => undefined }} />);
+    const back = screen.getByRole("button", { name: "Back" });
+    act(() => back.focus());
+    expect(document.activeElement).toBe(back);
+    click(mute());
+    expect(document.activeElement).not.toBe(back);
+    requests.mockClear();
+  });
+
+  it("names the full-screen control for the browser's real state", () => {
+    renderUi(<Harness fullScreen={false} />);
+    expect(screen.getByRole("button", { name: "Full screen (F)" })).toBeTruthy();
+    cleanup();
+    renderUi(<Harness fullScreen />);
+    expect(screen.getByRole("button", { name: "Leave full screen (F)" })).toBeTruthy();
+  });
+
+  // The window is 1280 × 720, all picture. A logo 20% tall, inset 5%, reaches (0.05 + 0.2) × 720 =
+  // 180 px in from its edges, over the chrome in its corner.
+  it.each([
+    ["top-left", "watch-back"],
+    ["bottom-left", "watch-lower-third"],
+    ["bottom-right", "watch-quiet-row"],
+  ] as const)("steps the chrome in the %s corner clear of the logo, and nothing else", (corner, moved) => {
+    const back = { label: "Back", onPress: () => undefined };
+    const at = () =>
+      Object.fromEntries(
+        ["watch-back", "watch-lower-third", "watch-quiet-row"].map((id) => [
+          id,
+          screen.getByTestId(id).style[id === "watch-back" ? "top" : "bottom"],
+        ]),
+      );
+    renderUi(<Harness back={back} />);
+    const plain = at();
+    cleanup();
+    renderUi(<Harness back={back} watermark={{ corner, margin: 0.05, size: 0.2 }} />);
+    const cleared = at();
+    // The chrome in the logo's corner starts past the logo, from the logo's own edge.
+    expect(Number.parseFloat(cleared[moved] ?? "0")).toBeGreaterThan(180);
+    for (const id of Object.keys(plain).filter((each) => each !== moved)) expect(cleared[id]).toBe(plain[id]);
+  });
+
+  it("gives the back control's place to the open list", () => {
+    renderUi(<Harness back={{ label: "Guide", onPress: () => undefined }} />);
+    fireEvent.click(channelsControl());
+    expect(screen.queryByTestId("watch-back")).toBeNull();
+    requests.mockClear();
+  });
+
+  it("keeps the screen awake while the pointer rests on the back control", () => {
+    vi.useFakeTimers();
+    renderUi(<Harness back={{ label: "Guide", onPress: () => undefined }} />);
+    fireEvent.pointerEnter(screen.getByTestId("watch-back"));
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(screen.getByTestId("watch-back").style.opacity).not.toBe("0");
+    fireEvent.pointerLeave(screen.getByTestId("watch-back"));
+    act(() => {
+      vi.advanceTimersByTime(6_000);
+    });
+    expect(screen.getByTestId("watch-back").style.opacity).toBe("0");
+  });
+
+  it("says the lower third once for a channel change, and not as the clock moves on", () => {
+    vi.useFakeTimers();
+    renderUi(<Harness />);
+    const said = () => screen.getByTestId("watch-channel-said").textContent;
+    expect(said()).toBe("");
+    key("ArrowDown", document.body);
+    const first = said();
+    expect(first).toContain("Channel 2, Station 2.");
+    expect(first).toContain("Show 2");
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(said()).toBe(first);
     requests.mockClear();
   });
 });

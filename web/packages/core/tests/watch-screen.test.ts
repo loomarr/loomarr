@@ -169,6 +169,8 @@ describe("rule 3: only the bare picture goes quiet", () => {
     ["a menu is open", { control: "subtitles", type: "press" }],
     ["a control holds focus", { control: "pause", type: "focus" }],
     ["the pointer rests on the controls", { held: true, region: "quietRow", type: "pointerHold" }],
+    ["the back control holds focus", { control: "back", type: "focus" }],
+    ["the pointer rests on the back control", { held: true, region: "back", type: "pointerHold" }],
     ["the picture is paused", { key: " ", type: "key" }],
     ["digits are pending", { key: "1", type: "key" }],
   ] as const)("never rests while %s", (_, event) => {
@@ -182,6 +184,11 @@ describe("rule 3: only the bare picture goes quiet", () => {
     }
     s.wait(60_000);
     expect(s.view().awake).toBe(true);
+  });
+
+  it("asks nothing for a press of the back control, which the caller acts on", () => {
+    const s = screen();
+    expect(s.send({ control: "back", type: "press" })).toEqual([]);
   });
 
   it("rests again five seconds after what held it lets go", () => {
@@ -316,6 +323,120 @@ describe("rule 5: pause, behind live and Go live", () => {
     s.key(" ", 0);
     s.key("ArrowDown", 4000);
     expect(s.view()).toMatchObject({ behindSeconds: 0, paused: false });
+  });
+});
+
+describe("the player's own word on pause and live", () => {
+  const behind = (behindMs: number, paused = false, channelId = "ch-1") =>
+    ({ behindMs, channelId, live: behindMs === 0 && !paused, paused, type: "playback" }) as const;
+
+  it("counts a pause at live once: 30 s paused is 30 s behind, after the key and the player's next word", () => {
+    const s = screen();
+    s.key(" ", 0);
+    for (let second = 1; second <= 30; second += 1) s.send(behind(second * 1000, true), second * 1000);
+    s.key(" ", 30_000);
+    expect(s.view().behindSeconds).toBe(30);
+    s.send(behind(30_000), 30_100);
+    expect(s.view().behindSeconds).toBe(30);
+  });
+
+  it("counts a pause that began 10 s behind on top of it: 40 s", () => {
+    const s = screen();
+    s.send(behind(10_000), 0);
+    s.key(" ", 0);
+    for (let second = 1; second <= 30; second += 1)
+      s.send(behind(10_000 + second * 1000, true), second * 1000);
+    s.key(" ", 30_000);
+    expect(s.view().behindSeconds).toBe(40);
+  });
+
+  it("counts a pause from outside the screen once, and with no word from the player while paused", () => {
+    const s = screen();
+    s.send(behind(0, true), 0);
+    s.key(" ", 30_000);
+    expect(s.view().behindSeconds).toBe(30);
+  });
+
+  it("drops a report from a channel the screen has left", () => {
+    const s = screen();
+    s.key("ArrowDown", 0);
+    s.send(behind(30_000, false, "ch-1"), 100);
+    expect(s.view().behindSeconds).toBe(0);
+    s.key("End", 200);
+    expect(s.requests.filter((request) => request.type === "goLive")).toEqual([]);
+  });
+
+  it("takes a seek it did not ask for as behind live, so End goes live", () => {
+    const s = screen();
+    s.send(behind(30_000), 1000);
+    expect(s.view().behindSeconds).toBe(30);
+    s.key("End");
+    expect(s.requests).toEqual([{ type: "goLive" }]);
+  });
+
+  it("goes live from Start over three seconds into a programme", () => {
+    const s = screen();
+    s.send(behind(3_000), 1000);
+    s.key("End");
+    expect(s.requests).toEqual([{ type: "goLive" }]);
+  });
+
+  it("offers Go live exactly when the lower third says behind, so End agrees with what is shown", () => {
+    const s = screen();
+    s.send({ behindMs: 400, channelId: "ch-1", live: false, paused: false, type: "playback" }, 1000);
+    expect(s.view()).toMatchObject({ behindSeconds: 0, offLive: false });
+    s.key("End");
+    expect(s.requests).toEqual([]);
+    s.send(behind(1_000), 2000);
+    expect(s.view()).toMatchObject({ behindSeconds: 1, offLive: true });
+  });
+
+  it("takes a pause from outside the screen, so Space resumes it", () => {
+    const s = screen();
+    s.send(behind(0, true), 1000);
+    expect(s.view().paused).toBe(true);
+    s.key(" ", 2000);
+    expect(s.requests).toEqual([{ type: "resume" }]);
+  });
+
+  it("clears behind live when the player is back at live, after a move forward or a Retry", () => {
+    const s = screen();
+    s.send(behind(4_000), 1000);
+    s.send(behind(0), 2000);
+    expect(s.view().behindSeconds).toBe(0);
+    s.key("End");
+    expect(s.requests).toEqual([]);
+  });
+
+  it("wakes nothing, however far the player moves, and the lower third tells the truth when next shown", () => {
+    const s = screen();
+    s.wait(WATCH_REST_MS);
+    expect(s.view().awake).toBe(false);
+    // A stall while behind live: the player's word changes, the viewer did nothing.
+    s.send(behind(30_000));
+    s.send(behind(36_000));
+    expect(s.view()).toMatchObject({ awake: false, nextAt: null });
+    s.send({ type: "pointerMove" });
+    expect(s.view()).toMatchObject({ awake: true, behindSeconds: 36 });
+  });
+
+  it("counts a pause on one clock while the player's word comes each second, keeping nothing awake", () => {
+    const s = screen();
+    s.key(" ", 0);
+    for (let second = 1; second <= 3; second += 1) s.send(behind(second * 1000, true), second * 1000);
+    s.key(" ", 4000);
+    s.send(behind(4_000), 4000);
+    expect(s.view().behindSeconds).toBe(4);
+    s.wait(WATCH_REST_MS);
+    expect(s.view().awake).toBe(false);
+  });
+
+  it("refuses to resume under a cover, as it refuses to pause", () => {
+    const s = screen();
+    s.key(" ", 0);
+    s.send({ picture: "covered", type: "picture" }, 100);
+    s.key(" ", 200);
+    expect(s.requests).toEqual([{ type: "pause" }]);
   });
 });
 
@@ -718,12 +839,15 @@ describe("only a playing picture pauses", () => {
     expect(s.requests).toEqual([{ type: "pause" }]);
   });
 
-  it("still resumes a pause that a cover came over, and the picture's news wakes nothing", () => {
+  it("holds a pause that a cover came over until the picture is back, and the picture's news wakes nothing", () => {
     const s = screen();
     s.key(" ", 0);
     s.send({ picture: "covered", type: "picture" }, 1000);
     expect(s.state.activeAt).toBe(0);
     s.key(" ", 2000);
+    expect(s.requests.at(-1)).toEqual({ type: "pause" });
+    s.send({ picture: "playing", type: "picture" }, 3000);
+    s.key(" ", 4000);
     expect(s.requests.at(-1)).toEqual({ type: "resume" });
   });
 });

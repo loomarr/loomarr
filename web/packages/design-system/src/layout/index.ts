@@ -12,5 +12,6 @@ export {
   resolveAdaptiveDirection,
   ScrollFrame,
   SectionHeader,
+  useWindowSize,
   useWindowWidth,
 } from "./layout";

@@ -153,7 +153,6 @@ const installFrameClock = async (page: Page) => {
 
 const waitForDecodedFrame = async (page: Page, phase: string) => {
   const started = await page.evaluate(() => performance.now());
-  const play = page.getByRole("button", { name: "Play" });
   const decoded = page.waitForFunction(
     () =>
       ((window as Window & { __loomarrDecodedFrames?: number[] }).__loomarrDecodedFrames?.length ?? 0) > 0,
@@ -161,21 +160,20 @@ const waitForDecodedFrame = async (page: Page, phase: string) => {
     { timeout: 10_000 },
   );
 
-  // Firefox can reject autoplay after navigation, but the Play control is also visible briefly
-  // BEFORE hls.js attaches MediaSource. Clicking in that empty-source window spends the synthetic
-  // user gesture on a play() that cannot start, then leaves the real source paused. Race a normal
-  // decoded frame against one fallback click made only after the video has an attached source.
+  // Firefox can reject autoplay after navigation. A gesture spent before hls.js attaches
+  // MediaSource asks a play() that cannot start, then leaves the real source paused. Race a normal
+  // decoded frame against one fallback made only after the video has an attached source.
   try {
     await page.waitForFunction(() => Boolean(document.querySelector("video")?.currentSrc), undefined, {
       timeout: 9_000,
     });
-    // Give permitted autoplay a brief opportunity. If it produced no frame, activate the actual
-    // Play control with keyboard/remote semantics; this avoids spending the gesture before a source
-    // exists and avoids racing the auto-hidden pointer layer.
+    // Give permitted autoplay a brief opportunity. If the browser refused it, the watching screen
+    // covers the picture with Play: press it with keyboard semantics, the gesture the browser asks.
     await Promise.race([decoded, page.waitForTimeout(500)]);
     const frameCount = await page.evaluate(
       () => (window as Window & { __loomarrDecodedFrames?: number[] }).__loomarrDecodedFrames?.length ?? 0,
     );
+    const play = page.getByRole("button", { exact: true, name: "Play" });
     if (frameCount === 0 && (await play.count()) > 0) {
       await play.focus();
       await page.keyboard.press("Enter");
@@ -350,10 +348,10 @@ const latestWarmAt = (page: Page, number: number) =>
 const playerFrame = (page: Page) => page.locator("video").locator("..");
 
 const channelUp = async (page: Page) => {
-  // The §9 chrome has no channel buttons on a pointer screen: ↑ on the player is the control, as a
-  // remote's CH+ is. Focus the frame first so the key cannot land on a chrome button instead.
+  // The watching screen has no channel buttons: Down on the bare picture is the next channel, the
+  // row below in the list. Focus the frame first so the key cannot land on a control instead.
   await playerFrame(page).focus();
-  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowDown");
 };
 
 const waitForAdjacentWarm = async (
@@ -490,7 +488,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     () => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length,
   );
   await channelUp(page);
-  await expect(page.getByRole("status")).toContainText("CH 51");
+  await expect(page.getByTestId("lower-third-numeral")).toHaveText("51");
   await expect(video).toHaveAttribute("poster", /^data:image\/png;base64,/);
   await page.waitForFunction(
     (count) => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length > count,
@@ -667,7 +665,8 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   await channelUp(page);
   await playerFrame(page).evaluate((frame, remaining) => {
     for (const direction of remaining) {
-      const key = direction > 0 ? "ArrowUp" : "ArrowDown";
+      // On the watching screen Down is the next channel, the row below.
+      const key = direction > 0 ? "ArrowDown" : "ArrowUp";
       frame.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
     }
   }, directions.slice(1));

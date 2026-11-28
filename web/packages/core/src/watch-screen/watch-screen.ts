@@ -60,6 +60,12 @@ const createWatchScreenState = ({
   watchedId,
 });
 
+/**
+ * Paused, or a whole second or more behind live: what the lower third says as behind, and the one
+ * test Go live and End answer to, so the two never disagree.
+ */
+const offLive = (state: WatchScreenState) => state.paused || Math.floor(state.behindMs / 1000) > 0;
+
 /** Only the bare picture rests: anything open, focused, pointed at, paused or typed holds it. */
 const held = (state: WatchScreenState) =>
   state.list.open ||
@@ -145,7 +151,9 @@ const reduceStep = <C extends LineupChannel>(
   }
   // Everything but the clock and the picture is activity, and wakes the screen.
   const woken: WatchScreenState =
-    event.type === "tick" || event.type === "picture" ? state : { ...state, activeAt: at };
+    event.type === "tick" || event.type === "picture" || event.type === "playback"
+      ? state
+      : { ...state, activeAt: at };
   const stay = (next: WatchScreenState = woken): WatchScreenStep => ({ requests: [], state: next });
   const ask = (next: WatchScreenState, ...requests: WatchRequest[]): WatchScreenStep => ({
     requests,
@@ -181,9 +189,9 @@ const reduceStep = <C extends LineupChannel>(
   const tuneTo = (s: WatchScreenState, channelId: string): WatchScreenStep =>
     channelId === s.watchedId ? stay(s) : ask(changed(s, channelId), { channelId, type: "tune" });
 
-  // Nothing pauses while tuning in or under a cover: there is no picture to hold.
+  // Nothing pauses or resumes while tuning in or under a cover: there is no picture to hold.
   const togglePause = (s: WatchScreenState): WatchScreenStep =>
-    !s.paused && s.picture !== "playing"
+    s.picture !== "playing"
       ? stay(s)
       : s.paused
         ? ask(
@@ -198,9 +206,7 @@ const reduceStep = <C extends LineupChannel>(
         : ask({ ...s, paused: true, pausedAt: at }, { type: "pause" });
 
   const goLive = (s: WatchScreenState): WatchScreenStep =>
-    s.paused || s.behindMs > 0
-      ? ask({ ...s, behindMs: 0, paused: false, pausedAt: undefined }, { type: "goLive" })
-      : stay(s);
+    offLive(s) ? ask({ ...s, behindMs: 0, paused: false, pausedAt: undefined }, { type: "goLive" }) : stay(s);
 
   const fullScreen = (s: WatchScreenState) => ask(s, { on: s.layout !== "full", type: "fullScreen" });
 
@@ -313,6 +319,9 @@ const reduceStep = <C extends LineupChannel>(
         return goLive(s);
       case "airplay":
         return ask(s, { type: "airplay" });
+      // Back leaves the screen, which the caller does; the press asks nothing of the model.
+      case "back":
+        return stay(s);
     }
   };
 
@@ -432,6 +441,22 @@ const reduceStep = <C extends LineupChannel>(
     }
     case "picture":
       return stay({ ...state, picture: event.picture });
+    // The player's own word on pause and live, whoever moved them: the truth the lower third and
+    // Go live tell, taken silently. It is not input, so it wakes nothing; the viewer's own action
+    // reaches the screen as the input it is.
+    // A report from a channel the screen has left is not about the picture on screen. While the
+    // picture stays paused the screen's own pause clock counts the pause, once, from where the
+    // pause began: the player's growing lag is not added to it.
+    case "playback": {
+      if (event.channelId !== state.watchedId) return stay(state);
+      const stillPaused = event.paused && state.paused;
+      return stay({
+        ...state,
+        behindMs: stillPaused ? state.behindMs : event.live ? 0 : event.behindMs,
+        paused: event.paused,
+        pausedAt: event.paused ? (state.paused ? state.pausedAt : at) : undefined,
+      });
+    }
     case "key":
       return key(woken, event.key);
   }
@@ -453,6 +478,7 @@ const watchScreenView = <C extends LineupChannel>(
   return {
     awake,
     behindSeconds: state.paused ? 0 : Math.floor(state.behindMs / 1000),
+    offLive: offLive(state),
     digits: typed === undefined ? undefined : { target: lineup.channelByNumber(typed), typed },
     hint: awake && !state.hintSeen && !state.list.open && state.menu === undefined,
     lastChannel: lineup.lastChannel,

@@ -1,21 +1,27 @@
 import type { LineupChannel, LineupGroupKind } from "@loomarr/core/channel-lineup";
 import {
+  Icon,
+  icons,
   Layer,
+  RingedPressable,
   Surface,
   Text,
   ThemeScope,
   useReducedMotionPreference,
+  useWindowSize,
   VisuallyHidden,
 } from "@loomarr/design-system";
-import { useCallback, useEffect, useRef } from "react";
-import { Animated, Platform } from "react-native";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Animated, type LayoutChangeEvent, Platform } from "react-native";
 
 import { ChannelList, type ChannelListHandle } from "../channel-list";
 import { FirstRunHint } from "../first-run-hint";
 import { LowerThird, type LowerThirdState } from "../lower-third";
+import { summaryOf } from "../lower-third/summary";
 import { QuietRow, type QuietRowHandle, type QuietRowKey } from "../quiet-row";
 import { TuneBars, TuneStatic } from "../tune-static";
-import { WatchScrim } from "../watch-scrim";
+import { type ScrimBox, WatchScrim } from "../watch-scrim";
+import { clearOfWatermark } from "../watching-surface/player-chrome/watermark-clearance";
 import type { WatchScreenProps } from "./watch-screen.type";
 
 // The full-screen arrangement (design/watch, `full`): the list's column stands in from the leading
@@ -28,6 +34,11 @@ const LIST_FOOT = 20;
 const CROSSING = 148;
 const ROW_FOOT = 40;
 const HINT_TOP = 68;
+/** The back control stands in the top leading corner, on the list's line. */
+const BACK_TOP = LIST_TOP;
+/** How tall the back control and the quiet row stand, and the lower third, for the logo's clearance. */
+const CONTROL_HEIGHT = 36;
+const THIRD_HEIGHT = 120;
 /** The menu stands over the quiet row. */
 const MENU_FOOT = 96;
 /** How long the controls take to rest or wake. */
@@ -73,6 +84,9 @@ const web = (handlers: object): object => (Platform.OS === "web" ? handlers : {}
  * It draws what `useWatchScreen` says and reports what happened; the caller does what it asks.
  */
 const WatchScreen = <C extends LineupChannel>({
+  back,
+  fullScreen,
+  watermark,
   cover,
   detail,
   holdSnow,
@@ -91,6 +105,18 @@ const WatchScreen = <C extends LineupChannel>({
   const shown = useShown(view.awake, reducedMotion);
   const watched = lineup.channels.find((channel) => channel.id === state.watchedId);
 
+  // The channel's logo is burned into a corner of the picture; only the chrome in that corner steps
+  // clear of it, measured on the 16:9 picture inside the screen (§9.6).
+  // The design system's window size: a react-native call here would fail Storybook's docgen.
+  const frame = useWindowSize();
+  // Where the back control stands, measured, for the corner ink behind it.
+  const [backBox, setBackBox] = useState<ScrimBox | undefined>(undefined);
+  const clear = (base: number, edge: "bottom" | "top", side: "left" | "right", extent: number) =>
+    clearOfWatermark({ base, edge, extent, frame, side, watermark });
+  const backTop = clear(BACK_TOP, "top", "left", CONTROL_HEIGHT);
+  const thirdBottom = clear(CROSSING, "bottom", "left", THIRD_HEIGHT);
+  const rowFoot = clear(ROW_FOOT, "bottom", "right", CONTROL_HEIGHT);
+
   // The model refuses a pause while there is no picture to hold.
   const showing = cover ? "covered" : tune.cover === "cold" ? "tuning" : "playing";
   useEffect(() => {
@@ -105,15 +131,17 @@ const WatchScreen = <C extends LineupChannel>({
     if (keyed()) move();
   };
 
-  // The one pointer rule for the foot of the screen, the lower third and the quiet row: a press
-  // there takes focus off whichever of their controls holds it, so no keyboard ring outlives a
-  // click. The open list, the menu and the cover are not part of it.
+  // The one pointer rule for the screen's chrome, the lower third, the quiet row and the back
+  // control: a press there takes focus off whichever of their controls holds it, so no keyboard
+  // ring outlives a click. The open list, the menu and the cover are not part of it.
   type Part = { contains?: (node: unknown) => boolean } | null;
   const footThird = useRef<Part>(null);
   const footRow = useRef<Part>(null);
+  const backPart = useRef<Part>(null);
   const pressFoot = () => {
     const active = (globalThis as { document?: { activeElement?: unknown } }).document?.activeElement;
-    if (active && [footThird.current, footRow.current].some((part) => part?.contains?.(active))) {
+    const parts = [footThird.current, footRow.current, backPart.current];
+    if (active && parts.some((part) => part?.contains?.(active))) {
       (active as { blur?: () => void }).blur?.();
     }
   };
@@ -172,25 +200,59 @@ const WatchScreen = <C extends LineupChannel>({
       ? [`${found.number} ${found.name}`, found.onNow].filter(Boolean).join(", ")
       : "No channel or programme matches";
 
-  // The lower third's element arrives, and does two things: it joins the foot, for the pointer
-  // rule, and, since it comes back under a pointer that has not moved when the list closes with
-  // no pointer-enter, it asks whether the pointer is already over it.
-  const thirdArrived = useCallback(
-    (node: unknown) => {
-      footThird.current = node as Part;
-      const element = node as { matches?: (selector: string) => boolean } | null;
-      if (element?.matches?.(":hover")) send({ held: true, region: "lowerThird", type: "pointerHold" });
+  // A channel change is said once, with what is on as it changes; the clock moving the lower third
+  // on says nothing. The channel the screen opens on is not said.
+  const spoken = useRef({ id: state.watchedId, text: "" });
+  if (watched && spoken.current.id !== watched.id) {
+    spoken.current = { id: watched.id, text: summaryOf(watched.number, watched.name, programme(watched)) };
+  }
+
+  // The lower third's element joins the foot, for the pointer rule.
+  const thirdArrived = useCallback((node: unknown) => {
+    footThird.current = node as Part;
+  }, []);
+  // The lower third comes back under a pointer that has not moved when the list closes, with no
+  // pointer-enter, and a browser has not yet worked out what is under a pointer that is still. So
+  // as it is laid out it asks the page what is at the pointer's last place, and holds if that is
+  // the lower third. No pointer has moved yet means none rests on it.
+  const pointerAt = useRef<{ x: number; y: number } | undefined>(undefined);
+  // A hold the hit test made, which no pointer-enter began, so no pointer-leave may end.
+  const heldByHit = useRef(false);
+  const onThird = (at: { x: number; y: number } | undefined) => {
+    const page = (globalThis as { document?: { elementFromPoint?: (x: number, y: number) => unknown } })
+      .document;
+    if (!at || Platform.OS !== "web" || !page?.elementFromPoint) return false;
+    const hit = page.elementFromPoint(at.x, at.y);
+    return Boolean(hit && footThird.current?.contains?.(hit));
+  };
+  // The one path every pointer hold takes, held or let go.
+  const hold = useCallback(
+    (region: "back" | "lowerThird" | "quietRow", held: boolean) => {
+      if (region === "lowerThird") heldByHit.current = false;
+      send({ held, region, type: "pointerHold" });
     },
     [send],
   );
+  const thirdShown = Boolean(watched) && !view.listOpen;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: asks once each time the lower third is laid out again
+  useLayoutEffect(() => {
+    if (!thirdShown || !onThird(pointerAt.current)) return;
+    hold("lowerThird", true);
+    heldByHit.current = true;
+  }, [thirdShown, hold]);
 
   // The pointer resting on the controls holds the screen awake.
-  const holdOn = (region: "lowerThird" | "quietRow") =>
+  const holdOn = (region: "back" | "lowerThird" | "quietRow") =>
     web({
-      onPointerEnter: () => send({ held: true, region, type: "pointerHold" }),
-      onPointerLeave: () => send({ held: false, region, type: "pointerHold" }),
+      onPointerEnter: () => hold(region, true),
+      onPointerLeave: () => hold(region, false),
     });
-  const onPointerMove = () => {
+  const onPointerMove = (event: { clientX?: number; clientY?: number }) => {
+    if (event.clientX !== undefined && event.clientY !== undefined) {
+      pointerAt.current = { x: event.clientX, y: event.clientY };
+      // The hit test's hold ends where the pointer next is off the lower third.
+      if (heldByHit.current && !onThird(pointerAt.current)) hold("lowerThird", false);
+    }
     const at = Date.now();
     if (view.awake && at - lastMove.current < MOVE_EVERY_MS) return;
     lastMove.current = at;
@@ -224,8 +286,52 @@ const WatchScreen = <C extends LineupChannel>({
         <WatchScrim edge="foot" />
       </Layer>
       {view.listOpen ? <WatchScrim edge="side" /> : null}
+      {/* The back control's own ink in the top leading corner, sized from where it stands (below a
+          logo there too), resting with it. */}
+      {back && !view.listOpen && backBox ? (
+        <Layer bottom={0} left={0} opacity={shown} pointerEvents="none" right={0} top={0}>
+          <WatchScrim box={backBox} edge="corner" />
+        </Layer>
+      ) : null}
 
       <ThemeScope theme="dark">
+        {/* The arrow is always named beside it. While the list is open its column stands here. */}
+        {back && !view.listOpen ? (
+          <Layer
+            left={EDGE}
+            onLayout={(event: LayoutChangeEvent) => {
+              const { height, width, x, y } = event.nativeEvent.layout;
+              setBackBox({ height, width, x, y });
+            }}
+            opacity={shown}
+            testID="watch-back"
+            top={backTop}
+            {...holdOn("back")}
+          >
+            <Surface
+              backgroundColor="transparent"
+              borderWidth={0}
+              ref={(node: unknown) => {
+                backPart.current = node as Part;
+              }}
+              {...web({ onMouseDown: pressFoot })}
+            >
+              <RingedPressable
+                accessibilityLabel={back.label}
+                onKeyboardFocus={(focused) => send({ control: focused ? "back" : undefined, type: "focus" })}
+                onPress={back.onPress}
+                pointerTakesNoFocus
+                size={36}
+              >
+                <Icon decorative glyph={icons.back} size="control" tone="content" />
+                <Text numberOfLines={1} textRole="label" tone="primary">
+                  {back.label}
+                </Text>
+              </RingedPressable>
+            </Surface>
+          </Layer>
+        ) : null}
+
         {view.hint ? (
           <Layer centred opacity={shown} top={HINT_TOP}>
             <FirstRunHint device="full" />
@@ -234,7 +340,7 @@ const WatchScreen = <C extends LineupChannel>({
 
         {watched && !view.listOpen ? (
           <Layer
-            bottom={CROSSING}
+            bottom={thirdBottom}
             left={EDGE}
             opacity={shown}
             testID="watch-lower-third"
@@ -266,13 +372,7 @@ const WatchScreen = <C extends LineupChannel>({
           </Layer>
         ) : null}
 
-        <Layer
-          bottom={ROW_FOOT}
-          opacity={shown}
-          right={EDGE}
-          testID="watch-quiet-row"
-          {...holdOn("quietRow")}
-        >
+        <Layer bottom={rowFoot} opacity={shown} right={EDGE} testID="watch-quiet-row" {...holdOn("quietRow")}>
           <Surface
             backgroundColor="transparent"
             borderWidth={0}
@@ -286,6 +386,7 @@ const WatchScreen = <C extends LineupChannel>({
               group={GROUP_NAMES[state.list.group]}
               listOpen={view.listOpen}
               muted={muted ?? false}
+              {...(fullScreen === undefined ? {} : { fullScreen })}
               onFocusDropped={() => handFocus(() => quietRow.current?.focusHead())}
               onFocusKey={(key) => send({ control: key, type: "focus" })}
               onPress={(key) => send({ control: key, type: "press" })}
@@ -322,6 +423,11 @@ const WatchScreen = <C extends LineupChannel>({
       <VisuallyHidden>
         <Text accessibilityLiveRegion="polite" textRole="body">
           {announcement}
+        </Text>
+      </VisuallyHidden>
+      <VisuallyHidden>
+        <Text accessibilityLiveRegion="polite" testID="watch-channel-said" textRole="body">
+          {spoken.current.text}
         </Text>
       </VisuallyHidden>
     </Layer>

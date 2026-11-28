@@ -2,14 +2,17 @@ import { expect, test } from "@playwright/test";
 import { findClippedContent } from "./clipped-content";
 import { channelId, installTunerBackend } from "./tuner-backend";
 
-// Phone Watch gate (#2775; variant J, #3449): at 390 × 844 the top row sits above the picture, the
-// picture is a strip edge to edge at 16:9 in the middle of the screen, and the band and keys sit in
-// the black space below it, so nothing is drawn on the picture. Runs on the tuner fixture because
-// Watch needs a real stream, and in every tuner browser (WebKit stands in for a phone's Safari). The
-// shell routes' phone gate (phone-layout.spec.ts) has no channel to watch.
-test.use({ viewport: { width: 390, height: 844 } });
+// Watch at phone width on the web (#4731): the watching screen draws its over-the-picture
+// arrangement at every width until the window and phone arrangements land (#4732, #4738). The
+// picture spans the screen edge to edge, the back control and the quiet row are on it and unclipped,
+// and touch alone tunes and pauses. Runs on the tuner fixture because Watch needs a real stream, and in every tuner
+// browser (WebKit stands in for a phone's Safari). The shell routes' phone gate
+// (phone-layout.spec.ts) has no channel to watch.
+test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
 
-test("Watch at phone width draws the picture between the top row and the keys", async ({ page }) => {
+test("Watch at phone width draws the picture edge to edge with its controls on it, unclipped", async ({
+  page,
+}) => {
   await installTunerBackend(page);
   await page.goto(`/watch/${channelId(1)}`);
   const video = page.locator("video");
@@ -26,16 +29,9 @@ test("Watch at phone width draws the picture between the top row and the keys", 
   expect(Math.round(picture.x + picture.width)).toBe(390);
   expect(Math.round(picture.height)).toBe(Math.round((picture.width * 9) / 16));
 
-  // The top row above the picture; the keys below it; nothing on it.
-  const leave = page.getByRole("button", { name: "Leave", exact: true });
-  await expect(leave).toBeVisible();
-  const leaveBox = await leave.boundingBox();
-  expect((leaveBox?.y ?? 0) + (leaveBox?.height ?? 0)).toBeLessThanOrEqual(picture.y + 1);
-  for (const name of ["Channel up", "Channel down", /^(Play|Pause)$/]) {
-    const control = page.getByRole("button", typeof name === "string" ? { exact: true, name } : { name });
-    await expect(control).toBeVisible();
-    expect((await control.boundingBox())?.y ?? 0).toBeGreaterThanOrEqual(picture.y + picture.height);
-  }
+  // The named back control and the quiet row stand over the picture.
+  await expect(page.getByTestId("watch-back")).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "Player controls" })).toBeVisible();
 
   const clipped = await findClippedContent(page);
   expect(
@@ -43,6 +39,14 @@ test("Watch at phone width draws the picture between the top row and the keys", 
     "Watch should not clip content at 390 px",
   ).toEqual([]);
 
-  await page.getByRole("button", { name: "Channel up", exact: true }).click();
+  // A phone has no keys: a tap opens Channels, a tap on a row tunes it, a tap on the picture pauses.
+  await page.getByRole("button", { name: "Channels" }).tap();
+  await page.getByRole("option", { name: /Channel 2\b/ }).tap();
   await expect(page).toHaveURL(new RegExp(`/watch/${channelId(2)}$`));
+  await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState)).toBeGreaterThanOrEqual(2);
+  // The list stays open after a tune, and at this width its column covers the picture until the
+  // phone's own arrangement (#4738): Channels closes it.
+  await page.getByRole("button", { name: "Channels" }).tap();
+  await page.getByTestId("watch-picture").tap();
+  await expect(page.getByRole("button", { name: "Play (Space)" })).toBeVisible();
 });

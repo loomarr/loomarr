@@ -10,10 +10,12 @@ type WatchLayout = "full" | "window" | "tv" | "portrait" | "landscape";
 /**
  * The quiet row's controls, and the lower third's Go live (`goLive`). A television's quiet row
  * leads with a Go live of its own (`live`); the two are told apart because only the lower third's
- * goes when the lower third does.
+ * goes when the lower third does. `back` is the named back control at the top leading corner, which
+ * leaves the screen: the caller acts on its press, and the model only hears its focus.
  */
 type WatchControl =
   | "airplay"
+  | "back"
   | "audio"
   | "channels"
   | "fullscreen"
@@ -31,8 +33,11 @@ type WatchMenuName = "audio" | "more" | "shortcuts" | "subtitles";
 /** What the picture is doing: `playing` a picture, `tuning` in with nothing yet, `covered` by a cover. */
 type WatchPicture = "playing" | "tuning" | "covered";
 
-/** The parts of the screen the pointer can rest on: the open list takes the lower third's place. */
-type WatchPointerRegion = "lowerThird" | "quietRow";
+/**
+ * The parts of the screen the pointer can rest on: the open list takes the lower third's place, and
+ * `back` is the named back control.
+ */
+type WatchPointerRegion = "back" | "lowerThird" | "quietRow";
 
 /** How far the picture is from live, as it was before a click on it. */
 interface WatchPlayback {
@@ -81,7 +86,7 @@ interface WatchScreenState {
   paused: boolean;
   /** When the picture paused; set only while paused. */
   pausedAt: number | undefined;
-  /** How far behind live the picture plays, from earlier pauses. */
+  /** How far behind live the picture plays, from earlier pauses or the player's word. */
   behindMs: number;
   /** The first-run hint is gone for this session. */
   hintSeen: boolean;
@@ -139,7 +144,22 @@ type WatchScreenEvent =
   /** The time `nextAt` named has come. It is not activity: it wakes nothing. */
   | { type: "tick"; at: number }
   /** What the picture is doing changed. Like the clock, it wakes nothing. */
-  | { type: "picture"; picture: WatchPicture; at: number };
+  | { type: "picture"; picture: WatchPicture; at: number }
+  /**
+   * What the player really does: paused or not, and how far behind live, however it got there (a
+   * seek, Start over, the media keys, a stall, a Retry), and whether it plays at the live edge.
+   * The model takes it as the truth; its own pause, resume and go-live stay requests. Like the
+   * clock, it wakes nothing: only the viewer's own action, sent as the input it is, wakes the screen.
+   */
+  | {
+      type: "playback";
+      /** The channel the report is about: one the screen has left is dropped. */
+      channelId: string;
+      behindMs: number;
+      paused: boolean;
+      live: boolean;
+      at: number;
+    };
 
 /** What the screen asks the caller to do. It does none of it itself. */
 type WatchRequest =
@@ -171,6 +191,8 @@ interface WatchScreenView<C extends LineupChannel> {
   paused: boolean;
   /** Whole seconds behind live while playing; 0 at live and while paused. */
   behindSeconds: number;
+  /** Paused or behind live, as the lower third says: Go live is offered and End answers. */
+  offLive: boolean;
   /** Where `L` goes; `playable` false means it does nothing. */
   lastChannel: LineupLastChannel<C> | undefined;
   /** When the view next changes by itself: send a `tick` then. Null while it waits for an event. */

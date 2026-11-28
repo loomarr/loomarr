@@ -40,6 +40,9 @@ a dot for it.
 - **Decided next (2026-11-27), not yet built:** opening Loomarr lands on the picture, the Guide becomes
   a view of the watching screen with the picture still playing, and Home's wall is where the back
   arrow leads ([`design/watch/`](../../design/watch/README.md)). The items below describe what ships.
+- **Favourites on Watch (#4731):** with the Channels drawer gone, the watched channel is starred or
+  unstarred from More's Add to Favourites or Remove from Favourites row; the message line says what
+  it did (`frontend-design.md` §9.5).
 - **Home's wall (#4734):** the wall is headed by the four group tabs below, one tab stop with Left
   and Right inside, and Enter chooses. It opens on All, or on the group this browser last chose
   (`localStorage` key `loomarr.channels.group`, which the Watch route's channel list is to read too,

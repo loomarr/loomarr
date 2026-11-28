@@ -4,16 +4,10 @@
     "apps/web/src/channels/channel-detail/channel-detail-page/channel-detail-page.tsx": {
       "inlineStyle": 5
     },
-    "apps/web/src/channels/channel-drawer/channel-drawer.tsx": {
-      "inlineStyle": 2
-    },
     "apps/web/src/channels/channel-identity-field/channel-identity-field.tsx": {
       "inlineStyle": 1
     },
     "apps/web/src/channels/channel-on-screen-logo/channel-on-screen-logo.tsx": {
-      "inlineStyle": 1
-    },
-    "apps/web/src/channels/channel-watch/channel-watch.tsx": {
       "inlineStyle": 1
     },
     "apps/web/src/channels/guide-page/guide-page.tsx": {
@@ -132,9 +126,6 @@
     },
     "apps/web/src/components/loomarr/shell/phone-bottom-bar/phone-bottom-bar.tsx": {
       "inlineStyle": 2
-    },
-    "apps/web/src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
-      "inlineStyle": 9
     },
     "apps/web/src/design-system/foundation-story-shell/foundation-story-shell.tsx": {
       "inlineStyle": 1

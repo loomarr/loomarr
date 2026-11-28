@@ -576,7 +576,7 @@ describe("PlayerMore", () => {
         startOver={{ detail: "Opening Night", onPress: onStartOver }}
       />,
     );
-    // Last channel is a key on every device, so More has no row for it (§9.7).
+    // Where Last channel is a key of its own (§9.7), the caller offers no row for it.
     expect(row(host, "Last channel")).toBeUndefined();
     for (const name of ["Start over", "Go live", "Picture", "Channels", "Info"])
       expect(row(host, name), name).toBeDefined();
@@ -585,6 +585,46 @@ describe("PlayerMore", () => {
     expect(row(host, "Info")?.getAttribute("aria-label")).toBe("Info");
     act(() => row(host, "Start over")?.click());
     expect(onStartOver).toHaveBeenCalledOnce();
+  });
+
+  it("offers to add the watched channel to Favourites, or to remove it", () => {
+    const onPress = vi.fn();
+    const add = mount(
+      <PlayerMore density="pointer" favourite={{ on: false, onPress }} formatTime={String} />,
+    );
+    act(() => row(add, "Add to Favourites")?.click());
+    expect(onPress).toHaveBeenCalledOnce();
+    const remove = mount(
+      <PlayerMore density="pointer" favourite={{ on: true, onPress }} formatTime={String} />,
+    );
+    expect(row(remove, "Remove from Favourites")).toBeDefined();
+    expect(row(remove, "Add to Favourites")).toBeUndefined();
+  });
+
+  it("draws Last channel with the channel it goes to, and as unavailable when it cannot be played", () => {
+    const onLast = vi.fn();
+    const host = mount(
+      <PlayerMore
+        density="pointer"
+        formatTime={String}
+        lastChannel={{ detail: "4 Night Owl", onPress: onLast }}
+      />,
+    );
+    expect(row(host, "Last channel")?.textContent).toContain("4 Night Owl");
+    act(() => row(host, "Last channel")?.click());
+    expect(onLast).toHaveBeenCalledOnce();
+
+    const off = vi.fn();
+    const unavailable = mount(
+      <PlayerMore
+        density="pointer"
+        formatTime={String}
+        lastChannel={{ detail: "4 Night Owl", onPress: off, unavailable: true }}
+      />,
+    );
+    expect(row(unavailable, "Last channel")?.getAttribute("aria-disabled")).toBe("true");
+    act(() => row(unavailable, "Last channel")?.click());
+    expect(off).not.toHaveBeenCalled();
   });
 });
 

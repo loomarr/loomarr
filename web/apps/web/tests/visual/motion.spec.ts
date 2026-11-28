@@ -22,16 +22,16 @@ test.use({ contextOptions: { reducedMotion: "no-preference" } });
 
 const story = (id: string) => `/iframe.html?id=${id}&viewMode=story`;
 
-// The computed animation of each of the tuner loader's moving parts, keyed by its `data-motion` hook.
-const tunerAnimations = async (page: Page) => {
-  await page.goto(story("shell-tunerloader--switch"));
-  await page.locator("#storybook-root > *").first().waitFor({ state: "visible" });
-  return page.evaluate(() =>
-    Array.from(document.querySelectorAll<HTMLElement>("#storybook-root [data-motion]"), (el) => [
-      el.dataset.motion,
-      getComputedStyle(el).animationName,
-    ]),
-  );
+// A flip drawn as the viewer's motion setting says: what of the tune's static and bars is on screen.
+const tuneParts = async (page: Page) => {
+  await page.goto(story("watching-tune--follows-the-viewer"));
+  const cover = page.getByTestId("tune-static-burst");
+  await cover.waitFor({ state: "attached" });
+  return {
+    runningBars: await page.getByTestId("tune-bars-run").count(),
+    // The cover's first child is the plane the crossfade draws; anything after it is the snow.
+    snow: await cover.evaluate((element) => element.childElementCount - 1),
+  };
 };
 
 test.describe("idle-surface motion", () => {
@@ -54,14 +54,10 @@ test.describe("idle-surface motion", () => {
     expect(moved, "the activity indicator never rotated across ~1.2s").toBe(true);
   });
 
-  test("the tuner loader's bars, wash, snow and cursor all animate", async ({ page }) => {
-    const animations = new Map((await tunerAnimations(page)) as [string, string][]);
-    expect(Object.fromEntries(animations)).toEqual({
-      "held-drain": "held-drain",
-      "signal-lock": "signal-lock",
-      "wash-thicken": "wash-thicken",
-      cursor: "onair-pulse",
-    });
+  test("a flip draws the tune's static and runs its bars", async ({ page }) => {
+    const parts = await tuneParts(page);
+    expect(parts.snow).toBeGreaterThan(0);
+    expect(parts.runningBars).toBe(1);
   });
 
   // The idle snow draws nothing under reduced motion, so this is the only place it is ever proven
@@ -92,9 +88,8 @@ test.describe("idle-surface motion", () => {
 test.describe("reduced motion", () => {
   test.use({ contextOptions: { reducedMotion: "reduce" } });
 
-  test("the tuner loader holds still", async ({ page }) => {
-    const animations = await tunerAnimations(page);
-    expect(animations.length).toBeGreaterThan(0);
-    expect(animations.filter(([, name]) => name !== "none")).toEqual([]);
+  test("a flip is a crossfade: no static and no running bars", async ({ page }) => {
+    const parts = await tuneParts(page);
+    expect(parts).toEqual({ runningBars: 0, snow: 0 });
   });
 });

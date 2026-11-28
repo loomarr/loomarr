@@ -1,7 +1,7 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
-import type { PlayerFailureCause, PlayerTuneReport, TuneDirection } from "@loomarr/player";
+import type { PlayerFailureCause, PlayerTuneReport } from "@loomarr/player";
 import { useBrowserPlayer } from "@loomarr/player/browser";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { channelSourcePort } from "../channel-play-url";
 import { beginTune, markTunePhase, type TuneAttempt } from "../tuner-timing";
@@ -14,7 +14,7 @@ import type {
 } from "./use-watch-player.type";
 
 // useWatchPlayer — the Watch page's player: the shared player controller (one tune path for every
-// way of asking: a step, a typed number, a pick from the drawer, the URL) running over the browser
+// way of asking: a flip, a typed number, a pick from the channel list, the URL) running over the browser
 // transport, with the URL kept in step with the channel it is tuned to.
 //
 // The controller owns tuning, latest-request-wins, warming and recovery; the URL is only where the
@@ -24,19 +24,42 @@ const NO_CHANNELS: ChannelDTO[] = [];
 const CANT_PLAY = "This channel can't be played in the app.";
 const REMEMBERED_ATTEMPTS = 8;
 
-const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPlayerOptions): WatchPlayer => {
+const useWatchPlayer = ({
+  channelId,
+  channels,
+  onNavigate,
+  onTune: onTuneReport,
+}: UseWatchPlayerOptions): WatchPlayer => {
   const onNavigateRef = useRef(onNavigate);
   onNavigateRef.current = onNavigate;
+  const onTuneReportRef = useRef(onTuneReport);
+  onTuneReportRef.current = onTuneReport;
 
   // Timing marks follow the controller's attempts: one is begun as each tune is published and
   // completed as its phases arrive.
   const attempts = useRef(new Map<number, TuneAttempt>());
+  // A flip is a tune to the channel beside the last one, whoever asked: the controller's step, or
+  // the watching screen, which flips by naming the next row's channel.
+  const catalogRef = useRef<readonly { id: string }[]>([]);
+  const lastTuned = useRef<string | undefined>(undefined);
   const onTune = useCallback((report: PlayerTuneReport) => {
-    const attempt = beginTune(report.reason === "step", report.warm);
+    const catalog = catalogRef.current;
+    const from = catalog.findIndex((channel) => channel.id === lastTuned.current);
+    const to = catalog.findIndex((channel) => channel.id === report.channel.id);
+    const beside =
+      from >= 0 && to >= 0 && (Math.abs(from - to) === 1 || Math.abs(from - to) === catalog.length - 1);
+    lastTuned.current = report.channel.id;
+    const attempt = beginTune(report.reason === "step" || beside, report.warm);
     attempts.current.set(report.attemptId, attempt);
     for (const stale of [...attempts.current.keys()].slice(0, -REMEMBERED_ATTEMPTS)) {
       attempts.current.delete(stale);
     }
+    onTuneReportRef.current?.({
+      attemptId: report.attemptId,
+      channelId: report.channel.id,
+      reason: report.reason,
+      warm: report.warm,
+    });
     // The wash is up once the frame after this one has painted.
     if (typeof requestAnimationFrame !== "function") {
       markTunePhase(attempt, "osd");
@@ -65,7 +88,8 @@ const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPl
     source: channelSourcePort,
   });
   const { snapshot } = player;
-  const { goLive, pause, play, retry, seek, step, tuneChannel } = player.controls;
+  catalogRef.current = snapshot.catalog;
+  const { goLive, pause, play, retry, seek, tuneChannel } = player.controls;
 
   const lineupKnown = channels !== undefined;
   const requested = channels?.find((channel) => channel.id === channelId);
@@ -113,28 +137,6 @@ const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPl
     onNavigateRef.current(navigatedId);
   }, [navigatedId]);
 
-  // The tuning channel's picture, decoded off-screen first so a half-loaded image never flashes.
-  const stillUri = snapshot.status === "tuning" ? snapshot.stillUri : undefined;
-  const stillAttempt = snapshot.attemptId;
-  const [decodedStill, setDecodedStill] = useState<string>();
-  useEffect(() => {
-    if (!stillUri) {
-      setDecodedStill(undefined);
-      return;
-    }
-    let current = true;
-    const image = new Image();
-    image.onload = () => {
-      if (!current) return;
-      setDecodedStill(stillUri);
-      markTunePhase(stillAttempt === undefined ? undefined : attempts.current.get(stillAttempt), "still");
-    };
-    image.src = stillUri;
-    return () => {
-      current = false;
-    };
-  }, [stillUri, stillAttempt]);
-
   const fallbackLive = useRef(Date.now());
   const live = snapshot.livePlayback ?? {
     lagSeconds: 0,
@@ -148,9 +150,6 @@ const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPl
   );
 
   const channel = parked ? requested : channels?.find((candidate) => candidate.id === tunedId);
-  const currentTitle = channel
-    ? nowNext.find((entry) => entry.channelId === channel.id)?.now?.title
-    : undefined;
 
   let status: WatchPlayerStatus = "loading";
   let error: string | undefined;
@@ -168,22 +167,19 @@ const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPl
 
   return {
     attach: player.attach,
-    canSurf: snapshot.catalog.length > 1,
-    catalog: snapshot.catalog,
+    ...(snapshot.attemptId === undefined ? {} : { attemptId: snapshot.attemptId }),
     channel,
-    currentTitle,
     error,
     failureCause,
-    ...(snapshot.tuneReason === "step" && tunedId ? { flipKey: tunedId } : {}),
     ladder: player.ladder,
     liveTransport,
+    // The controller's own pause, whoever asked for it (the screen, the media keys).
+    paused: snapshot.status === "paused",
     playbackSessionId: player.playbackSessionId,
     quality,
     retry: () => void retry(),
     setQuality,
     status,
-    step: (direction: TuneDirection) => void step(direction),
-    stillURL: decodedStill === stillUri ? stillUri : undefined,
     tune: (target: string) => {
       const known = channels?.find((candidate) => candidate.id === target);
       // A channel the app can't play is still a place to go: its Watch page says why it is off.

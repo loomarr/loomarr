@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +11,8 @@ import {
   ScrollFrame,
   SectionHeader,
   Text,
+  useWindowSize,
+  useWindowWidth,
 } from "../index";
 
 describe("shared adaptive layout", () => {
@@ -20,6 +22,13 @@ describe("shared adaptive layout", () => {
     expect(resolveAdaptiveDirection(1279, "tv")).toBe("column");
     expect(resolveAdaptiveDirection(1280, "tv")).toBe("row");
     expect(resolveAdaptiveDirection(600, "touch", 580)).toBe("row");
+  });
+
+  it("reads the window's width and height in layout units, as its width alone is read", () => {
+    const { result } = renderHook(() => ({ size: useWindowSize(), width: useWindowWidth() }));
+    expect(Object.keys(result.current.size).sort()).toEqual(["height", "width"]);
+    expect(Number.isFinite(result.current.size.height)).toBe(true);
+    expect(result.current.size.width).toBe(result.current.width);
   });
 
   it("publishes disclosure state and points its control at the body", () => {

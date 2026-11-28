@@ -33,6 +33,7 @@ vi.mock("@loomarr/player/browser", () => ({
 }));
 vi.mock("@/diagnostics/client-reporter", () => ({ clientDiagnostics: { record: vi.fn() } }));
 
+import * as tunerTiming from "../tuner-timing";
 import { useWatchPlayer } from "./use-watch-player";
 
 const channel = (id: string, number: number, extra: Partial<ChannelDTO> = {}) =>
@@ -58,7 +59,7 @@ const render = (initial: { channelId: string; channels?: ChannelDTO[] }) => {
   const onNavigate = vi.fn();
   const view = renderHook(
     (props: { channelId: string; channels?: ChannelDTO[] }) =>
-      useWatchPlayer({ channelId: props.channelId, channels: props.channels, nowNext: [], onNavigate }),
+      useWatchPlayer({ channelId: props.channelId, channels: props.channels, onNavigate }),
     { initialProps: initial },
   );
   return { onNavigate, ...view };
@@ -243,18 +244,39 @@ describe("useWatchPlayer", () => {
       expect(result.current.status).toBe("loading");
     });
 
-    it("reports the tuned channel from the lineup, and that the viewer can surf with more than one", () => {
+    it("reports the tuned channel from the lineup", () => {
       browser.snapshot = snapshot("tuning", twenty);
       const { result } = render({ channelId: "ten", channels: lineup });
 
       expect(result.current.channel).toEqual(twenty);
-      expect(result.current.canSurf).toBe(true);
     });
 
-    it("cannot surf a lineup of one", () => {
-      browser.snapshot = snapshot("playing", ten, { catalog: [ten] });
-      const { result } = render({ channelId: "ten", channels: [ten] });
-      expect(result.current.canSurf).toBe(false);
+    it("says each tune as it begins, with whether it was warm, and names the attempt it plays", () => {
+      browser.snapshot = snapshot("tuning", twenty);
+      const onTune = vi.fn();
+      const { result } = renderHook(() =>
+        useWatchPlayer({ channelId: "twenty", channels: lineup, onNavigate: vi.fn(), onTune }),
+      );
+      browser.options?.onTune?.({ attemptId: 7, channel: twenty, reason: "retry", warm: true });
+      expect(onTune).toHaveBeenCalledWith({ attemptId: 7, channelId: "twenty", reason: "retry", warm: true });
+      expect(result.current.attemptId).toBe(1);
+    });
+
+    it("marks a tune to the channel beside the last one as a flip, however it was asked", () => {
+      const begin = vi.spyOn(tunerTiming, "beginTune");
+      browser.snapshot = snapshot("playing", ten);
+      render({ channelId: "ten", channels: lineup });
+      browser.options?.onTune?.({ attemptId: 1, channel: ten, reason: "channel", warm: false });
+      browser.options?.onTune?.({ attemptId: 2, channel: twenty, reason: "channel", warm: true });
+      browser.options?.onTune?.({ attemptId: 3, channel: ten, reason: "number", warm: false });
+      browser.options?.onTune?.({ attemptId: 4, channel: thirty, reason: "channel", warm: false });
+      expect(begin.mock.calls.map(([adjacent]) => adjacent)).toEqual([false, true, true, true]);
+    });
+
+    it("says when the controller holds the picture paused, which status reads as playing", () => {
+      browser.snapshot = snapshot("paused", ten);
+      const { result } = render({ channelId: "ten", channels: lineup });
+      expect(result.current).toMatchObject({ paused: true, status: "playing" });
     });
 
     it("offers the live position, defaulting to live", () => {
@@ -280,7 +302,6 @@ describe("useWatchPlayer", () => {
         result.current.liveTransport.pause();
         await result.current.liveTransport.seek(990_000);
         await result.current.liveTransport.goLive();
-        result.current.step(1);
         result.current.tune("thirty");
         result.current.retry();
       });
@@ -289,44 +310,8 @@ describe("useWatchPlayer", () => {
       expect(browser.controls.pause).toHaveBeenCalledOnce();
       expect(browser.controls.seek).toHaveBeenCalledWith(990_000);
       expect(browser.controls.goLive).toHaveBeenCalledOnce();
-      expect(browser.controls.step).toHaveBeenCalledWith(1);
       expect(browser.controls.tuneChannel).toHaveBeenCalledWith("thirty");
       expect(browser.controls.retry).toHaveBeenCalledOnce();
-    });
-  });
-
-  describe("the tuning picture", () => {
-    afterEach(() => vi.unstubAllGlobals());
-
-    const stubImage = () => {
-      const images: { onload: (() => void) | null; src: string }[] = [];
-      vi.stubGlobal(
-        "Image",
-        class {
-          onload: (() => void) | null = null;
-          src = "";
-          constructor() {
-            images.push(this);
-          }
-        },
-      );
-      return images;
-    };
-
-    it("shows the still only once it has decoded, and only while tuning", () => {
-      const images = stubImage();
-      browser.snapshot = snapshot("tuning", twenty, { stillUri: "/still/twenty" });
-      const { rerender, result } = render({ channelId: "ten", channels: lineup });
-
-      expect(result.current.stillURL).toBeUndefined();
-      expect(images.map((image) => image.src)).toEqual(["/still/twenty"]);
-
-      act(() => images[0]?.onload?.());
-      expect(result.current.stillURL).toBe("/still/twenty");
-
-      browser.snapshot = snapshot("playing", twenty, { stillUri: "/still/twenty" });
-      rerender({ channelId: "ten", channels: lineup });
-      expect(result.current.stillURL).toBeUndefined();
     });
   });
 });

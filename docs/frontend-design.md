@@ -360,7 +360,7 @@ Coverage says every component *has* a story. It says nothing about whether a per
 | Small tinted chip, mono/uppercase | `Badge` (L1) **and** `StateBadge` (L2), each with its own `cva` and its own tint classes | `StateBadge` composes `Badge` |
 | `font-mono text-[10px] uppercase tracking-…` caption | **21 occurrences across 11 components** | a `Caption` primitive |
 | Status dot (`size-2 rounded-full`, pulse when live) | `GenerationProgress`, `GuideGrid`, `OnAirIndicator` | a `StatusDot` primitive |
-| 15 Layer-2 components import **no** primitive at all | — | audited case by case; a leaf like `TunerLoader` legitimately owns its markup, a card-shaped one does not |
+| 15 Layer-2 components import **no** primitive at all | — | audited case by case; a leaf like `IdleSnow` legitimately owns its markup, a card-shaped one does not |
 
 **Why this matters more than tidiness.** The badge/tint contrast rule (§2.1) — the one learned the hard way, twice — is now encoded in `Badge` *and* `StateBadge` independently. Fix a stop in one and the other stays wrong, and **the contrast gate cannot tell**: it verifies token *pairings*, not which components consume them. Every duplicated pattern is a second place a design rule has to be remembered rather than inherited.
 
@@ -560,8 +560,9 @@ that mock follows; where they disagree, the mock wins and this text is fixed.
 found one idea drawn six ways and a band that talks over the picture. The design that replaces
 variant J is [`design/watch/`](../design/watch/README.md): Loomarr opens on the picture, a channel
 column and the film strip meet at a lower third set as type, the Guide becomes a view of the same
-screen, and the band, the on-screen channel keys and the white Play key go. It is not built. This
-section describes variant J, which ships, and each build PR amends it for the part it changes.
+screen, and the band, the on-screen channel keys and the white Play key go. The web's Watch route
+wears its watching screen (#4731, below); the phone and television apps still wear variant J. This
+section describes variant J, which ships there, and each build PR amends it for the part it changes.
 
 **One channel lineup (#4725).** Channel order, groups, find, flip neighbours, the landing channel
 and the last channel come from one framework-free model, `@loomarr/core/channel-lineup`. The order
@@ -602,12 +603,55 @@ the `playerChrome` tokens; never raw `rgb()` values in components. Over moving v
 (`rgba(11, 12, 14, 0.94)`), which is what keeps it legible over any frame. This replaces the earlier
 glass elevation exception; §2.3's "borders first" holds for the player too.
 
-#### The watching screen of The Cross (target, not shipped yet; #4731)
+#### The watching screen of The Cross (shipped on the web; target for the phone and television; #4731)
 
-The layers above ship unchanged. The Cross's watching screen, `WatchScreen` in `@loomarr/ui`, is
-built beside them, driven by one framework-free model, `@loomarr/core/watch-screen`, and no route
-draws it yet. It takes the layout as a prop; only the desktop at full screen (`full`, the list over
-the picture) is built. A desktop window, a television and a phone come in #4732, #4736 and #4738.
+The layers above still ship on the phone and television apps. The Cross's watching screen,
+`WatchScreen` in `@loomarr/ui`, is driven by one framework-free model, `@loomarr/core/watch-screen`,
+and the web's Watch route draws it. It takes the layout as a prop; only the desktop at full screen
+(`full`, the list over the picture) is built, and the web uses it in a browser window too until the
+window arrangement, with the list beside the picture, lands (#4732). A television and a phone come
+in #4736 and #4738.
+
+**On the web's Watch route** (`ChannelWatch`, the web's adapter beside the route):
+
+- **The picture is the real player.** The shared player controller plays in the screen's picture
+  slot with no controls of its own. The screen's requests go to it and nowhere else: tune, pause,
+  resume, go live, mute, the browser's full screen, the Guide (the existing Guide page until the
+  Guide view lands) and a message. A change of channel that did not come from the screen (the URL, a
+  link, the back button) reaches the model as `tuned`; a tune the screen asked for is never echoed.
+- **The tune follows the player.** A flip to a channel the player had warmed is a change; the first
+  tune of a page and a channel that must start are a tune-in. The picture's first frame ends the
+  tune-in's wait, and a failure or a channel going off air abandons it and shows the shipped cover.
+  A tune-in that lands on a cover still up joins it as one wash, and its picture is uncovered when
+  it is ready, so the static never adds waiting time. Reduced motion is a crossfade with no static.
+  The Channel-change sound switch in Audio still decides the sound.
+- **What the picture is doing** (playing, tuning in, under a cover) is told to the model, so a pause
+  or a resume is refused when there is nothing to hold. So is **what the player really does**: a
+  `playback` event carries whether it is paused and how far behind live it plays, whoever moved it
+  (a seek, Start over, the media keys, a stall, a Retry), and End goes live from there. The
+  player's word is the truth and wakes nothing; only the viewer's own action wakes the chrome.
+- **A reconnect is not a tune.** The player reconnecting to the channel on screen shows the
+  Reconnecting cover, not static and "Tuning in". A browser that refuses to start the picture by
+  itself gets a cover with Play, whose press starts it.
+- **The channel's logo keeps its corner (§9.6).** Playout burns the logo into one corner of the
+  picture; only the chrome in that corner steps clear of it (the back control top leading, the lower
+  third bottom leading, the quiet row bottom trailing), measured on the picture's 16:9 rectangle.
+- **Full screen is the browser's.** The full-screen control is named for the browser's real state,
+  however it was entered or left. The player draws no keys of its own here.
+- **Menus and covers are the shipped ones**, in the screen's slots: Subtitles, Audio and More, with
+  Picture and Playback details as More's inner pages, and the stopped, off-air and server covers.
+  More keeps what shipped but Channels and Info, which opened the band and the old sheet; Last
+  channel is a row of More, drawn as unavailable when the lineup says it cannot be played.
+- **The back control is named.** The arrow at the top leading corner says where it goes (where Leave
+  went: back where the viewer came from, else the Guide) and rests with the rest of the chrome.
+- **The first-run hint** shows until the viewer's first channel change, remembered in this browser.
+  The session's first play is muted, and its unmute pill stands under the hint, clear of it.
+- **A screen reader** hears the lower third's summary once per channel change, never on the clock.
+- **Keys** are the screen's (`watchKeyOf`, from a document listener in the bubbling phase), plus
+  `←`/`→`, ten seconds through the live window on the bare picture.
+- **Gone from the web's Watch route:** the band, the surf rail and its cards, the Channels sheet,
+  the on-screen channel keys, the white Play key, the volume level, the station-ID card, Info and the
+  film strip. The phone and television apps keep them until #4740.
 
 - **What it draws, back to front.** The picture (a slot), the tune's static and bars (§9.4), the
   scrims, the lower third at the crossing and the quiet row under it (§9.2, §9.3), the first-run
@@ -943,6 +987,12 @@ web's Channel-change sound switch decides that).
   grey and locked bars of a tune-in still show, still.
 
 ### 9.5 What the keys open
+
+**Favourites on the web's Watch (supervisor, 2026-11-28; changeable by the maintainer).** More holds
+one row for the watched channel, **Add to Favourites** or **Remove from Favourites**: it has no key of
+its own, which is what More is for. It stars or unstars the channel at once (the lineup's Favourites
+group follows) and says what it did in the message line ("7 Coast 90s added to Favourites"); a
+refusal says so and changes nothing.
 
 - **Where it opens.** On desktop and television, Subtitles, Audio, More and Volume open a **menu in the
   control cluster**, over the keys, 280 px wide, beside the key that opened it; the rest of the chrome

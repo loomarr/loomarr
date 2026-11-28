@@ -49,6 +49,17 @@ describe("QuietRow", () => {
     expect(names()).toEqual(expected);
   });
 
+  it("names the full-screen control for the screen's real state, and by its device when not told", () => {
+    row({ fullScreen: false });
+    expect(names()).toContain("Full screen (F)");
+    cleanup();
+    row({ fullScreen: true });
+    expect(names()).toContain("Leave full screen (F)");
+    cleanup();
+    row();
+    expect(names()).toContain("Leave full screen (F)");
+  });
+
   it("writes the words of Channels and Guide, and names a group other than All", () => {
     const { unmount } = row({ group: "All" });
     expect(screen.getByRole("button", { name: "Channels" }).textContent).toBe("Channels");

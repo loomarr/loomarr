@@ -15,7 +15,7 @@
     "src/routes/_authed/settings/system/diagnostics.tsx": 102,
     "src/routes/_authed/settings/system/index.tsx": 94,
     "src/routes/_authed/settings/system/playback.tsx": 83,
-    "src/routes/_authed/watch.$id.tsx": 117,
+    "src/routes/_authed/watch.$id.tsx": 110,
     "src/routes/join.tsx": 61,
     "src/routes/login.tsx": 158
   }

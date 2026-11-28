@@ -17,7 +17,7 @@ export default defineConfig({
   // Keeping it out of this wizard-only suite prevents it from being discovered against the
   // wizard route-mock server before the dedicated tuner gate runs.
   // The route-timing gate is a serial, no-retry timing test with its own config for the same reason.
-  testIgnore: ["tuner-surf.spec.ts", "tuner-phone.spec.ts", "route-timing.spec.ts"],
+  testIgnore: ["tuner-surf.spec.ts", "tuner-phone.spec.ts", "watch-screen.spec.ts", "route-timing.spec.ts"],
   fullyParallel: true,
   // ⚠ LOCAL ONLY — `E2E_WORKERS` is undefined under CI, leaving Playwright's own default in
   // place, because this suite's CI concurrency is not ours to retune. Locally it had no cap at

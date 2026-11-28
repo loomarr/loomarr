@@ -53,7 +53,10 @@ const Frame = ({
       }}
     >
       <WatchScrim edge="foot" />
-      {children}
+      {/* Positioned after the scrim, so the words stand on it, as the screen draws them. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, position: "relative" }}>
+        {children}
+      </div>
     </div>
   ) : (
     <Surface backgroundColor="surfaceCanvas" borderWidth={0} gap={16} paddingVertical={16} {...SIZE[device]}>
