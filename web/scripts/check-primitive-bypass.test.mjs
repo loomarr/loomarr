@@ -90,13 +90,15 @@ describe("inlineStyle", () => {
   it("sees through a non-null wrapper", () => {
     const wrapped = `
       const ROW = { gap: 4 };
+      const styles = { row: { gap: 4 } };
       export const Row = () => (
         <div style={({ gap: 4 })!}>
           <span style={ROW!} />
+          <span style={styles!.row} />
         </div>
       );
     `;
-    assert.deepEqual(measureSource(wrapped, "apps/web/src/x.tsx"), { inlineStyle: 2 });
+    assert.deepEqual(measureSource(wrapped, "apps/web/src/x.tsx"), { inlineStyle: 3 });
   });
 });
 

@@ -164,7 +164,7 @@ const holdsObject = (node, objects) => {
     case "MemberExpression":
     case "OptionalMemberExpression": {
       const entry = objects
-        .get(value.object.name)
+        .get(unwrap(value.object).name)
         ?.properties.find((property) => !value.computed && property.key?.name === value.property.name);
       return unwrap(entry?.value)?.type === "ObjectExpression";
     }
