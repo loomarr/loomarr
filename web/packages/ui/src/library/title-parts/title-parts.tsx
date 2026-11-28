@@ -97,7 +97,9 @@ const Hero = ({
   title: LibraryTitleDetail;
   actions: ReactNode;
   /** The heading's wrapper, which script can focus when the pressed control has gone. */
-  headingRef?: Ref<ComponentRef<typeof View>>;
+  // Typed loosely here: Storybook's docgen follows a prop's types, and react-native's own source is
+  // Flow it can't parse. The heading's View takes it below.
+  headingRef?: Ref<unknown>;
 }) => {
   const { wide } = useTitleLayout();
   const pictured = Boolean(title.backdrop);
@@ -139,7 +141,7 @@ const Hero = ({
         {actions}
       </Stack>
       <Stack gap="inline" padding={pictured ? "control" : 0} position="relative">
-        <View ref={headingRef} tabIndex={-1}>
+        <View ref={headingRef as Ref<ComponentRef<typeof View>>} tabIndex={-1}>
           {title.logo ? (
             <>
               {/* The logo stands for the name on screen; the heading still says it. */}
