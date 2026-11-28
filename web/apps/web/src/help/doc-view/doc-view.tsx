@@ -67,8 +67,8 @@ const remarkDropHtmlComments = () => dropComments;
 // DocView renders one embedded help page. Styling is explicit per element rather than a
 // prose plugin: the design system already defines type scale and color, and a generic
 // typography reset would fight it.
-const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
-  <Stack className={className} gap="4" render="article">
+const DocView = ({ markdown, onNavigate }: DocViewProps) => (
+  <Stack gap="4" render="article">
     <Markdown
       remarkPlugins={[remarkGfm, remarkDropHtmlComments]}
       components={{

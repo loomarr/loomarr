@@ -19,7 +19,6 @@ interface SplitReviewEditorProps {
   // Leave WITHOUT confirming — the proposal stays persisted server-side (there is
   // deliberately no reject endpoint; review can happen later).
   onBack: () => void;
-  className?: string;
 }
 
 export type { SplitReviewEditorProps };

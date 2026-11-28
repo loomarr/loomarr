@@ -9,7 +9,6 @@ interface HostedModelPickerProps {
   // Selecting a hosted model: provider key + model id (+ base URL for a custom provider).
   onSelect: (sel: { provider: string; model: string; baseUrl?: string }) => void;
   busy?: boolean;
-  className?: string;
 }
 
 export type { HostedModelPickerProps };

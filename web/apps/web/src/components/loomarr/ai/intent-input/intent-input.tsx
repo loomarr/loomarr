@@ -13,14 +13,13 @@ const IntentInput = ({
   templates = [],
   submitting = false,
   placeholder = "Describe a channel: 90s action movies, high energy, keep it PG-13",
-  className,
 }: IntentInputProps) => {
   const canSubmit = !submitting;
   const submit = () => {
     if (canSubmit) onSubmit?.();
   };
   return (
-    <Stack className={className} gap="control">
+    <Stack gap="control">
       {/* The design system's text area: the one amber focus border, in place of the AI magenta ring. */}
       <Field
         accessibilityLabel="Channel intent"

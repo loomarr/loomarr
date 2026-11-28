@@ -8,7 +8,6 @@ type ChannelFillerProps = {
   // Where the operator came from, when that place wants a way back: "filler" is a Filler
   // Overview coverage card, which adds a "← Filler overview" link.
   from?: "filler";
-  className?: string;
 };
 
 export type { ChannelFillerProps };

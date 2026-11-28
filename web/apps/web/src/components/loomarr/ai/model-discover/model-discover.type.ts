@@ -14,7 +14,6 @@ interface ModelDiscoverProps {
   pulling?: { tag: string; percent?: number };
   // Pull a candidate by its (quant-targeted) pullRef.
   onPull: (ref: string) => void;
-  className?: string;
 }
 
 export type { ModelDiscoverProps };

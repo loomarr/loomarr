@@ -53,7 +53,7 @@ const Stat = ({
   </Stack>
 );
 
-const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
+const PoolHealth = ({ pool, folded }: PoolHealthProps) => {
   const [expanded, setExpanded] = useState(false);
   // ⚠ `?? []` because huma types every Go slice as nullable, so the generated DTO says
   // `PoolChannelDTO[] | null` even though the handler always sends `[]`. Same unwrap the
@@ -77,7 +77,6 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
         borderColor="$borderDecorative"
         borderRadius={8}
         borderWidth={1}
-        className={className}
         direction="row"
         gap="inline"
         paddingHorizontal={12}
@@ -104,7 +103,6 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
       borderColor="$borderDecorative"
       borderRadius={8}
       borderWidth={1}
-      className={className}
       columnGap="8"
       direction="row"
       padding={16}

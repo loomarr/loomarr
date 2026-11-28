@@ -38,7 +38,6 @@ interface FillerSourcesProps {
   // Injectable clock (§5.2) for "checked 47d ago". Without it the stories' fixed check dates
   // aged a day per day, and the visual gate failed whichever filler PR next re-rendered them.
   now?: number;
-  className?: string;
 }
 
 export type { FillerSourcesProps };

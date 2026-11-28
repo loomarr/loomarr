@@ -67,7 +67,7 @@ const CRITERION_LABEL: Record<CoverageCriterionDTOCriterion, string> = {
   quality: "Quality floor",
 };
 
-const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
+const CoverageMeter = ({ coverage }: CoverageMeterProps) => {
   const navigate = useNavigate();
   // ⚠ Falls back rather than indexing blind. `LEVEL_COPY[level]` returning undefined crashed
   // the whole Filler section on `.tone` — found when this landed and five unrelated
@@ -118,7 +118,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
   }
 
   return (
-    <Card className={className} gap={12} padding={16} render="section">
+    <Card gap={12} padding={16} render="section">
       <Stack align="start" direction="row" gap="inline">
         <span style={{ display: "flex", flexShrink: 0, marginTop: 6 }}>
           <StatusDot tone={level.tone} label="" />
