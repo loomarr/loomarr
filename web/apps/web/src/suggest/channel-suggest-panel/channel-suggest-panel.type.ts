@@ -7,7 +7,6 @@ type ChannelSuggestPanelProps = {
   // page can navigate to it. Approval is admin-gated server-side (§7); the panel only shows
   // the approve control to admins.
   onCreated: (channelId: string) => void;
-  className?: string;
 };
 
 export type { ChannelSuggestPanelProps };

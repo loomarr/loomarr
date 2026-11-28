@@ -22,7 +22,6 @@ const SessionList = ({
   onRevoke,
   onRevokeAll,
   now = Date.now(),
-  className,
 }: SessionListProps) => {
   // Signing a session out can't be taken back, so the first press only asks (one row at a time).
   const [confirming, setConfirming] = useState<string>();
@@ -42,7 +41,7 @@ const SessionList = ({
   }
 
   return (
-    <Stack className={className} gap="control">
+    <Stack gap="control">
       <Stack align="center" direction="row" gap="control" justify="between">
         <Text as="p" textRole="compact" tone="secondary">
           {`${pluralize(sessions.length, "active session")} for ${userName}`}

@@ -12,7 +12,6 @@ interface ServicesPanelProps {
   onDiagnose?: (subsystem: string) => void;
   /** True while a poll is in flight, so the panel can show it is re-checking. */
   refreshing?: boolean;
-  className?: string;
 }
 
 export type { ServicesPanelProps };

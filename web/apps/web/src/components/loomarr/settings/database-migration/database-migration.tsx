@@ -46,7 +46,6 @@ const DatabaseMigration = ({
   pending,
   error,
   envPinned,
-  className,
 }: DatabaseMigrationProps) => {
   const at = step === null ? -1 : STEPS.findIndex((s) => s.key === step);
   const backup = status.backup;
@@ -55,7 +54,7 @@ const DatabaseMigration = ({
   // a missing feature; this reads as an answered question.
   if (!status.canMigrate) {
     return (
-      <Card className={className} gap={8} padding={16} render="section">
+      <Card gap={8} padding={16} render="section">
         <Stack align="center" direction="row" gap="inline">
           <Icon decorative glyph={icons.database} size="compact" tone="muted" />
           <Text as="h3" textRole="cardLabel">
@@ -71,7 +70,7 @@ const DatabaseMigration = ({
   }
 
   return (
-    <Card className={className} render="section">
+    <Card render="section">
       <Stack
         borderBottomWidth={1}
         borderColor="borderDecorative"

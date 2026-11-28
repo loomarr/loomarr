@@ -12,7 +12,6 @@ interface FieldHelpProps {
   // CONTROL at it, which is the better anchor. Passing that id here reuses it instead of putting
   // the same prose in the DOM twice. Omit it and FieldHelp renders its own copy.
   describedById?: string;
-  className?: string;
 }
 
 export type { FieldHelpProps };

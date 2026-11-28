@@ -55,14 +55,12 @@ const WizardShell = ({
   nextLabel = "Continue",
   nextDisabled = false,
   busy = false,
-  className,
 }: WizardShellProps) => {
   // The rail stacks above the content on a phone, so its hairline moves from its side to its foot.
   const phoneWidth = usePhoneWidth();
   return (
     <Grid
       backgroundColor="$surfaceCanvas"
-      className={className}
       columns={{ base: 1, md: ["17rem", "1fr"] }}
       // A prop, not `min-h-screen`: a View's own `min-height: 0` outranks the utility.
       minHeight="100vh"

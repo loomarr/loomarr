@@ -5,7 +5,6 @@ interface ChecklistItemProps {
   status: CheckStatus;
   hint?: string;
   docHref?: string;
-  className?: string;
 }
 
 export type { ChecklistItemProps, CheckStatus };

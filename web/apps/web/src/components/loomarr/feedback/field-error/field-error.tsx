@@ -7,10 +7,10 @@ import type { FieldErrorProps } from "./field-error.type";
 // ⚠ A submit-validated field leaves out `onBlur={field.handleBlur}`. TanStack re-validates on blur,
 // and that clears the submit error: the message vanished the moment someone tabbed or clicked away,
 // before they had fixed anything. Typing in the field still clears it, which is the right moment.
-const FieldError = ({ errors, className }: FieldErrorProps) => {
+const FieldError = ({ errors }: FieldErrorProps) => {
   const message = errors.find((error) => error !== undefined)?.message;
   return message ? (
-    <FieldHint className={className} role="alert" tone="error">
+    <FieldHint role="alert" tone="error">
       {message}
     </FieldHint>
   ) : null;

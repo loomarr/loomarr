@@ -39,11 +39,11 @@ const serviceLabel = (name: string): string => {
   return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
 };
 
-const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: ServicesPanelProps) => {
+const ServicesPanel = ({ view, onFix, onDiagnose, refreshing }: ServicesPanelProps) => {
   const rows = view.rows ?? [];
 
   return (
-    <Card className={className} overflow="hidden" render="section">
+    <Card overflow="hidden" render="section">
       <Stack
         align="baseline"
         borderBottomWidth={1}

@@ -10,12 +10,12 @@ import type { SecretName, SecretsPanelProps } from "./secrets-panel.type";
 // Regeneration states its consequence BEFORE the click and requires a second confirm.
 // That is not ceremony: rotating API_TOKEN or PLAYOUT_TOKEN breaks every consumer using
 // it. An operator should learn that from the button, not from the aftermath.
-const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, className }: SecretsPanelProps) => {
+const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy }: SecretsPanelProps) => {
   const [confirming, setConfirming] = useState<SecretName | undefined>();
   const { copied, copy } = useCopied<SecretName>();
 
   return (
-    <Stack className={className} gap="control" render="ul">
+    <Stack gap="control" render="ul">
       {secrets.map((secret) => {
         const value = revealed[secret.name];
         const isConfirming = confirming === secret.name;

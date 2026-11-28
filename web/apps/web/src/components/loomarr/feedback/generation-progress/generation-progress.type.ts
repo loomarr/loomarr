@@ -14,7 +14,6 @@ interface GenerationProgressProps {
   // then falls back to the SSE `phase` alone.
   progress?: ProposalJourneyProgressDTO;
   error?: string;
-  className?: string;
 }
 
 export type { GenerationProgressProps };

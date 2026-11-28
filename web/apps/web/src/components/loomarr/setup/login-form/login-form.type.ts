@@ -19,7 +19,6 @@ interface LoginFormProps {
   // HERE rather than sent as a message: reflecting server text into a page the browser
   // renders is how a redirect becomes a phishing surface.
   ssoError?: string;
-  className?: string;
 }
 
 export type { LoginFormProps };

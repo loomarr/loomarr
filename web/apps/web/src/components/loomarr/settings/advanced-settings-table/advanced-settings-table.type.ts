@@ -13,7 +13,6 @@ interface AdvancedSettingsTableProps {
   onEdit: (key: string, value: string) => void;
   onEnvOverride?: (key: string, enabled: boolean) => void;
   onClear?: (entry: SettingEntry) => void;
-  className?: string;
 }
 
 export type { AdvancedSettingsTableProps };

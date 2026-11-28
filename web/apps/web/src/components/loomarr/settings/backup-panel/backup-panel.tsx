@@ -14,15 +14,7 @@ import { missingNights } from "./missing-nights";
 // CLI operation (stop, replace the file, start), and the panel says so rather than leaving
 // its absence to read as an oversight.
 
-const BackupPanel = ({
-  list,
-  onBackUpNow,
-  onDownload,
-  onOpenTasks,
-  pending,
-  error,
-  className,
-}: BackupPanelProps) => {
+const BackupPanel = ({ list, onBackUpNow, onDownload, onOpenTasks, pending, error }: BackupPanelProps) => {
   const backups = list.backups ?? [];
   const missing = missingNights(backups);
 
@@ -31,7 +23,7 @@ const BackupPanel = ({
   // so the absence is explained instead of rendered.
   if (!list.supported) {
     return (
-      <Card className={className} gap={8} padding={16} render="section">
+      <Card gap={8} padding={16} render="section">
         <Stack align="center" direction="row" gap="inline">
           <Icon decorative glyph={icons.database} size="compact" tone="muted" />
           <Text as="h2" textRole="cardLabel">
@@ -54,7 +46,7 @@ const BackupPanel = ({
   }
 
   return (
-    <Card className={className} padding={16} render="section">
+    <Card padding={16} render="section">
       <Stack align="start" direction="row" gap="4">
         <Stack flexBasis="0%" flexGrow={1} gap="1" minWidth={0}>
           <Text as="h2" textRole="cardLabel">

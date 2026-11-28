@@ -14,11 +14,10 @@ const ICON: Record<CheckStatus, { node: ReactNode; label: string }> = {
   fail: { node: <Icon decorative glyph={icons.failed} size="compact" tone="danger" />, label: "Failed" },
 };
 
-const ChecklistItem = ({ name, status, hint, docHref, className }: ChecklistItemProps) => (
+const ChecklistItem = ({ name, status, hint, docHref }: ChecklistItemProps) => (
   <Card
     alignItems="flex-start"
     borderColor={status === "pass" ? "stateSuccess" : undefined}
-    className={className}
     flexDirection="row"
     gap={12}
     paddingHorizontal={12}

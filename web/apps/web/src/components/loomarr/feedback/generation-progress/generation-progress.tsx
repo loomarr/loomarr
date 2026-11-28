@@ -60,7 +60,7 @@ const PickRow = ({ last, pick }: { last: boolean; pick: ProposalJourneyProgressD
 //
 // Only the stage line is a live region. The clock ticks every second and the list grows, and
 // announcing either would make assistive tech chatter through a long wait.
-const GenerationProgress = ({ phase, elapsedSeconds, progress, className }: GenerationProgressProps) => {
+const GenerationProgress = ({ phase, elapsedSeconds, progress }: GenerationProgressProps) => {
   const serverSeconds = useSecondsSince(progress?.startedAt);
   // An explicit elapsedSeconds wins: it is what a caller with its own clock (and a story) pins.
   const seconds = elapsedSeconds ?? serverSeconds;
@@ -75,7 +75,6 @@ const GenerationProgress = ({ phase, elapsedSeconds, progress, className }: Gene
       borderColor="$borderDecorative"
       borderRadius={8}
       borderWidth={1}
-      className={className}
       direction="row"
       gap="control"
       padding={16}

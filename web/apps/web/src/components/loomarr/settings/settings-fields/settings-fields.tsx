@@ -33,7 +33,6 @@ const SettingsFields = ({
   onEnvOverride,
   disabledReasons,
   descriptionIds,
-  className,
   initialAdvanced = false,
 }: SettingsFieldsProps) => {
   const [showAdvanced, setShowAdvanced] = useState(initialAdvanced);
@@ -62,7 +61,7 @@ const SettingsFields = ({
   return (
     // A responsive 2-col field grid (was a single-column stack): compact controls pair up,
     // wide ones (secrets/urls/lists) span both columns. gap-x for columns, gap-y for rows.
-    <Grid className={className} columnGap="4" columns={{ base: 1, sm: 2 }} rowGap="5">
+    <Grid columnGap="4" columns={{ base: 1, sm: 2 }} rowGap="5">
       {visible.map((entry) => {
         if (entry.advanced && !showAdvanced) return null;
         const field = (

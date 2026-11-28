@@ -134,7 +134,6 @@ const FillerCriteria = ({
   selection,
   onChange,
   disabled,
-  className,
   scopeEra,
   programmingDates,
   installationGeography,
@@ -143,7 +142,6 @@ const FillerCriteria = ({
   selection: FillerSelection;
   onChange: (next: FillerSelection) => void;
   disabled?: boolean;
-  className?: string;
   // The CHANNEL's programming era, which an unset filler era inherits (§10 V51f). Passed in so
   // the inheritance can be SHOWN — the server applies it live, and unshown, a channel drawing
   // 1990s ads from a blank field looks like it is drawing from everything.
@@ -183,7 +181,7 @@ const FillerCriteria = ({
   return (
     // Responsive 2-col grid: Era + Audience are cells; Categories (chip cloud) + Clip kinds
     // (checkbox row) span both columns.
-    <Grid className={className} columnGap="4" columns={{ base: 1, sm: 2 }} rowGap="5">
+    <Grid columnGap="4" columns={{ base: 1, sm: 2 }} rowGap="5">
       <GridItem gap={6} span={{ base: 1, sm: "full" }}>
         <FieldLabel help="Country is a hard boundary. A place also limits local clips to TV stations near it; timezone is never used as location.">
           Geography

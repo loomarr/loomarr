@@ -3,7 +3,7 @@ import type { ComponentPropsWithoutRef, ReactNode } from "react";
 // The header is a design-system Stack, so it takes the few attributes a page names it by, not every
 // DOM attribute a <header> could carry.
 interface PageHeaderProps
-  extends Pick<ComponentPropsWithoutRef<"header">, "aria-label" | "aria-labelledby" | "className" | "id"> {
+  extends Pick<ComponentPropsWithoutRef<"header">, "aria-label" | "aria-labelledby" | "id"> {
   /** The page's only level-one heading. */
   title: ReactNode;
   /** Short context that explains what the page owns. */

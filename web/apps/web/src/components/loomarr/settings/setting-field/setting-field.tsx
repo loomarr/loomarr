@@ -104,7 +104,6 @@ const SettingField = ({
   onEnvOverride,
   disabledReason,
   descriptionId,
-  className,
 }: SettingFieldProps) => {
   const reveal = useRevealOnHover();
   const [replacing, setReplacing] = useState(false);
@@ -351,7 +350,7 @@ const SettingField = ({
   // render its value, in a table cell least of all.
   if (compact) {
     return (
-      <Stack className={className} minWidth={0}>
+      <Stack minWidth={0}>
         {secretLocked ? (
           <Text as="span" textRole="mono">
             {entry.preview ?? "stored"}
@@ -371,7 +370,6 @@ const SettingField = ({
       align={inlineSwitch ? "center" : "stretch"}
       // Rows stay packed at the top: a field beside a taller one is stretched to its height.
       alignContent="flex-start"
-      className={className}
       columnGap="4"
       columns={inlineSwitch ? ["minmax(0,1fr)", "auto"] : 1}
       data-setting-field=""

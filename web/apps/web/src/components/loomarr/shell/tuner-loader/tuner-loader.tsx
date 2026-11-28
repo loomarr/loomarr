@@ -47,23 +47,8 @@ const RAIL = { alignItems: "flex-end", display: "flex", filter: BARS_HALO, gap: 
 // Resting height and colour are the locked frame of `signal-lock`.
 const BAR = { background: "var(--color-signal-400)", borderRadius: 1, height: "64%", width: 6 } as const;
 
-const TunerLoader = ({
-  label = "TUNING IN",
-  channel,
-  heldFrame = false,
-  backdrop,
-  className,
-}: TunerLoaderProps) => (
-  <Stack
-    aria-hidden
-    bottom={0}
-    className={className}
-    left={0}
-    pointerEvents="none"
-    position="absolute"
-    right={0}
-    top={0}
-  >
+const TunerLoader = ({ label = "TUNING IN", channel, heldFrame = false, backdrop }: TunerLoaderProps) => (
+  <Stack aria-hidden bottom={0} left={0} pointerEvents="none" position="absolute" right={0} top={0}>
     {/* The wash over the picture beneath. */}
     <div
       data-wash={heldFrame ? "draining" : "rest"}
