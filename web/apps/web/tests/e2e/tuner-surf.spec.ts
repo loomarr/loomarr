@@ -665,7 +665,8 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   await channelUp(page);
   await playerFrame(page).evaluate((frame, remaining) => {
     for (const direction of remaining) {
-      const key = direction > 0 ? "ArrowUp" : "ArrowDown";
+      // On the watching screen Down is the next channel, the row below.
+      const key = direction > 0 ? "ArrowDown" : "ArrowUp";
       frame.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
     }
   }, directions.slice(1));
