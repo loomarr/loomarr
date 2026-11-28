@@ -1,6 +1,6 @@
 import { formatClipDuration } from "@loomarr/core/format";
 import { Grid, InlineAction, MediaTile, Stack, Text } from "@loomarr/design-system";
-import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
+import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui/filler";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { AUDIENCE_LABEL, playsLine, ROLE_LABEL } from "../clip-card";
 import type { ClipRowProps } from "./clip-row.type";

@@ -1,5 +1,5 @@
 import type { HolidayEpisodesDTO } from "@loomarr/api/models/holidayEpisodesDTO";
-import { ChannelSeasonalFields, type SeasonalMode, type SeasonalStrength } from "@loomarr/ui";
+import { ChannelSeasonalFields, type SeasonalMode, type SeasonalStrength } from "@loomarr/ui/channels";
 import { isOverridden, resetField } from "@/lib/policy-overrides";
 import { PolicyFieldSource } from "../policy-field-source";
 import type { ChannelSeasonalProps } from "./channel-seasonal.type";

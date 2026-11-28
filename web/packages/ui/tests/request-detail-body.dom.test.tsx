@@ -4,7 +4,7 @@ import { requestFixtures, requestsSnapshot } from "@loomarr/fixtures";
 import { cleanup, renderUi, screen, within } from "@loomarr/test-support";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { RequestDetailBody, type RequestDetailBodyProps } from "../index";
+import { RequestDetailBody, type RequestDetailBodyProps } from "../requests";
 
 afterEach(cleanup);
 

@@ -1,4 +1,4 @@
-import { GuideExperience } from "@loomarr/ui";
+import { GuideExperience } from "@loomarr/ui/guide";
 import type { Meta, StoryObj } from "@storybook/react-native";
 
 const meta = {

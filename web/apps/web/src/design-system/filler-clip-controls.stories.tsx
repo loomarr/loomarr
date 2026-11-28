@@ -1,5 +1,5 @@
 import { Surface, Text } from "@loomarr/design-system";
-import { ClipSelect, type ClipSelectProps, NeedsDetailsChip } from "@loomarr/ui";
+import { ClipSelect, type ClipSelectProps, NeedsDetailsChip } from "@loomarr/ui/filler";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 

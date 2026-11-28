@@ -5,7 +5,11 @@
   "type": "module",
   "description": "Shared Loomarr product modules composed only from Loomarr-owned interfaces.",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./channels": "./channels.ts",
+    "./filler": "./filler.ts",
+    "./guide": "./guide.ts",
+    "./requests": "./requests.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc -p tests",

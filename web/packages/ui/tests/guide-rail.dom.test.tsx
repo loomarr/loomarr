@@ -14,7 +14,7 @@ vi.mock("react-native", async (importOriginal) => {
   return { ...actual, useWindowDimensions: () => ({ ...actual.useWindowDimensions(), width: window.width }) };
 });
 
-const { GuideGrid, GuideSurface } = await import("../index");
+const { GuideGrid, GuideSurface } = await import("../guide");
 
 const layout = {
   channels: [
