@@ -136,14 +136,19 @@ func loadSettings(ctx context.Context, db *sql.DB, s *Snapshot) error {
 // policyJSON is the subset of schedule.ChannelPolicy the report reads. It is decoded here rather
 // than through the schedule package so a snapshot from an older install still loads.
 type policyJSON struct {
-	Ordering string       `json:"ordering"`
-	Applied  []Relaxation `json:"applied"`
-	Rules    []any        `json:"rules"`
-	// Unairable is what reconcile reported it cannot air (#4140); absent on older installs.
+	Ordering string        `json:"ordering"`
+	Rules    []any         `json:"rules"`
+	Filler   *fillerPolicy `json:"filler"`
+}
+
+// findingsJSON is the subset of schedule.ReconcileFindings the report reads, from the channel's
+// reconcile_findings_json.
+type findingsJSON struct {
+	Applied []Relaxation `json:"applied"`
+	// Unairable is what reconcile reported it cannot air (#4140).
 	Unairable []struct {
 		Key string `json:"key"`
 	} `json:"unairable"`
-	Filler *fillerPolicy `json:"filler"`
 }
 
 type fillerPolicy struct {
@@ -153,22 +158,27 @@ type fillerPolicy struct {
 }
 
 func loadChannels(ctx context.Context, db *sql.DB, s *Snapshot) error {
-	rows, err := db.QueryContext(ctx, `SELECT id, number, name, strategy, status, policy_json FROM channels ORDER BY number`)
+	rows, err := db.QueryContext(ctx, `SELECT id, number, name, strategy, status, policy_json, reconcile_findings_json
+		FROM channels ORDER BY number`)
 	if err != nil {
 		return fmt.Errorf("channels: %w", err)
 	}
 	return each(rows, func(rows *sql.Rows) error {
 		var c Channel
-		var raw string
-		if err := rows.Scan(&c.ID, &c.Number, &c.Name, &c.Strategy, &c.Status, &raw); err != nil {
+		var raw, rawFindings string
+		if err := rows.Scan(&c.ID, &c.Number, &c.Name, &c.Strategy, &c.Status, &raw, &rawFindings); err != nil {
 			return err
 		}
 		var p policyJSON
 		if err := json.Unmarshal([]byte(raw), &p); err != nil {
 			return fmt.Errorf("channel %s policy: %w", c.ID, err)
 		}
-		c.Ordering, c.Applied, c.Rules, c.PolicyJSON = p.Ordering, p.Applied, len(p.Rules), raw
-		for _, u := range p.Unairable {
+		var f findingsJSON
+		if err := json.Unmarshal([]byte(rawFindings), &f); err != nil {
+			return fmt.Errorf("channel %s reconcile findings: %w", c.ID, err)
+		}
+		c.Ordering, c.Applied, c.Rules, c.PolicyJSON = p.Ordering, f.Applied, len(p.Rules), raw
+		for _, u := range f.Unairable {
 			if c.Reported == nil {
 				c.Reported = map[string]bool{}
 			}

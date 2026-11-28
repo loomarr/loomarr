@@ -9,12 +9,12 @@ import { ChannelAutoCurate } from "./channel-auto-curate";
 
 const OPT_IN = "Add new titles without asking";
 
-// Carries `applied` (reconcile-owned, §9) so every test can assert it survives untouched, and
+// Carries `operatorSet` (bookkeeping no editor touches) so every test can assert it survives untouched, and
 // a scope so the tests prove unrelated sections are not rebuilt by an auto-curate edit.
 const POPULATED: ChannelPolicy = {
   ordering: "shuffle",
   scope: { dates: eraDates({ from: 1990, to: 1999 }) },
-  applied: [{ kind: "blockMax", from: "8", to: "unbounded" }],
+  operatorSet: ["ordering"],
 };
 
 const optIn = () => screen.getByRole("checkbox", { name: OPT_IN });
@@ -40,7 +40,7 @@ describe("ChannelAutoCurate", () => {
     await userEvent.click(optIn());
 
     expect(onChange).toHaveBeenCalledWith({ ...POPULATED, autoCurate: {} });
-    expect(onChange.mock.lastCall?.[0].applied).toBe(POPULATED.applied);
+    expect(onChange.mock.lastCall?.[0].operatorSet).toBe(POPULATED.operatorSet);
   });
 
   // Opting out must REMOVE the key, not set it to a falsy object. `{}` would read as opted-in
@@ -60,7 +60,7 @@ describe("ChannelAutoCurate", () => {
     const next = onChange.mock.lastCall?.[0];
     expect(next).not.toHaveProperty("autoCurate");
     expect(next.scope).toEqual(POPULATED.scope);
-    expect(next.applied).toBe(POPULATED.applied);
+    expect(next.operatorSet).toBe(POPULATED.operatorSet);
   });
 
   // The hint must describe the CURRENT state. A first cut always read "Off, new titles wait for

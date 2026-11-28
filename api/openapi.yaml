@@ -1229,6 +1229,9 @@ components:
             - 1980
           format: int64
           type: integer
+        findings:
+          $ref: "#/components/schemas/ReconcileFindings"
+          description: "What the last reconcile found: the relaxations it applied and the lineup titles that cannot air. Read-only; each reconcile recomputes it."
         fromRequest:
           description: True when the channel was made from a member's request, which refine and auto-curate re-run; false for a hand-made channel
           type: boolean
@@ -1273,7 +1276,7 @@ components:
           type: integer
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
-          description: Programming policy (scope/audience/separation/ordering/seasonal) + applied relaxations
+          description: "Programming policy (scope/audience/separation/ordering/seasonal and the rest): what an operator or a proposal decided"
         programCount:
           description: Real playable programs (available titles) in the desired lineup
           format: int64
@@ -1323,6 +1326,7 @@ components:
         - breakCount
         - slotCount
         - policy
+        - findings
         - lineup
       type: object
     ChannelEvent:
@@ -1563,11 +1567,6 @@ components:
     ChannelPolicy:
       additionalProperties: false
       properties:
-        applied:
-          items:
-            $ref: "#/components/schemas/AppliedRelaxation"
-          maxItems: 8
-          type: array
         audience:
           $ref: "#/components/schemas/AudiencePolicy"
         autoCurate:
@@ -1613,11 +1612,6 @@ components:
           $ref: "#/components/schemas/SeasonalPolicy"
         separation:
           $ref: "#/components/schemas/SeparationPolicy"
-        unairable:
-          items:
-            $ref: "#/components/schemas/UnairableTitle"
-          maxItems: 512
-          type: array
         watermark:
           $ref: "#/components/schemas/WatermarkPolicy"
         window:
@@ -11168,6 +11162,20 @@ components:
         - channelId
         - tunedAt
       type: object
+    ReconcileFindings:
+      additionalProperties: false
+      properties:
+        applied:
+          items:
+            $ref: "#/components/schemas/AppliedRelaxation"
+          maxItems: 8
+          type: array
+        unairable:
+          items:
+            $ref: "#/components/schemas/UnairableTitle"
+          maxItems: 512
+          type: array
+      type: object
     RedeemInvitationInputBody:
       additionalProperties: false
       properties:
@@ -14375,7 +14383,7 @@ components:
           type: integer
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
-          description: Per-channel programming policy; merged onto the channel. policy.applied is reconcile-owned and ignored on write.
+          description: Per-channel programming policy; merged onto the channel. What reconcile finds is the channel's read-only findings, not policy.
         revision:
           description: Revision returned by the channel read this edit was based on. A stale revision is rejected with 409.
           format: int64

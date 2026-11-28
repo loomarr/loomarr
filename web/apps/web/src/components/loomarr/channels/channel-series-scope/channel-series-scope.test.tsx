@@ -37,7 +37,7 @@ afterEach(() => vi.unstubAllGlobals());
 const POPULATED: ChannelPolicy = {
   ordering: "shuffle",
   scope: { dates: eraDates({ from: 1990, to: 1999 }) },
-  applied: [{ kind: "blockMax", from: "8", to: "unbounded" }],
+  operatorSet: ["ordering"],
 };
 
 describe("ChannelSeriesScope", () => {
@@ -76,8 +76,8 @@ describe("ChannelSeriesScope", () => {
         scope: expect.objectContaining({ series: ["series:tvdb:90071663"], dates: POPULATED.scope?.dates }),
       }),
     );
-    // Reconcile-owned `applied` rides through untouched.
-    expect(onChange.mock.lastCall?.[0].applied).toBe(POPULATED.applied);
+    // A field this editor does not own rides through untouched.
+    expect(onChange.mock.lastCall?.[0].operatorSet).toBe(POPULATED.operatorSet);
   });
 
   // A movie can never produce a valid `scope.series` entry, and a series with no resolvable id

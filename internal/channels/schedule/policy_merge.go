@@ -92,8 +92,6 @@ func (current ChannelPolicy) MergeFromProposal(incoming ChannelPolicy) ChannelPo
 // operator DID set stays expressible; it simply unpins rather than pinning emptiness.
 func (current ChannelPolicy) MergeFromOperator(incoming ChannelPolicy) ChannelPolicy {
 	out := incoming
-	out.Applied = current.Applied     // reconcile-owned
-	out.Unairable = current.Unairable // reconcile-owned
 
 	// ⚠ **An OMITTED `policy.filler` keeps the saved selection (§10 V51f) — the same class of
 	// silent data loss the comment above records for `scope`, in the half `OperatorSet` cannot
@@ -146,25 +144,6 @@ func (current ChannelPolicy) MergeFromOperator(incoming ChannelPolicy) ChannelPo
 		reflect.DeepEqual(incoming.Seasonal, SeasonalPolicy{}))
 	out.OperatorSet = sortedPaths(set)
 	return out
-}
-
-// WithApplied is the reconcile writer: it may write ONLY the relaxation record, leaving
-// every other field (proposal + operator + OperatorSet) exactly as it was.
-func (p ChannelPolicy) WithApplied(applied []AppliedRelaxation) ChannelPolicy {
-	p.Applied = applied
-	return p
-}
-
-// WithUnairable is the reconcile writer for the titles that cannot air; it writes nothing else.
-func (p ChannelPolicy) WithUnairable(unairable []UnairableTitle) ChannelPolicy {
-	p.Unairable = unairable
-	return p
-}
-
-// Decided is the policy without what reconcile writes (Applied, Unairable): what an operator or a
-// proposal decided. It is what tells an edit from a library change (#4140).
-func (p ChannelPolicy) Decided() ChannelPolicy {
-	return p.WithApplied(nil).WithUnairable(nil)
 }
 
 // mergeRules composes rules by provenance (§8.2): keep every existing rule that is NOT

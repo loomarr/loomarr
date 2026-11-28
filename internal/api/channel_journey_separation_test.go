@@ -18,8 +18,8 @@ func TestReferenceChannelSeparation(t *testing.T) {
 	if ch.Policy.Separation != tc.Proposal.Policy.Separation || public.Policy.Separation != ch.Policy.Separation {
 		t.Fatal("ordinary approval or public response lost the explicit separation policy")
 	}
-	if len(ch.Policy.Applied) != 0 || len(public.Policy.Applied) != 0 {
-		t.Fatalf("satisfiable pool reported relaxation: stored=%v public=%v", ch.Policy.Applied, public.Policy.Applied)
+	if len(ch.Findings.Applied) != 0 || len(public.Findings.Applied) != 0 {
+		t.Fatalf("satisfiable pool reported relaxation: stored=%v public=%v", ch.Findings.Applied, public.Findings.Applied)
 	}
 	programs := referencePrograms(preview)
 	if !slices.Equal(referencePrograms(ch.Desired), programs) {
@@ -77,8 +77,8 @@ func TestReferenceChannelSparseRepeatIsExplained(t *testing.T) {
 	}
 	// The 44-minute cycle airs each episode once per loop, so that is the window it can hold.
 	want := []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "48h0m0s", To: "44m0s"}}
-	if !slices.Equal(ch.Policy.Applied, want) || !slices.Equal(public.Policy.Applied, want) {
-		t.Fatalf("sparse-pool explanation: stored=%v public=%v want=%v", ch.Policy.Applied, public.Policy.Applied, want)
+	if !slices.Equal(ch.Findings.Applied, want) || !slices.Equal(public.Findings.Applied, want) {
+		t.Fatalf("sparse-pool explanation: stored=%v public=%v want=%v", ch.Findings.Applied, public.Findings.Applied, want)
 	}
 	programs := referencePrograms(preview)
 	if !slices.Equal(referencePrograms(ch.Desired), programs) {
@@ -101,8 +101,8 @@ func TestReferenceChannelMovieRepeat(t *testing.T) {
 	if ch.Policy.Separation != tc.Proposal.Policy.Separation || public.Policy.Separation != ch.Policy.Separation {
 		t.Fatal("approval or public response lost the movie repeat window")
 	}
-	if len(ch.Policy.Applied) != 0 || len(public.Policy.Applied) != 0 {
-		t.Fatalf("satisfiable movie window was relaxed: stored=%v public=%v", ch.Policy.Applied, public.Policy.Applied)
+	if len(ch.Findings.Applied) != 0 || len(public.Findings.Applied) != 0 {
+		t.Fatalf("satisfiable movie window was relaxed: stored=%v public=%v", ch.Findings.Applied, public.Findings.Applied)
 	}
 	programs := referencePrograms(preview)
 	if !slices.Equal(referencePrograms(ch.Desired), programs) {

@@ -321,7 +321,7 @@ One row per channel. A channel is created by approving a channel request or by h
 | `desired_json` | The last computed schedule, a list of slots. Each slot is a programme, a pending title not yet in the library, a filler break, or flexible padding, with its title, length and episode numbers. | `TEXT` |
 | `reconcile_deadline` | When the channel is next due to be checked and brought up to date, in Unix seconds. Moved forward while one check holds it. 0 means due now. | `BIGINT` |
 | `updated_at` | When the row last changed, in Unix seconds. | `BIGINT` |
-| `policy_json` | The channel's programming rules. What may air (era, genres), who it is for (the audience rating ceiling), how often things may repeat, the ordering, seasonal behaviour and time-of-day rules, plus the rules an admin pinned and the loosening the last check had to apply. `{}` means all defaults. | `TEXT` |
+| `policy_json` | The channel's programming rules. What may air (era, genres), who it is for (the audience rating ceiling), how often things may repeat, the ordering, seasonal behaviour and time-of-day rules, plus the rules an admin pinned. Only what someone decided: what a check found is `reconcile_findings_json`. `{}` means all defaults. | `TEXT` |
 | `broadcast_codec` | The video codec the channel streams in, `h264` or `hevc`, chosen from what most of its titles are encoded in. Every programme and filler clip is converted to it. | `TEXT` |
 | `revision` | Counts changes to the row, starting at 1. A change is only saved if it was made from the latest revision, so two edits can't overwrite each other. | `BIGINT` |
 | `playout_anchor` | When the channel's current broadcast cycle started, in Unix seconds. The schedule is laid out from this moment. 0 for a channel that has not gone on air yet. | `BIGINT` |
@@ -332,6 +332,7 @@ One row per channel. A channel is created by approving a channel request or by h
 | `intent_ref` | The channel request job (proposal_jobs.id) the channel was created from, while that job is kept; null once the job is purged, and for a channel made by hand. No two channels share one. | `TEXT` · may be empty · → `proposal_jobs.id` |
 | `dealt_from` | Two fingerprints, joined by a dot: what an operator had decided when the current cycle was dealt (the lineup, the channel's rules, break and window settings), and the deal itself. While the first is unchanged, a change in the library does not move the window on air; a change to it re-deals the schedule after the programme on air. Empty until the channel is next scheduled. | `TEXT` |
 | `playout_anchor_ms` | The milliseconds past `playout_anchor`'s second, 0 to 999. A cycle that starts at the programme on air rarely starts on a whole second, and the schedule is laid out from the exact moment. | `INTEGER` |
+| `reconcile_findings_json` | What the last check found, as opposed to what anyone decided: the repeat and spacing rules it had to loosen (`applied`) and the lineup titles that cannot air, each with why (`unairable`). Written with the schedule in the same save and worked out again at every check. `{}` when the check found nothing. | `TEXT` |
 
 ### channel_lineup
 

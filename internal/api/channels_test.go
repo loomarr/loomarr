@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -1182,32 +1183,57 @@ func TestUpdateChannel_RenumberToSelfOK(t *testing.T) {
 	}
 }
 
-func TestUpdateChannel_PolicyMergePreservesApplied(t *testing.T) {
+// No request writes the reconcile's findings: a PATCH naming them, in the policy or beside it,
+// changes nothing it names, and an ordinary policy edit leaves the findings to the reconcile.
+func TestUpdateChannel_CannotWriteFindings(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, st := harness.Server, harness.Store
 	mkChannel(t, srv, "c1", "A", 5)
 
-	// Seed a reconcile-owned relaxation on the channel (as a reconcile would).
+	// Seed findings on the channel (as a reconcile would).
 	ctx := context.Background()
 	ch, _ := st.GetChannel(ctx, "c1")
-	ch.Policy.Applied = []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "168h", To: "84h"}}
+	seeded := schedule.ReconcileFindings{
+		Applied:   []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "168h", To: "84h"}},
+		Unairable: []schedule.UnairableTitle{{Key: "movie:tmdb:90000777", Title: "Gone", Reason: schedule.UnairableNotInLibrary}},
+	}
+	ch.Findings = seeded
 	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)
 	}
 
-	// A policy edit that tries to also set `applied` must be ignored — the stored
-	// `applied` is reconcile-owned and preserved.
+	forged := `[{"kind":"hacked","from":"x","to":"y"}]`
+	for _, body := range []string{
+		`{"policy":{"ordering":"shuffle","applied":` + forged + `}}`,
+		`{"policy":{"ordering":"shuffle","unairable":[{"key":"movie:tmdb:1","title":"x","reason":"unrated"}]}}`,
+		`{"findings":{"applied":` + forged + `}}`,
+	} {
+		resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, channelPatchBody(t, st, "c1", body))
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("PATCH %s → %d, want 422 (the body has no such field)", body, resp.StatusCode)
+		}
+		got, _ := st.GetChannel(ctx, "c1")
+		if got.Policy.Ordering != "" || !reflect.DeepEqual(got.Findings, seeded) {
+			t.Errorf("PATCH %s wrote ordering=%q findings=%+v, want both unchanged", body, got.Policy.Ordering, got.Findings)
+		}
+	}
+
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		channelPatchBody(t, st, "c1", `{"policy":{"ordering":"shuffle","applied":[{"kind":"hacked","from":"x","to":"y"}]}}`))
+		channelPatchBody(t, st, "c1", `{"policy":{"ordering":"shuffle"}}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("policy patch → %d, want 200", resp.StatusCode)
 	}
-	ch, _ = st.GetChannel(ctx, "c1")
-	if ch.Policy.Ordering != "shuffle" {
-		t.Errorf("policy.ordering = %q, want shuffle (the edit)", ch.Policy.Ordering)
+	var public struct {
+		Policy   schedule.ChannelPolicy     `json:"policy"`
+		Findings schedule.ReconcileFindings `json:"findings"`
 	}
-	if len(ch.Policy.Applied) != 1 || ch.Policy.Applied[0].Kind != "episodeNoRepeat" {
-		t.Errorf("policy.applied = %+v, want the reconcile-owned value preserved (not client-set)", ch.Policy.Applied)
+	decode(t, resp, &public)
+	if public.Policy.Ordering != "shuffle" {
+		t.Errorf("policy.ordering = %q, want shuffle (the edit)", public.Policy.Ordering)
+	}
+	stored, _ := st.GetChannel(ctx, "c1")
+	if !reflect.DeepEqual(public.Findings, stored.Findings) {
+		t.Errorf("response findings %+v, want the stored %+v", public.Findings, stored.Findings)
 	}
 }
 

@@ -324,12 +324,11 @@ func (e *Engine) planReconcile(
 	// recomputes them from the winning row.
 	desiredChangedLocally := !slices.Equal(ch.Desired, desired.Slots)
 
-	// Record the relaxation-ladder steps this pass applied (§7) back onto the
-	// channel's policy so the UI surfaces them; recomputed from scratch each
-	// reconcile, so a recovered pool automatically un-relaxes to an empty list.
-	// WithApplied is the reconcile-only writer — it touches Applied and nothing else (§2.1).
-	// The titles that cannot air are recorded the same way, for the channel page (#4140).
-	ch.Policy = ch.Policy.WithApplied(desired.Applied).WithUnairable(desired.Unairable)
+	// Record what this pass found (§2.1): the relaxation-ladder steps it applied (§7) and the
+	// titles that cannot air (#4140), for the channel page. They are saved with desired, apart
+	// from the policy, and recomputed from scratch each reconcile, so a recovered pool
+	// automatically un-relaxes to an empty list.
+	ch.Findings = desired.Findings()
 
 	// Filler is not inlined into desired. An internal encoder resolves each SlotFiller
 	// at airtime; Tunarr receives it as FLEX and fills it from the attached list below.

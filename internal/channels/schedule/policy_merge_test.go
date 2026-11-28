@@ -13,7 +13,7 @@ import (
 const legacyPolicyJSON = `{"scope":{"dates":{"movieRelease":[{"from":1990,"to":1999}],` +
 	`"seriesPremiere":[{"from":1990,"to":1999}],"seriesAiring":[{"from":1990,"to":1999}]}},"audience":{"ceiling":"TV-Y7"},` +
 	`"separation":{"episodeNoRepeat":"168h"},"ordering":"syndication","seasonal":{"mode":"auto"},` +
-	`"applied":[{"kind":"episodeNoRepeat","from":"168h","to":"84h"}],"filler":{"audience":"kids"},` +
+	`"filler":{"audience":"kids"},` +
 	`"rules":[{"id":"r1","label":"Weekend","priority":10}],"window":"24h","autoCurate":{"minScorePct":70}}`
 
 func TestChannelPolicy_LegacyWireRoundTrips(t *testing.T) {
@@ -37,8 +37,8 @@ func TestChannelPolicy_LegacyWireRoundTrips(t *testing.T) {
 	if p.AutoCurate == nil || p.AutoCurate.MinScorePct != 70 {
 		t.Errorf("autoCurate did not land: %+v", p.AutoCurate)
 	}
-	if len(p.Rules) != 1 || len(p.Applied) != 1 {
-		t.Errorf("rules/applied did not land: rules=%d applied=%d", len(p.Rules), len(p.Applied))
+	if len(p.Rules) != 1 {
+		t.Errorf("rules did not land: rules=%d", len(p.Rules))
 	}
 	// Re-marshal: the wire must stay FLAT (no nested owner objects) so old and new agree.
 	out, err := json.Marshal(p)
@@ -53,7 +53,7 @@ func TestChannelPolicy_LegacyWireRoundTrips(t *testing.T) {
 		t.Fatalf("the scope must round-trip as dates with no era, got: %s", out)
 	}
 	// And the flat keys survive.
-	for _, key := range []string{`"scope"`, `"audience"`, `"filler"`, `"window"`, `"autoCurate"`, `"applied"`} {
+	for _, key := range []string{`"scope"`, `"audience"`, `"filler"`, `"window"`, `"autoCurate"`} {
 		if !strings.Contains(string(out), key) {
 			t.Errorf("re-marshaled blob dropped %s: %s", key, out)
 		}
@@ -153,15 +153,10 @@ func TestMergeFromProposal_CeilingNeverRelaxed(t *testing.T) {
 }
 
 // MergeFromOperator records which proposal-owned fields the operator CHANGED (so a later
-// refine leaves them alone) and force-preserves the reconcile-owned Applied.
-func TestMergeFromOperator_RecordsDirtyAndPreservesApplied(t *testing.T) {
-	current := ChannelPolicy{
-		ProposalPolicy: ProposalPolicy{Ordering: OrderSequential},
-		Applied:        []AppliedRelaxation{{Kind: "episodeNoRepeat"}},
-	}
-	// The operator changes ordering (and a client tries to sneak in an Applied value).
+// refine leaves them alone).
+func TestMergeFromOperator_RecordsDirty(t *testing.T) {
+	current := ChannelPolicy{ProposalPolicy: ProposalPolicy{Ordering: OrderSequential}}
 	incoming := ChannelPolicy{ProposalPolicy: ProposalPolicy{Ordering: OrderSyndication}}
-	incoming.Applied = []AppliedRelaxation{{Kind: "client-forged"}}
 
 	got := current.MergeFromOperator(incoming)
 	if got.Ordering != OrderSyndication {
@@ -172,9 +167,6 @@ func TestMergeFromOperator_RecordsDirtyAndPreservesApplied(t *testing.T) {
 	}
 	if pathSet(got.OperatorSet)[pathScope] {
 		t.Errorf("scope was unchanged and must NOT be marked operator-set, got %v", got.OperatorSet)
-	}
-	if len(got.Applied) != 1 || got.Applied[0].Kind != "episodeNoRepeat" {
-		t.Errorf("Applied is reconcile-owned and must be force-preserved, got %+v", got.Applied)
 	}
 }
 

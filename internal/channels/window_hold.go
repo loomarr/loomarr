@@ -43,8 +43,8 @@ func dealtFrom(in scheduleInputs, deal []schedule.Slot) string {
 // it hashes, or to how a hashed type marshals, re-deals the whole fleet after the programme on
 // air at the first sweep after deploy. A new ChannelPolicy field is safe only with `omitempty` and
 // a zero default; a field without it, or any non-pointer struct field (omitempty never omits a
-// struct), changes every digest. A field reconcile owns belongs outside Policy.Decided(), or every
-// library change reads as an edit.
+// struct), changes every digest. What reconcile finds belongs in ReconcileFindings, never in
+// ChannelPolicy, or every library change reads as an edit.
 func decisionDigest(in scheduleInputs) string {
 	type entry struct {
 		Key                  string
@@ -71,7 +71,7 @@ func decisionDigest(in scheduleInputs) string {
 		Install       schedule.PendingPolicy
 		Zone, Country string
 		Holidays      any
-	}{entries, in.Policy.Decided(), in.Channel.Strategy, in.Channel.BreaksPerHour, s.BreakLength, s.Window, s.Pending,
+	}{entries, in.Policy, in.Channel.Strategy, in.Channel.BreaksPerHour, s.BreakLength, s.Window, s.Pending,
 		zone, cal.Country, cal.Holidays})
 	if err != nil {
 		return "" // the same "" every sweep, so a policy that cannot marshal never reads as an edit

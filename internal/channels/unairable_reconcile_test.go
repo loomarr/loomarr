@@ -27,15 +27,15 @@ func TestReconcile_RecordsTheTitlesThatCannotAir(t *testing.T) {
 
 	before := reconcileDesired(t, e, st, "ua")
 	want := []schedule.UnairableTitle{{Key: missing, Title: "Missing Film", Reason: schedule.UnairableNotInLibrary}}
-	if !slices.Equal(before.Policy.Unairable, want) {
-		t.Fatalf("stored unairable %+v, want %+v", before.Policy.Unairable, want)
+	if !slices.Equal(before.Findings.Unairable, want) {
+		t.Fatalf("stored unairable %+v, want %+v", before.Findings.Unairable, want)
 	}
 
 	avail.movies[missing] = schedule.ResolvedProgram{LibraryItemID: "film-99", DurationMs: (95 * time.Minute).Milliseconds()}
 	now = now.Add(2 * time.Hour)
 	after := reconcileDesired(t, e, st, "ua")
-	if len(after.Policy.Unairable) != 0 {
-		t.Fatalf("the film arrived, still recorded as unairable: %+v", after.Policy.Unairable)
+	if len(after.Findings.Unairable) != 0 {
+		t.Fatalf("the film arrived, still recorded as unairable: %+v", after.Findings.Unairable)
 	}
 	end := before.PlayoutAnchor.Add(24 * time.Hour)
 	if was, is := programmes(before.Desired, before.PlayoutAnchor, end), programmes(after.Desired, after.PlayoutAnchor, end); fmt.Sprint(was) != fmt.Sprint(is) {

@@ -89,8 +89,8 @@ const PolicyField = ({
 
 // ChannelPolicyFields — a ChannelPolicy as plain-language editable chips (programming-design
 // §8). Controlled: the parent holds `policy` and persists whatever this calls `onChange`
-// with. `applied` is reconcile-owned (§9) and never rendered here — it is read-only history
-// of what the scheduler had to ease, not a setting an operator edits. A field left blank
+// with. What the scheduler had to ease is the channel's read-only `findings`, not policy, so
+// nothing here renders or edits it. A field left blank
 // clears the authored override; its effective behavior is field-specific and named below.
 
 // On save: pass the typed duration straight through (the backend accepts "24h"/"168h"),

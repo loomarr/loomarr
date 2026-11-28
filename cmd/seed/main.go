@@ -366,7 +366,7 @@ func seedChannel(ctx context.Context, st store.ChannelStore, channelID string, p
 	ch.Lineup = entries
 	ch.Desired = desired.Slots
 	ch.Policy = policy
-	ch.Policy.Applied = desired.Applied // surface the relaxations the ladder actually applied
+	ch.Findings = desired.Findings() // surface the relaxations the ladder actually applied
 	if err := ch.Validate(); err != nil {
 		return fmt.Errorf("validate channel: %w", err)
 	}

@@ -15,7 +15,8 @@ const CHANNEL: ChannelDTO = {
   status: "live",
   strategy: "shuffle",
   tunarrId: "tun-abc",
-  policy: { applied: [{ kind: "blockMax", from: "8", to: "unbounded" }] },
+  policy: { operatorSet: ["ordering"] },
+  findings: { applied: [{ kind: "blockMax", from: "8", to: "unbounded" }] },
 } as ChannelDTO;
 
 describe("ChannelAdvanced — playout backend", () => {
@@ -32,8 +33,8 @@ describe("ChannelAdvanced — playout backend", () => {
     expect(onPolicyChange).toHaveBeenCalledWith(
       expect.objectContaining({ playout: { backend: "internal" } }),
     );
-    // Reconcile-owned `applied` rides through untouched — the edit merges, never rebuilds.
-    expect(onPolicyChange.mock.lastCall?.[0].applied).toBe(CHANNEL.policy?.applied);
+    // The rest of the policy rides through untouched — the edit merges, never rebuilds.
+    expect(onPolicyChange.mock.lastCall?.[0].operatorSet).toBe(CHANNEL.policy?.operatorSet);
   });
 
   // "" is the inherit sentinel (a nil *PlayoutPolicy and an empty Backend mean the same thing

@@ -24,11 +24,11 @@ type DesiredLineup struct {
 	// filtered (or no policy is set).
 	Excluded ExclusionReport
 	// Unairable lists the lineup titles that put nothing into the cycle, with why (#4140), in
-	// lineup order. Reconcile writes it onto the channel's policy for the channel page.
+	// lineup order. Reconcile records it in the channel's findings for the channel page.
 	Unairable []UnairableTitle
-	// Applied records the relaxation-ladder steps taken this computation (§7),
-	// written back onto the channel's policy by the reconcile engine and surfaced in
-	// the UI. Empty when the eligible pool satisfied the policy with no relaxation.
+	// Applied records the relaxation-ladder steps taken this computation (§7), recorded
+	// in the channel's findings by the reconcile engine and surfaced in the UI. Empty
+	// when the eligible pool satisfied the policy with no relaxation.
 	Applied []AppliedRelaxation
 	// EligibleKeys is the set of program keys the library can currently supply for this
 	// channel — the resolved programs BEFORE the rolling-window truncation and any rule
