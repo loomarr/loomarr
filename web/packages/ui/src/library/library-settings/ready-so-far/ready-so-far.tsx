@@ -13,7 +13,7 @@ const READY_SO_FAR = 5;
 const Slot = ({ title }: { title?: LibraryReadyTitle }) => (
   <Stack aria-hidden={title ? undefined : true} width={64}>
     {title ? (
-      <LibraryPoster art={title.poster} dim={!title.ready} id={title.id} name={title.name} small />
+      <LibraryPoster art={title.poster} dim={!title.ready} name={title.name} small year={title.year} />
     ) : (
       <Skeleton height={96} shape="media" width={64} />
     )}

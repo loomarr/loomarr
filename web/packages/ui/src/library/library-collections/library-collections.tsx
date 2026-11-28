@@ -27,7 +27,15 @@ const PosterPile = ({ pile }: { pile: readonly LibraryCollectionPoster[] }) => {
     <Stack aria-hidden flexShrink={0} height={160} position="relative" width={PILE_WIDTH + 16}>
       {layers.map((i) => (
         <Stack key={i} left={i * 8} position="absolute" top={(2 - i) * 6} width={PILE_WIDTH}>
-          <LibraryPoster art={shown[i]?.poster} dim={i > 0} id={shown[i]?.id} name={shown[i]?.name ?? ""} />
+          <LibraryPoster
+            art={shown[i]?.poster}
+            compact
+            dim={i > 0}
+            homeVideo={shown[i]?.homeVideo}
+            kind={shown[i]?.kind}
+            name={shown[i]?.name ?? ""}
+            year={shown[i]?.year}
+          />
         </Stack>
       ))}
     </Stack>

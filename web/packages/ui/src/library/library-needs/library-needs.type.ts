@@ -55,6 +55,9 @@ interface LibraryProblem {
   id: string;
   kind: LibraryKind;
   name: string;
+  /** Its year, which tints the stand-in; absent reads "Year unknown". */
+  year?: number;
+  homeVideo?: boolean;
   /** Its artwork, drawn by the app; absent draws the stand-in. */
   poster?: ReactNode;
   /** Its files that can't be played. */
@@ -105,6 +108,8 @@ interface LibraryOrderNeed {
   /** The library show's id: what an answer is for. */
   id: string;
   name: string;
+  /** Its year, which tints the stand-in; absent reads "Year unknown". */
+  year?: number;
   /** Its artwork, drawn by the app; absent draws the stand-in. */
   poster?: ReactNode;
   /** How far each season runs on disk, by season. */

@@ -13,12 +13,11 @@ import type { FieldHintProps } from "./field-hint.type";
  * Field's own description and error lines keep their `metadata` measure: the native field has
  * its own approved look, and folding it onto this one would change it.
  */
-const FieldHint = ({ children, className, density = "pointer", id, role, tone = "help" }: FieldHintProps) => (
+const FieldHint = ({ children, density = "pointer", id, role, tone = "help" }: FieldHintProps) => (
   <Text
     // `role` is outside TextProps on purpose (a readout is not a landmark); a hint is the exception.
     {...({ role } as object)}
     as={isWeb ? "p" : undefined}
-    className={className}
     density={density}
     id={id}
     textRole="hint"

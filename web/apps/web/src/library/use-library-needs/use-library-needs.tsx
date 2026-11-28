@@ -29,6 +29,8 @@ const problemOf = (p: LibraryProblemDTO): LibraryProblem => ({
   id: p.item.id,
   kind: p.item.kind,
   name: p.item.name,
+  year: p.item.year,
+  homeVideo: p.item.homeVideo,
   poster: p.item.poster ? <ServedImage alt="" image={p.item.poster} sizes={THUMB_SIZES} /> : undefined,
   // Needs you is admin-only, and an admin's titles always carry the count.
   unplayable: p.item.unplayable ?? 0,
@@ -53,6 +55,7 @@ const candidateOf = (c: LibraryCandidateDTO): LibraryNeedCandidate => ({
 const orderNeedOf = (o: LibraryOrderNeedDTO): LibraryOrderNeed => ({
   id: o.item.id,
   name: o.item.name,
+  year: o.item.year,
   poster: o.item.poster ? <ServedImage alt="" image={o.item.poster} sizes={THUMB_SIZES} /> : undefined,
   disk: o.disk,
   files: o.files,

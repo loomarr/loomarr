@@ -1,6 +1,6 @@
 import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { VisuallyHidden } from "@loomarr/design-system";
-import { createElement, Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { toast } from "sonner";
 
 // What ignoring or keeping in Needs you says (#4476 D1, D2). The toast is the quick way back; for an
@@ -18,11 +18,11 @@ const BRING_BACK: Words = { label: "Try again", failed: "Couldn't bring it back"
 // The button shows "Undo" and is named for what it undoes. The toast's button takes no name of its
 // own, so the longer words ride inside it, out of sight.
 const undoWords = (undoing: string): Words => ({
-  label: createElement(
-    Fragment,
-    null,
-    createElement("span", { "aria-hidden": true }, "Undo"),
-    createElement(VisuallyHidden, { as: "span", children: `Undo ${undoing}` }),
+  label: (
+    <>
+      <span aria-hidden>Undo</span>
+      <VisuallyHidden as="span">{`Undo ${undoing}`}</VisuallyHidden>
+    </>
   ),
   failed: "Couldn't undo that",
 });

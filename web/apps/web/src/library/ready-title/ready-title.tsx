@@ -9,6 +9,7 @@ const READY_POSTER_SIZES = "64px";
 const readyTitleOf = (item: LibraryItemDTO): LibraryReadyTitle => ({
   id: item.id,
   name: item.name,
+  year: item.year,
   ready: item.ready,
   poster: item.poster ? <ServedImage alt="" image={item.poster} sizes={READY_POSTER_SIZES} /> : undefined,
 });

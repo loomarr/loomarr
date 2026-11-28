@@ -1,10 +1,17 @@
 import type { ReactNode } from "react";
 
+import type { LibraryKind } from "../library-shelf/library-shelf.type";
+
 /** A poster in a collection's pile: its artwork, or its stand-in. */
 interface LibraryCollectionPoster {
-  /** The title's id, which picks the stand-in's colour; absent picks it from the name. */
+  /** The title's id. */
   id?: string;
   name: string;
+  /** Its year, which tints the stand-in; absent reads "Year unknown". */
+  year?: number;
+  /** What the stand-in's foot calls it, with homeVideo. */
+  kind?: LibraryKind;
+  homeVideo?: boolean;
   /** Drawn by the app; absent draws the stand-in. */
   poster?: ReactNode;
 }

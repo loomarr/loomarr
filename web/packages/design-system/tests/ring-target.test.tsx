@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Text } from "react-native";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -66,6 +66,30 @@ describe("RingTarget", () => {
     await userEvent.click(elsewhere);
     await userEvent.click(block());
     expect(document.activeElement).toBe(elsewhere);
+  });
+
+  it("says whether what it opens is open, and takes the whole width when asked", () => {
+    draw({ expanded: true, fill: true });
+    expect(block().getAttribute("aria-expanded")).toBe("true");
+    expect(getComputedStyle(block()).width).toBe("100%");
+    expect(getComputedStyle(block()).outlineStyle).toBe("none");
+  });
+
+  it("hands the pressable itself to what is put around it", () => {
+    draw({ wrap: (control) => <section aria-label="Around">{control}</section> });
+    expect(screen.getByRole("region", { name: "Around" }).firstElementChild).toBe(block());
+  });
+
+  it("hands a mouse-down to the caller, and prevents its default when it takes no focus", () => {
+    const onMouseDown = vi.fn();
+    draw({ onMouseDown });
+    // `fireEvent` answers false when a handler prevented the default.
+    expect(fireEvent.mouseDown(block())).toBe(true);
+    expect(onMouseDown).toHaveBeenCalledTimes(1);
+    cleanup();
+    draw({ onMouseDown, pointerTakesNoFocus: true });
+    expect(fireEvent.mouseDown(block())).toBe(false);
+    expect(onMouseDown).toHaveBeenCalledTimes(2);
   });
 
   it("says what it is and whether it is selected", () => {
