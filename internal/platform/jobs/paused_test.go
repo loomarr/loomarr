@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store/jobstore"
+	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/riverqueue/river"
 )
 
@@ -28,9 +29,9 @@ func pausableJob(ran *atomic.Int64) Job {
 // TestRiverWorkerManualRunBypassesPause.)
 func TestPaused_ScheduledRunSkippedUntilResumed(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var ran atomic.Int64
-	s := New(st, NewRegistry().Add(pausableJob(&ran)), nil, clk.now, testLog())
+	s := New(st, NewRegistry().Add(pausableJob(&ran)), nil, clk.Now, testLog())
 	ctx := context.Background()
 	w := riverWorker{s: s}
 	scheduled := &river.Job[jobArgs]{Args: jobArgs{Name: "reconcile"}}
@@ -67,9 +68,9 @@ func (pauseReadFailsStore) GetScheduledJob(context.Context, string) (jobstore.Sc
 // job on a database hiccup) but says so; a job that has simply never run has no row and says nothing.
 func TestPaused_ReadErrorFailsOpenAndIsLogged(t *testing.T) {
 	var logs bytes.Buffer
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var ran atomic.Int64
-	s := New(pauseReadFailsStore{newFakeStore()}, NewRegistry().Add(pausableJob(&ran)), nil, clk.now,
+	s := New(pauseReadFailsStore{newFakeStore()}, NewRegistry().Add(pausableJob(&ran)), nil, clk.Now,
 		slog.New(slog.NewTextHandler(&logs, nil)))
 	w := riverWorker{s: s}
 
@@ -85,7 +86,7 @@ func TestPaused_ReadErrorFailsOpenAndIsLogged(t *testing.T) {
 
 	// No row yet is the ordinary first run: nothing to report.
 	logs.Reset()
-	fresh := New(newFakeStore(), NewRegistry().Add(pausableJob(&ran)), nil, clk.now, slog.New(slog.NewTextHandler(&logs, nil)))
+	fresh := New(newFakeStore(), NewRegistry().Add(pausableJob(&ran)), nil, clk.Now, slog.New(slog.NewTextHandler(&logs, nil)))
 	if err := (&riverWorker{s: fresh}).Work(context.Background(), &river.Job[jobArgs]{Args: jobArgs{Name: "reconcile"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -101,15 +102,15 @@ func TestPaused_ReadErrorFailsOpenAndIsLogged(t *testing.T) {
 // store alike.
 func TestPaused_SurvivesAStateWrite(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var ran atomic.Int64
-	s := New(st, NewRegistry().Add(pausableJob(&ran)), nil, clk.now, testLog())
+	s := New(st, NewRegistry().Add(pausableJob(&ran)), nil, clk.Now, testLog())
 	ctx := context.Background()
 
 	_ = s.SetPaused(ctx, "reconcile", true)
 	// A perfectly ordinary state write, the shape the scheduler makes after every run.
 	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{
-		Name: "reconcile", LastResult: "ok", LastRun: clk.now(), NextRun: clk.now().Add(time.Hour),
+		Name: "reconcile", LastResult: "ok", LastRun: clk.Now(), NextRun: clk.Now().Add(time.Hour),
 	})
 
 	got, err := st.GetScheduledJob(ctx, "reconcile")
@@ -126,12 +127,12 @@ func TestPaused_SurvivesAStateWrite(t *testing.T) {
 // that will not fire, and showing it would promise a run that never comes.
 func TestPaused_ReportsNoNextRun(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var ran atomic.Int64
-	s := New(st, NewRegistry().Add(pausableJob(&ran)), nil, clk.now, testLog())
+	s := New(st, NewRegistry().Add(pausableJob(&ran)), nil, clk.Now, testLog())
 	ctx := context.Background()
 
-	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "reconcile", NextRun: clk.now().Add(time.Hour)})
+	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "reconcile", NextRun: clk.Now().Add(time.Hour)})
 	_ = s.SetPaused(ctx, "reconcile", true)
 
 	got, err := s.List(ctx)
@@ -151,9 +152,9 @@ func TestPaused_ReportsNoNextRun(t *testing.T) {
 // contradictory states and imply Resume would make it work.
 func TestPaused_DisabledJobRefuses(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var ran atomic.Int64
-	s := New(st, NewRegistry().Add(disabledJob(&ran)), nil, clk.now, testLog())
+	s := New(st, NewRegistry().Add(disabledJob(&ran)), nil, clk.Now, testLog())
 
 	if err := s.SetPaused(context.Background(), "backup", true); !errors.Is(err, ErrJobDisabled) {
 		t.Errorf("SetPaused on a disabled job = %v, want ErrJobDisabled", err)
@@ -164,9 +165,9 @@ func TestPaused_DisabledJobRefuses(t *testing.T) {
 // for a job that does not exist.
 func TestPaused_UnknownJobRefuses(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var ran atomic.Int64
-	s := New(st, NewRegistry().Add(pausableJob(&ran)), nil, clk.now, testLog())
+	s := New(st, NewRegistry().Add(pausableJob(&ran)), nil, clk.Now, testLog())
 
 	if err := s.SetPaused(context.Background(), "nope", true); !errors.Is(err, ErrUnknownJob) {
 		t.Errorf("SetPaused on an unknown job = %v, want ErrUnknownJob", err)

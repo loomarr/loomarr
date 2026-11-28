@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/store/jobstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // fakeStore is an in-memory ScheduleStore with a controllable clock-independent view; the
@@ -72,17 +73,6 @@ func (f *fakeStore) ListScheduledJobs(_ context.Context) ([]jobstore.ScheduledJo
 	return out, nil
 }
 
-type fakeClock struct {
-	mu sync.Mutex
-	t  time.Time
-}
-
-func (c *fakeClock) now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.t
-}
-
 func testLog() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
 // everyMinute is a 6-field seconds-leading cron (top of every minute) used across tests as a
@@ -93,12 +83,12 @@ const everyMinute = "0 * * * * *"
 // the outcome and the next cron tick.
 func TestReconcileSeedsAndExecuteRecords(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var ran atomic.Int64
 	reg := NewRegistry().Add(Job{
 		Name: "a", Group: GroupSystem, Title: "A", Description: "test job a.", DefaultCron: everyMinute, Run: func(context.Context) error { ran.Add(1); return nil },
 	})
-	s := New(st, reg, nil, clk.now, testLog())
+	s := New(st, reg, nil, clk.Now, testLog())
 	ctx := context.Background()
 
 	s.reconcileRegistry(ctx) // seeds "a" with the top of the next minute
@@ -112,7 +102,7 @@ func TestReconcileSeedsAndExecuteRecords(t *testing.T) {
 
 	// After running, next_run is the next cron tick — strictly after now, within a minute.
 	j, _ := st.GetScheduledJob(ctx, "a")
-	if got := j.NextRun.Sub(clk.now()); got <= 0 || got > time.Minute {
+	if got := j.NextRun.Sub(clk.Now()); got <= 0 || got > time.Minute {
 		t.Errorf("post-run next_run offset = %v, want (0, 1m] from the every-minute cron", got)
 	}
 	if j.LastResult != "ok" {
@@ -122,14 +112,14 @@ func TestReconcileSeedsAndExecuteRecords(t *testing.T) {
 
 func TestExecutePublishesJobLifecycleToGenerationMetrics(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	reg := NewRegistry().Add(Job{
 		Name: "health-check", Group: GroupSystem, Title: "Check health",
 		Description: "Checks dependencies.", DefaultCron: everyMinute,
 		Run: func(context.Context) error { return nil },
 	})
 	recorder := metrics.New(metrics.Options{})
-	scheduler := New(st, reg, nil, clk.now, testLog()).WithObserver(recorder)
+	scheduler := New(st, reg, nil, clk.Now, testLog()).WithObserver(recorder)
 	scheduler.execute(t.Context(), scheduler.jobs["health-check"], false)
 
 	wants := []string{
@@ -187,12 +177,12 @@ func TestExecutePublishesBoundedFailureKinds(t *testing.T) {
 // An erroring job records last_result=error and never wedges the others.
 func TestErroringJobRecordsErrorAndIsolated(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var okRan atomic.Int64
 	reg := NewRegistry().
 		Add(Job{Name: "bad", Group: GroupSystem, Title: "Bad", Description: "test job bad.", DefaultCron: everyMinute, Run: func(context.Context) error { return errors.New("boom") }}).
 		Add(Job{Name: "good", Group: GroupSystem, Title: "Good", Description: "test job good.", DefaultCron: everyMinute, Run: func(context.Context) error { okRan.Add(1); return nil }})
-	s := New(st, reg, nil, clk.now, testLog())
+	s := New(st, reg, nil, clk.Now, testLog())
 	ctx := context.Background()
 
 	s.execute(ctx, s.jobs["bad"], false)
@@ -215,7 +205,7 @@ func TestErroringJobRecordsErrorAndIsolated(t *testing.T) {
 // "scheduler: record job result … context deadline exceeded", once every two minutes.
 func TestTimedOutJobStillRecordsItsResult(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	// The job cancels the context it was handed, then reports it — what an exec'd ffmpeg or
 	// whisper does when the deadline lands mid-run.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -224,7 +214,7 @@ func TestTimedOutJobStillRecordsItsResult(t *testing.T) {
 		Name: "slow", Group: GroupSystem, Title: "Slow", Description: "test job slow.", DefaultCron: everyMinute,
 		Run: func(c context.Context) error { cancel(); return c.Err() },
 	})
-	s := New(st, reg, nil, clk.now, testLog())
+	s := New(st, reg, nil, clk.Now, testLog())
 
 	s.execute(ctx, s.jobs["slow"], false)
 
@@ -240,9 +230,9 @@ func TestTimedOutJobStillRecordsItsResult(t *testing.T) {
 // A panicking job is contained (recorded as error), not a scheduler crash.
 func TestPanicIsContained(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	reg := NewRegistry().Add(Job{Name: "panics", Group: GroupSystem, Title: "Panics", Description: "test job panics.", DefaultCron: everyMinute, Run: func(context.Context) error { panic("kaboom") }})
-	s := New(st, reg, nil, clk.now, testLog())
+	s := New(st, reg, nil, clk.Now, testLog())
 	ctx := context.Background()
 
 	s.execute(ctx, s.jobs["panics"], false)
@@ -255,7 +245,7 @@ func TestPanicIsContained(t *testing.T) {
 // and to the default when the configured value is an invalid cron (guard).
 func TestEffectiveCronUsesResolverThenDefault(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	resolver := func(key, def string) string {
 		switch key {
 		case "job.a.schedule":
@@ -270,7 +260,7 @@ func TestEffectiveCronUsesResolverThenDefault(t *testing.T) {
 		Add(Job{Name: "a", Group: GroupSystem, Title: "A", Description: "test job a.", DefaultCron: everyMinute, ScheduleKey: "job.a.schedule", Run: func(context.Context) error { return nil }}).
 		Add(Job{Name: "b", Group: GroupSystem, Title: "B", Description: "test job b.", DefaultCron: "0 0 3 * * *", ScheduleKey: "job.b.schedule", Run: func(context.Context) error { return nil }}).
 		Add(Job{Name: "c", Group: GroupSystem, Title: "C", Description: "test job c.", DefaultCron: everyMinute, ScheduleKey: "job.c.schedule", Run: func(context.Context) error { return nil }})
-	s := New(st, reg, resolver, clk.now, testLog())
+	s := New(st, reg, resolver, clk.Now, testLog())
 
 	if got := s.effectiveCron(s.jobs["a"]); got != "0 */15 * * * *" {
 		t.Errorf("a cron = %q, want configured override", got)
@@ -287,16 +277,16 @@ func TestEffectiveCronUsesResolverThenDefault(t *testing.T) {
 // is ordinary queueing, a paused job is not waiting at all.
 func TestStarvedNamesJobsPastTwiceTheirInterval(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1_000_000, 0)}
+	clk := testkit.NewClock(time.Unix(1_000_000, 0))
 	run := func(context.Context) error { return nil }
 	reg := NewRegistry().
 		Add(Job{Name: "sweep", Group: GroupSystem, Description: "test sweep.", Title: "Sweep", DefaultCron: everyMinute, Run: run}).
 		Add(Job{Name: "late", Group: GroupSystem, Description: "test late.", Title: "Late", DefaultCron: everyMinute, Run: run}).
 		Add(Job{Name: "paused", Group: GroupSystem, Description: "test paused.", Title: "Paused", DefaultCron: everyMinute, Run: run}).
 		Add(Job{Name: "fresh", Group: GroupSystem, Description: "test fresh.", Title: "Fresh", DefaultCron: everyMinute, Run: run})
-	s := New(st, reg, nil, clk.now, testLog())
+	s := New(st, reg, nil, clk.Now, testLog())
 	ctx := context.Background()
-	due := clk.now().Truncate(time.Minute)
+	due := clk.Now().Truncate(time.Minute)
 	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "sweep", LastResult: "ok", NextRun: due.Add(-10 * time.Minute)})
 	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "late", LastResult: "ok", NextRun: due.Add(-time.Minute)})
 	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "paused", LastResult: "ok", NextRun: due.Add(-10 * time.Minute)})
@@ -329,14 +319,14 @@ func TestStarvedNamesJobsPastTwiceTheirInterval(t *testing.T) {
 func TestFreshRegistryReportsNothingOverdue(t *testing.T) {
 	st := newFakeStore()
 	boot := time.Date(2026, 11, 10, 0, 45, 46, 0, time.UTC)
-	clk := &fakeClock{t: boot}
+	clk := testkit.NewClock(boot)
 	run := func(context.Context) error { return nil }
 	reg := NewRegistry().
 		Add(Job{Name: "housekeeping", Group: GroupSystem, Description: "test daily.", Title: "Daily", DefaultCron: "0 30 4 * * *", Run: run}).
 		Add(Job{Name: "recurate", Group: GroupChannels, Description: "test weekly.", Title: "Weekly", DefaultCron: "0 0 4 * * 0", Run: run}).
 		Add(Job{Name: "hourly", Group: GroupArtwork, Description: "test hourly.", Title: "Hourly", DefaultCron: "0 20 * * * *", Run: run}).
 		Add(Job{Name: "sweep", Group: GroupSystem, Description: "test sweep.", Title: "Sweep", DefaultCron: everyMinute, Run: run})
-	s := New(st, reg, nil, clk.now, testLog())
+	s := New(st, reg, nil, clk.Now, testLog())
 	ctx := context.Background()
 	s.SeedRegistry(ctx)
 
@@ -371,18 +361,14 @@ func TestFreshRegistryReportsNothingOverdue(t *testing.T) {
 
 	// The minute sweep runs on its 00:59 tick; at 01:00:05 it has been due for five seconds and not
 	// yet claimed, while the daily, weekly and hourly jobs still have their first tick ahead.
-	setClock := func(t time.Time) {
-		clk.mu.Lock()
-		clk.t = t
-		clk.mu.Unlock()
-	}
+	setClock := clk.Set
 	setClock(time.Date(2026, 11, 10, 0, 59, 0, 0, time.UTC))
 	s.execute(ctx, s.jobs["sweep"], false)
 	setClock(time.Date(2026, 11, 10, 1, 0, 5, 0, time.UTC))
 	assertNoneOverdue("fourteen minutes after boot")
 	list, _ := s.List(ctx)
 	for _, status := range list {
-		if status.Name != "sweep" && !status.NextRun.After(clk.now()) {
+		if status.Name != "sweep" && !status.NextRun.After(clk.Now()) {
 			t.Errorf("%s next run %v is not in the future", status.Name, status.NextRun)
 		}
 	}
@@ -393,11 +379,11 @@ func TestFreshRegistryReportsNothingOverdue(t *testing.T) {
 func TestListPresentsANeverRunRowAsItsFirstTick(t *testing.T) {
 	st := newFakeStore()
 	boot := time.Date(2026, 11, 10, 0, 45, 46, 0, time.UTC)
-	clk := &fakeClock{t: boot.Add(3 * time.Hour)}
+	clk := testkit.NewClock(boot.Add(3 * time.Hour))
 	reg := NewRegistry().Add(Job{
 		Name: "backup", Group: GroupBackup, Description: "test daily.", Title: "Backup", DefaultCron: "0 30 3 * * *", Run: func(context.Context) error { return nil },
 	})
-	s := New(st, reg, nil, clk.now, testLog())
+	s := New(st, reg, nil, clk.Now, testLog())
 	ctx := context.Background()
 	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "backup", NextRun: boot, UpdatedAt: boot})
 
@@ -413,13 +399,13 @@ func TestListPresentsANeverRunRowAsItsFirstTick(t *testing.T) {
 // List joins the registry with state, in registration order.
 func TestListJoinsRegistryAndState(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	reg := NewRegistry().
 		Add(Job{Name: "first", Group: GroupAcquisitions, Description: "test job first.", Title: "First", DefaultCron: everyMinute, Run: func(context.Context) error { return nil }}).
 		Add(Job{Name: "second", Group: GroupSystem, Description: "test job second.", Title: "Second", DefaultCron: everyMinute, Run: func(context.Context) error { return nil }})
-	s := New(st, reg, nil, clk.now, testLog())
+	s := New(st, reg, nil, clk.Now, testLog())
 	ctx := context.Background()
-	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "first", LastResult: "ok", NextRun: clk.now().Add(time.Hour)})
+	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "first", LastResult: "ok", NextRun: clk.Now().Add(time.Hour)})
 
 	got, err := s.List(ctx)
 	if err != nil {

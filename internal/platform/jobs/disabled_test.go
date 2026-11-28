@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store/jobstore"
+	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/riverqueue/river"
 )
 
@@ -31,12 +32,12 @@ func disabledJob(ran *atomic.Int64) Job {
 // failed, and for backup that ambiguity means believing you are covered when you are not.
 func TestDisabledJob_IsListedWithItsReason(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var ran atomic.Int64
 	reg := NewRegistry().
 		Add(Job{Name: "reconcile", Group: GroupSystem, Description: "test job reconcile.", Title: "Reconcile", DefaultCron: everyMinute, Run: func(context.Context) error { return nil }}).
 		Add(disabledJob(&ran))
-	s := New(st, reg, nil, clk.now, testLog())
+	s := New(st, reg, nil, clk.Now, testLog())
 
 	got, err := s.List(context.Background())
 	if err != nil {
@@ -57,17 +58,17 @@ func TestDisabledJob_IsListedWithItsReason(t *testing.T) {
 // A disabled job has no next run. Rendering one would promise a run that never happens.
 func TestDisabledJob_ReportsNoNextRun(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var ran atomic.Int64
 	reg := NewRegistry().Add(disabledJob(&ran))
-	s := New(st, reg, nil, clk.now, testLog())
+	s := New(st, reg, nil, clk.Now, testLog())
 	ctx := context.Background()
 
 	// ⚠ A LEFTOVER row from a boot where the job WAS enabled — exactly what a
 	// SQLite → Postgres migration (§18, V11) leaves behind: same install, same row, a
 	// backend that can no longer run it.
 	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{
-		Name: "backup", LastResult: "ok", NextRun: clk.now().Add(time.Hour),
+		Name: "backup", LastResult: "ok", NextRun: clk.Now().Add(time.Hour),
 	})
 
 	got, err := s.List(ctx)
@@ -82,10 +83,10 @@ func TestDisabledJob_ReportsNoNextRun(t *testing.T) {
 // A disabled job is never seeded a state row, so it can never become due.
 func TestDisabledJob_IsNotSeeded(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var ran atomic.Int64
 	reg := NewRegistry().Add(disabledJob(&ran))
-	s := New(st, reg, nil, clk.now, testLog())
+	s := New(st, reg, nil, clk.Now, testLog())
 	ctx := context.Background()
 
 	s.reconcileRegistry(ctx)
@@ -100,14 +101,14 @@ func TestDisabledJob_IsNotSeeded(t *testing.T) {
 // there from before the migration.
 func TestDisabledJob_WorkerNeverRunsItEvenWithADueRow(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var ran atomic.Int64
 	reg := NewRegistry().Add(disabledJob(&ran))
-	s := New(st, reg, nil, clk.now, testLog())
+	s := New(st, reg, nil, clk.Now, testLog())
 	ctx := context.Background()
 
 	// Due NOW, as a pre-migration boot would have left it.
-	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "backup", NextRun: clk.now()})
+	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "backup", NextRun: clk.Now()})
 
 	if err := (&riverWorker{s: s}).Work(ctx, &river.Job[jobArgs]{Args: jobArgs{Name: "backup"}}); err != nil {
 		t.Fatal(err)
@@ -124,10 +125,10 @@ func TestDisabledJob_WorkerNeverRunsItEvenWithADueRow(t *testing.T) {
 // anything a client can be shown, a client can skip.
 func TestDisabledJob_TriggerIsRefused(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var ran atomic.Int64
 	reg := NewRegistry().Add(disabledJob(&ran))
-	s := New(st, reg, nil, clk.now, testLog())
+	s := New(st, reg, nil, clk.Now, testLog())
 	ctx := context.Background()
 
 	if err := s.Trigger(ctx, "backup"); !errors.Is(err, ErrJobDisabled) {
@@ -147,9 +148,9 @@ func TestDisabledJob_TriggerIsRefused(t *testing.T) {
 // see.
 func TestDisabledJob_UnknownStillReportsUnknown(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var ran atomic.Int64
-	s := New(st, NewRegistry().Add(disabledJob(&ran)), nil, clk.now, testLog())
+	s := New(st, NewRegistry().Add(disabledJob(&ran)), nil, clk.Now, testLog())
 
 	if err := s.Trigger(context.Background(), "nope"); !errors.Is(err, ErrUnknownJob) {
 		t.Errorf("Trigger of an unregistered job = %v, want ErrUnknownJob", err)
@@ -160,7 +161,7 @@ func TestDisabledJob_UnknownStillReportsUnknown(t *testing.T) {
 // its neighbours.
 func TestDisabledJob_DoesNotAffectEnabledJobs(t *testing.T) {
 	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
+	clk := testkit.NewClock(time.Unix(1000, 0))
 	var disabledRan, enabledRan atomic.Int64
 	reg := NewRegistry().
 		Add(disabledJob(&disabledRan)).
@@ -168,7 +169,7 @@ func TestDisabledJob_DoesNotAffectEnabledJobs(t *testing.T) {
 			Name: "reconcile", Group: GroupSystem, Title: "Reconcile", Description: "test job reconcile.", DefaultCron: everyMinute,
 			Run: func(context.Context) error { enabledRan.Add(1); return nil },
 		})
-	s := New(st, reg, nil, clk.now, testLog())
+	s := New(st, reg, nil, clk.Now, testLog())
 	ctx := context.Background()
 
 	s.reconcileRegistry(ctx)
