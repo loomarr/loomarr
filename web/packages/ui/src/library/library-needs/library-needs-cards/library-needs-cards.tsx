@@ -1,5 +1,5 @@
 import { Action, Surface, Text, useWindowWidth } from "@loomarr/design-system";
-import { type ReactNode, useRef } from "react";
+import { Fragment, type ReactNode, useRef } from "react";
 
 import { Line } from "../../library-poster";
 import type { LibraryNeedsCardsProps } from "../library-needs.type";
@@ -54,7 +54,11 @@ const LibraryNeedsCards = ({
   onNoneLeft,
 }: LibraryNeedsCardsProps) => {
   const level = hideHeading ? "h2" : "h3";
-  const firstActions = useRef(new Map<string, { focus?: () => void }>());
+  const targets = useRef(new Map<string, { focus?: () => void }>());
+  const holdTarget = (id: string) => (node: unknown) => {
+    if (node) targets.current.set(id, node as { focus?: () => void });
+    else targets.current.delete(id);
+  };
   const { list: open, phases, failed, answer, done } = useAnswers(needs, restored);
   const wide = useWindowWidth() >= 640;
   const shows = useOrderAnswers(orders, onChooseOrder);
@@ -73,11 +77,20 @@ const LibraryNeedsCards = ({
   // An answered card loses its buttons, so focus moves on first: to the next card still asking,
   // else the one before it.
   const moveFocusPast = (ids: string[]) => {
-    const order = folders.flatMap((folder) => open.filter((need) => (need.folder ?? "") === folder));
-    const from = order.findIndex((need) => need.id === ids[0]);
-    const stays = (need: { id: string }) => !ids.includes(need.id) && !phases[need.id];
+    // Every card in the order it is drawn.
+    const order = [
+      ...folders.flatMap((folder) =>
+        open
+          .filter((need) => (need.folder ?? "") === folder)
+          .map((need) => ({ id: need.id, asking: !phases[need.id] })),
+      ),
+      ...shows.list.map((need) => ({ id: need.id, asking: !shows.phases[need.id] })),
+      ...alone.map((entry) => ({ id: entry.id, asking: true })),
+    ];
+    const from = order.findIndex((card) => card.id === ids[0]);
+    const stays = (card: { id: string; asking: boolean }) => card.asking && !ids.includes(card.id);
     const next = order.slice(from + 1).find(stays) ?? order.slice(0, from).reverse().find(stays);
-    const target = next && firstActions.current.get(next.id);
+    const target = next && targets.current.get(next.id);
     if (target) target.focus?.();
     else onNoneLeft?.();
   };
@@ -108,10 +121,7 @@ const LibraryNeedsCards = ({
             key={`${need.id}:${restored?.[need.id] ?? 0}`}
             need={need}
             onDone={() => done(need.id)}
-            onFirstAction={(node) => {
-              if (node) firstActions.current.set(need.id, node as { focus?: () => void });
-              else firstActions.current.delete(need.id);
-            }}
+            onSafeTarget={holdTarget(need.id)}
             onIgnore={() => {
               moveFocusPast([need.id]);
               answer(need.id, "ignored", onIgnore(need.id));
@@ -126,22 +136,29 @@ const LibraryNeedsCards = ({
             }
             onOpenTitle={onOpenTitle}
             problem={problemOf.get(need.id)}
-            onPick={(c) => answer(need.id, "added", onLink(need.id, c.externalId))}
+            onPick={(c) => {
+              moveFocusPast([need.id]);
+              answer(need.id, "added", onLink(need.id, c.externalId));
+            }}
             onSearch={onSearch}
             onYes={() => {
-              if (need.best) answer(need.id, "added", onLink(need.id, need.best.externalId));
+              if (!need.best) return;
+              moveFocusPast([need.id]);
+              answer(need.id, "added", onLink(need.id, need.best.externalId));
             }}
             failed={failed[need.id]}
             phase={phases[need.id]}
             primary={group === 0 && i === 0}
           />
         ));
-        if (!folder) return list;
+        // Keyed like a folder's group, so these cards stay mounted when a group above them leaves.
+        if (!folder) return <Fragment key={folder}>{list}</Fragment>;
         return (
           <Group
             action={
               onIgnoreFolder && asking.length > 1 ? (
                 <Action
+                  accessibilityLabel={`Ignore these ${asking.length} in ${folder}`}
                   density={wide ? "pointer" : "touch"}
                   onPress={() => ignoreFolder(folder, asking)}
                   variant="ghost"
@@ -167,9 +184,13 @@ const LibraryNeedsCards = ({
               failed={shows.failed[need.id]}
               key={need.id}
               need={need}
-              onChoose={(option) => shows.choose(need, option)}
+              onChoose={(option) => {
+                moveFocusPast([need.id]);
+                shows.choose(need, option);
+              }}
               onDone={() => shows.done(need.id)}
               onOpenTitle={onOpenTitle}
+              onSafeTarget={holdTarget(need.id)}
               primary={open.length === 0 && i === 0}
               problem={problemOf.get(need.id)}
             />
@@ -179,7 +200,12 @@ const LibraryNeedsCards = ({
       {alone.length > 0 ? (
         <Group heading="Needs a look" label="Needs a look" level={level}>
           {alone.map((entry) => (
-            <ProblemCard entry={entry} key={entry.id} onOpenTitle={onOpenTitle} />
+            <ProblemCard
+              entry={entry}
+              key={entry.id}
+              onOpenTitle={onOpenTitle}
+              onSafeTarget={holdTarget(entry.id)}
+            />
           ))}
         </Group>
       ) : null}

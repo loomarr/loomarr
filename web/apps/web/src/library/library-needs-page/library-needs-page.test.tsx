@@ -99,12 +99,21 @@ describe("LibraryNeedsPage", () => {
 
   it("ignores a folder's shown titles in one go and undoes it", async () => {
     renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "Ignore these 2" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Ignore these 2 in Tapes" }));
     await pressUndo();
     expect(sent.batch).toEqual([{ ids: ["one", "two"] }]);
     expect(vi.mocked(toast).mock.calls[0]?.[0]).toBe("Ignored 2 files in Tapes");
     await waitFor(() => expect(sent.restore).toEqual([{ ids: ["one", "two"] }]));
-    expect(await screen.findByRole("button", { name: "Ignore these 2" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Ignore these 2 in Tapes" })).toBeInTheDocument();
+  });
+
+  it("gives the page heading focus, only while it holds it, when no card is left", async () => {
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Ignore these 2 in Tapes" }));
+    const heading = screen.getByRole("heading", { level: 1, name: "Needs you" });
+    expect(document.activeElement).toBe(heading);
+    act(() => heading.blur());
+    expect(heading).not.toHaveAttribute("tabindex");
   });
 
   it("undoes a single ignore and shows the card again", async () => {
@@ -112,8 +121,8 @@ describe("LibraryNeedsPage", () => {
     const [first] = await screen.findAllByRole("button", { name: /^Ignore this: / });
     if (!first) throw new Error("no card");
     await userEvent.click(first);
-    // Focus moves to the next card's first action rather than dropping to the page.
-    expect(document.activeElement).toHaveAccessibleName(/: (?!one\.mkv).+/);
+    // Focus moves to the next card's Ignore rather than dropping to the page.
+    expect(document.activeElement).toHaveAccessibleName("Ignore this: two.mkv");
     expect(document.activeElement).toHaveAttribute("role", "button");
     await pressUndo();
     expect(vi.mocked(toast).mock.calls[0]?.[0]).toBe("Ignored one.mkv");
@@ -244,6 +253,35 @@ describe("LibraryNeedsPage", () => {
       }),
     );
     await waitFor(() => expect(button).not.toBeInTheDocument());
+  });
+
+  it("holds focus on the pressed row until the list reloads, then moves to the next", async () => {
+    const restored: unknown[] = [];
+    let release = () => {};
+    const held = new Promise<void>((done) => {
+      release = done;
+    });
+    server.use(
+      http.get("*/v1/library/ignored", () => {
+        const items = (restored.length ? ["older"] : ["newest", "older"]).map(ignored);
+        return HttpResponse.json({ items, total: items.length });
+      }),
+      http.post("*/v1/library/ignored/restore", async ({ request }) => {
+        const body = await request.json();
+        await held;
+        restored.push(body);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const button = await openIgnored();
+    button.focus();
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
+    // A second Enter has nothing else to bring back.
+    await userEvent.keyboard("{Enter}");
+    act(() => release());
+    await waitFor(() => expect(document.activeElement).toHaveAccessibleName("Bring back older.mkv"));
+    expect(restored).toEqual([{ ids: ["newest"] }]);
   });
 
   it("words a failed Bring back as that, not as an undo", async () => {

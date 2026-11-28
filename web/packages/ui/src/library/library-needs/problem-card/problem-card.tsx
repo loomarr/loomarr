@@ -5,7 +5,16 @@ import type { ProblemEntry } from "../problem-entries";
 import { ProblemReasons } from "../problem-reasons";
 
 // A title that needs a look: everything wrong with it, and See why, which opens its page.
-const ProblemCard = ({ entry, onOpenTitle }: { entry: ProblemEntry; onOpenTitle: (id: string) => void }) => {
+const ProblemCard = ({
+  entry,
+  onOpenTitle,
+  onSafeTarget,
+}: {
+  entry: ProblemEntry;
+  onOpenTitle: (id: string) => void;
+  /** Hands over where focus goes when another card is answered. */
+  onSafeTarget?: (node: unknown) => void;
+}) => {
   const wide = useWindowWidth() >= 640;
   return (
     <Surface gap="control" padding="section">
@@ -19,6 +28,7 @@ const ProblemCard = ({ entry, onOpenTitle }: { entry: ProblemEntry; onOpenTitle:
             <Action
               density={wide ? "pointer" : "touch"}
               onPress={() => onOpenTitle(entry.id)}
+              ref={onSafeTarget}
               variant="outline"
             >
               See why

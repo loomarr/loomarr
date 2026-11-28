@@ -35,11 +35,11 @@ const NeedCard = ({
   onSearch,
   problem,
   onOpenTitle,
-  onFirstAction,
+  onSafeTarget,
 }: {
   need: LibraryNeed;
-  /** Hands over the card's first button, where focus goes when the card above it leaves. */
-  onFirstAction?: (node: unknown) => void;
+  /** Hands over where focus goes when another card is answered. */
+  onSafeTarget?: (node: unknown) => void;
   /** What else is wrong with this title, listed on the same card. */
   problem?: ProblemEntry;
   onOpenTitle: (id: string) => void;
@@ -115,7 +115,6 @@ const NeedCard = ({
                       accessibilityLabel={`Yes, that's it: ${file}`}
                       density={density}
                       onPress={onYes}
-                      ref={onFirstAction}
                       tone={primary ? "primary" : undefined}
                       variant={primary ? undefined : "outline"}
                     >
@@ -136,10 +135,7 @@ const NeedCard = ({
                     accessibilityLabel={`Find it: ${file}`}
                     density={density}
                     onPress={() => setOther(!other)}
-                    ref={(node) => {
-                      opener.current = node;
-                      onFirstAction?.(node);
-                    }}
+                    ref={opener}
                     variant="outline"
                   >
                     Find it
@@ -159,6 +155,8 @@ const NeedCard = ({
                   accessibilityLabel={`Ignore this: ${file}`}
                   density={density}
                   onPress={onIgnore}
+                  // Focus lands here, not on Yes: a stray second Enter then only ignores, which Undo reverses.
+                  ref={onSafeTarget}
                   variant="ghost"
                 >
                   Ignore this
