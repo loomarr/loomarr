@@ -32,7 +32,7 @@ const fill = { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 } as c
 
 type TuneStaticProps = {
   cover: TuneCover;
-  /** Draws the static without its flicker, for a picture that must hold still (a story's baseline). */
+  /** For story baselines only: draws the static without its flicker. Product callers leave it unset. */
   holdSnow?: boolean;
   reducedMotion?: boolean;
 };

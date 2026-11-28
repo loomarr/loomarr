@@ -61,6 +61,10 @@ describe("changing channel", () => {
     const state = warm(idleTune, 0);
     expect(tuneView(state, 149)).toMatchObject({ cover: "burst", nextAt: 150 });
     expect(tuneView(state, 150)).toMatchObject({ cover: "fading", nextAt: 220 });
+
+    const bare = warm(state, 300);
+    expect(tuneView(bare, 339)).toMatchObject({ bars: "run", cover: "none", nextAt: 340 });
+    expect(tuneView(bare, 340)).toMatchObject({ bars: "none", cover: "none", nextAt: null });
   });
 
   it("lets a run of the bars finish, however many flips land during it", () => {
