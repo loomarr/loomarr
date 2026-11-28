@@ -13,7 +13,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 const (
@@ -36,7 +35,7 @@ const (
 // It returns the fetcher so interactive callers can share it — the icon picker adopts a poster on
 // an operator's request and warms it synchronously (iconAdapter). Sharing the instance rather than
 // building a second one keeps the SSRF allowlist and the concurrency cap identical whoever asks.
-func registerImageJobs(ctx context.Context, reg *jobs.Registry, svc *images.Service, clips store.Store, layout cliplibrary.Layout, set resolved, rec *activity.Recorder, log *slog.Logger) *images.Fetcher {
+func registerImageJobs(ctx context.Context, reg *jobs.Registry, svc *images.Service, clips artworkStore, layout cliplibrary.Layout, set resolved, rec *activity.Recorder, log *slog.Logger) *images.Fetcher {
 	st := storeadapter.New(clips)
 	fetcher := images.NewFetcher(svc, st,
 		func() bool { return settings.ImagesRemoteFetchEnabled.Get(set) },

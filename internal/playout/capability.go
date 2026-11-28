@@ -530,10 +530,10 @@ func trialFailure(stderr string) string {
 			return strings.TrimSpace(line)
 		}
 	}
-	return strings.TrimSpace(firstLine(stderr))
+	return strings.TrimSpace(FirstLine(stderr))
 }
 
-func firstLine(s string) string {
+func FirstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		return s[:i]
 	}

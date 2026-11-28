@@ -9,7 +9,6 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
-	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +16,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/playout/media"
-	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
 // burnBox is the test cue: a solid white 400x80 box at (760,900) on a 1920x1080 canvas, shown from
@@ -145,15 +143,26 @@ func TestLive_PackagerBurnsSubtitles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	encode := func(name string, seek time.Duration, subs *ItemSubtitles) string {
+	// The item is encoded as the packager encodes it: the cue list from the item's seek, then
+	// BuildItemBurning and FragmentArgs.
+	encode := func(name string, seek time.Duration, subs *BurnIn) string {
 		t.Helper()
-		it := PackagerItem{Label: name, Input: p.src, Seek: seek, Remaining: time.Second, Format: p.facts}
-		burn, remove := itemBurn(it, subs, slog.Default())
-		defer remove()
-		pl, args, err := packagerItemArgs(p.host, p.out, it, nil, burn, packager.Slot{Frames: 25, AudioFrames: 47}, itemFault{})
+		host := p.host
+		var burn *SubtitleBurn
+		if subs != nil {
+			list, remove, err := subs.WriteList(seek)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer remove()
+			burn = &SubtitleBurn{List: list, Width: subs.Width, Height: subs.Height}
+			host.Overlay = true
+		}
+		pl, err := BuildItemBurning(host, p.facts, p.out, nil, burn)
 		if err != nil {
 			t.Fatal(err)
 		}
+		args := pl.FragmentArgs(p.src, seek, 0, 25, 47, p.out.FPS, 0)
 		if subs != nil && !pl.Subtitles {
 			t.Fatalf("%s: no subtitles: %v", name, pl.Fallbacks)
 		}
@@ -164,7 +173,7 @@ func TestLive_PackagerBurnsSubtitles(t *testing.T) {
 		}
 		return out
 	}
-	subs := &ItemSubtitles{Track: track}
+	subs := track
 	for _, c := range []struct {
 		name  string
 		seek  time.Duration

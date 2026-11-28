@@ -255,7 +255,7 @@ func (r resolved) tunarrConfig() func() tunarr.Config {
 // generated secrets (idempotent), and the redactor wired into slog. It returns the
 // resolved-config facade, the secrets, and the redactor so the caller can feed the
 // redactor the app-managed secret values too and refresh it after a secret change.
-func bootSettings(ctx context.Context, st store.Store, protection *secretprotection.Manager, baseLog *slog.Logger, dataDir string) (resolved, *settings.Secrets, *settings.Redactor, *slog.Logger, error) {
+func bootSettings(ctx context.Context, st foundationStore, protection *secretprotection.Manager, baseLog *slog.Logger, dataDir string) (resolved, *settings.Secrets, *settings.Redactor, *slog.Logger, error) {
 	reg := settings.NewRegistry()
 	loader := settings.StoreLoader{List: func(ctx context.Context) ([]settings.SettingRow, error) {
 		rows, err := protectedsettings.OpenAll(ctx, st, reg, protection)
@@ -307,7 +307,7 @@ func collectSecrets(reg *settings.Registry, svc *settings.Service, secrets *sett
 
 // secretStoreAdapter adapts store.Store to settings.SecretStore.
 type secretStoreAdapter struct {
-	st         store.Store
+	st         foundationStore
 	protection *secretprotection.Manager
 }
 

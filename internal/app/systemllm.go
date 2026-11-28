@@ -17,7 +17,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/llm/selection"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
 )
 
@@ -40,7 +39,7 @@ func ollamaBase(set resolved) string { return selection.OllamaBase(set) }
 // selection hot-swaps it with no restart) plus the SystemLLMService that powers
 // /v1/system/llm* (§8.1). The active selection is the persisted settings (if any)
 // overlaid on the LLM_* env defaults, so a UI choice survives reboots.
-func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus, log *slog.Logger, metricRecorder *metrics.Recorder, owner *generationLifecycle) (llm.Provider, system.SystemLLMService) {
+func buildLLM(ctx context.Context, set resolved, st foundationStore, bus *events.Bus, log *slog.Logger, metricRecorder *metrics.Recorder, owner *generationLifecycle) (llm.Provider, system.SystemLLMService) {
 	sel := resolveSelection(set)
 	sw := llm.NewSwappable(func(selection llm.Selection) llm.Provider {
 		return buildProviderFor(selection, metricRecorder)
@@ -94,7 +93,7 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 
 // llmSettingsSaver persists the picker's llm.* edits through the settings service and announces a
 // committed write on the live-update stream, so other tabs refetch settings-derived reads.
-func llmSettingsSaver(set resolved, st store.Store, bus *events.Bus) func(context.Context, map[string]string) error {
+func llmSettingsSaver(set resolved, st foundationStore, bus *events.Bus) func(context.Context, map[string]string) error {
 	return func(ctx context.Context, edits map[string]string) error {
 		results, err := set.svc.Patch(ctx, protectedsettings.NewPersister(st, set.protection), edits, "system")
 		saved := false
@@ -125,7 +124,7 @@ func llmSettingsSaver(set resolved, st store.Store, bus *events.Bus) func(contex
 // llmSecrets reads and writes the picker's per-provider keys through the secret-protection
 // manager, so they are protected at rest like every other stored secret.
 type llmSecrets struct {
-	store      store.Store
+	store      foundationStore
 	protection *secretprotection.Manager
 }
 

@@ -12,11 +12,9 @@ import (
 )
 
 var aggregateStoreExceptions = map[string]string{
-	modulePath + "/cmd/demo-library": "is an explicit whole-database development command (make demo-seed)",
-	modulePath + "/cmd/loomarr":      "owns the process-lifetime store and its shutdown",
-	modulePath + "/cmd/seed":         "is an explicit whole-database development command",
-	modulePath + "/internal/api":     "retains complete HTTP dependency assembly outside this refactor",
-	modulePath + "/internal/app":     "is the composition root that narrows the store for domain modules",
+	modulePath + "/cmd/loomarr":  "owns the process-lifetime store and its shutdown",
+	modulePath + "/internal/api": "retains complete HTTP dependency assembly outside this refactor",
+	modulePath + "/internal/app": "is the composition root that narrows the store for domain modules",
 	modulePath + "/internal/filler/records": "is the aggregate's filler half: it extends the core store.Store " +
 		"with filler persistence (#1747)",
 	modulePath + "/internal/filler/storeadapter": "is where the aggregate store is narrowed to the persistence roles " +

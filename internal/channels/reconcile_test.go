@@ -26,6 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/originfixture"
 )
 
 // --- test harness ---
@@ -412,7 +413,7 @@ func TestReconcile_InternalDesiredChangeRefreshesGuide(t *testing.T) {
 	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
 	e := newEngineForBackend(st, nil, avail, guide,
 		func() string { return schedule.PlayoutBackendInternal })
-	playout := &testkit.Playout{}
+	playout := &originfixture.Playout{}
 	e.WithScheduleInvalidator(playout)
 	seedChannel(t, st, "internal-change", 7,
 		entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))

@@ -70,6 +70,11 @@ classify() {
   if [[ "$path" == cmd/releaseverify/*.go || "$path" == internal/platform/releaseverify/* ]]; then
     known=true
     select_gate policy
+    # The repository contracts job runs the root `internal` guard tests, which read these sources
+    # too (#4628).
+    if [[ "$path" == *.go ]]; then
+      select_gate contracts
+    fi
   elif [[ "$path" == research/* ]]; then
     # The archived filler research tooling (#1560 D1): its own module, pinned to the core commit
     # it was written against. Nothing ships, links or tests it (`make research-verify` compiles

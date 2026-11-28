@@ -290,12 +290,12 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		}),
 		"ci-go-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make vet vet-tags lint": exactWorkflowStep(4, "Static analysis", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "matrix.shard == 1"}),
-			"make fmt tags-verify compose-verify go-race-verify eval-contract":     exactWorkflowStep(5, "Repository contracts", workflowStepAuthority{targets: []string{"fmt", "tags-verify", "compose-verify", "go-race-verify", "eval-contract"}, condition: "matrix.shard == 2", environment: map[string]string{"MAKEFLAGS": "-j4 --output-sync=target"}}),
-			"make go-shard-verify SHARDS=2":                                        exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}, condition: "matrix.shard == 1"}),
-			"make openapi-verify":                                                  exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}, condition: "matrix.shard == 1"}),
-			"make observability-verify":                                            exactWorkflowStep(8, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, condition: "matrix.shard == 2", allowsAcquisition: true}),
-			`./scripts/check-migration-order.sh pull_request "$GITHUB_EVENT_PATH"`: exactWorkflowStep(9, "Every added migration is numbered above main's newest", workflowStepAuthority{condition: "matrix.shard == 2 && github.event_name == 'pull_request'"}),
-			"make platform-vet":                                                    exactWorkflowStep(10, "The macOS build compiles", workflowStepAuthority{targets: []string{"platform-vet"}, condition: "matrix.shard == 2"})}),
+			"make fmt tags-verify compose-verify go-race-verify eval-contract guard-test": exactWorkflowStep(5, "Repository contracts", workflowStepAuthority{targets: []string{"fmt", "tags-verify", "compose-verify", "go-race-verify", "eval-contract", "guard-test"}, condition: "matrix.shard == 2", environment: map[string]string{"MAKEFLAGS": "-j4 --output-sync=target"}}),
+			"make go-shard-verify SHARDS=2":                                               exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}, condition: "matrix.shard == 1"}),
+			"make openapi-verify":                                                         exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}, condition: "matrix.shard == 1"}),
+			"make observability-verify":                                                   exactWorkflowStep(8, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, condition: "matrix.shard == 2", allowsAcquisition: true}),
+			`./scripts/check-migration-order.sh pull_request "$GITHUB_EVENT_PATH"`:        exactWorkflowStep(9, "Every added migration is numbered above main's newest", workflowStepAuthority{condition: "matrix.shard == 2 && github.event_name == 'pull_request'"}),
+			"make platform-vet":                                                           exactWorkflowStep(10, "The macOS build compiles", workflowStepAuthority{targets: []string{"platform-vet"}, condition: "matrix.shard == 2"})}),
 		"ci-go-cache-warm.yml": {
 			environment: standardWorkflowEnvironment(),
 			permissions: standardWorkflowPermissions(),

@@ -92,7 +92,7 @@ func outputRate(at1080p, floor, width, height int) int {
 	return max(int(math.Round(float64(at1080p)*share/100))*100, floor)
 }
 
-func (o OutputProfile) gop() int {
+func (o OutputProfile) GOP() int {
 	s := o.GOPSeconds
 	if s <= 0 {
 		s = outputGOPSeconds
@@ -195,7 +195,7 @@ func BuildItem(host encode.HostProfile, src media.MediaFormat, out OutputProfile
 func BuildItemBurning(host encode.HostProfile, src media.MediaFormat, out OutputProfile, wm *Watermark, burn *SubtitleBurn) (Pipeline, error) {
 	b := builder{host: host, src: src, out: out, tonemap: src.HDR() && !out.HDR, convert: out.HDR && !src.PQ(), wm: wm, burn: burn}
 	b.p.Family = host.Family
-	if out.premium() {
+	if out.Premium() {
 		switch {
 		case host.Family == encode.FamilySoftware || host.Family == encode.FamilyGeneric:
 			return Pipeline{}, fmt.Errorf("%w: a premium format needs a GPU family (%s)", ErrRefused, host.Family)
@@ -414,7 +414,7 @@ func (b *builder) cpuChain() string {
 	if !exact {
 		b.fallback("tonemap", "the CPU tone-mapper has no "+string(b.curve())+"; "+string(c)+" instead")
 	}
-	return hdrToSDR(c)
+	return HDRToSDR(c)
 }
 
 // cpuTonemap is the declared tone-map fallback for a GPU family: download the already-downscaled
@@ -799,7 +799,7 @@ func videoEncoder(host encode.HostProfile, out OutputProfile) []string {
 	return encode.VideoArgs(host, encode.Video{
 		HEVC: out.HEVC, HDR: out.HDR,
 		Quality: out.Quality, TargetKbps: out.TargetKbps, MaxKbps: out.MaxKbps,
-		GOPFrames: out.gop(),
+		GOPFrames: out.GOP(),
 	})
 }
 

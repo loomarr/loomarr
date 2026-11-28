@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 )
 
@@ -14,6 +15,6 @@ type proposalStore interface {
 	store.ProposalRepository
 	store.ChannelStore
 	store.TitleStore
-	store.LibraryItemStore
+	librarystore.LibraryItemStore
 	store.UserStore
 }

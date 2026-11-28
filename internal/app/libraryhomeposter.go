@@ -9,7 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 )
 
 // A home video has no catalog artwork, so its poster is a frame of its main file, about a tenth of
@@ -43,7 +43,7 @@ type homePosterFailure struct {
 type homePosters struct {
 	store  homePosterStore
 	images *images.Service
-	still  playout.SourceStillExtractor
+	still  hls.SourceStillExtractor
 	// busy reports whether a viewer is fetching a channel; nil is never.
 	busy func() bool
 	log  *slog.Logger
@@ -102,7 +102,7 @@ func (p *homePosters) pass(ctx context.Context) error {
 
 // extract stores the frame as the title's poster.
 func (p *homePosters) extract(ctx context.Context, w librarystore.LibraryHomeVideoFrame) error {
-	frame, err := p.still(ctx, playout.StillSource{Input: w.Path, HDR: w.HDR},
+	frame, err := p.still(ctx, hls.StillSource{Input: w.Path, HDR: w.HDR},
 		time.Duration(w.DurationMs)*time.Millisecond/10)
 	if err != nil {
 		return err

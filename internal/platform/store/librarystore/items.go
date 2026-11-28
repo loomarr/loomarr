@@ -237,10 +237,11 @@ type LibraryItemSummary struct {
 	// not read yet. An item with Pending > 0 is still getting ready.
 	Files   int
 	Pending int
-	// Unplayable counts its present files whose header could not be read: they can't be played.
+	// Unplayable counts its present files (a series' episodes) whose header could not be read and
+	// that no other copy plays in place of: they can't be played.
 	Unplayable int
-	// ExtraCopies counts a movie's extra copies, its files that are not a copy that plays (each
-	// edition's, or each part of a movie in parts), and ExtraBytes is what they take.
+	// ExtraCopies counts a movie's extra copies, its files that never play because another listed,
+	// readable file plays in their place (LibraryCopyExtra), and ExtraBytes is their files' size.
 	ExtraCopies int
 	ExtraBytes  int64
 	// HomeVideo is a title the maintainer kept as their own; Unidentified, one waiting in Needs you.
@@ -334,6 +335,9 @@ type LibraryItemStore interface {
 	LibraryItemChannels(ctx context.Context, id string) ([]LibraryItemChannel, error)
 	// LibraryItemFiles lists an item's present files (a series' episodes), in path order.
 	LibraryItemFiles(ctx context.Context, id string) ([]LibraryFile, error)
+	// LibraryItemCopies lists an item's own present files, in path order, with which plays,
+	// which is an extra copy and which can't be played (copies.go); none for a series.
+	LibraryItemCopies(ctx context.Context, id string) ([]LibraryCopy, error)
 	// LibraryItemsFiles is LibraryItemFiles for many items at once, by item id: one read for a
 	// list, not one per title. An item with no present file has no entry.
 	LibraryItemsFiles(ctx context.Context, ids []string) (map[string][]LibraryFile, error)
@@ -424,16 +428,20 @@ var (
 	// itemColumns is a title, its poster, backdrop and logo refs, and its file counts.
 	itemColumns = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page, i.set_key,
 		` + itemImage("poster") + `, ` + itemImage("backdrop") + `, ` + itemImage("logo") + `,
-		` + countFiles("") + `, ` + countFiles(` AND f.header = 'pending'`) + `, ` + countFiles(` AND f.header = 'failed'`) + `,
-		(SELECT COUNT(*) FROM ` + extraCopies + `), COALESCE((SELECT SUM(s.size_bytes) FROM ` + extraCopies + `), 0),
+		` + countFiles("") + `, ` + countFiles(` AND f.header = 'pending'`) + `, ` + countFiles(unplayableFile) + `,
+		(SELECT COUNT(*) FROM ` + extraCopies + `), COALESCE((SELECT SUM(f.size_bytes) FROM ` + extraCopies + `), 0),
 		(` + titleKept("i") + `), (` + needWhere + ` AND NOT ` + titleKept("i") + `)`
 	// itemProblems keeps a title that needs a look: a file that cannot play, or a movie's extra copy.
-	itemProblems = `(` + countFiles(` AND f.header = 'failed'`) + ` > 0
+	itemProblems = `(` + countFiles(unplayableFile) + ` > 0
 		OR (i.kind = 'movie' AND EXISTS (SELECT 1 FROM ` + extraCopies + `)))`
 )
 
-// extraCopies is title i's files that no edition plays (decision 37), from its rows.
-const extraCopies = `library_sources s WHERE s.item_id = i.id AND NOT s.plays`
+// unplayableFile is the condition on a file f, added to countFiles', that it can't be played: its
+// header could not be read and no copy plays in its place (copies.go).
+const unplayableFile = ` AND f.header = 'failed' AND NOT ` + replacedFile
+
+// extraCopies is title i's own present files that are extra copies (decisions 37, 54; copies.go).
+const extraCopies = `library_files f WHERE f.inventory_item_id = i.id AND ` + presentFile + ` AND ` + replacedFile
 
 // memberReads keeps a title a household member reads (#4476, library.md "Who reads the
 // Library"): a movie or series that a catalogue identifies or that the maintainer answered, never

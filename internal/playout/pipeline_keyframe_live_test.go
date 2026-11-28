@@ -80,7 +80,7 @@ func TestLive_FragmentStartsOnAnIDRAndHoldsTheGOP(t *testing.T) {
 			if first := probed.Frames[0]; first.KeyFrame != 1 || first.PictType != "I" {
 				t.Fatalf("slot frame 0 = %+v, want an IDR", first)
 			}
-			gop := out.gop()
+			gop := out.GOP()
 			for n, frame := range probed.Frames {
 				if key := frame.KeyFrame == 1; key != (n%gop == 0) {
 					t.Errorf("frame %d key=%v (%s), want keyframes exactly every %d frames", n, key, frame.PictType, gop)
