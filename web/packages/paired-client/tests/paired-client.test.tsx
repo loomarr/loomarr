@@ -527,7 +527,7 @@ describe("paired client", () => {
 
       expect(client().catalogState.error).toBe("catalog down");
       expect(fakes.lifetimes).toContain("myChannels:use");
-      expect(client().serverVersion).toBe("1.2.3");
+      await act(() => vi.waitFor(() => expect(client().serverVersion).toBe("1.2.3")));
       await act(async () => root.unmount());
     });
 
@@ -541,7 +541,7 @@ describe("paired client", () => {
 
       expect(fakes.catalogLists).toHaveLength(1);
       expect(fakes.lifetimes).toContain("myChannels:use");
-      expect(client().serverVersion).toBe("1.2.3");
+      await act(() => vi.waitFor(() => expect(client().serverVersion).toBe("1.2.3")));
       await act(async () => root.unmount());
     });
 
