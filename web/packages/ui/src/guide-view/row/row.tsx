@@ -4,8 +4,7 @@ import { Platform, Pressable, type View, type ViewStyle } from "react-native";
 
 import { groupSeriesRuns, type StripAiring } from "../../film-strip/series-runs";
 import { PlaybarStill } from "../../watching-surface/player-chrome/playbar-still";
-import type { GuideViewBlock } from "../channels";
-import type { GuideViewEntry } from "../guide-view.type";
+import type { GuideViewBlock, GuideViewEntry } from "../guide-view.type";
 
 /** The least a focused or pointed block measures across, for its ring and pointer. */
 const MIN_TARGET = 44;
@@ -81,6 +80,7 @@ const Block = ({
       {time ? (
         <Text numberOfLines={1} textRole="mono" tone="secondary">
           {time}
+          {/* The spaces are content: without them the words read as one to axe (WCAG 2.5.3). */}{" "}
         </Text>
       ) : null}
       <Text
@@ -91,6 +91,7 @@ const Block = ({
         tone={ended ? "secondary" : "primary"}
       >
         {block.title}
+        {count ? " " : null}
       </Text>
       {count ? (
         <Text numberOfLines={1} textRole="mono" tone="secondary">

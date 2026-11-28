@@ -25,7 +25,7 @@ import { Ruler } from "./ruler";
 const SIZES = {
   desktop: { gutter: 24, label: 220, row: 44 },
   phone: { gutter: 16, label: 0, row: 44 },
-  television: { gutter: 28, label: 200, row: 34 },
+  television: { gutter: 28, label: 200, row: 32 },
 } as const;
 
 /** The channel list's words for a group with nothing of its own. */
@@ -218,7 +218,8 @@ const Ready = <C extends GuideViewEntry>({
     return (
       <OwnKeys>
         <RingedPressable
-          accessibilityLabel={`Watch channel ${channel.number}, ${channel.name}`}
+          // The name leads with the words on screen (WCAG 2.5.3).
+          accessibilityLabel={`${channel.number} ${channel.name}, watch channel`}
           onPress={() => press({ channelId: channel.id, type: "pressChannel" })}
           size={size.row}
           tabIndex={-1}
@@ -230,7 +231,8 @@ const Ready = <C extends GuideViewEntry>({
               tone={tuned ? decadeTint(channel.decade) : "secondary"}
               width={36}
             >
-              {String(channel.number)}
+              {/* The space is content: without it the two read as one word to axe (WCAG 2.5.3). */}
+              {`${channel.number} `}
             </Text>
             <Text flexShrink={1} minWidth={0} numberOfLines={1} textRole="cardLabel">
               {channel.name}
@@ -257,7 +259,15 @@ const Ready = <C extends GuideViewEntry>({
         },
       } as object)}
     >
-      <Stack aria-label="Guide" flex={1} gap="2" minHeight={0} padding={size.gutter} role="region">
+      <Stack
+        aria-label="Guide"
+        flex={1}
+        gap={layout === "television" ? "1" : "2"}
+        minHeight={0}
+        paddingHorizontal={size.gutter}
+        paddingVertical={layout === "television" ? 8 : size.gutter}
+        role="region"
+      >
         <Head
           formatTime={formatTime}
           layout={layout}
@@ -265,12 +275,15 @@ const Ready = <C extends GuideViewEntry>({
           lowerThird={lowerThird}
           nowMs={nowMs}
           picture={picture}
+          tabs={layout === "television" ? tabs : undefined}
           watched={watched}
         />
-        <Stack align={phone ? "stretch" : "center"} direction={phone ? "column" : "row"} justify="between">
-          {tabs}
-          {pager}
-        </Stack>
+        {layout === "television" ? null : (
+          <Stack align={phone ? "stretch" : "center"} direction={phone ? "column" : "row"} justify="between">
+            {tabs}
+            {pager}
+          </Stack>
+        )}
         <Stack direction="row">
           {size.label ? <Surface backgroundColor="transparent" borderWidth={0} width={size.label} /> : null}
           <Stack flex={1}>
@@ -303,7 +316,7 @@ const Ready = <C extends GuideViewEntry>({
               return (
                 <Stack gap="1" key={channel.id}>
                   {decade === undefined ? null : (
-                    <Stack role="heading">
+                    <Stack role="heading" {...({ "aria-level": 2 } as object)}>
                       <Text textRole="label" tone={decadeTint(decade)}>{`${decade}s`}</Text>
                     </Stack>
                   )}

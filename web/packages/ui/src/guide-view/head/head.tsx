@@ -10,7 +10,7 @@ import type { GuideViewEntry, GuideViewLayout } from "../guide-view.type";
 const PICTURE = {
   desktop: { height: 180, width: 320 },
   phone: { height: 190, width: "100%" },
-  television: { height: 90, width: 160 },
+  television: { height: 72, width: 128 },
 } as const;
 
 /** The airing a block shows now, or else its first. */
@@ -31,7 +31,9 @@ const Looking = ({
   nowMs: number;
 }) => {
   const { channel, programme } = look;
-  const heading = `Looking at ${channel?.name ?? ""}`;
+  const heading = look.playing
+    ? `${channel?.number ?? ""} ${channel?.name ?? ""}`
+    : `Looking at ${channel?.name ?? ""}`;
   const airing = airingOf(look, nowMs);
   if (!programme || !airing) {
     return (
@@ -82,6 +84,7 @@ const Head = ({
   lowerThird,
   nowMs,
   picture,
+  tabs,
   watched,
 }: {
   formatTime: (ms: number) => string;
@@ -90,17 +93,23 @@ const Head = ({
   lowerThird: ReactNode;
   nowMs: number;
   picture: ReactNode;
+  /** A television sets the group tabs under its one line, to leave the rows their height. */
+  tabs?: ReactNode;
   watched: GuideViewEntry | undefined;
 }) => {
   const phone = layout === "phone";
-  const words = !look ? null : look.playing ? (
+  // A television says what is playing in its one line too: the lower third is too tall for it.
+  const words = !look ? null : look.playing && layout !== "television" ? (
     lowerThird
   ) : (
     <Looking formatTime={formatTime} layout={layout} look={look} nowMs={nowMs} />
   );
   const described = (
-    <Stack aria-label="Looking" flex={phone ? 0 : 1} minWidth={0} role="group">
-      {words}
+    <Stack flex={phone ? 0 : 1} gap="2" minWidth={0}>
+      <Stack aria-label="Looking" role="group">
+        {words}
+      </Stack>
+      {tabs}
     </Stack>
   );
   return (

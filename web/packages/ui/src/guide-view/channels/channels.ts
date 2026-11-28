@@ -1,11 +1,8 @@
 import { formatProgrammeTitle } from "@loomarr/core/guide";
 import type { GuideViewChannel } from "@loomarr/core/guide-view";
 
-import { groupSeriesRuns, type StripAiring, type StripProgramme } from "../../film-strip/series-runs";
+import { groupSeriesRuns, type StripAiring } from "../../film-strip/series-runs";
 import type { GuideViewEntry } from "../guide-view.type";
-
-/** One block of a row, carrying what the row draws. */
-type GuideViewBlock = StripProgramme & { title: string };
 
 const titleOf = (airing: StripAiring) => airing.series?.trim() || formatProgrammeTitle(airing);
 
@@ -25,5 +22,4 @@ const guideViewChannels = <
     ),
   }));
 
-export type { GuideViewBlock };
 export { guideViewChannels };

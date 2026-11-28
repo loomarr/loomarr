@@ -930,8 +930,9 @@ playing, docked in a corner. This part is built beside the shipped Guide and is 
   too: one channel's day per row, its number and name on the line above, and a later programme's
   facts under the rows.
 - **Header.** With the cursor on what is playing, it is the lower third's content for the watched
-  channel. Otherwise it says "Looking at <channel>" with the programme's title, time and facts. The
-  docked picture keeps its own caption, "Playing 7 Coast 90s": looking is not playing.
+  channel. Otherwise it says "Looking at <channel>" with the programme's title, time and facts. A
+  television says either in its one line, with the group tabs under it: the lower third is too tall
+  for eight channels. The docked picture keeps its own caption, "Playing 7 Coast 90s": looking is not playing.
 - **Rows.** One per channel in the group's order, number and name leading, on one shared clock. The
   watched channel's row is the film strip in row layout at full height; the others are compact. What
   is on now carries its artwork with the aired part dimmed, a later programme its start time, an

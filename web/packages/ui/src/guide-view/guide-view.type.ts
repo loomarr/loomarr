@@ -6,8 +6,10 @@ import type {
 } from "@loomarr/core/guide-view";
 import type { ReactNode } from "react";
 
-import type { StripAiring } from "../film-strip/series-runs";
-import type { GuideViewBlock } from "./channels";
+import type { StripAiring, StripProgramme } from "../film-strip/series-runs";
+
+/** One block of a row, carrying what the row draws. */
+type GuideViewBlock = StripProgramme & { title: string };
 
 /** A desktop window, a television, or a phone held upright. */
 type GuideViewLayout = "desktop" | "phone" | "television";
@@ -47,4 +49,11 @@ interface GuideViewReady<C extends GuideViewEntry> extends GuideViewShell {
 
 type GuideViewProps<C extends GuideViewEntry> = GuideViewLoading | GuideViewReady<C>;
 
-export type { GuideViewEntry, GuideViewLayout, GuideViewLoading, GuideViewProps, GuideViewReady };
+export type {
+  GuideViewBlock,
+  GuideViewEntry,
+  GuideViewLayout,
+  GuideViewLoading,
+  GuideViewProps,
+  GuideViewReady,
+};

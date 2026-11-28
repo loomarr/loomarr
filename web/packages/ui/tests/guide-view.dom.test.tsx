@@ -142,7 +142,7 @@ describe("GuideView", () => {
     expect(onTune).not.toHaveBeenCalled();
     expect(screen.getByRole("status").textContent).toBe("");
     expect(screen.getByText("Looking at Game Night · T1 to T4")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Watch channel 9, Game Night" }));
+    await user.click(screen.getByRole("button", { name: "9 Game Night, watch channel" }));
     expect(onTune).toHaveBeenCalledWith("game");
   });
 
