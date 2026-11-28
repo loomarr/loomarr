@@ -1,0 +1,26 @@
+{
+  "note": "Route files over 60 lines, maintained by web/scripts/check-route-size.mjs. Counts may only fall: `pnpm route-size:update` shrinks them. Never raise one to pass the check.",
+  "files": {
+    "src/routes/_authed.tsx": 147,
+    "src/routes/_authed/account.tsx": 283,
+    "src/routes/_authed/channels/$id/info.tsx": 157,
+    "src/routes/_authed/channels/$id/route.tsx": 471,
+    "src/routes/_authed/library/index.tsx": 88,
+    "src/routes/_authed/requests/_tabs.tsx": 125,
+    "src/routes/_authed/settings/access.tsx": 146,
+    "src/routes/_authed/settings/advanced.tsx": 90,
+    "src/routes/_authed/settings/ai.tsx": 80,
+    "src/routes/_authed/settings/connections.tsx": 103,
+    "src/routes/_authed/settings/index.tsx": 244,
+    "src/routes/_authed/settings/route.tsx": 86,
+    "src/routes/_authed/settings/system/backup.tsx": 110,
+    "src/routes/_authed/settings/system/database.tsx": 141,
+    "src/routes/_authed/settings/system/diagnostics.tsx": 102,
+    "src/routes/_authed/settings/system/index.tsx": 94,
+    "src/routes/_authed/settings/system/playback.tsx": 83,
+    "src/routes/_authed/watch.$id.tsx": 117,
+    "src/routes/join.tsx": 61,
+    "src/routes/login.tsx": 158,
+    "src/routes/wizard.tsx": 393
+  }
+}
