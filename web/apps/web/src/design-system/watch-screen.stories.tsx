@@ -63,6 +63,8 @@ interface Args {
   tune?: TuneView;
   /** The channel's logo, burned into a corner of the picture, with the back control drawn. */
   logo?: WatermarkCorner;
+  /** The back control is drawn, with no logo. */
+  back?: boolean;
 }
 
 // The logo as playout burns it: 12% of the picture's height, inset 5%, half as wide again as tall.
@@ -107,6 +109,7 @@ const Cover = () => (
 );
 
 const Screen = ({
+  back: withBack = false,
   bright = false,
   cover = false,
   logo,
@@ -166,9 +169,8 @@ const Screen = ({
   return (
     <div data-testid="frame" style={{ height: 720, overflow: "hidden", position: "relative", width: 1280 }}>
       <WatchScreen
-        {...(logo
-          ? { back: { label: "Guide", onPress: () => undefined }, watermark: { ...LOGO, corner: logo } }
-          : {})}
+        {...(logo || withBack ? { back: { label: "Guide", onPress: () => undefined } } : {})}
+        {...(logo ? { watermark: { ...LOGO, corner: logo } } : {})}
         cover={cover ? <Cover /> : undefined}
         detail={(channel) => ({ minutesLeft: 8 + channel.number })}
         holdSnow
@@ -359,12 +361,24 @@ const BrightFrameListOpen: Story = {
 
 /** The channel's logo in each corner over the bright frame: only the chrome in its corner steps clear. */
 const LogoTopLeft: Story = { args: { bright: true, logo: "top-left" } };
+
+/** The back control over the bright frame, awake, on its own corner ink so its words read. */
+const BackOverBrightFrame: Story = {
+  args: { back: true, bright: true },
+  tags: ["checked-play"],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: "Guide" })).toBeVisible();
+    await waitFor(() => expect(canvas.getByTestId("watch-scrim-corner")).toBeInTheDocument());
+  },
+};
 const LogoTopRight: Story = { args: { bright: true, logo: "top-right" } };
 const LogoBottomLeft: Story = { args: { bright: true, logo: "bottom-left" } };
 const LogoBottomRight: Story = { args: { bright: true, logo: "bottom-right" } };
 
 export {
   AtRest,
+  BackOverBrightFrame,
   BehindLive,
   BehindLiveSettled,
   BrightFrame,

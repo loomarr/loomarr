@@ -11,8 +11,8 @@ import {
   useWindowSize,
   VisuallyHidden,
 } from "@loomarr/design-system";
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { Animated, Platform } from "react-native";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Animated, type LayoutChangeEvent, Platform } from "react-native";
 
 import { ChannelList, type ChannelListHandle } from "../channel-list";
 import { FirstRunHint } from "../first-run-hint";
@@ -20,7 +20,7 @@ import { LowerThird, type LowerThirdState } from "../lower-third";
 import { summaryOf } from "../lower-third/summary";
 import { QuietRow, type QuietRowHandle, type QuietRowKey } from "../quiet-row";
 import { TuneBars, TuneStatic } from "../tune-static";
-import { WatchScrim } from "../watch-scrim";
+import { type ScrimBox, WatchScrim } from "../watch-scrim";
 import { clearOfWatermark } from "../watching-surface/player-chrome/watermark-clearance";
 import type { WatchScreenProps } from "./watch-screen.type";
 
@@ -109,6 +109,8 @@ const WatchScreen = <C extends LineupChannel>({
   // clear of it, measured on the 16:9 picture inside the screen (§9.6).
   // The design system's window size: a react-native call here would fail Storybook's docgen.
   const frame = useWindowSize();
+  // Where the back control stands, measured, for the corner ink behind it.
+  const [backBox, setBackBox] = useState<ScrimBox | undefined>(undefined);
   const clear = (base: number, edge: "bottom" | "top", side: "left" | "right", extent: number) =>
     clearOfWatermark({ base, edge, extent, frame, side, watermark });
   const backTop = clear(BACK_TOP, "top", "left", CONTROL_HEIGHT);
@@ -284,11 +286,28 @@ const WatchScreen = <C extends LineupChannel>({
         <WatchScrim edge="foot" />
       </Layer>
       {view.listOpen ? <WatchScrim edge="side" /> : null}
+      {/* The back control's own ink in the top leading corner, sized from where it stands (below a
+          logo there too), resting with it. */}
+      {back && !view.listOpen && backBox ? (
+        <Layer bottom={0} left={0} opacity={shown} pointerEvents="none" right={0} top={0}>
+          <WatchScrim box={backBox} edge="corner" />
+        </Layer>
+      ) : null}
 
       <ThemeScope theme="dark">
         {/* The arrow is always named beside it. While the list is open its column stands here. */}
         {back && !view.listOpen ? (
-          <Layer left={EDGE} opacity={shown} testID="watch-back" top={backTop} {...holdOn("back")}>
+          <Layer
+            left={EDGE}
+            onLayout={(event: LayoutChangeEvent) => {
+              const { height, width, x, y } = event.nativeEvent.layout;
+              setBackBox({ height, width, x, y });
+            }}
+            opacity={shown}
+            testID="watch-back"
+            top={backTop}
+            {...holdOn("back")}
+          >
             <Surface
               backgroundColor="transparent"
               borderWidth={0}
