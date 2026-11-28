@@ -186,6 +186,9 @@ export type { UseWatchScreenArgs, WatchScreenInput, WatchScreenModel } from "./s
 export { useWatchScreen } from "./src/use-watch-screen";
 export type { WallTileProps } from "./src/wall-tile";
 export { WallTile } from "./src/wall-tile";
+export type { WatchMenuSlot, WatchProgramme, WatchScreenLayout, WatchScreenProps } from "./src/watch-screen";
+export { WatchScreen } from "./src/watch-screen";
+export { WatchScrim } from "./src/watch-scrim";
 export type {
   WatchBack,
   WatchMenuSlot,

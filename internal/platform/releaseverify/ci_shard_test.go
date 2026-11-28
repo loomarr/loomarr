@@ -58,7 +58,7 @@ example.invalid/e`
 		t.Run(shard, func(t *testing.T) {
 			cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), shard)
 			cmd.Dir = root
-			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights, "GO_SHARD_CERTIFICATION="+isolated)
+			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights, "GO_SHARD_CERTIFICATION="+isolated, "GO_SHARD_SPLIT=/dev/null")
 			var stderr strings.Builder
 			cmd.Stderr = &stderr
 			output, err := cmd.Output()
@@ -73,7 +73,7 @@ example.invalid/e`
 
 	cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), "--worker-plan", "1")
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights, "GO_SHARD_CERTIFICATION="+isolated)
+	cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights, "GO_SHARD_CERTIFICATION="+isolated, "GO_SHARD_SPLIT=/dev/null")
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	output, err := cmd.Output()
@@ -142,7 +142,7 @@ example.invalid/cert`
 		t.Helper()
 		cmd := exec.Command("bash", append([]string{filepath.Join("scripts", "go-shard.sh")}, args...)...)
 		cmd.Dir = root
-		cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights, "GO_SHARD_CERTIFICATION="+isolated)
+		cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights, "GO_SHARD_CERTIFICATION="+isolated, "GO_SHARD_SPLIT=/dev/null")
 		var stderr strings.Builder
 		cmd.Stderr = &stderr
 		output, err := cmd.Output()
@@ -162,7 +162,7 @@ example.invalid/cert`
 	for _, spec := range []string{"1/3", "3/2"} {
 		cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), "--certification", spec)
 		cmd.Dir = root
-		cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights, "GO_SHARD_CERTIFICATION="+isolated)
+		cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights, "GO_SHARD_CERTIFICATION="+isolated, "GO_SHARD_SPLIT=/dev/null")
 		if output, err := cmd.CombinedOutput(); err == nil {
 			t.Fatalf("certification lane %s of a two-lane manifest was accepted:\n%s", spec, output)
 		}
@@ -319,6 +319,7 @@ example.invalid/cert-two`
 			"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
 			"GO_SHARD_WEIGHTS="+weights,
 			"GO_SHARD_CERTIFICATION="+certification,
+			"GO_SHARD_SPLIT=/dev/null",
 		), env...)
 		output, err := cmd.CombinedOutput()
 		return string(output), err
@@ -423,6 +424,7 @@ func TestGoShardFailsWhenAnyGoListCallFails(t *testing.T) {
 					"PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
 					"GO_SHARD_WEIGHTS="+filepath.Join(dir, "weights.tsv"),
 					"GO_SHARD_CERTIFICATION="+filepath.Join(dir, "certification.tsv"),
+					"GO_SHARD_SPLIT=/dev/null",
 					"GO_CALLS="+calls,
 					"GO_FAIL_AT="+strconv.Itoa(failAt),
 				)
@@ -518,6 +520,7 @@ func TestGoShardVerificationRejectsPackagesInNoLaneOrTwoLanes(t *testing.T) {
 			"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
 			"GO_SHARD_WEIGHTS="+weights,
 			"GO_SHARD_CERTIFICATION="+certification,
+			"GO_SHARD_SPLIT=/dev/null",
 			"GO_SHARD_TEST_STATE="+filepath.Join(t.TempDir(), "listed"),
 		)
 		output, err := cmd.CombinedOutput()
@@ -643,7 +646,11 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 			certificationLoads[lane-1] += cost(relative)
 		}
 	}
-	for weightedPackage := range weights {
+	for _, lane := range shardOutput(t, root, "--split-lanes") {
+		seenPackages[strings.TrimPrefix(shardOutput(t, root, "--split", lane)[1], "github.com/loomarr/loomarr/")] = true
+	}
+	for key := range weights {
+		weightedPackage, _, _ := strings.Cut(key, "@")
 		if !seenPackages[weightedPackage] {
 			t.Errorf("measured race weight names missing package %q", weightedPackage)
 		}

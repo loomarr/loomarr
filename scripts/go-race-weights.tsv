@@ -2,8 +2,8 @@
 # finished packages of the lane jobs in merge-group runs 46021648948 46028246705 46035007683, rounded up. Regenerate with
 # `make go-race-weights RUNS="..."` (scripts/go-race-weights-refresh.sh); never edit by hand.
 # Packages below five seconds use the one-second floor in go-shard.sh.
+# Rows for internal/library/scan: runs 46144393280.
 internal/platform/store	444
-internal/library/scan	339
 internal/demolibrary	332
 internal/api	248
 internal/playout/watermark	221
@@ -37,3 +37,6 @@ internal/media/header	8
 project/evidence/curation-1670/kit	8
 internal/filler/pod	7
 internal/media/measure	7
+internal/library/scan@race-1/2	430
+internal/library/scan@race-2/2	198
+internal/library/scan@plain	93
