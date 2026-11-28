@@ -1,4 +1,5 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { ChannelDTOStrategy } from "@loomarr/api/models/channelDTOStrategy";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import { unwrap } from "@loomarr/api/unwrap";
@@ -47,7 +48,7 @@ interface ChannelProgrammingProps {
   onPolicyChange: (next: ChannelPolicy) => void;
   // The channel's stored playback strategy. Not part of ChannelPolicy and read only here:
   // policy.ordering is the one editable play-order knob, whose unset option names this fallback.
-  strategy?: string;
+  strategy?: ChannelDTOStrategy;
   // Whether a member's request made the channel (`ChannelDTO.fromRequest`). Auto-curate re-runs
   // that request (programming-design.md §8.2), so a hand-made channel has nothing to re-evaluate —
   // the control says so instead of offering a setting the job would skip.
