@@ -96,13 +96,13 @@ func TestRetiringAnUndatedHolidayLeavesNoGroupNamingIt(t *testing.T) {
 	ctx := t.Context()
 	at := time.Unix(1_700_000_000, 0).UTC()
 	harvest := taxonomy.Taxon{Slug: "harvest-fair", Label: "Harvest fair", Axis: taxonomy.AxisSeasonal}
-	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Create: true, Taxon: harvest}, at); err != nil {
+	if err := s.ApplyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Create: true, Taxon: harvest}, at); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.db.ExecContext(ctx, `UPDATE holidays SET members = '["christmas","harvest-fair"]' WHERE id = ?`, holidayvocab.GenericHoliday); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: harvest.Slug}, at); err != nil {
+	if err := s.ApplyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Delete: true, Slug: harvest.Slug}, at); err != nil {
 		t.Fatal(err)
 	}
 	if got := holidayByID(t, s, holidayvocab.GenericHoliday).Members; !slices.Equal(got, []string{"christmas"}) {
@@ -122,13 +122,13 @@ func TestAGroupsLastMemberIsNotRetiredWithItsTaxon(t *testing.T) {
 	ctx := t.Context()
 	at := time.Unix(1_700_000_000, 0).UTC()
 	harvest := taxonomy.Taxon{Slug: "harvest-fair", Label: "Harvest fair", Axis: taxonomy.AxisSeasonal}
-	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Create: true, Taxon: harvest}, at); err != nil {
+	if err := s.ApplyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Create: true, Taxon: harvest}, at); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.db.ExecContext(ctx, `UPDATE holidays SET members = '["harvest-fair"]' WHERE id = ?`, holidayvocab.GenericHoliday); err != nil {
 		t.Fatal(err)
 	}
-	retire := TaxonomyEdit{Delete: true, Slug: harvest.Slug}
+	retire := clipstore.TaxonomyEdit{Delete: true, Slug: harvest.Slug}
 	if _, err := s.PreviewTaxonomyEdit(ctx, retire); !errors.Is(err, clipstore.ErrTaxonConflict) {
 		t.Fatalf("preview of retiring a group's last member = %v, want ErrTaxonConflict", err)
 	}

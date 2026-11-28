@@ -22,7 +22,7 @@ func testLibraryHomeVideoPoster(t *testing.T, newStore NewStoreFunc) {
 		return librarystore.LibrarySource{Path: path, DurationMs: ms, Part: part, Plays: true,
 			Streams: []librarystore.LibraryStream{{Kind: "video", Codec: "hevc", ColorTransfer: transfer}}}
 	}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		// The second part's name sorts first; the first part is still the main file.
 		{ID: "m1", Kind: "movie", Name: "Beach Day", Origin: origin("/media/m1"), Sources: []librarystore.LibrarySource{
 			source("/media/a-second.mkv", 2000, 2, ""), source("/media/b-first.mkv", 1000, 1, "smpte2084")}},

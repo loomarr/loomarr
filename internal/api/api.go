@@ -230,7 +230,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	//
 	// ⚠ `/hooks/` is GONE. No /hooks route has existed since the inbound arr webhook was
 	// deleted, so the guard was reserving a prefix against nothing.
-	// `/playout/` is likewise absent: those routes have been under /v1/playout since V47, so
+	// `/playout/` is likewise absent: those routes are under /v1/playout (V47), so
 	// /v1/ already covers them.
 	apiPrefixes := []string{"/v1/", "/openapi", "/schemas/", "/metrics", "/debug/", "/healthz", "/readyz", "/docs"}
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

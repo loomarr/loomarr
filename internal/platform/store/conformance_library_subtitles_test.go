@@ -14,7 +14,7 @@ func testLibrarySubtitleTracks(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_800_000_000_000)
-	item := LibraryItem{ID: "m1", Kind: "movie", Name: "Film", Sources: []librarystore.LibrarySource{{
+	item := librarystore.LibraryItem{ID: "m1", Kind: "movie", Name: "Film", Sources: []librarystore.LibrarySource{{
 		Path: "/media/film/a.mkv", Plays: true, Streams: []librarystore.LibraryStream{
 			{Index: 0, Kind: "video", Codec: "h264"},
 			{Index: 1, Kind: "audio", Codec: "ac3", Language: "en"},
@@ -24,7 +24,7 @@ func testLibrarySubtitleTracks(t *testing.T, newStore NewStoreFunc) {
 				ExternalRef: "/media/film/a.en.sdh.srt"},
 		},
 	}}}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{item}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{item}, at); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{{Path: "/media/film/a.mkv", Root: "/media", Size: 9,

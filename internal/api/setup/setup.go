@@ -99,7 +99,7 @@ func (s *Handlers) setupStatus(ctx context.Context, _ *struct{}) (*setupStatusOu
 // operator chasing a discrepancy that exists only in our code — and two copies of a
 // probe list drift the moment one gains a check.
 func (s *Handlers) runConnectionChecks(ctx context.Context) []httpcore.SetupCheck {
-	// ⚠ make(), not `var` — a nil slice marshals to JSON `null`, and since V53b the spec
+	// ⚠ make(), not `var` — a nil slice marshals to JSON `null`, and the spec (V53b)
 	// declares this array non-nullable. The empty case is not hypothetical here: this function
 	// deliberately contributes no check for services that aren't wired, so an UNCONFIGURED
 	// INSTALL — the wizard's entire reason to exist — is exactly when it would be nil.

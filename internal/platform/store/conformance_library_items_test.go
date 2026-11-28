@@ -20,7 +20,7 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "m1", Kind: "movie", Name: "The 100% Film", SortName: "100% film", Year: 1999},
 		{ID: "m2", Kind: "movie", Name: "Another Film", Year: 2004},
 		{ID: "s1", Kind: "series", Name: "A Show", SortName: "show", Year: 2001},
@@ -71,10 +71,10 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("page = %+v, want three present items", page)
 	}
 	want := []librarystore.LibraryItemSummary{
-		{LibraryItem: LibraryItem{ID: "m1", Kind: "movie", Name: "The 100% Film", SortName: "100% film", Year: 1999}, Poster: poster.Hash, Files: 1},
+		{LibraryItem: librarystore.LibraryItem{ID: "m1", Kind: "movie", Name: "The 100% Film", SortName: "100% film", Year: 1999}, Poster: poster.Hash, Files: 1},
 		// m2's fanart is its backdrop, never its poster.
-		{LibraryItem: LibraryItem{ID: "m2", Kind: "movie", Name: "Another Film", SortName: "another film", Year: 2004}, Backdrop: fanart.Hash, Files: 1, Pending: 1},
-		{LibraryItem: LibraryItem{ID: "s1", Kind: "series", Name: "A Show", SortName: "show", Year: 2001}, Files: 2, Pending: 1},
+		{LibraryItem: librarystore.LibraryItem{ID: "m2", Kind: "movie", Name: "Another Film", SortName: "another film", Year: 2004}, Backdrop: fanart.Hash, Files: 1, Pending: 1},
+		{LibraryItem: librarystore.LibraryItem{ID: "s1", Kind: "series", Name: "A Show", SortName: "show", Year: 2001}, Files: 2, Pending: 1},
 	}
 	for i, it := range page.Items {
 		if !reflect.DeepEqual(it, want[i]) {
@@ -167,7 +167,7 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "broken", Kind: "movie", Name: "Broken Film"},
 		{ID: "twice", Kind: "movie", Name: "Twice Film", Sources: []librarystore.LibrarySource{
 			{Path: "/media/twice/a.mkv", SizeBytes: 5, Plays: true}, {Path: "/media/twice/b.mkv", SizeBytes: 30}}},
@@ -308,13 +308,13 @@ func testLibraryItemCopiesInPlace(t *testing.T, newStore NewStoreFunc) {
 			[]copy{{}, {part: 1, plays: true}, {part: 2, plays: true}}, []bool{false, false, false},
 		},
 	}
-	var items []LibraryItem
+	var items []librarystore.LibraryItem
 	var files []librarystore.LibraryFile
 	n := 0
 	for name, tc := range cases {
 		n++
 		id := fmt.Sprintf("m%d", n)
-		it := LibraryItem{ID: id, Kind: "movie", Name: name}
+		it := librarystore.LibraryItem{ID: id, Kind: "movie", Name: name}
 		for i, c := range tc.copies {
 			path := fmt.Sprintf("/media/%s/%d.mkv", id, i)
 			if !c.unsourced {
@@ -358,7 +358,7 @@ func testLibraryItemCopiesWaiting(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "gone", Kind: "movie", Name: "Gone Film", Sources: []librarystore.LibrarySource{
 			{Path: "/media/gone/a.mkv", Plays: true}, {Path: "/media/gone/b.mkv"}}},
 		{ID: "bad", Kind: "movie", Name: "Bad Film", Sources: []librarystore.LibrarySource{
@@ -403,12 +403,12 @@ func testLibraryItemsReadyAndChannels(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	for i, it := range []LibraryItem{
+	for i, it := range []librarystore.LibraryItem{
 		{ID: "r1", Kind: "movie", Name: "Read First"},
 		{ID: "r2", Kind: "movie", Name: "Read Last"},
 		{ID: "p1", Kind: "movie", Name: "Pending"},
 	} {
-		if err := st.SaveLibraryItems(ctx, []LibraryItem{it}, at.Add(time.Duration(i)*time.Minute)); err != nil {
+		if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{it}, at.Add(time.Duration(i)*time.Minute)); err != nil {
 			t.Fatal(err)
 		}
 	}

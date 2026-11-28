@@ -14,13 +14,13 @@ import (
 func mustUpsertPreferenceUser(t *testing.T, s Store, id string) {
 	t.Helper()
 	now := time.Now().UTC()
-	if err := s.UpsertUser(context.Background(), User{ID: id, Name: id, Role: identitystore.RoleMember,
+	if err := s.UpsertUser(context.Background(), identitystore.User{ID: id, Name: id, Role: identitystore.RoleMember,
 		CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func favouriteIDs(lists UserChannelLists) []string {
+func favouriteIDs(lists channeldatastore.UserChannelLists) []string {
 	out := make([]string, 0, len(lists.Favourites))
 	for _, f := range lists.Favourites {
 		out = append(out, f.ChannelID)
@@ -28,7 +28,7 @@ func favouriteIDs(lists UserChannelLists) []string {
 	return out
 }
 
-func recentIDs(lists UserChannelLists) []string {
+func recentIDs(lists channeldatastore.UserChannelLists) []string {
 	out := make([]string, 0, len(lists.Recent))
 	for _, r := range lists.Recent {
 		out = append(out, r.ChannelID)

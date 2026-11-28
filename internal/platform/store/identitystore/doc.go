@@ -5,8 +5,7 @@
 //
 // It is a cluster of the store, extracted so the identity tables are owned by one package
 // that builds only on the persistence kernel (storedb). It imports storedb and
-// never the store: the store imports it, re-exports its types by alias, and embeds a
-// Store in its aggregate, so every existing caller of store.Store keeps working unchanged.
+// never the store: the store imports it and embeds a Store in its aggregate.
 // internal/architecture_test.go enforces the direction.
 //
 // # Seams
@@ -20,6 +19,5 @@
 // storedb.Querier and never begin or commit anything themselves.
 //
 // Errors: ErrNotFound is storedb.ErrNotFound (the same value, so errors.Is matches either name);
-// ErrContactAddressConflict and ErrInvitationIdentityConflict are defined here and re-exported by
-// the store as the same values.
+// ErrContactAddressConflict and ErrInvitationIdentityConflict are defined here.
 package identitystore

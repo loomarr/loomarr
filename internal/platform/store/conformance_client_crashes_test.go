@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 func clientCrashRecord(id string, receivedAt int64) diagnostics.ClientCrashRecord {
@@ -23,7 +24,7 @@ func testClientCrashReports(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	mustUpsertPreferenceUser(t, s, "u-kid")
-	if err := s.CreateDeviceToken(ctx, DeviceToken{TokenHash: "hash-1", UserID: "u-kid", DeviceName: "Phone",
+	if err := s.CreateDeviceToken(ctx, identitystore.DeviceToken{TokenHash: "hash-1", UserID: "u-kid", DeviceName: "Phone",
 		CreatedAt: time.Unix(1_000, 0)}); err != nil {
 		t.Fatal(err)
 	}

@@ -3,8 +3,7 @@
 // proposal_job_attempts and proposals tables).
 //
 // It is a cluster of the store, built on the storedb kernel and never importing the store: the
-// store embeds a Store in its aggregate and re-exports the row types and errors by alias, so every
-// caller of store.Store keeps working unchanged. The proposal-approval transaction, which commits
+// store embeds a Store in its aggregate. The proposal-approval transaction, which commits
 // proposals, titles and channels together, stays in the store; it reads and writes proposal rows
 // through ScanProposals, ProposalSelect and EncodeProposalBody. A job's channel comes from the
 // channelstore package. internal/architecture_test.go enforces the direction.

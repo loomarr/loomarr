@@ -1,7 +1,7 @@
 // Package resolve is the adapter that makes internal playout work (§9.1): where three
 // separately-verified pieces finally compose.
 //
-//	store.Channel.Desired  → the accepted cycle reconciliation committed for broadcast
+//	channelstore.Channel.Desired → the accepted cycle reconciliation committed for broadcast
 //	timeline.AiringAt      → which program that puts on right now, and at what offset
 //	LibraryPlayingFile     → the library item's file, which ffmpeg reads directly
 //

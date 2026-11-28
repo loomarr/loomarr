@@ -15,7 +15,7 @@ func testLibraryHeldTitles(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_800_000_000_000).UTC()
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "s1", Kind: "series", Name: "The Ferrow Lane", SortName: "ferrow lane"},
 		{ID: "e1", Kind: "episode", Name: "One"}, {ID: "e2", Kind: "episode", Name: "Two"},
 		{ID: "m1", Kind: "movie", Name: "Calder Point"},

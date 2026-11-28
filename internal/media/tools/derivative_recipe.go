@@ -117,7 +117,7 @@ func (r DerivativeRecipe) Digest() (string, error) {
 }
 
 // recipeFamilies are the encoders a recipe may name, with the family each runs on. libx264 records
-// from before #2121 (CRF 14 `slow` evidence) stay valid under it.
+// carrying the CRF 14 `slow` evidence recipe that #2121 replaced stay valid under it.
 var recipeFamilies = map[string]encode.Family{
 	string(encode.EncoderSoftware):     encode.FamilySoftware,
 	string(encode.EncoderNVENC):        encode.FamilyNVENC,

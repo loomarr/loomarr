@@ -31,7 +31,7 @@ type Handle interface {
 	storedb.Handle
 	// Clips writes clip columns and tags inside tx, which Begin started. Extension stores write
 	// the clips table only through it.
-	Clips(tx Tx) ClipTx
+	Clips(tx Tx) clipstore.ClipTx
 }
 
 // HandleOf lends st's database handle to an extension store, or returns nil for a non-SQL store.
@@ -61,7 +61,7 @@ type sqlHandle struct {
 	s *sqlStore
 }
 
-func (h sqlHandle) Clips(tx Tx) ClipTx { return clipstore.ClipsOn(h.s.catalogCluster, tx) }
+func (h sqlHandle) Clips(tx Tx) clipstore.ClipTx { return clipstore.ClipsOn(h.s.catalogCluster, tx) }
 
 // kernel is this store's pool, dialect and placeholder style as a storedb.Handle, for the store
 // packages that run on the kernel and for this package's own keyed locks.

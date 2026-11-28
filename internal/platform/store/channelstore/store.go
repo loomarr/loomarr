@@ -2,8 +2,7 @@
 // schedule, the optimistic revision, and the reconcile deadline the sweep claims by.
 //
 // It is a cluster of the store, built on the storedb kernel and never importing the store: the
-// store embeds a Store in its aggregate and re-exports Channel and its errors by alias, so every
-// caller of store.Store keeps working unchanged. The proposal-approval transaction writes channels
+// store embeds a Store in its aggregate. The proposal-approval transaction writes channels
 // inside its own transaction through SaveChannelIn,
 // ChannelForJobIn, ScanChannels and the Columns/Select statements; the dialect claim statements are
 // passed to New. internal/architecture_test.go enforces the direction.

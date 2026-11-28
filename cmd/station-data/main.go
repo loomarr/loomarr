@@ -33,7 +33,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/station"
 )
 
-// CDBS stopped updating on 2023-10-01 when the FCC moved to LMS, so these files are fixed and pin
+// CDBS's data ends on `2023-10-01`, when the FCC moved to LMS, so these files are fixed and pin
 // cleanly. Call-sign changes after that date are absent until a later revision adds an LMS input.
 const (
 	cdbsBase       = "https://transition.fcc.gov/Bureaus/MB/Databases/cdbs/"
@@ -316,7 +316,7 @@ func concurrentHolders(stations []station.Station) int {
 // from 1949), so the first span is always open at the start. Each later row ends the one before it.
 //
 // A later row dated at or before the one it follows is a correction: it supersedes every kept row
-// from its date on (WDNI-LP 2001-05-29, W65DW 2001-11-29, then WDNI-LP 2001-05-29 again means the
+// from its date on (`WDNI-LP 2001-05-29`, `W65DW 2001-11-29`, then `WDNI-LP 2001-05-29` again means the
 // W65DW change was undone).
 func spansFromHistory(rows []historyRow, current string) []station.CallSign {
 	sort.Slice(rows, func(i, j int) bool { return rows[i].seq < rows[j].seq })

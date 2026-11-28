@@ -20,12 +20,16 @@ const PREVIEW_DEBOUNCE_MS = 300;
 // ⚠ Rule ORDER is preserved, never sorted — list order IS priority (programming-design §6.6).
 // Sorting rules would make a drag-to-reorder invisible to the dirty check, which is precisely
 // the edit this draft exists to let you preview.
+//
+// `automaticUnrated` is left out: the server derives it, so it is no part of what the operator
+// authored, and counting it would re-adopt the saved policy over rules edited meanwhile.
 const canonicalize = (p: ChannelPolicy | undefined): string =>
-  JSON.stringify(p ?? {}, (_k, v) =>
-    v && typeof v === "object" && !Array.isArray(v)
+  JSON.stringify(p ?? {}, (k, v) => {
+    if (k === "automaticUnrated") return undefined;
+    return v && typeof v === "object" && !Array.isArray(v)
       ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)))
-      : v,
-  );
+      : v;
+  });
 
 // useChannelRulesDraft — the scheduling-rules draft (design.md §12, programming-design §8.1).
 //

@@ -20,7 +20,7 @@ func testLibraryEvidence(t *testing.T, newStore NewStoreFunc) {
 	person := func(name, role, id string) librarystore.LibraryCredit {
 		return librarystore.LibraryCredit{Name: name, Role: role, ID: librarystore.LibraryID{Namespace: "tmdb", Value: id}}
 	}
-	items := []LibraryItem{
+	items := []librarystore.LibraryItem{
 		{ID: "elf", Kind: "movie", Name: "Elf", Tags: []string{"christmas", "north pole", "Snow"},
 			Credits: []librarystore.LibraryCredit{person("Ada Example", "actor", "90005001"), person("Ada Example", "director", "90005001"),
 				person("Bo Other", "actor", "90005002")}},

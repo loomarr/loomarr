@@ -2,8 +2,7 @@
 // table, newest first, purged by age.
 //
 // It is a cluster of the store, built on the storedb kernel and never importing the store: the
-// store embeds a Store in its aggregate and re-exports the feed's types by alias, so every caller
-// of store.Store keeps working unchanged. internal/architecture_test.go enforces the direction.
+// store embeds a Store in its aggregate. internal/architecture_test.go enforces the direction.
 package activitystore
 
 import (

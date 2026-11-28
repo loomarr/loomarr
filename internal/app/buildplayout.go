@@ -225,7 +225,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		ClipPlays: st,
 		// Airing history (§5, programming-design §3.1): the same store, narrowed to the one
 		// write. Recording what actually aired is what lets placement prefer titles that
-		// have NOT been on recently — the memory the scheduler previously lacked.
+		// have NOT been on recently — memory the scheduler has no other source for.
 		Airings: st,
 		// The arranged-cycle cache's channel read (playout/resolve's cyclecache.go): the
 		// guide re-arranges every channel on every poll, which profiled as 53% of the

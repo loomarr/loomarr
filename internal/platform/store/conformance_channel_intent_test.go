@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 )
 
 // A channel owns the request it was made from. Housekeeping purges finished jobs older than
@@ -16,11 +18,11 @@ import (
 func testChannelOutlivesItsPurgedJob(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	if err := s.UpsertUser(ctx, User{ID: "u-member", Name: "Member One", Role: identitystore.RoleMember}); err != nil {
+	if err := s.UpsertUser(ctx, identitystore.User{ID: "u-member", Name: "Member One", Role: identitystore.RoleMember}); err != nil {
 		t.Fatal(err)
 	}
 	old := time.Now().Add(-31 * 24 * time.Hour)
-	if err := s.CreateJob(ctx, Job{
+	if err := s.CreateJob(ctx, proposalstore.Job{
 		ID: "job-origin", Kind: "suggest", Status: "done", CreatedBy: "u-member",
 		IntentJSON: `{"description":"90s action"}`, UpdatedAt: old,
 	}); err != nil {
@@ -57,7 +59,7 @@ func testChannelOutlivesItsPurgedJob(t *testing.T, newStore NewStoreFunc) {
 
 	// A refine job names the channel, so its proposal still resolves to it, and the channel's
 	// origin binding is untouched by a later save.
-	if err := s.CreateJob(ctx, Job{
+	if err := s.CreateJob(ctx, proposalstore.Job{
 		ID: "job-refine", Kind: "suggest", Status: "done", CreatedBy: "u-admin", ChannelID: "ch-owner",
 	}); err != nil {
 		t.Fatal(err)
@@ -94,12 +96,12 @@ func testApprovalOfJobNamingAChannel(t *testing.T, newStore NewStoreFunc) {
 	other.IntentRef, other.FromRequest = "job-other", true
 	other = mustSaveChannel(t, s, other)
 
-	if err := s.CreateJob(ctx, Job{
+	if err := s.CreateJob(ctx, proposalstore.Job{
 		ID: "job-refine", Kind: "suggest", Status: "done", CreatedBy: "u-admin", ChannelID: "ch-named",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	proposal := Proposal{
+	proposal := proposalstore.Proposal{
 		ID: "p-refine", JobID: "job-refine", Status: "submitted", CreatedBy: "u-admin",
 		CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
 	}
@@ -126,7 +128,7 @@ func testApprovalOfJobNamingAChannel(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// A job cannot name a channel that is not there, and goes with the channel it names.
-	if err := s.CreateJob(ctx, Job{
+	if err := s.CreateJob(ctx, proposalstore.Job{
 		ID: "job-orphan", Kind: "recurate", Status: "done", ChannelID: "ch-removed",
 	}); err == nil {
 		t.Error("created a job naming a channel that does not exist; the foreign key is missing")
@@ -148,7 +150,7 @@ func testApprovalOfJobNamingAChannel(t *testing.T, newStore NewStoreFunc) {
 func mustOriginJobs(t *testing.T, s Store, ids ...string) {
 	t.Helper()
 	for _, id := range ids {
-		if err := s.CreateJob(context.Background(), Job{ID: id, Kind: "suggest", Status: "done"}); err != nil {
+		if err := s.CreateJob(context.Background(), proposalstore.Job{ID: id, Kind: "suggest", Status: "done"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -180,14 +182,14 @@ func testChannelHasUnfinishedJob(t *testing.T, newStore NewStoreFunc) {
 	}
 	job := func(id, kind, status, channelID string) {
 		t.Helper()
-		if err := s.CreateJob(ctx, Job{ID: id, Kind: kind, Status: status, ChannelID: channelID,
+		if err := s.CreateJob(ctx, proposalstore.Job{ID: id, Kind: kind, Status: status, ChannelID: channelID,
 			CreatedAt: now, UpdatedAt: now}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	proposal := func(id, jobID, status string) {
 		t.Helper()
-		if err := s.CreateProposal(ctx, Proposal{ID: id, JobID: jobID, Status: status,
+		if err := s.CreateProposal(ctx, proposalstore.Proposal{ID: id, JobID: jobID, Status: status,
 			CreatedAt: now, UpdatedAt: now}); err != nil {
 			t.Fatal(err)
 		}
@@ -222,7 +224,7 @@ func testPurgeKeepsJobsAwaitingADecision(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	old := time.Now().Add(-100 * 24 * time.Hour)
 	mustSaveChannel(t, s, sampleChannel("ch-1", 1, time.Time{}))
-	for _, j := range []Job{
+	for _, j := range []proposalstore.Job{
 		{ID: "j-waiting", Kind: "suggest", Status: "done", ChannelID: "ch-1", UpdatedAt: old},
 		{ID: "j-approved", Kind: "suggest", Status: "done", ChannelID: "ch-1", UpdatedAt: old},
 		{ID: "j-denied", Kind: "suggest", Status: "done", ChannelID: "ch-1", UpdatedAt: old},
@@ -232,7 +234,7 @@ func testPurgeKeepsJobsAwaitingADecision(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	for _, p := range []Proposal{
+	for _, p := range []proposalstore.Proposal{
 		{ID: "p-waiting", JobID: "j-waiting", Status: "submitted", UpdatedAt: old},
 		{ID: "p-approved", JobID: "j-approved", Status: "approved", UpdatedAt: old},
 		{ID: "p-denied", JobID: "j-denied", Status: "denied", UpdatedAt: old},
@@ -271,7 +273,7 @@ func testApprovalSupersessionIsPerChannel(t *testing.T, newStore NewStoreFunc) {
 	other.IntentRef, other.FromRequest = "job-elsewhere", true
 	otherSaved := mustSaveChannel(t, s, other)
 
-	for _, j := range []Job{
+	for _, j := range []proposalstore.Job{
 		{ID: "job-refine", Kind: "suggest", Status: "done", CreatedBy: "u-admin", ChannelID: "ch-super"},
 		{ID: "job-recurate", Kind: "recurate", Status: "done", ChannelID: "ch-super"},
 		{ID: "job-refine-other", Kind: "suggest", Status: "done", CreatedBy: "u-admin", ChannelID: "ch-elsewhere"},
@@ -280,18 +282,18 @@ func testApprovalSupersessionIsPerChannel(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	older := Proposal{ID: "p-refine", JobID: "job-refine", Status: "submitted", CreatedBy: "u-admin",
+	older := proposalstore.Proposal{ID: "p-refine", JobID: "job-refine", Status: "submitted", CreatedBy: "u-admin",
 		CreatedAt: now.Add(-2 * time.Hour), UpdatedAt: now.Add(-2 * time.Hour)}
-	newer := Proposal{ID: "p-recurate", JobID: "job-recurate", Status: "submitted",
+	newer := proposalstore.Proposal{ID: "p-recurate", JobID: "job-recurate", Status: "submitted",
 		CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour)}
-	unrelated := Proposal{ID: "p-other", JobID: "job-refine-other", Status: "submitted", CreatedBy: "u-admin",
+	unrelated := proposalstore.Proposal{ID: "p-other", JobID: "job-refine-other", Status: "submitted", CreatedBy: "u-admin",
 		CreatedAt: now.Add(-3 * time.Hour), UpdatedAt: now.Add(-3 * time.Hour)}
-	for _, p := range []Proposal{older, newer, unrelated} {
+	for _, p := range []proposalstore.Proposal{older, newer, unrelated} {
 		if err := s.CreateProposal(ctx, p); err != nil {
 			t.Fatal(err)
 		}
 	}
-	approve := func(p Proposal, ch Channel) error {
+	approve := func(p proposalstore.Proposal, ch channelstore.Channel) error {
 		p.Status, p.ApprovedBy, p.ApprovedAt, p.UpdatedAt = "approved", "admin", now, now
 		_, err := s.CommitProposalApproval(ctx, ProposalApproval{Proposal: p, Channel: ch})
 		return err
@@ -304,7 +306,7 @@ func testApprovalSupersessionIsPerChannel(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := approve(older, fresh); !errors.Is(err, ErrProposalSuperseded) {
+	if err := approve(older, fresh); !errors.Is(err, proposalstore.ErrProposalSuperseded) {
 		t.Fatalf("approve the older proposal of the same channel = %v, want ErrProposalSuperseded", err)
 	}
 	// A newer approval for another channel supersedes nothing here.

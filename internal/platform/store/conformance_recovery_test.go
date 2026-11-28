@@ -17,7 +17,7 @@ func testPasswordRecoveryPreviewDoesNotConsume(t *testing.T, newStore NewStoreFu
 	ctx := context.Background()
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
-	if err := s.UpsertUser(ctx, User{
+	if err := s.UpsertUser(ctx, identitystore.User{
 		ID: "recover-local", Name: "Ada", Role: identitystore.RoleMember, PasswordHash: "$argon2id$existing",
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
@@ -53,7 +53,7 @@ func testPasswordRecoveryRedemptionIsAtomic(t *testing.T, newStore NewStoreFunc)
 	ctx := context.Background()
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
-	user := User{
+	user := identitystore.User{
 		ID: "recover-atomic", Name: "Grace", Role: identitystore.RoleAdmin, PasswordHash: "$argon2id$old",
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -61,7 +61,7 @@ func testPasswordRecoveryRedemptionIsAtomic(t *testing.T, newStore NewStoreFunc)
 		t.Fatal(err)
 	}
 	for _, tokenHash := range []string{"session-one", "session-two"} {
-		if err := s.CreateSession(ctx, Session{
+		if err := s.CreateSession(ctx, identitystore.Session{
 			TokenHash: tokenHash, UserID: user.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour),
 		}); err != nil {
 			t.Fatal(err)
@@ -121,7 +121,7 @@ func testPasswordRecoveryNewRequestSupersedesOld(t *testing.T, newStore NewStore
 	ctx := context.Background()
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
-	if err := s.UpsertUser(ctx, User{
+	if err := s.UpsertUser(ctx, identitystore.User{
 		ID: "recover-replace", Name: "Katherine", Role: identitystore.RoleMember, PasswordHash: "$argon2id$old",
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
@@ -170,7 +170,7 @@ func testPasswordRecoveryRetention(t *testing.T, newStore NewStoreFunc) {
 	now := time.Unix(1_900_000_000, 0).UTC()
 	seed := func(id string) {
 		t.Helper()
-		if err := s.UpsertUser(ctx, User{
+		if err := s.UpsertUser(ctx, identitystore.User{
 			ID: id, Name: id, Role: identitystore.RoleMember, PasswordHash: "$argon2id$existing",
 			CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
@@ -234,7 +234,7 @@ func testPasswordRecoveryDisabledAfterIssueIsUnusable(t *testing.T, newStore New
 	ctx := context.Background()
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
-	user := User{
+	user := identitystore.User{
 		ID: "recover-disabled", Name: "Dorothy", Role: identitystore.RoleMember, PasswordHash: "$argon2id$old",
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -277,7 +277,7 @@ func testPasswordRecoveryConcurrentRedemption(t *testing.T, newStore NewStoreFun
 	ctx := context.Background()
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
-	user := User{
+	user := identitystore.User{
 		ID: "recover-concurrent", Name: "Margaret", Role: identitystore.RoleMember, PasswordHash: "$argon2id$old",
 		CreatedAt: now, UpdatedAt: now,
 	}

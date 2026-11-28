@@ -108,8 +108,8 @@ func TestPostgresLifecycleInvalidationsAreCommitOrdered(t *testing.T) {
 	}
 }
 
-func lifecycleTestChannel(id string, number int) Channel {
-	return Channel{Channel: schedule.Channel{
+func lifecycleTestChannel(id string, number int) channelstore.Channel {
+	return channelstore.Channel{Channel: schedule.Channel{
 		ID: id, Name: id, Number: number, Strategy: schedule.Sequential, Status: schedule.StatusLive,
 	}}
 }

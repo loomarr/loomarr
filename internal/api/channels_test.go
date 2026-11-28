@@ -1251,6 +1251,36 @@ func TestUpdateChannel_InvalidPolicyRejected(t *testing.T) {
 	}
 }
 
+// The client sends the whole policy back, so the read-only field must be accepted, ignored and
+// recomputed from the ceiling the same request saves.
+func TestUpdateChannel_AutomaticUnratedIsComputedNotStored(t *testing.T) {
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
+	mkChannel(t, srv, "c1", "A", 5)
+
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"policy":{"audience":{"ceiling":"TV-Y","unrated":"allow"},"automaticUnrated":"allow"}}`))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch → %d", resp.StatusCode)
+	}
+	var got struct {
+		Policy schedule.ChannelPolicy `json:"policy"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Policy.AutomaticUnrated != schedule.UnratedExclude || got.Policy.Audience.Unrated != schedule.UnratedAllow {
+		t.Fatalf("policy = automatic %q, explicit %q", got.Policy.AutomaticUnrated, got.Policy.Audience.Unrated)
+	}
+	stored, err := st.GetChannel(context.Background(), "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Policy.AutomaticUnrated != "" {
+		t.Fatalf("stored automaticUnrated = %q", stored.Policy.AutomaticUnrated)
+	}
+}
+
 func TestUpdateChannel_PersistsDateScopeAndDisjointFillerEraWindows(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, st := harness.Server, harness.Store

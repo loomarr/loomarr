@@ -2,8 +2,7 @@
 // lease of each named recurring job and its operator-set pause flag (the scheduled_jobs table).
 //
 // It is a cluster of the store, built on the storedb kernel and never importing the store: the
-// store embeds a Store in its aggregate and re-exports ScheduledJob by alias, so every caller of
-// store.Store keeps working unchanged. internal/architecture_test.go enforces the direction.
+// store embeds a Store in its aggregate. internal/architecture_test.go enforces the direction.
 package jobstore
 
 import (

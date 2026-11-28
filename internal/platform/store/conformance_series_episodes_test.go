@@ -14,7 +14,7 @@ func testSeriesEpisodeTotals(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_800_000_000_000)
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "show", Kind: "series", Name: "Show"},
 		{ID: "e1", Kind: "episode", Name: "One", RuntimeMs: 1_320_000},
 		{ID: "e2", Kind: "episode", Name: "Two", RuntimeMs: 1_380_000},

@@ -14,7 +14,7 @@ import (
 )
 
 // ChannelSpec is the desired Tunarr channel definition the scheduler wants to
-// exist (§9). It is the Programmer-facing projection of a store.Channel — no
+// exist (§9). It is the Programmer-facing projection of a channelstore.Channel — no
 // Loomarr-internal fields, only what Tunarr needs.
 type ChannelSpec struct {
 	// TunarrID is the server-assigned channel id, "" on first create. The

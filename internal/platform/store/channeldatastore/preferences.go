@@ -3,8 +3,7 @@
 // history placement ranks on (§5), and the household's and channels' discovery feedback.
 //
 // It is a cluster of the store, built on the storedb kernel and never importing the store: the
-// store embeds a Store in its aggregate and re-exports the types by alias, so every caller of
-// store.Store keeps working unchanged. The channels table itself stays in the store, because the
+// store embeds a Store in its aggregate. The channels table itself stays in the store, because the
 // proposal-approval transaction and the claim statements use it; these tables reference it only by
 // foreign key. internal/architecture_test.go enforces the direction.
 package channeldatastore

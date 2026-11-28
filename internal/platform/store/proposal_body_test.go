@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 )
 
@@ -24,7 +25,7 @@ func TestProposalBodyIsDecodedOnceAtTheStore(t *testing.T) {
 		Retired:     []provision.Key{"movie:tmdb:90000002"},
 	}
 	mustOriginJobs(t, s, "j")
-	if err := s.CreateProposal(ctx, Proposal{ID: "p-typed", JobID: "j", Status: "submitted", Body: want, CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := s.CreateProposal(ctx, proposalstore.Proposal{ID: "p-typed", JobID: "j", Status: "submitted", Body: want, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 

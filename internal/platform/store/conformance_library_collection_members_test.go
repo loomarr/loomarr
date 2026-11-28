@@ -15,7 +15,7 @@ func testLibraryCollectionMemberIDs(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_800_000_000_000)
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "film", Kind: "movie", Name: "Film", IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000001"}, {Namespace: "imdb", Value: "tt90000001"}}},
 		{ID: "show", Kind: "series", Name: "Show", IDs: []librarystore.LibraryID{{Namespace: "tvdb", Value: "90000002"}, {Namespace: "tmdb", Value: "90000003"}}},
 		{ID: "home", Kind: "movie", Name: "Home video"},
