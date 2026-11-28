@@ -235,107 +235,41 @@ func requireLeafPackage(t *testing.T, pkgs map[string]*build.Package, path, why 
 	}
 }
 
-// internal/platform/store/identitystore is the identity cluster extracted from internal/platform/store (users,
-// sessions, devices, invitations, contact addresses, password recovery, notifications). It builds
-// on the storedb kernel and must never import internal/platform/store: store embeds it and re-exports its
-// types, so an edge back would be an import cycle, and the cluster would stop being a package that
-// can be read, tested and owned without the aggregate. Test files are exempt, as above; only the
-// production import set counts.
-func TestIdentityStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/identitystore")
+// A cluster store is a package under internal/platform/store that owns a set of tables. Each builds on
+// the storedb kernel and never imports internal/platform/store: the aggregate embeds it, so an edge
+// back is an import cycle, and the cluster stops being a package that can be read, tested and owned on
+// its own. Only the production import set counts; test files are exempt.
+var clusterStores = []struct {
+	name, holds string
+}{
+	{"identitystore", "users, sessions, devices, invitations, contact addresses, password recovery, notifications"},
+	// channels is the one table it touches without owning, through the ChannelPolicies interface.
+	{"clipstore", "clips and tags, taxonomy, holidays, images, broadcast stations, defects, fingerprints"},
+	{"crashstore", "client crash reports"},
+	// The Library projection it feeds is the aggregate's, reached through its Projector interface.
+	{"inventorystore", "the media inventory"},
+	{"viewingstore", "watch history"},
+	{"operationstore", "interactive operations"},
+	{"diagnosticsstore", "diagnostic events, process runs, retained-byte totals"},
+	{"jobstore", "scheduler state"},
+	{"activitystore", "the Recent activity feed"},
+	{"qualitystore", "the suggestion-quality ledger"},
+	{"channeldatastore", "favourites and recents, hidden ideas, airing history, discovery feedback"},
+	// The approval transaction reaches the next two through exported call-ins.
+	{"channelstore", "channels"},
+	// It also builds on channelstore.
+	{"proposalstore", "generation jobs, attempts and proposals"},
+	// The inventory projection reaches it through the exported SaveItemIn.
+	{"librarystore", "Library roots, files, items, titles, collections, people, episodes and needs"},
 }
 
-// internal/platform/store/clipstore is the clip-catalog cluster (clips and their tags, the taxonomy,
-// holidays, images, broadcast stations, and the defect, fingerprint and creative-identity tables).
-// The same direction as identitystore, and for the same reason: store embeds it and re-exports its
-// types. The one table it must touch that it does not own, channels, it reaches through the
-// ChannelPolicies interface that store implements, so there is no import edge back.
-func TestClipStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/clipstore")
-}
-
-// internal/platform/store/crashstore is the crash-report cluster (the client_crash_reports table). It
-// builds on the storedb kernel in the same direction as the two clusters above, and store embeds it.
-func TestCrashStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/crashstore")
-}
-
-// internal/platform/store/inventorystore is the media-inventory cluster (the inventory_* tables). It
-// builds on the storedb kernel in the same direction as the clusters above, and store embeds it.
-// The Library projection it feeds is the aggregate's, reached through its Projector interface.
-func TestInventoryStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/inventorystore")
-}
-
-// internal/platform/store/viewingstore is the watch-history cluster. It builds on the storedb
-// kernel, in the same direction as the clusters above, and store embeds it.
-func TestViewingStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/viewingstore")
-}
-
-// internal/platform/store/operationstore is the interactive-operation cluster. It builds on the
-// storedb kernel, in the same direction as the clusters above, and store embeds it.
-func TestOperationStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/operationstore")
-}
-
-// internal/platform/store/diagnosticsstore is the diagnostics cluster (events, process runs and the
-// retained-byte totals). It builds on the storedb kernel, in the same direction as the clusters
-// above, and store embeds it.
-func TestDiagnosticsStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/diagnosticsstore")
-}
-
-// internal/platform/store/jobstore is the scheduler-state cluster (the scheduled_jobs table). It builds
-// on the storedb kernel, in the same direction as the clusters above, and store embeds it and
-// re-exports ScheduledJob.
-func TestJobStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/jobstore")
-}
-
-// internal/platform/store/activitystore is the Recent activity feed cluster (the activity table). It
-// builds on the storedb kernel, in the same direction as the clusters above, and store embeds it and
-// re-exports Activity and its value sets.
-func TestActivityStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/activitystore")
-}
-
-// internal/platform/store/qualitystore is the suggestion-quality ledger cluster (receipts, daily
-// roll-ups, run snapshots). It builds on the storedb kernel like the clusters above, and store
-// embeds it.
-func TestQualityStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/qualitystore")
-}
-
-// internal/platform/store/channeldatastore is the cluster of data that hangs off channels (favourites and
-// recents, hidden ideas, airing history, discovery feedback). It builds on the storedb kernel, in the
-// same direction as the clusters above, and store embeds it and re-exports its types.
-func TestChannelDataStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/channeldatastore")
-}
-
-// internal/platform/store/channelstore is the channel cluster (the channels table). It builds on the
-// storedb kernel, in the same direction as the clusters above; store embeds it and re-exports Channel
-// and its errors. The approval transaction reaches it through exported call-ins, so there is no import
-// edge back.
-func TestChannelStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/channelstore")
-}
-
-// internal/platform/store/proposalstore is the suggester-work cluster (generation jobs, attempts and
-// proposals). It builds on the storedb kernel and the channelstore cluster, in the same direction as
-// the clusters above; store embeds it and re-exports its row types and errors. The approval
-// transaction reaches it through exported call-ins, so there is no import edge back.
-func TestProposalStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/proposalstore")
-}
-
-// internal/platform/store/librarystore is the Library cluster (scan roots, files, items, titles, catalog
-// keys, collections, people, episodes, episode orders and needs). It builds on the storedb kernel
-// only; store embeds it and re-exports its names, and the inventory projection reaches it through
-// the exported SaveItemIn, so there is no import edge back.
-func TestLibraryStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/librarystore")
+func TestClusterStoresImportKernelNotAggregate(t *testing.T) {
+	pkgs := loomarrPackages(t)
+	for _, cluster := range clusterStores {
+		t.Run(cluster.name, func(t *testing.T) {
+			requireClusterOnKernelNotAggregate(t, pkgs, modulePath+"/internal/platform/store/"+cluster.name)
+		})
+	}
 }
 
 // requireClusterOnKernelNotAggregate fails unless the cluster package at path exists in the walked
