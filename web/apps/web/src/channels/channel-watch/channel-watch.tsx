@@ -54,8 +54,6 @@ const subtitlesSource = createChannelSubtitlesSource((input, init) => fetch(inpu
 
 /** Ten seconds through the live window, for `←` and `→` on the bare picture. */
 const SEEK_STEP_MS = 10_000;
-/** Less than this between the player's lag and what the screen was told is the clock, not a move. */
-const SEEK_NOISE_MS = 5_000;
 /** The unmute pill stands under the first-run hint, clear of it. */
 const PILL_TOP = 120;
 /** Subtitles stand clear of the lower third while it shows, and low on the bare picture. */
@@ -294,19 +292,13 @@ const ChannelWatch = ({ back, channel, channels, isAdmin, onGuide, player, tune 
   const { send } = model;
 
   // What the player really does, however it got there (a seek, Start over, the media keys, a
-  // Retry). The clock alone says nothing new: while paused the lag grows by itself and the screen
-  // counts the pause, and behind live the lag ticks between whole seconds, so only a move of a
-  // seek's size or a change of pause is told.
+  // stall, a Retry), told whenever it changes. The screen takes it silently: it is the truth the
+  // lower third and Go live tell, not input, so it wakes nothing.
   const lagMs = Math.round(player.liveTransport.state.lagSeconds) * 1000;
-  const told = useRef<{ behindMs: number; paused: boolean } | undefined>(undefined);
+  const atLive = player.liveTransport.state.mode === "live";
   useEffect(() => {
-    const before = told.current;
-    const still = before !== undefined && before.paused === player.paused;
-    if (still && (player.paused || Math.abs(lagMs - before.behindMs) < SEEK_NOISE_MS)) return;
-    const behindMs = still || !player.paused || !before ? lagMs : before.behindMs;
-    told.current = { behindMs, paused: player.paused };
-    send({ behindMs, paused: player.paused, type: "playback" });
-  }, [lagMs, player.paused, send]);
+    send({ behindMs: lagMs, live: atLive, paused: player.paused, type: "playback" });
+  }, [atLive, lagMs, player.paused, send]);
 
   // The browser's own full screen, however it was entered or left (F, the control, a double click,
   // the browser's Esc or its own controls), names the full-screen control.
@@ -363,6 +355,8 @@ const ChannelWatch = ({ back, channel, channels, isAdmin, onGuide, player, tune 
         void transport.seek(
           transport.state.viewerTimeMs + (key === "ArrowLeft" ? -SEEK_STEP_MS : SEEK_STEP_MS),
         );
+        // The viewer acted: the key reaches the screen as the input it is, and wakes it.
+        send({ key, type: "key" });
         return;
       }
       fullScreenKey.current = key;

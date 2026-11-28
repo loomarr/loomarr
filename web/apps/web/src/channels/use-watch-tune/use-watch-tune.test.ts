@@ -49,6 +49,9 @@ describe("useWatchTune", () => {
     expect(result.current.view).toMatchObject({ bars: "run", cover: "burst" });
     advance(TUNE_UNCOVER_MS);
     expect(result.current.view.cover).toBe("none");
+    // The bars' one run ends with the flip's time.
+    advance(TUNE_FLIP_MS);
+    expect(result.current.view.bars).toBe("none");
   });
 
   it("holds a channel that must start for the real wait", () => {

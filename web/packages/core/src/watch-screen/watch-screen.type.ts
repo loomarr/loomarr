@@ -86,8 +86,10 @@ interface WatchScreenState {
   paused: boolean;
   /** When the picture paused; set only while paused. */
   pausedAt: number | undefined;
-  /** How far behind live the picture plays, from earlier pauses. */
+  /** How far behind live the picture plays, from earlier pauses or the player's word. */
   behindMs: number;
+  /** The player plays at the live edge, by its own word; a new tune and Go live start there. */
+  atLive: boolean;
   /** The first-run hint is gone for this session. */
   hintSeen: boolean;
   handOff: WatchHandOff | undefined;
@@ -147,10 +149,11 @@ type WatchScreenEvent =
   | { type: "picture"; picture: WatchPicture; at: number }
   /**
    * What the player really does: paused or not, and how far behind live, however it got there (a
-   * seek, Start over, the media keys, a Retry). The model takes it as the truth; its own pause,
-   * resume and go-live stay requests. A change wakes the screen, as any input does.
+   * seek, Start over, the media keys, a stall, a Retry), and whether it plays at the live edge.
+   * The model takes it as the truth; its own pause, resume and go-live stay requests. Like the
+   * clock, it wakes nothing: only the viewer's own action, sent as the input it is, wakes the screen.
    */
-  | { type: "playback"; behindMs: number; paused: boolean; at: number };
+  | { type: "playback"; behindMs: number; paused: boolean; live: boolean; at: number };
 
 /** What the screen asks the caller to do. It does none of it itself. */
 type WatchRequest =

@@ -40,10 +40,6 @@ describe("VideoPlayer", () => {
     expect(container.querySelector('[data-testid="clip-chrome-top"]')).toBeNull();
   });
 
-  // ⚠ **The mute button's NAME tracks its state.** A control permanently labelled "Mute" lies as
-  // soon as the video is muted, and a screen-reader user has no other way to know which way it
-  // will go. (Play/pause has the same rule, but its state is driven by media events jsdom never
-  // fires, so mute is where the rule is testable.)
   it("handles its own keys on its frame, and none for a caller that handles every key", () => {
     const transport = {
       goLive: vi.fn(),
@@ -74,6 +70,10 @@ describe("VideoPlayer", () => {
     expect((quiet.container.querySelector("video") as HTMLVideoElement).muted).toBe(false);
   });
 
+  // ⚠ **The mute button's NAME tracks its state.** A control permanently labelled "Mute" lies as
+  // soon as the video is muted, and a screen-reader user has no other way to know which way it
+  // will go. (Play/pause has the same rule, but its state is driven by media events jsdom never
+  // fires, so mute is where the rule is testable.)
   it("renames the mute button once muted", () => {
     render(<VideoPlayer src={SRC} />);
 
@@ -142,8 +142,11 @@ describe("VideoPlayer", () => {
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
   });
 
-  it("does not take focus for a non-live player", () => {
-    render(<VideoPlayer src={SRC} />);
+  it("takes no focus as it mounts, a live player or a clip: focus is the page's", () => {
+    const clip = render(<VideoPlayer src={SRC} />);
+    expect(document.body).toHaveFocus();
+    clip.unmount();
+    render(<VideoPlayer attach={() => () => undefined} live />);
     expect(document.body).toHaveFocus();
   });
 

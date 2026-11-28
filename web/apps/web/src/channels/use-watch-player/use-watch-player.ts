@@ -14,7 +14,7 @@ import type {
 } from "./use-watch-player.type";
 
 // useWatchPlayer — the Watch page's player: the shared player controller (one tune path for every
-// way of asking: a step, a typed number, a pick from the drawer, the URL) running over the browser
+// way of asking: a flip, a typed number, a pick from the channel list, the URL) running over the browser
 // transport, with the URL kept in step with the channel it is tuned to.
 //
 // The controller owns tuning, latest-request-wins, warming and recovery; the URL is only where the

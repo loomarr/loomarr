@@ -327,39 +327,69 @@ describe("rule 5: pause, behind live and Go live", () => {
 });
 
 describe("the player's own word on pause and live", () => {
+  const behind = (behindMs: number, paused = false) =>
+    ({ behindMs, live: behindMs === 0 && !paused, paused, type: "playback" }) as const;
+
   it("takes a seek it did not ask for as behind live, so End goes live", () => {
     const s = screen();
-    s.send({ behindMs: 30_000, paused: false, type: "playback" }, 1000);
+    s.send(behind(30_000), 1000);
     expect(s.view().behindSeconds).toBe(30);
+    s.key("End");
+    expect(s.requests).toEqual([{ type: "goLive" }]);
+  });
+
+  it("goes live from Start over three seconds into a programme", () => {
+    const s = screen();
+    s.send(behind(3_000), 1000);
+    s.key("End");
+    expect(s.requests).toEqual([{ type: "goLive" }]);
+  });
+
+  it("goes live while the player is off the live edge by less than a second", () => {
+    const s = screen();
+    s.send({ behindMs: 0, live: false, paused: false, type: "playback" }, 1000);
     s.key("End");
     expect(s.requests).toEqual([{ type: "goLive" }]);
   });
 
   it("takes a pause from outside the screen, so Space resumes it", () => {
     const s = screen();
-    s.send({ behindMs: 0, paused: true, type: "playback" }, 1000);
+    s.send(behind(0, true), 1000);
     expect(s.view().paused).toBe(true);
     s.key(" ", 2000);
     expect(s.requests).toEqual([{ type: "resume" }]);
   });
 
-  it("drops a behind live the player no longer has, after a Retry", () => {
+  it("clears behind live when the player is back at live, after a move forward or a Retry", () => {
     const s = screen();
-    s.send({ behindMs: 30_000, paused: false, type: "playback" }, 1000);
-    s.send({ behindMs: 0, paused: false, type: "playback" }, 2000);
+    s.send(behind(4_000), 1000);
+    s.send(behind(0), 2000);
     expect(s.view().behindSeconds).toBe(0);
     s.key("End");
     expect(s.requests).toEqual([]);
   });
 
-  it("wakes the screen when it changes, and not when it says the same again", () => {
+  it("wakes nothing, however far the player moves, and the lower third tells the truth when next shown", () => {
     const s = screen();
     s.wait(WATCH_REST_MS);
     expect(s.view().awake).toBe(false);
-    s.send({ behindMs: 0, paused: false, type: "playback" });
+    // A stall while behind live: the player's word changes, the viewer did nothing.
+    s.send(behind(30_000));
+    s.send(behind(36_000));
+    expect(s.view()).toMatchObject({ awake: false, nextAt: null });
+    s.send({ type: "pointerMove" });
+    expect(s.view()).toMatchObject({ awake: true, behindSeconds: 36 });
+  });
+
+  it("lets a paused picture's behind count up without keeping the screen awake", () => {
+    const s = screen();
+    s.key(" ", 0);
+    for (let second = 1; second <= 3; second += 1) s.send(behind(second * 1000, true), second * 1000);
+    s.key(" ", 4000);
+    s.send(behind(4_000), 4000);
+    expect(s.view().behindSeconds).toBe(4);
+    s.wait(WATCH_REST_MS);
     expect(s.view().awake).toBe(false);
-    s.send({ behindMs: 10_000, paused: false, type: "playback" });
-    expect(s.view().awake).toBe(true);
   });
 
   it("refuses to resume under a cover, as it refuses to pause", () => {

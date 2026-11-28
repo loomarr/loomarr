@@ -27,7 +27,6 @@ const hls = vi.hoisted(() => ({
   paused: false,
   attach: vi.fn(() => () => undefined),
   retry: vi.fn(),
-  step: vi.fn(),
   tune: vi.fn(),
   setQuality: vi.fn(),
   liveTransport: {
@@ -423,11 +422,27 @@ describe("ChannelWatch: the shipped menus in the screen's slot", () => {
     expect(hls.tune).toHaveBeenLastCalledWith("ch-1");
   });
 
-  it("goes live with End after seeks it did not ask for, and the lower third says how far behind", () => {
+  it("goes live with End after seeks it did not ask for", () => {
     const { again } = mount();
     press("End");
     expect(hls.liveTransport.goLive).not.toHaveBeenCalled();
     hls.liveTransport.state = { mode: "behind", lagSeconds: 30, viewerTimeMs: 970_000, noticeRevision: 0 };
+    again();
+    press("End");
+    expect(hls.liveTransport.goLive).toHaveBeenCalledOnce();
+  });
+
+  it("goes live from More after a Start over three seconds into the programme", async () => {
+    const { again } = mount();
+    hls.liveTransport.state = { mode: "behind", lagSeconds: 3, viewerTimeMs: 997_000, noticeRevision: 0 };
+    again();
+    await userEvent.click(within(await openMore()).getByRole("button", { name: /^Go live/ }));
+    expect(hls.liveTransport.goLive).toHaveBeenCalledOnce();
+  });
+
+  it("goes live with End after a Start over three seconds into the programme", () => {
+    const { again } = mount();
+    hls.liveTransport.state = { mode: "behind", lagSeconds: 3, viewerTimeMs: 997_000, noticeRevision: 0 };
     again();
     press("End");
     expect(hls.liveTransport.goLive).toHaveBeenCalledOnce();

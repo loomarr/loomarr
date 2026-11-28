@@ -214,26 +214,42 @@ const WatchScreen = <C extends LineupChannel>({
   // as it is laid out it asks the page what is at the pointer's last place, and holds if that is
   // the lower third. No pointer has moved yet means none rests on it.
   const pointerAt = useRef<{ x: number; y: number } | undefined>(undefined);
-  const thirdShown = Boolean(watched) && !view.listOpen;
-  useLayoutEffect(() => {
-    const at = pointerAt.current;
+  // A hold the hit test made, which no pointer-enter began, so no pointer-leave may end.
+  const heldByHit = useRef(false);
+  const onThird = (at: { x: number; y: number } | undefined) => {
     const page = (globalThis as { document?: { elementFromPoint?: (x: number, y: number) => unknown } })
       .document;
-    if (!thirdShown || !at || Platform.OS !== "web" || !page?.elementFromPoint) return;
+    if (!at || Platform.OS !== "web" || !page?.elementFromPoint) return false;
     const hit = page.elementFromPoint(at.x, at.y);
-    if (hit && footThird.current?.contains?.(hit))
-      send({ held: true, region: "lowerThird", type: "pointerHold" });
-  }, [thirdShown, send]);
+    return Boolean(hit && footThird.current?.contains?.(hit));
+  };
+  // The one path every pointer hold takes, held or let go.
+  const hold = useCallback(
+    (region: "back" | "lowerThird" | "quietRow", held: boolean) => {
+      if (region === "lowerThird") heldByHit.current = false;
+      send({ held, region, type: "pointerHold" });
+    },
+    [send],
+  );
+  const thirdShown = Boolean(watched) && !view.listOpen;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: asks once each time the lower third is laid out again
+  useLayoutEffect(() => {
+    if (!thirdShown || !onThird(pointerAt.current)) return;
+    hold("lowerThird", true);
+    heldByHit.current = true;
+  }, [thirdShown, hold]);
 
   // The pointer resting on the controls holds the screen awake.
   const holdOn = (region: "back" | "lowerThird" | "quietRow") =>
     web({
-      onPointerEnter: () => send({ held: true, region, type: "pointerHold" }),
-      onPointerLeave: () => send({ held: false, region, type: "pointerHold" }),
+      onPointerEnter: () => hold(region, true),
+      onPointerLeave: () => hold(region, false),
     });
   const onPointerMove = (event: { clientX?: number; clientY?: number }) => {
     if (event.clientX !== undefined && event.clientY !== undefined) {
       pointerAt.current = { x: event.clientX, y: event.clientY };
+      // The hit test's hold ends where the pointer next is off the lower third.
+      if (heldByHit.current && !onThird(pointerAt.current)) hold("lowerThird", false);
     }
     const at = Date.now();
     if (view.awake && at - lastMove.current < MOVE_EVERY_MS) return;

@@ -625,7 +625,8 @@ in #4736 and #4738.
 - **What the picture is doing** (playing, tuning in, under a cover) is told to the model, so a pause
   or a resume is refused when there is nothing to hold. So is **what the player really does**: a
   `playback` event carries whether it is paused and how far behind live it plays, whoever moved it
-  (a seek, Start over, the media keys, a Retry), and End goes live from there.
+  (a seek, Start over, the media keys, a stall, a Retry), and End goes live from there. The
+  player's word is the truth and wakes nothing; only the viewer's own action wakes the chrome.
 - **A reconnect is not a tune.** The player reconnecting to the channel on screen shows the
   Reconnecting cover, not static and "Tuning in". A browser that refuses to start the picture by
   itself gets a cover with Play, whose press starts it.

@@ -223,6 +223,20 @@ describe("WatchScreen and focus a pointer meets", () => {
     });
   };
 
+  it("ends the hold the page's answer made once the pointer moves off the lower third, with no pointer-leave", () => {
+    vi.useFakeTimers();
+    pointerFocus();
+    renderUi(<Harness hintSeen={false} />);
+    pointerOnLowerThird();
+    key("/", document.body);
+    key("Escape", document.body);
+    key("Escape", document.body);
+    expect(restedAfter(60_000)).toBe(false);
+    // The browser sends no pointer-leave for an element it never saw the pointer enter.
+    fireEvent.pointerMove(screen.getByTestId("watch-screen"), { clientX: 5, clientY: 5 });
+    expect(restedAfter(6000)).toBe(true);
+  });
+
   it("holds nothing when the lower third comes back and no pointer has moved", () => {
     vi.useFakeTimers();
     Object.defineProperty(document, "elementFromPoint", {

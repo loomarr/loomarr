@@ -187,7 +187,8 @@ still describe the phone and television apps, and the web where they agree with 
 - **The tune on the web** follows the player: a flip to a warmed channel is a short static burst and
   the bars; a channel that must start, and the page's first tune, hold the static for the real wait
   with "Tuning in..." in the lower third, and the first frame uncovers it. A failure shows the
-  stopped cover.
+  stopped cover. How far behind live the picture is, and whether it is paused, is the player's word,
+  which the screen tells without waking; only the viewer's own action wakes the chrome.
 
 - **Seek inside `DVRHorizon`.** ⟲10 / ⟳10 and `←`/`→` move ten seconds; ⟳10 does nothing at the
   live edge. The playbar's past is seekable by click or drag; its future is preview only. `L` (and

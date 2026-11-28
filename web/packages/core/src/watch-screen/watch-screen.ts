@@ -42,6 +42,7 @@ const createWatchScreenState = ({
   watchedId,
 }: WatchScreenStateArgs): WatchScreenState => ({
   activeAt: at,
+  atLive: true,
   behindMs: 0,
   clicked: undefined,
   digits: undefined,
@@ -165,6 +166,7 @@ const reduceStep = <C extends LineupChannel>(
   // A change of channel: the one left is remembered, and pause, digits and the hint are over.
   const changed = (s: WatchScreenState, channelId: string): WatchScreenState => ({
     ...s,
+    atLive: true,
     behindMs: 0,
     digits: undefined,
     hintSeen: true,
@@ -200,8 +202,8 @@ const reduceStep = <C extends LineupChannel>(
         : ask({ ...s, paused: true, pausedAt: at }, { type: "pause" });
 
   const goLive = (s: WatchScreenState): WatchScreenStep =>
-    s.paused || s.behindMs > 0
-      ? ask({ ...s, behindMs: 0, paused: false, pausedAt: undefined }, { type: "goLive" })
+    s.paused || s.behindMs > 0 || !s.atLive
+      ? ask({ ...s, atLive: true, behindMs: 0, paused: false, pausedAt: undefined }, { type: "goLive" })
       : stay(s);
 
   const fullScreen = (s: WatchScreenState) => ask(s, { on: s.layout !== "full", type: "fullScreen" });
@@ -437,17 +439,17 @@ const reduceStep = <C extends LineupChannel>(
     }
     case "picture":
       return stay({ ...state, picture: event.picture });
-    // The player's own word on pause and live, whoever moved them; a change wakes the screen.
-    case "playback": {
-      if (event.paused === state.paused && event.behindMs === state.behindMs) return stay(state);
+    // The player's own word on pause and live, whoever moved them: the truth the lower third and
+    // Go live tell, taken silently. It is not input, so it wakes nothing; the viewer's own action
+    // reaches the screen as the input it is.
+    case "playback":
       return stay({
         ...state,
-        activeAt: at,
-        behindMs: event.behindMs,
+        atLive: event.live,
+        behindMs: event.live ? 0 : event.behindMs,
         paused: event.paused,
         pausedAt: event.paused ? (state.paused ? state.pausedAt : at) : undefined,
       });
-    }
     case "key":
       return key(woken, event.key);
   }
