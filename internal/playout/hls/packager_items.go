@@ -1,4 +1,4 @@
-package playout
+package hls
 
 import (
 	"io"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
@@ -185,16 +186,16 @@ func (f *itemFaults) get(input string) itemFault {
 // record demotes one stage for an encode that failed before its first output: the decode on a GPU
 // decode fault, otherwise the GPU tone-mapper the pipeline used. It reports false when there is
 // nothing left to demote, so the item keeps failing into slate rather than retrying blindly.
-func (f *itemFaults) record(input string, pl Pipeline, decodeFault bool) bool {
+func (f *itemFaults) record(input string, pl playout.Pipeline, decodeFault bool) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	cur := f.by[input]
 	switch {
 	case decodeFault && !cur.cpuDecode:
 		cur.cpuDecode = true
-	case pl.Tonemapper == TonemapperOpenCL:
+	case pl.Tonemapper == playout.TonemapperOpenCL:
 		cur.noOpenCL = true
-	case pl.Tonemapper == TonemapperLibplacebo:
+	case pl.Tonemapper == playout.TonemapperLibplacebo:
 		cur.noLibplacebo = true
 	default:
 		return false
@@ -205,7 +206,7 @@ func (f *itemFaults) record(input string, pl Pipeline, decodeFault bool) bool {
 
 // itemBurn writes the item's subtitle list for its seek; remove deletes it. Without a prepared track,
 // or when the list cannot be written (the programme then airs without them), burn is nil.
-func itemBurn(it PackagerItem, subs *ItemSubtitles, log *slog.Logger) (burn *SubtitleBurn, remove func()) {
+func itemBurn(it PackagerItem, subs *ItemSubtitles, log *slog.Logger) (burn *playout.SubtitleBurn, remove func()) {
 	if subs == nil || subs.Track == nil {
 		return nil, func() {}
 	}
@@ -214,7 +215,7 @@ func itemBurn(it PackagerItem, subs *ItemSubtitles, log *slog.Logger) (burn *Sub
 		log.Warn("packager hls: subtitle list not written; the item airs without them", "item", it.Label, "err", err)
 		return nil, func() {}
 	}
-	return &SubtitleBurn{List: list, Width: subs.Track.Width, Height: subs.Track.Height, Kernel: subs.Kernel}, remove
+	return &playout.SubtitleBurn{List: list, Width: subs.Track.Width, Height: subs.Track.Height, Kernel: subs.Kernel}, remove
 }
 
 // closeThen runs after once the encoder's stream is closed.
@@ -233,12 +234,12 @@ func (c closeThen) Close() error {
 // the host less any stage this source faulted, the channel's bug when wm is non-nil and its image
 // subtitles when burn is non-nil (a programme on a host whose overlay passed its self-check), the
 // filler gain in its audio stage, fMP4 out.
-func packagerItemArgs(host encode.HostProfile, out OutputProfile, it PackagerItem, wm *Watermark, burn *SubtitleBurn, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
+func packagerItemArgs(host encode.HostProfile, out playout.OutputProfile, it PackagerItem, wm *playout.Watermark, burn *playout.SubtitleBurn, slot packager.Slot, fault itemFault) (playout.Pipeline, []string, error) {
 	h := fault.apply(host)
 	h.Overlay = wm != nil || burn != nil
-	pl, err := BuildItemBurning(h, it.Format, out, wm, burn)
+	pl, err := playout.BuildItemBurning(h, it.Format, out, wm, burn)
 	if err != nil {
-		return Pipeline{}, nil, err
+		return playout.Pipeline{}, nil, err
 	}
 	pl = pl.WithGain(it.GainDB)
 	return pl, pl.FragmentArgs(it.Input, it.Seek, slot.Offset, slot.Frames, slot.AudioFrames, out.FPS, it.AudioTrack), nil

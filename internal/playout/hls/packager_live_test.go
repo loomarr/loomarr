@@ -1,6 +1,6 @@
 //go:build ffmpeg
 
-package playout
+package hls
 
 import (
 	"bytes"
@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
@@ -26,7 +27,7 @@ import (
 // no decode errors, and no decoder re-initialisation (one init segment for the whole channel).
 func TestPackagerStitchesMixedFormatItems(t *testing.T) {
 	dir := t.TempDir()
-	out := OutputProfile{Width: 640, Height: 360, FPS: 30, Quality: 28, TargetKbps: 800, MaxKbps: 1200, GOPSeconds: 1, AudioKbps: 128}
+	out := playout.OutputProfile{Width: 640, Height: 360, FPS: 30, Quality: 28, TargetKbps: 800, MaxKbps: 1200, GOPSeconds: 1, AudioKbps: 128}
 	host := encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{})
 	type src struct {
 		name, lavfi string
@@ -50,7 +51,7 @@ func TestPackagerStitchesMixedFormatItems(t *testing.T) {
 			PixelFormat: "yuv420p", AudioCodec: "aac", AudioChannels: 1, AudioSampleRate: s.rate, Container: "matroska,webm"}
 	}
 	args := func(name string, seek time.Duration, slot packager.Slot) []string {
-		p, err := Build(host, formats[name], out)
+		p, err := playout.Build(host, formats[name], out)
 		if err != nil {
 			t.Fatal(err)
 		}

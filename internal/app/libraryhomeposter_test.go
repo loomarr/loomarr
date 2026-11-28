@@ -12,7 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 )
 
 var homeVideoOrigin = librarystore.LibraryOrigin{Authority: "library:/media", Key: "/media/a.mkv"}
@@ -50,7 +50,7 @@ func TestHomeVideoPoster(t *testing.T) {
 	}
 	var offsets []time.Duration
 	failing := true
-	p.still = func(_ context.Context, src playout.StillSource, offset time.Duration) ([]byte, error) {
+	p.still = func(_ context.Context, src hls.StillSource, offset time.Duration) ([]byte, error) {
 		if src.Input != "/media/a.mkv" {
 			t.Fatalf("read %q", src.Input)
 		}

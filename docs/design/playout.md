@@ -14,7 +14,7 @@ The decisions behind the beta.8 packager are records 0031–0033 and 0035–0041
 
 A channel encodes only while someone watches it. Nothing is encoded ahead of time, and with no
 viewer no encoder process runs. Each channel and format has one long-lived Go **packager**
-(`PackagerHLS` in `internal/playout`, the timeline core in `internal/playout/packager`) that owns the
+(`PackagerHLS` in `internal/playout/hls`, the timeline core in `internal/playout/packager`) that owns the
 channel's segment timeline. It starts on the first tune and stops `DefaultGrace` (30 s) after the last
 viewer leaves. There is no boot warm-up, and the channel packager is the only live path.
 
@@ -23,7 +23,8 @@ rectangle and the HDR tone curve) is the leaf package `internal/playout/media`, 
 share it without importing the engine. The resource budget, the host's CPU and memory readings, the
 software rungs and their speed monitor are `internal/playout/admission`, which imports only `media`.
 The host's class-cost and session-limit probe is `internal/playout/classprobe`, which builds its
-measurements with the engine's pipeline.
+measurements with the engine's pipeline. The channel packager, the origin that serves it and the
+guide stills are `internal/playout/hls`; the engine does not import it.
 
 **The pipeline.**
 

@@ -1,4 +1,4 @@
-package playout
+package hls
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/media"
 )
@@ -26,13 +27,13 @@ func TestPackagerAdmissionHoldsAndReturnsTheLedger(t *testing.T) {
 	m.WithBudget(budget)
 
 	for _, ch := range []string{"a", "b"} {
-		c, release, err := m.acquire(ch, FormatBaseline, false)
+		c, release, err := m.acquire(ch, playout.FormatBaseline, false)
 		if err != nil || c == nil {
 			t.Fatalf("acquire %s: %v", ch, err)
 		}
 		defer release()
 	}
-	if _, _, err := m.acquire("c", FormatBaseline, false); !errors.Is(err, admission.ErrAtCapacity) {
+	if _, _, err := m.acquire("c", playout.FormatBaseline, false); !errors.Is(err, admission.ErrAtCapacity) {
 		t.Fatalf("third transcode: err = %v, want ErrAtCapacity", err)
 	}
 	if budget.Fits(admission.AdmitRequest{Class: media.ClassSDR}) {
@@ -91,7 +92,7 @@ func TestPackagerHLS_AViewerTuneEvictsAnIdleWarmBeforeItIsRefused(t *testing.T) 
 		t.Fatalf("a viewer was refused while an idle warm held the ledger: %v", err)
 	}
 	defer viewer.release()
-	if got, want := m.runningChannels(), []string{"surfed-to/" + string(FormatBaseline), "watched/" + string(FormatBaseline)}; !slices.Equal(got, want) {
+	if got, want := m.runningChannels(), []string{"surfed-to/" + string(playout.FormatBaseline), "watched/" + string(playout.FormatBaseline)}; !slices.Equal(got, want) {
 		t.Fatalf("running after the viewer's tune = %v, want %v (the idle warm evicted)", got, want)
 	}
 	if use := budget.Snapshot().InUse; use.Sessions != 2 {
@@ -110,8 +111,8 @@ func TestPackagerHLS_AViewerTuneEvictsAnIdleWarmBeforeItIsRefused(t *testing.T) 
 // baseline is never given up for a premium.
 func TestPickIdleVictim_Order(t *testing.T) {
 	now := time.Unix(10_000, 0)
-	base := func(ch string) packagedKey { return packagedKey{channel: ch, format: FormatBaseline} }
-	premium := func(ch string) packagedKey { return packagedKey{channel: ch, format: Format4KHDR} }
+	base := func(ch string) packagedKey { return packagedKey{channel: ch, format: playout.FormatBaseline} }
+	premium := func(ch string) packagedKey { return packagedKey{channel: ch, format: playout.Format4KHDR} }
 	channels := map[packagedKey]*packagedChannel{
 		base("playing"):         {viewers: 1},
 		base("between-polls"):   {idleSince: now.Add(-2 * time.Second)},
@@ -138,12 +139,12 @@ func TestPickIdleVictim_Order(t *testing.T) {
 		order = append(order, key.channel+"/"+string(key.format))
 	}
 	want := []string{
-		"adjacent-4k/" + string(Format4KHDR),
-		"warm-4k/" + string(Format4KHDR),
-		"warm/" + string(FormatBaseline),
-		"grace-old/" + string(FormatBaseline),
-		"grace-new/" + string(FormatBaseline),
-		"4k/" + string(Format4KHDR),
+		"adjacent-4k/" + string(playout.Format4KHDR),
+		"warm-4k/" + string(playout.Format4KHDR),
+		"warm/" + string(playout.FormatBaseline),
+		"grace-old/" + string(playout.FormatBaseline),
+		"grace-new/" + string(playout.FormatBaseline),
+		"4k/" + string(playout.Format4KHDR),
 	}
 	if !slices.Equal(order, want) {
 		t.Fatalf("eviction order = %v, want %v", order, want)
@@ -153,7 +154,7 @@ func TestPickIdleVictim_Order(t *testing.T) {
 // #2151: header reads waited behind a packager airing slate to nobody. A packager counts as watched
 // only while a viewer's playlist fetch is in flight or within watchedWithin of one.
 func TestPackagerHLS_WatchedOnlyWhileAViewerFetches(t *testing.T) {
-	base := func(ch string) packagedKey { return packagedKey{channel: ch, format: FormatBaseline} }
+	base := func(ch string) packagedKey { return packagedKey{channel: ch, format: playout.FormatBaseline} }
 	cases := []struct {
 		name string
 		c    *packagedChannel
@@ -180,13 +181,13 @@ func TestPackagerHLS_WatchedOnlyWhileAViewerFetches(t *testing.T) {
 // neighbour warm last held is adjacent to its viewer and keeps the baseline's grace (#1037).
 func TestPackagerHLS_PremiumGraceIsShortUnlessAdjacent(t *testing.T) {
 	m := &PackagerHLS{grace: DefaultGrace}
-	if got := m.graceFor(packagedKey{format: Format4KHDR}, &packagedChannel{}); got != watchedWithin {
+	if got := m.graceFor(packagedKey{format: playout.Format4KHDR}, &packagedChannel{}); got != watchedWithin {
 		t.Errorf("premium grace = %s, want %s", got, watchedWithin)
 	}
-	if got := m.graceFor(packagedKey{format: Format4KHDR}, &packagedChannel{warmHeld: true}); got != DefaultGrace {
+	if got := m.graceFor(packagedKey{format: playout.Format4KHDR}, &packagedChannel{warmHeld: true}); got != DefaultGrace {
 		t.Errorf("adjacent premium grace = %s, want %s", got, DefaultGrace)
 	}
-	if got := m.graceFor(packagedKey{format: FormatBaseline}, &packagedChannel{}); got != DefaultGrace {
+	if got := m.graceFor(packagedKey{format: playout.FormatBaseline}, &packagedChannel{}); got != DefaultGrace {
 		t.Errorf("baseline grace = %s, want %s", got, DefaultGrace)
 	}
 }
@@ -215,7 +216,7 @@ func warmFacts(operatorCap int) admission.BudgetFacts {
 	f := premiumFacts(true)
 	f.OperatorCap = operatorCap
 	f.Costs[admission.HDRKey(media.ClassHDR4K, 1080, media.DefaultToneCurve)] = admission.ClassCost{Speed: 12, CPUCores: 0.1}
-	f.Costs[admission.CostKey{Class: media.ClassPremium4K, Height: PremiumHeight}] = admission.ClassCost{Speed: 12, CPUCores: 0.1}
+	f.Costs[admission.CostKey{Class: media.ClassPremium4K, Height: playout.PremiumHeight}] = admission.ClassCost{Speed: 12, CPUCores: 0.1}
 	return f
 }
 
@@ -226,7 +227,7 @@ func takePremium(t *testing.T, m *PackagerHLS, viewer, channelID string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(WithViewer(t.Context(), viewer), 200*time.Millisecond)
 	defer cancel()
-	if _, _, err := m.MediaPlaylist(ctx, channelID, string(Format4KHDR)+".m3u8", false); !errors.Is(err, context.DeadlineExceeded) {
+	if _, _, err := m.MediaPlaylist(ctx, channelID, string(playout.Format4KHDR)+".m3u8", false); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("premium play on %s: err = %v, want the wait for its first segment", channelID, err)
 	}
 }
@@ -250,7 +251,7 @@ func warmNeighbour(t *testing.T, m *PackagerHLS, viewer, channelID string) (stri
 // baseline's grace while a warm holds it; a viewer that has not taken a premium warms the baseline
 // alone.
 func TestPackagerHLS_APremiumViewersWarmAlsoWarmsTheNeighboursPremium(t *testing.T) {
-	m, err := NewPackagerHLS(&premiumSource{premium: Format4KHDR}, sleepingFFmpeg(t), t.TempDir(), DefaultGrace, nil)
+	m, err := NewPackagerHLS(&premiumSource{premium: playout.Format4KHDR}, sleepingFFmpeg(t), t.TempDir(), DefaultGrace, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +263,7 @@ func TestPackagerHLS_APremiumViewersWarmAlsoWarmsTheNeighboursPremium(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(master, string(Format4KHDR)+".m3u8") {
+	if !strings.Contains(master, string(playout.Format4KHDR)+".m3u8") {
 		t.Fatalf("the warm master does not name the premium:\n%s", master)
 	}
 	if _, err := warmNeighbour(t, m, "phone", "other"); err != nil {
@@ -272,15 +273,15 @@ func TestPackagerHLS_APremiumViewersWarmAlsoWarmsTheNeighboursPremium(t *testing
 		t.Fatal(err)
 	}
 	want := []string{
-		"neighbour/" + string(FormatBaseline), "neighbour/" + string(Format4KHDR),
-		"other/" + string(FormatBaseline),
-		"untagged/" + string(FormatBaseline),
-		"watched/" + string(Format4KHDR),
+		"neighbour/" + string(playout.FormatBaseline), "neighbour/" + string(playout.Format4KHDR),
+		"other/" + string(playout.FormatBaseline),
+		"untagged/" + string(playout.FormatBaseline),
+		"watched/" + string(playout.Format4KHDR),
 	}
 	if got := m.runningChannels(); !slices.Equal(got, want) {
 		t.Fatalf("running = %v, want %v (only the premium viewer's warm warms a premium)", got, want)
 	}
-	key := packagedKey{channel: "neighbour", format: Format4KHDR}
+	key := packagedKey{channel: "neighbour", format: playout.Format4KHDR}
 	m.mu.Lock()
 	c := m.channels[key]
 	grace := m.graceFor(key, c)
@@ -291,14 +292,14 @@ func TestPackagerHLS_APremiumViewersWarmAlsoWarmsTheNeighboursPremium(t *testing
 }
 
 func TestPackagerHLS_WarmVariantReadNeverPromotesOrStarts(t *testing.T) {
-	m, err := NewPackagerHLS(&premiumSource{premium: Format4KHDR}, sleepingFFmpeg(t), t.TempDir(), DefaultGrace, nil)
+	m, err := NewPackagerHLS(&premiumSource{premium: playout.Format4KHDR}, sleepingFFmpeg(t), t.TempDir(), DefaultGrace, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.WithBudget(admission.NewResourceBudget(func() admission.BudgetFacts { return warmFacts(2) }))
 	t.Cleanup(m.Stop)
 	m.notePremiumTaker("tv")
-	for _, class := range []FormatClass{FormatBaseline, Format4KHDR} {
+	for _, class := range []playout.FormatClass{playout.FormatBaseline, playout.Format4KHDR} {
 		c, release, err := m.acquire("neighbour", class, true)
 		if err != nil {
 			t.Fatal(err)
@@ -320,9 +321,9 @@ func TestPackagerHLS_WarmVariantReadNeverPromotesOrStarts(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		viewer, channel string
-		class           FormatClass
+		class           playout.FormatClass
 	}{
-		{"tv", "cold", FormatBaseline}, {"tv", "cold", Format4KHDR}, {"unknown", "neighbour", Format4KHDR},
+		{"tv", "cold", playout.FormatBaseline}, {"tv", "cold", playout.Format4KHDR}, {"unknown", "neighbour", playout.Format4KHDR},
 	} {
 		ctx := WithViewer(t.Context(), tc.viewer)
 		if _, ok, err := m.MediaPlaylist(ctx, tc.channel, string(tc.class)+".m3u8", true); ok || err != nil {
@@ -335,12 +336,12 @@ func TestPackagerHLS_WarmVariantReadNeverPromotesOrStarts(t *testing.T) {
 	// The subsequent real poll still promotes normally and learns the client's actual choice.
 	ctx, cancel := context.WithTimeout(WithViewer(t.Context(), "real"), 50*time.Millisecond)
 	defer cancel()
-	_, _, err = m.MediaPlaylist(ctx, "neighbour", string(Format4KHDR)+".m3u8", false)
+	_, _, err = m.MediaPlaylist(ctx, "neighbour", string(playout.Format4KHDR)+".m3u8", false)
 	if !errors.Is(err, context.DeadlineExceeded) || !m.takesPremium("real") {
 		t.Fatalf("real poll: %v", err)
 	}
 	m.mu.Lock()
-	c := m.channels[packagedKey{channel: "neighbour", format: Format4KHDR}]
+	c := m.channels[packagedKey{channel: "neighbour", format: playout.Format4KHDR}]
 	speculative, held := c.speculative, c.warmHeld
 	m.mu.Unlock()
 	if speculative || held {
@@ -353,7 +354,7 @@ func TestPackagerHLS_WarmVariantReadNeverPromotesOrStarts(t *testing.T) {
 // Each decision is logged at INFO under one message, with the ledger's use against its limits.
 func TestPackagerHLS_APremiumWarmOnlyUsesSpareRoom(t *testing.T) {
 	var logs lockedBuffer
-	m, err := NewPackagerHLS(&premiumSource{premium: Format4KHDR}, sleepingFFmpeg(t), t.TempDir(), DefaultGrace,
+	m, err := NewPackagerHLS(&premiumSource{premium: playout.Format4KHDR}, sleepingFFmpeg(t), t.TempDir(), DefaultGrace,
 		slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	if err != nil {
 		t.Fatal(err)
@@ -366,7 +367,7 @@ func TestPackagerHLS_APremiumWarmOnlyUsesSpareRoom(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got, want := m.runningChannels(), []string{
-		"left/" + string(FormatBaseline), "left/" + string(Format4KHDR), "watched/" + string(Format4KHDR),
+		"left/" + string(playout.FormatBaseline), "left/" + string(playout.Format4KHDR), "watched/" + string(playout.Format4KHDR),
 	}; !slices.Equal(got, want) {
 		t.Fatalf("running after the first warm = %v, want %v", got, want)
 	}
@@ -376,7 +377,7 @@ func TestPackagerHLS_APremiumWarmOnlyUsesSpareRoom(t *testing.T) {
 		t.Fatalf("a baseline warm was refused while a premium warm held its room: %v", err)
 	}
 	if got, want := m.runningChannels(), []string{
-		"left/" + string(FormatBaseline), "right/" + string(FormatBaseline), "watched/" + string(Format4KHDR),
+		"left/" + string(playout.FormatBaseline), "right/" + string(playout.FormatBaseline), "watched/" + string(playout.Format4KHDR),
 	}; !slices.Equal(got, want) {
 		t.Fatalf("running after the second warm = %v, want %v", got, want)
 	}

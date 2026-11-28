@@ -1,4 +1,4 @@
-package playout
+package hls
 
 import (
 	"bytes"

@@ -1,4 +1,4 @@
-package playout
+package hls
 
 import (
 	"github.com/loomarr/loomarr/internal/playout/admission"

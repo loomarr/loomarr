@@ -1,6 +1,6 @@
 //go:build ffmpeg
 
-package playout
+package hls
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
@@ -71,10 +72,10 @@ func TestSlateSampleDescriptionMatchesEveryItem(t *testing.T) {
 		ffmpegRun(t, append(s.gen, filepath.Join(dir, s.name+".mkv"))...)
 	}
 
-	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 160}
+	out := playout.OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 160}
 	hosts := map[string]encode.HostProfile{"software": encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{})}
 	if os.Getenv("LOOMARR_TEST_NVENC") == "1" {
-		hosts["nvenc"] = encode.HostFor(encode.EncoderNVENC, true, GPUFiltersFor("ffmpeg")())
+		hosts["nvenc"] = encode.HostFor(encode.EncoderNVENC, true, playout.GPUFiltersFor("ffmpeg")())
 	}
 	for name, host := range hosts {
 		t.Run(name, func(t *testing.T) {
@@ -89,8 +90,8 @@ func TestSlateSampleDescriptionMatchesEveryItem(t *testing.T) {
 			}
 			tested := 0
 			for _, s := range sources {
-				pl, err := Build(host, s.format, out)
-				if errors.Is(err, ErrRefused) {
+				pl, err := playout.Build(host, s.format, out)
+				if errors.Is(err, playout.ErrRefused) {
 					t.Logf("%s: refused on this host: %v", s.name, err)
 					continue
 				}

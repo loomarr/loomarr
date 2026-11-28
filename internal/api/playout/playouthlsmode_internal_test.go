@@ -14,16 +14,16 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type modeProbePlayout struct {
 	tuned        bool
-	request      playout.TuneRequest
-	presentation playout.Presentation
+	request      hls.TuneRequest
+	presentation hls.Presentation
 	err          error
-	asset        playout.Asset
+	asset        hls.Asset
 	assetOK      bool
 	viewer       string // playout.ViewerFrom the last call's context
 	speculative  bool
@@ -46,19 +46,19 @@ func modeHandlerServer(t *testing.T, probe *modeProbePlayout) *Handlers {
 	return &Handlers{playout: probe, store: st}
 }
 
-func (p *modeProbePlayout) Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error) {
-	p.tuned, p.request, p.viewer = true, request, playout.ViewerFrom(ctx)
+func (p *modeProbePlayout) Tune(ctx context.Context, request hls.TuneRequest) (hls.Presentation, error) {
+	p.tuned, p.request, p.viewer = true, request, hls.ViewerFrom(ctx)
 	return p.presentation, p.err
 }
 
-func (p *modeProbePlayout) OpenAsset(ctx context.Context, _ string, _ string, speculative bool) (playout.Asset, bool, error) {
-	p.viewer = playout.ViewerFrom(ctx)
+func (p *modeProbePlayout) OpenAsset(ctx context.Context, _ string, _ string, speculative bool) (hls.Asset, bool, error) {
+	p.viewer = hls.ViewerFrom(ctx)
 	p.speculative = speculative
 	return p.asset, p.assetOK, nil
 }
 
 func TestHLSWarmVariantKeepsSpeculativeAdmissionAndAssetURLs(t *testing.T) {
-	probe := &modeProbePlayout{asset: playout.Asset{
+	probe := &modeProbePlayout{asset: hls.Asset{
 		Content: stringAsset{strings.NewReader("#EXTM3U\n#EXT-X-MAP:URI=\"init.mp4\"\nseg.m4s\n")}, Playlist: true,
 	}, assetOK: true}
 	s := modeHandlerServer(t, probe)
@@ -77,8 +77,8 @@ func TestHLSWarmVariantKeepsSpeculativeAdmissionAndAssetURLs(t *testing.T) {
 
 func (*modeProbePlayout) StopChannel(string) {}
 
-func liveManifest() playout.Presentation {
-	return playout.Presentation{Manifest: []byte("#EXTM3U\n#EXTINF:4,\nseg-0.ts\n"), Release: func() {}}
+func liveManifest() hls.Presentation {
+	return hls.Presentation{Manifest: []byte("#EXTM3U\n#EXTINF:4,\nseg-0.ts\n"), Release: func() {}}
 }
 
 // Prepared media is retired (#1512 phase 4), but a client built before that still probes adjacent
@@ -113,7 +113,7 @@ func TestHLSWarmModeMarksSpeculativeLiveAdmission(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
-	if !probe.request.Speculative || probe.request.Delivery != playout.DeliveryHLS {
+	if !probe.request.Speculative || probe.request.Delivery != hls.DeliveryHLS {
 		t.Fatalf("Tune request = %#v, want speculative live HLS", probe.request)
 	}
 	body := w.Body.String()
@@ -133,8 +133,8 @@ func TestHLSMasterAndPlaylistRequestsCarryTheSignedViewer(t *testing.T) {
 	tv := viewing.Viewer{UserID: "u-1", DeviceKey: "device:tv", DeviceLabel: "Living room"}
 	tag := url.QueryEscape(httpcore.SignViewerTag(key, "ch-one", tv))
 	forged := url.QueryEscape(httpcore.SignViewerTag(key, "ch-other", tv))
-	playlist := func() playout.Asset {
-		return playout.Asset{Content: stringAsset{strings.NewReader("#EXTM3U\n")}, Playlist: true}
+	playlist := func() hls.Asset {
+		return hls.Asset{Content: stringAsset{strings.NewReader("#EXTM3U\n")}, Playlist: true}
 	}
 	for _, tc := range []struct {
 		name, path, want string
@@ -184,7 +184,7 @@ func (stringAsset) Close() error { return nil }
 // bare, so without the rewrite a native player's init and segment fetches carry no credential.
 func TestHLSVariantPlaylistAssetIsAuthRewritten(t *testing.T) {
 	body := "#EXTM3U\n#EXT-X-MAP:URI=\"1080p-h264-sdr-init.mp4\"\n#EXTINF:1.00000,\n1080p-h264-sdr-seg00000001.m4s\n"
-	probe := &modeProbePlayout{asset: playout.Asset{
+	probe := &modeProbePlayout{asset: hls.Asset{
 		Content: stringAsset{strings.NewReader(body)}, Modified: time.Unix(1_000, 0), Playlist: true,
 	}, assetOK: true}
 	s := &Handlers{playout: probe}

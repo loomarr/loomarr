@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/channels/viewing"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 )
 
 // The viewer tag: who a signed play URL was minted for, so household viewing (#1662) can say who
@@ -89,5 +89,5 @@ func WithPlayoutViewer(ctx context.Context, v viewing.Viewer, ok bool) context.C
 	if !ok {
 		return ctx
 	}
-	return playout.WithViewer(ctx, v.UserID+"\n"+v.DeviceKey)
+	return hls.WithViewer(ctx, v.UserID+"\n"+v.DeviceKey)
 }

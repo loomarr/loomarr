@@ -28,6 +28,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 	"github.com/loomarr/loomarr/internal/playout/resolve"
 )
 
@@ -204,7 +205,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	if deps.images != nil {
 		posters := &homePosters{store: st, images: deps.images, busy: deps.watched, log: deps.log, now: time.Now,
-			still: playout.FFmpegSourceStill(deps.ffmpegPath, playout.TonemapperFor(deps.ffmpegPath), deps.processes)}
+			still: hls.FFmpegSourceStill(deps.ffmpegPath, playout.TonemapperFor(deps.ffmpegPath), deps.processes)}
 		deps.owner.goRunAfterBuild(posters.Run)
 	}
 	deps.owner.goRunAfterBuild(scanner.Run)

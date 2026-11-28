@@ -25,7 +25,7 @@ const unlockedQuiet = 24 * time.Hour
 
 // newScratchRoot sweeps base of abandoned roots, then creates and locks this process's own. The
 // returned release drops the lock; the caller removes the root with it.
-func newScratchRoot(base, prefix string, log *slog.Logger) (root string, release func(), err error) {
+func NewScratchRoot(base, prefix string, log *slog.Logger) (root string, release func(), err error) {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}

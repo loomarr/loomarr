@@ -1,4 +1,4 @@
-package playout
+package hls
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/testkit/playoutstreamfixture"
 )
 
@@ -269,12 +270,12 @@ func TestOriginStopAllOrdersAgainstTuneAdmission(t *testing.T) {
 func TestOriginWarmVariantReadinessDoesNotBlockLifecycleTeardown(t *testing.T) {
 	for _, operation := range []string{"StopChannel", "StopAll", "Quiesce"} {
 		t.Run(operation, func(t *testing.T) {
-			m, err := NewPackagerHLS(&premiumSource{premium: Format4KHDR}, sleepingFFmpeg(t), t.TempDir(), DefaultGrace, nil)
+			m, err := NewPackagerHLS(&premiumSource{premium: playout.Format4KHDR}, sleepingFFmpeg(t), t.TempDir(), DefaultGrace, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(m.Stop)
-			c, release, err := m.acquire("neighbour", Format4KHDR, true)
+			c, release, err := m.acquire("neighbour", playout.Format4KHDR, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -285,7 +286,7 @@ func TestOriginWarmVariantReadinessDoesNotBlockLifecycleTeardown(t *testing.T) {
 			defer cancel()
 			readDone := make(chan error, 1)
 			go func() {
-				_, _, err := origin.OpenAsset(ctx, "neighbour", string(Format4KHDR)+".m3u8", true)
+				_, _, err := origin.OpenAsset(ctx, "neighbour", string(playout.Format4KHDR)+".m3u8", true)
 				readDone <- err
 			}()
 			deadline := time.Now().Add(time.Second)

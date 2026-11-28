@@ -1,6 +1,6 @@
 //go:build ffmpeg
 
-package playout
+package hls
 
 import (
 	"bytes"
@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/media"
 )
@@ -26,7 +27,7 @@ type ladderSource struct {
 	path  string
 	facts media.MediaFormat
 	host  encode.HostProfile
-	out   OutputProfile
+	out   playout.OutputProfile
 }
 
 func (s ladderSource) ItemAt(_ context.Context, _ string, at time.Time) (PackagerItem, error) {
@@ -34,9 +35,9 @@ func (s ladderSource) ItemAt(_ context.Context, _ string, at time.Time) (Package
 	return PackagerItem{Label: "uhd-hdr", Input: s.path, Format: s.facts, Seek: 5*time.Second + in, Remaining: 10*time.Minute - in}, nil
 }
 
-func (ladderSource) Premium(context.Context, string) FormatClass { return "" }
+func (ladderSource) Premium(context.Context, string) playout.FormatClass { return "" }
 
-func (s ladderSource) Output(context.Context, string, FormatClass, int) (encode.HostProfile, OutputProfile) {
+func (s ladderSource) Output(context.Context, string, playout.FormatClass, int) (encode.HostProfile, playout.OutputProfile) {
 	return s.host, s.out
 }
 
@@ -75,7 +76,7 @@ func TestLive_PackagerLadderStepsDownWithoutAnAudioGap(t *testing.T) {
 		t.Skip("set PLAYOUT_TEST_LADDER_4K to a 4K HDR10 source with a continuous tone")
 	}
 	bin := ffmpegBin(t)
-	facts, err := FFprobeFormatNextTo(bin)(context.Background(), path)
+	facts, err := playout.FFprobeFormatNextTo(bin)(context.Background(), path)
 	if err != nil || !facts.HDR() || facts.Height < 2160 {
 		t.Fatalf("source facts %+v (err %v): want 4K HDR", facts, err)
 	}
@@ -88,8 +89,8 @@ func TestLive_PackagerLadderStepsDownWithoutAnAudioGap(t *testing.T) {
 	dir := t.TempDir()
 	steps := &stepLog{start: time.Now()}
 	src := ladderSource{epoch: time.Now(), path: path, facts: facts,
-		host: encode.HostFor(encode.EncoderSoftware, TonemapperFor(bin)(), encode.GPUFilters{}),
-		out:  ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: encode.EncoderSoftware, AudioBitrate: 160})}
+		host: encode.HostFor(encode.EncoderSoftware, playout.TonemapperFor(bin)(), encode.GPUFilters{}),
+		out:  playout.ChannelOutput(playout.Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: encode.EncoderSoftware, AudioBitrate: 160})}
 	m, err := NewPackagerHLS(src, bin, filepath.Join(dir, "hls"), time.Second, slog.New(steps))
 	if err != nil {
 		t.Fatal(err)
@@ -120,7 +121,7 @@ func TestLive_PackagerLadderStepsDownWithoutAnAudioGap(t *testing.T) {
 		ts.Write(b)
 	}
 	m.mu.Lock()
-	c := m.channels[packagedKey{channel: "ch", format: FormatBaseline}]
+	c := m.channels[packagedKey{channel: "ch", format: playout.FormatBaseline}]
 	m.mu.Unlock()
 	stats := c.p.Stats()
 	steps.mu.Lock()

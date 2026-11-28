@@ -1,10 +1,11 @@
-package playout
+package hls
 
 import (
 	"context"
 	"errors"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 )
 
@@ -53,13 +54,13 @@ func victimRank(channels map[packagedKey]*packagedChannel, key packagedKey, c *p
 	switch {
 	case c.viewers > 0:
 		return 0
-	case key.format.isPremium() && c.warmHeld:
+	case key.format.IsPremium() && c.warmHeld:
 		return victimPremiumWarm
 	case c.speculative:
 		return victimWarm
 	case !c.idleSince.IsZero() && now.Sub(c.idleSince) >= watchedWithin:
 		return victimGrace
-	case key.format.isPremium() && channels[packagedKey{channel: key.channel, format: FormatBaseline}] != nil:
+	case key.format.IsPremium() && channels[packagedKey{channel: key.channel, format: playout.FormatBaseline}] != nil:
 		return victimPremium
 	default:
 		return 0
@@ -125,7 +126,7 @@ func olderIdle(key packagedKey, c *packagedChannel, otherKey packagedKey, other 
 // while a premium viewer is fetching it, or while a neighbour warm holds it; a baseline keeps the
 // full grace that absorbs surfing. Called with m.mu held.
 func (m *PackagerHLS) graceFor(key packagedKey, c *packagedChannel) time.Duration {
-	if key.format.isPremium() && !c.warmHeld {
+	if key.format.IsPremium() && !c.warmHeld {
 		return min(m.grace, watchedWithin)
 	}
 	return m.grace
@@ -136,7 +137,7 @@ func admitReason(key packagedKey, speculative bool) string {
 	switch {
 	case !speculative:
 		return "viewer"
-	case key.format.isPremium():
+	case key.format.IsPremium():
 		return "premium-warm"
 	default:
 		return "warm"
@@ -170,7 +171,7 @@ func (m *PackagerHLS) admitEvicting(ctx context.Context, key packagedKey, req ad
 	switch {
 	case !speculative:
 		top.NoRungDrop = true
-	case key.format.isPremium():
+	case key.format.IsPremium():
 		evictable = 0
 	default:
 		evictable = victimPremiumWarm

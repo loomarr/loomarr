@@ -1,6 +1,6 @@
 //go:build ffmpeg
 
-package playout
+package hls
 
 import (
 	"bytes"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
@@ -24,7 +25,7 @@ type rotatingSource struct {
 	itemLen time.Duration
 	paths   []string
 	formats []media.MediaFormat
-	out     OutputProfile
+	out     playout.OutputProfile
 }
 
 func (s rotatingSource) ItemAt(_ context.Context, _ string, at time.Time) (PackagerItem, error) {
@@ -34,9 +35,9 @@ func (s rotatingSource) ItemAt(_ context.Context, _ string, at time.Time) (Packa
 		Format: s.formats[idx%len(s.formats)], Seek: time.Duration(idx%3) * time.Second, Remaining: end.Sub(at)}, nil
 }
 
-func (rotatingSource) Premium(context.Context, string) FormatClass { return "" }
+func (rotatingSource) Premium(context.Context, string) playout.FormatClass { return "" }
 
-func (s rotatingSource) Output(context.Context, string, FormatClass, int) (encode.HostProfile, OutputProfile) {
+func (s rotatingSource) Output(context.Context, string, playout.FormatClass, int) (encode.HostProfile, playout.OutputProfile) {
 	return encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{}), s.out
 }
 
@@ -48,7 +49,7 @@ func (s rotatingSource) Output(context.Context, string, FormatClass, int) (encod
 func TestPackagerOriginServesHLSAndTSAcrossItemBoundaries(t *testing.T) {
 	dir := t.TempDir()
 	src := rotatingSource{epoch: time.Now(), itemLen: 2 * time.Second,
-		out: OutputProfile{Width: 640, Height: 360, FPS: 30, Quality: 28, TargetKbps: 800, MaxKbps: 1200, GOPSeconds: 1, AudioKbps: 128}}
+		out: playout.OutputProfile{Width: 640, Height: 360, FPS: 30, Quality: 28, TargetKbps: 800, MaxKbps: 1200, GOPSeconds: 1, AudioKbps: 128}}
 	for i, s := range []struct {
 		lavfi     string
 		w, h, fps int
@@ -121,7 +122,7 @@ func TestPackagerOriginServesHLSAndTSAcrossItemBoundaries(t *testing.T) {
 		ts.Write(b)
 	}
 	m.mu.Lock()
-	c := m.channels[packagedKey{channel: "ch", format: FormatBaseline}]
+	c := m.channels[packagedKey{channel: "ch", format: playout.FormatBaseline}]
 	m.mu.Unlock()
 	if s := c.p.Stats(); s.Items < 7 || s.Slates != 0 {
 		t.Fatalf("stats %+v: want 7 items back to back, no slate", s)
