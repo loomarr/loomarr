@@ -50,6 +50,8 @@ interface LibraryProblem {
   poster?: ReactNode;
   /** Its files that can't be played. */
   unplayable: number;
+  /** How many extra copies it has; 0 for none. */
+  extraCopies: number;
   /** What its extra copies take, in bytes; 0 for none. */
   extraBytes: number;
 }

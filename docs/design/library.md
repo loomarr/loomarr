@@ -915,9 +915,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   plays in its place is listed and readable (the store rule above), including a copy whose own
   header failed: a broken 4K copy beside a main file that plays is an extra, not a title that
   can't be played. Each file on the wire carries its `state` (`plays`, `extra`, `unplayable`,
-  `reading`, `waiting`). An extra copy is a warning card on the title's page ("An extra copy is
-  taking 4.0 GB", its file's size) with Remove <file name> (`POST …/remove-copy`, 409 for any file
-  that is not `extra`). Removing moves the file to `<media folder>/.loomarr-trash/<date>/<its path>`, the
+  `reading`, `waiting`). A movie with more than one file, or a file that can't be played, has one
+  Copies card on its page for an admin: each file by quality ("4K copy", "1080p copy"; "A copy that
+  can't be played" when its header gave no picture), its size and its state (Plays, Can't be
+  played, Extra, Reading, Waiting). Only an extra copy has a Remove, named by quality ("Remove the
+  4K copy", or "Remove the broken copy"), never by file name (`POST …/remove-copy`, 409 for any
+  file that is not `extra`). Removing moves the file to `<media folder>/.loomarr-trash/<date>/<its path>`, the
   same share, so it is a rename; the trash holds a `.ignore`, so walks and watches skip it.
   Loomarr marks the file missing at once, so no removal guard holds it. A complete walk of the
   folder deletes each day's trash 30 days on; a folder there that isn't a date is left alone. A
@@ -947,9 +950,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   title page's files, and `GET /v1/library/needs` returns them as `problems` (each with
   `extraBytes`, the size of the extra copies' files) after the titles nobody can
   identify. Both count towards `needsYou`, the nav badge. Needs you words them in plain words
-  ("Night Ferry has 2 episodes that can't be played", "Paper Kites has an extra copy") with
-  See why, which opens the title. The title's page gives an unplayable title a warning card with
-  Check again, and the shelf marks a ready title that needs a look with a dot (a phone grid has no
+  ("Night Ferry has 2 episodes that can't be played", "Paper Kites has 2 extra copies", counted
+  from `extraCopies`) with See why, which opens the title. While anything counts towards
+  `needsYou`, Settings → Library's headline says "Up to date". The title's page gives an
+  unplayable title a warning card with Check files again, a movie only when none of its files has
+  state `plays`, and the shelf marks a ready title that needs a look with a dot (a phone grid has no
   room for a word), which a screen reader hears as "<name>, needs a look".
 - **Your collections** (step 12, decision 28). `library_collections` keeps the household's own
   collections and `library_collection_members` their titles in order, as `library_items` ids. A

@@ -22,6 +22,7 @@ const LibrarySettings = ({
   skipped,
   hooks,
   details,
+  needsYou,
   checking,
   onCheckAgain,
   onRescan,
@@ -41,6 +42,7 @@ const LibrarySettings = ({
         folders={folders}
         health={health}
         details={details}
+        needsYou={needsYou}
         held={held}
         unreadable={unreadable}
         skipped={skipped}

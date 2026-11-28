@@ -75,7 +75,9 @@ describe("Needs you by folder", () => {
   it("heads the order questions and the titles to look at, after the folders", () => {
     const { host, cleanup } = mount([need("one", "Films")], {
       orders: [{ id: "show", name: "Kestrel Bay", disk: [], files: [], choices: [] }],
-      problems: [{ id: "bad", kind: "movie", name: "Low Tide", unplayable: 1, extraBytes: 0 }],
+      problems: [
+        { id: "bad", kind: "movie", name: "Low Tide", unplayable: 1, extraCopies: 0, extraBytes: 0 },
+      ],
     });
     const groups = Array.from(host.querySelectorAll('[role="region"] [role="region"]'));
     expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual([

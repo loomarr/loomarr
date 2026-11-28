@@ -308,6 +308,7 @@ describe("LibraryTitlePage", () => {
       size: 500_000,
       ready: true,
       subtitles: [],
+      picture: { width: 720, height: 480, hdr: false },
       state: "extra" as const,
       streams: [],
       chapters: [],
@@ -329,7 +330,7 @@ describe("LibraryTitlePage", () => {
         <AppToaster />
       </QueryClientProvider>,
     );
-    await userEvent.click(await screen.findByRole("button", { name: "Remove Echo DVD.mkv" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Remove the SD copy" }));
     expect(await screen.findByText("Moved Echo DVD.mkv to the trash")).toBeInTheDocument();
     const undo = screen.getByRole("button", { name: "Undo" });
     await (press === "double" ? userEvent.dblClick(undo) : userEvent.click(undo));

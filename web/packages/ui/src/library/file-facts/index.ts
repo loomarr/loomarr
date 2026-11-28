@@ -1,1 +1,9 @@
-export { FileFacts, fileName, lengthPhrase, picturePhrase, Row, soundPhrase } from "./file-facts";
+export {
+  FileFacts,
+  fileName,
+  lengthPhrase,
+  pictureClass,
+  picturePhrase,
+  Row,
+  soundPhrase,
+} from "./file-facts";

@@ -172,6 +172,8 @@ interface LibrarySettingsProps {
   hooks: readonly LibraryHook[];
   /** How the titles' details are getting on; absent reads as nothing waiting. */
   details?: LibraryDetails;
+  /** How many titles are waiting in Needs you; absent reads as none. */
+  needsYou?: number;
   /** A check of every folder is running. */
   checking: boolean;
   onCheckAgain: () => void;

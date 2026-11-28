@@ -30,6 +30,7 @@ const problemOf = (p: LibraryProblemDTO): LibraryProblem => ({
   poster: p.item.poster ? <ServedImage alt="" image={p.item.poster} sizes={THUMB_SIZES} /> : undefined,
   // Needs you is admin-only, and an admin's titles always carry the count.
   unplayable: p.item.unplayable ?? 0,
+  extraCopies: p.item.extraCopies ?? 0,
   extraBytes: p.extraBytes,
 });
 

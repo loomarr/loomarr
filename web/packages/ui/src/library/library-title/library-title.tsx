@@ -1,4 +1,3 @@
-import { formatBytes } from "@loomarr/core/format";
 import {
   Action,
   Icon,
@@ -12,18 +11,13 @@ import {
   Text,
 } from "@loomarr/design-system";
 import { type ComponentProps, type ReactNode, type Ref, useRef, useState } from "react";
-import { fileName } from "../file-facts";
+import { Copies, needsCopies } from "../copies";
 import { Line, PAGE_GUTTER, Stack } from "../library-poster";
 import { PickTitle } from "../pick-title";
 import { SeasonEpisodes } from "../season-episodes";
 import { TechnicalDetails } from "../technical-details";
 import { CastAndCrew, Hero, OnChannels, playingLine, useTitleLayout } from "../title-parts";
-import type {
-  LibraryTitleDetail,
-  LibraryTitleFile,
-  LibraryTitleFix,
-  LibraryTitleProps,
-} from "./library-title.type";
+import type { LibraryTitleDetail, LibraryTitleFix, LibraryTitleProps } from "./library-title.type";
 
 // The title and what an admin can do about it.
 type TitleFixes = LibraryTitleFix & Pick<LibraryTitleProps, "title">;
@@ -204,54 +198,6 @@ const FixMenu = ({
   );
 };
 
-// An extra copy (decision 37) is a calm warning with one primary action. The card stays until the
-// page refetches without the file; a press while one is out is dropped.
-const ExtraCopy = ({
-  file,
-  name,
-  onRemove,
-}: {
-  file: LibraryTitleFile;
-  name: string;
-  onRemove: (path: string) => Promise<void>;
-}) => {
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const { density } = useTitleLayout();
-  const remove = () => {
-    if (busy) return;
-    setBusy(true);
-    setFailed(false);
-    onRemove(file.path).then(
-      () => setBusy(false),
-      () => {
-        setBusy(false);
-        setFailed(true);
-      },
-    );
-  };
-  return (
-    <Surface borderColor="stateWarning" gap="control" padding="section">
-      <Text as="h2" textRole="title">{`An extra copy is taking ${formatBytes(file.size)}`}</Text>
-      <Text textRole="body" tone="secondary">
-        Loomarr plays the better copy, so this one never plays. Removing it moves it to Loomarr's trash. You
-        can undo right after. After that, the file is in the .loomarr-trash folder inside its media folder for
-        30 days.
-      </Text>
-      {failed ? (
-        <Text textRole="body" tone="secondary">
-          Couldn't remove it. Loomarr may not be allowed to change this folder.
-        </Text>
-      ) : null}
-      <Line>
-        <Action density={density} onPress={remove} variant="outline">
-          {`Remove ${name}`}
-        </Action>
-      </Line>
-    </Surface>
-  );
-};
-
 // A file that can't be played (decision 24, the word sheet's "1 episode can't be played — the file
 // may be damaged" + "Check again"): a calm warning whose one action reads the files again.
 const Unplayable = ({
@@ -381,25 +327,13 @@ const LibraryTitle = ({ title, onBack, fix, personLink }: LibraryTitleProps) => 
 
       <CastAndCrew personLink={personLink} title={title} />
 
-      {fix && title.unplayable > 0 ? (
+      {/* A movie with a copy that plays can be played, whatever else is broken. */}
+      {fix && title.unplayable > 0 && !title.files.some((file) => file.state === "plays") ? (
         <Unplayable count={title.unplayable} kind={title.kind} onCheck={fix.onCheckFiles} />
       ) : null}
 
-      {fix
-        ? title.files
-            .filter((file) => file.state === "extra")
-            .map((file) => (
-              <ExtraCopy
-                file={file}
-                key={file.path}
-                name={fileName(
-                  file.path,
-                  title.files.map((f) => f.path),
-                )}
-                onRemove={fix.onRemoveExtra}
-              />
-            ))
-        : null}
+      {/* A series carries no files of its own. */}
+      {fix && needsCopies(title.files) ? <Copies files={title.files} onRemove={fix.onRemoveExtra} /> : null}
 
       {fix?.onChooseOrder && title.seasons.some((s) => s.episodes.some((e) => e.fromFile)) ? (
         <Surface

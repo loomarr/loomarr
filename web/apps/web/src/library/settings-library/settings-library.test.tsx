@@ -66,6 +66,27 @@ describe("SettingsLibrary", () => {
     expect(discoveries).toBe(1);
   });
 
+  it("says Up to date, not that everything's ready, while a title waits in Needs you", async () => {
+    server.use(
+      getListLibraryRootsMockHandler({ roots: [inUse], pathMap: [] }),
+      getLibraryStatusMockHandler(libraryStatus({ needsYou: 4 })),
+    );
+    renderPage();
+
+    expect(await screen.findByText("Up to date")).toBeInTheDocument();
+    expect(screen.queryByText(/ready to air/)).not.toBeInTheDocument();
+  });
+
+  it("says everything's ready with nothing waiting in Needs you", async () => {
+    server.use(
+      getListLibraryRootsMockHandler({ roots: [inUse], pathMap: [] }),
+      getLibraryStatusMockHandler(libraryStatus({ needsYou: 0 })),
+    );
+    renderPage();
+
+    expect(await screen.findByText("All caught up. Every title's ready to air")).toBeInTheDocument();
+  });
+
   it("does not look for folders when some are recorded", async () => {
     let discoveries = 0;
     server.use(

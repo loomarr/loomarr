@@ -17,18 +17,22 @@ const lengthPhrase = (ms: number) => {
   return h > 0 ? `${h} h ${m} min` : `${m} min`;
 };
 
-// "4K, extra-rich colour" · "1080p HD" · "Standard definition". Width counts too: a widescreen
-// film cropped to 1920×800 is still 1080p.
-const picturePhrase = ({ width, height, hdr }: NonNullable<LibraryTitleFile["picture"]>) => {
-  const size =
-    width >= 3200 || height >= 2000
-      ? "4K"
-      : width >= 1700 || height >= 1000
-        ? "1080p HD"
-        : width >= 1200 || height >= 700
-          ? "720p HD"
-          : "Standard definition";
-  return hdr ? `${size}, extra-rich colour` : size;
+// A picture's quality class. Width counts too: a widescreen film cropped to 1920×800 is still 1080p.
+const pictureClass = ({ width, height }: NonNullable<LibraryTitleFile["picture"]>) =>
+  width >= 3200 || height >= 2000
+    ? "4K"
+    : width >= 1700 || height >= 1000
+      ? "1080p"
+      : width >= 1200 || height >= 700
+        ? "720p"
+        : "SD";
+
+const PICTURE_WORDS = { "4K": "4K", "1080p": "1080p HD", "720p": "720p HD", SD: "Standard definition" };
+
+// "4K, extra-rich colour" · "1080p HD" · "Standard definition".
+const picturePhrase = (picture: NonNullable<LibraryTitleFile["picture"]>) => {
+  const size = PICTURE_WORDS[pictureClass(picture)];
+  return picture.hdr ? `${size}, extra-rich colour` : size;
 };
 
 const soundPhrase = (channels: number) =>
@@ -269,4 +273,4 @@ const FileFacts = ({
   );
 };
 
-export { FileFacts, fileName, lengthPhrase, picturePhrase, Row, soundPhrase };
+export { FileFacts, fileName, lengthPhrase, pictureClass, picturePhrase, Row, soundPhrase };

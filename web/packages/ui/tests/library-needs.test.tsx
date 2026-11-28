@@ -76,6 +76,7 @@ const problem = (id: string, over: Partial<LibraryProblem> = {}): LibraryProblem
   name: "Quiet Orchard",
   unplayable: 0,
   extraBytes: 0,
+  extraCopies: over.extraBytes ? 1 : 0,
   ...over,
 });
 
@@ -272,6 +273,13 @@ describe("LibraryNeedsCards", () => {
     act(() => button("See why").click());
     expect(onOpenTitle).toHaveBeenCalledWith("90000821");
     cleanup();
+
+    const two = mount(
+      cards({ needs: [], problems: [problem("90000822", { extraCopies: 2, extraBytes: 12_000_000_000 })] }),
+    );
+    expect(two.host.textContent).toContain("Quiet Orchard has 2 extra copies");
+    expect(two.host.textContent).toMatch(/2 extra copies are taking .+ and never play\./);
+    two.cleanup();
   });
 
   it("says why it guessed", () => {

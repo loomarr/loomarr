@@ -204,7 +204,7 @@ describe("LibraryTitle", () => {
     act(() => button("Technical details").click());
     expect(host.textContent).toContain("Part 1 of 2");
     expect(host.textContent).toContain("Part 2 of 2");
-    expect(host.textContent).not.toContain("An extra copy");
+    expect(host.textContent).not.toContain("Extra");
     cleanup();
   });
 
@@ -216,14 +216,13 @@ describe("LibraryTitle", () => {
       state: "extra",
     } as LibraryTitleDetail["files"][number];
     const single = render(MOVIE);
-    expect(single.host.textContent).not.toContain("An extra copy");
+    expect(single.host.textContent).not.toContain("Copies");
     single.cleanup();
 
     const onRemoveExtra = vi.fn(() => Promise.reject(new Error("read-only")));
     const { host, button, cleanup } = render({ ...MOVIE, files: [...MOVIE.files, extra] }, { onRemoveExtra });
-    expect(host.textContent).toContain("An extra copy is taking 4.0 GB");
-    // The action says which file it moves.
-    await act(async () => button("Remove Paper Kites DVD.mkv").click());
+    // The action says which copy it moves, by quality.
+    await act(async () => button("Remove the 4K copy").click());
     expect(onRemoveExtra).toHaveBeenCalledWith(extra.path);
     expect(host.textContent).toContain(
       "Couldn't remove it. Loomarr may not be allowed to change this folder.",
@@ -238,7 +237,8 @@ describe("LibraryTitle", () => {
     expect(fine.host.textContent).not.toContain("can't be played");
     fine.cleanup();
 
-    const movie = render({ ...MOVIE, unplayable: 1 });
+    const broken = { ...MOVIE.files[0], picture: undefined, state: "unplayable" };
+    const movie = render({ ...MOVIE, files: [broken as LibraryTitleDetail["files"][number]], unplayable: 1 });
     expect(movie.host.textContent).toContain("This movie can't be played. The file may be damaged");
     await act(async () => movie.button("Check files again").click());
     expect(movie.props.fix?.onCheckFiles).toHaveBeenCalled();
@@ -472,8 +472,6 @@ describe("LibraryTitle", () => {
       "More about this file, Kites.mkv in Extras",
       "More about this file, Kites DVD.mkv",
     ]);
-    expect(button("Remove Kites.mkv in Extras")).toBeTruthy();
-    expect(button("Remove Kites DVD.mkv")).toBeTruthy();
     // The card says the way back once the toast's Undo has gone.
     expect(host.textContent).toContain(
       "You can undo right after. After that, the file is in the .loomarr-trash folder inside its media folder for 30 days.",
@@ -626,7 +624,8 @@ describe("LibraryTitle", () => {
       "Wrong title?",
       "Technical details",
       "can't be played",
-      "Remove Paper Kites",
+      "Remove the",
+      "Copies",
     ]) {
       expect(host.textContent).not.toContain(word);
     }

@@ -21,6 +21,8 @@ interface LibraryTitleFile {
    * waiting while the copy in its place is missing or can't be played.
    */
   state: "plays" | "extra" | "unplayable" | "reading" | "waiting";
+  /** False while its header is still to be read. */
+  ready?: boolean;
   /** Which part of a movie split over several files it is, from 1; absent for a whole file. */
   part?: number;
   /** The format its header names, such as matroska,webm. */
