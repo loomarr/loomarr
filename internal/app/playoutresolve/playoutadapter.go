@@ -185,7 +185,7 @@ type Resolver struct {
 	// still tone mapping; nil, or any other id, reads the inventory.
 	libraryVideo LibraryVideoReader
 	// librarySubtitles and subtitleCues serve a channel's soft subtitles (#2088 decision 5); nil
-	// until SetSubtitles, which leaves every window empty.
+	// leaves every window empty.
 	librarySubtitles LibrarySubtitleReader
 	subtitleCues     SubtitleCues
 	// burns prepares the image subtitle tracks channels burn in (#2088 step 8; subtitleburn.go).
