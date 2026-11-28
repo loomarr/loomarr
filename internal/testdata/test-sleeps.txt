@@ -10,7 +10,6 @@ internal/app/buildlibrary_test.go 1
 internal/app/playout_noviewer_test.go 1
 internal/app/restart_test.go 1
 internal/app/settings_replica_test.go 1
-internal/filler/fetch/downloaders_test.go 3
 internal/integration/database_lifecycle_postgres_test.go 6
 internal/integration/discovery_feedback_recuration_test.go 1
 internal/integration/harness_test.go 1

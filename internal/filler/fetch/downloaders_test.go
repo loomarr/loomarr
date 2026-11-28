@@ -256,40 +256,26 @@ func readSidecar(t *testing.T, path string) map[string]any {
 
 func waitForHelperPID(t *testing.T, path string) int {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
+	var contents string
+	testkit.Eventually(t, 5*time.Second, "the helper to write "+path, func() bool {
 		raw, err := os.ReadFile(path)
-		if err == nil {
-			contents := strings.TrimSpace(string(raw))
-			if contents == "" {
-				time.Sleep(10 * time.Millisecond)
-				continue
-			}
-			pid, parseErr := strconv.Atoi(contents)
-			if parseErr != nil {
-				t.Fatalf("parse helper pid: %v", parseErr)
-			}
-			return pid
-		}
-		if !errors.Is(err, os.ErrNotExist) {
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("read helper pid: %v", err)
 		}
-		time.Sleep(10 * time.Millisecond)
+		contents = strings.TrimSpace(string(raw))
+		return contents != ""
+	})
+	pid, err := strconv.Atoi(contents)
+	if err != nil {
+		t.Fatalf("parse helper pid: %v", err)
 	}
-	t.Fatalf("helper did not write %s", path)
-	return 0
+	return pid
 }
 
 func assertProcessGone(t *testing.T, pid int) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if testProcessGone(pid) {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("process %d survived yt-dlp cancellation", pid)
+	testkit.Eventually(t, 3*time.Second, "process "+strconv.Itoa(pid)+" to die after yt-dlp cancellation",
+		func() bool { return testProcessGone(pid) })
 }
 
 func TestYtDlpDownloader_CreatesMissingDropDirectoryForPrivateResultFile(t *testing.T) {
