@@ -35,16 +35,6 @@
 //     persisted first-live origin that survives restarts and reconciles. It is stamped once,
 //     rather than recomputed from query time, process start, or Channel.UpdatedAt.
 //
-//   - ONE PACKAGER PER CHANNEL FORMAT, N REFCOUNTED VIEWERS. A second viewer joins the running one
-//     rather than starting a second encode. Admission is bounded (ErrAtCapacity); viewers are
-//     never EVICTED to make room, which was viewra's mistake — dropping a watching household to
-//     admit a new one trades a working stream for a broken one.
-//
-//   - A SLOW VIEWER IS DROPPED, NOT BUFFERED. Note this INVERTS internal/platform/events, which drops the
-//     MESSAGE and keeps the subscriber: an SSE client can refetch state on reconnect, so a gap
-//     is recoverable. A byte stream with a hole in it is corrupt, not stale — so here the
-//     viewer goes and the stream stays clean.
-//
 //   - NOMINAL TIME IS NEVER AIRTIME. A pending acquisition has no known duration. Giving it one
 //     inside the cycle arithmetic would grow the cycle, shift every later programme, and make
 //     the encoder air silence for an invented length. Display width for such a slot is a

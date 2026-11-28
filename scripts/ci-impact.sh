@@ -103,6 +103,9 @@ classify() {
   # or its corpus scripts selects it. Independent of the Go gates above: a builder edit still runs
   # those too.
   # The Playout area's other packages sit under internal/playout too; the builder never imports them.
+  # internal/playout/hls is selected although cmd/playout-bench does not import it: excluding it
+  # would be wrong from the day the bench measures through the packager, and a path list cannot
+  # notice that day.
   case "$path" in
     internal/playout/tunarr/*|internal/playout/livetvpublish/*|internal/playout/backendtransition/*|\
     internal/playout/landiscovery/*|internal/playout/watermark/*)
