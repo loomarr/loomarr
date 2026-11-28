@@ -1,7 +1,7 @@
 import { formatProgrammeTitle } from "@loomarr/core/guide";
 import type { GuideViewChannel } from "@loomarr/core/guide-view";
 
-import { groupSeriesRuns, type StripAiring } from "../../film-strip/series-runs";
+import { groupSeriesRuns, type StripAiring } from "../../film-strip";
 import type { GuideViewEntry } from "../guide-view.type";
 
 const titleOf = (airing: StripAiring) => airing.series?.trim() || formatProgrammeTitle(airing);

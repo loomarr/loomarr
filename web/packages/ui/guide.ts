@@ -25,5 +25,11 @@ export {
   GuideProgrammeDetail,
   GuideSurface,
 } from "./src/guide";
-export type { GuideViewEntry, GuideViewLayout, GuideViewProps } from "./src/guide-view";
+export type {
+  GuideViewEntry,
+  GuideViewHandle,
+  GuideViewKey,
+  GuideViewLayout,
+  GuideViewProps,
+} from "./src/guide-view";
 export { GuideView, guideViewChannels } from "./src/guide-view";

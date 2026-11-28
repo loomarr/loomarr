@@ -1,9 +1,8 @@
-import { Layer, Stack, Surface, Text, ThemeScope } from "@loomarr/design-system";
-import { type ComponentRef, type Ref, useState } from "react";
-import { Platform, Pressable, type View, type ViewStyle } from "react-native";
+import { Layer, RingTarget, Stack, Surface, Text, ThemeScope } from "@loomarr/design-system";
+import { useState } from "react";
+import { Platform } from "react-native";
 
-import { groupSeriesRuns, type StripAiring } from "../../film-strip/series-runs";
-import { PlaybarStill } from "../../watching-surface/player-chrome/playbar-still";
+import { groupSeriesRuns, type StripAiring, StripStill } from "../../film-strip";
 import type { GuideViewBlock, GuideViewEntry } from "../guide-view.type";
 
 /** The least a focused or pointed block measures across, for its ring and pointer. */
@@ -28,13 +27,11 @@ interface RowProps {
   stopMs: number;
 }
 
-// The ring below is a block's only focus and hover drawing, so the browser's outline is off.
-const noOutline = Platform.OS === "web" ? ({ outlineStyle: "none" } as unknown as ViewStyle) : null;
-
 const Block = ({
   artwork,
   block,
   blockRef,
+  context,
   cursor,
   formatTime,
   height,
@@ -46,6 +43,8 @@ const Block = ({
   artwork: string | undefined;
   block: GuideViewBlock;
   blockRef: (node: RowHandle | null) => void;
+  /** The channel, which ends the block's name. */
+  context: string;
   cursor: boolean;
   formatTime: (ms: number) => string;
   height: number;
@@ -55,6 +54,7 @@ const Block = ({
   stopMs: number;
 }) => {
   const [hovered, setHovered] = useState(false);
+  const [keyboard, setKeyboard] = useState(false);
   const span = stopMs - startMs;
   const from = Math.max(block.startMs, startMs);
   const to = Math.min(block.stopMs, stopMs);
@@ -73,7 +73,6 @@ const Block = ({
       : words;
   const picture = on ? artwork : undefined;
   const aired = on && to > from ? Math.max(0, Math.min(1, (nowMs - from) / (to - from))) : 0;
-  const ring = cursor ? "actionFocus" : hovered ? "contentPrimary" : "transparent";
 
   const text = (
     <Stack align="center" direction="row" gap="1.5" height="100%" minWidth={0} paddingHorizontal={8}>
@@ -106,69 +105,82 @@ const Block = ({
       left={`${((from - startMs) / span) * 100}%`}
       top={0}
       width={`${((to - from) / span) * 100}%`}
-      zIndex={cursor || hovered ? 1 : 0}
+      zIndex={cursor || hovered || keyboard ? 1 : 0}
     >
-      <Pressable
-        accessibilityLabel={label}
-        accessibilityRole="button"
+      <RingTarget
+        // The name leads with the words on screen (WCAG 2.5.3), and ends with whose they are.
+        accessibilityLabel={`${label}, ${context}`}
         onHoverIn={() => setHovered(true)}
         onHoverOut={() => setHovered(false)}
+        onKeyboardFocus={setKeyboard}
         onPress={onPress}
-        ref={blockRef as unknown as Ref<ComponentRef<typeof View>>}
-        style={noOutline}
+        ref={blockRef}
         // The web's one Tab stop is the cursor; a television's remote has to reach every block.
         tabIndex={Platform.OS !== "web" || cursor ? 0 : -1}
         testID={`guide-view-${ended ? "ended" : later ? "later" : "now"}`}
       >
-        <Stack paddingHorizontal={1}>
-          <Surface
-            backgroundColor={ended ? "surfaceCanvas" : on ? "stateAiringSurface" : "surfaceElevated"}
-            borderColor={ended ? "borderDecorative" : "transparent"}
-            borderRadius={4}
-            borderWidth={1}
-            height={height}
-            overflow="hidden"
-            position="relative"
-          >
-            {picture ? <PlaybarStill fill uri={picture} /> : null}
-            {aired > 0 ? (
-              <Surface
-                backgroundColor={picture ? "artworkScrim" : "surfaceCanvas"}
-                borderRadius={0}
-                borderWidth={0}
-                bottom={0}
-                left={0}
-                opacity={picture ? 1 : 0.6}
-                position="absolute"
-                testID="guide-view-aired"
-                top={0}
-                width={`${aired * 100}%`}
-              />
-            ) : null}
-            <Layer fill>
-              {picture ? (
-                <ThemeScope theme="dark">
-                  <Surface backgroundColor="artworkScrim" borderRadius={0} borderWidth={0} height="100%">
-                    {text}
-                  </Surface>
-                </ThemeScope>
-              ) : (
-                text
-              )}
-            </Layer>
-          </Surface>
-        </Stack>
-        <Layer centred height={height} minWidth={MIN_TARGET} top={0} width="100%">
-          <Surface
-            backgroundColor="transparent"
-            borderColor={ring}
-            borderRadius={4}
-            borderWidth={2}
-            height="100%"
-            testID={`guide-view-ring-${ring}`}
-          />
-        </Layer>
-      </Pressable>
+        {(face) => {
+          // Amber is the keys' alone; a cursor a pointer set, or one left behind, draws the plain ring.
+          const ring = face.keyboard ? "actionFocus" : cursor ? "contentPrimary" : face.ring;
+          return (
+            <>
+              <Stack paddingHorizontal={1}>
+                <Surface
+                  backgroundColor={ended ? "surfaceCanvas" : on ? "stateAiringSurface" : "surfaceElevated"}
+                  borderColor={ended ? "borderDecorative" : "transparent"}
+                  borderRadius={4}
+                  borderWidth={1}
+                  height={height}
+                  overflow="hidden"
+                  position="relative"
+                >
+                  {picture ? <StripStill fill uri={picture} /> : null}
+                  {aired > 0 ? (
+                    <Surface
+                      backgroundColor={picture ? "artworkScrim" : "surfaceCanvas"}
+                      borderRadius={0}
+                      borderWidth={0}
+                      bottom={0}
+                      left={0}
+                      opacity={picture ? 1 : 0.6}
+                      position="absolute"
+                      testID="guide-view-aired"
+                      top={0}
+                      width={`${aired * 100}%`}
+                    />
+                  ) : null}
+                  <Layer fill>
+                    {picture ? (
+                      <ThemeScope theme="dark">
+                        <Surface
+                          backgroundColor="artworkScrim"
+                          borderRadius={0}
+                          borderWidth={0}
+                          height="100%"
+                        >
+                          {text}
+                        </Surface>
+                      </ThemeScope>
+                    ) : (
+                      text
+                    )}
+                  </Layer>
+                </Surface>
+              </Stack>
+              <Layer centred height={height} minWidth={MIN_TARGET} top={0} width="100%">
+                <Surface
+                  backgroundColor="transparent"
+                  borderColor={ring}
+                  borderRadius={4}
+                  borderWidth={2}
+                  height="100%"
+                  testID={`guide-view-ring-${ring}`}
+                />
+              </Layer>
+            </>
+          );
+        }}
+      </RingTarget>
     </Layer>
   );
 };
@@ -201,6 +213,7 @@ const Row = ({
             )}
             block={block}
             blockRef={blockRef(block.id)}
+            context={`channel ${channel.number}, ${channel.name}`}
             cursor={block.id === cursorId}
             formatTime={formatTime}
             height={height}

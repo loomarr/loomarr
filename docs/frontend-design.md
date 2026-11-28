@@ -949,6 +949,16 @@ playing, docked in a corner. This part is built beside the shipped Guide and is 
   drawn programme that has not ended, taking the next one drawn where a channel is in a break. Left
   and Right move along the row; past either edge the span moves by an hour. Up from the first row
   reaches the group tabs, as in the channel list.
+  Amber is only on a control the keys or a remote hold: a cursor a pointer set, or one left behind
+  when focus moves to a tab or Earlier, draws the plain ring.
+- **A programme that ends.** The cursor never rests on an ended programme. When the one under it
+  ends it moves to what is on now on that channel, or the next drawn in a break: the one time it
+  moves by itself. An outside tune that takes its row out of the group puts it on the watched
+  channel's row.
+- **Focus.** When the focused control leaves the screen, focus goes to the cursor's block after a
+  key, and to the Guide itself after a pointer, so keys still reach it.
+- **The clock.** Hours and half hours are the viewer's: the caller gives the start of the present
+  hour, so a zone 30 or 45 minutes off reads whole hours.
 - **Choosing.** OK or Enter on what is on now tunes that channel and stays in the Guide, or returns to
   the picture on the watched channel. On a later programme it says "<title> starts at <time>. <OK or
   Enter> on what is on now watches <channel>". A click on a row's channel tunes; a click on a later

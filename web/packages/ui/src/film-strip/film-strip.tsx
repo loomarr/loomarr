@@ -88,6 +88,7 @@ const placeStrip = (
 const FilmStrip = ({
   airings,
   artworkUri = defaultArtwork,
+  blockContext,
   cursor,
   formatTime,
   layout = "strip",
@@ -225,6 +226,7 @@ const FilmStrip = ({
               aired={aired}
               airing={look.airing}
               artworkUri={artworkUri(look.airing)}
+              context={blockContext}
               cursor={cursor ? item.id === cursorId : undefined}
               blockRef={(node) => {
                 if (node) blocks.current.set(item.id, node);
@@ -343,4 +345,5 @@ const FilmStrip = ({
   );
 };
 
+export { PlaybarStill as StripStill } from "../watching-surface/player-chrome/playbar-still";
 export { FilmStrip };

@@ -16,10 +16,10 @@ const PAGE_MS = 60 * 60_000;
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 /** The span starts no earlier than the present hour and ends no later than the schedule held. */
-const bounds = <C extends GuideViewChannel>({ nowMs, widthMs, untilMs }: GuideViewContext<C>) => {
-  const min = Math.floor(nowMs / PAGE_MS) * PAGE_MS;
-  return { max: Math.max(min, untilMs - widthMs), min };
-};
+const bounds = <C extends GuideViewChannel>({ hourStartMs, widthMs, untilMs }: GuideViewContext<C>) => ({
+  max: Math.max(hourStartMs, untilMs - widthMs),
+  min: hourStartMs,
+});
 
 /** The rows, in the channel list's order, with its headings and its word on an empty group. */
 const guideViewRows = <C extends GuideViewChannel>(state: GuideViewState, context: GuideViewContext<C>) =>
@@ -96,8 +96,9 @@ const createGuideViewState = <C extends GuideViewChannel>(
   );
 
 /**
- * The programme the cursor is on. A refreshed schedule may name a block differently, so a block that
- * is gone is looked up again at the cursor's time.
+ * The programme the cursor is on. It is never an ended one: once its programme ends, it is what is on
+ * now on that channel, or the next drawn. A refreshed schedule may name a block differently, so a
+ * block that is gone is looked up again at the cursor's time.
  */
 const cursorProgramme = <C extends GuideViewChannel>(
   state: GuideViewState,
@@ -107,8 +108,25 @@ const cursorProgramme = <C extends GuideViewChannel>(
   if (cursor.kind !== "programme") return undefined;
   const channel = channelOf(context, cursor.channelId);
   const held = channel?.programmes.find((p) => p.id === cursor.programmeId);
+  if (held && held.stopMs <= context.nowMs) {
+    return programmeAt(channel, context.nowMs, state.startMs, context);
+  }
   const drawn = held && held.stopMs > state.startMs && held.startMs < state.startMs + context.widthMs;
   return drawn ? held : programmeAt(channel, cursor.atMs, state.startMs, context);
+};
+
+/** The cursor moved off a programme that has ended under it, the one way it moves by itself. */
+const offEnded = <C extends GuideViewChannel>(
+  state: GuideViewState,
+  context: GuideViewContext<C>,
+): GuideViewState => {
+  const { cursor } = state;
+  if (cursor.kind !== "programme") return state;
+  const channel = channelOf(context, cursor.channelId);
+  const held = channel?.programmes.find((p) => p.id === cursor.programmeId);
+  if (!held || held.stopMs > context.nowMs) return state;
+  const programme = programmeAt(channel, context.nowMs, state.startMs, context);
+  return onto(state, cursor.channelId, programme, context.nowMs);
 };
 
 /** A new span, with the cursor kept on something drawn in its row. */
@@ -265,13 +283,23 @@ const guideViewReduce = <C extends GuideViewChannel>(
       return { state: onWatched({ ...state, group: "all" }, context) };
     case "back":
       return cursor.kind === "tab" ? toRows() : { close: true, state };
-    case "tuned":
+    case "tuned": {
       // The cursor stays: another screen changing the channel does not move what is being read.
-      return { state: { ...state, watchedId: event.channelId } };
+      const next = { ...state, watchedId: event.channelId };
+      if (cursor.kind === "tab") return { state: next };
+      if (guideViewRows(next, context).rows.some((row) => row.id === cursor.channelId)) {
+        return { state: next };
+      }
+      // Its row left the group with the tune, so it goes to the watched channel at the same time.
+      const watched = channelOf(context, next.watchedId);
+      const programme = programmeAt(watched, cursor.atMs, next.startMs, context);
+      return { state: onto(next, next.watchedId, programme, cursor.atMs) };
+    }
     case "refresh": {
       const { min, max } = bounds(context);
       const startMs = clamp(state.startMs, min, max);
-      return { state: startMs === state.startMs ? state : paged(state, context, startMs) };
+      const moved = offEnded(state, context);
+      return { state: startMs === state.startMs ? moved : paged(moved, context, startMs) };
     }
   }
 };

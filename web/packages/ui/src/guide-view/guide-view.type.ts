@@ -4,9 +4,9 @@ import type {
   GuideViewEvent,
   GuideViewState,
 } from "@loomarr/core/guide-view";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
-import type { StripAiring, StripProgramme } from "../film-strip/series-runs";
+import type { StripAiring, StripProgramme } from "../film-strip";
 
 /** One block of a row, carrying what the row draws. */
 type GuideViewBlock = StripProgramme & { title: string };
@@ -45,6 +45,23 @@ interface GuideViewReady<C extends GuideViewEntry> extends GuideViewShell {
   dayName?: (ms: number) => string | undefined;
   /** Takes focus onto the cursor and draws its ring from the start, as a Guide opened by a key does. */
   autoFocus?: boolean | undefined;
+  /** The Guide's own key handling, for a caller that takes keys from the document. */
+  handle?: Ref<GuideViewHandle>;
+}
+
+/** A key as the browser sends it. */
+interface GuideViewKey {
+  altKey: boolean;
+  ctrlKey: boolean;
+  defaultPrevented: boolean;
+  key: string;
+  metaKey: boolean;
+  preventDefault: () => void;
+}
+
+interface GuideViewHandle {
+  /** The one handler the Guide's own keys go through. A key already taken is left alone. */
+  onKeyDown: (event: GuideViewKey) => void;
 }
 
 type GuideViewProps<C extends GuideViewEntry> = GuideViewLoading | GuideViewReady<C>;
@@ -52,6 +69,8 @@ type GuideViewProps<C extends GuideViewEntry> = GuideViewLoading | GuideViewRead
 export type {
   GuideViewBlock,
   GuideViewEntry,
+  GuideViewHandle,
+  GuideViewKey,
   GuideViewLayout,
   GuideViewLoading,
   GuideViewProps,

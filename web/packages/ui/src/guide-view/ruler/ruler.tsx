@@ -7,16 +7,19 @@ const CLEAR_MS = 9 * 60_000;
 interface RulerProps {
   dayName: ((ms: number) => string | undefined) | undefined;
   formatTime: (ms: number) => string;
+  /** The start of the present hour on the viewer's clock, which the ticks are counted from. */
+  hourStartMs: number;
   nowMs: number;
   startMs: number;
   stopMs: number;
 }
 
 /** The shared clock: a time every half hour, the present marked, and any day but today named. */
-const Ruler = ({ dayName, formatTime, nowMs, startMs, stopMs }: RulerProps) => {
+const Ruler = ({ dayName, formatTime, hourStartMs, nowMs, startMs, stopMs }: RulerProps) => {
   const share = (ms: number) => `${((ms - startMs) / (stopMs - startMs)) * 100}%` as const;
   const ticks: number[] = [];
-  for (let at = Math.ceil(startMs / TICK_MS) * TICK_MS; at < stopMs; at += TICK_MS) ticks.push(at);
+  const first = hourStartMs + Math.ceil((startMs - hourStartMs) / TICK_MS) * TICK_MS;
+  for (let at = first; at < stopMs; at += TICK_MS) ticks.push(at);
   const present = nowMs >= startMs && nowMs < stopMs;
   return (
     <Layer height={22} inFlow width="100%">

@@ -71,6 +71,8 @@ const context = (over: Partial<GuideViewContext<GuideViewChannel>> = {}) => ({
   untilMs: at(8),
   widthMs: 3 * HOUR,
   ...over,
+  // These tests' zone keeps whole hours.
+  hourStartMs: Math.floor((over.nowMs ?? at(0.5)) / HOUR) * HOUR,
 });
 
 const open = (watchedId = "a", ctx = context(), television = false) =>
@@ -194,6 +196,54 @@ describe("the Guide's model", () => {
     expect(guideViewLook(next, context({ nowMs: at(1.5) })).playing).toBe(true);
     const nextHour = run(state, [{ type: "refresh" }], context({ nowMs: at(1.1) })).state;
     expect([on(nextHour), nextHour.startMs]).toEqual(["a1", at(1)]);
+  });
+
+  it.each([
+    ["5 h 30 min", 5.5],
+    ["5 h 45 min", 5.75],
+  ])("starts and pages on the viewer's hours in a zone %s off", (_name, offset) => {
+    // The local hour holding now began this long after a UTC hour.
+    const hourStartMs = at(1 - (offset % 1));
+    const ctx = { ...context(), hourStartMs, nowMs: hourStartMs + HOUR / 2, untilMs: hourStartMs + 6 * HOUR };
+    const first = open("d", ctx);
+    expect(first.startMs).toBe(hourStartMs);
+    const one = run(first, [later], ctx).state;
+    expect(one.startMs).toBe(hourStartMs + HOUR);
+    expect(run(one, [earlier, earlier], ctx).state.startMs).toBe(hourStartMs);
+  });
+
+  it("moves the cursor off a programme that ends under it, and only then", () => {
+    const state = open();
+    expect(run(state, [{ type: "refresh" }], context({ nowMs: at(0.9) })).state).toBe(state);
+    const after = context({ nowMs: at(1) });
+    const next = run(state, [{ type: "refresh" }], after).state;
+    expect(on(next)).toBe("a1");
+    expect(guideViewLook(next, after).programme?.id).toBe("a1");
+    // Even before the caller says so, the header never describes the ended programme.
+    expect(guideViewLook(state, after).programme?.id).toBe("a1");
+    expect(on(run(next, [left], after).state)).toBe("a1");
+    // A channel in a break takes the next programme drawn.
+    const onB = run(
+      state,
+      [{ channelId: "b", programmeId: "b-1", type: "focusProgramme" }],
+      context({ nowMs: at(-0.5) }),
+    );
+    expect(on(run(onB.state, [{ type: "refresh" }], context()).state)).toBe("b1.5");
+  });
+
+  it("takes the cursor to the watched channel when a tune removes its row from the group", () => {
+    const favourites = createGuideViewState({ group: "favourites", watchedId: "a" }, context());
+    expect(on(favourites)).toBe("a-1");
+    const next = run(favourites, [{ channelId: "d", type: "tuned" }]).state;
+    expect(on(next)).toBe("d0");
+  });
+
+  it("works with a single channel", () => {
+    const ctx = context({ lineup: createChannelLineup({ channels: channels.slice(0, 1) }) });
+    const state = open("a", ctx);
+    expect(on(run(state, [down], ctx).state)).toBe("a-1");
+    expect(on(run(state, [up], ctx).state)).toBe("tab:all");
+    expect(run(state, [ok], ctx).close).toBe(true);
   });
 
   it("keeps the cursor when the watched channel changes from outside", () => {

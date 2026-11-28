@@ -107,6 +107,7 @@ const Harness = ({ favouriteIds = ["c1", "c2"], group, layout, loading, pictured
   const context: GuideViewContext<GuideViewEntry> = {
     formatTime,
     lineup: createChannelLineup<GuideViewEntry>({ channels, favouriteIds }),
+    hourStartMs: at(20),
     nowMs: NOW,
     untilMs: at(27),
     widthMs: (layout === "desktop" ? 3 : 2) * HOUR,

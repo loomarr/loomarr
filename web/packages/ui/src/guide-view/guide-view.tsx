@@ -8,15 +8,14 @@ import {
   guideViewSpan,
 } from "@loomarr/core/guide-view";
 import { Action, decadeTint, Layer, RingedPressable, Stack, Surface, Text } from "@loomarr/design-system";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { ScrollView } from "react-native";
 
 import { ChannelGroupTabs } from "../channel-list";
-import { FilmStrip } from "../film-strip";
-import { groupSeriesRuns, type StripAiring } from "../film-strip/series-runs";
+import { FilmStrip, groupSeriesRuns, type StripAiring } from "../film-strip";
 import { ProgrammeFacts, StripMessage } from "../programme-facts";
 import { StatePanel } from "../state-panel";
-import type { GuideViewEntry, GuideViewProps, GuideViewReady } from "./guide-view.type";
+import type { GuideViewEntry, GuideViewKey, GuideViewProps, GuideViewReady } from "./guide-view.type";
 import { Head } from "./head";
 import { Row, type RowHandle } from "./row";
 import { Ruler } from "./ruler";
@@ -36,6 +35,13 @@ const NOTICES: Partial<Record<ChannelListNotice, string>> = {
 };
 
 const defaultArtwork = (airing: StripAiring) => airing.thumbUrl || airing.backdropImage?.src || undefined;
+
+/** What the part needs of its own container on the web. */
+interface Root {
+  contains: (other: unknown) => boolean;
+  focus: () => void;
+  querySelector: (selector: string) => { focus: () => void } | null;
+}
 
 interface KeyEvent {
   altKey: boolean;
@@ -74,6 +80,7 @@ const Ready = <C extends GuideViewEntry>({
   autoFocus = false,
   context,
   dayName,
+  handle,
   layout,
   lowerThird,
   message,
@@ -103,26 +110,49 @@ const Ready = <C extends GuideViewEntry>({
     if (keys) handles.current.get(cursorKey)?.focus();
   }, [cursorKey, keys]);
 
-  const onKeyDown = (raw: unknown) => {
-    const event = raw as KeyEvent;
+  // A control that leaves the screen while focused drops focus to the body, where no key reaches the
+  // Guide. It goes back to the cursor's block after a key, and to the Guide itself after a pointer.
+  const root = useRef<Root | null>(null);
+  const holding = useRef(false);
+  const shown = `${view.notice ?? ""}|${view.rows.map((channel) => channel.id).join(",")}`;
+  useEffect(() => {
+    // A native client has no document, and its focus engine does this by itself.
+    const page = (globalThis as { document?: { activeElement: unknown; body: unknown } }).document;
+    if (!shown || !holding.current || !page) return;
+    if (page.activeElement && page.activeElement !== page.body) return;
+    // A compact block has a handle; the strip's cursor block is its one Tab stop.
+    const block = keys
+      ? (handles.current.get(cursorKey) ??
+        root.current?.querySelector('[data-testid^="film-strip-"][tabindex="0"]'))
+      : undefined;
+    (block ?? root.current)?.focus();
+  }, [shown, keys, cursorKey]);
+
+  const onKeyDown = (event: GuideViewKey) => {
     const next = KEYS[event.key];
-    if (!next || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (!next || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
     event.preventDefault();
     pointer.current = false;
     setKeys(true);
     onEvent(next);
   };
+  useImperativeHandle(handle, () => ({ onKeyDown }));
 
-  const press = (event: GuideViewEvent) => {
-    setKeys(false);
-    onEvent(event);
-  };
-
-  // A block takes OK and Enter as its own press, so a press no pointer started is the keys'.
+  // OK and Enter arrive as a control's own press, so a press no pointer started is the keys'.
   const pointer = useRef(false);
-  const pressBlock = (channelId: string, programmeId: string) => {
+  const fromKeys = () => {
     const keyed = !pointer.current;
     pointer.current = false;
+    return keyed;
+  };
+  const press = (event: GuideViewEvent) => {
+    // A control that is not the cursor's keeps its focus, unless it leaves the screen.
+    setKeys(event.type === "showAll" && fromKeys());
+    pointer.current = false;
+    onEvent(event);
+  };
+  const pressBlock = (channelId: string, programmeId: string) => {
+    const keyed = fromKeys();
     setKeys(keyed);
     onEvent({ channelId, keyed, programmeId, type: "press" });
   };
@@ -189,10 +219,11 @@ const Ready = <C extends GuideViewEntry>({
     ];
     const items = groupSeriesRuns(airings).filter((item) => item.type === "programme");
     const mine = cursor.kind === "programme" && cursor.channelId === channel.id;
-    // The strip names its blocks from the airings it holds, so the two are matched by time.
+    // The strip names its blocks from the airings it holds, and a run it holds only part of is
+    // shorter than the row's, so the two are matched by the time they share.
     const stripId =
       mine && programme
-        ? items.find((item) => item.startMs < programme.stopMs && programme.stopMs <= item.stopMs)?.id
+        ? items.find((item) => item.startMs < programme.stopMs && item.stopMs > programme.startMs)?.id
         : undefined;
     const blockOf = (startMs: number, stopMs: number) =>
       channel.programmes.find((p) => p.startMs < stopMs && startMs < p.stopMs);
@@ -200,6 +231,7 @@ const Ready = <C extends GuideViewEntry>({
       <FilmStrip
         airings={airings}
         artworkUri={artworkUri}
+        blockContext={`channel ${channel.number}, ${channel.name}`}
         cursor={{ id: stripId, takeFocus: keys && mine }}
         formatTime={formatTime}
         layout="row"
@@ -254,11 +286,24 @@ const Ready = <C extends GuideViewEntry>({
     <Layer
       flex={1}
       inFlow
-      onKeyDown={onKeyDown}
+      onKeyDown={(event) => onKeyDown(event as GuideViewKey)}
       {...({
+        onBlur: (event: { relatedTarget: unknown }) => {
+          if (event.relatedTarget && !root.current?.contains(event.relatedTarget)) holding.current = false;
+        },
+        onFocus: () => {
+          holding.current = true;
+        },
+        // Only watches: a block keeps OK and Enter to itself, and any key ends a pointer's press.
+        onKeyDownCapture: () => {
+          pointer.current = false;
+        },
         onPointerDown: () => {
           pointer.current = true;
         },
+        ref: root,
+        // Focusable so that keys still reach the Guide after a pointer; it is no Tab stop.
+        tabIndex: -1,
       } as object)}
     >
       <Stack
@@ -292,6 +337,7 @@ const Ready = <C extends GuideViewEntry>({
             <Ruler
               dayName={dayName}
               formatTime={formatTime}
+              hourStartMs={context.hourStartMs}
               nowMs={nowMs}
               startMs={span.startMs}
               stopMs={span.stopMs}

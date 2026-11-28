@@ -2,7 +2,7 @@ import type { GuideViewLook } from "@loomarr/core/guide-view";
 import { Stack, Surface, Text } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 
-import type { StripAiring } from "../../film-strip/series-runs";
+import type { StripAiring } from "../../film-strip";
 import { ProgrammeFacts } from "../../programme-facts";
 import type { GuideViewEntry, GuideViewLayout } from "../guide-view.type";
 

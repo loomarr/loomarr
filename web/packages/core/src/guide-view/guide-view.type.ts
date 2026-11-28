@@ -17,6 +17,11 @@ interface GuideViewChannel extends LineupChannel {
 interface GuideViewContext<C extends GuideViewChannel> {
   lineup: ChannelLineup<C>;
   nowMs: number;
+  /**
+   * The start of the present hour on the viewer's clock. A zone may sit half or three quarters of an
+   * hour off, so the model never works out an hour boundary of its own.
+   */
+  hourStartMs: number;
   /** How much of the day the screen shows at once. */
   widthMs: number;
   /** How far the schedule the caller holds goes. */
