@@ -7,7 +7,7 @@ import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { stylesOfText } from "@loomarr/test-support/css";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PairingShell } from "../index";
+import { PairingShell } from "../pairing";
 
 // A root the test renders into more than once, unmounted by `cleanup`.
 const testRoot = () => {

@@ -180,7 +180,7 @@ ci-ffmpeg-toolchain	scripts/ci-ffmpeg.sh	contracts,go,go_full,agent,policy
 ffmpeg-pin-refresh	scripts/ffmpeg-pin-refresh.sh	contracts,agent,policy
 ffmpeg-pin-refresh-workflow	.github/workflows/ffmpeg-pin-refresh.yml	policy
 go-module-download	scripts/go-mod-download.sh	contracts,go,go_full,agent,policy
-go-race-sharding	scripts/go-certification-lanes.tsv;scripts/go-race-policy.sh;scripts/go-race-weights.tsv;scripts/go-shard.sh;scripts/go-test-lane.sh;scripts/go-test-packages.sh	contracts,go,go_full,agent,policy
+go-race-sharding	scripts/go-certification-lanes.tsv;scripts/go-race-policy.sh;scripts/go-race-weights.tsv;scripts/go-shard.sh;scripts/go-split-lanes.tsv;scripts/go-test-lane.sh;scripts/go-test-packages.sh	contracts,go,go_full,agent,policy
 spike-throwaway	spike/4k-tonemap/README.md;spike/4k-tonemap/image/Dockerfile	docs
 playout-bench-command	cmd/playout-bench/main.go	contracts,go,postgres,image,playout_bench
 playout-bench-package	internal/playout/bench/compare.go	contracts,go,postgres,image,playout_bench

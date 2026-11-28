@@ -637,7 +637,7 @@ classify() {
         scripts/ci-ffmpeg.sh|scripts/go-mod-download.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
         # Rewrites the FFmpeg pin evidence that internal/platform/releaseverify (contracts) verifies.
         scripts/ffmpeg-pin-refresh.sh) select_gate contracts; select_gate policy ;;
-        scripts/go-certification-lanes.tsv|scripts/go-race-policy.sh|scripts/go-race-weights.tsv|scripts/go-shard.sh|scripts/go-test-lane.sh|scripts/go-test-packages.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
+        scripts/go-certification-lanes.tsv|scripts/go-race-policy.sh|scripts/go-race-weights.tsv|scripts/go-shard.sh|scripts/go-split-lanes.tsv|scripts/go-test-lane.sh|scripts/go-test-packages.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
         scripts/ensure-container-image.sh) select_gate contracts; select_gate postgres; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;
         scripts/tuner-args*|scripts/flake-quarantine*) select_gate tuner; select_gate policy ;;
         scripts/run-playwright-container.sh) select_gate contracts; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;

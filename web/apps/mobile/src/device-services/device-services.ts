@@ -2,7 +2,7 @@ import { createPairingCredentialStore } from "@loomarr/core/pairing";
 import type { RequestsController } from "@loomarr/core/requests";
 import type { HapticFeedback } from "@loomarr/design-system/haptics";
 import { createLastChannelStore } from "@loomarr/paired-client";
-import type { ApprovalBrowser } from "@loomarr/ui";
+import type { ApprovalBrowser } from "@loomarr/ui/pairing";
 import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";

@@ -1,0 +1,7 @@
+# Packages too slow for any one race lane, so each has jobs of its own (go-shard.sh --split):
+# `<name>-race-<k>/<n>` runs the k-th of n slices of its top-level tests under -race, and
+# `<name>-plain` runs the whole package without it when the race policy asks for that phase.
+# go-test-packages.sh cuts the slices from `go test -list`, so a new test joins one by itself.
+# Each job has its own weight row, `<package>@race-<k>/<n>` or `<package>@plain`.
+# Columns: lane name, package, number of race slices.
+scan internal/library/scan 2

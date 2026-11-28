@@ -26,8 +26,6 @@ import {
 import { createPlaybackMarks, NativePlayerView, PairedNativeImage } from "@loomarr/player/native";
 import {
   clientBackDestination,
-  PairingShell,
-  pairingBackAvailable,
   playerChromeFromGuide,
   SurfJourney,
   surfCardsFromGuide,
@@ -37,6 +35,7 @@ import {
   watchingScheduleTimeMs,
 } from "@loomarr/ui";
 import { GuideJourney } from "@loomarr/ui/guide";
+import { PairingShell, pairingBackAvailable } from "@loomarr/ui/pairing";
 import {
   createTvAutoTuneSetting,
   createTvGuideFocusRegistry,
