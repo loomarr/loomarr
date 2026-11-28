@@ -25,9 +25,8 @@ const ModelPicker = ({
   onPull,
   pulling,
   busy = false,
-  className,
 }: ModelPickerProps) => (
-  <Stack className={className} gap="control">
+  <Stack gap="control">
     {(gpuName || vramGiB) && (
       <Text as="p" textRole="compact" tone="secondary">
         Ranked for {gpuName ?? "this machine"}

@@ -25,7 +25,6 @@ const ModelDiscover = ({
   sourceError = false,
   pulling,
   onPull,
-  className,
 }: ModelDiscoverProps) => {
   const [expanded, setExpanded] = useState(false);
   const total = results?.length ?? 0;
@@ -33,7 +32,7 @@ const ModelDiscover = ({
   const hiddenCount = total - (visible?.length ?? 0);
 
   return (
-    <Stack className={className} gap="2.5">
+    <Stack gap="2.5">
       <div>
         <Text as="p" textRole="cardLabel" tone="secondary">
           Need a different model?

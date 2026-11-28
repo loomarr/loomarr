@@ -39,7 +39,6 @@ const SplitReviewEditor = ({
   confirming,
   onConfirm,
   onBack,
-  className,
 }: SplitReviewEditorProps) => {
   const [draft, setDraft] = useState<DraftSegment[]>(() => (proposal.segments ?? []).map(toDraft));
   // Selection belongs to this review session, not the URL: merges and removals deliberately change
@@ -123,7 +122,7 @@ const SplitReviewEditor = ({
   const selected = selectedIndex >= 0 ? draft[selectedIndex] : undefined;
 
   return (
-    <Stack className={className} gap="4" maxWidth="100%" style={{ overflowX: "hidden" }} width="100%">
+    <Stack gap="4" maxWidth="100%" style={{ overflowX: "hidden" }} width="100%">
       {/* The reel stays stable while the selected clip is inspected in the side panel. */}
       <SegmentFilmstrip
         segments={stripSegments}

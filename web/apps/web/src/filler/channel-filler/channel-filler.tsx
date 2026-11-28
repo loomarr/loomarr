@@ -287,7 +287,7 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
 // break in front of you through the SAME assembler reconcile uses — nothing saved until
 // Apply, which commits the draft to policy.filler and lets reconcile take over (seamless
 // for the effect; draft/apply for the authoring, the one deliberate §10 exception).
-const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProps) => {
+const ChannelFiller = ({ channelId, policy, from }: ChannelFillerProps) => {
   const [previewingClip, setPreviewingClip] = useState<PodEntryDTO>();
   const {
     draft,
@@ -344,7 +344,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
   const entries = preview?.entries ?? [];
 
   return (
-    <Stack className={className} gap="section">
+    <Stack gap="section">
       <div>
         {/* Reached from a Filler Overview coverage card, this page is a detour out of the Filler
             area; the header's back arrow goes to the channel list, so the detour gets its own way

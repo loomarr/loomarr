@@ -124,18 +124,12 @@ const ModelRow = ({
 // The §8.1 hosted picker leads non-experts through one safe default and two strong
 // alternatives. A bounded typeahead reaches the provider's complete live catalog without
 // rendering hundreds of choices, and an active model is never hidden by the guided state.
-const HostedModelPicker = ({
-  providers,
-  activeModel,
-  onSelect,
-  busy = false,
-  className,
-}: HostedModelPickerProps) => {
+const HostedModelPicker = ({ providers, activeModel, onSelect, busy = false }: HostedModelPickerProps) => {
   const [searching, setSearching] = useState<Record<string, boolean>>({});
   const [queries, setQueries] = useState<Record<string, string>>({});
 
   return (
-    <Stack className={className} gap="4">
+    <Stack gap="4">
       {providers.map((hp: HostedProviderView) => {
         const models = hp.models ?? [];
         const primary = models.find((model) => model.recommended);

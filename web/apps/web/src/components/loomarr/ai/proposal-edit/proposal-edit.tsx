@@ -181,7 +181,6 @@ const ProposalEdit = (props: ProposalEditProps) => {
     renderFeedback,
     showNote = false,
     disabled,
-    className,
   } = props;
   const controlled = Object.hasOwn(props, "value");
   const injectedMovieCollections = Object.hasOwn(props, "movieCollections");
@@ -334,7 +333,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
   const edited = dropped.length > 0 || added.length > 0 || note.trim() !== "";
 
   return (
-    <Stack className={className} gap="control">
+    <Stack gap="control">
       <Stack align="center" direction="row" gap="inline" justify="between" wrap>
         <div>
           <Text as="h3" textRole="heading">

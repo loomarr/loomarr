@@ -29,11 +29,11 @@ const SR: Record<WatchHealth, string> = {
   unconfigured: "No sources set up yet",
 };
 
-const WatchLine = ({ status, health, className }: WatchLineProps) => {
+const WatchLine = ({ status, health }: WatchLineProps) => {
   const reducedMotion = useReducedMotionPreference();
   const pulse = health === "healthy" && reducedMotion === false;
   return (
-    <Stack align="center" className={className} direction="row" gap="inline" marginTop={8} render="p">
+    <Stack align="center" direction="row" gap="inline" marginTop={8} render="p">
       <span
         aria-hidden
         style={{

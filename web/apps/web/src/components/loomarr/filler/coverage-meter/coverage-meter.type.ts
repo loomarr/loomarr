@@ -5,7 +5,6 @@ interface CoverageMeterProps {
   // the meter's entire claim is that it shows what the ladder computed, and a hand-mirrored
   // shape is the first step toward showing something else (contract 1:1).
   coverage: CoverageDTO;
-  className?: string;
 }
 
 export type { CoverageMeterProps };

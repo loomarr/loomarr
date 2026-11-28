@@ -12,7 +12,6 @@ interface RefinePanelProps {
   // Fires after an apply lands (approve succeeds) — the caller's cue to refetch the
   // channel so the page reflects the patched lineup.
   onApplied?: () => void;
-  className?: string;
 }
 
 export type { RefinePanelProps };

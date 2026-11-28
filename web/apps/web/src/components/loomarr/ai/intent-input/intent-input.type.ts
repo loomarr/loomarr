@@ -10,7 +10,6 @@ interface IntentInputProps {
   templates?: IntentTemplate[];
   submitting?: boolean;
   placeholder?: string;
-  className?: string;
 }
 
 export type { IntentInputProps, IntentTemplate };

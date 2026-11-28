@@ -9,7 +9,6 @@ interface PoolHealthProps {
   // Phone: one line ("1,284 clips · 2/3 channels covered") with Details to open the full
   // stats, so the library's first clips land above the fold (#1817, decided on #1908).
   folded?: boolean;
-  className?: string;
 }
 
 export type { PoolHealthProps };

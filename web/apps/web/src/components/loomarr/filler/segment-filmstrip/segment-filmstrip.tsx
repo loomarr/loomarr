@@ -41,7 +41,7 @@ const timelineItems = (spans: Array<FilmstripSegment & { durationMs: number }>):
 // SegmentFilmstrip is the primary review overview: real stills in time order, with duration still
 // controlling relative width. A minimum column width makes 50+ clips horizontally scannable rather
 // than compressing them into untappable slivers; the reel scrolls instead of turning into a wall.
-const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentFilmstripProps) => {
+const SegmentFilmstrip = ({ segments, activeKey, onSelect }: SegmentFilmstripProps) => {
   const tooltipIdPrefix = useId();
   const spans = segments.map((segment) => ({
     ...segment,
@@ -58,15 +58,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
   );
 
   return (
-    <Card
-      className={className}
-      gap={12}
-      maxWidth="100%"
-      minWidth={0}
-      overflow="hidden"
-      padding={12}
-      render="section"
-    >
+    <Card gap={12} maxWidth="100%" minWidth={0} overflow="hidden" padding={12} render="section">
       <Stack align="end" direction="row" gap="inline" justify="between" wrap>
         <div>
           <Text as="h2" textRole="cardLabel" tone="primary">
