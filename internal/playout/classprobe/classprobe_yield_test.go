@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/media"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // fakeProbeFFmpeg writes an executable that stands in for ffmpeg: it records its pid and reports
@@ -42,17 +43,6 @@ func readPids(t *testing.T, path string) []int {
 		}
 	}
 	return out
-}
-
-func waitFor(t *testing.T, within time.Duration, what string, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(within)
-	for !cond() {
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out after %v waiting for %s", within, what)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
 }
 
 // niceOf reads a process's nice value from /proc/<pid>/stat (field 19).
@@ -119,7 +109,7 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 	done := make(chan ClassProbeResult, 1)
 	go func() { done <- ProbeClassCosts(t.Context(), cfg) }()
 
-	waitFor(t, 2*time.Second, "the probe's measurement to start", func() bool { return len(readPids(t, pids)) == 1 })
+	testkit.Eventually(t, 2*time.Second, "the probe's measurement to start", func() bool { return len(readPids(t, pids)) == 1 })
 	probe := readPids(t, pids)[0]
 	if n := niceOf(t, probe); n != probeNice {
 		t.Errorf("probe encoder runs at nice %d, want %d (background priority)", n, probeNice)
@@ -154,7 +144,7 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 	case <-time.After(yieldGuard):
 		t.Fatal("the tune blocked on the probe")
 	}
-	waitFor(t, yieldGuard, "the probe's encoder to be killed", func() bool {
+	testkit.Eventually(t, yieldGuard, "the probe's encoder to be killed", func() bool {
 		return errors.Is(syscall.Kill(probe, 0), syscall.ESRCH)
 	})
 	select {
