@@ -5,13 +5,13 @@ import (
 	"time"
 
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -26,7 +26,7 @@ type approvalBuild struct {
 func buildApproval(
 	st store.Store,
 	channelService guideapi.ChannelService,
-	playoutResolver *playoutresolve.Resolver,
+	playoutResolver *resolve.Resolver,
 	activityRecorder *activity.Recorder,
 	channelNumbers approval.NumberSource,
 	notifier suggest.ProposalNotifier,

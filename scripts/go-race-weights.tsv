@@ -18,7 +18,7 @@ internal/platform/store/clipstore	80
 internal/people/secretprotection	79
 internal/integration	71
 internal/playout/channelbug	64
-internal/app/playoutresolve	61
+internal/playout/resolve	61
 internal/filler	61
 internal/platform/releaseverify	56
 cmd/image-cert	49

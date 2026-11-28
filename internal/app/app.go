@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/currenthealth"
@@ -20,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -152,7 +152,7 @@ func buildHandler(
 	log *slog.Logger,
 	ov Overrides,
 	owner *generationLifecycle,
-	capturePlayoutResolver func(*playoutresolve.Resolver),
+	capturePlayoutResolver func(*resolve.Resolver),
 ) (http.Handler, *slog.Logger, func() string, error) {
 	foundation, err := buildFoundation(rootCtx, st, log, ov, owner)
 	if err != nil {

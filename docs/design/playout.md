@@ -556,7 +556,7 @@ draws them over the picture:
   programme. The answer is the text tracks of the programme on air at `from` (from the Library's
   `library_streams`, so no probe at request time) and the chosen track's cues on the channel's wall
   clock from `from` to `to` (at most ten minutes). The cues are placed by walking the accepted cycle
-  the encoder airs (`internal/app/playoutresolve/subtitles.go`): a programme part airs its media from
+  the encoder airs (`internal/playout/resolve/subtitles.go`): a programme part airs its media from
   its source offset, a break has none, and a cue cut by a break never airs.
 - A track is chosen by **key** (the language, then `-sdh` and `-forced`), so a viewer's remembered
   choice picks each programme's matching track; a programme without that key plays the language's
@@ -593,7 +593,7 @@ draws them over the picture:
     (measured ~0.005 cores on the GeForce, ~0.009 on the household Arc). Seeking a sparse stream
     with `-ss` loses the still already on screen, so the list starts at the seek instead.
   - *Limits:* the first airing of a title airs without them while its track is prepared
-    (`internal/app/playoutresolve/subtitleburn.go`; the next programme's track is queued as the
+    (`internal/playout/resolve/subtitleburn.go`; the next programme's track is queued as the
     current one starts, and a track that fails is left alone for an hour); prepared tracks are kept
     for the 48 most recently aired. PGS only: VOBSUB is dropped like any track a host cannot draw.
     No HDR10 output (the overlays take 8-bit frames).

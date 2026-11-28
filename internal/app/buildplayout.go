@@ -11,7 +11,6 @@ import (
 
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/library/inventory"
@@ -27,6 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/playout/subtitles"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
@@ -39,7 +39,7 @@ type playoutBuild struct {
 	service           playoutapi.Playout
 	resolverService   playoutapi.PlayoutResolver
 	guide             playoutapi.PlayoutGuide
-	resolver          *playoutresolve.Resolver
+	resolver          *resolve.Resolver
 	backendController *backendtransition.Controller
 	setResidentVRAM   func(func(context.Context) (float64, string))
 	// budget is the one admission ledger; filler's media work waits on it (playbackHeadroomFor).
@@ -54,7 +54,7 @@ type playoutDeps struct {
 	store                 store.Store
 	settings              resolved
 	owner                 *generationLifecycle
-	captureResolver       func(*playoutresolve.Resolver)
+	captureResolver       func(*resolve.Resolver)
 	secrets               *settings.Secrets
 	readSecret            func(context.Context, settings.GeneratedSecret) (string, error)
 	events                *events.Bus
@@ -95,7 +95,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	var playoutSvc playoutapi.Playout
 	var playoutResolverSvc playoutapi.PlayoutResolver
 	var playoutGuideSvc playoutapi.PlayoutGuide
-	var playoutRes *playoutresolve.Resolver
+	var playoutRes *resolve.Resolver
 	var backendController *backendtransition.Controller
 	var residentVRAM func(context.Context) (float64, string)
 	// Internal playout (§9.1): Loomarr serves its own channels. Wired here because this is
@@ -184,17 +184,17 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// and blended by its kernel. The image worker decodes the track (docs/design/images.md); without
 	// a decoder nothing is looked up and programmes air without their image tracks. The preparer is
 	// generation-owned, so Shutdown joins a preparation in flight.
-	var burns *playoutresolve.SubtitleBurns
+	var burns *resolve.SubtitleBurns
 	if burnDir, err := filepath.Abs(filepath.Join(stateDir, "subtitle-burn")); err == nil && deps.watermarks != nil {
 		decoder := deps.subtitleDecoder
-		burns = playoutresolve.NewSubtitleBurns(playoutresolve.SubtitleBurnsConfig{
+		burns = resolve.NewSubtitleBurns(resolve.SubtitleBurnsConfig{
 			Dir: burnDir, Prepare: playout.FFmpegBurnInWith(ffmpegBin, deps.processDiagnostics, decoder),
 			Decodes: playout.SubtitleDecoderAvailable(decoder),
 			Works:   deps.watermarks.OverlayWorks, Kernel: deps.watermarks.BlendKernel,
 			Go: owner.goOnDemand, Log: log,
 		})
 	}
-	playoutRes = playoutresolve.New(playoutresolve.Config{
+	playoutRes = resolve.New(resolve.Config{
 		// Loomarr measures each source itself, once per revision, so playout never asks the media
 		// server or re-probes a file at airtime (beta.8 G7). Sources are read directly through the
 		// path map, never through Emby.
@@ -202,7 +202,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		MeasureTools: measure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)),
 		// The capacity probe's tone-map self-check reports to Current Health.
 		OnTonemap: func(check playout.TonemapCheck) {
-			if obs, ok := playoutresolve.TonemapObservation(check); ok {
+			if obs, ok := resolve.TonemapObservation(check); ok {
 				deps.startup.Observe(diagnostics.StartupCheckPlayoutTonemap, obs)
 			}
 		},
@@ -224,7 +224,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		// write. Recording what actually aired is what lets placement prefer titles that
 		// have NOT been on recently — the memory the scheduler previously lacked.
 		Airings: st,
-		// The arranged-cycle cache's channel read (playoutresolve's cyclecache.go): the
+		// The arranged-cycle cache's channel read (playout/resolve's cyclecache.go): the
 		// guide re-arranges every channel on every poll, which profiled as 53% of the
 		// request's CPU. GUIDE PATHS ONLY — AiringNow stays on the live computation, so a
 		// cache bug degrades a grid rather than a broadcast.
@@ -352,7 +352,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// `ffmpeg -filters` probes, ~0.2 s of the first tune after a restart): idle channels start no
 	// FFmpeg, and those probes are FFmpeg runs.
 	tonemap, gpuFilters := playout.TonemapperFor(settings.PlayoutFFmpegPath.Get(set)), playout.GPUFiltersFor(settings.PlayoutFFmpegPath.Get(set))
-	if pk, perr := playout.NewPackagerHLS(playoutresolve.PackagerSource{
+	if pk, perr := playout.NewPackagerHLS(resolve.PackagerSource{
 		Res:     playoutRes,
 		Tonemap: tonemap,
 		GPU:     gpuFilters,

@@ -35,7 +35,7 @@ Turning "I want a channel that feels like X" into a lineup a person can approve.
 
 ### [Playout](areas/playout.md)
 
-Getting a channel onto a TV. Loomarr's own streaming engine stitches a channel into one continuous stream and burns in the channel's logo; Tunarr is the other backend that can play a channel. The Live TV wiring and the backend transition publish channels to the media server, LAN discovery lets TV apps find Loomarr, and the bench measures the pipeline on real hardware. The timeline is the pure arithmetic over a channel's schedule that the stream, the guide and reconcile all read.
+Getting a channel onto a TV. Loomarr's own streaming engine stitches a channel into one continuous stream and burns in the channel's logo; Tunarr is the other backend that can play a channel. The Live TV wiring and the backend transition publish channels to the media server, LAN discovery lets TV apps find Loomarr, and the bench measures the pipeline on real hardware. The timeline is the pure arithmetic over a channel's schedule that the stream, the guide and reconcile all read. `playout/resolve` is the wiring that reads the stores and settings `playout` must not know about, and turns a schedule into the file that airs.
 
 ### [Filler](areas/filler.md)
 
@@ -51,7 +51,7 @@ The ground everything else stands on: the store and its two databases, settings 
 
 ### [Edge](areas/edge.md)
 
-Where the outside world comes in. The api package is Loomarr's HTTP surface, and app is the composition root that builds every other area and hands them to it. `api/httpcore` is the plumbing every part of the HTTP surface shares: problem responses, request ids, roles and the route-role marker. `app/playoutresolve` is the composition root's playout wiring: it reads the stores and settings that `playout` must not know about.
+Where the outside world comes in. The api package is Loomarr's HTTP surface, and app is the composition root that builds every other area and hands them to it. `api/httpcore` is the plumbing every part of the HTTP surface shares: problem responses, request ids, roles and the route-role marker.
 
 ### [Test support](areas/test.md)
 

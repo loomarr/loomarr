@@ -8,7 +8,6 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/api/system"
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/resolvers"
@@ -17,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -142,7 +142,7 @@ func (a jobsAdapter) Trigger(ctx context.Context, name string) error {
 // bulkDurations adapts the Library's BULK item metadata read to channels.DurationsResolver, so a
 // layout reads every runtime in one query rather than one per movie. The metadata it also returns
 // is simply unused here.
-func bulkDurations(lib playoutresolve.ItemMetadata) channels.DurationsResolver {
+func bulkDurations(lib resolve.ItemMetadata) channels.DurationsResolver {
 	return func(ctx context.Context, itemIDs []string) (map[string]int64, error) {
 		meta, err := lib.ItemMetadataByID(ctx, itemIDs)
 		// Partial results ride WITH the error (ItemMetadataByID's contract), so convert whatever
