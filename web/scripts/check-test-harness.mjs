@@ -29,13 +29,19 @@ const testFiles = (directory) =>
 const countRoots = (source, { jsx = true } = {}) => {
   // A `.ts` file reads `<T>value` as a type assertion, which the jsx plugin would refuse.
   const ast = parse(source, { sourceType: "module", plugins: jsx ? ["typescript", "jsx"] : ["typescript"] });
+  // `createRoot(...)`, `ReactDOM.createRoot(...)`, and whatever name an import gives it.
+  const names = new Set(["createRoot"]);
+  for (const statement of ast.program.body) {
+    if (statement.type !== "ImportDeclaration" || statement.source.value !== "react-dom/client") continue;
+    for (const specifier of statement.specifiers) {
+      if (specifier.imported?.name === "createRoot") names.add(specifier.local.name);
+    }
+  }
   let count = 0;
   const visit = (node) => {
     if (Array.isArray(node)) return node.forEach(visit);
     if (!node || typeof node.type !== "string") return;
-    // `createRoot(...)` and `ReactDOM.createRoot(...)`.
-    if (node.type === "CallExpression" && (node.callee.property ?? node.callee).name === "createRoot")
-      count += 1;
+    if (node.type === "CallExpression" && names.has((node.callee.property ?? node.callee).name)) count += 1;
     Object.values(node).forEach(visit);
   };
   visit(ast.program);

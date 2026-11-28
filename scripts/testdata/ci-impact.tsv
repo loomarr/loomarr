@@ -48,6 +48,7 @@ paired-client	web/packages/paired-client/src/paired-client/paired-client.ts	clie
 shared-client-ui	web/packages/ui/src/client-platform-proof/client-platform-proof.tsx	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,android
 shared-client-ui-tv	web/packages/ui-tv/src/watching-navigation/watching-navigation.ts	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,android
 shared-client-api	web/packages/api/src/unwrap/unwrap.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
+web-test-support	web/packages/test-support/src/render/render.tsx	web,clients
 shared-client-core	web/packages/core/src/guide/guide.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 shared-client-fixtures	web/packages/fixtures/src/index.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 web-testcard-fixtures	web/packages/fixtures/src/testcard/testcard.ts	web,visual,image
