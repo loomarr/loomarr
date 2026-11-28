@@ -88,7 +88,7 @@ func TestLibraryKeepHomeVideo(t *testing.T) {
 		t.Fatalf("a waiting title reads %+v", got)
 	}
 
-	const keep, answer ="/v1/library/items/90000021/keep", "/v1/library/items/90000021/answer"
+	const keep, answer = "/v1/library/items/90000021/keep", "/v1/library/items/90000021/answer"
 	call(member, http.MethodPost, keep, "", http.StatusForbidden, nil)
 	if n := waiting(); n != 2 {
 		t.Fatalf("waiting after a member's keep = %d, want 2", n)
