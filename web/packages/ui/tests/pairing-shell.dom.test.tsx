@@ -3,25 +3,18 @@
 import { PairingSession } from "@loomarr/core/pairing";
 import type { ServerDiscovery } from "@loomarr/core/server-discovery";
 import { LoomarrProvider } from "@loomarr/design-system";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { stylesOfText } from "@loomarr/test-support/css";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PairingShell } from "../index";
 
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
-const createTestContainer = () =>
-  (
-    globalThis as unknown as {
-      document: { createElement: (tagName: string) => Parameters<typeof createRoot>[0] };
-    }
-  ).document.createElement("div");
+// A root the test renders into more than once, unmounted by `cleanup`.
+const testRoot = () => {
+  const { container, rerender, unmount } = renderUi(null);
+  return { container, root: { render: rerender, unmount } };
+};
+afterEach(cleanup);
 
 const awaitingSession = async () => {
   const session = new PairingSession({
@@ -166,8 +159,7 @@ describe("TV pairing offer", () => {
       stop: vi.fn(),
       subscribe: () => () => undefined,
     };
-    const container = createTestContainer();
-    const root = createRoot(container);
+    const { container, root } = testRoot();
     act(() =>
       root.render(
         <LoomarrProvider theme="dark">
@@ -247,8 +239,7 @@ describe("TV pairing offer", () => {
       stop: vi.fn(),
       subscribe: () => () => undefined,
     };
-    const container = createTestContainer();
-    const root = createRoot(container);
+    const { root } = testRoot();
     const render = (discoveryForeground: boolean) =>
       root.render(
         <LoomarrProvider theme="dark">
@@ -462,8 +453,7 @@ describe("TV pairing offer", () => {
       },
     });
     const approvalBrowser = { close: vi.fn(), name: "Safari", open: vi.fn() };
-    const container = createTestContainer();
-    const root = createRoot(container);
+    const { container, root } = testRoot();
     // Mounting initializes the session, so pairing starts after the shell is on screen, as in the app.
     act(() =>
       root.render(

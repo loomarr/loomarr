@@ -26,19 +26,6 @@
     "packages/ui/tests/library-settings.test.tsx": 1,
     "packages/ui/tests/library-shelf.test.tsx": 1,
     "packages/ui/tests/library-title.test.tsx": 1,
-    "packages/ui/tests/library-wizard-step.test.tsx": 1,
-    "packages/ui/tests/on-screen-logo.test.tsx": 1,
-    "packages/ui/tests/pairing-shell-back.test.tsx": 1,
-    "packages/ui/tests/pairing-shell-screens.test.tsx": 1,
-    "packages/ui/tests/pairing-shell.test.tsx": 3,
-    "packages/ui/tests/player-chrome.test.tsx": 2,
-    "packages/ui/tests/player-layers-keyboard.test.tsx": 1,
-    "packages/ui/tests/requests-journey.test.tsx": 1,
-    "packages/ui/tests/search-field.test.tsx": 1,
-    "packages/ui/tests/settings-overview.test.tsx": 1,
-    "packages/ui/tests/surf-rail-focus.test.tsx": 1,
-    "packages/ui/tests/wall-tile.test.tsx": 2,
-    "packages/ui/tests/watching-surface.test.tsx": 1,
-    "packages/ui/tests/year-range-list-field.test.tsx": 2
+    "packages/ui/tests/library-wizard-step.test.tsx": 1
   }
 }

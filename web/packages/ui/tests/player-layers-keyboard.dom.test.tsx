@@ -1,70 +1,35 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import type { ReactNode } from "react";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PlayerBottomSheet, PlayerDetailsPanel, PlayerMenu, PlayerSheet } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+type El = HTMLElement;
+type Host = HTMLElement;
 
 // The player's layers are non-modal dialogs over a picture that keeps playing. Axe passing says
 // nothing about the keyboard, so this drives it: where focus lands when a layer opens, that nothing
 // traps it, that a key pressed inside reaches the player's frame (which leaves an open dialog's
-// arrows alone), and where focus is once the layer closes. The package compiles without the DOM lib,
-// so the test names the little of it that it touches.
-type El = {
-  contains(other: unknown): boolean;
-  dispatchEvent(event: unknown): boolean;
-  focus(): void;
-  getAttribute(name: string): string | null;
-  textContent: string | null;
-};
-type Host = Parameters<typeof createRoot>[0] & {
-  contains(other: unknown): boolean;
-  querySelector(selector: string): El | null;
-  querySelectorAll(selector: string): ArrayLike<El>;
-  remove(): void;
-};
-const dom = globalThis as unknown as {
-  document: {
-    activeElement: unknown;
-    body: { append(node: unknown): void };
-    createElement(tagName: string): Host;
-  };
-  KeyboardEvent: new (type: string, init: { bubbles: boolean; key: string }) => unknown;
-};
-
-const mounted: { host: Host; unmount: () => void }[] = [];
+// arrows alone), and where focus is once the layer closes.
+const dom = window;
 
 // `layer` is mounted beside an opener button, inside a frame that records the keys that reach it.
 const open = (layer: ReactNode) => {
-  const host = dom.document.createElement("div");
-  dom.document.body.append(host);
-  const root = createRoot(host);
   const onFrameKey = vi.fn();
   const frame = (shown: boolean) => (
-    <LoomarrProvider theme="dark">
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: stands in for the player frame's key handler */}
-      <div onKeyDown={onFrameKey}>
-        <button type="button">Opener</button>
-        {shown ? layer : null}
-      </div>
-    </LoomarrProvider>
+    // biome-ignore lint/a11y/noStaticElementInteractions: stands in for the player frame's key handler
+    <div onKeyDown={onFrameKey}>
+      <button type="button">Opener</button>
+      {shown ? layer : null}
+    </div>
   );
-  act(() => root.render(frame(true)));
-  mounted.push({ host, unmount: () => act(() => root.unmount()) });
-  return { close: () => act(() => root.render(frame(false))), host, onFrameKey };
+  const { container: host, rerender } = renderUi(frame(true));
+  return { close: () => rerender(frame(false)), host, onFrameKey };
 };
 
-afterEach(() => {
-  for (const { host, unmount } of mounted.splice(0)) {
-    unmount();
-    host.remove();
-  }
-});
+afterEach(cleanup);
 
 const dialog = (host: Host, name: string) =>
   Array.from(host.querySelectorAll('[role="dialog"]')).find((el) => el.getAttribute("aria-label") === name);

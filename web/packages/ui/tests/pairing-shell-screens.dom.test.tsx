@@ -3,10 +3,10 @@
 import { PairingSession } from "@loomarr/core/pairing";
 import type { ServerDiscovery } from "@loomarr/core/server-discovery";
 import { LoomarrProvider } from "@loomarr/design-system";
-import { act, createElement } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PairingShell } from "../index";
 
@@ -24,11 +24,7 @@ vi.mock("@loomarr/design-system", async (importOriginal) => {
   };
 });
 
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
+afterEach(cleanup);
 
 const store = () => ({
   clear: vi.fn(async () => undefined),
@@ -134,18 +130,8 @@ describe("Apple TV code screen", () => {
 describe("a mistyped server address", () => {
   it("stays on server choice with the text kept and the message under the field", async () => {
     const session = new PairingSession({ createTransport: vi.fn(), deviceName: "iPhone", store: store() });
-    const container = (
-      globalThis as unknown as {
-        document: { createElement: (tag: string) => Parameters<typeof createRoot>[0] };
-      }
-    ).document.createElement("div");
-    const root = createRoot(container);
-    act(() =>
-      root.render(
-        <LoomarrProvider theme="dark">
-          <PairingShell allowServerEntry density="touch" renderPaired={() => null} session={session} />
-        </LoomarrProvider>,
-      ),
+    const { container, unmount } = renderUi(
+      <PairingShell allowServerEntry density="touch" renderPaired={() => null} session={session} />,
     );
     await vi.waitFor(() => expect(session.snapshot().status).toBe("needs-server"));
     await act(async () => {
@@ -164,7 +150,7 @@ describe("a mistyped server address", () => {
     expect(page.textContent).not.toContain("Couldn’t connect");
     expect(page.textContent).not.toContain("Try again");
     expect(page.querySelector("input")?.value).toBe("localhost:999999");
-    act(() => root.unmount());
+    unmount();
     session.stop();
   });
 });
