@@ -1,58 +1,28 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
+import { cleanup, renderUi } from "@loomarr/test-support";
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { AccessibilityInfo, Animated } from "react-native";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TuneBars, TuneStatic } from "../index";
 
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
-// The package compiles without the DOM library, so the tests name what they read.
-type DomElement = {
-  children: Iterable<DomElement>;
-  firstElementChild: DomElement;
-  getAttribute: (name: string) => string | null;
-  innerHTML: string;
-  parentElement: DomElement;
-  querySelector: (selector: string) => DomElement | null;
-  style: { backgroundColor: string; opacity: string };
-};
-const { document } = globalThis as unknown as {
-  document: {
-    body: { appendChild: (node: unknown) => void; replaceChildren: () => void };
-    createElement: (tagName: string) => Parameters<typeof createRoot>[0] & DomElement;
-  };
-};
-
-const roots: Root[] = [];
-
+// Each step also lets the platform's reduce-motion answer arrive before the test reads the screen.
 const mount = async (node: React.ReactNode, theme: "dark" | "light" = "dark") => {
-  const host = document.createElement("div");
-  document.body.appendChild(host);
-  const root = createRoot(host);
-  roots.push(root);
-  const render = (next: React.ReactNode) =>
-    act(async () => root.render(<LoomarrProvider theme={theme}>{next}</LoomarrProvider>));
-  await render(node);
-  return { host, render };
+  const { container, rerender } = renderUi(node, { theme });
+  const render = (next: React.ReactNode) => act(async () => rerender(next));
+  await act(async () => {});
+  return { host: container, render };
 };
 
 afterEach(() => {
-  for (const root of roots.splice(0)) act(() => root.unmount());
-  document.body.replaceChildren();
+  cleanup();
   vi.restoreAllMocks();
 });
 
-const part = (host: DomElement) => host.querySelector('[data-testid^="tune-static-"]');
+const part = (host: HTMLElement) => host.querySelector<HTMLElement>('[data-testid^="tune-static-"]');
 // The snow is the only thing that draws an SVG.
-const snow = (host: DomElement) => host.querySelector("svg");
+const snow = (host: HTMLElement) => host.querySelector("svg");
 
 describe("TuneStatic", () => {
   it("hides its own wrapper from assistive technology", async () => {
@@ -100,7 +70,8 @@ describe("TuneStatic", () => {
     const { host, render } = await mount(<TuneStatic cover="burst" reducedMotion />);
     const opacity = () => Number(part(host)?.style.opacity);
     expect(snow(host)).toBeNull();
-    expect(part(host)?.firstElementChild.style.backgroundColor).toBe("rgb(11, 12, 14)");
+    const veil = part(host)?.firstElementChild as HTMLElement | undefined;
+    expect(veil?.style.backgroundColor).toBe("rgb(11, 12, 14)");
     expect(fades()).toEqual([{ duration: 120, toValue: 0.88 }]);
     await vi.waitFor(() => expect(opacity()).toBe(0.88));
     await render(<TuneStatic cover="none" reducedMotion />);
@@ -136,10 +107,10 @@ describe("TuneStatic", () => {
 });
 
 describe("TuneBars", () => {
-  const bars = (host: DomElement) => host.querySelector('[data-testid^="tune-bars-"]');
-  const colours = (host: DomElement) =>
+  const bars = (host: HTMLElement) => host.querySelector('[data-testid^="tune-bars-"]');
+  const colours = (host: HTMLElement) =>
     Array.from(bars(host)?.children ?? [], (bar) =>
-      bar.style.backgroundColor.replace(/rgba?\((\d+), (\d+), (\d+).*/, "$1,$2,$3"),
+      (bar as HTMLElement).style.backgroundColor.replace(/rgba?\((\d+), (\d+), (\d+).*/, "$1,$2,$3"),
     );
   const chroma = [
     "255,176,32",
