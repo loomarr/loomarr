@@ -337,7 +337,9 @@ describe("LibraryPage", () => {
     renderPage({ filter: "all", search: "" });
 
     await waitFor(() => expect(asked.at(-1)?.get("sort")).toBeNull());
-    await userEvent.selectOptions(await screen.findByLabelText("Order"), "recent");
+    // From a tablet up the order is a phrase in the toolbar's sentence, and its menu holds the choices.
+    await userEvent.click(await screen.findByRole("button", { name: "A to Z, order" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Recently added" }));
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library", search: { sort: "recent" } });
 
     renderPage({ filter: "all", search: "", sort: "recent" });
@@ -400,10 +402,12 @@ describe("LibraryPage", () => {
     renderPage({ filter: "all", search: "", genre: "Drama" });
 
     await waitFor(() => expect(asked.at(-1)?.get("genre")).toBe("Drama"));
-    await screen.findByRole("option", { name: "Comedy · 2" });
-    await userEvent.selectOptions(screen.getByLabelText("Genre"), "Comedy");
+    // The genre is the sentence's next phrase, named for the genre chosen.
+    await userEvent.click(await screen.findByRole("button", { name: "Drama, genre" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Comedy · 2" }));
     expect(mocks.navigate).toHaveBeenLastCalledWith({ to: "/library", search: { genre: "Comedy" } });
-    await userEvent.selectOptions(screen.getByLabelText("Genre"), "");
+    await userEvent.click(screen.getByRole("button", { name: "Drama, genre" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Every genre" }));
     expect(mocks.navigate).toHaveBeenLastCalledWith({ to: "/library", search: {} });
     await userEvent.click(screen.getByRole("tab", { name: /^Movies/ }));
     expect(mocks.navigate).toHaveBeenLastCalledWith({
@@ -437,12 +441,22 @@ describe("LibraryPage", () => {
         <LibraryPage filter={filter} search="" />
       </QueryClientProvider>
     );
+    // The genre phrase's menu lists the tab's own genres.
+    const genres = async () => {
+      await userEvent.click(await screen.findByRole("button", { name: "Every genre, genre" }));
+      const names = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
+      await userEvent.keyboard("{Escape}");
+      return names;
+    };
     const view = render(page("movie"));
-    expect(await screen.findByRole("option", { name: "Western · 1" })).toBeInTheDocument();
+    await waitFor(async () => expect(await genres()).toContain("Western · 1"));
 
     view.rerender(page("series"));
-    expect(await screen.findByRole("option", { name: "Reality · 1" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "Western · 1" })).not.toBeInTheDocument();
+    await waitFor(async () => {
+      const names = await genres();
+      expect(names).toContain("Reality · 1");
+      expect(names).not.toContain("Western · 1");
+    });
   });
 
   // The wall is one list from its first title, so a jump loads on until the letter's title and a
@@ -728,7 +742,8 @@ describe("LibraryPage", () => {
     });
     expect(await screen.findByRole("button", { name: "Remove filter: Audio: English" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "More filters (5)" })).toBeInTheDocument();
-    expect(await screen.findByText("3 titles")).toBeInTheDocument();
+    // The toolbar's sentence and the line of what is on both say what the filters leave.
+    expect((await screen.findAllByText("3 titles")).length).toBeGreaterThan(0);
 
     await userEvent.click(screen.getByRole("button", { name: "Remove filter: 4K" }));
     expect(lastSearch()).toEqual({

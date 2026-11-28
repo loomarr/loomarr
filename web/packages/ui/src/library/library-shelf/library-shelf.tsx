@@ -690,7 +690,8 @@ const Controls = ({
     return (
       <Stack gap="inline">
         <Line alignItems="stretch" columnGap={0} flexWrap="nowrap">
-          <Stack flex={1} minWidth={0}>
+          {/* The tabs sit at the foot of the row, so their rule meets the search's on one line. */}
+          <Stack flex={1} justifyContent="flex-end" minWidth={0}>
             {tabs}
           </Stack>
           {/* The tabs' rule carries on under the search, so the two read as one line. */}
