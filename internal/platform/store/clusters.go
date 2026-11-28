@@ -43,7 +43,7 @@ type (
 
 // bindClusters installs every embedded cluster on s, each built on s's own kernel handle. Every
 // constructor of a sqlStore calls it, so a store never exists with a nil cluster. The dialect must
-// be set, and s.channelClaimSQL with it, before the call.
+// be set before the call, and a store that claims channels sets s.channelClaimSQL too.
 func bindClusters(s *sqlStore) *sqlStore {
 	k := s.kernel()
 	s.identityCluster = identitystore.New(k)
