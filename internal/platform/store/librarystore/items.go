@@ -762,8 +762,10 @@ func (s *Store) readItemsFiles(ctx context.Context, ids []string, out map[string
 	}
 	args = append(args, args...)
 	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT path, root, size_bytes, modified_ns, identity, kind, header,
-		problem, held, seen_at_ms, missing_at_ms, COALESCE(inventory_item_id, ''), COALESCE(inventory_series_id, '')
-		FROM library_files WHERE (inventory_item_id IN (`+in+`) OR inventory_series_id IN (`+in+`))
+		problem, held, seen_at_ms, missing_at_ms, COALESCE(inventory_item_id, ''), COALESCE(inventory_series_id, ''),
+		COALESCE((SELECT MAX(s.duration_ms) FROM library_sources s
+			WHERE s.item_id = f.inventory_item_id AND s.path = f.path), 0)
+		FROM library_files f WHERE (inventory_item_id IN (`+in+`) OR inventory_series_id IN (`+in+`))
 		AND missing_at_ms = 0 AND problem = '' ORDER BY path`), args...)
 	if err != nil {
 		return err
@@ -772,7 +774,7 @@ func (s *Store) readItemsFiles(ctx context.Context, ids []string, out map[string
 		var f LibraryFile
 		var seen, missing int64
 		if err := rows.Scan(&f.Path, &f.Root, &f.Size, &f.ModifiedNs, &f.Identity, &f.Kind, &f.Header, &f.Problem,
-			&f.Held, &seen, &missing, &f.ItemID, &f.SeriesID); err != nil {
+			&f.Held, &seen, &missing, &f.ItemID, &f.SeriesID, &f.DurationMs); err != nil {
 			_ = rows.Close()
 			return err
 		}

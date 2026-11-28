@@ -801,6 +801,22 @@ step 5). Nothing reads the scanner's origins until the cutover.
   five minutes, doubling to
   a day; the wait belongs to that file, so another one is tried at once, and it is held in memory,
   so a restart tries again.
+- **A frame on a Needs you card** (#4476). A title waiting in Needs you has no catalog artwork
+  either, and its file name alone often can't tell it from the others, so its card shows a frame
+  of its main file too, chosen and taken exactly as a home video's. The same job takes it, by the
+  same ffmpeg path and the same rules: after the kept titles' posters in each check, inside the
+  same ten frames every two minutes (so at most 300 an hour), none while someone is watching, and
+  with the same per-file wait after a failure. Playout always comes first, and the artwork fetch
+  queue is never asked. The frame is not the title's poster, so the wall and the title page never
+  draw it: it is stored by the image service as a 16:9 still (the `thumb` ladder, member
+  visibility), under the title's own `frame` ref role, which the scanner does not write. A need
+  whose main file can't play, or whose length is not read yet, has no frame and its card draws a
+  neutral 16:9 box. The frame is saved only while the title still waits in Needs you, has no frame
+  and plays that file, checked and written in one transaction. The same sweep that clears a stale
+  home-video frame, after each pass's and header stage's file rows, clears a need's frame once its
+  main file is another one (the job then takes a new one) or once the title no longer waits in
+  Needs you: linked, ignored, kept, or identified by a scan. `GET /v1/library/needs` returns the
+  frame as `frame`, and each file's `lengthMillis` from its header, 0 until the header is read.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left

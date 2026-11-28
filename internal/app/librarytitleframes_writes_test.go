@@ -26,7 +26,7 @@ func homeFrame(t *testing.T, width int) []byte {
 }
 
 // saveHomeVideo writes the fixture's title with its file at revision.
-func saveHomeVideo(t *testing.T, p *homePosters, revision string) {
+func saveHomeVideo(t *testing.T, p *titleFrames, revision string) {
 	t.Helper()
 	if err := p.store.(records.Store).SaveLibraryItems(context.Background(), []librarystore.LibraryItem{{ID: "90000001", Kind: "movie", Name: "Alpha",
 		Origin: homeVideoOrigin, Sources: []librarystore.LibrarySource{

@@ -394,7 +394,7 @@ func (im *Importer) saveRead(ctx context.Context, read []pending) error {
 		return err
 	}
 	// A file whose length was not known can now be its title's main file.
-	if err := im.Store.ClearStaleHomeVideoPosters(ctx); err != nil {
+	if err := im.Store.ClearStaleLibraryFrames(ctx); err != nil {
 		return err
 	}
 	// The files read are what makes their titles ready.
