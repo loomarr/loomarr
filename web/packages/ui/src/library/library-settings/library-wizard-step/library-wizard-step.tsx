@@ -2,6 +2,7 @@ import { Action, Surface, Text } from "@loomarr/design-system";
 
 import { Line, Stack } from "../../library-poster";
 import { joinNames } from "../../library-words";
+import { usePhoneDensity } from "../../phone-density";
 import { AddFolder } from "../add-folder";
 import { AUTHORITY_NAMES } from "../authority-names";
 import { Headline } from "../headline";
@@ -25,6 +26,7 @@ const LibraryWizardStep = ({
   folderBrowser,
   now,
 }: LibraryWizardStepProps) => {
+  const density = usePhoneDensity();
   const names = [...new Set(pathMap.map((m) => AUTHORITY_NAMES[m.authority]))];
   const usable = folders.some((f) => f.inUse && f.readable);
   return (
@@ -49,7 +51,7 @@ const LibraryWizardStep = ({
         ))}
         <AddFolder folderBrowser={folderBrowser} onAddFolder={onAddFolder} />
         <Line gap="control">
-          <Action disabled={checking} onPress={onCheckAgain} variant="outline">
+          <Action density={density} disabled={checking} onPress={onCheckAgain} variant="outline">
             {checking ? "Checking…" : "Check again"}
           </Action>
           {checkedJustNow ? (

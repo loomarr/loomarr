@@ -1,12 +1,17 @@
-import { Action, BrandMark, LoadingStrip, Surface, Text } from "@loomarr/design-system";
+import { Action, BrandMark, LoadingStrip, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 
 import type { StatePanelProps } from "./state-panel.type";
 
 // One family for every empty list, error, 404, cover and onboarding: the static colour bars (4px), a
 // sentence-case heading, one plain sentence and at most one action. The bars are the test card a set
 // showed when nothing was on, so they stay still; only loading lights them, as the LoadingStrip (#2789).
-const StatePanel = ({ action, description, density = "pointer", icon, kind, title }: StatePanelProps) => {
+const StatePanel = ({ action, description, density: asked, icon, kind, title }: StatePanelProps) => {
   const loading = kind === "loading";
+  const width = useWindowWidth();
+  const density = asked ?? "pointer";
+  // Unless told otherwise, a window narrower than a tablet is tapped, so the one action takes a
+  // touch target. The words keep their size.
+  const actionDensity = asked ?? (width < 768 ? "touch" : "pointer");
 
   return (
     <Surface
@@ -48,7 +53,7 @@ const StatePanel = ({ action, description, density = "pointer", icon, kind, titl
       {action ? (
         <Action
           accessibilityRole="button"
-          density={density}
+          density={actionDensity}
           hasTVPreferredFocus={density === "tv"}
           onPress={action.onPress}
         >

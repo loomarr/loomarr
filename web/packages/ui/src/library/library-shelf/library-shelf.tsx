@@ -16,6 +16,7 @@ import {
   Text,
   useReducedMotionPreference,
   useWindowWidth,
+  VisuallyHidden,
 } from "@loomarr/design-system";
 import {
   type ComponentProps,
@@ -23,6 +24,7 @@ import {
   type ReactElement,
   type ReactNode,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -574,9 +576,20 @@ const genreOptions = (genres: NonNullable<LibraryShelfProps["genres"]>, chosen: 
 const listedGenre = (genres: LibraryShelfProps["genres"], genre: string | undefined) =>
   genres?.find((g) => g.name.toLowerCase() === genre?.toLowerCase());
 
+// A choice in the phone's sheet under the words that name it, as the other filters draw theirs.
+const Labelled = ({ label, children }: { label: string; children: ReactNode }) => (
+  <Stack gap="inline">
+    <Text textRole="compact" tone="secondary">
+      {label}
+    </Text>
+    {children}
+  </Stack>
+);
+
 // The tabs, then the search, the order and the genre. From a tablet up they share a line and the
-// tabs carry their counts. On a phone one line holds the search and Filters, which opens a sheet
-// with everything else, so the posters start near the top.
+// tabs carry their counts. On a phone one line holds the search and Filters with the tabs under it,
+// so Movies or Shows is one tap away, and Filters opens a sheet with the order, the genre and the
+// rest, so the posters start near the top.
 const Controls = ({
   filter,
   onFilterChange,
@@ -607,7 +620,17 @@ const Controls = ({
 > & { showSearch: boolean; moreRef: (node: unknown) => void }) => {
   const wide = useWindowWidth() >= 768;
   const [open, setOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const searchNode = useRef<FocusTarget | null>(null);
+  const moreNode = useRef<FocusTarget | null>(null);
   const { height } = useWindowDimensions();
+  // The sheet is the phone's alone. A window that grows past it takes the sheet and Filters away,
+  // so the sheet closes and focus goes to More filters, or the search field without it.
+  useEffect(() => {
+    if (!wide || !sheetOpen) return;
+    setSheetOpen(false);
+    (moreNode.current ?? searchNode.current)?.focus();
+  }, [wide, sheetOpen]);
   // On a phone the controls are tapped, so they take the design system's touch targets.
   const density = wide ? "pointer" : "touch";
   const tabs = (
@@ -627,13 +650,16 @@ const Controls = ({
       density={density}
       onChangeText={onSearchChange}
       placeholder="Search titles, years, genres"
+      ref={(node) => {
+        searchNode.current = node as FocusTarget | null;
+      }}
       value={search}
     />
   );
   const order = (
     <CompactSelect
       density={density}
-      label="Order"
+      label={wide ? "Order" : "Sort"}
       onValueChange={onSortChange}
       options={SORTS}
       value={sort}
@@ -659,7 +685,10 @@ const Controls = ({
       density={density}
       icon="filter"
       onPress={() => setOpen(!open)}
-      ref={moreRef}
+      ref={(node) => {
+        moreNode.current = node as FocusTarget | null;
+        moreRef(node);
+      }}
       variant="outline"
     >
       {on > 0 ? `More filters (${on})` : "More filters"}
@@ -684,71 +713,69 @@ const Controls = ({
       </Stack>
     );
   }
-  // The sheet covers the wall and its line of what is on, so it says how many titles the choices
-  // leave: with filters on the list's own total, with a genre chosen that genre's, else the tab's.
-  const filtered = on > 0 || Boolean(filtering && genre);
-  const shown = !showSearch
-    ? undefined
-    : filtered
-      ? filtering?.total
-      : genre
-        ? listed?.titles
-        : counts && filter !== "collections"
-          ? counts[filter]
-          : undefined;
-  // What narrows the wall: Movies or Shows, the genre and the rest. The order narrows nothing, and
-  // Collections shows none of them, so it counts none.
-  const narrowing =
-    filter === "collections" ? 0 : on + (genre ? 1 : 0) + (filter === "movie" || filter === "series" ? 1 : 0);
-  // The sheet stays in this place as the tabs change, so choosing Collections leaves it open.
+  // The sheet covers the wall and its line of what is on, so its way out says how many titles the
+  // choices leave: with filters or a search on, the list's own total (the tab counts ignore the
+  // search); with a genre chosen, that genre's; else the tab's. A search with no list total says
+  // nothing, so the button reads Done.
+  const searching = search.trim() !== "";
+  const filtered = on > 0 || searching || Boolean(filtering && genre);
+  const shown = filtered
+    ? filtering?.total
+    : genre
+      ? listed?.titles
+      : counts && filter !== "collections"
+        ? counts[filter]
+        : undefined;
+  // What the sheet holds that narrows the wall. The order narrows nothing, and Movies or Shows is
+  // chosen on the page, not in the sheet.
+  const narrowing = on + (genre ? 1 : 0);
+  // Collections has nothing to search or filter, so its line is the tabs alone. The tabs keep their
+  // place as the search line comes and goes, so focus stays on the tab that was pressed.
   return (
-    <Line flexWrap="nowrap" gap="control">
+    <Stack gap="control">
       {showSearch ? (
-        <Stack flex={1} minWidth={0}>
-          {searchField}
-        </Stack>
-      ) : null}
-      <Dialog>
-        <DialogTrigger>
-          <Action density="touch" icon="filter" ref={moreRef} variant="outline">
-            {narrowing > 0 ? `Filters (${narrowing})` : "Filters"}
-          </Action>
-        </DialogTrigger>
-        <DialogContent accessibilityLabel="Filters" placement="bottom">
-          <BottomSheet handle={false}>
-            {/* A short window scrolls the choices; Done stays in reach under them. */}
-            <ScrollView style={{ maxHeight: height * 0.7 }}>
-              <Stack gap="control">
-                <Text as="h2" density="touch" textRole="label">
-                  Filters
-                </Text>
-                {tabs}
-                {showSearch ? (
-                  <>
-                    {order}
-                    {genreSelect}
-                    {filtering ? <FilterPanel filtering={filtering} /> : null}
-                  </>
-                ) : null}
-                {/* Its own live region: the page's is hidden while the sheet is open. */}
-                <Stack role="status">
-                  {shown === undefined ? null : (
-                    <Text textRole="compact" tone="secondary">
-                      {titlesWord(shown)}
-                    </Text>
-                  )}
-                </Stack>
-              </Stack>
-            </ScrollView>
-            <DialogClose>
-              <Action density="touch" tone="primary">
-                Done
+        <Line flexWrap="nowrap" gap="control">
+          <Stack flex={1} minWidth={0}>
+            {searchField}
+          </Stack>
+          <Dialog onOpenChange={setSheetOpen} open={sheetOpen}>
+            <DialogTrigger>
+              <Action density="touch" icon="filter" ref={moreRef} variant="outline">
+                {narrowing > 0 ? `Filters (${narrowing})` : "Filters"}
               </Action>
-            </DialogClose>
-          </BottomSheet>
-        </DialogContent>
-      </Dialog>
-    </Line>
+            </DialogTrigger>
+            <DialogContent accessibilityLabel="Filters" placement="bottom">
+              <BottomSheet handle={false}>
+                {/* A short window scrolls the choices; the way out stays in reach under them. */}
+                <ScrollView style={{ maxHeight: height * 0.7 }}>
+                  <Stack gap="control">
+                    <Text as="h2" density="touch" textRole="label">
+                      Filters
+                    </Text>
+                    <Labelled label="Sort">{order}</Labelled>
+                    <Labelled label="Genre">{genreSelect}</Labelled>
+                    {filtering ? <FilterPanel filtering={filtering} /> : null}
+                  </Stack>
+                </ScrollView>
+                {/* A changing button name is not announced, and the page's live region is hidden
+                    while the sheet is open. */}
+                <VisuallyHidden>
+                  <Stack role="status">
+                    {shown === undefined ? null : <Text textRole="compact">{titlesWord(shown)}</Text>}
+                  </Stack>
+                </VisuallyHidden>
+                <DialogClose>
+                  <Action density="touch" tone="primary">
+                    {shown === undefined ? "Done" : `Show ${titlesWord(shown)}`}
+                  </Action>
+                </DialogClose>
+              </BottomSheet>
+            </DialogContent>
+          </Dialog>
+        </Line>
+      ) : null}
+      {tabs}
+    </Stack>
   );
 };
 
