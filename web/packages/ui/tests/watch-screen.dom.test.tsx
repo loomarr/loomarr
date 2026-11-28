@@ -38,6 +38,8 @@ const requests = vi.fn<(request: WatchRequest) => void>();
 const tunes = () =>
   requests.mock.calls.flatMap(([request]) => (request.type === "tune" ? [request.channelId] : []));
 
+const focusOf: { current: string | undefined } = { current: undefined };
+
 // The caller's part: the model, the document's keys, and slots for a menu.
 const Harness = ({ cover = false, hintSeen = true }: { cover?: boolean; hintSeen?: boolean }) => {
   const model = useWatchScreen({ hintSeen, layout: "full", lineup, onRequest: requests, watchedId: "ch-1" });
@@ -59,6 +61,8 @@ const Harness = ({ cover = false, hintSeen = true }: { cover?: boolean; hintSeen
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [send]);
+  // What the model holds focused, for the tests to read.
+  focusOf.current = model.state.focus;
   return (
     <WatchScreen
       layout="full"
@@ -135,16 +139,51 @@ describe("WatchScreen and focus a pointer meets", () => {
     const goLive = screen.getByRole("button", { name: "Go live" });
     act(() => goLive.focus());
     expect(screen.getAllByTestId("ring-actionFocus")).toHaveLength(1);
+    expect(focusOf.current).toBe("goLive");
     click(screen.getByRole("button", { name: "Mute (M)" }));
     expect(document.activeElement).toBe(document.body);
     expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
+    expect(focusOf.current).toBeUndefined();
     requests.mockClear();
   });
 
-  it("holds awake when the lower third comes back under a pointer that is already on it", () => {
+  // Behind live, with the keyboard on one control; then the pointer presses Go live.
+  const clickGoLiveFrom = (focusOn: () => HTMLElement) => {
     vi.useFakeTimers();
-    pointerFocus();
-    // The browser's answer for where the pointer is: over the lower third.
+    keyboardFocus();
+    renderUi(<Harness hintSeen={false} />);
+    key(" ", document.body);
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    key(" ", document.body);
+    act(() => focusOn().focus());
+    expect(screen.getAllByTestId("ring-actionFocus")).toHaveLength(1);
+    requests.mockClear();
+    click(screen.getByRole("button", { name: "Go live" }));
+    expect(requests).toHaveBeenLastCalledWith({ type: "goLive" });
+    expect(screen.queryByRole("button", { name: "Go live" })).toBeNull();
+    // Nothing hands focus on after a pointer press: it stays on the page.
+    expect(document.activeElement).toBe(document.body);
+    expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
+    expect(focusOf.current).toBeUndefined();
+    fireEvent.pointerLeave(screen.getByTestId("watch-lower-third"));
+    expect(restedAfter(5000)).toBe(true);
+    key(" ", document.body);
+    expect(requests).toHaveBeenLastCalledWith({ type: "pause" });
+    requests.mockClear();
+  };
+
+  it("leaves focus on the page after the keyboard's Go live is clicked", () => {
+    clickGoLiveFrom(() => screen.getByRole("button", { name: "Go live" }));
+  });
+
+  it("leaves focus on the page after Go live is clicked while the keyboard is on Mute", () => {
+    clickGoLiveFrom(() => screen.getByRole("button", { name: "Mute (M)" }));
+  });
+
+  // The browser's answer for where the pointer is: over the lower third.
+  const pointerOnLowerThird = () => {
     const matches = Element.prototype.matches;
     Element.prototype.matches = new Proxy(matches, {
       apply: (original, element: Element, args: [string]) =>
@@ -152,12 +191,36 @@ describe("WatchScreen and focus a pointer meets", () => {
           ? Boolean(element.closest('[data-testid="watch-lower-third"]'))
           : Reflect.apply(original, element, args),
     });
+  };
+
+  it("holds awake when the lower third comes back under a pointer that is already on it", () => {
+    vi.useFakeTimers();
+    pointerFocus();
+    pointerOnLowerThird();
     renderUi(<Harness hintSeen={false} />);
     click(channelsControl());
     click(channelsControl());
     expect(listbox()).toBeNull();
     fireEvent.pointerLeave(screen.getByTestId("watch-quiet-row"));
     expect(restedAfter(60_000)).toBe(false);
+    // The pointer goes, and the screen rests five seconds later.
+    fireEvent.pointerLeave(screen.getByTestId("watch-lower-third"));
+    expect(restedAfter(5000)).toBe(true);
+  });
+
+  it("holds awake under a still pointer when find opened the list and Esc closed it", () => {
+    vi.useFakeTimers();
+    pointerFocus();
+    pointerOnLowerThird();
+    renderUi(<Harness hintSeen={false} />);
+    key("/", document.body);
+    expect(listbox()).not.toBeNull();
+    key("Escape", document.body);
+    key("Escape", document.body);
+    expect(listbox()).toBeNull();
+    expect(restedAfter(60_000)).toBe(false);
+    fireEvent.pointerLeave(screen.getByTestId("watch-lower-third"));
+    expect(restedAfter(5000)).toBe(true);
   });
 
   it("hands focus back to Channels away from the web, where every press is a remote's", () => {

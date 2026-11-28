@@ -108,11 +108,11 @@ const withoutHiddenThird = <C extends LineupChannel>(
   lineup: ChannelLineup<C>,
 ): WatchScreenState => {
   const drawn = !state.list.open && lineup.channels.some((channel) => channel.id === state.watchedId);
-  const held = state.pointerOn.includes("lowerThird") || state.focus === "live";
+  const held = state.pointerOn.includes("lowerThird") || state.focus === "goLive";
   if (drawn || !held) return state;
   return {
     ...state,
-    focus: state.focus === "live" ? undefined : state.focus,
+    focus: state.focus === "goLive" ? undefined : state.focus,
     pointerOn: state.pointerOn.filter((region) => region !== "lowerThird"),
   };
 };
@@ -300,6 +300,7 @@ const reduceStep = <C extends LineupChannel>(
         return ask(s, { type: "mute" });
       case "fullscreen":
         return fullScreen(s);
+      case "goLive":
       case "live":
         return goLive(s);
       case "airplay":

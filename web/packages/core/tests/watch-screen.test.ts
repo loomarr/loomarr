@@ -419,8 +419,12 @@ describe("rule 6: the desktop's keys", () => {
     const s = screen();
     s.key(" ", 0);
     s.key(" ", 3000);
-    s.send({ control: "live", type: "press" });
+    s.send({ control: "goLive", type: "press" });
     expect(s.requests.at(-1)).toEqual({ type: "goLive" });
+    s.key(" ", 4000);
+    s.key(" ", 7000);
+    s.send({ control: "live", type: "press" });
+    expect(s.requests.filter((request) => request.type === "goLive")).toHaveLength(2);
   });
 });
 
@@ -707,7 +711,7 @@ describe("what holds the screen awake", () => {
   it("lets go of the pointer and focus on the lower third when the list takes its place", () => {
     const s = screen();
     s.send({ held: true, region: "lowerThird", type: "pointerHold" });
-    s.send({ control: "live", type: "focus" });
+    s.send({ control: "goLive", type: "focus" });
     s.key("/");
     expect(s.state).toMatchObject({ focus: undefined, pointerOn: [] });
     s.key("Escape");
@@ -717,11 +721,18 @@ describe("what holds the screen awake", () => {
     expect(s.view().awake).toBe(false);
   });
 
+  it("keeps the focus of a television row's Go live when the lower third is not drawn", () => {
+    const s = screen({ layout: "tv" });
+    s.send({ control: "live", type: "focus" });
+    s.send({ control: "channels", type: "press" });
+    expect(s.state.focus).toBe("live");
+  });
+
   it("lets go of the lower third's holds when the watched channel leaves the lineup", () => {
     const channels = [...CHANNELS];
     const s = screen({}, channels);
     s.send({ held: true, region: "lowerThird", type: "pointerHold" });
-    s.send({ control: "live", type: "focus" });
+    s.send({ control: "goLive", type: "focus" });
     s.send({ held: true, region: "quietRow", type: "pointerHold" });
     // The channel on screen goes from the lineup, and its lower third with it.
     channels.splice(0, 1);

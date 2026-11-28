@@ -12,7 +12,7 @@ import { Animated, Platform } from "react-native";
 
 import { ChannelList, type ChannelListHandle } from "../channel-list";
 import { FirstRunHint } from "../first-run-hint";
-import { LowerThird, type LowerThirdHandle, type LowerThirdState } from "../lower-third";
+import { LowerThird, type LowerThirdState } from "../lower-third";
 import { QuietRow, type QuietRowHandle, type QuietRowKey } from "../quiet-row";
 import { TuneBars, TuneStatic } from "../tune-static";
 import { WatchScrim } from "../watch-scrim";
@@ -100,14 +100,33 @@ const WatchScreen = <C extends LineupChannel>({
   // Whether the last thing to happen inside the screen was a key, so the model knows a list that a
   // key closed from one a pointer closed. Away from the web every press is a remote's or a key's.
   const byKey = useRef(Platform.OS !== "web");
-  const lowerThird = useRef<LowerThirdHandle>(null);
+
+  // The one gate for moving focus because a control went away or a layer closed: only after a
+  // key or a remote. After a pointer press focus stays where it is, on the page.
+  const handFocus = (move: () => void) => {
+    if (byKey.current) move();
+  };
+
+  // The one pointer rule for the foot of the screen, the lower third and the quiet row: a press
+  // there takes focus off whichever of their controls holds it, so no keyboard ring outlives a
+  // click. The open list, the menu and the cover are not part of it.
+  type Part = { contains?: (node: unknown) => boolean } | null;
+  const footThird = useRef<Part>(null);
+  const footRow = useRef<Part>(null);
+  const pressFoot = () => {
+    byKey.current = false;
+    const active = (globalThis as { document?: { activeElement?: unknown } }).document?.activeElement;
+    if (active && [footThird.current, footRow.current].some((part) => part?.contains?.(active))) {
+      (active as { blur?: () => void }).blur?.();
+    }
+  };
 
   // Focus goes where the model hands it: onto the list's cursor, or back to Channels.
   const handOff = state.handOff;
   // biome-ignore lint/correctness/useExhaustiveDependencies: each hand-off moves focus once
   useEffect(() => {
-    if (handOff?.to === "list") list.current?.focusCursor();
-    if (handOff?.to === "channels") quietRow.current?.focusHead();
+    if (handOff?.to === "list") handFocus(() => list.current?.focusCursor());
+    if (handOff?.to === "channels") handFocus(() => quietRow.current?.focusHead());
   }, [handOff?.seq]);
 
   const thirdState = (channel: C): LowerThirdState => {
@@ -132,13 +151,10 @@ const WatchScreen = <C extends LineupChannel>({
       channelNumber={channel.number}
       controls={controls}
       device="full"
-      onGoLive={() => send({ control: "live", type: "press" })}
-      onGoLiveDropped={() => quietRow.current?.focusHead()}
-      onGoLiveFocus={(focused) => send({ control: focused ? "live" : undefined, type: "focus" })}
-      // A pointer press on Go live takes the keyboard's ring off the quiet row.
-      onPointerPress={() => quietRow.current?.releaseFocus()}
+      onGoLive={() => send({ control: "goLive", type: "press" })}
+      onGoLiveDropped={() => handFocus(() => quietRow.current?.focusHead())}
+      onGoLiveFocus={(focused) => send({ control: focused ? "goLive" : undefined, type: "focus" })}
       ownInk={false}
-      {...(controls ? { ref: lowerThird } : {})}
       state={thirdState(channel)}
       {...(channel.decade === undefined ? {} : { decade: channel.decade })}
     />
@@ -160,6 +176,7 @@ const WatchScreen = <C extends LineupChannel>({
   // pointer-enter comes with it, so on arrival it asks whether the pointer is already over it.
   const holdIfHovered = useCallback(
     (node: unknown) => {
+      footThird.current = node as Part;
       const element = node as { matches?: (selector: string) => boolean } | null;
       if (element?.matches?.(":hover")) send({ held: true, region: "lowerThird", type: "pointerHold" });
     },
@@ -234,7 +251,12 @@ const WatchScreen = <C extends LineupChannel>({
             testID="watch-lower-third"
             {...holdOn("lowerThird")}
           >
-            <Surface backgroundColor="transparent" borderWidth={0} ref={holdIfHovered}>
+            <Surface
+              backgroundColor="transparent"
+              borderWidth={0}
+              ref={holdIfHovered}
+              {...web({ onMouseDown: pressFoot })}
+            >
               {third(watched, true)}
             </Surface>
           </Layer>
@@ -262,20 +284,28 @@ const WatchScreen = <C extends LineupChannel>({
           testID="watch-quiet-row"
           {...holdOn("quietRow")}
         >
-          <QuietRow
-            device="full"
-            group={GROUP_NAMES[state.list.group]}
-            listOpen={view.listOpen}
-            muted={muted ?? false}
-            onFocusKey={(key) => send({ control: key, type: "focus" })}
-            // A pointer press on the row takes the keyboard's ring off Go live.
-            onPointerPress={() => lowerThird.current?.releaseFocus()}
-            onPress={(key) => send({ control: key, type: "press" })}
-            ownInk={false}
-            paused={view.paused}
-            ref={quietRow}
-            {...(openKey ? { openKey } : {})}
-          />
+          <Surface
+            backgroundColor="transparent"
+            borderWidth={0}
+            ref={(node: unknown) => {
+              footRow.current = node as Part;
+            }}
+            {...web({ onMouseDown: pressFoot })}
+          >
+            <QuietRow
+              device="full"
+              group={GROUP_NAMES[state.list.group]}
+              listOpen={view.listOpen}
+              muted={muted ?? false}
+              onFocusDropped={() => handFocus(() => quietRow.current?.focusHead())}
+              onFocusKey={(key) => send({ control: key, type: "focus" })}
+              onPress={(key) => send({ control: key, type: "press" })}
+              ownInk={false}
+              paused={view.paused}
+              ref={quietRow}
+              {...(openKey ? { openKey } : {})}
+            />
+          </Surface>
         </Layer>
 
         {view.menu && renderMenu ? (

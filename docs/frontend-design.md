@@ -657,7 +657,12 @@ the picture) is built. A desktop window, a television and a phone come in #4732,
 - **One amber ring** at any moment, on the quiet row, the lower third's Go live or the list's cursor;
   the list's rows, tabs and buttons are `RingedPressable`, so a mouse click leaves no keyboard ring.
   The quiet row's controls and Go live take no focus from a pointer, so a key pressed after a click
-  is the picture's key, and a pointer press on either takes the keyboard's ring off both. With the list open, the cursor's fill stays visible on the pinned channel.
+  is the picture's key. With the list open, the cursor's fill stays visible on the pinned channel.
+- **One pointer rule for the foot.** The lower third and the quiet row are one region that the
+  screen owns: a pointer press anywhere in it takes focus off whichever of their controls holds it
+  (the list, a menu and a cover are outside it).
+- **One rule for handing focus on.** Focus moves by itself because a control went away or a layer
+  closed only after a key or a remote; after a pointer press it stays on the page.
 - **Find** announces the result under its cursor through a polite live region: the search field has
   no `aria-activedescendant`, so the result cannot be carried by the field itself.
 - **The model asks; the caller does.** It emits requests (tune this channel, pause, resume, go live,

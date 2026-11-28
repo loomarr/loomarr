@@ -7,12 +7,17 @@ import type { ChannelListEvent, ChannelListState } from "../channel-list";
  */
 type WatchLayout = "full" | "window" | "tv" | "portrait" | "landscape";
 
-/** The quiet row's controls, and the lower third's Go live (`live`). */
+/**
+ * The quiet row's controls, and the lower third's Go live (`goLive`). A television's quiet row
+ * leads with a Go live of its own (`live`); the two are told apart because only the lower third's
+ * goes when the lower third does.
+ */
 type WatchControl =
   | "airplay"
   | "audio"
   | "channels"
   | "fullscreen"
+  | "goLive"
   | "guide"
   | "live"
   | "more"

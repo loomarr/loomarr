@@ -101,6 +101,16 @@ describe("QuietRow", () => {
     expect(document.activeElement?.getAttribute("aria-label")).toBe("Channels");
   });
 
+  it("leaves where focus goes to the screen when told it may decide", async () => {
+    const onFocusDropped = vi.fn();
+    const props = { behindLive: true, device: "tv", onFocusDropped, onPress: () => undefined } as const;
+    const view = renderUi(<QuietRow {...props} />);
+    await userEvent.tab();
+    view.rerender(<QuietRow {...props} behindLive={false} />);
+    expect(onFocusDropped).toHaveBeenCalledTimes(1);
+    expect(document.activeElement?.getAttribute("aria-label")).not.toBe("Channels");
+  });
+
   it("leaves focus alone when Go live goes while another control holds it", async () => {
     const props = { behindLive: true, device: "tv", onPress: () => undefined } as const;
     const view = renderUi(<QuietRow {...props} />);
