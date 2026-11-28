@@ -111,7 +111,7 @@ func main() {
 // seedAdmin creates the first local admin through the sanctioned bootstrap path
 // (Argon2id-hashed, Loomarr-owned id). If an admin already exists the bootstrap door
 // is closed — we surface that and reuse it rather than forging a second one.
-func seedAdmin(ctx context.Context, st store.Store, usrID func() string) (identitystore.User, error) {
+func seedAdmin(ctx context.Context, st store.UserStore, usrID func() string) (identitystore.User, error) {
 	// lib=nil: import is unavailable offline; seed only needs the bootstrap path.
 	p := auth.NewProvisioner(st, nil, usrID, time.Now)
 	admin, err := p.Bootstrap(ctx, adminUser, adminPass)
@@ -133,7 +133,7 @@ func seedAdmin(ctx context.Context, st store.Store, usrID func() string) (identi
 // constructor — members are imported from the media server — so a seeded member is
 // an imported-style row: RoleMember, no PasswordHash (can't log in locally), with a
 // modest quota + auto-approve OFF so the Users page shows a realistic member.
-func seedMember(ctx context.Context, st store.Store, usrID func() string) error {
+func seedMember(ctx context.Context, st store.UserStore, usrID func() string) error {
 	if _, err := st.GetUserByName(ctx, "casey"); err == nil {
 		log.Printf("seed: member %q already present — skipping", "casey")
 		return nil
@@ -169,7 +169,7 @@ func seedMember(ctx context.Context, st store.Store, usrID func() string) error 
 //  4. build a channel bound to that approved intent and compute its desired lineup
 //     with schedule.ComputeDesiredAt (the reconciler's pure core) so programCount /
 //     slotCount / policy.applied are genuinely what the scheduler produces.
-func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) error {
+func seedTitlesAndChannel(ctx context.Context, st proposalStore, adminID string) error {
 	now := time.Now()
 
 	// A believable 90s movie-night lineup from the invented demo catalogue (the repo is
@@ -289,7 +289,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 // domain event via provision.Apply, then persists it. Grabbed needs a fresh
 // downloading deadline; LibraryConfirmed carries the library id. This is the honest
 // way to reach a later state — it walks the machine rather than forging the target.
-func advance(ctx context.Context, st store.Store, item proposals.ProposalItem, kind provision.EventKind, libID string) error {
+func advance(ctx context.Context, st store.TitleStore, item proposals.ProposalItem, kind provision.EventKind, libID string) error {
 	key, err := item.Key()
 	if err != nil {
 		return fmt.Errorf("key for %q: %w", item.Name, err)
@@ -315,7 +315,7 @@ func advance(ctx context.Context, st store.Store, item proposals.ProposalItem, k
 // desired schedule + applied relaxations, then persists it. The
 // Desired slots reuse the approved titles' keys + library ids, so they are real
 // SlotProgram entries (non-zero programCount) — not decorative placeholders.
-func seedChannel(ctx context.Context, st store.Store, channelID string, picks []pick, policy schedule.ChannelPolicy) error {
+func seedChannel(ctx context.Context, st store.ChannelStore, channelID string, picks []pick, policy schedule.ChannelPolicy) error {
 	ch, err := st.GetChannel(ctx, channelID)
 	if err != nil {
 		return fmt.Errorf("get approved channel: %w", err)
@@ -387,7 +387,7 @@ func seedChannel(ctx context.Context, st store.Store, channelID string, picks []
 // seedClips inserts a small filler catalog (commercials + a bumper), tagged so pod
 // assembly can match them. Clips aren't gated — they're a parallel catalog, not
 // titles — so a direct upsert is the correct construction.
-func seedClips(ctx context.Context, st store.Store) error {
+func seedClips(ctx context.Context, st store.ClipStore) error {
 	type seededClip struct {
 		clip clips.Clip
 		tags []string
@@ -466,7 +466,7 @@ func demoFilm(id string) demolibrary.Title {
 
 // stockLibrary writes the demo films as library items, as the scan of `make demo-library`'s
 // folders would, under the same ids libPick gives them.
-func stockLibrary(ctx context.Context, st store.Store, at time.Time, ids ...string) error {
+func stockLibrary(ctx context.Context, st librarystore.LibraryItemStore, at time.Time, ids ...string) error {
 	rows := make([]librarystore.LibraryItem, 0, len(ids))
 	for _, id := range ids {
 		t := demoFilm(id)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // What filters THIS ffmpeg build carries (§9.1).
@@ -118,7 +119,7 @@ func GPUFiltersFor(ffmpegPath string) func() encode.GPUFilters {
 	}
 }
 
-// hdrToSDR is the CPU HDR→SDR filter chain on one curve (a CPU curve: see ToneCurve.cpu).
+// HDRToSDR is the CPU HDR→SDR filter chain on one curve (a CPU curve: see media.ToneCurve.CPU).
 //
 // The three steps are not interchangeable and the order is the whole trick:
 //
@@ -155,7 +156,7 @@ func GPUFiltersFor(ffmpegPath string) func() encode.GPUFilters {
 // It emits no pixel FORMAT either: zscale preserves bit depth, so a 10-bit source is still 10-bit
 // here. The existing `format=yuv420p` / `format=nv12,hwupload` step that follows is what takes it
 // to 8 bits, which is why this must be inserted BEFORE that step and not after.
-func hdrToSDR(curve ToneCurve) string {
+func HDRToSDR(curve media.ToneCurve) string {
 	return "zscale=t=linear:npl=100," +
 		"tonemap=tonemap=" + string(curve) + ":desat=0," +
 		"zscale=p=bt709:t=bt709:m=bt709:r=tv"

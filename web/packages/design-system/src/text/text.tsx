@@ -2,6 +2,7 @@ import { isWeb, useTheme, View } from "@tamagui/core";
 import type { ComponentProps, CSSProperties, ElementType } from "react";
 import { createElement } from "react";
 
+import type { ItemLayoutProps } from "../item-layout";
 import { TamaguiText } from "../text-base";
 import {
   type Density,
@@ -36,6 +37,7 @@ type TextTone =
   | "warning";
 type TextProps = Omit<
   TamaguiTextProps,
+  | "alignSelf"
   | "color"
   | "flex"
   | "flexShrink"
@@ -46,50 +48,51 @@ type TextProps = Omit<
   | "lineHeight"
   | "minWidth"
   | "role"
-> & {
-  /**
-   * Renders as this host element instead of Tamagui's own Text (web only; ignored on native,
-   * where Tamagui's Text is already the host). For a caller that needs `<p>`, `<dt>`, or another
-   * element Tamagui's Text does not expose a tag for (#970 PR B checkpoint 2's Caption).
-   *
-   * Bypasses `halo`: a polymorphic readout has never needed the snow/picture treatment, and the
-   * halo's two-layer markup assumes Tamagui's own Text underneath.
-   */
-  as?: ElementType;
-  density?: Density;
-  /**
-   * The flex-item props: how the text sizes inside the row or column around it. They are the only
-   * layout a Text takes; space around it is the parent Stack's gap or padding. They hold on every
-   * host, `as` and `halo` included.
-   *
-   * `flex` grows the text into the free space, as Tamagui's `flex` does: grow by n, shrink 1, from a
-   * zero basis (Tailwind's `flex-1` is `flex={1}`).
-   */
-  flex?: number;
-  /** Whether the text gives way when its row is short of room: 1 (`shrink`) or 0 (`shrink-0`). */
-  flexShrink?: number;
-  /**
-   * The narrowest the text may get, in px. `0` (`min-w-0`) lets a text in a row shrink below its
-   * longest word, so `numberOfLines` can truncate it.
-   */
-  minWidth?: number;
-  /**
-   * A readout over snow or a picture (#1627 B4): the canvas as a two-layer halo, tight under the
-   * glyphs and wide around them, so the text holds on any ground. React Native takes one text
-   * shadow, so the wide layer is a second, hidden copy of the text behind the first.
-   */
-  halo?: boolean;
-  /** Line height as a multiple of the size (`none` is 1), in place of the role's own height in px. */
-  leading?: LeadingStep;
-  /** Uppercase with wide tracking — the section-label voice ("POD · 1:10", a shouted Caption). */
-  shout?: boolean;
-  /** The role's size at weight 600: a checked or selected choice's label (neutral-pressed, #1909). */
-  strong?: boolean;
-  textRole: TextRole;
-  tone?: TextTone;
-  /** Letter spacing in em, for tracked-out mono readouts ("CH 7" at 0.16, "TUNING IN" at 0.24). Overrides the role's own. */
-  tracking?: number;
-};
+> &
+  ItemLayoutProps & {
+    /**
+     * Renders as this host element instead of Tamagui's own Text (web only; ignored on native,
+     * where Tamagui's Text is already the host). For a caller that needs `<p>`, `<dt>`, or another
+     * element Tamagui's Text does not expose a tag for (#970 PR B checkpoint 2's Caption).
+     *
+     * Bypasses `halo`: a polymorphic readout has never needed the snow/picture treatment, and the
+     * halo's two-layer markup assumes Tamagui's own Text underneath.
+     */
+    as?: ElementType;
+    density?: Density;
+    /**
+     * The flex-item props: how the text sizes inside the row or column around it. With `alignSelf`
+     * they are the only layout a Text takes; space around it is the parent Stack's gap or padding.
+     * They hold on every host, `as` and `halo` included.
+     *
+     * `flex` grows the text into the free space, as Tamagui's `flex` does: grow by n, shrink 1, from a
+     * zero basis (Tailwind's `flex-1` is `flex={1}`).
+     */
+    flex?: number;
+    /** Whether the text gives way when its row is short of room: 1 (`shrink`) or 0 (`shrink-0`). */
+    flexShrink?: number;
+    /**
+     * The narrowest the text may get, in px. `0` (`min-w-0`) lets a text in a row shrink below its
+     * longest word, so `numberOfLines` can truncate it.
+     */
+    minWidth?: number;
+    /**
+     * A readout over snow or a picture (#1627 B4): the canvas as a two-layer halo, tight under the
+     * glyphs and wide around them, so the text holds on any ground. React Native takes one text
+     * shadow, so the wide layer is a second, hidden copy of the text behind the first.
+     */
+    halo?: boolean;
+    /** Line height as a multiple of the size (`none` is 1), in place of the role's own height in px. */
+    leading?: LeadingStep;
+    /** Uppercase with wide tracking — the section-label voice ("POD · 1:10", a shouted Caption). */
+    shout?: boolean;
+    /** The role's size at weight 600: a checked or selected choice's label (neutral-pressed, #1909). */
+    strong?: boolean;
+    textRole: TextRole;
+    tone?: TextTone;
+    /** Letter spacing in em, for tracked-out mono readouts ("CH 7" at 0.16, "TUNING IN" at 0.24). Overrides the role's own. */
+    tracking?: number;
+  };
 
 /** The concrete value of a theme colour key, for hosts that take inline style rather than a token. */
 const themeVal = (theme: ReturnType<typeof useTheme>, key: string) =>
@@ -151,17 +154,19 @@ const hostTextStyle = ({
   };
 };
 
-type FlexItem = Pick<TextProps, "flex" | "flexShrink" | "minWidth">;
+type FlexItem = Pick<TextProps, "alignSelf" | "flex" | "flexShrink" | "minWidth">;
 
 /** The flex-item props a caller set, and only those, so an unset one never overrides a default. */
-const flexItem = ({ flex, flexShrink, minWidth }: FlexItem) => ({
+const flexItem = ({ alignSelf, flex, flexShrink, minWidth }: FlexItem) => ({
+  ...(alignSelf !== undefined && { alignSelf }),
   ...(flex !== undefined && { flex }),
   ...(flexShrink !== undefined && { flexShrink }),
   ...(minWidth !== undefined && { minWidth }),
 });
 
 /** The flex-item props as an `as` host's inline style, with `flex` expanded as Tamagui's web Text does. */
-const hostFlexStyle = ({ flex, flexShrink, minWidth }: FlexItem): CSSProperties => ({
+const hostFlexStyle = ({ alignSelf, flex, flexShrink, minWidth }: FlexItem): CSSProperties => ({
+  ...(alignSelf !== undefined && { alignSelf }),
   ...(flex !== undefined && { flexBasis: 0, flexGrow: flex, flexShrink: 1 }),
   ...(flexShrink !== undefined && { flexShrink }),
   ...(minWidth !== undefined && { minWidth }),
@@ -260,6 +265,7 @@ const Text = ({
   halo,
   leading,
   shout,
+  alignSelf,
   flex,
   flexShrink,
   minWidth,
@@ -270,7 +276,7 @@ const Text = ({
   ...given
 }: TextProps) => {
   const props = webLiveRegion(given);
-  const item = flexItem({ flex, flexShrink, minWidth });
+  const item = flexItem({ alignSelf, flex, flexShrink, minWidth });
   const theme = useTheme();
   const role = typography[density][textRole];
   const value = strong ? { ...role, weight: "600" as const } : role;

@@ -27,6 +27,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
@@ -165,7 +166,7 @@ func seed(ctx context.Context, lib *demolibrary.Library, cfg seedConfig, log *sl
 }
 
 // ensureAdmin returns the store's admin, bootstrapping the demo admin on an empty store.
-func ensureAdmin(ctx context.Context, st store.Store) (identitystore.User, bool, error) {
+func ensureAdmin(ctx context.Context, st store.UserStore) (identitystore.User, bool, error) {
 	users, err := st.ListUsers(ctx)
 	if err != nil {
 		return identitystore.User{}, false, err
@@ -184,7 +185,7 @@ func ensureAdmin(ctx context.Context, st store.Store) (identitystore.User, bool,
 // ensureChannel approves the channel's proposal once, keyed by deterministic job and proposal
 // ids, and returns the channel the approval bound. items is each title's library item id by its
 // stand-in id (scanLibrary).
-func ensureChannel(ctx context.Context, st store.Store, approver *accept.Approver, lib *demolibrary.Library, items map[string]string, adminID string, c demolibrary.Channel) (string, error) {
+func ensureChannel(ctx context.Context, st channelProposalStore, approver *accept.Approver, lib *demolibrary.Library, items map[string]string, adminID string, c demolibrary.Channel) (string, error) {
 	// The open pack keys its channels apart from the invented library's, so a store seeded with one
 	// never mistakes the other's channel for its own: switching content on a kept store fails on the
 	// taken channel number instead of renaming an invented channel over the pack's name.
@@ -217,7 +218,7 @@ func ensureChannel(ctx context.Context, st store.Store, approver *accept.Approve
 	return approved.ChannelID, nil
 }
 
-func createProposal(ctx context.Context, st store.Store, lib *demolibrary.Library, items map[string]string, adminID, jobID, propID string, c demolibrary.Channel) error {
+func createProposal(ctx context.Context, st store.ProposalRepository, lib *demolibrary.Library, items map[string]string, adminID, jobID, propID string, c demolibrary.Channel) error {
 	intent := proposals.Intent{Description: c.Name}
 	var lineup []proposals.ProposalItem
 	for _, id := range c.Titles {
@@ -302,7 +303,7 @@ const scanWait = 10 * time.Minute
 // item named from its catalog record (TMDB's stand-in, through the Enricher) and every file's header
 // is read (a programme's runtime is its file's duration), and returns
 // each title's library item id by its stand-in id.
-func (b *backend) scanLibrary(ctx context.Context, st store.Store, lib *demolibrary.Library, l demolibrary.Layout, log *slog.Logger) (map[string]string, error) {
+func (b *backend) scanLibrary(ctx context.Context, st libraryReader, lib *demolibrary.Library, l demolibrary.Layout, log *slog.Logger) (map[string]string, error) {
 	for _, dir := range []string{l.Movies(), l.Shows()} {
 		abs, err := filepath.Abs(dir)
 		if err != nil {
@@ -346,7 +347,7 @@ func (b *backend) scanLibrary(ctx context.Context, st store.Store, lib *demolibr
 
 // demoLibraryItems maps each demo title's stand-in id to its library item id, or names the first
 // title the scan has not written yet, or written but not yet named from its catalog record.
-func demoLibraryItems(ctx context.Context, st store.Store, lib *demolibrary.Library) (map[string]string, string, error) {
+func demoLibraryItems(ctx context.Context, st libraryReader, lib *demolibrary.Library) (map[string]string, string, error) {
 	items := make(map[string]string, len(lib.Titles))
 	for _, t := range lib.Titles {
 		kind, namespace := "movie", "tmdb"
@@ -376,7 +377,7 @@ func demoLibraryItems(ctx context.Context, st store.Store, lib *demolibrary.Libr
 
 // firstEpisodeNamed reports whether a show's first episode carries its catalog name. The Enricher
 // fetches a season a pass after its show, so until then the guide would list file names.
-func firstEpisodeNamed(ctx context.Context, st store.Store, seriesID string, want []demolibrary.Episode) (bool, error) {
+func firstEpisodeNamed(ctx context.Context, st librarystore.LibraryEpisodeReader, seriesID string, want []demolibrary.Episode) (bool, error) {
 	if len(want) == 0 {
 		return true, nil
 	}

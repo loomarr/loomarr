@@ -24,7 +24,8 @@ describe("ChannelUnairable", () => {
   });
 
   it("shows nothing when every title airs", () => {
-    const { container } = renderUi(<ChannelUnairable titles={[]} />);
-    expect(container.textContent).toBe("");
+    renderUi(<ChannelUnairable titles={[]} />);
+    // The whole body, so text drawn through a portal counts too.
+    expect(document.body.textContent).toBe("");
   });
 });

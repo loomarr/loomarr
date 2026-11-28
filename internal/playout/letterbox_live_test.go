@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // Live letterbox tests (#1673). pad_vaapi writes Y=U=V=0 into a P010 frame's bars whatever colour
@@ -157,12 +159,12 @@ func TestLiveLetterbox_BarsAreBlack(t *testing.T) {
 		"-c:v", "libx265", "-preset", "ultrafast", "-pix_fmt", "yuv420p10le",
 		"-x265-params", "log-level=error:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:hdr10=1:"+
 			"master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50):max-cll=1000,400"),
-		MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 1600, FrameRate: 25, PixelFormat: "yuv420p10le",
+		media.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 1600, FrameRate: 25, PixelFormat: "yuv420p10le",
 			ColorTransfer: "smpte2084", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}}
 	sdrScope := premiumItem{"sdr-scope", synth(t, bin, "sdr-scope.mkv", "testsrc2=s=1920x800:r=25", seconds,
 		"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
 		"-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"),
-		MediaFormat{VideoCodec: "h264", Width: 1920, Height: 800, FrameRate: 25, PixelFormat: "yuv420p",
+		media.MediaFormat{VideoCodec: "h264", Width: 1920, Height: 800, FrameRate: 25, PixelFormat: "yuv420p",
 			ColorTransfer: "bt709", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}}
 
 	base := OutputProfile{FPS: 25, Quality: 22, GOPSeconds: 1, AudioKbps: 192}

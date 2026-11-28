@@ -28,6 +28,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/originfixture"
 )
 
 // staleOnceChannelStore forces one deterministic read/write interleaving around SaveChannel.
@@ -1370,7 +1371,7 @@ func TestChannelLifecycle_StopsInternalPlayoutAndRescansOnRemoval(t *testing.T) 
 	st := openTestStore(t, t.TempDir()+"/lifecycle.db")
 	t.Cleanup(func() { _ = st.Close() })
 	channelSvc := &fakeChannelSvc{}
-	playback := &testkit.Playout{}
+	playback := &originfixture.Playout{}
 	rescanner := &testkit.TunerRescanner{}
 	log := slog.New(slog.DiscardHandler)
 	srv := httptest.NewServer(api.Router(log, api.Options{
@@ -1441,7 +1442,7 @@ func TestChannelLifecycle_StopsInternalPlayoutAndRescansOnRemoval(t *testing.T) 
 func TestChannelLifecycle_StopsPreparedInternalTransportOnPauseAndDetach(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/prepared-lifecycle.db")
 	t.Cleanup(func() { _ = st.Close() })
-	playback := &testkit.Playout{}
+	playback := &originfixture.Playout{}
 	rescanner := &testkit.TunerRescanner{}
 	log := slog.New(slog.DiscardHandler)
 	srv := httptest.NewServer(api.Router(log, api.Options{

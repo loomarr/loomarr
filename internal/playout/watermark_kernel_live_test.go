@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // THE VAAPI BLEND KERNEL AGAINST THE CPU OVERLAY (#1613), on any OpenCL device (NVIDIA's ICD runs the
@@ -48,7 +50,7 @@ func TestLive_BlendKernelMatchesTheCPUOverlay(t *testing.T) {
 		if os.Getenv("PLAYOUT_TEST_OPENCL") != "" {
 			t.Fatalf("no OpenCL device: %v: %s", err, out)
 		}
-		t.Skipf("no OpenCL device: %s", firstLine(string(out)))
+		t.Skipf("no OpenCL device: %s", FirstLine(string(out)))
 	}
 
 	const w, h, frames = 1920, 1080, 30
@@ -67,7 +69,7 @@ func TestLive_BlendKernelMatchesTheCPUOverlay(t *testing.T) {
 		t.Fatal(err)
 	}
 	wm := &Watermark{Straight: bugPNG, Kernel: kernel, Width: 200, Height: 80, Corner: CornerTopRight, MarginX: 48, MarginY: 32}
-	src := MediaFormat{VideoCodec: "h264", Width: w, Height: h, FrameRate: 23.976, PixelFormat: "yuv420p", Container: "matroska,webm"}
+	src := media.MediaFormat{VideoCodec: "h264", Width: w, Height: h, FrameRate: 23.976, PixelFormat: "yuv420p", Container: "matroska,webm"}
 	p, err := BuildItem(overlayHost(testHosts()["vaapi-intel"]), src, testOutput, wm)
 	if err != nil || !p.Watermark {
 		t.Fatalf("no kernel graph: %v %v", err, p.Fallbacks)
@@ -101,7 +103,7 @@ func TestLive_BlendKernelMatchesTheCPUOverlay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, pl := range comparePlanes(ref, nv, w, h, Rect{X: x, Y: y, W: 200, H: 80}) {
+	for _, pl := range comparePlanes(ref, nv, w, h, media.Rect{X: x, Y: y, W: 200, H: 80}) {
 		t.Logf("%s", pl)
 		if pl.outsideMax != 0 {
 			t.Errorf("%s: the programme changed outside the bug", pl.name)
@@ -171,7 +173,7 @@ func (d planeDiff) String() string {
 
 // comparePlanes compares two raw NV12 streams plane by plane: inside the bug (its interior, one
 // chroma sample in from each edge) and outside it.
-func comparePlanes(ref, nv []byte, w, h int, bug Rect) []planeDiff {
+func comparePlanes(ref, nv []byte, w, h int, bug media.Rect) []planeDiff {
 	size := w * h * 3 / 2
 	if len(ref) != len(nv) || len(ref)%size != 0 {
 		return []planeDiff{{name: fmt.Sprintf("sizes differ: %d vs %d bytes", len(ref), len(nv)), outsideMax: 1}}

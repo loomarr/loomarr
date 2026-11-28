@@ -34,7 +34,7 @@ const iconFetchBudget = 3 * time.Second
 // candidate channel-icon posters drawn from the channel's OWN lineup, so a Star Trek channel
 // offers its five series' posters instead of a generic placeholder.
 type iconAdapter struct {
-	store  store.Store
+	store  store.ChannelStore
 	tmdb   *tmdb.Client
 	images *images.Service
 	fetch  *images.Fetcher

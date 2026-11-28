@@ -87,11 +87,21 @@ func (e *Engine) planNextWindow(ctx context.Context, ch channelstore.Channel) {
 // turnEnd is when the window walked from anchor stops airing: the end of the programme crossing its
 // boundary, where the next window starts (#1675). False when the channel's window never turns there.
 func (e *Engine) turnEnd(ctx context.Context, ch channelstore.Channel, anchor time.Time, slots []schedule.Slot) (time.Time, bool) {
-	window, zone := e.RollingWindow(ch.Policy, e.now())
+	s, err := e.settingsSnapshot(ctx)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return turnEndIn(ch, anchor, slots, s, e.now())
+}
+
+// turnEndIn is turnEnd over a pass's settings snapshot and clock, so a reconcile plans its breaks
+// against the same window it dealt.
+func turnEndIn(ch channelstore.Channel, anchor time.Time, slots []schedule.Slot, s scheduleSettings, now time.Time) (time.Time, bool) {
+	window, zone := s.rollingWindow(ch.Policy, now)
 	if window <= 0 || anchor.IsZero() || len(slots) == 0 {
 		return time.Time{}, false
 	}
-	if carries, err := e.CarriesOver(ctx, ch.Policy); err != nil || !carries {
+	if !schedule.PlaysInternally(ch.Policy, s.Backend) {
 		return time.Time{}, false
 	}
 	return timeline.CarryOverEnd(slots, anchor, schedule.NextWindowStart(anchor, window, zone)), true
@@ -196,10 +206,12 @@ func (e *Engine) planBreaks(ctx context.Context, ch channelstore.Channel, anchor
 // breaks past the turn never air, and the next window's own plan owns that stretch. The turn is
 // estimated from the slots as they stand; a break the estimate misplaces airs live, and the
 // committed, planned cycle gives the next reconcile the exact turn.
-func (e *Engine) planWindowOnAir(ctx context.Context, ch channelstore.Channel, anchor time.Time, slots []schedule.Slot) []schedule.Slot {
+func (e *Engine) planWindowOnAir(
+	ctx context.Context, ch channelstore.Channel, anchor time.Time, slots []schedule.Slot, s scheduleSettings, now time.Time,
+) []schedule.Slot {
 	if anchor.IsZero() {
-		anchor = e.now().UTC().Truncate(time.Second)
+		anchor = now.UTC().Truncate(time.Second)
 	}
-	until, _ := e.turnEnd(ctx, ch, anchor, slots)
+	until, _ := turnEndIn(ch, anchor, slots, s, now)
 	return e.planBreaks(ctx, ch, anchor, slots, until, time.Time{})
 }

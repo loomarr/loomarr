@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // Shared source observations use one stream/packet model (§9.1).
@@ -363,16 +364,16 @@ func tracksOf(streams []probedStream) MediaTracks {
 
 // FFprobeFormatNextTo returns a FormatProber built on the shared probe — the full MediaFormat for
 // ClassOf and any other consumer that needs it.
-func FFprobeFormatNextTo(ffmpegPath string, observers ...*diagnostics.ProcessManager) FormatProber {
+func FFprobeFormatNextTo(ffmpegPath string, observers ...*diagnostics.ProcessManager) media.FormatProber {
 	bin := ffprobeBesideFFmpeg(ffmpegPath)
 	var observer *diagnostics.ProcessManager
 	if len(observers) > 0 {
 		observer = observers[0]
 	}
-	return func(ctx context.Context, input string) (MediaFormat, error) {
+	return func(ctx context.Context, input string) (media.MediaFormat, error) {
 		p, err := runFFprobeObserved(ctx, bin, input, true, observer)
 		if err != nil {
-			return MediaFormat{}, err
+			return media.MediaFormat{}, err
 		}
 		return formatOf(p), nil
 	}
@@ -382,8 +383,8 @@ func FFprobeFormatNextTo(ffmpegPath string, observers ...*diagnostics.ProcessMan
 // + pixel format + HDR transfer), the first audio stream (codec + channels), and the container-level
 // format/duration/bitrate. "First stream" because playout maps one video + one primary audio; track
 // SELECTION among audio streams is a separate concern (audio.go). Pure, testable over probe output.
-func formatOf(p probed) MediaFormat {
-	var f MediaFormat
+func formatOf(p probed) media.MediaFormat {
+	var f media.MediaFormat
 	videoIndex := -1
 	for _, s := range p.Streams {
 		switch s.CodecType {

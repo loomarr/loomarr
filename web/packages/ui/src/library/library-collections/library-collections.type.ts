@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
 
-/** A poster in a collection's pile: its artwork, or its name on the placeholder. */
+/** A poster in a collection's pile: its artwork, or its stand-in. */
 interface LibraryCollectionPoster {
+  /** The title's id, which picks the stand-in's colour; absent picks it from the name. */
+  id?: string;
   name: string;
-  /** Drawn by the app; absent draws the name. */
+  /** Drawn by the app; absent draws the stand-in. */
   poster?: ReactNode;
 }
 

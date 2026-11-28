@@ -18,7 +18,7 @@ func TestBootWarnsWhenTheKeySitsBesideTheDatabase(t *testing.T) {
 	t.Setenv("LOOMARR_ENCRYPTION_KEY_PREVIOUS_FILE", "")
 	st := testkit.MigratedSQLiteStore(t)
 	var logs bytes.Buffer
-	if _, err := buildSecretProtection(context.Background(), st, "", slog.New(slog.NewTextHandler(&logs, nil))); err != nil {
+	if _, err := buildSecretProtection(context.Background(), st, databaseOf(st), "", slog.New(slog.NewTextHandler(&logs, nil))); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(logs.String(), "encryption key is stored beside the database") {

@@ -13,7 +13,6 @@ import (
 
 	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	guideapi "github.com/loomarr/loomarr/internal/api/guide"
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -49,6 +48,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -83,7 +83,7 @@ func buildFillerSubsystem(
 	eventBus *events.Bus,
 	emitter *eventEmitter,
 	registry *jobs.Registry,
-	playoutResolver *playoutresolve.Resolver,
+	playoutResolver *resolve.Resolver,
 	channelService guideapi.ChannelService,
 	processDiagnostics *diagnostics.ProcessManager,
 	storageGovernor *storagegovernor.Governor,

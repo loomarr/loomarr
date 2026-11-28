@@ -5,14 +5,14 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 )
 
-// upcomingGuide is the guide's walk the upcoming index reads (playoutresolve.Resolver).
+// upcomingGuide is the guide's walk the upcoming index reads (resolve.Resolver).
 type upcomingGuide interface {
-	UpcomingProgrammes(ctx context.Context, channelID string, from, to time.Time) ([]playoutresolve.UpcomingProgramme, error)
+	UpcomingProgrammes(ctx context.Context, channelID string, from, to time.Time) ([]resolve.UpcomingProgramme, error)
 }
 
 // upcomingWriter is the one store write the upcoming index makes.

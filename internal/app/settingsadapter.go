@@ -14,7 +14,6 @@ import (
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // settingsAdapter maps the settings subsystem (settings.Service + settings.Secrets
@@ -26,7 +25,7 @@ import (
 type settingsAdapter struct {
 	svc        *settings.Service
 	secrets    *settings.Secrets
-	store      store.Store
+	store      operationsStore
 	log        *slog.Logger
 	protection *secretprotection.Manager
 	// refreshRedactor re-snapshots every generated and app-managed secret after a

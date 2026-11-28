@@ -143,7 +143,7 @@ func (s *Handlers) removeLibraryExtraCopy(ctx context.Context, in *removeLibrary
 	case errors.Is(err, store.ErrNotFound):
 		return nil, httpcore.Problem(http.StatusNotFound, "Not one of this title's files", "Check files again, then try again.")
 	case errors.Is(err, scan.ErrPlays):
-		return nil, httpcore.Problem(http.StatusConflict, "That copy is the one that plays", "Only an extra copy can be removed.")
+		return nil, httpcore.Problem(http.StatusConflict, "That copy isn't an extra", "Only an extra copy can be removed.")
 	case errors.Is(err, scan.ErrPlayingCopyUnseen):
 		return nil, httpcore.Problem(http.StatusConflict, "Kept this copy",
 			"Loomarr can't find the copy that plays right now, so it kept this one. Check that its drive is connected, then try again.")
@@ -217,8 +217,8 @@ type libraryItemDTO struct {
 	Poster *httpcore.ImageDTO `json:"poster,omitempty" doc:"Its poster; absent when it has none, or while one is still being fetched"`
 	// A title with either count above zero needs a look (#2151 decision 24). Both are present
 	// for an admin, zero included.
-	Unplayable  *int `json:"unplayable,omitempty" doc:"Files that can't be played: their details couldn't be read. Admins only"`
-	ExtraCopies *int `json:"extraCopies,omitempty" doc:"A movie's files that never play, beyond the copy of each edition (or each part) that does. Admins only"`
+	Unplayable  *int `json:"unplayable,omitempty" doc:"Files that can't be played: their details couldn't be read and no other copy plays in their place. Admins only"`
+	ExtraCopies *int `json:"extraCopies,omitempty" doc:"A movie's extra copies: files that never play because another of its files plays in their place (state extra). Admins only"`
 	HomeVideo   bool `json:"homeVideo,omitempty" doc:"Kept as it is, as your own video. Absent otherwise"`
 	// Unidentified is for admins: a member reads no title that waits.
 	Unidentified bool `json:"unidentified,omitempty" doc:"Waiting in Needs you. Admins only; absent otherwise"`
@@ -358,7 +358,7 @@ type libraryItemFileDTO struct {
 	Picture       *libraryPictureDTO   `json:"picture,omitempty" doc:"Its first video stream"`
 	AudioChannels int                  `json:"audioChannels,omitempty" doc:"The channels of the sound that plays: its default audio stream, else its first"`
 	Subtitles     []librarySubtitleDTO `json:"subtitles" doc:"Its subtitle streams in order; empty for none or while unread"`
-	Extra         bool                 `json:"extra" doc:"A copy that never plays, because another of the title's files does"`
+	State         string               `json:"state" enum:"plays,extra,unplayable,reading,waiting" doc:"What the file is to the title: the copy that plays; an extra copy that never plays because another of its files plays in its place; one that can't be played; one whose details are being read; or a copy that doesn't play while the copy in its place is missing or can't be played"`
 	Part          int                  `json:"part,omitempty" doc:"Which part of a movie split over several files it is, from 1; absent for a whole file. Every part plays, in order"`
 	Edition       string               `json:"edition,omitempty" doc:"The labelled version of the title it is, such as Extended; absent for the default"`
 	Container     string               `json:"container,omitempty" doc:"The format its header names, such as matroska,webm"`
@@ -432,7 +432,7 @@ type libraryDetailsFromDTO struct {
 func libraryFileOf(f scan.ItemFile) libraryItemFileDTO {
 	out := libraryItemFileDTO{
 		Path: f.Path, Size: f.Size, Ready: f.Header != librarystore.LibraryHeaderPending,
-		LengthMillis: f.LengthMillis, AudioChannels: f.AudioChannels, Extra: f.Extra, Part: f.Part,
+		LengthMillis: f.LengthMillis, AudioChannels: f.AudioChannels, State: string(f.State), Part: f.Part,
 		Edition: f.Edition, Container: f.Container, Bitrate: f.Bitrate,
 		Subtitles: make([]librarySubtitleDTO, 0, len(f.Subtitles)),
 		Streams:   make([]libraryStreamDTO, 0, len(f.Streams)),

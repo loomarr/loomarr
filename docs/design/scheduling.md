@@ -216,10 +216,13 @@ reads no history.
 
 `airings` is the **watched** signal: a channel nobody tunes to records nothing there.
 `scheduled_airings` (same shape) is the **scheduled** signal (#1677; "aired" means both, as separate
-signals, #1678 decision 1). On internal playout, each reconcile records every programme the accepted
-cycle has started, up to where that cycle hands over at its window boundary. Each row is stamped
-`recorded_at = aired_at`, so it counts for every window that opens after the programme started,
-however late the reconcile that writes it. The write is idempotent and best-effort. Placement takes
+signals, #1678 decision 1). On internal playout, each reconcile that commits records every programme
+the cycle accepted before the commit had started, up to where that cycle hands over at its window boundary. The
+write follows the commit: a successful CAS proves that cycle was still the accepted one, so an
+attempt that stops on a failed read, or loses to another replica's re-deal, records nothing, and
+the retry records from the winning row. Each row is stamped `recorded_at = aired_at`, so it counts
+for every window that opens after the programme started, however late the reconcile that writes
+it. The write is idempotent and best-effort. Placement takes
 each unit's later time across watched airings, the scheduled ledger, and the accepted cycle's own
 programmes that started before the window opened. The last of these is read in memory, so a window
 the playout resolver arranges at the turn, before reconcile has recorded the old cycle's final
@@ -404,7 +407,7 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   a commercial seen on any channel rests on every channel. One row per watched airing
   (`filler_airings`: channel, clip, scheduled start, recorded at) keeps every airing younger than a
   day and each clip's newest four beyond that, so it stays bounded. Internal playout writes it when
-  a viewer receives the clip's segments (`playoutresolve.Resolver.RecordAiringServed`, called once per item
+  a viewer receives the clip's segments (`resolve.Resolver.RecordAiringServed`, called once per item
   from the packager's segment serve path), keyed by scheduled start, so tune-ins and rebuilds cannot
   inflate it; resolving the airing is a read, so preview, reconcile, the guide and the Watch
   pickers' `/tracks` never write it. Programme airing history is written at the same point.

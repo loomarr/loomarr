@@ -13,7 +13,7 @@ import (
 
 // fillerBreakAdapter keeps planned breaks in the store: the pod is the JSON document the store holds
 // beside the break's channel, start, slot length and media length.
-type fillerBreakAdapter struct{ st store.Store }
+type fillerBreakAdapter struct{ st store.FillerBreakStore }
 
 func (a fillerBreakAdapter) SaveBreaks(ctx context.Context, breaks []pod.StoredBreak) error {
 	rows := make([]clipstore.FillerBreak, 0, len(breaks))

@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // EVERY SOFTWARE RUNG IS A PICTURE IN ONE FORMAT (#1517). A rung change restarts the item encoder
@@ -33,12 +35,12 @@ func TestLive_SoftwareRungsProduceAPictureInOneFormat(t *testing.T) {
 	sources := []struct {
 		name  string
 		path  string
-		facts MediaFormat
+		facts media.MediaFormat
 		hdr   bool
 	}{
-		{"pq-hdr10", makePQSource(t, bin), MediaFormat{VideoCodec: "hevc", Width: 1280, Height: 720, FrameRate: 25,
+		{"pq-hdr10", makePQSource(t, bin), media.MediaFormat{VideoCodec: "hevc", Width: 1280, Height: 720, FrameRate: 25,
 			PixelFormat: "yuv420p10le", ColorTransfer: "smpte2084", Container: "mpegts"}, true},
-		{"scope-sdr", makeScopeSource(t, bin), MediaFormat{VideoCodec: "h264", Width: 1920, Height: 800, FrameRate: 24,
+		{"scope-sdr", makeScopeSource(t, bin), media.MediaFormat{VideoCodec: "h264", Width: 1920, Height: 800, FrameRate: 24,
 			PixelFormat: "yuv420p", Container: "mpegts"}, false},
 	}
 	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 22, TargetKbps: 8000, MaxKbps: 12000,
@@ -46,7 +48,7 @@ func TestLive_SoftwareRungsProduceAPictureInOneFormat(t *testing.T) {
 	host := encode.HostProfile{Family: encode.FamilySoftware, CPUTonemap: true}
 	for _, src := range sources {
 		var want outputFacts
-		for _, rung := range SoftwareRungs {
+		for _, rung := range admission.SoftwareRungs {
 			t.Run(src.name+"/"+rung.String(), func(t *testing.T) {
 				o := out
 				o.SoftwareRung = rung
@@ -65,7 +67,7 @@ func TestLive_SoftwareRungsProduceAPictureInOneFormat(t *testing.T) {
 				}
 				got := probeOutputFacts(t, bin, dst)
 				t.Logf("%s: %+v", rung, got)
-				if rung == RungFull {
+				if rung == admission.RungFull {
 					want = got
 					if got.video != "1920x1080 sar=1:1 yuv420p High 25/1" {
 						t.Errorf("rung 0 is not the channel format: %q", got.video)
@@ -176,7 +178,7 @@ func TestLive_SoftwareLadderRealTitles(t *testing.T) {
 			t.Fatalf("%s: %v", path, err)
 		}
 		name := filepath.Base(path)
-		for _, rung := range SoftwareRungs {
+		for _, rung := range admission.SoftwareRungs {
 			o := out
 			o.SoftwareRung = rung
 			pipe, err := Build(host, facts, o)
@@ -197,7 +199,7 @@ func TestLive_SoftwareLadderRealTitles(t *testing.T) {
 			cpu := (cmd.ProcessState.UserTime() + cmd.ProcessState.SystemTime()).Seconds()
 			t.Logf("RUNG %s %s: speed %.2fx, %.2f cores at 1x (%.2f cores busy)", name, rung, 30/wall, cpu/30, cpu/wall)
 		}
-		for _, start := range []SoftwareRung{RungFull, RungKeyframes} {
+		for _, start := range []admission.SoftwareRung{admission.RungFull, admission.RungKeyframes} {
 			driveLadder(t, bin, path, name, facts, host, out, start, cpus, 100*time.Second)
 		}
 	}
@@ -206,10 +208,10 @@ func TestLive_SoftwareLadderRealTitles(t *testing.T) {
 // driveLadder airs the source paced at 1x from 5 s in, starting on start, for dur of wall time. The
 // monitor's step stops the encoder (SIGINT, so the segment is finalized) and a new one resumes at
 // the next frame the previous segment did not produce, on the new rung.
-func driveLadder(t *testing.T, bin, path, name string, facts MediaFormat, host encode.HostProfile, out OutputProfile,
-	start SoftwareRung, cpus float64, dur time.Duration) {
+func driveLadder(t *testing.T, bin, path, name string, facts media.MediaFormat, host encode.HostProfile, out OutputProfile,
+	start admission.SoftwareRung, cpus float64, dur time.Duration) {
 	t.Helper()
-	m := NewRungMonitor(start, RungMonitorConfig{CPUAllowance: cpus})
+	m := admission.NewRungMonitor(start, admission.RungMonitorConfig{CPUAllowance: cpus})
 	pos, rung := 5*time.Second, start
 	deadline := time.Now().Add(dur)
 	var spliced, missingA, missingV float64
@@ -243,7 +245,7 @@ func driveLadder(t *testing.T, bin, path, name string, facts MediaFormat, host e
 			if !stopped.Load() {
 				cut = at
 			}
-			d := m.Observe(SpeedSample{At: time.Now(), OutTime: at, CPU: procCPU(cmd.Process.Pid)})
+			d := m.Observe(admission.SpeedSample{At: time.Now(), OutTime: at, CPU: procCPU(cmd.Process.Pid)})
 			if d.Step {
 				next, why = d.Rung, d.Reason
 				stop()
@@ -326,8 +328,8 @@ func TestLive_SPSIdenticalAcrossAspectRatios(t *testing.T) {
 		}
 		return out
 	}
-	fact := func(w, h int) MediaFormat {
-		return MediaFormat{VideoCodec: "h264", Width: w, Height: h, FrameRate: 25, PixelFormat: "yuv420p", Container: "mpegts"}
+	fact := func(w, h int) media.MediaFormat {
+		return media.MediaFormat{VideoCodec: "h264", Width: w, Height: h, FrameRate: 25, PixelFormat: "yuv420p", Container: "mpegts"}
 	}
 	wide, scope := make(1920, 1080), make(3840, 1606)
 	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 22, TargetKbps: 8000, MaxKbps: 12000, GOPSeconds: 1, AudioKbps: 128}
@@ -340,7 +342,7 @@ func TestLive_SPSIdenticalAcrossAspectRatios(t *testing.T) {
 		}
 		t.Run(string(enc), func(t *testing.T) {
 			host := encode.HostFor(enc, TonemapperFor(bin)(), GPUFiltersFor(bin)())
-			sps := func(path string, facts MediaFormat) string {
+			sps := func(path string, facts media.MediaFormat) string {
 				pipe, err := Build(host, facts, out)
 				if err != nil {
 					t.Fatal(err)

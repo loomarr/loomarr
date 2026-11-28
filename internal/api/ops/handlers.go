@@ -16,7 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 )
 
 // Store is the slice of the aggregate store these routes read and write.
@@ -34,7 +34,7 @@ type DeviceLister interface {
 // SessionObserver reports the live playout sessions and the encoder capacity.
 type SessionObserver interface {
 	// Stats snapshots every live encoder.
-	Stats(now time.Time) []playout.SessionStat
+	Stats(now time.Time) []hls.SessionStat
 	// Capacity is how many channels the host can stream at once.
 	Capacity() int
 }

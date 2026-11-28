@@ -19,7 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
@@ -225,7 +225,7 @@ func TestChannelTimelineIncludesTheSharedDVRLookbehind(t *testing.T) {
 	if len(g.windows) != 1 {
 		t.Fatalf("timeline guide calls = %d, want one", len(g.windows))
 	}
-	if want := 3*time.Hour + playout.DVRHorizon; g.windows[0] != want {
+	if want := 3*time.Hour + hls.DVRHorizon; g.windows[0] != want {
 		t.Fatalf("timeline window = %v, want %v including DVR history", g.windows[0], want)
 	}
 }

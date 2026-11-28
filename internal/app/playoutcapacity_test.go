@@ -11,6 +11,9 @@ import (
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/classprobe"
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -35,10 +38,10 @@ func TestBuild_ToneCurveSettingPicksTheHDRCell(t *testing.T) {
 	t.Cleanup(cancel)
 	// Install the table the class probe would publish, with distinct Hable and BT.2390 HDR cells.
 	top := playout.LadderHeights(playout.TierFor(""))[0]
-	costs := &playout.MeasuredCosts{Encoder: encode.EncoderSoftware, Costs: map[playout.CostKey]playout.ClassCost{
-		{Class: playout.ClassSDR, Height: top}:                           {Speed: 20, CPUCores: 0.5},
-		playout.HDRKey(playout.ClassHDR4K, top, playout.ToneCurveHable):  {Speed: 4, CPUCores: 1},
-		playout.HDRKey(playout.ClassHDR4K, top, playout.ToneCurveBT2390): {Speed: 3, CPUCores: 2},
+	costs := &classprobe.MeasuredCosts{Encoder: encode.EncoderSoftware, Costs: map[admission.CostKey]admission.ClassCost{
+		{Class: media.ClassSDR, Height: top}:                           {Speed: 20, CPUCores: 0.5},
+		admission.HDRKey(media.ClassHDR4K, top, media.ToneCurveHable):  {Speed: 4, CPUCores: 1},
+		admission.HDRKey(media.ClassHDR4K, top, media.ToneCurveBT2390): {Speed: 3, CPUCores: 2},
 	}}
 	application, err := Build(ctx, st, slog.New(slog.DiscardHandler), Overrides{PlayoutMeasuredCosts: costs})
 	if err != nil {
@@ -49,8 +52,8 @@ func TestBuild_ToneCurveSettingPicksTheHDRCell(t *testing.T) {
 	if r == nil {
 		t.Fatal("Build wired no playout resolver")
 	}
-	if got := r.ToneCurve(); got != playout.ToneCurveBT2390 {
-		t.Errorf("resolver ToneCurve = %q, want the playout.tone_curve setting %q", got, playout.ToneCurveBT2390)
+	if got := r.ToneCurve(); got != media.ToneCurveBT2390 {
+		t.Errorf("resolver ToneCurve = %q, want the playout.tone_curve setting %q", got, media.ToneCurveBT2390)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/playout/status", nil)
@@ -64,7 +67,7 @@ func TestBuild_ToneCurveSettingPicksTheHDRCell(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&status); err != nil {
 		t.Fatal(err)
 	}
-	if hdr := status.Budget.Classes[playout.ClassHDR4K]; hdr.Speed != 3 || hdr.CPUCores != 2 {
+	if hdr := status.Budget.Classes[media.ClassHDR4K]; hdr.Speed != 3 || hdr.CPUCores != 2 {
 		t.Fatalf("budget HDR cell = %+v, want the BT.2390 cell (3x, 2 cores)", hdr)
 	}
 }

@@ -11,7 +11,7 @@ import (
 
 // CycleResult is everything one preview computation answers. It exists because a many-value
 // return is not a signature anyone can read — but ALSO because CyclePreview's tuple is consumed by the cached
-// playout path (app/playoutresolve/cyclecache.go → playoutresolve.Resolver.AiringNow), which must not churn every time
+// playout path (playout/resolve/cyclecache.go → resolve.Resolver.AiringNow), which must not churn every time
 // the authoring surface learns to show one more fact. So the struct is returned by the DRAFT
 // variant only, and CyclePreview keeps its tuple by unpacking it.
 type CycleResult struct {

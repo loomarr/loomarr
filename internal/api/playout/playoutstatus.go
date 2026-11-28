@@ -10,7 +10,9 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/media/encode"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/hls"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // Playout status (§9.1 V47) — the one endpoint the dashboard's Playout panel reads: the live
@@ -102,7 +104,7 @@ type PlayoutStatus struct {
 	GPU        PlayoutGPU        `json:"gpu"`
 	Channels   []ChannelHealth   `json:"channels"`
 	// Budget is the ResourceBudget (#1512 G5): capacity terms, per-class costs and what is in use.
-	Budget playout.BudgetSnapshot `json:"budget"`
+	Budget admission.BudgetSnapshot `json:"budget"`
 }
 
 type playoutStatusOutput struct {
@@ -131,7 +133,7 @@ func (s *Handlers) getPlayoutStatus(ctx context.Context, _ *struct{}) (*playoutS
 func (s *Handlers) playoutStatus(ctx context.Context, now time.Time) PlayoutStatus {
 	status := PlayoutStatus{
 		Channels: []ChannelHealth{},
-		Budget:   playout.BudgetSnapshot{Classes: map[playout.StreamClass]playout.ClassBudget{}},
+		Budget:   admission.BudgetSnapshot{Classes: map[media.StreamClass]admission.ClassBudget{}},
 	}
 	if s.playoutObserver == nil {
 		return status // Tunarr-only: not our job
@@ -206,7 +208,7 @@ func (s *Handlers) channelIdentities(ctx context.Context) map[string]channelIden
 }
 
 // channelHealthFrom turns one raw SessionStat into a health row with a verdict + reason.
-func channelHealthFrom(st playout.SessionStat) ChannelHealth {
+func channelHealthFrom(st hls.SessionStat) ChannelHealth {
 	copying := st.Encoder == "copy" || st.Encoder == ""
 	mode := "transcode"
 	if copying {

@@ -12,6 +12,8 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // MinStreamSpeed is the realtime multiple every admitted stream must keep (phase 0: 1.2x). A stream
@@ -23,11 +25,11 @@ const capacityEpsilon = 1e-9
 
 // CostKey is one measured cell: a stream class encoded at one output height (a ladder rung).
 type CostKey struct {
-	Class  StreamClass
+	Class  media.StreamClass
 	Height int
 	// Curve is the tone curve an HDR cell was measured with; empty for SDR classes, and Hable for
 	// an HDR cell stored before curves were keyed.
-	Curve ToneCurve
+	Curve media.ToneCurve
 }
 
 // HDR cost depends on the tone curve (playout.tone_curve, #1516): on Intel the libplacebo curves
@@ -36,24 +38,24 @@ type CostKey struct {
 // operator's choice. An HDR cell stored without a curve was measured with Hable.
 
 // ToneCurveSource reports the curve the live chain maps with right now.
-type ToneCurveSource interface{ ToneCurve() ToneCurve }
+type ToneCurveSource interface{ ToneCurve() media.ToneCurve }
 
 // curve is the tone curve of an HDR cell ("" for other classes).
-func (k CostKey) curve() ToneCurve {
+func (k CostKey) curve() media.ToneCurve {
 	switch {
-	case k.Class != ClassHDR4K:
+	case k.Class != media.ClassHDR4K:
 		return ""
 	case k.Curve == "":
-		return ToneCurveHable
+		return media.ToneCurveHable
 	default:
 		return k.Curve
 	}
 }
 
 // HDRKey is the cost key of class at height when HDR maps with curve.
-func HDRKey(class StreamClass, height int, curve ToneCurve) CostKey {
+func HDRKey(class media.StreamClass, height int, curve media.ToneCurve) CostKey {
 	k := CostKey{Class: class, Height: height}
-	if class == ClassHDR4K {
+	if class == media.ClassHDR4K {
 		k.Curve = curve
 	}
 	return k
@@ -96,7 +98,7 @@ type BudgetFacts struct {
 	// transcode costs one of it, whatever its class. 0 means unmeasured, which never blocks playout.
 	MeasuredCapacity int
 	// ToneCurve is the curve HDR maps with now; it picks the HDR cells. Empty = Hable.
-	ToneCurve ToneCurve
+	ToneCurve media.ToneCurve
 }
 
 // ResourceBudget is playout's one admission ledger (#1512 G5, #1505): a session attach and a
@@ -189,7 +191,7 @@ func (b *ResourceBudget) yieldLocked() {
 
 func (b *ResourceBudget) transcodingLocked() bool {
 	for l := range b.leases {
-		if l.class != ClassCopy {
+		if l.class != media.ClassCopy {
 			return true
 		}
 	}
@@ -237,10 +239,10 @@ func (b *ResourceBudget) currentFacts() BudgetFacts {
 }
 
 // ObserveCPU refines the CPU cost of class at this lease's rung from one finished live programme:
-// cpu is the encoder's CPU time over media seconds of output. Speed is not refined: a live encode
-// is paced to real time, so its speed says nothing about spare throughput.
-func (l *Lease) ObserveCPU(class StreamClass, cpu, media time.Duration) {
-	if l == nil || class == ClassCopy || media < refineMinMedia || cpu <= 0 {
+// cpu is the encoder's CPU time over encoded, the duration of its output. Speed is not refined: a
+// live encode is paced to real time, so its speed says nothing about spare throughput.
+func (l *Lease) ObserveCPU(class media.StreamClass, cpu, encoded time.Duration) {
+	if l == nil || class == media.ClassCopy || encoded < refineMinMedia || cpu <= 0 {
 		return
 	}
 	b := l.b
@@ -251,7 +253,7 @@ func (l *Lease) ObserveCPU(class StreamClass, cpu, media time.Duration) {
 	if !ok || key.Height != height || key.curve() != HDRKey(class, height, facts.toneCurve()).curve() || base.CPUCores <= 0 {
 		return // only a measured cell is refined; a fallback cell borrows another height's or curve's cost
 	}
-	perSecond := cpu.Seconds() / media.Seconds()
+	perSecond := cpu.Seconds() / encoded.Seconds()
 	if !facts.Hardware {
 		// The cell is rung 0's cost: a programme on a cheaper software rung counts at its rung-0 worth.
 		perSecond /= rungCostsOf(class)[l.SoftwareRung()]
@@ -276,7 +278,7 @@ func (l *Lease) ObserveCPU(class StreamClass, cpu, media time.Duration) {
 	if b.log != nil {
 		b.log.Info("playout: live programme refined a stream class's CPU cost",
 			"class", class, "height", key.Height, "measured_cores", base.CPUCores,
-			"observed_cores", cpu.Seconds()/media.Seconds(), "from", before, "to", r.cores)
+			"observed_cores", cpu.Seconds()/encoded.Seconds(), "from", before, "to", r.cores)
 	}
 }
 
@@ -297,7 +299,7 @@ func (b *ResourceBudget) WithMemoryGate(gate MemoryGate) *ResourceBudget {
 
 // AdmitRequest asks for one stream.
 type AdmitRequest struct {
-	Class StreamClass
+	Class media.StreamClass
 	// NoRungDrop admits only at the first rung. Real demand sets it while idle warm work is still
 	// reclaimable: a viewer beats a speculative pre-warm before it gives up picture quality.
 	NoRungDrop bool
@@ -308,7 +310,7 @@ type Lease struct {
 	b        *ResourceBudget
 	rung     int
 	software SoftwareRung // the software ladder rung (#1517) the current item encodes at
-	class    StreamClass
+	class    media.StreamClass
 	demand   demand
 	release  func() // the host-memory admission of a hardware transcode, nil otherwise
 	released bool
@@ -343,7 +345,7 @@ func (l *Lease) StepSoftware(to SoftwareRung) bool {
 	facts := b.currentFacts()
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if l.released || l.class == ClassCopy {
+	if l.released || l.class == media.ClassCopy {
 		return false
 	}
 	d, ok := facts.demandAt(l.class, facts.rungHeight(l.rung), to)
@@ -368,9 +370,9 @@ func (l *Lease) NewRungMonitor(cfg RungMonitorConfig) *RungMonitor {
 }
 
 // Class is the lease's current stream class; a nil lease is a copy.
-func (l *Lease) Class() StreamClass {
+func (l *Lease) Class() media.StreamClass {
 	if l == nil {
-		return ClassCopy
+		return media.ClassCopy
 	}
 	l.b.mu.Lock()
 	defer l.b.mu.Unlock()
@@ -378,12 +380,12 @@ func (l *Lease) Class() StreamClass {
 }
 
 // Transcoding reports whether the lease currently holds an encoder.
-func (l *Lease) Transcoding() bool { return l.Class() != ClassCopy }
+func (l *Lease) Transcoding() bool { return l.Class() != media.ClassCopy }
 
 // Capacity is how many 1080p SDR streams fit an idle host at the top rung (0 = unmeasured).
 func (b *ResourceBudget) Capacity() int {
 	f := b.currentFacts()
-	return f.capacity(ClassSDR, f.rungHeight(0))
+	return f.capacity(media.ClassSDR, f.rungHeight(0))
 }
 
 // Admit admits one stream at the best rung that fits, or returns ErrAtCapacity. It is Reserve then
@@ -412,7 +414,7 @@ func (b *ResourceBudget) Reserve(req AdmitRequest) (*Lease, error) {
 	}
 	l := &Lease{b: b, rung: rung, software: sw, class: req.Class, demand: d}
 	b.leases[l] = struct{}{}
-	if req.Class != ClassCopy {
+	if req.Class != media.ClassCopy {
 		b.yieldLocked()
 		b.yieldMediaLocked(facts)
 	}
@@ -450,17 +452,17 @@ func (l *Lease) Hold(context.Context) bool { return l.holdMemory(l.b.currentFact
 // Reclass moves a lease to another class at its pinned rung (a programme boundary). Starting to
 // transcode must fit, like a new session. A lease that already transcodes always moves: refusing it
 // would stop a watched channel mid-lineup, and the overcommit shows in the next admission instead.
-func (l *Lease) Reclass(_ context.Context, class StreamClass) bool {
+func (l *Lease) Reclass(_ context.Context, class media.StreamClass) bool {
 	return l.reclass(class, false)
 }
 
 // ReclassItem is Reclass at an item boundary: the software rung is re-picked for the ledger as it is
 // now even when the class is unchanged, so an item starts on the best rung that fits today.
-func (l *Lease) ReclassItem(_ context.Context, class StreamClass) bool {
+func (l *Lease) ReclassItem(_ context.Context, class media.StreamClass) bool {
 	return l.reclass(class, true)
 }
 
-func (l *Lease) reclass(class StreamClass, repick bool) bool {
+func (l *Lease) reclass(class media.StreamClass, repick bool) bool {
 	b := l.b
 	facts := b.currentFacts()
 	b.mu.Lock()
@@ -473,7 +475,7 @@ func (l *Lease) reclass(class StreamClass, repick bool) bool {
 		return true
 	}
 	d, sw, ok := b.pickLocked(facts, class, l.rung, l, false)
-	starting := l.class == ClassCopy && class != ClassCopy
+	starting := l.class == media.ClassCopy && class != media.ClassCopy
 	if !ok {
 		if starting {
 			b.mu.Unlock()
@@ -495,16 +497,16 @@ func (l *Lease) reclass(class StreamClass, repick bool) bool {
 		b.yieldMediaLocked(facts)
 	}
 	release := l.release
-	if class == ClassCopy {
+	if class == media.ClassCopy {
 		l.release = nil
 	}
 	b.mu.Unlock()
-	if class == ClassCopy && release != nil {
+	if class == media.ClassCopy && release != nil {
 		release()
 	}
 	if starting && !l.holdMemory(facts) {
 		b.mu.Lock()
-		l.class, l.demand = ClassCopy, demand{}
+		l.class, l.demand = media.ClassCopy, demand{}
 		b.mu.Unlock()
 		return false
 	}
@@ -514,7 +516,7 @@ func (l *Lease) reclass(class StreamClass, repick bool) bool {
 // holdMemory admits a hardware transcode past the host-memory gate and keeps the admission's
 // release on the lease. A copy or a software encode holds no hardware encoder.
 func (l *Lease) holdMemory(facts BudgetFacts) bool {
-	if l.b.memory == nil || !facts.Hardware || l.class == ClassCopy {
+	if l.b.memory == nil || !facts.Hardware || l.class == media.ClassCopy {
 		return true
 	}
 	release, ok := l.b.memory.admit()
@@ -745,7 +747,7 @@ func (f BudgetFacts) rungHeight(rung int) int {
 
 // cost is a class's measured cost at an output height. An unmeasured height takes the nearest
 // measured taller output, which costs at least as much; never a cheaper guess.
-func (f BudgetFacts) cost(class StreamClass, height int) (ClassCost, bool) {
+func (f BudgetFacts) cost(class media.StreamClass, height int) (ClassCost, bool) {
 	k, ok := f.cellKey(class, height)
 	return f.Costs[k], ok
 }
@@ -753,10 +755,10 @@ func (f BudgetFacts) cost(class StreamClass, height int) (ClassCost, bool) {
 // cellKey finds the measured cell for class at height: that height, else the nearest taller one.
 // An HDR stream takes the cell of the live tone curve; a curve this host has not measured yet
 // borrows Hable's until the probe measures it, rather than refusing HDR.
-func (f BudgetFacts) cellKey(class StreamClass, height int) (CostKey, bool) {
-	curves := []ToneCurve{""}
-	if class == ClassHDR4K {
-		curves = []ToneCurve{f.toneCurve(), DefaultToneCurve}
+func (f BudgetFacts) cellKey(class media.StreamClass, height int) (CostKey, bool) {
+	curves := []media.ToneCurve{""}
+	if class == media.ClassHDR4K {
+		curves = []media.ToneCurve{f.toneCurve(), media.DefaultToneCurve}
 	}
 	for _, curve := range curves {
 		best, found := CostKey{}, false
@@ -775,24 +777,24 @@ func (f BudgetFacts) cellKey(class StreamClass, height int) (CostKey, bool) {
 	return CostKey{}, false
 }
 
-func (f BudgetFacts) toneCurve() ToneCurve {
+func (f BudgetFacts) toneCurve() media.ToneCurve {
 	if f.ToneCurve == "" {
-		return DefaultToneCurve
+		return media.DefaultToneCurve
 	}
 	return f.ToneCurve
 }
 
 // demandOf is what one stream of class at height holds at full quality. ok is false when the class
 // cannot be admitted on this host's measurements (never measured, or a GPU measured below realtime).
-func (f BudgetFacts) demandOf(class StreamClass, height int) (demand, bool) {
+func (f BudgetFacts) demandOf(class media.StreamClass, height int) (demand, bool) {
 	return f.demandAt(class, height, RungFull)
 }
 
 // demandAt is demandOf on a software ladder rung. A software host never refuses a class for its
 // measured speed (#1517): the probe measured rung 0, and each rung holds its share of that CPU
 // (RungCosts), so a class too slow at full quality is admitted further down the ladder.
-func (f BudgetFacts) demandAt(class StreamClass, height int, sw SoftwareRung) (demand, bool) {
-	if class == ClassCopy {
+func (f BudgetFacts) demandAt(class media.StreamClass, height int, sw SoftwareRung) (demand, bool) {
+	if class == media.ClassCopy {
 		return demand{}, true
 	}
 	if f.Costs == nil {
@@ -819,10 +821,10 @@ func (f BudgetFacts) demandAt(class StreamClass, height int, sw SoftwareRung) (d
 // fits one stream (rung 2's gain is source-dependent, so it is never promised in advance). Anywhere
 // else the rung is StartRung's unmeasured one, which only a software fallback encodes at. noDrop
 // keeps full quality, like the output ladder's NoRungDrop.
-func (f BudgetFacts) softwareRungs(class StreamClass, noDrop bool) []SoftwareRung {
+func (f BudgetFacts) softwareRungs(class media.StreamClass, noDrop bool) []SoftwareRung {
 	switch {
-	case f.Hardware || f.Costs == nil || class == ClassCopy:
-		if class == ClassHDR4K {
+	case f.Hardware || f.Costs == nil || class == media.ClassCopy:
+		if class == media.ClassHDR4K {
 			return []SoftwareRung{RungKeyframes}
 		}
 		return []SoftwareRung{RungFull}
@@ -835,7 +837,7 @@ func (f BudgetFacts) softwareRungs(class StreamClass, noDrop bool) []SoftwareRun
 // pickLocked is the best software rung at output rung whose demand fits the ledger (except the
 // lease being moved). On a software host only keyframes-only not fitting refuses.
 func (b *ResourceBudget) pickLocked(
-	facts BudgetFacts, class StreamClass, rung int, except *Lease, noDrop bool,
+	facts BudgetFacts, class media.StreamClass, rung int, except *Lease, noDrop bool,
 ) (demand, SoftwareRung, bool) {
 	for _, sw := range facts.softwareRungs(class, noDrop) {
 		if d, ok := facts.demandAt(class, facts.rungHeight(rung), sw); ok && b.fitsLocked(facts, d, except) {
@@ -846,15 +848,15 @@ func (b *ResourceBudget) pickLocked(
 }
 
 // rungCostsOf is the rung cost table for a stream class (playout's RungCostsFor by class).
-func rungCostsOf(class StreamClass) RungCosts {
-	if class == ClassHDR4K {
+func rungCostsOf(class media.StreamClass) RungCosts {
+	if class == media.ClassHDR4K {
 		return HeavyRungCosts
 	}
 	return SDRRungCosts
 }
 
 // capacity is how many streams of class at height fit an empty ledger.
-func (f BudgetFacts) capacity(class StreamClass, height int) int {
+func (f BudgetFacts) capacity(class media.StreamClass, height int) int {
 	d, ok := f.demandOf(class, height)
 	if !ok {
 		return 0
@@ -889,13 +891,13 @@ type ClassBudget struct {
 
 // BudgetSnapshot is the ledger as GET /v1/playout/status reports it.
 type BudgetSnapshot struct {
-	Hardware     bool                        `json:"hardware"`
-	CPUAllowance float64                     `json:"cpuAllowance" doc:"Cores playout may use"`
-	CPUSource    string                      `json:"cpuSource,omitempty" doc:"cgroup-v2 | cgroup-v1 | cpu-count"`
-	SessionLimit int                         `json:"sessionLimit" doc:"Encoder session limit (0 = none known)"`
-	OperatorCap  int                         `json:"operatorCap" doc:"playout.max_channels (0 = none)"`
-	Classes      map[StreamClass]ClassBudget `json:"classes"`
-	InUse        BudgetUse                   `json:"inUse"`
+	Hardware     bool                              `json:"hardware"`
+	CPUAllowance float64                           `json:"cpuAllowance" doc:"Cores playout may use"`
+	CPUSource    string                            `json:"cpuSource,omitempty" doc:"cgroup-v2 | cgroup-v1 | cpu-count"`
+	SessionLimit int                               `json:"sessionLimit" doc:"Encoder session limit (0 = none known)"`
+	OperatorCap  int                               `json:"operatorCap" doc:"playout.max_channels (0 = none)"`
+	Classes      map[media.StreamClass]ClassBudget `json:"classes"`
+	InUse        BudgetUse                         `json:"inUse"`
 }
 
 // Snapshot reports the capacity terms, per-class costs and what is in use.
@@ -907,11 +909,11 @@ func (b *ResourceBudget) Snapshot() BudgetSnapshot {
 	s := BudgetSnapshot{
 		Hardware: f.Hardware, CPUAllowance: f.CPUAllowance, CPUSource: f.CPUSource,
 		SessionLimit: f.SessionLimit, OperatorCap: f.OperatorCap,
-		Classes: map[StreamClass]ClassBudget{}, InUse: use,
+		Classes: map[media.StreamClass]ClassBudget{}, InUse: use,
 	}
 	top := f.rungHeight(0)
-	base := float64(f.capacity(ClassSDR, top))
-	for _, class := range append(TranscodeClasses, ClassPremium4K) {
+	base := float64(f.capacity(media.ClassSDR, top))
+	for _, class := range append(media.TranscodeClasses, media.ClassPremium4K) {
 		c, measured := f.cost(class, top)
 		cb := ClassBudget{Measured: measured, Speed: c.Speed, CPUCores: c.CPUCores, Capacity: f.capacity(class, top)}
 		if cb.Capacity > 0 && base > 0 {
@@ -924,4 +926,4 @@ func (b *ResourceBudget) Snapshot() BudgetSnapshot {
 
 // Ceiling is how many top-rung 1080p SDR streams the measured costs admit on an idle host (0 =
 // unbounded or unmeasured): the count the operator cap and VRAM shading are applied to.
-func (f BudgetFacts) Ceiling() int { return f.capacity(ClassSDR, f.rungHeight(0)) }
+func (f BudgetFacts) Ceiling() int { return f.capacity(media.ClassSDR, f.rungHeight(0)) }

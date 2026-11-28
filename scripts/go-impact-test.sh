@@ -70,6 +70,20 @@ grep -qx "$module/internal/library/metadataprovider" <<<"$scan_selection" || {
   exit 1
 }
 
+# The root `internal` guards parse the tree without importing it, so a Go change under internal/
+# or cmd/ names them explicitly (#4628).
+for path in internal/testkit/x.go cmd/seed/main.go internal/platform/store/channelstore/x.go; do
+  grep -qx "$module/internal" <<<"$($SELECTOR "$path")" || {
+    printf 'go-impact-test: %s did not select the root internal guard tests\n' "$path" >&2
+    exit 1
+  }
+done
+
+[[ -z "$($SELECTOR web/apps/web/src/main.tsx)" ]] || {
+  echo 'go-impact-test: web-only change selected Go packages' >&2
+  exit 1
+}
+
 [[ -z "$($SELECTOR docs/contributing/testing.md)" ]] || {
   echo 'go-impact-test: docs-only change selected Go packages' >&2
   exit 1

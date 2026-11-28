@@ -117,6 +117,26 @@ describe("phone chrome", () => {
     ).toContain(">99+<");
   });
 
+  it("agrees a tab's name with its count, in its own words when it has some", () => {
+    const nameOf = (badge: number, badgeWords?: { one: string; other: string }) =>
+      render(
+        <TabBar
+          accessibilityLabel="Tabs"
+          idiom="ios"
+          items={[{ badge, badgeWords, icon: "requests", label: "Requests", value: "requests" }]}
+          onSelect={vi.fn()}
+          selected="requests"
+        />,
+      );
+    const own = { one: "needs you", other: "need you" };
+    expect(nameOf(1)).toContain('aria-label="Requests, 1 needs attention"');
+    expect(nameOf(2)).toContain('aria-label="Requests, 2 need attention"');
+    expect(nameOf(1, own)).toContain('aria-label="Requests, 1 needs you"');
+    expect(nameOf(2, own)).toContain('aria-label="Requests, 2 need you"');
+    // The name repeats the number as it is drawn.
+    expect(nameOf(120)).toContain('aria-label="Requests, 99+ need attention"');
+  });
+
   it("docks a footer under the content: no bottom gutter above it, the bar carries the inset", () => {
     const markup = render(
       <Screen density="touch" footer={<Text textRole="metadata">bar</Text>}>

@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // frame is a flat luma frame with an optional square painted in.
-func frame(bg byte, sq Rect, v byte) []byte {
+func frame(bg byte, sq media.Rect, v byte) []byte {
 	y := make([]byte, checkWidth*checkHeight)
 	for i := range y {
 		x, r := i%checkWidth, i/checkWidth
@@ -51,13 +52,13 @@ func TestOverlaySpeed_DisablesAnOverlayThatCannotKeepPace(t *testing.T) {
 // The n8.1.2 overlay_cuda failure (#1532 finding 4): the bug is drawn, the programme is gone (all
 // green: Y 0), exit 0. The gate's measurement must see the lost picture, not the drawn bug.
 func TestCompareBug_SeesTheLostProgramme(t *testing.T) {
-	bug := Rect{X: 1680, Y: 54, W: 64, H: 64}
+	bug := media.Rect{X: 1680, Y: 54, W: 64, H: 64}
 	want := byte(math.Round(checkAlpha*235 + (1-checkAlpha)*120))
-	good := compareBug(frame(120, Rect{}, 0), frame(120, bug, want), checkWidth, bug)
+	good := compareBug(frame(120, media.Rect{}, 0), frame(120, bug, want), checkWidth, bug)
 	if good.pictureDiff > pictureTolerance || math.Abs(good.bugLuma-good.bugWant) > bugTolerance {
 		t.Fatalf("a correct overlay fails the measurement: %+v", good)
 	}
-	green := compareBug(frame(120, Rect{}, 0), frame(0, bug, want), checkWidth, bug)
+	green := compareBug(frame(120, media.Rect{}, 0), frame(0, bug, want), checkWidth, bug)
 	if green.pictureDiff <= pictureTolerance {
 		t.Errorf("all-green programme passes: ΔY %.1f", green.pictureDiff)
 	}
@@ -65,19 +66,19 @@ func TestCompareBug_SeesTheLostProgramme(t *testing.T) {
 	// So does a full-range white (#1541): 255 where limited-range white is 235, off by 0.651×20 ≈ 13.
 	for _, wrong := range []byte{235, byte(math.Round(checkAlpha*checkAlpha*235 + (1-checkAlpha)*120)),
 		byte(math.Round(checkAlpha*255 + (1-checkAlpha)*120))} {
-		m := compareBug(frame(120, Rect{}, 0), frame(120, bug, wrong), checkWidth, bug)
+		m := compareBug(frame(120, media.Rect{}, 0), frame(120, bug, wrong), checkWidth, bug)
 		if math.Abs(m.bugLuma-m.bugWant) <= bugTolerance {
 			t.Errorf("bug luma %d passes against %.1f", wrong, m.bugWant)
 		}
 	}
 	// No bug at the placed position.
-	if m := compareBug(frame(120, Rect{}, 0), frame(120, Rect{}, 0), checkWidth, bug); math.Abs(m.bugLuma-m.bugWant) <= bugTolerance {
+	if m := compareBug(frame(120, media.Rect{}, 0), frame(120, media.Rect{}, 0), checkWidth, bug); math.Abs(m.bugLuma-m.bugWant) <= bugTolerance {
 		t.Error("a missing bug passes")
 	}
 }
 
 // yuvFrame is a yuv420p check frame: a flat background with the square sq in another colour.
-func yuvFrame(bg, in [3]byte, sq Rect) []byte {
+func yuvFrame(bg, in [3]byte, sq media.Rect) []byte {
 	f := frame(bg[0], sq, in[0])
 	for _, n := range []int{1, 2} {
 		for r := 0; r < checkHeight/2; r++ {
@@ -97,13 +98,13 @@ func yuvFrame(bg, in [3]byte, sq Rect) []byte {
 // luma exactly and pulled V toward 0, a green bug (#1595). A white bug's chroma is neutral, so the
 // blend's U and V are 128·a + background·(1-a), and the check asserts them too.
 func TestBugChroma_SeesAColourCast(t *testing.T) {
-	bug := Rect{X: 1680, Y: 54, W: 64, H: 64}
+	bug := media.Rect{X: 1680, Y: 54, W: 64, H: 64}
 	bg := [3]byte{120, 90, 170}
 	blend := func(c byte, white float64) byte {
 		return byte(math.Round(checkAlpha*white + (1-checkAlpha)*float64(c)))
 	}
 	good := [3]byte{blend(bg[0], 235), blend(bg[1], 128), blend(bg[2], 128)}
-	off := yuvFrame(bg, bg, Rect{})
+	off := yuvFrame(bg, bg, media.Rect{})
 	if err := bugChroma(off, yuvFrame(bg, good, bug), bug); err != nil {
 		t.Fatalf("a correct blend fails: %v", err)
 	}
@@ -124,13 +125,13 @@ func TestColourTarget_SeesTheWrongMatrix(t *testing.T) {
 	if checkWhite.y != 235 || checkWhite.u != 128 || checkWhite.v != 128 {
 		t.Fatalf("white target %+v, want 235/128/128", checkWhite)
 	}
-	bug := Rect{X: 1680, Y: 54, W: 64, H: 64}
+	bug := media.Rect{X: 1680, Y: 54, W: 64, H: 64}
 	bg := [3]byte{120, 128, 128}
 	blend := func(c byte, v float64) byte { return byte(math.Round(checkAlpha*v + (1-checkAlpha)*float64(c))) }
 	r, g, b := float64(checkColour.rgb.R)/255, float64(checkColour.rgb.G)/255, float64(checkColour.rgb.B)/255
 	y601 := 0.299*r + 0.587*g + 0.114*b
 	bt601 := [3]float64{16 + 219*y601, 128 + 224*(b-y601)/1.772, 128 + 224*(r-y601)/1.402}
-	off := yuvFrame(bg, bg, Rect{})
+	off := yuvFrame(bg, bg, media.Rect{})
 	passes := func(t3 [3]float64) bool {
 		in := [3]byte{blend(bg[0], t3[0]), blend(bg[1], t3[1]), blend(bg[2], t3[2])}
 		on := yuvFrame(bg, in, bug)

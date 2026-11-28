@@ -153,6 +153,9 @@ export {
   LibraryTitle,
   LibraryTitleMissing,
   LibraryWizardStep,
+  POSTER_TONES,
+  posterMonogram,
+  posterTone,
   waitingTitles,
 } from "./src/library";
 export type { ListGroupProps, ListRowProgress, ListRowProps } from "./src/list-row";
