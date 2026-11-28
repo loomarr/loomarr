@@ -15,6 +15,16 @@ test("counts createRoot calls, not mentions", () => {
   assert.equal(countRoots(source), 3);
 });
 
+test("counts a call through an import alias", () => {
+  const source = `
+    import { createRoot as mount } from "react-dom/client";
+    import { createRoot as other } from "./elsewhere";
+    mount(a);
+    other(b);
+  `;
+  assert.equal(countRoots(source), 1);
+});
+
 test("fails on a rise or a new file, passes on a fall", () => {
   assert.equal(compare({ "a.test.tsx": 1 }, { "a.test.tsx": 2 }).length, 1);
   assert.equal(compare({}, { "b.test.tsx": 1 }).length, 1);

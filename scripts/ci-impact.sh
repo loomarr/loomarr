@@ -224,6 +224,12 @@ classify() {
           ;;
       esac
       ;;
+    web/packages/test-support/*)
+      # Test harness only: the browser and shared-client suites import it, and nothing ships it.
+      known=true
+      select_gate web
+      select_gate clients
+      ;;
     web/packages/fixtures/src/testcard/*)
       # Test-card filler/guide data is imported only by browser stories and tests. It
       # is not part of either native app graph, so fixture-only UI work must not spend
