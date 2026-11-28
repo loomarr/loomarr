@@ -13,7 +13,10 @@ const Headline = ({
 }: {
   scan: LibraryScan;
   readySoFar?: readonly LibraryReadyTitle[];
-  /** A folder in use held nothing, so idle says "Up to date", never "All caught up". */
+  /**
+   * Something is not all there: a folder in use held nothing, details are still coming, or a title
+   * waits in Needs you. Idle then says "Up to date", never "All caught up".
+   */
   notAllThere?: boolean;
 }) => {
   const words = scanHeadline(scan, notAllThere);

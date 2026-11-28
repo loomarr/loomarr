@@ -21,11 +21,15 @@ const reasonsFor = (p: LibraryProblem): ProblemReason[] => {
         : "The files may be damaged. Loomarr skips them until they're fixed.",
     });
   }
-  if (p.extraBytes > 0) {
+  if (p.extraCopies > 0) {
+    const one = p.extraCopies === 1;
+    const size = formatBytes(p.extraBytes);
     out.push({
       key: "extra",
-      headline: `${p.name} has an extra copy`,
-      reason: `The extra copy is taking ${formatBytes(p.extraBytes)} and never plays. Removing it gets the space back.`,
+      headline: `${p.name} has ${one ? "an extra copy" : `${p.extraCopies} extra copies`}`,
+      reason: one
+        ? `The extra copy is taking ${size} and never plays. Removing it gets the space back.`
+        : `${p.extraCopies} extra copies are taking ${size} and never play. Removing them gets the space back.`,
     });
   }
   return out;

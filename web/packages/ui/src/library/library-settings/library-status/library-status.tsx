@@ -26,6 +26,7 @@ const LibraryStatus = ({
   skipped = [],
   hooks,
   details,
+  needsYou = 0,
   checking,
   onCheckAgain,
   onRescan,
@@ -43,6 +44,7 @@ const LibraryStatus = ({
   | "skipped"
   | "hooks"
   | "details"
+  | "needsYou"
   | "checking"
   | "onCheckAgain"
   | "onRescan"
@@ -69,7 +71,7 @@ const LibraryStatus = ({
     <Surface aria-label="Library status" gap="section" padding="section" role="region">
       {alerted ? null : (
         <Headline
-          notAllThere={health === "folder_empty" || waiting !== undefined}
+          notAllThere={health === "folder_empty" || waiting !== undefined || needsYou > 0}
           readySoFar={readySoFar}
           scan={scan}
         />

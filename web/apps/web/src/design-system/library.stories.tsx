@@ -339,14 +339,15 @@ const NEEDS: LibraryNeed[] = [
 
 // Titles that need a look: episodes that can't be played, and a movie's extra copy.
 const PROBLEMS: LibraryProblem[] = [
-  { id: "90000804", kind: "series", name: "Night Ferry", unplayable: 2, extraBytes: 0 },
+  { id: "90000804", kind: "series", name: "Night Ferry", unplayable: 2, extraCopies: 0, extraBytes: 0 },
   {
     id: "90000806",
     kind: "movie",
     name: "Quiet Orchard",
     poster: art("#2f5a46"),
     unplayable: 0,
-    extraBytes: 4_300_000_000,
+    extraCopies: 2,
+    extraBytes: 12_000_000_000,
   },
 ];
 
@@ -456,6 +457,7 @@ const NeedsMerged: Story = {
         name: "Tidewater",
         poster: art("#3b4a63"),
         unplayable: 2,
+        extraCopies: 0,
         extraBytes: 0,
       },
     ]),
@@ -568,6 +570,44 @@ const Movie: Story = {
         match: { by: "app", app: "Radarr" },
         detailsFrom: { description: "TMDB", rating: "TMDB" },
         channels: [{ id: "90000971", name: "Quiet Hours", number: 21 }],
+      }}
+    />
+  ),
+};
+
+// A broken extra beside a copy that plays: the movie plays, so only the copy says it can't.
+const BrokenExtraCopy: Story = {
+  render: () => (
+    <LibraryTitle
+      fix={titleFixes}
+      onBack={() => {}}
+      title={{
+        kind: "movie",
+        name: "Paper Kites",
+        year: 1996,
+        backdrop: art("#6b3a2e"),
+        genres: ["Crime"],
+        files: [
+          {
+            path: "/media/movies/Paper Kites (1996)/Paper Kites.mkv",
+            size: 8_100_000_000,
+            picture: { width: 1920, height: 1080, hdr: false },
+            subtitles: [],
+            state: "plays",
+          },
+          {
+            path: "/media/movies/Paper Kites (1996)/Paper Kites 4K.mkv",
+            size: 12_000_000_000,
+            ready: true,
+            subtitles: [],
+            state: "extra",
+          },
+        ],
+        unplayable: 0,
+        seasons: [],
+        match: { by: "app", app: "Radarr" },
+        detailsFrom: {},
+        channels: [],
       }}
     />
   ),
@@ -1130,8 +1170,16 @@ const ExtraCopyRemoved: Story = {
           genres: ["Crime"],
           files: [
             {
+              path: "/media/movies/Paper Kites (1996)/Paper Kites.mkv",
+              size: 8_100_000_000,
+              picture: { width: 1920, height: 1080, hdr: false },
+              subtitles: [],
+              state: "plays",
+            },
+            {
               path: "/media/movies/Paper Kites (1996)/Paper Kites DVD.mkv",
               size: 4_300_000_000,
+              picture: { width: 720, height: 480, hdr: false },
               subtitles: [],
               state: "extra",
             },
@@ -1147,7 +1195,7 @@ const ExtraCopyRemoved: Story = {
     </>
   ),
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(canvas.getByRole("button", { name: "Remove Paper Kites DVD.mkv" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Remove the SD copy" }));
     const undo = await screen.findByRole("button", { name: "Undo" });
     // A toast fades in.
     await waitFor(() => expect(undo).toBeVisible());
@@ -1157,7 +1205,7 @@ const ExtraCopyRemoved: Story = {
 const ExtraCopyUndoRefused: Story = {
   ...ExtraCopyRemoved,
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(canvas.getByRole("button", { name: "Remove Paper Kites DVD.mkv" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Remove the SD copy" }));
     await userEvent.click(await screen.findByRole("button", { name: "Undo" }));
     const said = await screen.findByText("The file isn't in the trash");
     await waitFor(() => expect(said).toBeVisible());
@@ -1169,6 +1217,7 @@ export {
   Adding,
   AddingStep1,
   AddingStep3,
+  BrokenExtraCopy,
   CastLinks,
   CaughtUp,
   Checking,

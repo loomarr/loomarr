@@ -41,6 +41,7 @@ const SettingsLibrary = () => {
         skipped={current.skipped}
         hooks={current.hooks}
         details={current.details}
+        needsYou={current.needsYou}
         scan={current.scan}
         readySoFar={folders.readySoFar.map(readyTitleOf)}
         onRescan={() => rescan.mutate()}

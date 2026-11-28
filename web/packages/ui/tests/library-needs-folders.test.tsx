@@ -78,7 +78,9 @@ describe("Needs you by folder", () => {
   it("heads the order questions and the titles to look at, after the folders", () => {
     const { host, cleanup } = mount([need("one", "Films")], {
       orders: [{ id: "show", name: "Kestrel Bay", disk: [], files: [], choices: [] }],
-      problems: [{ id: "bad", kind: "movie", name: "Low Tide", unplayable: 1, extraBytes: 0 }],
+      problems: [
+        { id: "bad", kind: "movie", name: "Low Tide", unplayable: 1, extraCopies: 0, extraBytes: 0 },
+      ],
     });
     const groups = Array.from(host.querySelectorAll('[role="region"] [role="region"]'));
     expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual([
@@ -158,7 +160,14 @@ describe("where focus goes after an answer", () => {
   };
   const guessed = (id: string): LibraryNeed => ({ ...need(id, "Films"), best: guess, others: [guess] });
   const show = { id: "show", name: "Kestrel Bay", disk: [], files: [], choices: [] };
-  const bad = { id: "bad", kind: "movie" as const, name: "Low Tide", unplayable: 1, extraBytes: 0 };
+  const bad = {
+    id: "bad",
+    kind: "movie" as const,
+    name: "Low Tide",
+    unplayable: 1,
+    extraCopies: 0,
+    extraBytes: 0,
+  };
   const press = (host: Host, name: string) => {
     const hit = Array.from(host.querySelectorAll('[role="button"], button')).find(
       (n) => (n.getAttribute("aria-label") ?? n.textContent?.trim()) === name,
