@@ -49,6 +49,9 @@ func (m *PackagerHLS) slateEncodeFor(host encode.HostProfile, out OutputProfile)
 	if e == nil {
 		e = &slateEncode{done: make(chan struct{})}
 		m.slates[key] = e
+		if m.onSlateEncode != nil {
+			m.onSlateEncode()
+		}
 		go func() {
 			defer close(e.done)
 			ctx, cancel := context.WithTimeout(m.life, slateEncodeTimeout)
