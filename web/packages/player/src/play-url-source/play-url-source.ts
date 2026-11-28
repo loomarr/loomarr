@@ -1,6 +1,7 @@
 import { getChannelPlayUrlUrl, getListChannelsUrl } from "@loomarr/api/endpoints/channels";
-import type { ListChannelsOutputBody } from "@loomarr/api/models/listChannelsOutputBody";
 import type { PlayURLOutputBody } from "@loomarr/api/models/playURLOutputBody";
+import { readBody } from "@loomarr/api/mutator";
+import { ChannelPlayUrlResponse, ListChannelsResponse } from "@loomarr/api/zod/channels";
 import type { PlayerChannel, PlayerSourcePort } from "../player-source";
 import {
   GENERIC_START_FAILURE,
@@ -20,6 +21,19 @@ interface PlayUrlSourceOptions {
 interface ChannelCatalogPort {
   list: (signal: AbortSignal) => Promise<readonly PlayerChannel[]>;
 }
+
+// An older server sends no clock reading and no still address, so those are optional here. The
+// expiry is any string: one that is not a date leaves the source with no lifetime, not unplayable.
+const PlayUrlBody = ChannelPlayUrlResponse.pick({ relativeUrl: true, url: true }).extend({
+  ...ChannelPlayUrlResponse.pick({ relativeStillUrl: true, serverTimeMs: true, stillUrl: true }).partial()
+    .shape,
+  expiresAt: ChannelPlayUrlResponse.shape.url,
+});
+const CatalogBody = ListChannelsResponse.pick({ channels: true }).extend({
+  channels: ListChannelsResponse.shape.channels.element
+    .pick({ id: true, inAppPlayable: true, name: true, number: true })
+    .array(),
+});
 
 const trimLeadingSlashes = (value: string) => {
   let start = 0;
@@ -72,10 +86,10 @@ const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptio
     );
     if (!response.ok) throw new Error(`Couldn't mint a play URL (${response.status}).`);
 
-    const body = (await response.json()) as PlayURLOutputBody;
+    const body = await readBody(response, PlayUrlBody);
     const expiry = Date.parse(body.expiresAt);
     const headerServerTime = Date.parse(response.headers.get("Date") ?? "");
-    const serverTime = Number.isFinite(body.serverTimeMs) ? body.serverTimeMs : headerServerTime;
+    const serverTime = body.serverTimeMs ?? headerServerTime;
     const stillUri = resolveStillUrl(baseUrl, body);
     return {
       expiresAt: Number.isFinite(expiry) ? expiry : undefined,
@@ -140,13 +154,7 @@ const createChannelCatalogPort = (request: typeof globalThis.fetch): ChannelCata
   list: async (signal) => {
     const response = await request(getListChannelsUrl(), { method: "GET", signal });
     if (!response.ok) throw new Error(`Couldn't load channels (${response.status}).`);
-    const body = (await response.json()) as ListChannelsOutputBody;
-    return body.channels.map(({ id, inAppPlayable, name, number }) => ({
-      id,
-      inAppPlayable,
-      name,
-      number,
-    }));
+    return (await readBody(response, CatalogBody)).channels;
   },
 });
 
