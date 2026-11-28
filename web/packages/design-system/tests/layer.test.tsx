@@ -76,6 +76,15 @@ describe("Layer", () => {
     expect(renderToStaticMarkup(<Layer trailingFade={90} />)).toContain("calc(100% - 90px)");
   });
 
+  it("fades its leading edge over the width given, alone or with its trailing edge", () => {
+    // jsdom drops a mask from an element's style, so the markup is what shows it.
+    const leading = renderToStaticMarkup(<Layer leadingFade={40} />);
+    expect(leading).toContain("transparent, black 40px, black)");
+    expect(leading).not.toContain("calc(");
+    const both = renderToStaticMarkup(<Layer leadingFade={40} trailingFade={90} />);
+    expect(both).toContain("transparent, black 40px, black calc(100% - 90px), transparent)");
+  });
+
   it("hands on key events and its measured layout", () => {
     const onKeyDown = vi.fn();
     const onLayout = vi.fn();

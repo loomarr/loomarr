@@ -1093,6 +1093,8 @@ The table above is the shipped chrome. The Cross's watching screen (§9.1) draws
   scrolls the list and never flips.
 - **The strip's words.** Under the picture the words always stand under the block, with or without
   artwork, so a break's tick and the playhead never cross them; a Guide row keeps its words inside.
+  Scrolled along from its start, the strip's leading edge fades as its trailing edge does, so it
+  never cuts words hard; at rest it starts sharp.
   The screen hands the strip every airing the caller has for the channel's day, wider than the strip
   draws, so a series run at either edge keeps its episode count; a run cut where the caller's own
   airings stop shows none.

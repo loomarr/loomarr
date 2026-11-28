@@ -192,6 +192,22 @@ describe("FilmStrip by keyboard", () => {
   });
 });
 
+describe("FilmStrip's leading edge", () => {
+  it("fades only once the strip is scrolled along from its start", async () => {
+    strip();
+    const group = screen.getByRole("group", { name: "Schedule" });
+    const masked = () => (group.getAttribute("style") ?? "").includes("transparent, black 90px");
+    expect(masked()).toBe(false);
+    const scroller = group.firstElementChild as HTMLElement;
+    fireEvent.scroll(scroller, { target: { scrollLeft: 120 } });
+    expect(masked()).toBe(true);
+    // The scroll view reports a scroll at most every 16 ms.
+    await act(() => new Promise((done) => setTimeout(done, 40)));
+    fireEvent.scroll(scroller, { target: { scrollLeft: 0 } });
+    expect(masked()).toBe(false);
+  });
+});
+
 describe("FilmStrip's words under the picture", () => {
   it("stand under every block, with artwork or without, so no tick or playhead crosses them", () => {
     strip({ airings: airings.map(({ thumbUrl: _, ...rest }) => rest) });

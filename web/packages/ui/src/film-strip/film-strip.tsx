@@ -310,6 +310,8 @@ const FilmStrip = ({
   );
 
   const more = viewWidth > 0 && strip.width - scrolled - viewWidth > 1;
+  // Scrolled along from its start, the leading edge fades too, so it never cuts words hard.
+  const along = scrolled > 1;
 
   return (
     <Layer
@@ -320,6 +322,7 @@ const FilmStrip = ({
       width="100%"
       // The fade says the strip goes on past its trailing edge.
       {...(!isRow && more ? { trailingFade: FADE } : {})}
+      {...(!isRow && along ? { leadingFade: FADE } : {})}
     >
       {isRow ? (
         track

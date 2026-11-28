@@ -63,14 +63,20 @@ type LayerProps = {
   top?: LayerLength;
   /** Fades the trailing edge out over this many points. Web only: a native client cuts at the edge. */
   trailingFade?: number;
+  /** Fades the leading edge in over this many points. Web only: a native client cuts at the edge. */
+  leadingFade?: number;
   width?: LayerLength;
   zIndex?: number;
 };
 
-const maskOf = (fade: number) =>
-  ({
-    maskImage: `linear-gradient(90deg, black calc(100% - ${fade}px), transparent)`,
-  }) as unknown as ViewStyle;
+const maskOf = (leading: number | undefined, trailing: number | undefined) => {
+  const stops = [
+    ...(leading === undefined ? [] : ["transparent", `black ${leading}px`]),
+    trailing === undefined ? "black" : `black calc(100% - ${trailing}px)`,
+    ...(trailing === undefined ? [] : ["transparent"]),
+  ];
+  return { maskImage: `linear-gradient(90deg, ${stops.join(", ")})` } as unknown as ViewStyle;
+};
 
 /**
  * A box placed inside a positioned parent, or (`inFlow`) the positioned parent itself. It draws
@@ -87,6 +93,7 @@ const Layer = ({
   flex,
   height,
   inFlow = false,
+  leadingFade,
   left,
   marginLeft,
   minWidth,
@@ -123,7 +130,9 @@ const Layer = ({
           width,
           zIndex,
         },
-        trailingFade !== undefined && Platform.OS === "web" ? maskOf(trailingFade) : null,
+        (leadingFade !== undefined || trailingFade !== undefined) && Platform.OS === "web"
+          ? maskOf(leadingFade, trailingFade)
+          : null,
       ]}
     >
       {children}
