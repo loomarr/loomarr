@@ -32,7 +32,9 @@ mock.html?device=<desk|desktop|tv|portrait|landscape>&state=<state>
 ```
 
 `desk` is desktop in a window and `desktop` is desktop full screen. `&art=0` draws a library with no
-artwork. The mock is not product code: build from it and the rules below, never by copying it. The
+artwork. The gallery lists every state each device draws. The stills follow `prototype.html`'s words
+and structure; where a still and the list under "What The Cross settles" differ, the list wins. The
+mock is not product code: build from it and the rules below, never by copying it. The
 picture is the drawn diner still from variant J's sheet; every other programme's artwork is a drawn
 two-colour stand-in, so real stills will be richer and less tidy. `static.webp` is a generated noise
 tile standing in for the design system's `AnalogSnow`. Fonts load from Google Fonts and
@@ -40,7 +42,7 @@ fall back to the system face offline.
 
 ## Renders
 
-Each `sheet-<device>.webp` is every drawn state for that device, labelled.
+Each `sheet-<device>.webp` is every drawn state for that device, labelled with its state name.
 
 | Sheet | Frame | Input |
 | --- | --- | --- |
@@ -50,25 +52,35 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled.
 | `sheet-portrait.webp` | 390 × 844 | touch |
 | `sheet-landscape.webp` | 844 × 390 | touch |
 
-| State | What it shows |
-| --- | --- |
-| `rest` | Full screen at rest: the picture and the channel's own watermark. |
-| `third` | A tune or a wake: the lower third, what is next, and the quiet row. |
-| `column` | Beat one: the channel column. Moving through it tunes at once. |
-| `cross`, `playing` | Beat two: the film strip for the tuned channel. In a window both arms are always up, and the state is `playing`. On an upright phone `playing` shows the list with the strip folded away. |
-| `peek` | Desktop in a window: pointing at a channel shows its day in the strip before a click tunes. |
-| `later` | A later programme pointed at or focused: its facts as type (a sheet on an upright phone). |
-| `find`, `typing` | The find control, or typing letters, filters the column; typing digits replaces the numeral and counts down to the tune. |
-| `focus`, `paused` | Keyboard focus drawn on the tuned row, and paused, which marks the picture itself. |
-| `strip` | Upright phone: the tuned channel tapped, its film strip open under the lower third. |
-| `tune`, `cold` | Changing channel (a short burst of static, the seven bars along the crossing) and tuning in (static for the real wait, the bars in grey). |
-| `break`, `behind`, `nothing` | In a break, behind live with Go live, and nothing scheduled. |
-| `subtitles`, `more` | What a key opens: a menu from the quiet row, a sheet on a phone. |
-| `unmute`, `off-air` | The web's muted first play, and a cover. |
-| `guide`, `guide-later` | The Guide, and the Guide with a later programme pointed at. |
-| `bright` | The crossing over a washed-out frame, to prove the scrims. |
-| `wall` | Home: every channel with its artwork, the last watched first. |
-| `*-no-artwork` | A library with no art: flat tones in place of stills, and words inside each block. |
+| State | Devices | What it shows |
+| --- | --- | --- |
+| `rest` | full screen, TV, landscape | The picture and the channel's own watermark. |
+| `third` | full screen, TV, landscape | A flip or a wake: the lower third, what is next, and the quiet row, with the first-run hint (none on a phone on its side). |
+| `playing` | window, portrait | Nothing covers the picture. The whole list stays in view, the watched channel pinned (window) or marked (phone), with the first-run hint. |
+| `list` | full screen, TV, landscape | The channel list opened from Channels, the watched channel pinned as the lower third; the cursor ring rests on it (no ring on touch). |
+| `list-row` | full screen, TV | The cursor on another row. The picture and the lower third stay on the watched channel. |
+| `list-tab` | TV | Up from the first channel: one group tab carries the ring. |
+| `list-decade` | window, full screen, TV, portrait, landscape | By decade, each decade heading its channels in its colour. A short screen shows only the decades around the watched channel. |
+| `favourites` | full screen, TV, landscape | A group other than All: the control reads "Channels: Favourites". |
+| `recent` | window | Recent with nothing in it: "Channels you watch collect here." |
+| `peek` | window | Pointing at a channel: its day in the strip, and the label naming it and the channel still playing. |
+| `later` | window, portrait | A later programme's facts: under the strip in a window, under the Guide on a phone. |
+| `find`, `typing` | window, full screen | The find control filters the list; typing digits replaces the numeral and waits for Enter. |
+| `focus` | window | Keyboard focus on the pinned channel. |
+| `paused` | all | Paused, which marks the picture itself. |
+| `tune`, `cold` | all | Changing channel (a short burst of static, the seven bars along the crossing) and tuning in (static for the real wait, the bars in grey). |
+| `break`, `behind`, `nothing` | all | In a break, behind live with Go live (first in the line; first in a television's quiet row), and nothing scheduled. |
+| `subtitles`, `more` | all | What a key opens: a menu from the quiet row, a sheet on a phone. |
+| `unmute` | window, full screen | The web's muted first play. |
+| `off-air` | all | A cover. |
+| `bright` | full screen, TV, landscape | The open list over a washed-out frame, to prove the scrims. |
+| `guide` | window, full screen, TV, portrait | The Guide on the watched channel's row; what has ended is dimmed. |
+| `guide-later` | window, full screen, TV | The cursor on another channel's later programme: "Looking at", with the docked picture still captioned. On a phone this is `later`. |
+| `guide-paged` | window, full screen, TV, portrait | The Guide paged an hour later. |
+| `guide-message` | window, full screen, TV, portrait | The message OK raises on a later programme. |
+| `guide-decade` | window, full screen, TV, portrait | The Guide headed by decades. |
+| `wall` | window sheet, portrait | Home: every channel with its artwork, the last watched first. |
+| `*-no-artwork` | window, portrait | A library with no art: flat tones in place of stills, and words inside each block. |
 
 ## What The Cross settles
 
@@ -175,8 +187,8 @@ iPhone, the watermark's corner rule, and every word in the covers and menus.
 
 A desktop window narrower than about 900 px, the Guide on a phone on its side, the Guide's other days
 and its loading and empty states, a visible close on the touch cross and sheets, an iPad, and an
-Android phone. The prototype draws By decade's headings and the wall on a television; the stills do
-not.
+Android phone. The stills draw By decade's headings as the prototype does; the wall on a television
+is drawn in the prototype alone.
 
 ## Prototype
 
@@ -198,8 +210,8 @@ shortcuts sheet under More. Its artwork is the mock's stand-ins, and the picture
 
 ### What using it changed
 
-Two reviews by use (six tasks, cold, on each layout) found these. The prototype carries the fixes;
-the mock's stills and sheets do not yet, so where they differ the prototype and the list above win.
+Two reviews by use (six tasks, cold, on each layout) found these. The prototype carries the fixes,
+and the mock's stills and sheets match them.
 
 - **One model for the channel list** on every device (item 3). The first prototype gave each layout
   its own: a list that opened on a flip and closed on a timer, a Today control, a strip opened by
