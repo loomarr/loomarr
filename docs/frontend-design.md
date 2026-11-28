@@ -694,7 +694,8 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
   - **Only the watched channel's numeral takes its decade tint** (§2.1). A decade with no tint takes
     the neutral one.
   - **Sizes**, numeral and title: 64 and 34 px full screen, 56 and 28 px in a window, 52 and 30 px on
-    a television, 44 and 22 px on an upright phone, 40 and 22 px on a phone on its side.
+    a television, 44 and 22 px on an upright phone (§2.2's lower third roles). A phone on its side
+    takes 40 and 22 px, the landscape column of `design/watch/mock.html`.
   - **Tuning in** names the channel as the title over `Tuning in… Starting the channel`, in the place
     the lower third stays.
   - **In a break:** the programme that comes back, and `Back in n min` in the break's cyan.
