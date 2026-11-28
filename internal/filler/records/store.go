@@ -303,7 +303,8 @@ type Combined interface {
 
 // Store is the filler store, with the core roles the filler runtime also reaches.
 type Store interface {
-	store.Store
+	store.ClipStore
+	DeleteImageRefs(ctx context.Context, ownerKind, ownerID string) error
 	FillerInferenceStore
 	FillerStructureAssessmentStore
 	FillerSourceStore
@@ -318,7 +319,7 @@ type Store interface {
 	PurgeSpentFillerRecords(ctx context.Context, now time.Time) (int, error)
 
 	// Core returns the store this one extends, for the core functions that need its adapter
-	// (backups, migration, schema version); store.Store's own methods are already promoted.
+	// (backups, migration, schema version).
 	Core() store.Store
 }
 

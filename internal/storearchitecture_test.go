@@ -19,17 +19,15 @@ var aggregateStoreExceptions = map[string]string{
 	modulePath + "/internal/app": "is the composition root that narrows the store for domain modules",
 	modulePath + "/internal/filler/records": "declares records.Combined, the core store.Store beside the " +
 		"filler store (#1747)",
-	modulePath + "/internal/filler/storeadapter": "is where the aggregate store is narrowed to the persistence roles " +
-		"the filler seams declare, as the composition root did before these adapters moved here",
 	modulePath + "/internal/proposals/accept": "contains compile-time conformance assertions for its narrow store roles",
 	modulePath + "/internal/testkit":          "owns shared complete-store factories for tests",
 }
 
-// aggregateStoreTypes names the aggregates each package exports. records.Store and
-// records.Combined embed store.Store, so naming either is naming the aggregate.
+// aggregateStoreTypes names the aggregate each package exports. records.Combined embeds
+// store.Store, so naming it is naming the aggregate.
 var aggregateStoreTypes = map[string]map[string]bool{
 	modulePath + "/internal/platform/store": {"Store": true},
-	modulePath + "/internal/filler/records": {"Store": true, "Combined": true},
+	modulePath + "/internal/filler/records": {"Combined": true},
 }
 
 // Aggregate store references are deliberately rare. The full store exists for construction,
