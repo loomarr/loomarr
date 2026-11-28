@@ -600,6 +600,18 @@ Each of these has happened here:
 - **A pnpm config only fails on a cold install** — with `node_modules` present, pnpm doesn't
   re-evaluate build scripts.
 
+## Universal component tests
+
+A component test in `web/packages/` mounts with `renderUi` from `@loomarr/test-support`, which wraps
+Testing Library's `render` in `LoomarrProvider`, and calls `cleanup` in `afterEach`.
+`@loomarr/test-support/css` reads the declarations behind Tamagui's atomic classes.
+
+`@loomarr/design-system` is below that package in the layer order and cannot depend on it: its tests
+use Testing Library directly and read styles from its own `atomic-css` entry.
+
+`web/test-harness.json` counts the `createRoot` calls left in tests. The counts may only fall
+(`pnpm test-harness:check`, part of `pnpm lint`).
+
 ## Determinism
 
 Pod assembly and shuffling take an explicit seed. The visual suite pins the timezone to UTC.

@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import { stylesOfText } from "../atomic-css";
 import {
   Action,
   brandChroma,
@@ -13,7 +13,6 @@ import {
   semanticThemes,
   Toggle,
 } from "../index";
-import { stylesOfText } from "./support/atomic-css";
 
 describe("Action composed onto a link", () => {
   it("names the link with its accessibilityLabel", () => {

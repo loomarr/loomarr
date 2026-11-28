@@ -1,8 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-
+import { withoutRuntimeMarker } from "../atomic-css";
 import { BottomSheet, LoomarrProvider, Screen, TabBar, Text } from "../index";
-import { withoutRuntimeMarker } from "./support/atomic-css";
 
 const render = (node: React.ReactNode) =>
   withoutRuntimeMarker(
