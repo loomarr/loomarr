@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"database/sql"
+	"io"
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
@@ -50,6 +52,45 @@ type channelsStore interface {
 	librarystore.LibraryEpisodeReader
 	librarystore.LibraryTitleReader
 	resolvers.OwnCollections
+}
+
+// operationsStore is what settings, sign-in, jobs, the guide and notifications reach.
+type operationsStore interface {
+	store.SettingStore
+	store.UserStore
+	store.ChannelStore
+	store.TitleStore
+	store.ScheduledJobStore
+	store.InvitationStore
+	store.PasswordRecoveryStore
+	store.NotificationStore
+}
+
+// databaseHandle is what operations needs from the database itself rather than from a role.
+type databaseHandle struct {
+	// open is false without a store; the rest are then zero.
+	open    bool
+	dialect store.Dialect
+	// writer writes a backup file; nil for a backend Loomarr does not back up.
+	writer interface {
+		WriteBackup(ctx context.Context, dir string) (store.BackupFile, error)
+	}
+	// streamer streams a SQLite backup to a download; nil otherwise.
+	streamer interface {
+		StreamBackup(ctx context.Context, w io.Writer) error
+	}
+	// pool is the connection pool the job queue runs on.
+	pool *sql.DB
+}
+
+func databaseOf(st store.Store) databaseHandle {
+	if st == nil {
+		return databaseHandle{}
+	}
+	return databaseHandle{
+		open: true, dialect: store.DialectOf(st), writer: store.BackupWriter(st),
+		streamer: store.SQLiteBackuper(st), pool: store.PoolOf(st),
+	}
 }
 
 // invalidationHandle is the whole store, which only the PostgreSQL invalidation listener needs: it

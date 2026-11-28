@@ -26,7 +26,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
@@ -61,7 +60,6 @@ type channelBuild struct {
 // buildCore is what the large builders share. Build assembles it once per generation.
 type buildCore struct {
 	ctx                 context.Context
-	store               store.Store
 	settings            resolved
 	overrides           Overrides
 	owner               *generationLifecycle
