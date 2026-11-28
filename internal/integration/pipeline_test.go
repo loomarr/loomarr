@@ -188,8 +188,19 @@ func (r *rig) getJSON(t *testing.T, path string, v any) {
 // last error, so a broken suggester surfaces clearly rather than as a timeout.
 func (r *rig) awaitProposal(t *testing.T, jobID string) (string, proposals.Proposal) {
 	t.Helper()
-	deadline := time.Now().Add(workerWait)
-	for time.Now().Before(deadline) {
+	var (
+		id    string
+		found proposals.Proposal
+	)
+	// No proposal: surface the job's failure reason if there is one.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		job, err := r.store.GetJob(context.Background(), jobID)
+		t.Logf("job %s: status=%s err=%q (lookup: %v)", jobID, job.Status, job.LastError, err)
+	})
+	testkit.Eventually(t, workerWait, "a proposal for job "+jobID, func() bool {
 		var list struct {
 			Proposals []struct {
 				ID       string          `json:"id"`
@@ -204,18 +215,13 @@ func (r *rig) awaitProposal(t *testing.T, jobID string) (string, proposals.Propo
 				if err := json.Unmarshal(p.Proposal, &prop); err != nil {
 					t.Fatalf("decode proposal body: %v", err)
 				}
-				return p.ID, prop
+				id, found = p.ID, prop
+				return true
 			}
 		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	// No proposal — surface the job's failure reason if there is one.
-	job, err := r.store.GetJob(context.Background(), jobID)
-	if err == nil {
-		t.Fatalf("proposal never appeared for job %s (status=%s, err=%q)", jobID, job.Status, job.LastError)
-	}
-	t.Fatalf("proposal never appeared for job %s (job lookup failed: %v)", jobID, err)
-	return "", proposals.Proposal{}
+		return false
+	})
+	return id, found
 }
 
 // seedFillerClips lands a catalog of matched commercials + bumpers as a Tunarr sync
