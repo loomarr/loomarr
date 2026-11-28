@@ -10,7 +10,6 @@ import (
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
@@ -24,7 +23,7 @@ type approvalBuild struct {
 }
 
 func buildApproval(
-	st store.Store,
+	st approvalStores,
 	channelService guideapi.ChannelService,
 	playoutResolver *resolve.Resolver,
 	activityRecorder *activity.Recorder,
@@ -34,7 +33,7 @@ func buildApproval(
 	holidays holidayvocab.Source,
 	log *slog.Logger,
 ) approvalBuild {
-	if st == nil {
+	if st.binder == nil {
 		return approvalBuild{}
 	}
 	var reconciler approval.Reconciler
@@ -45,20 +44,20 @@ func buildApproval(
 	if playoutResolver != nil {
 		codec = playoutResolver
 	}
-	channelBinder := approval.New(st, reconciler, codec, log)
+	channelBinder := approval.New(st.binder, reconciler, codec, log)
 	if activityRecorder != nil {
 		channelBinder = channelBinder.WithActivity(activityRecorder)
 	}
 	if channelNumbers != nil {
 		channelBinder = channelBinder.WithChannelNumbers(channelNumbers)
 	}
-	decisionQuality := quality.NewProposalDecisionRecorder(st, log)
-	approver := accept.NewApprover(st, channelBinder, time.Now).
+	decisionQuality := quality.NewProposalDecisionRecorder(st.observations, log)
+	approver := accept.NewApprover(st.approver, channelBinder, time.Now).
 		WithProposalNotifier(notifier).
 		WithDecisionQuality(decisionQuality).
 		WithHolidays(holidays)
 	approver = approver.WithApprovalAdditionResolver(accept.NewAdditionResolver(func() titlesearch.LibraryPresence {
-		return titlesearch.LibraryOwnership{Titles: st}
+		return titlesearch.LibraryOwnership{Titles: st.library}
 	}))
 	return approvalBuild{
 		binder:          channelBinder,

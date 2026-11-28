@@ -178,7 +178,7 @@ func buildHandler(
 	// bound below, before the server takes a request.
 	subtitleDecoder := &subtitleWorkerDecoder{}
 
-	buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
+	buildProvisioning(newProvisioningStores(st), set, libraryClient, emitter, jobReg, activityRec,
 		foundation.processDiagnostics, log, foundation.metrics)
 
 	core := buildCore{
@@ -200,7 +200,7 @@ func buildHandler(
 	playoutRes, chanNumbers := channelsBuilt.playoutResolver, channelsBuilt.channelNumbers
 	setResidentVRAM := channelsBuilt.setResidentVRAM
 
-	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, emitter, libraryClient, foundation.holidays, log)
+	approval := buildApproval(newApprovalStores(st), channelSvc, playoutRes, activityRec, chanNumbers, emitter, libraryClient, foundation.holidays, log)
 	proposalApprover := approval.approver
 
 	// One count of interactive LLM work (suggestions) that background filler vision yields to (#1508).
