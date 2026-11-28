@@ -28,17 +28,5 @@ internal/media/tools/derivative_recipe.go 1
 internal/platform/store/librarystore/files.go 1
 internal/platform/store/open.go 1
 internal/platform/store/store.go 1
-internal/playout/admission/budget.go 1
-internal/playout/args.go 1
-internal/playout/bench/compare.go 1
-internal/playout/capability.go 2
-internal/playout/filters.go 1
-internal/playout/hls/packager_encoder.go 1
-internal/playout/hls/still.go 1
-internal/playout/pipeline.go 1
-internal/playout/resolve/timelinethumbs.go 1
-internal/playout/watermark/design.go 1
-internal/playout/watermark/render.go 1
-internal/playout/watermark_check.go 1
 internal/testkit/mediaserver.go 1
 project/evidence/curation-1670/sim/main.go 1

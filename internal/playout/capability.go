@@ -22,7 +22,7 @@ import (
 // THE RULE: the ffmpeg build says what is POSSIBLE; a real encode says what WORKS. Nothing
 // else gets a vote — in particular, not device files.
 //
-// Measured on this development box, 2026-07-25, ffmpeg 7.x, and the reason for that rule:
+// Measured on a development box with ffmpeg 7.x, and the reason for that rule:
 //
 //	/dev/dri/renderD128 EXISTS, and h264_vaapi + h264_qsv are both LISTED by -encoders …
 //	  h264_vaapi → "No usable encoding entrypoint found for profile VAEntrypointEncSlice"
@@ -276,8 +276,7 @@ func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc encode.Enco
 	_ = out.Close()
 	defer func() { _ = os.Remove(outPath) }()
 
-	// ⚠ `-y` IS LOAD-BEARING, and its absence made this entire function vacuous from the commit
-	// that introduced it until 2026-08-09.
+	// ⚠ `-y` IS LOAD-BEARING: without it this entire function is vacuous.
 	//
 	// os.CreateTemp above CREATES the file, so the path handed to ffmpeg always exists. Without
 	// `-y` ffmpeg refuses to overwrite it — and it does so by EXITING ZERO:

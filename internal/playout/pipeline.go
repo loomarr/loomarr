@@ -60,7 +60,7 @@ type OutputProfile struct {
 	SoftwareRung admission.SoftwareRung
 }
 
-// Maintainer's output picture setting (#1512, 2026-09-26). The target and cap are the 1080p budget;
+// Maintainer's output picture setting (#1512). The target and cap are the 1080p budget;
 // lower rungs scale them by pixel count (outputRate).
 const (
 	outputQuality    = 22

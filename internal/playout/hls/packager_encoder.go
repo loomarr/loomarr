@@ -180,7 +180,7 @@ const sourceEndWait = 500 * time.Millisecond
 // ladder step) and the process then exited 0, so it read its input to the end. A commercial whose
 // audio runs past its picture ends this way before its slot fills; reopening it there would start
 // an encoder at the last frame, which produces nothing and fails (on VAAPI: "A hardware frames
-// reference is required", the misleading error of 2026-10-24).
+// reference is required", which misleads).
 func (e *encoderOutput) SourceEnded() bool {
 	if !e.eof {
 		return false

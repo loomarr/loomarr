@@ -6,7 +6,7 @@
 // drawn supersampled from bundled data (Geist Bold, SIL OFL 1.1, fonts/OFL.txt) and reduced, with
 // no system fonts and no randomness. The LLM may choose a callsign's TEXT; it never draws.
 //
-// The look is the maintainer's, approved from real-encoder sample sheets (PR #1532, 2026-09-26),
+// The look is the maintainer's, approved from real-encoder sample sheets (PR #1532),
 // and this file ports the sample renderer exactly:
 //
 //   - a white silhouette: RGB is white and only alpha carries the shape, so the 4:2:0 overlay

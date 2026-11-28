@@ -13,7 +13,7 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-// The approved design (#1659, project/prototypes/watermark.html, maintainer's answers 2026-10-13):
+// The approved design (#1659, project/prototypes/watermark.html, maintainer's answers):
 // six more looks, colour from the design tokens, and a holiday picture (motif) beside the look. Each
 // is still ONE still PNG with straight alpha, drawn supersampled and reduced like the four built
 // looks, so the GPU overlay does not change.

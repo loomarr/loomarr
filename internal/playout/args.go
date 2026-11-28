@@ -14,7 +14,7 @@ import (
 // contains commas, colons and quotes, and handing that to a shell is how you get an
 // injection or an unexplainable parse error.
 //
-// Shape borrowed from Tunarr/ErsatzTV (prior-art notes in git history before #1572):
+// Shape borrowed from Tunarr/ErsatzTV (prior-art notes are in git history; see #1572):
 // options are appended in POSITIONAL buckets, because ffmpeg is order-sensitive in ways
 // that are easy to get wrong — an input option after `-i` applies to the *next* input,
 // and a filter before its input is a parse error.

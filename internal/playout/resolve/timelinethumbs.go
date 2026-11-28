@@ -21,7 +21,7 @@ import (
 // always comes from TMDB, but the KEY may be TVDB (series are usually TVDB-keyed, §3) — so a tvdb
 // series bridges TVDB→TMDB via /find first.
 //
-// ⚠ Since V52 phase 7 the URL it returns is OURS, not TMDB's: the still is adopted into the image
+// ⚠ The URL it returns is OURS, not TMDB's (V52 phase 7): the still is adopted into the image
 // service and served from our own disk, so the Watch timeline stops loading third-party images in
 // the operator's browser (§22).
 type timelineThumbResolver struct {
