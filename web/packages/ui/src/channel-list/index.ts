@@ -1,4 +1,4 @@
-export { ChannelList } from "./channel-list";
+export { CHANNEL_LIST_NOTICES, ChannelList } from "./channel-list";
 export type {
   ChannelListDetail,
   ChannelListHandle,

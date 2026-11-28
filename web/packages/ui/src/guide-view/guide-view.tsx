@@ -1,5 +1,5 @@
 import type { LineupGroupKind } from "@loomarr/core/channel-lineup";
-import type { ChannelListEvent, ChannelListNotice } from "@loomarr/core/channel-list";
+import type { ChannelListEvent } from "@loomarr/core/channel-list";
 import {
   cursorProgramme,
   type GuideViewEvent,
@@ -11,7 +11,7 @@ import { Action, decadeTint, Layer, RingedPressable, Stack, Surface, Text } from
 import { type ReactNode, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { ScrollView } from "react-native";
 
-import { ChannelGroupTabs } from "../channel-list";
+import { CHANNEL_LIST_NOTICES, ChannelGroupTabs } from "../channel-list";
 import { FilmStrip, groupSeriesRuns, type StripAiring } from "../film-strip";
 import { ProgrammeFacts, StripMessage } from "../programme-facts";
 import { StatePanel } from "../state-panel";
@@ -26,13 +26,6 @@ const SIZES = {
   phone: { gutter: 16, label: 0, row: 44 },
   television: { gutter: 28, label: 200, row: 32 },
 } as const;
-
-/** The channel list's words for a group with nothing of its own. */
-const NOTICES: Partial<Record<ChannelListNotice, string>> = {
-  "empty-decade": "No channels have a decade yet.",
-  "empty-favourites": "No favourites yet.",
-  "empty-recent": "Channels you watch collect here.",
-};
 
 const defaultArtwork = (airing: StripAiring) => airing.thumbUrl || airing.backdropImage?.src || undefined;
 
@@ -373,7 +366,8 @@ const Ready = <C extends GuideViewEntry>({
               {view.notice ? (
                 <Stack align="start" gap="2">
                   <Text textRole="body" tone="secondary">
-                    {NOTICES[view.notice]}
+                    {/* The Guide has no find, so a notice is always an empty group's. */}
+                    {view.notice === "no-match" ? null : CHANNEL_LIST_NOTICES[view.notice]}
                   </Text>
                   <OwnKeys>
                     <Action onPress={() => press({ type: "showAll" })} variant="outline">
