@@ -6,6 +6,7 @@
   "description": "Shared Loomarr product modules composed only from Loomarr-owned interfaces.",
   "exports": {
     ".": "./index.ts",
+    "./filler": "./filler.ts",
     "./guide": "./guide.ts",
     "./requests": "./requests.ts"
   },

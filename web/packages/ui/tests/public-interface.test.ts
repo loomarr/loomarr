@@ -1,16 +1,15 @@
 import { describe, expect, it } from "vitest";
 
+import { ClipSelect, NeedsDetailsChip } from "../filler";
 import { GuideExperience, GuideJourney, GuideSurface } from "../guide";
 import {
   ChannelIdentity,
   ClientNavigation,
   ClientPlatformProof,
   ClientShell,
-  ClipSelect,
   clientBackDestination,
   DeviceDisconnectAction,
   ModalOverlay,
-  NeedsDetailsChip,
   PairingShell,
   ProgrammeCard,
   ProgrammeIdentity,

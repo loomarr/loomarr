@@ -13,7 +13,8 @@ import {
   typography,
 } from "@loomarr/design-system";
 import { CardAction, CardStatus } from "@loomarr/design-system/rows";
-import { ClipSelect, PictureCard } from "@loomarr/ui";
+import { PictureCard } from "@loomarr/ui";
+import { ClipSelect } from "@loomarr/ui/filler";
 import { useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ServedImage } from "@/components/loomarr/served-image";
