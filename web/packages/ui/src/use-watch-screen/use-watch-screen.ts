@@ -27,7 +27,13 @@ interface UseWatchScreenArgs<C extends LineupChannel> {
   /** The lineup, but for the channels left, which the screen keeps. */
   lineup: Omit<ChannelLineupArgs<C>, "leftIds">;
   layout: WatchLayout;
-  /** The channel on screen when the screen opens. Later changes from outside are a `tuned` event. */
+  /**
+   * The channel on screen when the screen opens. A later change from outside the screen (another
+   * device, the Guide) is a `tuned` event. A tune the screen asked for is never echoed back: the
+   * model moved already. An echo of the channel on screen changes nothing, but a late echo of an
+   * older tune reads as a change from outside, back to that channel, with no tune asked for, so the
+   * screen would name a channel the player has left.
+   */
   watchedId: string | undefined;
   /** The first-run hint was seen in an earlier session. */
   hintSeen?: boolean;

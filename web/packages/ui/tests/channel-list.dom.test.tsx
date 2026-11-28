@@ -148,6 +148,31 @@ describe("ChannelList", () => {
     }
   });
 
+  it("draws no amber ring on a tab or a button focused after a click, and one for a key", () => {
+    const native = Element.prototype.matches;
+    let keyboard = false;
+    Element.prototype.matches = new Proxy(native, {
+      apply: (original, element, args: [string]) =>
+        args[0] === ":focus-visible" ? keyboard : Reflect.apply(original, element, args),
+    });
+    try {
+      renderUi(<Harness />);
+      for (const control of [
+        screen.getByRole("tab", { name: "Recent" }),
+        screen.getByRole("button", { name: "Find a channel" }),
+      ]) {
+        act(() => control.focus());
+        expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
+      }
+      keyboard = true;
+      act(() => screen.getByRole("tab", { name: "All" }).focus());
+      expect(screen.getAllByTestId("ring-actionFocus")).toHaveLength(1);
+      expect(screen.getByRole("tab", { name: "All", selected: true })).toBeTruthy();
+    } finally {
+      Element.prototype.matches = native;
+    }
+  });
+
   it("never takes focus from a pointer, so a click draws no ring", async () => {
     renderUi(<Harness />);
     await userEvent.click(row(3));

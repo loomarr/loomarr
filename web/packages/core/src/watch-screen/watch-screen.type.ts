@@ -23,6 +23,16 @@ type WatchControl =
 /** The menus the screen opens; `shortcuts` is the sheet of keys. */
 type WatchMenuName = "audio" | "more" | "shortcuts" | "subtitles";
 
+/** What the picture is doing: `playing` a picture, `tuning` in with nothing yet, `covered` by a cover. */
+type WatchPicture = "playing" | "tuning" | "covered";
+
+/** How far the picture is from live, as it was before a click on it. */
+interface WatchPlayback {
+  paused: boolean;
+  pausedAt: number | undefined;
+  behindMs: number;
+}
+
 interface WatchMenu {
   name: WatchMenuName;
   /** An inner page the menu has opened, named by the menu; Back returns to the menu from it. */
@@ -65,6 +75,13 @@ interface WatchScreenState {
   /** The first-run hint is gone for this session. */
   hintSeen: boolean;
   handOff: WatchHandOff | undefined;
+  /** Only a playing picture pauses. */
+  picture: WatchPicture;
+  /**
+   * The last click on the picture, and the playback before the first of a quick pair of clicks, so
+   * a double click can leave the picture as it was.
+   */
+  clicked: { at: number; firstAt: number; before: WatchPlayback } | undefined;
 }
 
 interface WatchScreenStateArgs {
@@ -83,7 +100,10 @@ type WatchScreenEvent =
   | { type: "pointerMove"; at: number }
   /** The pointer came to rest on the controls, or left them. */
   | { type: "pointerHold"; held: boolean; at: number }
-  /** A control took focus, or focus left the controls. */
+  /**
+   * A control took focus from the keyboard or a remote, or that focus left the controls. Focus a
+   * pointer gave is not sent: it holds nothing awake.
+   */
   | { type: "focus"; control: WatchControl | undefined; at: number }
   /** A quiet-row control or Go live was pressed. */
   | { type: "press"; control: WatchControl; at: number }
@@ -100,7 +120,9 @@ type WatchScreenEvent =
   | { type: "tuned"; channelId: string; at: number }
   | { type: "layout"; layout: WatchLayout; at: number }
   /** The time `nextAt` named has come. It is not activity: it wakes nothing. */
-  | { type: "tick"; at: number };
+  | { type: "tick"; at: number }
+  /** What the picture is doing changed. Like the clock, it wakes nothing. */
+  | { type: "picture"; picture: WatchPicture; at: number };
 
 /** What the screen asks the caller to do. It does none of it itself. */
 type WatchRequest =
@@ -159,6 +181,8 @@ export type {
   WatchLayout,
   WatchMenu,
   WatchMenuName,
+  WatchPicture,
+  WatchPlayback,
   WatchRequest,
   WatchScreenEvent,
   WatchScreenState,

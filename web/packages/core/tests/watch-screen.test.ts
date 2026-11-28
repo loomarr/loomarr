@@ -29,12 +29,15 @@ const CHANNELS = Array.from({ length: 12 }, (_, i) =>
 type Input = WatchScreenEvent extends infer E ? (E extends { at: number } ? Omit<E, "at"> : never) : never;
 
 /** A client in miniature: it keeps the state, builds the lineup from it and ticks at `nextAt`. */
-const screen = (args: Partial<WatchScreenStateArgs> = {}, channels = CHANNELS) => {
+const screen = (
+  args: Partial<WatchScreenStateArgs> = {},
+  channels = CHANNELS,
+  favouriteIds: readonly string[] = ["ch-9", "ch-2"],
+) => {
   let state = createWatchScreenState({ at: 0, layout: "full", watchedId: "ch-1", ...args });
   let now = 0;
   const requests: WatchRequest[] = [];
-  const lineup = () =>
-    createChannelLineup({ channels, favouriteIds: ["ch-9", "ch-2"], leftIds: state.leftIds });
+  const lineup = () => createChannelLineup({ channels, favouriteIds, leftIds: state.leftIds });
   const send = (event: Input, at = now) => {
     now = at;
     const step = watchScreenReduce(state, { ...event, at } as WatchScreenEvent, lineup());
@@ -569,6 +572,183 @@ describe("sequences from the prototype", () => {
       { name: "shortcuts", type: "menu" },
       { on: false, type: "fullScreen" },
     ]);
+  });
+});
+
+describe("a flip steps through the rows the list shows", () => {
+  it("goes in number order through favourites starred out of it, from a channel that is not one", () => {
+    const s = screen({ group: "favourites", watchedId: "ch-1" }, CHANNELS, ["ch-11", "ch-3", "ch-7"]);
+    for (let i = 0; i < 4; i += 1) s.key("ArrowDown");
+    expect(s.tunes()).toEqual(["ch-3", "ch-7", "ch-11", "ch-3"]);
+    s.key("ArrowUp");
+    expect(s.tunes().at(-1)).toBe("ch-11");
+  });
+
+  it("stops at the watched channel's number place on the way back into the group", () => {
+    const s = screen({ group: "favourites", watchedId: "ch-8" }, CHANNELS, ["ch-11", "ch-3", "ch-7"]);
+    s.key("ArrowUp");
+    expect(s.tunes()).toEqual(["ch-7"]);
+  });
+
+  it("goes by decade, then number, in By decade", () => {
+    const decades = [1990, 1980, 1990, 1980].map((decade, i) => channel(i + 1, { decade }));
+    const s = screen({ group: "decade", watchedId: "ch-4" }, decades);
+    s.key("ArrowDown");
+    s.key("ArrowDown");
+    expect(s.tunes()).toEqual(["ch-1", "ch-3"]);
+  });
+});
+
+describe("a double click is full screen and nothing else", () => {
+  it("leaves the picture playing after its first click closed the list and its second paused", () => {
+    const s = screen();
+    s.send({ control: "channels", type: "press" });
+    s.send({ type: "pictureClick" }, 0);
+    s.send({ type: "pictureClick" }, 150);
+    expect(s.view().paused).toBe(true);
+    s.send({ type: "pictureDoubleClick" }, 150);
+    expect(s.view()).toMatchObject({ behindSeconds: 0, listOpen: false, paused: false });
+    expect(s.requests.slice(-2)).toEqual([{ on: false, type: "fullScreen" }, { type: "resume" }]);
+  });
+
+  it("counts no time behind live for its two clicks", () => {
+    const s = screen();
+    s.send({ type: "pictureClick" }, 0);
+    s.send({ type: "pictureClick" }, 150);
+    s.send({ type: "pictureDoubleClick" }, 150);
+    expect(s.state.behindMs).toBe(0);
+    s.key("End");
+    expect(s.requests.some((request) => request.type === "goLive")).toBe(false);
+  });
+
+  it("plays on from a pause, behind by the time it was paused before the clicks", () => {
+    const s = screen();
+    s.key(" ", 0);
+    s.send({ type: "pictureClick" }, 10_000);
+    s.send({ type: "pictureClick" }, 10_150);
+    s.send({ type: "pictureDoubleClick" }, 10_150);
+    expect(s.view()).toMatchObject({ behindSeconds: 10, paused: false });
+  });
+});
+
+describe("a press away from an open menu closes it", () => {
+  it("does nothing else for a control that opens no menu", () => {
+    const s = screen();
+    s.send({ control: "subtitles", type: "press" });
+    s.send({ control: "pause", type: "press" });
+    expect(s.view()).toMatchObject({ menu: undefined, paused: false });
+    s.send({ control: "subtitles", type: "press" });
+    s.send({ control: "channels", type: "press" });
+    expect(s.view()).toMatchObject({ listOpen: false, menu: undefined });
+    expect(s.requests.filter((request) => request.type !== "menu")).toEqual([]);
+  });
+
+  it("switches to a control's own menu, or closes its own", () => {
+    const s = screen();
+    s.send({ control: "subtitles", type: "press" });
+    s.send({ control: "audio", type: "press" });
+    expect(s.view().menu).toEqual({ name: "audio" });
+    s.send({ control: "audio", type: "press" });
+    expect(s.view().menu).toBeUndefined();
+  });
+});
+
+describe("only a picture that fills the screen rests", () => {
+  it.each(["window", "portrait"] as const)("never rests in the %s layout", (layout) => {
+    const s = screen({ layout });
+    expect(s.view().nextAt).toBeNull();
+    s.wait(60_000);
+    expect(s.view().awake).toBe(true);
+  });
+
+  it.each(["full", "tv", "landscape"] as const)("rests in the %s layout", (layout) => {
+    const s = screen({ layout });
+    s.wait(WATCH_REST_MS);
+    expect(s.view().awake).toBe(false);
+  });
+});
+
+describe("only a playing picture pauses", () => {
+  it.each(["tuning", "covered"] as const)("refuses Space and a click while %s", (picture) => {
+    const s = screen();
+    s.send({ picture, type: "picture" });
+    s.key(" ");
+    s.send({ type: "pictureClick" });
+    expect(s.requests).toEqual([]);
+    expect(s.view().paused).toBe(false);
+    s.send({ picture: "playing", type: "picture" });
+    s.key(" ");
+    expect(s.requests).toEqual([{ type: "pause" }]);
+  });
+
+  it("still resumes a pause that a cover came over, and the picture's news wakes nothing", () => {
+    const s = screen();
+    s.key(" ", 0);
+    s.send({ picture: "covered", type: "picture" }, 1000);
+    expect(s.state.activeAt).toBe(0);
+    s.key(" ", 2000);
+    expect(s.requests.at(-1)).toEqual({ type: "resume" });
+  });
+});
+
+describe("what holds the screen awake", () => {
+  it("lets go of the pointer and focus on the lower third when the list takes its place", () => {
+    const s = screen();
+    s.send({ held: true, type: "pointerHold" });
+    s.send({ control: "live", type: "focus" });
+    s.key("/");
+    expect(s.state).toMatchObject({ focus: undefined, pointerHeld: false });
+    s.key("Escape");
+    s.key("Escape");
+    expect(s.view().listOpen).toBe(false);
+    s.wait(WATCH_REST_MS);
+    expect(s.view().awake).toBe(false);
+  });
+
+  it("closes the list and any menu on a change of layout", () => {
+    const s = screen();
+    s.send({ control: "channels", type: "press" });
+    s.key("c");
+    s.send({ layout: "window", type: "layout" });
+    expect(s.view()).toMatchObject({ listOpen: false, menu: undefined });
+  });
+});
+
+describe("digits and tunes", () => {
+  it("commits digits already due before a late event", () => {
+    const s = screen();
+    s.key("4", 0);
+    s.key("2", 2000);
+    expect(s.tunes()).toEqual(["ch-4"]);
+    expect(s.view().digits?.typed).toBe("2");
+  });
+
+  it("lets a flip win over typed digits, which are dropped", () => {
+    const s = screen();
+    s.key("1");
+    s.key("1");
+    s.key("ArrowDown");
+    s.wait(WATCH_DIGITS_MS * 2);
+    expect(s.tunes()).toEqual(["ch-2"]);
+    expect(s.view().digits).toBeUndefined();
+  });
+
+  it("returns to live on any tune", () => {
+    const s = screen();
+    s.key(" ", 0);
+    s.key(" ", 30_000);
+    expect(s.view().behindSeconds).toBe(30);
+    s.key("ArrowDown");
+    expect(s.view()).toMatchObject({ behindSeconds: 0, paused: false });
+  });
+
+  it("changes nothing on an echo of the channel on screen", () => {
+    const s = screen();
+    s.key("ArrowDown", 0);
+    const before = s.state;
+    s.send({ channelId: "ch-2", type: "tuned" }, 3000);
+    expect(s.state).toBe(before);
+    expect(s.requests).toEqual([{ channelId: "ch-2", type: "tune" }]);
   });
 });
 

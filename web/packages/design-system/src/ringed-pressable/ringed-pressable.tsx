@@ -1,4 +1,4 @@
-import type { ReactNode, Ref } from "react";
+import { type ReactNode, type Ref, useEffect, useRef } from "react";
 import { type GestureResponderEvent, Platform, Pressable, type ViewStyle } from "react-native";
 
 import { Surface } from "../primitives";
@@ -44,6 +44,11 @@ interface RingedPressableProps {
   on?: boolean;
   onBlur?: () => void;
   onFocus?: () => void;
+  /**
+   * The keyboard or remote focus came (`true`) or went: the amber ring's coming and going. Focus a
+   * pointer gave never reports, and a pointer press on a control that holds it reports `false`.
+   */
+  onKeyboardFocus?: (focused: boolean) => void;
   /** The press, with where it came from: a pointer's carries a place, a key's does not. */
   onPress?: ((event: GestureResponderEvent) => void) | undefined;
   ref?: Ref<RingedPressableHandle>;
@@ -79,6 +84,7 @@ const RingedPressable = ({
   onFocus,
   onHoverIn,
   onHoverOut,
+  onKeyboardFocus,
   onMouseDown,
   onPress,
   ref,
@@ -101,6 +107,23 @@ const RingedPressable = ({
   // A caller that says the control is not highlighted takes the pointer's plain ring away too.
   const ring = highlighted === false && drawn === "contentPrimary" ? "transparent" : drawn;
   const start = align === "start";
+
+  // Reported after the commit, and once more as `false` if the control leaves while it holds it.
+  const keyboard = drawn === "actionFocus";
+  const reported = useRef(false);
+  const report = useRef(onKeyboardFocus);
+  report.current = onKeyboardFocus;
+  useEffect(() => {
+    if (reported.current === keyboard) return;
+    reported.current = keyboard;
+    report.current?.(keyboard);
+  });
+  useEffect(
+    () => () => {
+      if (reported.current) report.current?.(false);
+    },
+    [],
+  );
 
   const control = (
     <Pressable

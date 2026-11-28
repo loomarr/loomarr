@@ -39,7 +39,7 @@ const tunes = () =>
   requests.mock.calls.flatMap(([request]) => (request.type === "tune" ? [request.channelId] : []));
 
 // The caller's part: the model, the document's keys, and slots for a menu.
-const Harness = ({ hintSeen = true }: { hintSeen?: boolean }) => {
+const Harness = ({ cover = false, hintSeen = true }: { cover?: boolean; hintSeen?: boolean }) => {
   const model = useWatchScreen({ hintSeen, layout: "full", lineup, onRequest: requests, watchedId: "ch-1" });
   const { send } = model;
   useEffect(() => {
@@ -63,6 +63,7 @@ const Harness = ({ hintSeen = true }: { hintSeen?: boolean }) => {
     <WatchScreen
       layout="full"
       model={model}
+      cover={cover ? <Text>Off air</Text> : undefined}
       picture={<Text>picture</Text>}
       programme={(channel) => ({
         kind: "on",
@@ -83,6 +84,74 @@ const key = (name: string, target: Element = document.activeElement ?? document.
   fireEvent.keyDown(target, { key: name });
 const listbox = () => screen.queryByRole("listbox", { name: "Channels" });
 const channelsControl = () => screen.getByRole("button", { name: "Channels" });
+
+// A browser's answer for focus that follows a click, programmatic focus included: not the keyboard's.
+const pointerFocus = () => {
+  Element.prototype.matches = new Proxy(nativeMatches, {
+    apply: (original, element, args: [string]) =>
+      args[0] === ":focus-visible" ? false : Reflect.apply(original, element, args),
+  });
+};
+
+// A click as a browser gives it: the pointer goes down, the control takes focus, the press lands.
+const clickWithFocus = (element: HTMLElement) => {
+  fireEvent.pointerDown(element, { pointerType: "mouse" });
+  act(() => element.focus());
+  fireEvent.click(element);
+};
+
+describe("WatchScreen at rest", () => {
+  it("rests after a click on Mute and the pointer moving onto the picture", async () => {
+    vi.useFakeTimers();
+    pointerFocus();
+    renderUi(<Harness hintSeen={false} />);
+    clickWithFocus(screen.getByRole("button", { name: "Mute (M)" }));
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Mute (M)");
+    expect(requests).toHaveBeenLastCalledWith({ type: "mute" });
+    fireEvent.pointerLeave(screen.getByTestId("watch-quiet-row"));
+    fireEvent.pointerMove(screen.getByTestId("watch-picture"));
+    act(() => {
+      vi.advanceTimersByTime(6000);
+    });
+    expect(screen.queryByRole("note")).toBeNull();
+    requests.mockClear();
+  });
+
+  it("rests after Channels opens the list and a click on the picture closes it", async () => {
+    vi.useFakeTimers();
+    pointerFocus();
+    renderUi(<Harness hintSeen={false} />);
+    clickWithFocus(channelsControl());
+    expect(listbox()).not.toBeNull();
+    fireEvent.pointerLeave(screen.getByTestId("watch-quiet-row"));
+    fireEvent.click(screen.getByTestId("watch-picture").firstElementChild as Element);
+    expect(listbox()).toBeNull();
+    expect(document.activeElement).toBe(channelsControl());
+    act(() => {
+      vi.advanceTimersByTime(6000);
+    });
+    expect(screen.queryByRole("note")).toBeNull();
+    requests.mockClear();
+  });
+
+  it("holds awake while the keyboard holds a control", async () => {
+    vi.useFakeTimers();
+    keyboardFocus();
+    renderUi(<Harness hintSeen={false} />);
+    act(() => channelsControl().focus());
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(screen.getByRole("note")).toBeTruthy();
+  });
+
+  it("refuses to pause under a cover", () => {
+    renderUi(<Harness cover />);
+    fireEvent.click(screen.getByTestId("watch-picture").firstElementChild as Element);
+    key(" ", document.body);
+    expect(requests).not.toHaveBeenCalled();
+  });
+});
 
 describe("WatchScreen", () => {
   it("flips on Up and Down at once and shows only the lower third", () => {

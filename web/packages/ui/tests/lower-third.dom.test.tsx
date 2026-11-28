@@ -232,13 +232,17 @@ describe("LowerThird in a screen's arrangement", () => {
     expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 
-  it("says when Go live takes and lets go of focus", () => {
+  it("says when Go live takes and lets go of the keyboard's focus, and never a click's", async () => {
     const onGoLiveFocus = vi.fn();
     third({ onGoLiveFocus, state: behind });
     const goLive = screen.getByRole("button", { name: "Go live" });
-    goLive.focus();
-    goLive.blur();
+    await userEvent.click(goLive);
+    expect(onGoLiveFocus).not.toHaveBeenCalled();
+    // A key on the clicked control brings its ring, and Tab takes it away.
+    await userEvent.tab();
     expect(onGoLiveFocus.mock.calls).toEqual([[true], [false]]);
+    await userEvent.tab({ shift: true });
+    expect(onGoLiveFocus).toHaveBeenLastCalledWith(true);
   });
 
   it("names Go live's key, End, in its tooltip on a desktop", async () => {

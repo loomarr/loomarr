@@ -136,6 +136,18 @@ describe("QuietRow", () => {
     expect(onFocusKey.mock.calls).toEqual([["channels"], [undefined], ["guide"], [undefined]]);
   });
 
+  it("says nothing of focus a click gave, and keeps the control said when moving left", async () => {
+    const onFocusKey = vi.fn();
+    row({ onFocusKey });
+    await userEvent.click(screen.getByRole("button", { name: "Mute (M)" }));
+    expect(onFocusKey).not.toHaveBeenCalled();
+    keyboardFocus();
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(onFocusKey).toHaveBeenLastCalledWith("audio");
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(onFocusKey).toHaveBeenLastCalledWith("subtitles");
+  });
+
   it("names an icon in a tooltip with its key on a desktop", async () => {
     row();
     await userEvent.hover(screen.getByRole("button", { name: "Subtitles (C)" }));

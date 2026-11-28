@@ -35,7 +35,7 @@ interface LowerThirdProps {
    * head of the quiet row (`QuietRow`'s `focusHead`).
    */
   onGoLiveDropped?: () => void;
-  /** Go live took focus (`true`) or let it go. */
+  /** Go live took the keyboard's or the remote's focus (`true`), or let it go. A pointer's is not said. */
   onGoLiveFocus?: (focused: boolean) => void;
   /**
    * Over the picture the lower third stands on a scrim of its own. A screen that draws one scrim
@@ -204,12 +204,11 @@ const LowerThird = ({
                 faceHeight={28}
                 onBlur={() => {
                   goLiveFocused.current = false;
-                  onGoLiveFocus?.(false);
                 }}
                 onFocus={() => {
                   goLiveFocused.current = true;
-                  onGoLiveFocus?.(true);
                 }}
+                {...(onGoLiveFocus ? { onKeyboardFocus: onGoLiveFocus } : {})}
                 onPress={onGoLive}
                 size={touch ? 44 : 28}
                 // A desktop's key for it: the live edge is the end of what has aired.

@@ -92,6 +92,12 @@ const WatchScreen = <C extends LineupChannel>({
   const watched = lineup.channels.find((channel) => channel.id === state.watchedId);
 
   // Focus goes where the model hands it: onto the list's cursor, or back to Channels.
+  // The model refuses a pause while there is no picture to hold.
+  const showing = cover ? "covered" : tune.cover === "cold" ? "tuning" : "playing";
+  useEffect(() => {
+    send({ picture: showing, type: "picture" });
+  }, [send, showing]);
+
   const handOff = state.handOff;
   // biome-ignore lint/correctness/useExhaustiveDependencies: each hand-off moves focus once
   useEffect(() => {

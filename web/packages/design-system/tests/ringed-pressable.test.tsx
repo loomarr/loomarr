@@ -55,6 +55,29 @@ describe("RingedPressable", () => {
     expect(screen.getByRole("tab", { name: "Pause" }).getAttribute("aria-selected")).toBe("false");
   });
 
+  it("reports keyboard focus alone, and lets it go on a pointer press and on leaving", async () => {
+    let keyboard = false;
+    Element.prototype.matches = new Proxy(nativeMatches, {
+      apply: (original, element, args: [string]) =>
+        args[0] === ":focus-visible" ? keyboard : Reflect.apply(original, element, args),
+    });
+    const onKeyboardFocus = vi.fn();
+    const view = draw({ onKeyboardFocus });
+    // Focus that followed a click is not the keyboard's.
+    await userEvent.click(pause());
+    expect(onKeyboardFocus).not.toHaveBeenCalled();
+    // A key on the control it holds brings the keyboard's ring.
+    keyboard = true;
+    await userEvent.keyboard("{Shift}");
+    expect(onKeyboardFocus.mock.calls).toEqual([[true]]);
+    fireEvent.pointerDown(pause());
+    expect(onKeyboardFocus.mock.calls).toEqual([[true], [false]]);
+    await userEvent.keyboard("{Shift}");
+    expect(onKeyboardFocus.mock.calls).toEqual([[true], [false], [true]]);
+    view.unmount();
+    expect(onKeyboardFocus.mock.calls).toEqual([[true], [false], [true], [false]]);
+  });
+
   it("is named by its words when no label is given", () => {
     render(
       <LoomarrProvider theme="dark">

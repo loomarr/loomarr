@@ -3,11 +3,18 @@
 // sends a `tick` at the view's `nextAt`. It starts no timer and touches no player.
 
 import type { ChannelLineup, LineupChannel } from "../channel-lineup";
-import { type ChannelListEvent, channelListReduce, createChannelListState } from "../channel-list";
+import {
+  type ChannelListEvent,
+  channelListReduce,
+  channelListView,
+  createChannelListState,
+} from "../channel-list";
 import type {
   WatchControl,
   WatchKeyInput,
+  WatchLayout,
   WatchMenuName,
+  WatchPlayback,
   WatchRequest,
   WatchScreenEvent,
   WatchScreenState,
@@ -22,6 +29,11 @@ const WATCH_REST_MS = 5000;
 const WATCH_DIGITS_MS = 1600;
 /** How many channels left the screen remembers. */
 const LEFT_LIMIT = 20;
+/** Two clicks on the picture this close together are a double click's. */
+const WATCH_DOUBLE_CLICK_MS = 500;
+
+/** Only where the picture fills the screen does anything rest: nothing covers it elsewhere. */
+const RESTS: ReadonlySet<WatchLayout> = new Set(["full", "landscape", "tv"]);
 
 const createWatchScreenState = ({
   at,
@@ -32,6 +44,7 @@ const createWatchScreenState = ({
 }: WatchScreenStateArgs): WatchScreenState => ({
   activeAt: at,
   behindMs: 0,
+  clicked: undefined,
   digits: undefined,
   focus: undefined,
   handOff: undefined,
@@ -43,6 +56,7 @@ const createWatchScreenState = ({
   menu: undefined,
   paused: false,
   pausedAt: undefined,
+  picture: "playing",
   pointerHeld: false,
   watchedId,
 });
@@ -95,8 +109,15 @@ const watchScreenReduce = <C extends LineupChannel>(
   lineup: ChannelLineup<C>,
 ): WatchScreenStep => {
   const { at } = event;
-  // Everything but the clock is activity, and wakes the screen.
-  const woken: WatchScreenState = event.type === "tick" ? state : { ...state, activeAt: at };
+  // Digits already due commit first, when an event comes before the tick that was due for them.
+  if (event.type !== "tick" && state.digits && at >= state.digits.commitAt) {
+    const due = watchScreenReduce(state, { at: state.digits.commitAt, type: "tick" }, lineup);
+    const after = watchScreenReduce(due.state, event, lineup);
+    return { requests: [...due.requests, ...after.requests], state: after.state };
+  }
+  // Everything but the clock and the picture is activity, and wakes the screen.
+  const woken: WatchScreenState =
+    event.type === "tick" || event.type === "picture" ? state : { ...state, activeAt: at };
   const stay = (next: WatchScreenState = woken): WatchScreenStep => ({ requests: [], state: next });
   const ask = (next: WatchScreenState, ...requests: WatchRequest[]): WatchScreenStep => ({
     requests,
@@ -125,18 +146,21 @@ const watchScreenReduce = <C extends LineupChannel>(
   const tuneTo = (s: WatchScreenState, channelId: string): WatchScreenStep =>
     channelId === s.watchedId ? stay(s) : ask(changed(s, channelId), { channelId, type: "tune" });
 
+  // Nothing pauses while tuning in or under a cover: there is no picture to hold.
   const togglePause = (s: WatchScreenState): WatchScreenStep =>
-    s.paused
-      ? ask(
-          {
-            ...s,
-            behindMs: s.behindMs + Math.max(0, at - (s.pausedAt ?? at)),
-            paused: false,
-            pausedAt: undefined,
-          },
-          { type: "resume" },
-        )
-      : ask({ ...s, paused: true, pausedAt: at }, { type: "pause" });
+    !s.paused && s.picture !== "playing"
+      ? stay(s)
+      : s.paused
+        ? ask(
+            {
+              ...s,
+              behindMs: s.behindMs + Math.max(0, at - (s.pausedAt ?? at)),
+              paused: false,
+              pausedAt: undefined,
+            },
+            { type: "resume" },
+          )
+        : ask({ ...s, paused: true, pausedAt: at }, { type: "pause" });
 
   const goLive = (s: WatchScreenState): WatchScreenStep =>
     s.paused || s.behindMs > 0
@@ -164,10 +188,15 @@ const watchScreenReduce = <C extends LineupChannel>(
     return step.tune ? tuneTo(next, step.tune) : stay(next);
   };
 
+  // The open list takes the lower third's place, which leaves with no pointer-leave or blur, so
+  // what the pointer and focus held there is let go here.
+  const opened = (s: WatchScreenState): WatchScreenState =>
+    s.list.open ? s : { ...s, focus: undefined, pointerHeld: false };
+
   const openList = (s: WatchScreenState, fromControl: boolean): WatchScreenStep => ({
     requests: [],
     state: {
-      ...s,
+      ...opened(s),
       list: channelListReduce(s.list, { type: "open" }, lineup).state,
       listFromControl: fromControl,
     },
@@ -177,7 +206,7 @@ const watchScreenReduce = <C extends LineupChannel>(
     s.layout === "tv"
       ? stay(s)
       : stay({
-          ...s,
+          ...opened(s),
           list: channelListReduce(s.list, { query: "", type: "find" }, lineup).state,
           listFromControl: s.list.open ? s.listFromControl : false,
         });
@@ -201,11 +230,19 @@ const watchScreenReduce = <C extends LineupChannel>(
     return tuneTo(s, last.id);
   };
 
+  // A flip steps through the rows the list shows for the group in play, so Down is the row below:
+  // number order, with the watched channel a stop in its place. Recent is newest first, which is
+  // no order to flip in, so it flips through every channel in number order.
   const flip = (s: WatchScreenState, direction: -1 | 1): WatchScreenStep => {
-    // Recent is newest first, which is no order to flip in: it flips in number order.
     const group = s.list.group === "recent" ? "all" : s.list.group;
-    const to = lineup.neighbour(s.watchedId, direction, group);
-    return to ? tuneTo(s, to.id) : stay(s);
+    const { rows } = channelListView({ ...s.list, group, query: null }, lineup);
+    const at = rows.findIndex((channel) => channel.id === s.watchedId);
+    const start = at >= 0 ? at : direction > 0 ? -1 : rows.length;
+    for (let step = 1; step <= rows.length; step += 1) {
+      const candidate = rows[(((start + direction * step) % rows.length) + rows.length) % rows.length];
+      if (candidate?.playable && candidate.id !== s.watchedId) return tuneTo(s, candidate.id);
+    }
+    return stay(s);
   };
 
   // One step back: a menu's page, the menu, typed digits, then the list's own steps, then full screen.
@@ -218,6 +255,10 @@ const watchScreenReduce = <C extends LineupChannel>(
   };
 
   const press = (s: WatchScreenState, control: WatchControl): WatchScreenStep => {
+    // A press away from an open menu closes it and does nothing else, unless the control opens a
+    // menu itself: then it switches to its own, or closes its own.
+    const opensMenu = control === "audio" || control === "more" || control === "subtitles";
+    if (s.menu && !opensMenu) return stay({ ...s, menu: undefined });
     switch (control) {
       case "channels":
         return s.list.open ? listStep(s, { type: "close" }) : openList(s, true);
@@ -304,14 +345,33 @@ const watchScreenReduce = <C extends LineupChannel>(
       return stay({ ...woken, focus: event.control });
     case "press":
       return press(woken, event.control);
-    case "pictureClick":
+    case "pictureClick": {
+      // The playback before the first of a quick pair, which a double click goes back to.
+      const pair =
+        woken.clicked && at - woken.clicked.at <= WATCH_DOUBLE_CLICK_MS ? woken.clicked : undefined;
+      const before: WatchPlayback = pair?.before ?? {
+        behindMs: woken.behindMs,
+        paused: woken.paused,
+        pausedAt: woken.pausedAt,
+      };
+      const s = { ...woken, clicked: { at, before, firstAt: pair?.firstAt ?? at } };
       // A click away from an open layer closes it and does nothing else.
-      if (woken.menu) return stay({ ...woken, menu: undefined });
-      if (woken.list.open) return listStep(woken, { type: "close" });
-      return togglePause(woken);
-    case "pictureDoubleClick":
-      // Its two clicks paused and resumed already, so it leaves the picture as it was.
-      return fullScreen(woken);
+      if (s.menu) return stay({ ...s, menu: undefined });
+      if (s.list.open) return listStep(s, { type: "close" });
+      return togglePause(s);
+    }
+    case "pictureDoubleClick": {
+      // A double click is full screen alone: whatever its clicks did, the picture plays on, and
+      // the moment they held it counts for nothing behind live.
+      const before = woken.clicked?.before;
+      const firstAt = woken.clicked?.firstAt ?? at;
+      const behindMs = before
+        ? before.behindMs + (before.paused ? Math.max(0, firstAt - (before.pausedAt ?? firstAt)) : 0)
+        : woken.behindMs;
+      const next = { ...woken, behindMs, clicked: undefined, paused: false, pausedAt: undefined };
+      const fill = fullScreen(next);
+      return woken.paused ? { ...fill, requests: [...fill.requests, { type: "resume" }] } : fill;
+    }
     case "list":
       return listStep(woken, event.event);
     case "menuPage":
@@ -321,13 +381,21 @@ const watchScreenReduce = <C extends LineupChannel>(
     case "back":
       return back(woken);
     case "tuned":
-      return stay(event.channelId === woken.watchedId ? woken : changed(woken, event.channelId));
-    case "layout":
+      // An echo of the channel on screen is no change, and wakes nothing.
+      return stay(event.channelId === state.watchedId ? state : changed(woken, event.channelId));
+    case "layout": {
+      // A new arrangement starts bare: the list and any menu close, as the prototype's do.
+      const list = channelListReduce(woken.list, { type: "close" }, lineup).state;
       return stay({
         ...woken,
         layout: event.layout,
-        list: { ...woken.list, television: event.layout === "tv" },
+        list: { ...list, television: event.layout === "tv" },
+        listFromControl: false,
+        menu: undefined,
       });
+    }
+    case "picture":
+      return stay({ ...state, picture: event.picture });
     case "key":
       return key(woken, event.key);
   }
@@ -339,7 +407,7 @@ const watchScreenView = <C extends LineupChannel>(
   lineup: ChannelLineup<C>,
   now: number,
 ): WatchScreenView<C> => {
-  const holding = held(state);
+  const holding = held(state) || !RESTS.has(state.layout);
   const restAt = state.activeAt + WATCH_REST_MS;
   const awake = holding || now < restAt;
   const times = [state.digits?.commitAt, !holding && awake ? restAt : undefined].filter(
@@ -362,6 +430,7 @@ const watchScreenView = <C extends LineupChannel>(
 export {
   createWatchScreenState,
   WATCH_DIGITS_MS,
+  WATCH_DOUBLE_CLICK_MS,
   WATCH_REST_MS,
   watchKeyOf,
   watchScreenReduce,

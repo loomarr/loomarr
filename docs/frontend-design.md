@@ -613,30 +613,44 @@ the picture) is built. A desktop window, a television and a phone come in #4732,
   third and the quiet row both stand; and, only while the list is open, one side scrim down the
   leading edge, wide enough for the list and fading out past it. The lower third and the quiet row
   draw no ink of their own here.
-- **Flipping tunes; the list looks.** Up and Down on the bare picture tune the next or previous
-  playable channel of the group in play at once and show only the lower third; they never open the
-  list. Channels opens the list, which owns the keys until it closes; opening it and moving through
+- **Flipping tunes; the list looks.** Up and Down on the bare picture tune at once and show only
+  the lower third; they never open the list. A flip steps through the rows the list shows for the
+  group in play: number order for All and Favourites, with the watched channel a stop in its number
+  place even when it is not in the group, and decade then number for By decade. It wraps at the ends
+  and passes channels that cannot be played; from Recent it steps through every channel in number
+  order. Channels opens the list, which owns the keys until it closes; opening it and moving through
   it never tunes. OK or a click tunes.
-- **Only the bare picture goes quiet.** After 5 seconds with nothing open, no control focused, no
-  pointer on the controls, not paused and no digits pending, the lower third, the quiet row and the
-  hint rest. A key or pointer movement wakes the screen, and the key that wakes it also does its job.
-  Nothing that holds focus, the pointer or an open layer goes quiet on a timer.
+- **Only the bare picture goes quiet**, and only where the picture fills the screen (full screen, a
+  television, a phone on its side); in a window and on an upright phone nothing covers the picture
+  and nothing rests. After 5 seconds with nothing open, no control holding keyboard or remote focus,
+  no pointer on the controls, not paused and no digits pending, the lower third, the quiet row and
+  the hint rest. Focus a pointer gave holds nothing. A key or pointer movement wakes the screen, and
+  the key that wakes it also does its job. Nothing that holds keyboard focus, the pointer or an open
+  layer goes quiet on a timer. Opening the list lets go of what the pointer and focus held on the
+  lower third, which the list takes the place of.
 - **Digits tune direct.** Typed digits (as many as the longest channel number has) replace the
-  numeral, commit on Enter or 1.6
-  seconds after the last, and Esc cancels them. A number with no channel says so and tunes nothing.
+  numeral, commit on Enter or 1.6 seconds after the last, and Esc cancels them. A number with no
+  channel says so and tunes nothing. Digits already due commit before any later event. Up or Down
+  while digits are typed flips, and the digits are dropped.
 - **Pause.** Space or a click on the picture pauses and resumes; resuming plays on behind live by the
-  time paused, and Go live returns to live. A double click on the picture toggles full screen and
-  leaves the picture playing or paused as it was. With the list open, a click on the picture closes
-  the list instead.
-- **Back goes one step**: a menu's inner page back to the menu, a menu closed, find closed, the list's
-  tabs back to the list, the list closed, typed digits cancelled; on the bare picture Esc leaves full
-  screen.
+  time paused, and Go live returns to live. Nothing pauses while tuning in or under a cover. Any tune
+  returns to live: it ends a pause and the time behind. A double click on the picture is full screen
+  alone: whatever its two clicks did, the picture plays on afterwards and the clicks add nothing
+  behind live. With the list open, a click on the picture closes the list instead.
+- **A press away from an open menu** closes it and does nothing else, unless the control opens a menu
+  itself: then it switches to its own menu, or closes its own. A change of layout closes the list and
+  any menu.
+- **Back goes one step**: a menu's inner page back to the menu, a menu closed, typed digits cancelled,
+  then the list's own steps (find closed, the tabs back to the list, the list closed); on the bare
+  picture Esc leaves full screen.
+- **A tune from outside** reaches the model as a `tuned` event; a caller never sends one to echo its
+  own tune request, and an echo of the channel on screen changes nothing.
 - **The first-run hint** shows until the first channel change and then not again in that session; the
   caller says whether it was seen before. It hides while the list is open and rests with the controls.
 - **Last channel** is the channel just left. When the lineup says it cannot be played, `L` tunes
   nothing and the screen says why.
 - **One amber ring** at any moment, on the quiet row, the lower third's Go live or the list's cursor;
-  the list's rows are `RingedPressable`, so a mouse click leaves no keyboard ring. With the list open,
+  the list's rows, tabs and buttons are `RingedPressable`, so a mouse click leaves no keyboard ring. With the list open,
   the cursor's fill stays visible on the pinned channel.
 - **Find** announces the result under its cursor through a polite live region: the search field has
   no `aria-activedescendant`, so the result cannot be carried by the field itself.

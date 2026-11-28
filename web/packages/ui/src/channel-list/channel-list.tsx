@@ -10,14 +10,7 @@ import {
   scrollBounds,
   scrollToShow,
 } from "@loomarr/core/channel-list";
-import {
-  decadeTint,
-  PressableRow,
-  RingedPressable,
-  Surface,
-  Text,
-  VisuallyHidden,
-} from "@loomarr/design-system";
+import { decadeTint, RingedPressable, Surface, Text, VisuallyHidden } from "@loomarr/design-system";
 import {
   type ComponentProps,
   type ComponentRef,
@@ -482,11 +475,11 @@ const ChannelList = <C extends LineupChannel>({
         </Bare>
       </Bare>
       {view.notice && view.notice !== "empty-recent" ? (
-        <PressableRow inset={{ x: 8, y: 12 }} onPress={() => onEvent({ type: "showAll" })}>
+        <RingedPressable align="start" fill onPress={() => onEvent({ type: "showAll" })} size={44}>
           <Text textDecorationLine="underline" textRole="cardLabel">
             Show all channels
           </Text>
-        </PressableRow>
+        </RingedPressable>
       ) : null}
     </Bare>
   );

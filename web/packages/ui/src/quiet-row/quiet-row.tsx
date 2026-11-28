@@ -41,7 +41,10 @@ interface QuietRowProps {
   /** The control whose menu is open. */
   openKey?: QuietRowKey;
   onPress: (key: QuietRowKey) => void;
-  /** A control took focus, or focus left the row (`undefined`). */
+  /**
+   * A control took the keyboard's or the remote's focus, or that focus left the row (`undefined`).
+   * Focus a pointer gave is not said.
+   */
   onFocusKey?: (key: QuietRowKey | undefined) => void;
   /**
    * Over the picture the row stands on a foot scrim of its own. A screen that draws one scrim under
@@ -112,6 +115,7 @@ const QuietRow = (props: QuietRowProps) => {
   const { device, group, listOpen = false, onFocusKey, onPress, openKey, ownInk = true, ref } = props;
   const controls = useRef(new Map<QuietRowKey, RingedPressableHandle>());
   const focusedKey = useRef<QuietRowKey | undefined>(undefined);
+  const keyboardKey = useRef<QuietRowKey | undefined>(undefined);
   const [stopKey, setStopKey] = useState<QuietRowKey | undefined>(undefined);
   const focusKey = (key: QuietRowKey) => focusHost(controls.current.get(key));
   const keys = keysFor(props);
@@ -153,13 +157,21 @@ const QuietRow = (props: QuietRowProps) => {
   const shared = (key: QuietRowKey) => ({
     onBlur: () => {
       if (focusedKey.current === key) focusedKey.current = undefined;
-      // Focus moving along the row blurs one control before the next takes it.
-      onFocusKey?.(undefined);
     },
     onFocus: () => {
       focusedKey.current = key;
       setStopKey(key);
-      onFocusKey?.(key);
+    },
+    // Only the keyboard's and the remote's focus is said; a control that loses it says so only if
+    // it is still the one said, since the next may take it first.
+    onKeyboardFocus: (focused: boolean) => {
+      if (focused) {
+        keyboardKey.current = key;
+        onFocusKey?.(key);
+      } else if (keyboardKey.current === key) {
+        keyboardKey.current = undefined;
+        onFocusKey?.(undefined);
+      }
     },
     onPress: () => onPress(key),
     ref: (node: RingedPressableHandle | null) => {
