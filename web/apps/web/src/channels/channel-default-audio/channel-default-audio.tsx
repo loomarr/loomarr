@@ -3,7 +3,7 @@ import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import { unwrap } from "@loomarr/api/unwrap";
 import { AUTO_SENTINEL, audioOptions, withSaved } from "@loomarr/core/channel-audio";
-import { ChannelAudioSection } from "@loomarr/ui";
+import { ChannelAudioSection } from "@loomarr/ui/channels";
 
 // The channel's default audio language (#2088), on Channel info beside the On-screen logo: admin-only,
 // autosaving `policy.playout.audioLanguage` through the page's one writer like the other fields. It

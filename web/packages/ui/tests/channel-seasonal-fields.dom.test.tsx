@@ -3,7 +3,7 @@
 import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ChannelSeasonalFields, type ChannelSeasonalFieldsProps } from "../index";
+import { ChannelSeasonalFields, type ChannelSeasonalFieldsProps } from "../channels";
 
 afterEach(cleanup);
 
