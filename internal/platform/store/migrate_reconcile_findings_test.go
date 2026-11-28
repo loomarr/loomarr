@@ -32,13 +32,13 @@ type findingsMigrationCase struct {
 }
 
 const (
-	appliedJSON   = `[{"kind":"episodeNoRepeat","from":"168h0m0s","to":"84h0m0s"},{"kind":"seriesMinGap","from":"2h0m0s","to":"0s"}]`
+	appliedJSON = `[{"kind":"episodeNoRepeat","from":"168h0m0s","to":"84h0m0s"},{"kind":"seriesMinGap","from":"2h0m0s","to":"0s"}]`
 	// The first title is as Go's encoder writes "Pots & Pans <Restored>": with &, < and > escaped.
 	unairableJSON = `[{"key":"movie:tmdb:90000603","title":"Pots ` + escAmp + ` Pans ` + escLT + `Restored` + escGT +
 		`","reason":"not_in_library"},{"key":"series:tvdb:90000007","title":"Café","reason":"over_ceiling"}]`
 	escAmp, escLT, escGT = `\` + `u0026`, `\` + `u003c`, `\` + `u003e`
-	decidedJSON   = `"scope":{"dates":{"movieRelease":[{"from":1980,"to":1989}]},"collections":["comedy"]},"audience":{"ceiling":"PG-13","allowUnrated":true},"separation":{"seriesMinGap":"2h0m0s"},"ordering":"syndication"`
-	operatorJSON  = `"filler":{"pins":["clip_1"]},"window":"168h0m0s","growth":{"keep":true,"declined":["movie:tmdb:90000009"]}`
+	decidedJSON          = `"scope":{"dates":{"movieRelease":[{"from":1980,"to":1989}]},"collections":["comedy"]},"audience":{"ceiling":"PG-13","allowUnrated":true},"separation":{"seriesMinGap":"2h0m0s"},"ordering":"syndication"`
+	operatorJSON         = `"filler":{"pins":["clip_1"]},"window":"168h0m0s","growth":{"keep":true,"declined":["movie:tmdb:90000009"]}`
 )
 
 var findingsMigrationCases = []findingsMigrationCase{
