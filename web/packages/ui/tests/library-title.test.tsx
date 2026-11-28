@@ -45,7 +45,7 @@ const MOVIE: LibraryTitleDetail = {
       picture: { width: 3840, height: 1600, hdr: true },
       audioChannels: 6,
       subtitles: [{ language: "eng" }, { language: "eng" }, {}],
-      extra: false,
+      state: "plays",
     },
   ],
   unplayable: 0,
@@ -218,7 +218,7 @@ describe("LibraryTitle", () => {
       ...MOVIE.files[0],
       path: "/media/movies/Paper Kites (1996)/Paper Kites DVD.mkv",
       size: 4_300_000_000,
-      extra: true,
+      state: "extra",
     } as LibraryTitleDetail["files"][number];
     const single = render(MOVIE);
     expect(single.host.textContent).not.toContain("An extra copy");
@@ -487,7 +487,11 @@ describe("LibraryTitle", () => {
   });
 
   it("adds the folder to a file's name only when two files share it", async () => {
-    const at = (path: string, extra: boolean) => ({ ...READ_FILE, path, extra });
+    const at = (path: string, extra: boolean) => ({
+      ...READ_FILE,
+      path,
+      state: extra ? ("extra" as const) : ("plays" as const),
+    });
     const { host, button, cleanup } = render({
       ...MOVIE,
       files: [
@@ -642,7 +646,7 @@ describe("LibraryTitle", () => {
       ...MOVIE.files[0],
       path: "/media/movies/Paper Kites (1996)/copy.mkv",
       size: 4_300_000_000,
-      extra: true,
+      state: "extra",
     } as LibraryTitleDetail["files"][number];
     const { host, props, cleanup } = render(
       { ...MOVIE, files: [...MOVIE.files, extra], unplayable: 1 },

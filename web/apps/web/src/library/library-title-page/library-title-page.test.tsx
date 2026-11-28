@@ -51,7 +51,7 @@ const echo = {
       size: 1_000_000,
       ready: true,
       subtitles: [],
-      extra: false,
+      state: "plays" as const,
       streams: [],
       chapters: [],
     },
@@ -371,7 +371,7 @@ describe("LibraryTitlePage", () => {
       size: 500_000,
       ready: true,
       subtitles: [],
-      extra: true,
+      state: "extra" as const,
       streams: [],
       chapters: [],
     };
