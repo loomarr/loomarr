@@ -397,9 +397,9 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 	res := SyncResult{Total: len(raw)}
 	keep := make([]string, 0, len(raw))
 	for _, rc := range raw {
-		// ⚠ IDENTITY IS rc.ID (the content hash), NOT rc.Path — since V38c. Keying on the path
-		// here survived the re-key unnoticed because `DirSource` fills both and today they agree
-		// for every clip under one folder. The moment two watched folders each hold `ads/coke.mp4`
+		// ⚠ IDENTITY IS rc.ID (the content hash), NOT rc.Path (§10 V38c). Keying on the path
+		// here is easy to miss, because `DirSource` fills both and they agree for every clip under
+		// one folder. The moment two watched folders each hold `ads/coke.mp4`
 		// the path stops being unique, one clip overwrites the other, and `keep` prunes a live
 		// row — which is the exact failure V38c moved identity off the path to prevent.
 		if inferior[rc.ID] {

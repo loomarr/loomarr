@@ -46,12 +46,12 @@ const (
 // with a readable duration"), and a 400ms fade artefact must still be dropped there — that is what
 // `MinSegmentMs` is for, and it does not become configurable.
 //
-// ⚠ **Why the catalog floor belongs at DETECTION and not only in the gate (§10 V34, V54).** It was
-// only in the V43 gate, which returned on the first failing segment — so one sub-floor fragment
-// sank the whole reel. A real commercial compilation is *made of* such fragments: measured
-// 2026-08-11 on an 82-segment archive.org reel, **39 were under the 10s floor**, shortest 3.1s
-// (station IDs, inter-ad bumpers). Auto-split had therefore never fired on any real reel, and the
-// V54 grounder below the floor check in that same loop could never be reached. Dropping them here
+// ⚠ **Why the catalog floor belongs at DETECTION and not only in the gate (§10 V34, V54).** A gate
+// that returns on the first failing segment lets one sub-floor fragment sink the whole reel, and a
+// real commercial compilation is *made of* such fragments: on a measured 82-segment archive.org
+// reel, **39 were under the 10s floor**, shortest 3.1s (station IDs, inter-ad bumpers). Auto-split
+// would never fire on a real reel, and a grounder below the floor check in the same loop would
+// never be reached. Dropping them here
 // costs nothing that was not already lost: `filler.min_duration` is a hard reject at the scan
 // boundary, so such a segment would be cut, written, spawned and then thrown away.
 type segmentFloor int64 // milliseconds

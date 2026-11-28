@@ -47,8 +47,8 @@ type FillerSource struct {
 	// Label is operator-facing; empty falls back to the URI at render time.
 	Label string
 	// License is what the source declared. ⚠ EMPTY MEANS UNKNOWN, never "public domain" —
-	// ~92% of archive.org items declare none (667 of 8362 measured in classic_tv_commercials,
-	// 2026-07-31), so absence is the common case and carries no permission.
+	// ~92% of archive.org items declare none (667 of 8362 measured in classic_tv_commercials),
+	// so absence is the common case and carries no permission.
 	License string
 	// LastFetchedAt is zero when never fetched, which renders as "never" rather than as an
 	// epoch date nobody meant.

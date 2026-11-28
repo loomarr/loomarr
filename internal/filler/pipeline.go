@@ -523,7 +523,7 @@ func (p *Pipeline) enrolMissing(ctx context.Context) (int, error) {
 
 // retireRemoved ends a running row whose clip was taken out of rotation while it ran. Publication
 // requires a clip that is not removed, so the finish rung refused it as stale on every attempt and
-// rested it a month at a time, forever (2026-11-18: one row, removed 10-31, parked to 12-18).
+// rested it a month at a time, forever, because a removed clip never stops being removed.
 // Nothing on the conveyor can bring it back, so it retires like a clip gone from the catalog.
 func (p *Pipeline) retireRemoved(ctx context.Context, row pipelinestate.ClipPipeline, clip clipstore.Clip) (pipelinestate.Disposition, error) {
 	row.Disposition = pipelinestate.DispositionRejected

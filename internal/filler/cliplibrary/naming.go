@@ -137,8 +137,8 @@ func quoteExcerpt(words []string, sentenceCase bool) string {
 // ("Widgetmax Ad 1991"), and every other recorded source shows.
 //
 // ⚠ The shape test below is ONLY the fallback for a name whose provenance was never recorded:
-// a row migration 00134 could not classify and no scan has relabelled, which a split segment cut
-// before #1988 stays for good. It withholds a name that carries a clip extension, is an opaque
+// a row migration 00134 could not classify and no scan has relabelled, which a split segment with
+// no sidecar provenance stays for good (#1988). It withholds a name that carries a clip extension, is an opaque
 // content hash, contains an underscore, or is one lowercase token joined by hyphens, dots or path
 // separators ("commercial-sneakers-1993"). A spaced or capitalised stem passes it, which is why
 // provenance replaced it everywhere provenance exists.

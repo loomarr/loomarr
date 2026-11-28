@@ -83,7 +83,7 @@ func RecoverAcquisitionArtifacts(
 				}
 			}
 			if artifact.State == acquisition.ArtifactRepair && isSidecarExistsRepair(artifact.RepairReason) {
-				// Publication used to refuse its own earlier sidecar. Re-drive the row through the
+				// A row can be stuck on a refusal of its own earlier sidecar. Re-drive it through the
 				// staged flow; a real conflict comes back as a settled repair that no longer has
 				// this shape, so it is not retried again.
 				artifact.State = acquisition.ArtifactStaged

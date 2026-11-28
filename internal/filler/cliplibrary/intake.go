@@ -87,7 +87,7 @@ func TakeInFrom(ctx context.Context, watchDir, clipDir string, fetched bool, sou
 	// ⚠ **The CLIP FOLDER is drained too, not only the watch folder** — and this is the case that
 	// matters most, because it is what every existing install does. `FILLER_DIR` has always been
 	// documented as *the* drop-folder: an operator copies `Frosted Flakes 1993.mp4` straight into
-	// it, and did so for every release before V38c.
+	// it.
 	//
 	// Without this, such a file is scanned, catalogued at its arrival path, and then PRUNED in the
 	// same pass — because V38c's `ClipPath` allow-list only accepts `<hash>.<ext>` or

@@ -292,7 +292,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe tools.Prober, prob
 // grounded, the only kind #1452 wrote. Without a DisplayName the name is the filename stem or the
 // sidecar's originalName, which is the filename the clip arrived with. The exceptions say so in
 // NameProvenance ("unknown", written when the transcode seeded originalName from a catalogue name
-// of unrecorded origin), or are a split segment cut before #1988: the splitter put the segment's
+// of unrecorded origin), or are a split segment whose sidecar carries no name provenance (#1988): it holds the segment's
 // name in originalName without saying whether a chapter, a model, an operator or the fallback
 // produced it. Both stay unknown rather than guessed.
 func scannedNameSource(tags asset.SidecarTags, state asset.SidecarReadState) clips.NameSource {
@@ -681,7 +681,7 @@ func (d DirSource) ScanLocalClips(ctx context.Context) (LocalScan, error) {
 // never fail over a missing optional file.
 //
 // ⚠ **Empty means UNKNOWN, never "public domain".** About 92% of Archive items carry no licence
-// at all (measured during the 2026-07-31 fixture capture), so absence is the common case and says
+// at all (measured when the fixtures were captured), so absence is the common case and says
 // nothing about permission. Callers render "unknown", never a reassuring default.
 func licenseBeside(mediaPath string) string {
 	raw, err := os.ReadFile(tools.SidecarPathFor(mediaPath))

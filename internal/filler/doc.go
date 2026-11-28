@@ -9,9 +9,7 @@
 // TunarrClipSource) — an install running internal playout with no Tunarr has a full
 // catalog. The MEDIA SERVER, however, IS one of the scan sources: `library` is a
 // source kind alongside `folder`, `youtube` and `archive`, read via
-// library.ListFillerClips. This comment claimed "the media server is not in the
-// filler path" until 2026-08-10, which had not been true since sources became
-// pluggable.
+// library.ListFillerClips.
 //
 // Pod assembly (filler/pod) is pure and SEEDED-DETERMINISTIC; see that package.
 // This domain only decides *what plays in the breaks*.

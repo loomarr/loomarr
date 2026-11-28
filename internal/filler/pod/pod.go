@@ -49,7 +49,7 @@ type AiringHistory struct {
 // first clip no earlier than its run-ahead before the break, which Settle covers.
 //
 // ⚠ Pure and in the domain (#1420) so one read of the history can serve every break of a guide
-// window: the cut used to live in the store query, which forced one query per break.
+// window; a cut made in the store query would force one query per break.
 func ExposuresBefore(h AiringHistory, before time.Time) map[string]Exposure {
 	out := map[string]Exposure{}
 	for _, a := range h.Airings {
@@ -131,11 +131,10 @@ type Pod struct {
 // internal playout hands `Path` to ffmpeg, Tunarr references `TunarrProgramID` in a
 // filler-list. One assembler, one seed, one pod — two ways to name the same clip.
 type Entry struct {
-	// Path is the clip's LOCATION under the clip folder — `a3/f9/<hash>.mp4` since V38c. "" for
+	// Path is the clip's LOCATION under the clip folder — `a3/f9/<hash>.mp4` (§10 V38c). "" for
 	// the embedded bumper card.
 	//
-	// ⚠ It used to be the identity as well ("relative to FILLER_DIR"), and this comment said so.
-	// Identity is the hash now (§10 V38c), and the two must not be confused HERE in particular:
+	// ⚠ Identity is the hash, not this path, and the two must not be confused HERE in particular:
 	// playout hands this straight to `ClipPath`, whose allow-list rejects anything that is not a
 	// hash or a shard path. Assembly filling this with a bare filename means every break resolves
 	// to nothing and the channel plays SILENCE — caught by playoutfiller_test, which is the only
@@ -257,16 +256,14 @@ type Policy struct {
 	// MinClipMs/MaxClipMs bound which clips are eligible (density, §10) — wired from
 	// `filler.min_clip_seconds`/`filler.max_clip_seconds` (§15, V51f).
 	//
-	// ⚠ **Until V51f these were set in TESTS ONLY, and that is what made `PoolReport.Eligible`
-	// a lie.** `durationEligible` therefore always returned true, so `Eligible` — which
-	// `coverage.go` headlines as "the number that surprises operators" — was arithmetically
-	// identical to `Commercials` for every install that has ever run. The pool strip printed the
-	// same number twice and presented the pair as a diagnosis.
+	// ⚠ **Production must wire these, or `PoolReport.Eligible` lies.** Unset, `durationEligible`
+	// always returns true, so `Eligible` — which `coverage.go` headlines as "the number that
+	// surprises operators" — equals `Commercials` and the pool strip presents one number twice as a
+	// diagnosis.
 	MinClipMs int64
 	MaxClipMs int64
 	// PodMax caps clips per pod (FILLER_POD_MAX, §15). 0 ⇒ a sane default (fillCommercials
-	// falls back to 4). Wired from the setting so preview and reconcile agree — previously
-	// the adapter hardcoded 32, ignoring the knob.
+	// falls back to 4). Wired from the setting so preview and reconcile agree.
 	PodMax int
 	// BreakDurationMs is the live global target for each break. A channel may override
 	// it through Selection; zero falls back to the documented 2 minute default (ResolveBreakDurationMs).
@@ -347,9 +344,9 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	}
 
 	// Return bumper, chosen NOW so its real length comes off the break before anything is
-	// placed. It used to be picked after the ads and appended only "if it still fits", so a break
-	// the ads filled to the brim lost its return bumper; a constant 12s reserve was a guess at
-	// two bumpers that held only when they happened to be 6s. Reserving the actual clip means the
+	// placed. Picked after the ads and appended only "if it still fits", it is lost from any break
+	// the ads fill to the brim; and a constant 12s reserve is a guess at two bumpers that holds only
+	// when both are 6s. Reserving the actual clip means the
 	// intro + ads + return bumper always sum to at most the break, and the ads give way — a
 	// shorter whole clip fills the remainder — rather than the bumper or the last ad's tail.
 	// It is only appended after the ads; `used` already keeps the ads off it.
@@ -364,8 +361,8 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 
 	// ⚠ **A break with ads beats a break with bumpers.** Reserving both bookends first means a
 	// break whose bumpers leave less room than the shortest ad (a 30s break, 30s ads and any
-	// bumper; or very long bumpers) has no room for ANY ad, and used to collapse to the 5s card —
-	// which has no playable file, so the channel's breaks switched off altogether. Each plan below
+	// bumper; or very long bumpers) has no room for ANY ad and would collapse to the 5s card —
+	// which has no playable file, so the channel's breaks would switch off altogether. Each plan below
 	// is tried in order and the first that places real content wins: both bookends, then without
 	// the return bumper, then without the intro. Only when no ad fits even alone is it the card.
 	plans := []bookendPlan{{hasIntro, hasReturn}}

@@ -162,8 +162,8 @@ const defaultBreakDurationMs int64 = 120_000 // 2m; mirrors filler.break_duratio
 // ⚠ It is sized WITHOUT the play history, so only the catalog, the selection and the policy move
 // it. Sized from the live rotation, every commercial that aired re-sized every break, the
 // timeline walked from the anchor shifted by tens of seconds or minutes at each reconcile, and
-// the viewer was thrown back into the programme or into the same break again (live smoke,
-// 2026-10-24). Rotation still decides WHICH clips air: PreviewAt assembles each break to this
+// the viewer was thrown back into the programme or into the same break again (seen in a
+// live smoke). Rotation still decides WHICH clips air: PreviewAt assembles each break to this
 // length from its own history snapshot. Holiday seasons are left out for the same reason: a
 // season opening at midnight must not re-size every break (#2030).
 func (a *Adapter) PlayableDurationMs(ctx context.Context, channelID string, seed int64, sel Selection) int64 {
@@ -468,8 +468,8 @@ const minBreakDurationMs int64 = 30_000
 // ⚠ It sizes from the shortest clip, not the median: the median left a fitting short clip out of
 // about 1% of breaks whenever the pool mixed lengths.
 //
-// ⚠ The widest rung, because that is what a pod draws from since #1684 (the rungs nest, so it
-// holds every candidate). Sizing from the tightest rung let one long exact-era clip set the
+// ⚠ The widest rung, because that is what a pod draws from (#1684; the rungs nest, so it
+// holds every candidate). Sizing from the tightest rung lets one long exact-era clip set the
 // density for a break filled mostly from the rungs below it.
 //
 // The count is deliberately NOT reduced for the bumpers: they come off the time budget in
@@ -545,9 +545,9 @@ func (a *Adapter) CoverageFor(ctx context.Context, channelID string, sel Selecti
 // (PoolCounts) plus one CoverageFrom per channel, worst first. `Untagged` is left for the caller,
 // which owns the store predicate (see the field).
 //
-// ⚠ One snapshot answers every number. The counts and each channel's coverage used to come from
-// separate catalog loads, so a clip admitted between them could make the strip disagree with
-// itself; it is also one table read instead of two.
+// ⚠ One snapshot answers every number. With the counts and each channel's coverage loaded
+// separately, a clip admitted between the two could make the strip disagree with itself; one
+// snapshot is also one table read instead of two.
 func (a *Adapter) PoolFor(ctx context.Context, channels []PoolChannel) (PoolReport, error) {
 	clips, err := a.catalog.AllClips(ctx)
 	if err != nil {

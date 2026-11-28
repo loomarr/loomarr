@@ -96,7 +96,7 @@ type CoverageReport struct {
 	// the gap, the tightest non-empty rung. MatchBumperCard when no rung has anything, which is
 	// the honest "this break would be the embedded card" answer rather than a zero.
 	//
-	// ⚠ Not "the tightest non-empty rung" since #1684: a pod tops up from looser rungs, and a
+	// ⚠ Not "the tightest non-empty rung" (#1684): a pod tops up from looser rungs, and a
 	// meter reading `exact` while breaks air bottom-rung clips is the confident wrong answer
 	// the V29 gate forbids. A live break can still read looser than this when its tight rung
 	// is resting in cooldown.
@@ -337,7 +337,7 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 	}
 
 	// Level is the rung a fresh break REACHES, so it is read off the same assembly rather than
-	// re-derived: since #1684 a pod tops up from looser rungs, and "tightest non-empty rung"
+	// re-derived: a pod tops up from looser rungs (#1684), and "tightest non-empty rung"
 	// would report `exact` for a channel whose breaks are mostly bottom-rung clips. Pins are
 	// left out (they bypass the ladder, and coverage describes the ladder), as is exposure (a
 	// cooldown moves which clips lead a given break, not which material the channel has).

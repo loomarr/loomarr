@@ -25,7 +25,7 @@ import (
 // request per hovered card against files tens of megabytes each, to show six seconds of a
 // 30-second advert. This pays once, per clip, and the hover then costs one cached asset.
 //
-// ⚠ **One successful pass, two outputs, ONE decode** (maintainer, 2026-08-03). ffmpeg writes
+// ⚠ **One successful pass, two outputs, ONE decode** (maintainer decision). ffmpeg writes
 // both files from a single `split` filter, so the first scan of a large drop-folder costs one
 // decode per clip rather than two. Measured at ~0.47s per clip for both together on a 3MB spot.
 // A stock ffmpeg without libwebp first rejects that encoder before decoding, then takes the same
@@ -57,7 +57,7 @@ const PreviewDirName = ThumbDirName
 // rarely longer than the clip it comes from.
 const previewSeconds = 6
 
-// previewFPS and previewQuality: the maintainer chose smoothness over cache size (2026-08-03),
+// previewFPS and previewQuality: the maintainer chooses smoothness over cache size,
 // measured at ~460KB per 30-second spot. That is ~230MB across a 500-clip catalog — all of it
 // regenerable, all of it excluded from the §16 backup, and none of it in the database.
 //

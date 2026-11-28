@@ -27,9 +27,9 @@ type PipelineDriver struct {
 }
 
 // detailMaxDeferrals bounds how many consecutive advancing passes may postpone details.
-// ⚠ Deferral used to key on "anything is Runnable or InProgress", which is a property of the
-// backlog, not of progress: a backlog that never drains (production held 202 clips, 34 ready)
-// starved enrichment forever and filler_enrichment_passes stayed empty (#1412).
+// ⚠ Deferral keys on progress, never on "anything is Runnable or InProgress", which is a property
+// of the backlog: a backlog that never drains would starve enrichment forever and leave
+// filler_enrichment_passes empty (#1412).
 const detailMaxDeferrals = 3
 
 // NewDriver returns a driver over a preparation pass and a details pass; either may be nil.

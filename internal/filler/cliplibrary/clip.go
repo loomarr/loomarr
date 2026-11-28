@@ -16,9 +16,9 @@ import (
 type RawClip struct {
 	// ID is the identity: the clip's sparse content hash (§10 V38c).
 	//
-	// ⚠ Separate from Path since V38c. Identity used to BE the path, which broke the moment many
-	// watched folders were allowed — two folders each holding `ads/coke.mp4` produced one id and
-	// silently overwrote each other. Hashing the bytes also answers the question a path cannot:
+	// ⚠ Separate from Path (§10 V38c). A path cannot be the identity with many watched folders:
+	// two folders each holding `ads/coke.mp4` would produce one id and silently overwrite each
+	// other. Hashing the bytes also answers the question a path cannot:
 	// *is this the same advert?*, which is what lets intake skip duplicates.
 	ID string
 	// Path is the clip's LOCATION under the clip folder — `a3/f9/<hash>.mp4` for anything intake
