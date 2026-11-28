@@ -817,15 +817,16 @@ web's Channel-change sound switch decides that).
 
 It replaces the shipped Channels sheet once the build lands. One list for every device, for looking:
 moving through it never tunes. Choosing a row (OK, Enter, a click or a tap) tunes it and leaves the
-list open; choosing the channel you are watching, or Back and Esc, closes it. Nothing closes it on a
-timer.
+list open; choosing the channel you are watching closes it. Back and Esc go one step: out of find,
+then off the tabs back to the list, then closed. Nothing closes it on a timer.
 
 - **Rows** are channel number, name, what is on now and the minutes left, or "in a break". At least
   44 px on touch, no text under 12 px, never faded. The wheel scrolls and never changes channel.
 - **The watched channel is always listed**, whatever the group, and pinned: its slot (drawn as the
   lower third) stays in view at both ends of the scroll. There is room above the first row and below
   the last so any channel can rest where the caller puts it, and scrolling stops at the list's ends.
-  Every group is in number order (Favourites too, whatever order they were starred in) except Recent,
+  The pinned slot relies on sticky positioning on the web; on native it is moved by the scroll
+  position, which is untried. Every group is in number order (Favourites too, whatever order they were starred in) except Recent,
   newest first, and By decade, by decade then number. A watched channel outside Favourites takes its
   place by number; one outside Recent or By decade leads.
 - **Words.** An empty group says "Channels you watch collect here." (Recent), "No favourites yet."
@@ -834,8 +835,12 @@ timer.
   in its decade's tint and never on the selection fill. Find is at the head of the tabs
   ([`design/web-ui.md`](design/web-ui.md)).
 - **Keys.** The cursor starts on the watched channel. Up from the first row reaches the tabs; Left
-  and Right move between tabs; OK chooses one and puts the cursor back on the watched channel; Down
-  returns. In the list, Left and Right change the group directly.
+  and Right move between tabs; OK chooses one and the cursor stays on it, so Left and Right can go on
+  stepping; Down returns to the list on the watched channel. In the list, Left and Right change the
+  group directly, and Home and End go to the first and last row.
+- **Find.** Focus stays in the query while Up and Down move the cursor over the results, which the
+  result it rests on draws. Enter or a click on a result tunes it, closes find and leaves the list
+  open with the cursor on the new channel; choosing the watched channel only closes find.
 - **Focus** is one amber ring, on the cursor's row, the pinned channel or a tab. A pointer draws a
   plain highlight. In a desktop window a pointer resting on a row is "looking" at it, which ends as
   soon as it leaves or the list scrolls. After a click the list re-centres, so a further click or tap

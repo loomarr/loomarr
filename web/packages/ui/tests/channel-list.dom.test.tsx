@@ -3,7 +3,7 @@
 import { createChannelLineup } from "@loomarr/core/channel-lineup";
 import { type ChannelListState, channelListReduce, createChannelListState } from "@loomarr/core/channel-list";
 import { act, cleanup, fireEvent, renderUi, screen, userEvent } from "@loomarr/test-support";
-import { declarationsOfElement } from "@loomarr/test-support/css";
+import { declarationsOfElement, declarationsOfTree } from "@loomarr/test-support/css";
 import { useState } from "react";
 import { Text } from "react-native";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -86,8 +86,9 @@ describe("ChannelList", () => {
     expect(focused()).toBe(screen.getByRole("tab", { name: "All" }));
     await userEvent.keyboard("{ArrowRight}");
     expect(focused()).toBe(screen.getByRole("tab", { name: "Recent" }));
+    // Down comes back to the watched channel.
     await userEvent.keyboard("{ArrowDown}");
-    expect(focused()).toBe(row(1));
+    expect(focused()).toBe(row(2));
     expect(tuned).not.toHaveBeenCalled();
   });
 
@@ -151,6 +152,89 @@ describe("ChannelList", () => {
     cleanup();
     renderUi(<Harness layout="television" start={{ television: true }} />);
     expect(screen.queryByRole("button", { name: "Find a channel" })).toBeNull();
+  });
+
+  it("draws a plain highlight under a pointer, and takes it away", () => {
+    renderUi(<Harness />);
+    const fill = () => declarationsOfTree(row(3));
+    expect(fill()).not.toContain("var(--surfaceElevated)");
+    fireEvent.pointerEnter(row(3), { pointerType: "mouse" });
+    expect(fill()).toContain("var(--surfaceElevated)");
+    expect(row(3).getAttribute("aria-selected")).toBe("false");
+    fireEvent.pointerLeave(row(3), { pointerType: "mouse" });
+    expect(fill()).not.toContain("var(--surfaceElevated)");
+  });
+
+  it("draws find's cursor on the result it rests on, keeps focus in the query and tunes it on Enter", async () => {
+    tuned.mockClear();
+    renderUi(<Harness autoFocus start={{ cursor: { channelId: "ch-2", kind: "row" } }} />);
+    await userEvent.keyboard("/");
+    const query = screen.getByRole("searchbox");
+    // Every channel's title matches.
+    await userEvent.type(query, "Programme");
+    const cursor = () => screen.getByTestId("channel-list-find-cursor");
+    expect(cursor().contains(row(1))).toBe(true);
+    await userEvent.keyboard("{ArrowDown}");
+    expect(focused()).toBe(query);
+    expect(screen.getAllByTestId("channel-list-find-cursor")).toHaveLength(1);
+    // The second result is channel 2, the one on screen, so step on to the third.
+    await userEvent.keyboard("{ArrowDown}");
+    expect(cursor().contains(row(3))).toBe(true);
+    expect(declarationsOfElement(cursor())).toContain("var(--actionFocus)");
+    await userEvent.keyboard("{Enter}");
+    expect(tuned).toHaveBeenCalledExactlyOnceWith("ch-3");
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("open");
+    expect(focused()).toBe(row(3));
+  });
+
+  it("marks one element as watched among find's results, and leaves the list open on choosing it", async () => {
+    tuned.mockClear();
+    renderUi(<Harness start={{ query: "Station 2" }} />);
+    expect(screen.getAllByRole("option", { selected: true })).toHaveLength(1);
+    expect(screen.getAllByText("watching")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("option", { selected: true }));
+    expect(tuned).not.toHaveBeenCalled();
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("open");
+  });
+
+  it("takes Escape one step at a time, and goes to the ends on Home and End", async () => {
+    renderUi(<Harness autoFocus start={{ cursor: { channelId: "ch-2", kind: "row" } }} />);
+    await userEvent.keyboard("{End}");
+    expect(focused()).toBe(row(4));
+    await userEvent.keyboard("{Home}");
+    expect(focused()).toBe(row(1));
+    await userEvent.keyboard("{ArrowUp}{ArrowRight}{Enter}");
+    expect(focused()).toBe(screen.getByRole("tab", { name: "Recent" }));
+    await userEvent.keyboard("{Escape}");
+    expect(focused()).toBe(row(2));
+    expect(screen.getByRole("status").textContent).toBe("open");
+    await userEvent.keyboard("/");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("open");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("status").textContent).toBe("closed");
+  });
+
+  it("reaches the tabs with Up from the first row on a television", async () => {
+    renderUi(
+      <Harness
+        autoFocus
+        layout="television"
+        start={{ cursor: { channelId: "ch-1", kind: "row" }, television: true }}
+      />,
+    );
+    await userEvent.keyboard("{ArrowUp}");
+    expect(focused()).toBe(screen.getByRole("tab", { name: "All" }));
+  });
+
+  it("keeps its notice out of the options", async () => {
+    renderUi(<Harness />);
+    await userEvent.click(screen.getByRole("tab", { name: "Recent" }));
+    const notice = screen.getByRole("group", { name: "Channels you watch collect here." });
+    expect(notice.querySelector('[role="option"]')).toBeNull();
   });
 
   it("says what an empty Recent is for, and heads By decade with its decades", async () => {

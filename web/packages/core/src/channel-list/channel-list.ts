@@ -118,9 +118,15 @@ const channelListReduce = <C extends LineupChannel>(
   const stay: ChannelListStep = { state };
   const to = (next: Partial<ChannelListState>): ChannelListStep => ({ state: { ...state, ...next } });
   const { cursor } = state;
-  const toTabs = (returnTo: string | undefined): ChannelListStep =>
+  const toTabs = (): ChannelListStep =>
     // Find stands where the tabs are.
-    state.query === null ? to({ cursor: { group: state.group, kind: "tab", returnTo } }) : stay;
+    state.query === null ? to({ cursor: { group: state.group, kind: "tab" } }) : stay;
+  const toList = () => to({ cursor: landingRow(state, lineup) });
+  // A tab chosen from the tabs keeps the cursor, so Left and Right go on stepping.
+  const chooseGroup = (group: LineupGroupKind): ChannelListStep => {
+    const next = inGroup(state, lineup, group);
+    return { state: cursor.kind === "tab" ? { ...next, cursor: { group, kind: "tab" } } : next };
+  };
 
   switch (event.type) {
     case "open": {
@@ -129,21 +135,28 @@ const channelListReduce = <C extends LineupChannel>(
     }
     case "close":
       return to({ cursor: { kind: "none" }, open: false, query: null });
+    case "back":
+      if (state.query !== null) return { state: inGroup(state, lineup, state.group) };
+      if (cursor.kind === "tab") return toList();
+      return to({ cursor: { kind: "none" }, open: false });
     case "move": {
       if (!state.open) return stay;
-      if (cursor.kind === "tab") {
-        return event.by > 0 ? to({ cursor: landingRow(state, lineup, cursor.returnTo) }) : stay;
-      }
-      if (cursor.kind === "none") return to({ cursor: landingRow(state, lineup) });
+      if (cursor.kind === "tab") return event.by > 0 ? toList() : stay;
       const { rows } = channelListView(state, lineup);
-      const at = rows.findIndex((channel) => channel.id === cursor.channelId);
-      if (at < 0) return to({ cursor: landingRow(state, lineup) });
-      if (at === 0 && event.by < 0) return toTabs(cursor.channelId);
+      // A list with nothing in it still has its tabs.
+      if (!rows.length) return event.by < 0 ? toTabs() : stay;
+      const at = cursor.kind === "row" ? rows.findIndex((channel) => channel.id === cursor.channelId) : -1;
+      if (at < 0) return toList();
+      if (at === 0 && event.by < 0) return toTabs();
       const row = rows[at + event.by];
       return row ? to({ cursor: { channelId: row.id, kind: "row" } }) : stay;
     }
+    case "edge": {
+      const row = state.open ? channelListView(state, lineup).rows.at(event.to < 0 ? 0 : -1) : undefined;
+      return row ? to({ cursor: { channelId: row.id, kind: "row" } }) : stay;
+    }
     case "tabs":
-      return state.open ? toTabs(cursor.kind === "row" ? cursor.channelId : undefined) : stay;
+      return state.open ? toTabs() : stay;
     case "across": {
       if (!state.open || state.query !== null) return stay;
       if (cursor.kind === "tab") {
@@ -153,7 +166,7 @@ const channelListReduce = <C extends LineupChannel>(
       return group === state.group ? stay : { state: inGroup(state, lineup, group) };
     }
     case "chooseTab":
-      return { state: inGroup(state, lineup, event.group) };
+      return chooseGroup(event.group);
     case "showAll":
       return { state: inGroup(state, lineup, "all") };
     case "find": {
@@ -166,13 +179,16 @@ const channelListReduce = <C extends LineupChannel>(
     case "clearFind":
       return state.query === null ? stay : { state: inGroup(state, lineup, state.group) };
     case "choose": {
-      if (event.channelId === undefined && cursor.kind === "tab") {
-        return { state: inGroup(state, lineup, cursor.group) };
-      }
+      if (event.channelId === undefined && cursor.kind === "tab") return chooseGroup(cursor.group);
       const channelId = event.channelId ?? (cursor.kind === "row" ? cursor.channelId : undefined);
       const channel = lineup.channels.find((each) => each.id === channelId);
       if (!channel) return stay;
-      if (channel.id === state.watchedId) return to({ cursor: { kind: "none" }, open: false, query: null });
+      if (channel.id === state.watchedId) {
+        // From find's results it only closes find; from the list it closes the list.
+        return state.query === null
+          ? to({ cursor: { kind: "none" }, open: false })
+          : { state: inGroup(state, lineup, state.group) };
+      }
       if (!channel.playable) return stay;
       // Choosing a result closes find and leaves the group as it was.
       return {
@@ -183,21 +199,11 @@ const channelListReduce = <C extends LineupChannel>(
     case "focusRow":
       return to({ cursor: { channelId: event.channelId, kind: "row" } });
     case "focusTab":
-      return to({
-        cursor: {
-          group: event.group,
-          kind: "tab",
-          returnTo:
-            cursor.kind === "row" ? cursor.channelId : cursor.kind === "tab" ? cursor.returnTo : undefined,
-        },
-      });
+      return to({ cursor: { group: event.group, kind: "tab" } });
     case "tuned": {
       if (event.channelId === state.watchedId) return stay;
       const next = { ...state, watchedId: event.channelId };
-      if (cursor.kind === "tab") {
-        return { state: { ...next, cursor: { ...cursor, returnTo: event.channelId } } };
-      }
-      if (cursor.kind === "none" || finding(next)) return { state: next };
+      if (cursor.kind !== "row" || finding(next)) return { state: next };
       return { state: { ...next, cursor: landingRow(next, lineup) } };
     }
   }

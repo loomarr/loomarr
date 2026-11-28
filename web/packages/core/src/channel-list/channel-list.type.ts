@@ -3,8 +3,7 @@ import type { LineupChannel, LineupGroupKind } from "../channel-lineup";
 /** Where the keyboard or remote cursor is: a row, a group tab, or nowhere. */
 type ChannelListCursor =
   | { kind: "row"; channelId: string }
-  /** `returnTo` is the row Down goes back to. */
-  | { kind: "tab"; group: LineupGroupKind; returnTo: string | undefined }
+  | { kind: "tab"; group: LineupGroupKind }
   | { kind: "none" };
 
 interface ChannelListState {
@@ -28,6 +27,10 @@ interface ChannelListStateArgs {
 type ChannelListEvent =
   | { type: "open" }
   | { type: "close" }
+  /** Back or Esc: one step, out of find, then off the tabs, then closing the list. */
+  | { type: "back" }
+  /** Home (-1) or End (1): the first or last row. */
+  | { type: "edge"; to: -1 | 1 }
   /** Up (-1) or Down (1). */
   | { type: "move"; by: -1 | 1 }
   /** To the group tabs. */

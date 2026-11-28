@@ -191,7 +191,19 @@ export const ByDecadeOnATelevision: Story = {
 };
 export const ByDecadeOnAPhone: Story = { args: { frame: "phone", start: { group: "decade" } } };
 
-export const FindWithResults: Story = { args: { start: { query: "cartoon" } } };
+/** Down moves find's cursor while focus stays in the query. */
+export const FindWithResults: Story = {
+  args: { autoFocus: true, start: { cursor: { channelId: "ch-2", kind: "row" }, query: "cartoon" } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const query = canvas.getByRole("searchbox");
+    await userEvent.click(query);
+    await userEvent.keyboard("{ArrowDown}");
+    await expect(query).toHaveFocus();
+    const cursor = canvas.getByTestId("channel-list-find-cursor");
+    await expect(cursor).not.toHaveTextContent("Drama Hour");
+  },
+};
 export const FindWithNoMatch: Story = { args: { start: { query: "opera" } } };
 export const FindOnAPhone: Story = { args: { frame: "phone", start: { query: "quiz" } } };
 export const TypedDigits: Story = { args: { digits: "2_", frame: "full" } };
@@ -206,7 +218,7 @@ export const CursorOnATab: Story = {
   args: {
     autoFocus: true,
     frame: "television",
-    start: { cursor: { group: "all", kind: "tab", returnTo: "ch-1" }, group: "all" },
+    start: { cursor: { group: "all", kind: "tab" }, group: "all" },
     watched: 1,
   },
 };
@@ -214,8 +226,12 @@ export const CursorOnATab: Story = {
 export const PointerLooking: Story = {
   play: async ({ canvasElement }) => {
     await settled(canvasElement);
+    // The row's fill is its first child's, and nothing else there draws one.
+    const fill = () => getComputedStyle(row(canvasElement, 12).firstElementChild as Element).backgroundColor;
+    const atRest = fill();
     await userEvent.hover(row(canvasElement, 12));
     await expect(await within(canvasElement).findByText(/^Looking at 12 /)).toBeVisible();
+    await expect(fill()).not.toBe(atRest);
   },
 };
 

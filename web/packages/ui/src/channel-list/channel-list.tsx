@@ -85,6 +85,9 @@ const ChannelList = <C extends LineupChannel>({
   const [viewport, setViewport] = useState(0);
   const [pinnedHeight, setPinnedHeight] = useState(ROW_HEIGHT * 2);
   const [nativeScroll, setNativeScroll] = useState(0);
+  // The row under a pointer, and the row holding focus.
+  const [hovered, setHovered] = useState<string | undefined>(undefined);
+  const [focusedRow, setFocusedRow] = useState<string | undefined>(undefined);
 
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
   const scrolled = useRef(0);
@@ -109,6 +112,12 @@ const ChannelList = <C extends LineupChannel>({
     places.set(channel.id, y);
     y += index === pinnedAt ? pinnedHeight : ROW_HEIGHT;
   });
+  const message =
+    view.notice === "no-match"
+      ? `No channel or programme matches “${query?.trim()}”.`
+      : view.notice && NOTICES[view.notice];
+  // A notice stands after the rows, a row high.
+  if (message) y += ROW_HEIGHT;
   const anchorY = (pinnedAt < 0 ? y : places.get(watchedId ?? "")) ?? y;
   const contentHeight = y + (pinnedAt < 0 && pinned ? pinnedHeight : 0) + room;
   const rest = listRest({
@@ -138,17 +147,20 @@ const ChannelList = <C extends LineupChannel>({
   // Focus follows the cursor, and only from keys.
   const cursorKey =
     cursor.kind === "row" ? cursor.channelId : cursor.kind === "tab" ? `tab:${cursor.group}` : "";
-  const focusKey = [cursorKey, query, watchedId, group, viewport].join();
+  // A closed find and an empty one differ here: closing it brings focus back to the cursor.
+  const focusKey = [cursorKey, JSON.stringify(query), watchedId, group, viewport].join();
   const focusedKey = useRef("");
   useEffect(() => {
     if (focusedKey.current === focusKey) return;
     focusedKey.current = focusKey;
-    if (!focusWanted.current || query !== null) return;
+    if (!focusWanted.current) return;
     if (cursor.kind === "tab") tabs.current.get(cursor.group)?.focus();
     if (cursor.kind !== "row") return;
-    rows.current.get(cursor.channelId)?.focus({ preventScroll: true });
+    // While find is open, focus stays in its query and only the list moves.
+    if (query === null) rows.current.get(cursor.channelId)?.focus({ preventScroll: true });
     const rowY = places.get(cursor.channelId);
-    if (!viewport || rowY === undefined || cursor.channelId === watchedId) return;
+    // The pinned channel is always in view.
+    if (!viewport || rowY === undefined || (!view.finding && cursor.channelId === watchedId)) return;
     const to = scrollToShow({
       anchorY,
       height: rest.height,
@@ -199,7 +211,7 @@ const ChannelList = <C extends LineupChannel>({
 
   const onKeyDown = (event: KeyEvent) => {
     const typing = event.target?.tagName === "INPUT";
-    const back: ChannelListEvent = { type: query === null ? "close" : "clearFind" };
+    const back: ChannelListEvent = { type: "back" };
     const send: Record<string, ChannelListEvent | undefined> = {
       "/": typing || television ? undefined : { query: "", type: "find" },
       ArrowDown: { by: 1, type: "move" },
@@ -207,14 +219,30 @@ const ChannelList = <C extends LineupChannel>({
       ArrowRight: typing ? undefined : { by: 1, type: "across" },
       ArrowUp: { by: -1, type: "move" },
       Backspace: typing ? undefined : back,
+      End: typing ? undefined : { to: 1, type: "edge" },
       Enter: typing ? { type: "choose" } : undefined,
       Escape: back,
+      Home: typing ? undefined : { to: -1, type: "edge" },
     };
     focusWanted.current = true;
     const next = send[event.key];
     if (!next) return;
     event.preventDefault();
     onEvent(next);
+  };
+  // React Native Web's text input stops its keys from bubbling, so find's are taken on the way down.
+  // Escape alone is raised again by the design system's field, above the input, and is taken there.
+  const fromInput = (event: KeyEvent) => event.target?.tagName === "INPUT";
+  const keyHandlers = {
+    onKeyDown: (event: KeyEvent) => {
+      if (!fromInput(event)) onKeyDown(event);
+    },
+    onKeyDownCapture: (event: KeyEvent) => {
+      if (!fromInput(event)) return;
+      // The query has focus. A row taken down while focused never says it lost it.
+      setFocusedRow(undefined);
+      if (event.key !== "Escape") onKeyDown(event);
+    },
   };
 
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -234,15 +262,31 @@ const ChannelList = <C extends LineupChannel>({
     else rows.current.delete(channelId);
   };
 
+  // Where find's cursor is drawn: focus stays in the query, so no row can draw it by holding focus.
+  const findCursor =
+    view.finding && layout !== "touch" && cursor.kind === "row" ? cursor.channelId : undefined;
+
   // A row or the pinned channel is named by what it shows, so each piece of text ends in a space.
+  // `selected` is the shipped row's fill, drawn here for a pointer and for find's cursor; whether
+  // the option is the selected one is said by `aria-selected` alone.
   const target = (channel: C, selected: boolean, isRow: boolean) => ({
+    onBlur: () => setFocusedRow(undefined),
     onFocus: () => {
+      setFocusedRow(channel.id);
       if (isRow && (cursor.kind !== "row" || cursor.channelId !== channel.id)) {
         onEvent({ channelId: channel.id, type: "focusRow" });
       }
     },
-    onHoverIn: () => look(channel.id),
-    onHoverOut: () => look(undefined),
+    // The shipped row's own hover handlers give way to these, so its highlight is drawn from here.
+    onHoverIn: () => {
+      setHovered(channel.id);
+      look(channel.id);
+    },
+    onHoverOut: () => {
+      setHovered(undefined);
+      look(undefined);
+    },
+    selected: hovered === channel.id || (isRow && findCursor === channel.id),
     onMouseDown: keepFocus,
     onPress: press(channel.id),
     ref: (isRow ? rowRef(channel.id) : undefined) as never,
@@ -260,9 +304,18 @@ const ChannelList = <C extends LineupChannel>({
     const decade = view.headings.size ? channel.decade : undefined;
     // What is not drawn but is said: the heading a row stands under, and that it is on screen.
     const unseen = [decade && `${decade}s`, watched && "watching"].filter(Boolean).join(" ");
+    // A focused row draws its own ring.
+    const cursorHere = findCursor === channel.id && focusedRow !== channel.id;
     return (
-      <Bare height={ROW_HEIGHT} justifyContent="center">
-        <PressableRow inset={{ x: 8, y: 4 }} {...target(channel, watched, true)}>
+      <Bare
+        borderColor={cursorHere ? "actionFocus" : "transparent"}
+        borderRadius="control"
+        borderWidth={2}
+        height={ROW_HEIGHT}
+        justifyContent="center"
+        testID={cursorHere ? "channel-list-find-cursor" : undefined}
+      >
+        <PressableRow inset={{ x: 8, y: 2 }} {...target(channel, watched, true)}>
           <Bare alignItems="flex-end" width={32}>
             <Text textRole="mono" tone="secondary">
               {channel.number}{" "}
@@ -293,8 +346,12 @@ const ChannelList = <C extends LineupChannel>({
     Platform.OS === "web"
       ? 0
       : pinnedShift({ anchorY, height: rest.height, pinnedHeight, scroll: nativeScroll });
+  // Among find's results the watched channel is a row of its own, which is the one marked.
+  const listedTwice = view.finding && view.rows.some((channel) => channel.id === watchedId);
+
   // The pinned channel sticks to whichever end of the list it would leave by. Only a browser can
-  // stick at both ends; a native view is moved by the scroll position instead.
+  // stick at both ends; a native view is moved by the scroll position instead. `sticky` is a web
+  // value outside React Native's position type, which the cast gets past.
   const pinnedSlot = pinned ? (
     <Bare
       bottom={0}
@@ -308,26 +365,21 @@ const ChannelList = <C extends LineupChannel>({
       y={shift}
       zIndex={2}
     >
-      <PressableRow inset={{ x: 2, y: 2 }} {...target(pinned, !view.finding, !view.finding)}>
+      <PressableRow inset={{ x: 2, y: 2 }} {...target(pinned, !listedTwice, !view.finding)}>
         <Bare flex={1} minWidth={0}>
           {renderPinned(pinned)}
         </Bare>
-        <VisuallyHidden>watching</VisuallyHidden>
+        {listedTwice ? null : <VisuallyHidden>watching</VisuallyHidden>}
       </PressableRow>
     </Bare>
   ) : null;
-
-  const message =
-    view.notice === "no-match"
-      ? `No channel or programme matches “${query?.trim()}”.`
-      : view.notice && NOTICES[view.notice];
 
   return (
     <Bare
       flex={1}
       gap={4}
       minHeight={0}
-      {...(Platform.OS === "web" ? ({ onKeyDown, onPointerMove } as object) : {})}
+      {...(Platform.OS === "web" ? ({ ...keyHandlers, onPointerMove } as object) : {})}
     >
       <ListHead
         cursor={cursor}
@@ -368,9 +420,16 @@ const ChannelList = <C extends LineupChannel>({
                   {index === pinnedAt ? pinnedSlot : rowOf(channel)}
                 </Fragment>
               ))}
+              {/* A listbox holds only options and groups, so the notice is a group of its own. */}
               {message ? (
-                <Bare paddingHorizontal={8} paddingVertical={12}>
-                  <Text textRole="metadata" tone="secondary">
+                <Bare
+                  aria-label={message}
+                  height={ROW_HEIGHT}
+                  justifyContent="center"
+                  paddingHorizontal={8}
+                  role="group"
+                >
+                  <Text numberOfLines={2} textRole="metadata" tone="secondary">
                     {message}
                   </Text>
                 </Bare>

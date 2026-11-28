@@ -74,20 +74,84 @@ describe("channel list cursor", () => {
 
   it("goes Up from the first row to the tabs, moves between them and comes back Down", () => {
     const onTabs = play(open("ch-1"), up).state;
-    expect(onTabs.cursor).toEqual({ group: "all", kind: "tab", returnTo: "ch-1" });
-    expect(play(onTabs, right).state.cursor).toMatchObject({ group: "recent", kind: "tab" });
+    expect(onTabs.cursor).toEqual({ group: "all", kind: "tab" });
+    expect(play(onTabs, right).state.cursor).toEqual({ group: "recent", kind: "tab" });
     expect(play(onTabs, right, right, right, right).state.cursor).toMatchObject({ group: "decade" });
-    expect(play(onTabs, left, down).state.cursor).toEqual({ channelId: "ch-1", kind: "row" });
-    expect(play(open(), { type: "tabs" }).state.cursor).toMatchObject({ kind: "tab", returnTo: "ch-3" });
+    expect(play(open("ch-3"), { type: "tabs" }, down).state.cursor).toEqual({
+      channelId: "ch-3",
+      kind: "row",
+    });
     expect(play(onTabs, up).state).toEqual(onTabs);
   });
 
-  it("changes group on choosing a tab and puts the cursor back on the watched channel", () => {
-    const chosen = play(open(), { type: "tabs" }, left, { type: "choose" });
+  it("keeps the cursor on a chosen tab, and comes Down onto the watched channel", () => {
+    const chosen = play(open(), down, { type: "tabs" }, left, { type: "choose" });
     expect(chosen.state.group).toBe("favourites");
-    expect(chosen.state.cursor).toEqual({ channelId: "ch-3", kind: "row" });
+    expect(chosen.state.cursor).toEqual({ group: "favourites", kind: "tab" });
     expect(chosen.tuned).toEqual([]);
-    expect(play(open(), { group: "decade", type: "chooseTab" }).state.group).toBe("decade");
+    // Left and Right go on stepping.
+    expect(play(chosen.state, right).state.cursor).toEqual({ group: "all", kind: "tab" });
+    expect(play(chosen.state, down).state.cursor).toEqual({ channelId: "ch-3", kind: "row" });
+    const clicked = play(open(), { group: "decade", type: "chooseTab" }).state;
+    expect(clicked).toMatchObject({ cursor: { channelId: "ch-3", kind: "row" }, group: "decade" });
+  });
+
+  it("goes back one step: off the tabs first, then closes the list", () => {
+    const back: ChannelListEvent = { type: "back" };
+    const offTabs = play(open(), { type: "tabs" }, back).state;
+    expect(offTabs).toMatchObject({ cursor: { channelId: "ch-3", kind: "row" }, open: true });
+    expect(play(offTabs, back).state.open).toBe(false);
+    expect(play(open(), { query: "game", type: "find" }, back).state).toMatchObject({
+      open: true,
+      query: null,
+    });
+  });
+
+  it("goes to the first and last row on Home and End", () => {
+    const end = play(open(), { to: 1, type: "edge" });
+    expect(end.state.cursor).toEqual({ channelId: "ch-6", kind: "row" });
+    expect(play(end.state, { to: -1, type: "edge" }).state.cursor).toEqual({
+      channelId: "ch-1",
+      kind: "row",
+    });
+    expect(play(open(), { type: "tabs" }, { to: 1, type: "edge" }).state.cursor).toMatchObject({
+      kind: "row",
+    });
+    expect(end.tuned).toEqual([]);
+  });
+
+  it("holds up with no channels, and with one", () => {
+    const events: ChannelListEvent[] = [
+      { type: "open" },
+      down,
+      up,
+      { type: "choose" },
+      { to: 1, type: "edge" },
+    ];
+    const run = (model: typeof lineup, watchedId?: string) =>
+      events.reduce(
+        (state, event) => channelListReduce(state, event, model).state,
+        createChannelListState({ watchedId }),
+      );
+    const none = createChannelLineup<LineupChannel>({ channels: [] });
+    expect(channelListView(createChannelListState(), none).rows).toEqual([]);
+    // Down finds no row; Up still reaches the tabs, and OK there keeps the cursor on them.
+    expect(channelListReduce(createChannelListState({ open: true }), down, none).state.cursor).toEqual({
+      kind: "none",
+    });
+    expect(run(none)).toMatchObject({ cursor: { group: "all", kind: "tab" }, open: true });
+    const one = createChannelLineup({ channels: [channel(1)] });
+    // The same walk ends with End on the one row.
+    expect(run(one, "ch-1")).toMatchObject({ cursor: { channelId: "ch-1", kind: "row" }, open: true });
+    const opened = channelListReduce(
+      createChannelListState({ watchedId: "ch-1" }),
+      { type: "open" },
+      one,
+    ).state;
+    // Choosing the one channel, which is on screen, closes the list.
+    expect(channelListReduce(opened, { type: "choose" }, one).state.open).toBe(false);
+    expect(channelListReduce(opened, down, one).state.cursor).toEqual({ channelId: "ch-1", kind: "row" });
+    expect(channelListReduce(opened, up, one).state.cursor).toEqual({ group: "all", kind: "tab" });
   });
 
   it("changes group directly with Left and Right in the open list", () => {
@@ -110,7 +174,7 @@ describe("channel list cursor", () => {
 
   it("goes where a focus engine lands", () => {
     const state = play(open(), { channelId: "ch-4", type: "focusRow" }, { group: "all", type: "focusTab" });
-    expect(state.state.cursor).toEqual({ group: "all", kind: "tab", returnTo: "ch-4" });
+    expect(state.state.cursor).toEqual({ group: "all", kind: "tab" });
     expect(state.tuned).toEqual([]);
   });
 });
@@ -212,10 +276,21 @@ describe("channel list find", () => {
     expect(play(none, { type: "showAll" }).state).toMatchObject({ group: "all", query: null });
   });
 
-  it("tunes a chosen result and closes find", () => {
+  it("tunes a chosen result, closes find and lands on the new channel", () => {
     const chosen = play(open(), find("harbour"), { type: "choose" });
     expect(chosen.tuned).toEqual(["ch-1"]);
-    expect(chosen.state).toMatchObject({ open: true, query: null });
+    const tuned = play(chosen.state, { channelId: "ch-1", type: "tuned" }).state;
+    expect(tuned).toMatchObject({ cursor: { channelId: "ch-1", kind: "row" }, open: true, query: null });
+  });
+
+  it("only closes find when the result chosen is already on screen", () => {
+    const chosen = play(open(), find("game"), { type: "choose" });
+    expect(chosen.tuned).toEqual([]);
+    expect(chosen.state).toMatchObject({
+      cursor: { channelId: "ch-3", kind: "row" },
+      open: true,
+      query: null,
+    });
   });
 
   it("keeps the list in place while the query is blank, with no tabs to reach", () => {

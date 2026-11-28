@@ -49,7 +49,8 @@ a dot for it.
 - **Find in the channel list (target, not shipped; #4729):** a find control heads the list with the
   tabs, and `/` opens it too; letters do not. It matches a channel's name, its exact number and the
   title on now, and lists results under the query. No match offers "Show all channels", which closes
-  find and selects All; closing find restores the group. Choosing a result tunes it and closes find.
+  find and selects All; closing find restores the group. Choosing a result tunes it, closes find and
+  leaves the list open; choosing the watched channel only closes find.
   A television has no typed find. The channel being watched stays pinned whatever the group or query:
   see [`frontend-design.md` §9.5](../frontend-design.md#95-what-the-keys-open).
 - **Guide** (`/guide`, headed "Guide" like its nav item; #3413) is the single channels surface: a cross-channel time grid,
