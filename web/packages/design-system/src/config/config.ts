@@ -74,7 +74,18 @@ const themeColors = (mode: keyof typeof semanticThemes) => ({
   decadeTint1980: semanticThemes[mode].decadeTint["1980"],
   decadeTint1990: semanticThemes[mode].decadeTint["1990"],
   decadeTint2000: semanticThemes[mode].decadeTint["2000"],
+  decadeTint2010: semanticThemes[mode].decadeTint["2010"],
+  decadeTint2020: semanticThemes[mode].decadeTint["2020"],
   decadeTintNeutral: semanticThemes[mode].decadeTint.neutral,
+  coverWash1950: semanticThemes[mode].coverWash["1950"],
+  coverWash1960: semanticThemes[mode].coverWash["1960"],
+  coverWash1970: semanticThemes[mode].coverWash["1970"],
+  coverWash1980: semanticThemes[mode].coverWash["1980"],
+  coverWash1990: semanticThemes[mode].coverWash["1990"],
+  coverWash2000: semanticThemes[mode].coverWash["2000"],
+  coverWash2010: semanticThemes[mode].coverWash["2010"],
+  coverWash2020: semanticThemes[mode].coverWash["2020"],
+  coverWashNeutral: semanticThemes[mode].coverWash.neutral,
   // Alpha washes of a surface or brand hue, the same in both themes.
   ...washes,
 });

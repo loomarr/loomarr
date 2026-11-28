@@ -70,6 +70,7 @@ interface LibraryDetails {
 interface LibraryReadyTitle {
   id: string;
   name: string;
+  year?: number;
   /** Whether it is ready to watch; one still being prepared shows faded. */
   ready: boolean;
   /** Its poster; absent draws the stand-in. */

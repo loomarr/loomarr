@@ -1,5 +1,5 @@
 import { Action, Surface, Text, useWindowWidth } from "@loomarr/design-system";
-import { Fragment, type ReactNode, useRef } from "react";
+import { Fragment, type ReactNode, useEffect, useRef } from "react";
 
 import { Line } from "../../library-poster";
 import type { LibraryNeedsCardsProps } from "../library-needs.type";
@@ -63,6 +63,25 @@ const LibraryNeedsCards = ({
   const wide = useWindowWidth() >= 640;
   const shows = useOrderAnswers(orders, onChooseOrder);
   const entries = problemEntries(problems);
+  // A restored title's card takes focus, on its safe target. It may be drawn a render after the
+  // count of restores moves, so the title waits here until its card is there.
+  const seenRestored = useRef(restored);
+  const refocus = useRef<string[]>([]);
+  useEffect(() => {
+    if (restored !== seenRestored.current) {
+      refocus.current = Object.keys(restored ?? {}).filter(
+        (id) => restored?.[id] !== seenRestored.current?.[id],
+      );
+      seenRestored.current = restored;
+    }
+    const id = refocus.current.find((waiting) => targets.current.has(waiting));
+    if (!id) return;
+    refocus.current = [];
+    const target = targets.current.get(id);
+    // A toast hands focus back to where it came from as focus leaves it, so ask twice.
+    target?.focus?.();
+    target?.focus?.();
+  });
   // One card per title: a question's card lists what else is wrong with it.
   const problemOf = new Map(entries.map((entry) => [entry.id, entry]));
   const asked = new Set([...shows.list, ...open].map((n) => n.id));

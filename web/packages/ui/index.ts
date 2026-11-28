@@ -101,9 +101,6 @@ export {
   LibraryTitle,
   LibraryTitleMissing,
   LibraryWizardStep,
-  POSTER_TONES,
-  posterMonogram,
-  posterTone,
   waitingTitles,
 } from "./src/library";
 export type { LowerThirdNext, LowerThirdProps, LowerThirdState } from "./src/lower-third";

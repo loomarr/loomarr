@@ -238,7 +238,7 @@ describe("where focus goes after an answer", () => {
     const onNoneLeft = vi.fn();
     const { host, cleanup } = mount([], { orders: [show], problems: [bad], onNoneLeft });
     press(host, "That's fine");
-    expect(focusedName()).toBe("See why");
+    expect(focusedName()).toBe(`See why: ${bad.name}`);
     expect(onNoneLeft).not.toHaveBeenCalled();
     cleanup();
   });

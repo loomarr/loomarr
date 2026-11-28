@@ -9,6 +9,7 @@ import {
   unreadableNames,
   unreadableTitle,
 } from "../../library-words";
+import { usePhoneDensity } from "../../phone-density";
 import { Callout } from "../callout";
 import { CheckAgain } from "../check-again";
 import { Headline } from "../headline";
@@ -52,6 +53,7 @@ const LibraryStatus = ({
   | "onConfirmRemoval"
   | "timeZone"
 >) => {
+  const density = usePhoneDensity();
   const inUse = folders.filter((f) => f.inUse);
   const offline = inUse.filter((f) => !f.readable);
   // What needs the maintainer leads. An import still running for the other folders keeps its bar,
@@ -80,10 +82,10 @@ const LibraryStatus = ({
         <Callout
           actions={
             <>
-              <Action onPress={onRescan} tone="primary">
+              <Action density={density} onPress={onRescan} tone="primary">
                 Check files again
               </Action>
-              <Action onPress={() => onConfirmRemoval(removal.path)} tone="danger">
+              <Action density={density} onPress={() => onConfirmRemoval(removal.path)} tone="danger">
                 They're gone, remove them
               </Action>
             </>
@@ -99,7 +101,7 @@ const LibraryStatus = ({
       {unreadable.length > 0 ? (
         <Callout
           actions={
-            <Action onPress={onRescan} tone="primary">
+            <Action density={density} onPress={onRescan} tone="primary">
               Check files again
             </Action>
           }
@@ -111,7 +113,7 @@ const LibraryStatus = ({
       {skippedKinds.map((kind) => (
         <Callout
           actions={
-            <Action onPress={onRescan} tone="primary">
+            <Action density={density} onPress={onRescan} tone="primary">
               Check files again
             </Action>
           }

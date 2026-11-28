@@ -20,12 +20,19 @@ const ProblemCard = ({
     <Surface gap="control" padding="section">
       <Line alignItems="flex-start" columnGap="section" flexWrap={wide ? "nowrap" : "wrap"} rowGap="control">
         <Stack flexShrink={0} width={wide ? 144 : 112}>
-          <LibraryPoster art={entry.poster} big id={entry.id} name={entry.name} />
+          <LibraryPoster
+            art={entry.poster}
+            homeVideo={entry.homeVideo}
+            kind={entry.kind}
+            name={entry.name}
+            year={entry.year}
+          />
         </Stack>
         <Stack flexBasis={240} flexGrow={1} flexShrink={1} gap="control" minWidth={0}>
           <ProblemReasons lead reasons={entry.reasons} />
           <Line>
             <Action
+              accessibilityLabel={`See why: ${entry.name}`}
               density={wide ? "pointer" : "touch"}
               onPress={() => onOpenTitle(entry.id)}
               ref={onSafeTarget}

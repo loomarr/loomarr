@@ -54,7 +54,8 @@ const extraReason = (p: LibraryProblem): ProblemReason => {
 const problemEntries = (problems: readonly LibraryProblem[]): ProblemEntry[] =>
   problems.flatMap((p) => {
     const reasons = reasonsFor(p);
-    return reasons.length > 0 ? [{ id: p.id, name: p.name, poster: p.poster, reasons }] : [];
+    const { id, name, year, kind, homeVideo, poster } = p;
+    return reasons.length > 0 ? [{ id, name, year, kind, homeVideo, poster, reasons }] : [];
   });
 
 export { problemEntries };

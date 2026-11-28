@@ -2,6 +2,7 @@ import { Action, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 
 import { LibraryPoster, Line, Stack } from "../library-poster";
+import { usePhoneDensity } from "../phone-density";
 import type {
   LibraryCollectionChannel,
   LibraryCollectionPoster,
@@ -26,7 +27,15 @@ const PosterPile = ({ pile }: { pile: readonly LibraryCollectionPoster[] }) => {
     <Stack aria-hidden flexShrink={0} height={160} position="relative" width={PILE_WIDTH + 16}>
       {layers.map((i) => (
         <Stack key={i} left={i * 8} position="absolute" top={(2 - i) * 6} width={PILE_WIDTH}>
-          <LibraryPoster art={shown[i]?.poster} dim={i > 0} id={shown[i]?.id} name={shown[i]?.name ?? ""} />
+          <LibraryPoster
+            art={shown[i]?.poster}
+            compact
+            dim={i > 0}
+            homeVideo={shown[i]?.homeVideo}
+            kind={shown[i]?.kind}
+            name={shown[i]?.name ?? ""}
+            year={shown[i]?.year}
+          />
         </Stack>
       ))}
     </Stack>
@@ -66,6 +75,7 @@ const Card = ({
 // "Make my own copy", then "Copied. It's under Yours" once it is.
 const CopyAction = ({ onCopy }: { onCopy: () => Promise<void> }) => {
   const [state, setState] = useState<"idle" | "copying" | "copied" | "failed">("idle");
+  const density = usePhoneDensity();
   const copy = () => {
     setState("copying");
     onCopy().then(
@@ -75,7 +85,12 @@ const CopyAction = ({ onCopy }: { onCopy: () => Promise<void> }) => {
   };
   return (
     <Stack gap="inline">
-      <Action disabled={state === "copying" || state === "copied"} onPress={copy} variant="outline">
+      <Action
+        density={density}
+        disabled={state === "copying" || state === "copied"}
+        onPress={copy}
+        variant="outline"
+      >
         {state === "copied" ? "Copied. It's under Yours" : "Make my own copy"}
       </Action>
       {state === "failed" ? (
@@ -116,56 +131,68 @@ const CollectionCards = ({
 }: {
   collections: LibraryCollectionsProps["collections"];
   onEdit?: (id: string) => void;
-}) => (
-  <Grid>
-    {collections.map((c) => (
-      <Card
-        action={
-          onEdit ? (
-            <Action accessibilityLabel={`Edit ${c.name}`} onPress={() => onEdit(c.id)} variant="outline">
-              Edit
-            </Action>
-          ) : null
-        }
-        key={c.id}
-        lines={[
-          { text: c.titles === 1 ? "1 title" : `${c.titles} titles`, tone: "secondary" },
-          ...(c.importedFrom
-            ? [{ text: `Brought over from ${c.importedFrom}`, tone: "muted" as const }]
-            : []),
-          ...c.usedBy.map((u) => ({ text: channelPhrase(u), tone: "muted" as const })),
-        ]}
-        name={c.name}
-        pile={c.pile}
-      />
-    ))}
-  </Grid>
-);
+}) => {
+  const density = usePhoneDensity();
+  return (
+    <Grid>
+      {collections.map((c) => (
+        <Card
+          action={
+            onEdit ? (
+              <Action
+                accessibilityLabel={`Edit ${c.name}`}
+                density={density}
+                onPress={() => onEdit(c.id)}
+                variant="outline"
+              >
+                Edit
+              </Action>
+            ) : null
+          }
+          key={c.id}
+          lines={[
+            { text: c.titles === 1 ? "1 title" : `${c.titles} titles`, tone: "secondary" },
+            ...(c.importedFrom
+              ? [{ text: `Brought over from ${c.importedFrom}`, tone: "muted" as const }]
+              : []),
+            ...c.usedBy.map((u) => ({ text: channelPhrase(u), tone: "muted" as const })),
+          ]}
+          name={c.name}
+          pile={c.pile}
+        />
+      ))}
+    </Grid>
+  );
+};
 
 // None made yet (#4476 mock): what a collection is, in place of an empty Yours. An admin can make
 // one; a member is told where they come from.
-const NoneYet = ({ onNew }: { onNew?: () => void }) => (
-  <Stack aria-label="Yours" gap="control" role="region">
-    <Text as="h2" textRole="headline">
-      No collections yet
-    </Text>
-    <Text textRole="body" tone="secondary">
-      {onNew
-        ? "A collection is a set of titles you put together, like “Rainy Sunday films”. A channel can play from it."
-        : "When someone in your household puts titles together, like “Rainy Sunday films”, they show up here."}
-    </Text>
-    {onNew ? (
-      <Line>
-        <Action icon="plus" onPress={onNew} tone="primary">
-          New collection
-        </Action>
-      </Line>
-    ) : null}
-  </Stack>
-);
+const NoneYet = ({ onNew }: { onNew?: () => void }) => {
+  const density = usePhoneDensity();
+  return (
+    <Stack aria-label="Yours" gap="control" role="region">
+      <Text as="h2" textRole="headline">
+        No collections yet
+      </Text>
+      <Text textRole="body" tone="secondary">
+        {onNew
+          ? "A collection is a set of titles you put together, like “Rainy Sunday films”. A channel can play from it."
+          : "When someone in your household puts titles together, like “Rainy Sunday films”, they show up here."}
+      </Text>
+      {onNew ? (
+        <Line>
+          <Action density={density} icon="plus" onPress={onNew} tone="primary">
+            New collection
+          </Action>
+        </Line>
+      ) : null}
+    </Stack>
+  );
+};
 
 const LibraryCollections = ({ collections, sets, manage }: LibraryCollectionsProps) => {
   const none = collections.length === 0;
+  const density = usePhoneDensity();
   // A member reads the collections only: no New collection, no Edit, and no ready-made sets,
   // whose one action is to copy one.
   if (!manage) {
@@ -181,7 +208,7 @@ const LibraryCollections = ({ collections, sets, manage }: LibraryCollectionsPro
             <Text as="h2" textRole="headline">
               Yours
             </Text>
-            <Action icon="plus" onPress={manage.onNew} tone="primary">
+            <Action density={density} icon="plus" onPress={manage.onNew} tone="primary">
               New collection
             </Action>
           </Line>

@@ -58,7 +58,7 @@ The maintainer raised these in order; they amend decisions 23–28 and 34 of #21
    where the details came from, the title match, file, size, picture, sound, subtitles, length.
    This replaces the per-field provenance chips of decision 25.
 4. **Not childish:** stand-in artwork is dark and quiet, the chrome is neutral, and the artwork
-   carries the colour.
+   carries the colour. Stand-ins are title covers tinted by decade, the same in both themes (#4860).
 5. **Built from the design system, not beside it.** Amber is focus and the one primary action per
    view. Import progress is `ProgressTrack` in its `tune` tone (preparation), neutral when paused.
 
@@ -67,10 +67,11 @@ The maintainer raised these in order; they amend decisions 23–28 and 34 of #21
 1. **Posters first.** The wall opens on the posters. Needs you is one line above them, with a
    count and Review, not a strip of cards.
 2. **The wall has a count, tabs, sort, genre and a letter rail.** The tabs are All, Movies, Shows
-   and Collections. The letter rail is on desktop only. On a phone the wall keeps one row, the
-   search and a "Filters" control that counts what narrows it. The tabs, sort, genre and the other
-   filters sit in a sheet that control opens, which also says how many titles they leave (A5
-   critique, #4476). This supersedes the inline rows in the phone mock.
+   and Collections. The letter rail is on desktop only. On a phone the wall keeps the search and a
+   "Filters" control on one row, with the tabs as a row under it, one tap each. Sort, genre and the
+   other filters sit in the sheet Filters opens; its badge counts what in the sheet narrows the
+   wall, and its footer, "Show N titles", says how many the choices and the search leave (A5 and A6
+   critiques, #4476 and #4860). This supersedes the inline rows in the phone mock.
 3. **Members browse read-only.** A member sees the wall and the title pages, with no Needs you, no
    Fix and no settings. Members have their own phone bar, with Library in it.
 4. **Needs you is grouped by folder, and the file name leads each card.** It has two tabs, Waiting
