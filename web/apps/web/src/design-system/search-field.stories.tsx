@@ -1,4 +1,5 @@
-import { SearchButton, SearchField } from "@loomarr/ui";
+import { SearchField } from "@loomarr/design-system/fields";
+import { SearchButton } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 // SearchField — a list filter's text box with the magnifier inside its leading edge.

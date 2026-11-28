@@ -487,6 +487,9 @@ These suites join **phase 13's gate** in the main doc's build plan.
   one action). The Home wall tile and the guide row are the two named exceptions: each is its own
   layout, not a variant of either family. A row card keeps at least 180px for its title beside the
   action; a row with less room puts the action on a line of its own, on the trailing edge (#3429).
+- **Generic widgets live in the design system.** `ListGroup`, `ListRow`, `PanelRow`, `RowCard` and
+  the card parts come from `@loomarr/design-system/rows`; `SearchField` and `YearField` from
+  `@loomarr/design-system/fields`. `PictureCard` is product-shaped and stays in `@loomarr/ui`.
 - **One navigation treatment per level.** `AppShell` owns primary navigation and `NavTabs` owns every route-level tab bar, including nested Settings pages. Pages do not hand-build a third active-state treatment.
 
 ---

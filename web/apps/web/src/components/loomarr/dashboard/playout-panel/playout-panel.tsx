@@ -3,7 +3,7 @@ import type { PlayoutCapability } from "@loomarr/api/models/playoutCapability";
 import type { PlayoutGPU } from "@loomarr/api/models/playoutGPU";
 import { pluralize } from "@loomarr/core/format";
 import { Action, Badge, type BadgeTone, Card, Stack, Text, Tooltip } from "@loomarr/design-system";
-import { ListGroup, PanelRow } from "@loomarr/ui";
+import { ListGroup, PanelRow } from "@loomarr/design-system/rows";
 import type { PlayoutPanelProps } from "./playout-panel.type";
 
 // PlayoutPanel — the dashboard's single live-playout picture (§12, §9.1 V47, GET /v1/playout/status).

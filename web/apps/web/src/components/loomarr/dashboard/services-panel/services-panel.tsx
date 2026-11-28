@@ -1,5 +1,5 @@
 import { Action, ActivityIndicator, Card, Stack, StatusWord, Text } from "@loomarr/design-system";
-import { ListGroup, PanelRow } from "@loomarr/ui";
+import { ListGroup, PanelRow } from "@loomarr/design-system/rows";
 import type { ServicesPanelProps } from "./services-panel.type";
 
 // ServicesPanel — "is anything broken?" (§12, V31; v2 mock Dashboard § Services).

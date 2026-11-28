@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderUi } from "@loomarr/test-support";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { SearchButton, SearchField } from "../index";
+import { SearchButton } from "../index";
 
 const doc = document;
 
@@ -15,50 +15,7 @@ const mount = async (node: ReactNode) => {
 };
 afterEach(cleanup);
 
-let latest = "";
-const Controlled = ({ clearLabel }: { clearLabel?: string }) => {
-  const [query, setQuery] = useState("Mo");
-  latest = query;
-  return (
-    <SearchField
-      clearLabel={clearLabel}
-      label="Search people"
-      onChangeText={setQuery}
-      placeholder="Name"
-      value={query}
-    />
-  );
-};
-
 type Clickable = { click(): void };
-
-describe("SearchField", () => {
-  it("is one input named by its visible label, with a decorative magnifier", async () => {
-    await mount(<Controlled />);
-
-    const input = doc.body.querySelector("input");
-    expect(input?.getAttribute("aria-label")).toBe("Search people");
-    expect(input?.value).toBe("Mo");
-    expect(latest).toBe("Mo");
-    expect(doc.body.textContent).toContain("Search people");
-    // The glyph is the only image, and it is hidden from assistive tech.
-    expect(doc.body.querySelectorAll('[role="img"]').length).toBe(0);
-    // No clear button unless one is named.
-    expect(doc.body.querySelector('[aria-label="Clear search"]')).toBeNull();
-  });
-
-  it("empties the query from its named clear button, which then goes away", async () => {
-    await mount(<Controlled clearLabel="Clear search" />);
-
-    const clear = doc.body.querySelector('[aria-label="Clear search"]') as unknown as Clickable | null;
-    expect(clear).not.toBeNull();
-    await act(async () => clear?.click());
-
-    expect(latest).toBe("");
-    expect(doc.body.querySelector("input")?.value).toBe("");
-    expect(doc.body.querySelector('[aria-label="Clear search"]')).toBeNull();
-  });
-});
 
 describe("SearchButton", () => {
   it("is a button named by its placeholder, with the shortcut hint and aria-keyshortcuts, that presses", async () => {

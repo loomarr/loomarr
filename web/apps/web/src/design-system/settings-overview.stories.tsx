@@ -1,4 +1,5 @@
-import { SearchField, SettingsOverview, type SettingsOverviewCard } from "@loomarr/ui";
+import { SearchField } from "@loomarr/design-system/fields";
+import { SettingsOverview, type SettingsOverviewCard } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { cardDestinations, destinationById, SETTINGS_CARDS } from "@/settings/settings-destinations";
 

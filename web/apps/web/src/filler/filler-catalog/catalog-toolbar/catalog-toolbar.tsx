@@ -1,5 +1,5 @@
 import { Action, Card, CompactSelect, Grid, Stack, Text, Tooltip } from "@loomarr/design-system";
-import { SearchField } from "@loomarr/ui";
+import { SearchField } from "@loomarr/design-system/fields";
 import { type ReactNode, useState } from "react";
 import { AUDIENCE_LABEL, ROLE_LABEL } from "@/components/loomarr/filler/clip-card";
 import type { FillerSearch } from "../../filler-search";

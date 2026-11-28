@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
+import { CardAction, CardStatus, ChannelChip, ListGroup } from "@loomarr/design-system/rows";
 import { act, cleanup, renderUi } from "@loomarr/test-support";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-import { CardAction, CardStatus, ChannelChip, ListGroup, PictureCard, RowCard } from "../index";
+import { PictureCard } from "../index";
 
 const mount = async (node: ReactNode) => {
   await act(async () => {
@@ -63,25 +63,5 @@ describe("PictureCard", () => {
     const item = document.body.querySelector('[role="listitem"]');
     expect(item?.querySelector('[role="article"]')).not.toBeNull();
     expect(item?.textContent).toContain("Waiting for approval·Requested 2 days ago");
-  });
-});
-
-describe("RowCard", () => {
-  it("shows the lead, the title, one metadata line and one action", async () => {
-    await mount(
-      <ListGroup aria-label="People">
-        <RowCard
-          action={<CardAction>Manage</CardAction>}
-          lead={<span>A</span>}
-          meta={["Admin", "seen today"]}
-          title="Ada Marlowe"
-        />
-      </ListGroup>,
-    );
-
-    const text = document.body.textContent ?? "";
-    expect(text).toContain("Ada Marlowe");
-    expect(text).toContain("Admin·seen today");
-    expect(document.body.querySelectorAll("button").length).toBe(1);
   });
 });

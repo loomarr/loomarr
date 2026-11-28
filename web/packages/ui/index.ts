@@ -2,8 +2,6 @@ export type { AboutDetail, AboutPageProps } from "./src/about-page";
 export { AboutPage, TMDB_NOTICE } from "./src/about-page";
 export type { AiReconnectBannerProps } from "./src/ai-reconnect-banner";
 export { AiReconnectBanner } from "./src/ai-reconnect-banner";
-export type { CardActionProps, CardStatusProps, ChannelChipProps } from "./src/card-parts";
-export { CardAction, CardMeta, CardStatus, ChannelChip } from "./src/card-parts";
 export type { ChannelIdentProps } from "./src/channel-ident";
 export { ChannelIdent } from "./src/channel-ident";
 export type { ChannelListDetail, ChannelListLayout, ChannelListProps } from "./src/channel-list";
@@ -163,8 +161,6 @@ export {
   posterTone,
   waitingTitles,
 } from "./src/library";
-export type { ListGroupProps, ListRowProgress, ListRowProps } from "./src/list-row";
-export { ListGroup, ListRow } from "./src/list-row";
 export type { LowerThirdNext, LowerThirdProps, LowerThirdState } from "./src/lower-third";
 export { LowerThird } from "./src/lower-third";
 export type { LinkLike, NavTab, NavTabsProps } from "./src/nav-tabs";
@@ -184,8 +180,6 @@ export type { ModalOverlayProps, OverlayAction, TransientOverlayProps } from "./
 export { ModalOverlay, TransientOverlay } from "./src/overlay";
 export type { ApprovalBrowser, PairingShellProps } from "./src/pairing-shell";
 export { PairingShell, pairingBackAvailable } from "./src/pairing-shell";
-export type { PanelRowProps } from "./src/panel-row";
-export { PanelRow } from "./src/panel-row";
 export type { PictureCardProps, PictureRatio } from "./src/picture-card";
 export { PictureCard } from "./src/picture-card";
 export type {
@@ -233,14 +227,10 @@ export {
   ReviewSheet,
   reviewReducer,
 } from "./src/requests";
-export type { RowCardProps } from "./src/row-card";
-export { RowCard } from "./src/row-card";
 export type { ScreenHeaderAction, ScreenHeaderProps } from "./src/screen-header";
 export { ScreenHeader } from "./src/screen-header";
 export type { SearchButtonProps } from "./src/search-button";
 export { SearchButton } from "./src/search-button";
-export type { SearchFieldProps } from "./src/search-field";
-export { SearchField } from "./src/search-field";
 export type {
   SettingsOverviewAdvanced,
   SettingsOverviewCard,
@@ -344,8 +334,6 @@ export {
   watchingScheduleTimeMs,
   watermarkOf,
 } from "./src/watching-surface";
-export type { YearFieldProps } from "./src/year-field";
-export { YearField } from "./src/year-field";
 export type { YearRange, YearRangeListFieldProps } from "./src/year-range-list-field";
 export {
   isValidYearRange,
