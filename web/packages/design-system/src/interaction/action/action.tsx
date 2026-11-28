@@ -145,6 +145,14 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
             outlineWidth: 3,
           }
         : undefined;
+    // An unfilled control's ring is its own amber border, and the browser draws a second ring
+    // outside it, after a click too, unless the outline is spoken for. The outline is transparent
+    // rather than off: forced colours repaint it, and flatten the border that would otherwise tell
+    // the focused control apart.
+    const quietOutline =
+      isWeb && !filled && focused
+        ? { outlineColor: "transparent", outlineStyle: "solid" as const, outlineWidth: 2 }
+        : undefined;
     // The suggest fill: brandChroma[4] under the dark theme's dark label. The light theme's label is
     // white, 4.1:1 on that magenta, so the light fill is its suggest accent (#A8246F, 6.6:1).
     const suggestFill = lightTheme ? theme.accentSuggest.val : brandChroma[4];
@@ -290,6 +298,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
           : tv && !pressed
             ? 1
             : 2,
+      ...quietOutline,
       ...focusRing,
       justifyContent: "center" as const,
       minHeight: tv && !iconOnly ? 0 : semanticTargets[density],

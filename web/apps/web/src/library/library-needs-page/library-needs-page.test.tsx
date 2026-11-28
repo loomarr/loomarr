@@ -294,6 +294,34 @@ describe("LibraryNeedsPage", () => {
     expect((options as { action: { label: string } }).action.label).toBe("Try again");
   });
 
+  it("drops the toast's Try again while the row's Bring back is on its way", async () => {
+    const button = await openIgnored();
+    let asked = 0;
+    let release = () => {};
+    const held = new Promise<void>((done) => {
+      release = done;
+    });
+    server.use(
+      http.post("*/v1/library/ignored/restore", async () => {
+        asked += 1;
+        if (asked === 1) return HttpResponse.error();
+        await held;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await userEvent.click(button);
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    const retry = vi.mocked(toast.error).mock.calls[0]?.[1] as unknown as { action: { onClick: () => void } };
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+
+    await userEvent.click(button);
+    await waitFor(() => expect(asked).toBe(2));
+    act(() => retry.action.onClick());
+    await new Promise((done) => setTimeout(done, 50));
+    expect(asked).toBe(2);
+    act(() => release());
+  });
+
   it("counts a title in two lists once, as the one card it draws", async () => {
     const item = { id: "one", kind: "movie", name: "Low Tide", ready: true, unplayable: 1 };
     server.use(

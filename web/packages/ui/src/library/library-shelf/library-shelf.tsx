@@ -607,7 +607,6 @@ const Controls = ({
 > & { showSearch: boolean; moreRef: (node: unknown) => void }) => {
   const wide = useWindowWidth() >= 768;
   const [open, setOpen] = useState(false);
-  const [moreFocused, setMoreFocused] = useState(false);
   const { height } = useWindowDimensions();
   // On a phone the controls are tapped, so they take the design system's touch targets.
   const density = wide ? "pointer" : "touch";
@@ -654,16 +653,9 @@ const Controls = ({
     />
   );
   const on = filtering ? filterCount(filtering) : 0;
-  // The amber border is the focus look; forced colours turn the transparent outline visible.
-  const focusLook = {
-    onBlur: () => setMoreFocused(false),
-    onFocus: () => setMoreFocused(true),
-    style: { outlineColor: "transparent", outlineStyle: "solid", outlineWidth: moreFocused ? 2 : 0 } as const,
-  };
   const more = filtering ? (
     <Action
       aria-expanded={open}
-      {...focusLook}
       density={density}
       icon="filter"
       onPress={() => setOpen(!open)}
@@ -718,7 +710,7 @@ const Controls = ({
       ) : null}
       <Dialog>
         <DialogTrigger>
-          <Action {...focusLook} density="touch" icon="filter" ref={moreRef} variant="outline">
+          <Action density="touch" icon="filter" ref={moreRef} variant="outline">
             {narrowing > 0 ? `Filters (${narrowing})` : "Filters"}
           </Action>
         </DialogTrigger>

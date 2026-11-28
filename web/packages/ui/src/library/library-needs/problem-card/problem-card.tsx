@@ -32,6 +32,7 @@ const ProblemCard = ({
           <ProblemReasons lead reasons={entry.reasons} />
           <Line>
             <Action
+              accessibilityLabel={`See why: ${entry.name}`}
               density={wide ? "pointer" : "touch"}
               onPress={() => onOpenTitle(entry.id)}
               ref={onSafeTarget}

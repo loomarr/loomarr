@@ -474,6 +474,7 @@ const NeedsIgnored: Story = {
   render: () => (
     <LibraryNeedsView ignored={1} onBack={() => {}} onTabChange={() => {}} tab="ignored" waiting={2}>
       <IgnoredList
+        bringing={new Set()}
         items={[
           {
             id: "90000813",
