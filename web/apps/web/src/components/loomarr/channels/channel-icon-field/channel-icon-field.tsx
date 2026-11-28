@@ -199,12 +199,7 @@ const ChannelIconField = ({
         <Card id={pickerId} padding={16}>
           <Stack gap="4">
             {logo && (
-              <Action
-                disabled={clearing}
-                onPress={() => void clear()}
-                style={{ alignSelf: "flex-start" }}
-                variant="ghost"
-              >
+              <Action disabled={clearing} onPress={() => void clear()} alignSelf="flex-start" variant="ghost">
                 {clearing ? "Clearing…" : "Clear"}
               </Action>
             )}
