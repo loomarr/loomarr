@@ -114,13 +114,6 @@ export type { NeedsLineItem, NeedsLineProps } from "./src/needs-line";
 export { NeedsLine } from "./src/needs-line";
 export type { NumberFieldProps } from "./src/number-field";
 export { NumberField } from "./src/number-field";
-export type {
-  OnScreenLogoHoliday,
-  OnScreenLogoPolicy,
-  OnScreenLogoPreviewRequest,
-  OnScreenLogoSectionProps,
-} from "./src/on-screen-logo";
-export { OnScreenLogoSection } from "./src/on-screen-logo";
 export type { ModalOverlayProps, OverlayAction, TransientOverlayProps } from "./src/overlay";
 export { ModalOverlay, TransientOverlay } from "./src/overlay";
 export type { PictureCardProps, PictureRatio } from "./src/picture-card";
@@ -151,25 +144,6 @@ export type {
 export { SettingsOverview } from "./src/settings-overview";
 export type { StatePanelAction, StatePanelKind, StatePanelProps } from "./src/state-panel";
 export { StatePanel } from "./src/state-panel";
-export type {
-  SurfChannelData,
-  SurfGroupData,
-  SurfGroupKind,
-  SurfGroupsArgs,
-  SurfJourneyProps,
-  SurfProgrammeData,
-  SurfRailProps,
-  SurfSelection,
-} from "./src/surf-rail";
-export {
-  restoreSurfSelection,
-  SurfJourney,
-  SurfRail,
-  surfChannelData,
-  surfGroupsFromGuide,
-  surfPreviousChannel,
-  watchingScheduleFromGuide,
-} from "./src/surf-rail";
 export type { TuneBarsProps, TuneStaticProps } from "./src/tune-static";
 export { TuneBars, TuneStatic } from "./src/tune-static";
 export type { BackHandlerSource } from "./src/use-client-destination";

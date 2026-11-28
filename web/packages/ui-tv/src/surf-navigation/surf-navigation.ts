@@ -1,4 +1,4 @@
-import type { SurfGroupData, SurfSelection } from "@loomarr/ui";
+import type { SurfGroupData, SurfSelection } from "@loomarr/ui/watching";
 
 const surfSelections = (groups: readonly SurfGroupData[]): SurfSelection[] =>
   groups.flatMap((group) => group.channels.map((channel) => ({ channelId: channel.id, group: group.kind })));

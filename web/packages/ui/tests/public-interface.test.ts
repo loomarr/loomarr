@@ -12,12 +12,11 @@ import {
   ProgrammeCard,
   ProgrammeIdentity,
   StatePanel,
-  SurfJourney,
-  SurfRail,
   TransientOverlay,
   WatchingSurface,
 } from "../index";
 import { DeviceDisconnectAction, PairingShell, pairingBackAvailable } from "../pairing";
+import { SurfJourney, SurfRail } from "../watching";
 
 describe("ui public interface", () => {
   it("exports the shared scaffold surface", () => {

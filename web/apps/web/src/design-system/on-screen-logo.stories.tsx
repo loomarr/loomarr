@@ -4,7 +4,7 @@ import {
   type OnScreenLogoPolicy,
   type OnScreenLogoPreviewRequest,
   OnScreenLogoSection,
-} from "@loomarr/ui";
+} from "@loomarr/ui/watching";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 // The backend draws the real PNG; a story stands in with an inline SVG that names what was asked

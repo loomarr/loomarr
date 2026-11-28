@@ -3,7 +3,7 @@ import { surfGroups } from "@loomarr/fixtures";
 import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { declarationsOfElement } from "@loomarr/test-support/css";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SurfRail } from "../index";
+import { SurfRail } from "../watching";
 
 type RailNode = HTMLElement;
 type QueryRoot = ParentNode;

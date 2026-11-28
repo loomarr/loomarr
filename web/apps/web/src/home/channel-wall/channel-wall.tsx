@@ -11,8 +11,9 @@ import {
   guideWaitingForTitles,
 } from "@loomarr/core/guide";
 import { Action, decadeTint, SectionHeader, Stack, Surface, Text } from "@loomarr/design-system";
-import { NeedsLine, surfChannelData, WallTile } from "@loomarr/ui";
+import { NeedsLine, WallTile } from "@loomarr/ui";
 import { CHANNEL_LIST_NOTICES } from "@loomarr/ui/channels";
+import { surfChannelData } from "@loomarr/ui/watching";
 import { Link } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
