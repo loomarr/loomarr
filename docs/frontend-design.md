@@ -1101,10 +1101,19 @@ The table above is the shipped chrome. The Cross's watching screen (§9.1) draws
 - **Switching arrangements.** `F`, the Full screen control and a double click on the picture ask
   for full screen; the caller swaps the layout prop. The picture keeps playing, and the watched
   channel, the list's group and its scroll position are kept; any menu closes, and so does looking.
-- **A narrow window** (narrower than 900 px, measured on the screen itself, not the browser) stacks
+  The screen owns one picture layer, its first, holding the picture slot and the tune's static.
+  Every arrangement says where that layer stands (the whole screen, the measured 16:9 box, the top
+  of the stack) and draws its chrome around and over it, never a picture of its own, so no change
+  of arrangement mounts the player again.
+- **A narrow window** (narrower than 900 px, measured on the screen itself, not the browser; before
+  the screen is measured the browser's window is the first guess, so a narrow one never draws the
+  columns first) stacks
   the same parts as an upright phone does: the picture across the full width at 16:9, the lower
   third with the quiet row's icons on the line under it, then the list's header and the whole list,
   one scrollable list with the watched channel pinned in it as a row marked "watching". There is no
   strip and no facts. 900 px is where the columns stop fitting: the 400 px list, the 48 px gap and
   the 96 px of margins leave the picture 356 px across (200 px high), and any narrower it would be
-  smaller than the list beside it. The phone's own Guide is not drawn here.
+  smaller than the list beside it. The back control and the Guide are 44 px targets there, a
+  finger's, since a phone's browser gets the stack; in the columns they are 36 px. Crossing the
+  breakpoint draws the list anew, so find closes with it, as a change of layout closes the list's
+  other layers. The phone's own Guide is not drawn here.

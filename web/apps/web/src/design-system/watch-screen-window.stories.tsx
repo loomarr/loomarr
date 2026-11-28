@@ -203,7 +203,12 @@ const Screen = ({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [send]);
-  const picture: ReactNode = <div style={{ backgroundImage: DARK_PICTURE, height: "100%", width: "100%" }} />;
+  const picture: ReactNode = (
+    <div
+      data-testid="story-picture"
+      style={{ backgroundImage: DARK_PICTURE, height: "100%", width: "100%" }}
+    />
+  );
   const byId = (id: string) => CHANNELS.find((each) => each.id === id);
   return (
     <div data-testid="frame" style={{ height, overflow: "hidden", position: "relative", width }}>
@@ -356,6 +361,8 @@ const WheelNeverTunes: Story = {
 const FullScreenAndBack: Story = {
   play: async ({ args, canvasElement }) => {
     await settled(canvasElement);
+    // The picture is the player on a real route: it must be the same element throughout.
+    const picture = within(canvasElement).getByTestId("story-picture");
     const top = scroller(canvasElement).scrollTop + 150;
     scroller(canvasElement).scrollTop = top;
     await fireEvent.scroll(scroller(canvasElement));
@@ -365,6 +372,7 @@ const FullScreenAndBack: Story = {
     await waitFor(() => expect(within(canvasElement).getByTestId("watch-window")).toBeVisible());
     await waitFor(() => expect(Math.abs(scroller(canvasElement).scrollTop - top)).toBeLessThan(2));
     await expect(label(canvasElement)).toHaveTextContent("Today on Coast 80s");
+    await expect(within(canvasElement).getByTestId("story-picture")).toBe(picture);
     await expect(tunes(args.onRequest)).toEqual([]);
   },
 };

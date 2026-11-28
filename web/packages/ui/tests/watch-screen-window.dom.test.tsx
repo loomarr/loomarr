@@ -3,6 +3,7 @@
 import { idleTune, tuneView } from "@loomarr/core/tune";
 import { type WatchRequest, watchKeyOf } from "@loomarr/core/watch-screen";
 import { act, cleanup, fireEvent, renderUi, screen, within } from "@loomarr/test-support";
+import { declarationsOfTree } from "@loomarr/test-support/css";
 import { useEffect } from "react";
 import { Text } from "react-native";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -42,6 +43,15 @@ const tunes = () =>
   requests.mock.calls.flatMap(([request]) => (request.type === "tune" ? [request.channelId] : []));
 const back = vi.fn();
 
+// The picture slot stands for the player: it counts how often it is mounted.
+const mounts = { count: 0 };
+const Picture = () => {
+  useEffect(() => {
+    mounts.count += 1;
+  }, []);
+  return <Text>picture</Text>;
+};
+
 const Harness = ({ layout = "window" }: { layout?: WatchScreenLayout }) => {
   const model = useWatchScreen({ hintSeen: true, layout, lineup, onRequest: requests, watchedId: "ch-1" });
   const { send } = model;
@@ -63,7 +73,7 @@ const Harness = ({ layout = "window" }: { layout?: WatchScreenLayout }) => {
       back={{ label: "Home", onPress: back }}
       layout={layout}
       model={model}
-      picture={<Text>picture</Text>}
+      picture={<Picture />}
       programme={(channel) => ({ kind: "on", minutesLeft: 15, title: `Show ${channel.number} at 0` })}
       schedule={{ airings: (channel) => airingsOf(channel.number), formatTime, nowMs: NOW }}
       tune={tuneView(idleTune, 0)}
@@ -193,7 +203,78 @@ describe("WatchScreen in a window", () => {
   });
 });
 
+describe("WatchScreen's one picture", () => {
+  it("is never mounted again across full screen, the window, the narrow stack and back", () => {
+    mounts.count = 0;
+    const { rerender } = renderUi(<Harness layout="full" />);
+    rerender(<Harness layout="window" />);
+    measure(1200);
+    measure(899);
+    expect(screen.getByTestId("watch-window-narrow")).toBeTruthy();
+    measure(1200);
+    rerender(<Harness layout="full" />);
+    rerender(<Harness layout="window" />);
+    expect(mounts.count).toBe(1);
+    // It is the screen's first layer, wherever it stands.
+    expect(screen.getByTestId("watch-screen").firstElementChild).toBe(
+      screen.getByTestId("watch-picture-layer"),
+    );
+  });
+});
+
 describe("WatchScreen in a narrow window", () => {
+  it("leads with the picture, then the lower third, then the header and the list", () => {
+    renderUi(<Harness />);
+    measure(600);
+    const order = ["watch-window-room", "watch-window-line", "watch-window-head", "watch-list"].map((id) =>
+      screen.getByTestId(id),
+    );
+    for (const [i, part] of order.slice(1).entries()) {
+      expect(order[i]?.compareDocumentPosition(part) ?? 0).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+    // The first stop for Tab is under the picture, on the line, before the header's controls.
+    const stops = [...screen.getByTestId("watch-screen").querySelectorAll('[tabindex="0"]')];
+    expect(screen.getByTestId("watch-window-line").contains(stops[0] ?? null)).toBe(true);
+  });
+
+  it("gives the back control and the Guide a finger's target, 36 px in the columns", () => {
+    renderUi(<Harness />);
+    const sizes = () =>
+      within(screen.getByTestId("watch-window-head"))
+        .getAllByRole("button")
+        .map((button) => declarationsOfTree(button).includes("min-height:44px"));
+    measure(1200);
+    expect(sizes()).toEqual([false, false]);
+    measure(600);
+    expect(sizes()).toEqual([true, true]);
+  });
+
+  it("draws the stack from the first paint when the window itself is narrow", () => {
+    // react-native-web reads the window's size from the document's element, which jsdom leaves at 0.
+    const page = document.documentElement;
+    const width = vi.spyOn(page, "clientWidth", "get").mockReturnValue(600);
+    const height = vi.spyOn(page, "clientHeight", "get").mockReturnValue(800);
+    window.dispatchEvent(new Event("resize"));
+    try {
+      renderUi(<Harness />);
+      expect(screen.getByTestId("watch-window-narrow")).toBeTruthy();
+    } finally {
+      width.mockRestore();
+      height.mockRestore();
+      window.dispatchEvent(new Event("resize"));
+    }
+  });
+
+  it("closes find when the window crosses the breakpoint", () => {
+    renderUi(<Harness />);
+    measure(1200);
+    key("/", document.body);
+    expect(screen.getByRole("searchbox")).toBeTruthy();
+    measure(600);
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.getByRole("listbox", { name: "Channels" })).toBeTruthy();
+  });
+
   it("stacks below 900 px: the picture, the lower third, then the whole list with no strip", () => {
     renderUi(<Harness />);
     measure(899);
