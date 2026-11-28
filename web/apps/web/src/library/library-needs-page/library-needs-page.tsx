@@ -109,7 +109,8 @@ const LibraryNeedsView = ({
 const LibraryNeedsPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<NeedsTab>("waiting");
+  // Which titles are listed: a filter of the page, not an answer being drafted.
+  const [tab, setFilterTab] = useState<NeedsTab>("waiting");
   // An answered card remembers that it left. A new key forgets that, so a restored title shows.
   const [restored, setRestored] = useState(0);
   useLibraryScanFrames();
@@ -166,22 +167,18 @@ const LibraryNeedsPage = () => {
   };
 
   const total = ignored.data?.pages.at(-1)?.total;
-  const error = tab === "waiting" ? needs.error : ignored.error;
+  // The list behind the chosen tab: its failure shows, and Try again asks for it.
+  const shown = tab === "waiting" ? needs : ignored;
 
   return (
     <LibraryNeedsView
       ignored={total}
       onBack={() => void navigate({ to: "/library" })}
-      onTabChange={setTab}
+      onTabChange={setFilterTab}
       tab={tab}
       waiting={needs.loaded ? needs.needs.length + needs.orders.length + needs.problems.length : undefined}
     >
-      {error ? (
-        <ErrorState
-          error={error}
-          onRetry={() => void (tab === "waiting" ? needs.refetch() : ignored.refetch())}
-        />
-      ) : null}
+      {shown.error ? <ErrorState error={shown.error} onRetry={() => void shown.refetch()} /> : null}
       {tab === "waiting" && needs.loaded ? (
         <LibraryNeedsCards
           hideHeading
