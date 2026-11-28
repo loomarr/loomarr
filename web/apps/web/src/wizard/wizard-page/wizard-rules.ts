@@ -39,7 +39,7 @@ const COPY: Record<string, { title: string; description: string }> = {
 // A step the operator may pass on. Skipped reads neutral, never red (§6).
 //
 // The blocking set is "the shortest honest path to a live channel" (§13, config-design §6),
-// which depends on the playout backend (§9.1, see requiredChecks). A step that gates on
+// which depends on the playout backend (§9.1, see requiredChecks in ../steps). A step that gates on
 // a check the operator cannot satisfy is a dead end, because the wizard offers only
 // Back/Continue and the rail goes back, never ahead: they'd be stranded on that screen for good.
 // That matters most for `library`, whose entire purpose (§6) is to stop channels scheduling slots

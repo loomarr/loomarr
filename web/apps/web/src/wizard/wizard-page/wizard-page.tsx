@@ -53,7 +53,7 @@ interface WizardSearch {
 // admin or session exists. Everything after is admin-gated, which the BE enforces —
 // setup/status simply 401s until signed in. The wizard opens at the first incomplete
 // step derived from server truth, so a refresh (or finishing from another browser)
-// loses nothing; `visited` only lets the operator step back and forth within that.
+// loses nothing.
 const route = getRouteApi("/wizard");
 
 const WizardPage = () => {
@@ -195,7 +195,7 @@ const WizardPage = () => {
   const body = () => {
     switch (currentId) {
       case "bootstrap":
-        // The owner is resolved HERE, not in the step: this route already read identity to
+        // The owner is resolved HERE, not in the step: this page already reads identity to
         // decide which step to show, so passing it down keeps one answer to one question.
         return <BootstrapStep onDone={() => goTo("playout")} ownerName={user?.name} />;
       case "playout":
@@ -280,7 +280,7 @@ const WizardPage = () => {
       onBack={index > 0 ? () => goTo(steps[index - 1]?.id) : undefined}
       onNext={advances ? () => void advance() : undefined}
       onSkip={advances && SKIPPABLE.has(currentId) ? skip : undefined}
-      // A skippable step has no server check to satisfy, so it must never BLOCK: gating
+      // A skippable step `continueGated` lets through must never BLOCK: gating
       // Continue on `isStepDone` there would strand an operator who did the optional work
       // (imported users) behind a button that can never enable. Skip stays, to record the
       // deliberate pass as `skipped` rather than merely unfinished.
