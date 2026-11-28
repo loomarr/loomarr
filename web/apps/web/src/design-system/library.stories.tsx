@@ -168,6 +168,8 @@ const Loading: Story = {
 
 // A library with no artwork imported: each poster draws its colour and monogram over its caption.
 const NoArtwork: Story = { args: { titles: TITLES.map(({ poster, ...title }) => title) } };
+// The covers stay dark on a light page.
+const NoArtworkLight: Story = { ...NoArtwork, globals: { theme: "light" } };
 
 // Recently added first: the order the mock's home videos are shown in.
 const RecentlyAdded: Story = { args: { sort: "recent", titles: [...TITLES].reverse() } };
@@ -1258,6 +1260,7 @@ export {
   NeedsYou,
   NewCollection,
   NoArtwork,
+  NoArtworkLight,
   NoBackdrop,
   NoMatch,
   NothingNeedsYou,
