@@ -16,6 +16,14 @@ describe("watchChannelId", () => {
     expect(watchChannelId(channels, undefined)).toBe("ch-10");
   });
 
+  it("skips channels the server marked not in-app playable", () => {
+    const channels = [
+      channel({ id: "ch-5", number: 5, inAppPlayable: false }),
+      channel({ id: "ch-10", number: 10, inAppPlayable: true }),
+    ];
+    expect(watchChannelId(channels, undefined)).toBe("ch-10");
+  });
+
   it("opens the last-tuned channel once one exists, even when it isn't the lowest number", () => {
     const channels = [channel({ id: "ch-10", number: 10 }), channel({ id: "ch-30", number: 30 })];
     expect(watchChannelId(channels, { channelId: "ch-30", tunedAt: "2026-10-03T00:00:00Z" })).toBe("ch-30");

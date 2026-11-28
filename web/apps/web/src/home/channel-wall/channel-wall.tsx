@@ -1,4 +1,5 @@
 import type { GuideAiring } from "@loomarr/api/models/guideAiring";
+import { createChannelLineup } from "@loomarr/core/channel-lineup";
 import type { GuideChannelLayout } from "@loomarr/core/guide";
 import {
   formatGuideEpisode,
@@ -150,10 +151,17 @@ const watchingCount = (viewers: ChannelViewer[]): string => {
 // admin, the "Needs you" counts sit as one quiet line between the header and the tiles (#2785).
 const ChannelWall = ({ lastChannelId, layout, needs = [], nowMs, viewers }: ChannelWallProps) => {
   const phone = usePhoneWidth();
-  const byNumber = [...layout.channels].sort((a, b) => a.source.number - b.source.number);
-  const last = byNumber.find((c) => c.source.channelId === lastChannelId);
-  const ordered = last ? [last, ...byNumber.filter((c) => c !== last)] : byNumber;
-  const entries = ordered.map((channel) => wallEntry(channel, nowMs, layout.timezone));
+  const lineup = createChannelLineup({
+    channels: layout.channels.map((channel) => ({
+      channel,
+      id: channel.source.channelId,
+      name: channel.source.name,
+      number: channel.source.number,
+      playable: channel.source.status === "live",
+    })),
+    lastTunedId: lastChannelId,
+  });
+  const entries = lineup.lastTunedFirst().map(({ channel }) => wallEntry(channel, nowMs, layout.timezone));
   const filling = entries.filter((e) => e.waiting).length;
   const meta =
     filling > 0

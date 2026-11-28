@@ -6,6 +6,7 @@ import {
 } from "@loomarr/api/endpoints/channels";
 import { readBody } from "@loomarr/api/mutator";
 
+import { RECENT_LIMIT } from "../channel-lineup";
 import type {
   MyChannels,
   MyChannelsController,
@@ -13,8 +14,6 @@ import type {
   MyChannelsPort,
   MyChannelsSnapshot,
 } from "./my-channels.type";
-
-const RECENT_LIMIT = 20;
 
 const createMyChannelsPort = (request: typeof globalThis.fetch): MyChannelsPort => {
   const send = async (url: string, method: "DELETE" | "GET" | "PUT", signal?: AbortSignal) => {

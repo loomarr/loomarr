@@ -552,6 +552,14 @@ column and the film strip meet at a lower third set as type, the Guide becomes a
 screen, and the band, the on-screen channel keys and the white Play key go. It is not built. This
 section describes variant J, which ships, and each build PR amends it for the part it changes.
 
+**One channel lineup (#4725).** Channel order, groups, find, flip neighbours, the landing channel
+and the last channel come from one framework-free model, `@loomarr/core/channel-lineup`. The order
+is channel number and it does not wrap on screen, while flipping past the last playable channel
+reaches the first. A channel that is not playable is never flipped to or landed on. The last
+channel is the one just left: when it cannot be played, Last channel does nothing rather than
+going to an older one. The Cross's group tabs and find are the target, not shipped; the shipped
+surfaces keep their own group labels and display order.
+
 The player is **channel-first and feels like live TV, not a streaming app**: a channel number, a
 band that says what is on, a film strip of what is on next (where there is room for it), and a small
 remote. It has no glass, and nothing in it needs to be discovered by hovering.
