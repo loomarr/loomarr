@@ -92,6 +92,34 @@ describe("LibraryTitlePage", () => {
     expect(await screen.findByRole("button", { name: "Fix" })).toBeInTheDocument();
   });
 
+  const homeVideo = {
+    ...echo,
+    item: { ...echo.item, name: "Lake day", year: 2019, homeVideo: true },
+    overview: undefined,
+    genres: ["Home videos"],
+    match: { by: "none" as const },
+  };
+
+  it("offers Wrong title? but not Update details on a home video, and says what it is", async () => {
+    server.use(getGetLibraryItemMockHandler(homeVideo));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Fix" }));
+    expect(await screen.findByRole("menuitem", { name: "Wrong title?" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Check files again" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Update details" })).not.toBeInTheDocument();
+    expect(screen.getByText(/A home video you kept as it is/)).toBeInTheDocument();
+    expect(screen.getByText("Home videos")).toBeInTheDocument();
+  });
+
+  it("gives a member a home video with no fixes and no word about Loomarr's lookups", async () => {
+    server.use(getMeMockHandler(me({ role: "member" })), getGetLibraryItemMockHandler(homeVideo));
+    renderPage();
+
+    expect(await screen.findByText("A home video from your household's library.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Fix" })).not.toBeInTheDocument();
+  });
+
   it("links the cast and crew the library knows to their titles", async () => {
     server.use(
       getGetLibraryItemMockHandler({

@@ -19,7 +19,7 @@ import { type ComponentProps, type ReactNode, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useRouteContent } from "@/lib/use-route-content";
-import { toastBringBackFailed, toastIgnored } from "../needs-toasts";
+import { toastBringBackFailed, toastIgnored, toastKept } from "../needs-toasts";
 import { useLibraryNeeds } from "../use-library-needs";
 import { useLibraryScanFrames } from "../use-library-scan-frames";
 
@@ -195,7 +195,17 @@ const LibraryNeedsPage = () => {
       // A refusal means the list on screen is stale, so it is read again either way.
       await refresh();
     }
+    askAgain(ids);
+  };
+  const askAgain = (ids: string[]) =>
     setRestored((all) => ({ ...all, ...Object.fromEntries(ids.map((id) => [id, (all[id] ?? 0) + 1])) }));
+  const unkeep = async (id: string) => {
+    try {
+      await libraryApi.unanswerLibraryItem(id);
+    } finally {
+      await refresh();
+    }
+    askAgain([id]);
   };
   const bringBack = (id: string) => {
     if (bringing.current.has(id)) return;
@@ -215,6 +225,11 @@ const LibraryNeedsPage = () => {
     await needs.answers.onIgnore(id);
     void queryClient.invalidateQueries({ queryKey: [IGNORED_KEY] });
     toastIgnored(name, () => restore([id]));
+  };
+  const keepOne = async (id: string) => {
+    const name = nameOf(id);
+    await needs.onKeep(id);
+    toastKept(name, () => unkeep(id));
   };
   const ignoreFolder = async (folder: string, ids: string[]) => {
     try {
@@ -257,6 +272,7 @@ const LibraryNeedsPage = () => {
           onChooseOrder={needs.answers.onChooseOrder}
           onIgnore={ignoreOne}
           onIgnoreFolder={ignoreFolder}
+          onKeep={keepOne}
           onLink={needs.answers.onLink}
           onOpenTitle={(id) => void navigate({ to: "/library/$id", params: { id } })}
           onSearch={needs.onSearch}

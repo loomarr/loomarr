@@ -1,8 +1,8 @@
 import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { toast } from "sonner";
 
-// What ignoring in Needs you says (#4476 D1). The toast is the quick way back; the Ignored tab is
-// the lasting one.
+// What ignoring or keeping in Needs you says (#4476 D1, D2). The toast is the quick way back; for an
+// ignored title the Ignored tab is the lasting one.
 
 // Long enough to reach by keyboard or screen reader.
 const UNDO_MILLIS = 30_000;
@@ -46,4 +46,6 @@ const toastBringBackFailed = (error: unknown, bring: () => Promise<unknown>) =>
 
 const toastIgnored = (what: string, undo: () => Promise<unknown>) => toast(`Ignored ${what}`, withUndo(undo));
 
-export { toastBringBackFailed, toastIgnored };
+const toastKept = (what: string, undo: () => Promise<unknown>) => toast(`Kept ${what}`, withUndo(undo));
+
+export { toastBringBackFailed, toastIgnored, toastKept };

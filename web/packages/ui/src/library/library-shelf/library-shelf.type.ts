@@ -33,6 +33,8 @@ interface LibraryShelfTitle {
    * mark and says so in place of Movie or Show, whose kind is only a guess.
    */
   unidentified?: boolean;
+  /** Kept as the household's own video: it says so in place of Movie or Show. */
+  homeVideo?: boolean;
 }
 
 /** A genre of the tab's titles, with how many carry it. */

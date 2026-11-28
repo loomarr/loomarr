@@ -163,11 +163,13 @@ const menuIcon = (glyph: (typeof icons)[keyof typeof icons]) => (
 );
 
 // Update details · Check files again · Wrong title?, in one menu. Its trigger sits on a solid
-// surface, so it reads over any backdrop.
+// surface, so it reads over any backdrop. A home video has no catalogue to read again.
 const FixMenu = ({
+  homeVideo,
   fixes,
   triggerRef,
 }: {
+  homeVideo?: boolean;
   fixes: ReturnType<typeof useTitleFixes>;
   triggerRef: Ref<ActionRef>;
 }) => {
@@ -181,9 +183,11 @@ const FixMenu = ({
           </Action>
         </MenuTrigger>
         <MenuContent align="end" width={240}>
-          <MenuAction density={density} icon={menuIcon(icons.refresh)} onSelect={fixes.update}>
-            Update details
-          </MenuAction>
+          {homeVideo ? null : (
+            <MenuAction density={density} icon={menuIcon(icons.refresh)} onSelect={fixes.update}>
+              Update details
+            </MenuAction>
+          )}
           <MenuAction density={density} icon={menuIcon(icons.folder)} onSelect={fixes.check}>
             Check files again
           </MenuAction>
@@ -335,7 +339,7 @@ const LibraryTitle = ({ title, onBack, fix, personLink }: LibraryTitleProps) => 
                   Library
                 </Action>,
               )}
-              {fix ? <FixMenu fixes={fixes} triggerRef={fixTrigger} /> : null}
+              {fix ? <FixMenu fixes={fixes} homeVideo={title.homeVideo} triggerRef={fixTrigger} /> : null}
             </>
           }
           title={title}
@@ -363,7 +367,15 @@ const LibraryTitle = ({ title, onBack, fix, personLink }: LibraryTitleProps) => 
         ) : null}
       </Stack>
 
-      {title.overview ? <Text textRole="body">{title.overview}</Text> : null}
+      {title.overview ? (
+        <Text textRole="body">{title.overview}</Text>
+      ) : title.homeVideo ? (
+        <Text textRole="body">
+          {fix
+            ? "A home video you kept as it is. Loomarr won't look it up, and it keeps the file's own name."
+            : "A home video from your household's library."}
+        </Text>
+      ) : null}
 
       <OnChannels title={title} />
 

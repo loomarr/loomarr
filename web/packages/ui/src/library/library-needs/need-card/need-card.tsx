@@ -30,6 +30,7 @@ const NeedCard = ({
   onYes,
   onPick,
   onIgnore,
+  onKeep,
   onDone,
   onSearch,
   problem,
@@ -46,6 +47,8 @@ const NeedCard = ({
   onYes: () => void;
   onPick: (c: LibraryNeedCandidate) => void;
   onIgnore: () => void;
+  /** Says it's the household's own video; offered only when there is no guess at all. */
+  onKeep?: () => void;
   onDone: () => void;
   onSearch: LibraryNeedSearch;
 }) => {
@@ -120,6 +123,11 @@ const NeedCard = ({
                     Find it
                   </Action>
                 )}
+                {onKeep && !best && need.others.length === 0 ? (
+                  <Action density={density} onPress={onKeep} variant="ghost">
+                    It's ours, keep it as is
+                  </Action>
+                ) : null}
                 <Action density={density} onPress={onIgnore} variant="ghost">
                   Ignore this
                 </Action>
