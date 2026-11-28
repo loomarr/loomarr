@@ -18,7 +18,6 @@ interface SecretsPanelProps {
   onReveal: (name: SecretName) => void;
   onRegenerate: (name: SecretName) => void;
   busy?: SecretName;
-  className?: string;
 }
 
 export type { SecretName, SecretRow, SecretsPanelProps };

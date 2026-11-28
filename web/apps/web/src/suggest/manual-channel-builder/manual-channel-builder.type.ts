@@ -21,7 +21,6 @@ interface ManualChannelBuilderProps {
   // describe form. The banner (and its polling) exists only when both are given.
   onAiSubmitted?: (jobId: string, description: string, channelName: string) => void;
   onDescribeWithAi?: (description: string) => void;
-  className?: string;
 }
 
 export type { ManualChannelBuilderProps };

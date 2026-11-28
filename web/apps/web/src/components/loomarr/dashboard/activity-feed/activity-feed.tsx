@@ -23,15 +23,8 @@ const LEVEL_DOT = {
   error: "$guideOnAir",
 } as const;
 
-const ActivityFeed = ({ entries, now = Date.now(), className }: ActivityFeedProps) => (
-  <Stack
-    borderColor="$borderDecorative"
-    borderRadius={8}
-    borderWidth={1}
-    className={className}
-    overflow="hidden"
-    render="section"
-  >
+const ActivityFeed = ({ entries, now = Date.now() }: ActivityFeedProps) => (
+  <Stack borderColor="$borderDecorative" borderRadius={8} borderWidth={1} overflow="hidden" render="section">
     <Stack borderBottomWidth={1} borderColor="$borderDecorative" paddingHorizontal={16} paddingVertical={14}>
       <Text as="h2" textRole="cardLabel">
         Recent activity

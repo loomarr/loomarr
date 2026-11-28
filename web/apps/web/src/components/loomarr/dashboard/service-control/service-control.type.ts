@@ -9,7 +9,6 @@ interface ServiceControlProps {
   restarting?: boolean;
   /** A failure from the last attempt, rendered where it happened. */
   error?: string | null;
-  className?: string;
 }
 
 export type { ServiceControlProps };

@@ -16,7 +16,6 @@ interface BackupPanelProps {
   pending?: boolean;
   /** A failure from the last action, rendered where it happened. */
   error?: string | null;
-  className?: string;
 }
 
 export type { BackupPanelProps };

@@ -33,7 +33,7 @@ import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 // phases; a landed proposal → review with Approve/Deny. A successful approve or "Create
 // another" resets back to the form. Which of those shows, and which Job, is the Guide's
 // origination flow (its URL); this panel renders it and acts through it.
-const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanelProps) => {
+const ChannelSuggestPanel = ({ flow, onCreated }: ChannelSuggestPanelProps) => {
   const { isAdmin, user } = useAuth();
   const queryClient = useQueryClient();
   const { run, search } = flow;
@@ -110,7 +110,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
   // onto the builder's Job, which leaves the builder.
   if (flow.manual) {
     return (
-      <Stack className={className} gap="4" render="section">
+      <Stack gap="4" render="section">
         <ManualChannelBuilder
           isAdmin={isAdmin}
           initialIdea={editIdea}
@@ -125,7 +125,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
   }
 
   return (
-    <Stack className={className} gap="4" render="section">
+    <Stack gap="4" render="section">
       {/* Idle — the describe form (with optional constraints). Suppressed while a run is in
           flight OR has failed: a failed run shows the failure below with its own way back,
           so falling through to a blank form here would swallow the error the user needs. */}

@@ -12,7 +12,6 @@ interface SessionListProps {
   // visual snapshots drifted as real time moved past the story's fixed timestamps —
   // a gate that fails on a Tuesday for no reason anyone can act on.
   now?: number;
-  className?: string;
 }
 
 export type { SessionListProps };

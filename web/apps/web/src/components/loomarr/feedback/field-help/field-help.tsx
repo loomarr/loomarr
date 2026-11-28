@@ -19,14 +19,14 @@ import type { FieldHelpProps } from "./field-help.type";
 // So the description is declared explicitly and permanently, and `aria-describedby` points at it.
 // The primitive does not do it, so it is written out here; do not assume the SR user "hears the
 // same guidance" from the tooltip alone.
-const FieldHelp = ({ children, label, describedById, className }: FieldHelpProps) => {
+const FieldHelp = ({ children, label, describedById }: FieldHelpProps) => {
   const ownId = useId();
   // Reuse the consumer's existing description when there is one (SettingField renders the doc for
   // its control already); only mint and render a copy when this is the sole carrier of the text.
   const descriptionId = describedById ?? ownId;
 
   return (
-    <Stack className={className} direction="row" flexShrink={0} render="span">
+    <Stack direction="row" flexShrink={0} render="span">
       <Tooltip content={children}>
         <Action
           aria-describedby={descriptionId}

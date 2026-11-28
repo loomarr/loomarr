@@ -43,7 +43,6 @@ interface SettingFieldProps {
   // only by `title`, which axe rates a SERIOUS violation (`label-title-only`): a sighted mouse
   // user gets a tooltip, a screen-reader user may get nothing.
   labelledBy?: string;
-  className?: string;
 }
 
 export type { SettingFieldProps };

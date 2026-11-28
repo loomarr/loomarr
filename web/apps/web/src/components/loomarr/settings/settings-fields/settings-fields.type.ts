@@ -20,7 +20,6 @@ interface SettingsFieldsProps {
   // Extra visible guidance owned by the surrounding workflow. The shared field adds the
   // supplied id to aria-describedby without duplicating that prose in the registry.
   descriptionIds?: Record<string, string>;
-  className?: string;
   initialAdvanced?: boolean;
 }
 

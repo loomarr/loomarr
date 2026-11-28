@@ -18,7 +18,7 @@ import type { ServiceControlProps } from "./service-control.type";
 // replaces it is not a list of facts but the ONE consequence that varies per install —
 // how many channels actually drop — read live from the server.
 
-const ServiceControl = ({ cost, onRestart, restarting, error, className }: ServiceControlProps) => {
+const ServiceControl = ({ cost, onRestart, restarting, error }: ServiceControlProps) => {
   const [confirming, setConfirming] = useState(false);
 
   // The only consequence worth a confirm step. Everything else a restart does (sessions
@@ -30,7 +30,7 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
       : null;
 
   return (
-    <Card className={className} padding={16} render="section">
+    <Card padding={16} render="section">
       <Stack align="center" direction="row" gap="control">
         <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
           <Text as="h2" textRole="cardLabel">

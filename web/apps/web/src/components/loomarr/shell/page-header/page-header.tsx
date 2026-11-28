@@ -3,12 +3,11 @@ import type { PageHeaderProps } from "./page-header.type";
 
 // PageHeader is the page-edge seam, not just shared heading typography. It owns the gutter,
 // rule and responsive action layout so a route cannot accidentally invent a fourth header.
-const PageHeader = ({ title, description, status, actions, className, ...rest }: PageHeaderProps) => (
+const PageHeader = ({ title, description, status, actions, ...rest }: PageHeaderProps) => (
   <Stack
     align={{ base: "stretch", sm: "start" }}
     borderBottomWidth={1}
     borderColor="$borderDecorative"
-    className={className}
     data-page-header=""
     direction={{ base: "column", sm: "row" }}
     flexShrink={0}

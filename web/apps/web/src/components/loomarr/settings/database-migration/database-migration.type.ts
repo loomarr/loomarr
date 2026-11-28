@@ -33,7 +33,6 @@ interface DatabaseMigrationProps {
    * a copy-only operation would leave two databases able to diverge.
    */
   envPinned?: boolean;
-  className?: string;
 }
 
 export type { DatabaseMigrationProps, MigrationStep };

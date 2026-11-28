@@ -60,13 +60,12 @@ const AdvancedSettingsTable = ({
   onEdit,
   onEnvOverride,
   onClear,
-  className,
 }: AdvancedSettingsTableProps) => {
   const q = query.trim().toLowerCase();
   const rows = entries.filter((e) => matches(e, q));
 
   return (
-    <Stack className={className} gap="control">
+    <Stack gap="control">
       <Stack align="center" direction="row" gap="control" wrap>
         <Stack flexBasis="0%" flexGrow={1} minWidth={256}>
           <SearchField

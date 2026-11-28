@@ -53,7 +53,6 @@ const ManualChannelBuilder = ({
   onSubmitted,
   onAiSubmitted,
   onDescribeWithAi,
-  className,
 }: ManualChannelBuilderProps) => {
   const fromIdea = initialIdea !== undefined;
   const submit = discoveryApi.useSubmitManualChannel();
@@ -138,7 +137,7 @@ const ManualChannelBuilder = ({
         : `${lineup.length} ${lineup.length === 1 ? "title" : "titles"} · Loomarr will add ${missing} missing ${missing === 1 ? "title" : "titles"}`;
 
   return (
-    <Stack className={className} gap="5">
+    <Stack gap="5">
       {/* The page's one heading names this ("Add a channel", or "Edit before you request" from an
           idea); this sentence is its description, so the builder nests no heading of its own. */}
       <Text as="p" textRole="compact" tone="secondary">

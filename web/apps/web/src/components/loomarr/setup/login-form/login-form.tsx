@@ -32,15 +32,7 @@ const SSO_ERRORS: Record<string, string> = {
 const ssoErrorCopy = (code: string): string =>
   SSO_ERRORS[code] ?? "Single sign-on didn't work. Try signing in with a password.";
 
-const LoginForm = ({
-  onSubmit,
-  isPending = false,
-  error,
-  onDevLogin,
-  onSso,
-  ssoError,
-  className,
-}: LoginFormProps) => {
+const LoginForm = ({ onSubmit, isPending = false, error, onDevLogin, onSso, ssoError }: LoginFormProps) => {
   const form = useAppForm({
     defaultValues: { username: "", password: "" },
     validators: { onSubmit: loginSchema },
@@ -49,7 +41,6 @@ const LoginForm = ({
 
   return (
     <Stack
-      className={className}
       gap="5"
       noValidate
       onSubmit={(e) => {

@@ -42,7 +42,6 @@ interface WizardShellProps {
   nextLabel?: string;
   nextDisabled?: boolean;
   busy?: boolean;
-  className?: string;
 }
 
 export type { WizardShellProps, WizardStep, WizardStepStatus, WizardSubItem };

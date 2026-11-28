@@ -14,7 +14,6 @@ interface TunerLoaderProps {
    * at 16:9 (letterboxed, never stretched), so the wait shows what is on.
    */
   backdrop?: string;
-  className?: string;
 }
 
 export type { TunerLoaderProps };
