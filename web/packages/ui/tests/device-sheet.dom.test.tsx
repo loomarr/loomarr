@@ -1,26 +1,10 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { AccessibilityInfo } from "react-native";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DeviceSheet, type DeviceSheetProps } from "../index";
-
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-type Node = { click(): void; getAttribute(name: string): string | null; textContent?: string | null };
-type Container = Parameters<typeof createRoot>[0] & {
-  querySelectorAll(selector: string): ArrayLike<Node>;
-  remove(): void;
-  textContent?: string | null;
-};
-const testDocument = (
-  globalThis as unknown as {
-    document: { body: { append(node: unknown): void }; createElement(tag: string): Container };
-  }
-).document;
 
 const noop = vi.fn();
 const props: DeviceSheetProps = {
@@ -32,36 +16,27 @@ const props: DeviceSheetProps = {
   serverVersion: "v0.9.2",
 };
 
-let container: Container;
-let root: ReturnType<typeof createRoot>;
+let container: HTMLElement;
 beforeEach(() => {
   vi.spyOn(AccessibilityInfo, "addEventListener").mockReturnValue({
     remove: vi.fn(),
   } as unknown as ReturnType<typeof AccessibilityInfo.addEventListener>);
-  container = testDocument.createElement("div");
-  testDocument.body.append(container);
-  root = createRoot(container);
 });
 afterEach(() => {
-  act(() => root.unmount());
-  container.remove();
+  cleanup();
   vi.restoreAllMocks();
   noop.mockReset();
 });
 
 const show = async (over: Partial<DeviceSheetProps> = {}) => {
   await act(async () => {
-    root.render(
-      <LoomarrProvider>
-        <DeviceSheet {...props} {...over} />
-      </LoomarrProvider>,
-    );
+    container = renderUi(<DeviceSheet {...props} {...over} />).container;
   });
 };
 const labels = () =>
   Array.from(container.querySelectorAll("[aria-label]")).map((node) => node.getAttribute("aria-label"));
 const disconnectButton = () => {
-  const button = Array.from(container.querySelectorAll('[role="button"]')).find((node) =>
+  const button = Array.from(container.querySelectorAll<HTMLElement>('[role="button"]')).find((node) =>
     node.textContent?.includes("isconnect"),
   );
   if (!button) throw new Error("missing the Disconnect button");

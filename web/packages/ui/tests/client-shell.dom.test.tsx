@@ -1,25 +1,12 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ClientShell, type ClientShellProps } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-type ClickableNode = { click(): void; textContent?: string | null };
-type QueryRoot = { querySelectorAll(selector: string): ArrayLike<ClickableNode> };
-type Container = Parameters<typeof createRoot>[0] &
-  QueryRoot & { remove(): void; textContent?: string | null };
-const testDocument = (
-  globalThis as unknown as {
-    document: { body: { append(node: unknown): void }; createElement(tagName: string): Container };
-  }
-).document;
-const buttonNamed = (container: QueryRoot, name: string) => {
-  const button = Array.from(container.querySelectorAll('[role="button"], button')).find(
+const buttonNamed = (container: ParentNode, name: string) => {
+  const button = Array.from(container.querySelectorAll<HTMLElement>('[role="button"], button')).find(
     (candidate) => candidate.textContent?.trim() === name,
   );
   if (!button) throw new Error(`missing button: ${name}`);
@@ -34,25 +21,22 @@ const Requests = () => {
 };
 
 const mount = async (initial: ClientShellProps["active"] = "requests") => {
-  const container = testDocument.createElement("div");
-  testDocument.body.append(container);
-  const root = createRoot(container);
-  const render = (active: ClientShellProps["active"]) =>
-    act(async () => {
-      root.render(
-        <LoomarrProvider>
-          <ClientShell active={active} onNavigate={vi.fn()}>
-            {active === "requests" ? () => <Requests /> : `Tonight's ${active}`}
-          </ClientShell>
-        </LoomarrProvider>,
-      );
-    });
-  await render(initial);
-  return { container, render, unmount: () => act(async () => root.unmount()) };
+  const shell = (active: ClientShellProps["active"]) => (
+    <ClientShell active={active} onNavigate={vi.fn()}>
+      {active === "requests" ? () => <Requests /> : `Tonight's ${active}`}
+    </ClientShell>
+  );
+  const { container, rerender, unmount } = renderUi(shell(initial));
+  return {
+    container,
+    render: (active: ClientShellProps["active"]) => act(async () => rerender(shell(active))),
+    unmount: () => act(async () => unmount()),
+  };
 };
 
 describe("client shell", () => {
   afterEach(() => {
+    cleanup();
     broken = true;
     vi.restoreAllMocks();
   });

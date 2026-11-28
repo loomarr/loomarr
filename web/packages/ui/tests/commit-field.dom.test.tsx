@@ -1,51 +1,24 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
-import { act, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CommitField, YearField } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-// This package has no DOM lib (it targets React Native too), so the slice of the jsdom document
-// the test touches is typed here.
-type Input = {
-  dispatchEvent(event: unknown): boolean;
-  focus(): void;
-  getAttribute(name: string): string | null;
-  value: string;
-};
-type Doc = {
-  body: { append(node: unknown): void; querySelector(s: string): Input | null; replaceChildren(): void };
-  createElement(tag: string): Parameters<typeof createRoot>[0];
-};
-const doc = (globalThis as unknown as { document: Doc }).document;
-const win = globalThis as unknown as {
-  Event: new (type: string, init?: { bubbles?: boolean }) => unknown;
-  FocusEvent: new (type: string, init?: { bubbles?: boolean }) => unknown;
-  HTMLInputElement: { prototype: object };
-};
-
 const mount = async (node: ReactNode) => {
-  const container = doc.createElement("div");
-  doc.body.append(container);
-  const root = createRoot(container);
   await act(async () => {
-    root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>);
+    renderUi(node);
   });
 };
-afterEach(() => {
-  doc.body.replaceChildren();
-});
+afterEach(cleanup);
 
 // React tracks an input's value, so a test sets it through the native setter before the event.
-const typeInto = async (input: Input, text: string) => {
-  const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value")?.set;
+const typeInto = async (input: HTMLInputElement, text: string) => {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
   await act(async () => {
     setter?.call(input, text);
-    input.dispatchEvent(new win.Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("input", { bubbles: true }));
   });
 };
 
@@ -54,14 +27,14 @@ describe("CommitField", () => {
     const commits: string[] = [];
     await mount(<CommitField initial="4h" label="Repeat spacing" onCommit={(text) => commits.push(text)} />);
 
-    const input = doc.body.querySelector("input");
+    const input = document.body.querySelector("input");
     if (!input) throw new Error("no input");
     expect(input.value).toBe("4h");
     await typeInto(input, "6h");
     expect(commits).toEqual([]);
     await act(async () => {
-      input.dispatchEvent(new win.FocusEvent("focusout", { bubbles: true }));
-      input.dispatchEvent(new win.FocusEvent("blur"));
+      input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      input.dispatchEvent(new FocusEvent("blur"));
     });
     expect(commits).toEqual(["6h"]);
   });
@@ -70,11 +43,11 @@ describe("CommitField", () => {
     const commits: string[] = [];
     await mount(<CommitField initial="4h" label="Repeat spacing" onCommit={(text) => commits.push(text)} />);
 
-    const input = doc.body.querySelector("input");
+    const input = document.body.querySelector("input");
     if (!input) throw new Error("no input");
     await act(async () => {
-      input.dispatchEvent(new win.FocusEvent("focusout", { bubbles: true }));
-      input.dispatchEvent(new win.FocusEvent("blur"));
+      input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      input.dispatchEvent(new FocusEvent("blur"));
     });
     expect(commits).toEqual(["4h"]);
   });
@@ -89,19 +62,19 @@ describe("CommitField", () => {
         validate={(text) => (/^\d*$/.test(text) ? undefined : "Enter a whole number")}
       />,
     );
-    const input = doc.body.querySelector("input");
+    const input = document.body.querySelector("input");
     if (!input) throw new Error("no input");
     const blur = () =>
       act(async () => {
-        input.dispatchEvent(new win.FocusEvent("focusout", { bubbles: true }));
-        input.dispatchEvent(new win.FocusEvent("blur"));
+        input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+        input.dispatchEvent(new FocusEvent("blur"));
       });
 
     await typeInto(input, "three");
     await blur();
     expect(commits).toEqual([]);
     expect(input.getAttribute("aria-invalid")).toBe("true");
-    expect(doc.body.querySelector("input")?.getAttribute("aria-describedby")).toMatch(/error/);
+    expect(document.body.querySelector("input")?.getAttribute("aria-describedby")).toMatch(/error/);
 
     await typeInto(input, "3");
     expect(input.getAttribute("aria-invalid")).toBeNull();
@@ -110,27 +83,19 @@ describe("CommitField", () => {
   });
 
   it("keeps the draft when the stored text changes, until the box is keyed afresh", async () => {
-    const container = doc.createElement("div");
-    doc.body.append(container);
-    const root = createRoot(container);
-    const render = (initial: string, key: string) =>
-      act(async () => {
-        root.render(
-          <LoomarrProvider theme="dark">
-            <CommitField initial={initial} key={key} label="Repeat spacing" onCommit={() => undefined} />
-          </LoomarrProvider>,
-        );
-      });
-    await render("4h", "a");
+    const box = (initial: string, key: string) => (
+      <CommitField initial={initial} key={key} label="Repeat spacing" onCommit={() => undefined} />
+    );
+    const { rerender } = renderUi(box("4h", "a"));
     const input = () => {
-      const found = doc.body.querySelector("input");
+      const found = document.body.querySelector("input");
       if (!found) throw new Error("no input");
       return found;
     };
     await typeInto(input(), "6h");
-    await render("8h", "a");
+    rerender(box("8h", "a"));
     expect(input().value).toBe("6h");
-    await render("8h", "b");
+    rerender(box("8h", "b"));
     expect(input().value).toBe("8h");
   });
 });
@@ -146,7 +111,7 @@ describe("YearField", () => {
       />,
     );
 
-    const input = doc.body.querySelector("input");
+    const input = document.body.querySelector("input");
     expect(input?.getAttribute("aria-label")).toBe("From year (Movie release, range 1)");
     expect(input?.value).toBe("1990");
   });

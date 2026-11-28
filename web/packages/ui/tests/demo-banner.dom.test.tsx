@@ -1,45 +1,19 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
-import { act, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DemoBanner } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-// This package has no DOM lib (it targets React Native too), so the slice of the jsdom document
-// the test touches is typed here.
-type Node = {
-  click(): void;
-  getAttribute(name: string): string | null;
-  textContent: string | null;
-};
-type Doc = {
-  body: {
-    append(node: unknown): void;
-    replaceChildren(): void;
-    textContent: string | null;
-    querySelector(s: string): Node | null;
-  };
-  createElement(tag: string): Parameters<typeof createRoot>[0];
-};
-const doc = (globalThis as unknown as { document: Doc }).document;
-
 const mount = async (node: ReactNode) => {
-  const container = doc.createElement("div");
-  doc.body.append(container);
-  const root = createRoot(container);
   await act(async () => {
-    root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>);
+    renderUi(node);
   });
 };
-afterEach(() => {
-  doc.body.replaceChildren();
-});
+afterEach(cleanup);
 
-const text = () => doc.body.textContent ?? "";
+const text = () => document.body.textContent ?? "";
 
 describe("DemoBanner", () => {
   it("is a labelled region that says it's the demo and offers the next step as a link", async () => {
@@ -52,10 +26,10 @@ describe("DemoBanner", () => {
       />,
     );
 
-    expect(doc.body.querySelector('[role="region"]')?.getAttribute("aria-label")).toBe("Demo tour");
+    expect(document.body.querySelector('[role="region"]')?.getAttribute("aria-label")).toBe("Demo tour");
     expect(text()).toContain("You're exploring the Loomarr demo.");
     expect(text()).toContain("Step 1 of 3");
-    const link = doc.body.querySelector('a[href="/watch/ch-1"]');
+    const link = document.body.querySelector('a[href="/watch/ch-1"]');
     expect(link?.textContent).toBe("Watch a channel live");
     expect(link?.getAttribute("role")).toBe("link");
   });
@@ -65,14 +39,14 @@ describe("DemoBanner", () => {
 
     expect(text()).toContain("That's the tour.");
     expect(text()).not.toContain("Step");
-    expect(doc.body.querySelector("a")).toBeNull();
+    expect(document.body.querySelector("a")).toBeNull();
   });
 
   it("hides with a named button", async () => {
     const onDismiss = vi.fn();
     await mount(<DemoBanner onDismiss={onDismiss} step={2} stepCount={3} />);
 
-    const hide = doc.body.querySelector('[aria-label="Hide the demo tour"]');
+    const hide = document.body.querySelector<HTMLElement>('[aria-label="Hide the demo tour"]');
     expect(hide?.getAttribute("role")).toBe("button");
     await act(async () => hide?.click());
 
@@ -93,8 +67,8 @@ describe("DemoBanner", () => {
     );
 
     expect(text()).toContain("Demo");
-    expect(doc.body.querySelector('a[href="/guide"]')?.textContent).toBe("Browse the Guide");
-    expect(doc.body.querySelector('[aria-label="Hide the demo tour"]')).not.toBeNull();
+    expect(document.body.querySelector('a[href="/guide"]')?.textContent).toBe("Browse the Guide");
+    expect(document.body.querySelector('[aria-label="Hide the demo tour"]')).not.toBeNull();
     expect(text()).not.toContain("You're exploring the Loomarr demo.");
     expect(text()).not.toContain("Step 2 of 3");
   });

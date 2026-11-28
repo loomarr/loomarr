@@ -1,38 +1,20 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
-import { act, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ConfirmStep } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-// This package has no DOM lib (it targets React Native too), so the slice of the jsdom document
-// the test touches is typed here.
-type Button = { click(): void; getAttribute(name: string): string | null; textContent: string | null };
-type Doc = {
-  body: {
-    append(node: unknown): void;
-    querySelectorAll(s: string): Button[];
-    replaceChildren(): void;
-    textContent: string | null;
-  };
-  createElement(tag: string): Parameters<typeof createRoot>[0];
-};
-const doc = (globalThis as unknown as { document: Doc }).document;
-
 const mount = async (node: ReactNode) => {
-  const container = doc.createElement("div");
-  doc.body.append(container);
-  const root = createRoot(container);
   await act(async () => {
-    root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>);
+    renderUi(node);
   });
 };
 const button = (name: string) => {
-  const found = [...doc.body.querySelectorAll('[role="button"], button')].find((b) => b.textContent === name);
+  const found = [...document.body.querySelectorAll<HTMLElement>('[role="button"], button')].find(
+    (b) => b.textContent === name,
+  );
   if (!found) throw new Error(`no ${name} button`);
   return found;
 };
@@ -40,9 +22,7 @@ const press = async (name: string) => {
   await act(async () => button(name).click());
 };
 
-afterEach(() => {
-  doc.body.replaceChildren();
-});
+afterEach(cleanup);
 
 describe("ConfirmStep", () => {
   it("states the consequence and confirms under the action's own name", async () => {
@@ -57,7 +37,7 @@ describe("ConfirmStep", () => {
       />,
     );
 
-    expect(doc.body.textContent).toContain("Remove Bedroom TV? It has to be paired again.");
+    expect(document.body.textContent).toContain("Remove Bedroom TV? It has to be paired again.");
     await press("Remove device");
     expect(onConfirm).toHaveBeenCalledOnce();
     expect(onCancel).not.toHaveBeenCalled();
