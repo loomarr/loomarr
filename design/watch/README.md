@@ -158,9 +158,10 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled with i
    - **Reduced motion** gets a plain crossfade and no static.
    - Sound is unchanged: the web's Channel-change sound switch still decides it.
 10. **One key set, with its omissions written down.** In order: Pause, Subtitles, Audio, Volume,
-    Full screen, More. A television drops Volume and Full screen, which its remote has, and keeps Pause (item 6). A
-    phone drops Volume and Full screen and adds AirPlay; upright, Pause and More sit by the lower
-    third, under the thumb, and the rest at the top. Home is always named beside its arrow.
+    Full screen, More. A television drops Volume and Full screen, which its remote has, and keeps
+    Pause (item 6). A phone drops Volume and Full screen and adds AirPlay; upright, Pause and More
+    sit by the lower third, under the thumb, and the rest at the top. Home is always named beside
+    its arrow.
 11. **More holds only what has no key of its own**: Last channel, Picture, Playback details, Picture
     in picture on desktop, and Manage this channel for an admin. Channels and Info left it: the
     column and the synopsis under the strip do those jobs.
