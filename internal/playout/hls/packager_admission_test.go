@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/media"
+	"github.com/loomarr/loomarr/internal/testkit/waitfor"
 )
 
 // A channel packager holds the lease it was admitted with, so the ledger is the only count (#1505,
@@ -40,14 +41,9 @@ func TestPackagerAdmissionHoldsAndReturnsTheLedger(t *testing.T) {
 		t.Fatal("the budget has room for a transcode it already gave to packagers")
 	}
 	m.StopChannel("a")
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-		if budget.Fits(admission.AdmitRequest{Class: media.ClassSDR}) {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("a stopped packager did not return its lease")
-		}
-	}
+	waitfor.Eventually(t, 5*time.Second, "the stopped packager to return its lease", func() bool {
+		return budget.Fits(admission.AdmitRequest{Class: media.ClassSDR})
+	})
 }
 
 // runningChannels lists the channels with a live packager, for assertions.

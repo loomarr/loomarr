@@ -22,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
+	"github.com/loomarr/loomarr/internal/testkit/waitfor"
 )
 
 type fakeHLSOrigin struct {
@@ -486,14 +487,10 @@ func TestSlateEncodeWaitsForTheFirstItem(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lease.release()
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		if _, err := os.Stat(item); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the tune-in item's encoder never started")
-		}
-	}
+	waitfor.Eventually(t, 5*time.Second, "the tune-in item's encoder to start", func() bool {
+		_, err := os.Stat(item)
+		return err == nil
+	})
 	// The item's encoder is running and never goes on air. A slow machine cannot fail this window;
 	// it only has to be long enough for a wrong slate encode to show.
 	select {
@@ -591,11 +588,10 @@ func TestPackagerHLSIsAdmittedByTheResourceBudget(t *testing.T) {
 	}
 	defer lease.release()
 	var args []byte
-	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		if args, err = os.ReadFile(argsFile); err == nil && len(args) > 0 {
-			break
-		}
-	}
+	waitfor.Eventually(t, 5*time.Second, "the item encoder to record its arguments", func() bool {
+		args, err = os.ReadFile(argsFile)
+		return err == nil && len(args) > 0
+	})
 	// 3.6 cores at full does not fit 3.5; rung 1 (3.42) does.
 	if got := string(args); !strings.Contains(got, "-skip_loop_filter:v all") || strings.Contains(got, "-skip_frame:v") {
 		t.Fatalf("item did not encode at the ledger's rung 1:\n%s", got)
@@ -608,11 +604,9 @@ func TestPackagerHLSIsAdmittedByTheResourceBudget(t *testing.T) {
 		t.Fatalf("second channel: err = %v, want ErrAtCapacity", err)
 	}
 	m.StopChannel("ch1")
-	for deadline := time.Now().Add(5 * time.Second); budget.Snapshot().InUse.Sessions != 0; time.Sleep(20 * time.Millisecond) {
-		if time.Now().After(deadline) {
-			t.Fatalf("the stopped packager kept its lease: %+v", budget.Snapshot().InUse)
-		}
-	}
+	waitfor.Eventually(t, 5*time.Second, "the stopped packager to return its lease", func() bool {
+		return budget.Snapshot().InUse.Sessions == 0
+	})
 }
 
 // countingHDRSource is hdrItemSource counting its lookups.
@@ -669,14 +663,10 @@ func TestPackagerHLSAdmitsForTheFirstItemBeforeAnyEncoder(t *testing.T) {
 	if use := budget.Snapshot().InUse; use.CPUCores < 3.42-1e-9 || use.CPUCores > 3.42+1e-9 {
 		t.Fatalf("ledger at admission = %+v, want the HDR item's rung-1 price (3.42) before it encodes", use)
 	}
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-		if _, err := os.Stat(ran); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the admitted channel never started its item encoder")
-		}
-	}
+	waitfor.Eventually(t, 5*time.Second, "the admitted channel to start its item encoder", func() bool {
+		_, err := os.Stat(ran)
+		return err == nil
+	})
 	if n := source.calls.Load(); n != 2 { // one per start; the schedule reused the second
 		t.Errorf("item lookups = %d, want 2 (the schedule must reuse the admission's lookup)", n)
 	}
@@ -1171,9 +1161,13 @@ func TestPackagerLadderStepsASlowItemDownAndResumesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	var args []byte
-	for deadline := time.Now().Add(5 * time.Second); strings.Count(string(args), "\n") < 2 && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		args, _ = os.ReadFile(argsFile)
+	recorded := func(commands int) func() bool {
+		return func() bool {
+			args, _ = os.ReadFile(argsFile)
+			return strings.Count(string(args), "\n") >= commands
+		}
 	}
+	waitfor.Eventually(t, 5*time.Second, "two encoder commands", recorded(2))
 	_ = rc.Close()
 	lines := strings.Split(strings.TrimSpace(string(args)), "\n")
 	if len(lines) != 2 || strings.Contains(lines[0], "-skip_loop_filter") || !strings.Contains(lines[1], "-skip_loop_filter:v all") ||
@@ -1187,9 +1181,7 @@ func TestPackagerLadderStepsASlowItemDownAndResumesIt(t *testing.T) {
 	gpu := m.schedule(packagedKey{channel: "gpu"}, encode.HostFor(encode.EncoderNVENC, true, encode.GPUFilters{}), out, nil, nil, slog.New(slog.DiscardHandler))
 	if item, err := gpu(t.Context(), at); err == nil {
 		if rc, err := item.Open(t.Context(), slot); err == nil {
-			for deadline := time.Now().Add(5 * time.Second); strings.Count(string(args), "\n") < 3 && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-				args, _ = os.ReadFile(argsFile)
-			}
+			waitfor.Eventually(t, 5*time.Second, "the GPU host's encoder command", recorded(3))
 			_ = rc.Close()
 		}
 	}

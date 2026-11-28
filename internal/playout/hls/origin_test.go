@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/testkit/playoutstreamfixture"
+	"github.com/loomarr/loomarr/internal/testkit/waitfor"
 )
 
 type tuneSessions struct {
@@ -289,19 +290,11 @@ func TestOriginWarmVariantReadinessDoesNotBlockLifecycleTeardown(t *testing.T) {
 				_, _, err := origin.OpenAsset(ctx, "neighbour", string(playout.Format4KHDR)+".m3u8", true)
 				readDone <- err
 			}()
-			deadline := time.Now().Add(time.Second)
-			for {
+			waitfor.Eventually(t, time.Second, "the warm read to reach the readiness wait", func() bool {
 				m.mu.Lock()
-				fetching := c.viewers > 0
-				m.mu.Unlock()
-				if fetching {
-					break
-				}
-				if time.Now().After(deadline) {
-					t.Fatal("warm read never reached readiness wait")
-				}
-				time.Sleep(time.Millisecond)
-			}
+				defer m.mu.Unlock()
+				return c.viewers > 0
+			})
 			stopped := make(chan struct{})
 			go func() {
 				switch operation {
