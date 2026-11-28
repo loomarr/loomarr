@@ -8,7 +8,6 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
@@ -86,10 +85,10 @@ func (a Fetch) FailCheck(ctx context.Context, id string, leaseUntil, retryAt tim
 }
 
 // Catalog bridges the store → pod.CatalogReader (pod assembly).
-type Catalog struct{ st store.Store }
+type Catalog struct{ st catalogStore }
 
 // NewCatalog returns the pod catalog reader over st.
-func NewCatalog(st store.Store) Catalog { return Catalog{st: st} }
+func NewCatalog(st catalogStore) Catalog { return Catalog{st: st} }
 
 // ⚠ A ZERO filter, and that is what keeps HELD clips out of every pod (§10 V38). Pod assembly,
 // coverage and the filler-list builder all read through here, so the exclusion living in
