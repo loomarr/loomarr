@@ -2,7 +2,10 @@ import type { LineupChannel } from "@loomarr/core/channel-lineup";
 import { idleTune, type TuneView, tuneFlip, tuneView } from "@loomarr/core/tune";
 import { type WatchRequest, watchKeyOf } from "@loomarr/core/watch-screen";
 import { Surface, Text } from "@loomarr/design-system";
-import { useWatchScreen, WatchScreen, type WatchScreenInput } from "@loomarr/ui";
+import { type PlayerWatermark, useWatchScreen, WatchScreen, type WatchScreenInput } from "@loomarr/ui";
+
+type WatermarkCorner = PlayerWatermark["corner"];
+
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { type ReactNode, useEffect, useRef } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
@@ -58,7 +61,29 @@ interface Args {
   setup?: Setup;
   rest?: boolean;
   tune?: TuneView;
+  /** The channel's logo, burned into a corner of the picture, with the back control drawn. */
+  logo?: WatermarkCorner;
 }
+
+// The logo as playout burns it: 12% of the picture's height, inset 5%, half as wide again as tall.
+const LOGO = { margin: 0.05, size: 0.12 } as const;
+const Logo = ({ corner }: { corner: WatermarkCorner }) => {
+  const inset = LOGO.margin * 720;
+  const height = LOGO.size * 720;
+  return (
+    <div
+      data-testid="logo"
+      style={{
+        background: "rgba(200, 40, 40, 0.85)",
+        height,
+        position: "absolute",
+        width: height * 1.5,
+        [corner.startsWith("top") ? "top" : "bottom"]: inset,
+        [corner.endsWith("left") ? "left" : "right"]: inset,
+      }}
+    />
+  );
+};
 
 const Menu = ({ name }: { name: string }) => (
   <Surface backgroundColor="surfaceRaised" borderRadius={12} borderWidth={0} gap={8} padding={16} width={260}>
@@ -81,7 +106,15 @@ const Cover = () => (
   </Surface>
 );
 
-const Screen = ({ bright = false, cover = false, onRequest, rest = false, setup, tune = IDLE }: Args) => {
+const Screen = ({
+  bright = false,
+  cover = false,
+  logo,
+  onRequest,
+  rest = false,
+  setup,
+  tune = IDLE,
+}: Args) => {
   const clock = useRef<Clock>({ t: 0 }).current;
   const model = useWatchScreen({
     hintSeen: false,
@@ -119,11 +152,23 @@ const Screen = ({ bright = false, cover = false, onRequest, rest = false, setup,
     return () => document.removeEventListener("keydown", onKey);
   }, [send]);
   const picture: ReactNode = (
-    <div style={{ backgroundImage: bright ? BRIGHT_PICTURE : DARK_PICTURE, height: "100%", width: "100%" }} />
+    <div
+      style={{
+        backgroundImage: bright ? BRIGHT_PICTURE : DARK_PICTURE,
+        height: "100%",
+        position: "relative",
+        width: "100%",
+      }}
+    >
+      {logo ? <Logo corner={logo} /> : null}
+    </div>
   );
   return (
     <div data-testid="frame" style={{ height: 720, overflow: "hidden", position: "relative", width: 1280 }}>
       <WatchScreen
+        {...(logo
+          ? { back: { label: "Guide", onPress: () => undefined }, watermark: { ...LOGO, corner: logo } }
+          : {})}
         cover={cover ? <Cover /> : undefined}
         detail={(channel) => ({ minutesLeft: 8 + channel.number })}
         holdSnow
@@ -312,6 +357,12 @@ const BrightFrameListOpen: Story = {
   args: { bright: true, setup: (send) => send({ control: "channels", type: "press" }) },
 };
 
+/** The channel's logo in each corner over the bright frame: only the chrome in its corner steps clear. */
+const LogoTopLeft: Story = { args: { bright: true, logo: "top-left" } };
+const LogoTopRight: Story = { args: { bright: true, logo: "top-right" } };
+const LogoBottomLeft: Story = { args: { bright: true, logo: "bottom-left" } };
+const LogoBottomRight: Story = { args: { bright: true, logo: "bottom-right" } };
+
 export {
   AtRest,
   BehindLive,
@@ -323,6 +374,10 @@ export {
   ListCursorOnRow,
   ListCursorOnTab,
   ListOpen,
+  LogoBottomLeft,
+  LogoBottomRight,
+  LogoTopLeft,
+  LogoTopRight,
   MenuClosesOnEsc,
   MenuOpen,
   NoSuchNumber,

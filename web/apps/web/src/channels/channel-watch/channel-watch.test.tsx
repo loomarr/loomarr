@@ -547,6 +547,69 @@ describe("ChannelWatch: the shipped menus in the screen's slot", () => {
     expect((document.querySelector("video") as HTMLVideoElement).muted).toBe(false);
   });
 
+  describe("seeking the window", () => {
+    const programmeFrom = (startMs: number) =>
+      getChannelTimelineMockHandler({
+        serverNowMs: 1_060_000,
+        airings: [
+          { kind: "program", scheduleBlockId: "now", startMs, stopMs: 4_000_000, title: "Airing Programme" },
+        ],
+      });
+
+    it("starts over, from More, at the programme's start while the window still holds it", async () => {
+      server.use(programmeFrom(500_000));
+      mount();
+      await screen.findByText("Airing Programme");
+      await userEvent.click(within(await openMore()).getByRole("button", { name: /^Start over/ }));
+      expect(hls.liveTransport.seek).toHaveBeenCalledWith(500_000);
+    });
+
+    it("has no Start over for a programme that began before the window", async () => {
+      // Live is 1_060_000; the window reaches back fifteen minutes, to 160_000.
+      server.use(programmeFrom(100_000));
+      mount();
+      await screen.findByText("Airing Programme");
+      expect(within(await openMore()).queryByRole("button", { name: /^Start over/ })).toBeNull();
+    });
+  });
+
+  it("offers Picture in picture only where the browser has it", async () => {
+    // jsdom has no picture in picture.
+    mount();
+    expect(within(await openMore()).queryByRole("button", { name: "Picture in picture" })).toBeNull();
+  });
+
+  it("copies the playback details rows as text", async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(await screen.findByRole("button", { name: "More" }));
+    await user.click(within(menu("More")).getByRole("button", { name: "Playback details" }));
+    await user.click(within(menu("Playback details")).getByRole("button", { name: "Copy details" }));
+    expect(await navigator.clipboard.readText()).toMatch(/Behind live: /);
+  });
+
+  it("shows the channel's audio read-only, even to an admin", async () => {
+    stubTracks({ audio: [{ index: 0, language: "eng" }] });
+    mount({ isAdmin: true });
+    press("a");
+    const audio = menu("Audio");
+    expect(within(audio).getByRole("list", { name: "Audio language" })).toBeInTheDocument();
+    expect(within(audio).queryByRole("radio")).toBeNull();
+    expect(within(audio).getByText(/An admin sets it on the channel’s page/)).toBeInTheDocument();
+  });
+
+  it("asks the browser for full screen on a double click on the picture", () => {
+    const request = vi.fn(async () => undefined);
+    Object.defineProperty(document.documentElement, "requestFullscreen", {
+      configurable: true,
+      value: request,
+    });
+    mount();
+    fireEvent.doubleClick(screen.getByTestId("watch-picture").firstElementChild as HTMLElement);
+    expect(request).toHaveBeenCalledOnce();
+    Reflect.deleteProperty(document.documentElement, "requestFullscreen");
+  });
+
   it("opens the shortcuts sheet from ?", () => {
     mount();
     press("?");
