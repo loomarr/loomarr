@@ -174,8 +174,9 @@ iPhone, the watermark's corner rule, and every word in the covers and menus.
 ## Not drawn yet
 
 A desktop window narrower than about 900 px, the Guide on a phone on its side, the Guide's other days
-and its loading and empty states, the decades' legend under By decade, a visible close on the touch
-cross and sheets, the wall on a television, an iPad, and an Android phone.
+and its loading and empty states, a visible close on the touch cross and sheets, an iPad, and an
+Android phone. The prototype draws By decade's headings and the wall on a television; the stills do
+not.
 
 ## Prototype
 
@@ -214,8 +215,18 @@ the mock's stills and sheets do not yet, so where they differ the prototype and 
   to More.
 - **A phone's find works by tapping.** The prototype draws a stand-in keyboard, and the Guide
   control steps aside while find is open.
-- **Focus never leaves the screen.** Whatever carries the ring is scrolled into view, focus stops at
-  the last programme drawn, and a re-render keeps every list where it was scrolled.
+- **Focus never leaves the screen, and there is one ring.** Whatever carries the ring is scrolled
+  into view, the pinned channel carries it when the list's cursor is there, and a re-render keeps
+  every list where it was scrolled.
+- **The Guide moves through the day.** Earlier and Later page it by an hour; on a television Right
+  past the last programme drawn does the same. A programme that has ended is dimmed.
+- **By decade is headed by its decades**, each heading in its decade's colour. In the open list
+  over the picture, Left and Right change the group, and the Channels control names a group other
+  than All, because the group also steers Up and Down.
+- **A message shows when it is raised**, inside the Guide too: OK on a later programme says when it
+  starts.
+- **A click outside a menu closes it** and does nothing else. A second click or tap on the spot a
+  tune just re-centred does nothing until the pointer moves or the finger lifts.
 - **Looking is not playing.** Pointing at another channel says "Looking at 9 Movie Matinee · still
   playing 7 Coast 90s". After a click the list re-centres, and the pointer must move before it
   looks at anything, so a second click cannot tune a channel that slid under it.
@@ -230,7 +241,12 @@ the mock's stills and sheets do not yet, so where they differ the prototype and 
 
 ## Reviews
 
-Two independent critiques have scored the mock: 23 of 40, then 24 of 40 after the first rework. Both
-praise the lower third, the crossing and the tune. The low scores sit where still frames cannot
-answer (control, error prevention, recovery, help), so the next check is a clickable prototype of the
-core loop, not a third round of stills.
+Two independent critiques scored the mock's stills: 23 of 40, then 24 of 40 after the first rework.
+Both praise the lower third, the crossing and the tune. The low scores sat where still frames cannot
+answer (control, error prevention, recovery, help), so the checks moved to the prototype.
+
+Three independent reviews by use have scored the prototype: 25 of 40, 24 of 40, then 27 of 40 after
+the move to one channel list, with all 24 task attempts passing and nothing blocking. The third
+review's faults (a repeat click tuning the wrong channel, messages that never showed, missing focus
+rings, an unlabelled By decade, a Guide that could not move through the day) are fixed in the
+prototype and listed above. The next check is a person who has never seen it, with the Tasks panel.

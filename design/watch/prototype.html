@@ -83,6 +83,11 @@ body.tasks #wrap{right:278px}
 #clist #anchor{display:block;height:0}
 #clist .third{position:sticky;top:0;bottom:0;z-index:2;padding:12px 0}
 .colopen #clist .third{background:var(--bg)}
+#clist .third.cur{outline:2px solid var(--amber);outline-offset:-2px;border-radius:6px}
+.dhead{font-size:12px;font-weight:500;letter-spacing:.04em;padding:16px 0 4px calc(var(--numw,56px) + 20px)}
+.none{padding:14px 0 14px 76px;color:var(--muted);font-size:14px}
+.find .fx{width:36px;height:36px;display:grid;place-items:center}
+button:disabled{opacity:.35;cursor:default}
 .row{display:grid;grid-template-columns:var(--numw,56px) 1fr auto;column-gap:20px;align-items:baseline;width:100%;padding:9px 12px 9px 0;border-radius:6px;scroll-margin-block:120px}
 .row .n{font-size:var(--rn);color:var(--muted);text-align:right}
 .row .name{font-size:var(--rname);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -134,7 +139,9 @@ body.tasks #wrap{right:278px}
 .menu dt{color:var(--muted)}.menu dd{text-align:right}
 .hint{position:absolute;z-index:15;display:inline-flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:rgba(var(--ink),.94);font-size:13px;color:var(--text);white-space:nowrap}
 .hint kbd{font-family:"Geist Mono",monospace;font-size:12px;color:var(--white);font-weight:500}
-.toast{position:absolute;left:50%;top:24px;transform:translateX(-50%);z-index:30;padding:8px 14px;border-radius:8px;background:rgba(var(--ink),.96);font-size:13px;white-space:nowrap}
+.toast{position:absolute;left:50%;top:68px;transform:translateX(-50%);z-index:30;padding:8px 14px;border-radius:8px;background:rgba(var(--ink),.96);font-size:13px;max-width:calc(100% - 32px);text-align:center}
+.vguide .toast{top:auto;bottom:28px;background:var(--surface2)}
+.phone .toast,.phone.vguide .toast{top:272px;bottom:auto;background:rgba(var(--ink),.96)}
 .btn{display:inline-flex;align-items:center;height:40px;padding:0 16px;border-radius:8px;border:1px solid #666970;font-size:14px;font-weight:500}
 /* ----- desktop in a window: the cross sits beside the picture ----- */
 #stage.window{display:grid;grid-template-columns:var(--colw) 1fr;grid-template-rows:auto 1fr auto;column-gap:48px;padding:28px 48px 32px}
@@ -163,8 +170,8 @@ body.tasks #wrap{right:278px}
 #stage.tv #colhead .top,#stage.full #colhead .gctl,#stage.tv .tabs [data-act="find"]{display:none}
 #stage.full #clist,#stage.tv #clist{flex:1}
 #stage.full:not(.colopen) #clist,#stage.tv:not(.colopen) #clist{overflow:hidden}
-#stage.full #clist .row,#stage.tv #clist .row,#stage.full #colhead .tabs,#stage.tv #colhead .tabs,#stage.full .find,#stage.tv .find{opacity:0;visibility:hidden;transition:opacity .12s}
-.colopen #clist .row,.colopen #colhead .tabs,.colopen .find{opacity:1!important;visibility:visible!important}
+#stage.full #clist>:not(.third),#stage.tv #clist>:not(.third),#stage.full #colhead .tabs,#stage.tv #colhead .tabs,#stage.full .find,#stage.tv .find{opacity:0;visibility:hidden;transition:opacity .12s}
+.colopen #clist>*,.colopen #colhead .tabs,.colopen .find{opacity:1!important;visibility:visible!important}
 #stage.full #low,#stage.tv #low{display:none}
 #stage.full #keys,#stage.tv #keys{position:absolute;right:var(--pad);bottom:40px}
 #stage.tv #keys{bottom:32px}
@@ -189,9 +196,14 @@ body.tasks #wrap{right:278px}
 .phone .tabs button,.phone .gctl{height:44px;flex:none}
 .phone #plist{flex:1;overflow:auto;padding:0 16px 40px;scrollbar-width:none;--numw:28px}
 .phone .row{padding:10px 0;min-height:56px;column-gap:14px}
-.phone .hint{left:16px;right:16px;bottom:44px;justify-content:center}
+.phone .hint{left:16px;right:16px;top:272px;justify-content:center}
 .phone .menu{left:0;right:0;bottom:0;width:auto;border-radius:16px 16px 0 0;padding:10px 12px 40px}
 .phone .menu .o{min-height:44px}
+.phone .menu .h button,.phone .find .fx{min-width:44px;height:44px}
+.phone .golive{height:44px}
+.phone p button{min-height:44px}
+.phone .none{padding-left:0}
+.phone .dhead{padding-left:42px}
 .phone .homeind{position:absolute;left:50%;bottom:8px;width:134px;height:5px;margin-left:-67px;border-radius:3px;background:rgba(231,234,240,.8);z-index:40}
 .kbd{flex:none;display:grid;grid-template-columns:repeat(10,1fr);gap:5px;padding:8px 6px 34px;background:var(--surface)}
 .kbd button{height:40px;border-radius:6px;background:var(--surface2);text-align:center;font-size:15px}
@@ -227,6 +239,14 @@ body.tasks #wrap{right:278px}
 #guide .grow.tuned .gb{align-items:flex-end;background-size:cover;background-position:center;color:#fff}
 #guide .grow.tuned .gb .tx{padding-bottom:8px}
 #guide .grow.tuned .gb .tx .tm{display:block;color:rgba(231,234,240,.78);font-size:12px}
+#guide .gb.past{opacity:.45}
+#guide .dhead{padding:10px 0 4px 60px}
+.phone #guide .dhead{padding-left:0}
+.gpage{display:inline-flex;gap:4px;margin-right:12px}
+.gpage button{display:inline-flex;align-items:center;gap:4px;height:36px;padding:0 10px;border-radius:8px;font-size:13px}
+.gpage button:not(:disabled):hover{background:var(--surface2)}
+.gpg{display:flex;justify-content:flex-end;flex:none}
+.phone .gpage{margin:0}.phone .gpage button{height:44px}
 #guide .gb:hover{outline:2px solid var(--text);outline-offset:-2px}
 #guide .gb.cur{outline:2px solid var(--amber);outline-offset:-2px}
 #guide .tick{position:absolute;top:30%;height:40%;width:2px;border-radius:1px;background:rgba(231,234,240,.4)}
@@ -334,7 +354,7 @@ const t0 = Date.now();
 const now = () => 20 + (Date.now() - t0) / 60000;
 // T is the channel playing. cc is the channel the list's cursor is on: looking, not playing.
 const S = { mode: 'window', view: 'watch', T: 7, last: null, col: false, cc: null, tf: null, kf: null, sb: null, hov: null, hb: null, paused: false, behind: 0, pausedAt: 0,
-  muted: true, menu: null, mi: -1, find: null, fi: 0, digits: '', idle: false, cold: true, cc_sub: 'English', gcur: null, toast: '', hinted: {}, tab: 'All', recent: [7], wc: 0, still: null, recentre: true };
+  goff: 0, tuning: false, muted: true, menu: null, mi: -1, find: null, fi: 0, digits: '', idle: false, cold: true, cc_sub: 'English', gcur: null, toast: '', hinted: {}, tab: 'All', recent: [7], wc: 0, still: null, recentre: true };
 const DONE = {}; const started = Date.now();
 const done = k => { if (!DONE[k]) { DONE[k] = ((Date.now() - started) / 1000).toFixed(0); renderTasks(); } };
 const overlay = () => S.mode === 'full' || S.mode === 'tv';
@@ -372,7 +392,7 @@ const thirdHTML = () => {
   }
   const act = S.mode === 'phone' ? `<div class="act"><button data-act="pause" aria-label="${S.paused ? 'Play' : 'Pause'}">${ic(S.paused ? 'play' : 'pause', 22)}</button><button data-act="more" aria-label="More">${ic('more', 22)}</button></div>` : '<span></span>';
   return `<div class="bars${S.cold ? ' wait' : ''}" id="bars"></div><span class="n mono${typing ? ' typing' : ''}" style="${typing ? '' : `color:${dec(S.T)}`}">${n}</span>
-    <div style="min-width:0"><h1>${title}</h1><div class="meta">${meta}</div>${S.mode === 'phone' ? '' : next}</div>${act}`;
+    <div style="min-width:0"><h1>${title}</h1><div class="meta">${meta}</div>${next}</div>${act}`;
 };
 const rowHTML = (n, cls = '') => `<button class="row ${cls}" data-n="${n}" role="option" aria-selected="${cls.includes('tuned')}" aria-label="Channel ${n}, ${CH[n][0]}, ${cur(n).b[2]}${cls.includes('tuned') ? ', watching' : ''}">
   <span class="n mono"${cls.includes('tuned') ? ` style="color:${dec(n)}"` : ''}>${n}</span>
@@ -381,7 +401,7 @@ const rowHTML = (n, cls = '') => `<button class="row ${cls}" data-n="${n}" role=
 const results = () => { const q = (S.find ?? '').trim().toLowerCase(); return q ? ORDER.filter(n => CH[n][0].toLowerCase().includes(q) || cur(n).b[2].toLowerCase().includes(q)) : []; };
 const finding = () => S.find != null && S.find.trim() !== '';
 const tabsHTML = () => S.find != null
-  ? `<div class="find">${ic('search', 18)}<input id="q" value="${S.find.replace(/"/g, '&quot;')}" placeholder="Find a channel or a programme…" aria-label="Find a channel or a programme"${S.mode === 'phone' ? ' readonly' : ''}><small>${S.find ? results().length + ' found' : ''}</small><button data-act="findclose" aria-label="Close find" style="width:36px;height:36px;display:grid;place-items:center">${ic('x', 18)}</button></div>`
+  ? `<div class="find">${ic('search', 18)}<input id="q" value="${S.find.replace(/"/g, '&quot;')}" placeholder="Find a channel or a programme…" aria-label="Find a channel or a programme"${S.mode === 'phone' ? ' readonly' : ''}><small>${S.find ? results().length + ' found' : ''}</small><button class="fx" data-act="findclose" aria-label="Close find">${ic('x', 18)}</button></div>`
   : `<nav class="tabs" aria-label="Channel groups"><button data-act="find" aria-label="Find a channel" style="min-width:${S.mode === 'phone' ? 44 : 24}px">${ic('search', 18)}</button>${TABS.map((t, i) => `<button class="${t === S.tab ? 'on' : ''}${S.tf === i ? ' cur' : ''}" data-tab="${t}">${t === 'All' ? `All ${ORDER.length}` : t}</button>`).join('')}</nav>`;
 const stripHTML = n => {
   const c = cur(n), s = SCHED[n].slice(c.i, c.i + 5), t = now(); let h = '', prev = null;
@@ -407,9 +427,11 @@ const KEYS = () => S.mode === 'window' ? ['pause', 'cc', 'audio', 'vol', 'full',
   : S.mode === 'tv' ? [...(S.behind > 0 && !S.paused ? ['live'] : []), 'channels', 'guide', 'pause', 'cc', 'audio', 'more'] : [];
 const TIP = { pause: 'Pause', cc: 'Subtitles', audio: 'Audio', vol: 'Mute', full: 'Full screen', more: 'More' }, KEYOF = { pause: 'Space', cc: 'C', audio: 'A', vol: 'M', full: 'F' };
 const keysHTML = () => KEYS().map((k, i) => {
-  const f = S.kf === i ? ' cur' : '';
+  // One ring at a time: an open menu carries it, not the control that opened it.
+  const f = S.kf === i && !S.menu ? ' cur' : '';
   if (k === 'live') return `<button class="lab${f}" data-act="live" style="color:#E85A5F"><span class="dot" style="top:0;margin:0"></span>Go live</button>`;
-  if (k === 'channels') return `<button class="lab${S.col ? ' on' : ''}${f}" data-act="channels">${ic('list', 18)}Channels</button>`;
+  // A group other than All also steers Up and Down, so the control says which group is on.
+  if (k === 'channels') return `<button class="lab${S.col ? ' on' : ''}${f}" data-act="channels">${ic('list', 18)}Channels${S.tab === 'All' ? '' : `: ${S.tab}`}</button>`;
   if (k === 'guide') return `<button class="lab${f}" data-act="guide">${ic('guide', 18)}Guide</button><i class="sep"></i>`;
   const icon = k === 'pause' && S.paused ? 'play' : k === 'vol' && S.muted ? 'mute' : k;
   const name = k === 'pause' && S.paused ? 'Play' : k === 'vol' && S.muted ? 'Unmute' : k === 'full' && S.mode === 'full' ? 'Leave full screen' : TIP[k];
@@ -417,6 +439,9 @@ const keysHTML = () => KEYS().map((k, i) => {
   return `<button class="${S.menu === k ? 'on' : ''}${f}" data-act="${k}" data-tip="${tip}" aria-label="${tip}">${ic(icon, 20)}</button>`;
 }).join('');
 // The drawn diner still already carries its channel's watermark; every other stand-in gets one drawn.
+const decade = n => `${CH[n][1] < '30' ? 20 : 19}${CH[n][1]}s`;
+// By decade is headed by its decades, each in its own colour.
+const dhead = (n, i, L) => S.tab === 'By decade' && !finding() && (i === 0 || CH[L[i - 1]][1] !== CH[n][1]) ? `<div class="dhead" style="color:${dec(n)}">${decade(n)}</div>` : '';
 const picHTML = () => { const c = cur(S.T); return `<div class="art" style="background-image:${art(c.b[2])}"></div>${c.b[2] === 'The Diner Years' ? '' : `<div class="wm">${CH[S.T][0]}</div>`}<div class="dim"></div><div class="snow"></div>
   <div class="pm">${ic('pause', 30)}</div>${S.muted && !S.cold && S.mode !== 'tv' && S.view === 'watch' ? `<button class="unmute" data-act="vol">${ic('mute', 18)}${S.mode === 'phone' ? 'Tap' : 'Click'} to unmute</button>` : ''}`; };
 const SUB = ['details', 'keys', 'remote'];
@@ -430,7 +455,7 @@ const MENUS = {
     ...(S.mode === 'phone' ? [] : [{l: S.mode === 'tv' ? 'Remote buttons' : 'Keyboard shortcuts', go: () => { S.menu = S.mode === 'tv' ? 'remote' : 'keys'; }}]),
     {l: 'Manage this channel', go: () => { S.menu = null; toast('Channel management opens here (not in this prototype)'); }}]],
   details: () => ['Playback details', [], `<dl><dt>Resolution</dt><dd class="mono">1920×1080 · 29.97 fps</dd><dt>Video</dt><dd class="mono">H.264 High 4.1</dd><dt>Audio</dt><dd class="mono">AAC stereo</dd><dt>Buffer ahead</dt><dd class="mono">6.2 s</dd><dt>Behind live</dt><dd class="mono">${S.behind} s</dd></dl>`],
-  remote: () => ['Remote buttons', [], `<dl><dt>Up, Down</dt><dd>Change channel</dd><dt>OK</dt><dd>Pause, or choose</dd><dt>Left, Right</dt><dd>Move along the controls</dd><dt>Back</dt><dd>Close, then Home</dd></dl>`],
+  remote: () => ['Remote buttons', [], `<dl><dt>Up, Down</dt><dd>Change channel</dd><dt>OK</dt><dd>Pause, or choose</dd><dt>Left, Right</dt><dd>Controls, or the list's groups</dd><dt>Back</dt><dd>Close, then Home</dd></dl>`],
   keys: () => ['Keyboard shortcuts', [], `<dl><dt>Up, Down</dt><dd>Change channel</dd><dt>0 to 9</dt><dd>Tune by number</dd><dt>/</dt><dd>Find by name</dd><dt>G</dt><dd>Guide</dd><dt>Space</dt><dd>Pause</dd><dt>L</dt><dd>Last channel</dd><dt>C, A, M</dt><dd>Subtitles, audio, mute</dd><dt>F</dt><dd>Full screen</dd><dt>Esc</dt><dd>Close, then back</dd></dl>`]
 };
 const menuHTML = () => { if (!S.menu) return ''; const [h, opts, body = ''] = MENUS[S.menu]();
@@ -440,27 +465,31 @@ const menuHTML = () => { if (!S.menu) return ''; const [h, opts, body = ''] = ME
     ${opts.map((o, i) => `<button class="o${S.mi === i ? ' cur' : ''}" data-mi="${i}"><span>${o.l}${o.s ? `<small>${o.s}</small>` : ''}</span>${o.v ? `<span class="v">${o.v}</span>` : o.sel ? ic('check', 18) : ''}</button>`).join('')}${body}</div>`; };
 const HINT = { window: 'Click a channel to change it, or press <kbd>Up</kbd> and <kbd>Down</kbd>', full: '<kbd>Up</kbd> and <kbd>Down</kbd> change channel. <kbd>Channels</kbd> shows them all',
   tv: '<kbd>Up Down</kbd> change channel · <kbd>OK</kbd> pause · <kbd>Left Right</kbd> controls · <kbd>Back</kbd> Home', phone: 'Tap a channel to change it' };
-const hintHTML = () => S.hinted[S.mode] || S.cold || S.view !== 'watch' ? '' : `<div class="hint" role="note">${HINT[S.mode]}</div>`;
+const hintHTML = () => S.hinted[S.mode] || S.cold || S.view !== 'watch' || S.toast || S.kf != null ? '' : `<div class="hint" role="note">${HINT[S.mode]}</div>`;
 
 // ----- views -----
 const guideHTML = () => {
-  const phone = S.mode === 'phone', span = SPAN(), t = now(), c = cur(S.T), g = S.gcur, gb = g ? SCHED[g[0]][g[1]] : null;
-  const rows = LIST().map(n => {
+  // The Guide shows one span of the day from S.goff; Earlier and Later, or Left and Right past its edge, move it.
+  const phone = S.mode === 'phone', span = SPAN(), off = S.goff, end = off + span, t = now(), c = cur(S.T), g = S.gcur, gb = g ? SCHED[g[0]][g[1]] : null;
+  const rows = LIST().map((n, i, L) => {
     const tuned = n === S.T; let h = '', prev = null;
     SCHED[n].forEach((b, j) => {
-      const s = Math.max(0, b[0]), e = Math.min(span, b[1]);
-      if (prev != null && b[0] - prev >= 2 && b[0] > 0 && b[0] < span) h += `<i class="tick" style="left:${(prev + b[0]) / 2 / span * 100}%"></i>`;
+      const s = Math.max(off, b[0]), e = Math.min(end, b[1]);
+      if (prev != null && b[0] - prev >= 2 && b[0] > off && b[0] < end) h += `<i class="tick" style="left:${((prev + b[0]) / 2 - off) / span * 100}%"></i>`;
       prev = b[1]; if (e <= s) return;
-      const on = b[0] <= t && b[1] > t, k = g && g[0] === n && g[1] === j ? ' cur' : '', w = (e - s) / span * 100;
+      const on = b[0] <= t && b[1] > t, past = b[1] <= t, k = g && g[0] === n && g[1] === j ? ' cur' : '', w = (e - s) / span * 100;
       // The title starts after the time line when enough of the programme is left to hold it; otherwise it stays at the block's start.
-      const roomy = on && e - t >= (phone ? 18 : 24), pct = (t - s) / (e - s) * 100;
-      const aired = on ? `<span class="aired" style="width:${pct}%"></span>${roomy ? `<span style="flex:none;width:${pct}%"></span>` : ''}` : '';
+      const airing = on && t > s, roomy = airing && e - t >= (phone ? 18 : 24), pct = airing ? (t - s) / (e - s) * 100 : 0;
+      const aired = airing ? `<span class="aired" style="width:${pct}%"></span>${roomy ? `<span style="flex:none;width:${pct}%"></span>` : ''}` : '';
       const bg = on || tuned ? `background-image:${art(b[2])};` : '';
-      h += `<button class="gb${on ? ' on' : ''}${k}" data-g="${n},${j}" style="left:${s / span * 100}%;width:calc(${w}% - 2px);${bg}" aria-label="Channel ${n}, ${on ? 'on now' : clock(b[0])}, ${b[2]}">${aired}<span class="tx">${on ? (tuned ? '<span class="tm mono">Now</span>' : '') : `<span class="tm mono">${clock(Math.max(b[0], 0), false)}</span>`}${b[2]}</span></button>`;
+      // A programme that has ended carries no time: it is dimmed, and it is not where you can go.
+      const tm = on ? (tuned ? '<span class="tm mono">Now</span>' : '') : past ? '' : `<span class="tm mono">${clock(b[0], false)}</span>`;
+      h += `<button class="gb${on ? ' on' : ''}${past ? ' past' : ''}${k}" data-g="${n},${j}" style="left:${(s - off) / span * 100}%;width:calc(${w}% - 2px);${bg}" aria-label="Channel ${n}, ${on ? 'on now' : past ? 'ended' : clock(b[0])}, ${b[2]}">${aired}<span class="tx">${tm}${b[2]}</span></button>`;
     });
-    return `<div class="grow${tuned ? ' tuned' : ''}"><button class="glab" data-n="${n}" aria-label="Watch channel ${n}, ${CH[n][0]}"><span class="n mono"${tuned ? ` style="color:${dec(n)}"` : ''}>${n}</span><span class="nm">${CH[n][0]}</span></button><div class="track">${h}</div></div>`;
+    return `${dhead(n, i, L)}<div class="grow${tuned ? ' tuned' : ''}"><button class="glab" data-n="${n}" aria-label="Watch channel ${n}, ${CH[n][0]}"><span class="n mono"${tuned ? ` style="color:${dec(n)}"` : ''}>${n}</span><span class="nm">${CH[n][0]}</span></button><div class="track">${h}</div></div>`;
   }).join('');
-  let ruler = ''; for (let m = 0; m < span; m += 30) if (Math.abs(m - t) > 9) ruler += `<span class="mono" style="left:${m / span * 100}%">${clock(m, !phone)}</span>`;
+  let ruler = ''; for (let m = off; m < end; m += 30) if (Math.abs(m - t) > 9) ruler += `<span class="mono" style="left:${(m - off) / span * 100}%">${clock(m, !phone)}</span>`;
+  const pager = S.mode === 'tv' ? '' : `<span class="gpage"><button data-act="gearlier"${off <= 0 ? ' disabled' : ''}>${ic('back', 16)}Earlier</button><button data-act="glater"${off >= GMAX() ? ' disabled' : ''}>Later<span style="display:inline-flex;transform:scaleX(-1)">${ic('back', 16)}</span></button></span>`;
   // Looking is not playing: when the cursor is anywhere but what is on your channel, the header says so, and the picture keeps its own caption.
   const looking = gb && gb !== c.b, onNow = gb && gb[0] <= t;
   const head = looking
@@ -469,9 +498,10 @@ const guideHTML = () => {
   return `<div class="ghead"><div class="gleft"><div style="display:flex;justify-content:space-between;align-items:center"><button class="home" data-act="home">${ic('back', 20)}Home</button>${S.mode === 'tv' ? '' : `<button class="gctl on" data-act="guide">${ic('guide', 18)}Guide<span class="sr"> (showing; press to return to the picture)</span></button>`}</div>
       <div id="gthird" class="third">${head}</div><p class="gsyn">${facts(looking ? gb[2] : c.b[2])[1]}</p></div>
     <div class="gright"><div class="gdock" id="gdock"></div><div class="gplay">Playing <b>${S.T} ${CH[S.T][0]}</b></div></div></div>
-    <div class="gbar">${tabsHTML()}<span style="flex:1"></span>${phone ? '' : S.mode === 'tv' ? `<span class="mono" style="font-size:12px;color:var(--muted)"><b style="color:var(--text);font-weight:500;margin-right:8px">OK</b>watch this channel<b style="color:var(--text);font-weight:500;margin:0 8px 0 22px">Back</b>picture</span>` : `<button class="btn" data-act="guide">Back to the picture</button>`}</div>
-    <div class="ruler">${ruler}<span class="nowtag mono" style="left:${t / span * 100}%">${clock(t, false)}</span></div>
-    <div class="grows" id="grows"><div style="position:relative">${rows}<i class="nowline" style="left:calc(var(--gl) + (100% - var(--gl)) * ${t / span})"></i></div></div>
+    <div class="gbar">${tabsHTML()}<span style="flex:1"></span>${phone ? '' : S.mode === 'tv' ? `<span class="mono" style="font-size:12px;color:var(--muted)"><b style="color:var(--text);font-weight:500;margin-right:8px">OK</b>watch this channel<b style="color:var(--text);font-weight:500;margin:0 8px 0 22px">Back</b>picture</span>` : `${pager}<button class="btn" data-act="guide">Back to the picture</button>`}</div>
+    ${phone ? `<div class="gpg">${pager}</div>` : ''}
+    <div class="ruler">${ruler}${t >= off ? `<span class="nowtag mono" style="left:${(t - off) / span * 100}%">${clock(t, false)}</span>` : ''}</div>
+    <div class="grows" id="grows"><div style="position:relative">${rows}${t >= off ? `<i class="nowline" style="left:calc(var(--gl) + (100% - var(--gl)) * ${(t - off) / span})"></i>` : ''}</div></div>
     ${phone && looking ? `<div class="gdetail"><h2>${gb[2]}</h2><div class="f mono">${g[0]} ${CH[g[0]][0]} · ${clock(gb[0])} to ${clock(gb[1])} · ${facts(gb[2])[0]}</div><p>${facts(gb[2])[1]}</p></div>` : ''}`;
 };
 const wallHTML = () => `<div style="display:flex;justify-content:space-between;align-items:center"><h2>Home</h2><span class="mono" style="font-size:12px;color:var(--muted)">${S.mode === 'tv' ? 'OK watch · Back picture · ' : ''}${ORDER.length} channels · ${clock(now())}</span></div>
@@ -487,7 +517,8 @@ const render = () => {
   const keep = Object.fromEntries(['#clist', '#grows', '#plist', '#wall'].map(s => [s, stage.querySelector(s)?.scrollTop ?? 0]));
   stage.className = `${S.mode} v${S.view}${open ? ' colopen' : ''}${S.idle ? ' idle' : ''}`;
   const noMatch = `<p style="padding:14px 0;color:var(--muted);font-size:14px">No channel or programme matches “${(S.find ?? '').replace(/</g, '&lt;')}”. <button data-act="findclose" style="color:var(--text);text-decoration:underline">Show all channels</button></p>`;
-  const picwrap = `<div id="picwrap"><div id="pic" class="${S.cold ? 'cold' : ''}${S.paused ? ' paused' : ''}">${picHTML()}</div></div>`;
+  const picwrap = `<div id="picwrap"><div id="pic" class="${S.cold ? 'cold' : ''}${S.paused ? ' paused' : ''}${S.tuning ? ' tuning' : ''}">${picHTML()}</div></div>`;
+  const lonely = S.tab === 'Recent' && !finding() && LIST().length === 1 ? `<p class="none">Channels you watch collect here.</p>` : '';
   const overlays = `<div id="guide">${S.view === 'guide' ? guideHTML() : ''}</div><div id="wall">${S.view === 'wall' ? wallHTML() : ''}</div>`;
   const tail = `${hintHTML()}${S.toast ? `<div class="toast" role="status">${S.toast}</div>` : ''}`;
   const res = results(), L = finding() ? res : LIST();
@@ -495,7 +526,7 @@ const render = () => {
     stage.innerHTML = `<div class="island"></div><div id="ptop"><button data-act="home">${ic('back', 22)}Home</button><div><button data-act="cc" aria-label="Subtitles">${ic('cc', 22)}</button><button data-act="audio" aria-label="Audio">${ic('audio', 22)}</button><button data-act="air" aria-label="AirPlay">${ic('air', 22)}</button></div></div>
       ${picwrap}<div id="third" class="third">${thirdHTML()}</div>
       <div class="ptabs">${tabsHTML()}${S.find != null ? '' : `<button class="gctl on" data-act="guide">${S.view === 'guide' ? `${ic('list', 18)}Channels` : `${ic('guide', 18)}Guide`}</button>`}</div>
-      <div id="plist" role="listbox" aria-label="Channels">${L.map(n => rowHTML(n, n === S.T ? 'tuned' : '')).join('') || (finding() ? noMatch : '')}</div>
+      <div id="plist" role="listbox" aria-label="Channels">${L.map((n, i) => dhead(n, i, L) + rowHTML(n, n === S.T ? 'tuned' : '')).join('') || (finding() ? noMatch : '')}${lonely}</div>
       ${overlays}${S.find != null && S.kbd && S.view === 'watch' ? kbdHTML() : ''}${menuHTML() ? `<div style="position:absolute;inset:323px 0 0 0;background:rgba(var(--ink),.6);z-index:19" data-act="menuclose"></div>` : ''}${menuHTML()}${S.find != null ? '' : tail}<div class="homeind"></div>`;
     for (const s of ['#plist', '#grows', '#wall']) { const el = stage.querySelector(s); if (el) el.scrollTop = keep[s]; }
     // Only a tune moves the list: it brings the channel you are watching into view.
@@ -504,9 +535,10 @@ const render = () => {
     const hov = S.hov;
     // Looking is not playing: the label names both channels in plain words.
     const label = hov ? `Looking at <b>${hov} ${CH[hov][0]}</b> · still playing ${S.T} ${CH[S.T][0]} · click to tune` : `Today on ${CH[S.T][0]}`;
-    const third = `<i id="anchor"></i><div id="third" class="third">${thirdHTML()}</div>`;
-    const curN = finding() ? res[S.fi] : S.cc;
-    const rows = L.map(n => n === S.T && !finding() ? third : rowHTML(n, `${n === curN ? 'cur' : ''} ${n === hov ? 'hov' : ''} ${n === S.T ? 'tuned' : ''}`)).join('') + (finding() ? (res.length ? '' : `<div style="padding-left:76px">${noMatch}</div>`) + third : '');
+    // One ring at a time: a focused tab carries it, or the list's cursor does, and the cursor shows on the pinned channel too.
+    const curN = finding() ? res[S.fi] : S.tf != null ? null : S.cc;
+    const third = `<i id="anchor"></i><div id="third" class="third${S.col && !finding() && curN === S.T ? ' cur' : ''}">${thirdHTML()}</div>`;
+    const rows = L.map((n, i) => dhead(n, i, L) + (n === S.T && !finding() ? third : rowHTML(n, `${n === curN ? 'cur' : ''} ${n === hov ? 'hov' : ''} ${n === S.T ? 'tuned' : ''}`))).join('') + lonely + (finding() ? (res.length ? '' : `<div style="padding-left:76px">${noMatch}</div>`) + third : '');
     stage.innerHTML = `${picwrap}<div class="over b"></div><div class="over l"></div>
       <div id="col" style="display:${win ? 'contents' : 'flex'}">
         <div id="colhead"><div class="top"><button class="home" data-act="home">${ic('back', 20)}Home</button><button class="gctl" data-act="guide">${ic('guide', 18)}Guide</button></div>${tabsHTML()}</div>
@@ -537,25 +569,29 @@ const fit = () => { const r = document.getElementById('wrap').getBoundingClientR
   stage.style.transform = S.mode === 'tv' ? `scale(${Math.min(r.width / 960, r.height / 540)})` : S.mode === 'phone' ? `scale(${Math.min(1, (r.height - 16) / 844)})` : ''; };
 const renderTasks = () => { const T = [['flip', 'Change the channel'], ['later', 'See what is on later today'], ['guide', 'Open the Guide'], ['find', 'Find a channel by name'], ['pause', 'Pause the picture'], ['home', 'Go Home, then come back']];
   document.getElementById('tasks').innerHTML = `<h2>Try these, in any order</h2><ul>${T.map(([k, l]) => `<li class="${DONE[k] ? 'done' : ''}"><span>${l}</span><span class="mono">${DONE[k] ? DONE[k] + ' s' : ''}</span></li>`).join('')}</ul>`; };
-let toastT; const toast = m => { S.toast = m; clearTimeout(toastT); toastT = setTimeout(() => { S.toast = ''; render(); }, 2400); };
+// A message shows the moment it is raised, wherever the viewer is.
+let toastT; const toast = m => { S.toast = m; clearTimeout(toastT); toastT = setTimeout(() => { S.toast = ''; render(); }, 2800); render(); };
 
 // ----- behaviour -----
 let tuneT, idleT, digitT, hovT;
 // Only the bare picture goes quiet. Nothing that holds focus, the pointer or an open layer closes by itself.
 const busy = () => S.col || S.menu || S.paused || S.find != null || S.view !== 'watch' || S.kf != null || S.tf != null || S.digits;
-const wake = () => { S.idle = false; clearTimeout(idleT); if (overlay()) idleT = setTimeout(() => { if (!busy()) { S.idle = true; render(); } }, 5000); };
+const held = () => S.mode === 'full' && stage.querySelector('#keys:hover,#third:hover,.home:hover');
+const wake = () => { S.idle = false; clearTimeout(idleT); if (overlay()) idleT = setTimeout(() => { if (held()) wake(); else if (!busy()) { S.idle = true; render(); } }, 5000); };
+const GMAX = () => Math.floor((260 - SPAN()) / 30) * 30;
 const tune = (n, o = {}) => {
   if (n === S.T && !o.force) { if (S.view === 'wall') { S.view = 'watch'; S.recentre = true; render(); } return; }
   clearTimeout(hovT);
-  S.last = S.T; S.T = n; S.paused = false; S.behind = 0; S.hov = null; S.hb = null; S.sb = null; S.cold = false; S.hinted[S.mode] = true; S.recentre = true;
+  if (n !== S.T) S.last = S.T;
+  S.T = n; S.tuning = true; S.paused = false; S.behind = 0; S.hov = null; S.hb = null; S.sb = null; S.cold = false; S.hinted[S.mode] = true; S.recentre = true;
   if (S.col) S.cc = n;
   if (S.kf != null) S.kf = Math.min(S.kf, KEYS().length - 1);
   S.recent = [n, ...S.recent.filter(x => x !== n)].slice(0, 8);
   if (S.view === 'wall') S.view = 'watch';
   render();
   // The picture is covered at once, with static, and uncovered once, 220 ms after the last flip of a run.
-  stage.querySelector('#pic').classList.add('tuning'); clearTimeout(tuneT);
-  tuneT = setTimeout(() => { stage.querySelector('#pic')?.classList.remove('tuning'); }, 220);
+  clearTimeout(tuneT);
+  tuneT = setTimeout(() => { S.tuning = false; stage.querySelector('#pic')?.classList.remove('tuning'); }, 220);
   const bars = stage.querySelector('#bars'); if (bars) { void bars.offsetWidth; bars.classList.add('run'); }
   say(`Channel ${n}, ${CH[n][0]}. ${cur(n).b[2]}.`);
   done('flip'); wake();
@@ -563,7 +599,7 @@ const tune = (n, o = {}) => {
 // Flipping tunes at once and shows only the lower third. The list is for looking: it never tunes by being moved through.
 const flip = d => { const l = S.tab === 'Recent' ? ORDER : LIST(), i = l.indexOf(S.T); tune(l[(i + d + l.length) % l.length]); };
 const pause = () => { if (S.cold) return; S.paused = !S.paused; if (S.paused) { S.pausedAt = Date.now(); done('pause'); } else S.behind = Math.max(1, Math.round((Date.now() - S.pausedAt) / 1000)); S.idle = false; render(); wake(); say(S.paused ? 'Paused' : `Playing, ${S.behind} seconds behind live`); };
-const openGuide = () => { S.view = S.view === 'guide' ? 'watch' : 'guide'; S.menu = null; S.col = false; S.cc = null; S.tf = null; S.find = null; S.recentre = true; S.gcur = S.view === 'guide' ? [S.T, cur(S.T).i] : null; if (S.view === 'guide') done('guide'); S.hinted[S.mode] = true; render(); if (S.view === 'guide') stage.querySelector('.grow.tuned')?.scrollIntoView({block: 'center'}); };
+const openGuide = () => { S.view = S.view === 'guide' ? 'watch' : 'guide'; S.goff = 0; S.menu = null; S.col = false; S.cc = null; S.tf = null; S.find = null; S.recentre = true; S.gcur = S.view === 'guide' ? [S.T, cur(S.T).i] : null; if (S.view === 'guide') done('guide'); S.hinted[S.mode] = true; render(); if (S.view === 'guide') stage.querySelector('.grow.tuned')?.scrollIntoView({block: 'center'}); };
 const openList = on => { S.col = on; S.cc = on ? S.T : null; S.tf = null; S.recentre = true; if (S.mode === 'tv') S.kf = on ? null : KEYS().indexOf('channels'); S.hinted[S.mode] = true; render(); wake(); };
 const openFind = () => { if (S.mode === 'tv') return; S.find = ''; S.fi = 0; S.kbd = true; if (overlay()) S.col = true; if (S.view === 'guide') S.view = 'watch'; render(); };
 const closeFind = () => { S.find = null; S.recentre = true; render(); };
@@ -576,7 +612,11 @@ const act = a => {
   if (a === 'guide') return openGuide();
   if (a === 'home') return goHome();
   if (a === 'pause') return pause();
-  if (a === 'live') { S.behind = 0; if (S.kf != null) S.kf = KEYS().indexOf('channels'); render(); toast('Back to live'); return; }
+  if (a === 'live') { S.behind = 0; if (S.kf != null) S.kf = KEYS().indexOf('channels'); toast('Back to live'); say('Live'); return; }
+  // Moving the Guide's span keeps its cursor on something drawn.
+  if (a === 'gearlier' || a === 'glater') { S.goff = Math.max(0, Math.min(GMAX(), S.goff + (a === 'glater' ? 60 : -60)));
+    const g = S.gcur; if (g) { const b = SCHED[g[0]][g[1]]; if (b[1] <= S.goff || b[0] >= S.goff + SPAN()) { const j = SCHED[g[0]].findIndex(x => x[1] > Math.max(S.goff, now()) && x[0] < S.goff + SPAN()); if (j >= 0) S.gcur = [g[0], j]; } }
+    if (a === 'glater') done('later'); render(); return; }
   if (a === 'vol') { S.muted = !S.muted; render(); if (S.mode !== 'phone') toast(S.muted ? 'Muted' : 'Sound on'); return; }
   if (a === 'full') return setMode(S.mode === 'full' ? 'window' : 'full');
   if (a === 'find') return openFind();
@@ -590,11 +630,15 @@ const act = a => {
 const setMode = m => { S.mode = m; S.col = false; S.cc = null; S.tf = null; S.sb = null; S.kf = null; S.menu = null; S.find = null; S.idle = false; S.hov = null; S.recentre = true;
   document.querySelectorAll('#bar [data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === (m === 'full' ? 'window' : m)));
   document.getElementById('modehelp').textContent = m === 'tv' ? 'Remote only: arrow keys, Enter for OK, Backspace for Back.' : m === 'phone' ? 'Click to tap.' : m === 'full' ? 'Full screen. F leaves it.' : 'Pointer and keyboard. F goes full screen.';
-  render(); wake(); };
+  render(); wake();
+  // A phone's hint steps aside after a while even if nothing is tapped.
+  if (m === 'phone' && !S.hinted.phone) setTimeout(() => { if (!S.hinted.phone) { S.hinted.phone = true; if (S.mode === 'phone') render(); } }, 9000); };
 
 stage.addEventListener('click', e => {
   if (S.mode === 'tv') return;
   const el = e.target.closest('[data-act],[data-n],[data-b],[data-g],[data-mi],[data-tab],[data-k]');
+  // A click outside an open menu closes it and does nothing else.
+  if (S.menu && !e.target.closest('.menu') && !MENUS[el?.dataset.act]) { S.menu = null; render(); return; }
   if (e.target.id === 'q' && S.mode === 'phone') { S.kbd = true; render(); return; }
   if (!el) { if (e.target.closest('#pic') && S.view === 'watch') { if (S.mode === 'full' && S.col) openList(false); else pause(); } return; }
   if (el.dataset.act) return act(el.dataset.act);
@@ -602,9 +646,13 @@ stage.addEventListener('click', e => {
   if (el.dataset.k) { const k = el.dataset.k; if (k === 'done') { if (S.find.trim()) { S.kbd = false; render(); } else closeFind(); return; } S.find = k === 'del' ? S.find.slice(0, -1) : S.find + k; S.fi = 0; render(); return; }
   if (el.dataset.tab) { S.tab = el.dataset.tab; S.recentre = true; if (S.col) S.cc = S.T; render(); return; }
   if (el.dataset.mi != null) { MENUS[S.menu]()[1][+el.dataset.mi].go(); render(); return; }
-  if (el.dataset.g) { const [n, j] = el.dataset.g.split(',').map(Number), b = SCHED[n][j], on = b[0] <= now() && b[1] > now(); S.gcur = [n, j]; if (on) tune(n, {force: n !== S.T}); else { done('later'); render(); } return; }
+  if (el.dataset.g) { const [n, j] = el.dataset.g.split(',').map(Number), b = SCHED[n][j], on = b[0] <= now() && b[1] > now(); S.gcur = [n, j]; if (on) tune(n); else { if (b[0] > now()) done('later'); render(); } return; }
   if (el.dataset.b != null) { S.sb = +el.dataset.b; if (S.sb > 0) done('later'); render(); return; }
-  if (el.dataset.n) { const n = +el.dataset.n; S.still = [e.clientX, e.clientY];
+  if (el.dataset.n) { const n = +el.dataset.n;
+    // A tune re-centres the list, so a different channel slides under a pointer that has not moved. A pointer must move,
+    // and a finger must lift for a moment, before the next click or tap on a row counts.
+    if (S.still && S.view === 'watch' && (S.mode === 'phone' ? Date.now() - S.still[2] < 700 : Math.hypot(e.clientX - S.still[0], e.clientY - S.still[1]) < 14)) return;
+    S.still = [e.clientX, e.clientY, Date.now()];
     if (S.view === 'wall') return leaveHome(n);
     if (S.find != null) { if (S.find) done('find'); S.find = null; }
     tune(n, {force: S.view === 'guide' && n !== S.T}); }
@@ -618,9 +666,9 @@ stage.addEventListener('dblclick', e => { if (e.target.closest('#pic') && (S.mod
 stage.addEventListener('input', e => { if (e.target.id === 'q') { S.find = e.target.value; S.fi = 0; render(); } });
 stage.addEventListener('pointermove', e => {
   if (S.mode === 'tv') return; if (S.idle) { S.idle = false; render(); } wake();
-  if (S.mode !== 'window' || S.view !== 'watch') return;
   // After a click the list re-centres under a pointer that has not moved. It must move before it looks at anything.
-  if (S.still) { if (Math.hypot(e.clientX - S.still[0], e.clientY - S.still[1]) < 14) return; S.still = null; }
+  if (S.still && S.mode !== 'phone') { if (Math.hypot(e.clientX - S.still[0], e.clientY - S.still[1]) < 14) return; S.still = null; }
+  if (S.mode !== 'window' || S.view !== 'watch') return;
   const r = e.target.closest('.row[data-n]'), b = e.target.closest('.blk[data-b]');
   const hn = r && +r.dataset.n !== S.T && S.find == null ? +r.dataset.n : (b ? S.hov : null), hb = b ? +b.dataset.b : null;
   clearTimeout(hovT);
@@ -641,8 +689,9 @@ document.addEventListener('keydown', e => {
   // The key that wakes the screen also does its job: nothing is swallowed.
   const wasIdle = S.idle; wake(); if (wasIdle) render();
   if (S.menu) { const opts = MENUS[S.menu]()[1];
-    if (back) { S.menu = SUB.includes(S.menu) ? 'more' : null; S.mi = tv ? 0 : -1; render(); } else if (k === 'ArrowDown') { S.mi = Math.min(opts.length - 1, S.mi + 1); render(); } else if (k === 'ArrowUp') { S.mi = Math.max(0, S.mi - 1); render(); }
-    else if (k === 'Enter' && opts[S.mi]) { opts[S.mi].go(); S.mi = tv ? 0 : -1; render(); } if (arrow || back || k === 'Enter') e.preventDefault(); return; }
+    // Back from a page under More returns to the item that opened it.
+    if (back) { const sub = SUB.includes(S.menu); S.menu = sub ? 'more' : null; S.mi = sub ? S.from ?? 0 : tv ? 0 : -1; render(); } else if (k === 'ArrowDown') { S.mi = Math.min(opts.length - 1, S.mi + 1); render(); } else if (k === 'ArrowUp') { S.mi = Math.max(0, S.mi - 1); render(); }
+    else if (k === 'Enter' && opts[S.mi]) { S.from = S.mi; opts[S.mi].go(); S.mi = tv ? 0 : -1; render(); } if (arrow || back || k === 'Enter') e.preventDefault(); return; }
   if (S.view === 'wall') { const tiles = [S.T, ...ORDER.filter(n => n !== S.T)], cols = 3;
     if (back) leaveHome(); else if (k === 'Enter' && tv) leaveHome(tiles[S.wc]);
     else if (arrow && tv) { const d = {ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols}[k]; S.wc = Math.max(0, Math.min(tiles.length - 1, S.wc + d)); render(); e.preventDefault(); }
@@ -652,9 +701,15 @@ document.addEventListener('keydown', e => {
     else if (k === 'Enter' && res[S.fi]) { done('find'); S.find = null; tune(res[S.fi], {force: true}); } return; }
   if (S.view === 'guide') { const g = S.gcur ?? [S.T, cur(S.T).i], L = LIST();
     if (back || (k === 'g' && !tv)) openGuide();
-    else if (k === 'ArrowDown' || k === 'ArrowUp') { const n = L[L.indexOf(g[0]) + (k === 'ArrowDown' ? 1 : -1)]; if (n) { const mid = (Math.max(SCHED[g[0]][g[1]][0], now()) + SCHED[g[0]][g[1]][1]) / 2; let j = SCHED[n].findIndex(b => b[0] <= mid && b[1] > mid); if (j < 0) j = cur(n).i; S.gcur = [n, j]; render(); } }
-    else if (k === 'ArrowRight' || k === 'ArrowLeft') { const j = g[1] + (k === 'ArrowRight' ? 1 : -1), b = SCHED[g[0]][j]; if (b && b[1] > now() && b[0] < SPAN()) { S.gcur = [g[0], j]; if (j > cur(g[0]).i) done('later'); render(); } }
-    else if (k === 'Enter') { const b = SCHED[g[0]][g[1]]; if (b[0] <= now()) { tune(g[0], {force: g[0] !== S.T}); if (g[0] === S.T) toast(`Now playing ${S.T} ${CH[S.T][0]}`); } else toast(`${b[2]} starts at ${clock(b[0])}. Press OK on what is on now to watch ${CH[g[0]][0]}`); }
+    // Up and Down keep the cursor on the same time of day, and only ever on a programme that is drawn.
+    else if (k === 'ArrowDown' || k === 'ArrowUp') { const n = L[L.indexOf(g[0]) + (k === 'ArrowDown' ? 1 : -1)]; if (n) { const lo = Math.max(S.goff, now()), hi = S.goff + SPAN() - 1, mid = Math.max(lo, Math.min(hi, (Math.max(SCHED[g[0]][g[1]][0], now()) + SCHED[g[0]][g[1]][1]) / 2)); let j = SCHED[n].findIndex(b => b[0] <= mid && b[1] > mid); if (j < 0) j = SCHED[n].findIndex(b => b[1] > lo && b[0] <= hi); if (j < 0) j = cur(n).i; S.gcur = [n, j]; render(); } }
+    // Right past the last programme drawn moves the Guide later; Left past the first moves it earlier.
+    else if (k === 'ArrowRight' || k === 'ArrowLeft') { const j = g[1] + (k === 'ArrowRight' ? 1 : -1), b = SCHED[g[0]][j]; if (b && b[1] > now()) {
+      if (b[0] >= S.goff + SPAN()) S.goff = Math.min(GMAX(), Math.max(S.goff + 60, Math.ceil((b[0] - SPAN() + 30) / 30) * 30));
+      if (b[1] <= S.goff) S.goff = Math.max(0, Math.min(S.goff - 60, Math.floor(b[0] / 30) * 30));
+      if (b[0] < S.goff + SPAN()) { S.gcur = [g[0], j]; if (j > cur(g[0]).i) done('later'); } render(); } }
+    // OK on what is on now watches it, or returns to the picture when it is already playing. A later programme says when it starts.
+    else if (k === 'Enter') { const b = SCHED[g[0]][g[1]]; if (b[0] > now()) toast(`${b[2]} starts at ${clock(b[0])}. ${tv ? 'OK' : 'Enter'} on what is on now watches ${CH[g[0]][0]}`); else if (g[0] === S.T) openGuide(); else tune(g[0]); }
     else return; e.preventDefault(); return; }
   if (/^[0-9]$/.test(k) && !tv) { S.digits = (S.digits + k).slice(0, 2); render(); clearTimeout(digitT); digitT = setTimeout(commitDigits, 1600); return; }
   if (S.digits) { if (k === 'Enter') return commitDigits(); if (back) { clearTimeout(digitT); S.digits = ''; render(); return; } }
@@ -663,18 +718,21 @@ document.addEventListener('keydown', e => {
     else if (k === 'Enter') { S.tab = TABS[S.tf]; S.cc = S.T; S.recentre = true; render(); toast(`Showing ${S.tab === 'All' ? 'all channels' : S.tab.toLowerCase()}`); }
     else if (k === 'ArrowDown' || back) { S.tf = null; S.cc = S.cc ?? LIST()[0]; render(); } e.preventDefault(); return; }
   // The list open over the picture: moving looks, OK tunes, Back closes. It stays until closed.
-  if (S.col && overlay()) { const L = LIST(), i = L.indexOf(S.cc ?? S.T);
+  // Left and Right change the group. Every other key keeps its usual job.
+  if (S.col && overlay() && (arrow || k === 'Enter' || back)) { const L = LIST(), i = L.indexOf(S.cc ?? S.T);
     if (k === 'ArrowDown') { S.cc = L[Math.min(L.length - 1, i + 1)]; render(); }
     else if (k === 'ArrowUp') { if (i === 0) { S.tf = TABS.indexOf(S.tab); } else S.cc = L[i - 1]; render(); }
     else if (k === 'Enter') { if (S.cc === S.T) openList(false); else tune(S.cc); }
-    else if (back) openList(false); else if (!arrow) return;
+    else if (back) openList(false);
+    else { const ti = Math.max(0, Math.min(TABS.length - 1, TABS.indexOf(S.tab) + (k === 'ArrowRight' ? 1 : -1))); if (TABS[ti] !== S.tab) { S.tab = TABS[ti]; S.cc = S.T; S.recentre = true; render(); } }
     e.preventDefault(); return; }
   // Desktop in a window with keyboard focus on a row: arrows walk the rows without tuning; Enter tunes.
   const fr = document.activeElement?.classList?.contains('row') ? document.activeElement : null;
   if (fr && (k === 'ArrowDown' || k === 'ArrowUp')) { let x = fr; do { x = k === 'ArrowDown' ? x.nextElementSibling : x.previousElementSibling; } while (x && !x.classList.contains('row')); x?.focus(); e.preventDefault(); return; }
   if (k === 'ArrowUp' || k === 'ArrowDown') { S.sb = null; flip(k === 'ArrowDown' ? 1 : -1); e.preventDefault(); return; }
   if (k === 'ArrowRight' || k === 'ArrowLeft') { const d = k === 'ArrowRight' ? 1 : -1; e.preventDefault();
-    if (tv) { S.kf = S.kf == null ? KEYS().indexOf('channels') : Math.max(0, Math.min(KEYS().length - 1, S.kf + d)); render(); return; }
+    // Focus lands on Go live when there is one, and on Channels otherwise.
+    if (tv) { S.kf = S.kf == null ? 0 : Math.max(0, Math.min(KEYS().length - 1, S.kf + d)); render(); return; }
     if (S.mode === 'window') { const nb = (S.sb ?? -1) + d; S.sb = nb < 0 ? null : Math.min(4, SCHED[S.T].length - cur(S.T).i - 1, nb); if (S.sb > 0) done('later'); render(); }
     return; }
   if (k === 'Enter') { if (fr) return; if (tv) { if (S.kf != null) act(KEYS()[S.kf]); else pause(); e.preventDefault(); } return; }
