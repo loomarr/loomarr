@@ -108,10 +108,26 @@ const Driven = () => {
 /** Press quickly to see a run of flips hold as one wash. */
 const TryIt: Story = { render: () => <Driven /> };
 
+/**
+ * A flip as the viewer's own motion setting draws it, with the snow moving: static and running bars,
+ * or under reduced motion a crossfade with no static and no running bars.
+ */
+const FollowsTheViewer: Story = {
+  render: () => (
+    <div style={{ background: "#FFFFFF", height: 202, position: "relative", width: 360 }}>
+      <TuneStatic cover="burst" />
+      <div style={{ bottom: 0, height: 3, left: 0, position: "absolute", right: 0 }}>
+        <TuneBars bars="run" run={1} />
+      </div>
+    </div>
+  ),
+};
+
 export default meta;
 export {
   ChangingChannel,
   FastFlipping,
+  FollowsTheViewer,
   PictureArrived,
   ReducedMotionChanging,
   ReducedMotionTuningIn,
