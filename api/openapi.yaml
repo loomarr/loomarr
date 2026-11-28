@@ -7344,6 +7344,10 @@ components:
     LibraryItemDTO:
       additionalProperties: false
       properties:
+        brokenCopies:
+          description: How many of the extra copies can't be played, their details couldn't be read. Admins only; absent when none
+          format: int64
+          type: integer
         extraCopies:
           description: "A movie's extra copies: files that never play because another of its files plays in their place (state extra). Admins only"
           format: int64

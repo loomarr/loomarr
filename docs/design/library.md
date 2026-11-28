@@ -970,7 +970,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `extraBytes`, the size of the extra copies' files) after the titles nobody can
   identify. Both count towards `needsYou`, the nav badge. Needs you words them in plain words
   ("Night Ferry has 2 episodes that can't be played", "Paper Kites has 2 extra copies", counted
-  from `extraCopies`) with See why, which opens the title. While anything counts towards
+  from `extraCopies`) with See why, which opens the title. Needs you counts broken extra copies
+  apart (`brokenCopies`, the extra copies whose header failed, absent when none): "Coral Meridian
+  has 1 broken copy and 1 extra copy". While anything counts towards
   `needsYou`, Settings → Library's headline says "Up to date". The title's page gives an
   unplayable title a warning card with Check files again whenever `unplayable` counts a file. That
   count leaves out a broken copy another copy plays in place of, so a broken part or edition with

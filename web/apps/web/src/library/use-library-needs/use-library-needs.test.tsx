@@ -95,7 +95,7 @@ describe("useLibraryNeeds", () => {
         orders: [],
         problems: [
           {
-            item: { ...need("90000013", []).item, name: "Charlie", files: 2, extraCopies: 1 },
+            item: { ...need("90000013", []).item, name: "Charlie", files: 3, extraCopies: 2, brokenCopies: 1 },
             extraBytes: 4096,
           },
         ],
@@ -109,6 +109,8 @@ describe("useLibraryNeeds", () => {
       kind: "movie",
       name: "Charlie",
       unplayable: 0,
+      extraCopies: 2,
+      brokenCopies: 1,
       extraBytes: 4096,
     });
   });

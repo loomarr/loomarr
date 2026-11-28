@@ -35,6 +35,7 @@ const problemOf = (p: LibraryProblemDTO): LibraryProblem => ({
   // Needs you is admin-only, and an admin's titles always carry the count.
   unplayable: p.item.unplayable ?? 0,
   extraCopies: p.item.extraCopies ?? 0,
+  brokenCopies: p.item.brokenCopies,
   extraBytes: p.extraBytes,
 });
 
