@@ -87,28 +87,25 @@ type operationsBuild struct {
 	residentLLM residentLLMBuild
 }
 
-func buildOperations(
-	rootCtx context.Context,
-	st store.Store,
-	set resolved,
-	desiredSet resolved,
-	secrets *settings.Secrets,
-	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
-	refreshSecretRedactor func(),
-	libraryClient *mediaserver.Client,
-	tmdbClient *tmdb.Client,
-	eventBus *events.Bus,
-	emitter *eventEmitter,
-	registry *jobs.Registry,
-	owner *generationLifecycle,
-	playoutResolver *playoutresolve.Resolver,
-	appliedBackend func(context.Context) (string, error),
-	overrides Overrides,
-	log *slog.Logger,
-	metricRecorder *metrics.Recorder,
-	protection *secretprotection.Manager,
-	secretRedactor *settings.Redactor,
-) (operationsBuild, error) {
+type operationsInput struct {
+	buildCore
+	desiredSettings       resolved
+	refreshSecretRedactor func()
+	tmdbClient            *tmdb.Client
+	playoutResolver       *playoutresolve.Resolver
+	appliedBackend        func(context.Context) (string, error)
+	protection            *secretprotection.Manager
+	secretRedactor        *settings.Redactor
+}
+
+func buildOperations(in operationsInput) (operationsBuild, error) {
+	rootCtx, st, set, overrides, owner := in.ctx, in.store, in.settings, in.overrides, in.owner
+	libraryClient, secrets, readGeneratedSecret := in.libraryClient, in.secrets, in.readGeneratedSecret
+	eventBus, emitter, registry, log, metricRecorder := in.events, in.emitter, in.jobs, in.log, in.metrics
+	desiredSet, refreshSecretRedactor, tmdbClient := in.desiredSettings, in.refreshSecretRedactor, in.tmdbClient
+	playoutResolver, appliedBackend := in.playoutResolver, in.appliedBackend
+	protection, secretRedactor := in.protection, in.secretRedactor
+
 	restart, bootConfig := buildRestart(overrides, log)
 	backups := buildBackups(st, set, registry, log)
 	authResult := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
