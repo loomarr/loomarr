@@ -42,8 +42,16 @@ const historyLedger = "testdata/history-comments.txt"
 var lowerHistoryLedger = flag.Bool("lower-history-ledger", false,
 	"rewrite "+historyLedger+" to the current counts where they are lower")
 
-// quotedSpan is a quoted or backticked span within one comment line.
-var quotedSpan = regexp.MustCompile("\"[^\"]*\"|`[^`]*`")
+// quotedSpan is a quoted or backticked span, which may wrap onto the next line. The length bound
+// keeps a stray quote mark (an inch sign) from swallowing the comment after it.
+var quotedSpan = regexp.MustCompile("\"[^\"]{0,160}\"|`[^`]{0,160}`")
+
+// withoutQuotes blanks every quoted span, keeping its newlines so line numbers hold.
+func withoutQuotes(comment string) string {
+	return quotedSpan.ReplaceAllStringFunc(comment, func(span string) string {
+		return `""` + strings.Repeat("\n", strings.Count(span, "\n"))
+	})
+}
 
 // historyRules are the narrations the guard recognises. Each pattern is matched against one
 // comment line.
@@ -74,18 +82,17 @@ var historyRules = []struct {
 	},
 	{
 		// What a thing did before: "it used to be". The purpose sense ("used to key the record",
-		// "used to prewarm") has a noun or participle in front and a plain verb behind, and does
-		// not match.
+		// "the key it used to sign") does not open a clause with its subject and does not match.
 		name: `"used to"`,
 		re: regexp.MustCompile(
-			`(?i)\b(?:it|this|that|they|which) used to\b|\bused to (?:be|say|live|come|refuse|collapse|happen|have to)\b`),
+			`(?:^\s*(?://|/\*)?|[.;:(—] *)[^\w"]*(?:[A-Z][a-z]+|it|this|that|they) used to\b|(?i:\bused to (?:be|live|come|collapse|happen|have to)\b)`),
 	},
 	{
 		// "formerly" and "previously" as narration. "A previously declined item" describes the
 		// item's state and does not match.
 		name: `"formerly" or "previously"`,
 		re: regexp.MustCompile(
-			`(?i)(?:[—;:(,]|\s-)\s*(?:formerly|previously)\b|\b(?:formerly|previously) (?:was|were|had|did|lacked|lived)\b|\b(?:it|this|scheduler|code) (?:formerly|previously)\b`),
+			`(?i)(?:[—;]|\s-)\s*(?:formerly|previously)\b|\b(?:formerly|previously) (?:was|were|had|did|lacked|lived)\b|\b(?:it|this|scheduler|code) (?:formerly|previously)\b`),
 	},
 	{
 		// A change, an issue or a build used as a point in time: "as it was until #1674",
@@ -115,14 +122,20 @@ func historyComments(t *testing.T, filename string, src any) []string {
 	}
 	var found []string
 	for _, group := range file.Comments {
+		// Quotes are blanked across the whole group, so a quotation that wraps stays quoted.
+		var texts []string
+		var lines []int
 		for _, comment := range group.List {
 			start := fset.Position(comment.Slash).Line
 			for offset, text := range strings.Split(comment.Text, "\n") {
-				text = quotedSpan.ReplaceAllString(text, `""`)
-				for _, rule := range historyRules {
-					if rule.re.MatchString(text) {
-						found = append(found, strconv.Itoa(start+offset)+": "+rule.name)
-					}
+				texts = append(texts, text)
+				lines = append(lines, start+offset)
+			}
+		}
+		for i, text := range strings.Split(withoutQuotes(strings.Join(texts, "\n")), "\n") {
+			for _, rule := range historyRules {
+				if rule.re.MatchString(text) {
+					found = append(found, strconv.Itoa(lines[i])+": "+rule.name)
 				}
 			}
 		}
@@ -257,6 +270,8 @@ func f() {}
 // The scheduler previously lacked this memory.
 // It was keyed by series until #1674.
 // Measured on 2026-08-11.
+// Verify with the key it used to sign (previously cached or not). A name such as "Lark
+// 2023-11-02" wraps.
 func g() {}
 `
 	got := strings.Join(historyComments(t, "p.go", src), " | ")

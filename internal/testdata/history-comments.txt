@@ -35,6 +35,7 @@ internal/filler/pod/ladder.go 2
 internal/filler/pod/pod.go 7
 internal/filler/records/fillersources.go 1
 internal/filler/records/splitproposals.go 1
+internal/filler/routine/driver.go 1
 internal/filler/split.go 1
 internal/filler/split/segment.go 1
 internal/filler/stage_split.go 1
@@ -42,13 +43,10 @@ internal/filler/sync.go 1
 internal/library/mediaserver/filler.go 2
 internal/library/mediaserver/metadata.go 1
 internal/library/mediaserver/search.go 1
-internal/library/scan/dated.go 1
-internal/library/scan/snapshot.go 1
 internal/media/defects/defects.go 1
 internal/media/encode/video.go 2
 internal/media/tools/conditioning_cut.go 1
 internal/media/tools/derivative_recipe.go 1
-internal/platform/databasemigration/migration.go 1
 internal/platform/housekeeping/housekeeping.go 1
 internal/platform/jobs/river.go 2
 internal/platform/jobs/scheduler.go 2
