@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/testkit/waitfor"
 )
 
 // The tail a lifecycle keeps for itself is the exported constant callers size their deadlines to.
@@ -99,13 +101,7 @@ func TestShutdownStopPhaseHasOneHardStop(t *testing.T) {
 		t.Errorf("shutdown = %v, want the stuck stops reported", err)
 	}
 	// Every stop is started even after the hard stop passed, so a later resource is still released.
-	deadline := time.Now().Add(time.Second)
-	for ran.Load() != stops && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
-	}
-	if ran.Load() != stops {
-		t.Errorf("%d of %d stops started", ran.Load(), stops)
-	}
+	waitfor.Eventually(t, time.Second, "every stop to start", func() bool { return ran.Load() == stops })
 }
 
 // ShutdownTail is the documented bound: Shutdown outlasts the join by at most late wait plus stop

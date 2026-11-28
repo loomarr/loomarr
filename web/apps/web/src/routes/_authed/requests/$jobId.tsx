@@ -1,12 +1,12 @@
 import * as proposalJobsApi from "@loomarr/api/endpoints/proposal-jobs";
 import { createFileRoute } from "@tanstack/react-router";
 import { viewerIsAdmin } from "@/auth/me-query";
-import { RequestDetail } from "@/queue/request-detail";
+import { RequestDetailPage } from "@/queue/request-detail-page";
 import { ensureRequests } from "@/queue/use-requests";
 
 const RequestDetailScreen = () => {
   const { jobId } = Route.useParams();
-  return <RequestDetail jobId={jobId} />;
+  return <RequestDetailPage jobId={jobId} />;
 };
 
 const Route = createFileRoute("/_authed/requests/$jobId")({

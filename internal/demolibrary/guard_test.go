@@ -175,7 +175,7 @@ var migratedTests = []string{
 	"web/apps/web/src/components/loomarr/player/video-player/",
 	"web/apps/web/src/components/loomarr/shell/search-command/",
 	"web/apps/web/src/lib/policy-overrides/",
-	"web/apps/web/src/queue/request-detail/",
+	"web/apps/web/src/queue/request-detail-page/",
 	// The rest of the web app's tests, its e2e specs, and the core and player packages (slice 14).
 	"web/apps/web/src/channels/use-channel-lineup/",
 	"web/apps/web/src/channels/use-channel-save/",

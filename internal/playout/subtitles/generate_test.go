@@ -123,23 +123,15 @@ func TestGenerator_ConcurrentRequestsTranscribeEachBlockOnce(t *testing.T) {
 		viewers.Go(func() { g.Cues(episode, 0, 10*s) })
 	}
 	viewers.Wait()
-	for len(local.Calls()) == 0 {
-		time.Sleep(time.Millisecond)
-	}
+	testkit.Eventually(t, 10*time.Second, "the first block to start", func() bool { return len(local.Calls()) != 0 })
 	// A second viewer asks while the first block is in flight.
 	g.Cues(episode, 0, 10*s)
 	close(local.Hold)
 
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		if _, _, state := g.Cues(episode, 0, 10*s); state == subtitles.Ready && len(local.Calls()) == 4 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("blocks never made; calls %v", spans(local.Calls()))
-		}
-		time.Sleep(time.Millisecond)
-	}
+	testkit.Eventually(t, 10*time.Second, "all four blocks to be made", func() bool {
+		_, _, state := g.Cues(episode, 0, 10*s)
+		return state == subtitles.Ready && len(local.Calls()) == 4
+	})
 	cancel()
 	<-done
 	got := spans(local.Calls())
@@ -485,9 +477,7 @@ func TestGenerator_TheBudgetTakingHeadroomBackMidBlockHoldsItForTheNextRequest(t
 
 	ran := make(chan bool)
 	go func() { ran <- g.Step(context.Background()) }()
-	for len(local.Calls()) == 0 {
-		time.Sleep(time.Millisecond)
-	}
+	testkit.Eventually(t, 10*time.Second, "the block to start", func() bool { return len(local.Calls()) != 0 })
 	budget.Yield()
 	if !<-ran {
 		t.Fatal("no lead ran")

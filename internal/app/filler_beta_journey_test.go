@@ -230,15 +230,17 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 
 func waitForAcquisition(t *testing.T, st records.Store, id string, at time.Time, want acquisition.RunStatus) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		run, err := st.GetAcquisitionRun(t.Context(), id, at)
-		if err == nil && run.Status == want {
-			return
+	var (
+		run acquisition.AcquisitionRun
+		err error
+	)
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("acquisition %s: last=%+v err=%v", id, run, err)
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("acquisition %s did not reach %s: last=%+v err=%v", id, want, run, err)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	})
+	testkit.Eventually(t, 5*time.Second, "acquisition "+id+" to reach "+string(want), func() bool {
+		run, err = st.GetAcquisitionRun(t.Context(), id, at)
+		return err == nil && run.Status == want
+	})
 }

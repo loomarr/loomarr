@@ -3,23 +3,14 @@
 # One "path count" line per file. This list only shrinks: replace a sleep, then
 # go test ./internal/ -run TestTestsDoNotSleep -lower-sleep-ledger
 internal/api/guide_test.go 1
-internal/api/playout/playoutstatus_stats_internal_test.go 1
-internal/api/playout_test.go 1
-internal/app/application_bound_test.go 2
+internal/app/application_bound_test.go 1
 internal/app/application_finish_test.go 5
 internal/app/application_test.go 2
 internal/app/buildlibrary_test.go 1
-internal/app/filler_beta_journey_test.go 1
-internal/app/playout_noviewer_test.go 2
-internal/app/playoutlifecycle_test.go 1
+internal/app/playout_noviewer_test.go 1
 internal/app/restart_test.go 1
 internal/app/settings_replica_test.go 1
-internal/filler/fetch/downloaders_test.go 3
 internal/integration/database_lifecycle_postgres_test.go 6
-internal/integration/discovery_feedback_recuration_test.go 1
-internal/integration/harness_test.go 1
-internal/integration/pipeline_test.go 1
-internal/integration/scan_availability_test.go 1
 internal/library/scan/importer_test.go 9
 internal/library/scan/readrecords_test.go 1
 internal/library/scan/roots_test.go 1
@@ -30,12 +21,9 @@ internal/library/scan/walkguard_test.go 1
 internal/library/scan/watch_test.go 2
 internal/media/measure/job_test.go 1
 internal/media/proctree/supervisor_test.go 1
-internal/media/proctree/supervisor_unix_test.go 1
-internal/media/tools/conditioning_test.go 1
 internal/people/auth/sso_authelia_test.go 1
 internal/people/auth/sso_authentik_test.go 1
 internal/platform/llm/openai_stale_conn_test.go 1
-internal/platform/llm/selection/selection_test.go 1
 internal/platform/store/diagnostics_retention_test.go 1
 internal/platform/store/storedb/handle_test.go 1
 internal/playout/hls/packager_hls_test.go 2
@@ -44,10 +32,6 @@ internal/playout/hls/still_source_test.go 1
 internal/playout/hls/still_test.go 1
 internal/playout/packager/packager_test.go 1
 internal/playout/resolve/playoutprofile_test.go 1
-internal/playout/resolve/subtitleburn_test.go 4
-internal/playout/subtitles/generate_test.go 3
 internal/playout/tunarr/tunarr_test.go 1
 internal/proposals/suggest/fanout_internal_test.go 2
-internal/proposals/suggest/suggester_progress_test.go 1
-internal/proposals/suggest/worker_llmcause_test.go 1
 internal/proposals/suggest/worker_test.go 1

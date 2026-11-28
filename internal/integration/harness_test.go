@@ -394,8 +394,16 @@ const workerWait = 30 * time.Second
 // worker ran) or the deadline passes; a worker failure surfaces the job's error.
 func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, proposals.Proposal) {
 	h.t.Helper()
-	deadline := time.Now().Add(workerWait)
-	for time.Now().Before(deadline) {
+	var (
+		id    string
+		found proposals.Proposal
+	)
+	h.t.Cleanup(func() {
+		if job, err := h.store.GetJob(context.Background(), jobID); h.t.Failed() && err == nil {
+			h.t.Logf("job %s: status=%s err=%q", jobID, job.Status, job.LastError)
+		}
+	})
+	testkit.Eventually(h.t, workerWait, "a proposal for job "+jobID, func() bool {
 		var list struct {
 			Proposals []struct {
 				ID       string          `json:"id"`
@@ -410,14 +418,11 @@ func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, prop
 				if err := json.Unmarshal(p.Proposal, &prop); err != nil {
 					h.t.Fatalf("decode proposal: %v", err)
 				}
-				return p.ID, prop
+				id, found = p.ID, prop
+				return true
 			}
 		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	if job, err := h.store.GetJob(context.Background(), jobID); err == nil {
-		h.t.Fatalf("proposal never appeared for job %s (status=%s, err=%q)", jobID, job.Status, job.LastError)
-	}
-	h.t.Fatalf("proposal never appeared for job %s", jobID)
-	return "", proposals.Proposal{}
+		return false
+	})
+	return id, found
 }

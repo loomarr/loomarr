@@ -4,7 +4,7 @@ import {
   getRecordChannelTuneUrl,
   getRemoveFavouriteChannelUrl,
 } from "@loomarr/api/endpoints/channels";
-import { readBody } from "@loomarr/api/mutator";
+import { importSchemas, readBody } from "@loomarr/api/mutator";
 
 import { RECENT_LIMIT } from "../channel-lineup";
 import type {
@@ -19,7 +19,7 @@ const createMyChannelsPort = (request: typeof globalThis.fetch): MyChannelsPort 
   const send = async (url: string, method: "DELETE" | "GET" | "PUT", signal?: AbortSignal) => {
     const response = await request(url, { method, signal });
     if (!response.ok) throw new Error(`Couldn't update your channels (${response.status}).`);
-    const { MyChannelsBody } = await import("../response-bodies");
+    const { MyChannelsBody } = await importSchemas(() => import("../response-bodies"));
     return readBody(response, MyChannelsBody);
   };
   return {

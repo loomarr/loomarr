@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // streamingLLM plays a scripted conversation like a real streaming provider: it hands the
@@ -235,16 +236,10 @@ func TestWorker_ProgressIsReadableMidStreamAndDroppedAfter(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("run never finished")
 	}
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		if _, ok := svc.Progress(jobID); !ok {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("tracker outlived the run")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	testkit.Eventually(t, 2*time.Second, "the progress tracker to end with the run", func() bool {
+		_, ok := svc.Progress(jobID)
+		return !ok
+	})
 }
 
 // The stage must follow what HAPPENED, not what the search arguments happened to spell out: a

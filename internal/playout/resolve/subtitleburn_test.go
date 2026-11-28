@@ -90,19 +90,11 @@ func newTestBurns(t *testing.T, works bool, prepare playout.BurnInPreparer) (*Su
 // means that request ran or was never queued.
 func waitIdle(t *testing.T, s *SubtitleBurns) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
+	testkit.Eventually(t, 5*time.Second, "the preparation queue to drain", func() bool {
 		s.mu.Lock()
-		n := len(s.queued)
-		s.mu.Unlock()
-		if n == 0 {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("%d preparations still queued", n)
-		}
-		time.Sleep(2 * time.Millisecond)
-	}
+		defer s.mu.Unlock()
+		return len(s.queued) == 0
+	})
 }
 
 // The first airing has nothing ready and queues ONE preparation, however often and however
@@ -203,13 +195,7 @@ func TestSubtitleBurns_RunWaitsForARunningPreparation(t *testing.T) {
 		s.Run(ctx)
 	}()
 	s.Prepare("/media/film.mkv", burnPGS)
-	deadline := time.Now().Add(5 * time.Second)
-	for p.Runs() == 0 {
-		if time.Now().After(deadline) {
-			t.Fatal("the preparation never started")
-		}
-		time.Sleep(2 * time.Millisecond)
-	}
+	testkit.Eventually(t, 5*time.Second, "the preparation to start", func() bool { return p.Runs() != 0 })
 	cancel()
 	<-done
 	if p.Finished() != 1 {
@@ -409,13 +395,8 @@ func TestBurnSubtitlesFor_ServesTheProgrammeAndQueuesTheNextAiring(t *testing.T)
 	if owned.starts() != 2 {
 		t.Errorf("%d owned starts, want the worker and the next airing's lookup", owned.starts())
 	}
-	deadline := time.Now().Add(5 * time.Second)
-	for p.Finished() < 2 {
-		if time.Now().After(deadline) {
-			t.Fatalf("%d of 2 tracks prepared, want the film's and the next airing's", p.Finished())
-		}
-		time.Sleep(2 * time.Millisecond)
-	}
+	testkit.Eventually(t, 5*time.Second, "the film's and the next airing's tracks to be prepared",
+		func() bool { return p.Finished() >= 2 })
 	waitIdle(t, s)
 	next := r.libraryFile.(fakeLibraryFiles)["next"]
 	if _, ok := playout.LoadBurnIn(s.trackDir(next, 5)); !ok {
@@ -454,13 +435,8 @@ func TestBurnSubtitlesFor_ExcludesWhatCannotBurn(t *testing.T) {
 		if got := resolve(encode.EncoderNVENC); got != nil {
 			t.Errorf("%s: served %+v", name, got)
 		}
-		deadline := time.Now().Add(5 * time.Second)
-		for p.Finished() < 1 {
-			if time.Now().After(deadline) {
-				t.Fatalf("%s: the next airing was not prepared", name)
-			}
-			time.Sleep(2 * time.Millisecond)
-		}
+		testkit.Eventually(t, 5*time.Second, name+": the next airing to be prepared",
+			func() bool { return p.Finished() >= 1 })
 		waitIdle(t, s)
 		for _, path := range inventory.reads() {
 			if path == c.input {
