@@ -5,7 +5,6 @@ import {
   getDeviceRevokeCurrentUrl,
 } from "@loomarr/api/endpoints/auth";
 import { ApiError, ContractError, readBody } from "@loomarr/api/mutator";
-import { DevicePairPollResponse, DevicePairStartResponse } from "@loomarr/api/zod/auth";
 import type { z } from "zod";
 
 import type {
@@ -122,14 +121,6 @@ const createPairingCredentialStore = (storage: PairingKeyValueStorage) => ({
   },
   write: (credential: PairingCredential) => storage.setItem(CREDENTIAL_KEY, JSON.stringify(credential)),
 });
-const StartBody = DevicePairStartResponse.pick({
-  deviceCode: true,
-  expiresAt: true,
-  interval: true,
-  userCode: true,
-});
-const PollBody = DevicePairPollResponse.pick({ deviceName: true, token: true });
-
 const readAnswer = async <S extends z.ZodType>(response: Response, schema: S) => {
   if (!response.ok) {
     // A refusal that is not JSON is some other server's page, which reads as that, not as a status.
@@ -147,8 +138,9 @@ const createPairingTransport = (serverUrl: string, fetcher: PairingFetch = fetch
       method: "POST",
       signal,
     });
+    const { PairStartBody } = await import("../response-bodies");
     return {
-      body: await readAnswer(response, StartBody),
+      body: await readAnswer(response, PairStartBody),
       serverDate: response.headers.get("Date") ?? undefined,
     };
   },
@@ -161,7 +153,8 @@ const createPairingTransport = (serverUrl: string, fetcher: PairingFetch = fetch
     });
     if (response.status === 428) return { status: "pending" };
     if (response.status === 404) return { status: "expired" };
-    return { body: await readAnswer(response, PollBody), status: "paired" };
+    const { PairPollBody } = await import("../response-bodies");
+    return { body: await readAnswer(response, PairPollBody), status: "paired" };
   },
 });
 

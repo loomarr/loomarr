@@ -6,7 +6,7 @@
 //   - the double-submit CSRF header on state-changing requests (§11)
 //   - RFC 7807 problem+json surfaced as a typed error (rendered by ErrorState, §3)
 
-import { z } from "zod";
+import type { z } from "zod";
 import type { ErrorModel } from "../../generated/model";
 
 class ApiError extends Error {
@@ -74,11 +74,6 @@ const readBody = async <S extends z.ZodType>(response: Response, schema: S): Pro
   return parsed.data;
 };
 
-// openEnum accepts any string for a field the contract lists as an enum, keeping the listed type.
-// A schema uses it where an older client must keep working when a newer server adds a value.
-const openEnum = <S extends z.ZodType>(_listed: S) =>
-  z.custom<z.output<S>>((value) => typeof value === "string");
-
 const CSRF_HEADER = "X-Loomarr-Csrf";
 type ApiFailure = { requestId: string; status: number };
 let apiFailureObserver: ((failure: ApiFailure) => void) | undefined;
@@ -121,13 +116,4 @@ const customFetch = async <T>(url: string, options: RequestInit = {}): Promise<T
 };
 
 export type { ApiFailure };
-export {
-  ApiError,
-  ContractError,
-  customFetch,
-  observeApiFailures,
-  openEnum,
-  readBody,
-  readResponse,
-  toProblem,
-};
+export { ApiError, ContractError, customFetch, observeApiFailures, readBody, readResponse, toProblem };

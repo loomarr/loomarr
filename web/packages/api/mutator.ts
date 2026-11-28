@@ -4,7 +4,6 @@ export {
   ContractError,
   customFetch,
   observeApiFailures,
-  openEnum,
   readBody,
   readResponse,
   toProblem,
