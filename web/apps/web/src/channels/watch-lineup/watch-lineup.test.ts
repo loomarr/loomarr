@@ -25,10 +25,21 @@ describe("watchLineupChannels", () => {
     ];
     const lineup = watchLineupChannels(
       channels,
-      [timeline("ch-1", [airing("Old one", NOW - 60_000 * 60, NOW - 1), airing("Now one", NOW - 1, NOW + 12 * 60_000)])],
+      [
+        timeline("ch-1", [
+          airing("Old one", NOW - 60_000 * 60, NOW - 1),
+          airing("Now one", NOW - 1, NOW + 12 * 60_000),
+        ]),
+      ],
       NOW,
     );
-    expect(lineup[0]).toMatchObject({ decade: 1990, minutesLeft: 12, name: "Noir", onNow: "Now one", playable: true });
+    expect(lineup[0]).toMatchObject({
+      decade: 1990,
+      minutesLeft: 12,
+      name: "Noir",
+      onNow: "Now one",
+      playable: true,
+    });
     // The guide has not read it: its name and number alone.
     expect(lineup[1]).toEqual({ id: "ch-2", name: "Toons", number: 2, playable: true });
   });

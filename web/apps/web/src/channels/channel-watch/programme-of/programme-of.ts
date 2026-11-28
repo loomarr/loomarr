@@ -14,10 +14,13 @@ const programmeOf = (
 ): WatchProgramme => {
   const band = watched?.id === channel.id && watched.band.title ? watched.band : undefined;
   if (!band?.title) {
-    return channel.onNow ? { kind: "on", minutesLeft: channel.minutesLeft ?? 1, title: channel.onNow } : { kind: "nothing" };
+    return channel.onNow
+      ? { kind: "on", minutesLeft: channel.minutesLeft ?? 1, title: channel.onNow }
+      : { kind: "nothing" };
   }
   const next = band.next ? { next: { startsAt: formatTime(band.next.startMs), title: band.next.name } } : {};
-  if (band.inBreak) return { backInMinutes: band.breakMinutesLeft ?? 1, kind: "break", title: band.title, ...next };
+  if (band.inBreak)
+    return { backInMinutes: band.breakMinutesLeft ?? 1, kind: "break", title: band.title, ...next };
   const minutesLeft = band.stopMs === undefined ? 1 : (band.stopMs - (watched?.playheadMs ?? 0)) / 60_000;
   return {
     kind: "on",

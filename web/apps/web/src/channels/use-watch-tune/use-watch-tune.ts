@@ -56,7 +56,10 @@ const useWatchTune = (now: () => number = Date.now): WatchTune => {
     },
     [now, update],
   );
-  const abandon = useCallback((which: number) => update(tuneAbandon(state.current, which), now()), [now, update]);
+  const abandon = useCallback(
+    (which: number) => update(tuneAbandon(state.current, which), now()),
+    [now, update],
+  );
 
   const view = tuneView(state.current, read.at);
   const { nextAt } = view;

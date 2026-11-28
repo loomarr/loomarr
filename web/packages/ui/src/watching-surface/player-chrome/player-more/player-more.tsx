@@ -156,12 +156,10 @@ const PlayerMore = ({
         pictureInPicture,
         playbackDetails,
         startOver,
-      }).map(
-        (row, index) => (
-          // A television's remote lands on the first row as the menu opens.
-          <MoreRow density={density} key={row.label} preferFocus={density === "tv" && index === 0} {...row} />
-        ),
-      )}
+      }).map((row, index) => (
+        // A television's remote lands on the first row as the menu opens.
+        <MoreRow density={density} key={row.label} preferFocus={density === "tv" && index === 0} {...row} />
+      ))}
     </View>
   </View>
 );

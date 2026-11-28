@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { programmeOf } from "./programme-of";
 
-const channel = { id: "ch-1", minutesLeft: 9, name: "Noir", number: 1, onNow: "From the guide", playable: true };
+const channel = {
+  id: "ch-1",
+  minutesLeft: 9,
+  name: "Noir",
+  number: 1,
+  onNow: "From the guide",
+  playable: true,
+};
 const time = (ms: number) => `t${ms}`;
 
 describe("programmeOf", () => {
@@ -26,7 +33,13 @@ describe("programmeOf", () => {
   });
 
   it("says when a break's programme is back", () => {
-    const band = { breakMinutesLeft: 3, channelName: "Noir", channelNumber: "1", inBreak: true, title: "Night desk" };
+    const band = {
+      breakMinutesLeft: 3,
+      channelName: "Noir",
+      channelNumber: "1",
+      inBreak: true,
+      title: "Night desk",
+    };
     expect(programmeOf(channel, { band, id: "ch-1", playheadMs: 0 }, time)).toEqual({
       backInMinutes: 3,
       kind: "break",
@@ -41,6 +54,8 @@ describe("programmeOf", () => {
       minutesLeft: 9,
       title: "From the guide",
     });
-    expect(programmeOf({ ...channel, id: "ch-2", onNow: undefined }, undefined, time)).toEqual({ kind: "nothing" });
+    expect(programmeOf({ ...channel, id: "ch-2", onNow: undefined }, undefined, time)).toEqual({
+      kind: "nothing",
+    });
   });
 });

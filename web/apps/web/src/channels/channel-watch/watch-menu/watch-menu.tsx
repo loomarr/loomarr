@@ -48,7 +48,13 @@ const watchMenu = ({
   const { close, lastChannel, name, openPage, page } = slot;
   const menu = (title: string, body: ReactNode, back?: () => void) => (
     // More names no heading: its rows say what they are.
-    <PlayerMenu density={density} heading={title !== "More"} key={title} title={title} {...(back ? { onBack: back } : {})}>
+    <PlayerMenu
+      density={density}
+      heading={title !== "More"}
+      key={title}
+      title={title}
+      {...(back ? { onBack: back } : {})}
+    >
       {body}
     </PlayerMenu>
   );
@@ -60,7 +66,8 @@ const watchMenu = ({
       <PlayerOptions density={density} label="Subtitles" onSelect={onSubtitles} options={subtitleOptions} />,
     );
   }
-  if (name === "audio") return menu("Audio", <PlayerAudio density={density} options={audio} switchSound={switchSound} />);
+  if (name === "audio")
+    return menu("Audio", <PlayerAudio density={density} options={audio} switchSound={switchSound} />);
   if (name === "shortcuts") {
     return menu(
       "Keyboard shortcuts",
@@ -83,12 +90,21 @@ const watchMenu = ({
   if (page === "picture" && qualityOptions) {
     return menu(
       "Picture",
-      <PlayerOptions density={density} label="Picture quality" onSelect={onQuality} options={qualityOptions} />,
+      <PlayerOptions
+        density={density}
+        label="Picture quality"
+        onSelect={onQuality}
+        options={qualityOptions}
+      />,
       toMore,
     );
   }
   if (page === "details") {
-    return menu("Playback details", <PlayerDetails density={density} onCopy={onCopyDetails} rows={detailRows} />, toMore);
+    return menu(
+      "Playback details",
+      <PlayerDetails density={density} onCopy={onCopyDetails} rows={detailRows} />,
+      toMore,
+    );
   }
   const last = lastChannel?.channel;
   return menu(

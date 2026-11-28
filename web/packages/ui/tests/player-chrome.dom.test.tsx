@@ -590,7 +590,11 @@ describe("PlayerMore", () => {
   it("draws Last channel with the channel it goes to, and as unavailable when it cannot be played", () => {
     const onLast = vi.fn();
     const host = mount(
-      <PlayerMore density="pointer" formatTime={String} lastChannel={{ detail: "4 Night Owl", onPress: onLast }} />,
+      <PlayerMore
+        density="pointer"
+        formatTime={String}
+        lastChannel={{ detail: "4 Night Owl", onPress: onLast }}
+      />,
     );
     expect(row(host, "Last channel")?.textContent).toContain("4 Night Owl");
     act(() => row(host, "Last channel")?.click());

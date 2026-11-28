@@ -19,7 +19,8 @@ const watchLineupChannels = (
     const current = guide
       .get(channel.id)
       ?.airings.find(
-        (airing) => airing.kind === GuideAiringKind.program && airing.startMs <= nowMs && nowMs < airing.stopMs,
+        (airing) =>
+          airing.kind === GuideAiringKind.program && airing.startMs <= nowMs && nowMs < airing.stopMs,
       );
     const offAir = channel.status === "paused" || channel.status === "detached";
     return {

@@ -1,5 +1,5 @@
-import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelTracksOutputBody } from "@loomarr/api";
+import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import {
   getChannelPlayUrlMockHandler,
   getChannelSubtitlesMockHandler,
@@ -102,7 +102,9 @@ const ChannelWatch = ({
 );
 
 const makeWrapper = () => {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
       <LoomarrProvider theme="dark">{children}</LoomarrProvider>
@@ -133,7 +135,10 @@ const stubTracks = (tracks: Partial<ChannelTracksOutputBody> = {}) => {
 
 const mount = (props: Parameters<typeof ChannelWatch>[0] = {}) => {
   const view = render(<ChannelWatch {...props} />, { wrapper: makeWrapper() });
-  return { ...view, again: (next: Parameters<typeof ChannelWatch>[0] = {}) => view.rerender(<ChannelWatch {...next} />) };
+  return {
+    ...view,
+    again: (next: Parameters<typeof ChannelWatch>[0] = {}) => view.rerender(<ChannelWatch {...next} />),
+  };
 };
 const press = (key: string) => fireEvent.keyDown(document.body, { key });
 const menu = (name: string) => screen.getByRole("dialog", { name });
@@ -292,7 +297,9 @@ describe("ChannelWatch: the tune follows the player", () => {
     const { again } = mount();
     hls.status = "loading";
     again({ channel: toons });
-    await waitFor(() => expect(switchSound).toHaveBeenCalledWith(expect.any(HTMLVideoElement), { enabled: true }));
+    await waitFor(() =>
+      expect(switchSound).toHaveBeenCalledWith(expect.any(HTMLVideoElement), { enabled: true }),
+    );
     hls.status = "playing";
     again({ channel: toons });
     await waitFor(() => expect(staticLock).toHaveBeenCalledOnce());
@@ -323,7 +330,12 @@ describe("ChannelWatch: the first-run hint", () => {
 
 describe("ChannelWatch: the shipped menus in the screen's slot", () => {
   it("lists Audio's tracks from the airing media, and keeps the Channel-change sound switch", async () => {
-    stubTracks({ audio: [{ index: 0, language: "eng" }, { index: 1, language: "rus" }] });
+    stubTracks({
+      audio: [
+        { index: 0, language: "eng" },
+        { index: 1, language: "rus" },
+      ],
+    });
     mount();
     await userEvent.click(await screen.findByRole("button", { name: "Audio (A)" }));
     const languages = within(menu("Audio")).getByRole("list", { name: "Audio language" });
@@ -353,7 +365,13 @@ describe("ChannelWatch: the shipped menus in the screen's slot", () => {
   });
 
   it("keeps More's rows but Channels and Info, with Picture and Playback details as its pages", async () => {
-    const ladder = { height: 2160, rungs: [{ height: 1080, index: 0 }, { height: 2160, index: 1 }] };
+    const ladder = {
+      height: 2160,
+      rungs: [
+        { height: 1080, index: 0 },
+        { height: 2160, index: 1 },
+      ],
+    };
     mount({ player: { ladder } });
     const more = await openMore();
     expect(within(more).queryByRole("button", { name: "Channels" })).toBeNull();

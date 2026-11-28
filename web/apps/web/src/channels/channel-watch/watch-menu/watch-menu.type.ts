@@ -1,6 +1,5 @@
-import type { WatchMenuSlot } from "@loomarr/ui";
+import type { PlayerAudio, PlayerDetails, PlayerOptions, WatchMenuSlot } from "@loomarr/ui";
 import type { ComponentProps, RefObject } from "react";
-import type { PlayerAudio, PlayerDetails, PlayerOptions } from "@loomarr/ui";
 import type { WatchLineupChannel } from "../../watch-lineup";
 
 /** What the open menu is drawn from: the shipped menus' contents, as the player chrome had them. */

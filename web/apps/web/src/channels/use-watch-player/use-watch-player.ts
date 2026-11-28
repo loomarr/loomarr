@@ -45,7 +45,11 @@ const useWatchPlayer = ({
     for (const stale of [...attempts.current.keys()].slice(0, -REMEMBERED_ATTEMPTS)) {
       attempts.current.delete(stale);
     }
-    onTuneReportRef.current?.({ attemptId: report.attemptId, channelId: report.channel.id, warm: report.warm });
+    onTuneReportRef.current?.({
+      attemptId: report.attemptId,
+      channelId: report.channel.id,
+      warm: report.warm,
+    });
     // The wash is up once the frame after this one has painted.
     if (typeof requestAnimationFrame !== "function") {
       markTunePhase(attempt, "osd");

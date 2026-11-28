@@ -2,7 +2,11 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { audioChoices } from "@loomarr/core/channel-audio";
-import { createChannelSubtitlesSource, subtitleChoices, useChannelSubtitles } from "@loomarr/core/channel-subtitles";
+import {
+  createChannelSubtitlesSource,
+  subtitleChoices,
+  useChannelSubtitles,
+} from "@loomarr/core/channel-subtitles";
 import { formatGuideTime } from "@loomarr/core/guide";
 import { type WatchRequest, watchKeyOf } from "@loomarr/core/watch-screen";
 import { Layer, Stack } from "@loomarr/design-system";
@@ -67,7 +71,15 @@ interface ChannelWatchProps {
   tuneReports: RefObject<((report: WatchTuneReport) => void) | undefined>;
 }
 
-const ChannelWatch = ({ back, channel, channels, isAdmin, onGuide, player, tuneReports }: ChannelWatchProps) => {
+const ChannelWatch = ({
+  back,
+  channel,
+  channels,
+  isAdmin,
+  onGuide,
+  player,
+  tuneReports,
+}: ChannelWatchProps) => {
   const { lineup, onTuneSettled } = channels;
   const touch = useCoarsePointer();
   const density = touch ? "touch" : "pointer";
@@ -312,7 +324,9 @@ const ChannelWatch = ({ back, channel, channels, isAdmin, onGuide, player, tuneR
         const transport = player.liveTransport;
         if (key === "ArrowRight" && transport.state.mode === "live") return;
         event.preventDefault();
-        void transport.seek(transport.state.viewerTimeMs + (key === "ArrowLeft" ? -SEEK_STEP_MS : SEEK_STEP_MS));
+        void transport.seek(
+          transport.state.viewerTimeMs + (key === "ArrowLeft" ? -SEEK_STEP_MS : SEEK_STEP_MS),
+        );
         return;
       }
       fullScreenKey.current = key;
