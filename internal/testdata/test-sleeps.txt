@@ -47,7 +47,7 @@ internal/playout/hls/packager_hls_test.go 8
 internal/playout/hls/premium_live_test.go 1
 internal/playout/hls/still_source_test.go 1
 internal/playout/hls/still_test.go 1
-internal/playout/packager/packager_test.go 5
+internal/playout/packager/packager_test.go 1
 internal/playout/resolve/playoutprofile_test.go 1
 internal/playout/resolve/subtitleburn_test.go 4
 internal/playout/subtitles/generate_test.go 3

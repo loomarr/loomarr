@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/testkit/waitfor"
+
 	"github.com/bluenviron/mediacommon/v2/pkg/codecs/mpeg4audio"
 	"github.com/bluenviron/mediacommon/v2/pkg/formats/fmp4"
 	"github.com/bluenviron/mediacommon/v2/pkg/formats/fmp4/seekablebuffer"
@@ -420,13 +422,9 @@ func TestBadFragmentEndsTheItemWithoutLeakingItsReader(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the bad fragment never ended the item")
 	}
-	deadline := time.Now().Add(5 * time.Second)
-	for readStreamGoroutines() > 0 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if n := readStreamGoroutines(); n > 0 {
-		t.Fatalf("%d stream reader goroutine(s) still parked after the bad fragment ended the item", n)
-	}
+	waitfor.Eventually(t, 5*time.Second, "the stream readers of the ended item to exit", func() bool {
+		return readStreamGoroutines() == 0
+	})
 }
 
 type track struct {
@@ -973,10 +971,7 @@ func TestTuneInOnACardReadsTheInitFromTheItemAfterIt(t *testing.T) {
 	if lead > runAhead+time.Second+100*time.Millisecond {
 		t.Fatalf("timeline leads the clock by %v with a %v run-ahead", lead, runAhead)
 	}
-	deadline := time.Now().Add(6 * time.Second)
-	for p.Stats().Items == 0 && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-	}
+	waitfor.Eventually(t, 6*time.Second, "the item on air after the card", func() bool { return p.Stats().Items > 0 })
 	if s := p.Stats(); s.Items == 0 || s.DecoderMismatch != 0 || opens.Load() != 2 {
 		t.Fatalf("stats %+v, opens %d: want the item on air after the card, matching the init it gave", s, opens.Load())
 	}
@@ -1101,10 +1096,7 @@ func TestSubFrameRemainderRollsIntoTheNextItem(t *testing.T) {
 		t.Fatal(err)
 	}
 	start(t, p)
-	deadline := time.Now().Add(3 * time.Second)
-	for p.Stats().Items < 2 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitfor.Eventually(t, 3*time.Second, "both items on air", func() bool { return p.Stats().Items >= 2 })
 	if s := p.Stats(); s.Items < 2 || s.Slates != 0 {
 		t.Fatalf("stats %+v: want both items aired back to back, no slate frame between them", s)
 	}
@@ -1133,13 +1125,7 @@ func TestSubFrameCardRemainderRollsIntoTheNextItem(t *testing.T) {
 		t.Fatal(err)
 	}
 	start(t, p)
-	deadline := time.Now().Add(3 * time.Second)
-	for p.Stats().Items < 1 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if s := p.Stats(); s.Items < 1 {
-		t.Fatalf("stats %+v after %d schedule lookups: want the item after the card to air", s, asked.Load())
-	}
+	waitfor.Eventually(t, 3*time.Second, "the item after the card to air", func() bool { return p.Stats().Items >= 1 })
 }
 
 // A tune-in that lands in an airing's last half frame skips it without airing anything, so the next
