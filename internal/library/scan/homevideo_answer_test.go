@@ -32,34 +32,45 @@ func keptTitle(t *testing.T, files ...string) (*harness, *Library, string) {
 	return h, lib, needs[0].ID
 }
 
-// The answer is the title's whichever file's origin its row has by now: undoing, ignoring or
-// linking a kept title leaves no part of it a home video.
+// The keep is the title's whichever file's origin its row has by now: undoing, ignoring or
+// linking a kept title ends the keep on every part, and the new answer is the origin's, as for
+// any title. An ignore is the origin the row held, and the row can move to another part's origin
+// (#4719), so where an ignored title lists afterwards is not asserted here.
 func TestAnswersAfterAKeptTitlesFilesChange(t *testing.T) {
 	const part1, part2 = "Lake Weekend (2009)/part1.mkv", "Lake Weekend (2009)/part2.mkv"
 	for what, tc := range map[string]struct {
 		answer                  func(context.Context, *Library, string) error
+		ignored                 bool
 		listed, waiting, hidden int
 		basis                   mp.Basis
 	}{
-		"undo":   {func(ctx context.Context, l *Library, id string) error { return l.Unanswer(ctx, id) }, 1, 1, 0, ""},
-		"ignore": {func(ctx context.Context, l *Library, id string) error { return l.Ignore(ctx, id) }, 0, 0, 1, ""},
+		"undo":   {func(ctx context.Context, l *Library, id string) error { return l.Unanswer(ctx, id) }, false, 1, 1, 0, ""},
+		"ignore": {func(ctx context.Context, l *Library, id string) error { return l.Ignore(ctx, id) }, true, 0, 0, 1, ""},
 		"link": {func(ctx context.Context, l *Library, id string) error {
 			return l.Link(ctx, id, tmdbLink("90000300"))
-		}, 1, 0, 0, mp.BasisLink},
+		}, false, 1, 0, 0, mp.BasisLink},
 	} {
 		t.Run(what, func(t *testing.T) {
 			ctx := context.Background()
 			h, lib, id := keptTitle(t, part1, part2)
 			h.file(part2, 20)
 			h.run()
+			_, origin, err := h.st.LibraryItemOrigin(ctx, id)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if err := tc.answer(ctx, lib, id); err != nil {
 				t.Fatal(err)
 			}
 			h.run()
 			h.file(part1, 30)
 			h.run()
+			answer, answered, err := h.st.LibraryAnswerFor(ctx, origin)
+			if err != nil || answered != (tc.ignored || tc.basis != "") || answer.Ignored != tc.ignored || answer.Kept {
+				t.Errorf("answer on the origin answered = %+v, %v, %v", answer, answered, err)
+			}
 			page, err := lib.Items(ctx, librarystore.LibraryItemQuery{})
-			if err != nil || page.Total != tc.listed {
+			if err != nil || (!tc.ignored && page.Total != tc.listed) {
 				t.Fatalf("titles = %+v, %v; want %d", page, err, tc.listed)
 			}
 			for _, got := range page.Items {
@@ -67,10 +78,16 @@ func TestAnswersAfterAKeptTitlesFilesChange(t *testing.T) {
 					t.Errorf("title %q: home video = %v, matched by %q, want %q", got.Name, got.HomeVideo, got.Match.Basis, tc.basis)
 				}
 			}
-			if needs, err := lib.Needs(ctx); err != nil || len(needs) != tc.waiting {
+			needs, err := lib.Needs(ctx)
+			if err != nil || (!tc.ignored && len(needs) != tc.waiting) {
 				t.Errorf("needs = %d, %v; want %d", len(needs), err, tc.waiting)
 			}
-			if _, hidden, err := lib.Ignored(ctx, 10, 0); err != nil || hidden != tc.hidden {
+			for _, n := range needs {
+				if n.HomeVideo {
+					t.Errorf("title %q waits as a home video", n.Name)
+				}
+			}
+			if _, hidden, err := lib.Ignored(ctx, 10, 0); err != nil || (!tc.ignored && hidden != tc.hidden) {
 				t.Errorf("ignored = %d, %v; want %d", hidden, err, tc.hidden)
 			}
 			if genres, err := lib.Genres(ctx, "", false); err != nil || len(genres) != 0 {

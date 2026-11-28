@@ -333,25 +333,43 @@ func (s *Store) SaveLibraryAnswer(ctx context.Context, a LibraryAnswer) error {
 		return fmt.Errorf("save library answer: %q cannot give this answer", a.By)
 	}
 	// A search never replaces the maintainer's answer (decision 58), even one given between the
-	// Matcher's look and this write.
-	insert := func(tx execer) (sql.Result, error) {
-		return tx.ExecContext(ctx, s.ph(`INSERT INTO library_answers
-			(origin_authority, origin_key, kind, namespace, external_id, ignored, kept, answered_at_ms, answered_by)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT (origin_authority, origin_key) DO UPDATE SET kind = excluded.kind, namespace = excluded.namespace,
-			external_id = excluded.external_id, ignored = excluded.ignored, kept = excluded.kept,
-			answered_at_ms = excluded.answered_at_ms, answered_by = excluded.answered_by
-			WHERE excluded.answered_by = ? OR library_answers.answered_by <> ?`),
-			a.Origin.Authority, a.Origin.Key, a.Kind, a.ID.Namespace, a.ID.Value, a.Ignored, a.Kept, a.AnsweredAt.UnixMilli(),
-			string(a.By), string(AnsweredByYou), string(AnsweredByYou))
-	}
-	var err error
-	if a.By == AnsweredByYou {
-		err = s.replaceTitleAnswer(ctx, a.Origin, insert)
-	} else {
-		_, err = insert(s.h)
-	}
+	// Matcher's look and this write; a home video is one, on whichever origin of the title.
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
+		return fmt.Errorf("save library answer: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if a.By == AnsweredByYou {
+		if err := s.clearTitleKept(ctx, tx, a.Origin); err != nil {
+			return fmt.Errorf("save library answer: %w", err)
+		}
+	} else {
+		query, args := keptQuery(a.Kind, a.Origin, nil)
+		var kept bool
+		if err := tx.QueryRowContext(ctx, s.ph(query), args...).Scan(&kept); err != nil {
+			return fmt.Errorf("save library answer: %w", err)
+		}
+		if kept {
+			return nil
+		}
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_answers
+		(origin_authority, origin_key, kind, namespace, external_id, ignored, kept, answered_at_ms, answered_by)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (origin_authority, origin_key) DO UPDATE SET kind = excluded.kind, namespace = excluded.namespace,
+		external_id = excluded.external_id, ignored = excluded.ignored, kept = excluded.kept,
+		answered_at_ms = excluded.answered_at_ms, answered_by = excluded.answered_by
+		WHERE excluded.answered_by = ? OR library_answers.answered_by <> ?`),
+		a.Origin.Authority, a.Origin.Key, a.Kind, a.ID.Namespace, a.ID.Value, a.Ignored, a.Kept, a.AnsweredAt.UnixMilli(),
+		string(a.By), string(AnsweredByYou), string(AnsweredByYou)); err != nil {
+		return fmt.Errorf("save library answer: %w", err)
+	}
+	if a.Kept {
+		if _, err := s.keepTitle(ctx, tx, a.Origin, a.Kind, a.AnsweredAt.UnixMilli()); err != nil {
+			return fmt.Errorf("save library answer: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("save library answer: %w", err)
 	}
 	return nil
@@ -363,7 +381,11 @@ func (s *Store) DeleteLibraryAnswer(ctx context.Context, origin LibraryOrigin) e
 		return fmt.Errorf("delete library answer: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := s.deleteTitleAnswers(ctx, tx, origin, false); err != nil {
+	if err := s.clearTitleKept(ctx, tx, origin); err != nil {
+		return fmt.Errorf("delete library answer: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM library_answers WHERE origin_authority = ? AND origin_key = ?`),
+		origin.Authority, origin.Key); err != nil {
 		return fmt.Errorf("delete library answer: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
