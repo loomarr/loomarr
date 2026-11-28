@@ -1,6 +1,7 @@
 // Package admission decides what a host can encode at once: the resource budget and its leases,
 // the measured and host-derived capacity limits, and the speed monitor that steps a heavy item down
-// the software ladder. It imports only the media vocabulary, so the engine and the probe both use it.
+// the software ladder. It imports only the media vocabulary, so a package can use the ledger without
+// importing the engine.
 package admission
 
 import (
