@@ -39,7 +39,8 @@ const CompactSelect = <Value extends string>({
       onFocus={onFocus}
       style={{
         backgroundColor: "var(--surfaceCanvas)",
-        borderColor: invalid ? "var(--stateDanger)" : focused ? "var(--actionFocus)" : "var(--borderControl)",
+        // Amber is focus, whatever else the field says: an invalid select shows its red again on blur.
+        borderColor: focused ? "var(--actionFocus)" : invalid ? "var(--stateDanger)" : "var(--borderControl)",
         borderRadius: semanticRadius.control,
         borderStyle: "solid",
         borderWidth,

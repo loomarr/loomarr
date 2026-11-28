@@ -74,4 +74,18 @@ describe("CompactSelect (web)", () => {
     expect(locked.style.opacity).toBe("1");
     expect(off.style.opacity).not.toBe("1");
   });
+
+  // Amber is focus: a select in error shows it while focused and its red again once it isn't.
+  it("draws the amber focus border even while invalid", async () => {
+    renderSelect(<Controlled invalid />);
+    const select = screen.getByRole<HTMLSelectElement>("combobox", { name: "Time range" });
+    expect(select.style.borderColor).toBe("var(--stateDanger)");
+
+    await userEvent.tab();
+    expect(document.activeElement).toBe(select);
+    expect(select.style.borderColor).toBe("var(--actionFocus)");
+
+    await userEvent.tab();
+    expect(select.style.borderColor).toBe("var(--stateDanger)");
+  });
 });

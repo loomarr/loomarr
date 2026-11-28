@@ -1,4 +1,5 @@
 import { ApiError, toProblem } from "@loomarr/api/mutator";
+import { VisuallyHidden } from "@loomarr/design-system";
 import { createElement, Fragment, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -21,7 +22,7 @@ const undoWords = (undoing: string): Words => ({
     Fragment,
     null,
     createElement("span", { "aria-hidden": true }, "Undo"),
-    createElement("span", { className: "sr-only" }, `Undo ${undoing}`),
+    createElement(VisuallyHidden, { as: "span", children: `Undo ${undoing}` }),
   ),
   failed: "Couldn't undo that",
 });

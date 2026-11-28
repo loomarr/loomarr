@@ -80,6 +80,10 @@ a dot for it.
     carries its artwork with the aired part dimmed, an ended programme is dimmed, a later one shows its
     start time, a run of one series is one block with its episode count, and a break is a thin tick. A
     later programme's facts show on a pointer or focus, under the Guide on an upright phone.
+  - **Target, not shipped yet (The Cross, #4735):** the Guide is a view of the watching screen with
+    the picture still playing, not a page. Its cursor, header, paging through the day, loading and
+    empty states are in
+    [`docs/frontend-design.md` §9.5](../frontend-design.md#the-guide-as-a-view-the-cross-target-not-shipped-yet-4735).
 - **Requests** (`/requests`) is one surface for everyone (#1405). Its nav count is what waits on the
   viewer, the same number as its **Needs you** tab.
 - **Home** (`/dashboard`, both roles) leads with what's on, not machine state (#1659, #1822): the
