@@ -48,7 +48,7 @@ const render = (title: LibraryTitleDetail, member = false) => {
   );
   const rows = () => Array.from(host.querySelectorAll('[role="listitem"]'), (n) => n.textContent ?? "");
   const removes = () =>
-    Array.from(host.querySelectorAll('button, [role="button"]')).filter((n) =>
+    Array.from(host.querySelectorAll<HTMLElement>('button, [role="button"]')).filter((n) =>
       n.textContent?.startsWith("Remove"),
     );
   const cleanup = () => unmount();
