@@ -10,10 +10,12 @@ type WatchLayout = "full" | "window" | "tv" | "portrait" | "landscape";
 /**
  * The quiet row's controls, and the lower third's Go live (`goLive`). A television's quiet row
  * leads with a Go live of its own (`live`); the two are told apart because only the lower third's
- * goes when the lower third does.
+ * goes when the lower third does. `back` is the named back control at the top leading corner, which
+ * leaves the screen: the caller acts on its press, and the model only hears its focus.
  */
 type WatchControl =
   | "airplay"
+  | "back"
   | "audio"
   | "channels"
   | "fullscreen"
@@ -31,8 +33,11 @@ type WatchMenuName = "audio" | "more" | "shortcuts" | "subtitles";
 /** What the picture is doing: `playing` a picture, `tuning` in with nothing yet, `covered` by a cover. */
 type WatchPicture = "playing" | "tuning" | "covered";
 
-/** The parts of the screen the pointer can rest on: the open list takes the lower third's place. */
-type WatchPointerRegion = "lowerThird" | "quietRow";
+/**
+ * The parts of the screen the pointer can rest on: the open list takes the lower third's place, and
+ * `back` is the named back control.
+ */
+type WatchPointerRegion = "back" | "lowerThird" | "quietRow";
 
 /** How far the picture is from live, as it was before a click on it. */
 interface WatchPlayback {

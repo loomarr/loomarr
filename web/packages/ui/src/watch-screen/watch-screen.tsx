@@ -1,6 +1,9 @@
 import type { LineupChannel, LineupGroupKind } from "@loomarr/core/channel-lineup";
 import {
+  Icon,
+  icons,
   Layer,
+  RingedPressable,
   Surface,
   Text,
   ThemeScope,
@@ -13,6 +16,7 @@ import { Animated, Platform } from "react-native";
 import { ChannelList, type ChannelListHandle } from "../channel-list";
 import { FirstRunHint } from "../first-run-hint";
 import { LowerThird, type LowerThirdState } from "../lower-third";
+import { summaryOf } from "../lower-third/summary";
 import { QuietRow, type QuietRowHandle, type QuietRowKey } from "../quiet-row";
 import { TuneBars, TuneStatic } from "../tune-static";
 import { WatchScrim } from "../watch-scrim";
@@ -28,6 +32,8 @@ const LIST_FOOT = 20;
 const CROSSING = 148;
 const ROW_FOOT = 40;
 const HINT_TOP = 68;
+/** The back control stands in the top leading corner, on the list's line. */
+const BACK_TOP = LIST_TOP;
 /** The menu stands over the quiet row. */
 const MENU_FOOT = 96;
 /** How long the controls take to rest or wake. */
@@ -73,6 +79,7 @@ const web = (handlers: object): object => (Platform.OS === "web" ? handlers : {}
  * It draws what `useWatchScreen` says and reports what happened; the caller does what it asks.
  */
 const WatchScreen = <C extends LineupChannel>({
+  back,
   cover,
   detail,
   holdSnow,
@@ -172,6 +179,13 @@ const WatchScreen = <C extends LineupChannel>({
       ? [`${found.number} ${found.name}`, found.onNow].filter(Boolean).join(", ")
       : "No channel or programme matches";
 
+  // A channel change is said once, with what is on as it changes; the clock moving the lower third
+  // on says nothing. The channel the screen opens on is not said.
+  const spoken = useRef({ id: state.watchedId, text: "" });
+  if (watched && spoken.current.id !== watched.id) {
+    spoken.current = { id: watched.id, text: summaryOf(watched.number, watched.name, programme(watched)) };
+  }
+
   // The lower third's element arrives, and does two things: it joins the foot, for the pointer
   // rule, and, since it comes back under a pointer that has not moved when the list closes with
   // no pointer-enter, it asks whether the pointer is already over it.
@@ -185,7 +199,7 @@ const WatchScreen = <C extends LineupChannel>({
   );
 
   // The pointer resting on the controls holds the screen awake.
-  const holdOn = (region: "lowerThird" | "quietRow") =>
+  const holdOn = (region: "back" | "lowerThird" | "quietRow") =>
     web({
       onPointerEnter: () => send({ held: true, region, type: "pointerHold" }),
       onPointerLeave: () => send({ held: false, region, type: "pointerHold" }),
@@ -226,6 +240,24 @@ const WatchScreen = <C extends LineupChannel>({
       {view.listOpen ? <WatchScrim edge="side" /> : null}
 
       <ThemeScope theme="dark">
+        {/* The arrow is always named beside it. While the list is open its column stands here. */}
+        {back && !view.listOpen ? (
+          <Layer left={EDGE} opacity={shown} testID="watch-back" top={BACK_TOP} {...holdOn("back")}>
+            <RingedPressable
+              accessibilityLabel={back.label}
+              onKeyboardFocus={(focused) => send({ control: focused ? "back" : undefined, type: "focus" })}
+              onPress={back.onPress}
+              pointerTakesNoFocus
+              size={36}
+            >
+              <Icon decorative glyph={icons.back} size="control" tone="content" />
+              <Text numberOfLines={1} textRole="label" tone="primary">
+                {back.label}
+              </Text>
+            </RingedPressable>
+          </Layer>
+        ) : null}
+
         {view.hint ? (
           <Layer centred opacity={shown} top={HINT_TOP}>
             <FirstRunHint device="full" />
@@ -322,6 +354,11 @@ const WatchScreen = <C extends LineupChannel>({
       <VisuallyHidden>
         <Text accessibilityLiveRegion="polite" textRole="body">
           {announcement}
+        </Text>
+      </VisuallyHidden>
+      <VisuallyHidden>
+        <Text accessibilityLiveRegion="polite" testID="watch-channel-said" textRole="body">
+          {spoken.current.text}
         </Text>
       </VisuallyHidden>
     </Layer>

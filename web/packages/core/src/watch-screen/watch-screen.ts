@@ -313,6 +313,9 @@ const reduceStep = <C extends LineupChannel>(
         return goLive(s);
       case "airplay":
         return ask(s, { type: "airplay" });
+      // Back leaves the screen, which the caller does; the press asks nothing of the model.
+      case "back":
+        return stay(s);
     }
   };
 

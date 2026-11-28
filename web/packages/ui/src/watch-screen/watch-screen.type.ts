@@ -44,6 +44,11 @@ interface WatchScreenProps<C extends LineupChannel> {
   renderMenu?: ((slot: WatchMenuSlot<C>) => ReactNode) | undefined;
   /** A cover over the picture: off air, not started, stream stopped. */
   cover?: ReactNode;
+  /**
+   * The back control: an arrow named for where it goes (`label`), at the top leading corner over
+   * the picture, resting with the rest of the chrome. Left out, there is none.
+   */
+  back?: { label: string; onPress: () => void } | undefined;
   reducedMotion?: boolean | undefined;
   /** For story baselines only: draws the static without its flicker. */
   holdSnow?: boolean | undefined;

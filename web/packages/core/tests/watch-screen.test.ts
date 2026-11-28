@@ -169,6 +169,8 @@ describe("rule 3: only the bare picture goes quiet", () => {
     ["a menu is open", { control: "subtitles", type: "press" }],
     ["a control holds focus", { control: "pause", type: "focus" }],
     ["the pointer rests on the controls", { held: true, region: "quietRow", type: "pointerHold" }],
+    ["the back control holds focus", { control: "back", type: "focus" }],
+    ["the pointer rests on the back control", { held: true, region: "back", type: "pointerHold" }],
     ["the picture is paused", { key: " ", type: "key" }],
     ["digits are pending", { key: "1", type: "key" }],
   ] as const)("never rests while %s", (_, event) => {
@@ -182,6 +184,11 @@ describe("rule 3: only the bare picture goes quiet", () => {
     }
     s.wait(60_000);
     expect(s.view().awake).toBe(true);
+  });
+
+  it("asks nothing for a press of the back control, which the caller acts on", () => {
+    const s = screen();
+    expect(s.send({ control: "back", type: "press" })).toEqual([]);
   });
 
   it("rests again five seconds after what held it lets go", () => {

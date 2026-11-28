@@ -41,7 +41,15 @@ const tunes = () =>
 const focusOf: { current: string | undefined } = { current: undefined };
 
 // The caller's part: the model, the document's keys, and slots for a menu.
-const Harness = ({ cover = false, hintSeen = true }: { cover?: boolean; hintSeen?: boolean }) => {
+const Harness = ({
+  back,
+  cover = false,
+  hintSeen = true,
+}: {
+  back?: { label: string; onPress: () => void };
+  cover?: boolean;
+  hintSeen?: boolean;
+}) => {
   const model = useWatchScreen({ hintSeen, layout: "full", lineup, onRequest: requests, watchedId: "ch-1" });
   const { send } = model;
   useEffect(() => {
@@ -65,6 +73,7 @@ const Harness = ({ cover = false, hintSeen = true }: { cover?: boolean; hintSeen
   focusOf.current = model.state.focus;
   return (
     <WatchScreen
+      back={back}
       layout="full"
       model={model}
       cover={
@@ -573,6 +582,56 @@ describe("WatchScreen", () => {
       vi.advanceTimersByTime(1600);
     });
     expect(tunes()).toEqual(["ch-4"]);
+    requests.mockClear();
+  });
+});
+
+describe("WatchScreen's back control and what it says aloud", () => {
+  it("names the back control beside its arrow, and its press is the caller's", () => {
+    const onPress = vi.fn();
+    renderUi(<Harness back={{ label: "Back", onPress }} />);
+    const back = screen.getByRole("button", { name: "Back" });
+    expect(within(back).getByText("Back")).toBeTruthy();
+    fireEvent.click(back);
+    expect(onPress).toHaveBeenCalledOnce();
+    expect(requests).not.toHaveBeenCalled();
+  });
+
+  it("gives the back control's place to the open list", () => {
+    renderUi(<Harness back={{ label: "Guide", onPress: () => undefined }} />);
+    fireEvent.click(channelsControl());
+    expect(screen.queryByTestId("watch-back")).toBeNull();
+    requests.mockClear();
+  });
+
+  it("keeps the screen awake while the pointer rests on the back control", () => {
+    vi.useFakeTimers();
+    renderUi(<Harness back={{ label: "Guide", onPress: () => undefined }} />);
+    fireEvent.pointerEnter(screen.getByTestId("watch-back"));
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(screen.getByTestId("watch-back").style.opacity).not.toBe("0");
+    fireEvent.pointerLeave(screen.getByTestId("watch-back"));
+    act(() => {
+      vi.advanceTimersByTime(6_000);
+    });
+    expect(screen.getByTestId("watch-back").style.opacity).toBe("0");
+  });
+
+  it("says the lower third once for a channel change, and not as the clock moves on", () => {
+    vi.useFakeTimers();
+    renderUi(<Harness />);
+    const said = () => screen.getByTestId("watch-channel-said").textContent;
+    expect(said()).toBe("");
+    key("ArrowDown", document.body);
+    const first = said();
+    expect(first).toContain("Channel 2, Station 2.");
+    expect(first).toContain("Show 2");
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(said()).toBe(first);
     requests.mockClear();
   });
 });
