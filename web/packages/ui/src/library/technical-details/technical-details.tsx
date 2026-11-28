@@ -1,7 +1,7 @@
 import { Disclosure } from "@loomarr/design-system";
 import { useState } from "react";
 
-import { FileFacts, lengthPhrase, picturePhrase, Row, soundPhrase } from "../file-facts";
+import { FileFacts, fileName, lengthPhrase, picturePhrase, Row, soundPhrase } from "../file-facts";
 import { Stack } from "../library-poster";
 import type {
   LibraryTitleDetail,
@@ -49,7 +49,13 @@ const fileLabel = (file: LibraryTitleFile, parts: number): string => {
   return "File";
 };
 
-const TechnicalDetails = ({ title }: { title: LibraryTitleDetail }) => {
+const TechnicalDetails = ({
+  title,
+  density,
+}: {
+  title: LibraryTitleDetail;
+  density: "pointer" | "touch";
+}) => {
   const [open, setOpen] = useState(false);
   const origin = originSentence(title.detailsFrom);
   const parts = title.files.filter((file) => file.part && !file.extra).length;
@@ -59,7 +65,16 @@ const TechnicalDetails = ({ title }: { title: LibraryTitleDetail }) => {
         {origin ? <Row label="Where details come from" value={origin} /> : null}
         <Row label="Title match" value={MATCH_WORDS[title.match.by](title.match.app)} />
         {title.files.map((file) => (
-          <FileFacts file={file} key={file.path} label={fileLabel(file, parts)} />
+          <FileFacts
+            density={density}
+            file={file}
+            key={file.path}
+            label={fileLabel(file, parts)}
+            name={fileName(
+              file.path,
+              title.files.map((f) => f.path),
+            )}
+          />
         ))}
       </Stack>
     </Disclosure>

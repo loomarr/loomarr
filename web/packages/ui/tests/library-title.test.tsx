@@ -99,13 +99,17 @@ const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleFix> = {}, 
   const host = doc.createElement("div");
   doc.body.append(host);
   const root = createRoot(host);
-  act(() =>
-    root.render(
-      <LoomarrProvider theme="dark">
-        <LibraryTitle {...props} />
-      </LoomarrProvider>,
-    ),
-  );
+  const draw = (next: LibraryTitleProps) =>
+    act(() =>
+      root.render(
+        <LoomarrProvider theme="dark">
+          <LibraryTitle {...next} />
+        </LoomarrProvider>,
+      ),
+    );
+  draw(props);
+  // The same page again, with some of its fixes changed.
+  const rerender = (changed: Partial<LibraryTitleFix>) => draw({ ...props, fix: { ...fix, ...changed } });
   const button = (name: string) => {
     const hit = Array.from(host.querySelectorAll('[role="button"], button')).find((n) =>
       n.textContent?.trim().startsWith(name),
@@ -133,7 +137,7 @@ const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleFix> = {}, 
     if (!item) throw new Error(`missing menu item: ${name}`);
     await act(async () => item.click());
   };
-  return { host, onBack, props, button, tab, tabs, cleanup, menuItems, openFix, fixItem };
+  return { host, onBack, props, rerender, button, tab, tabs, cleanup, menuItems, openFix, fixItem };
 };
 
 describe("LibraryTitle", () => {
@@ -204,7 +208,8 @@ describe("LibraryTitle", () => {
     const onRemoveExtra = vi.fn(() => Promise.reject(new Error("read-only")));
     const { host, button, cleanup } = render({ ...MOVIE, files: [...MOVIE.files, extra] }, { onRemoveExtra });
     expect(host.textContent).toContain("An extra copy is taking 4.0 GB");
-    await act(async () => button("Remove extra copy").click());
+    // The action says which file it moves.
+    await act(async () => button("Remove Paper Kites DVD.mkv").click());
     expect(onRemoveExtra).toHaveBeenCalledWith(extra.path);
     expect(host.textContent).toContain(
       "Couldn't remove it. Loomarr may not be allowed to change this folder.",
@@ -221,7 +226,7 @@ describe("LibraryTitle", () => {
 
     const movie = render({ ...MOVIE, unplayable: 1 });
     expect(movie.host.textContent).toContain("This movie can't be played — the file may be damaged");
-    await act(async () => movie.button("Check again").click());
+    await act(async () => movie.button("Check files again").click());
     expect(movie.props.fix?.onCheckFiles).toHaveBeenCalled();
     expect(movie.host.textContent).toContain("Checked just now");
     movie.cleanup();
@@ -229,7 +234,7 @@ describe("LibraryTitle", () => {
     const onCheckFiles = vi.fn(() => Promise.reject(new Error("offline")));
     const series = render({ ...SERIES, unplayable: 2 }, { onCheckFiles });
     expect(series.host.textContent).toContain("2 episodes can't be played — the files may be damaged");
-    await act(async () => series.button("Check again").click());
+    await act(async () => series.button("Check files again").click());
     expect(series.host.textContent).toContain("Couldn't check the files just now. Try again in a moment.");
     series.cleanup();
   });
@@ -410,6 +415,84 @@ describe("LibraryTitle", () => {
     member.cleanup();
   });
 
+  it("names each More by its file, and holds it to the touch target on a phone", () => {
+    const view = globalThis as unknown as { innerWidth: number };
+    const wide = view.innerWidth;
+    view.innerWidth = 390;
+    const second = { ...READ_FILE, path: "/media/tv/Harbour Lights/copy.mkv" };
+    const { host, button, cleanup } = render({ ...MOVIE, files: [READ_FILE, second] });
+    act(() => button("Technical details").click());
+    const mores = Array.from(host.querySelectorAll('[aria-label^="More about this file"]')) as (El & {
+      style: { minHeight: string };
+    })[];
+    expect(mores.map((n) => n.getAttribute("aria-label"))).toEqual([
+      "More about this file, S01E01.mkv",
+      "More about this file, copy.mkv",
+    ]);
+    expect(mores.map((n) => n.style.minHeight)).toEqual(["48px", "48px"]);
+    cleanup();
+    view.innerWidth = wide;
+  });
+
+  it("adds the folder to a file's name only when two files share it", async () => {
+    const at = (path: string, extra: boolean) => ({ ...READ_FILE, path, extra });
+    const { host, button, cleanup } = render({
+      ...MOVIE,
+      files: [
+        at("/media/Kites/Kites.mkv", false),
+        at("/media/Kites/Extras/Kites.mkv", true),
+        at("/media/Kites/Kites DVD.mkv", true),
+      ],
+    });
+    act(() => button("Technical details").click());
+    expect(
+      Array.from(host.querySelectorAll('[aria-label^="More about this file"]')).map((n) =>
+        n.getAttribute("aria-label"),
+      ),
+    ).toEqual([
+      "More about this file, Kites.mkv in Kites",
+      "More about this file, Kites.mkv in Extras",
+      "More about this file, Kites DVD.mkv",
+    ]);
+    expect(button("Remove Kites.mkv in Extras")).toBeTruthy();
+    expect(button("Remove Kites DVD.mkv")).toBeTruthy();
+    // The card says the way back once the toast's Undo has gone.
+    expect(host.textContent).toContain(
+      "You can undo right after. After that, the file is in the .loomarr-trash folder inside its media folder for 30 days.",
+    );
+    cleanup();
+  });
+
+  it("announces an episode's file loading and failing in a region already there", async () => {
+    let fail: (reason: Error) => void = () => {};
+    const onEpisodeFiles = () =>
+      new Promise<never>((_, reject) => {
+        fail = reject;
+      });
+    const { host, button, cleanup } = render(SERIES, { onEpisodeFiles });
+    const regions = () => Array.from(host.querySelectorAll('[aria-live="polite"]'));
+    const before = regions();
+    await act(async () => button("1–2. Pilot").click());
+    const said = () => before.map((n) => n.textContent).join("");
+    expect(said()).toBe("Loading the file's details…");
+    await act(async () => fail(new Error("offline")));
+    expect(said()).toBe("Couldn't load this file's details. Try again in a moment.");
+    cleanup();
+  });
+
+  it("reads an open episode's file again when the title is read again", async () => {
+    const onEpisodeFiles = vi
+      .fn<(id: string) => Promise<LibraryTitleDetail["files"]>>()
+      .mockResolvedValueOnce([READ_FILE])
+      .mockResolvedValue([{ ...READ_FILE, path: "/media/tv/Harbour Lights/replaced.mkv" }]);
+    const { host, button, rerender, cleanup } = render(SERIES, { onEpisodeFiles, episodeFilesAt: 1 });
+    await act(async () => button("1–2. Pilot").click());
+    expect(host.textContent).toContain(READ_FILE.path);
+    await act(async () => rerender({ episodeFilesAt: 2 }));
+    expect(host.textContent).toContain("replaced.mkv");
+    cleanup();
+  });
+
   it("gives a member episode rows that don't open", () => {
     const { host, button, cleanup } = render(SERIES, {}, true);
     expect(host.textContent).toContain("Pilot");
@@ -525,7 +608,7 @@ describe("LibraryTitle", () => {
       "Wrong title?",
       "Technical details",
       "can't be played",
-      "Remove extra copy",
+      "Remove Paper Kites",
     ]) {
       expect(host.textContent).not.toContain(word);
     }

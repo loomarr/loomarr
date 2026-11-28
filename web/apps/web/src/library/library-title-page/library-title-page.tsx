@@ -12,6 +12,12 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useRefetchAt } from "@/lib/use-refetch-at";
+import {
+  toastRemoved,
+  toastRestored,
+  toastRestoreFailed,
+  toastRestoreRefused,
+} from "@/library/extra-copy-toasts";
 import { searchLibraryTitles } from "@/library/use-library-needs";
 import { airingEpisode, airingsChangeAt, airingWhen, dateWords } from "./airing-words";
 
@@ -78,6 +84,22 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
     await refresh();
   };
 
+  const removeExtra = async (path: string) => {
+    const name = path.split(/[\\/]/).pop() ?? path;
+    const removed = unwrap(await libraryApi.removeLibraryExtraCopy(id, { path }));
+    const undo = (token: string): Promise<unknown> =>
+      act(libraryApi.restoreLibraryExtraCopy(id, { undo: token })).then(
+        () => toastRestored(name),
+        (error: unknown) =>
+          // A 4xx refuses for good, and says why. Anything else can be tried again.
+          error instanceof ApiError && error.status >= 400 && error.status < 500
+            ? toastRestoreRefused(error.message, error.problem.detail)
+            : toastRestoreFailed(name, () => void undo(token)),
+      );
+    toastRemoved(name, removed ? () => void undo(removed.undo) : undefined);
+    await refresh();
+  };
+
   // match, files, detailsFrom and the counts are admin-only, and so is every fix: a member's page
   // offers none, so it calls nothing a member would be refused.
   const { item } = body;
@@ -90,14 +112,16 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
           ? {
               onCheckFiles: () => act(libraryApi.checkLibraryItemFiles(id)),
               // An episode is its own title, so its files come with its own answer.
-              onEpisodeFiles: async (episodeId) =>
-                unwrap(await queryClient.fetchQuery(libraryApi.getGetLibraryItemQueryOptions(episodeId)))
-                  ?.files ?? [],
+              onEpisodeFiles: async (episodeId) => {
+                const options = libraryApi.getGetLibraryItemQueryOptions(episodeId);
+                return unwrap(await queryClient.fetchQuery({ ...options, staleTime: 0 }))?.files ?? [];
+              },
+              episodeFilesAt: detail.dataUpdatedAt,
               onChooseOrder: () => void navigate({ to: "/library/needs" }),
               onForget: () => act(libraryApi.unanswerLibraryItem(id)),
               onLink: (externalId) => act(libraryApi.linkLibraryItem(id, { externalId })),
               onOpenApp: page ? () => window.open(page, "_blank", "noopener,noreferrer") : undefined,
-              onRemoveExtra: (path) => act(libraryApi.removeLibraryExtraCopy(id, { path })),
+              onRemoveExtra: removeExtra,
               onSearch: searchLibraryTitles,
               onUpdateDetails: () => act(libraryApi.updateLibraryItemDetails(id)),
             }
