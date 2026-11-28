@@ -2,9 +2,9 @@ import type { LineupGroupKind } from "@loomarr/core/channel-lineup";
 import { createChannelListState } from "@loomarr/core/channel-list";
 import { useCallback, useState } from "react";
 
-// The channel group the viewer last chose, per browser. Home's wall and the channel list head
-// themselves with the same four groups, so both read this one key. A storage that throws, or a value
-// that is not a group, means the group a channel list opens on by itself.
+// The channel group the viewer last chose, per browser. Home's wall reads it; the Watch route's
+// channel list, headed by the same four groups, is to read the same key (#4731). A storage that
+// throws, or a value that is not a group, means the group a channel list opens on by itself.
 const CHANNEL_GROUP_KEY = "loomarr.channels.group";
 const KINDS: Record<LineupGroupKind, true> = { all: true, decade: true, favourites: true, recent: true };
 

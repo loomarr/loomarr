@@ -183,7 +183,10 @@ describe("HomePage — Needs you (#2785)", () => {
     );
   });
 
-  it("gives the wall the viewer's favourites", async () => {
+  it.each([
+    ["favourites", "c2"],
+    ["recent", "c1"],
+  ])("gives the wall the viewer's %s", async (group, expected) => {
     stub({ me: MEMBER });
     const channel = (channelId: string, number: number) => ({
       airings: [],
@@ -197,10 +200,10 @@ describe("HomePage — Needs you (#2785)", () => {
       getChannelGuideMockHandler({ channels: [channel("c1", 1), channel("c2", 2)], fromMs: 0, toMs: 0 }),
       getMyChannelsMockHandler({
         favourites: [{ addedAt: "2026-11-01T00:00:00Z", channelId: "c2" }],
-        recent: [],
+        recent: [{ channelId: "c1", tunedAt: "2026-11-01T00:00:00Z" }],
       }),
     );
-    localStorage.setItem("loomarr.channels.group", "favourites");
+    localStorage.setItem("loomarr.channels.group", group);
     try {
       renderAt("/dashboard");
       const wall = await screen.findByRole("region", { name: "On now" });
@@ -209,7 +212,7 @@ describe("HomePage — Needs you (#2785)", () => {
           .getAllByRole("link")
           .map((link) => link.getAttribute("href"))
           .filter((href) => href?.startsWith("/watch/"));
-        expect(hrefs).toEqual(["/watch/c2"]);
+        expect(hrefs).toEqual([`/watch/${expected}`]);
       });
     } finally {
       localStorage.removeItem("loomarr.channels.group");
