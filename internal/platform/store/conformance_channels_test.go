@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
@@ -19,8 +20,8 @@ import (
 // Channels and the scheduling caches (§5, §9): the channel row and its lease, plus the
 // two derived tables the scheduler reads — cached series episodes and airing history.
 
-func sampleChannel(id string, number int, deadline time.Time) Channel {
-	ch := Channel{}
+func sampleChannel(id string, number int, deadline time.Time) channelstore.Channel {
+	ch := channelstore.Channel{}
 	ch.ID = id
 	ch.IntentRef = "intent-" + id
 	ch.IntentJSON = `{"description":"intent of ` + id + `"}`
@@ -68,7 +69,7 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 	return ch
 }
 
-func mustSaveChannel(t *testing.T, s Store, ch Channel) Channel {
+func mustSaveChannel(t *testing.T, s Store, ch channelstore.Channel) channelstore.Channel {
 	t.Helper()
 	saved, err := s.SaveChannel(context.Background(), ch)
 	if err != nil {
@@ -270,7 +271,7 @@ func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	for _, u := range []User{{ID: "u-member", Name: "Member One", Role: identitystore.RoleMember}, {ID: "u-gone", Name: "Gone", Role: identitystore.RoleMember}} {
+	for _, u := range []identitystore.User{{ID: "u-member", Name: "Member One", Role: identitystore.RoleMember}, {ID: "u-gone", Name: "Gone", Role: identitystore.RoleMember}} {
 		if err := s.UpsertUser(ctx, u); err != nil {
 			t.Fatal(err)
 		}
@@ -582,7 +583,7 @@ func testScheduledAiringHistory(t *testing.T, newStore NewStoreFunc) {
 	opened := time.Now().Truncate(time.Second)
 	film := provision.Key("movie:tmdb:90000149")
 	show := provision.Key("series:tvdb:90071663")
-	record := func(ch string, recordedAt time.Time, airings ...ScheduledAiring) {
+	record := func(ch string, recordedAt time.Time, airings ...channeldatastore.ScheduledAiring) {
 		t.Helper()
 		for _, a := range airings {
 			if a.LibraryItemID != "" {
@@ -605,11 +606,11 @@ func testScheduledAiringHistory(t *testing.T, newStore NewStoreFunc) {
 	// One reconcile records everything that has started; the next records it again with the newer
 	// programmes. Only the first write of an airing lands, so recorded_at is when it was first seen.
 	record("sched-1", opened.Add(-20*time.Hour),
-		ScheduledAiring{Key: film, LibraryItemID: "lib-1", AiredAt: opened.Add(-26 * time.Hour)},
-		ScheduledAiring{Key: show, LibraryItemID: "ep-1", AiredAt: opened.Add(-22 * time.Hour)})
+		channeldatastore.ScheduledAiring{Key: film, LibraryItemID: "lib-1", AiredAt: opened.Add(-26 * time.Hour)},
+		channeldatastore.ScheduledAiring{Key: show, LibraryItemID: "ep-1", AiredAt: opened.Add(-22 * time.Hour)})
 	record("sched-1", opened.Add(time.Hour),
-		ScheduledAiring{Key: show, LibraryItemID: "ep-1", AiredAt: opened.Add(-22 * time.Hour)},
-		ScheduledAiring{Key: show, LibraryItemID: "ep-2", AiredAt: opened.Add(-30 * time.Minute)})
+		channeldatastore.ScheduledAiring{Key: show, LibraryItemID: "ep-1", AiredAt: opened.Add(-22 * time.Hour)},
+		channeldatastore.ScheduledAiring{Key: show, LibraryItemID: "ep-2", AiredAt: opened.Add(-30 * time.Minute)})
 	got := read("sched-1", opened)
 	if len(got) != 2 || !got["lib-1"].Equal(opened.Add(-26*time.Hour)) || !got["ep-1"].Equal(opened.Add(-22*time.Hour)) {
 		t.Fatalf("history as of the window start = %v, want lib-1 and ep-1 only", got)
@@ -622,9 +623,9 @@ func testScheduledAiringHistory(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// The latest airing of a unit wins, and retention keeps the newest one past the horizon.
-	record("sched-2", opened.Add(-30*24*time.Hour), ScheduledAiring{Key: film, LibraryItemID: "lib-1", AiredAt: opened.Add(-30 * 24 * time.Hour)})
-	record("sched-2", opened.Add(-20*24*time.Hour), ScheduledAiring{Key: film, LibraryItemID: "lib-1", AiredAt: opened.Add(-20 * 24 * time.Hour)})
-	record("sched-2", opened, ScheduledAiring{Key: film, LibraryItemID: "lib-1", AiredAt: opened})
+	record("sched-2", opened.Add(-30*24*time.Hour), channeldatastore.ScheduledAiring{Key: film, LibraryItemID: "lib-1", AiredAt: opened.Add(-30 * 24 * time.Hour)})
+	record("sched-2", opened.Add(-20*24*time.Hour), channeldatastore.ScheduledAiring{Key: film, LibraryItemID: "lib-1", AiredAt: opened.Add(-20 * 24 * time.Hour)})
+	record("sched-2", opened, channeldatastore.ScheduledAiring{Key: film, LibraryItemID: "lib-1", AiredAt: opened})
 	if got := read("sched-2", opened); !got["lib-1"].Equal(opened.Add(-20 * 24 * time.Hour)) {
 		t.Errorf("after pruning, last scheduled before the window = %v, want 20 days ago", got["lib-1"])
 	}
@@ -643,7 +644,7 @@ func testScheduledAiringHistory(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("unknown channel = %v, %v; want empty", none, err)
 	}
 	// An airing with no unit identifies nothing and is skipped, as RecordAiring skips it.
-	record("sched-1", opened.Add(3*time.Hour), ScheduledAiring{Key: film, AiredAt: opened.Add(2 * time.Hour)})
+	record("sched-1", opened.Add(3*time.Hour), channeldatastore.ScheduledAiring{Key: film, AiredAt: opened.Add(2 * time.Hour)})
 }
 
 // testAiringHistory pins the recency signal's storage contract (§5, programming-design §3.1).

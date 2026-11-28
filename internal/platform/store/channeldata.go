@@ -8,30 +8,17 @@ import (
 )
 
 // What hangs off channels without being the channel (favourites and recents, hidden ideas, airing
-// history, discovery feedback) lives in internal/platform/store/channeldatastore. Its types are
-// re-exported here by alias, for the store's own contract.
-type (
-	// UserChannelLists is one person's guide filters (channeldatastore.UserChannelLists).
-	UserChannelLists = channeldatastore.UserChannelLists
-	// ScheduledAiring is one programme a channel's schedule put on air (channeldatastore.ScheduledAiring).
-	ScheduledAiring = channeldatastore.ScheduledAiring
-	// DiscoveryFeedback is one recorded choice (channeldatastore.DiscoveryFeedback).
-	DiscoveryFeedback = channeldatastore.DiscoveryFeedback
-	// FeedbackFilter selects feedback by scope (channeldatastore.FeedbackFilter).
-	FeedbackFilter = channeldatastore.FeedbackFilter
-	// UpcomingAiring is one programme a channel airs soon (channeldatastore.UpcomingAiring).
-	UpcomingAiring = channeldatastore.UpcomingAiring
-)
+// history, discovery feedback) lives in internal/platform/store/channeldatastore.
 
 // UpcomingAiringStore keeps each internal-playout channel's programmes for the next two days
 // (#4476, scheduling.md "Upcoming airings"), so a title's next airing is one indexed read.
 type UpcomingAiringStore interface {
 	// ReplaceUpcomingAirings replaces a channel's rows in one transaction while the channel is still
 	// at revision, and reports whether it wrote; a stale revision or a gone channel changes nothing.
-	ReplaceUpcomingAirings(ctx context.Context, channelID string, revision int64, airings []UpcomingAiring) (bool, error)
+	ReplaceUpcomingAirings(ctx context.Context, channelID string, revision int64, airings []channeldatastore.UpcomingAiring) (bool, error)
 	// UpcomingAiringsForItem returns a library item's airings not ended by now, on channels neither
 	// paused nor detached, earliest first: a movie by its id, a series through its title key.
-	UpcomingAiringsForItem(ctx context.Context, libraryItemID string, now time.Time) ([]UpcomingAiring, error)
+	UpcomingAiringsForItem(ctx context.Context, libraryItemID string, now time.Time) ([]channeldatastore.UpcomingAiring, error)
 }
 
 // ChannelPreferenceStore keeps per-person channel lists (#1666). Every method is keyed by user id;
@@ -47,7 +34,7 @@ type ChannelPreferenceStore interface {
 	// channeldatastore.RecentChannelsKept. ErrNotFound when the channel doesn't exist.
 	RecordChannelTune(ctx context.Context, userID, channelID string, at time.Time) error
 	// UserChannelLists reads both lists in one call, for the guide's first paint.
-	UserChannelLists(ctx context.Context, userID string) (UserChannelLists, error)
+	UserChannelLists(ctx context.Context, userID string) (channeldatastore.UserChannelLists, error)
 }
 
 // HiddenIdeaStore keeps the channel ideas each person hid on Home (#1665). Idea ids are the
@@ -65,7 +52,7 @@ type HiddenIdeaStore interface {
 type DiscoveryFeedbackStore interface {
 	// AppendDiscoveryFeedback atomically requires a persisted Channel for channel scope; detached
 	// Channels remain persisted, while a purged or unknown identity returns ErrNotFound.
-	AppendDiscoveryFeedback(context.Context, DiscoveryFeedback) error
-	ListDiscoveryFeedback(context.Context, FeedbackFilter) ([]DiscoveryFeedback, error)
+	AppendDiscoveryFeedback(context.Context, channeldatastore.DiscoveryFeedback) error
+	ListDiscoveryFeedback(context.Context, channeldatastore.FeedbackFilter) ([]channeldatastore.DiscoveryFeedback, error)
 	PurgeSupersededDiscoveryFeedback(context.Context) (int, error)
 }

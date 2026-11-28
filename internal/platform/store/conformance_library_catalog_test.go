@@ -128,7 +128,7 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("due = %+v, %v; want only the old movie once the fresh one is read in French", due, err)
 	}
 
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "m1", Kind: "movie", Name: "Film", Year: 2001, Catalog: movie},
 		{ID: "s1", Kind: "series", Name: "Show", Catalog: show},
 		{ID: "m2", Kind: "movie", Name: "Other"},
@@ -170,7 +170,7 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 	}
 	// An episode's own key (its TVDB id) finds that episode's file only.
 	episode := librarystore.LibraryCatalogKey{Provider: "tvdb", Kind: "episode", ExternalID: "90000901"}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{{ID: "e2", Kind: "episode", Name: "Pilot", Catalog: episode}}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{{ID: "e2", Kind: "episode", Name: "Pilot", Catalog: episode}}, at); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{file("/media/show/e2.mkv", "e2", "s1")}); err != nil {

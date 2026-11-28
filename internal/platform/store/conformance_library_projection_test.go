@@ -17,16 +17,16 @@ func testLibraryProjection(t *testing.T, newStore NewStoreFunc) {
 	at := time.UnixMilli(1_790_000_000_000).UTC()
 	// The stub lists an item under its first origin's name, and notes whether that origin is
 	// present; an item named "Unlisted" is not listed.
-	st.ProjectLibraryWith(func(item inventory.Item) (LibraryItem, bool) {
+	st.ProjectLibraryWith(func(item inventory.Item) (librarystore.LibraryItem, bool) {
 		o := item.Origins[0]
 		if o.Observation.Facts.Name == "Unlisted" {
-			return LibraryItem{}, false
+			return librarystore.LibraryItem{}, false
 		}
 		name := o.Observation.Facts.Name
 		if !o.MissingAt.IsZero() {
 			name += " (gone)"
 		}
-		return LibraryItem{ID: string(item.ID), Kind: "movie", Name: name,
+		return librarystore.LibraryItem{ID: string(item.ID), Kind: "movie", Name: name,
 			Origin: librarystore.LibraryOrigin{Authority: string(o.Key.Authority), Key: o.Key.ExternalItemID}}, true
 	})
 	name := func(id inventory.ItemID) string {
@@ -86,9 +86,9 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 	showOrigin := librarystore.LibraryOrigin{Authority: "scan:a", Key: "series:dir:1"}
 	// The stub lists a series with a rating, genres and ids, and an episode under that series;
 	// an episode named "Rated" has a rating of its own.
-	st.ProjectLibraryWith(func(item inventory.Item) (LibraryItem, bool) {
+	st.ProjectLibraryWith(func(item inventory.Item) (librarystore.LibraryItem, bool) {
 		o := item.Origins[0]
-		it := LibraryItem{ID: string(item.ID), Kind: string(item.Kind), Name: o.Observation.Facts.Name,
+		it := librarystore.LibraryItem{ID: string(item.ID), Kind: string(item.Kind), Name: o.Observation.Facts.Name,
 			Origin: librarystore.LibraryOrigin{Authority: string(o.Key.Authority), Key: o.Key.ExternalItemID}}
 		switch item.Kind {
 		case "series":
@@ -220,7 +220,7 @@ func testLibraryFilesAndTracks(t *testing.T, newStore NewStoreFunc) {
 	commentary.Index, commentary.Commentary, commentary.Default = 2, true, false
 	external := librarystore.LibraryStream{Index: 3, Kind: "subtitle", Codec: "subrip", Language: "en", Forced: true,
 		HearingImpaired: true, ExternalRef: "/m/a.en.forced.sdh.srt"}
-	item := LibraryItem{ID: "m1", Kind: "movie", Name: "Film",
+	item := librarystore.LibraryItem{ID: "m1", Kind: "movie", Name: "Film",
 		Sources: []librarystore.LibrarySource{
 			{Path: "/m/a.mkv", Container: "matroska", SizeBytes: 9, DurationMs: 1000, Plays: true,
 				Streams:  []librarystore.LibraryStream{video, audio, commentary, external},
@@ -232,7 +232,7 @@ func testLibraryFilesAndTracks(t *testing.T, newStore NewStoreFunc) {
 		Art: []librarystore.LibraryArt{{Kind: "poster", Ref: "/m/poster.jpg"}, {Kind: "fanart", Ref: "/m/fanart.jpg"},
 			{Kind: "season-poster", Season: 0, Ref: "/m/s0.jpg"}, {Kind: "season-poster", Season: 1, Ref: "/m/s1.jpg"}},
 	}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{item}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{item}, at); err != nil {
 		t.Fatal(err)
 	}
 	count := func(query string, args ...any) int {
@@ -277,7 +277,7 @@ func testLibraryFilesAndTracks(t *testing.T, newStore NewStoreFunc) {
 	// Written again with one file: the other file and its tracks go.
 	item.Sources = item.Sources[:1]
 	item.Art = nil
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{item}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{item}, at); err != nil {
 		t.Fatal(err)
 	}
 	if n := count(`SELECT COUNT(*) FROM library_sources WHERE item_id = 'm1'`); n != 1 {
@@ -293,7 +293,7 @@ func testLibraryFilesAndTracks(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("art after a rewrite = %d, want 0", n)
 	}
 	item.Sources[0].Chapters, item.Sources[0].Markers = nil, nil
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{item}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{item}, at); err != nil {
 		t.Fatal(err)
 	}
 	if n := count(`SELECT COUNT(*) FROM library_chapters`) + count(`SELECT COUNT(*) FROM library_markers`); n != 0 {

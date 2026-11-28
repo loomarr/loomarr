@@ -38,7 +38,7 @@ func testHolidaysFollowSeasonalTaxa(t *testing.T, newStore NewStoreFunc) {
 	at := time.Unix(1_900_000_000, 0).UTC()
 	harvest := taxonomy.Taxon{Slug: "harvest-fair", Label: "Harvest fair", Axis: taxonomy.AxisSeasonal}
 
-	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Create: true, Taxon: harvest}, at); err != nil {
+	if err := s.ApplyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Create: true, Taxon: harvest}, at); err != nil {
 		t.Fatal(err)
 	}
 	got := holidayIDs(t, s)
@@ -51,19 +51,19 @@ func testHolidaysFollowSeasonalTaxa(t *testing.T, newStore NewStoreFunc) {
 
 	moved := harvest
 	moved.Axis = taxonomy.AxisFormat
-	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Taxon: moved}, at); err != nil {
+	if err := s.ApplyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Taxon: moved}, at); err != nil {
 		t.Fatal(err)
 	}
 	if slices.Contains(holidayIDs(t, s), harvest.Slug) {
 		t.Fatal("a taxon moved off the seasonal axis kept its undated holiday")
 	}
-	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Taxon: harvest}, at); err != nil {
+	if err := s.ApplyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Taxon: harvest}, at); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Contains(holidayIDs(t, s), harvest.Slug) {
 		t.Fatal("a taxon moved onto the seasonal axis got no holiday")
 	}
-	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: harvest.Slug}, at); err != nil {
+	if err := s.ApplyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Delete: true, Slug: harvest.Slug}, at); err != nil {
 		t.Fatal(err)
 	}
 	if slices.Contains(holidayIDs(t, s), harvest.Slug) {
@@ -72,17 +72,17 @@ func testHolidaysFollowSeasonalTaxa(t *testing.T, newStore NewStoreFunc) {
 
 	// A dated holiday holds seasons and calendars: the taxonomy cannot take it away.
 	before := holidayIDs(t, s)
-	if _, err := s.PreviewTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: "halloween"}); !errors.Is(err, clipstore.ErrTaxonConflict) {
+	if _, err := s.PreviewTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Delete: true, Slug: "halloween"}); !errors.Is(err, clipstore.ErrTaxonConflict) {
 		t.Fatalf("previewing a dated holiday's taxon deletion = %v, want ErrTaxonConflict", err)
 	}
-	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: "halloween"}, at); !errors.Is(err, clipstore.ErrTaxonConflict) {
+	if err := s.ApplyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Delete: true, Slug: "halloween"}, at); !errors.Is(err, clipstore.ErrTaxonConflict) {
 		t.Fatalf("deleting a dated holiday's taxon = %v, want ErrTaxonConflict", err)
 	}
 	halloween := taxonomy.Taxon{Slug: "halloween", Label: "Halloween", Axis: taxonomy.AxisFormat}
-	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Taxon: halloween}, at); !errors.Is(err, clipstore.ErrTaxonConflict) {
+	if err := s.ApplyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Taxon: halloween}, at); !errors.Is(err, clipstore.ErrTaxonConflict) {
 		t.Fatalf("moving a dated holiday's taxon off seasonal = %v, want ErrTaxonConflict", err)
 	}
-	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: holidayvocab.GenericHoliday}, at); !errors.Is(err, clipstore.ErrTaxonConflict) {
+	if err := s.ApplyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Delete: true, Slug: holidayvocab.GenericHoliday}, at); !errors.Is(err, clipstore.ErrTaxonConflict) {
 		t.Fatalf("deleting a group holiday's taxon = %v, want ErrTaxonConflict", err)
 	}
 	if got := holidayIDs(t, s); !slices.Equal(got, before) {
@@ -90,7 +90,7 @@ func testHolidaysFollowSeasonalTaxa(t *testing.T, newStore NewStoreFunc) {
 	}
 	// A seasonal taxon's other edits leave its holiday alone.
 	relabelled := taxonomy.Taxon{Slug: "halloween", Label: "All Hallows' Eve", Axis: taxonomy.AxisSeasonal}
-	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Taxon: relabelled}, at); err != nil {
+	if err := s.ApplyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Taxon: relabelled}, at); err != nil {
 		t.Fatal(err)
 	}
 	if h := holidayByID(t, s, "halloween"); len(h.Kept) == 0 {

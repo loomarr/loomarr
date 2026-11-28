@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 const (
@@ -43,7 +44,7 @@ const (
 	InvalidationSetting InvalidationKind = "setting"
 )
 
-func channelInvalidation(ch Channel) (string, error) {
+func channelInvalidation(ch channelstore.Channel) (string, error) {
 	backend := ""
 	if ch.Policy.Playout != nil {
 		backend = ch.Policy.Playout.Backend
@@ -57,7 +58,7 @@ func channelInvalidation(ch Channel) (string, error) {
 // ChannelScheduleVersion returns a stable fingerprint of the accepted broadcast
 // cycle carried by a channel invalidation. The Desired JSON is already the durable
 // commit boundary; hashing keeps NOTIFY payloads small even for large lineups.
-func ChannelScheduleVersion(ch Channel) string {
+func ChannelScheduleVersion(ch channelstore.Channel) string {
 	b, err := json.Marshal(ch.Desired)
 	if err != nil {
 		return "" // schedule.Slot is currently infallible; empty degrades to no cutover hint

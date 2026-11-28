@@ -14,7 +14,7 @@ func testLibraryAudioTracks(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_800_000_000_000)
-	item := LibraryItem{ID: "m1", Kind: "movie", Name: "Film", Sources: []librarystore.LibrarySource{{
+	item := librarystore.LibraryItem{ID: "m1", Kind: "movie", Name: "Film", Sources: []librarystore.LibrarySource{{
 		Path: "/media/film/a.mkv", Plays: true, Streams: []librarystore.LibraryStream{
 			{Index: 0, Kind: "video", Codec: "h264"},
 			{Index: 1, Kind: "audio", Codec: "ac3", Language: "ru", Channels: 6, Default: true},
@@ -22,7 +22,7 @@ func testLibraryAudioTracks(t *testing.T, newStore NewStoreFunc) {
 			{Index: 3, Kind: "audio", Codec: "ac3", Language: "fr", ExternalRef: "/media/film/a.fr.mka"},
 		},
 	}}}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{item}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{item}, at); err != nil {
 		t.Fatal(err)
 	}
 	file := func(path, header string) librarystore.LibraryFile {
@@ -89,12 +89,12 @@ func testLibraryAudioTracks(t *testing.T, newStore NewStoreFunc) {
 	// A movie plays a copy in each edition (decision 54); a channel airs the default one, though
 	// an edition's path sorts first.
 	cut, plain := "/media/cut/Cut {edition-Directors Cut}.mkv", "/media/cut/Cut.mkv"
-	editions := LibraryItem{ID: "m2", Kind: "movie", Name: "Cut", Sources: []librarystore.LibrarySource{
+	editions := librarystore.LibraryItem{ID: "m2", Kind: "movie", Name: "Cut", Sources: []librarystore.LibrarySource{
 		{Path: cut, Edition: "Directors Cut", Plays: true, DurationMs: 9_000_000,
 			Streams: []librarystore.LibraryStream{{Index: 0, Kind: "video", Codec: "hevc"}}},
 		{Path: plain, Plays: true, DurationMs: 7_200_000, Streams: []librarystore.LibraryStream{{Index: 0, Kind: "video", Codec: "h264"}}},
 	}}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{editions}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{editions}, at); err != nil {
 		t.Fatal(err)
 	}
 	cutFile, plainFile := file(cut, librarystore.LibraryHeaderRead), file(plain, librarystore.LibraryHeaderRead)
@@ -116,11 +116,11 @@ func testLibraryAudioTracks(t *testing.T, newStore NewStoreFunc) {
 	// they do together; its video is its first part's. While a part's length is unread, its
 	// runtime is the catalog's.
 	one, two := "/media/parts/z part1.mkv", "/media/parts/a part2.mkv"
-	parts := LibraryItem{ID: "m3", Kind: "movie", Name: "Parts", RuntimeMs: 5_000_000, Sources: []librarystore.LibrarySource{
+	parts := librarystore.LibraryItem{ID: "m3", Kind: "movie", Name: "Parts", RuntimeMs: 5_000_000, Sources: []librarystore.LibrarySource{
 		{Path: two, Part: 2, Plays: true, DurationMs: 2_000_000, Streams: []librarystore.LibraryStream{{Index: 0, Kind: "video", Codec: "hevc"}}},
 		{Path: one, Part: 1, Plays: true, DurationMs: 3_000_000, Streams: []librarystore.LibraryStream{{Index: 0, Kind: "video", Codec: "h264"}}},
 	}}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{parts}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{parts}, at); err != nil {
 		t.Fatal(err)
 	}
 	oneFile, twoFile := file(one, librarystore.LibraryHeaderRead), file(two, librarystore.LibraryHeaderRead)
@@ -138,7 +138,7 @@ func testLibraryAudioTracks(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("runtime of a movie in parts = %+v, %v; want both parts' 5000000", facts["m3"], err)
 	}
 	parts.RuntimeMs, parts.Sources[0].DurationMs = 9_000_000, 0
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{parts}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{parts}, at); err != nil {
 		t.Fatal(err)
 	}
 	if facts, err := st.LibraryItemFacts(ctx, []string{"m3"}); err != nil || facts["m3"].RuntimeMs != 9_000_000 {

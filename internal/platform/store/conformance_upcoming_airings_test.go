@@ -7,6 +7,9 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // testUpcomingAirings: a channel's upcoming airings (#4476) are replaced whole and only at the
@@ -19,7 +22,7 @@ func testUpcomingAirings(t *testing.T, newStore NewStoreFunc) {
 	now := time.UnixMilli(1_800_000_000_000).UTC()
 	const movieKey, seriesKey = provision.Key("movie:tmdb:90000031"), provision.Key("series:tvdb:90000032")
 
-	if err := s.SaveLibraryItems(ctx, []LibraryItem{
+	if err := s.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "m1", Kind: "movie", Name: "Upcoming Movie"},
 		{ID: "s1", Kind: "series", Name: "Upcoming Series"},
 		{ID: "ep-7", Kind: "episode", Name: "Upcoming Episode 7"},
@@ -37,13 +40,13 @@ func testUpcomingAirings(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	at := func(min int) time.Time { return now.Add(time.Duration(min) * time.Minute) }
-	airing := func(item string, key provision.Key, from, to int, forecast bool) UpcomingAiring {
-		return UpcomingAiring{Start: at(from), End: at(to), LibraryItemID: item, TitleKey: key, Forecast: forecast}
+	airing := func(item string, key provision.Key, from, to int, forecast bool) channeldatastore.UpcomingAiring {
+		return channeldatastore.UpcomingAiring{Start: at(from), End: at(to), LibraryItemID: item, TitleKey: key, Forecast: forecast}
 	}
 	a := mustSaveChannel(t, s, sampleChannel("ch-up-a", 31, time.Time{}))
 	b := mustSaveChannel(t, s, sampleChannel("ch-up-b", 32, time.Time{}))
 
-	replace := func(ch Channel, airings ...UpcomingAiring) bool {
+	replace := func(ch channelstore.Channel, airings ...channeldatastore.UpcomingAiring) bool {
 		t.Helper()
 		wrote, err := s.ReplaceUpcomingAirings(ctx, ch.ID, ch.Revision, airings)
 		if err != nil {
@@ -51,7 +54,7 @@ func testUpcomingAirings(t *testing.T, newStore NewStoreFunc) {
 		}
 		return wrote
 	}
-	read := func(item string) []UpcomingAiring {
+	read := func(item string) []channeldatastore.UpcomingAiring {
 		t.Helper()
 		got, err := s.UpcomingAiringsForItem(ctx, item, now)
 		if err != nil {
@@ -59,7 +62,7 @@ func testUpcomingAirings(t *testing.T, newStore NewStoreFunc) {
 		}
 		return got
 	}
-	same := func(got []UpcomingAiring, want ...UpcomingAiring) bool {
+	same := func(got []channeldatastore.UpcomingAiring, want ...channeldatastore.UpcomingAiring) bool {
 		if len(got) != len(want) {
 			return false
 		}
@@ -72,7 +75,7 @@ func testUpcomingAirings(t *testing.T, newStore NewStoreFunc) {
 		}
 		return true
 	}
-	on := func(ch Channel, x UpcomingAiring) UpcomingAiring {
+	on := func(ch channelstore.Channel, x channeldatastore.UpcomingAiring) channeldatastore.UpcomingAiring {
 		x.ChannelID, x.ChannelName, x.ChannelNumber = ch.ID, ch.Name, ch.Number
 		return x
 	}
@@ -112,13 +115,13 @@ func testUpcomingAirings(t *testing.T, newStore NewStoreFunc) {
 	// A write from a stale revision changes nothing.
 	a.Status = schedule.StatusLive
 	a2 := mustSaveChannel(t, s, a)
-	if wrote, err := s.ReplaceUpcomingAirings(ctx, a.ID, a.Revision, []UpcomingAiring{onAir}); err != nil || wrote {
+	if wrote, err := s.ReplaceUpcomingAirings(ctx, a.ID, a.Revision, []channeldatastore.UpcomingAiring{onAir}); err != nil || wrote {
 		t.Fatalf("stale replace = %v, %v; want no write, no error", wrote, err)
 	}
 	if got := read("m1"); !same(got, on(a, later)) {
 		t.Fatalf("after a stale replace, movie m1 = %+v; want the earlier rows kept", got)
 	}
-	if wrote, err := s.ReplaceUpcomingAirings(ctx, "ch-missing", 1, []UpcomingAiring{onAir}); err != nil || wrote {
+	if wrote, err := s.ReplaceUpcomingAirings(ctx, "ch-missing", 1, []channeldatastore.UpcomingAiring{onAir}); err != nil || wrote {
 		t.Fatalf("replace on an unknown channel = %v, %v; want no write, no error", wrote, err)
 	}
 

@@ -17,7 +17,7 @@ One area of the [package map](../package-map.md#start-here).
 ## Packages
 
 - **`channels`** · 5 importers · → `channels/schedule`, `filler/clips`, `filler/language`, `filler/pod`, `library/inventory`, `library/provision`, `platform/jobs`, `platform/rating`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `playout/timeline`, `playout/tunarr`
-  Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
+  Channel reconcile engine (design §9/§18): the conductor that turns a channelstore.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`channels/approval`** · 2 importers · → `channels/schedule`, `library/provision`, `platform/rating`, `platform/store`, `platform/store/activitystore`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/accept`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
 - **`channels/edit`** · 3 importers · → `channels/approval`, `channels/schedule`, `library/provision`, `platform/activity`, `platform/store`, `platform/store/activitystore`, `platform/store/channelstore`

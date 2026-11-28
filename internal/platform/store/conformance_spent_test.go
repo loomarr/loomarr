@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 )
 
@@ -26,7 +27,7 @@ func testSpentRowPurges(t *testing.T, newStore NewStoreFunc) {
 	old, recent := now.Add(-40*24*time.Hour), now.Add(-time.Hour)
 
 	// Device pairings: an expired code goes, a live one stays.
-	for _, p := range []DevicePairing{
+	for _, p := range []identitystore.DevicePairing{
 		{DeviceCodeHash: "expired", UserCode: "AAAA-1111", CreatedAt: old, ExpiresAt: old.Add(10 * time.Minute)},
 		{DeviceCodeHash: "live", UserCode: "BBBB-2222", CreatedAt: now, ExpiresAt: now.Add(10 * time.Minute)},
 	} {
@@ -66,7 +67,7 @@ func testSpentRowPurges(t *testing.T, newStore NewStoreFunc) {
 	// reader resolves is exactly the same afterwards.
 	mustSaveChannel(t, st, sampleChannel("ch-1", 7, now.Add(time.Hour)))
 	at := func(s int) time.Time { return old.Add(time.Duration(s) * time.Second) }
-	for _, f := range []DiscoveryFeedback{
+	for _, f := range []channeldatastore.DiscoveryFeedback{
 		{ID: "a1", Target: "movie:tmdb:90000101", Action: channeldatastore.FeedbackKeep, CreatedAt: at(0)},
 		{ID: "a2", Target: "movie:tmdb:90000101", Action: channeldatastore.FeedbackNever, CreatedAt: at(1)},
 		{ID: "b1", Target: "movie:tmdb:90000102", Action: channeldatastore.FeedbackKeep, CreatedAt: at(0)},
@@ -83,13 +84,13 @@ func testSpentRowPurges(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	effective := func() []DiscoveryFeedback {
+	effective := func() []channeldatastore.DiscoveryFeedback {
 		t.Helper()
-		household, err := st.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: channeldatastore.FeedbackHousehold})
+		household, err := st.ListDiscoveryFeedback(ctx, channeldatastore.FeedbackFilter{Scope: channeldatastore.FeedbackHousehold})
 		if err != nil {
 			t.Fatal(err)
 		}
-		channel, err := st.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: channeldatastore.FeedbackChannel, ScopeID: "ch-1"})
+		channel, err := st.ListDiscoveryFeedback(ctx, channeldatastore.FeedbackFilter{Scope: channeldatastore.FeedbackChannel, ScopeID: "ch-1"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -110,7 +111,7 @@ func testSpentRowPurges(t *testing.T, newStore NewStoreFunc) {
 		return
 	}
 	for _, id := range []string{"u-1", "u-2"} {
-		if err := st.UpsertUser(ctx, User{ID: id, Name: id, Role: identitystore.RoleMember, CreatedAt: old, UpdatedAt: old}); err != nil {
+		if err := st.UpsertUser(ctx, identitystore.User{ID: id, Name: id, Role: identitystore.RoleMember, CreatedAt: old, UpdatedAt: old}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -168,7 +169,7 @@ func testUnusedTitlePurge(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	picked := proposals.ProposalItem{MediaType: provision.Movie, TMDBID: 90000107, Name: "Picked"}
-	if err := st.CreateProposal(ctx, Proposal{ID: "open", Status: "submitted", CreatedAt: before,
+	if err := st.CreateProposal(ctx, proposalstore.Proposal{ID: "open", Status: "submitted", CreatedAt: before,
 		Body: proposals.Proposal{Alternates: []proposals.ProposalItem{picked}}}); err != nil {
 		t.Fatal(err)
 	}

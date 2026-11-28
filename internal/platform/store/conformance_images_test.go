@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Image service conformance (§22, V52). Part of the ONE suite both backends run — never forked per
@@ -171,7 +172,7 @@ func testImageRefsAndOwnerLookup(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	at := time.Unix(1_700_000_000, 0)
 	saveImageChannels(t, s, "ch_1", "ch_2")
-	if err := s.SaveLibraryItems(ctx, []LibraryItem{{ID: "title_1", Kind: "movie", Name: "A Film"}}, at); err != nil {
+	if err := s.SaveLibraryItems(ctx, []librarystore.LibraryItem{{ID: "title_1", Kind: "movie", Name: "A Film"}}, at); err != nil {
 		t.Fatal(err)
 	}
 

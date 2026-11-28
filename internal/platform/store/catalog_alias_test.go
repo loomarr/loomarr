@@ -70,32 +70,16 @@ func TestCatalogErrorsMatchTheStoreSentinels(t *testing.T) {
 	if _, err := st.GetClip(ctx, "nobody"); !errors.Is(err, ErrNotFound) || !errors.Is(err, clipstore.ErrNotFound) {
 		t.Fatalf("GetClip miss = %v, want store.ErrNotFound and clipstore.ErrNotFound", err)
 	}
-	if _, err := st.ListClips(ctx, ClipFilter{Sort: "bogus"}); !errors.Is(err, clipstore.ErrUnknownClipSort) {
+	if _, err := st.ListClips(ctx, clipstore.ClipFilter{Sort: "bogus"}); !errors.Is(err, clipstore.ErrUnknownClipSort) {
 		t.Fatalf("ListClips with an unknown sort = %v, want clipstore.ErrUnknownClipSort", err)
 	}
-	if _, err := st.PreviewTaxonomyEdit(ctx, TaxonomyEdit{Delete: true, Slug: "halloween"}); !errors.Is(err, clipstore.ErrTaxonConflict) {
+	if _, err := st.PreviewTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Delete: true, Slug: "halloween"}); !errors.Is(err, clipstore.ErrTaxonConflict) {
 		t.Fatalf("deleting a dated holiday's taxon = %v, want clipstore.ErrTaxonConflict", err)
 	}
-	if err := st.MergeInferiorCopy(ctx, InferiorCopy{}); !errors.Is(err, clipstore.ErrInferiorCopyMismatch) {
+	if err := st.MergeInferiorCopy(ctx, clipstore.InferiorCopy{}); !errors.Is(err, clipstore.ErrInferiorCopyMismatch) {
 		t.Fatalf("MergeInferiorCopy with no hashes = %v, want clipstore.ErrInferiorCopyMismatch", err)
 	}
 }
-
-// Types are aliases: values built under either name need no conversion, and the aggregate store
-// returns the cluster's own types.
-var (
-	_ clipstore.Clip               = Clip{}
-	_ clipstore.ClipFilter         = ClipFilter{}
-	_ clipstore.ClipTx             = ClipTx{}
-	_ clipstore.ClipArtworkPending = ClipArtworkPending{}
-	_ clipstore.WantedCopy         = WantedCopy{}
-	_ clipstore.InferiorCopy       = InferiorCopy{}
-	_ clipstore.ClipDefectRecord   = ClipDefectRecord{}
-	_ clipstore.ClipDefectLabel    = ClipDefectLabel{}
-	_ clipstore.TaxonomyEdit       = TaxonomyEdit{}
-	_ clipstore.TaxonomyEditImpact = TaxonomyEditImpact{}
-	_ clipstore.TaxonomyUsage      = TaxonomyUsage{}
-)
 
 // The embedded cluster is what satisfies the image role and the catalog methods: the aggregate store
 // hands out the same *clipstore.Store methods, with no forwarding layer in between.
@@ -104,7 +88,7 @@ func TestSQLStoreCatalogIsTheEmbeddedCluster(t *testing.T) {
 	if !ok || s.catalogCluster == nil || s.identityCluster == nil {
 		t.Fatal("sqlStore has a nil cluster: a constructor skipped bindClusters")
 	}
-	var _ ImageStore = s.catalogCluster
+	var _ clipstore.ImageStore = s.catalogCluster
 }
 
 // store.Handle.Clips is the extension stores' way to a ClipTx; it must hand back the catalog's own
@@ -146,7 +130,7 @@ func TestChannelPoliciesHookRewritesAndBumpsRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	clip := Clip{UpdatedAt: now}
+	clip := clipstore.Clip{UpdatedAt: now}
 	clip.Hash, clip.Path, clip.Name, clip.Role = "old", "ol/d0/old.mp4", "Old", clips.Commercial
 	clip.DurationMs, clip.Source = 30_000, "archive"
 	if err := s.UpsertClip(ctx, clip); err != nil {

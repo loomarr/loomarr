@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
@@ -17,7 +18,7 @@ func testFillerBreaks(t *testing.T, newStore NewStoreFunc) {
 	st := newStore(t)
 	saved := map[string]int64{}
 	for i, id := range []string{"ch-a", "ch-b"} {
-		ch, err := st.SaveChannel(ctx, Channel{ID: id, Name: id, Number: 80 + i, Strategy: schedule.Shuffle,
+		ch, err := st.SaveChannel(ctx, channelstore.Channel{ID: id, Name: id, Number: 80 + i, Strategy: schedule.Shuffle,
 			Status: schedule.StatusLive})
 		if err != nil {
 			t.Fatal(err)

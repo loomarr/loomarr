@@ -34,7 +34,7 @@ func testLibraryFilmography(t *testing.T, newStore NewStoreFunc) {
 		librarystore.LibraryCredit{Name: "The Director", Role: "director", ID: tmdb("90004003")},
 		librarystore.LibraryCredit{Name: "Other Director", Role: "director", ID: librarystore.LibraryID{Namespace: "imdb", Value: "nm90004005"}})
 	m1[0] = librarystore.LibraryCredit{Name: "The Lead", Role: "actor", ID: tmdb("90004001")}
-	items := []LibraryItem{
+	items := []librarystore.LibraryItem{
 		{ID: "m1", Kind: "movie", Name: "One", Credits: m1},
 		{ID: "m2", Kind: "movie", Name: "Two", Credits: billedEleventh(low)},
 		{ID: "m3", Kind: "movie", Name: "Three", Credits: billedEleventh(low)},

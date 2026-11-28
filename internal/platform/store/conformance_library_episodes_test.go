@@ -16,8 +16,8 @@ func testLibraryEpisodes(t *testing.T, newStore NewStoreFunc) {
 	st := newStore(t)
 	at := time.UnixMilli(1_800_000_000_000)
 	show := librarystore.LibraryOrigin{Authority: "scan:test", Key: "series:dir:show"}
-	ep := func(id string, season, episode int, path string) LibraryItem {
-		return LibraryItem{ID: id, Kind: "episode", Name: id, Series: show, Season: season, Episode: episode,
+	ep := func(id string, season, episode int, path string) librarystore.LibraryItem {
+		return librarystore.LibraryItem{ID: id, Kind: "episode", Name: id, Series: show, Season: season, Episode: episode,
 			RuntimeMs: 1_200_000, Sources: []librarystore.LibrarySource{{Path: path, Plays: true}}}
 	}
 	second := ep("s01e02", 1, 2, "/t/show/s01e02.mkv")
@@ -26,7 +26,7 @@ func testLibraryEpisodes(t *testing.T, newStore NewStoreFunc) {
 	second.PremiereDate, second.Year, second.EpisodeEnd = "1990-10-25", 1990, 3
 	second.Tags = []string{"two-parter", "finale"}
 	showID := inventorySeries(t, st, show, at)
-	items := []LibraryItem{
+	items := []librarystore.LibraryItem{
 		{ID: showID, Kind: "series", Name: "Show", Rating: "TV-PG", Origin: show},
 		ep("s02e01", 2, 1, "/t/show/s02e01.mkv"),
 		second,

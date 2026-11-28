@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 )
 
 // Operational tables: the settings KV, session lifecycle, the /metrics count queries,
@@ -35,10 +36,10 @@ func testUserContactAddresses(t *testing.T, newStore NewStoreFunc) {
 	if err := s.PutPendingContactAddress(ctx, pending); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("contact for missing user = %v, want ErrNotFound", err)
 	}
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin, CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := s.UpsertUser(ctx, identitystore.User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertUser(ctx, User{ID: "u2", Name: "Grace", Role: identitystore.RoleMember, CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := s.UpsertUser(ctx, identitystore.User{ID: "u2", Name: "Grace", Role: identitystore.RoleMember, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.PutPendingContactAddress(ctx, pending); err != nil {
@@ -129,7 +130,7 @@ func testUserCredentialCapabilities(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)
 	now := time.Unix(1_700_000_000, 0).UTC()
-	want := User{
+	want := identitystore.User{
 		ID: "linked", Name: "Linked", Role: identitystore.RoleMember, MediaServerLinked: true,
 		PasswordHash: "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$dGFn", CreatedAt: now, UpdatedAt: now,
 	}
@@ -150,7 +151,7 @@ func testUserCredentialCapabilities(t *testing.T, newStore NewStoreFunc) {
 func saveMembers(t *testing.T, s Store, ids ...string) {
 	t.Helper()
 	for _, id := range ids {
-		if err := s.UpsertUser(context.Background(), User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
+		if err := s.UpsertUser(context.Background(), identitystore.User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
 			t.Fatalf("save member %s: %v", id, err)
 		}
 	}
@@ -339,19 +340,19 @@ func testLastSeen(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	t0 := time.Unix(1_800_000_000, 0).UTC()
 	for _, id := range []string{"u-seen", "u-never"} {
-		if err := s.UpsertUser(ctx, User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
+		if err := s.UpsertUser(ctx, identitystore.User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := s.CreateSession(ctx, Session{TokenHash: "h1", UserID: "u-seen", CreatedAt: t0, ExpiresAt: t0.Add(24 * time.Hour)}); err != nil {
+	if err := s.CreateSession(ctx, identitystore.Session{TokenHash: "h1", UserID: "u-seen", CreatedAt: t0, ExpiresAt: t0.Add(24 * time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CreateDeviceToken(ctx, DeviceToken{TokenHash: "d1", UserID: "u-seen", DeviceName: "Lounge TV", CreatedAt: t0}); err != nil {
+	if err := s.CreateDeviceToken(ctx, identitystore.DeviceToken{TokenHash: "d1", UserID: "u-seen", DeviceName: "Lounge TV", CreatedAt: t0}); err != nil {
 		t.Fatal(err)
 	}
 	touch := func(at time.Time, label string) {
 		t.Helper()
-		if err := s.TouchSession(ctx, "h1", SessionSeen{At: at, ExpiresAt: at.Add(24 * time.Hour), ClientLabel: label}); err != nil {
+		if err := s.TouchSession(ctx, "h1", identitystore.SessionSeen{At: at, ExpiresAt: at.Add(24 * time.Hour), ClientLabel: label}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -389,12 +390,12 @@ func testDeviceCodeMode(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_700_000_000, 0).UTC()
-	for _, u := range []User{{ID: "u-admin", Name: "Ada", Role: identitystore.RoleAdmin}, {ID: "u-other", Name: "Grace", Role: identitystore.RoleMember}} {
+	for _, u := range []identitystore.User{{ID: "u-admin", Name: "Ada", Role: identitystore.RoleAdmin}, {ID: "u-other", Name: "Grace", Role: identitystore.RoleMember}} {
 		if err := s.UpsertUser(ctx, u); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := s.CreateDeviceToken(ctx, DeviceToken{TokenHash: "d-agent", UserID: "u-admin", DeviceName: "Agent", CreatedAt: now}); err != nil {
+	if err := s.CreateDeviceToken(ctx, identitystore.DeviceToken{TokenHash: "d-agent", UserID: "u-admin", DeviceName: "Agent", CreatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	if d, err := s.GetDeviceToken(ctx, "d-agent"); err != nil || d.CodeMode {
@@ -428,18 +429,18 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_700_000_000, 0).UTC()
 
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin}); err != nil {
+	if err := s.UpsertUser(ctx, identitystore.User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertUser(ctx, User{ID: "u2", Name: "Grace", Role: identitystore.RoleMember}); err != nil {
+	if err := s.UpsertUser(ctx, identitystore.User{ID: "u2", Name: "Grace", Role: identitystore.RoleMember}); err != nil {
 		t.Fatal(err)
 	}
 
-	live := Session{TokenHash: "h-live", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
-	older := Session{TokenHash: "h-older", UserID: "u1", CreatedAt: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour)}
-	dead := Session{TokenHash: "h-dead", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(-time.Minute)}
-	other := Session{TokenHash: "h-other", UserID: "u2", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
-	for _, sess := range []Session{live, older, dead, other} {
+	live := identitystore.Session{TokenHash: "h-live", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+	older := identitystore.Session{TokenHash: "h-older", UserID: "u1", CreatedAt: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour)}
+	dead := identitystore.Session{TokenHash: "h-dead", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(-time.Minute)}
+	other := identitystore.Session{TokenHash: "h-other", UserID: "u2", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+	for _, sess := range []identitystore.Session{live, older, dead, other} {
 		if err := s.CreateSession(ctx, sess); err != nil {
 			t.Fatal(err)
 		}
@@ -482,10 +483,10 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	// DisableUser sets the flag and, in the same transaction, deletes the user's sessions, paired
 	// devices (for good, ADR 0043) and the pairings they approved but no device redeemed yet — and
 	// only theirs; a pending pairing nobody approved is not anyone's to revoke.
-	if err := s.CreateSession(ctx, Session{TokenHash: "h-again", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
+	if err := s.CreateSession(ctx, identitystore.Session{TokenHash: "h-again", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
-	for _, d := range []DeviceToken{
+	for _, d := range []identitystore.DeviceToken{
 		{TokenHash: "d-tv", UserID: "u1", DeviceName: "Lounge TV", CreatedAt: now},
 		{TokenHash: "d-phone", UserID: "u1", DeviceName: "Phone", CreatedAt: now},
 		{TokenHash: "d-other", UserID: "u2", DeviceName: "Kitchen TV", CreatedAt: now},
@@ -494,7 +495,7 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	for _, p := range []DevicePairing{
+	for _, p := range []identitystore.DevicePairing{
 		{DeviceCodeHash: "p-u1", UserCode: "AAAA-AAAA"},
 		{DeviceCodeHash: "p-u2", UserCode: "BBBB-BBBB"},
 		{DeviceCodeHash: "p-pending", UserCode: "CCCC-CCCC"},
@@ -555,7 +556,7 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("ApproveDevicePairing by an unknown user = %v, %v; want false, nil", ok, err)
 	}
 	for _, user := range []string{"u1", "u-ghost"} {
-		err := s.CreateDeviceToken(ctx, DeviceToken{TokenHash: "d-late-" + user, UserID: user, DeviceName: "TV", CreatedAt: now})
+		err := s.CreateDeviceToken(ctx, identitystore.DeviceToken{TokenHash: "d-late-" + user, UserID: user, DeviceName: "TV", CreatedAt: now})
 		if !errors.Is(err, ErrNotFound) {
 			t.Errorf("CreateDeviceToken for %s err = %v, want ErrNotFound", user, err)
 		}
@@ -564,7 +565,7 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("disabled u1 was issued %d devices (err %v), want 0", len(devices), err)
 	}
 	// Re-enabled, the same user approves again: the guard is the flag, not a tombstone.
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin}); err != nil {
+	if err := s.UpsertUser(ctx, identitystore.User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin}); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := s.ApproveDevicePairing(ctx, "CCCC-CCCC", "u1", now); err != nil || !ok {
@@ -573,11 +574,11 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 
 	// Sessions follow the same rule: a login that raced a disable must not leave a session behind
 	// that comes back when the user is re-enabled. Disabled and unknown users are issued nothing.
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin, Disabled: true}); err != nil {
+	if err := s.UpsertUser(ctx, identitystore.User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin, Disabled: true}); err != nil {
 		t.Fatal(err)
 	}
 	for _, user := range []string{"u1", "u-ghost"} {
-		sess := Session{TokenHash: "s-late-" + user, UserID: user, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+		sess := identitystore.Session{TokenHash: "s-late-" + user, UserID: user, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
 		if err := s.CreateSession(ctx, sess); !errors.Is(err, ErrNotFound) {
 			t.Errorf("CreateSession for %s err = %v, want ErrNotFound", user, err)
 		}
@@ -585,10 +586,10 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 			t.Errorf("a refused session for %s exists: GetSession err = %v", user, err)
 		}
 	}
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin}); err != nil {
+	if err := s.UpsertUser(ctx, identitystore.User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CreateSession(ctx, Session{TokenHash: "s-back", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
+	if err := s.CreateSession(ctx, identitystore.Session{TokenHash: "s-back", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
 		t.Errorf("CreateSession for re-enabled u1: %v", err)
 	}
 }
@@ -672,7 +673,7 @@ func testCounts(t *testing.T, newStore NewStoreFunc) {
 		}
 		claimedJob := claimed[0]
 		if outcome == "succeeded" {
-			proposal := Proposal{ID: "metric-proposal", JobID: claimedJob.ID, Status: "submitted",
+			proposal := proposalstore.Proposal{ID: "metric-proposal", JobID: claimedJob.ID, Status: "submitted",
 				CreatedBy: claimedJob.CreatedBy, CreatedAt: now, UpdatedAt: now}
 			if err := s.CommitSuggestionSuccess(ctx, claimedJob.ID, claimedJob.Attempts, proposal, now); err != nil {
 				t.Fatal(err)
@@ -691,10 +692,10 @@ func testCounts(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// Sessions: two live, one expired — only the live ones count as of now.
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin}); err != nil {
+	if err := s.UpsertUser(ctx, identitystore.User{ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin}); err != nil {
 		t.Fatal(err)
 	}
-	for _, sess := range []Session{
+	for _, sess := range []identitystore.Session{
 		{TokenHash: "c-live1", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
 		{TokenHash: "c-live2", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
 		{TokenHash: "c-dead", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(-time.Minute)},
@@ -729,7 +730,7 @@ func testActivityFeed(t *testing.T, newStore func(t *testing.T) Store) {
 		{"middle — Seerr timed out, retrying", activitystore.ActivityWarn, 60 * time.Minute},
 		{"newest — Gadget Goats Go! landed", activitystore.ActivityInfo, 30 * time.Minute},
 	} {
-		if err := st.RecordActivity(ctx, Activity{
+		if err := st.RecordActivity(ctx, activitystore.Activity{
 			At: base.Add(-tc.age).Unix(), Kind: activitystore.ActivityKindTitle, Level: tc.level,
 			Text: tc.text, SubjectID: fmt.Sprintf("subj-%d", i),
 		}); err != nil {
@@ -762,7 +763,7 @@ func testActivityFeed(t *testing.T, newStore func(t *testing.T) Store) {
 
 	// An unrecognised level is normalised on the way in — the UI has no colour for it, so
 	// storing it would render an invisible dot.
-	if err := st.RecordActivity(ctx, Activity{Text: "odd", Kind: activitystore.ActivityKindSystem, Level: "banana"}); err != nil {
+	if err := st.RecordActivity(ctx, activitystore.Activity{Text: "odd", Kind: activitystore.ActivityKindSystem, Level: "banana"}); err != nil {
 		t.Fatalf("record odd level: %v", err)
 	}
 	after, _ := st.ListActivity(ctx, 1)
@@ -773,7 +774,7 @@ func testActivityFeed(t *testing.T, newStore func(t *testing.T) Store) {
 	// An empty text is dropped rather than stored: a blank row occupies a slot in a list
 	// the operator is scanning.
 	before, _ := st.ListActivity(ctx, 100)
-	if err := st.RecordActivity(ctx, Activity{Text: ""}); err != nil {
+	if err := st.RecordActivity(ctx, activitystore.Activity{Text: ""}); err != nil {
 		t.Fatalf("record empty: %v", err)
 	}
 	if all, _ := st.ListActivity(ctx, 100); len(all) != len(before) {
@@ -1017,7 +1018,7 @@ func testRetentionPurge(t *testing.T, newStore func(t *testing.T) Store) {
 	recent := time.Now().Add(-time.Hour)
 
 	// Jobs: one of each status, all OLD, so status is the only thing distinguishing them.
-	for _, j := range []Job{
+	for _, j := range []proposalstore.Job{
 		{ID: "j-done", Kind: "suggest", Status: "done", UpdatedAt: old},
 		{ID: "j-failed", Kind: "suggest", Status: "failed", UpdatedAt: old},
 		{ID: "j-queued", Kind: "suggest", Status: "queued", UpdatedAt: old},
@@ -1050,7 +1051,7 @@ func testRetentionPurge(t *testing.T, newStore func(t *testing.T) Store) {
 	}
 
 	// Proposals: one of each status, all OLD.
-	for _, p := range []Proposal{
+	for _, p := range []proposalstore.Proposal{
 		{ID: "p-denied", Status: "denied", UpdatedAt: old},
 		{ID: "p-superseded", Status: "superseded", UpdatedAt: old},
 		{ID: "p-approved", Status: "approved", UpdatedAt: old},

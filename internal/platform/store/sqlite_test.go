@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storetest"
 )
 
@@ -163,7 +164,7 @@ func TestOpenHealsPreAtomicTaxonomyProjections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	clip := Clip{}
+	clip := clipstore.Clip{}
 	clip.Hash, clip.Path, clip.TunarrProgramID = "upgrade-clip", "p/upgrade-clip.mp4", "tun-upgrade-clip"
 	clip.Name, clip.Role, clip.Era, clip.Audience = "upgrade.mp4", clips.Commercial, 1994, clips.General
 	clip.DurationMs, clip.Source, clip.UpdatedAt = 30000, "archive", time.Unix(1_700_000_000, 0).UTC()

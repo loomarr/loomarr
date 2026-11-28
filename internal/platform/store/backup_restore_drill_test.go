@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 )
 
 const (
@@ -88,7 +89,7 @@ func seedBackupRestoreDrill(t *testing.T, s Store) {
 	t.Helper()
 	ctx := context.Background()
 	now := backupDrillTimestamp()
-	user := User{
+	user := identitystore.User{
 		ID: backupDrillUserID, Name: "Backup Drill Admin", Role: identitystore.RoleAdmin,
 		Quota: 4, AutoApprove: true, PasswordHash: "bcrypt-backup-drill-hash",
 		CreatedAt: now, UpdatedAt: now,
@@ -96,7 +97,7 @@ func seedBackupRestoreDrill(t *testing.T, s Store) {
 	if err := s.UpsertUser(ctx, user); err != nil {
 		t.Fatalf("seed account: %v", err)
 	}
-	if err := s.CreateSession(ctx, Session{
+	if err := s.CreateSession(ctx, identitystore.Session{
 		TokenHash: backupDrillSessionHash, UserID: user.ID,
 		CreatedAt: now, ExpiresAt: now.Add(24 * time.Hour),
 	}); err != nil {
@@ -121,13 +122,13 @@ func seedBackupRestoreDrill(t *testing.T, s Store) {
 	if _, err := s.SaveChannel(ctx, sampleChannel(backupDrillChannelID, 77, now)); err != nil {
 		t.Fatalf("seed channel: %v", err)
 	}
-	if err := s.CreateJob(ctx, Job{
+	if err := s.CreateJob(ctx, proposalstore.Job{
 		ID: backupDrillJobID, Kind: "suggest", Status: "done", IntentJSON: `{}`, IntentHash: "backup-drill-intent",
 		CreatedBy: user.ID, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("seed job: %v", err)
 	}
-	if err := s.CreateProposal(ctx, Proposal{
+	if err := s.CreateProposal(ctx, proposalstore.Proposal{
 		ID: backupDrillProposalID, JobID: backupDrillJobID, Status: "approved",
 		CreatedBy: user.ID, ApprovedBy: user.ID,
 		ApprovedAt: now, CreatedAt: now, UpdatedAt: now,

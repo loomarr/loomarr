@@ -27,7 +27,7 @@ func testProposalPeople(t *testing.T, newStore NewStoreFunc) {
 	if err := s.CreateJob(ctx, memberJob); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []Proposal{
+	for _, p := range []proposalstore.Proposal{
 		{ID: "p-person", JobID: "job-1", Status: "approved", CreatedBy: "alice", ApprovedBy: "admin"},
 		{ID: "p-auto", JobID: "job-1", Status: "approved", CreatedBy: "alice", ApprovedBy: proposalstore.AutoApprovedBy},
 		{ID: "p-curate", JobID: "job-1", Status: "approved", CreatedBy: "alice", ApprovedBy: proposalstore.AutoCuratedBy},
@@ -72,12 +72,12 @@ func testProposalPeople(t *testing.T, newStore NewStoreFunc) {
 	}
 	// Feedback names its member the same way: the API token's is no one's.
 	for _, actor := range []string{"alice", ""} {
-		if err := s.AppendDiscoveryFeedback(ctx, DiscoveryFeedback{ID: "f-" + actor, ActorID: actor,
+		if err := s.AppendDiscoveryFeedback(ctx, channeldatastore.DiscoveryFeedback{ID: "f-" + actor, ActorID: actor,
 			Scope: channeldatastore.FeedbackHousehold, Target: "movie:tmdb:90000603", Action: channeldatastore.FeedbackKeep, CreatedAt: now}); err != nil {
 			t.Fatalf("feedback from %q: %v", actor, err)
 		}
 	}
-	feedback, err := s.ListDiscoveryFeedback(ctx, FeedbackFilter{Scope: channeldatastore.FeedbackHousehold})
+	feedback, err := s.ListDiscoveryFeedback(ctx, channeldatastore.FeedbackFilter{Scope: channeldatastore.FeedbackHousehold})
 	if err != nil {
 		t.Fatal(err)
 	}

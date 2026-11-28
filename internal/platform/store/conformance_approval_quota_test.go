@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 )
 
 var errTestApprovalQuotaFull = errors.New("test approval quota is full")
@@ -29,7 +30,7 @@ func testProposalAutoApprovalQuotaAcrossStores(t *testing.T, first, second Store
 	now := time.Unix(1_800_000_000, 0).UTC()
 	// testApprovalCommit approves each proposal as job-<id>.
 	mustOriginJobs(t, first, "job-quota-race-a", "job-quota-race-b")
-	for _, p := range []Proposal{
+	for _, p := range []proposalstore.Proposal{
 		{ID: "quota-race-a", JobID: "job-quota-race-a", Status: "submitted", CreatedBy: "member", CreatedAt: now, UpdatedAt: now},
 		{ID: "quota-race-b", JobID: "job-quota-race-b", Status: "submitted", CreatedBy: "member", CreatedAt: now, UpdatedAt: now},
 	} {
@@ -216,7 +217,7 @@ func seedApprovalProposals(t *testing.T, s Store, now time.Time, ids ...string) 
 	t.Helper()
 	for _, id := range ids {
 		mustOriginJobs(t, s, "job-"+id)
-		if err := s.CreateProposal(context.Background(), Proposal{
+		if err := s.CreateProposal(context.Background(), proposalstore.Proposal{
 			ID: id, JobID: "job-" + id, Status: "submitted", CreatedBy: "member",
 			CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
@@ -226,7 +227,7 @@ func seedApprovalProposals(t *testing.T, s Store, now time.Time, ids ...string) 
 }
 
 func testApprovalCommit(id, creator string, tmdbID, channelNumber int, now time.Time) ProposalApproval {
-	proposal := Proposal{
+	proposal := proposalstore.Proposal{
 		ID: id, JobID: "job-" + id, Status: "approved", CreatedBy: creator,
 		ApprovedBy: "auto", ApprovedAt: now, CreatedAt: now, UpdatedAt: now,
 	}

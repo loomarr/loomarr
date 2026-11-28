@@ -148,7 +148,7 @@ func (a PodPreview) ClipFit(ctx context.Context, clipPath string) (map[string]po
 	}
 	out := make(map[string]pod.Fit, len(chans))
 	for _, ch := range chans {
-		// `store.Clip` embeds `clips.Clip`, so this is the same value the catalog load hands
+		// `clipstore.Clip` embeds `clips.Clip`, so this is the same value the catalog load hands
 		// the assembler — not a re-derivation.
 		out[ch.ID] = a.pods.FitForChannel(ch.ID, channels.SelectionForChannel(ch), clip.Clip)
 	}

@@ -16,7 +16,7 @@ func testGrowthReviews(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	for i, id := range []string{"ch-a", "ch-b"} {
-		if _, err := st.SaveChannel(ctx, Channel{ID: id, Name: id, Number: 90 + i, Strategy: schedule.Shuffle,
+		if _, err := st.SaveChannel(ctx, channelstore.Channel{ID: id, Name: id, Number: 90 + i, Strategy: schedule.Shuffle,
 			Status: schedule.StatusLive}); err != nil {
 			t.Fatal(err)
 		}

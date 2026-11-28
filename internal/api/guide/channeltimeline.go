@@ -248,7 +248,7 @@ func (s *Handlers) attachTimelinePods(
 // its pod.
 type podEntryRef struct{ airing, entry int }
 
-// podStillHashes resolves each attached pod entry's clip still (store.Clip.ThumbImageHash, not the
+// podStillHashes resolves each attached pod entry's clip still (clipstore.Clip.ThumbImageHash, not the
 // hover loop) with ONE ListClips call for every distinct clip on the strip. Best-effort: a failed
 // lookup logs and leaves the stills absent. The result is keyed by entry so the caller can project
 // it back after its single image-record pass.

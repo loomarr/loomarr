@@ -1,5 +1,5 @@
 // Package channels is the channel reconcile engine (design §9/§18): the conductor
-// that turns a store.Channel's approved lineup + live availability into durable
+// that turns a channelstore.Channel's approved lineup + live availability into durable
 // desired state for whichever playout backend owns it. Tunarr-backed channels then
 // project that state through Programmer with a minimal desired-vs-actual diff;
 // internal-playout channels stop at the durable local result. The periodic sweep

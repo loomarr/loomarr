@@ -18,11 +18,11 @@ func testRedeemDevicePairing(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	now := time.Unix(1_700_000_000, 0).UTC()
 	for _, id := range []string{"u1", "u2"} {
-		if err := s.UpsertUser(ctx, User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
+		if err := s.UpsertUser(ctx, identitystore.User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, p := range []DevicePairing{
+	for _, p := range []identitystore.DevicePairing{
 		{DeviceCodeHash: "approved", UserCode: "AAAA-AAAA", DeviceName: "Lounge TV", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
 		{DeviceCodeHash: "pending", UserCode: "BBBB-BBBB", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
 		{DeviceCodeHash: "expired", UserCode: "CCCC-CCCC", CreatedAt: now.Add(-2 * time.Hour), ExpiresAt: now.Add(-time.Hour)},
@@ -81,10 +81,10 @@ func testRedeemDevicePairingConcurrent(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)
 	now := time.Unix(1_700_000_000, 0).UTC()
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "u1", Role: identitystore.RoleMember}); err != nil {
+	if err := s.UpsertUser(ctx, identitystore.User{ID: "u1", Name: "u1", Role: identitystore.RoleMember}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CreateDevicePairing(ctx, DevicePairing{DeviceCodeHash: "code", UserCode: "AAAA-AAAA", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
+	if err := s.CreateDevicePairing(ctx, identitystore.DevicePairing{DeviceCodeHash: "code", UserCode: "AAAA-AAAA", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := s.ApproveDevicePairing(ctx, "AAAA-AAAA", "u1", now); err != nil || !ok {

@@ -17,9 +17,9 @@ func testLibraryCollections(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	var items []LibraryItem
+	var items []librarystore.LibraryItem
 	for _, id := range []string{"a", "b", "c", "d"} {
-		items = append(items, LibraryItem{ID: id, Kind: "movie", Name: id})
+		items = append(items, librarystore.LibraryItem{ID: id, Kind: "movie", Name: id})
 	}
 	if err := st.SaveLibraryItems(ctx, items, at); err != nil {
 		t.Fatal(err)
@@ -114,7 +114,7 @@ func testLibraryItemIDs(t *testing.T, newStore NewStoreFunc) {
 	st := newStore(t)
 	at := time.UnixMilli(1_790_000_000_000).UTC()
 	set := librarystore.LibraryCatalogKey{Provider: "tmdb_collection", Kind: "collection", ExternalID: "90000611"}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "a", Kind: "movie", Name: "Alpha"},
 		{ID: "b", Kind: "movie", Name: "Bravo", Set: set},
 		{ID: "c", Kind: "movie", Name: "Charlie"},
