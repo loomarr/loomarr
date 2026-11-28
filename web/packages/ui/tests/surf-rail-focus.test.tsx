@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 import { LoomarrProvider } from "@loomarr/design-system";
 import { surfGroups } from "@loomarr/fixtures";
+import { declarationsOfElement } from "@loomarr/test-support/css";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import { SurfRail } from "../index";
-import { declarationsOfElement } from "./support/atomic-css";
 
 // The package type-checks without the DOM lib, so the test names only the node surface it reads.
 type RailNode = {

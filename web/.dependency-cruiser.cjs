@@ -22,7 +22,7 @@ const PACKAGE_TESTS = `^${R}/[^/]+/tests/`;
 // above every package and are not listed.
 const LAYERS = [
   ["api", "design-system"],
-  ["core"],
+  ["core", "test-support"],
   ["player", "crash-reports-native", "lan-discovery-native", "fixtures"],
   ["ui", "native-app", "paired-client"],
   ["ui-tv"],

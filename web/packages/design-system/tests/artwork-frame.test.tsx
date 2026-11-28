@@ -1,8 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-
+import { declarationsOf } from "../atomic-css";
 import { ArtworkFrame, LoomarrProvider, Text } from "../index";
-import { declarationsOf } from "./support/atomic-css";
 
 // The frame's shape is the caller's choice: 16:9 unless it asks for a 2:3 poster.
 const frameStyles = (frame: React.ReactElement) => {

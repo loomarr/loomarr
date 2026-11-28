@@ -3,9 +3,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { withoutRuntimeMarker } from "../atomic-css";
 import { LoomarrProvider, StatusLabel } from "../index";
-import { withoutRuntimeMarker } from "./support/atomic-css";
 
 describe("StatusLabel", () => {
   it("is a dot and a sentence-case word, with no filled chip", () => {
