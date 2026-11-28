@@ -41,8 +41,8 @@ var (
 // RemoveExtraCopy is "Remove extra copy": path, one of the title's files that never plays, moves to
 // its media folder's trash and leaves the title, and the folder is passed over. It answers with the
 // token that RestoreExtraCopy takes to undo it. store.ErrNotFound when the title has no such present
-// file; ErrPlays when it is not an extra copy (librarystore.LibraryCopyExtra); ErrPlayingCopyUnseen when no copy that plays in its
-// place is on disk now. One removal runs at a time, from reading the title to marking the file gone,
+// file; ErrPlays when it is not an extra copy (librarystore.LibraryCopyExtra); ErrPlayingCopyUnseen
+// when no copy that plays in its place is on disk now. One removal runs at a time, from reading the title to marking the file gone,
 // so a second sees what the first did.
 func (l *Library) RemoveExtraCopy(ctx context.Context, id, path string) (string, error) {
 	l.removing.Lock()

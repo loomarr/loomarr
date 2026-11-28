@@ -886,7 +886,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   that edition. Otherwise a file whose header failed can't be played (`unplayable`); one whose
   header is pending, or with no source row yet, is being read (`reading`); one whose row plays is
   the copy that plays (`plays`); and one whose row does not play while the copy in its place is
-  not listed or can't be read is `waiting`. The rule matches editions by their stored label, so
+  not listed or can't be read is `waiting`. A waiting copy stays so for as long as that copy plays:
+  the walk ranks the file an arr manages first, so a broken copy the arr manages keeps playing and
+  the readable copy beside it waits. The rule matches editions by their stored label, so
   the projection gives every copy of one edition the label of its first copy in path order. A
   file with no source row yet is never an extra and never plays in another's place, and a broken
   copy never plays in another's place. So a title's last listed file is never offered for
@@ -1418,6 +1420,11 @@ header is kept, so no file is opened again. Each version and what it changed:
   hashed again but not ingested when the service holds its bytes, an adopted URL is one lookup,
   and either rewrites its ref row. The fetch job then works through the adopted stills, 64 a
   minute, in the bulk class behind every title's artwork.
+- **93:** every source row of one edition carries one label, the first in path order (#4476,
+  "Extra copies"), because the store matches a copy to the copy that plays in its place by its
+  exact edition label. A title whose copies read "Extended" and "Extended Edition" takes one label,
+  so its extra copy reads as an extra again. Every file is written once more with no header read:
+  one inventory write per file, as for 92, with artwork handed over again the same way.
 
 ## Search
 

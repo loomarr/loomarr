@@ -26,7 +26,9 @@ const (
 	// LibraryCopyReading is a file whose header is not read yet, or that has no source row yet.
 	LibraryCopyReading LibraryCopyState = "reading"
 	// LibraryCopyWaiting is a copy that does not play while the copy that plays in its place is
-	// not listed or can't be read: it is neither an extra nor broken until the walk settles it.
+	// not listed or can't be read: it is neither an extra nor broken. It stays so for as long as
+	// that copy is the one that plays: a broken copy the arr manages keeps playing, since the walk
+	// ranks the arr's file first, so the readable copy beside it waits.
 	LibraryCopyWaiting LibraryCopyState = "waiting"
 )
 
