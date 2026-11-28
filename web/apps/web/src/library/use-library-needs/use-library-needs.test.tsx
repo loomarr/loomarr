@@ -36,6 +36,7 @@ const need = (id: string, candidates: ReturnType<typeof candidate>[]) => ({
   files: [{ path: `/media/movies/${id}.mkv`, size: 1, ready: true }],
   candidates,
   searched: true,
+  folder: "Movies",
 });
 
 // The wiring: a guess is offered as the best only when its name agrees; an answer the server

@@ -16,7 +16,7 @@ import (
 
 // The extra-copy trash (#2151 decision 37, step 10e). Remove extra copy moves a copy that never
 // plays into TrashDir/<date>/ under its media folder: the same share, so the move is a rename,
-// and a mistake is undone by moving the file back. A complete walk of the folder empties each
+// and a mistake is undone by moving the file back (trashundo.go). A complete walk of the folder empties each
 // day's folder TrashKeep after that day. TrashDir holds a .ignore, so walks and watches skip it.
 
 const (
@@ -38,16 +38,17 @@ var (
 )
 
 // RemoveExtraCopy is "Remove extra copy": path, one of the title's files that never plays, moves to
-// its media folder's trash and leaves the title, and the folder is passed over. store.ErrNotFound
-// when the title has no such present file; ErrPlays when it is the copy that plays;
-// ErrPlayingCopyUnseen when no copy that plays in its place is on disk now. One removal runs at a
-// time, from reading the title to marking the file gone, so a second sees what the first did.
-func (l *Library) RemoveExtraCopy(ctx context.Context, id, path string) error {
+// its media folder's trash and leaves the title, and the folder is passed over. It answers with the
+// token that RestoreExtraCopy takes to undo it. store.ErrNotFound when the title has no such present
+// file; ErrPlays when it is the copy that plays; ErrPlayingCopyUnseen when no copy that plays in its
+// place is on disk now. One removal runs at a time, from reading the title to marking the file gone,
+// so a second sees what the first did.
+func (l *Library) RemoveExtraCopy(ctx context.Context, id, path string) (string, error) {
 	l.removing.Lock()
 	defer l.removing.Unlock()
 	d, err := l.Item(ctx, id, false)
 	if err != nil {
-		return err
+		return "", err
 	}
 	for i, f := range d.Files {
 		if f.Path != path {
@@ -58,24 +59,26 @@ func (l *Library) RemoveExtraCopy(ctx context.Context, id, path string) error {
 		// be on disk too.
 		twins := playsInPlaceOf(d.Files, i)
 		if len(twins) == 0 {
-			return ErrPlays
+			return "", ErrPlays
 		}
 		if !slices.ContainsFunc(twins, func(g ItemFile) bool { return l.disk().File(ctx, g.Path) }) {
-			return ErrPlayingCopyUnseen
+			return "", ErrPlayingCopyUnseen
 		}
 		now := l.now()
-		if err := moveToTrash(f.Root, f.Path, now); err != nil {
-			return fmt.Errorf("%w: %w", ErrTrash, err)
+		moved, err := moveToTrash(f.Root, f.Path, now)
+		if err != nil {
+			return "", fmt.Errorf("%w: %w", ErrTrash, err)
 		}
 		// Loomarr moved it, so it is gone now: no walk has to find it missing, and no guard
 		// against mass removals holds it.
 		if err := l.ItemStore.RemoveLibraryFile(ctx, f.Path, now); err != nil {
-			return err
+			return "", err
 		}
 		l.pass([]librarystore.LibraryFilePath{{Root: f.Root, Path: f.Path}})
-		return nil
+		moved.Item = id
+		return l.undoToken(moved)
 	}
-	return store.ErrNotFound
+	return "", store.ErrNotFound
 }
 
 // disk is the folders' Disk; the real filesystem when the Library has none.
@@ -87,30 +90,31 @@ func (l *Library) disk() Disk {
 }
 
 // moveToTrash moves path, a file under root, to root's trash for the day of now, keeping its
-// place under root so it can be put back.
-func moveToTrash(root, path string, now time.Time) error {
+// place under root so it can be put back, and says where it went.
+func moveToTrash(root, path string, now time.Time) (trashed, error) {
 	rel, err := filepath.Rel(root, path)
 	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
-		return fmt.Errorf("%s is not under %s", path, root)
+		return trashed{}, fmt.Errorf("%s is not under %s", path, root)
 	}
 	trash := filepath.Join(root, TrashDir)
 	if err := os.MkdirAll(trash, 0o755); err != nil {
-		return err
+		return trashed{}, err
 	}
 	ignore := filepath.Join(trash, ".ignore")
 	if _, err := os.Stat(ignore); errors.Is(err, os.ErrNotExist) {
 		if err := os.WriteFile(ignore, nil, 0o644); err != nil {
-			return err
+			return trashed{}, err
 		}
 	}
-	dst := filepath.Join(trash, now.UTC().Format(time.DateOnly), rel)
+	moved := trashed{Root: root, Rel: rel, Day: now.UTC().Format(time.DateOnly)}
+	dst := filepath.Join(trash, moved.Day, rel)
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
+		return trashed{}, err
 	}
 	if _, err := os.Lstat(dst); err == nil {
-		return fmt.Errorf("%s is already in the trash", dst)
+		return trashed{}, fmt.Errorf("%s is already in the trash", dst)
 	}
-	return os.Rename(path, dst)
+	return moved, os.Rename(path, dst)
 }
 
 // emptyTrash deletes each day's folder in root's trash once TrashKeep has passed since that day.

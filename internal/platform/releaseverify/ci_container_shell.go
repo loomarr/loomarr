@@ -8,102 +8,35 @@ import (
 // normalizeShellContinuations applies the shell's lexical backslash-newline
 // splice without executing or expanding any command text. Both workflow run
 // scalars and logical Make recipes cross this boundary before classification.
+// An escaped backslash, a single-quoted one and one in a comment splice nothing,
+// and neither does one before CRLF: the shell escapes the CR and ends the line.
 func normalizeShellContinuations(source string) string {
-	source = strings.ReplaceAll(source, "\\\r\n", "")
-	return strings.ReplaceAll(source, "\\\n", "")
+	runes := scanShell(source).runes
+	var spliced strings.Builder
+	for index := 0; index < len(runes); index++ {
+		if runes[index].value == '\\' && runes[index].class == shellSyntax {
+			if index+1 < len(runes) && runes[index+1].value == '\n' {
+				index++
+				continue
+			}
+		}
+		spliced.WriteRune(runes[index].value)
+	}
+	return spliced.String()
 }
 
 // shellCommandSubstitutions returns the literal bodies of command and process
 // substitutions without evaluating them. The boolean is false when the lexical
-// shape is ambiguous, which callers reject rather than attempting partial shell
-// parsing.
+// shape is ambiguous, which callers treat as "may acquire" rather than
+// attempting partial shell parsing.
 func shellCommandSubstitutions(command string) ([]string, bool) {
-	var substitutions []string
-	characters := []rune(command)
-	singleQuoted, doubleQuoted, escaped := false, false, false
-	for index := 0; index < len(characters); index++ {
-		character := characters[index]
-		if escaped {
-			escaped = false
-			continue
-		}
-		if character == '\\' && !singleQuoted {
-			escaped = true
-			continue
-		}
-		if character == '\'' && !doubleQuoted {
-			singleQuoted = !singleQuoted
-			continue
-		}
-		if character == '"' && !singleQuoted {
-			doubleQuoted = !doubleQuoted
-			continue
-		}
-		if singleQuoted {
-			continue
-		}
-		if character == '`' {
-			// Legacy backticks require escape-sensitive recursive shell parsing to
-			// distinguish nested execution. No checked-in route needs that grammar,
-			// so fail closed and let only an earlier whole-step authority admit it.
-			return nil, false
-		}
-		if character == '$' && index+1 < len(characters) && characters[index+1] == '(' {
-			end, body, ok := parenthesizedCommandSubstitution(characters, index+1)
-			if !ok {
-				return nil, false
-			}
-			substitutions = append(substitutions, body)
-			index = end
-			continue
-		}
-		if (character == '<' || character == '>') && index+1 < len(characters) && characters[index+1] == '(' {
-			end, body, ok := parenthesizedCommandSubstitution(characters, index+1)
-			if !ok {
-				return nil, false
-			}
-			substitutions = append(substitutions, body)
-			index = end
-		}
+	scan := scanShell(command)
+	// Legacy backticks need escape-sensitive recursive parsing to find nested
+	// execution, so a live one is ambiguous.
+	if scan.err != nil || scan.backticks {
+		return nil, false
 	}
-	return substitutions, !singleQuoted && !doubleQuoted && !escaped
-}
-
-func parenthesizedCommandSubstitution(characters []rune, start int) (int, string, bool) {
-	depth := 1
-	singleQuoted, doubleQuoted, escaped := false, false, false
-	for index := start + 1; index < len(characters); index++ {
-		character := characters[index]
-		if escaped {
-			escaped = false
-			continue
-		}
-		if character == '\\' && !singleQuoted {
-			escaped = true
-			continue
-		}
-		if character == '\'' && !doubleQuoted {
-			singleQuoted = !singleQuoted
-			continue
-		}
-		if character == '"' && !singleQuoted {
-			doubleQuoted = !doubleQuoted
-			continue
-		}
-		if singleQuoted {
-			continue
-		}
-		switch character {
-		case '(':
-			depth++
-		case ')':
-			depth--
-			if depth == 0 {
-				return index, string(characters[start+1 : index]), true
-			}
-		}
-	}
-	return 0, "", false
+	return scan.substitutions, true
 }
 
 func commandContainsProtectedScriptToken(command string) bool {
@@ -274,7 +207,6 @@ func commandWindowContains(tokens []string, start, limit int, want string) bool 
 func shellCommandTokens(command string) []string {
 	var tokens []string
 	var word strings.Builder
-	singleQuoted, doubleQuoted, escaped := false, false, false
 	flush := func() {
 		if word.Len() == 0 {
 			return
@@ -282,71 +214,33 @@ func shellCommandTokens(command string) []string {
 		tokens = append(tokens, word.String())
 		word.Reset()
 	}
-	for _, character := range command {
-		if escaped {
-			word.WriteRune(character)
-			escaped = false
-			continue
-		}
-		if character == '\\' && !singleQuoted {
-			escaped = true
-			continue
-		}
-		if character == '\'' && !doubleQuoted {
-			singleQuoted = !singleQuoted
-			continue
-		}
-		if character == '"' && !singleQuoted {
-			doubleQuoted = !doubleQuoted
-			continue
-		}
-		if !singleQuoted && !doubleQuoted && (strings.ContainsRune(" \t\r\n;&|()`", character)) {
+	for _, character := range scanShell(command).runes {
+		switch {
+		case character.class == shellSyntax:
+		case character.class != shellQuoted && strings.ContainsRune(" \t\r\n;&|()`", character.value):
 			flush()
-			continue
+		default:
+			word.WriteRune(character.value)
 		}
-		word.WriteRune(character)
 	}
 	flush()
 	return tokens
 }
 
 func stripShellComments(command string) string {
-	lines := strings.Split(command, "\n")
-	for lineIndex, line := range lines {
-		singleQuoted, doubleQuoted, escaped := false, false, false
-		for index, character := range line {
-			if escaped {
-				escaped = false
-				continue
-			}
-			if character == '\\' && !singleQuoted {
-				escaped = true
-				continue
-			}
-			if character == '\'' && !doubleQuoted {
-				singleQuoted = !singleQuoted
-				continue
-			}
-			if character == '"' && !singleQuoted {
-				doubleQuoted = !doubleQuoted
-				continue
-			}
-			if character == '#' && !singleQuoted && !doubleQuoted &&
-				(index == 0 || strings.ContainsRune(" \t;&|()", rune(line[index-1]))) {
-				lines[lineIndex] = line[:index]
-				break
-			}
+	var active strings.Builder
+	for _, character := range scanShell(command).runes {
+		if character.class != shellComment {
+			active.WriteRune(character.value)
 		}
 	}
-	return strings.Join(lines, "\n")
+	return active.String()
 }
 
 func shellCommandSegments(command string) [][]string {
 	var segments [][]string
 	var tokens []string
 	var word strings.Builder
-	singleQuoted, doubleQuoted, escaped := false, false, false
-	substitutionDepth := 0
 	flushWord := func() {
 		if word.Len() == 0 {
 			return
@@ -362,48 +256,21 @@ func shellCommandSegments(command string) [][]string {
 		segments = append(segments, tokens)
 		tokens = nil
 	}
-	characters := []rune(command)
-	for index, character := range characters {
-		if escaped {
-			word.WriteRune(character)
-			escaped = false
+	for _, character := range scanShell(command).runes {
+		if character.class == shellSyntax {
 			continue
 		}
-		if character == '\\' && !singleQuoted {
-			escaped = true
-			continue
-		}
-		if character == '\'' && !doubleQuoted {
-			singleQuoted = !singleQuoted
-			continue
-		}
-		if character == '"' && !singleQuoted {
-			doubleQuoted = !doubleQuoted
-			continue
-		}
-		if !singleQuoted && character == '(' && index > 0 && characters[index-1] == '$' {
-			substitutionDepth++
-			word.WriteRune(character)
-			continue
-		}
-		if !singleQuoted && substitutionDepth > 0 {
-			word.WriteRune(character)
-			if character == ')' {
-				substitutionDepth--
-			}
-			continue
-		}
-		if !singleQuoted && !doubleQuoted {
-			if strings.ContainsRune(";&|\n", character) {
+		if character.class != shellQuoted && !character.nested {
+			if strings.ContainsRune(";&|\n", character.value) {
 				flushSegment()
 				continue
 			}
-			if character == ' ' || character == '\t' || character == '\r' {
+			if strings.ContainsRune(" \t\r", character.value) {
 				flushWord()
 				continue
 			}
 		}
-		word.WriteRune(character)
+		word.WriteRune(character.value)
 	}
 	flushSegment()
 	return segments

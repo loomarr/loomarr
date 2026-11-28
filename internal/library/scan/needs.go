@@ -1,9 +1,12 @@
 package scan
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"log/slog"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -24,9 +27,12 @@ type Need struct {
 	Candidates []librarystore.LibraryCandidate
 	// Present is its present files (a series' episodes), in path order.
 	Present []librarystore.LibraryFile
+	// Folder is where it sits, labelled as the Ignored list labels it.
+	Folder string
 }
 
-// Needs lists Needs you: every present title nothing grounds and nobody answered.
+// Needs lists Needs you: every present title nothing grounds and nobody answered, grouped by
+// folder, by sort name within one.
 func (l *Library) Needs(ctx context.Context) ([]Need, error) {
 	needs, err := l.NeedStore.LibraryNeeds(ctx)
 	if err != nil {
@@ -44,28 +50,24 @@ func (l *Library) Needs(ctx context.Context) ([]Need, error) {
 	if err != nil {
 		return nil, err
 	}
+	roots, err := l.rootPaths(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Need, 0, len(needs))
 	for _, n := range needs {
-		out = append(out, Need{LibraryNeed: n, Candidates: candidates[n.ID], Present: files[n.ID]})
+		_, folder, _ := onDisk(n.Kind, n.Origin, files[n.ID], roots)
+		out = append(out, Need{LibraryNeed: n, Candidates: candidates[n.ID], Present: files[n.ID], Folder: folder})
 	}
+	slices.SortStableFunc(out, func(a, b Need) int { return strings.Compare(a.Folder, b.Folder) })
 	return out, nil
 }
 
-// NeedCount is everything Needs you holds, the titles to answer, the shows whose episode order to
-// say and the titles that need a look: the Needs you heading and the nav badge are one number.
+// NeedCount is how many titles Needs you holds: those to answer, the shows whose episode order to
+// say and those that need a look. A title in more than one of these counts once, as the Needs you
+// page counts it. The nav badge and the status line show this number.
 func (l *Library) NeedCount(ctx context.Context) (int, error) {
-	needs, err := l.NeedStore.LibraryNeeds(ctx)
-	if err != nil {
-		return 0, err
-	}
-	orders := 0
-	if l.Orders != nil {
-		if orders, err = l.Orders.LibraryOrderNeedCount(ctx); err != nil {
-			return 0, err
-		}
-	}
-	problems, err := l.ItemStore.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Problems: true})
-	return len(needs) + orders + problems.Total, err
+	return l.NeedStore.LibraryNeedsYouCount(ctx)
 }
 
 // ErrNotCatalogID is a link to an id the catalog does not fetch for the title's kind: the title
@@ -103,6 +105,19 @@ func (l *Library) Ignore(ctx context.Context, itemID string) error {
 	return l.answer(ctx, itemID, librarystore.LibraryAnswer{Ignored: true})
 }
 
+// Keep answers a title that needs the maintainer and has no guess: it is their own, a home video.
+// Its files are written again, which gives it the Home videos genre.
+func (l *Library) Keep(ctx context.Context, itemID string) error {
+	if _, _, err := l.origin(ctx, itemID); err != nil {
+		return err
+	}
+	kept, err := l.NeedStore.KeepLibraryNeed(ctx, itemID, l.now())
+	if err != nil {
+		return err
+	}
+	return l.rewrite(ctx, kept.ID, kept.Origin)
+}
+
 // Unanswer takes a title's answer back. A title nothing else grounds needs the maintainer again.
 func (l *Library) Unanswer(ctx context.Context, itemID string) error {
 	_, origin, err := l.origin(ctx, itemID)
@@ -113,6 +128,26 @@ func (l *Library) Unanswer(ctx context.Context, itemID string) error {
 		return err
 	}
 	return l.rewrite(ctx, itemID, origin)
+}
+
+// IgnoreAll ignores titles waiting in Needs you, all of them or none.
+func (l *Library) IgnoreAll(ctx context.Context, itemIDs []string) error {
+	titles, err := l.NeedStore.IgnoreLibraryNeeds(ctx, itemIDs, l.now())
+	if err != nil {
+		return err
+	}
+	l.rewriteAll(ctx, titles)
+	return nil
+}
+
+// RestoreAll takes back the ignore of titles, all of them or none.
+func (l *Library) RestoreAll(ctx context.Context, itemIDs []string) error {
+	titles, err := l.NeedStore.RestoreLibraryIgnored(ctx, itemIDs)
+	if err != nil {
+		return err
+	}
+	l.rewriteAll(ctx, titles)
+	return nil
 }
 
 // SearchTitles searches the catalog for a title by name, for "Pick a different title". kind ""
@@ -167,12 +202,44 @@ func (l *Library) origin(ctx context.Context, itemID string) (string, librarysto
 // a title's file a copy of another title, which then holds the origin, so that title's files are
 // written again too: taking the link back has to find the file where it went.
 func (l *Library) rewrite(ctx context.Context, itemID string, origin librarystore.LibraryOrigin) error {
+	files, err := l.forget(ctx, itemID, origin)
+	if err != nil {
+		return err
+	}
+	l.pass(files)
+	return nil
+}
+
+// batchRewriteTimeout bounds the rewrite that follows a saved batch.
+const batchRewriteTimeout = time.Minute
+
+// rewriteAll is rewrite for answers already saved together: one pass over all their folders, and
+// a title that fails holds back none of the others. It is best-effort: the answers stand, so a
+// failure is logged, never returned, and a dropped request does not stop it.
+func (l *Library) rewriteAll(ctx context.Context, titles []librarystore.LibraryAnswered) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), batchRewriteTimeout)
+	defer cancel()
+	var files []librarystore.LibraryFilePath
+	var failed []error
+	for _, t := range titles {
+		found, err := l.forget(ctx, t.ID, t.Origin)
+		files, failed = append(files, found...), append(failed, err)
+	}
+	l.pass(files)
+	if err := errors.Join(failed...); err != nil {
+		cmp.Or(l.Log, slog.Default()).WarnContext(ctx, "library: saved answers, but some files aren't queued to be read again",
+			"titles", len(titles), "error", err)
+	}
+}
+
+// forget forgets the identity digests rewrite needs forgotten, and lists the files.
+func (l *Library) forget(ctx context.Context, itemID string, origin librarystore.LibraryOrigin) ([]librarystore.LibraryFilePath, error) {
 	ids := []string{itemID}
 	if l.Inventory != nil {
 		key := inventory.OriginKey{Authority: inventory.AuthorityID(origin.Authority), ExternalItemID: origin.Key}
 		holder, ok, err := l.Inventory.Item(ctx, inventory.ItemRef{Origin: &key})
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if ok && string(holder.ID) != itemID {
 			ids = append(ids, string(holder.ID))
@@ -182,12 +249,11 @@ func (l *Library) rewrite(ctx context.Context, itemID string, origin librarystor
 	for _, id := range ids {
 		found, err := l.NeedStore.RewriteLibraryItemFiles(ctx, id)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		files = append(files, found...)
 	}
-	l.pass(files)
-	return nil
+	return files, nil
 }
 
 func (l *Library) now() time.Time {

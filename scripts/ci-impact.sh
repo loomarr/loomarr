@@ -106,6 +106,22 @@ classify() {
       select_gate playout_bench
       ;;
   esac
+  # The watermark goldens are rendered on amd64. The macOS agent job runs them on arm64, which
+  # catches any arithmetic that rounds per architecture (#4646). go.mod pins the Go toolchain and
+  # go.sum golang.org/x/image: a compiler or x/image bump can change which products fuse. The path
+  # is the classifier's grain, so any go.sum change selects the job.
+  case "$path" in
+    internal/playout/watermark/*|go.mod|go.sum)
+      select_gate agent
+      ;;
+  esac
+  # The macOS agent job is the only run under bash 3.2 and BSD tools, so every script and Make
+  # module selects it (#4641). This adds the gate without claiming the path.
+  case "$path" in
+    scripts/*|mk/*)
+      select_gate agent
+      ;;
+  esac
   case "$path" in
     scripts/playout-bench-coverage*)
       # The hardware bench's coverage summary; releaseverify runs its contract test.
@@ -540,6 +556,12 @@ classify() {
       select_gate contracts
       select_gate go
       ;;
+    internal/playout/watermark/raster/LICENSE)
+      # The BSD licence of the forked golang.org/x/image/vector rasterizer. No code reads it;
+      # THIRD_PARTY_NOTICES.md cites it.
+      known=true
+      select_gate contracts
+      ;;
     internal/playout/watermark/fonts/*)
       # The Plate bug's typeface and its licence, embedded by render.go. They change the rendered
       # watermark and the production image, but no native client reads them.
@@ -595,6 +617,8 @@ classify() {
       known=true
       case "$path" in
         scripts/agent*|scripts/changed-paths*|scripts/go-direct-impact*|scripts/test-affected*) select_gate agent; select_gate policy ;;
+        # `make bootstrap`/`doctor` and the macOS playout bench share this install.
+        scripts/macos-ffmpeg.sh|scripts/macos-ffmpeg.pins) select_gate agent; select_gate policy; select_gate playout_bench ;;
         scripts/apple-compilation-cache*) select_gate contracts; select_gate apple_mobile; select_gate apple_tv; select_gate policy ;;
         scripts/ci-ffmpeg.sh|scripts/go-mod-download.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
         # Rewrites the FFmpeg pin evidence that internal/platform/releaseverify (contracts) verifies.

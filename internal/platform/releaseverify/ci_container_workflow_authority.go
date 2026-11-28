@@ -167,6 +167,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		},
 		"ci-agent.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make agent-harness-test": exactWorkflowStep(2, "Worktree isolation, claims, leases, and process ownership", workflowStepAuthority{targets: []string{"agent-harness-test"}}),
+			// The watermark goldens are rendered on amd64; this arm64 runner proves they match (#4646).
+			"go test ./internal/playout/watermark/...": exactWorkflowStep(3, "Watermark render on arm64", workflowStepAuthority{}),
+			"go test -skip '^(TestParseTimeMakeExecutionProbesAreRealGNUmakeRedCases|TestVerifyCIContainerDownloadsAllowsHarmlessTargetAndPatternSpecificAssignments|TestVerifyCIContainerDownloadsRejectsTargetAndPatternSpecificShellAssignments)$' ./internal/platform/releaseverify/": exactWorkflowStep(4, "Release scripts on bash 3.2", workflowStepAuthority{}),
 		}),
 		"ci-android.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
@@ -440,8 +443,8 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"macos": {
 					condition: playoutBenchMacOSGate,
 					steps: map[string]workflowStepAuthority{
-						playoutBenchRecordReport: playoutBenchRecordStep(5),
-						"./scripts/playout-bench-macos-ffmpeg.sh \"$RUNNER_TEMP/loomarr-ffmpeg\"": exactWorkflowStep(2, "Install FFmpeg", workflowStepAuthority{allowsAcquisition: true}),
+						playoutBenchRecordReport:                                    playoutBenchRecordStep(5),
+						"./scripts/macos-ffmpeg.sh \"$RUNNER_TEMP/loomarr-ffmpeg\"": exactWorkflowStep(2, "Install FFmpeg", workflowStepAuthority{allowsAcquisition: true}),
 						"make playout-bench": exactWorkflowStep(3, "Bench the VideoToolbox pipeline", workflowStepAuthority{
 							targets: []string{"playout-bench"},
 							environment: map[string]string{

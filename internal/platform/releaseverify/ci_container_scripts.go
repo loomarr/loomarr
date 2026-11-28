@@ -56,6 +56,11 @@ func newRepositoryScriptAudit(root string) (*repositoryScriptAudit, error) {
 		if filepath.Ext(path) != ".sh" && !hasShellShebang(source) {
 			return nil
 		}
+		// A script the reader cannot follow to its end hides whatever comes
+		// after, so it fails the check whether or not a route reaches it.
+		if err := checkShellSyntax(string(source)); err != nil {
+			return fmt.Errorf("%s: %w", relative, err)
+		}
 		audit.sources[relative] = string(source)
 		return nil
 	})
@@ -78,6 +83,10 @@ func (audit *repositoryScriptAudit) commandAcquires(command string) bool {
 }
 
 func (audit *repositoryScriptAudit) commandAcquiresDepth(command string, depth int) bool {
+	// A command the reader cannot follow may acquire.
+	if checkShellSyntax(command) != nil {
+		return true
+	}
 	command = stripShellComments(command)
 	if depth > repositoryScriptTraversalLimit || scriptTextContainsContainerAcquisition(command) {
 		return true
@@ -128,7 +137,7 @@ func (audit *repositoryScriptAudit) commandAcquiresDepth(command string, depth i
 	}
 	substitutions, unambiguous := shellCommandSubstitutions(command)
 	if !unambiguous {
-		return false
+		return true
 	}
 	for _, substitution := range substitutions {
 		if audit.commandAcquiresDepth(substitution, depth+1) {

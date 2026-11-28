@@ -56,6 +56,7 @@ exact React Native the app installs.
 | TMDB, Seerr, media server, Tunarr | hand-written thin clients | each uses a handful of endpoints; generating from full upstream specs couples us to their churn |
 | Image rendering | required Rust `loomarr-image` worker over a versioned manifest protocol | contains decoder crashes and memory outside the Go process without cgo ([images](images.md)) |
 | Rust image crates | `serde`, `sha2`, `base64`, `thumbhash`, `image`, `fast_image_resize`, `webp`, `webp-animation`, `ravif` (via `image`) | bounded protocol, content identity, placeholders, static and animated decode/encode; locked by `Cargo.lock`, fuzz graph separate |
+| Watermark rasterizer | `internal/playout/watermark/raster`, forked from `golang.org/x/image/vector` v0.47.0 at `c437a9130dcb` (BSD-3-Clause, `raster/LICENSE`) | the watermark render is bit-identical across CPU architectures (#4646): upstream's amd64 SSE4.1 accumulator sums in another order than its pure Go, and arm64 fuses its curve flattening into multiply-adds. The fork is pure Go, adds in the SSE4.1 lane order and converts every product; upstream remains for fonts and as the test-only reference the fork must equal bit for bit |
 | Backend tests | stdlib `testing`, `testcontainers-go` | Postgres conformance |
 | Vulnerability scan | `govulncheck` (`go run` at a pinned version, never a `go.mod` dependency) | `make vuln`, weekly in `go-maintenance.yml`, fails on a known vulnerability a Loomarr call path reaches, standard library included; unreached advisories don't fail. Never ships in the product |
 
@@ -96,9 +97,8 @@ replace local transcription and vision; those modalities stay operator choices.
 | Import boundaries | `dependency-cruiser` (with TypeScript 6 for its parser) | packages are deep modules; the gate blocks bypassing their entry points |
 | Unused code | `knip` 6 (root devDependency, `web/knip.ts`) and Go `deadcode` (`go run`, never a `go.mod` dependency) | knip fails `make fe` on a new unused file, export or dependency; `deadcode` cannot see code reached only from build-tagged tests, so it reports monthly against a committed baseline (`deadcode.yml`) instead of gating. Neither ships in the product |
 | Web routing | TanStack Router | typed routes sharing the Query client |
-| Legacy web styling | Tailwind + shadcn/ui on Base UI + CVA | only on surfaces not yet migrated (#970); removed when migration completes |
 | Web dialog behaviour | `@base-ui/react` Dialog, behind `@loomarr/design-system`'s `Dialog` (`dialog.web.tsx`; native is a React Native `Modal`) | focus trap, Escape, outside press, labelling, scroll lock and focus return without a hand-rolled modal (#2147). Callers never import Base UI for a dialog |
-| Legacy usage ledger | `@babel/parser` (root devDependency; TypeScript 7 has no JS parser API) | `web/scripts/check-legacy-usage.mjs` counts the legacy stack (including raw type-size and type-weight/tracking/leading utilities, which belong to the design system's `Text` roles) per production file against `web/apps/web/legacy-usage.json`; `make fe` fails when a count rises or a new file appears, and `pnpm legacy:update` only shrinks it (#970). Its `RETIRED` list names the last files allowed to import a copied component the design system has replaced, or its Base UI primitive; any other file fails, tests and stories included, and an unused allowance fails too (#2147). Never ships in the product |
+| Legacy usage ledger | `@babel/parser` (root devDependency; TypeScript 7 has no JS parser API) | `web/scripts/check-legacy-usage.mjs` counts the legacy stack (CVA, Base UI, copied components, direct lucide-react imports and raw `<button>` elements) per production file against `web/apps/web/legacy-usage.json`; `make fe` fails when a count rises or a new file appears, and `pnpm legacy:update` only shrinks it (#970). Its `RETIRED` list names the last files allowed to import a copied component the design system has replaced, or its Base UI primitive; any other file fails, tests and stories included, and an unused allowance fails too (#2147). Never ships in the product |
 | Lineup reordering | `@dnd-kit` | accessible, keyboard-capable sortable list |
 | Web previews | `react-dom` portal behind the shared design system | keep contextual detail outside scrolling and clipping ancestors; native adapters do not load the web renderer |
 | DOM test environment | jsdom 30.0.1 | exercise preview focus, pointer and viewport lifecycles without a browser; the shared UI package uses the same exact pin |
@@ -121,6 +121,12 @@ Containers a contributor starts on demand, digest-pinned in their Compose file. 
 | Tool | Why |
 | --- | --- |
 | CloudBeaver Community (`docker/compose.db-view.yaml`) | `make db-view` browses a copy of a SQLite or Postgres database in the browser. Of the popular browser viewers it covers both engines and takes preconfigured read-only connections; Apache-2.0 |
+
+On Apple Silicon, development and tests also use a static arm64 `ffmpeg`/`ffprobe` 9.0.2
+(martin-riedl build, pinned by SHA-256 in `scripts/macos-ffmpeg.pins`), because Homebrew's bottle has
+no `drawtext`. It is never shipped: `make bootstrap` installs it in the gitignored `.tools/ffmpeg/bin`,
+and `make doctor` checks it. A test that needs it takes `FFMPEG_PATH`, then that directory, then
+`PATH` (`internal/testkit/mediatool`); a build installed from other pins fails the test.
 
 ## Documentation tooling
 

@@ -5,7 +5,6 @@ import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomar
 import { useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
-import { cn } from "@/lib/utils";
 import type { PeopleRosterProps } from "./people-roster.type";
 
 const ROLE_FILTERS = [
@@ -75,7 +74,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
       {users === undefined ? (
         <Grid gap="2" role="status" aria-label="Loading people">
           {[0, 1, 2].map((item) => (
-            <Card className="animate-pulse" height={80} key={item} />
+            <Card data-pulse="loading" height={80} key={item} />
           ))}
         </Grid>
       ) : users.length === 0 ? (
@@ -95,10 +94,10 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
       ) : (
         <ListGroup aria-labelledby="people-roster-title">
           {filtered.map((user) => (
-            <div
+            <Stack
               key={user.id}
               aria-current={selectedId === user.id ? "true" : undefined}
-              className={cn(selectedId === user.id && "bg-accent")}
+              backgroundColor={selectedId === user.id ? "surfaceElevated" : undefined}
             >
               <RowCard
                 action={
@@ -128,7 +127,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
                 ]}
                 title={user.name}
               />
-            </div>
+            </Stack>
           ))}
         </ListGroup>
       )}

@@ -1,7 +1,7 @@
 import * as discoveryApi from "@loomarr/api/endpoints/discovery";
 import type { DiscoveryFeedbackDTO } from "@loomarr/api/models/discoveryFeedbackDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Stack, Text, VisuallyHidden } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 
 type DiscoveryFeedbackAction = "keep" | "less" | "never" | "surprise";
@@ -81,7 +81,9 @@ const DiscoveryFeedbackControls = ({
   return (
     <Stack align={compact ? "end" : "start"} gap="1">
       <Stack direction="row" gap="1" render="fieldset" wrap>
-        <legend className="sr-only">Taste feedback for {name}</legend>
+        <legend style={{ padding: 0 }}>
+          <VisuallyHidden>Taste feedback for {name}</VisuallyHidden>
+        </legend>
         {actions.map(({ action, label }) => (
           <Action
             key={action}

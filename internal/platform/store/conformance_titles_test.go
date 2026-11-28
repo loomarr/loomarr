@@ -25,6 +25,20 @@ func sampleRecord(key provision.Key, state provision.State, deadline time.Time) 
 	}
 }
 
+// saveLibraryItems stores a bare movie for each id, so a title or airing that names it satisfies
+// its foreign key to library_items (#2793). The store's twin of testkit.SaveLibraryItems, which
+// this package can't import.
+func saveLibraryItems(t *testing.T, st Store, ids ...string) {
+	t.Helper()
+	items := make([]LibraryItem, 0, len(ids))
+	for _, id := range ids {
+		items = append(items, LibraryItem{ID: id, Kind: "movie", Name: id, SortName: id})
+	}
+	if err := st.SaveLibraryItems(context.Background(), items, time.Unix(1, 0)); err != nil {
+		t.Fatalf("save library items %v: %v", ids, err)
+	}
+}
+
 func testTitleRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
@@ -145,6 +159,7 @@ func testUpsertIdempotent(t *testing.T, newStore NewStoreFunc) {
 	}
 	rec.State = provision.Available
 	rec.LibraryID = "999"
+	saveLibraryItems(t, s, rec.LibraryID)
 	if err := s.UpsertTitle(ctx, rec); err != nil {
 		t.Fatal(err) // second upsert on same key must update, not error
 	}

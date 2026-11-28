@@ -761,9 +761,7 @@ report is not a finished encode, so the rung encodes it again.
 - A black or silent span of at least 5 s, or a frozen span of at least 10 s, goes to review.
   Freeze alone never auto-rejects. For a clip Loomarr found, review is a fail (doubt means drop,
   #3838 decision 18): the clip is rejected as `undecided`, the measured span is its detail, and
-  upkeep lets it go after the reject rest. A clip an operator added keeps the review. A found clip
-  held under the earlier rule is re-judged once per start from the report in its sidecar, through
-  the same evaluation, so nothing re-encodes.
+  upkeep lets it go after the reject rest. A clip an operator added keeps the review.
 - **Dead air at the edges is left off the air, not cut from the file (#3384).** Black that is also
   silent and touches a clip's start or end is dead air; each pipeline pass gives every airable clip
   without one an **air window** from its playback report, leaving 0.2 s of the dead air at a

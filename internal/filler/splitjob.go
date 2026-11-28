@@ -51,11 +51,11 @@ var ErrSplitParentNotHeld = errors.New("filler: the split's parent clip is alrea
 // failures must remain errors so the pipeline retries them.
 var ErrConditioningOwnershipMismatch = errors.New("filler: conditioning publication ownership mismatch")
 
-// The splitter (§10, V34): turns a compilation clip into a REVIEWED set of
-// clips. Propose runs detection and persists a SplitProposal; Confirm writes
-// the operator's edited cut list to the catalog and removes the compilation.
-// NOTHING enters the catalog from Propose — review is not optional, because
-// detection quality is a property of the source (measured 69–100%, plan §6.4).
+// The splitter (§10, V34) turns a compilation clip into clips. Propose runs detection and persists
+// a SplitProposal; nothing enters the catalog from it. A cut list reaches the catalog only through
+// confirmation: the pipeline's unattended cut (autocut.go) confirms the cuts that pass its gate,
+// and an operator can confirm an edited list. Detection alone is never trusted, because its quality
+// is a property of the source (measured 69–100%, plan §6.4).
 
 // SplitStore is the slice of the store the splitter needs (mirrors sync.go's
 // pattern — declared here so filler doesn't import store; app bridges them).

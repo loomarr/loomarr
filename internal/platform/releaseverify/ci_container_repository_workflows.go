@@ -151,6 +151,9 @@ func verifyWorkflowContainerAcquisition(
 					break // A job may itself be named run; executable step shapes are checked by their owner.
 				}
 				command := value.Value
+				if err := verifyWorkflowExpressions(workflowName, value); err != nil {
+					return err
+				}
 				if _, authorized := authorizedRuns[value]; authorized {
 					break
 				}
@@ -217,6 +220,9 @@ func verifyWorkflowSourceBoundSteps(workflow *yaml.Node, workflowName string, pr
 			run, ok := mappingValue(step, "run")
 			if !ok || run.Kind != yaml.ScalarNode {
 				continue
+			}
+			if err := verifyWorkflowExpressions(workflowName, run); err != nil {
+				return err
 			}
 			if authorized, authorityErr := authorities.authorize(workflowName, jobName, step, run, stepIndex, protectedTargets, scripts); authorityErr != nil {
 				return authorityErr
@@ -285,7 +291,11 @@ func mergedScalarEnvironment(inherited map[string]string, scope *yaml.Node) (map
 }
 
 func workflowRouteCandidateWithScripts(command string, environment map[string]string, scripts *repositoryScriptAudit) bool {
-	active := stripShellComments(normalizeShellContinuations(command))
+	masked, _, err := maskWorkflowExpressions(command)
+	if err != nil {
+		return true
+	}
+	active := stripShellComments(normalizeShellContinuations(masked))
 	if scripts != nil && scripts.commandAcquires(active) {
 		return true
 	}

@@ -7,8 +7,7 @@
 // Handle.Begin, so a write that also touches core tables can share one transaction. Dependencies
 // point this way only: the core store never imports this package (#1747).
 //
-// Enrichment, research, admission decisions, split proposals and the per-clip ingest pipeline live
-// here too, and write the clip columns they change only through the core's store.ClipTx, inside
+// Enrichment, research, split proposals and the per-clip ingest pipeline live here too, and write the clip columns they change only through the core's store.ClipTx, inside
 // their own transaction (#1747).
 //
 // ⚠ The filler store overrides one core method, DeleteClipsNotIn, to prune the pipeline rows and

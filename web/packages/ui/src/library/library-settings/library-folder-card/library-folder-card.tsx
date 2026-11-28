@@ -6,6 +6,7 @@ import { folderName, joinNames } from "../../library-words";
 import { AUTHORITY_NAMES } from "../authority-names";
 import type { LibraryFolder } from "../library-settings.type";
 import { MOUNT_HINT } from "../mount-hint";
+import { StopUsing } from "../stop-using";
 
 const foundThrough = (folder: LibraryFolder) => {
   if (folder.addedByHand) return "Added by you";
@@ -54,7 +55,7 @@ const LibraryFolderCard = ({
         <>
           <StatusDot label="Empty" tone="warn" />
           <Text textRole="body" tone="warning">
-            This folder is empty — is the drive connected?
+            This folder is empty. Is the drive connected?
           </Text>
         </>
       ) : folder.readable ? (
@@ -91,9 +92,7 @@ const LibraryFolderCard = ({
         </Action>
       )}
       {folder.inUse ? (
-        <Action onPress={() => onUseFolder(folder.path, false)} variant="ghost">
-          Stop using
-        </Action>
+        <StopUsing folder={folder} onConfirm={() => onUseFolder(folder.path, false)} />
       ) : folder.readable ? (
         <Action onPress={() => onUseFolder(folder.path, true)} variant="outline">
           Use this folder

@@ -5,14 +5,7 @@ import { act, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  type LibraryNeed,
-  LibraryNeedsCards,
-  LibraryNeedsStrip,
-  type LibraryNeedsStripProps,
-  type LibraryOrderNeed,
-  type LibraryProblem,
-} from "../index";
+import { type LibraryNeed, LibraryNeedsCards, type LibraryOrderNeed, type LibraryProblem } from "../index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -156,119 +149,6 @@ const kestrel: LibraryOrderNeed = {
   ],
 };
 
-const strip = (over: Partial<LibraryNeedsStripProps> = {}) => (
-  <LibraryNeedsStrip
-    needs={[]}
-    onLink={vi.fn()}
-    onOpenNeeds={vi.fn()}
-    onOpenTitle={vi.fn()}
-    orders={[]}
-    problems={[]}
-    {...over}
-  />
-);
-
-describe("LibraryNeedsStrip", () => {
-  it("is nothing when nothing needs you", () => {
-    const { host, cleanup } = mount(strip());
-    expect(host.textContent).toBe("");
-    cleanup();
-  });
-
-  it("lists the titles that need a look after the questions, and opens one", () => {
-    const onOpenTitle = vi.fn();
-    const { host, button, cleanup } = mount(
-      strip({
-        needs: [need("90000811")],
-        onOpenTitle,
-        problems: [
-          problem("90000821", { unplayable: 1 }),
-          problem("90000822", { kind: "series", name: "Night Ferry", unplayable: 3 }),
-        ],
-      }),
-    );
-    expect(host.textContent).toContain("Needs you (3)");
-    const text = host.textContent ?? "";
-    expect(text.indexOf("is this the 1996 movie?")).toBeLessThan(
-      text.indexOf("Quiet Orchard — can't be played"),
-    );
-    expect(text).toContain("Night Ferry — 3 episodes can't be played");
-    act(() => button("See why").click());
-    expect(onOpenTitle).toHaveBeenCalledWith("90000821");
-    cleanup();
-  });
-
-  it("asks about the first four and offers the rest", () => {
-    const needs = ["90000811", "90000812", "90000813", "90000814", "90000815", "90000816"].map((id) =>
-      need(id),
-    );
-    const { host, button, cleanup } = mount(strip({ needs }));
-    expect(host.textContent).toContain("Needs you (6)");
-    expect(host.textContent).toContain("Paper Kites — is this the 1996 movie?");
-    act(() => button("Show 2 more").click());
-    expect(host.textContent).not.toContain("Show 2 more");
-    cleanup();
-  });
-
-  it("links the guess, says it's sorted, and lets it go", async () => {
-    const onLink = vi.fn(() => Promise.resolve());
-    const needs = [need("90000811")];
-    const { host, show, button, cleanup } = mount(strip({ needs, onLink }));
-    act(() => button("Yes, that's it").click());
-    expect(onLink).toHaveBeenCalledWith("90000811", { namespace: "tmdb", value: "90000901" });
-    // The refetch no longer holds it; the answered row stays until it has been seen.
-    show(strip({ onLink }));
-    expect(host.textContent).toContain("Done — Paper Kites is sorted.");
-    expect(host.textContent).toContain("Needs you (0)");
-    await act(async () => {
-      vi.advanceTimersByTime(1500);
-    });
-    expect(host.textContent).toBe("");
-    cleanup();
-  });
-
-  it("puts the question back when the answer fails, and says it wasn't saved", async () => {
-    const onLink = vi.fn(() => Promise.reject(new Error("no")));
-    const { host, button, cleanup } = mount(strip({ needs: [need("90000811")], onLink }));
-    await act(async () => button("Yes, that's it").click());
-    expect(host.textContent).toContain("Paper Kites — is this the 1996 movie?");
-    expect(host.textContent).toContain("Couldn't save your answer. Try again in a moment.");
-    cleanup();
-  });
-
-  it("sends a title with no guess to Needs you", () => {
-    const onOpenNeeds = vi.fn();
-    const { host, button, cleanup } = mount(
-      strip({
-        needs: [need("90000812", { best: undefined, files: ["/media/movies/disc2/title_t01.mkv"] })],
-        onOpenNeeds,
-      }),
-    );
-    expect(host.textContent).toContain("title_t01.mkv — we're not sure what this is");
-    act(() => button("Find it").click());
-    expect(onOpenNeeds).toHaveBeenCalled();
-    cleanup();
-  });
-
-  // The question has more than two answers, so the strip only opens Needs you.
-  it("asks about a show's episode order first, and opens Needs you", () => {
-    const onOpenNeeds = vi.fn();
-    const { host, button, cleanup } = mount(
-      strip({ needs: [need("90000811")], orders: [tidewater, kestrel], onOpenNeeds }),
-    );
-    const text = host.textContent ?? "";
-    expect(text).toContain("Needs you (3)");
-    expect(text).toContain("Tidewater — which order are the episodes in?");
-    expect(text).toContain("Kestrel Bay — 1 episode keeps its file name");
-    expect(text.indexOf("Tidewater")).toBeLessThan(text.indexOf("Paper Kites"));
-    act(() => button("Choose").click());
-    expect(onOpenNeeds).toHaveBeenCalledTimes(1);
-    act(() => button("See why").click());
-    expect(onOpenNeeds).toHaveBeenCalledTimes(2);
-    cleanup();
-  });
-});
-
 describe("LibraryNeedsCards", () => {
   const cards = (over: Partial<Parameters<typeof LibraryNeedsCards>[0]> = {}) => (
     <LibraryNeedsCards
@@ -301,7 +181,7 @@ describe("LibraryNeedsCards", () => {
     // The title card below isn't primary: only the first card is.
     act(() => button("Use this order").click());
     expect(onChooseOrder).toHaveBeenCalledWith("90000831", { choice: "order", orderId: "90000799a" });
-    expect(host.textContent).toContain("Done — Tidewater uses DVD order.");
+    expect(host.textContent).toContain("Done. Tidewater uses DVD order.");
     expect(host.textContent).toContain("5 episodes now have their names and details from TMDB.");
     cleanup();
   });
@@ -315,7 +195,7 @@ describe("LibraryNeedsCards", () => {
     act(() => keep?.click());
     act(() => button("Keep the file names").click());
     expect(onChooseOrder).toHaveBeenCalledWith("90000831", { choice: "files" });
-    expect(host.textContent).toContain("Done — Tidewater keeps the names in its files.");
+    expect(host.textContent).toContain("Done. Tidewater keeps the names in its files.");
     expect(host.textContent).not.toContain("from TMDB");
     cleanup();
   });
@@ -324,9 +204,9 @@ describe("LibraryNeedsCards", () => {
     const { host, cleanup } = mount(cards({ needs: [], orders: [tidewater] }));
     expect(host.textContent).toContain("5 episodes");
     act(() => host.querySelectorAll("[aria-expanded]")[0]?.click());
-    expect(host.textContent).toContain("S02E06 — Tidewater.S02E06.mkv");
-    expect(host.textContent).toContain("S02E08 — Tidewater.S02E08.mkv");
-    expect(host.textContent).not.toContain("S02E09 —");
+    expect(host.textContent).toContain("S02E06: Tidewater.S02E06.mkv");
+    expect(host.textContent).toContain("S02E08: Tidewater.S02E08.mkv");
+    expect(host.textContent).not.toContain("S02E09:");
     expect(host.textContent).toContain("and 2 more");
     cleanup();
   });
@@ -398,7 +278,7 @@ describe("LibraryNeedsCards", () => {
     const { host, cleanup } = mount(cards());
     expect(host.textContent).toContain("Is this Paper Kites (1996)?");
     expect(host.textContent).toContain("The name and length match; the year doesn't.");
-    expect(host.textContent).toContain("1 file");
+    expect(host.textContent).toContain("90000811.mkv");
     cleanup();
   });
 
@@ -471,14 +351,79 @@ describe("LibraryNeedsCards", () => {
     second.cleanup();
   });
 
-  it("gives a title with both problems two entries", () => {
+  const seeWhys = (host: Host) =>
+    Array.from(host.querySelectorAll('[role="button"], button')).filter(
+      (n) => n.textContent?.trim() === "See why",
+    );
+
+  it("gives a title with both problems one card listing both", () => {
     const { host, cleanup } = mount(
       cards({ needs: [], problems: [problem("90000823", { extraBytes: 4_300_000_000, unplayable: 2 })] }),
     );
-    expect(host.textContent).toContain("Needs you (2)");
+    expect(host.textContent).toContain("Needs you (1)");
     expect(host.textContent).toContain("Quiet Orchard can't be played");
     expect(host.textContent).toContain("Quiet Orchard has an extra copy");
+    expect(seeWhys(host)).toHaveLength(1);
     cleanup();
+  });
+
+  it("puts a problem on the card of a title that also needs a name", async () => {
+    const onLink = vi.fn(() => Promise.resolve());
+    const onOpenTitle = vi.fn();
+    const extra = problem("90000811", { extraBytes: 4_300_000_000 });
+    const { host, button, cleanup } = mount(cards({ problems: [extra], onLink, onOpenTitle }));
+    expect(host.textContent).toContain("Needs you (1)");
+    expect(host.textContent).toContain("90000811.mkv");
+    expect(host.textContent).toContain("Is this Paper Kites (1996)?");
+    expect(host.textContent).toContain("Quiet Orchard has an extra copy");
+    expect(host.textContent).not.toContain("Needs a look");
+    expect(seeWhys(host)).toHaveLength(1);
+    act(() => button("See why").click());
+    expect(onOpenTitle).toHaveBeenCalledWith("90000811");
+    await act(async () => button("Yes, that's it").click());
+    expect(onLink).toHaveBeenCalledWith("90000811", { namespace: "tmdb", value: "90000901" });
+    // Naming the title leaves its extra copy waiting, on a card of its own once the answer leaves.
+    expect(host.textContent).toContain("Needs you (1)");
+    await act(async () => vi.runAllTimers());
+    expect(host.textContent).not.toContain("Is this Paper Kites (1996)?");
+    expect(host.textContent).toContain("Needs a look");
+    expect(host.textContent).toContain("Quiet Orchard has an extra copy");
+    cleanup();
+  });
+
+  it("puts a problem on the card of a show that also asks its episode order", () => {
+    const damaged = problem(tidewater.id, { kind: "series", name: "Tidewater", unplayable: 1 });
+    const { host, cleanup } = mount(cards({ needs: [], orders: [tidewater], problems: [damaged] }));
+    expect(host.textContent).toContain("Needs you (1)");
+    expect(host.textContent).toContain("Which order are your Tidewater episodes in?");
+    expect(host.textContent).toContain("Tidewater has an episode that can't be played");
+    expect(host.textContent).not.toContain("Needs a look");
+    expect(seeWhys(host)).toHaveLength(1);
+    cleanup();
+  });
+
+  it("gives the episode order and problem cards touch targets on a phone", () => {
+    const view = globalThis as unknown as { innerWidth: number };
+    const wide = view.innerWidth;
+    view.innerWidth = 390;
+    const { host, cleanup } = mount(
+      cards({
+        needs: [],
+        orders: [tidewater, kestrel],
+        problems: [problem("90000824", { extraBytes: 4_300_000_000 })],
+      }),
+    );
+    const heights = Array.from(host.querySelectorAll('[role="button"], button'))
+      .filter((n) =>
+        ["Use this order", "That's fine", "See the show", "See why", "1 episode"].includes(
+          n.textContent?.trim() ?? "",
+        ),
+      )
+      .map((n) => (n as unknown as { style: { minHeight: string } }).style.minHeight);
+    expect(heights.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(heights)).toEqual(new Set(["48px"]));
+    cleanup();
+    view.innerWidth = wide;
   });
 
   it("picks one of the other guesses", () => {

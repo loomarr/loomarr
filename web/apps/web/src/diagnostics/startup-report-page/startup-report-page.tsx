@@ -14,6 +14,7 @@ import {
   TableHeaderCell,
   TableRow,
   Text,
+  TextLink,
 } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
@@ -42,7 +43,12 @@ const stateWord = (state: HealthReport["state"]): StatusWordKind | undefined => 
 };
 
 const Verdict = ({ word }: { word: StatusWordKind | undefined }) =>
-  word ? <StatusWord kind={word} /> : <span className="text-muted-foreground">Checking</span>;
+  word ? (
+    <StatusWord kind={word} />
+  ) : (
+    // A plain span, so the word takes the size of the heading or cell it sits in.
+    <span style={{ color: "var(--contentSecondary)" }}>Checking</span>
+  );
 
 const CheckIdentity = ({ check }: { check: HealthCheck }) => (
   <>
@@ -73,18 +79,18 @@ const HealthCheckRow = ({ check }: { check: HealthCheck }) => (
       </time>
     </TableCell>
     <TableCell verticalAlign="top">
-      <span className="text-muted-foreground">
+      <Text as="span" textRole="compact" tone="secondary">
         {check.detail || "—"}
         {check.remediationRoute && (
           <>
             {/* A real separator, so the detail and its link never run together as text (#2734). */}
             <span aria-hidden> · </span>
-            <a className="text-signal underline underline-offset-4" href={check.remediationRoute}>
+            <TextLink href={check.remediationRoute} tone="primary">
               Open
-            </a>
+            </TextLink>
           </>
         )}
-      </span>
+      </Text>
     </TableCell>
   </TableRow>
 );
@@ -145,9 +151,18 @@ const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
   const currentHealth = health.data?.status === 200 ? health.data.data : undefined;
 
   const content = (
-    <div
-      className={embedded ? "space-y-6" : "min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-6"}
+    <Stack
       aria-live="polite"
+      gap="6"
+      {...(embedded
+        ? {}
+        : {
+            flex: 1,
+            flexShrink: 1,
+            minHeight: 0,
+            overflowY: "auto" as const,
+            padding: { base: 16, sm: 24 },
+          })}
     >
       {currentHealth ? (
         <CurrentHealthCard report={currentHealth} />
@@ -156,7 +171,7 @@ const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
           Checking app health…
         </Text>
       )}
-    </div>
+    </Stack>
   );
   if (embedded) return content;
   return (

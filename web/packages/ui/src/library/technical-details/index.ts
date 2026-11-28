@@ -1,1 +1,1 @@
-export { lengthPhrase, TechnicalDetails } from "./technical-details";
+export { lengthPhrase, picturePhrase, soundPhrase, TechnicalDetails } from "./technical-details";

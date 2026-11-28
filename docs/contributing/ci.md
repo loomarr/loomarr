@@ -824,16 +824,19 @@ The serial lanes hold two kinds of package: media certification that must not co
 worker while asserting latency, and CPU-heavy packages whose own parallelism needs a runner to
 themselves.
 
-Since #2716 there are three serial lanes, `certification-1/3` to `certification-3/3`. The highest
-lane number in `scripts/go-certification-lanes.tsv` is the count, and the workflow matrix, cache
-keys and release-verifier pins name each lane. Two lanes passed the 15-minute job limit once
-`internal/channels/schedule` and `internal/demolibrary` joined them. Four lanes could not balance:
-merge-group run 43037503041 measured store alone at 291s, and no four-way split of the rest stayed
-inside the 125% balance budget. The three lanes model 322s, 336s and 378s.
+There are five serial lanes, `certification-1/5` to `certification-5/5` (#4538). The highest lane
+number in `scripts/go-certification-lanes.tsv` is the count, and the workflow matrix, cache keys and
+release-verifier pins name each lane. A package the race policy runs in both phases
+(`RACE_AND_PLAIN`, such as `internal/channels/schedule`) costs a serial lane twice, as it does an
+ordinary one. Store, schedule and the api+app pair each come close to the 469s lane budget, so no
+four-way split fits it; the five lanes model 444s, 332s, 434s, 427s and 337s.
 
 `make go-shard-verify SHARDS=2` rejects missing or duplicated packages, a package above the
 per-package cap, an ordinary aggregate or a bounded-worker or serial-certification makespan above
-those derived budgets, or more than 25% imbalance within any group. Aggregate and worker limits are
+those derived budgets, more than 25% imbalance between ordinary lanes, or more than 50% between
+serial lanes. The serial lanes hold a few indivisible packages of very different sizes, and no
+assignment of them stays within 25%; imbalance there costs only idle runner time, while the lane
+budget still bounds each lane. Aggregate and worker limits are
 deliberately separate: package overlap
 cannot hide unbounded total work, and a balanced aggregate cannot hide one saturated worker. Release
 verification additionally rejects an unreviewed serial package, grouping or workflow lane. The

@@ -94,13 +94,23 @@ func TestSeason_OutOfSeasonClipNeverAirs(t *testing.T) {
 // the adapter's clock, as programming's seasonality is.
 func TestSeason_PreviewWithoutAnInstantUsesTheClock(t *testing.T) {
 	cat := seasonCatalog(0, 3)
-	july := seasonAdapter(cat, nil, schedule.Calendar{Country: "US"}, seasonJul14)
-	if july.HasPool(context.Background(), "ch", 1, seasonSel) {
-		t.Error("in July a Christmas-only catalog has no pool")
+	airsAnAd := func(a *pod.Adapter) bool {
+		p, err := a.Preview(context.Background(), "ch", 1, seasonSel)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range p.Entries {
+			if e.Role == pod.Commercial {
+				return true
+			}
+		}
+		return false
 	}
-	december := seasonAdapter(cat, nil, schedule.Calendar{Country: "US"}, seasonDec20)
-	if !december.HasPool(context.Background(), "ch", 1, seasonSel) {
-		t.Error("in December a Christmas-only catalog has a pool")
+	if airsAnAd(seasonAdapter(cat, nil, schedule.Calendar{Country: "US"}, seasonJul14)) {
+		t.Error("in July a Christmas-only catalog airs a Christmas ad")
+	}
+	if !airsAnAd(seasonAdapter(cat, nil, schedule.Calendar{Country: "US"}, seasonDec20)) {
+		t.Error("in December a Christmas-only catalog airs no Christmas ad")
 	}
 }
 

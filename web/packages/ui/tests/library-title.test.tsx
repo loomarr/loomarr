@@ -5,7 +5,12 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
-import { LibraryTitle, type LibraryTitleDetail, type LibraryTitleProps } from "../index";
+import {
+  LibraryTitle,
+  type LibraryTitleDetail,
+  type LibraryTitleFix,
+  type LibraryTitleProps,
+} from "../index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -17,7 +22,10 @@ type Host = Parameters<typeof createRoot>[0] & {
 };
 const doc = (
   globalThis as unknown as {
-    document: { body: { append(n: unknown): void }; createElement(t: string): Host };
+    document: {
+      body: { append(n: unknown): void; querySelectorAll(s: string): ArrayLike<El> };
+      createElement(t: string): Host;
+    };
   }
 ).document;
 
@@ -75,11 +83,10 @@ const SERIES: LibraryTitleDetail = {
   channels: [],
 };
 
-const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleProps> = {}) => {
+// An admin's page unless `member`, whose page has no fixes.
+const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleFix> = {}, member = false) => {
   const onBack = vi.fn();
-  const props: LibraryTitleProps = {
-    title,
-    onBack,
+  const fix: LibraryTitleFix = {
     onUpdateDetails: vi.fn(() => Promise.resolve()),
     onCheckFiles: vi.fn(() => Promise.resolve()),
     onSearch: vi.fn(() => Promise.resolve([])),
@@ -88,16 +95,21 @@ const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleProps> = {}
     onRemoveExtra: vi.fn(() => Promise.resolve()),
     ...over,
   };
+  const props: LibraryTitleProps = { title, onBack, fix: member ? undefined : fix };
   const host = doc.createElement("div");
   doc.body.append(host);
   const root = createRoot(host);
-  act(() =>
-    root.render(
-      <LoomarrProvider theme="dark">
-        <LibraryTitle {...props} />
-      </LoomarrProvider>,
-    ),
-  );
+  const draw = (next: LibraryTitleProps) =>
+    act(() =>
+      root.render(
+        <LoomarrProvider theme="dark">
+          <LibraryTitle {...next} />
+        </LoomarrProvider>,
+      ),
+    );
+  draw(props);
+  // The same page again, with some of its fixes changed.
+  const rerender = (changed: Partial<LibraryTitleFix>) => draw({ ...props, fix: { ...fix, ...changed } });
   const button = (name: string) => {
     const hit = Array.from(host.querySelectorAll('[role="button"], button')).find((n) =>
       n.textContent?.trim().startsWith(name),
@@ -105,17 +117,33 @@ const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleProps> = {}
     if (!hit) throw new Error(`missing button: ${name}`);
     return hit;
   };
+  // The seasons' tabs, in the order drawn.
+  const tabs = () => Array.from(host.querySelectorAll('[role="tab"]'));
+  const tab = (name: string) => {
+    const hit = tabs().find((n) => n.textContent?.trim().startsWith(name));
+    if (!hit) throw new Error(`missing tab: ${name}`);
+    return hit;
+  };
   const cleanup = () => {
     act(() => root.unmount());
     host.remove();
   };
-  return { host, onBack, props, button, cleanup };
+  // The Fix menu is portalled to the body, so its items are looked up there.
+  const menuItems = () => Array.from(doc.body.querySelectorAll('[role="menuitem"]'));
+  const openFix = () => act(async () => button("Fix").click());
+  const fixItem = async (name: string) => {
+    await openFix();
+    const item = menuItems().find((n) => n.textContent?.trim() === name);
+    if (!item) throw new Error(`missing menu item: ${name}`);
+    await act(async () => item.click());
+  };
+  return { host, onBack, props, rerender, button, tab, tabs, cleanup, menuItems, openFix, fixItem };
 };
 
 describe("LibraryTitle", () => {
   it("shows a movie's facts in plain words and its file behind Technical details", () => {
     const { host, button, cleanup } = render(MOVIE);
-    expect(host.textContent).toContain("1996 · 1 h 38 min");
+    expect(host.textContent).toContain("1996·1 h 38 min");
     expect(host.textContent).toContain("R");
     expect(host.textContent).toContain("Crime, Thriller");
     expect(host.textContent).toContain("bursting at the seams");
@@ -180,7 +208,8 @@ describe("LibraryTitle", () => {
     const onRemoveExtra = vi.fn(() => Promise.reject(new Error("read-only")));
     const { host, button, cleanup } = render({ ...MOVIE, files: [...MOVIE.files, extra] }, { onRemoveExtra });
     expect(host.textContent).toContain("An extra copy is taking 4.0 GB");
-    await act(async () => button("Remove extra copy").click());
+    // The action says which file it moves.
+    await act(async () => button("Remove Paper Kites DVD.mkv").click());
     expect(onRemoveExtra).toHaveBeenCalledWith(extra.path);
     expect(host.textContent).toContain(
       "Couldn't remove it. Loomarr may not be allowed to change this folder.",
@@ -196,16 +225,16 @@ describe("LibraryTitle", () => {
     fine.cleanup();
 
     const movie = render({ ...MOVIE, unplayable: 1 });
-    expect(movie.host.textContent).toContain("This movie can't be played — the file may be damaged");
-    await act(async () => movie.button("Check again").click());
-    expect(movie.props.onCheckFiles).toHaveBeenCalled();
+    expect(movie.host.textContent).toContain("This movie can't be played. The file may be damaged");
+    await act(async () => movie.button("Check files again").click());
+    expect(movie.props.fix?.onCheckFiles).toHaveBeenCalled();
     expect(movie.host.textContent).toContain("Checked just now");
     movie.cleanup();
 
     const onCheckFiles = vi.fn(() => Promise.reject(new Error("offline")));
     const series = render({ ...SERIES, unplayable: 2 }, { onCheckFiles });
-    expect(series.host.textContent).toContain("2 episodes can't be played — the files may be damaged");
-    await act(async () => series.button("Check again").click());
+    expect(series.host.textContent).toContain("2 episodes can't be played. The files may be damaged");
+    await act(async () => series.button("Check files again").click());
     expect(series.host.textContent).toContain("Couldn't check the files just now. Try again in a moment.");
     series.cleanup();
   });
@@ -222,6 +251,7 @@ describe("LibraryTitle", () => {
 
     const series = render(SERIES);
     expect(series.host.querySelectorAll('[aria-label="On these channels"]').length).toBe(0);
+    expect(series.host.textContent).toContain("Not on a channel yet");
     series.cleanup();
   });
 
@@ -233,15 +263,19 @@ describe("LibraryTitle", () => {
   });
 
   it("lists a series' seasons, specials last, each opening to its episodes", () => {
-    const { host, button, cleanup } = render(SERIES);
+    const { host, button, tab, tabs, cleanup } = render(SERIES);
     // Specials aren't a season, so the count leaves them out.
-    expect(host.textContent).toContain("1999 · 1 season");
+    expect(host.textContent).toContain("1999·1 season");
     act(() => button("Technical details").click());
     expect(host.textContent).toContain("Description from TMDB. Episode names from Sonarr.");
     expect(host.textContent).toContain("Not recognised yet");
-    const text = host.textContent ?? "";
-    expect(text.indexOf("Season 1")).toBeLessThan(text.indexOf("Specials"));
-    act(() => button("Season 1").click());
+    // The data lists the specials first.
+    expect(tabs().map((n) => n.textContent?.replace(/\d+$/, "").trim())).toEqual(["Season 1", "Specials"]);
+    act(() => tab("Specials").click());
+    expect(host.textContent).toContain("Christmas at the Harbour");
+    expect(host.textContent).not.toContain("Pilot");
+    act(() => tab("Season 1").click());
+    expect(host.textContent).not.toContain("Christmas at the Harbour");
     expect(host.textContent).toContain("1–2");
     expect(host.textContent).toContain("Pilot");
     // An episode with no name yet reads by its number, and one not read yet says so.
@@ -259,10 +293,10 @@ describe("LibraryTitle", () => {
         { number: 0, episodes: [{ id: "90000921", name: "Harbour - The Movie", number: 0, ready: true }] },
       ],
     };
-    const { host, button, cleanup } = render(unnumbered);
-    act(() => button("Specials").click());
+    const { host, tab, cleanup } = render(unnumbered);
+    act(() => tab("Specials").click());
     expect(host.textContent).toContain("Harbour - The Movie");
-    expect(host.textContent).not.toContain("0Harbour - The Movie");
+    expect(host.textContent).not.toContain("0. Harbour - The Movie");
     cleanup();
   });
 
@@ -281,9 +315,9 @@ describe("LibraryTitle", () => {
         },
       ],
     };
-    const { host, button, cleanup } = render(waiting, { onChooseOrder });
+    const { host, button, tab, cleanup } = render(waiting, { onChooseOrder });
     expect(host.textContent).toContain("We're not sure which order these episodes are in.");
-    act(() => button("Season 1").click());
+    act(() => tab("Season 1").click());
     expect(host.textContent?.match(/Name from the file/g)).toHaveLength(1);
     act(() => button("Choose").click());
     expect(onChooseOrder).toHaveBeenCalled();
@@ -296,20 +330,228 @@ describe("LibraryTitle", () => {
 
   it("checks the files again and says so, and says when updating the details failed", async () => {
     const onUpdateDetails = vi.fn(() => Promise.reject(new Error("tmdb down")));
-    const { host, props, button, cleanup } = render(MOVIE, { onUpdateDetails });
-    await act(async () => button("Check files again").click());
-    expect(props.onCheckFiles).toHaveBeenCalled();
+    const { host, props, fixItem, cleanup } = render(MOVIE, { onUpdateDetails });
+    await fixItem("Check files again");
+    expect(props.fix?.onCheckFiles).toHaveBeenCalled();
     expect(host.textContent).toContain("Checked just now");
-    await act(async () => button("Update details").click());
+    await fixItem("Update details");
     expect(onUpdateDetails).toHaveBeenCalled();
     expect(host.textContent).toContain("Couldn't update the details just now. Try again in a moment.");
     cleanup();
   });
 
-  it("sends a title its app decides to that app", () => {
+  it("sets a dot between each of the facts", () => {
+    const { host, cleanup } = render({ ...MOVIE, score: 7.4 });
+    // The first dot is outside the clipped row (the story measures that); none trails the last fact.
+    expect(host.textContent).toContain("·1996·1 h 38 min·R·Crime, Thriller·Score 7.4/10A small-town");
+    cleanup();
+  });
+
+  const READ_FILE = {
+    ...MOVIE.files[0],
+    path: "/media/tv/Harbour Lights/S01E01.mkv",
+    container: "matroska,webm",
+    streams: [
+      {
+        index: 0,
+        kind: "video",
+        codec: "h264",
+        profile: "High",
+        frameRate: "24000/1001",
+        bitrate: 9_800_000,
+      },
+      { index: 1, kind: "audio", codec: "ac3", channels: 6, languageName: "English", default: true },
+      { index: 2, kind: "audio", codec: "aac", channels: 2, languageName: "French" },
+      { index: 3, kind: "subtitle", codec: "subrip", languageName: "Spanish", forced: true },
+    ],
+    chapters: [{ startMillis: 0, name: "Cold open" }, { startMillis: 3_725_000 }],
+  } as unknown as LibraryTitleDetail["files"][number];
+
+  it("opens an episode's own file from its row, and closes it", async () => {
+    const onEpisodeFiles = vi.fn(() => Promise.resolve([READ_FILE]));
+    const { host, button, cleanup } = render(SERIES, { onEpisodeFiles });
+    expect(onEpisodeFiles).not.toHaveBeenCalled();
+    await act(async () => button("1–2. Pilot").click());
+    expect(onEpisodeFiles).toHaveBeenCalledWith("90000901");
+    expect(host.textContent).toContain("This episode's file");
+    expect(host.textContent).toContain(READ_FILE.path);
+    await act(async () => button("1–2. Pilot").click());
+    expect(host.textContent).not.toContain("This episode's file");
+    cleanup();
+  });
+
+  it("says when an episode's file couldn't be loaded", async () => {
+    const onEpisodeFiles = vi.fn(() => Promise.reject(new Error("offline")));
+    const { host, button, cleanup } = render(SERIES, { onEpisodeFiles });
+    await act(async () => button("1–2. Pilot").click());
+    expect(host.textContent).toContain("Couldn't load this file's details. Try again in a moment.");
+    cleanup();
+  });
+
+  it("shows a file's tracks and chapters behind More, to an admin only", () => {
+    const { host, button, cleanup } = render({ ...MOVIE, files: [READ_FILE] });
+    act(() => button("Technical details").click());
+    expect(host.textContent).not.toContain("Cold open");
+    act(() => button("More about this file").click());
+    for (const words of [
+      "Matroska (MKV)",
+      "H.264, High profile",
+      "9.8 Mb/s",
+      "23.976 frames a second",
+      "None (standard range)",
+      "EnglishSurround 5.1 · AC-3 · default",
+      "FrenchStereo · AAC",
+      "SpanishForced · SRT",
+      "0:00 · Cold open",
+      "1:02:05 · Chapter 2",
+    ]) {
+      expect(host.textContent).toContain(words);
+    }
+    cleanup();
+
+    const member = render({ ...MOVIE, files: [READ_FILE] }, {}, true);
+    expect(member.host.textContent).not.toContain("More about this file");
+    expect(member.host.textContent).not.toContain("Cold open");
+    member.cleanup();
+  });
+
+  it("names each More by its file, and holds it to the touch target on a phone", () => {
+    const view = globalThis as unknown as { innerWidth: number };
+    const wide = view.innerWidth;
+    view.innerWidth = 390;
+    const second = { ...READ_FILE, path: "/media/tv/Harbour Lights/copy.mkv" };
+    const { host, button, cleanup } = render({ ...MOVIE, files: [READ_FILE, second] });
+    act(() => button("Technical details").click());
+    const mores = Array.from(host.querySelectorAll('[aria-label^="More about this file"]')) as (El & {
+      style: { minHeight: string };
+    })[];
+    expect(mores.map((n) => n.getAttribute("aria-label"))).toEqual([
+      "More about this file, S01E01.mkv",
+      "More about this file, copy.mkv",
+    ]);
+    expect(mores.map((n) => n.style.minHeight)).toEqual(["48px", "48px"]);
+    cleanup();
+    view.innerWidth = wide;
+  });
+
+  it("adds the folder to a file's name only when two files share it", async () => {
+    const at = (path: string, extra: boolean) => ({ ...READ_FILE, path, extra });
+    const { host, button, cleanup } = render({
+      ...MOVIE,
+      files: [
+        at("/media/Kites/Kites.mkv", false),
+        at("/media/Kites/Extras/Kites.mkv", true),
+        at("/media/Kites/Kites DVD.mkv", true),
+      ],
+    });
+    act(() => button("Technical details").click());
+    expect(
+      Array.from(host.querySelectorAll('[aria-label^="More about this file"]')).map((n) =>
+        n.getAttribute("aria-label"),
+      ),
+    ).toEqual([
+      "More about this file, Kites.mkv in Kites",
+      "More about this file, Kites.mkv in Extras",
+      "More about this file, Kites DVD.mkv",
+    ]);
+    expect(button("Remove Kites.mkv in Extras")).toBeTruthy();
+    expect(button("Remove Kites DVD.mkv")).toBeTruthy();
+    // The card says the way back once the toast's Undo has gone.
+    expect(host.textContent).toContain(
+      "You can undo right after. After that, the file is in the .loomarr-trash folder inside its media folder for 30 days.",
+    );
+    cleanup();
+  });
+
+  it("announces an episode's file loading and failing in a region already there", async () => {
+    let fail: (reason: Error) => void = () => {};
+    const onEpisodeFiles = () =>
+      new Promise<never>((_, reject) => {
+        fail = reject;
+      });
+    const { host, button, cleanup } = render(SERIES, { onEpisodeFiles });
+    const regions = () => Array.from(host.querySelectorAll('[aria-live="polite"]'));
+    const before = regions();
+    await act(async () => button("1–2. Pilot").click());
+    const said = () => before.map((n) => n.textContent).join("");
+    expect(said()).toBe("Loading the file's details…");
+    await act(async () => fail(new Error("offline")));
+    expect(said()).toBe("Couldn't load this file's details. Try again in a moment.");
+    cleanup();
+  });
+
+  it("reads an open episode's file again when the title is read again", async () => {
+    const onEpisodeFiles = vi
+      .fn<(id: string) => Promise<LibraryTitleDetail["files"]>>()
+      .mockResolvedValueOnce([READ_FILE])
+      .mockResolvedValue([{ ...READ_FILE, path: "/media/tv/Harbour Lights/replaced.mkv" }]);
+    const { host, button, rerender, cleanup } = render(SERIES, { onEpisodeFiles, episodeFilesAt: 1 });
+    await act(async () => button("1–2. Pilot").click());
+    expect(host.textContent).toContain(READ_FILE.path);
+    await act(async () => rerender({ episodeFilesAt: 2 }));
+    expect(host.textContent).toContain("replaced.mkv");
+    cleanup();
+  });
+
+  it("gives a member episode rows that don't open", () => {
+    const { host, button, cleanup } = render(SERIES, {}, true);
+    expect(host.textContent).toContain("Pilot");
+    expect(() => button("1–2. Pilot")).toThrow();
+    cleanup();
+  });
+
+  it("puts focus back on Fix when Wrong title? is closed", async () => {
+    const { button, fixItem, cleanup } = render(MOVIE);
+    await fixItem("Wrong title?");
+    const focused = () =>
+      (globalThis as unknown as { document: { activeElement: unknown } }).document.activeElement;
+    const close = button("Close") as El & { focus(): void };
+    close.focus();
+    await act(async () => close.click());
+    expect(focused()).toBe(button("Fix"));
+    cleanup();
+  });
+
+  it("has its live region in place before a fix says anything", async () => {
+    const { host, fixItem, cleanup } = render(MOVIE, { onCheckFiles: () => new Promise<void>(() => {}) });
+    const live = host.querySelectorAll('[aria-live="polite"]');
+    expect(live.length).toBe(1);
+    const region = live[0];
+    expect(region?.textContent).toBe("");
+    await fixItem("Check files again");
+    expect(region?.textContent).toBe("Checking…");
+    cleanup();
+  });
+
+  it("shows Wrong title? as open in the menu, and closes it", async () => {
+    const { host, button, fixItem, openFix, menuItems, cleanup } = render(MOVIE);
+    await fixItem("Wrong title?");
+    await openFix();
+    expect(menuItems().map((n) => n.textContent?.trim())).toContain("Wrong title? (open)");
+    await act(async () => button("Close").click());
+    expect(host.textContent).not.toContain("Radarr decides what this is");
+    cleanup();
+  });
+
+  it("holds the Fix menu's items to the touch target on a phone", async () => {
+    const view = globalThis as unknown as { innerWidth: number };
+    const wide = view.innerWidth;
+    view.innerWidth = 390;
+    const { menuItems, openFix, cleanup } = render(MOVIE);
+    await openFix();
+    expect(menuItems().map((n) => (n as El & { style: { minHeight: string } }).style.minHeight)).toEqual([
+      "48px",
+      "48px",
+      "48px",
+    ]);
+    cleanup();
+    view.innerWidth = wide;
+  });
+
+  it("sends a title its app decides to that app", async () => {
     const onOpenApp = vi.fn();
-    const { host, button, cleanup } = render(MOVIE, { onOpenApp });
-    act(() => button("Wrong title?").click());
+    const { host, button, fixItem, cleanup } = render(MOVIE, { onOpenApp });
+    await fixItem("Wrong title?");
     expect(host.textContent).toContain("Radarr decides what this is. Change it in Radarr.");
     expect(host.textContent).not.toContain("Search for the title");
     act(() => button("Open Radarr").click());
@@ -317,9 +559,9 @@ describe("LibraryTitle", () => {
     cleanup();
   });
 
-  it("says a title its file decides is fixed in the file", () => {
-    const { host, button, cleanup } = render({ ...MOVIE, match: { by: "file" } });
-    act(() => button("Wrong title?").click());
+  it("says a title its file decides is fixed in the file", async () => {
+    const { host, fixItem, cleanup } = render({ ...MOVIE, match: { by: "file" } });
+    await fixItem("Wrong title?");
     expect(host.textContent).toContain(
       "This file's name says what it is. Rename it, or change its NFO, to fix it.",
     );
@@ -329,16 +571,54 @@ describe("LibraryTitle", () => {
 
   it("lets the household pick the title, or forget an answer it gave", async () => {
     const unknown = render(SERIES);
-    act(() => unknown.button("Wrong title?").click());
+    await unknown.fixItem("Wrong title?");
     expect(unknown.host.textContent).toContain("Search for the title");
     expect(unknown.host.textContent).not.toContain("Forget my answer");
     unknown.cleanup();
 
     const onForget = vi.fn(() => Promise.resolve());
     const answered = render({ ...SERIES, match: { by: "you" } }, { onForget });
-    act(() => answered.button("Wrong title?").click());
+    await answered.fixItem("Wrong title?");
     await act(async () => answered.button("Forget my answer").click());
     expect(onForget).toHaveBeenCalled();
     answered.cleanup();
+  });
+
+  // #4476: a member reads the page with nothing to fix, so nothing on it calls an admin route.
+  it("gives a member the story and the channels, with no fixes and no file cards", () => {
+    const extra = {
+      ...MOVIE.files[0],
+      path: "/media/movies/Paper Kites (1996)/copy.mkv",
+      size: 4_300_000_000,
+      extra: true,
+    } as LibraryTitleDetail["files"][number];
+    const { host, props, cleanup } = render(
+      { ...MOVIE, files: [...MOVIE.files, extra], unplayable: 1 },
+      {},
+      true,
+    );
+    expect(host.textContent).toContain(MOVIE.name);
+    // No Fix menu, so none of what it holds can be reached.
+    expect(
+      Array.from(host.querySelectorAll('[role="button"], button')).map((n) => n.textContent?.trim()),
+    ).not.toContain("Fix");
+    for (const word of [
+      "Update details",
+      "Check files again",
+      "Wrong title?",
+      "Technical details",
+      "can't be played",
+      "Remove Paper Kites",
+    ]) {
+      expect(host.textContent).not.toContain(word);
+    }
+    act(() => {
+      const back = Array.from(host.querySelectorAll('[role="button"], button')).find((n) =>
+        n.textContent?.includes("Library"),
+      );
+      back?.click();
+    });
+    expect(props.onBack).toHaveBeenCalled();
+    cleanup();
   });
 });

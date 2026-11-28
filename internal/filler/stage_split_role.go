@@ -6,12 +6,13 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/split"
+	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 func structureRoleEvidenceFromVision(source split.SourceAsset, segment split.Segment, promptVersion, prompt string, frames [][]byte, response llm.Response, out visionOutput, assessedAt time.Time) (*split.RoleEvidence, error) {
 	role := split.Role(strings.TrimSpace(out.Role))
-	if !split.ValidRole(role) || strings.TrimSpace(out.RoleReason) == "" {
+	if !structure.ValidRole(role) || strings.TrimSpace(out.RoleReason) == "" {
 		return nil, nil
 	}
 	var charge *split.RoleCharge

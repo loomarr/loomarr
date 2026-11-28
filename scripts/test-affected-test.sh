@@ -109,4 +109,22 @@ if PATH="$TEST_BIN:$PATH" REAL_GO="$REAL_GO" RUN_LOG="$RUN_LOG" \
 	exit 1
 fi
 
+# Deleted and renamed-away test files are not run; a deleted source still selects its surviving test.
+git -C "$TEST_REPO" reset --hard -q HEAD
+mkdir -p "$TEST_REPO/web/scripts"
+printf 'process.exit(1);\n' >"$TEST_REPO/web/scripts/gone.test.mjs"
+printf 'process.exit(1);\n' >"$TEST_REPO/web/scripts/old-name.test.cjs"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$TEST_REPO/scripts/gone-test.sh"
+git -C "$TEST_REPO" add web/scripts scripts/gone-test.sh
+git -C "$TEST_REPO" commit -qm doomed
+git -C "$TEST_REPO" rm -q web/scripts/gone.test.mjs scripts/gone-test.sh scripts/tool.sh
+git -C "$TEST_REPO" mv web/scripts/old-name.test.cjs web/scripts/new-name.txt
+: >"$RUN_LOG"
+PATH="$TEST_BIN:$PATH" REAL_GO="$REAL_GO" RUN_LOG="$RUN_LOG" \
+	LOOMARR_REPO_ROOT="$TEST_REPO" "$RUNNER" HEAD >/dev/null 2>&1 || {
+	echo 'test-affected-test: a deleted test file was run' >&2
+	exit 1
+}
+grep -q 'owned script test' "$RUN_LOG"
+
 echo 'test-affected-test: ok'

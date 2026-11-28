@@ -87,6 +87,8 @@ const ADMIN_NAV: NavItem[] = [
 const MEMBER_NAV: NavItem[] = [
   { to: "/dashboard", label: "Home", icon: "home" },
   { to: "/guide", label: "Guide", icon: "schedule" },
+  // The titles, read-only (#4476): a member browses the wall, a title's page and Collections.
+  { to: "/library", label: "Library", icon: "library" },
   { to: "/requests", label: "Requests", icon: "requests" },
   { to: "/settings/notifications", label: "Notifications", icon: "settings" },
   { to: "/help", label: "Help", icon: "help" },

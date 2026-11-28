@@ -77,15 +77,20 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
             {children}
           </Text>
         ),
+        // The scroll margin keeps a heading a link jumped to clear of the page header.
         h2: ({ children }) => (
-          <Text as="h3" className="mt-4 scroll-mt-20" id={headingId(children)} strong textRole="headline">
-            {children}
-          </Text>
+          <Stack paddingTop={16}>
+            <Text as="h3" id={headingId(children)} strong style={{ scrollMarginTop: 80 }} textRole="headline">
+              {children}
+            </Text>
+          </Stack>
         ),
         h3: ({ children }) => (
-          <Text as="h4" className="mt-3 scroll-mt-20" id={headingId(children)} textRole="heading">
-            {children}
-          </Text>
+          <Stack paddingTop={12}>
+            <Text as="h4" id={headingId(children)} style={{ scrollMarginTop: 80 }} textRole="heading">
+              {children}
+            </Text>
+          </Stack>
         ),
         p: ({ children }) => (
           <Text as="p" textRole="compact">
@@ -93,12 +98,12 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
           </Text>
         ),
         ul: ({ children }) => (
-          <Stack className="ml-5 list-disc" gap="1.5" render="ul">
+          <Stack gap="1.5" marginLeft={20} render="ul" style={{ listStyleType: "disc" }}>
             {children}
           </Stack>
         ),
         ol: ({ children }) => (
-          <Stack className="ml-5 list-decimal" gap="1.5" render="ol">
+          <Stack gap="1.5" marginLeft={20} render="ol" style={{ listStyleType: "decimal" }}>
             {children}
           </Stack>
         ),
@@ -108,7 +113,14 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
           </Text>
         ),
         code: ({ children }) => (
-          <code className="bg-static-800 rounded-sm px-1 py-0.5 font-mono text-[0.85em]">{children}</code>
+          <Text
+            as="code"
+            style={{ backgroundColor: "var(--surfaceElevated)", borderRadius: 2, padding: "2px 4px" }}
+            textRole="mono"
+            tone="primary"
+          >
+            {children}
+          </Text>
         ),
         pre: ({ children }) => (
           <Card overflowX="auto" padding={12}>

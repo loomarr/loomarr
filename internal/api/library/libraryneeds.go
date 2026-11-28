@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -26,6 +27,12 @@ func (s *Handlers) registerLibraryNeeds(api huma.API) {
 		Tags:        []string{"library"},
 	}, httpcore.RoleAdmin), s.listLibraryNeeds)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "listLibraryIgnored", Method: http.MethodGet, Path: "/v1/library/ignored",
+		Summary:     "Titles you ignored",
+		Description: "Every ignored title, newest first. Take back its answer to bring it back.",
+		Tags:        []string{"library"},
+	}, httpcore.RoleAdmin), s.listLibraryIgnored)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "linkLibraryItem", Method: http.MethodPost, Path: "/v1/library/items/{id}/link",
 		Summary:     "Say which title this is",
 		Description: "Links a title to a TMDB title. Its files are read again with it.",
@@ -38,9 +45,27 @@ func (s *Handlers) registerLibraryNeeds(api huma.API) {
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
 	}, httpcore.RoleAdmin), s.ignoreLibraryItem)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "keepLibraryItem", Method: http.MethodPost, Path: "/v1/library/items/{id}/keep",
+		Summary:     "Keep a title as a home video",
+		Description: "Says a title waiting in Needs you with no guess is your own: it is kept as it is, as a home video.",
+		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
+	}, httpcore.RoleAdmin), s.keepLibraryItem)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "ignoreLibraryNeeds", Method: http.MethodPost, Path: "/v1/library/needs/ignore",
+		Summary:     "Ignore several titles",
+		Description: "Ignores titles waiting in Needs you, such as the ones under one folder: all of them or none.",
+		Tags:        []string{"library"},
+	}, httpcore.RoleAdmin), s.ignoreLibraryNeeds)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "restoreLibraryIgnored", Method: http.MethodPost, Path: "/v1/library/ignored/restore",
+		Summary:     "Bring back several ignored titles",
+		Description: "Undoes the ignore of each title: all of them or none.",
+		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
+	}, httpcore.RoleAdmin), s.restoreLibraryIgnored)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "unanswerLibraryItem", Method: http.MethodDelete, Path: "/v1/library/items/{id}/answer",
 		Summary:     "Take back an answer",
-		Description: "Undoes a link or an ignore. A title nothing else identifies needs you again.",
+		Description: "Undoes a link, an ignore or a home video. A title nothing else identifies needs you again.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
 	}, httpcore.RoleAdmin), s.unanswerLibraryItem)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
@@ -82,6 +107,19 @@ type libraryNeedDTO struct {
 	Searched   bool                  `json:"searched" doc:"False until TMDB has been searched for it"`
 	Candidates []libraryCandidateDTO `json:"candidates" doc:"Best first; empty when a search found nothing"`
 	Files      []libraryNeedFileDTO  `json:"files"`
+	Folder     string                `json:"folder" doc:"Where it sits, from its media folder's name down; group cards by it"`
+}
+
+type libraryTitleIDsInput struct {
+	Body struct {
+		IDs []string `json:"ids" minItems:"1" maxItems:"10000" uniqueItems:"true" doc:"The titles"`
+	}
+}
+
+type ignoreLibraryNeedsOutput struct {
+	Body struct {
+		IDs []string `json:"ids" doc:"The titles ignored; send them to restore them"`
+	}
 }
 
 // libraryNeedFileDTO is a file as a Needs you card lists it: no stream facts, which a title's page
@@ -182,6 +220,7 @@ func (s *Handlers) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibr
 			Item: libraryItemOf(n.LibraryItemSummary, posters, admin), Searched: n.Searched != "",
 			Candidates: make([]libraryCandidateDTO, 0, len(n.Candidates)),
 			Files:      make([]libraryNeedFileDTO, 0, len(n.Present)),
+			Folder:     n.Folder,
 		}
 		for _, c := range n.Candidates {
 			dto.Candidates = append(dto.Candidates, libraryCandidateDTO{
@@ -197,6 +236,46 @@ func (s *Handlers) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibr
 			dto.Files = append(dto.Files, libraryNeedFileDTO{Path: f.Path, Size: f.Size, Ready: f.Header != librarystore.LibraryHeaderPending})
 		}
 		out.Body.Needs = append(out.Body.Needs, dto)
+	}
+	return out, nil
+}
+
+type listLibraryIgnoredInput struct {
+	Limit  int `query:"limit" minimum:"1" maximum:"200" default:"60"`
+	Offset int `query:"offset" minimum:"0"`
+}
+
+type libraryIgnoredDTO struct {
+	ID        string    `json:"id" doc:"The title; take back its answer to bring it back"`
+	Kind      string    `json:"kind" enum:"movie,series" doc:"movie is a file, series is a folder"`
+	Name      string    `json:"name" doc:"The movie's file name or the show's folder name"`
+	Folder    string    `json:"folder" doc:"Where it sits, from its media folder's name down"`
+	IgnoredAt time.Time `json:"ignoredAt"`
+}
+
+type listLibraryIgnoredOutput struct {
+	Body struct {
+		Items []libraryIgnoredDTO `json:"items" doc:"Newest first"`
+		Total int                 `json:"total" doc:"How many are ignored in all"`
+	}
+}
+
+func (s *Handlers) listLibraryIgnored(ctx context.Context, in *listLibraryIgnoredInput) (*listLibraryIgnoredOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	titles, total, err := svc.Ignored(ctx, in.Limit, in.Offset)
+	if err != nil {
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't list what you ignored", "Try again in a moment.", err)
+	}
+	out := &listLibraryIgnoredOutput{}
+	out.Body.Total = total
+	out.Body.Items = make([]libraryIgnoredDTO, 0, len(titles))
+	for _, t := range titles {
+		out.Body.Items = append(out.Body.Items, libraryIgnoredDTO{
+			ID: t.ID, Kind: t.Kind, Name: t.Name, Folder: t.Folder, IgnoredAt: t.IgnoredAt,
+		})
 	}
 	return out, nil
 }
@@ -227,6 +306,35 @@ func (s *Handlers) ignoreLibraryItem(ctx context.Context, in *libraryItemIDInput
 		return nil, err
 	}
 	return nil, libraryAnswerErr(svc.Ignore(ctx, in.ID))
+}
+
+func (s *Handlers) keepLibraryItem(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	return nil, libraryAnswerErr(svc.Keep(ctx, in.ID))
+}
+
+func (s *Handlers) ignoreLibraryNeeds(ctx context.Context, in *libraryTitleIDsInput) (*ignoreLibraryNeedsOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	if err := svc.IgnoreAll(ctx, in.Body.IDs); err != nil {
+		return nil, libraryAnswerErr(err)
+	}
+	out := &ignoreLibraryNeedsOutput{}
+	out.Body.IDs = in.Body.IDs
+	return out, nil
+}
+
+func (s *Handlers) restoreLibraryIgnored(ctx context.Context, in *libraryTitleIDsInput) (*struct{}, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	return nil, libraryAnswerErr(svc.RestoreAll(ctx, in.Body.IDs))
 }
 
 func (s *Handlers) unanswerLibraryItem(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
@@ -291,6 +399,15 @@ func libraryAnswerErr(err error) error {
 		return nil
 	case errors.Is(err, store.ErrNotFound):
 		return httpcore.Problem(http.StatusNotFound, "Not in the library", "This title isn't in your media folders.")
+	case errors.Is(err, librarystore.ErrNotNeeded):
+		return httpcore.Problem(http.StatusConflict, "Needs you has changed",
+			"Some of these titles aren't waiting any more, so none were ignored. Reload Needs you and try again.")
+	case errors.Is(err, librarystore.ErrNotKeepable):
+		return httpcore.Problem(http.StatusConflict, "This one can't be kept as it is",
+			"Only a title waiting in Needs you with no guess can be kept. Reload Needs you and try again.")
+	case errors.Is(err, librarystore.ErrNotIgnored):
+		return httpcore.Problem(http.StatusConflict, "Your ignored list has changed",
+			"Some of these titles aren't ignored any more, so none were brought back. Reload and try again.")
 	case errors.Is(err, scan.ErrNotAnswerable):
 		return httpcore.Problem(http.StatusConflict, "Loomarr didn't find this title itself",
 			"Only titles Loomarr found in your media folders can be answered here.")

@@ -11,7 +11,6 @@ import {
   Text,
   typography,
 } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
 import type { DatabaseMigrationProps, MigrationStep } from "./database-migration.type";
 
 // DatabaseMigration — the SQLite → PostgreSQL stepper (§18, V11; v2 mock System → Database).
@@ -142,10 +141,10 @@ const DatabaseMigration = ({
                 <Stack align="center" direction="row" gap="inline" key={s.key} render="li">
                   <Stack
                     align="center"
+                    backgroundColor={done ? "$washSignal10" : current ? "$washTune5" : undefined}
                     borderColor={done ? "$actionPrimary" : current ? "$stateInfo" : "$borderDecorative"}
                     borderRadius={999}
                     borderWidth={1}
-                    className={cn(done && "bg-signal-tint-15", current && "bg-tune-tint-15")}
                     height={20}
                     justify="center"
                     render="span"
@@ -226,8 +225,8 @@ const DatabaseMigration = ({
                       <Stack
                         align="center"
                         aria-hidden
+                        backgroundColor={c.ok ? "$washSignal10" : "$washOnair10"}
                         borderRadius={999}
-                        className={c.ok ? "bg-signal-tint-15" : "bg-onair-tint-15"}
                         flexShrink={0}
                         height={16}
                         justify="center"
@@ -248,7 +247,7 @@ const DatabaseMigration = ({
                         {c.name}
                         <Text
                           as="span"
-                          className="ml-2"
+                          style={{ marginLeft: 8 }}
                           textRole="compact"
                           tone={c.ok ? "secondary" : "danger"}
                         >

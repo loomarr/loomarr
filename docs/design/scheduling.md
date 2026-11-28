@@ -221,6 +221,47 @@ where it has one and otherwise from that window's tile, less the units its own g
 (#1939). History therefore never brings a unit back sooner, or keeps one waiting longer, than the
 same channel with no history.
 
+## Upcoming airings
+
+`channel_upcoming_airings` holds each internal-playout channel's programmes for the next 48 hours
+(`channels.PremeasureHorizon`), so a title's page can say when it is next on, and where, in one
+indexed read (#4476, [decision 0052](decisions/0052-next-airing-is-stored.md)). Each row is
+`{channel_id, starts_at_ms, ends_at_ms, library_item_id, title_key, forecast, revision}`: UTC epoch
+milliseconds, the lineup entry's title key, whether the row lies past the window on air, and the
+channel revision it was computed at. `library_item_id` is a foreign key to `library_items`, and a
+row goes with its item: a forecast never keeps an item the catalog purge drops. The write leaves out
+an airing whose item the catalog doesn't hold and writes the rest.
+
+- **The writer.** After a committed reconcile has saved the channel and planned the next window's
+  breaks, the engine's upcoming index replaces the channel's rows. They come from
+  `Resolver.UpcomingProgrammes`, the guide's own window-by-window walk (the window on air from the
+  accepted cycle, the next one with its planned breaks, later ones forecast), without the guide's
+  metadata pass. Only programmes count: a programme slot with a library item, never a pending
+  placeholder. The walk covers at most eight rolling windows, counting the one on air, so a channel
+  with a short window stores less than 48 hours; a window under 6 hours always does.
+- **The replace** runs in one transaction and only while the channel is still at the revision the
+  rows were computed from; a write from a stale revision changes nothing. It is best-effort: a
+  failure is logged and the reconcile stands. When the walk or the replace fails, the channel's rows
+  are cleared at the committed revision, also best-effort, so a title's page shows no airing rather
+  than an earlier revision's.
+- **The read** for a library item returns the rows still airing (`ends_at_ms` after now, so the
+  programme on air is included) on channels neither paused nor detached, earliest first. A row
+  matches the item by its own item id or through `titles.key = title_key` for that item, the key
+  that lists a title's channels: a movie both ways, a series through its episodes' title key. The
+  read does no member filtering. The API that serves it sends a member no `episode` at all for an
+  episode their page leaves out: no id, name or numbering.
+- **Freshness.** Pausing and detaching save without a reconcile, which is why the read filters the
+  channel's status. Purging a channel deletes its rows. A settings change reaches the rows at the
+  next sweep, and so does a removed file: its airing stays until the channel's next sweep
+  (by default within about twenty minutes: `channel.reconcile_every` is a ten-minute minimum wait
+  between a channel's reconciles, and the sweep runs on its own ten-minute cadence), as it does in
+  the guide. Forecast rows can lag the guide by one sweep; the window on air never does, because its
+  programmes are fixed when it opens.
+- **Tunarr channels** store no upcoming airings, the same as the scheduled ledger. Each reconcile
+  of a channel that does not play internally replaces its rows with none, through the same guarded
+  write, before it projects onto Tunarr and again after it commits. A channel moved to Tunarr is
+  therefore not named on a title's page, even when the projection fails.
+
 ## Breaks and pods
 
 A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper, sized to the gap.
@@ -275,7 +316,8 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   stored for its channel and start, and cuts the break's slot to the media its pod holds. The
   programme after a break therefore resumes when the break's own clips end, and the offline card
   never fills the gap. A break with nothing to air takes no time. The guide, the previews and the
-  stream read the stored pod (`PreviewAtMany`), so the guide shows what airs, and a half-aired
+  stream read the stored pod (`PreviewAtMany`; the Guide's one batch for every row is
+  `PreviewChannels`, the same read), so the guide shows what airs, and a half-aired
   break keeps its pod and length. A break is keyed by its channel and start: a lineup edit that
   moves a break gives it nothing stored, so it is assembled fresh, and reconcile deletes the
   breaks behind the anchor and the ones that moved. A stored break assembled to another ceiling
@@ -332,6 +374,16 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   `60 / breaksPerHour` minute threshold. Breaks are inserted only when a filler pool exists; with
   none, programmes play back to back and the next reconcile re-inserts breaks once clips land.
   Positions are deterministic for a lineup and seed.
+- **The pool question belongs to the backend.** An internal channel has a pool when its pod holds
+  playable media: local files, with no Tunarr uuid needed. A Tunarr channel has a pool when its
+  pod holds a clip its filler list can reference by uuid. Station material counts on both, because
+  the fallback ladder airs it before the bumper card. Reconcile and the forecast (the guide,
+  schedule diff, proposal outlook and internal playout's cycle lookups) assemble a channel's inputs
+  through one path, and each arranges from one reading of the settings, so the forecast shows
+  exactly the breaks that air. Three differences are
+  deliberate: only reconcile holds the window on air and turns it, only reconcile heals the
+  lineup's metadata (it persists), and only the forecast prewarms media-server durations. Only
+  reconcile's pool question records the pod-assembly metric.
 - **Rotation (V58, household-wide since #2017).** The history is the household's, not a channel's:
   a commercial seen on any channel rests on every channel. One row per watched airing
   (`filler_airings`: channel, clip, scheduled start, recorded at) keeps every airing younger than a

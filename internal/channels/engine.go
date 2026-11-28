@@ -42,6 +42,18 @@ type GuidePoker interface {
 // schedule.Availability so the pure domain can consume it directly.
 type Availability interface {
 	schedule.Availability
+	// Bind returns a view bound to ctx that remembers the first read that failed. The
+	// scheduler's seam can only say "available" or "not", so reconcile reads through a run and
+	// refuses to commit a lineup computed while a read was failing. A reconcile reads only
+	// through the run, so a decorator that observes reads wraps the run as well as Resolve.
+	Bind(ctx context.Context) AvailabilityRun
+}
+
+// AvailabilityRun is one reconcile's view of an Availability.
+type AvailabilityRun interface {
+	schedule.Availability
+	// Err is the first read that failed during the run, or nil when every answer is known.
+	Err() error
 }
 
 // EngineStore is the durable state the reconcile engine consumes. Keeping this
@@ -78,17 +90,13 @@ type PodFiller interface {
 	// pool (empty catalog / only the fallback card): the engine skips the attach and
 	// the channel's flex falls back to the bumper card (never dead air).
 	BuildFillerList(ctx context.Context, channelID string, seed int64, sel pod.Selection) (programIDs []string, ok bool)
-	// HasPool reports whether the channel has ANY playable commercials — the question
-	// "should breaks be interleaved at all?".
-	//
-	// Separate from BuildFillerList (§9.1) because the two ask different questions.
-	// BuildFillerList is Tunarr-specific: it returns only clips carrying a Tunarr program uuid,
-	// since that is what a filler-list references. On an internal-playout install with no
-	// Tunarr, no clip has one — so a channel with a perfectly good pod would report "no pool"
-	// and get NO BREAKS AT ALL.
-	HasPool(ctx context.Context, channelID string, seed int64, sel pod.Selection) bool
-	// PlayableDurationMs reports how much real media the deterministic pod contains.
-	// It excludes the generated fallback card, which has no bytes to air.
+	// TunarrFillerIDs is BuildFillerList's answer without its §17 pod metric: the forecast asks
+	// it on every guide poll, and only the reconcile that attaches a list counts as assembling one.
+	TunarrFillerIDs(ctx context.Context, channelID string, seed int64, sel pod.Selection) []string
+	// PlayableDurationMs reports how much real media the deterministic pod contains: an
+	// internal channel's answer to "should breaks be interleaved at all?". It asks no Tunarr
+	// uuid, because internal playout airs local files. It excludes the generated fallback
+	// card, which has no bytes to air.
 	PlayableDurationMs(ctx context.Context, channelID string, seed int64, sel pod.Selection) int64
 }
 
@@ -110,7 +118,7 @@ type Engine struct {
 	// franchises heals a movie entry's TMDB collection id (§5 franchise ordering) so a
 	// franchise's films stay together, in release order. Optional (nil ⇒ no grouping).
 	franchises FranchiseResolver
-	// boxSets stamps a title's media-server collection membership (§2.2) so scope.collections
+	// boxSets stamps a title's household collection membership (§2.2) so scope.collections
 	// enforces with no library I/O. Optional (nil ⇒ membership never resolves and the filter
 	// admits everything, rather than emptying a lineup).
 	boxSets BoxSetResolver
@@ -124,6 +132,8 @@ type Engine struct {
 	// committed Desired cycle differs from the one an active encoder may be using.
 	// Optional: nil when internal playout is not wired.
 	scheduleInvalidator ScheduleInvalidator
+	// upcoming stores each committed internal-playout channel's next two days (#4476). Optional/nil-safe.
+	upcoming UpcomingIndexer
 	// acts records operator-facing facts that must outlive a log line (§9 V54) — currently the
 	// automatic renumber when Tunarr already occupies a channel's number. Optional/nil-safe.
 	acts    ActivityRecorder
@@ -278,11 +288,10 @@ func (e *Engine) WithFranchises(r FranchiseResolver) *Engine {
 	return e
 }
 
-// BoxSetResolver returns the MEDIA-SERVER collections (Emby/Jellyfin BoxSets) a title
-// belongs to, backing scope.collections (programming-design §2.2). An empty slice with
-// ok=true is a real answer — "belongs to no collection" — and is stamped as settled so it
-// is never re-fetched; ok=false means it could not be resolved (media server down, no
-// library wired) and the entry is left for the next pass.
+// BoxSetResolver returns the household collections (library_collections) a title belongs to,
+// backing scope.collections (programming-design §2.2). Every reconcile asks it for every entry,
+// so it must answer from memory. An empty slice with ok=true is a real answer, "belongs to no
+// collection"; ok=false means it could not be resolved, and the entry keeps its last stamp.
 //
 // ⚠ Nothing to do with FranchiseResolver above, which resolves the TMDB franchise id.
 // Same word, different namespaces (programming-design §2.2).
@@ -290,7 +299,7 @@ type BoxSetResolver interface {
 	BoxSets(ctx context.Context, key provision.Key) (boxSetIDs []string, ok bool, err error)
 }
 
-// WithBoxSets wires the resolver that stamps a title's media-server collection membership
+// WithBoxSets wires the resolver that stamps a title's household collection membership
 // at reconcile (§2.2). Optional (nil ⇒ membership never resolves, and scope.collections
 // consequently admits everything rather than emptying a lineup — see boxSetOK's fail-open
 // rule). Returns the engine for chaining.
@@ -326,6 +335,47 @@ type ScheduleInvalidator interface {
 func (e *Engine) WithScheduleInvalidator(invalidator ScheduleInvalidator) *Engine {
 	e.scheduleInvalidator = invalidator
 	return e
+}
+
+// UpcomingIndexer stores what an internal-playout channel airs over [from, to), as the guide
+// lists it, so a title's next airing is one indexed read (#4476, scheduling.md "Upcoming
+// airings"). ch is the channel as the reconcile committed it; its revision guards the write.
+// ClearUpcoming removes the channel's stored airings, for a channel Loomarr does not play.
+type UpcomingIndexer interface {
+	IndexUpcoming(ctx context.Context, ch channelstore.Channel, from, to time.Time) error
+	ClearUpcoming(ctx context.Context, ch channelstore.Channel) error
+}
+
+// WithUpcomingIndex wires the upcoming-airings writer that runs after each committed reconcile of
+// an internal-playout channel. Optional; nil ⇒ nothing is stored.
+func (e *Engine) WithUpcomingIndex(indexer UpcomingIndexer) *Engine {
+	e.upcoming = indexer
+	return e
+}
+
+// indexUpcoming stores the channel's programmes for the next PremeasureHorizon. Best-effort: a
+// failure is logged and the reconcile stands. A failure also clears the channel's rows at the
+// committed revision, because the read cannot tell an earlier revision's rows from fresh ones.
+func (e *Engine) indexUpcoming(ctx context.Context, ch channelstore.Channel) {
+	if e.upcoming == nil {
+		return
+	}
+	now := e.now()
+	if err := e.upcoming.IndexUpcoming(ctx, ch, now, now.Add(PremeasureHorizon)); err != nil {
+		e.log.Warn("upcoming airings: not stored", "channel", ch.ID, "err", err)
+		e.clearUpcoming(ctx, ch)
+	}
+}
+
+// clearUpcoming removes the channel's stored airings at ch's revision. Best-effort, like
+// indexUpcoming.
+func (e *Engine) clearUpcoming(ctx context.Context, ch channelstore.Channel) {
+	if e.upcoming == nil {
+		return
+	}
+	if err := e.upcoming.ClearUpcoming(ctx, ch); err != nil {
+		e.log.Warn("upcoming airings: not cleared", "channel", ch.ID, "err", err)
+	}
 }
 
 // WithNotifier wires the `channel` SSE emitter so a reconcile that changes a channel
@@ -737,23 +787,37 @@ func (r *availabilityRun) note(err error) {
 	r.mu.Unlock()
 }
 
-// failure is the first read that failed during the run, or nil when every answer is known.
-func (r *availabilityRun) failure() error {
+// Err is the first read that failed during the run, or nil when every answer is known.
+func (r *availabilityRun) Err() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.err
 }
 
+// Bind is the store-backed run for one reconcile, reading under ctx.
+func (s *storeAvailability) Bind(ctx context.Context) AvailabilityRun {
+	return &availabilityRun{from: s, ctx: ctx}
+}
+
+// Infallible adapts a fixed set of answers to Availability. Its runs read nothing, so Err is
+// always nil. Never wrap an availability that reads (the store-backed one): its failed reads
+// would vanish and the reconcile guard with them.
+func Infallible(a schedule.Availability) Availability { return infallible{a} }
+
+type infallible struct{ schedule.Availability }
+
+func (i infallible) Bind(context.Context) AvailabilityRun { return infallibleRun(i) }
+
+type infallibleRun struct{ schedule.Availability }
+
+func (infallibleRun) Err() error { return nil }
+
 // reconcileAvailability is the availability a reconcile computes its lineup from, and a check
-// to make once it has: an error means a read failed and the lineup must not be committed. Only
-// the store-backed availability reads anything; a fixed set of answers cannot fail.
+// to make once it has: an error means a read failed and the lineup must not be committed. Every
+// Availability answers through its Bind, so a wrapper keeps the check as long as it delegates.
 func (e *Engine) reconcileAvailability(ctx context.Context) (schedule.Availability, func() error) {
-	fromStore, ok := e.avail.(*storeAvailability)
-	if !ok {
-		return e.avail, func() error { return nil }
-	}
-	run := &availabilityRun{from: fromStore, ctx: ctx}
-	return run, run.failure
+	run := e.avail.Bind(ctx)
+	return run, run.Err
 }
 
 // RollingWindow is the rolling-window length a channel with this policy resolves to at `at` (rule

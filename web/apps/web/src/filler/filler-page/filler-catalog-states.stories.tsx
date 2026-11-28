@@ -21,21 +21,21 @@ const clips: ClipDTO[] = Array.from({ length: 60 }, (_, index) => ({
 
 const LargeCatalogState = () => (
   <section aria-labelledby="large-catalog-heading">
-    <div className="mb-3">
+    <Stack marginBottom={12}>
       <Text as="h2" id="large-catalog-heading" textRole="headline" strong>
         60 clips
       </Text>
       <Text as="p" textRole="compact" tone="secondary">
         Showing 1–60 of 1,240
       </Text>
-    </div>
-    <div className="border-border overflow-hidden rounded-lg border">
+    </Stack>
+    <Stack borderColor="$borderDecorative" borderRadius={8} borderWidth={1} overflow="hidden">
       <Stack marginBottom={-1}>
         {clips.map((clip) => (
           <ClipRow key={clip.hash} clip={clip} />
         ))}
       </Stack>
-    </div>
+    </Stack>
   </section>
 );
 

@@ -1,7 +1,6 @@
 import { pluralize } from "@loomarr/core/format";
-import { Action, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import type { ServiceControlProps } from "./service-control.type";
 
 // ServiceControl — the restart control (§9.2, V13; v2 mock Dashboard § service control).
@@ -31,7 +30,7 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
       : null;
 
   return (
-    <section className={cn("border-border rounded-lg border p-4", className)}>
+    <Card className={className} padding={16} render="section">
       <Stack align="center" direction="row" gap="control">
         <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
           <Text as="h2" textRole="cardLabel">
@@ -60,14 +59,11 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
           feature the docs mention. */}
       {!cost.available && (
         <Stack marginTop={12}>
-          <Text
-            as="p"
-            className="border-border rounded-md border border-dashed p-3"
-            textRole="compact"
-            tone="secondary"
-          >
-            This build can't restart itself. Restart the container or service the way you started it.
-          </Text>
+          <Card borderStyle="dashed" padding={12}>
+            <Text as="p" textRole="compact" tone="secondary">
+              This build can't restart itself. Restart the container or service the way you started it.
+            </Text>
+          </Card>
         </Stack>
       )}
 
@@ -113,7 +109,7 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
           </Action>
         </Stack>
       )}
-    </section>
+    </Card>
   );
 };
 

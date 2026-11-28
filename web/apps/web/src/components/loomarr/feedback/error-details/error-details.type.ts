@@ -4,7 +4,6 @@ interface ErrorDetailsProps {
   message?: string;
   showLabel?: string; // default "Show error"
   hideLabel?: string; // default "Hide error"
-  className?: string;
 }
 
 export type { ErrorDetailsProps };

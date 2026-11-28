@@ -3,17 +3,23 @@ import {
   LibraryCollections,
   type LibraryNeed,
   LibraryNeedsCards,
-  LibraryNeedsStrip,
   type LibraryOrderNeed,
   type LibraryProblem,
   type LibraryScan,
   LibraryShelf,
+  type LibraryShelfAdmin,
   type LibraryShelfProps,
   type LibraryShelfTitle,
   LibraryTitle,
+  LibraryTitleMissing,
   LibraryWizardStep,
+  waitingTitles,
 } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, screen, waitFor } from "storybook/test";
+import { AppToaster } from "@/components/loomarr/feedback/app-toaster";
+import { toastRemoved, toastRestoreRefused } from "@/library/extra-copy-toasts";
+import { AllCaughtUp, IgnoredList, LibraryNeedsView } from "@/library/library-needs-page";
 
 // The Library (#2151, design/library variant D): the poster grid in each scan state and a title's
 // page. Stories load no remote images: a title with artwork gets a flat stand-in in its own colour.
@@ -28,7 +34,15 @@ const TITLES: LibraryShelfTitle[] = [
   { id: "90000805", kind: "series", name: "Saturday Club", year: 1987, ready: false },
   { id: "90000806", kind: "movie", name: "Quiet Orchard", year: 2019, ready: true, poster: art("#2f5a46") },
   { id: "90000807", kind: "movie", name: "Lantern Season", ready: true },
+  { id: "90000808", kind: "movie", name: "Copper Hill", year: 1971, ready: true, poster: art("#5a4a1f") },
+  { id: "90000809", kind: "series", name: "The Glass Pier", year: 2015, ready: true, poster: art("#284e5c") },
+  { id: "90000810", kind: "movie", name: "Winter Lantern", year: 1958, ready: true },
+  { id: "90000811", kind: "movie", name: "Field Notes", year: 2022, ready: true, poster: art("#4a2f5a") },
+  { id: "90000812", kind: "series", name: "Upriver", year: 2008, ready: true, poster: art("#2e4a2b") },
 ];
+
+// The tabs' counts: the whole library, whatever the search.
+const COUNTS = { all: 3412, movie: 2180, series: 1232 };
 
 const IDLE: LibraryScan = {
   enabled: true,
@@ -67,21 +81,30 @@ const LOOKING_UP: LibraryScan = {
   etaSeconds: 1500,
 };
 const PAUSED: LibraryScan = { ...READING, paused: true };
-const status = (scan: LibraryScan): LibraryShelfProps["status"] => ({
-  health: "ok",
-  scan,
-  held: [],
-  offline: [],
-});
+type ShelfStatus = LibraryShelfAdmin["status"];
 
-const shelf: LibraryShelfProps = {
-  status: { health: "ok", scan: IDLE, held: [], offline: [] },
+const CLEAR: ShelfStatus = { health: "ok", scan: IDLE, held: [], offline: [], needsYou: 0 };
+
+// An admin's wall: the status line, Needs you's count and Library settings.
+const admin = (status: Partial<ShelfStatus> = {}): LibraryShelfAdmin => ({
+  status: { ...CLEAR, ...status },
   checking: false,
   onCheckAgain: () => {},
   onRescan: () => {},
   onOpenSettings: () => {},
+  onOpenNeeds: () => {},
+});
+
+const status = (scan: LibraryScan) => admin({ scan });
+
+const shelf: LibraryShelfProps = {
+  admin: admin(),
   filter: "all",
   onFilterChange: () => {},
+  counts: COUNTS,
+  sort: "name",
+  onSortChange: () => {},
+  onGenreChange: () => {},
   search: "",
   onSearchChange: () => {},
   titles: TITLES,
@@ -107,17 +130,38 @@ type Story = StoryObj<typeof meta>;
 
 const CaughtUp: Story = {};
 
-const AddingStep1: Story = { args: { status: status(WALKING) } };
-const Adding: Story = { args: { status: status(READING) } };
-const AddingStep3: Story = { args: { status: status(LOOKING_UP) } };
-const Paused: Story = { args: { status: status(PAUSED) } };
-const Checking: Story = { args: { status: status({ ...WALKING, quiet: true }) } };
+// The mock's "titles needing a look": the count on the status line, Review beside it.
+const NeedsYou: Story = { args: { admin: admin({ needsYou: 6 }) } };
+
+// A file nothing in the catalogue matches: the needs-a-look mark, and no claim that it is a movie.
+const Unidentified: Story = {
+  args: {
+    admin: admin({ needsYou: 1 }),
+    titles: [
+      { id: "90000813", kind: "movie", name: "Clip 12", year: 2019, ready: true, unidentified: true },
+      ...TITLES,
+    ],
+  },
+};
+
+// Importing: the step's words over the preparation bar, with Needs you beside them.
+const AddingStep1: Story = { args: { admin: status(WALKING) } };
+const Adding: Story = { args: { admin: admin({ scan: READING, needsYou: 3 }) } };
+const AddingStep3: Story = { args: { admin: status(LOOKING_UP) } };
+const Paused: Story = { args: { admin: status(PAUSED) } };
+const Checking: Story = { args: { admin: status({ ...WALKING, quiet: true }) } };
+
+// The first page on its way: the tabs and the search, then placeholders where the posters go.
+const Loading: Story = {
+  args: { admin: admin({ needsYou: 6 }), counts: undefined, loading: true, titles: [] },
+};
+
+// Recently added first: the order the mock's home videos are shown in.
+const RecentlyAdded: Story = { args: { sort: "recent", titles: [...TITLES].reverse() } };
 
 const HeldRemoval: Story = {
   args: {
-    status: {
-      health: "ok",
-      scan: IDLE,
+    admin: admin({
       held: [
         {
           path: "/media/movies",
@@ -128,20 +172,110 @@ const HeldRemoval: Story = {
           titleCount: 2406,
         },
       ],
-      offline: [],
-    },
+    }),
   },
 };
 
 const FolderOffline: Story = {
-  args: { status: { health: "folder_offline", scan: IDLE, held: [], offline: ["/media/movies"] } },
+  args: { admin: admin({ health: "folder_offline", offline: ["/media/movies"] }) },
 };
 
 const Fresh: Story = {
-  args: { status: { health: "needs_folders", scan: IDLE, held: [], offline: [] }, titles: [] },
+  args: { admin: admin({ health: "needs_folders" }), titles: [] },
 };
 
-const NoMatch: Story = { args: { search: "zebra", titles: [] } };
+const NoMatch: Story = { args: { admin: admin({ needsYou: 6 }), search: "zebra 1977", titles: [] } };
+
+const GENRES = [
+  { name: "Comedy", titles: 640 },
+  { name: "Documentary", titles: 212 },
+  { name: "Drama", titles: 1204 },
+];
+
+// One genre of the wall, chosen beside the order.
+const GenreChosen: Story = { args: { genres: GENRES, genre: "Drama" } };
+
+const filtering: NonNullable<LibraryShelfProps["filtering"]> = {
+  filters: {},
+  onChange: () => {},
+  onClear: () => {},
+  facets: {
+    studios: [{ value: "Lantern Works", name: "Lantern Works", titles: 41 }],
+    audio: [{ value: "eng", name: "English", titles: 1180 }],
+    subtitles: [{ value: "fre", name: "French", titles: 212 }],
+    uhd: 96,
+    hdrAny: 54,
+  },
+  personSearch: { value: "", onChange: () => {}, options: [], loading: false, failed: false },
+};
+
+const openFilters: Story["play"] = async ({ canvas, userEvent }) => {
+  await userEvent.click(canvas.getByRole("button", { name: /^More filters/ }));
+};
+
+// The disclosure open, with nothing chosen yet.
+const FiltersOpen: Story = { args: { genres: GENRES, filtering }, play: openFilters };
+
+// A person from the URL, on a chip that removes them.
+const PersonChip: Story = {
+  args: {
+    genres: GENRES,
+    filtering: { ...filtering, filters: { person: "p1" }, personName: "Robin Vale", total: 3 },
+  },
+};
+
+const severalFilters = {
+  ...filtering,
+  filters: { studio: "Lantern Works", audio: "eng", subtitles: "fre", uhd: true, hdr: "any" },
+  total: 12,
+};
+
+const SeveralFilters: Story = { args: { genres: GENRES, genre: "Drama", filtering: severalFilters } };
+
+// The phone: the disclosure stacked, with what is on under it.
+const FiltersPhone: Story = {
+  tags: ["route"],
+  args: { genres: GENRES, filtering: severalFilters },
+  play: openFilters,
+};
+
+// The letter rail beside the wall, on a desktop window: letters with no titles are disabled.
+const LetterJump: Story = {
+  args: {
+    genres: GENRES,
+    letters: [
+      { letter: "#", offset: 0 },
+      { letter: "A", offset: 12 },
+      { letter: "B", offset: 240 },
+      { letter: "H", offset: 1310 },
+      { letter: "P", offset: 2204 },
+      { letter: "T", offset: 2890 },
+    ],
+    onJump: () => {},
+  },
+};
+
+// Under a search the list is in match order, so a letter is its first occurrence; the rail still
+// reads A to Z.
+const LetterJumpSearch: Story = {
+  args: {
+    genres: GENRES,
+    search: "light",
+    letters: [
+      { letter: "P", offset: 0 },
+      { letter: "H", offset: 1 },
+      { letter: "N", offset: 3 },
+    ],
+    onJump: () => {},
+  },
+};
+
+// A member browses the same wall read-only: no status line, no Needs you, no settings.
+const Member: Story = { args: { admin: undefined } };
+const MemberNoMatch: Story = { args: { admin: undefined, search: "zebra 1977", titles: [] } };
+const MemberEmpty: Story = {
+  args: { admin: undefined, counts: { all: 0, movie: 0, series: 0 }, titles: [] },
+};
 
 // Needs you: one guess the name agrees with, one with nothing to go on.
 const NEEDS: LibraryNeed[] = [
@@ -257,65 +391,67 @@ const ORDERS: LibraryOrderNeed[] = [
 const answered = () => Promise.resolve();
 const search = () => Promise.resolve([]);
 
-// With Needs you waiting, the status line says only "Up to date" (#2779).
-const NEEDS_WAITING = { ...shelf.status, needsYou: true };
+// The Ignored tab and the "ignored files" button count the same files.
+const IGNORED = 3;
 
-const NeedsStrip: Story = {
-  args: {
-    status: NEEDS_WAITING,
-    needs: (
-      <LibraryNeedsStrip
-        needs={NEEDS}
-        onLink={answered}
-        onOpenNeeds={() => {}}
-        onOpenTitle={() => {}}
-        orders={ORDERS}
-        problems={PROBLEMS}
-      />
-    ),
-  },
+// Needs you's own page, with what the app puts in it.
+const needsStory = (needs: LibraryNeed[], orders: LibraryOrderNeed[], problems: LibraryProblem[]) => (
+  <LibraryNeedsView
+    ignored={IGNORED}
+    onBack={() => {}}
+    onTabChange={() => {}}
+    tab="waiting"
+    waiting={waitingTitles(needs, orders, problems)}
+  >
+    <LibraryNeedsCards
+      hideHeading
+      needs={needs}
+      onChooseOrder={answered}
+      onIgnore={answered}
+      onIgnoreFolder={answered}
+      onLink={answered}
+      onOpenTitle={() => {}}
+      onSearch={search}
+      orders={orders}
+      problems={problems}
+      empty={<AllCaughtUp ignored={IGNORED} onBack={() => {}} onShowIgnored={() => {}} />}
+    />
+  </LibraryNeedsView>
+);
+
+// Two titles of one folder, so the folder has its own answer.
+const FOLDER = NEEDS.map((need) => ({ ...need, folder: "Discs" }));
+
+const NeedsCards: Story = { render: () => needsStory(FOLDER, ORDERS, PROBLEMS) };
+
+const NeedsPhone: Story = {
+  globals: { viewport: { value: "mobile2" } },
+  render: () => needsStory(FOLDER, ORDERS, PROBLEMS),
 };
 
-const NeedsCards: Story = {
-  args: {
-    status: NEEDS_WAITING,
-    showTitles: false,
-    needs: (
-      <LibraryNeedsCards
-        needs={NEEDS}
-        onChooseOrder={answered}
-        onIgnore={answered}
-        onLink={answered}
-        onOpenTitle={() => {}}
-        onSearch={search}
-        orders={ORDERS}
-        problems={PROBLEMS}
+const NeedsIgnored: Story = {
+  render: () => (
+    <LibraryNeedsView ignored={1} onBack={() => {}} onTabChange={() => {}} tab="ignored" waiting={2}>
+      <IgnoredList
+        items={[
+          {
+            id: "90000813",
+            kind: "movie",
+            name: "title_t03.mkv",
+            folder: "Discs",
+            ignoredAt: "2026-01-02T03:04:05Z",
+          },
+        ]}
+        onBringBack={() => {}}
       />
-    ),
-  },
+    </LibraryNeedsView>
+  ),
 };
 
-const NothingNeedsYou: Story = {
-  args: {
-    showTitles: false,
-    needs: (
-      <LibraryNeedsCards
-        needs={[]}
-        onChooseOrder={answered}
-        onIgnore={answered}
-        onLink={answered}
-        onOpenTitle={() => {}}
-        onSearch={search}
-        orders={[]}
-        problems={[]}
-      />
-    ),
-  },
-};
+const NothingNeedsYou: Story = { render: () => needsStory([], [], []) };
 
 // A title's page acts through these; in a story every action goes through.
-const titleActions = {
-  onBack: () => {},
+const titleFixes = {
   onUpdateDetails: answered,
   onCheckFiles: answered,
   onSearch: search,
@@ -324,16 +460,46 @@ const titleActions = {
   onRemoveExtra: answered,
 };
 
+// What the TV-app page draws beyond the story: the facts, the next airings and the people.
+const movieExtras = {
+  tagline: "Every plan has a loose thread.",
+  score: 7.4,
+  credits: [
+    { name: "Imelda Varge", character: "Agnes Fell", role: "actor" as const },
+    { name: "Tobin Ashcroft", character: "Rafe Fell", role: "actor" as const },
+    { name: "Lorna Pettigrew", role: "director" as const },
+  ],
+  airings: [
+    {
+      channel: { id: "90000971", name: "Quiet Hours", number: 21 },
+      when: "Next tonight at 9:00 PM",
+      forecast: false,
+    },
+    {
+      channel: { id: "90000972", name: "Late Show", number: 7 },
+      when: "Next Saturday at 11:30 PM",
+      forecast: true,
+    },
+  ],
+  playing: {
+    picture: { width: 1920, height: 1080, hdr: false },
+    audioChannels: 2,
+    subtitleLanguages: ["English"],
+  },
+  about: [{ label: "Country", value: "Ireland" }],
+};
+
 const Movie: Story = {
   render: () => (
     <LibraryTitle
-      {...titleActions}
-      onOpenApp={() => {}}
+      fix={{ ...titleFixes, onOpenApp: () => {} }}
+      onBack={() => {}}
       title={{
         kind: "movie",
         name: "Paper Kites",
         year: 1996,
-        poster: art("#6b3a2e"),
+        backdrop: art("#6b3a2e"),
+        ...movieExtras,
         overview:
           "A small-town salesman, bursting at the seams with debt, hatches a plan that goes wrong the moment it starts.",
         genres: ["Crime", "Thriller"],
@@ -369,15 +535,71 @@ const Movie: Story = {
   ),
 };
 
+// A member's movie (#4476): the server leaves out its files and match, and the page offers no fix.
+const MemberMovie: Story = {
+  render: () => (
+    <LibraryTitle
+      onBack={() => {}}
+      title={{
+        kind: "movie",
+        name: "Paper Kites",
+        year: 1996,
+        backdrop: art("#6b3a2e"),
+        ...movieExtras,
+        overview:
+          "A small-town salesman, bursting at the seams with debt, hatches a plan that goes wrong the moment it starts.",
+        genres: ["Crime", "Thriller"],
+        rating: "R",
+        runtimeMillis: 5_880_000,
+        files: [],
+        unplayable: 0,
+        seasons: [],
+        match: { by: "none" },
+        detailsFrom: {},
+        channels: [{ id: "90000971", name: "Quiet Hours", number: 21 }],
+      }}
+    />
+  ),
+};
+
+// Credits the library knows link to their titles; the one it doesn't stays text.
+const CastLinks: Story = {
+  render: () => (
+    <LibraryTitle
+      onBack={() => {}}
+      personLink={(person) => <a href={`/library?person=${person}`}>{person}</a>}
+      title={{
+        kind: "movie",
+        name: "Paper Kites",
+        year: 1996,
+        credits: [
+          { name: "Imelda Varge", character: "Agnes Fell", role: "actor", personId: "tmdb:90000981" },
+          { name: "Tobin Ashcroft", character: "Rafe Fell", role: "actor" },
+          { name: "Lorna Pettigrew", role: "director", personId: "tmdb:90000982" },
+          { name: "Bram Okonkwo", role: "writer" },
+        ],
+        genres: ["Crime"],
+        files: [],
+        unplayable: 0,
+        seasons: [],
+        match: { by: "none" },
+        detailsFrom: {},
+        channels: [],
+      }}
+    />
+  ),
+};
+
 const Series: Story = {
   render: () => (
     <LibraryTitle
-      {...titleActions}
+      fix={titleFixes}
+      onBack={() => {}}
       title={{
         kind: "series",
         name: "Harbour Lights",
         year: 1999,
-        poster: art("#3b4a63"),
+        backdrop: art("#3b4a63"),
         overview: "The keepers of a lighthouse town and the families who wait for the boats to come home.",
         genres: ["Drama", "Political"],
         rating: "TV-14",
@@ -403,18 +625,77 @@ const Series: Story = {
   ),
 };
 
+// The Fix menu open, on its solid surface over the backdrop.
+const MovieFixOpen: Story = {
+  ...Movie,
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole("button", { name: "Fix" }));
+  },
+};
+
+const memberSeries = {
+  kind: "series" as const,
+  name: "Harbour Lights",
+  year: 1999,
+  genres: ["Drama"],
+  files: [],
+  unplayable: 0,
+  seasons: [{ number: 1, episodes: [{ id: "90000011", name: "Dead Line", number: 1, ready: true }] }],
+  match: { by: "none" as const },
+  detailsFrom: {},
+  channels: [{ id: "90000972", name: "Late Show", number: 7 }],
+  airings: [
+    {
+      channel: { id: "90000972", name: "Late Show", number: 7 },
+      when: "Next Thursday at 10:00 PM",
+      forecast: true,
+      episode: "Season 1, episode 1 · Dead Line",
+    },
+  ],
+};
+
+const MemberSeries: Story = {
+  render: () => <LibraryTitle onBack={() => {}} title={{ ...memberSeries, backdrop: art("#3b4a63") }} />,
+};
+
+// A home video: no catalog details and on no channel.
+const HomeVideo: Story = {
+  render: () => (
+    <LibraryTitle
+      fix={titleFixes}
+      onBack={() => {}}
+      title={{
+        kind: "movie",
+        name: "Summer at the lake",
+        year: 2019,
+        genres: [],
+        files: [],
+        unplayable: 0,
+        seasons: [],
+        match: { by: "you" },
+        detailsFrom: {},
+        channels: [],
+      }}
+    />
+  ),
+};
+
+const NotInLibrary: Story = {
+  render: () => <LibraryTitleMissing onBack={() => {}} />,
+};
+
 // A show whose files don't say which of TMDB's orders they follow (#2151 decision 53): a hint
 // that opens Needs you, and the waiting episodes named from their files. Season 2 starts open.
 const SeriesOrderWaiting: Story = {
   render: () => (
     <LibraryTitle
-      {...titleActions}
-      onChooseOrder={() => {}}
+      fix={{ ...titleFixes, onChooseOrder: () => {} }}
+      onBack={() => {}}
       title={{
         kind: "series",
         name: "Tidewater",
         year: 2011,
-        poster: art("#3b4a63"),
+        backdrop: art("#3b4a63"),
         genres: ["Drama"],
         files: [],
         unplayable: 0,
@@ -443,36 +724,59 @@ const SeriesOrderWaiting: Story = {
 const pile = (...colors: (string | undefined)[]) =>
   colors.map((color, i) => ({ name: TITLES[i]?.name ?? "", poster: color ? art(color) : undefined }));
 
+const COLLECTIONS = [
+  {
+    id: "c1",
+    name: "Rainy Sundays",
+    titles: 12,
+    pile: pile("#3b4a63", "#6b3a2e", "#2f5a46"),
+    importedFrom: "Emby",
+    usedBy: [{ name: "Saturday Morning", number: 4 }],
+  },
+  { id: "c2", name: "Harbour nights", titles: 2, pile: pile("#3b4a63", undefined), usedBy: [] },
+];
+
+const SETS = [
+  {
+    id: "90000611",
+    name: "The Lantern Keeper Collection",
+    have: 2,
+    total: 3,
+    pile: pile("#6b3a2e", "#2f5a46"),
+  },
+  { id: "90000612", name: "Copper Hill films", have: 5, total: 9, pile: pile("#5a4a1f", "#284e5c") },
+];
+
+const manage = { onCopy: answered, onEdit: () => {}, onNew: () => {} };
+
 const Collections: Story = {
   args: {
     filter: "collections",
-    collections: (
-      <LibraryCollections
-        collections={[
-          {
-            id: "c1",
-            name: "Rainy Sundays",
-            titles: 12,
-            pile: pile("#3b4a63", "#6b3a2e", "#2f5a46"),
-            importedFrom: "Emby",
-            usedBy: [{ name: "Saturday Morning", number: 4 }],
-          },
-          { id: "c2", name: "Harbour nights", titles: 2, pile: pile("#3b4a63", undefined), usedBy: [] },
-        ]}
-        onCopy={answered}
-        onEdit={() => {}}
-        onNew={() => {}}
-        sets={[
-          {
-            id: "90000611",
-            name: "The Lantern Keeper Collection",
-            have: 2,
-            total: 3,
-            pile: pile("#6b3a2e", "#2f5a46"),
-          },
-        ]}
-      />
-    ),
+    collections: <LibraryCollections collections={COLLECTIONS} manage={manage} sets={SETS} />,
+  },
+};
+
+// None made yet: what a collection is, New collection, and the ready-made sets to start from.
+const CollectionsNoneYet: Story = {
+  args: {
+    filter: "collections",
+    collections: <LibraryCollections collections={[]} manage={manage} sets={SETS} />,
+  },
+};
+
+// A member's Collections: the household's, read-only, and where they come from when there are none.
+const MemberCollections: Story = {
+  args: {
+    admin: undefined,
+    filter: "collections",
+    collections: <LibraryCollections collections={COLLECTIONS} sets={SETS} />,
+  },
+};
+const MemberCollectionsNoneYet: Story = {
+  args: {
+    admin: undefined,
+    filter: "collections",
+    collections: <LibraryCollections collections={[]} sets={SETS} />,
   },
 };
 
@@ -592,28 +896,246 @@ const WizardStepStep3: Story = { render: wizardAdding(LOOKING_UP) };
 const WizardStepPaused: Story = { render: wizardAdding(PAUSED) };
 const WizardStepChecking: Story = { render: wizardAdding({ ...WALKING, quiet: true }) };
 
+// Stop using asks first: the folder in use, with its confirm open.
+const StopUsingFolder: Story = {
+  render: wizardAdding(IDLE),
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(await canvas.findByRole("button", { name: "Stop using" }));
+  },
+};
+
+const episodeFile = {
+  path: "/media/tv/Harbour Lights/Season 1/Harbour Lights S01E01.mkv",
+  size: 2_100_000_000,
+  lengthMillis: 2_580_000,
+  picture: { width: 1920, height: 1080, hdr: false },
+  audioChannels: 6,
+  subtitles: [{ language: "en" }],
+  extra: false,
+  container: "matroska,webm",
+  bitrate: 9_800_000,
+  streams: [
+    {
+      index: 0,
+      kind: "video" as const,
+      codec: "h264",
+      profile: "High",
+      bitDepth: 8,
+      frameRate: "24000/1001",
+    },
+    {
+      index: 1,
+      kind: "audio" as const,
+      codec: "ac3",
+      channels: 6,
+      bitrate: 640_000,
+      languageName: "English",
+      default: true,
+    },
+    { index: 2, kind: "subtitle" as const, codec: "subrip", languageName: "English", default: true },
+  ].map((track) => ({
+    default: false,
+    forced: false,
+    commentary: false,
+    descriptive: false,
+    hearingImpaired: false,
+    external: false,
+    ...track,
+  })),
+  chapters: [
+    { startMillis: 0, name: "Cold open" },
+    { startMillis: 610_000, name: "The boats" },
+  ],
+};
+
+// Season tabs with the specials last, and episodes with stills, summaries and lengths. One has no
+// still, so its quiet frame shows.
+const SeasonsWithStills: Story = {
+  render: () => (
+    <LibraryTitle
+      fix={{ ...titleFixes, onEpisodeFiles: () => Promise.resolve([episodeFile]) }}
+      onBack={() => {}}
+      title={{
+        ...memberSeries,
+        backdrop: art("#3b4a63"),
+        airings: [],
+        seasons: [0, 1, 2].map((number) => ({
+          number,
+          episodes: [1, 2, 3].map((n) => ({
+            id: `9000${number}${n}`,
+            name: ["Dead Line", "Low Water", "The Long Night"][n - 1] ?? "",
+            number: n,
+            ready: true,
+            overview: "A boat is late and the whole town finds a reason to walk down to the harbour wall.",
+            lengthMillis: 2_580_000,
+            still: n === 3 ? undefined : art(n === 1 ? "#4a5d7a" : "#6b4a3a"),
+          })),
+        })),
+      }}
+    />
+  ),
+};
+
+// An episode row open, with More about its file showing the tracks and chapters.
+const EpisodeMore: Story = {
+  ...SeasonsWithStills,
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole("button", { name: /1\. Dead Line/ }));
+    // A wide screen opens More itself.
+    const more = await canvas.findByRole("button", { name: /(More|Less) about this file/ });
+    if (more.textContent?.includes("More")) await userEvent.click(more);
+    await expect(canvas.getByText("0:00 · Cold open")).toBeVisible();
+  },
+};
+
+// A narrow page whose facts wrap: no line shows a dot at its start or its end.
+const FactsWrapped: Story = {
+  render: () => (
+    <div style={{ maxWidth: 260 }}>
+      <LibraryTitle
+        onBack={() => {}}
+        title={{
+          ...memberSeries,
+          score: 7.4,
+          rating: "TV-14",
+          genres: ["Drama", "Political", "Mystery"],
+          backdrop: art("#3b4a63"),
+        }}
+      />
+    </div>
+  ),
+  play: async ({ canvas }) => {
+    const dots = canvas.getAllByText("·");
+    // The clipped row: the nearest ancestor that hides its overflow.
+    let clip = dots[0]?.parentElement;
+    while (clip && getComputedStyle(clip).overflowX !== "hidden") clip = clip.parentElement;
+    const row = clip?.getBoundingClientRect();
+    const lines = new Map<number, DOMRect[]>();
+    for (const dot of dots) {
+      const fact = dot.parentElement?.parentElement?.getBoundingClientRect();
+      if (fact) lines.set(Math.round(fact.top), [...(lines.get(Math.round(fact.top)) ?? []), fact]);
+    }
+    await expect(lines.size).toBeGreaterThan(1);
+    for (const line of lines.values()) {
+      const first = Math.min(...line.map((r) => r.left));
+      // The line's first dot column ends where the clipped row begins.
+      await expect(first + 20).toBeLessThanOrEqual((row?.left ?? Number.NaN) + 1);
+    }
+  },
+};
+
+// A movie with an extra copy, whose removal shows the toast the app shows. Its Undo is refused,
+// as it is once the undo has run out.
+const ExtraCopyRemoved: Story = {
+  render: () => (
+    <>
+      <LibraryTitle
+        fix={{
+          ...titleFixes,
+          onRemoveExtra: async () => {
+            toastRemoved("Paper Kites DVD.mkv", () =>
+              toastRestoreRefused(
+                "The file isn't in the trash",
+                "It may have been emptied or moved. Check that its drive is connected.",
+              ),
+            );
+          },
+        }}
+        onBack={() => {}}
+        title={{
+          kind: "movie",
+          name: "Paper Kites",
+          year: 1996,
+          backdrop: art("#6b3a2e"),
+          genres: ["Crime"],
+          files: [
+            {
+              path: "/media/movies/Paper Kites (1996)/Paper Kites DVD.mkv",
+              size: 4_300_000_000,
+              subtitles: [],
+              extra: true,
+            },
+          ],
+          unplayable: 0,
+          seasons: [],
+          match: { by: "app", app: "Radarr" },
+          detailsFrom: {},
+          channels: [],
+        }}
+      />
+      <AppToaster />
+    </>
+  ),
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole("button", { name: "Remove Paper Kites DVD.mkv" }));
+    const undo = await screen.findByRole("button", { name: "Undo" });
+    // A toast fades in.
+    await waitFor(() => expect(undo).toBeVisible());
+  },
+};
+
+const ExtraCopyUndoRefused: Story = {
+  ...ExtraCopyRemoved,
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole("button", { name: "Remove Paper Kites DVD.mkv" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Undo" }));
+    const said = await screen.findByText("The file isn't in the trash");
+    await waitFor(() => expect(said).toBeVisible());
+  },
+};
+
 export default meta;
 export {
   Adding,
   AddingStep1,
   AddingStep3,
+  CastLinks,
   CaughtUp,
   Checking,
   CollectionEditor,
   CollectionEditorInUse,
   Collections,
+  CollectionsNoneYet,
+  EpisodeMore,
+  ExtraCopyRemoved,
+  ExtraCopyUndoRefused,
+  FactsWrapped,
+  FiltersOpen,
+  FiltersPhone,
   FolderOffline,
   Fresh,
+  GenreChosen,
   HeldRemoval,
+  HomeVideo,
+  LetterJump,
+  LetterJumpSearch,
+  Loading,
+  Member,
+  MemberCollections,
+  MemberCollectionsNoneYet,
+  MemberEmpty,
+  MemberMovie,
+  MemberNoMatch,
+  MemberSeries,
   Movie,
+  MovieFixOpen,
   NeedsCards,
-  NeedsStrip,
+  NeedsIgnored,
+  NeedsPhone,
+  NeedsYou,
   NewCollection,
   NoMatch,
   NothingNeedsYou,
+  NotInLibrary,
   Paused,
+  PersonChip,
+  RecentlyAdded,
+  SeasonsWithStills,
   Series,
   SeriesOrderWaiting,
+  SeveralFilters,
+  StopUsingFolder,
+  Unidentified,
   WizardStep,
   WizardStepAdding,
   WizardStepChecking,

@@ -7,13 +7,14 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/image/vector"
+	"github.com/loomarr/loomarr/internal/playout/watermark/raster"
 )
 
 // The approved design's looks and motifs (#1659) are drawn from the mock's own SVG geometry
 // (project/prototypes/watermark.html): a look is laid out in units of a 100-unit-tall bug, and a motif
-// in a 100×100 box. shape is that geometry in canvas pixels, rasterised anti-aliased by
-// golang.org/x/image/vector at the supersampled size, so the PNG is drawn, not traced from a render.
+// in a 100×100 box. shape is that geometry in canvas pixels, rasterised anti-aliased by the raster
+// package (a fork of golang.org/x/image/vector that rounds the same on every architecture, #4646)
+// at the supersampled size, so the PNG is drawn, not traced from a render.
 
 // pt is a canvas point in pixels.
 type pt struct{ x, y float64 }
@@ -29,17 +30,22 @@ type seg struct {
 // the same way, so overlapping parts fill once (the rasteriser clamps coverage, it does not cancel).
 type shape []seg
 
+// The float64() around a product that is added to something looks redundant, but it forbids a fused
+// multiply-add, which arm64 would otherwise emit and which rounds once instead of twice, so every
+// architecture computes the same geometry (#4646). A product by a power of two is exact, so fusing
+// it changes nothing and it needs no conversion.
+
 // xform maps the mock's units to canvas pixels: scale s, then offset (ox, oy).
 type xform struct{ s, ox, oy float64 }
 
-func (t xform) at(x, y float64) pt { return pt{t.ox + x*t.s, t.oy + y*t.s} }
+func (t xform) at(x, y float64) pt { return pt{t.ox + float64(x*t.s), t.oy + float64(y*t.s)} }
 
 // rotate turns (x, y) by deg degrees about (cx, cy), the mock's rotate(deg cx cy).
 func rotate(x, y, deg, cx, cy float64) (float64, float64) {
 	r := deg * math.Pi / 180
 	sin, cos := math.Sincos(r)
 	dx, dy := x-cx, y-cy
-	return cx + dx*cos - dy*sin, cy + dx*sin + dy*cos
+	return cx + float64(dx*cos) - float64(dy*sin), cy + float64(dx*sin) + float64(dy*cos)
 }
 
 // svgPath parses the absolute-command subset the mock uses (M L H V C S Q Z).
@@ -70,10 +76,10 @@ func svgPath(d string, t xform) shape {
 			cur = t.at(x, y)
 			s = append(s, seg{op: 'L', p: cur})
 		case 'H':
-			cur = pt{t.ox + num(&i)*t.s, cur.y}
+			cur = pt{t.ox + float64(num(&i)*t.s), cur.y}
 			s = append(s, seg{op: 'L', p: cur})
 		case 'V':
-			cur = pt{cur.x, t.oy + num(&i)*t.s}
+			cur = pt{cur.x, t.oy + float64(num(&i)*t.s)}
 			s = append(s, seg{op: 'L', p: cur})
 		case 'C', 'S':
 			var c1 pt
@@ -91,8 +97,8 @@ func svgPath(d string, t xform) shape {
 		case 'Q':
 			q := t.at(num(&i), num(&i))
 			p := t.at(num(&i), num(&i))
-			s = append(s, seg{op: 'C', p1: pt{cur.x + 2.0/3*(q.x-cur.x), cur.y + 2.0/3*(q.y-cur.y)},
-				p2: pt{p.x + 2.0/3*(q.x-p.x), p.y + 2.0/3*(q.y-p.y)}, p: p})
+			s = append(s, seg{op: 'C', p1: pt{cur.x + float64(2.0/3*(q.x-cur.x)), cur.y + float64(2.0/3*(q.y-cur.y))},
+				p2: pt{p.x + float64(2.0/3*(q.x-p.x)), p.y + float64(2.0/3*(q.y-p.y))}, p: p})
 			cur = p
 		case 'Z':
 			s = append(s, seg{op: 'Z'})
@@ -139,7 +145,7 @@ const kappa = 0.5522847498
 // ellipse is the mock's <ellipse>/<circle>, clockwise on screen.
 func ellipse(cx, cy, rx, ry float64, t xform) shape {
 	p := func(x, y float64) pt { return t.at(x, y) }
-	kx, ky := rx*kappa, ry*kappa
+	kx, ky := float64(rx*kappa), float64(ry*kappa)
 	return shape{
 		{op: 'M', p: p(cx+rx, cy)},
 		{op: 'C', p1: p(cx+rx, cy+ky), p2: p(cx+kx, cy+ry), p: p(cx, cy+ry)},
@@ -154,7 +160,7 @@ func ellipse(cx, cy, rx, ry float64, t xform) shape {
 func roundRect(x, y, w, h, r float64, t xform) shape {
 	r = math.Min(r, math.Min(w, h)/2)
 	p := func(x, y float64) pt { return t.at(x, y) }
-	k := r * (1 - kappa)
+	k := float64(r * (1 - kappa))
 	return shape{
 		{op: 'M', p: p(x+r, y)},
 		{op: 'L', p: p(x+w-r, y)},
@@ -173,7 +179,7 @@ func roundRect(x, y, w, h, r float64, t xform) shape {
 func line(x1, y1, x2, y2, w float64, t xform) shape {
 	dx, dy := x2-x1, y2-y1
 	l := math.Hypot(dx, dy)
-	nx, ny := -dy/l*w/2, dx/l*w/2
+	nx, ny := float64(-dy/l*w)/2, float64(dx/l*w)/2
 	body := shape{{op: 'M', p: t.at(x1+nx, y1+ny)}, {op: 'L', p: t.at(x1-nx, y1-ny)},
 		{op: 'L', p: t.at(x2-nx, y2-ny)}, {op: 'L', p: t.at(x2+nx, y2+ny)}, {op: 'Z'}}
 	if signedArea(body) < 0 {
@@ -193,7 +199,7 @@ func signedArea(s shape) float64 {
 	}
 	for i, p := range pts {
 		q := pts[(i+1)%len(pts)]
-		a += p.x*q.y - q.x*p.y
+		a += float64(p.x*q.y) - float64(q.x*p.y)
 	}
 	return a / 2
 }
@@ -204,8 +210,8 @@ type layer struct {
 	x, y int
 }
 
-// raster fills a shape anti-aliased into a mask the size of its bounds.
-func raster(s shape) layer {
+// rasterise fills a shape anti-aliased into a mask the size of its bounds.
+func rasterise(s shape) layer {
 	minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
 	for _, g := range s {
 		for _, p := range []pt{g.p1, g.p2, g.p} {
@@ -217,7 +223,7 @@ func raster(s shape) layer {
 	}
 	x0, y0 := int(math.Floor(minX)), int(math.Floor(minY))
 	w, h := int(math.Ceil(maxX))-x0+1, int(math.Ceil(maxY))-y0+1
-	r := vector.NewRasterizer(w, h)
+	r := raster.NewRasterizer(w, h)
 	f := func(p pt) (float32, float32) { return float32(p.x - float64(x0)), float32(p.y - float64(y0)) }
 	for _, g := range s {
 		switch g.op {
@@ -235,7 +241,7 @@ func raster(s shape) layer {
 		}
 	}
 	m := image.NewAlpha(image.Rect(0, 0, w, h))
-	r.Draw(m, m.Rect, image.Opaque, image.Point{})
+	r.Draw(m, m.Rect)
 	return layer{m: m, x: x0, y: y0}
 }
 

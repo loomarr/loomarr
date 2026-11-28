@@ -171,6 +171,10 @@ func (e *Engine) reconcileOnce(
 		return err
 	}
 	if !plan.playsInternally {
+		// Cleared before the projection, which can fail and end the attempt: a channel Loomarr
+		// does not play must not keep airings from when it did (#4476). The plan's revision is
+		// still the stored one, so the guarded write applies.
+		e.clearUpcoming(ctx, plan.ch)
 		if err := e.projectToTunarr(ctx, plan, run); err != nil {
 			return err
 		}
@@ -256,65 +260,26 @@ func (e *Engine) planReconcile(
 	// Heal each entry's metadata in place through the one lineup primitive (§9 LineupHeal):
 	// fill an empty OfficialRating (§389 — a fail-closed audience gate would otherwise drop a
 	// now-in-library title to dead air) and settle each movie's TMDB CollectionID (§5 franchise
-	// ordering). Bounded, one-time lookups; the healed values are stamped onto ch.Lineup and
-	// persisted by the SaveChannel below, so a future reconcile skips them. Membership + order
-	// are untouched — heal only enriches.
+	// ordering), and re-stamp each title's household collections. Rating and franchise are looked
+	// up once; collections every pass, from a cached index. The healed values are stamped onto
+	// ch.Lineup and persisted by the SaveChannel below. Membership + order are untouched — heal
+	// only enriches.
 	ch.Lineup = schedule.ApplyLineup(ch.Lineup, nil, schedule.LineupHeal,
 		schedule.ApplyOpts{Enrich: e.healEntry(ctx)})
 
-	// 1b: decide whether the selected backend has clips to fill a break (§10). Internal
-	// playout asks the backend-independent HasPool question: its clips are local files and
-	// deliberately need no Tunarr uuid. Tunarr asks BuildFillerList once and carries those
-	// same ids to the projection below. This is the distinction PodFiller's two-method
-	// interface exists to preserve; using BuildFillerList on internal-only installs made a
-	// real local catalog look empty.
-	var fillerIDs []string
-	hasFillerPool := false
-	var playableFillerMs int64
-	if e.pods != nil {
-		seed, selection := PodSeed(ch.ID), SelectionForChannel(ch)
-		if playsInternally {
-			playableFillerMs = e.pods.PlayableDurationMs(ctx, ch.ID, seed, selection)
-			hasFillerPool = playableFillerMs > 0
-		} else if ids, ok := e.pods.BuildFillerList(ctx, ch.ID, seed, selection); ok && len(ids) > 0 {
-			fillerIDs, hasFillerPool = ids, true
-		}
-	}
-
 	// 2: recompute desired from the approved lineup + current availability under the
-	// channel's ChannelPolicy (programming-design §3–§7). ComputeDesiredAt resolves
-	// each entry against the library (a vanished title comes back a placeholder),
-	// applies the audience/scope/seasonal filters, and orders with separation. Apply
-	// the global commercial-break density (§10) so breaks are interleaved, and pass
-	// the wall-clock so seasonality (§6) evaluates against the container TZ.
-	//
-	// Breaks are only interleaved when the selected backend has a filler pool: inserting
-	// gaps with no clips is a promise of commercials we cannot keep. No pool means
-	// programs play back-to-back. Once clips land, the next reconcile re-inserts breaks.
-	chDomain := ch.Channel
-	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
-	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
-	chDomain.DefaultWindow = e.defaultWindowFor() // §6.5 rolling-window horizon from settings
-	chDomain = chDomain.WithCalendar(e.Calendar())
-	chDomain.DealOrigin = schedule.ResolveDealOrigin(ch.CreatedAt, ch.PlayoutAnchor) // #1676
-	// Rolling-window carry-over (#1675): the accepted window stays on air until the programme
-	// crossing its boundary ends, and the next one is anchored at that end. Internal playout
-	// only: it walks the accepted cycle from the anchor. Tunarr loops the list it was given
-	// from its own clock and has no way to be told where a window starts (#1691).
-	turnAnchor := ch.PlayoutAnchor
-	var accepted []schedule.Slot
-	turned := false
-	if playsInternally {
-		window, zone := e.RollingWindow(ch.Policy, e.now())
-		chDomain.WindowOpened, turnAnchor, turned = timeline.WindowTurn(ch.Desired, ch.PlayoutAnchor, window, zone, e.now())
-		e.recordScheduled(ctx, ch, e.now()) // #1677: what the accepted cycle aired, watched or not
-		accepted = ch.Desired
-	}
-	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, e.now(), accepted, ch.PlayoutAnchor)
-	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
-	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, e.now())
+	// channel's ChannelPolicy (programming-design §3–§7), through the assembly the forecast
+	// shares (inputs.go). ComputeDesiredAt resolves each entry against the library (a vanished
+	// title comes back a placeholder), applies the audience/scope/seasonal filters, and orders
+	// with separation. Breaks are interleaved only when the backend has clips to fill them; a
+	// Tunarr channel's filler ids are carried to the projection below. Once clips land, the
+	// next reconcile re-inserts breaks.
+	now := e.now()
+	settings := e.settingsOn(globalBackend)
+	in := e.assemble(ctx, ch, now, settings, assembleReconcile)
+	chDomain, fillerIDs, turnAnchor, turned := in.Channel, in.Filler.TunarrIDs, in.TurnAnchor, in.Turned
 	avail, readFailed := e.reconcileAvailability(ctx)
-	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, ch.Lineup, avail, e.policy, ch.Policy, e.now())
+	desired, err := in.compute(ctx, avail)
 	if err != nil {
 		return nil, fmt.Errorf("compute desired lineup for channel %s: %w", channelID, err)
 	}
@@ -327,23 +292,22 @@ func (e *Engine) planReconcile(
 	// What the channel airs right now, as the encoder walks it: the accepted cycle from its anchor.
 	acceptedSlots, acceptedAnchor := ch.Desired, ch.PlayoutAnchor
 	if playsInternally {
-		desired.Slots = capCommercialBreaks(desired.Slots, playableFillerMs)
-		dealtFrom := e.dealtFrom(ch, chDomain.BreaksPerHour, desired.Slots)
+		from := dealtFrom(ch, chDomain.BreaksPerHour, settings, desired.Slots)
 		// Nothing that has aired moves inside a window (#4140): a library change keeps the window
 		// and heals a vanished item in place, and an edit re-deals after the programme on air. A
 		// turned window starts a new slice from its own anchor, so there is nothing to hold.
 		if !acceptedAnchor.IsZero() && len(acceptedSlots) > 0 && !turned {
 			var windowEnds time.Time
-			if window, zone := e.RollingWindow(ch.Policy, e.now()); window > 0 {
+			if window, zone := settings.rollingWindow(ch.Policy, now); window > 0 {
 				windowEnds = schedule.NextWindowStart(acceptedAnchor, window, zone)
 			}
 			desired.Slots, turnAnchor = e.windowDeal(windowInputs{
-				accepted: acceptedSlots, anchor: acceptedAnchor, next: desired.Slots, now: e.now(),
+				accepted: acceptedSlots, anchor: acceptedAnchor, next: desired.Slots, now: now,
 				windowOpened: chDomain.WindowOpened, windowEnds: windowEnds,
-				acceptedFrom: ch.DealtFrom, dealtFrom: dealtFrom, eligible: desired.EligibleKeys, avail: avail,
+				acceptedFrom: ch.DealtFrom, dealtFrom: from, eligible: desired.EligibleKeys, avail: avail,
 			})
 		}
-		ch.DealtFrom = dealtFrom
+		ch.DealtFrom = from
 		desired.Slots = e.planWindowOnAir(ctx, ch, turnAnchor, desired.Slots)
 	}
 	// Building is the durable "this backend must (re)publish the channel list" marker:
@@ -538,6 +502,12 @@ func (e *Engine) commitReconcile(ctx context.Context, plan *reconcilePlan, run *
 		e.premeasureAhead(ctx, ch)
 		// The next window airs before reconcile commits it, so its breaks are planned now (#3838).
 		e.planNextWindow(ctx, ch)
+		// What the guide lists for the next two days is stored for a title's next airing (#4476).
+		e.indexUpcoming(ctx, ch)
+	} else {
+		// A channel Loomarr does not play stores no upcoming airings, so a title page never names
+		// it; this clears what an earlier internal reconcile stored.
+		e.clearUpcoming(ctx, ch)
 	}
 
 	// 7: media-server freshness (best-effort; never fails reconcile). A committed local
@@ -644,19 +614,22 @@ func (e *Engine) attachFillerList(ctx context.Context, ch channelstore.Channel, 
 }
 
 // healEntry returns the per-entry enrichment schedule.ApplyLineup(LineupHeal) applies to each
-// lineup entry in place (the caller persists ch.Lineup). It does two one-time repairs:
+// lineup entry in place (the caller persists ch.Lineup). It does these repairs:
 //   - fill an empty OfficialRating by looking the title up against the library (§389): a
 //     fail-closed audience gate would otherwise drop a now-in-library title to dead air.
 //   - settle a MOVIE's TMDB CollectionID tri-state (§5 franchise ordering): >0 a real
 //     collection, -1 a resolved standalone (never re-fetched); series are skipped.
-//   - stamp media-server collection membership for scope.collections (§2.2), settled by the
-//     BoxSetsResolved flag so "in no collection" is answered once, not re-asked each pass.
+//   - stamp the household collections each title is in, for scope.collections (§2.2),
+//     re-stamped every pass so a collection edit reaches the channel.
 //
-// Bounded + best-effort by design (§9 resilience): only empty/unresolved fields are looked up
-// (a stamped channel makes ZERO calls), a not-yet-present result leaves the field to retry next
-// pass, and a lookup error never fails the reconcile — it just leaves the field unhealed.
-// A nil source (ratings/franchises not wired) skips that half.
+// Bounded + best-effort by design (§9 resilience): ratings and franchise ids are looked up only
+// while empty or unresolved, a not-yet-present result leaves the field to retry next pass, and a
+// lookup error never fails the reconcile — it just leaves the field as it was. A nil source
+// (ratings, franchises or collections not wired) skips that part.
 func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
+	// Set by the first failed collections lookup. The resolver fails only when it cannot read its
+	// index, which holds for every key, so the rest of the pass does not ask again.
+	boxSetsFailed := false
 	return func(en *schedule.LineupEntry) {
 		if e.ratings != nil && en.OfficialRating == "" {
 			if raw, ok, err := e.ratings.Rating(ctx, en.Key); err != nil {
@@ -667,14 +640,16 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 				en.OfficialRating = rating.Normalize(raw)
 			}
 		}
-		// Stamp media-server collection membership (§2.2) so scope.collections enforces with
-		// no library I/O. ⚠ Guarded on BoxSetsResolved, NOT on len(BoxSetIDs) == 0: a title in
-		// no collection resolves to an empty slice, so an emptiness check would re-fetch the
-		// most common case on every pass forever — the N+1 the stamping exists to prevent.
-		if e.boxSets != nil && !en.BoxSetsResolved {
+		// Re-stamp collection membership (§2.2) every pass, so scope.collections follows the
+		// household's collection edits, and the schedulers that read the stored lineup (preview,
+		// playout timeline) filter with no library I/O. The resolver answers from a cached
+		// index, so this costs no query per entry. A lookup that fails keeps the last stamp on
+		// this entry and every later one in the pass.
+		if e.boxSets != nil && !boxSetsFailed {
 			if ids, ok, err := e.boxSets.BoxSets(ctx, en.Key); err != nil {
+				boxSetsFailed = true
 				if e.log != nil {
-					e.log.Warn("heal boxsets (entry unresolved this pass)", "key", en.Key, "err", err)
+					e.log.Warn("heal boxsets (lineup keeps its last stamps this pass)", "key", en.Key, "err", err)
 				}
 			} else if ok {
 				en.BoxSetIDs = ids

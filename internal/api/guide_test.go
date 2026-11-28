@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -922,10 +923,52 @@ func TestGuide_ResolvesEachBreakAtItsOwnStart(t *testing.T) {
 			t.Errorf("break %d resolved for a %v slot, want the block's own 4m", i, slot.Length)
 		}
 	}
-	// #1420: resolved per break, but in ONE batch for the channel row. Each per-break call
-	// re-read the channel, the whole catalog and the play history.
-	if fp.batches != 1 {
-		t.Errorf("pod batches = %d, want one per channel row", fp.batches)
+	// #1420: resolved per break, but in ONE batch. Each per-break call re-read the channel, the
+	// whole catalog and the play history.
+	if fp.gridBatches != 1 || fp.batches != 0 {
+		t.Errorf("pod batches = %d grid, %d per channel; want one for the grid", fp.gridBatches, fp.batches)
+	}
+}
+
+// #2147: every row's breaks resolve in ONE batch for the whole grid, and each row still gets the
+// pods of its own breaks. A batch per row would read the whole catalog and the play history once
+// per channel, and the Guide's timelines phase would wait on those reads.
+func TestGuide_ResolvesEveryRowsBreaksInOneBatch(t *testing.T) {
+	g := &fakeXMLTVGuide{withPending: map[string][]timeline.Broadcast{
+		"ch1": {
+			gridBlock(schedule.SlotFiller, "Break", 0, 4),
+			gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 4*time.Minute, 26),
+			gridBlock(schedule.SlotFiller, "Break", 30*time.Minute, 2),
+		},
+		"ch2": {gridBlock(schedule.SlotFiller, "Break", 10*time.Minute, 3)},
+		"ch3": {gridBlock(schedule.SlotProgram, "Quiet Engines", 0, 90)},
+	}}
+	fp := &fakePods{pod: pod.Pod{Entries: []pod.Entry{{Name: "Ad", Role: clips.Commercial, DurationMs: 30000}}}}
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
+	for i, id := range []string{"ch1", "ch2", "ch3"} {
+		seedGridChannel(t, harness.Store, id, i+1)
+	}
+	body := getGuide(t, harness.Server, "")
+
+	if fp.gridBatches != 1 || fp.batches != 0 {
+		t.Fatalf("pod batches = %d grid, %d per channel; want one for the grid", fp.gridBatches, fp.batches)
+	}
+	if want := []string{"ch1", "ch2"}; !slices.Equal(fp.asked, want) {
+		t.Errorf("batch asked for channels %v, want %v: only rows with breaks", fp.asked, want)
+	}
+	lengths := make([]time.Duration, len(fp.atAsked))
+	for i, slot := range fp.atAsked {
+		lengths[i] = slot.Length
+	}
+	if want := []time.Duration{4 * time.Minute, 2 * time.Minute, 3 * time.Minute}; !slices.Equal(lengths, want) {
+		t.Errorf("batch break lengths = %v, want %v", lengths, want)
+	}
+	for _, row := range body.Channels {
+		for _, a := range row.Airings {
+			if (a.Kind == "filler") != (a.Pod != nil) {
+				t.Errorf("%s %s block at %d: pod present = %v", row.ChannelID, a.Kind, a.StartMs, a.Pod != nil)
+			}
+		}
 	}
 }
 

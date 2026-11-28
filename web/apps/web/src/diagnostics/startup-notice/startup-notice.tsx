@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { toast } from "sonner";
 import { useCurrentHealth } from "../use-current-health";
 
-// Below Tailwind's `sm` breakpoint (640 px): the widths the app lays out for a phone.
+// Below the design system's `sm` breakpoint (640 px): the widths the app lays out for a phone.
 const PHONE_QUERY = "(max-width: 639.98px)";
 
 const acknowledgedKey = (id: string) => `loomarr.health.ack.${id}`;

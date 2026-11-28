@@ -821,11 +821,11 @@ func sameName(a, b string) bool {
 	return a != "" && normName(a) == normName(b)
 }
 
-// Its letters are read as sortKey reads them, accents off and composed or not ("Amélie" is
+// Its letters are read as librarystore.SortKey reads them, accents off and composed or not ("Amélie" is
 // "amelie"), and letters written apart are one word ("S.W.A.T." and "M*A*S*H" are "swat" and
 // "mash").
 func normName(s string) string {
-	s = strings.ReplaceAll(sortKey(s), "&", " and ")
+	s = strings.ReplaceAll(librarystore.SortKey(s), "&", " and ")
 	var words []string
 	var b strings.Builder
 	flush := func() {

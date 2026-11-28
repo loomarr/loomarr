@@ -45,7 +45,7 @@ const Spacing = () => (
             <Column width={48}>{`${px}px`}</Column>
             <Stack
               borderRadius={webRadius.sm}
-              className="bg-signal-tint-30"
+              style={{ backgroundColor: "var(--color-signal-tint-30)" }}
               flexShrink={0}
               height={16}
               width={px}

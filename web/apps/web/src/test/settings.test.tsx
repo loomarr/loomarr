@@ -430,14 +430,21 @@ describe("Settings", () => {
 // so navigating to another tab unmounted the page and discarded them with no warning. An
 // operator editing a connection, stepping over to check a default, and coming back found their
 // work gone. The buffer now lives in the layout, above the <Outlet />.
+
+// Pasted, not typed: nothing here depends on keystrokes, and typing sends one change, and a
+// render, per character. These tests also switch tabs four times, so on a loaded runner the
+// keystrokes are what carry them past the 5 s budget (#4635).
+const replaceValue = async (field: HTMLElement, value: string) => {
+  await userEvent.clear(field);
+  await userEvent.paste(value);
+};
+
 describe("Settings — the save bar spans tabs (V9)", () => {
   it("keeps an unsaved edit when you switch tabs and come back", async () => {
     stubSettings();
     renderAt("/settings/connections");
 
-    const url = await screen.findByLabelText("Library URL");
-    await userEvent.clear(url);
-    await userEvent.type(url, "http://emby:9999");
+    await replaceValue(await screen.findByLabelText("Library URL"), "http://emby:9999");
     // The bar counts it, which is what tells the operator anything is staged at all.
     expect(await screen.findByText(/1 unsaved/i)).toBeInTheDocument();
 
@@ -458,9 +465,7 @@ describe("Settings — the save bar spans tabs (V9)", () => {
     stubSettings();
     renderAt("/settings/connections");
 
-    const url = await screen.findByLabelText("Library URL");
-    await userEvent.clear(url);
-    await userEvent.type(url, "http://emby:9999");
+    await replaceValue(await screen.findByLabelText("Library URL"), "http://emby:9999");
 
     await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
     await userEvent.click(await screen.findByRole("link", { name: /^Advanced settings/ }));
@@ -470,9 +475,7 @@ describe("Settings — the save bar spans tabs (V9)", () => {
 
     await userEvent.click(screen.getByRole("link", { name: "Find another setting" }));
     await userEvent.click(await screen.findByRole("link", { name: "Connections" }));
-    const tunarr = await screen.findByLabelText("Tunarr URL");
-    await userEvent.clear(tunarr);
-    await userEvent.type(tunarr, "http://tunarr:9999");
+    await replaceValue(await screen.findByLabelText("Tunarr URL"), "http://tunarr:9999");
 
     expect(await screen.findByText(/2 unsaved/i)).toBeInTheDocument();
   });

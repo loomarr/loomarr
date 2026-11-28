@@ -63,6 +63,7 @@ const needOf = (n: LibraryNeedDTO): LibraryNeed => {
   return {
     id: n.item.id,
     kind: n.item.kind,
+    folder: n.folder,
     files: n.files.map((f) => f.path),
     best,
     others: best ? candidates.slice(1) : candidates,
@@ -86,9 +87,12 @@ const searchLibraryTitles: LibraryNeedSearch = async (query, kind) => {
   }));
 };
 
-const useLibraryNeeds = () => {
+// Asks for the list only while `enabled`. Needs you's own screen draws its cards from it, and an
+// admin's wall reads it to mark the unidentified titles while any are waiting; the count itself
+// comes from the status.
+const useLibraryNeeds = (enabled = true) => {
   const queryClient = useQueryClient();
-  const list = libraryApi.useListLibraryNeeds();
+  const list = libraryApi.useListLibraryNeeds({ query: { enabled } });
   const needs = useMemo(() => (unwrap(list.data)?.needs ?? []).map(needOf), [list.data]);
   const orders = useMemo(() => (unwrap(list.data)?.orders ?? []).map(orderNeedOf), [list.data]);
   const problems = useMemo(() => (unwrap(list.data)?.problems ?? []).map(problemOf), [list.data]);

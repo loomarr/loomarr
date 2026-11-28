@@ -138,13 +138,78 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
+  it("asks before it stops using a folder, with Cancel focused, and stops once", async () => {
+    const { props, button, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
+    // The confirm draws outside the host, so look through the whole page.
+    const page = (globalThis as unknown as { document: { body: Host; activeElement: El | null } }).document;
+    const dialogButton = (name: string) => {
+      const hit = Array.from(page.body.querySelectorAll('[role="dialog"] button'))
+        .filter((n) => n.textContent?.trim() === name)
+        .at(-1);
+      if (!hit) throw new Error(`missing dialog button: ${name}`);
+      return hit;
+    };
+
+    act(() => button("Stop using").click());
+    expect(props.onUseFolder).not.toHaveBeenCalled();
+    expect(page.body.textContent).toContain("Stop using TV?");
+    expect(page.body.textContent).toContain(
+      "Titles found only in this folder leave your Library, and channels can't play them. Your files stay where they are. To bring them back, use the folder again.",
+    );
+    await act(async () => {
+      await vi.waitFor(() => expect(page.activeElement?.textContent).toBe("Cancel"));
+    });
+    act(() => dialogButton("Cancel").click());
+    expect(props.onUseFolder).not.toHaveBeenCalled();
+
+    act(() => button("Stop using").click());
+    act(() => dialogButton("Stop using").click());
+    expect(props.onUseFolder).toHaveBeenCalledTimes(1);
+    expect(props.onUseFolder).toHaveBeenCalledWith("/media/tv", false);
+    cleanup();
+  });
+
+  // The server drops a folder no app names once it is released: at once when added by hand, at the
+  // next discovery when an app found it.
+  it.each([
+    ["added by hand", true],
+    ["an app found and no longer names", false],
+  ])("says a folder %s has to be added again", (_, addedByHand) => {
+    const { button, cleanup } = render({
+      health: "ok",
+      folders: [{ ...TV_IN_USE, addedByHand, foundIn: [] }],
+    });
+    act(() => button("Stop using").click());
+    expect((globalThis as unknown as { document: { body: Host } }).document.body.textContent).toContain(
+      "To bring them back, add the folder again.",
+    );
+    cleanup();
+  });
+
+  it("closes the stop-using confirm on Escape without stopping", async () => {
+    const { props, button, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
+    const page = (globalThis as unknown as { document: { body: Host; activeElement: El | null } }).document;
+    act(() => button("Stop using").click());
+    await act(async () => {
+      await vi.waitFor(() => expect(page.activeElement?.textContent).toBe("Cancel"));
+    });
+    const Key = (globalThis as unknown as { KeyboardEvent: new (type: string, init: object) => unknown })
+      .KeyboardEvent;
+    act(() => {
+      page.activeElement?.dispatchEvent(new Key("keydown", { bubbles: true, key: "Escape" }));
+    });
+    await act(async () => {
+      await vi.waitFor(() => expect(page.body.querySelector('[role="dialog"]')).toBeNull());
+    });
+    expect(props.onUseFolder).not.toHaveBeenCalled();
+    cleanup();
+  });
+
   it("names an offline folder with one way out", () => {
-    const { host, props, button, cleanup } = render({ health: "folder_offline", folders: [MOVIES] });
+    const { host, props, cleanup } = render({ health: "folder_offline", folders: [MOVIES] });
     expect(host.textContent).toContain("Can't reach your Movies folder");
     expect(host.textContent).toContain("Loomarr can't open this folder right now");
     expect(host.textContent).toContain("No app names this folder any more");
-    act(() => button("Stop using").click());
-    expect(props.onUseFolder).toHaveBeenCalledWith("/media/movies", false);
     act(() =>
       Array.from(host.querySelectorAll("button, [role=button]"))
         .find((n) => n.textContent === "Check again")
@@ -156,7 +221,7 @@ describe("LibrarySettings", () => {
 
   it("says all is caught up, and nothing about what keeps it so while all of it works", () => {
     const { host, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
-    expect(host.textContent).toContain("All caught up — every title's ready to air");
+    expect(host.textContent).toContain("All caught up. Every title's ready to air");
     // The folder watch and Sonarr's webhook both work: the section is left out.
     expect(host.textContent).not.toContain("Keeping up to date");
     expect(host.textContent).not.toContain("notices new and deleted files");
@@ -186,7 +251,7 @@ describe("LibrarySettings", () => {
       health: "folder_empty",
       folders: [{ ...TV_IN_USE, empty: true }],
     });
-    expect(host.textContent).toContain("This folder is empty — is the drive connected?");
+    expect(host.textContent).toContain("This folder is empty. Is the drive connected?");
     expect(host.textContent).not.toContain("Loomarr can open this folder");
     expect(host.textContent).toContain("Up to date");
     expect(host.textContent).not.toContain("All caught up");
@@ -203,7 +268,7 @@ describe("LibrarySettings", () => {
   // local time, as the line shows it.
   const RETRY = new Date(2026, 10, 2, 15, 40).toISOString();
   it.each([
-    [true, "Can't reach TMDB — trying again at 3:40 PM"],
+    [true, "Can't reach TMDB. Trying again at 3:40 PM"],
     [false, "Trying again at 3:40 PM"],
   ] as const)(
     "says when titles waiting for details are tried again (unreachable: %s)",
@@ -309,7 +374,7 @@ describe("LibrarySettings", () => {
     expect(host.textContent).not.toContain("in this step");
     expect(host.textContent).toContain("Paper Kites (2019)");
     // Looking up details never holds up a scan.
-    expect(host.textContent).toContain("Scan now");
+    expect(host.textContent).toContain("Check files again");
     cleanup();
   });
 
@@ -417,7 +482,7 @@ describe("LibrarySettings", () => {
 
   it("scans now, and refreshes everything only once asked", () => {
     const { host, props, button, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
-    act(() => button("Scan now").click());
+    act(() => button("Check files again").click());
     expect(props.onRescan).toHaveBeenCalled();
 
     // The confirm may draw outside the host, so look through the whole page.
@@ -426,14 +491,14 @@ describe("LibrarySettings", () => {
       Array.from(page.querySelectorAll('[role="button"], button')).filter(
         (n) => n.textContent?.trim() === name,
       );
-    expect(host.textContent).not.toContain("Refresh every title?");
-    act(() => button("Refresh everything").click());
-    expect(page.textContent).toContain("Refresh every title?");
+    expect(host.textContent).not.toContain("Update every title's details?");
+    act(() => button("Update details").click());
+    expect(page.textContent).toContain("Update every title's details?");
     act(() => buttons("Not now")[0]?.click());
     expect(props.onRefreshEverything).not.toHaveBeenCalled();
 
-    act(() => button("Refresh everything").click());
-    const confirm = buttons("Refresh everything");
+    act(() => button("Update details").click());
+    const confirm = buttons("Update details");
     act(() => confirm[confirm.length - 1]?.click());
     expect(props.onRefreshEverything).toHaveBeenCalledTimes(1);
     cleanup();
@@ -441,8 +506,8 @@ describe("LibrarySettings", () => {
 
   it("says a scan is running and offers no second one", () => {
     const { host, cleanup } = render({ health: "ok", folders: [TV_IN_USE], scan: WALKING });
-    expect(host.textContent).toContain("Scanning…");
-    expect(host.textContent).not.toContain("Scan now");
+    expect(host.textContent).toContain("Checking…");
+    expect(host.textContent).not.toContain("Check files again");
     cleanup();
   });
 
@@ -465,7 +530,7 @@ describe("LibrarySettings", () => {
     // What letting them go removes, by name.
     expect(host.textContent).toContain("That's Amber Hollow, Brightwater, Calder Point and 2,403 more.");
     expect(host.textContent).not.toContain("All caught up");
-    act(() => button("Check again").click());
+    act(() => button("Check files again").click());
     expect(props.onRescan).toHaveBeenCalled();
     act(() => button("They're gone, remove them").click());
     expect(props.onConfirmRemoval).toHaveBeenCalledWith("/media/movies");
@@ -485,10 +550,10 @@ describe("LibrarySettings", () => {
     });
     expect(host.textContent).toContain("4 files have names Loomarr can't read");
     expect(host.textContent).toContain(
-      "Rename Ferrow �t� (1999).mkv, Kettle� 01.mkv, a�.mkv and 1 more using ordinary letters, then check again.",
+      "Rename Ferrow �t� (1999).mkv, Kettle� 01.mkv, a�.mkv and 1 more using ordinary letters, then check files again.",
     );
     expect(host.textContent).not.toContain("All caught up");
-    act(() => button("Check again").click());
+    act(() => button("Check files again").click());
     expect(props.onRescan).toHaveBeenCalled();
     cleanup();
   });
@@ -517,23 +582,23 @@ describe("LibrarySettings", () => {
     });
     expect(host.textContent).toContain("1 video file is empty");
     expect(host.textContent).toContain(
-      "Fallow (1971).mkv has nothing in it — a copy that never finished. Copy it again or delete it, then check again.",
+      "Fallow (1971).mkv has nothing in it. The copy never finished. Copy it again or delete it, then check files again.",
     );
     expect(host.textContent).toContain("5 shortcuts point to files that are gone");
     expect(host.textContent).toContain(
-      "Gone (2003).mkv, Old Reel.mkv, a.mkv and 2 more. Point them at the files again or delete them, then check again.",
+      "Gone (2003).mkv, Old Reel.mkv, a.mkv and 2 more. Point them at the files again or delete them, then check files again.",
     );
     expect(host.textContent).toContain("1 shortcut leads outside your media folders");
     expect(host.textContent).toContain(
       "Loomarr only reads inside your media folders. Move Away (2002).mkv into one, or add its folder.",
     );
     expect(host.textContent).toContain("2 disc images Loomarr can't play");
-    expect(host.textContent).toContain("Rip Tarn.iso and Wick.iso to video files, then check again.");
+    expect(host.textContent).toContain("Rip Tarn.iso and Wick.iso to video files, then check files again.");
     // Two reasons Loomarr refuses a file are said as one: they're Loomarr's to fix.
     expect(host.textContent).toContain("2 files Loomarr couldn't add");
     expect(host.textContent).toContain("Loomarr couldn't make sense of x.mkv and y.mkv.");
     expect(host.textContent).not.toContain("All caught up");
-    act(() => button("Check again").click());
+    act(() => button("Check files again").click());
     expect(props.onRescan).toHaveBeenCalled();
     cleanup();
   });
@@ -548,11 +613,11 @@ describe("LibrarySettings", () => {
       ],
     });
     expect(host.textContent).toContain(
-      "Loomarr notices new and deleted files on its own — waiting for Movies",
+      "Loomarr notices new and deleted files on its own. Waiting for Movies.",
     );
-    expect(host.textContent).toContain("Sonarr tells Loomarr about new downloads — waiting for Sonarr");
+    expect(host.textContent).toContain("Sonarr tells Loomarr about new downloads. Waiting for Sonarr.");
     expect(host.textContent).toContain(
-      "Radarr tells Loomarr about new downloads — waiting for Loomarr's address",
+      "Radarr tells Loomarr about new downloads. Waiting for Loomarr's address.",
     );
     cleanup();
   });

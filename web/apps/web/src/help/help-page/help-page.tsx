@@ -1,6 +1,6 @@
 import * as helpApi from "@loomarr/api/endpoints/help";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Card, PressableRow, Stack, Text } from "@loomarr/design-system";
+import { Card, Grid, PressableRow, Stack, Text } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -67,16 +67,20 @@ const HelpPage = () => {
     <Stack height="100%" minHeight={0}>
       <PageHeader title="Help" description="Ships with Loomarr. No internet needed." />
 
-      <Stack
-        direction={{ base: "column", md: "row" }}
+      <Grid
+        align="start"
+        columns={{ base: 1, md: ["224px", "minmax(0,1fr)"] }}
         flex={1}
         flexShrink={1}
         gap="6"
         minHeight={0}
         overflow="auto"
         padding="section"
+        // The rows keep their own height, so the scroller scrolls instead of stretching them. Views
+        // have `min-height: 0`, so auto rows would shrink below their content and overlap.
+        style={{ alignContent: "start", gridAutoRows: "max-content" }}
       >
-        <nav aria-label="Help pages" className="md:w-56 md:shrink-0">
+        <Stack aria-label="Help pages" render="nav">
           <Card gap={12} padding={12}>
             <SearchField label="Search" onChangeText={setQ} placeholder="Filter pages" value={q} />
             <Stack gap="1" render="ul">
@@ -106,9 +110,9 @@ const HelpPage = () => {
               )}
             </Stack>
           </Card>
-        </nav>
+        </Stack>
 
-        <Stack flex={1} flexShrink={1} minWidth={0}>
+        <Stack minWidth={0}>
           {doc.error ? (
             <ErrorState error={doc.error} onRetry={() => doc.refetch()} />
           ) : doc.isLoading ? (
@@ -124,7 +128,7 @@ const HelpPage = () => {
             />
           )}
         </Stack>
-      </Stack>
+      </Grid>
     </Stack>
   );
 };

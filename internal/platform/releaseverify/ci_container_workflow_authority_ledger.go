@@ -51,7 +51,11 @@ func (ledger *workflowAuthorityLedger) authorize(workflowName, jobName string, s
 	if !stepAuthority.allowsAcquisition && !targetsRemainNonAcquiring(stepAuthority.targets, protectedTargets) {
 		return false, nil
 	}
-	if !stepAuthority.allowsAcquisition && scripts != nil && scripts.commandAcquires(run.Value) {
+	masked, _, err := maskWorkflowExpressions(run.Value)
+	if err != nil {
+		return false, err
+	}
+	if !stepAuthority.allowsAcquisition && scripts != nil && scripts.commandAcquires(masked) {
 		return false, nil
 	}
 	if stepAuthority.exactStepIndex && stepIndex != stepAuthority.stepIndex {

@@ -202,11 +202,16 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		}
 		deps.owner.goRunAfterBuild(notice.Run)
 	}
+	if deps.images != nil {
+		posters := &homePosters{store: st, images: deps.images, busy: deps.watched, log: deps.log, now: time.Now,
+			still: playout.FFmpegSourceStill(deps.ffmpegPath, playout.TonemapperFor(deps.ffmpegPath), deps.processes)}
+		deps.owner.goRunAfterBuild(posters.Run)
+	}
 	deps.owner.goRunAfterBuild(scanner.Run)
 	deps.owner.goRunAfterBuild(watcher.Run)
 	deps.owner.goRunAfterBuild(hooks.Run)
 	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
-		Orders: st, CollectionStore: st, Records: st, Keys: keys}
+		Orders: st, CollectionStore: st, Records: st, Keys: keys, Log: deps.log}
 	if provider != nil {
 		enricher = &scan.Enricher{
 			Store: st, Provider: provider, Rewrite: scanner.Rewrite,

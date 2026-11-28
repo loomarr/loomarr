@@ -18,6 +18,11 @@ viewer no encoder process runs. Each channel and format has one long-lived Go **
 channel's segment timeline. It starts on the first tune and stops `DefaultGrace` (30 s) after the last
 viewer leaves. There is no boot warm-up, and the channel packager is the only live path.
 
+**Packages.** The engine's shared vocabulary (the probed `MediaFormat`, its stream class, the picture
+rectangle and the HDR tone curve) is the leaf package `internal/playout/media`, so a package can
+share it without importing the engine. The resource budget, the host's CPU and memory readings, the
+software rungs and their speed monitor are `internal/playout/admission`, which imports only `media`.
+
 **The pipeline.**
 
 - **One encoder per item.** Each scheduled item (a programme part, a break clip or a card) gets its own

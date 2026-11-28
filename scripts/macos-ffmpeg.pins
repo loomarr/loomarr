@@ -1,0 +1,4 @@
+# The macOS arm64 FFmpeg 9.0.2 pin: download base URL, ffmpeg.zip SHA-256, ffprobe.zip SHA-256.
+# scripts/macos-ffmpeg.sh installs from this line and records it beside the build;
+# internal/testkit/mediatool accepts only a build whose record equals it.
+https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2 c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924 fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6

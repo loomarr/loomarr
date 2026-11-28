@@ -5,12 +5,14 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
@@ -38,6 +40,13 @@ func (s *Handlers) registerLibraryItems(api huma.API) {
 		Tags: []string{"library"},
 	}, httpcore.RoleMember), s.listLibraryItems)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "listLibraryGenres", Method: http.MethodGet, Path: "/v1/library/genres",
+		Summary: "The library's genres",
+		Description: "The genres of the titles the list shows, each with how many titles carry it, by name. " +
+			"A member's counts leave out the titles a member doesn't read.",
+		Tags: []string{"library"},
+	}, httpcore.RoleMember), s.listLibraryGenres)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "getLibraryItem", Method: http.MethodGet, Path: "/v1/library/items/{id}",
 		Summary: "One title",
 		Description: "A movie with its files, or a series with its episodes by season. 404 when no file of it is present. " +
@@ -60,9 +69,18 @@ func (s *Handlers) registerLibraryItems(api huma.API) {
 		OperationID: "removeLibraryExtraCopy", Method: http.MethodPost, Path: "/v1/library/items/{id}/remove-copy",
 		Summary: "Remove a title's extra copy",
 		Description: "Moves one of the title's files that never plays into its media folder's trash " +
-			"(.loomarr-trash), which empties after 30 days.",
-		Tags: []string{"library"}, DefaultStatus: http.StatusNoContent,
+			"(.loomarr-trash), which empties after 30 days. Answers with the token that undoes it.",
+		Tags: []string{"library"},
 	}, httpcore.RoleAdmin), s.removeLibraryExtraCopy)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "restoreLibraryExtraCopy", Method: http.MethodPost, Path: "/v1/library/items/{id}/restore-copy",
+		Summary: "Undo removing an extra copy",
+		Description: "Moves the copy a removal put in the trash back to where it was; the title has it again once the folder " +
+			"is read. Takes the token that removal answered with, which stops working when Loomarr restarts. " +
+			"400 for a token that isn't valid for this title, 410 when the copy isn't in the trash, 409 when " +
+			"something is where it was or the folder can't be changed.",
+		Tags: []string{"library"}, DefaultStatus: http.StatusNoContent,
+	}, httpcore.RoleAdmin), s.restoreLibraryExtraCopy)
 }
 
 type removeLibraryExtraCopyInput struct {
@@ -72,15 +90,56 @@ type removeLibraryExtraCopyInput struct {
 	}
 }
 
-func (s *Handlers) removeLibraryExtraCopy(ctx context.Context, in *removeLibraryExtraCopyInput) (*struct{}, error) {
+type removeLibraryExtraCopyOutput struct {
+	Body struct {
+		Undo string `json:"undo" doc:"Give this to restore-copy to put the file back"`
+	}
+}
+
+type restoreLibraryExtraCopyInput struct {
+	ID   string `path:"id" maxLength:"64"`
+	Body struct {
+		Undo string `json:"undo" minLength:"1" maxLength:"16384" doc:"The token the removal answered with"`
+	}
+}
+
+func (s *Handlers) restoreLibraryExtraCopy(ctx context.Context, in *restoreLibraryExtraCopyInput) (*struct{}, error) {
 	svc, err := s.libraryRootsService()
 	if err != nil {
 		return nil, err
 	}
-	err = svc.RemoveExtraCopy(ctx, in.ID, in.Body.Path)
+	err = svc.RestoreExtraCopy(ctx, in.ID, in.Body.Undo)
 	switch {
 	case err == nil:
 		return nil, nil
+	case errors.Is(err, scan.ErrUndoToken):
+		return nil, httpcore.Problem(http.StatusBadRequest, "Can't undo this any more",
+			"If you still want the file, it's in the .loomarr-trash folder inside its media folder for 30 days.")
+	case errors.Is(err, scan.ErrTrashGone):
+		return nil, httpcore.Problem(http.StatusGone, "The file isn't in the trash",
+			"It may have been emptied or moved. Check that its drive is connected.")
+	case errors.Is(err, scan.ErrPathTaken):
+		return nil, httpcore.Problem(http.StatusConflict, "Something is already there",
+			"A file is where this copy was, so Loomarr left the copy in the trash.")
+	case errors.Is(err, scan.ErrRestore):
+		return nil, httpcore.ProblemWithCause(http.StatusConflict, "Couldn't put the copy back",
+			"Loomarr may not be allowed to change this folder.", err)
+	default:
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't put the copy back", "Try again in a moment.", err)
+	}
+}
+
+func (s *Handlers) removeLibraryExtraCopy(ctx context.Context, in *removeLibraryExtraCopyInput) (*removeLibraryExtraCopyOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	undo, err := svc.RemoveExtraCopy(ctx, in.ID, in.Body.Path)
+	switch {
+	case err == nil:
+		out := &removeLibraryExtraCopyOutput{}
+		out.Body.Undo = undo
+		return out, nil
 	case errors.Is(err, store.ErrNotFound):
 		return nil, httpcore.Problem(http.StatusNotFound, "Not one of this title's files", "Check files again, then try again.")
 	case errors.Is(err, scan.ErrPlays):
@@ -160,6 +219,9 @@ type libraryItemDTO struct {
 	// for an admin, zero included.
 	Unplayable  *int `json:"unplayable,omitempty" doc:"Files that can't be played: their details couldn't be read. Admins only"`
 	ExtraCopies *int `json:"extraCopies,omitempty" doc:"A movie's files that never play, beyond the copy of each edition (or each part) that does. Admins only"`
+	HomeVideo   bool `json:"homeVideo,omitempty" doc:"Kept as it is, as your own video. Absent otherwise"`
+	// Unidentified is for admins: a member reads no title that waits.
+	Unidentified bool `json:"unidentified,omitempty" doc:"Waiting in Needs you. Admins only; absent otherwise"`
 }
 
 // libraryItemOf is it as the caller reads it: admin carries its file count and the counts that
@@ -167,9 +229,10 @@ type libraryItemDTO struct {
 func libraryItemOf(it librarystore.LibraryItemSummary, posters map[string]*httpcore.ImageDTO, admin bool) libraryItemDTO {
 	out := libraryItemDTO{
 		ID: it.ID, Kind: it.Kind, Name: it.Name, Year: it.Year, Ready: it.Pending == 0,
-		Poster: posters[it.Poster],
+		Poster: posters[it.Poster], HomeVideo: it.HomeVideo,
 	}
 	if admin {
+		out.Unidentified = it.Unidentified
 		files, unplayable, extra := it.Files, it.Unplayable, 0
 		if it.Kind == "movie" {
 			extra = it.ExtraCopies
@@ -197,18 +260,66 @@ func (s *Handlers) libraryPosters(ctx context.Context, items []librarystore.Libr
 
 type listLibraryItemsInput struct {
 	Kind   string `query:"kind" enum:"movie,series" doc:"Only movies or only series; both when absent"`
-	Search string `query:"search" maxLength:"200" doc:"Part of the name, any case"`
-	Ready  bool   `query:"ready" doc:"Only titles with every file's details read"`
-	Sort   string `query:"sort" enum:"name,recent" default:"name" doc:"By name, or the titles written last first"`
-	Limit  int    `query:"limit" minimum:"1" maximum:"200" default:"60"`
-	Offset int    `query:"offset" minimum:"0"`
+	Search string `query:"search" maxLength:"200" doc:"Part of the name, any case; or words that are each in the name, the year (four digits) or a genre. Titles whose name holds it come first"`
+	Genre  string `query:"genre" maxLength:"100" doc:"Only titles with this genre, any case; an unknown genre lists none"`
+	Studio string `query:"studio" maxLength:"200" doc:"Only titles of this studio, any case; an unknown studio lists none"`
+	Person string `query:"person" maxLength:"600" doc:"Only titles that credit this person, by id; an unknown id lists none"`
+	Audio  string `query:"audio" maxLength:"35" doc:"Only titles with sound in this language, by code; a series needs one episode with it"`
+	// The track filters read the copy that plays of each file that can play.
+	Subtitles string `query:"subtitles" maxLength:"35" doc:"Only titles with subtitles in this language, by code; a series needs one episode with them"`
+	UHD       bool   `query:"uhd" doc:"Only titles with a 4K picture; a series needs one 4K episode"`
+	HDR       string `query:"hdr" enum:"any,Dolby Vision,HDR10,HLG,HDR" doc:"Only titles with a high dynamic range picture, of any kind or one; a series needs one such episode"`
+	Ready     bool   `query:"ready" doc:"Only titles with every file's details read"`
+	Sort      string `query:"sort" enum:"name,recent" default:"name" doc:"By name, or the titles written last first"`
+	Limit     int    `query:"limit" minimum:"1" maximum:"200" default:"60"`
+	Offset    int    `query:"offset" minimum:"0"`
+}
+
+// libraryLetterDTO is one stop on the wall's letter rail.
+type libraryLetterDTO struct {
+	Letter string `json:"letter" doc:"A to Z, or # for a title that starts with a digit or any other character"`
+	Offset int    `json:"offset" doc:"The offset of the first title it starts, in the list's order: ask for offset=<n>"`
 }
 
 type listLibraryItemsOutput struct {
 	Body struct {
 		Items []libraryItemDTO `json:"items"`
 		Total int              `json:"total" doc:"Titles matching, across every page"`
+		// Letters reads the same filters as total, so each offset lands on its title.
+		Letters []libraryLetterDTO `json:"letters,omitempty" doc:"Under sort=name, each initial present in the filtered list with the offset of its first occurrence. Letters are in list order, not necessarily A to Z: under a search, name matches come first, and a letter maps to its first occurrence. Absent under sort=recent"`
 	}
+}
+
+type listLibraryGenresInput struct {
+	Kind string `query:"kind" enum:"movie,series" doc:"Only movies' or only series' genres; both when absent"`
+}
+
+type libraryGenreDTO struct {
+	Name   string `json:"name"`
+	Titles int    `json:"titles" doc:"Titles that carry it"`
+}
+
+type listLibraryGenresOutput struct {
+	Body struct {
+		Genres []libraryGenreDTO `json:"genres" doc:"By name; names that differ only in case are one genre"`
+	}
+}
+
+func (s *Handlers) listLibraryGenres(ctx context.Context, in *listLibraryGenresInput) (*listLibraryGenresOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	genres, err := svc.Genres(ctx, in.Kind, !readsAdminFacts(ctx))
+	if err != nil {
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't list the library's genres", "Try again in a moment.", err)
+	}
+	out := &listLibraryGenresOutput{}
+	out.Body.Genres = make([]libraryGenreDTO, 0, len(genres))
+	for _, g := range genres {
+		out.Body.Genres = append(out.Body.Genres, libraryGenreDTO{Name: g.Name, Titles: g.Titles})
+	}
+	return out, nil
 }
 
 func (s *Handlers) listLibraryItems(ctx context.Context, in *listLibraryItemsInput) (*listLibraryItemsOutput, error) {
@@ -218,14 +329,18 @@ func (s *Handlers) listLibraryItems(ctx context.Context, in *listLibraryItemsInp
 	}
 	admin := readsAdminFacts(ctx)
 	page, err := svc.Items(ctx, librarystore.LibraryItemQuery{
-		Kind: in.Kind, Search: in.Search, Ready: in.Ready, Recent: in.Sort == "recent",
-		Member: !admin, Limit: min(in.Limit, libraryItemsPageMax), Offset: in.Offset,
+		Kind: in.Kind, Search: in.Search, Genre: in.Genre, Studio: in.Studio, Person: in.Person, Audio: in.Audio,
+		Subtitles: in.Subtitles, UHD: in.UHD, HDR: in.HDR, Ready: in.Ready, Recent: in.Sort == "recent",
+		Letters: in.Sort != "recent", Member: !admin, Limit: min(in.Limit, libraryItemsPageMax), Offset: in.Offset,
 	})
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't list the library", "Try again in a moment.", err)
 	}
 	out := &listLibraryItemsOutput{}
 	out.Body.Total = page.Total
+	for _, l := range page.Letters {
+		out.Body.Letters = append(out.Body.Letters, libraryLetterDTO{Letter: l.Letter, Offset: l.Offset})
+	}
 	out.Body.Items = make([]libraryItemDTO, 0, len(page.Items))
 	posters := s.libraryPosters(ctx, page.Items)
 	for _, it := range page.Items {
@@ -264,7 +379,7 @@ type libraryStreamDTO struct {
 	Height          int    `json:"height,omitempty" doc:"A video track's height in pixels"`
 	FrameRate       string `json:"frameRate,omitempty" doc:"As the file states it, such as 24000/1001"`
 	DynamicRange    string `json:"dynamicRange,omitempty" enum:"Dolby Vision,HDR10,HLG,HDR" doc:"A video track's high dynamic range; absent for standard range"`
-	Language        string `json:"language,omitempty" doc:"ISO 639-1 where one exists, else as the file says it"`
+	Language        string `json:"language,omitempty" doc:"ISO 639-1 where one exists, else what the file says; lower case"`
 	LanguageName    string `json:"languageName,omitempty" doc:"The language's English name"`
 	Channels        int    `json:"channels,omitempty" doc:"An audio track's channel count"`
 	ChannelLayout   string `json:"channelLayout,omitempty" doc:"An audio track's layout, such as 5.1(side)"`
@@ -285,6 +400,7 @@ type libraryChapterDTO struct {
 
 // libraryCreditDTO is one person credited on a title.
 type libraryCreditDTO struct {
+	PersonID  string `json:"personId" doc:"The person, for the list's person= and /v1/library/people/{id}"`
 	Name      string `json:"name"`
 	Role      string `json:"role" enum:"actor,director,writer,creator"`
 	Character string `json:"character,omitempty" doc:"An actor's part"`
@@ -384,6 +500,7 @@ type libraryItemDetailDTO struct {
 	Playing       *libraryPlayingDTO  `json:"playing,omitempty" doc:"The copy that plays, in one line; absent for a series, and while none of its files plays"`
 	Seasons       []librarySeasonDTO  `json:"seasons" doc:"A series' episodes by season; empty for a movie or an episode"`
 	Channels      []libraryChannelDTO `json:"channels" doc:"The channels whose lineup holds it, by number"`
+	NextAirings   []libraryAiringDTO  `json:"nextAirings" doc:"The next programme of it on each channel with one stored (about the next 48 hours; not paused, detached or Tunarr channels), earliest first. One already on air counts"`
 	// Files, Match and DetailsFrom are present for an admin, an empty files list included.
 	Files       *[]libraryItemFileDTO  `json:"files,omitempty" doc:"A movie's files, or an episode's; empty for a series. Admins only"`
 	Match       *libraryMatchDTO       `json:"match,omitempty" doc:"What decides which title it is. Admins only"`
@@ -423,6 +540,51 @@ type libraryChannelDTO struct {
 	Number int    `json:"number"`
 }
 
+// libraryAiringDTO is a title's next programme on one channel (scheduling.md "Upcoming airings").
+type libraryAiringDTO struct {
+	Channel  libraryChannelDTO        `json:"channel"`
+	Start    time.Time                `json:"start"`
+	End      time.Time                `json:"end"`
+	Forecast bool                     `json:"forecast" doc:"Past the window on air, so it can still change"`
+	Episode  *libraryAiringEpisodeDTO `json:"episode,omitempty" doc:"A series' episode that airs; absent for any other title, for an episode the caller doesn't read, and for one with no present file"`
+}
+
+type libraryAiringEpisodeDTO struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Season int    `json:"season" doc:"0 is the specials"`
+	Number int    `json:"number"`
+	End    int    `json:"end,omitempty" doc:"The last episode a multi-episode file holds"`
+}
+
+// libraryNextAiringsOf is the first of airings, which come earliest first, on each channel. An
+// episode is named only from d's own seasons as the caller reads them (episodeShown), so one the
+// caller doesn't read, or one with no present file, goes unnamed.
+func libraryNextAiringsOf(d scan.ItemDetail, airings []channeldatastore.UpcomingAiring, admin bool) []libraryAiringDTO {
+	episodes := map[string]*libraryAiringEpisodeDTO{}
+	for _, season := range d.Seasons {
+		for _, ep := range season.Episodes {
+			if episodeShown(ep, admin) {
+				episodes[ep.ID] = &libraryAiringEpisodeDTO{ID: ep.ID, Name: ep.Name, Season: season.Number,
+					Number: ep.Number, End: ep.End}
+			}
+		}
+	}
+	out := []libraryAiringDTO{}
+	seen := map[string]bool{}
+	for _, a := range airings {
+		if seen[a.ChannelID] {
+			continue
+		}
+		seen[a.ChannelID] = true
+		out = append(out, libraryAiringDTO{
+			Channel: libraryChannelDTO{ID: a.ChannelID, Name: a.ChannelName, Number: a.ChannelNumber},
+			Start:   a.Start.UTC(), End: a.End.UTC(), Forecast: a.Forecast, Episode: episodes[a.LibraryItemID],
+		})
+	}
+	return out
+}
+
 type getLibraryItemInput struct {
 	ID string `path:"id" maxLength:"64"`
 }
@@ -445,8 +607,13 @@ func (s *Handlers) getLibraryItem(ctx context.Context, in *getLibraryItemInput) 
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read this title", "Try again in a moment.", err)
 	}
+	airings, err := s.store.UpcomingAiringsForItem(ctx, in.ID, time.Now())
+	if err != nil {
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read this title", "Try again in a moment.", err)
+	}
 	images := s.pageImages(ctx, d, admin)
 	body := libraryItemDetailOf(d, images, admin)
+	body.NextAirings = libraryNextAiringsOf(d, airings, admin)
 	body.LogoImage, body.BackdropImage = images[d.Logo], images[d.Backdrop]
 	if d.Still != "" {
 		body.Still = images[d.Still]
@@ -505,7 +672,8 @@ func libraryItemDetailOf(d scan.ItemDetail, images map[string]*httpcore.ImageDTO
 		out.Genres = []string{}
 	}
 	for _, p := range d.Facts.People {
-		out.Credits = append(out.Credits, libraryCreditDTO{Name: p.Name, Role: p.Role, Character: p.Character})
+		credit := librarystore.LibraryCredit{Name: p.Name, ID: librarystore.LibraryID{Namespace: p.ID.Namespace, Value: p.ID.Value}}
+		out.Credits = append(out.Credits, libraryCreditDTO{PersonID: credit.PersonID(), Name: p.Name, Role: p.Role, Character: p.Character})
 	}
 	for _, c := range d.Channels {
 		out.Channels = append(out.Channels, libraryChannelDTO{ID: c.ID, Name: c.Name, Number: c.Number})

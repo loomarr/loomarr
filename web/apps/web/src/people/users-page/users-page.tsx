@@ -197,7 +197,7 @@ const UsersPage = () => {
       />
 
       <Stack
-        className="overflow-auto"
+        style={{ overflow: "auto" }}
         flexBasis="0%"
         flexGrow={1}
         flexShrink={1}

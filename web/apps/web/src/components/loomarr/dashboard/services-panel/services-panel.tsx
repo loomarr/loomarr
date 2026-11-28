@@ -1,6 +1,5 @@
-import { Action, ActivityIndicator, Stack, StatusWord, Text } from "@loomarr/design-system";
+import { Action, ActivityIndicator, Card, Stack, StatusWord, Text } from "@loomarr/design-system";
 import { ListGroup, PanelRow } from "@loomarr/ui";
-import { cn } from "@/lib/utils";
 import type { ServicesPanelProps } from "./services-panel.type";
 
 // ServicesPanel — "is anything broken?" (§12, V31; v2 mock Dashboard § Services).
@@ -44,7 +43,7 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
   const rows = view.rows ?? [];
 
   return (
-    <section className={cn("border-border overflow-hidden rounded-lg border", className)}>
+    <Card className={className} overflow="hidden" render="section">
       <Stack
         align="baseline"
         borderBottomWidth={1}
@@ -100,13 +99,13 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
             }
           >
             <Stack align="center" direction="row" gap="control">
-              <Stack flexShrink={0}>
-                <Text as="span" className="w-32" textRole="compact">
+              <Stack flexShrink={0} width={128}>
+                <Text as="span" textRole="compact">
                   {serviceLabel(row.name)}
                 </Text>
               </Stack>
               <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
-                <Text as="span" className="truncate" textRole="mono">
+                <Text as="span" numberOfLines={1} textRole="mono">
                   {/* An unconfigured integration has no target. Saying so beats an empty cell,
                     which reads as a rendering bug rather than an answer. ⚠ A PASSING row with
                     no target is not unconfigured: TMDB has no target by design (#2734). */}
@@ -126,7 +125,7 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
           </PanelRow>
         ))}
       </ListGroup>
-    </section>
+    </Card>
   );
 };
 

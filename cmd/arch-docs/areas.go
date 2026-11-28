@@ -126,7 +126,7 @@ var areas = []area{
 			"real hardware. The timeline is the pure arithmetic over a channel's schedule that the " +
 			"stream, the guide and reconcile all read.",
 		Packages: []string{
-			"playout", "playout/packager", "playout/bench", "playout/watermark", "playout/channelbug", "playout/tunarr",
+			"playout", "playout/media", "playout/admission", "playout/packager", "playout/bench", "playout/watermark", "playout/watermark/raster", "playout/channelbug", "playout/tunarr",
 			"playout/tunarr/tunarrtest", "playout/livetvpublish", "playout/backendtransition",
 			"playout/landiscovery", "playout/subtitles", "playout/timeline",
 		},
@@ -240,6 +240,7 @@ var areas = []area{
 			"testkit/playoutstreamfixture", "testkit/postgresimage", "testkit/recordfixture",
 			"testkit/channeljourney", "testkit/libraryfixture", "testkit/outlookfixture",
 			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "testkit/imagetestkit",
+			"testkit/mediatool",
 			"platform/store/storetest",
 			"demolibrary", "library/tmdb/tmdbstandin", "integration", "eval",
 		},

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 func buildStructurePlan(source SourceAsset, boundaries []Boundary, claims []RoleClaim, discards []DiscardClaim, observations []Observation, authority *structureDecisionProjectionAuthority) ([]PlanSegment, error) {
@@ -44,7 +46,7 @@ func buildStructurePlan(source SourceAsset, boundaries []Boundary, claims []Role
 	for _, claim := range claims {
 		claim.Reason = strings.TrimSpace(claim.Reason)
 		claim.EvidenceIDs = UniqueStrings(claim.EvidenceIDs)
-		if claim.StartMs < 0 || claim.EndMs <= claim.StartMs || claim.EndMs > durationMs || !ValidRole(claim.Role) || claim.Reason == "" || len(claim.EvidenceIDs) == 0 {
+		if claim.StartMs < 0 || claim.EndMs <= claim.StartMs || claim.EndMs > durationMs || !structure.ValidRole(claim.Role) || claim.Reason == "" || len(claim.EvidenceIDs) == 0 {
 			return nil, errors.New("source structure: invalid role claim")
 		}
 		for _, id := range claim.EvidenceIDs {
@@ -213,16 +215,6 @@ func validateStructureCoverage(plan []PlanSegment, durationMs int64) error {
 
 func validSourceStructureKind(kind Kind) bool {
 	return kind == KindSingleUnit || kind == KindCompilationBreak || kind == KindProgrammeSpots || kind == KindAmbiguous || kind == KindUnusable
-}
-
-// ValidRole reports whether role is one of the closed segment roles.
-func ValidRole(role Role) bool {
-	switch role {
-	case RoleCommercial, RolePromo, RoleBumper, RoleStationID, RolePSA, RoleTrailer, RoleInterstitial, RoleProgrammeFragment, RoleNonFiller, RoleAmbiguous, RoleUnusable:
-		return true
-	default:
-		return false
-	}
 }
 
 func validStructureDisposition(disposition Disposition) bool {

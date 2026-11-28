@@ -1,5 +1,4 @@
 import { BrandLockup, Card, Stack } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
 import { IdleSnow } from "../../shell";
 import type { LoginShellProps } from "./login-shell.type";
 
@@ -8,15 +7,14 @@ import type { LoginShellProps } from "./login-shell.type";
 // login route (which owns the router + mutation) so the assembled page — brand, static,
 // and card together — is a gallery-testable unit; the route only supplies `children`.
 // Same split as WizardShell / SettingsFields: presentation here, data-binding at the route.
-const LoginShell = ({ children, className }: LoginShellProps) => (
+const LoginShell = ({ children, paddingVertical = 24 }: LoginShellProps) => (
   <Stack
     align="center"
     backgroundColor="$surfaceCanvas"
-    // Padding stays a class: the join and reset routes pass `py-10`, which `cn` lets replace
-    // the default, where a padding prop would beat it.
-    className={cn("p-6", className)}
     gap="8"
     justify="center"
+    paddingHorizontal={24}
+    paddingVertical={paddingVertical}
     // A prop, not `min-h-screen`: the View base rule's `min-height: 0` is unlayered and beats the
     // utility, which collapsed the page to its content and lifted the card off centre.
     minHeight="100vh"

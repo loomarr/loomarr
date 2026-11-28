@@ -12,16 +12,18 @@ import (
 )
 
 // LibraryAnswer is the answer for a title nothing grounds (#2151 step 11): the catalog title it is
-// (a link), or that it is not a title at all.
+// (a link), that it is not a title at all, or that it is the household's own, kept as it is.
 type LibraryAnswer struct {
 	Origin LibraryOrigin
 	// Kind is movie or series.
 	Kind string
-	// ID is the linked title, by any catalog's id; zero when Ignored.
-	ID         LibraryID
-	Ignored    bool
+	// ID is the linked title, by any catalog's id; zero when Ignored or Kept.
+	ID      LibraryID
+	Ignored bool
+	// Kept is a home video.
+	Kept       bool
 	AnsweredAt time.Time
-	// By is who answered; "" saves as the maintainer. Only the maintainer ignores a title.
+	// By is who answered; "" saves as the maintainer. Only the maintainer ignores or keeps a title.
 	By LibraryAnswerBy
 }
 
@@ -62,10 +64,54 @@ type LibraryNeed struct {
 	Searched string
 }
 
+// LibraryIgnoredTitle is a title the maintainer said is not one.
+type LibraryIgnoredTitle struct {
+	ID string
+	// Kind is movie or series.
+	Kind      string
+	Name      string
+	Origin    LibraryOrigin
+	IgnoredAt time.Time
+}
+
+// LibraryAnswered is a title a batch answer or restore touched.
+type LibraryAnswered struct {
+	ID     string
+	Origin LibraryOrigin
+}
+
+var (
+	// ErrNotNeeded is a batch ignore naming a title that is not waiting in Needs you.
+	ErrNotNeeded = errors.New("library: that title does not need you")
+	// ErrNotIgnored is a batch restore naming a title that is not ignored.
+	ErrNotIgnored = errors.New("library: that title is not ignored")
+	// ErrNotKeepable is a keep of a title that is not waiting in Needs you, or that has a guess.
+	ErrNotKeepable = errors.New("library: only a title that needs you and has no guess can be kept")
+)
+
 // LibraryNeedsStore keeps Needs you (#2151 step 11).
 type LibraryNeedsStore interface {
+	// IgnoreLibraryNeeds ignores titles that need the maintainer, all in one transaction:
+	// ErrNotNeeded, and nothing saved, if any is not waiting in Needs you.
+	IgnoreLibraryNeeds(ctx context.Context, itemIDs []string, at time.Time) ([]LibraryAnswered, error)
+	// KeepLibraryNeed answers a title that needs the maintainer and has no candidate as a home
+	// video: ErrNotKeepable, and nothing saved, otherwise.
+	KeepLibraryNeed(ctx context.Context, itemID string, at time.Time) (LibraryAnswered, error)
+	// HomeVideosWithoutPoster returns the kept titles that have no poster, each with its main file.
+	HomeVideosWithoutPoster(ctx context.Context) ([]LibraryHomeVideoFrame, error)
+	// KeptLibraryTitle reports whether a file belongs to a title kept as a home video.
+	KeptLibraryTitle(ctx context.Context, kind string, origin LibraryOrigin, groups []LibraryID) (bool, error)
+	// RestoreLibraryIgnored takes back the ignore of titles, all in one transaction:
+	// ErrNotIgnored, and nothing removed, if any is not ignored.
+	RestoreLibraryIgnored(ctx context.Context, itemIDs []string) ([]LibraryAnswered, error)
+	// LibraryIgnored is a page of the ignored titles with a present file, newest ignore first, and
+	// how many there are in all.
+	LibraryIgnored(ctx context.Context, limit, offset int) ([]LibraryIgnoredTitle, int, error)
 	// LibraryNeeds lists every title that needs the maintainer, by sort name.
 	LibraryNeeds(ctx context.Context) ([]LibraryNeed, error)
+	// LibraryNeedsYouCount is how many titles Needs you holds: those LibraryNeeds, the episode
+	// order needs and the problem list name, each title once.
+	LibraryNeedsYouCount(ctx context.Context) (int, error)
 	// LibraryCandidates is each listed title's candidates, in rank order.
 	LibraryCandidates(ctx context.Context, itemIDs []string) (map[string][]LibraryCandidate, error)
 	// SaveLibraryCandidates replaces a title's candidates and notes what was searched.
@@ -85,6 +131,36 @@ type LibraryNeedsStore interface {
 	UnnoticedLibraryNeeds(ctx context.Context) ([]string, error)
 	// NoticeLibraryNeeds marks titles a notice counted.
 	NoticeLibraryNeeds(ctx context.Context, itemIDs []string) error
+}
+
+func (s *Store) LibraryIgnored(ctx context.Context, limit, offset int) ([]LibraryIgnoredTitle, int, error) {
+	from := ` FROM library_items i JOIN library_answers a ON a.origin_authority = i.origin_authority
+		AND a.origin_key = i.origin_key
+		WHERE i.kind IN ('movie', 'series') AND a.ignored = TRUE AND ` + itemListed
+	var total int
+	if err := s.h.QueryRowContext(ctx, s.ph(`SELECT COUNT(*)`+from)).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("library ignored: %w", err)
+	}
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT i.id, i.kind, i.name, i.origin_authority, i.origin_key,
+		a.answered_at_ms`+from+` ORDER BY a.answered_at_ms DESC, i.id LIMIT ? OFFSET ?`), limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("library ignored: %w", err)
+	}
+	out := []LibraryIgnoredTitle{}
+	for rows.Next() {
+		var t LibraryIgnoredTitle
+		var at int64
+		if err := rows.Scan(&t.ID, &t.Kind, &t.Name, &t.Origin.Authority, &t.Origin.Key, &at); err != nil {
+			_ = rows.Close()
+			return nil, 0, fmt.Errorf("library ignored: %w", err)
+		}
+		t.IgnoredAt = time.UnixMilli(at).UTC()
+		out = append(out, t)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, 0, fmt.Errorf("library ignored: %w", err)
+	}
+	return out, total, nil
 }
 
 func (s *Store) UnnoticedLibraryNeeds(ctx context.Context) ([]string, error) {
@@ -123,9 +199,36 @@ const needWhere = `i.kind IN ('movie', 'series') AND i.grounded = FALSE AND i.or
 	AND NOT EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = i.origin_authority
 		AND a.origin_key = i.origin_key)`
 
+// needsFrom is the FROM and WHERE of the titles that need an answer.
+func needsFrom() string {
+	return ` FROM library_items i WHERE ` + needWhere + ` AND NOT ` + titleKept("i") + ` AND ` + itemListed
+}
+
+// needsYouCount is the statement, and its arguments, that counts the titles Needs you holds. UNION
+// keeps one id for a title that is in more than one of its lists.
+func (s *Store) needsYouCount() (string, []any) {
+	problems, args, _, _ := s.listFrom(LibraryItemQuery{Problems: true})
+	return s.ph(`SELECT COUNT(*) FROM (SELECT i.id` + needsFrom() + `
+		UNION SELECT i.id FROM library_items i JOIN (` + waitingShows + `) w ON w.id = i.id
+			WHERE i.kind = 'series' AND ` + itemListed + `
+		UNION SELECT i.id` + problems + `) x`), args
+}
+
+// NeedsYouCountQuery is needsYouCount, for the plan test.
+func NeedsYouCountQuery(s *Store) (string, []any) { return s.needsYouCount() }
+
+func (s *Store) LibraryNeedsYouCount(ctx context.Context) (int, error) {
+	query, args := s.needsYouCount()
+	var n int
+	if err := s.h.QueryRowContext(ctx, query, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("library needs you count: %w", err)
+	}
+	return n, nil
+}
+
 func (s *Store) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
 	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT `+itemColumns+`, i.origin_authority, i.origin_key, i.searched
-		FROM library_items i WHERE `+needWhere+` AND `+itemListed+` ORDER BY i.sort_name, i.id`))
+		`+needsFrom()+` ORDER BY i.sort_name, i.id`))
 	if err != nil {
 		return nil, fmt.Errorf("library needs: %w", err)
 	}
@@ -134,7 +237,7 @@ func (s *Store) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
 		var n LibraryNeed
 		var catalog, set string
 		if err := rows.Scan(&n.ID, &n.Kind, &n.Name, &n.SortName, &n.Year, &catalog, &n.Match.Basis, &n.Match.App,
-			&n.Match.Page, &set, &n.Poster, &n.Backdrop, &n.Logo, &n.Files, &n.Pending, &n.Unplayable, &n.ExtraCopies, &n.ExtraBytes, &n.Origin.Authority, &n.Origin.Key,
+			&n.Match.Page, &set, &n.Poster, &n.Backdrop, &n.Logo, &n.Files, &n.Pending, &n.Unplayable, &n.ExtraCopies, &n.ExtraBytes, &n.HomeVideo, &n.Unidentified, &n.Origin.Authority, &n.Origin.Key,
 			&n.Searched); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("library needs: %w", err)
@@ -231,9 +334,9 @@ func (s *Store) LibraryItemOrigin(ctx context.Context, itemID string) (string, L
 func (s *Store) LibraryAnswerFor(ctx context.Context, origin LibraryOrigin) (LibraryAnswer, bool, error) {
 	a := LibraryAnswer{Origin: origin}
 	var at int64
-	err := s.h.QueryRowContext(ctx, s.ph(`SELECT kind, namespace, external_id, ignored, answered_at_ms, answered_by
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT kind, namespace, external_id, ignored, kept, answered_at_ms, answered_by
 		FROM library_answers WHERE origin_authority = ? AND origin_key = ?`), origin.Authority, origin.Key).Scan(
-		&a.Kind, &a.ID.Namespace, &a.ID.Value, &a.Ignored, &at, &a.By)
+		&a.Kind, &a.ID.Namespace, &a.ID.Value, &a.Ignored, &a.Kept, &at, &a.By)
 	if errors.Is(err, sql.ErrNoRows) {
 		return LibraryAnswer{}, false, nil
 	}
@@ -248,37 +351,76 @@ func (s *Store) SaveLibraryAnswer(ctx context.Context, a LibraryAnswer) error {
 	if a.Origin.Authority == "" || a.Origin.Key == "" || a.Kind == "" || a.AnsweredAt.IsZero() {
 		return fmt.Errorf("save library answer: origin, kind and time are required")
 	}
-	if a.Ignored == (a.ID != LibraryID{}) {
-		return fmt.Errorf("save library answer: an answer is either a link or ignored")
+	linked := a.ID != LibraryID{}
+	if a.Ignored && a.Kept || linked == (a.Ignored || a.Kept) {
+		return fmt.Errorf("save library answer: an answer is exactly one of a link, ignored or kept")
 	}
-	if !a.Ignored && (a.ID.Namespace == "" || a.ID.Value == "") {
+	if linked && (a.ID.Namespace == "" || a.ID.Value == "") {
 		return fmt.Errorf("save library answer: a link names a catalog and an id")
 	}
 	if a.By == "" {
 		a.By = AnsweredByYou
 	}
-	if a.By != AnsweredByYou && (a.By != AnsweredBySearch || a.Ignored) {
+	if a.By != AnsweredByYou && (a.By != AnsweredBySearch || !linked) {
 		return fmt.Errorf("save library answer: %q cannot give this answer", a.By)
 	}
 	// A search never replaces the maintainer's answer (decision 58), even one given between the
-	// Matcher's look and this write.
-	if _, err := s.h.ExecContext(ctx, s.ph(`INSERT INTO library_answers
-		(origin_authority, origin_key, kind, namespace, external_id, ignored, answered_at_ms, answered_by)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	// Matcher's look and this write; a home video is one, on whichever origin of the title.
+	tx, err := s.h.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("save library answer: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if a.By == AnsweredByYou {
+		if err := s.clearTitleKept(ctx, tx, a.Origin); err != nil {
+			return fmt.Errorf("save library answer: %w", err)
+		}
+	} else {
+		query, args := keptQuery(a.Kind, a.Origin, nil)
+		var kept bool
+		if err := tx.QueryRowContext(ctx, s.ph(query), args...).Scan(&kept); err != nil {
+			return fmt.Errorf("save library answer: %w", err)
+		}
+		if kept {
+			return nil
+		}
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_answers
+		(origin_authority, origin_key, kind, namespace, external_id, ignored, kept, answered_at_ms, answered_by)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (origin_authority, origin_key) DO UPDATE SET kind = excluded.kind, namespace = excluded.namespace,
-		external_id = excluded.external_id, ignored = excluded.ignored, answered_at_ms = excluded.answered_at_ms,
-		answered_by = excluded.answered_by
+		external_id = excluded.external_id, ignored = excluded.ignored, kept = excluded.kept,
+		answered_at_ms = excluded.answered_at_ms, answered_by = excluded.answered_by
 		WHERE excluded.answered_by = ? OR library_answers.answered_by <> ?`),
-		a.Origin.Authority, a.Origin.Key, a.Kind, a.ID.Namespace, a.ID.Value, a.Ignored, a.AnsweredAt.UnixMilli(), string(a.By),
-		string(AnsweredByYou), string(AnsweredByYou)); err != nil {
+		a.Origin.Authority, a.Origin.Key, a.Kind, a.ID.Namespace, a.ID.Value, a.Ignored, a.Kept, a.AnsweredAt.UnixMilli(),
+		string(a.By), string(AnsweredByYou), string(AnsweredByYou)); err != nil {
+		return fmt.Errorf("save library answer: %w", err)
+	}
+	if a.Kept {
+		if _, err := s.keepTitle(ctx, tx, a.Origin, a.Kind, a.AnsweredAt.UnixMilli()); err != nil {
+			return fmt.Errorf("save library answer: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("save library answer: %w", err)
 	}
 	return nil
 }
 
 func (s *Store) DeleteLibraryAnswer(ctx context.Context, origin LibraryOrigin) error {
-	if _, err := s.h.ExecContext(ctx, s.ph(`DELETE FROM library_answers WHERE origin_authority = ? AND origin_key = ?`),
+	tx, err := s.h.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("delete library answer: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := s.clearTitleKept(ctx, tx, origin); err != nil {
+		return fmt.Errorf("delete library answer: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM library_answers WHERE origin_authority = ? AND origin_key = ?`),
 		origin.Authority, origin.Key); err != nil {
+		return fmt.Errorf("delete library answer: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("delete library answer: %w", err)
 	}
 	return nil

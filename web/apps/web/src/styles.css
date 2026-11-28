@@ -1,93 +1,244 @@
-@import "tailwindcss";
 @import "@loomarr/design-system/theme.css";
 
-/* Self-hosted Geist + Geist Mono (§2.2) land in 13.2 with the visual harness (they
-   only matter for deterministic screenshots); the token font-stack falls back to
-   ui-sans-serif/ui-monospace until then. */
-
-/* Dark class drives the (v1 dark-only) theme; a light token-set slots in later. */
-@custom-variant dark (&:where(.dark, .dark *));
-
-/* The shadcn semantic layer, mapped onto the Test Card tokens (§2.1). The raw
-   palette lives in theme.css; these names are what shadcn/ui primitives consume,
-   so primitives restyle via tokens without edits. */
-:root {
-  --background: var(--color-static-950);
-  --foreground: var(--color-static-100);
-  --card: var(--color-static-900);
-  --card-foreground: var(--color-static-100);
-  --popover: var(--color-static-900);
-  --popover-foreground: var(--color-static-100);
-  --primary: var(--color-signal);
-  --primary-foreground: var(--color-static-950);
-  --secondary: var(--color-static-800);
-  --secondary-foreground: var(--color-static-100);
-  --muted: var(--color-static-800);
-  --muted-foreground: var(--color-static-400);
-  --accent: var(--color-static-800);
-  --accent-foreground: var(--color-static-100);
-  --destructive: var(--color-onair);
-  --destructive-foreground: var(--color-static-0);
-  --border: var(--color-static-700);
-  --input: var(--color-border-control);
-  --ring: var(--color-signal);
-  --radius: 8px;
-}
-
-/* Expose the semantic layer to Tailwind so bg-card / text-muted-foreground / etc.
-   resolve (Tailwind v4 @theme inline convention). */
-@theme inline {
-  --animate-select-in: select-in 120ms ease-out;
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --radius-DEFAULT: var(--radius);
-}
-
-/* The six content-width tiers (frontend-design.md, "One page-edge contract"; #1817 Q10). A route
-   picks the tier its task needs — `max-w-reading`, `max-w-form` — and centres it with `mx-auto`;
-   it never types a pixel width. All six were widths the app already used; this only names them.
-   `browse` is the time grid you scan across (the Guide), so it is uncapped. */
-@theme {
-  --container-browse: none;
-  --container-overview: 1120px;
-  --container-detail: 896px;
-  --container-reading: 768px;
-  --container-form: 672px;
-  --container-focused: 512px;
-}
-
-/* The default border colour, so a bare `border` needs no colour class.
+/* The element reset every surface is drawn against: no default margins or padding, border-box
+ * sizing, zero-width solid borders, headings and links that inherit their type and colour, form
+ * controls that inherit the page font, and block-level media. It is the preflight of the retired
+ * utility framework (#4451) as plain CSS, rule for rule (MIT; it builds on modern-normalize), and
+ * every visual baseline assumes it.
  *
- * ⚠ **It MUST live in `@layer base`.** Tailwind v4 emits every utility inside
- * `@layer utilities`, and the cascade sorts by LAYER before specificity — so an UNLAYERED `*`
- * rule beats `.border-signal` despite having specificity 0. Unlayered, this one line silently
- * disabled every border-colour utility in the app: the active tab's amber underline rendered
- * grey, and so did every other accent border. The class names were all present in the HTML and
- * in the compiled CSS; they were simply always losing.
- *
- * Found by measuring the running app against the mock — the computed border came back
- * `#2A2E37` where the mock has `#FFB020`, with `data-[status=active]:border-signal` sitting
- * right there on the element. */
+ * It lives in `@layer base`. The design system's styles are unlayered, and an
+ * unlayered rule beats any layered one whatever its specificity, so this reset never overrides a
+ * component's own style. */
 @layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid;
+  }
+
+  html,
+  :host {
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+    tab-size: 4;
+    font-family: var(--font-sans);
+    font-feature-settings: normal;
+    font-variation-settings: normal;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  hr {
+    height: 0;
+    color: inherit;
+    border-top-width: 1px;
+  }
+
+  abbr:where([title]) {
+    text-decoration: underline dotted;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-size: inherit;
+    font-weight: inherit;
+  }
+
+  a {
+    color: inherit;
+    -webkit-text-decoration: inherit;
+    text-decoration: inherit;
+  }
+
+  b,
+  strong {
+    font-weight: bolder;
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+    font-feature-settings: normal;
+    font-variation-settings: normal;
+    font-size: 1em;
+  }
+
+  small {
+    font-size: 80%;
+  }
+
+  sub,
+  sup {
+    font-size: 75%;
+    line-height: 0;
+    position: relative;
+    vertical-align: baseline;
+  }
+
+  sub {
+    bottom: -0.25em;
+  }
+
+  sup {
+    top: -0.5em;
+  }
+
+  table {
+    text-indent: 0;
+    border-color: inherit;
+    border-collapse: collapse;
+  }
+
+  :-moz-focusring:where(:not(iframe)) {
+    outline: auto;
+  }
+
+  progress {
+    vertical-align: baseline;
+  }
+
+  summary {
+    display: list-item;
+  }
+
+  ol,
+  ul,
+  menu {
+    list-style: none;
+  }
+
+  img,
+  svg,
+  video,
+  canvas,
+  audio,
+  iframe,
+  embed,
+  object {
+    display: block;
+    vertical-align: middle;
+  }
+
+  img,
+  video {
+    max-width: 100%;
+    height: auto;
+  }
+
+  button,
+  input,
+  select,
+  optgroup,
+  textarea,
+  ::file-selector-button {
+    font: inherit;
+    font-feature-settings: inherit;
+    font-variation-settings: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    border-radius: 0;
+    background-color: transparent;
+    opacity: 1;
+  }
+
+  :where(select:is([multiple], [size])) optgroup {
+    font-weight: bolder;
+  }
+
+  :where(select:is([multiple], [size])) optgroup option {
+    padding-inline-start: 20px;
+  }
+
+  ::file-selector-button {
+    margin-inline-end: 4px;
+  }
+
+  ::placeholder {
+    opacity: 1;
+  }
+
+  /* Safari before 15 hangs on a `currentcolor` placeholder inside `color-mix`, so only browsers
+   * past that bug take the half-strength placeholder. */
+  @supports (not (-webkit-appearance: -apple-pay-button)) or (contain-intrinsic-size: 1px) {
+    ::placeholder {
+      color: currentcolor;
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      ::placeholder {
+        color: color-mix(in oklab, currentcolor 50%, transparent);
+      }
+    }
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
+  ::-webkit-search-decoration {
+    -webkit-appearance: none;
+  }
+
+  ::-webkit-date-and-time-value {
+    min-height: 1lh;
+    text-align: inherit;
+  }
+
+  ::-webkit-datetime-edit {
+    display: inline-flex;
+  }
+
+  ::-webkit-datetime-edit-fields-wrapper {
+    padding: 0;
+  }
+
+  ::-webkit-datetime-edit,
+  ::-webkit-datetime-edit-year-field,
+  ::-webkit-datetime-edit-month-field,
+  ::-webkit-datetime-edit-day-field,
+  ::-webkit-datetime-edit-hour-field,
+  ::-webkit-datetime-edit-minute-field,
+  ::-webkit-datetime-edit-second-field,
+  ::-webkit-datetime-edit-millisecond-field,
+  ::-webkit-datetime-edit-meridiem-field {
+    padding-block: 0;
+  }
+
+  ::-webkit-calendar-picker-indicator {
+    line-height: 1;
+  }
+
+  :-moz-ui-invalid {
+    box-shadow: none;
+  }
+
+  button,
+  input:where([type="button"], [type="reset"], [type="submit"]),
+  ::file-selector-button {
+    appearance: button;
+  }
+
+  ::-webkit-inner-spin-button,
+  ::-webkit-outer-spin-button {
+    height: auto;
+  }
+
+  [hidden]:where(:not([hidden="until-found"])) {
+    display: none !important;
+  }
+
+  /* The default border colour, so a border drawn without one takes the decorative hairline. */
   * {
-    border-color: var(--color-border);
+    border-color: var(--color-static-700);
   }
 }
 
@@ -95,8 +246,8 @@
  * 2.5.8). A control marked `data-touch-target` gets an invisible box centred on it, as wide and
  * tall as the control or 24 px, whichever is more, which takes the taps. A mouse keeps the drawn box.
  *
- * In `@layer base` like the rule above, so a control's own `absolute` or `after:` utilities still
- * win over the `relative` and `::after` set here. */
+ * In `@layer base` like the reset above, so a control's own position or `::after` style still
+ * wins over the `relative` and `::after` set here. */
 @layer base {
   @media (pointer: coarse) {
     [data-touch-target] {
@@ -132,22 +283,22 @@
 
 body {
   margin: 0;
-  background-color: var(--color-background);
-  color: var(--color-foreground);
+  background-color: var(--color-static-950);
+  color: var(--color-static-100);
   font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: var(--leading-body);
   -webkit-font-smoothing: antialiased;
-  /* Base UI portal requirement: iOS 26+ Safari mispositions a fixed backdrop after the page has
-     been scrolled unless the body establishes a containing block. Costs nothing elsewhere. */
+  /* Portal requirement: iOS 26+ Safari mispositions a fixed backdrop after the page has been
+     scrolled unless the body establishes a containing block. Costs nothing elsewhere. */
   position: relative;
 }
 
-/* Base UI portal requirement: popups (Dialog, Menu, Select, Tooltip) render into a portal at the
-   end of <body>, so the app root must not be able to paint over them. `isolation` gives the root
-   its own stacking context, which keeps a stray `z-index` inside the app from surfacing above an
-   open dialog. ⚠ Not a cosmetic line — without it a high-z element in a page can eclipse a modal,
-   and nothing in the test suite would show it. */
+/* Portal requirement: popups (dialogs, menus, selects, tooltips) render into a portal at the end of
+   <body>, so the app root must not be able to paint over them. `isolation` gives the root its own
+   stacking context, which keeps a stray `z-index` inside the app from surfacing above an open
+   dialog. ⚠ Not a cosmetic line — without it a high-z element in a page can eclipse a modal, and
+   nothing in the test suite would show it. */
 #root {
   isolation: isolate;
 }
@@ -160,20 +311,6 @@ body {
   }
   50% {
     opacity: 0.4;
-  }
-}
-
-/* Select/popover entrance — a 120ms fade on open, no rise or scale (#2789: outside the tune and
-   sheets, motion is a fade). This repo doesn't use tailwindcss-animate, so the Select recipe's
-   animate-in classes are provided here as a project-native keyframe. Applied via
-   `motion-safe:animate-select-in`, so it's off under reduced-motion and frozen in the visual
-   suite by the killswitch below. */
-@keyframes select-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
   }
 }
 
@@ -263,39 +400,31 @@ body {
   }
 }
 
-/* scroll-thin — a token-keyed slim scrollbar for inner-scroll regions (e.g. the cycle
+/* `data-scroll="thin"` — a token-keyed slim scrollbar for inner-scroll regions (e.g. the cycle
    preview's slot list when a marathon resolves to many rows). Standard properties drive
    Firefox + modern Chromium; the ::-webkit fallback covers older WebKit. The thumb rides
-   the same static scale as --border, so it tracks any palette/theme change; the track is
+   the decorative hairline colour, so it tracks any palette change; the track is
    transparent so the thumb floats over the card rather than sitting in a gutter. No
    `scrollbar-gutter: stable` — it would reserve the track width even on short lists that
    never scroll, shifting their content; the accepted cost is a one-time ~8px reflow the
-   moment a list actually grows past the cap (imperceptible for an overlay scrollbar).
-
-   A design-system view takes it as `data-scroll="thin"`: a plain CSS hook that the legacy
-   ledger does not count as a utility class (#4451). `.scroll-thin` serves raw elements. */
-.scroll-thin,
+   moment a list actually grows past the cap (imperceptible for an overlay scrollbar). */
 [data-scroll="thin"] {
   scrollbar-width: thin;
   scrollbar-color: var(--color-static-700) transparent;
 }
-.scroll-thin::-webkit-scrollbar,
 [data-scroll="thin"]::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-.scroll-thin::-webkit-scrollbar-track,
 [data-scroll="thin"]::-webkit-scrollbar-track {
   background: transparent;
 }
-.scroll-thin::-webkit-scrollbar-thumb,
 [data-scroll="thin"]::-webkit-scrollbar-thumb {
   background-color: var(--color-static-700);
   border-radius: 9999px;
 }
-.scroll-thin::-webkit-scrollbar-thumb:hover,
 [data-scroll="thin"]::-webkit-scrollbar-thumb:hover {
-  background-color: var(--color-static-600);
+  background-color: var(--color-static-500);
 }
 
 /* The slow pulse on a loading indicator, such as the guide's hairline while the next window
@@ -305,49 +434,63 @@ body {
     opacity: 0.5;
   }
 }
+
 [data-pulse="loading"] {
   animation: loading-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* guide-scroll — the guide grid's own scrollbars, and a deliberate variant of .scroll-thin
-   rather than a reuse of it.
+/* Home's new-posters grid: five across on a desktop, three from `sm`, two on a phone, and one
+   where the section itself is narrower than 284px. */
+[data-home-new] {
+  container-type: inline-size;
+}
 
-   The distinction is what the bar IS on each surface. On an inner list the scrollbar is an
-   incidental overflow indicator, so .scroll-thin keeps it faint and refuses a stable gutter.
-   On the guide the HORIZONTAL bar is a primary control — it is how you move forward and back
-   in time once zoomed in — so it is a little chunkier, rides the same rounded token thumb,
-   and brightens on hover to read as grabbable. It also sits at the bottom of a surface that
-   is always scrollable at zoom > 1, so there is no "reserved gutter on content that never
-   scrolls" cost to avoid here.
+[data-home-posters] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+}
 
-   The vertical bar stays slim: scrolling CHANNELS is ordinary overflow, and two heavy bars
-   would frame the grid in chrome. */
-.guide-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-static-600) transparent;
+@media (min-width: 640px) {
+  [data-home-posters] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
-.guide-scroll::-webkit-scrollbar {
-  width: 8px;
-  height: 11px;
+
+@media (min-width: 1024px) {
+  [data-home-posters] {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
 }
-.guide-scroll::-webkit-scrollbar-track {
-  background: transparent;
+
+@container (max-width: 284px) {
+  [data-home-posters] {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
-.guide-scroll::-webkit-scrollbar-thumb {
-  background-color: var(--color-static-600);
-  border-radius: 9999px;
-  /* A transparent border painted over the content box keeps the thumb visually inset from the
-     grid's edge, so the bar floats rather than butting against the last row. */
-  border: 2px solid transparent;
-  background-clip: content-box;
+
+/* Hidden below `sm`. */
+@media (max-width: 639.98px) {
+  [data-from-sm] {
+    display: none !important;
+  }
 }
-.guide-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: var(--color-static-400);
+
+/* The wizard's playout cards share their row's height: `RadioItem` puts its own boxes between
+   the grid cell and the card. */
+[data-playout-choices] [role="radio"] > div,
+[data-playout-choices] [role="radio"] > div > div:first-child {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
 }
-/* The corner where the two bars meet — left unstyled it renders as a pale system square that
-   reads as a rendering artefact against a dark grid. */
-.guide-scroll::-webkit-scrollbar-corner {
-  background: transparent;
+
+/* The white plate behind an invitation QR code keeps its edge when colours are forced. */
+@media (forced-colors: active) {
+  [data-qr-plate] {
+    border: 1px solid currentcolor;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

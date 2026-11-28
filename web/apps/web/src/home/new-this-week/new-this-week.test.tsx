@@ -63,7 +63,7 @@ describe("New this week — rendering (#1822 evidence)", () => {
     // The row (its link inside its card) is its own direct child of the section — a sibling of the
     // poster grid, never a column inside it (the geometry table: "New channel: Separate row").
     expect(row.parentElement?.parentElement).toBe(section);
-    expect(row.className).not.toContain("grid");
+    expect(getComputedStyle(row).display).not.toBe("grid");
   });
 
   // #2763: the header said "3 new channels" and listed one.

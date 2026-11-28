@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { phoneBarOverflow, phoneBarPrimary, phoneDestinationMatches } from "./destinations";
 
 describe("phoneBarPrimary", () => {
-  it("is Home, Watch, Guide, Requests when a channel exists — identical for admin and member", () => {
-    const withChannel = phoneBarPrimary("chan-1").map((d) => d.key);
-    expect(withChannel).toEqual(["home", "watch", "guide", "requests"]);
+  it("is Home, Watch, Guide, Library for both roles when a channel exists (#4476)", () => {
+    const bar = phoneBarPrimary("chan-1");
+    expect(bar.map((d) => d.label)).toEqual(["Home", "Watch", "Guide", "Library"]);
+    expect(bar.at(-1)).toMatchObject({ to: "/library" });
   });
 
   it("drops Watch's slot entirely rather than leaving a gap or greying it (X2)", () => {
-    const noChannel = phoneBarPrimary(undefined).map((d) => d.key);
-    expect(noChannel).toEqual(["home", "guide", "requests"]);
+    expect(phoneBarPrimary(undefined).map((d) => d.key)).toEqual(["home", "guide", "library"]);
   });
 
   it("points Watch at the given channel id", () => {
@@ -17,18 +17,18 @@ describe("phoneBarPrimary", () => {
     expect(watch).toMatchObject({ params: { id: "chan-42" }, to: "/watch/$id" });
   });
 
-  it("carries Requests' pending count when positive, and nothing at zero", () => {
-    const zero = phoneBarPrimary("chan-1", { "/requests": 0 }).find((d) => d.key === "requests");
-    const some = phoneBarPrimary("chan-1", { "/requests": 3 }).find((d) => d.key === "requests");
+  it("carries Library's Needs you count when positive, and nothing at zero", () => {
+    const zero = phoneBarPrimary("chan-1", { "/library": 0 }).find((d) => d.key === "library");
+    const some = phoneBarPrimary("chan-1", { "/library": 3 }).find((d) => d.key === "library");
     expect(zero?.badgeCount).toBeUndefined();
     expect(some?.badgeCount).toBe(3);
   });
 });
 
 describe("phoneBarOverflow", () => {
-  it("gives an admin exactly Library, Filler, People, Settings, Help", () => {
+  it("gives an admin exactly Requests, Filler, People, Settings, Help", () => {
     expect(phoneBarOverflow(true).map((d) => d.key)).toEqual([
-      "library",
+      "requests",
       "filler",
       "people",
       "settings",
@@ -36,8 +36,13 @@ describe("phoneBarOverflow", () => {
     ]);
   });
 
-  it("gives a member exactly Notifications, Help — never the admin-only surfaces", () => {
-    expect(phoneBarOverflow(false).map((d) => d.key)).toEqual(["notifications", "help"]);
+  it("gives a member exactly Requests, Notifications, Help — never the admin-only surfaces", () => {
+    expect(phoneBarOverflow(false).map((d) => d.key)).toEqual(["requests", "notifications", "help"]);
+  });
+
+  it("carries a member's Requests count into More", () => {
+    const requests = phoneBarOverflow(false, { "/requests": 2 }).find((d) => d.key === "requests");
+    expect(requests?.badgeCount).toBe(2);
   });
 });
 

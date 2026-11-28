@@ -5,8 +5,8 @@ import {
   type ComboboxGroup,
   Icon,
   icons,
+  Stack,
   Text,
-  typography,
 } from "@loomarr/design-system";
 import type { PaletteScope, SearchCommandProps, SearchResult } from "./search-command.type";
 
@@ -97,15 +97,19 @@ const SearchCommand = ({
             Close search
           </Action>
         ) : (
-          <Text
-            as="kbd"
-            className="border-border bg-static-800 shrink-0 rounded border px-1.5 py-0.5"
-            style={{ fontFamily: typography.family.data.web }}
-            textRole="guideCell"
-            tone="secondary"
+          <Stack
+            backgroundColor="$surfaceElevated"
+            borderColor="$borderDecorative"
+            borderRadius={4}
+            borderWidth={1}
+            flexShrink={0}
+            paddingHorizontal={6}
+            paddingVertical={2}
           >
-            ESC
-          </Text>
+            <Text as="kbd" textRole="mono" tone="secondary">
+              ESC
+            </Text>
+          </Stack>
         )
       }
       fill={fill}

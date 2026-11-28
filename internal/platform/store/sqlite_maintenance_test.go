@@ -11,6 +11,7 @@ import (
 
 // A database made before #2446 has auto_vacuum off; the first open converts it, keeping its rows.
 func TestOpenSwitchesAnExistingSQLiteFileToIncrementalVacuum(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "old.db")
 	raw, err := sql.Open("sqlite", "file:"+path)

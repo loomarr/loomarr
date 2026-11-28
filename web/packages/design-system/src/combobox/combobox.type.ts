@@ -51,6 +51,11 @@ type ComboboxProps = {
    * out and an empty list shows nothing at all.
    */
   emptyText?: string;
+  /**
+   * Web only: the face of the floating field's text and placeholder. `body`, as Field's, for a
+   * search for words (a person's name); the data face otherwise.
+   */
+  face?: "body" | "data";
   /** What to say when the search failed. Read out as an alert. */
   errorText?: string;
   /** Web only: content after the field in the inline header (a close button, a key hint). */

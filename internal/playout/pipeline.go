@@ -378,9 +378,9 @@ func (b *builder) curve() ToneCurve { return ParseToneCurve(string(b.out.ToneCur
 // ladder demotes a tone-mapper that fails to start, so each retry lands on the next.
 func (b *builder) gpuTonemapper() string {
 	c := b.curve()
-	opencl := b.host.TonemapOpenCL && c.openCL() != ""
+	opencl := b.host.TonemapOpenCL && c.OpenCL() != ""
 	switch {
-	case c.placeboFirst() && b.host.Libplacebo:
+	case c.PlaceboFirst() && b.host.Libplacebo:
 		return TonemapperLibplacebo
 	case opencl:
 		return TonemapperOpenCL
@@ -393,7 +393,7 @@ func (b *builder) gpuTonemapper() string {
 // openCLTonemap is tonemap_opencl to 8-bit BT.709 limited range on the curve.
 func (b *builder) openCLTonemap() string {
 	b.p.Tonemapper = TonemapperOpenCL
-	return "tonemap_opencl=tonemap=" + b.curve().openCL() + ":desat=0:t=bt709:m=bt709:p=bt709:r=tv:format=nv12"
+	return "tonemap_opencl=tonemap=" + b.curve().OpenCL() + ":desat=0:t=bt709:m=bt709:p=bt709:r=tv:format=nv12"
 }
 
 // placeboTonemap is libplacebo (its own Vulkan device, CPU frames in and out) to 8-bit BT.709
@@ -401,14 +401,14 @@ func (b *builder) openCLTonemap() string {
 func (b *builder) placeboTonemap(size string) string {
 	b.p.Tonemapper = TonemapperLibplacebo
 	b.fallback("tonemap", "libplacebo: the "+size+" frame is copied through system memory")
-	return "libplacebo=format=nv12:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=" + b.curve().placebo()
+	return "libplacebo=format=nv12:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=" + b.curve().Placebo()
 }
 
 // cpuChain is the CPU tone-map on the curve, or on its closest CPU curve (declared) when the CPU
 // tone-mapper lacks it.
 func (b *builder) cpuChain() string {
 	b.p.Tonemapper = TonemapperCPU
-	c, exact := b.curve().cpu()
+	c, exact := b.curve().CPU()
 	if !exact {
 		b.fallback("tonemap", "the CPU tone-mapper has no "+string(b.curve())+"; "+string(c)+" instead")
 	}
@@ -726,12 +726,12 @@ func (b *builder) videotoolbox() error {
 // rounds a scope frame's SAR differently from a one-stage one).
 func (b *builder) software() error {
 	rung := b.out.SoftwareRung
-	b.p.PreInput = append(b.p.PreInput, rung.decoderOptions()...)
+	b.p.PreInput = append(b.p.PreInput, rungDecoderOptions(rung)...)
 	var f []string
 	if b.src.Interlaced {
 		f = append(f, "bwdif=mode=send_frame")
 	}
-	lines := rung.workingLines(heavySource(b.src))
+	lines := rungWorkingLines(rung, heavySource(b.src))
 	if b.tonemap {
 		if !b.host.CPUTonemap {
 			return fmt.Errorf("%w: HDR source and no tone-mapper", ErrRefused)
@@ -749,7 +749,7 @@ func (b *builder) software() error {
 	if b.tonemap {
 		f = append(f, b.cpuChain())
 	}
-	if fill := rung.tailFill(); fill != "" {
+	if fill := rungTailFill(rung); fill != "" {
 		f = append(f, fill)
 	}
 	f = append(f, "scale="+b.fit(), "format=yuv420p",

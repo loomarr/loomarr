@@ -48,6 +48,7 @@ func TestSeedLibraryChannelsProposalJobsAreListableThroughTheProposalWorkflow(t 
 		t.Fatal(err)
 	}
 
+	testkit.SaveLibraryItems(t, st, "lib-item-1") // the existing store's library holds the pick
 	if err := seedLibraryChannels(ctx, st, picksPath); err != nil {
 		t.Fatal(err)
 	}

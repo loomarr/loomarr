@@ -20,7 +20,7 @@ func TestReconcile_WindowTurnCarriesTheCrossingProgrammeOver(t *testing.T) {
 	entries, avail := films(20, 100*time.Minute)
 	opened := time.Unix(1_800_000_000, 0).UTC().Truncate(24 * time.Hour)
 	now := opened.Add(3 * time.Hour)
-	e := recencyEngine(st, avail, &now)
+	e := recencyEngine(t, st, avail, &now)
 	seedShuffleChannel(t, st, "wt", entries)
 
 	first := reconcileDesired(t, e, st, "wt")

@@ -9,15 +9,26 @@ import { plural } from "../plural";
 const FILES_SHOWN = 3;
 const pad = (n: number) => String(n).padStart(2, "0");
 
-const OrderFiles = ({ files }: { files: readonly LibraryOrderFile[] }) => {
+const OrderFiles = ({
+  files,
+  density,
+}: {
+  files: readonly LibraryOrderFile[];
+  density: "pointer" | "touch";
+}) => {
   const [open, setOpen] = useState(false);
   if (files.length === 0) return null;
   return (
-    <Disclosure expanded={open} label={plural(files.length, "episode")} onExpandedChange={setOpen}>
+    <Disclosure
+      density={density}
+      expanded={open}
+      label={plural(files.length, "episode")}
+      onExpandedChange={setOpen}
+    >
       <Stack gap={4} padding="control">
         {files.slice(0, FILES_SHOWN).map((f) => (
           <Text key={f.path} textRole="compact" tone="secondary">
-            {`S${pad(f.season)}E${pad(f.episode)} — ${fileName(f.path)}`}
+            {`S${pad(f.season)}E${pad(f.episode)}: ${fileName(f.path)}`}
           </Text>
         ))}
         {files.length > FILES_SHOWN ? (

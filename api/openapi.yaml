@@ -5969,6 +5969,24 @@ components:
       required:
         - suggestions
       type: object
+    IgnoreLibraryNeedsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/IgnoreLibraryNeedsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        ids:
+          description: The titles ignored; send them to restore them
+          items:
+            type: string
+          type: array
+      required:
+        - ids
+      type: object
     ImageDTO:
       additionalProperties: false
       properties:
@@ -6880,6 +6898,53 @@ components:
       required:
         - label
       type: object
+    LibraryAiringDTO:
+      additionalProperties: false
+      properties:
+        channel:
+          $ref: "#/components/schemas/LibraryChannelDTO"
+        end:
+          format: date-time
+          type: string
+        episode:
+          $ref: "#/components/schemas/LibraryAiringEpisodeDTO"
+          description: A series' episode that airs; absent for any other title, for an episode the caller doesn't read, and for one with no present file
+        forecast:
+          description: Past the window on air, so it can still change
+          type: boolean
+        start:
+          format: date-time
+          type: string
+      required:
+        - channel
+        - start
+        - end
+        - forecast
+      type: object
+    LibraryAiringEpisodeDTO:
+      additionalProperties: false
+      properties:
+        end:
+          description: The last episode a multi-episode file holds
+          format: int64
+          type: integer
+        id:
+          type: string
+        name:
+          type: string
+        number:
+          format: int64
+          type: integer
+        season:
+          description: 0 is the specials
+          format: int64
+          type: integer
+      required:
+        - id
+        - name
+        - season
+        - number
+      type: object
     LibraryCandidateDTO:
       additionalProperties: false
       properties:
@@ -6969,6 +7034,9 @@ components:
           type: string
         name:
           type: string
+        personId:
+          description: The person, for the list's person= and /v1/library/people/{id}
+          type: string
         role:
           enum:
             - actor
@@ -6977,6 +7045,7 @@ components:
             - creator
           type: string
       required:
+        - personId
         - name
         - role
       type: object
@@ -7093,6 +7162,24 @@ components:
         - number
         - ready
       type: object
+    LibraryFacetDTO:
+      additionalProperties: false
+      properties:
+        name:
+          description: What to call it
+          type: string
+        titles:
+          description: Titles it keeps
+          format: int64
+          type: integer
+        value:
+          description: What the list's filter takes
+          type: string
+      required:
+        - value
+        - name
+        - titles
+      type: object
     LibraryFolderEvent:
       additionalProperties: false
       properties:
@@ -7137,6 +7224,19 @@ components:
       required:
         - authority
         - path
+      type: object
+    LibraryGenreDTO:
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        titles:
+          description: Titles that carry it
+          format: int64
+          type: integer
+      required:
+        - name
+        - titles
       type: object
     LibraryHeldDTO:
       additionalProperties: false
@@ -7204,6 +7304,34 @@ components:
         - app
         - state
       type: object
+    LibraryIgnoredDTO:
+      additionalProperties: false
+      properties:
+        folder:
+          description: Where it sits, from its media folder's name down
+          type: string
+        id:
+          description: The title; take back its answer to bring it back
+          type: string
+        ignoredAt:
+          format: date-time
+          type: string
+        kind:
+          description: movie is a file, series is a folder
+          enum:
+            - movie
+            - series
+          type: string
+        name:
+          description: The movie's file name or the show's folder name
+          type: string
+      required:
+        - id
+        - kind
+        - name
+        - folder
+        - ignoredAt
+      type: object
     LibraryItemDTO:
       additionalProperties: false
       properties:
@@ -7215,6 +7343,9 @@ components:
           description: Present files; a series counts its episodes' files. Admins only
           format: int64
           type: integer
+        homeVideo:
+          description: Kept as it is, as your own video. Absent otherwise
+          type: boolean
         id:
           type: string
         kind:
@@ -7229,6 +7360,9 @@ components:
           description: Its poster; absent when it has none, or while one is still being fetched
         ready:
           description: False while some of its files' details aren't read yet
+          type: boolean
+        unidentified:
+          description: Waiting in Needs you. Admins only; absent otherwise
           type: boolean
         unplayable:
           description: "Files that can't be played: their details couldn't be read. Admins only"
@@ -7292,6 +7426,11 @@ components:
         match:
           $ref: "#/components/schemas/LibraryMatchDTO"
           description: What decides which title it is. Admins only
+        nextAirings:
+          description: The next programme of it on each channel with one stored (about the next 48 hours; not paused, detached or Tunarr channels), earliest first. One already on air counts
+          items:
+            $ref: "#/components/schemas/LibraryAiringDTO"
+          type: array
         originalTitle:
           description: Its title in its own language, as the source gives it
           type: string
@@ -7338,6 +7477,7 @@ components:
         - credits
         - seasons
         - channels
+        - nextAirings
       type: object
     LibraryItemFileDTO:
       additionalProperties: false
@@ -7404,6 +7544,20 @@ components:
         - streams
         - chapters
       type: object
+    LibraryLetterDTO:
+      additionalProperties: false
+      properties:
+        letter:
+          description: "A to Z, or # for a title that starts with a digit or any other character"
+          type: string
+        offset:
+          description: "The offset of the first title it starts, in the list's order: ask for offset=<n>"
+          format: int64
+          type: integer
+      required:
+        - letter
+        - offset
+      type: object
     LibraryMatchDTO:
       additionalProperties: false
       properties:
@@ -7441,6 +7595,9 @@ components:
           items:
             $ref: "#/components/schemas/LibraryNeedFileDTO"
           type: array
+        folder:
+          description: Where it sits, from its media folder's name down; group cards by it
+          type: string
         item:
           $ref: "#/components/schemas/LibraryItemDTO"
         searched:
@@ -7451,6 +7608,7 @@ components:
         - searched
         - candidates
         - files
+        - folder
       type: object
     LibraryNeedFileDTO:
       additionalProperties: false
@@ -7583,6 +7741,30 @@ components:
         - authorityPath
         - localPath
         - byHand
+      type: object
+    LibraryPersonDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LibraryPersonDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          description: What the list's person= takes
+          type: string
+        name:
+          type: string
+        titles:
+          description: Listed titles that credit them
+          format: int64
+          type: integer
+      required:
+        - id
+        - name
+        - titles
       type: object
     LibraryPictureDTO:
       additionalProperties: false
@@ -8059,7 +8241,7 @@ components:
             - subtitle
           type: string
         language:
-          description: ISO 639-1 where one exists, else as the file says it
+          description: ISO 639-1 where one exists, else what the file says; lower case
           type: string
         languageName:
           description: The language's English name
@@ -8088,6 +8270,27 @@ components:
         language:
           description: ISO 639 code; absent when the file doesn't say
           type: string
+      type: object
+    LibraryTitleIDsInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LibraryTitleIDsInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        ids:
+          description: The titles
+          items:
+            type: string
+          maxItems: 10000
+          minItems: 1
+          type: array
+          uniqueItems: true
+      required:
+        - ids
       type: object
     LibraryTitlesEvent:
       additionalProperties: false
@@ -8318,6 +8521,93 @@ components:
       required:
         - invitations
       type: object
+    ListLibraryFacetsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ListLibraryFacetsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        audio:
+          description: For audio=, by language name
+          items:
+            $ref: "#/components/schemas/LibraryFacetDTO"
+          type: array
+        hdr:
+          description: For hdr=, one per kind of high dynamic range present
+          items:
+            $ref: "#/components/schemas/LibraryFacetDTO"
+          type: array
+        hdrAny:
+          description: Titles hdr=any keeps
+          format: int64
+          type: integer
+        studios:
+          description: For studio=, by name
+          items:
+            $ref: "#/components/schemas/LibraryFacetDTO"
+          type: array
+        subtitles:
+          description: For subtitles=, by language name
+          items:
+            $ref: "#/components/schemas/LibraryFacetDTO"
+          type: array
+        uhd:
+          description: Titles uhd=true keeps
+          format: int64
+          type: integer
+      required:
+        - studios
+        - audio
+        - subtitles
+        - uhd
+        - hdrAny
+        - hdr
+      type: object
+    ListLibraryGenresOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ListLibraryGenresOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        genres:
+          description: By name; names that differ only in case are one genre
+          items:
+            $ref: "#/components/schemas/LibraryGenreDTO"
+          type: array
+      required:
+        - genres
+      type: object
+    ListLibraryIgnoredOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ListLibraryIgnoredOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          description: Newest first
+          items:
+            $ref: "#/components/schemas/LibraryIgnoredDTO"
+          type: array
+        total:
+          description: How many are ignored in all
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
+      type: object
     ListLibraryItemsOutputBody:
       additionalProperties: false
       properties:
@@ -8331,6 +8621,11 @@ components:
         items:
           items:
             $ref: "#/components/schemas/LibraryItemDTO"
+          type: array
+        letters:
+          description: "Under sort=name, each initial present in the filtered list with the offset of its first occurrence. Letters are in list order, not necessarily A to Z: under a search, name matches come first, and a letter maps to its first occurrence. Absent under sort=recent"
+          items:
+            $ref: "#/components/schemas/LibraryLetterDTO"
           type: array
         total:
           description: Titles matching, across every page
@@ -10994,6 +11289,22 @@ components:
       required:
         - path
       type: object
+    RemoveLibraryExtraCopyOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/RemoveLibraryExtraCopyOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        undo:
+          description: Give this to restore-copy to put the file back
+          type: string
+      required:
+        - undo
+      type: object
     RequestChannelIdeaOutputBody:
       additionalProperties: false
       properties:
@@ -11104,6 +11415,24 @@ components:
         - streamingChannels
         - restartRequired
         - available
+      type: object
+    RestoreLibraryExtraCopyInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/RestoreLibraryExtraCopyInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        undo:
+          description: The token the removal answered with
+          maxLength: 16384
+          minLength: 1
+          type: string
+      required:
+        - undo
       type: object
     ReviseProposalJourneyOutputBody:
       additionalProperties: false
@@ -11496,6 +11825,24 @@ components:
         - mediaType
         - name
         - inLibrary
+      type: object
+    SearchLibraryPeopleOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SearchLibraryPeopleOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        people:
+          description: The most credited first, then by name
+          items:
+            $ref: "#/components/schemas/LibraryPersonDTO"
+          type: array
+      required:
+        - people
       type: object
     SearchLibraryTitlesOutputBody:
       additionalProperties: false
@@ -19453,6 +19800,68 @@ paths:
       summary: List the household's collections
       tags:
         - library
+  /v1/library/facets:
+    get:
+      description: The studios, audio languages, subtitle languages, 4K and HDR of the titles the list shows, each with how many titles it keeps. A member's counts leave out the titles a member doesn't read.
+      operationId: listLibraryFacets
+      parameters:
+        - description: Only movies' or only series' choices; both when absent
+          explode: false
+          in: query
+          name: kind
+          schema:
+            description: Only movies' or only series' choices; both when absent
+            enum:
+              - movie
+              - series
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListLibraryFacetsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: The library's filter choices
+      tags:
+        - library
+  /v1/library/genres:
+    get:
+      description: The genres of the titles the list shows, each with how many titles carry it, by name. A member's counts leave out the titles a member doesn't read.
+      operationId: listLibraryGenres
+      parameters:
+        - description: Only movies' or only series' genres; both when absent
+          explode: false
+          in: query
+          name: kind
+          schema:
+            description: Only movies' or only series' genres; both when absent
+            enum:
+              - movie
+              - series
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListLibraryGenresOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: The library's genres
+      tags:
+        - library
   /v1/library/hooks/{app}:
     post:
       description: Where Sonarr and Radarr send file events once Loomarr has registered itself with them. Authenticated by the generated secret as the basic-auth password, not by a session.
@@ -19515,6 +19924,65 @@ paths:
       summary: Test an arr's webhook
       tags:
         - library
+  /v1/library/ignored:
+    get:
+      description: Every ignored title, newest first. Take back its answer to bring it back.
+      operationId: listLibraryIgnored
+      parameters:
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 60
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: offset
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListLibraryIgnoredOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Titles you ignored
+      tags:
+        - library
+  /v1/library/ignored/restore:
+    post:
+      description: "Undoes the ignore of each title: all of them or none."
+      operationId: restoreLibraryIgnored
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryTitleIDsInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Bring back several ignored titles
+      tags:
+        - library
   /v1/library/items:
     get:
       description: Movies and series Loomarr found in its media folders, by name. A title still getting ready has files whose details aren't read yet. A member's titles leave out the admin-only counts.
@@ -19530,13 +19998,73 @@ paths:
               - movie
               - series
             type: string
-        - description: Part of the name, any case
+        - description: Part of the name, any case; or words that are each in the name, the year (four digits) or a genre. Titles whose name holds it come first
           explode: false
           in: query
           name: search
           schema:
-            description: Part of the name, any case
+            description: Part of the name, any case; or words that are each in the name, the year (four digits) or a genre. Titles whose name holds it come first
             maxLength: 200
+            type: string
+        - description: Only titles with this genre, any case; an unknown genre lists none
+          explode: false
+          in: query
+          name: genre
+          schema:
+            description: Only titles with this genre, any case; an unknown genre lists none
+            maxLength: 100
+            type: string
+        - description: Only titles of this studio, any case; an unknown studio lists none
+          explode: false
+          in: query
+          name: studio
+          schema:
+            description: Only titles of this studio, any case; an unknown studio lists none
+            maxLength: 200
+            type: string
+        - description: Only titles that credit this person, by id; an unknown id lists none
+          explode: false
+          in: query
+          name: person
+          schema:
+            description: Only titles that credit this person, by id; an unknown id lists none
+            maxLength: 600
+            type: string
+        - description: Only titles with sound in this language, by code; a series needs one episode with it
+          explode: false
+          in: query
+          name: audio
+          schema:
+            description: Only titles with sound in this language, by code; a series needs one episode with it
+            maxLength: 35
+            type: string
+        - description: Only titles with subtitles in this language, by code; a series needs one episode with them
+          explode: false
+          in: query
+          name: subtitles
+          schema:
+            description: Only titles with subtitles in this language, by code; a series needs one episode with them
+            maxLength: 35
+            type: string
+        - description: Only titles with a 4K picture; a series needs one 4K episode
+          explode: false
+          in: query
+          name: uhd
+          schema:
+            description: Only titles with a 4K picture; a series needs one 4K episode
+            type: boolean
+        - description: Only titles with a high dynamic range picture, of any kind or one; a series needs one such episode
+          explode: false
+          in: query
+          name: hdr
+          schema:
+            description: Only titles with a high dynamic range picture, of any kind or one; a series needs one such episode
+            enum:
+              - any
+              - Dolby Vision
+              - HDR10
+              - HLG
+              - HDR
             type: string
         - description: Only titles with every file's details read
           explode: false
@@ -19617,7 +20145,7 @@ paths:
         - library
   /v1/library/items/{id}/answer:
     delete:
-      description: Undoes a link or an ignore. A title nothing else identifies needs you again.
+      description: Undoes a link, an ignore or a home video. A title nothing else identifies needs you again.
       operationId: unanswerLibraryItem
       parameters:
         - in: path
@@ -19713,6 +20241,29 @@ paths:
       summary: Ignore a title
       tags:
         - library
+  /v1/library/items/{id}/keep:
+    post:
+      description: "Says a title waiting in Needs you with no guess is your own: it is kept as it is, as a home video."
+      operationId: keepLibraryItem
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Keep a title as a home video
+      tags:
+        - library
   /v1/library/items/{id}/link:
     post:
       description: Links a title to a TMDB title. Its files are read again with it.
@@ -19767,7 +20318,7 @@ paths:
         - library
   /v1/library/items/{id}/remove-copy:
     post:
-      description: Moves one of the title's files that never plays into its media folder's trash (.loomarr-trash), which empties after 30 days.
+      description: Moves one of the title's files that never plays into its media folder's trash (.loomarr-trash), which empties after 30 days. Answers with the token that undoes it.
       operationId: removeLibraryExtraCopy
       parameters:
         - in: path
@@ -19783,6 +20334,39 @@ paths:
               $ref: "#/components/schemas/RemoveLibraryExtraCopyInputBody"
         required: true
       responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemoveLibraryExtraCopyOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a title's extra copy
+      tags:
+        - library
+  /v1/library/items/{id}/restore-copy:
+    post:
+      description: Moves the copy a removal put in the trash back to where it was; the title has it again once the folder is read. Takes the token that removal answered with, which stops working when Loomarr restarts. 400 for a token that isn't valid for this title, 410 when the copy isn't in the trash, 409 when something is where it was or the folder can't be changed.
+      operationId: restoreLibraryExtraCopy
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestoreLibraryExtraCopyInputBody"
+        required: true
+      responses:
         "204":
           description: No Content
         default:
@@ -19791,7 +20375,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Remove a title's extra copy
+      summary: Undo removing an extra copy
       tags:
         - library
   /v1/library/needs:
@@ -19812,6 +20396,32 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Titles that need you
+      tags:
+        - library
+  /v1/library/needs/ignore:
+    post:
+      description: "Ignores titles waiting in Needs you, such as the ones under one folder: all of them or none."
+      operationId: ignoreLibraryNeeds
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryTitleIDsInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IgnoreLibraryNeedsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Ignore several titles
       tags:
         - library
   /v1/library/path-map:
@@ -19838,6 +20448,81 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Map another app's folder to a folder here
+      tags:
+        - library
+  /v1/library/people:
+    get:
+      description: People the listed titles credit, by part of their name, the most credited first. A member finds only people their titles credit.
+      operationId: searchLibraryPeople
+      parameters:
+        - description: Part of the name, any case; the most credited people when absent
+          explode: false
+          in: query
+          name: q
+          schema:
+            description: Part of the name, any case; the most credited people when absent
+            maxLength: 200
+            type: string
+        - description: Only people of movies or of series; both when absent
+          explode: false
+          in: query
+          name: kind
+          schema:
+            description: Only people of movies or of series; both when absent
+            enum:
+              - movie
+              - series
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 20
+            format: int64
+            maximum: 50
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchLibraryPeopleOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Find people in the library
+      tags:
+        - library
+  /v1/library/people/{id}:
+    get:
+      description: Their name and how many of the listed titles credit them; list those titles with person=<id>. 404 when no title the caller reads credits them.
+      operationId: getLibraryPerson
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 600
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryPersonDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: One person
       tags:
         - library
   /v1/library/refresh:

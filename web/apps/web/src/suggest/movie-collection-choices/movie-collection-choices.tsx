@@ -1,6 +1,6 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { provisionKey } from "@loomarr/core/provision";
-import { Action, Disclosure, Icon, icons, LoadingStrip, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Disclosure, Icon, icons, LoadingStrip, Stack, Text } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import type { MovieCollectionChoicesProps } from "./movie-collection-choices.type";
 
@@ -100,7 +100,7 @@ const MovieCollectionChoices = ({
         const libraryCount = members.filter((member) => member.inLibrary).length;
 
         return (
-          <div key={collection.tmdbId} className="bg-static-900/50 rounded-md px-3 py-2.5">
+          <Card key={collection.tmdbId} paddingHorizontal={12} paddingVertical={10}>
             <Stack align="center" direction="row" gap="inline" justify="between" wrap>
               <Stack flexShrink={1} minWidth={0}>
                 <Text as="p" numberOfLines={1} textRole="cardLabel">
@@ -184,7 +184,7 @@ const MovieCollectionChoices = ({
                 })}
               </Stack>
             </ChooseFilms>
-          </div>
+          </Card>
         );
       })}
     </Stack>

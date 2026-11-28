@@ -1,9 +1,11 @@
 import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import {
   Action,
+  breakpoints,
   Card,
   Chip,
   CompactSelect,
+  Details,
   Field,
   Grid,
   Icon,
@@ -18,7 +20,7 @@ import {
 import { SearchField } from "@loomarr/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRef, useState } from "react";
+import { type ComponentProps, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import {
   type ApplicationFilters,
@@ -29,7 +31,7 @@ import {
   sourceNames,
 } from "../application-filters";
 import { DiagnosticsPager } from "../diagnostics-pager";
-import { DiagnosticsSplitPane } from "../diagnostics-split-pane";
+import { DiagnosticsSplitPane, useMinWidth } from "../diagnostics-split-pane";
 import { EventDetail } from "./event-detail";
 import { fallbackMessage, formatTime, levelLabel, levelTone, sourceLabel } from "./event-format";
 import { eventParams } from "./event-params";
@@ -73,6 +75,10 @@ const ApplicationDiagnostics = ({
   const [advanced, setAdvanced] = useState(false);
   const [downloadState, setDownloadState] = useState<"idle" | "working" | "failed">("idle");
   const listRef = useRef<HTMLElement>(null);
+  // The list is capped at 55% of the window until the split pane has room beside it.
+  const wide = useMinWidth(breakpoints.lg);
+  // A row lays its time out as a right-hand column from `sm` up.
+  const columns = useMinWidth(breakpoints.sm);
   const cursor = cursorStack.at(-1);
   const query = useQuery({
     // Keyed by the log's URL, so its `diagnostic_events` frame reads it again (#3352); the window
@@ -227,10 +233,7 @@ const ApplicationDiagnostics = ({
               value={filters.subsystem}
             />
           </Grid>
-          <details>
-            <Text as="summary" cursor="pointer" textRole="cardLabel" tone="secondary">
-              IDs and correlations
-            </Text>
+          <Details summary="IDs and correlations" textRole="cardLabel" tone="secondary">
             <Stack paddingTop={12}>
               <Grid columns={{ base: 1, sm: 2, lg: 3 }} gap="3">
                 {correlationFilters.map(([label, key]) => (
@@ -246,20 +249,16 @@ const ApplicationDiagnostics = ({
                 ))}
               </Grid>
             </Stack>
-          </details>
-          <details>
-            <Text as="summary" cursor="pointer" textRole="cardLabel">
-              Verbose capture
-            </Text>
+          </Details>
+          <Details summary="Verbose capture" textRole="cardLabel">
             <Stack marginTop={12}>
               <VerboseCaptureControl filters={filters} />
             </Stack>
-          </details>
+          </Details>
         </Card>
       )}
 
-      <Stack align="center" direction="row" gap="inline" render="fieldset" wrap>
-        <legend className="sr-only">Severity filters</legend>
+      <Stack aria-label="Severity filters" align="center" direction="row" gap="inline" render="fieldset" wrap>
         {(
           [
             ["all", events.length, "muted", "All", "Show every severity"],
@@ -344,13 +343,18 @@ const ApplicationDiagnostics = ({
           flex={1}
           minHeight={288}
           primary={
-            <section
-              ref={listRef}
-              className="border-border bg-card max-h-[55vh] overflow-x-hidden overflow-y-auto rounded-lg border lg:max-h-[40rem]"
+            <Card
+              ref={listRef as ComponentProps<typeof Card>["ref"]}
+              render="section"
               aria-label="Logs"
-              style={{ height: `${Math.min(Math.max(virtualizer.getTotalSize(), 228), 640)}px` }}
+              height={Math.min(Math.max(virtualizer.getTotalSize(), 228), 640)}
+              maxHeight={wide ? 640 : "55vh"}
+              // A Card holds its height; the list has to give way to a short pane and scroll.
+              flexShrink={1}
+              overflowX="hidden"
+              overflowY="auto"
             >
-              <Stack height={virtualizer.getTotalSize()} position="relative" width="100%">
+              <Stack flexShrink={0} height={virtualizer.getTotalSize()} position="relative" width="100%">
                 {virtualizer.getVirtualItems().map((virtualRow) => {
                   const event = events[virtualRow.index];
                   if (!event) return null;
@@ -376,30 +380,34 @@ const ApplicationDiagnostics = ({
                       >
                         <Grid
                           align={{ base: "stretch", sm: "start" }}
-                          className="text-left"
                           columns={{ base: 1, sm: ["7rem", "minmax(0,1fr)", "8rem"] }}
                           gap="2"
                           width="100%"
                         >
-                          <Text as="span" textRole="hint" tone="primary">
+                          <Text as="span" textAlign="left" textRole="hint" tone="primary">
                             <Stack align="center" direction="row" gap="2" render="span">
                               <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
                               {levelLabel(event.level)}
                             </Stack>
                           </Text>
                           <Stack flexShrink={1} gap="1" minWidth={0} render="span">
-                            <Text as="span" textRole="cardLabel" tone="primary">
+                            <Text as="span" textAlign="left" textRole="cardLabel" tone="primary">
                               {event.message || fallbackMessage(event)}
                             </Text>
-                            <Text as="span" textRole="hint" tone="secondary">
+                            <Text as="span" textAlign="left" textRole="hint" tone="secondary">
                               {sourceLabel(event.source)}
                               {event.subsystem ? ` · ${event.subsystem}` : ""}
                               {event.channelId ? " · Channel involved" : ""}
                               {event.processRunId ? " · Process output available" : ""}
                             </Text>
                           </Stack>
-                          <time className="sm:text-right" dateTime={new Date(event.occurredAt).toISOString()}>
-                            <Text as="span" textRole="mono" tone="secondary">
+                          <time dateTime={new Date(event.occurredAt).toISOString()}>
+                            <Text
+                              as="div"
+                              textAlign={columns ? "right" : "left"}
+                              textRole="mono"
+                              tone="secondary"
+                            >
                               {formatTime(event.occurredAt)}
                             </Text>
                           </time>
@@ -422,13 +430,10 @@ const ApplicationDiagnostics = ({
                   );
                 })}
               </Stack>
-            </section>
+            </Card>
           }
           secondary={
-            <aside
-              className="border-border bg-card h-full overflow-x-hidden overflow-y-auto rounded-lg border"
-              aria-label="Selected log"
-            >
+            <Card render="aside" aria-label="Selected log" height="100%" overflowX="hidden" overflowY="auto">
               {selectedEvent ? (
                 <EventDetail
                   event={selectedEvent}
@@ -445,7 +450,7 @@ const ApplicationDiagnostics = ({
                   </Text>
                 </Stack>
               )}
-            </aside>
+            </Card>
           }
         />
       )}

@@ -6,28 +6,32 @@
 # highest lane number is the lane count (scripts/go-shard.sh); .github/workflows/ci-go.yml's matrix
 # names each lane as certification-<lane>/<count>.
 #
-# Three lanes, not four: with the measured weights (scripts/go-race-weights.tsv) store alone is
-# 291s, and no four-way split of the rest stays inside the 125% balance budget. Three lanes model
-# 322s, 336s and 378s (#2716).
+# Five lanes: with the measured weights (scripts/go-race-weights.tsv) store, schedule (both its
+# phases) and the api+app pair each come close to the 469s lane budget, so no four-way split fits
+# it. The five lanes model 444s, 332s, 434s, 427s and 337s, 134% apart: the best five-way split of
+# these packages, inside the 150% serial balance budget (#4538).
 #
 # internal/platform/store is CPU-heavy, not latency-sensitive: its SQLite tests run in parallel
 # (#1631) and every statement runs through the race detector's view of a pure-Go SQLite. Beside api
-# and playout its lane passed the 15-minute timeout; with the template clone it measures 291s.
+# and playout its lane passed the 15-minute timeout. Its migration tests start from the migration
+# ladder (migration_ladder_test.go): a test that replays the history from an empty file costs tens of
+# seconds under -race, which puts the package over the per-package cap (#4538).
 1	internal/platform/store
-1	internal/playout
-# internal/api serves the channel packager's HLS and MPEG-TS (#1512 phase 2c).
-2	internal/api
-# internal/integration is here for balance. Its tests are serial, so it gains little from a runner
-# of its own.
-2	internal/integration
-# internal/playout/watermark renders and compares frames on every core. In an ordinary -p=4 lane it
-# measured 445s to 619s beside three other packages, over the per-package cap (#2716).
-2	internal/playout/watermark
-3	internal/app
 # internal/demolibrary encodes filler and scans the tree in parallel tests. Sharing an ordinary
-# -p=4 lane it measured 743s; at -p=1 it measures 138s to 235s (#2716).
-3	internal/demolibrary
+# -p=4 lane it measured 743s; at -p=1 it measures 320s to 410s (#2716, #4538).
+2	internal/demolibrary
 # internal/channels/schedule runs under -race and again without it (go-race-policy.sh), and its
 # seasonal walks are hundreds of CPU-seconds of parallel subtests. Sharing an ordinary -p=4 lane the
-# two runs measured 836s and 730s; at -p=1 they measure about 200s and 150s (#2716).
+# two runs measured 836s and 730s; at -p=1 they measure about 200s and 150s (#2716). Its lane pays
+# for both runs, so it has the lane to itself.
 3	internal/channels/schedule
+# internal/api serves the channel packager's HLS and MPEG-TS (#1512 phase 2c).
+4	internal/api
+4	internal/app
+# internal/playout/watermark renders and compares frames on every core. In an ordinary -p=4 lane it
+# measured 445s to 619s beside three other packages, over the per-package cap (#2716).
+5	internal/playout/watermark
+# internal/integration is here for balance. Its tests are serial, so it gains little from a runner
+# of its own.
+5	internal/integration
+5	internal/playout

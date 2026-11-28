@@ -29,8 +29,13 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
 
 | Role | Items |
 | --- | --- |
-| admin | Home · Guide · Requests · Filler · People · Settings · Help |
-| member | Home · Guide · Requests · Notifications · Help |
+| admin | Home · Guide · Library · Requests · Filler · People · Settings · Help |
+| member | Home · Guide · Library · Requests · Notifications · Help |
+
+A phone has a bottom bar instead: **Home · Watch · Guide · Library** and **More**, the same four for
+both roles (Watch is absent until a channel exists). An admin's Library tab carries the Needs you
+count. Everything else is behind More, Requests first; its count shows in the sheet and More carries
+a dot for it.
 
 - **Decided next (2026-11-27), not yet built:** opening Loomarr lands on the picture, the Guide becomes
   a view of the watching screen with the picture still playing, and Home's wall is where the back

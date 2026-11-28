@@ -62,16 +62,18 @@ describe("SettingField", () => {
     expect(screen.queryByRole("button", { name: /about library url/i })).not.toBeInTheDocument();
   });
 
-  // `sr-only` is `position: absolute`. The info icon's hidden copy of the detail sits in an
-  // unpositioned button, so without a positioned field it lands against the page, below the
+  // A visually hidden element is `position: absolute`. The info icon's hidden copy of the detail sits
+  // in an unpositioned button, so without a positioned field it lands against the page, below the
   // viewport, and stretches the document so scroll chains out of main (#2724).
   it("anchors the info icon's visually hidden detail to the field", () => {
     render(
       <SettingField entry={entry({ detail: "For example http://emby:8096." })} value="" onChange={vi.fn()} />,
     );
-    const detail = screen.getByText("For example http://emby:8096.", { selector: ".sr-only" });
-    const field = detail.closest(".relative");
-    expect(field).toHaveClass("relative");
+    const detail = screen.getByText("For example http://emby:8096.", { selector: "span[id]" });
+    // The hidden wrapper is absolutely placed, and the field is the box that holds it.
+    expect(getComputedStyle(detail.parentElement as HTMLElement).position).toBe("absolute");
+    const field = detail.closest("[data-setting-field]") as HTMLElement;
+    expect(getComputedStyle(field).position).toBe("relative");
     expect(field).toContainElement(detail);
   });
 
@@ -679,9 +681,9 @@ describe("SettingField", () => {
       const drawn = () => getComputedStyle(line.closest("p") as HTMLElement).opacity;
       expect(drawn()).toBe("0");
 
-      fireEvent.mouseEnter(line.closest(".relative") as HTMLElement);
+      fireEvent.mouseEnter(line.closest("[data-setting-field]") as HTMLElement);
       expect(drawn()).toBe("1");
-      fireEvent.mouseLeave(line.closest(".relative") as HTMLElement);
+      fireEvent.mouseLeave(line.closest("[data-setting-field]") as HTMLElement);
       expect(drawn()).toBe("0");
 
       fireEvent.focus(field);

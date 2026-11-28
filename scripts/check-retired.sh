@@ -478,6 +478,16 @@ RETIRED=(
   'channels/now-next-strip|#4451: the web NowNextStrip was deleted; the guide renders now/next through @loomarr/ui'
   'shell/brand-lockup|#4451: the web BrandLockup was deleted; the design system owns the one BrandLockup'
   '"../brand-lockup"|#4451: the web BrandLockup was deleted; the design system owns the one BrandLockup'
+  # #4451: the web app is styled by design-system props and the plain stylesheet in styles.css. The
+  # utility-class framework, its Vite plugin and the class-name helpers were deleted with it.
+  'tailwindcss|#4451: Tailwind was removed from the web app; use design-system props, or a data-attribute hook in styles.css'
+  '@tailwindcss/vite|#4451: the web build has no Tailwind plugin'
+  'tailwind-merge|#4451: there are no utility classes left to merge'
+  'clsx|#4451: compose design-system props, not class strings'
+  'import { cn }|#4451: the cn class helper was deleted with Tailwind'
+  '@/lib/utils|#4451: src/lib/utils held only the cn class helper and was deleted'
+  'rejudgeDoubtfulReviews|#4706: held doubts are settled by the verdict rungs; there is no boot-time re-judge'
+  'retireRemovedRows|#4706: advance retires a removed clip when its row is due; there is no boot-time sweep'
 
 )
 # ⚠ `internal/platform/store/migrations/` is exempt, and it is the one exemption that is forced rather than
@@ -544,6 +554,18 @@ for path in internal/proposals/suggest/tools.go internal/proposals/suggest/promp
     printf '\nRETIRED MODEL SCHEMA PROPERTY STILL REFERENCED: "era":\n  %s\n\n' "$path"
     printf '%s\n' "$hits" | sed 's/^/    /'
   fi
+done
+[[ "$fail" -ne 0 ]] && exit 1
+# #4451: the web app's manifest and build config are outside SEARCH, and they are where the
+# deleted styling packages and their Vite plugin were installed.
+for path in web/apps/web/package.json web/apps/web/vite.config.ts; do
+  for id in 'tailwind' 'clsx'; do
+    hits="$(grep -niF "$id" "$path" 2>/dev/null || true)"
+    if [[ -n "$hits" ]]; then
+      fail=1
+      printf '\nRETIRED WEB STYLING PACKAGE: %s in %s (#4451)\n%s\n' "$id" "$path" "$hits"
+    fi
+  done
 done
 [[ "$fail" -ne 0 ]] && exit 1
 # Separate provider IDs are retired only at the model-selection interface.

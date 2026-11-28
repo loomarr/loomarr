@@ -169,8 +169,9 @@ func checkedColumns(ddl string) map[string]bool {
 	}
 }
 
-// sqliteReferences maps each single-column foreign key's column to "table.column". A foreign key
-// that names no column points at the parent's primary key, which is shown as the table alone.
+// sqliteReferences maps each foreign key column, including each column of a composite key, to
+// "table.column". A foreign key that names no column points at the parent's primary key, which is
+// shown as the table alone.
 func sqliteReferences(ctx context.Context, db *sql.DB, table string) (map[string]string, error) {
 	rows, err := db.QueryContext(ctx, `SELECT "table", "from", "to" FROM pragma_foreign_key_list(?)`, table)
 	if err != nil {

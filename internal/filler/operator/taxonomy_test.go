@@ -29,6 +29,9 @@ func (a taxonomyAvailability) Resolve(key provision.Key) (string, int64, bool) {
 func (taxonomyAvailability) ResolveEpisodes(provision.Key) schedule.EpisodeResolution {
 	return schedule.EpisodeResolution{}
 }
+func (a taxonomyAvailability) Bind(ctx context.Context) channels.AvailabilityRun {
+	return channels.Infallible(a).Bind(ctx)
+}
 
 type taxonomyWakeRecorder struct {
 	snapshots []clips.Clip
@@ -42,7 +45,7 @@ func (r *taxonomyWakeRecorder) ReconcileFillerChange(_ context.Context, snapshot
 }
 
 func TestTaxonomyEditor_PreviewsSavedSelectionsAndConvergesCommittedEligibility(t *testing.T) {
-	st := testkit.MigratedSQLiteStore(t)
+	st := testkit.StockedLibrary(t, testkit.MigratedSQLiteStore(t))
 	now := time.Unix(1_800_000_000, 0).UTC()
 	clip := clips.Clip{
 		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Role: clips.Commercial,
@@ -112,7 +115,7 @@ func TestTaxonomyEditor_PreviewsSavedSelectionsAndConvergesCommittedEligibility(
 }
 
 func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *testing.T) {
-	st := testkit.MigratedSQLiteStore(t)
+	st := testkit.StockedLibrary(t, testkit.MigratedSQLiteStore(t))
 	now := time.Unix(1_800_000_000, 0).UTC()
 	clip := clips.Clip{
 		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Role: clips.Commercial,
@@ -174,7 +177,7 @@ func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *te
 }
 
 func TestTaxonomyEditor_ResolverOnlyEditDoesNotReconcileChannels(t *testing.T) {
-	st := testkit.MigratedSQLiteStore(t)
+	st := testkit.StockedLibrary(t, testkit.MigratedSQLiteStore(t))
 	beer, ok := taxonomy.New(mustTaxa(t, st)).Get("beer")
 	if !ok {
 		t.Fatal("seed taxonomy has no beer")

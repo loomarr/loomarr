@@ -22,8 +22,8 @@ const useNarrowerThan = (minWidth: string): boolean =>
 
 const usePhoneWidth = (): boolean => useNarrowerThan("48rem");
 
-// useBelowSm — true below Tailwind's `sm` (40rem), for a control that changes what it renders where
-// a layout's `max-sm:` classes rearrange it: the channel header's name field (#1785).
+// useBelowSm — true below the design system's `sm` (40rem), for a control that changes what it
+// renders where a layout rearranges below `sm`: the channel header's name field (#1785).
 const useBelowSm = (): boolean => useNarrowerThan("40rem");
 
 export { useBelowSm, usePhoneWidth };

@@ -23,7 +23,7 @@ const HomeStrip = ({ state, isAdmin, onRetry }: HomeStripProps) => {
               aspectRatio={16 / 9}
               backgroundColor="$surfaceElevated"
               borderRadius={6}
-              className="animate-pulse"
+              data-pulse="loading"
               key={i}
               width="100%"
             />

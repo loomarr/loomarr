@@ -69,7 +69,7 @@ One area of the [package map](../package-map.md#start-here).
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 - **`platform/store/activitystore`** · 10 importers · → `platform/store/storedb`
   Persists the Dashboard's Recent activity feed (§5, §12, V32): one append-only table, newest first, purged by age.
-- **`platform/store/channeldatastore`** · 6 importers · → `library/provision`, `platform/store/storedb`
+- **`platform/store/channeldatastore`** · 7 importers · → `library/provision`, `platform/store/storedb`
   Persists what hangs off channels without being the channel itself: a person's favourite and recent channels (#1666), the channel ideas they hid (#1665), the airing history placement ranks on (§5), and the household's and channels' discovery feedback.
 - **`platform/store/channelstore`** · 23 importers · → `channels/schedule`, `library/provision`, `platform/store/storedb`
   Persists channels (the channels table, §9): the approved lineup, the desired schedule, the optimistic revision, and the reconcile deadline the sweep claims by.
@@ -85,7 +85,7 @@ One area of the [package map](../package-map.md#start-here).
   Media-inventory cluster (#2151): the items, origins, sources, measurements and analyses the scanner records under inventory_*.
 - **`platform/store/jobstore`** · 2 importers · → `platform/store/storedb`
   Persists the background-job scheduler's state (§18.1): the last-run and next-run lease of each named recurring job and its operator-set pause flag (the scheduled_jobs table).
-- **`platform/store/librarystore`** · 11 importers · → `platform/store/storedb`
+- **`platform/store/librarystore`** · 12 importers · → `platform/store/storedb`
   Persists the Library: its scan roots, files, items, titles, catalog keys, collections, people, episodes, episode orders and the needs that ask the household a question.
 - **`platform/store/operationstore`** · 5 importers · → `platform/store/storedb`
   Keeps interactive operations: the reconnect snapshot of work a request launches (a filler split, an LLM model pull), so a page can pick its operation up again.

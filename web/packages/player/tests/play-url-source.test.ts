@@ -43,6 +43,35 @@ describe("play URL source", () => {
     });
   });
 
+  it("reads what a newer server sends, keeping only what the player uses", async () => {
+    const newer = { addedLater: "unheard-of" };
+    const answer = (body: unknown) => vi.fn().mockResolvedValue(new Response(JSON.stringify(body)));
+    const signal = new AbortController().signal;
+    const catalog = createChannelCatalogPort(
+      answer({ ...newer, channels: [{ ...channel, ...newer, status: "hibernating", strategy: "dice" }] }),
+    );
+    const source = createPlayUrlSourcePort({
+      baseUrl: "https://loomarr.test",
+      fetch: answer({ ...newer, expiresAt: "2026-08-26T13:00:00Z", relativeUrl: "/m.m3u8", url: "" }),
+    });
+
+    await expect(catalog.list(signal)).resolves.toEqual([channel]);
+    await expect(source.mint(channel, signal)).resolves.toMatchObject({
+      uri: "https://loomarr.test/m.m3u8",
+    });
+  });
+
+  it("refuses a body of another shape", async () => {
+    const answer = () => vi.fn().mockResolvedValue(new Response(JSON.stringify({ channels: [{ id: 7 }] })));
+    const signal = new AbortController().signal;
+    const source = createPlayUrlSourcePort({ baseUrl: "https://loomarr.test", fetch: answer() });
+
+    await expect(createChannelCatalogPort(answer()).list(signal)).rejects.toMatchObject({
+      name: "ContractError",
+    });
+    await expect(source.mint(channel, signal)).rejects.toMatchObject({ name: "ContractError" });
+  });
+
   it("fails closed when the authenticated mint is rejected", async () => {
     const source = createPlayUrlSourcePort({
       baseUrl: "https://loomarr.test",

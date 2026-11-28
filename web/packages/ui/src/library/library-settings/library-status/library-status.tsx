@@ -79,7 +79,7 @@ const LibraryStatus = ({
           actions={
             <>
               <Action onPress={onRescan} tone="primary">
-                Check again
+                Check files again
               </Action>
               <Action onPress={() => onConfirmRemoval(removal.path)} tone="danger">
                 They're gone, remove them
@@ -89,7 +89,7 @@ const LibraryStatus = ({
           key={removal.path}
           title={heldTitle(removal)}
         >
-          {[heldNames(removal), "We haven't removed anything — if a drive is unplugged, plug it back in."]
+          {[heldNames(removal), "We haven't removed anything. If a drive is unplugged, plug it back in."]
             .filter(Boolean)
             .join(" ")}
         </Callout>
@@ -98,7 +98,7 @@ const LibraryStatus = ({
         <Callout
           actions={
             <Action onPress={onRescan} tone="primary">
-              Check again
+              Check files again
             </Action>
           }
           title={unreadableTitle(unreadable)}
@@ -110,7 +110,7 @@ const LibraryStatus = ({
         <Callout
           actions={
             <Action onPress={onRescan} tone="primary">
-              Check again
+              Check files again
             </Action>
           }
           key={kind.key}

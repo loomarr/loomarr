@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +15,69 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
+
+// Removing an extra copy answers with its undo, and restore-copy takes it to put the file back.
+// Each way it can't answers with its own problem.
+func TestLibraryExtraCopyUndo(t *testing.T) {
+	h := newLibraryHarness(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	plays, extra := filepath.Join(root, "echo.mkv"), filepath.Join(root, "echo-dvd.mkv")
+	at := time.UnixMilli(1_790_000_000_000).UTC()
+	if err := h.Store.SaveLibraryItems(ctx, []librarystore.LibraryItem{{ID: "90000001", Kind: "movie", Name: "Echo Movie",
+		Sources: []librarystore.LibrarySource{{Path: plays, Plays: true}, {Path: extra}}}}, at); err != nil {
+		t.Fatal(err)
+	}
+	var files []librarystore.LibraryFile
+	for _, p := range []string{plays, extra} {
+		if err := os.WriteFile(p, []byte("video"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, librarystore.LibraryFile{Path: p, Root: root, Size: 5, ModifiedNs: 1, Kind: "movie",
+			Identity: "digest", Header: librarystore.LibraryHeaderFailed, SeenAt: at, ItemID: "90000001"})
+	}
+	if err := h.Store.SaveLibraryFiles(ctx, files); err != nil {
+		t.Fatal(err)
+	}
+
+	body, err := json.Marshal(map[string]string{"path": extra})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var removed struct {
+		Undo string `json:"undo"`
+	}
+	decode(t, h.Do(http.MethodPost, "/v1/library/items/90000001/remove-copy", adminToken, string(body)), &removed)
+	if _, err := os.Stat(extra); removed.Undo == "" || err == nil {
+		t.Fatalf("after removing: undo %q, file stat %v", removed.Undo, err)
+	}
+
+	restore := func(undo string, want int) {
+		t.Helper()
+		body, err := json.Marshal(map[string]string{"undo": undo})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp := h.Do(http.MethodPost, "/v1/library/items/90000001/restore-copy", adminToken, string(body))
+		_ = resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("restore = %d, want %d", resp.StatusCode, want)
+		}
+	}
+	restore("forged.token", http.StatusBadRequest)
+	if err := os.WriteFile(extra, []byte("newer"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	restore(removed.Undo, http.StatusConflict)
+	if err := os.Remove(extra); err != nil {
+		t.Fatal(err)
+	}
+	restore(removed.Undo, http.StatusNoContent)
+	if got, err := os.ReadFile(extra); err != nil || string(got) != "video" {
+		t.Fatalf("restored file = %q, %v", got, err)
+	}
+	restore(removed.Undo, http.StatusGone)
+}
 
 // Library → Items lists present titles with their readiness, finds them by name, opens a series
 // with its episodes, and needs a signed-in caller (a member's view is library_members_test.go's).
@@ -171,7 +236,8 @@ func TestLibraryItemPageCarriesStoredFacts(t *testing.T) {
 	for field, want := range map[string]string{
 		"originalTitle": `"Alpha Original"`, "tagline": `"One line."`, "premiereDate": `"2001-02-03"`, "score": `7.5`,
 		"studios": `["North Studio"]`, "countries": `["France","Spain"]`,
-		"credits":     `[{"character":"Lead","name":"Ana Actor","role":"actor"},{"name":"Di Director","role":"director"}]`,
+		"credits": `[{"character":"Lead","name":"Ana Actor","personId":"name:Ana Actor","role":"actor"},` +
+			`{"name":"Di Director","personId":"name:Di Director","role":"director"}]`,
 		"detailsFrom": `{"premiere":"tmdb","runtime":"radarr","score":"tmdb","year":"nfo"}`,
 	} {
 		if got := asJSON(movie[field]); got != want {

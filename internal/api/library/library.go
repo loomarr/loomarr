@@ -43,19 +43,28 @@ type LibraryRootService interface {
 	ConfirmRemovals(ctx context.Context, root string) error
 
 	Items(ctx context.Context, q librarystore.LibraryItemQuery) (librarystore.LibraryItemPage, error)
+	Genres(ctx context.Context, kind string, member bool) ([]librarystore.LibraryGenre, error)
+	Facets(ctx context.Context, kind string, member bool) (librarystore.LibraryFacets, error)
+	People(ctx context.Context, term, kind string, member bool, limit int) ([]librarystore.LibraryPerson, error)
+	Person(ctx context.Context, id string, member bool) (librarystore.LibraryPerson, error)
 	// Item, Collections, Collection and Sets take member: true reads only what a household
 	// member reads (librarystore.MemberLibraryItem); Items takes it in the query.
 	Item(ctx context.Context, id string, member bool) (scan.ItemDetail, error)
 	UpdateDetails(ctx context.Context, id string) error
 	CheckFiles(ctx context.Context, id string) error
-	RemoveExtraCopy(ctx context.Context, id, path string) error
+	RemoveExtraCopy(ctx context.Context, id, path string) (undo string, err error)
+	RestoreExtraCopy(ctx context.Context, id, undo string) error
 
 	Needs(ctx context.Context) ([]scan.Need, error)
+	Ignored(ctx context.Context, limit, offset int) ([]scan.IgnoredTitle, int, error)
 	Problems(ctx context.Context) ([]librarystore.LibraryItemSummary, error)
 	NeedCount(ctx context.Context) (int, error)
 	Link(ctx context.Context, itemID string, id librarystore.LibraryID) error
 	Ignore(ctx context.Context, itemID string) error
 	Unanswer(ctx context.Context, itemID string) error
+	IgnoreAll(ctx context.Context, itemIDs []string) error
+	RestoreAll(ctx context.Context, itemIDs []string) error
+	Keep(ctx context.Context, itemID string) error
 	SearchTitles(ctx context.Context, term, kind string) ([]scan.SearchHit, error)
 	// Episode orders (#2151 decision 53).
 	OrderNeeds(ctx context.Context) ([]scan.OrderNeed, error)
@@ -142,6 +151,7 @@ func (s *Handlers) registerLibrary(api huma.API) {
 	}, httpcore.RoleAdmin), s.confirmLibraryRemoval)
 	s.registerLibraryHooks(api)
 	s.registerLibraryItems(api)
+	s.registerLibraryFilters(api)
 	s.registerLibraryNeeds(api)
 	s.registerLibraryCollections(api)
 }

@@ -69,18 +69,31 @@ must say, and what a public repo may not say (replay evidence as counts, never h
 | `impeccable` | Explicit | Planning (`shape`), critiquing, auditing or polishing a UI surface |
 | `security-audit` | Automatic | Security questions and focused reviews; a full audit only when asked |
 | `turborepo` | Automatic | `web/turbo.json`, task pipelines, caching and filters |
+| `web-design-guidelines` | Explicit | Reviewing UI code against Vercel's Web Interface Guidelines: accessibility, focus, forms, motion, touch |
+| `vercel-react-best-practices` | Explicit | Reviewing React code for re-renders, rendering cost, bundle size and client data fetching |
 
 Loomarr's visual world is already committed, so Impeccable refines within it and never replaces it.
 `docs/frontend-design.md`, `@loomarr/design-system` and the mocks under `design/` stay the authority.
 For an Impeccable verdict that conflicts with them, raise it with the maintainer; don't apply it.
 Its launcher downloads a pinned engine binary from the project's GitHub releases. It checks the
-binary against `.agents/skills/impeccable/scripts/engine-checksums.txt` and keeps it in the
-ignored `bin/` beside it.
+binary against `.agents/skills/impeccable/scripts/engine-checksums.txt` and keeps it under
+`~/.impeccable/bin/<version>/`, outside the repository.
 
 `security-audit` is guidance by default. Its six-phase workflow and report files run only on an
 explicit request for a full audit or pen test, and it runs target code only inside a sandbox with
 no network. `turborepo` points at the docs bundled with the installed `turbo` package
 (`web/node_modules/turbo/docs/`), so its advice always matches our version.
+
+The two Vercel skills are reviews of code, and Loomarr's own rules win where they differ.
+`web-design-guidelines` reads its rules from the snapshot bundled beside it, pinned to an upstream
+commit and SHA-256, and never from the network. Its copy rules (Title Case buttons, `&` for "and")
+give way to Loomarr's sentence case and plain words, and its Tailwind class names stand for the
+`@loomarr/design-system` props that draw the same thing. `vercel-react-best-practices` was written
+for Next.js: its `server-` rules, `next/dynamic` and SWR have nothing to act on in a Vite SPA on
+TanStack Router and TanStack Query, and its `bundle-barrel-imports` rule gives way to
+[`web/packages/README.md`](../../web/packages/README.md), where a package's `index.ts` is its public
+interface.
+Its `rerender-`, `rendering-`, `js-` and `client-` event-listener rules apply as written.
 
 ## What was removed
 
@@ -91,7 +104,8 @@ Obsidian vault, exercise scaffolding, generic Husky setup, Shoehorn migration, a
 flows, handoff wrappers tied to one harness, and an implementation wrapper that stopped at a local
 commit instead of the required pull request.
 
-The retained 17 skills, and the 10 added since (on 2026-11-21: `impeccable`, `security-audit`,
-`turborepo`, and seven more from the same Matt Pocock source), stay pinned in `skills-lock.json`.
+The retained 17 skills, and the 12 added since (on 2026-11-21: `impeccable`, `security-audit`,
+`turborepo`, and seven more from the same Matt Pocock source; on 2026-11-27: `web-design-guidelines`
+and `vercel-react-best-practices` from `vercel-labs/agent-skills`), stay pinned in `skills-lock.json`.
 Entries added since carry the `commit` they were taken from. `make agent-assets-verify` checks that
 the lock, skill directories, Claude adapters, durable workflows, and this catalog agree.

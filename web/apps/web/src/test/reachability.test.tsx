@@ -24,6 +24,7 @@ import {
   getListFillerPullsMockHandler,
   getListFillerSourcesMockHandler,
   getListLibraryCollectionsMockHandler,
+  getListLibraryIgnoredMockHandler,
   getListLibraryItemsMockHandler,
   getListLibraryNeedsMockHandler,
   getListLibraryRootsMockHandler,
@@ -340,6 +341,7 @@ const stubReachable = () => {
       ],
       total: 1,
     }),
+    getListLibraryIgnoredMockHandler({ items: [], total: 0 }),
     // Needs you: one file nothing identifies, with no guess.
     getListLibraryNeedsMockHandler({
       needs: [
@@ -356,6 +358,7 @@ const stubReachable = () => {
           files: [{ path: "/media/movies/disc2/title_t01.mkv", size: 1, ready: false }],
           candidates: [],
           searched: true,
+          folder: "Movies/disc2",
         },
       ],
       orders: [],
@@ -381,6 +384,7 @@ const stubReachable = () => {
       match: { by: "app", app: "radarr", page: "http://radarr.invalid/movie/paper-kites" },
       detailsFrom: {},
       channels: [],
+      nextAirings: [],
     }),
     // Collections and a collection's editor: one of the household's, served under any id.
     getListCollectionsMockHandler({

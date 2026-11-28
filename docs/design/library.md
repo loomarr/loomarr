@@ -300,22 +300,24 @@ step 5). Nothing reads the scanner's origins until the cutover.
   the pass lock, a pass that finds it taking files hands its files over, and a read whose file a
   later pass wrote meanwhile is dropped. The scanner runs each pass's reads behind it
   (`Importer.Walk`), so a pass asked for while a first import reads (a folder added, Use this
-  folder, Scan now) walks at once, and its new files are listed then, not once every header is
+  folder, Check files again) walks at once, and its new files are listed then, not once every header is
   read.
 - **Removals.** An unreadable root or folder makes the walk incomplete, and nothing is marked
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
   maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once;
   one step 1 is walking or writing stops at the file it is on, and the pass goes on to the next
-  root.
+  root. Settings → Library's Stop using asks first, with Cancel focused: titles found only in that
+  folder leave the Library and channels cannot play them; the files stay on disk.
 - **Passes.** `scan.Scanner` makes one when the app starts, hourly, when a folder is used,
   added or released (its files are forgotten first thing), when a path mapping is set by hand (#3359: a corrected mapping takes without a restart or
-  the hourly wait), and on `POST /v1/library/scan` (Settings → Library's Scan now, as in Emby and
-  Jellyfin). A pass is *asked* when Scan now, Refresh everything, using or adding a folder or
+  the hourly wait), and on `POST /v1/library/scan` (Check files again, in Settings → Library and on a
+  held removal or a skipped file; Emby and Jellyfin's Scan library). A pass is *asked* when Check
+  files again, the library-wide Update details, using or adding a folder or
   setting a mapping started it, or
   it is the start-up pass of a library with no files yet (its first import); an unasked pass with
   nothing to read or look up is *quiet*, and shows only "Checking your folders…".
-  `POST /v1/library/refresh` (Refresh everything, asked first) clears every present file's identity
+  `POST /v1/library/refresh` (Settings → Library's Update details, asked first) clears every present file's identity
   and marks every fetched catalog row due, then starts a pass: each file is written again from its
   name and its apps, each title looked up again, and the headers already read are kept, so nothing
   stops playing. `library.scanner.enabled` (on by default) stops passes, folder passes
@@ -345,7 +347,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   listed it and once its files are written, because over a share either half can take minutes; the
   time left is worked out afresh from when a root's writes begin), 2 *Reading each file* (header reads, growing as passes hand files over; it names the
   file), and 3 *Looking up details* (the Enricher's fetches of catalog rows due as new: never
-  fetched, an outdated shape or language, or marked by Refresh everything; counted when it starts
+  fetched, an outdated shape or language, or marked by the library-wide Update details; counted when it starts
   and grown as more become due; it names the title). Steps 2 and 3 can run together; the status
   shows the earliest one running. A walk begun once reading has begun, a later pass's behind a
   first import's reading, runs behind it: the status stays on step 2 until the reading ends,
@@ -455,15 +457,63 @@ step 5). Nothing reads the scanner's origins until the cutover.
   the item it was written as (`item_id`) and an episode's series (`series_id`). A title is listed
   while it has a present, importable file, and is "getting ready" while any of those files'
   headers is unread. A file row from before these columns has no item, so the next pass writes it
-  again. `GET /v1/library/items` pages and searches the list;
+  again. `GET /v1/library/items` pages and searches the list. It filters by `kind`, `ready` and
+  `genre` (one genre name, any case; an unknown genre is an empty list), and `total` counts what
+  the filters leave. `search` finds a title whose name holds the whole term, or one where every
+  word of the term is in its name, is its year (four digits, exactly) or names one of its
+  genres, or whose genre is the whole term: "quillfen 1979" finds a title named with "quillfen"
+  from 1979, and "comedy" finds every comedy beside a title with "comedy" in its name. The titles
+  whose name holds the whole term come first, then the rest, each in the chosen sort. The name
+  sort is `sort_name`: the source's sort title (an arr's or an NFO's, which may drop a leading
+  article), or the name where there is none, either one folded to lower case without accents;
+  Loomarr strips no article itself. Under `sort=name` the list also carries `letters`, its letter
+  index: for each initial of `sort_name` present under the same filters, A to Z with one `#` for a
+  digit or any other character, the offset of the first such title in the list's order, so a
+  letter rail asks for `offset=<n>`. The letters are in list order: under a search, where name
+  matches come first, that need not be A to Z, and a letter's offset is its first occurrence.
+  `GET /v1/library/genres` lists the genres of the listed titles, one row per
+  genre name in any case, with how many titles carry it, by name; `kind` narrows it like the
+  list. It is its own route, read once for the genre menu, because it does not change with the
+  list's search, page or other filters.
+  The list also filters by `studio` (a name, any case), `person` (a person's id), `audio` and
+  `subtitles` (a language code, any case, as the track holds it), `uhd` (4K) and `hdr` (`any`, or
+  one of the track labels `Dolby Vision`, `HDR10`, `HLG`, `HDR`). Every filter ANDs with the
+  others and with `kind`, `search` and `genre`, `total` and `letters` read the same conditions,
+  and an unknown value is an empty list. A studio and a credit are the title's own rows, so a
+  series answers by its show's. `person` matches a credit in any role (`library_credits`, not
+  `library_filmography`, which reaches titles the Library does not hold). **A title matches a
+  track filter (`audio`, `subtitles`, `uhd`, `hdr`) when any of its present playable files has
+  such a track in the copy that plays:** a file that is present, can be imported and whose header
+  has not failed, and a source with `plays` set, so an extra copy that never plays counts for
+  nothing. A series matches when any one episode listed under it does, and two track filters may
+  be met by different episodes. Each statement (the count, the page, the letters) gathers the
+  matching titles once from the `(kind, language)` track index, so no index of its own is
+  needed. The scanner stores every language code in lower case and the filter lower-cases what
+  it is asked, so the column is compared as it is.
+  `GET /v1/library/facets` lists the choices of those filters except `genre` and `person`, each
+  with how many listed titles it keeps, under `kind` like the list: `studios`, `audio` and
+  `subtitles` languages (by name; a track that states no language is no choice), the `uhd` and
+  `hdrAny` counts, and the `hdr` labels present. It is one route because the filter menu reads
+  them together, and the track choices come from one read of the playing tracks. People are too
+  many to list, so `GET /v1/library/people?q=` searches them by part of their name (the most
+  credited first, at most `limit`), and `GET /v1/library/people/{id}` is one person's name and
+  title count; their titles are the list under `person=<id>`. A person has no photo field: the
+  Library holds only a source's remote photo URL, and imports no cast photos. A person's id is
+  `<catalog>:<id>`, or `name:<name>` for one no catalog identifies, and a title's credits carry
+  it as `personId`.
   `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's
   files, or a series' episodes by season. Both are member-readable (see **Who reads the
   Library** below). Every caller's title also carries `playing`, one line about the copy that
   plays and nothing that names a file: its picture (width, height, high dynamic range), the
   channels of the sound that plays and its subtitle languages.
 - **Who reads the Library** (#4476, decided 2026-11-21). A household member browses the
-  Library read-only: the wall and a title's page, and the Collections tab. The member-readable
-  routes are `GET /v1/library/items`, `GET /v1/library/items/{id}`, `GET /v1/collections`,
+  Library read-only: the wall and a title's page, and the Collections tab. On the web, Library is
+  in a member's navigation and fourth in their phone bar (Home · Watch · Guide · Library), with no
+  Needs you count. An admin's phone bar is the same four, with the Needs you count on Library. The
+  member-readable
+  routes are `GET /v1/library/items`, `GET /v1/library/items/{id}`, `GET /v1/library/genres`,
+  `GET /v1/library/facets`, `GET /v1/library/people`, `GET /v1/library/people/{id}`,
+  `GET /v1/collections`,
   `GET /v1/collections/{id}`, and `GET /v1/library/collections` (names and sizes, for the channel
   scope picker). Everything else under `/v1/library` and `/v1/collections` is admin-only: the
   folders, path map, discovery and browse, status, scan, refresh and confirm-removal, Needs you
@@ -473,6 +523,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   **A member reads only an identified title named by a catalogue.** A movie or series is one a
   member reads when a catalogue identifies it (it has a match basis) or the maintainer has
   answered it, the maintainer has not said it is not a title, and its name came from a catalogue
+  (or the maintainer kept it as a home video, which keeps its file's name)
   or sidecar (`name_from`). An episode is one when its show is, and its show's catalog numbers and
   names it. Everything waiting in Needs you is left out, because its name is its file's or its
   folder's. So is an identified title whose catalogue record isn't read yet, and an episode the
@@ -483,11 +534,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   writes it again:
 
   ```text
-  identified(t) = t.kind in {movie, series} and t.name_from != ''
-                  and (t.match_basis != '' or answered(t)) and not ignored(t)
+  identified(t) = t.kind in {movie, series} and not ignored(t)
+                  and (kept(t) or (t.name_from != '' and (t.match_basis != '' or answered(t))))
   member reads t = identified(t)
                   or (t.kind = episode and not t.unnumbered and t.name_from != ''
                       and identified(t.series))
+                  or (t.kind = episode and kept(t.series))
   ```
 
   One store predicate applies it to the list, its search and filters, its total, one title, an
@@ -500,8 +552,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   sizes, tracks, chapters), `match` and `detailsFrom`; a list entry, a collection's title and a
   set's title leave out the file count (`files`), `unplayable` and `extraCopies`; an episode
   leaves out `fromFile`. Each of those fields is optional in the schema and says "admins only".
-  "Getting ready" (`ready`) stays. The list's filters (kind, search, ready, sort) and its total
-  follow the rule above.
+  "Getting ready" (`ready`) stays. The list's filters (kind, search, ready, genre, studio,
+  person, audio, subtitles, uhd, hdr, sort), its total, its letter index, the genre and filter
+  choices and the people follow the rule above: a member never learns a hidden title's genre,
+  studio, language, cast or initial. The track filters read file data on the server; a member
+  learns only that a title has such a track, never a file or a path.
   The other routes a member calls that read Library titles follow the same rule, decided from
   the caller's role at the route: `GET /v1/search` (its Library half, and a TMDB result's
   in-Library mark, whether a title search or a structured discovery), `GET /v1/discovery/ideas`
@@ -675,11 +730,65 @@ step 5). Nothing reads the scanner's origins until the cutover.
   title (503 without a key), and the status counts `needsYou`. The API says which facts agree;
   the sentence is the UI's. A candidate's poster is adopted by the image service under the
   title, and the API leaves it out until its bytes are here.
+- **The Ignored list** (#4476). `GET /v1/library/ignored` (admin only) lists every title the
+  household ignored, from Needs you or from a title's "Wrong title?", newest first, with no age
+  limit. Each entry has the title's `id` (the one `DELETE …/answer` takes, which brings it back),
+  `kind` (`movie`, a file; `series`, a folder), `name` (the movie's file name, or the show's folder
+  name), `folder` (the folder it sits in, from its media folder's name as Settings → Library shows
+  it, such as `Movies/Unsorted`, for grouping; two media folders with one name are told apart by
+  their whole paths) and `ignoredAt`. Only files under the title's own media folder name it, while
+  it has one there. A show joined from several folders is named by the folder it is kept by; a show
+  with no folder of its own is listed by its title. A title with no present file is left out until a file of it is back. It is its own
+  read, paged by `limit` and `offset` with a `total`, because the set only grows and the Needs you
+  read, with its guesses, files and posters, is refetched on every library change.
+- **Ignoring a folder** (#4476, admin only). Each card in `GET /v1/library/needs` has a `folder`,
+  the same label as the Ignored list's, and the cards come grouped by it, by name within a folder.
+  A heading's action ignores the cards shown under it at that moment, each title as one item, so a
+  series counts as one. `POST /v1/library/needs/ignore` takes those cards' ids, never a folder
+  path, so files that arrive in the folder later still need the household. It ignores all of them
+  or none: an id that is unknown, or not waiting in Needs you, refuses the whole request (409). It
+  returns the ids it ignored, and `POST /v1/library/ignored/restore` takes them back in one step,
+  again all or none: an id that isn't ignored refuses the whole request (409), so a link answer is
+  never removed. Once either is saved it answers success, so the ids are there to undo with:
+  queuing the files to be read again is best-effort, carries on if the request is dropped, is
+  bounded to a minute, and only logs a failure. Episode order and "needs a look" cards are not in
+  folder groups.
+- **Home videos** (#4476). "It's ours, keep it as is" (`POST /v1/library/items/{id}/keep`, admin
+  only) answers a waiting title that has no catalog guess: no row in `library_candidates`. A title
+  with a guess, or one not waiting in Needs you, is refused (409). The answer is stored in
+  `library_answers` as `kept`; an answer is exactly one of a link, ignored or kept. `DELETE
+  …/answer` takes it back, and the title waits in Needs you again; "Wrong title?" replaces it with
+  a link. A kept title is answered, so no scan or Matcher pass matches it or returns it to Needs
+  you. The answer covers the whole title: a changed file, a new part and a new copy in the film's
+  folder are kept too, and nothing a sidecar, an app or a catalog says is read for it. The keep is
+  the only answer that is the title's: it is written on every scan origin the title has, and read
+  on any of them, so a part or copy that joins later is kept. A link and an ignore stay their
+  origin's, written and taken back by that origin alone. Any answer you give or take back on any
+  origin of a kept title ends the keep on all of its origins in the same transaction, so undoing,
+  ignoring or linking after a part changes takes effect, and nothing else spreads. A batch ignore
+  refuses a kept title, which is not waiting, and a search never answers one. It keeps the name its
+  file or folder gives it, with the year when the name has one, and a multi-part folder is one
+  title with parts. Its genre is "Home videos", so the genre filter and
+  search find it. Members read it like any other title, a show's episodes included. The list and
+  detail reads mark it `homeVideo`. The list read also marks `unidentified` a title that is waiting
+  in Needs you.
+- **A home video's picture** (#4476). A kept movie or show has no catalog artwork, so its poster
+  is one frame of its main file: a movie's first playing part, or a show's first playing episode
+  file by path. The frame is the keyframe at or before a tenth of the file's length, decoded by the
+  same ffmpeg path as a channel still (tone-mapped when the file is HDR), and stored by the image
+  service in the `poster` role, so the wall and the title page draw it like any poster, with its
+  renditions. The frame is landscape; the 2:3 poster box shows its centre and crops the sides. A
+  low-priority job, apart from the scan, checks every two minutes for kept titles with no poster
+  and extracts at most ten frames, one at a time, and none while someone is watching. A file whose
+  length is not read yet waits for its header. The scanner owns the poster role: writing a kept
+  title clears it, which a changed file does (the job then takes a new frame) and taking the answer
+  back does. A failed frame is tried again after five minutes, doubling to a day; the wait is held
+  in memory, so a restart tries again.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left
   ("Adding your media · Step 1 of 3 · 21% · about 9 min left"), paused, checking the folders on a
-  quiet pass, a held removal or an offline folder with Check again, or dead air before any folder
+  quiet pass, a held removal with Check files again or an offline folder with Check again (which only looks at the folders), or dead air before any folder
   is chosen. An import still running for the other folders stays on the line after a held removal
   or an offline folder ("Can't reach your Movies folder · Adding your media · Step 2 of 3 · 34%"),
   and Settings → Library keeps its bar, step, file and time left below the callout; neither says
@@ -696,13 +805,24 @@ step 5). Nothing reads the scanner's origins until the cutover.
   (`/library/{id}`) shows the poster, year and length or seasons, the rating, genres and
   overview, each season's episodes in a disclosure (specials last), and Technical details. Still
   to come: Collections (step 12); On these channels, once channels name library items (step 15's
-  id migration).
+  id migration). A title's next airing on each channel comes from `channel_upcoming_airings`,
+  which reconcile fills with each internal-playout channel's next 48 hours of programmes
+  (scheduling.md "Upcoming airings"): a movie by its item id and its title key, a series by its
+  title key. A removed file's airing stays until the channel's next sweep (by default within about
+  twenty minutes), as in the guide. `GET /v1/library/items/{id}` serves it as `nextAirings`: one
+  entry per channel, earliest first, with the channel's id, name and number, the programme's `start`
+  and `end`, and `forecast`. A programme on air counts; a title with none reads an empty list. A
+  series' entry names its `episode` (id, name, season, number) from the page's own episode list. The
+  store read does no member filtering: for a member, an entry whose episode their page leaves out
+  carries no `episode`, so neither its id, name nor numbering is sent (#4476).
 - **Needs you on the page** (step 11b). The Library page's strip asks about the first four
   titles that need the household ("X — is this the 1999 movie?", Yes, that's it / Pick a
-  different title, or Find it with no guess); `/library/needs` holds one card each with the
+  different title, or Find it with no guess); `/library/needs` holds one card per title, with the
   reason line, the other guesses, a TMDB search, Ignore this, and the files behind a disclosure.
+  What else is wrong with that title (unplayable files, an extra copy) is listed on the same card
+  with See why, and its Waiting count is the number of cards.
   An answer locks in and leaves once seen; one that fails puts the question back. The Library nav
-  badge is the status's `needsYou`, the same number as the heading.
+  badge is the status's `needsYou`, which counts a title once for each list it is in.
 - **A title's actions** (step 11c, decision 26). Each title row records what decided which title
   it is: the basis and provider of its highest-ranked catalog id (`match_basis`, `match_app`), and
   for an arr its page there (`match_page`, from the arr's `titleSlug`). `GET /v1/library/items/{id}`
@@ -765,13 +885,30 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Extra copies** (step 10e, decision 37). When a movie has several files, one plays in each
   edition: the file its arr lists (each file origin's extension notes `managed`), else the
   sharpest picture, else the biggest file. Each other file is an extra copy: a warning card on the title's page ("An
-  extra copy is taking 4.0 GB") with Remove extra copy (`POST …/remove-copy`, 409 for the copy
+  extra copy is taking 4.0 GB") with Remove <file name> (`POST …/remove-copy`, 409 for the copy
   that plays). Removing moves the file to `<media folder>/.loomarr-trash/<date>/<its path>`, the
-  same share, so it is a rename and can be undone by moving it back; the trash holds a `.ignore`,
-  so walks and watches skip it. Loomarr marks the file missing at once, so no removal guard holds
-  it. A complete walk of the folder deletes each day's trash 30 days on; a folder there that isn't
-  a date is left alone. A read-only folder answers 409, and the card says Loomarr may not be
-  allowed to change it.
+  same share, so it is a rename; the trash holds a `.ignore`, so walks and watches skip it.
+  Loomarr marks the file missing at once, so no removal guard holds it. A complete walk of the
+  folder deletes each day's trash 30 days on; a folder there that isn't a date is left alone. A
+  read-only folder answers 409, and the card says Loomarr may not be allowed to change it.
+- **Undo for removing an extra copy** (#4476). The removal answers with an `undo` token, and
+  `POST …/restore-copy` (admin only) takes it to rename the file from the trash back to where it
+  was, then passes over its folder as for a file that appeared, so the title has its extra copy
+  again. The token names the title, media folder, file and trash day, signed with a key the
+  running process makes for itself: a request never carries a path, and nothing about removals is
+  stored. A restart voids pending undos, and the 30-day trash folder is then the way back. A token
+  that is forged, for another title or from before a restart is refused (400), and one whose file
+  is not in the trash is refused (410). A restore never overwrites: the move itself refuses a
+  taken place (a hard link and a remove, else the OS's no-replace rename, else nothing moves), so
+  a file written there at the same moment is safe. It also never leaves the media folder: a folder
+  on the way that is a symlink to somewhere outside is refused. When something is at the file's
+  old place, or the file can't be moved this safely, it answers 409 and the file stays in the
+  trash. The title's page offers Undo only right after removing, in a toast ("Moved <file name> to
+  the trash") that stays 30 seconds and is also reached with the toaster's Alt+T shortcut. One
+  press sends one restore. A refusal (4xx) shows the server's own title and detail. When the
+  server fails or can't be reached, the toast says to try again and offers Undo with the same
+  token. The card says that after the Undo the way back is the `.loomarr-trash` folder inside the
+  media folder, for the 30 days it keeps the file.
 - **Titles that need a look** (step 10f, decision 24). A title with a file whose header failed
   (`unplayable`) or a movie with an extra copy is a problem: `ListLibraryItems{Problems: true}`
   finds them per title through the file indexes, an extra copy being a `library_sources` row no

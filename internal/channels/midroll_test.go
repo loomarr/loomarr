@@ -23,6 +23,9 @@ func (m hourAvail) Resolve(k provision.Key) (string, int64, bool) {
 func (m hourAvail) ResolveEpisodes(provision.Key) schedule.EpisodeResolution {
 	return schedule.EpisodeResolution{}
 }
+func (m hourAvail) Bind(ctx context.Context) channels.AvailabilityRun {
+	return channels.Infallible(m).Bind(ctx)
+}
 
 type fixedFades map[string][]schedule.BreakCandidate
 

@@ -23,13 +23,13 @@ const renderBar = (props: Partial<Parameters<typeof PhoneBottomBar>[0]> = {}, in
   );
 
 describe("PhoneBottomBar", () => {
-  it("gives an admin with a channel Home/Watch/Guide/Requests plus More", async () => {
+  it("gives an admin with a channel Home/Watch/Guide/Library plus More", async () => {
     renderBar({ isAdmin: true, watchChannelId: "ch-7" });
     const bar = await screen.findByRole("tablist", { name: "Primary navigation" });
     const tabs = within(bar)
       .getAllByRole("tab")
       .map((tab) => tab.getAttribute("aria-label"));
-    expect(tabs).toEqual(["Home", "Watch", "Guide", "Requests"]);
+    expect(tabs).toEqual(["Home", "Watch", "Guide", "Library"]);
     // More sits OUTSIDE the tablist (aria-required-children forbids a role="button" tab child),
     // so it's looked up against the whole document rather than `within(bar)`.
     expect(screen.getByRole("button", { name: "More" })).toBeInTheDocument();
@@ -41,7 +41,16 @@ describe("PhoneBottomBar", () => {
     const tabs = within(bar)
       .getAllByRole("tab")
       .map((tab) => tab.getAttribute("aria-label"));
-    expect(tabs).toEqual(["Home", "Guide", "Requests"]);
+    expect(tabs).toEqual(["Home", "Guide", "Library"]);
+  });
+
+  // #4476: the Needs you count is on the admin's Library tab, in its name as well as its badge.
+  it("counts Needs you on the Library tab, and marks More for the requests behind it", async () => {
+    renderBar({ isAdmin: true, badges: { "/library": 4, "/requests": 2 } });
+    expect(await screen.findByRole("tab", { name: "Library, 4 need attention" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^More/ }));
+    const dialog = await screen.findByRole("dialog", { name: "More" });
+    expect(within(dialog).getByRole("button", { name: "Requests" })).toHaveTextContent("2");
   });
 
   it("opens More to exactly the admin overflow, and selecting a row navigates and closes it", async () => {
@@ -53,12 +62,12 @@ describe("PhoneBottomBar", () => {
       within(dialog)
         .getAllByRole("button")
         .map((b) => b.getAttribute("aria-label")),
-    ).toEqual(["Close", "Library", "Filler", "People", "Settings", "Help"]);
+    ).toEqual(["Close", "Requests", "Filler", "People", "Settings", "Help"]);
     await user.click(within(dialog).getByRole("button", { name: "Settings" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "More" })).not.toBeInTheDocument());
   });
 
-  it("gives a member exactly Notifications and Help in More", async () => {
+  it("gives a member exactly Requests, Notifications and Help in More", async () => {
     const user = userEvent.setup();
     renderBar({ isAdmin: false });
     await user.click(await screen.findByRole("button", { name: "More" }));
@@ -67,7 +76,7 @@ describe("PhoneBottomBar", () => {
       within(dialog)
         .getAllByRole("button")
         .map((b) => b.getAttribute("aria-label")),
-    ).toEqual(["Close", "Notifications", "Help"]);
+    ).toEqual(["Close", "Requests", "Notifications", "Help"]);
   });
 
   it("closes on Escape and returns focus to the More button", async () => {

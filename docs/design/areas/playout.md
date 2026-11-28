@@ -15,8 +15,10 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`playout`** · 11 importers · → `media/encode`, `media/measure`, `media/proctree`, `platform/diagnostics`, `platform/langcode`, `playout/packager`, `playout/timeline`
+- **`playout`** · 11 importers · → `media/encode`, `media/measure`, `media/proctree`, `platform/diagnostics`, `platform/langcode`, `playout/admission`, `playout/media`, `playout/packager`, `playout/timeline`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
+- **`playout/admission`** · 1 importer · → `playout/media`
+  Decides what a host can encode at once: the resource budget and its leases, the measured and host-derived capacity limits, and the speed monitor that steps a heavy item down the software ladder.
 - **`playout/backendtransition`** · 1 importer · → `channels/schedule`, `platform/store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`playout/bench`** · → `media/encode`, `playout`, `playout/packager`
@@ -27,6 +29,8 @@ One area of the [package map](../package-map.md#start-here).
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
 - **`playout/livetvpublish`** · 1 importer · → `library/mediaserver`, `playout/tunarr`
   Publishes Loomarr's channels to the media server's Live TV (§6, §9.1): it registers, verifies, refreshes and retires the one tuner + guide pair Loomarr owns, and wires the media server as Tunarr's media source.
+- **`playout/media`** · 2 importers
+  Vocabulary of what a source is and what it costs to air: the probed MediaFormat, its stream class, the picture rectangle and the HDR tone curve.
 - **`playout/packager`** · 3 importers
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
 - **`playout/subtitles`** · 4 importers · → `media/bgexec`, `platform/langcode`
@@ -37,5 +41,7 @@ One area of the [package map](../package-map.md#start-here).
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
 - **`playout/tunarr/tunarrtest`** · → `channels/schedule`, `playout/tunarr`
   The shared Tunarr test double and HTTP fixture server (AGENTS.md testing rules: unit tests never touch the network; extend this package rather than inventing a private mock).
-- **`playout/watermark`** · 1 importer
+- **`playout/watermark`** · 1 importer · → `playout/watermark/raster`
   Renders a channel's bug (#1512): the small mark burned into a channel's programmes by the GPU overlay (internal/playout, watermark.go).
+- **`playout/watermark/raster`** · 1 importer
+  Rasterises the watermark's opaque alpha masks identically on every CPU architecture, so the watermark render is bit-identical everywhere (#4646).
