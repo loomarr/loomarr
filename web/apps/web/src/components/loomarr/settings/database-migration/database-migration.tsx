@@ -210,7 +210,7 @@ const DatabaseMigration = ({
                 <Action
                   disabled={dsn.trim() === "" || pending === "preflight"}
                   onPress={onPreflight}
-                  style={{ alignSelf: "flex-start" }}
+                  alignSelf="flex-start"
                 >
                   {pending === "preflight" ? "Running preflight…" : "Run preflight"}
                 </Action>

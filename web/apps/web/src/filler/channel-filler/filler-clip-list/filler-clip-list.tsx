@@ -197,7 +197,7 @@ const FillerClipList = ({
               setAdding(false);
               setQuery("");
             }}
-            style={{ alignSelf: "flex-start" }}
+            alignSelf="flex-start"
             variant="ghost"
           >
             Cancel
@@ -208,7 +208,7 @@ const FillerClipList = ({
           disabled={disabled}
           icon="plus"
           onPress={() => setAdding(true)}
-          style={{ alignSelf: "flex-start" }}
+          alignSelf="flex-start"
           variant="outline"
         >
           Add a clip…

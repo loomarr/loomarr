@@ -58,7 +58,7 @@ const TaxonTree = ({
                 disabled={!isAdmin}
                 layout="text"
                 onPress={() => onEdit(taxon)}
-                style={{ alignSelf: "flex-start" }}
+                alignSelf="flex-start"
                 variant="ghost"
               >
                 {taxon.label}

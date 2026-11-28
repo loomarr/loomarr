@@ -79,7 +79,7 @@ const WizardAiBlock = () => {
         <Action
           disabled={patch.isPending}
           onPress={() => patch.mutate({ data: { edits } })}
-          style={{ alignSelf: "flex-start" }}
+          alignSelf="flex-start"
           variant="outline"
         >
           {patch.isPending ? "Saving…" : "Save provider"}

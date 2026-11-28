@@ -213,7 +213,7 @@ const VisionPicker = ({
         ))}
       </RadioGroup>
       {options.length > 3 && (
-        <Action onPress={() => setExpanded(!expanded)} style={{ alignSelf: "flex-start" }} variant="ghost">
+        <Action onPress={() => setExpanded(!expanded)} alignSelf="flex-start" variant="ghost">
           {expanded ? "Show guided choices" : `Show all ${options.length} choices`}
         </Action>
       )}
