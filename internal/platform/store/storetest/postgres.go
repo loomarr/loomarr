@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -76,6 +77,11 @@ func PostgresDSNWithDatabase(dsn, database string) (string, error) {
 	return u.String(), nil
 }
 
+// liveCloneTests bounds how many parallel tests hold a clone at once. Each clone's store pools up to
+// 20 connections and the test server keeps Postgres's default max_connections of 100, so four tests
+// leave room for the maintenance connections and a test's own extra pool.
+const liveCloneTests = 4
+
 // PostgresClones migrates and boot-seeds the container's original database once, closes every
 // connection to it (CREATE DATABASE ... TEMPLATE requires that), then hides database cloning and
 // cleanup behind a factory. Each returned store owns a distinct database and still uses the
@@ -111,12 +117,30 @@ func PostgresClones[S Closer](t *testing.T, dsn string, open OpenFunc[S]) func(*
 	t.Cleanup(func() { _ = admin.Close() })
 
 	var sequence atomic.Uint64
+	// Postgres refuses to clone a template that another session is using, and a clone in progress
+	// is such a session, so parallel tests take turns. DROP DATABASE of a clone never touches the
+	// template and needs no turn.
+	var cloning sync.Mutex
+	slots := make(chan struct{}, liveCloneTests)
+	var holders sync.Map // the *testing.T values that hold a slot
 	return func(t *testing.T) S {
 		t.Helper()
+		// One slot per test however many clones it opens, so no test waits on itself. Registered
+		// first, so it is released after the clone's store is closed and its database dropped.
+		if _, held := holders.LoadOrStore(t, true); !held {
+			slots <- struct{}{}
+			t.Cleanup(func() {
+				holders.Delete(t)
+				<-slots
+			})
+		}
 		cloneDatabase := fmt.Sprintf("loomarr_conformance_%06d", sequence.Add(1))
 		cloneIdentifier := pgx.Identifier{cloneDatabase}.Sanitize()
 		templateIdentifier := pgx.Identifier{templateDatabase}.Sanitize()
-		if _, err := admin.ExecContext(ctx, "CREATE DATABASE "+cloneIdentifier+" WITH TEMPLATE "+templateIdentifier); err != nil {
+		cloning.Lock()
+		_, err := admin.ExecContext(ctx, "CREATE DATABASE "+cloneIdentifier+" WITH TEMPLATE "+templateIdentifier)
+		cloning.Unlock()
+		if err != nil {
 			t.Fatalf("clone migrated postgres template: %v", err)
 		}
 
