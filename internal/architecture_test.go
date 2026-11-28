@@ -295,7 +295,7 @@ func requireClusterOnKernelNotAggregate(t *testing.T, pkgs map[string]*build.Pac
 }
 
 // aggregateStoreImports names the imports of pkg that are the aggregate store, internal/platform/store
-// itself or the filler store that embeds it. Exact paths: a prefix match would also catch the
+// itself or the filler store that extends it. Exact paths: a prefix match would also catch the
 // storedb kernel and the cluster packages, which are the allowed direction.
 func aggregateStoreImports(pkg *build.Package) []string {
 	var found []string

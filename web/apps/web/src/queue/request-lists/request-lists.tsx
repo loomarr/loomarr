@@ -4,7 +4,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { requestFailureHint, requestFixLabel } from "@loomarr/core/requests";
 import { Stack, Text, TextLink } from "@loomarr/design-system";
-import { CardAction, ListGroup } from "@loomarr/ui";
+import { CardAction, ListGroup } from "@loomarr/design-system/rows";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";

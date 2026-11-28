@@ -15,7 +15,7 @@ import {
   Text,
   Toggle,
 } from "@loomarr/design-system";
-import { SearchField } from "@loomarr/ui";
+import { SearchField } from "@loomarr/design-system/fields";
 import { useId, useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";

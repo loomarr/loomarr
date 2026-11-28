@@ -1,11 +1,15 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderUi, screen } from "@loomarr/test-support";
+import { cleanup, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ListGroup, PanelRow } from "../index";
+import { LoomarrProvider } from "../index";
+import { ListGroup, PanelRow } from "../rows";
 
 afterEach(cleanup);
+
+const renderUi = (node: ReactNode) => render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>);
 
 // The wrap-not-clip behaviour is layout, which jsdom does not compute; the visual stories cover
 // it. What is testable is that each row is one list item holding the identity and its cluster.

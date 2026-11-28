@@ -1,5 +1,5 @@
 import { Badge, Text } from "@loomarr/design-system";
-import { ListGroup, PanelRow } from "@loomarr/ui";
+import { ListGroup, PanelRow } from "@loomarr/design-system/rows";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 // PanelRow — the dashboard panels' row (Playout, Services, Activity): an identity region and a

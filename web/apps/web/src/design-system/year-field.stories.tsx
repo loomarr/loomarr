@@ -1,4 +1,4 @@
-import { YearField } from "@loomarr/ui";
+import { YearField } from "@loomarr/design-system/fields";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 // YearField — a four-digit year, narrow enough that a From/To pair shares a row.

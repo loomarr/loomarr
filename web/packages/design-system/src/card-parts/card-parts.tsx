@@ -1,5 +1,8 @@
-import { Action, StatusDot, Surface, Text } from "@loomarr/design-system";
 import { Fragment, type ReactNode } from "react";
+
+import { Action } from "../interaction";
+import { StatusDot, Surface } from "../primitives";
+import { Text } from "../text";
 
 import type { CardActionProps, CardStatusProps, ChannelChipProps } from "./card-parts.type";
 

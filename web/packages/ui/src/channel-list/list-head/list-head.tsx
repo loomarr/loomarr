@@ -1,8 +1,8 @@
 import type { LineupGroupKind } from "@loomarr/core/channel-lineup";
 import type { ChannelListCursor, ChannelListEvent } from "@loomarr/core/channel-list";
 import { Icon, icons, RingedPressable, Surface, Text } from "@loomarr/design-system";
+import { SearchField } from "@loomarr/design-system/fields";
 
-import { SearchField } from "../../search-field";
 import type { FocusHandle } from "../channel-list.type";
 
 const TAB_NAMES: Record<LineupGroupKind, string> = {

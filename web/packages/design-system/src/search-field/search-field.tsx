@@ -1,14 +1,10 @@
-import {
-  Field,
-  Icon,
-  icons,
-  Surface,
-  semanticSpace,
-  semanticTargets,
-  useFocusLook,
-} from "@loomarr/design-system";
 import { Pressable } from "react-native";
 
+import { useFocusLook } from "../focus-look";
+import { Icon, icons } from "../icon";
+import { Field } from "../interaction";
+import { Surface } from "../primitives";
+import { semanticSpace, semanticTargets } from "../tokens";
 import type { SearchFieldProps } from "./search-field.type";
 
 // The clear button inside the box's trailing edge: a press empties the query. The amber ring around

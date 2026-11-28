@@ -1,7 +1,8 @@
 import { UserBodyRole } from "@loomarr/api/models/userBodyRole";
 import { formatRelative } from "@loomarr/core/format";
 import { Card, Grid, Stack, Text } from "@loomarr/design-system";
-import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
+import { SearchField } from "@loomarr/design-system/fields";
+import { CardAction, CardStatus, ListGroup, RowCard } from "@loomarr/design-system/rows";
 import { useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";

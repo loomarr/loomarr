@@ -1,13 +1,6 @@
 import { Icon, icons, Text } from "@loomarr/design-system";
-import {
-  CardAction,
-  CardStatus,
-  ChannelChip,
-  ListGroup,
-  PictureCard,
-  type PictureRatio,
-  RowCard,
-} from "@loomarr/ui";
+import { CardAction, CardStatus, ChannelChip, ListGroup, RowCard } from "@loomarr/design-system/rows";
+import { PictureCard, type PictureRatio } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 // The two card families (#2765, Direction mock "Two families"): a picture card for things with a
