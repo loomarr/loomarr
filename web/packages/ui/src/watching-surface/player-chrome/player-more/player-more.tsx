@@ -26,6 +26,11 @@ interface PlayerMoreProps {
   /** Go live, behind live. */
   goLive?: { detail: string; onPress: () => void };
   info?: { onPress: () => void };
+  /**
+   * Last channel: the channel just left (`detail`, "4 Night Owl"). `unavailable` draws it as a row
+   * that cannot be pressed, for a channel that cannot be played now.
+   */
+  lastChannel?: { detail: string; onPress: () => void; unavailable?: boolean };
   /** Picture: the quality on air ("Auto · 1080p"). */
   picture?: { detail: string; onPress: () => void };
   /** Playback details: the technical panel (§9.5). */
@@ -51,6 +56,7 @@ const MoreRow = ({
   onPress,
   opens = false,
   preferFocus = false,
+  unavailable = false,
 }: {
   density: Density;
   detail?: string;
@@ -61,6 +67,8 @@ const MoreRow = ({
   opens?: boolean;
   /** A television: this row takes the remote's focus as it mounts. */
   preferFocus?: boolean;
+  /** Drawn, but it cannot be pressed now. */
+  unavailable?: boolean;
 }) => {
   const [hovered, setHovered] = useState(false);
   const { focused, ...focusHandlers } = useFocusLook();
@@ -70,6 +78,8 @@ const MoreRow = ({
       // the detail out does not match the visible label (WCAG 2.5.3).
       accessibilityLabel={detail ? undefined : label}
       accessibilityRole="button"
+      accessibilityState={unavailable ? { disabled: true } : undefined}
+      disabled={unavailable}
       hasTVPreferredFocus={preferFocus}
       {...focusHandlers}
       onHoverIn={() => setHovered(true)}
@@ -90,7 +100,7 @@ const MoreRow = ({
         // Left, beside the icon: on the web a button's text inherits a centred alignment.
         textAlign="left"
         textRole={rowRole(density)}
-        tone="primary"
+        tone={unavailable ? "muted" : "primary"}
       >
         {label}
       </Text>
@@ -112,6 +122,7 @@ const PlayerMore = ({
   formatTime,
   goLive,
   info,
+  lastChannel,
   picture,
   pictureInPicture,
   playbackDetails,
@@ -136,7 +147,16 @@ const PlayerMore = ({
       </View>
     ) : null}
     <View style={{ gap: 2 }}>
-      {rowsOf({ channels, goLive, info, picture, pictureInPicture, playbackDetails, startOver }).map(
+      {rowsOf({
+        channels,
+        goLive,
+        info,
+        lastChannel,
+        picture,
+        pictureInPicture,
+        playbackDetails,
+        startOver,
+      }).map(
         (row, index) => (
           // A television's remote lands on the first row as the menu opens.
           <MoreRow density={density} key={row.label} preferFocus={density === "tv" && index === 0} {...row} />
@@ -146,19 +166,34 @@ const PlayerMore = ({
   </View>
 );
 
-type MoreRowSpec = { detail?: string; icon: IconName; label: string; onPress: () => void; opens?: boolean };
+type MoreRowSpec = {
+  detail?: string;
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  opens?: boolean;
+  unavailable?: boolean;
+};
 
 /** The rows in J's order, each only where the caller offers it. */
 const rowsOf = ({
   channels,
   goLive,
   info,
+  lastChannel,
   picture,
   pictureInPicture,
   playbackDetails,
   startOver,
 }: Omit<PlayerMoreProps, "density" | "formatTime" | "schedule">): MoreRowSpec[] =>
   [
+    lastChannel && {
+      detail: lastChannel.detail,
+      icon: "swap",
+      label: "Last channel",
+      onPress: lastChannel.onPress,
+      ...(lastChannel.unavailable ? { unavailable: true } : {}),
+    },
     startOver && {
       detail: startOver.detail,
       icon: "startOver",
