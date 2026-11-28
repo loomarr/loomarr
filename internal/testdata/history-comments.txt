@@ -25,16 +25,9 @@ internal/media/defects/defects.go 1
 internal/media/encode/video.go 2
 internal/media/tools/conditioning_cut.go 1
 internal/media/tools/derivative_recipe.go 1
-internal/platform/housekeeping/housekeeping.go 1
-internal/platform/jobs/river.go 2
-internal/platform/jobs/scheduler.go 2
-internal/platform/llm/ollama.go 1
-internal/platform/store/clipstore/clipread.go 1
-internal/platform/store/clipstore/clips.go 3
 internal/platform/store/librarystore/files.go 1
 internal/platform/store/open.go 1
 internal/platform/store/store.go 1
-internal/platform/store/storedb/querier.go 1
 internal/playout/admission/budget.go 1
 internal/playout/args.go 1
 internal/playout/bench/compare.go 1

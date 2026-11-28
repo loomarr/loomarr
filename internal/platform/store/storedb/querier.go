@@ -31,7 +31,7 @@ type Tx interface {
 // inline in clippipeline.go — all structurally identical, so every one of them was already
 // satisfied by every other's arguments. Four names for one idea is a tax on reading, not a
 // distinction: a reader meeting the third has to prove to themselves it is not subtly
-// different. Consolidated 2026-08-10; put new scan helpers on this one.
+// different. Put new scan helpers on this one.
 type Scannable interface {
 	Scan(dest ...any) error
 }

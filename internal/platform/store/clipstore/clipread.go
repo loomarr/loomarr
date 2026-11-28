@@ -52,8 +52,8 @@ func (s *Store) clipWithTags(ctx context.Context, c Clip) (Clip, error) {
 // (`14/36/14365f2b….mp4`). `GetClip` queries `WHERE hash = ?`, so handing it a path matches
 // nothing — silently, as an ordinary not-found.
 //
-// That is not hypothetical: `/v1/filler/media` did exactly this from V38c until V39 and 404'd for
-// every clip in the catalog. Nothing noticed because no client called it until the player shipped.
+// That is not hypothetical: a media route that hands its path to the hash-keyed `GetClip` 404s for
+// every clip in the catalog, and nothing notices until a client calls it.
 //
 // The media route needs this one rather than the hash lookup because its URL carries the path —
 // which is what `ClipDTO` exposes, and what every other clip-shaped route already keys on.

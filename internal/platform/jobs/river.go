@@ -72,7 +72,7 @@ type riverWorker struct {
 // ⚠ **Without this override every job would run under River's `JobTimeoutDefault`, which is ONE
 // MINUTE** — `river.Config.JobTimeout` is not set, and zero means the default. That ceiling is
 // inherited from a dependency rather than chosen, and it is far below what the media jobs
-// need: measured 2026-08-11, one `blackdetect`/`silencedetect` pass over a 20-minute recording
+// need: in one measurement, one `blackdetect`/`silencedetect` pass over a 20-minute recording
 // takes **40s on its own**, before the dedup and whisper work that follows it in the same pass.
 //
 // ⚠ The failure never says "timeout". `exec.CommandContext` SIGKILLs its child when
@@ -307,7 +307,7 @@ func queueFor(j Job) string {
 //
 // ⚠ **This is the companion the 30-minute ceiling had to arrive with.** `Job.Timeout` fixed jobs
 // being SIGKILLed at 60s, and by doing so let one job hold the single SQLite worker for half an
-// hour. Measured 2026-08-12: a `filler-pipeline` pass ran 01:50:11Z → 02:20:47Z and every other
+// hour. In one measured case a `filler-pipeline` pass ran 01:50:11Z → 02:20:47Z and every other
 // job was starved for its whole duration — channel maintenance, `images-fetch` and `seerr-queue-poll`
 // all missed 02:00:00Z, `library-scan` and `reconcile` sat at 01:55:00Z, and a manually triggered
 // `filler-sync` did not execute until the worker freed. A ceiling on a shared worker is an outage

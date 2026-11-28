@@ -23,8 +23,7 @@ import (
 // path could not stay the key once many watched folders were allowed. The Tunarr
 // program uuid rides alongside, nullable, for Tunarr-backed filler-lists.
 //
-// ⚠ This comment said PATH until 2026-08-10, two identity changes after the fact.
-// Several methods below are still path-keyed on purpose (a scan job carries a path,
+// ⚠ Several methods below are path-keyed on purpose (a scan job carries a path,
 // not a hash); read each one's doc rather than assuming a single key.
 type Clip struct {
 	clips.Clip
@@ -229,7 +228,7 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		// silently, and only noticeable as "usage never goes up". Tags survive re-sync because
 		// sync.go merges them before calling this; the counters survive because the SQL simply
 		// never touches them after insert. RecordClipPlay is their only writer.
-		// ⚠ Keyed on `hash` since V38c — `path` is ordinary data now, and IS in the DO UPDATE list
+		// ⚠ Keyed on `hash` (V38c) — `path` is ordinary data now, and IS in the DO UPDATE list
 		// because a clip's location can legitimately change (re-filed under a new extension, or
 		// found in a different folder) while its identity does not. That is the whole point of
 		// content addressing: the same bytes are the same clip wherever they sit.
@@ -693,7 +692,7 @@ func (s *Store) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, er
 		placeholders[i] = "?"
 		args[i] = id
 	}
-	// ⚠ Keyed on `hash`, the clip's IDENTITY since V38c — not on `path`.
+	// ⚠ Keyed on `hash`, the clip's IDENTITY (V38c) — not on `path`.
 	//
 	// This said `path NOT IN (…)` and was missed when identity moved off the path. The sync's
 	// `keep` set carries hashes, and a hash never equals a path, so EVERY clip matched
