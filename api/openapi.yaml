@@ -7345,7 +7345,7 @@ components:
       additionalProperties: false
       properties:
         brokenCopies:
-          description: How many of the extra copies can't be played, their details couldn't be read. Admins only; absent when none
+          description: How many of the extra copies can't be played because their details couldn't be read. Admins only; absent when none
           format: int64
           type: integer
         extraCopies:

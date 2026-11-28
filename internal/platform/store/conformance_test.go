@@ -55,7 +55,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		runParallel(t, "LibraryItemsReadyAndChannels", func(t *testing.T) { testLibraryItemsReadyAndChannels(t, newStore) })
 		runParallel(t, "LibraryItemProblems", func(t *testing.T) { testLibraryItemProblems(t, newStore) })
 		runParallel(t, "LibraryItemBrokenCopies", func(t *testing.T) { testLibraryItemBrokenCopies(t, newStore) })
-		runParallel(t, "LibraryItemCopiesWaiting",func(t *testing.T) { testLibraryItemCopiesWaiting(t, newStore) })
+		runParallel(t, "LibraryItemCopiesWaiting", func(t *testing.T) { testLibraryItemCopiesWaiting(t, newStore) })
 		runParallel(t, "LibraryItemCopiesInPlace", func(t *testing.T) { testLibraryItemCopiesInPlace(t, newStore) })
 		runParallel(t, "LibraryItemIDs", func(t *testing.T) { testLibraryItemIDs(t, newStore) })
 		runParallel(t, "LibraryCollections", func(t *testing.T) { testLibraryCollections(t, newStore) })
