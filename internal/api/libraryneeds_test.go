@@ -11,6 +11,7 @@ import (
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/media/images"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
@@ -39,7 +40,8 @@ func TestLibraryNeedsYou(t *testing.T) {
 		return librarystore.LibraryOrigin{Authority: string(scan.Authority("/media")), Key: key}
 	}
 	if err := h.Store.SaveLibraryItems(ctx, []librarystore.LibraryItem{
-		{ID: "90000001", Kind: "movie", Name: "Mystery Film", Origin: origin("file:a")},
+		{ID: "90000001", Kind: "movie", Name: "Mystery Film", Origin: origin("file:a"),
+			Sources: []librarystore.LibrarySource{{Path: "/media/90000001.mkv", DurationMs: 5_400_000, Plays: true}}},
 		{ID: "90000002", Kind: "movie", Name: "Known Film", Origin: origin("file:b"), Match: librarystore.LibraryMatch{Basis: "embedded_id"}},
 		{ID: "90000003", Kind: "movie", Name: "Arr Film"},
 	}, at); err != nil {
@@ -65,6 +67,20 @@ func TestLibraryNeedsYou(t *testing.T) {
 	}
 	imgs.records[posterURL] = images.Image{Hash: strings.Repeat("c3", 32), Origin: images.OriginRemote,
 		Role: images.RolePoster, SourceURL: posterURL, Width: 20, Height: 30, OriginFetchedAt: at}
+	// Mystery Film's card has a frame of its file.
+	frameHash := strings.Repeat("d4", 32)
+	if err := h.Store.PutImage(ctx, clipstore.Image{Hash: frameHash, Origin: "extracted", Visibility: "member",
+		Role: "thumb", MIME: "image/jpeg", Width: 32, Height: 18, Bytes: 1, FrameCount: 1,
+		CreatedAt: at, UpdatedAt: at, LastUsedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	imgs.records[frameHash] = images.Image{Hash: frameHash, Origin: images.OriginExtracted, Role: images.RoleThumb,
+		Width: 32, Height: 18}
+	if wanted, err := h.Store.LibraryNeedsWithoutFrame(ctx); err != nil || len(wanted) != 1 {
+		t.Fatalf("frames wanted = %+v, %v", wanted, err)
+	} else if put, err := h.Store.PutLibraryNeedFrame(ctx, wanted[0], frameHash); err != nil || !put {
+		t.Fatalf("put frame = %v, %v", put, err)
+	}
 
 	type needs struct {
 		Needs []struct {
@@ -82,8 +98,13 @@ func TestLibraryNeedsYou(t *testing.T) {
 				} `json:"poster"`
 			} `json:"candidates"`
 			Files []struct {
-				Path string `json:"path"`
+				Path         string `json:"path"`
+				Size         int64  `json:"size"`
+				LengthMillis int64  `json:"lengthMillis"`
 			} `json:"files"`
+			Frame *struct {
+				Hash string `json:"hash"`
+			} `json:"frame"`
 		} `json:"needs"`
 		Problems []struct {
 			Item struct {
@@ -99,6 +120,12 @@ func TestLibraryNeedsYou(t *testing.T) {
 	if len(got.Needs) != 1 || got.Needs[0].Item.ID != "90000001" || !got.Needs[0].Searched ||
 		len(got.Needs[0].Files) != 1 || len(got.Needs[0].Candidates) != 2 {
 		t.Fatalf("needs = %+v", got)
+	}
+	if f := got.Needs[0].Files[0]; f.Size != 7 || f.LengthMillis != 5_400_000 {
+		t.Fatalf("file = %+v, want 7 bytes and 90 minutes", f)
+	}
+	if fr := got.Needs[0].Frame; fr == nil || fr.Hash != frameHash {
+		t.Fatalf("frame = %+v, want %s", fr, frameHash)
 	}
 	best, other := got.Needs[0].Candidates[0], got.Needs[0].Candidates[1]
 	if best.ExternalID != (externalID{"tmdb", "90000101"}) || !best.NameMatches || best.YearMatches || !best.LengthMatches ||

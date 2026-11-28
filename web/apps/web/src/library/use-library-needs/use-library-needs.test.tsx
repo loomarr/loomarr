@@ -1,3 +1,4 @@
+import type { ImageDTO } from "@loomarr/api/models/imageDTO";
 import { getListLibraryNeedsMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
@@ -33,11 +34,24 @@ const need = (id: string, candidates: ReturnType<typeof candidate>[]) => ({
     unplayable: 0,
     extraCopies: 0,
   },
-  files: [{ path: `/media/movies/${id}.mkv`, size: 1, ready: true }],
+  files: [{ path: `/media/movies/${id}.mkv`, size: 1, ready: true, lengthMillis: 0 }],
   candidates,
   searched: true,
   folder: "Movies",
 });
+
+const frame: ImageDTO = {
+  hash: "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+  role: "thumb",
+  width: 320,
+  height: 180,
+  placeholder: "",
+  dominantHex: "#4d4d4d",
+  animated: false,
+  srcSetWebp: "",
+  srcSetAvif: "",
+  src: "/v1/images/frame.jpg",
+};
 
 // The wiring: a guess is offered as the best only when its name agrees; an answer the server
 // refuses rejects, so the card puts the question back; an accepted one refreshes the list.
@@ -46,7 +60,14 @@ describe("useLibraryNeeds", () => {
     server.use(
       getListLibraryNeedsMockHandler({
         needs: [
-          need("90000011", [candidate("90000101", "Alpha", true), candidate("90000102", "Alpha II", false)]),
+          {
+            ...need("90000011", [
+              candidate("90000101", "Alpha", true),
+              candidate("90000102", "Alpha II", false),
+            ]),
+            files: [{ path: "/media/movies/90000011.mkv", size: 2048, ready: true, lengthMillis: 252_000 }],
+            frame,
+          },
           need("90000012", [candidate("90000103", "Bravo", false)]),
         ],
         orders: [],
@@ -60,6 +81,9 @@ describe("useLibraryNeeds", () => {
     expect(named?.best?.externalId.value).toBe("90000101");
     expect(named?.others.map((c) => c.externalId.value)).toEqual(["90000102"]);
     expect(named?.files).toEqual(["/media/movies/90000011.mkv"]);
+    expect([named?.lengthMillis, named?.bytes]).toEqual([252_000, 2048]);
+    expect(named?.frame).toBeDefined();
+    expect(unnamed?.frame).toBeUndefined();
     expect(unnamed?.best).toBeUndefined();
     expect(unnamed?.others.map((c) => c.externalId.value)).toEqual(["90000103"]);
   });

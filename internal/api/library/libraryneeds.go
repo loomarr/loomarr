@@ -108,6 +108,7 @@ type libraryNeedDTO struct {
 	Candidates []libraryCandidateDTO `json:"candidates" doc:"Best first; empty when a search found nothing"`
 	Files      []libraryNeedFileDTO  `json:"files"`
 	Folder     string                `json:"folder" doc:"Where it sits, from its media folder's name down; group cards by it"`
+	Frame      *httpcore.ImageDTO    `json:"frame,omitempty" doc:"A 16:9 frame of its main file; absent until one is taken, and for a file that can't be played"`
 }
 
 type libraryTitleIDsInput struct {
@@ -128,6 +129,8 @@ type libraryNeedFileDTO struct {
 	Path  string `json:"path" doc:"The file on this machine"`
 	Size  int64  `json:"size" doc:"Bytes"`
 	Ready bool   `json:"ready" doc:"Its details are read"`
+	// LengthMillis is absent until the header gives a length, like every other length here.
+	LengthMillis int64 `json:"lengthMillis,omitempty" doc:"How long it plays, in milliseconds; absent until its details give a length"`
 }
 
 // libraryProblemDTO is a title that needs a look: its item says how many files can't be played and
@@ -203,6 +206,7 @@ func (s *Handlers) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibr
 	}
 	summaries = append(summaries, problems...)
 	posters, admin := s.libraryPosters(ctx, summaries), readsAdminFacts(ctx)
+	frames := s.libraryNeedFrames(ctx, needs)
 	out := &listLibraryNeedsOutput{}
 	out.Body.Orders = make([]libraryOrderNeedDTO, 0, len(orders))
 	for _, o := range orders {
@@ -221,6 +225,7 @@ func (s *Handlers) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibr
 			Candidates: make([]libraryCandidateDTO, 0, len(n.Candidates)),
 			Files:      make([]libraryNeedFileDTO, 0, len(n.Present)),
 			Folder:     n.Folder,
+			Frame:      frames[n.Frame],
 		}
 		for _, c := range n.Candidates {
 			dto.Candidates = append(dto.Candidates, libraryCandidateDTO{
@@ -233,11 +238,26 @@ func (s *Handlers) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibr
 			})
 		}
 		for _, f := range n.Present {
-			dto.Files = append(dto.Files, libraryNeedFileDTO{Path: f.Path, Size: f.Size, Ready: f.Header != librarystore.LibraryHeaderPending})
+			dto.Files = append(dto.Files, libraryNeedFileDTO{Path: f.Path, Size: f.Size,
+				Ready: f.Header != librarystore.LibraryHeaderPending, LengthMillis: f.DurationMs})
 		}
 		out.Body.Needs = append(out.Body.Needs, dto)
 	}
 	return out, nil
+}
+
+// libraryNeedFrames is the images of the cards' frames, by hash, in one read.
+func (s *Handlers) libraryNeedFrames(ctx context.Context, needs []scan.Need) map[string]*httpcore.ImageDTO {
+	hashes := make([]string, 0, len(needs))
+	for _, n := range needs {
+		if n.Frame != "" {
+			hashes = append(hashes, n.Frame)
+		}
+	}
+	if s.libraryImagesFn == nil || len(hashes) == 0 {
+		return map[string]*httpcore.ImageDTO{}
+	}
+	return s.libraryImagesFn(ctx, hashes)
 }
 
 type listLibraryIgnoredInput struct {

@@ -355,7 +355,7 @@ const stubReachable = () => {
             unplayable: 0,
             extraCopies: 0,
           },
-          files: [{ path: "/media/movies/disc2/title_t01.mkv", size: 1, ready: false }],
+          files: [{ path: "/media/movies/disc2/title_t01.mkv", size: 1, ready: false, lengthMillis: 0 }],
           candidates: [],
           searched: true,
           folder: "Movies/disc2",

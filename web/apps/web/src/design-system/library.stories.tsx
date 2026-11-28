@@ -298,6 +298,9 @@ const NEEDS: LibraryNeed[] = [
     id: "90000811",
     kind: "movie",
     files: ["/media/movies/Paper.Kites.1997.1080p/Paper.Kites.1997.1080p.mkv"],
+    lengthMillis: 6_132_000,
+    bytes: 1_503_238_553,
+    frame: art("#2e4a5c"),
     best: {
       externalId: { namespace: "tmdb", value: "90000901" },
       kind: "movie",
@@ -326,7 +329,10 @@ const NEEDS: LibraryNeed[] = [
   {
     id: "90000812",
     kind: "series",
+    // No frame yet: the card draws an empty box.
     files: ["/media/tv/disc2/title_t01.mkv", "/media/tv/disc2/title_t02.mkv"],
+    lengthMillis: 1_512_000,
+    bytes: 734_003_200,
     others: [],
   },
 ];
