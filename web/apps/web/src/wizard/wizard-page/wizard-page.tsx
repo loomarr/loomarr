@@ -32,7 +32,7 @@ import {
 } from "@/wizard/steps";
 import { TunarrLibraryStep } from "@/wizard/tunarr-library-step";
 import { UsersStep } from "@/wizard/users-step";
-import { COPY, continueGated, SKIPPABLE } from "./wizard-rules";
+import { COPY, continueGated, SKIPPABLE } from "../wizard-rules";
 
 // `?step=` and `?conn=` make the wizard deep-linkable (§13) — a support thread or a doc can
 // point at "your Connections step, Tunarr block" instead of describing how to click there.
