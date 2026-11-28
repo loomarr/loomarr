@@ -7,7 +7,7 @@ import {
   RouterProvider,
   useRouter,
 } from "@tanstack/react-router";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -99,12 +99,16 @@ describe("route timing through the router", () => {
       </button>
     );
   };
+  // The rows arrive when the test says so.
+  let deliverRows: () => void = () => {};
+  const rowsArrive = new Promise<void>((resolve) => {
+    deliverRows = resolve;
+  });
   // Shows a loader first, as a page that fetches after it mounts does.
   const RowsPage = () => {
     const [rows, setRows] = useState<string>();
     useEffect(() => {
-      const timer = setTimeout(() => setRows("Three rows"), 30);
-      return () => clearTimeout(timer);
+      void rowsArrive.then(() => setRows("Three rows"));
     }, []);
     useRouteContent(rows !== undefined);
     return <p>{rows ?? "Loading rows"}</p>;
@@ -132,6 +136,7 @@ describe("route timing through the router", () => {
     // Rendered is not content: the loader was on screen when the router finished.
     expect(measured("content")).toHaveLength(1);
 
+    act(() => deliverRows());
     expect(await screen.findByText("Three rows")).toBeInTheDocument();
     await waitFor(() =>
       expect(measured("content").at(-1)).toEqual({ to: "/timed-rows", documentStart: false }),
