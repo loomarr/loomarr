@@ -668,14 +668,12 @@ const LibraryShelf = ({
   onOpenTitle,
   titleLink,
   onEndReached,
-  needs,
-  showTitles: showGrid = true,
   collections,
   timeZone,
 }: LibraryShelfProps) => {
   const fresh = admin?.status.health === "needs_folders";
   const onCollections = filter === "collections";
-  const showTitles = showGrid && !onCollections;
+  const showTitles = !onCollections;
   const width = useWindowWidth();
   const wide = width >= 768;
   const searched = search.trim();
@@ -731,7 +729,6 @@ const LibraryShelf = ({
             showSearch={showTitles}
             sort={sort}
           />
-          {needs}
           {onCollections ? collections : null}
           {!showTitles ? null : loading ? (
             <Loading />

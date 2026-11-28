@@ -63,6 +63,7 @@ const needOf = (n: LibraryNeedDTO): LibraryNeed => {
   return {
     id: n.item.id,
     kind: n.item.kind,
+    folder: n.folder,
     files: n.files.map((f) => f.path),
     best,
     others: best ? candidates.slice(1) : candidates,
