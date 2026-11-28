@@ -95,6 +95,52 @@ func (c ClipTx) SetBrand(ctx context.Context, hash, brand string, at time.Time) 
 	return err
 }
 
+// Rename sets the clip's name and its provenance together.
+func (c ClipTx) Rename(ctx context.Context, hash, name string, source clips.NameSource, at time.Time) error {
+	return c.updateExisting(ctx, `UPDATE clips SET name = ?, name_source = ?, updated_at = ? WHERE hash = ?`,
+		name, string(source), epoch(at), hash)
+}
+
+// SetClassification overwrites the clip's era and audience.
+func (c ClipTx) SetClassification(ctx context.Context, hash string, era int, audience string, at time.Time) error {
+	return c.updateExisting(ctx, `UPDATE clips SET era = ?, audience = ?, updated_at = ? WHERE hash = ?`,
+		era, audience, epoch(at), hash)
+}
+
+// SetRole overwrites the clip's role, whatever it held. It is the operator's write; enrichment uses
+// ClassifyRole.
+func (c ClipTx) SetRole(ctx context.Context, hash, role string, at time.Time) error {
+	return c.updateExisting(ctx, `UPDATE clips SET role = ?, updated_at = ? WHERE hash = ?`, role, epoch(at), hash)
+}
+
+// SetOperatorGeography overwrites the clip's geography with the operator's, marked so that
+// SetGeography leaves it alone.
+func (c ClipTx) SetOperatorGeography(ctx context.Context, hash string, g ClipGeography, at time.Time) error {
+	return c.updateExisting(ctx, `UPDATE clips SET geographic_scope = ?, country = ?, network = ?, station = ?,
+		air_date = ?, geo_evidence = 'operator', updated_at = ? WHERE hash = ?`,
+		g.Scope, g.Country, g.Network, g.Station, g.AirDate, epoch(at), hash)
+}
+
+// ReplaceLeafTags makes leaves the clip's whole asserted set and rebuilds its rollups, under the
+// same taxonomy lock as graph edits.
+func (c ClipTx) ReplaceLeafTags(ctx context.Context, hash string, leaves []string) error {
+	if err := storedb.XactLock(ctx, c.s.h.Dialect(), c.tx, taxonomySharedLockSQL); err != nil {
+		return fmt.Errorf("replace clip tags: taxonomy lock: %w", err)
+	}
+	return c.s.setClipTagsTx(ctx, c.tx, hash, leaves)
+}
+
+func (c ClipTx) updateExisting(ctx context.Context, query string, args ...any) error {
+	found, err := c.affectedOne(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // FillLanguage sets the language of a clip that has none.
 func (c ClipTx) FillLanguage(ctx context.Context, hash, language string, at time.Time) error {
 	_, err := c.tx.ExecContext(ctx, c.s.h.Rebind(`UPDATE clips SET language = ?, updated_at = ? WHERE hash = ? AND language = ''`), language, epoch(at), hash)

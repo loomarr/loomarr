@@ -88,7 +88,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filler/language` | `media/bgexec`, `media/tools`, `platform/langcode` |
 | `filler/pipelinestate` | — |
 | `filler/pod` | `channels/schedule`, `filler/clips`, `filler/language` |
-| `filler/records` | `filler`, `filler/acquisition`, `filler/asset`, `filler/clips`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/source`, `filler/split`, `filler/structure`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb` |
+| `filler/records` | `filler`, `filler/acquisition`, `filler/asset`, `filler/clips`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/source`, `filler/split`, `filler/structure`, `filler/taxonomy`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb` |
 | `filler/research` | `platform/llm` |
 | `filler/source` | — |
 | `filler/split` | `filler/clips`, `filler/structure`, `media/tools` |
