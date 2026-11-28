@@ -15,7 +15,7 @@ interface LibraryNeedCandidate {
   /** Absent when unknown. */
   year?: number;
   overview?: string;
-  /** Its artwork, drawn by the app; absent draws the name on the placeholder. */
+  /** Its artwork, drawn by the app; absent draws the stand-in. */
   poster?: ReactNode;
   nameMatches: boolean;
   yearMatches: boolean;
@@ -46,7 +46,7 @@ interface LibraryProblem {
   id: string;
   kind: LibraryKind;
   name: string;
-  /** Its artwork, drawn by the app; absent draws the name on the placeholder. */
+  /** Its artwork, drawn by the app; absent draws the stand-in. */
   poster?: ReactNode;
   /** Its files that can't be played. */
   unplayable: number;
@@ -94,7 +94,7 @@ interface LibraryOrderNeed {
   /** The library show's id: what an answer is for. */
   id: string;
   name: string;
-  /** Its artwork, drawn by the app; absent draws the name on the placeholder. */
+  /** Its artwork, drawn by the app; absent draws the stand-in. */
   poster?: ReactNode;
   /** How far each season runs on disk, by season. */
   disk: readonly LibrarySeasonSize[];

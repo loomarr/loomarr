@@ -166,6 +166,9 @@ const Loading: Story = {
   args: { admin: admin({ needsYou: 6 }), counts: undefined, loading: true, titles: [] },
 };
 
+// A library with no artwork imported: each poster draws its colour and monogram over its caption.
+const NoArtwork: Story = { args: { titles: TITLES.map(({ poster, ...title }) => title) } };
+
 // Recently added first: the order the mock's home videos are shown in.
 const RecentlyAdded: Story = { args: { sort: "recent", titles: [...TITLES].reverse() } };
 
@@ -744,6 +747,11 @@ const MemberHomeVideo: Story = {
   render: () => <LibraryTitle onBack={() => {}} title={homeVideoTitle} />,
 };
 
+// No backdrop: no band, with the actions and the title block on the page.
+const NoBackdrop: Story = {
+  render: () => <LibraryTitle fix={titleFixes} onBack={() => {}} title={memberSeries} />,
+};
+
 const NotInLibrary: Story = {
   render: () => <LibraryTitleMissing onBack={() => {}} />,
 };
@@ -1192,6 +1200,8 @@ export {
   NeedsPhone,
   NeedsYou,
   NewCollection,
+  NoArtwork,
+  NoBackdrop,
   NoMatch,
   NothingNeedsYou,
   NotInLibrary,

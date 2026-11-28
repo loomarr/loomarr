@@ -77,34 +77,39 @@ const Facts = ({ facts }: { facts: readonly (ReactNode | false)[] }) => (
 );
 
 // The backdrop with the title over its foot. The fade to the page keeps the title readable over any
-// picture; with no backdrop the placeholder surface stands in. `actions` sit over its top, each on
-// its own solid surface.
+// picture. With no backdrop there is no band: the actions and the title block sit on the page at
+// their own height. `actions` sit over the top, each on its own solid surface.
 const Hero = ({ title, actions }: { title: LibraryTitleDetail; actions: ReactNode }) => {
   const { wide } = useTitleLayout();
+  const pictured = Boolean(title.backdrop);
   return (
     // The title's words are inside the picture and its fade, so a longer title grows the hero.
     <Surface
-      backgroundColor="artworkPlaceholder"
+      backgroundColor={pictured ? "artworkPlaceholder" : "transparent"}
       borderWidth={0}
       gap="section"
       justifyContent="space-between"
-      minHeight={wide ? 420 : 300}
-      overflow="hidden"
+      minHeight={pictured ? (wide ? 420 : 300) : undefined}
+      overflow={pictured ? "hidden" : "visible"}
       position="relative"
     >
-      <Stack bottom={0} left={0} position="absolute" right={0} top={0}>
-        {title.backdrop}
-      </Stack>
-      <Stack
-        aria-hidden
-        bottom={0}
-        height="80%"
-        left={0}
-        pointerEvents="none"
-        position="absolute"
-        right={0}
-        style={{ backgroundImage: "linear-gradient(transparent, var(--surfaceCanvas) 80%)" }}
-      />
+      {pictured ? (
+        <>
+          <Stack bottom={0} left={0} position="absolute" right={0} testID="title-backdrop" top={0}>
+            {title.backdrop}
+          </Stack>
+          <Stack
+            aria-hidden
+            bottom={0}
+            height="80%"
+            left={0}
+            pointerEvents="none"
+            position="absolute"
+            right={0}
+            style={{ backgroundImage: "linear-gradient(transparent, var(--surfaceCanvas) 80%)" }}
+          />
+        </>
+      ) : null}
       <Stack flexDirection="row" justifyContent="space-between" padding="control" position="relative">
         {actions}
       </Stack>
