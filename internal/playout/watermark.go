@@ -93,11 +93,6 @@ const (
 // Corners is every corner, in the order the API lists them.
 var Corners = []Corner{CornerTopRight, CornerTopLeft, CornerBottomRight, CornerBottomLeft}
 
-// Rect is a rectangle in pixels.
-type Rect struct {
-	X, Y, W, H int
-}
-
 // Watermark is one programme item's bug, rendered for this channel's output.
 type Watermark struct {
 	// Straight is the rendered PNG, straight (non-premultiplied) alpha: final pixel size, opacity

@@ -15,7 +15,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`playout`** · 11 importers · → `media/encode`, `media/measure`, `media/proctree`, `platform/diagnostics`, `platform/langcode`, `playout/packager`, `playout/timeline`
+- **`playout`** · 11 importers · → `media/encode`, `media/measure`, `media/proctree`, `platform/diagnostics`, `platform/langcode`, `playout/media`, `playout/packager`, `playout/timeline`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`playout/backendtransition`** · 1 importer · → `channels/schedule`, `platform/store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
@@ -27,6 +27,8 @@ One area of the [package map](../package-map.md#start-here).
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
 - **`playout/livetvpublish`** · 1 importer · → `library/mediaserver`, `playout/tunarr`
   Publishes Loomarr's channels to the media server's Live TV (§6, §9.1): it registers, verifies, refreshes and retires the one tuner + guide pair Loomarr owns, and wires the media server as Tunarr's media source.
+- **`playout/media`** · 1 importer
+  Vocabulary of what a source is and what it costs to air: the probed MediaFormat, its stream class, the picture rectangle and the HDR tone curve.
 - **`playout/packager`** · 3 importers
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
 - **`playout/subtitles`** · 4 importers · → `media/bgexec`, `platform/langcode`
