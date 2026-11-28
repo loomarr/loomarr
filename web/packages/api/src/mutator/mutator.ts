@@ -29,6 +29,19 @@ const toProblem = (err: unknown): ErrorModel => {
   return { title: "Something went wrong" };
 };
 
+// importSchemas loads a module of response schemas that a client keeps out of its first download. A
+// page that outlives a redeploy asks for a chunk the server has replaced, which fails as a typed
+// ApiError (status 0, no answer was read) rather than the bundler's plain Error.
+const importSchemas = async <T>(load: () => Promise<T>): Promise<T> => {
+  try {
+    return await load();
+  } catch (cause) {
+    const error = new ApiError(0, { title: "Couldn't load part of Loomarr. Reload and try again." });
+    error.cause = cause;
+    throw error;
+  }
+};
+
 // readResponse is how every Loomarr client reads an answer: an empty body is undefined, a JSON
 // body is parsed, and a refusal is a typed ApiError carrying its problem+json. The status decides
 // before the body is parsed, because a proxy in front of the server answers a failure with an
@@ -116,4 +129,13 @@ const customFetch = async <T>(url: string, options: RequestInit = {}): Promise<T
 };
 
 export type { ApiFailure };
-export { ApiError, ContractError, customFetch, observeApiFailures, readBody, readResponse, toProblem };
+export {
+  ApiError,
+  ContractError,
+  customFetch,
+  importSchemas,
+  observeApiFailures,
+  readBody,
+  readResponse,
+  toProblem,
+};

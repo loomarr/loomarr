@@ -171,12 +171,13 @@ const sendAppState = (state: string) =>
   });
 
 // A read arrives some turns after the mount, and React applies its state only when an `act` ends,
-// so each try ends one before it looks.
-const eventually = (check: () => void) =>
+// so each try ends one before it looks. The caller holds fake timers, so a try advances them rather
+// than waiting; the timeout is only the bound on a read that never lands.
+const eventuallyVersion = (read: () => string | undefined, version: string) =>
   vi.waitFor(
     async () => {
       await act(async () => {});
-      check();
+      expect(read()).toBe(version);
     },
     { timeout: 4_000 },
   );
@@ -258,6 +259,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   appListeners.clear();
@@ -536,28 +538,34 @@ describe("paired client", () => {
         vi.fn(async () => new Response(JSON.stringify({ dirty: false, version: "1.2.3" }), { status: 200 })),
       );
       fakes.catalogFails = true;
+      vi.useFakeTimers();
       const { client, root } = await mountClient();
 
       expect(client().catalogState.error).toBe("catalog down");
       expect(fakes.lifetimes).toContain("myChannels:use");
-      await eventually(() => expect(client().serverVersion).toBe("1.2.3"));
+      await eventuallyVersion(() => client().serverVersion, "1.2.3");
       await act(async () => root.unmount());
     });
 
     it("loads all three at once, so a slow catalog does not hold the others back", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(async () => {
-          await new Promise((resolve) => setTimeout(resolve, 200));
-          return new Response(JSON.stringify({ dirty: false, version: "1.2.3" }), { status: 200 });
-        }),
-      );
+      // The version answer is held until the other two have been asked for.
+      let answer: (response: Response) => void = () => undefined;
+      const held = new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+      const versionRead = vi.fn(() => held);
+      vi.stubGlobal("fetch", versionRead);
       fakes.catalogHeld = true;
+      vi.useFakeTimers();
       const { client, root } = await mountClient();
 
+      expect(versionRead).toHaveBeenCalledTimes(1);
       expect(fakes.catalogLists).toHaveLength(1);
       expect(fakes.lifetimes).toContain("myChannels:use");
-      await eventually(() => expect(client().serverVersion).toBe("1.2.3"));
+      expect(client().serverVersion).toBeUndefined();
+
+      answer(new Response(JSON.stringify({ dirty: false, version: "1.2.3" }), { status: 200 }));
+      await eventuallyVersion(() => client().serverVersion, "1.2.3");
       await act(async () => root.unmount());
     });
 

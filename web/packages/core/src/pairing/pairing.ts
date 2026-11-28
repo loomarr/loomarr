@@ -4,7 +4,7 @@ import {
   getDevicePairStartUrl,
   getDeviceRevokeCurrentUrl,
 } from "@loomarr/api/endpoints/auth";
-import { ApiError, ContractError, readBody } from "@loomarr/api/mutator";
+import { ApiError, ContractError, importSchemas, readBody } from "@loomarr/api/mutator";
 import type { z } from "zod";
 
 import type {
@@ -138,7 +138,7 @@ const createPairingTransport = (serverUrl: string, fetcher: PairingFetch = fetch
       method: "POST",
       signal,
     });
-    const { PairStartBody } = await import("../response-bodies");
+    const { PairStartBody } = await importSchemas(() => import("../response-bodies"));
     return {
       body: await readAnswer(response, PairStartBody),
       serverDate: response.headers.get("Date") ?? undefined,
@@ -153,7 +153,7 @@ const createPairingTransport = (serverUrl: string, fetcher: PairingFetch = fetch
     });
     if (response.status === 428) return { status: "pending" };
     if (response.status === 404) return { status: "expired" };
-    const { PairPollBody } = await import("../response-bodies");
+    const { PairPollBody } = await importSchemas(() => import("../response-bodies"));
     return { body: await readAnswer(response, PairPollBody), status: "paired" };
   },
 });

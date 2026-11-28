@@ -3,6 +3,7 @@ export {
   ApiError,
   ContractError,
   customFetch,
+  importSchemas,
   observeApiFailures,
   readBody,
   readResponse,

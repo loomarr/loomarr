@@ -16,6 +16,18 @@ const serve = (body: (url: string) => unknown): typeof fetch =>
 const newer = { addedLater: "unheard-of" };
 
 const airing = { scheduleBlockId: "b1", startMs: 1, stopMs: 2, title: "Comet Cadet" };
+const guideWith = (channelExtra: object, airingExtra: object) => () => ({
+  channels: [
+    {
+      ...channel,
+      status: "live",
+      airings: [{ ...airing, kind: "program", ...airingExtra }],
+      ...channelExtra,
+    },
+  ],
+  fromMs: 0,
+  toMs: 5,
+});
 const channel = { channelId: "c1", name: "Seven", number: 7, pendingCount: 0 };
 
 interface Port {
@@ -107,5 +119,22 @@ describe.each(ports)("the $name read", ({ read, newerBody, expected, wrongBody }
 
   it("refuses a body of another shape", async () => {
     await expect(read(serve(() => wrongBody))).rejects.toMatchObject({ name: "ContractError" });
+  });
+});
+
+describe("the guide's optional fields", () => {
+  const load = (body: () => unknown) =>
+    createGuideSourcePort(serve(body)).load({ fromMs: 0, toMs: 5 }, signal);
+
+  it("accepts them set or left out", async () => {
+    await expect(load(guideWith({ programCount: 3 }, { series: "Kettle Kids" }))).resolves.toBeDefined();
+    await expect(load(guideWith({}, {}))).resolves.toBeDefined();
+  });
+
+  it.each([
+    ["a null series", guideWith({}, { series: null })],
+    ["a null programCount", guideWith({ programCount: null }, {})],
+  ])("refuses %s", async (_name, body) => {
+    await expect(load(body)).rejects.toMatchObject({ name: "ContractError" });
   });
 });

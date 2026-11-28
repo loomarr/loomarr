@@ -1,6 +1,6 @@
 import { getMeUrl } from "@loomarr/api/endpoints/auth";
 import type { MeBody } from "@loomarr/api/models/meBody";
-import { readBody } from "@loomarr/api/mutator";
+import { importSchemas, readBody } from "@loomarr/api/mutator";
 
 type Account = { name: string; role: MeBody["role"] };
 
@@ -13,7 +13,7 @@ const createAccountSource = (request: typeof globalThis.fetch): AccountSource =>
   load: async (signal) => {
     const response = await request(getMeUrl(), { method: "GET", signal });
     if (!response.ok) throw new Error(`Couldn't read the account (${response.status}).`);
-    const { AccountBody } = await import("../response-bodies");
+    const { AccountBody } = await importSchemas(() => import("../response-bodies"));
     return readBody(response, AccountBody);
   },
 });

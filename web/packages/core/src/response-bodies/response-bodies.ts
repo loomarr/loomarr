@@ -23,14 +23,24 @@ const openEnum = <S extends z.ZodType>(_listed: S) =>
 // Long lists are checked for the fields the client's own logic reads, and each item passes through
 // as the server sent it. Validating and copying every field of a large Guide costs more than
 // parsing its JSON, and a television reads the Guide often.
-type FieldTypes<T> = { [K in keyof T]?: "number" | "string" };
+// Each check names the `typeof` its field has in T, and a trailing `?` marks a field the server may
+// leave out (a `null` still fails). A name that disagrees with T does not compile.
+type TypeName<V> = V extends number ? "number" : V extends string ? "string" : never;
+type FieldTypes<T> = {
+  [K in keyof T]?: undefined extends T[K] ? `${TypeName<NonNullable<T[K]>>}?` : TypeName<NonNullable<T[K]>>;
+};
 
 const itemCheck = <T>(fields: FieldTypes<T>) => {
-  const required = Object.entries(fields) as [string, string][];
+  const checked = (Object.entries(fields) as [string, string][]).map(([name, type]) => {
+    const optional = type.endsWith("?");
+    return { name, optional, type: optional ? type.slice(0, -1) : type };
+  });
   return (value: unknown): value is T => {
     if (typeof value !== "object" || value === null) return false;
-    for (const [name, type] of required) {
-      if (typeof (value as Record<string, unknown>)[name] !== type) return false;
+    for (const { name, optional, type } of checked) {
+      const field = (value as Record<string, unknown>)[name];
+      if (optional && field === undefined) continue;
+      if (typeof field !== type) return false;
     }
     return true;
   };
@@ -43,6 +53,7 @@ type GuideChannel = GuideOutputBody["channels"][number];
 const isAiring = itemCheck<GuideChannel["airings"][number]>({
   kind: "string",
   scheduleBlockId: "string",
+  series: "string?",
   startMs: "number",
   stopMs: "number",
   title: "string",
@@ -52,6 +63,7 @@ const hasChannelFields = itemCheck<GuideChannel>({
   name: "string",
   number: "number",
   pendingCount: "number",
+  programCount: "number?",
   status: "string",
 });
 const isChannel = (value: unknown): value is GuideChannel =>
