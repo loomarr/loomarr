@@ -100,6 +100,56 @@ describe("inlineStyle", () => {
     `;
     assert.deepEqual(measureSource(wrapped, "apps/web/src/x.tsx"), { inlineStyle: 3 });
   });
+
+  const count = (body) => measureSource(body, "packages/ui/src/x.tsx").inlineStyle ?? 0;
+
+  it("sees through a cast", () => {
+    const cast = `
+      const ROW = { gap: 4 } as unknown as ViewStyle;
+      export const Row = () => (
+        <View style={{ gap: 4 } as ViewStyle}>
+          <View style={{ gap: 4 } as const} />
+          <View style={ROW} />
+        </View>
+      );
+    `;
+    assert.equal(count(cast), 3);
+  });
+
+  it("counts a Platform.select, inline or as a constant", () => {
+    const selected = `
+      const ROW = { gap: 4 };
+      const FIXED = Platform.select({ web: { position: "fixed" }, default: undefined });
+      const NAMED = Platform.select({ web: ROW }) as ViewStyle;
+      const styles = { row: Platform.select({ ios: { gap: 4 } }) };
+      const LABEL = Platform.select({ web: "a", default: "b" });
+      export const Row = () => (
+        <View style={Platform.select({ web: { gap: 4 } })}>
+          <View style={FIXED} />
+          <View style={NAMED} />
+          <View style={styles.row} />
+          <View style={LABEL} />
+          <View style={Platform.select({ web: undefined })} />
+          <View style={other.select({ web: { gap: 4 } })} />
+        </View>
+      );
+    `;
+    assert.equal(count(selected), 4);
+  });
+
+  it("counts an object behind a Platform.OS condition, inline or as a constant", () => {
+    const conditional = `
+      const FIXED = Platform.OS === "web" ? ({ position: "fixed" } as object) : undefined;
+      const WEB_ONLY = Platform.OS === "web" && { gap: 4 };
+      export const Row = () => (
+        <View style={Platform.OS === "web" ? ({ gap: 4 } as const) : undefined}>
+          <View style={FIXED} />
+          <View style={[WEB_ONLY, null]} />
+        </View>
+      );
+    `;
+    assert.equal(count(conditional), 3);
+  });
 });
 
 describe("ledger", () => {
