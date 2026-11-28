@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/testkit/waitfor"
 )
 
 func TestWaitSweepsDescendantsAfterNaturalParentExit(t *testing.T) {
@@ -35,13 +37,6 @@ func TestWaitSweepsDescendantsAfterNaturalParentExit(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		err := syscall.Kill(pid, 0)
-		if errors.Is(err, syscall.ESRCH) {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatalf("descendant %d survived its naturally exited parent", pid)
+	waitfor.Eventually(t, 3*time.Second, "descendant "+strconv.Itoa(pid)+" to die with its naturally exited parent",
+		func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) })
 }

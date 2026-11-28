@@ -30,8 +30,6 @@ internal/library/scan/walkguard_test.go 1
 internal/library/scan/watch_test.go 2
 internal/media/measure/job_test.go 1
 internal/media/proctree/supervisor_test.go 1
-internal/media/proctree/supervisor_unix_test.go 1
-internal/media/tools/conditioning_test.go 1
 internal/people/auth/sso_authelia_test.go 1
 internal/people/auth/sso_authentik_test.go 1
 internal/platform/llm/openai_stale_conn_test.go 1
