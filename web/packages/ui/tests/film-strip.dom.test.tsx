@@ -268,6 +268,43 @@ describe("FilmStrip's edges", () => {
     ]);
   });
 
+  it("leaves the keys to an owner that holds the cursor, and rings only its block", async () => {
+    const user = userEvent.setup();
+    const keys: string[] = [];
+    const owned = (id: string | undefined, takeFocus = false) => (
+      <div onKeyDown={(event) => keys.push(`${event.key}:${event.defaultPrevented}`)}>
+        <button type="button">Elsewhere</button>
+        <FilmStrip
+          airings={airings}
+          cursor={{ id, takeFocus }}
+          formatTime={formatTime}
+          layout="row"
+          nowMs={at(45)}
+          window={{ startMs: at(0), stopMs: at(120) }}
+        />
+      </div>
+    );
+    const { rerender } = renderUi(owned(undefined));
+    const elsewhere = screen.getByRole("button", { name: "Elsewhere" });
+    const block = (name: RegExp) => screen.getByRole("button", { name });
+    act(() => elsewhere.focus());
+
+    // A new cursor does not take focus from elsewhere.
+    rerender(owned("b30@1800000"));
+    expect(document.activeElement).toBe(elsewhere);
+    expect(screen.getAllByTestId("film-strip-ring-actionFocus")).toHaveLength(1);
+
+    rerender(owned("b30@1800000", true));
+    expect(document.activeElement).toBe(block(/^Now/));
+    await user.keyboard("{ArrowRight}");
+    expect(keys).toEqual(["ArrowRight:false"]);
+    expect(document.activeElement).toBe(block(/^Now/));
+
+    rerender(owned("b90@5400000"));
+    expect(document.activeElement).toBe(block(/Film 90/));
+    expect(screen.getAllByTestId("film-strip-ring-actionFocus")).toHaveLength(1);
+  });
+
   it("gives a strip that is one single run its title and no count", () => {
     renderUi(view([airing(0, 30, { series: "Diner" }), airing(30, 60, { series: "Diner", title: "Two" })]));
     expect(labels()).toEqual(["Now · until T60 Diner"]);

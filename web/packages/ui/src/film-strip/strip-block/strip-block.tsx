@@ -27,6 +27,8 @@ interface StripBlockProps {
   aired: number;
   artworkUri: string | undefined;
   blockRef: (node: BlockHandle | null) => void;
+  /** With a cursor from outside, whether it is on this block; undefined lets focus draw the ring. */
+  cursor?: boolean | undefined;
   episodes: number | undefined;
   formatTime: (ms: number) => string;
   layout: "row" | "strip";
@@ -70,6 +72,7 @@ const StripBlock = ({
   airing,
   artworkUri,
   blockRef,
+  cursor,
   episodes,
   formatTime,
   layout,
@@ -97,7 +100,8 @@ const StripBlock = ({
       onFocus(fromKeys);
     },
   });
-  const ring = focused && keyboard ? "actionFocus" : hovered ? "contentPrimary" : "transparent";
+  const amber = cursor ?? (focused && keyboard);
+  const ring = amber ? "actionFocus" : hovered ? "contentPrimary" : "transparent";
   const ringed = ring !== "transparent";
   // A Guide row's block can be a few pixels wide, so its ring is drawn on a target of its own.
   const wideRing = ringed && layout === "row";

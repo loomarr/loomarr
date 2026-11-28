@@ -1,5 +1,5 @@
 import { Layer, Stack, Surface, Text, ThemeScope } from "@loomarr/design-system";
-import { type ComponentRef, useRef, useState } from "react";
+import { type ComponentRef, useEffect, useRef, useState } from "react";
 import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -88,6 +88,7 @@ const placeStrip = (
 const FilmStrip = ({
   airings,
   artworkUri = defaultArtwork,
+  cursor,
   formatTime,
   layout = "strip",
   maxBlockWidth = 330,
@@ -133,7 +134,15 @@ const FilmStrip = ({
     typeof liveX === "number" ? liveX + LIVE_ROOM > strip.width : ratio(nowMs) > LIVE_ROOM_RATIO;
   const height = HEAD_ROOM + STILL_HEIGHT + (!isRow && pictured ? CAPTION_HEIGHT : 0);
 
+  const cursorId = cursor?.id;
+  const takeFocus = cursor?.takeFocus;
+  useEffect(() => {
+    // A new cursor alone never takes focus from elsewhere.
+    if (cursorId && (takeFocus || focusedLook.current)) blocks.current.get(cursorId)?.focus();
+  }, [cursorId, takeFocus]);
+
   const stop =
+    programmes.find((i) => i.id === cursorId) ??
     programmes.find((i) => i.id === stopId) ??
     programmes.find((i) => stateOf(i, nowMs) === "now") ??
     programmes[0];
@@ -154,7 +163,8 @@ const FilmStrip = ({
     metaKey: boolean;
     preventDefault: () => void;
   }) => {
-    if (event.altKey || event.ctrlKey || event.metaKey || !stop) return;
+    // With a cursor from outside, the keys bubble to the owner.
+    if (cursor || event.altKey || event.ctrlKey || event.metaKey || !stop) return;
     const here = programmes.indexOf(stop);
     const to = { ArrowLeft: here - 1, ArrowRight: here + 1, End: programmes.length - 1, Home: 0 }[event.key];
     if (to === undefined) return;
@@ -215,6 +225,7 @@ const FilmStrip = ({
               aired={aired}
               airing={look.airing}
               artworkUri={artworkUri(look.airing)}
+              cursor={cursor ? item.id === cursorId : undefined}
               blockRef={(node) => {
                 if (node) blocks.current.set(item.id, node);
                 else blocks.current.delete(item.id);
